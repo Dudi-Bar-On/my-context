@@ -3006,7 +3006,39 @@ git commit -m "feat(ui): register watch/ask routes; prove idle exit fires with a
 > key added below whose value is data of that kind takes `{mv:…}`; a count, a percentage or an error
 > sentence does not.
 
-- [ ] **Step 1: Add the keys to `en.js`**
+> **WHAT THIS TASK ACTUALLY ADDED — 2026-08-22.** Every key in Steps 1 and 2 below was already on
+> disk and already declared by the mockup when this task was executed: `f75f752` (the string-key
+> reconciliation that made the mockup the wording of record) and `a2d0924` (the table regeneration
+> that followed it) landed all forty-seven, in both languages, and the parity test was green on all
+> seven assertions before a byte was touched. **Steps 1-3 are ticked
+> as verified, not as written.** What this task did add is the piece the block below could not know
+> about, because it was decided in another plan after this one was written: **the cross-session carry
+> disclosure**, which `docs/superpowers/plans/2026-08-20-v2-hooks-sessions-and-continuity.md` Task 19
+> shipped in the CLI and could not give the UI, since a key the mockup does not declare fails the
+> parity test in the direction that names it.
+>
+> **Three keys, not that plan's three.** Task 19 asks for `index.carriedFrom`,
+> `index.carriedDropped` and `index.carriedDisplaced`. `index.carriedFrom` **was not added and must
+> not be**: `preview.carried` is already that sentence, in both tables and in the mockup, and a
+> second key for a sentence that has one is a second spelling of it. The three that landed are
+> `index.carriedDropped`, `index.carriedDisplaced` and — the clause Task 19 does not name at all —
+> `index.carriedFetch`, the *"Fetch any of these with `mycontext show <id>`"* line that
+> `core/render.ts` · `if (parts.length > 1) parts.push('Fetch any of these with mycontext show <id>.');` · ~69
+> appends whenever either list is non-empty. All four clauses are read out of one
+> `IndexSummary.carried`, which `/api/select` serves the browser unchanged, so the wording is
+> transcribed from `core/render.ts` · `function renderCarried(carried: CarriedSummary | null): string {` · ~47
+> and is not authored here.
+>
+> **The six drop reasons are NOT keys, and that is a decision.**
+> `core/select.ts` · `function carriedDropReason(` · ~502 spells five of them and the caller spells
+> the sixth (`over the index budget`); they arrive as English prose in the data and ride inside
+> `{mv:ids}` untranslated, isolated left-to-right in the Hebrew paragraph. Keying them would put a
+> second spelling of five sentences in `en.js` beside the one `select()` already owns, and it would
+> still be a guess: translating a reason needs a stable code on the selection, which is the same
+> thing `preview.whyn` records the five gate causes still waiting for. When that code exists, the
+> reasons become keys in the same commit that adds it.
+
+- [x] **Step 1: Add the keys to `en.js`**
 
 Append inside `strings` (every wording below carries its §4b/§5 condition in the sentence — do not "tighten" them into unconditional claims):
 
@@ -3105,7 +3137,7 @@ Append inside `strings` (every wording below carries its §4b/§5 condition in t
   'ask.field.any': '(any)',
 ```
 
-- [ ] **Step 2: Add the same keys to `he.js`, translated**
+- [x] **Step 2: Add the same keys to `he.js`, translated**
 
 Every key above, with real Hebrew values (the register of `docs/README.he.md`; code-like fragments — `mycontext ui`, `context_window`, `origin/`, `updated_at` — stay untranslated inside the Hebrew sentences, per spec §3's paths-are-not-prose rule). A slot may still MOVE: the mockup's own Hebrew for `strip.inSync` is `{mv:branch} ב‑origin`, not `origin/{mv:branch}`, because a bare `origin/` immediately before an isolated run resolves to the wrong visual order in an RTL paragraph. Untranslated is not unmoved. Example of the first entries so the shape is unambiguous:
 
@@ -3124,12 +3156,12 @@ Every key above, with real Hebrew values (the register of `docs/README.he.md`; c
 
 (The literal file must contain every key — the comment is for this plan only.)
 
-- [ ] **Step 3: Run the parity test**
+- [x] **Step 3: Run the parity test**
 
 Run: `node --test test/ui/strings-parity.test.ts`
 Expected: PASS — equal key sets, no empty values.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/ui/public/strings/en.js src/ui/public/strings/he.js

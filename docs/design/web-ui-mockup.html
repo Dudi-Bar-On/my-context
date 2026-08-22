@@ -1110,6 +1110,37 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       </button>
       <span class="chip gov" data-g="◇" data-t="tier.carried">carried</span><span class="prop">PROPOSED</span>
     </div>
+    <!-- The REST of the carry disclosure, and three keys rather than three
+         sentences because `mycontext context` already prints these clauses.
+         `core/render.ts` · `function renderCarried(carried: CarriedSummary | null): string {` · ~47
+         composes all four out of one field — `IndexSummary.carried`, served to
+         this page unchanged by /api/select — so the wording here is that
+         renderer's, transcribed. Two surfaces that agree today is the defect
+         this project has paid for most often, and a second vocabulary for a
+         sentence drawn from one field is exactly that defect.
+
+         Each clause is OMITTED ENTIRELY when its own list is empty, and the
+         fetch line appears only when there is something to fetch: a clause
+         carrying a zero every session is how a reader learns to skim past the
+         one session where it matters. All three are drawn here because a
+         mockup draws the loaded case.
+
+         The ids sit INSIDE the string as `{mv:ids}` rather than beside it as
+         markup, unlike the carried item above: a slot the table declares is
+         rebuilt by applyLang() from the table, where sibling markup has to be
+         rebuilt by script. The drop REASONS ride untranslated inside that same
+         isolated run, because
+         `core/select.ts` · `function carriedDropReason(` · ~502
+         is their one spelling and there is no stable code to translate from —
+         the same thing `preview.whyn` says the five gate causes are waiting
+         for, one screen along. -->
+    <p class="small" style="margin-block:6px 0" data-t="index.carriedDropped"><span class="v" data-v="dropped">2</span> carried
+      ids got no line: <span class="m v" data-v="ids">INV-prices-are-integer-cents (delivered in full this
+      session), STD-money-never-float (over the index budget)</span>.</p>
+    <p class="small" style="margin-block:6px 0" data-t="index.carriedDisplaced"><span class="v" data-v="displaced">1</span> of this
+      session's own lines displaced to make room: <span class="m v" data-v="ids">RULE-round-half-even</span>.</p>
+    <p class="small" style="margin-block:6px 0" data-t="index.carriedFetch">Fetch any of these with
+      <span class="m">mycontext show &lt;id&gt;</span>.</p>
 
     <div class="card pane"><h3 data-t="preview.why">Why not — the first gate that failed</h3>
       <div class="segbar" id="gatepick" role="group" aria-label="Item" data-t-aria="aria.gatepick"></div>
@@ -2381,6 +2412,13 @@ const HE={_dir:'rtl',_lang:'he',
  'sess.name':'שמות הם רשות ו‑mycontext מחזיקה בהם. שיחה שאיש לא נתן לה שם שומרת על המזהה והקידומת שלה — לא מומצא לה דבר, כי שם נגזר עלול להיות שגוי ומתן שם הוא בדיוק הרגע שבו יודעים למה השיחה שימשה. {m:mycontext session name} · {m:/mycontext-session} — בחירה ומתן שם עובדים גם בלי הממשק הזה.',
  'tier.carried':'הועבר',
  'preview.carried':'{v:lines=3} שורות אינדקס הועברו מהשיחה {mv:session=a3f9c1 · billing-refactor}. מוצג כאן וב‑{m:mycontext context} באופן זהה — פריט שמגיע ממקום שאינכם רואים הוא אותו פגם כמו פריט שנשמט בשקט, רק מהכיוון ההפוך.',
+ /* The other three clauses of the same disclosure. The ids and their reasons
+    stay in one isolated LTR run: the reason is English because `select()` is
+    the only place it is spelled, and an English run inside Hebrew prose is
+    read left to right or it is not read at all. */
+ 'index.carriedDropped':'{v:dropped=2} מזהים שהועברו לא קיבלו שורה: {mv:ids=INV-prices-are-integer-cents (delivered in full this session), STD-money-never-float (over the index budget)}.',
+ 'index.carriedDisplaced':'{v:displaced=1} משורותיה של השיחה הזו עצמה נדחקו כדי לפנות מקום: {mv:ids=RULE-round-half-even}.',
+ 'index.carriedFetch':'שלפו כל אחד מהם באמצעות {m:mycontext show <id>}.',
  'doc.d3':'אף קובץ אינו תואם לאף תבנית נצפית, ולכן הדחיפה לתיעוד לא תוכל לפעול לעולם. ברירות המחדל מציינות שלושה נתיבים מתוך תהליך עבודה אחד; במאגר הזה אין אף אחד מהם.',
  'doc.notice':'הודעה',
  'doc.d4':'קיים במכונה הזו מאגר ידע נוסף החוצה פרויקטים. mycontext לעולם אינה קוראת או כותבת אליו — הדבר מדווח כדי שתדעו זאת מכאן ולא מהפתעה.',
