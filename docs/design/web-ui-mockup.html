@@ -434,6 +434,39 @@ body.sim-rt .gloss,body.sim-rt .gloss.float{background-image:none;box-shadow:non
 
 /* body */
 .body{grid-area:body;overflow-y:auto;padding:var(--sp-4);min-inline-size:0}
+
+/* Task 8 — navigation crossfade (spec §5). The rail never moves; only
+   .body's current [data-p] screen changes, and it crossfades at --dur-nav
+   rather than travelling — nothing here is translateX, so there is no axis
+   for dir="rtl" to mirror and Hebrew costs nothing.
+   `display` rides along in the transition list with `allow-discrete`, and
+   `@starting-style` supplies the frame a hidden→visible flip has no prior
+   frame to animate from (without it the browser skips the transition
+   outright, per spec — a `[hidden]` element was never rendered, so there is
+   no "before" frame to interpolate from until one is declared explicitly).
+   Screen-only: `@media print` above already owns [data-p]'s display with its
+   own `!important` rules, and a leaked `opacity:0` would print invisible ink
+   on the one screen print still renders — checked against
+   e2e/print.spec.ts before landing this, not assumed safe. */
+@media screen{
+  [data-p][hidden]{opacity:0}
+  /* Stacks the outgoing and incoming screen in the same box for the ~180ms
+     both are simultaneously un-hidden mid-crossfade; ordinary block flow
+     would lay the incoming screen out BELOW the outgoing one instead of over
+     it, which reads as a jump-cut, not a fade. Inert outside that window: a
+     `[hidden]` (display:none) pane never occupies a grid track, and with
+     motion reduced no two panes are ever simultaneously un-hidden in the
+     first place — go() flips every pane's `hidden` attribute in one
+     synchronous pass, with no frame in between for a viewer to see. */
+  .body{display:grid}
+  .body>[data-p]{grid-column:1;grid-row:1}
+}
+@media screen and (prefers-reduced-motion:no-preference){
+  [data-p]{transition:opacity var(--dur-nav) var(--ease),
+    display var(--dur-nav) allow-discrete}
+  @starting-style{ [data-p]:not([hidden]){opacity:0} }
+}
+
 .phd{display:flex;flex-wrap:wrap;gap:6px var(--sp-3);align-items:baseline;margin-block-end:3px}
 .verdict{font-size:var(--fs-0);color:var(--dim)}
 .psub{color:var(--dim);font-size:var(--fs-1);margin:0 0 var(--sp-4);max-inline-size:78ch}
@@ -651,6 +684,23 @@ svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
   border-radius:var(--r-md);display:flex;overflow:hidden}
 .track .seg{block-size:100%;border-inline-end:1px solid #00000066;
   min-inline-size:2px}
+/* Task 8 — retiming (spec §5): change the event and the ribbon does not
+   redraw, it travels to its new widths over --dur-retime. The deliberate
+   exception to "motion signals affordance" — here the movement IS the data,
+   showing which tier gained and which collapsed, which a redraw hides.
+   NOTE, found while wiring this and not fixed here (outside a transition
+   declaration's scope, and inside renderRibbons()'s render logic rather than
+   CSS): this only travels once the segment on screen is the SAME DOM node
+   before and after the change. renderRibbons() currently
+   `host.replaceChildren()`s and rebuilds every .seg from scratch on every
+   #evsel change, so today this rule is wired and inert — new nodes have no
+   "before" width to animate from, the same reason [data-p] needed
+   @starting-style above, except here the fix is keying/reusing nodes across
+   a re-render, which is JS render-logic, not a transition/animation
+   declaration. Flagged rather than edited. */
+@media (prefers-reduced-motion:no-preference){
+  .track .seg{transition:inline-size var(--dur-retime) var(--ease)}
+}
 .seg.pinned{background:var(--gold)}
 .seg.jit{background:var(--ok)}
 .seg.restored{background:color-mix(in oklch,var(--ok) 50%,var(--gold))}

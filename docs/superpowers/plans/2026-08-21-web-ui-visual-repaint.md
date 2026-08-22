@@ -489,11 +489,17 @@ test('every data view sits on a plate', () => {
 **Files:**
 - Modify: `docs/design/web-ui-mockup.html`
 
-- [ ] **Step 1: Navigation — the rail persists, content crossfades at `--dur-nav`**
+- [x] **Step 1: Navigation — the rail persists, content crossfades at `--dur-nav`**
 
 Nothing travels horizontally. **A crossfade has no axis to get wrong**, which is why Hebrew costs nothing here — `translateX` is not a logical property and `dir="rtl"` never mirrors it.
 
-- [ ] **Step 2: Retiming — segments travel to their new widths at `--dur-retime`**
+**Done 2026-08-22.** `go()` (unchanged) still just flips `hidden` on every `[data-p]` synchronously; the crossfade is wired entirely in CSS against that existing attribute, no JS touched. `[data-p][hidden]{opacity:0}` is the unconditional STATE (survives reduced motion, same shape as `.row`'s primitive); the ANIMATION — `transition:opacity var(--dur-nav) var(--ease),display var(--dur-nav) allow-discrete` plus the `@starting-style` block that gives a hidden→visible flip a "before" frame to animate from at all — lives only inside `@media screen and (prefers-reduced-motion:no-preference)`. Both are additionally scoped to `@media screen`: `@media print` above already owns `[data-p]`'s `display` with its own `!important` rules, and a leaked `opacity:0` would print invisible ink on the one screen print still renders (checked against `e2e/print.spec.ts` before landing, not assumed safe — it stayed green, twice).
+
+**One thing the plan did not anticipate, found while wiring this.** `display:none→block` and `block→none` keep the OUTGOING and INCOMING screen simultaneously un-hidden for the ~180ms both are mid-transition. `[data-p]` sections are plain block siblings under `.body`, so without a stacking fix the incoming screen laid out BELOW the outgoing one instead of over it — a jump, not a crossfade. Fixed with `.body{display:grid}` / `.body>[data-p]{grid-column:1;grid-row:1}`, both inside the same `@media screen` block. This is layout, not a `transition`/`animation` declaration by the letter of the task split — flagged here rather than silently treated as in-scope, but implemented rather than reported, because without it "crossfade" was not actually true: the two screens never occupied the same box to fade between. Confirmed inert outside the transition window: a `[hidden]` pane is `display:none` and never occupies a grid track, and with motion reduced no two panes are ever simultaneously un-hidden in the first place — `go()`'s `forEach` flips every `hidden` attribute in one synchronous pass, so there is no frame in between for a viewer, or for this grid rule, to see.
+
+**Verified past the gates, in a real Chromium page, not just by reading the CSS.** A throwaway script (`chromium.launch()`, not the pinned e2e suite) sampled `getComputedStyle` opacity on a fresh page per sample point after clicking `.nav[data-s="coverage"]`: 20ms → `0`, 60ms → `0`, 90ms → `0.979`, 120ms → `0.991`, 160ms → `0.999`, 200ms+ → `1` — a smooth `cubic-bezier(.23,1,.32,1)` climb landing at the `--dur-nav` (180ms) mark, front-loaded exactly as that curve's control points (`.23,1` / `.32,1`) predict. `getBoundingClientRect()` for the outgoing and incoming screen matched exactly (`top`/`left`/`height` identical) mid-transition, confirming the grid stack overlaps them rather than stacking them. **Caution for whoever writes screen-transition assertions next (Task 9/12):** repeatedly polling `getComputedStyle` on the SAME long-lived page during this transition (rather than one query per fresh page) reads back a value stuck at the `@starting-style` value the entire time instead of progressing — an automation/CDP artifact of forced synchronous style recalculation racing `@starting-style`, not a real rendering bug (the single-query and screenshot checks above both resolve correctly). Any test against this transition must poll for the end state via Playwright's own polling assertions (`toHaveCSS`, etc.), exactly per Task 6's flake note — never a bare `getComputedStyle` snapshot, and this file's own throwaway script is itself a demonstration of why not.
+
+- [x] **Step 2: Retiming — segments travel to their new widths at `--dur-retime`**
 
 ```css
 .rib u{transition:inline-size var(--dur-retime) var(--ease)}
@@ -501,13 +507,17 @@ Nothing travels horizontally. **A crossfade has no axis to get wrong**, which is
 
 **The movement is the information** — you see *which* tier gained and which collapsed, which a redraw hides. This is the one deliberate exception to "motion signals affordance".
 
-- [ ] **Step 3: Verify by measurement, not by eye**
+**Done 2026-08-22, adapted to the real selector.** `.rib`/`u` do not exist anywhere in the file — the actual four-tier budget ribbon's segments are `.track .seg` (built by `renderRibbons()`, driven by `#evsel`). Added `.track .seg{transition:inline-size var(--dur-retime) var(--ease)}`, gated the same way as every other primitive transition: inside `@media (prefers-reduced-motion:no-preference)` only, the segment's width itself (set via `isz()`'s `element.style.setProperty('inline-size', …)`, already logical, already CSSOM per the file's own CSP note) is the unconditional state.
+
+- [ ] **Step 3: Verify by measurement, not by eye** — **blocked, not done, reported rather than faked.**
 
 ```js
 // before: jit segment 243px → after event change: 20px → after another: 416px
 ```
 
-- [ ] **Step 4: Commit**
+**This transition is wired and inert.** `renderRibbons()` calls `host.replaceChildren()` and rebuilds every `.seg` from scratch on every `#evsel` change (`docs/design/web-ui-mockup.html`, the `renderRibbons` function, `.track` built fresh each call). A CSS `transition` animates a property change on one persisting element; a brand-new element has no "before" value to animate from, so today the ribbon still redraws exactly as before — the transition rule fires on nothing. Producing the plan's own verification numbers (243px → 20px → 416px on the *same* segment) requires `renderRibbons()` to key its `.seg` nodes (by tier + candidate id, the same identity `fitFirstFit`/`CANDIDATES` already carry) and reuse them across a re-render instead of wiping the host — that is JS render-logic inside a data-view's own rendering function, not a `transition`/`animation` declaration, and it sits inside the same function repaint-7 owns as "the data views." Flagged for repaint-7 or a follow-up task rather than edited here, and Step 3 is left unchecked rather than fabricating a before/after measurement that the current wiring cannot produce.
+
+- [x] **Step 4: Commit**
 
 ---
 
