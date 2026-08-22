@@ -19,8 +19,12 @@
  *     each other silently unless hit-tested in a real browser.
  *  2. **The linkage itself**: the clicked row ends up `aria-pressed="true"`
  *     and lifted the way `:hover` lifts it, its paired `.blk` reaches opacity
- *     1, and every other `.blk` sits at exactly .42 — not lower, the owner's
- *     ruling, because below that two items cannot be compared.
+ *     1, and every other `.blk` sits at exactly .58 — revised from the
+ *     original .42 after owner review of the rendered page: `opacity` dims
+ *     the block's TEXT along with its presence, and .42 composited over the
+ *     plate measured under the 4.5:1 body-text floor this direction holds
+ *     everywhere else. .58 clears it (~5.6:1) while staying a clearly
+ *     de-emphasised reduction from the selected item's full opacity.
  */
 import { test, expect } from '@playwright/test';
 import { expectNoFaults, openMockup } from './mockup.ts';
@@ -77,8 +81,9 @@ test('selecting a row lifts it, lights its block, and dims every other block to 
 
   await expect(blk(target), 'the selected block reaches full opacity').toHaveCSS('opacity', '1');
   for (const id of ids.filter((i) => i !== target)) {
-    await expect(blk(id), `block ${id} must dim to exactly .42 — at .32 two items cannot be compared`)
-      .toHaveCSS('opacity', '0.42');
+    await expect(blk(id), `block ${id} must dim to exactly .58 — below that the block's own text `
+      + 'falls under the 4.5:1 body-text floor (owner review, revised from the original .42)')
+      .toHaveCSS('opacity', '0.58');
   }
 
   expectNoFaults(faults, 'selecting a row');

@@ -1,3 +1,6 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <!--
   Static v2.0 web UI mockup — THE SPECIFICATION FOR THE UI.
 
@@ -273,20 +276,32 @@
    never looking at a rule without seeing the text it produced, and never
    looking at injected text without seeing which rule produced it." Opted
    into with `.linked` so an unlinked `.lit` (a later screen with no paired
-   row) stays fully opaque by default, unaffected by this. Dims to .42, not
-   lower — the owner's ruling: below that two items cannot be compared, which
-   is the thing this screen exists to let someone do. */
-.lit.linked .blk{padding:9px 10px;display:flex;flex-direction:column;gap:6px;opacity:.42}
+   row) stays fully opaque by default, unaffected by this.
+
+   Owner ruling, revised after seeing it rendered: the original floor was
+   .42, chosen so two items stay comparable — but `opacity` dims the BLOCK's
+   text along with its presence, and .42 composited over the plate measures
+   ~3.6:1, under the 4.5:1 this whole direction holds body text to elsewhere.
+   .58 measures ~5.6:1 (comfortably clears 4.5:1) and is still a clearly
+   de-emphasised 42% reduction from the selected item's full opacity — both
+   requirements now hold at once instead of trading one for the other. */
+.lit.linked .blk{padding:9px 10px;display:flex;flex-direction:column;gap:6px;opacity:.58}
 .lit.linked .blk.sel{opacity:1}
 @media (prefers-reduced-motion:no-preference){
   .lit.linked .blk{transition:opacity var(--dur-act) var(--ease)}
 }
 /* The literal field's own id header — a `.linkid` (opens the full item),
    reset locally rather than in a global `.linkid` rule, which would restyle
-   the ~15 pre-existing plain-button usages elsewhere with no review of them. */
+   the ~15 pre-existing plain-button usages elsewhere with no review of them.
+   Owner review: the open-detail icon "was not obvious... it opens the card" —
+   `.idkind`/`.idslug` deliberately keep their ink/dim colours (the prefix
+   ruling is unchanged), so the icon itself is what has to signal "actionable",
+   ALWAYS gold rather than only on hover. currentColor is untouched as the
+   icon's own contract (spec §6: "no icon-specific colour token") — this sets
+   the colour the icon INHERITS, from the one place that actually needs it. */
 .blk .linkid,.carrieditem .linkid{display:inline-flex;align-items:center;gap:6px;
-  background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer}
-.blk .linkid:hover,.carrieditem .linkid:hover{color:var(--gold)}
+  background:none;border:0;padding:0;font:inherit;color:var(--gold);cursor:pointer}
+.blk .linkid:hover,.carrieditem .linkid:hover{text-decoration:underline}
 
 /* 6 — the chip. font-weight and font-family are the only base properties
    that can win against the legacy rule below (border, colour and
@@ -459,6 +474,13 @@ tr:last-child td{border-block-end:0}
 /* Never colour alone: each tier chip also carries a glyph. */
 .chip::before{content:attr(data-g) " ";font-family:var(--mono)}
 .small{font-size:var(--fs-0);color:var(--dim)}
+/* Owner review: the item-detail panel's title ("Zero runtime dependencies" —
+   the human-readable name, not the id) reused the generic secondary-caption
+   style and read as too dark. It is primary information, not a caption, so
+   it keeps .small's size but not its colour. Scoped to this one id rather
+   than changing .small itself, which is correctly dim in dozens of other
+   captions across the app. */
+#panetitle{color:var(--ink)}
 .measured{color:var(--gold);font-weight:700}
 
 /* R4 — help in place. A disclosure under the control, not a tooltip:
@@ -815,7 +837,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
    `<svg class="icon-<name>"><use href="#i-<name>"/></svg>` (comment above the
    sprite). The injection preview is the first screen to consume one — #i-open,
    on the literal field's id header, since clicking it opens the full item. */
-[class^="icon-"]{inline-size:14px;block-size:14px;flex:none;vertical-align:-2.5px}
+[class^="icon-"]{inline-size:16px;block-size:16px;flex:none;vertical-align:-3px}
 </style>
 
 <!--
