@@ -468,7 +468,7 @@ them; it appears as a bare count.
 **Statuses:** `draft` · `active` · `validated` · `deprecated` · `superseded`.
 Only `active` is injected.
 
-**Hooks:** `SessionStart` (`startup|clear|resume|compact`) · `PreToolUse`
+**Hooks:** `SessionStart` (`startup|clear|resume|compact|fork`) · `PreToolUse`
 (`Read|Edit|MultiEdit|Write|NotebookEdit`) · `PreCompact` · `PostToolUse`
 (`Write|Edit|MultiEdit`).
 
