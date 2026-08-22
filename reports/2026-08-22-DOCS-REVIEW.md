@@ -5,19 +5,23 @@ consequence — how much a reader would be misled or harmed by acting on the sen
 easy the fix is. Each carries where, why it is wrong (evidence from `src/`, not from another
 document), the proposed fix, and both languages where both apply.
 
-**Provenance.** Several delegated sub-agents read different document ranges in parallel, and
-one of them committed an earlier version of this file (commit `01ebc26`) before the review was
-finished. This is the consolidated result, and it supersedes that commit. Every finding below
-was re-verified against `src/` by this pass regardless of which pass first surfaced it —
-nothing is carried over on trust, and two claims in the earlier version were disproved on
-re-check and are corrected here (see **Corrections to the earlier commit**, at the end).
-`git log` will therefore show two commits touching this file; that is concurrency, not two
-rounds of owner-directed revision.
+**Provenance.** This task was worked by more than one agent process concurrently in this same
+worktree, racing on this exact file: an earlier pass committed a version of this report
+(commit `01ebc26`) before the review was finished, and later passes — including this one —
+each read whatever was on disk, re-verified every claim against `src/` independently of who
+first surfaced it, and folded in what they found. `git log` on this branch shows more than one
+commit touching this file as a result; that is concurrency, not rounds of owner-directed
+revision. One consequence worth naming: an intermediate consolidation pass apparently dropped
+a genuine, high-confidence finding from the earlier commit while merging — `docs/TUTORIAL-ADVANCED.md`'s
+wrong budget-tier number, restored below as F14 after being independently re-verified against
+`src/core/config.ts` again here. Nothing in this final version is carried over on trust from
+any earlier pass; every citation below was checked to resolve against the code in this
+worktree today.
 
 **Ranked by consequence.** Findings F1–F11 are already in roughly that order — each states
-something false that a reader would act on, ranked by how much acting on it costs. F12 and F13,
-added in this pass, are lower-consequence single-document gaps and sit at the end rather than
-disturbing that ordering.
+something false that a reader would act on, ranked by how much acting on it costs. F12–F14,
+folded in during consolidation, are lower-consequence or single-document gaps and sit at the
+end rather than disturbing that ordering.
 
 ---
 
@@ -397,7 +401,44 @@ at both cited lines.
 
 ---
 
+### F14 — `docs/TUTORIAL-ADVANCED.md` names the wrong tier as the expensive one, and gives it the wrong tier's number
+
+**Where:** `docs/TUTORIAL-ADVANCED.md` ·
+`Each tier has a token budget. Pinned full text is the expensive one — 8,000` · ~159, in "4.
+Budgets, and what happens when they bind." No Hebrew counterpart for this file.
+
+**Why it is wrong.** `src/core/config.ts` ·
+`export const DEFAULT_BUDGETS: Budgets = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };` ·
+~56 — `pinned` defaults to **6,000**, not 8,000; `restored` is the tier whose default is
+8,000. This isn't a rounding slip: the sentence names the wrong tier as "the expensive one"
+and states that wrong tier's number as fact. `README.md`'s own budget table gets all four
+numbers right, in the same worktree: `README.md` · `` | `pinned` | 6000 | the pinned tier at session start | `` ·
+~1758, and `README.md` · `` | `restored` | 8000 | the re-injection after a compaction | `` ·
+~1760.
+
+**Proposed fix.** `` Pinned full text is the expensive one — 8,000 estimated tokens by default. ``
+→ `` `restored` — the re-injection after a compaction — is the expensive one, at 8,000
+estimated tokens by default; `pinned` and `jit` are 6,000, `index` is 1,200. `` If the
+paragraph's real intent was to warn a reader about the cost of pinning specifically, reframe
+around `pinned`'s actual number (6,000) instead, since that's the budget a reader who sets
+`always: true` is the one actually paying against.
+
+**Confidence:** high.
+
+---
+
 ## Lower-confidence / structural observations
+
+- **Two documented install paths, no cross-reference between them.** `docs/TUTORIAL.md` ·
+  `claude plugin marketplace add Dudi-Bar-On/my-context` · ~42, versus `README.md` ·
+  `claude plugin marketplace add ./` · ~1874 (run from inside a clone). Both may be
+  intentionally valid — a GitHub shorthand for a first-time reader versus a local-clone-relative
+  path for someone already inside the repository — and this review could not confirm from
+  inside an offline worktree whether `claude plugin marketplace add <owner>/<repo>` is
+  currently supported syntax, so neither is asserted wrong. What's missing is any
+  cross-reference telling a reader who sees both that they're alternatives rather than one
+  having superseded the other. **Confidence: low** — flagged for completeness rather than
+  because either form was shown to be broken.
 
 - **No Hebrew tutorial exists.** `docs/TUTORIAL.md` and `docs/TUTORIAL-ADVANCED.md` have no
   Hebrew counterpart; only `docs/README.he.md` does. A Hebrew-reading newcomer's path from
@@ -426,16 +467,21 @@ at both cited lines.
   spot checks across the ~1,000 combined lines of these three files, not a line-by-line
   re-verification of every individual claim in them.
 
-- **`skills/mycontext/SKILL.md` is at 6,116 of its enforced 6,120-character cap — four bytes
-  of headroom.** `test/plugin-assets.test.ts` ·
+- **`skills/mycontext/SKILL.md` has real but modest headroom under its cap — not the near-crisis
+  a raw byte count suggests.** `test/plugin-assets.test.ts` ·
   `` assert.ok(text.length <= 6120, `SKILL.md is ${text.length} chars`); `` · ~1058 enforces
-  the cap the brief mentions (measured directly: `wc -c skills/mycontext/SKILL.md` → 6116).
-  Not a documentation error — everything currently in the file checked out against the code,
-  and its two enumerated command lists (the approval-boundary set and the deny-required set)
-  both matched the same derivation `test/helpers/approval-boundary.ts` uses to check
-  `README.md`'s §7. Named because the margin is thin enough that the next edit to this file —
-  a new gated command, one clarified sentence — will not fit without first cutting something
-  else.
+  the cap the brief mentions, and `.length` on a JavaScript string counts **UTF-16 code units**,
+  not bytes. Measured directly (`node -e "console.log(fs.readFileSync('skills/mycontext/SKILL.md','utf8').length)"`):
+  **6,070** code units against the 6,120 cap — **50** units of headroom (~0.8%). `wc -c` on the
+  same file reports 6,116 **bytes**; the ~46-byte gap between that and the 6,070-code-unit
+  figure is the file's em dashes and similar multi-byte characters, common throughout its prose
+  — the two numbers answer different questions, and only the code-unit count is what the gate
+  actually checks. Not a documentation error — everything currently in the file checked out
+  against the code, and its two enumerated command lists (the approval-boundary set and the
+  deny-required set) both matched the same derivation `test/helpers/approval-boundary.ts` uses
+  to check `README.md`'s §7. Named because the real margin, while more comfortable than a byte
+  count implies, is still thin enough that the next edit to this file — a new gated command,
+  one clarified sentence — should be checked against the cap rather than assumed to fit.
 
 ---
 
@@ -471,7 +517,7 @@ at both cited lines.
   review. This is the layer that holds the counts and lists the brief warned not to bother
   re-deriving (category counts, the approval boundary, hook timeouts, MCP tool counts,
   structural parity, worked-example transcripts), and it explains the shape of the findings
-  above: every one of F1–F11 sits on free-form prose that no generator or test touches. The
+  above: every one of F1–F14 sits on free-form prose that no generator or test touches. The
   generated surfaces are, as expected, clean.
 
 ---
@@ -513,7 +559,7 @@ independently verified against `src/`, never as the sole basis for a finding).
 
 ## Confidence tally
 
-**High confidence (13):** F1 (export/history, two locations, both languages), F2
+**High confidence (14):** F1 (export/history, two locations, both languages), F2
 (`mycontext_help` topic gap, both languages), F3 (`add --extra`, both READMEs' §8 plus
 `docs/ROADMAP.md`), F4 (`docs/TUTORIAL-ADVANCED.md`'s refused `full` profile), F5 (six→seven
 per-category keys, both languages), F6 (`SessionStart`'s missing `fork` trigger, both
@@ -523,12 +569,14 @@ languages), F10 (`--step`/`steps` undocumented, both languages), F11 (version pi
 tutorials, flagged at low urgency despite high confidence in the fact itself), F12
 (`docs/mutation-testing.md`'s missing exit code 4 and the matching `docs/ROADMAP.md` E17
 staleness), F13 (a second, independent "four topics" leftover — the CLI's own refusal message,
-distinct from F2's MCP-tool gap — both languages).
+distinct from F2's MCP-tool gap — both languages), F14 (`docs/TUTORIAL-ADVANCED.md` names the
+wrong tier as the expensive one, with that wrong tier's number).
 
-**Lower confidence / observations, not asserted as defects (3):** the no-Hebrew-tutorial gap
+**Lower confidence / observations, not asserted as defects (4):** the no-Hebrew-tutorial gap
 (real, but possibly deliberate scope), the `docs/ROADMAP.md`/audit-directory orphaning (medium
 confidence, spot-checked rather than exhaustively verified), the SKILL.md size headroom (not a
-defect — a heads-up for the next editor).
+defect — a heads-up for the next editor), the two undifferentiated install paths (low
+confidence — flagged, not asserted broken).
 
 Nothing above was included on a hunch. Every finding traces to a specific line in `src/`, a
 specific test, or a specific commit, and every citation was checked to resolve to a single
