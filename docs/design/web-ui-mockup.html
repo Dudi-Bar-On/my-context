@@ -1754,7 +1754,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <div class="phd"><h2 data-t="work.h">Review queue</h2>
       <span class="verdict">✅ <span data-t="work.v">the diff is the capability; the approval is a paste</span></span></div>
     <p class="psub" data-t="work.sub">Per-field staleness against the text in force. Nothing here writes.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <h3><span class="m">RULE-never-log-customer-email</span> · <span class="m">REV-8c21</span></h3>
       <table><thead><tr><th data-t="work.field">Field</th><th data-t="work.now">In force</th><th data-t="work.prop">Proposed</th></tr></thead><tbody>
         <tr><td class="m">title</td><td><bdi>Never log customer email</bdi></td>
@@ -1795,7 +1795,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="cap.v">shows what already governs before you add another</span></span></div>
     <p class="psub" data-t="cap.sub">Composes an <span class="m">add</span>. What it contributes over
       the CLI is the overlap check — the items already governing this scope.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="cap.already">Already governing <span class="m v" data-v="scope">src/billing/**</span></h3>
       <table><tbody>
         <tr><td class="m">INV-prices-are-integer-cents</td><td class="small" data-t="cap.o1">invariant, normative</td></tr>
@@ -1816,7 +1816,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="pal.v">real pickers and a live glob tester</span></span></div>
     <p class="psub" data-t="pal.sub">Builds a command from selections. The argument list is shown as
       chips, so a value carrying shell syntax is visible before it reaches your clipboard.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="pal.argv">Arguments</h3>
       <p><span class="chip ok" data-g="●">mycontext</span> <span class="chip ok" data-g="●">add</span>
          <span class="chip ok" data-g="●">constraint</span>
@@ -1850,7 +1850,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="cfg.sub">Every change previewed as a diff of what would govern, validated
       against the same <span class="m">resolveConfig</span> that will read it.</p>
     <div class="two">
-      <div class="card gloss"><h3 data-t="cfg.budgets">Budgets</h3>
+      <div class="card pane"><h3 data-t="cfg.budgets">Budgets</h3>
         <table><tbody>
           <tr><td class="m">pinned</td><td class="m">6000</td></tr>
           <tr><td class="m">jit</td><td class="m">6000 → <b>8000</b></td></tr>
@@ -1858,7 +1858,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <tr><td class="m">index</td><td class="m">1200</td></tr>
         </tbody></table>
       </div>
-      <div class="card gloss"><h3 data-t="cfg.effect">What changes</h3>
+      <div class="card pane"><h3 data-t="cfg.effect">What changes</h3>
         <div class="plate" id="cfgdelta"></div>
         <p class="small" style="margin-block-start:8px" data-t="cfg.deltan">Each row is the
           <b>pair</b>, not the direction alone: the old value struck through, the new one
@@ -1867,7 +1867,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           the pairing.</p>
       </div>
     </div>
-    <div class="card gloss">
+    <div class="card pane">
       <h3><span class="m">categories.lesson.scopePolicy</span></h3>
       <div class="segbar" id="spbar" role="group" aria-label="scopePolicy" data-t-aria="aria.scopepolicy"></div>
       <div class="plate" id="spout"></div>
@@ -1879,7 +1879,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         hidden.</p>
     </div>
 
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="cfg.apply">Apply this</h3>
       <p class="small" data-t="cfg.nocmd">There is no command that edits a budget. Configuration is a
         file, and the deny hook says so in those words: <i>"changes to
@@ -1927,7 +1927,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       &mdash; as against a rule, which is one instruction that applies every time. A rule is a single
       instruction; a procedure is a sequence. Decided; nothing implements it yet.</p>
 
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="pr.states">Four states, and exactly one of them injects</h3>
       <table><thead><tr><th data-t="th.state">State</th><th data-t="pr.mean">Meaning</th><th data-t="pr.inj">Injection</th></tr></thead><tbody>
         <tr><td class="m">proposed</td><td class="small" data-t="pr.s1">written, not approved. An agent may author one here</td><td><span class="chip warn" data-g="&#9650;" data-t="pr.none">not injected</span></td></tr>
@@ -1944,7 +1944,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     </div>
 
     <div class="two">
-      <div class="card gloss">
+      <div class="card pane">
         <h3 data-t="pr.item"><span class="m v" data-v="item">PROC-migrate-money-columns-to-integer-cents</span></h3>
         <p class="small"><span class="chip gov" data-g="&#9670;">active</span>
           <span class="m">3 / 5</span> <span data-t="pr.steps">steps</span></p>
@@ -1962,7 +1962,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <span class="v" data-v="steps">5</span>" is counted, never stored</b>
           &mdash; there is no second place a procedure could disagree with itself.</p>
       </div>
-      <div class="card gloss">
+      <div class="card pane">
         <h3 data-t="pr.write">Who may tick a box</h3>
         <p class="small" data-t="pr.w1"><span class="m">mycontext procedure step</span> may flip
           <b>one checkbox</b>, matched by a strict pattern, and may reach no other byte of the item.
@@ -1991,7 +1991,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       open questions; all five are answered now, so it lists the answers instead. The label stays
       until a command implements it.</p>
     <div class="two">
-      <div class="card gloss">
+      <div class="card pane">
         <h3 data-t="port.what">What travels</h3>
         <table><tbody>
           <tr><td class="m">items/**</td><td><span class="chip ok" data-g="&#9679;" data-t="port.yes">travels</span></td></tr>
@@ -2007,7 +2007,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <span class="m">.audit/imported/</span> so a receiver can always tell what it witnessed
           from what it was told.</p>
       </div>
-      <div class="card gloss">
+      <div class="card pane">
         <h3 data-t="port.fmt">The format, in order of preference</h3>
         <table><tbody>
           <tr><td><b data-t="port.f1">A plain directory</b></td><td class="small" data-t="port.f1n">canonical. Readable, diffable, and needs no tool to open</td></tr>
@@ -2019,7 +2019,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           &mdash; another workspace, another team, or a machine with no remote in common.</p>
       </div>
     </div>
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="port.coll">On import &mdash; three buckets, and nothing applies unconfirmed</h3>
       <table><thead><tr><th data-t="th.bucket">Bucket</th><th data-t="th.example">Example</th></tr></thead><tbody>
         <tr><td><span class="chip ok" data-g="&#9679;" data-t="port.b1">new</span></td><td class="m">STD-api-errors-use-problem-json</td></tr>
@@ -2039,7 +2039,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       regulated-industry flavour" &mdash; imported at <span class="m">init</span> to start from an
       opinion instead of an empty directory. Decided; nothing implements it yet.</p>
     <div class="two">
-      <div class="card gloss">
+      <div class="card pane">
         <h3 data-t="pk.trust">Where it lands, and why that differs</h3>
         <table><tbody>
           <tr><td><span class="m">init --pack</span></td><td><span class="chip ok" data-g="&#9679;" data-t="pk.active">active</span></td></tr>
@@ -2052,7 +2052,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <b>There is no <span class="m">--trust</span> flag</b>; a boundary a flag can override is
           not a boundary.</p>
       </div>
-      <div class="card gloss">
+      <div class="card pane">
         <h3 data-t="pk.what">What a pack may carry</h3>
         <table><tbody>
           <tr><td class="m">items/**</td><td><span class="chip ok" data-g="&#9679;" data-t="port.yes">travels</span></td></tr>
@@ -2066,7 +2066,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           either.</p>
       </div>
     </div>
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="pk.man">Integrity, described accurately</h3>
       <table><tbody>
         <tr><td data-t="pk.m1">Digest</td><td class="small"><span class="m">sha256</span>, <b data-t="pk.m1n">full, per file, sorted</b></td></tr>

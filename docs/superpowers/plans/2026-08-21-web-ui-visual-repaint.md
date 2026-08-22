@@ -628,7 +628,16 @@ flat "query this composed" sub-card (deliberately `background:var(--sunk)`, not
 `.pane` — a card-in-a-card would be glass-on-glass, which no primitive calls
 for) still reads correctly against its now-glass parent. `npm run test:e2e`
 25/25.
-- [ ] **Step 3: Change group** — review queue, capture, composer, configure, procedures, export/import, template packs
+- [x] **Step 3: Change group** — review queue, capture, composer, configure, procedures, export/import, template packs
+
+**Done.** Same swap, 16 sites across the seven screens (work 1, capture 1,
+palette 1, config 4, proc 3, port 3, packs 3). This group is where the `.two`
+grid layout the Injection group's coverage screen surfaced is most common —
+config, proc, port and packs each lay two cards out side by side in it. All
+four screenshotted and confirmed rendering as two non-overlapping glass panes,
+confirming the `#pane` rescoping from Step 1 generalises rather than being a
+one-off patch for coverage specifically. `npm run test:e2e` 25/25.
+
 - [ ] **Step 4: Read group** — documentation, tutorials, learn
 - [ ] **Step 5: After each, run `npm run test:e2e` and confirm every screen still renders in both languages**
 
