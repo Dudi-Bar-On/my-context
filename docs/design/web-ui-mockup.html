@@ -73,7 +73,18 @@
   --lift: 0 2px 3px rgb(0 0 0/.4), 0 10px 22px rgb(0 0 0/.34), 0 26px 56px rgb(0 0 0/.3);
   --plate: rgb(6 7 11/.72);
   --ink:#f0eef6; --dim:#a9a6b8; --faint:#7d7a90;
-  --gold:#e8c368; --ok:#7cc0a0; --carry:#8b9ce6; --crit:#e08b8b;
+  /* Five meaning colours, not four — ruled 2026-08-22 (spec §2.5). --warn is
+     promoted here from the LEGACY SCALE block below: same #c78f3d, same 25
+     call sites (the refusal banner's border/background/text, the PROPOSED
+     badges, an over-budget count, the dashed state dot, the provenance
+     bar's emphasis, 22 chips), none repointed — a promotion, not a retune.
+     Never in §2.4's table because it was never a named hue; measured now,
+     from rendered pixels: 5.08-6.95 against the glass (worst at the
+     ground's own bloom peak, 14%/6%; the rail's real badges run 5.60-6.95)
+     and 5.41 against its own opaque chip pill (--warnbg, position-
+     independent since both colours are opaque). Clears 4.5:1 everywhere
+     sampled. */
+  --gold:#e8c368; --ok:#7cc0a0; --carry:#8b9ce6; --crit:#e08b8b; --warn:#c78f3d;
   --ease:cubic-bezier(.23,1,.32,1);
   --dur-nav:180ms; --dur-act:200ms; --dur-link:280ms; --dur-retime:420ms;
 }
@@ -91,15 +102,17 @@
    time as later tasks repaint the screens that use it — not by deleting the
    token out from under still-live CSS.
 
-   Two names were candidates for outright retirement here — `--warn` and
-   `--panel` — and neither was: `--warn` still colours 24 declarations across
-   chips, the refusal banner, the staircase and the ego-graph, none of them
-   Doctor's finding levels (those are plain, uncoloured `<h3>` text already —
-   whatever moved them off `--warn` predates this task). Retiring either
-   for real means choosing what 24+ call sites become under the four-hue
-   scheme in §2.5, which is a design decision for whichever task repaints
-   those screens with full view of the rule, not a side effect of a token
-   pass that owns none of them.
+   `--warn` left this block on 2026-08-22 — promoted, not retired: spec §2.5
+   ruled it the fifth named meaning colour, beside `--gold --ok --carry
+   --crit` in the token block above. The promotion moves the DECLARATION
+   only — same `#c78f3d`, same 25 call sites, unrepointed — so nothing below
+   that still writes `var(--warn)` needed to change.
+
+   `--panel` is the one name that stayed a genuine candidate for retirement
+   here and wasn't: retiring it for real means choosing what its remaining
+   call sites become under the dark glass direction, a design decision for
+   whichever task repaints those screens with full view of the rule, not a
+   side effect of a token pass that owns none of them.
    ═══════════════════════════════════════════════════════════════════════════ */
 :root{
   --paper:#0f0f12;
@@ -112,11 +125,13 @@
   --edge:#3a3a45;
   --edge-3:#6e6e7e;
 
-  --warn:#c78f3d;
   --warnbg:color-mix(in oklch, var(--warn) 12%, var(--panel));
   --goldbg:color-mix(in oklch, var(--gold) 12%, var(--panel));
   --okbg:color-mix(in oklch, var(--ok) 12%, var(--panel));
   --critbg:color-mix(in oklch, var(--crit) 12%, var(--panel));
+  /* --carry has 0 uses so far (spec §2.5) — this gives it a background-mix
+     token to match the other four, for whenever `.chip.carry` is drawn. */
+  --carrybg:color-mix(in oklch, var(--carry) 12%, var(--panel));
 
   --e1:0 1px 1px rgb(0 0 0/.5), 0 3px 10px rgb(0 0 0/.35);
   --e3:0 4px 6px rgb(0 0 0/.6), 0 16px 38px rgb(0 0 0/.55);
@@ -207,9 +222,10 @@
    product is a plain box. Two gradients and the order matters: gloss over
    tint. `.hdr` shares the same material — §3 #8 gives the header's CONTENT
    ("git where the avatar would have gone"), not its material, but #1's "one
-   material… nothing is a plain box" leaves no other reading. `.hdr` is not
-   yet bound to any element (the live top bar is still `.top`); it is here,
-   correct and idle, for whichever task swaps the shell over. */
+   material… nothing is a plain box" leaves no other reading. `.hdr` is now
+   bound — ruled 2026-08-22: the live `.top` bar became `.hdr` (its own rule,
+   below, carries the collision surgery and the layout that used to sit in
+   the idle placeholder that lived here). */
 .pane,.rail,.hdr{
   position:relative;border-radius:12px;overflow:hidden;
   backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);
@@ -217,7 +233,6 @@
   background:var(--pane-gloss),var(--pane-tint);
   box-shadow:var(--lift),var(--pane-lit);
 }
-.hdr{display:flex;align-items:center;gap:var(--sp-3)}
 
 /* 4 — the static card is `.pane` with no `:hover` rule at all, and none is
    added anywhere below. Stillness is how the interface says "not a control". */
@@ -377,7 +392,19 @@ body.sim-rt .gloss,body.sim-rt .gloss.float{background-image:none;box-shadow:non
 .app.pane-open{grid-template-columns:214px 1fr 330px;
   grid-template-areas:"top top top" "rail body pane" "prov prov prov" "strip strip strip"}
 
-.top{grid-area:top;background:var(--panel);border-block-end:1px solid var(--rule);
+/* The header, ruled 2026-08-22 (spec §3 primitive 8): the live `.top` bar
+   becomes `.hdr`, bound to the shared `.pane,.rail,.hdr` glass material
+   above. Two legacy declarations collided with it — the same shape Task 3
+   already found twice for `.rail`/`.pane` — and are removed here, in place,
+   rather than left to silently outrank the primitive: `background:var(
+   --panel)` fully shadowed the primitive's own `background` (equal
+   specificity, later source position wins on an unchanged property), and
+   `border-block-end:1px solid var(--rule)` would have outranked the
+   block-end edge of the primitive's `border` shorthand for the same reason
+   (physical and logical properties representing the same underlying edge
+   resolve ties by source order). What remains is layout only: the grid
+   slot and the flex row. */
+.hdr{grid-area:top;
   display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);z-index:5}
 .logo{display:flex;align-items:center;gap:var(--sp-2);flex:none}
 .mark{inline-size:19px;block-size:19px;border-radius:var(--r-sm);background:var(--gold);
@@ -471,6 +498,24 @@ tr:last-child td{border-block-end:0}
 .chip.ok{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
 .chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
 .chip.crit{color:var(--crit);border-color:var(--crit);background:var(--critbg)}
+/* The fifth meaning, ruled 2026-08-22 (spec §2.5 / §3 primitive 6): `--carry`
+   had 0 uses in the file. This gives "carried from a prior session" a home;
+   nothing wires it up today. */
+.chip.carry{color:var(--carry);border-color:var(--carry);background:var(--carrybg)}
+/* One glyph per class, ruled 2026-08-22 (spec §3 primitive 6): colour is
+   never load-bearing alone. The glyph is `content`, not `fill`/`stroke` —
+   forced-colors strips the latter but cannot strip content (Chromium does
+   not force-adjust SVG at all). These class rules out-specify the generic
+   attr(data-g) rule below for every chip that carries a meaning class (note
+   `.chip.crit`'s glyph changes from the old per-instance ✕ to the ruled ■);
+   that generic rule stays as the fallback for a bare `.chip` with no variant
+   class — e.g. the budget ribbon's uncoloured `index` tier — which still
+   supplies its own glyph via `data-g`. */
+.chip.gov::before{content:"◆ "}
+.chip.ok::before{content:"● "}
+.chip.warn::before{content:"▲ "}
+.chip.crit::before{content:"■ "}
+.chip.carry::before{content:"◇ "}
 /* Never colour alone: each tier chip also carries a glyph. */
 .chip::before{content:attr(data-g) " ";font-family:var(--mono)}
 .small{font-size:var(--fs-0);color:var(--dim)}
@@ -600,7 +645,7 @@ details.help[open]>summary{margin-block-end:6px}
 /* ── print: a real stylesheet. The previous pass hid every screen but Coverage
    and never un-hid it, so Ctrl+P printed a blank page. ── */
 @media print{
-  .top,.rail,.prov,.strip,.pop,.banner,.noprint{display:none!important}
+  .hdr,.rail,.prov,.strip,.pop,.banner,.noprint{display:none!important}
   .app,.app.pane-open{display:block;block-size:auto;grid-template-columns:none}
   .body{overflow:visible;padding:0}
   body{overflow:visible;background:#fff;color:#000}
@@ -905,7 +950,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
 <div class="app" id="app">
 
-  <header class="top">
+  <header class="hdr">
     <div class="logo"><span class="mark"></span><b>mycontext</b></div>
     <div class="topr">
       <button class="sel" id="focusbtn" aria-haspopup="dialog" aria-expanded="false">
