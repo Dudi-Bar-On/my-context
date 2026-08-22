@@ -1,12 +1,15 @@
 <!doctype html>
-<!-- The app shell — Task 16. Structure only: the mockup's item detail pane
-     (aside.pane#pane), provenance bar (div.prov#prov) and footer strip
-     (footer.strip) are named "unowned" by this plan (§0.2) and are not built
-     here; nor is the .app grid wrapper that lays the rail beside the body in
-     the mockup (docs/design/web-ui-mockup.html ~1026) — that is structural
-     wiring this repaint-scoped stylesheet does not carry (see styles.css's
-     own header), and is called out as an open question in this task's
-     report rather than invented. -->
+<!-- The app shell — Task 16, with two additions once the screens that needed
+     them existed: the .app grid wrapper (mockup ~1202-1226, ~2421-2426) that
+     seats the header/rail/body/banner in the layout styles.css's own
+     `.app{grid-template-areas:…}` rule now carries, and the icon sprite
+     (mockup ~1169-1200) `screens/parts.js`'s openIcon() has always emitted a
+     `<use href="#i-open">` against. Both copied byte-for-byte from the
+     mockup, not invented — same rule as every block in styles.css. Still
+     genuinely unbuilt: the mockup's item detail pane (aside.pane#pane),
+     provenance bar (div.prov#prov) and footer strip (footer.strip), named
+     "unowned" by this plan (§0.2) — `.app`'s own `prov`/`strip` grid rows
+     simply collapse to their content (none) with no such element present. -->
 <html lang="en" dir="ltr">
 <head>
   <meta charset="utf-8">
@@ -17,6 +20,56 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+<!-- ICON SPRITE — docs/design/web-ui-mockup.html ~1169-1200 (Tabler outline
+     icons, MIT licence: src/ui/public/icons/LICENSE-MIT.txt). Every symbol
+     below is byte-identical to the mockup; the wrapping `<svg>` tag is the
+     ONE deliberate exception, same shape and same reason as styles.css's own
+     @font-face `url()` paths: the mockup writes `style="display:none"`, and
+     the server's own CSP is `style-src 'self'` with no `unsafe-inline`
+     (`ui/security.ts` ~321) — parts.js's own header names the identical
+     constraint for JS-authored styles ("Where the mockup writes one, this
+     code sets the same declaration through CSSOM instead"), but this is
+     static markup with no script to run CSSOM from. `body>svg[aria-hidden=
+     "true"]{display:none}` in styles.css carries the same effect instead —
+     scoped to a DIRECT CHILD of body so it cannot also catch `.icon-open`,
+     which is always nested inside a `.blk .linkid`, never a body child.
+     Hidden and inert either way; a screen consumes a glyph with
+     <svg class="icon-<name>"><use href="#i-<name>"/></svg> — `parts.js`'s
+     openIcon() is the first and only consumer so far (#i-open). -->
+<svg aria-hidden="true">
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+    <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+  </symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666" />
+    <path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1" />
+  </symbol>
+  <symbol id="i-open" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6" />
+    <path d="M11 13l9 -9" />
+    <path d="M15 4h5v5" />
+  </symbol>
+  <symbol id="i-confirm" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 12l5 5l10 -10" />
+  </symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
+    <path d="M21 21l-6 -6" />
+  </symbol>
+  <symbol id="i-add" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 5l0 14" />
+    <path d="M5 12l14 0" />
+  </symbol>
+</svg>
+
+<div class="app" id="app">
   <header id="topbar" class="hdr">
     <!-- .hdr is primitive 8: "git where the avatar would have gone" — branch,
          working tree, and the commit the corpus was reconciled against; no
@@ -56,6 +109,7 @@
        banner() helper, never authored here — see the "no innerHTML anywhere"
        rule i18n.js and app.js both follow. -->
   <div class="banner" id="exited" hidden role="alert"></div>
+</div>
   <script type="module" src="/app.js"></script>
 </body>
 </html>
