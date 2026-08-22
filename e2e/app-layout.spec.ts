@@ -157,3 +157,123 @@ test('every row of the app shell is occupied — no empty band', async ({ app })
   });
   expect(gaps, 'the shell grid reserves a row that nothing is built to fill').toEqual([]);
 });
+
+/**
+ * **Row labels start at the same place, because a ragged left edge reads as a
+ * skew even when nothing is skewed.**
+ *
+ * The owner reported the delivered cards as "still skewed" after the scene was
+ * bounded and the fan was gone. Measured, nothing was: `.plane.l`'s transform
+ * was `matrix3d(0.998441, …, -0.0558215, …)` — sin 0.0558, exactly the 3.2° the
+ * design asks for — and every `.idfull` BOX began at x=248.
+ *
+ * What differed was where the GLYPHS began inside those boxes: 307, 330, 337,
+ * 330, 307 for five labels of different lengths. Symmetric in and back out,
+ * which is the signature of centring, not of a tilt. `.row` is a `<button>` and
+ * the UA stylesheet centres button text; neither the mockup nor `styles.css`
+ * overrides it, though both override exactly this on `.nav` (~352), which is
+ * also a button. The mockup carries the same gap — its sample ids are short
+ * enough that nobody saw it.
+ *
+ * Asserted on the RENDERED TEXT rather than on the computed `text-align`,
+ * because the property is the current cause and not the requirement. A future
+ * change that centres these some other way — padding, justify-content, a
+ * pseudo-element — would leave `text-align: start` in place and still produce
+ * the ragged edge the owner is looking at. A Range around the contents measures
+ * where the glyphs actually are.
+ */
+test('delivered row labels begin at one left edge, so nothing reads as a skew', async ({ app }) => {
+  // Wait for the rows THEMSELVES, not merely for the shell. The fixture
+  // resolves on the rail, which is static markup drawn before the first
+  // /api response lands; measuring here without waiting samples whether the
+  // fetch happened to have returned. It usually had — and under the full
+  // suite’s parallel load, once, it had not. retries are 0 by policy, so a
+  // test that passes three times alone and fails in the pack is not flaky,
+  // it is wrong.
+  await app.page.locator('#deliveredRows .row').nth(1).waitFor({ state: 'visible', timeout: 10_000 });
+  const starts = await app.page.evaluate(() => {
+    const out: number[] = [];
+    for (const row of document.querySelectorAll<HTMLElement>('#deliveredRows .row')) {
+      const label = row.querySelector<HTMLElement>('.idfull');
+      if (label === null) continue;
+      const range = document.createRange();
+      range.selectNodeContents(label);
+      out.push(Math.round(range.getBoundingClientRect().x));
+    }
+    return out;
+  });
+  expect(starts.length, 'no delivered rows rendered — this would pass vacuously').toBeGreaterThan(1);
+  // The planes carry a 3.2° rotateY, so two rows at different heights are not
+  // required to agree to the pixel. They ARE required to agree to within a few:
+  // centring five ids of different lengths spread them over 30px.
+  const spread = Math.max(...starts) - Math.min(...starts);
+  expect(spread, `row labels start at ${starts.join(', ')} — a spread this wide is ` +
+    'centring, and it reads as a diagonal').toBeLessThanOrEqual(4);
+});
+
+/**
+ * **Nothing INSIDE a perspective may be taller than the perspective itself.**
+ *
+ * The companion to the assertion above, and the one that would have caught what
+ * that one missed. Bounding `.pair` with `max-block-size` made `.pair` measure a
+ * well-behaved 418px and satisfied "no perspective element is taller than the
+ * viewport" completely — while `.plane.l` INSIDE it measured 5797px, because a
+ * grid with no declared rows auto-sizes its implicit row to content and a cap
+ * on the container simply lets the row overflow.
+ *
+ * The owner's report was "still tilted", and they were right: 3.2° applied to
+ * an element that tall shears it wherever you look. The mockup renders the same
+ * rule correctly, so the design was never in question — only whether the app
+ * matched it.
+ *
+ * Stated over descendants rather than over `.plane` by name, because the defect
+ * is "the scene escaped its frame" and the next escape will be some other box.
+ */
+test('nothing inside a perspective element is taller than that element', async ({ app }) => {
+  const escaped = await app.page.evaluate(() => {
+    const out: { perspective: string; child: string; theirs: number; mine: number }[] = [];
+    for (const host of document.querySelectorAll<HTMLElement>('*')) {
+      if (getComputedStyle(host).perspective === 'none') continue;
+      // **offsetHeight, NOT getBoundingClientRect().** The rect of a transformed
+      // element is the AXIS-ALIGNED BOX OF ITS PROJECTION, and `.plane.l` is
+      // rotated 3.2° under a 1600px perspective, so its near edge scales up and
+      // the rect comes back a few pixels taller than the element is. Measured
+      // here: pair 418, plane rect 421. That 3px is the projection, not an
+      // overflow, and widening the tolerance to swallow it would have been
+      // tuning the test until it agreed with me.
+      //
+      // The question this asks is whether the LAYOUT BOX escaped its frame,
+      // which is what shears when rotated. offsetHeight answers exactly that
+      // and ignores the transform.
+      const mine = host.offsetHeight;
+      const name = (e: Element) => `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}`;
+      // Is anything between this child and the perspective host a scroller? If
+      // so the child is ALLOWED to be taller: that is what a scroller is for,
+      // and `.blk` inside `.lit` is 1875px against a 418px pane BY DESIGN.
+      // Only overflow that nothing has agreed to contain gets rotated.
+      const contained = (child: HTMLElement): boolean => {
+        for (let p = child.parentElement; p !== null && p !== host; p = p.parentElement) {
+          const o = getComputedStyle(p).overflowY;
+          if (o === 'auto' || o === 'scroll' || o === 'hidden') return true;
+        }
+        return false;
+      };
+      for (const child of host.querySelectorAll<HTMLElement>('*')) {
+        if (contained(child)) continue;
+        const theirs = child.offsetHeight;
+        // 2px for a border or a fractional layout height.
+        if (theirs > mine + 2) {
+          out.push({
+            perspective: name(host), child: name(child),
+            theirs, mine,
+          });
+        }
+      }
+    }
+    // One line per offending CHILD would print a subtree; the outermost is the
+    // one to fix and the rest follow from it.
+    return out.slice(0, 5);
+  });
+  expect(escaped, 'a box inside a perspective is taller than the perspective, so the ' +
+    'rotation shears it — bound the grid ROW, not only the container').toEqual([]);
+});

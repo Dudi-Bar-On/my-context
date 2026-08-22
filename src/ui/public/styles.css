@@ -507,11 +507,9 @@ button{font:inherit;color:inherit}
 [class^="icon-"]{inline-size:16px;block-size:16px;flex:none;vertical-align:-3px}
 
 /* index.html's icon sprite is hidden by CLASS in the mockup's own markup —
-   `<svg style="display:none" aria-hidden="true">` — which the server's CSP
-   refused outright while it read `style-src 'self'`. That CSP was retired on
-   2026-08-22 and the platform would now accept the attribute, but this rule
-   stays: a STATIC declaration belongs in the stylesheet, where styles-parity
-   compares it, and not in markup where it drifts unwatched; index.html's own comment on the
+   `<svg style="display:none" aria-hidden="true">` — but the server's CSP is
+   `style-src 'self'` with no `unsafe-inline` (`ui/security.ts` ~321), which
+   blocks the attribute the mockup writes; index.html's own comment on the
    sprite names this rule as the replacement. Scoped to a DIRECT CHILD of
    `body` (`>`) so it cannot also catch `.icon-open` itself, which is always
    nested inside a `.blk .linkid`, never a body child — checked: `grep -c
@@ -522,35 +520,66 @@ button{font:inherit;color:inherit}
    assertion, the same treatment @font-face's `url()` paths get above. */
 body>svg[aria-hidden="true"]{display:none}
 
-/* ── THE SCENE IS BOUNDED TO THE WINDOW ────────────────────────────────────
-   NOT a mockup byte-copy, and the mockup is not wrong — it simply never faced
-   this. It carries five short sample bodies, so `.lit`'s own `overflow-y:auto`
-   (~237) never has anything to scroll and nothing needs to bound it. Served
-   over this repository's 265-item corpus, `.rows` — which declares NO overflow
-   at all (~396) — grows to whatever 213 task bodies come to. Measured at
-   1280x720 on 2026-08-22: `.pair` 6341px tall in a 720px window.
+/* ── THE PREVIEW SCENE IS BOUNDED TO THE WINDOW ───────────────────────────
+   SCOPED TO `.scene`, and the scope is the point. An earlier attempt at this
+   wrote bare `.pair{…}`, which is a selector this stylesheet shares with any
+   screen that ever grows a two-column scene. Measured across all ten built
+   screens on 2026-08-22: only `preview` carries a transform, and only
+   `preview` and `coverage` overflow — so a global rule was reaching further
+   than the defect ever did. `.scene` occurs exactly once in the mockup and
+   only in `screens/preview.js`, which makes it the narrowest honest anchor.
 
-   That is not a cosmetic overflow. `perspective-origin` resolves against the
-   perspective element's OWN box, so `.pair{perspective-origin:50% 42%}` (~212)
-   put the vanishing point 2663px below the top of the viewport — off-screen by
-   a factor of four — and the deliberate 3.2° tilt of `.plane.l`/`.plane.r`
-   (~213-214) opened into a fan, with the row text visibly shearing. The
-   transform was always correct; the container height never was.
+   The defect: the mockup carries five short sample bodies, so `.lit`'s own
+   `overflow-y:auto` (~237) never has anything to scroll and nothing needs to
+   bound it. Served over this repository's 265-item corpus, `.rows` — which
+   declares NO overflow at all (~396) — grows to whatever 213 task bodies come
+   to. Measured at 1568x779: `.pair` 5888px tall in a 779px window.
 
-   So this bounds the scene and lets each plane scroll inside itself, which is
-   what `.lit`'s `overflow-y` says the design intended all along. Written as a
-   SEPARATE rule rather than by editing the carried blocks, so every byte
-   `test/ui/styles-parity.test.ts` holds against the mockup stays untouched and
-   this departure is reviewable on its own line.
+   That is not cosmetic. `perspective-origin` resolves against the perspective
+   element's OWN box, so `.pair{perspective-origin:50% 42%}` (~212) put the
+   vanishing point thousands of px below the viewport and the deliberate 3.2°
+   tilt of `.plane.l`/`.plane.r` (~213-214) opened into a shear. The transform
+   was always correct; the container height never was.
 
-   `.lit` is not a `.pane` — `screens/preview.js` builds it as `lit linked`, so
-   `.plane>.pane{block-size:100%}` (~395) never applied to it and it needs
-   naming here. `min-block-size:0` on both is what actually lets a flex child
-   shrink below its content and hand the overflow to the scroller.
+   `block-size` and `grid-template-rows:minmax(0,1fr)` together, not
+   `max-block-size` alone: `.pair` declares no rows, so its implicit row is
+   auto-sized to content and capping only the CONTAINER lets the row overflow
+   it — `.pair` measured a well-behaved 418px while `.plane.l` inside it
+   measured 5797px. `minmax(0,1fr)` is what lets the row shrink below its
+   content; a definite block-size is what gives `100%` something to resolve
+   against.
 
-   `e2e/app-layout.spec.ts` asserts the invariant this restores: no element
-   establishing a perspective may be taller than the viewport. It was made red
-   against the unbounded page before this rule was written. */
-.pair{max-block-size:min(58vh,560px)}
-.plane{min-block-size:0}
-.plane>.pane,.plane>.lit{block-size:100%;min-block-size:0;overflow-y:auto}
+   `.lit` is not a `.pane` — preview.js builds it as `lit linked` — so
+   `.plane>.pane{block-size:100%}` (~395) never applied to it. */
+.scene>.pair{block-size:min(58vh,560px);grid-template-rows:minmax(0,1fr)}
+.scene .plane{min-block-size:0;overflow:hidden}
+.scene .plane>.pane,.scene .plane>.lit{block-size:100%;min-block-size:0;overflow-y:auto}
+
+/* ── THE PREVIEW SCENE DOES NOT TILT IN THE APP ───────────────────────────
+   **A DELIBERATE DEPARTURE FROM THE APPROVED MOCKUP, taken by the owner on
+   2026-08-22 after seeing both rendered against the real corpus.**
+
+   The mockup specifies `perspective:1600px` on `.pair` (~212) and
+   `rotateY(±3.2deg)` on `.plane.l`/`.plane.r` (~213-214), and those blocks are
+   still carried byte-identical above — `styles-parity` holds them, and this
+   rule overrides rather than edits them, so the design of record stays
+   readable next to the decision that departed from it.
+
+   Why it departs. The tilt is a subtle depth cue against the mockup's four
+   short sample bodies. Against 213 real item bodies the same 3.2° shears dense
+   monospace prose: the left edge of each line in the right pane drifts, and
+   the row labels — centred by the UA's `<button>` default, which the mockup
+   overrides on `.nav` (~352) but not on `.row` — staggered across a 35px
+   spread and read as a diagonal. The owner reported it four separate times as
+   "skewed", "tilted" and "diagonal" before it was traced. A depth cue that
+   costs legibility at real data volume is not buying what it was chosen for.
+
+   `text-align:start`, never `left`: spec §3 makes a physical direction a
+   defect here, and these ids draw in an RTL layout too.
+
+   Scoped to `.scene` throughout, for the reason the block above gives: the
+   defect lives on exactly one screen and a bare `.pair`/`.row` selector
+   reaches every screen that ever grows one. */
+.scene>.pair{perspective:none}
+.scene .plane.l,.scene .plane.r{transform:none}
+.scene .row{text-align:start}
