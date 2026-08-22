@@ -2146,15 +2146,15 @@ needed — `index.carriedFrom`, `index.carriedDropped` and `index.carriedDisplac
 they must be added to **both** `en.js` and `he.js` in the same commit, which that plan's key-parity
 test enforces. This plan produces the shape and stops.
 
-- [ ] **Step 1: Write the failing tests** — the line names the session's name when named and its
+- [x] **Step 1: Write the failing tests** — the line names the session's name when named and its
   short prefix when not; the count matches the number of marked lines actually rendered, not the
   input; the dropped list appears with reasons; **the displaced ids appear, named, and the whole
   clause vanishes when `carried.displaced` is empty**; `carried: null` renders nothing at all; the
   audit record carries `tier: 'carried'` refs and the replayed ledger contains none of them.
 
-- [ ] **Step 2: Run them and see them fail. Step 3: Implement. Step 4: `npm test` green.**
+- [x] **Step 2: Run them and see them fail. Step 3: Implement. Step 4: `npm test` green.**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/render.ts src/core/inject.ts src/cli/commands/session.ts test/

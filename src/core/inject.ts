@@ -623,8 +623,26 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // be the bulk of the log in a workspace with an empty corpus. **Except on
     // the subagent event**, where an empty delivery must still leave a row —
     // the guard below says why.
+    //
+    // **A CARRIED line records at `tier: 'carried'` instead of `'index'`** —
+    // one ref per delivered line, never two, because it is one line and
+    // recording it at two tiers would double every carried id in
+    // `audit_item`. `InjectedRef.tier` is `string`, so this needs no type
+    // change and no new vocabulary anywhere: `mycontext audit` tallies tiers
+    // generically and prints "3 carried" without being told the word.
+    //
+    // **Neither closed tier set is widened, and that is the point of using
+    // this tier rather than a delivery one.** `core/audit.ts` ·
+    // `const LEDGER_TIERS = new Set(['pinned', 'jit', 'restored']);` · ~751
+    // filters it out of `ledgerRows` by construction and `core/seen-file.ts` ·
+    // `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~37
+    // refuses it in the seen file. A carried line is an index LINE — the model
+    // saw an id and a title, not the item — and a replayed ledger that claimed
+    // otherwise would suppress a future injection of text nobody ever
+    // received. That is the exact failure the `index` tier's own treatment was
+    // written to prevent, and it applies here unchanged.
     const indexRefs: InjectedRef[] = selection.index.normative.map(
-      (line) => ({ id: line.id, tier: 'index' }),
+      (line) => ({ id: line.id, tier: line.carried === true ? 'carried' : 'index' }),
     );
     const injected: InjectedRef[] = [
       ...selection.full.map((e): InjectedRef => ({
@@ -692,6 +710,23 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
       );
     }
     if (focusState.error !== null) noteParts.push('focus file unreadable, no focus applied');
+    // **The carry, recording only what the refs cannot.** How many lines were
+    // carried is `injected` filtered to `tier: 'carried'` and counted — already
+    // in this record, and already printed by `mycontext audit` — so it is not
+    // repeated here. What no ref can carry is WHERE the carry came from and
+    // what it cost: an id that got no line produced no ref at all, and the
+    // displaced ids are this session's own, spilled at tier `index` under a
+    // reason the rendered block deliberately never shows. Counts, not ids: the
+    // log records scope, and the ids are in the injected block, which is where
+    // the reader who needs them is.
+    if (selection.index.carried !== null) {
+      const { label, dropped, displaced } = selection.index.carried;
+      noteParts.push(
+        `carried from session ${label}` +
+        (dropped.length === 0 ? '' : `, ${dropped.length} carried id(s) got no line`) +
+        (displaced.length === 0 ? '' : `, ${displaced.length} of this session's own displaced`),
+      );
+    }
     if (collisions.length > 0) {
       // Ids only — the full sentence is in the injected block; the log
       // records scope, not content.

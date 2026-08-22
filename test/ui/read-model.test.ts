@@ -52,10 +52,14 @@ import { Store } from '../../src/core/store.ts';
 import { Ledger, LedgerUninitializedError } from '../../src/core/ledger.ts';
 import { isLoadBearing, readFocus } from '../../src/core/focus.ts';
 import { recordAudit } from '../../src/core/audit.ts';
+import { resolveCarry } from '../../src/core/continuity.ts';
 import { computeDecay } from '../../src/core/decay.ts';
 import { topUpLedger } from '../../src/core/ledger-replay.ts';
-import { reviewQueue, select, tiersRun, type SelectContext } from '../../src/core/select.ts';
+import {
+  reviewQueue, select, tiersRun, type SelectContext, type Selection,
+} from '../../src/core/select.ts';
 import { appendSeen, readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
+import { setSessionName } from '../../src/core/session-names.ts';
 import type { Item, Relation } from '../../src/core/types.ts';
 import { VERSION } from '../../src/core/version.ts';
 import { listRepoFiles, runChecks, type Finding } from '../../src/doctor/checks.ts';
@@ -222,6 +226,107 @@ test('/api/select reads the per-session SEEN FILE, and the seen answer differs f
     assert.ok(
       !seenIdsInFull(seenResult.body).includes('RULE-always-use-posix-paths'),
       'the seen answer must not re-deliver it',
+    );
+  } finally { f.done(); }
+});
+
+/**
+ * The cross-session carry, on the endpoint whose whole value is that it is the
+ * same answer the hook gets.
+ *
+ * `IndexSummary.carried` is served for free ONLY once the context that produces
+ * it is passed. `parseSelectQuery` reads four narrowing inputs — path, restore,
+ * seen and focus — and the carry is the fifth. Without it this endpoint answers
+ * `carried: null` for every request forever, `/api/render` returns bytes that
+ * are missing both the markers and the disclosure the hook injects, and the
+ * screen's promise ("see exactly what Claude gets") is false in the one place
+ * `INV-nothing-is-dropped-silently` is load-bearing: an item arriving from a
+ * session you cannot see is the same defect as one dropped silently, pointed
+ * the other way.
+ *
+ * Read the way the hook reads it — `core/inject.ts` ·
+ * `const carried = !manual && (subagent || !compacting)` · ~476 — which means
+ * `session-start` and nothing else.
+ */
+test('/api/select carries the cross-session carry, so the UI reads the shape the CLI renders', () => {
+  const f = fixture();
+  try {
+    const root = f.ws.projectRoot as string;
+    assert.equal(appendSeen(root, 'sess-previous', [
+      { id: 'RULE-always-use-posix-paths', tier: 'jit', at: '2026-08-20T09:00:00.000Z' },
+    ]).written, true);
+    assert.equal(setSessionName(root, 'sess-previous', 'auth-refactor').written, true);
+
+    const cold = apiSelect(f.ws, url('select', 'event=session-start&cold=1'));
+    assert.equal(cold.status, 200);
+    const carried = (cold.body as Selection).index.carried;
+    assert.ok(carried,
+      '/api/select answered carried: null while a hook starting a session at this instant ' +
+      'would carry — the browser cannot render a field the endpoint never fills');
+    assert.equal(carried.label, 'auth-refactor');
+    assert.equal(carried.shown, 1);
+
+    // Whole-answer equality against the hook's own resolution, not a spot check
+    // on one field: the endpoint must be incapable of having its own opinion.
+    assert.deepEqual(
+      json(cold.body),
+      json(select(f.items, {
+        event: 'session-start', focus: null, carried: resolveCarry(root, null),
+      }, f.ws.config)),
+    );
+
+    // And the rendered bytes carry the disclosure, because `/api/render` is
+    // documented as the literal bytes a hook would inject.
+    const rendered = apiRender(f.ws, url('render', 'event=session-start&cold=1'));
+    assert.match((rendered.body as { text: string }).text, /carried from session `auth-refactor`/);
+    assert.match((rendered.body as { text: string }).text, / · carried$/m);
+  } finally { f.done(); }
+});
+
+test('/api/select carries on session-start only — a compaction and a manual load never do', () => {
+  const f = fixture();
+  try {
+    const root = f.ws.projectRoot as string;
+    appendSeen(root, 'sess-previous', [
+      { id: 'RULE-always-use-posix-paths', tier: 'jit', at: '2026-08-20T09:00:00.000Z' },
+    ]);
+    // A compaction is the same window continuing and the restore tier is
+    // already re-delivering what it held; a manual load has no session id to
+    // exclude as "yourself". The hook carries on neither, so neither does this.
+    for (const qs of ['event=compact&cold=1', 'event=manual&cold=1']) {
+      assert.equal((apiSelect(f.ws, url('select', qs)).body as Selection).index.carried, null, qs);
+    }
+    assert.ok(
+      (apiSelect(f.ws, url('select', 'event=session-start&cold=1')).body as Selection).index.carried,
+      'the fixture must carry on SOME event, or the three assertions above pass vacuously',
+    );
+  } finally { f.done(); }
+});
+
+test('/api/select?session=<id> never carries from the session it is previewing', () => {
+  const f = fixture();
+  try {
+    const root = f.ws.projectRoot as string;
+    appendSeen(root, 'sess-mine', [
+      { id: 'RULE-always-use-posix-paths', tier: 'jit', at: '2026-08-20T09:00:00.000Z' },
+    ]);
+
+    // The only session on disk is the one being previewed. Carrying from
+    // yourself is a no-op that reports success, and reporting it is the
+    // failure — the same exclusion a live resume makes.
+    assert.equal(
+      (apiSelect(f.ws, url('select', 'event=session-start&session=sess-mine')).body as Selection)
+        .index.carried,
+      null,
+    );
+
+    // With an older session beside it, the preview carries from THAT one.
+    appendSeen(root, 'sess-other', [
+      { id: 'RULE-never-log-the-customer-email', tier: 'jit', at: '2026-08-19T09:00:00.000Z' },
+    ]);
+    const withOther = apiSelect(f.ws, url('select', 'event=session-start&session=sess-mine'));
+    assert.equal(
+      (withOther.body as Selection).index.carried?.sessionId, 'sess-other',
     );
   } finally { f.done(); }
 });

@@ -125,6 +125,14 @@ const WRITERS: Record<string, string[]> = {
   'src/core/audit.ts': ['recordAudit'],
   'src/core/focus.ts': ['writeFocus', 'clearFocus', 'setFocus', 'unsetFocus'],
   'src/core/seen-file.ts': ['appendSeen'],
+  // Reached from 2026-08-22, when `/api/select` began passing the hook's fifth
+  // narrowing input and bound `resolveCarry`. Both modules are the same shape
+  // as `focus.ts` and `seen-file.ts`: a reader the UI needs, sitting in a file
+  // that also exports the writer for the same state. The reader is why the
+  // edge exists; naming the writer is what keeps the edge from widening
+  // quietly into one.
+  'src/core/continuity.ts': ['setCarrySource'],
+  'src/core/session-names.ts': ['setSessionName'],
 };
 
 const isWriter = (module: string, symbol: string): boolean =>
