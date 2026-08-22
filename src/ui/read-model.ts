@@ -53,6 +53,7 @@ import { statSync } from 'node:fs';
 import path from 'node:path';
 import { injection } from '../cli/commands/injection.ts';
 import { scopePolicyFor } from '../core/config.ts';
+import { resolveCarry } from '../core/continuity.ts';
 import { computeDecay, type DecayReport } from '../core/decay.ts';
 import {
   Ledger, LedgerUninitializedError,
@@ -312,6 +313,35 @@ export function parseSelectQuery(
     ctx.focus = state.focus;
     focusUnreadable = state.error;
   }
+
+  // The carry is the FIFTH narrowing input, and it is read here for the same
+  // reason the other four are: this endpoint's entire value is that it is the
+  // same answer the hook gets, and `select` is pure — every input it does not
+  // receive is an input whose effect the preview cannot show.
+  //
+  // Left out, `IndexSummary.carried` is `null` on every response forever, the
+  // per-line `carried` flag never appears, and `/api/render` returns bytes
+  // missing both the markers and the disclosure the hook injects — a preview
+  // that is wrong in exactly the direction `INV-nothing-is-dropped-silently`
+  // cares about, and a browser that cannot render a field nothing fills.
+  //
+  // **`session-start` and nothing else**, mirroring `core/inject.ts` ·
+  // `const carried = !manual && (subagent || !compacting)` · ~476. A compaction
+  // is the same window continuing and its restore tier is already re-delivering
+  // what that window held; a manual load has no session id at all, so nothing
+  // could be excluded as "yourself"; a tool event runs no index tier for a
+  // carry to reach.
+  //
+  // **`session` is passed straight through as the CURRENT session** — the whole
+  // of what stops a preview of a session carrying from itself, which is a no-op
+  // that reports success. `cold=1` passes `null`, which is right rather than
+  // convenient: a brand-new session has an id nothing in `state/` holds yet, so
+  // no file is excluded, and that IS the answer a brand-new session would get.
+  //
+  // `resolveCarry` never throws and opens no database — it reads
+  // `state/continuity.json`, the `state/` listing and one seen file, which is
+  // the budget the hook itself runs on.
+  if (event === 'session-start' && root !== null) ctx.carried = resolveCarry(root, session);
 
   return { parsed: { ctx, seenUnreadable, focusUnreadable } };
 }
