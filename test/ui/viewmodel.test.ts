@@ -115,6 +115,22 @@ interface ViewModelModule {
    * `Finding.item` is optional and the absence is real.
    */
   repairCommandFor: (code: string, item: string | null) => string | null;
+  /** Task 18: the coverage tree, the gap list, and the ego graph's columns. */
+  buildTree: (files: { path: string; governs: string[] }[]) => TreeNode;
+  coverageGaps: (tree: TreeNode) => string[];
+  coverageGapRows: (tree: TreeNode) => { path: string; files: number }[];
+  treeRows: (tree: TreeNode) => { node: TreeNode; depth: number }[];
+  coverageDot: (node: TreeNode) => 'g' | 'o' | 'w';
+  coverageIsEmpty: (body: { pinned: string[]; files: { governs: string[] }[] }) => boolean;
+  layoutGraph: (
+    nodes: { id: string }[],
+    edges: { from: string; to: string; type: string }[],
+    focusId: string,
+  ) => Placed[];
+  edgeClass: (edge: { dangling: boolean; loadBearing: boolean }) => 'bearing' | 'ref' | 'dangling';
+  egoNodeClass: (
+    node: { id: string; missing: boolean; status: string | null }, focusId: string,
+  ) => 'focus' | 'missing' | 'superseded' | '';
 }
 
 /** `Finding` as `src/doctor/checks.ts` declares it, at this boundary. */
@@ -905,3 +921,417 @@ test('repairCommandFor quotes its one argument, and refuses to compose without o
   assert.equal(repairCommandFor('source_drift', null), null);
   assert.equal(repairCommandFor('source_drift', ''), null);
 });
+
+
+/**
+ * **Every string key the three `nav.inj` screens name is declared in BOTH
+ * tables, and every value slot those keys declare is supplied at the call
+ * site.**
+ *
+ * `t()` throws twice on purpose — once for a key the table does not declare,
+ * once for a substitution the caller did not pass — so either mistake blanks a
+ * screen rather than mislabelling one line of it. Neither is reachable by any
+ * other test here: the DOM glue in `screens/*.js` is the stated untested
+ * surface (spec §6), so nothing else ever evaluates one of these calls.
+ *
+ * It is not hypothetical. The plan's own Step 3 sketch for these three screens
+ * names nine keys — `preview.pickFile`, `preview.nothing`, `preview.spilled`,
+ * `preview.renderedText`, `common.loading`, `injected.none`, `simulate.budget`,
+ * `simulate.fits`, `simulate.spills` — and **the tables declare none of them**,
+ * because they are transcribed key-for-key from the design of record and it
+ * declares none of them either. Written as the sketch has it, not one of these
+ * screens renders a line.
+ *
+ * **What the scan can and cannot prove.** The key check is exact: a literal in
+ * the source either is a declared key or is not. The slot check is a SUPERSET
+ * test — it asserts each slot name the template declares appears as `name:`
+ * somewhere inside the call's argument object, and a nested object reusing the
+ * name would satisfy it. That is the weaker half of the pair and is said so
+ * rather than claimed as more; the failure it actually catches, a slot nobody
+ * supplies, is the one that throws at runtime.
+ */
+test('every string key the built screens name is declared, with its slots supplied', async () => {
+  const REPO = path.join(import.meta.dirname, '..', '..');
+  const SCREENS = path.join(REPO, 'src', 'ui', 'public', 'screens');
+  const load = async (language: string): Promise<{ strings: Record<string, string> }> => {
+    const file = path.join(REPO, 'src', 'ui', 'public', 'strings', `${language}.js`)
+      .replaceAll('\\', '/');
+    return (await import(new URL(`file://${file}`).href)) as { strings: Record<string, string> };
+  };
+  const en = (await load('en')).strings;
+  const he = (await load('he')).strings;
+
+  // The three run markers, as `strings/en.js`'s own grammar block spells them.
+  // `{m:…}` is a literal and is NOT a value slot; `{name}` and `{mv:name}` are.
+  const slotsOf = (template: string): string[] => {
+    const found: string[] = [];
+    for (const m of template.matchAll(/\{(?:(mv|m):)?([^}]*)\}/g)) {
+      if (m[1] !== 'm') found.push(m[2]!);
+    }
+    return found;
+  };
+
+  /** The argument object of a `ctx.t(key, {…})` call, by brace depth. */
+  const argsAfter = (source: string, from: number): string | null => {
+    const open = source.indexOf('{', from);
+    const close = source.indexOf(')', from);
+    if (open === -1 || (close !== -1 && close < open)) return null;
+    let depth = 0;
+    for (let i = open; i < source.length; i++) {
+      if (source[i] === '{') depth += 1;
+      else if (source[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return source.slice(open, i + 1);
+      }
+    }
+    return null;
+  };
+
+  const used: { key: string; args: string | null; file: string }[] = [];
+  for (const name of [
+    'preview.js', 'simulate.js', 'injected.js', 'parts.js',
+    // Task 18's three. The scan is the only thing that ever evaluates a
+    // `ctx.t()` key in a screen file, so a screen left out of this list is a
+    // screen whose phantom key nothing catches until it blanks in a browser.
+    'coverage.js', 'gaps.js', 'graph.js',
+  ]) {
+    const source = readFileSync(path.join(SCREENS, name), 'utf8');
+    for (const m of source.matchAll(/ctx\.t(?:Flat)?\('([^']+)'/g)) {
+      used.push({ key: m[1]!, args: argsAfter(source, m.index + m[0].length), file: name });
+    }
+    // `screenHead(ctx, root, titleKey, verdictKey, subKey)` — three keys in one
+    // call, none of which the pattern above can see.
+    for (const m of source.matchAll(/screenHead\(ctx, root, '([^']+)', '([^']+)', '([^']+)'\)/g)) {
+      for (const key of [m[1]!, m[2]!, m[3]!]) used.push({ key, args: null, file: name });
+    }
+  }
+
+  // A scanner that finds nothing reads exactly like a clean file.
+  assert.ok(used.length >= 20,
+    `the scan found ${used.length} key(s) across the built screens; it has been ~30 since `
+    + 'Task 17 landed and ~55 since Task 18 added three more. A collapse means the patterns '
+    + 'stopped matching, not that the screens stopped naming keys.');
+
+  const missing: string[] = [];
+  const unsupplied: string[] = [];
+  for (const { key, args, file } of used) {
+    if (!(key in en)) { missing.push(`${key} (English, named by ${file})`); continue; }
+    if (!(key in he)) { missing.push(`${key} (Hebrew, named by ${file})`); continue; }
+    // Both tables are checked for slots, not only English: `strings-parity`
+    // holds the slot NAMES equal across the pair, so a Hebrew value that
+    // inflects differently still declares the same names.
+    for (const table of [en, he]) {
+      for (const slot of slotsOf(table[key]!)) {
+        if (args === null || !new RegExp(`\\b${slot}\\s*:`).test(args)) {
+          unsupplied.push(`${key} needs {${slot}}, and ${file} does not pass it`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(missing, [],
+    'a screen naming a key no table declares blanks that screen: t() throws rather than '
+    + 'rendering a blank, and the fix is the mockup first, then both tables.');
+  assert.deepEqual(unsupplied, [],
+    'a missing substitution throws too — leaving {n} on screen is the same defect wearing a '
+    + 'different marker, which is why t() refuses it.');
+});
+
+
+// --- The coverage tree, the gap list and the ego layout (Task 18) -----------
+
+/**
+ * The plan's own Step 1 assertions, written through `vm()` rather than through
+ * the relative `await import('../../src/ui/public/lib/viewmodel.js')` its
+ * sketch uses: with `allowJs` off that specifier is TS7016 and `npm run
+ * typecheck` is a gate — the same reason, in the same words, as this file's own
+ * header. Three agents have hit it.
+ */
+test('buildTree aggregates governance up directories; coverageGaps names the ungoverned', async () => {
+  const { buildTree, coverageGaps } = await vm();
+  const tree = buildTree([
+    { path: 'src/a.ts', governs: ['RULE-1'] },
+    { path: 'src/b.ts', governs: [] },
+    { path: 'docs/x.md', governs: [] },
+  ]);
+  const src = tree.children.find((c) => c.name === 'src');
+  const docs = tree.children.find((c) => c.name === 'docs');
+  assert.deepEqual(src?.governs, ['RULE-1']);
+  assert.equal(src?.fileCount, 2);
+  assert.equal(src?.governedCount, 1);
+  assert.equal(docs?.governedCount, 0);
+  assert.deepEqual(coverageGaps(tree), ['docs']);
+});
+
+
+/**
+ * **The roll-up is every ancestor, not the parent.** A file three directories
+ * down has to be counted by all three and by the root, and the parent-walk is
+ * the fiddly part the plan's own sketch flagged: a loop that stops one short
+ * leaves `src/` reporting fewer files than `src/billing/tax/` beneath it, which
+ * is the arithmetic the coverage count exists to be trusted on.
+ *
+ * The ROOT is asserted too, because its `governs` is what `coverageIsEmpty`
+ * reads against and its `fileCount` is the only total the screen ever shows.
+ */
+test('buildTree rolls a file up through every ancestor, root included', async () => {
+  const { buildTree } = await vm();
+  const tree = buildTree([
+    { path: 'src/billing/tax/vat.ts', governs: ['INV-1', 'STD-2'] },
+    { path: 'src/billing/plans.ts', governs: [] },
+    { path: 'README.md', governs: ['INV-1'] },
+  ]);
+  const src = tree.children.find((c) => c.name === 'src');
+  const billing = src?.children.find((c) => c.name === 'billing');
+  const tax = billing?.children.find((c) => c.name === 'tax');
+  assert.equal(tax?.fileCount, 1);
+  assert.equal(billing?.fileCount, 2);
+  assert.equal(src?.fileCount, 2);
+  assert.equal(tree.fileCount, 3);
+  assert.equal(src?.governedCount, 1);
+  assert.equal(tree.governedCount, 2);
+  // The UNION, deduped and sorted — the same two ids reached the root by two
+  // different paths and the root names each once.
+  assert.deepEqual(tree.governs, ['INV-1', 'STD-2']);
+  assert.deepEqual(billing?.governs, ['INV-1', 'STD-2']);
+});
+
+
+/**
+ * Directories before files, then by name — the mockup's own tree order, and the
+ * order `treeRows` flattens. A file sorted in among the directories would put
+ * `src/api/`'s subtree after a sibling file that belongs above it.
+ */
+test('treeRows flattens the mockup\'s order and never draws the root as a row', async () => {
+  const { buildTree, treeRows } = await vm();
+  const tree = buildTree([
+    { path: 'z.md', governs: [] },
+    { path: 'src/api/errors.ts', governs: [] },
+    { path: 'src/keys.ts', governs: [] },
+  ]);
+  assert.deepEqual(
+    treeRows(tree).map((r) => [r.node.path, r.depth]),
+    [['src', 0], ['src/api', 1], ['src/api/errors.ts', 2], ['src/keys.ts', 1], ['z.md', 0]],
+  );
+});
+
+
+/**
+ * **The shallowest ungoverned directory, once — not its subtree.** Three
+ * ungoverned directories nested inside one another are one row a reader can act
+ * on, and `cov.e2`'s rule for the empty state is the same rule: said once, not
+ * repeated per row.
+ *
+ * A FILE is never a gap: the actionable unit is a directory a scope glob can be
+ * written for, and every ungoverned file already wears a `.dot w` on the tree.
+ */
+test('coverageGaps names the shallowest ungoverned directory and stops descending', async () => {
+  const { buildTree, coverageGaps, coverageGapRows } = await vm();
+  const tree = buildTree([
+    { path: 'vendor/a/b/one.js', governs: [] },
+    { path: 'vendor/a/b/two.js', governs: [] },
+    { path: 'src/api/errors.ts', governs: ['STD-1'] },
+    { path: 'src/workers/mailer.ts', governs: [] },
+    { path: 'top.md', governs: [] },
+  ]);
+  assert.deepEqual(coverageGaps(tree), ['src/workers', 'vendor']);
+  assert.deepEqual(coverageGapRows(tree), [
+    { path: 'src/workers', files: 1 },
+    { path: 'vendor', files: 2 },
+  ]);
+});
+
+
+/**
+ * `n` — *"not examined"* — is a state about paths the walk did not reach, and
+ * `/api/coverage` carries no path list for it. Every node this function is
+ * asked about came OUT of the walk, so it can never be that state, and this
+ * pins the refusal rather than leaving it to a comment: a later hand adding an
+ * `n` branch here would be inventing the one state `gaps.note` says must never
+ * be folded into another.
+ */
+test('coverageDot is g / o / w and never the not-examined state', async () => {
+  const { coverageDot } = await vm();
+  const node = (governs: string[], governedCount: number) => ({
+    name: 'x', path: 'x', children: [], governs, fileCount: 4, governedCount,
+  });
+  assert.equal(coverageDot(node([], 0)), 'w');
+  assert.equal(coverageDot(node(['A'], 3)), 'o');
+  assert.equal(coverageDot(node(['A', 'B'], 3)), 'g');
+  // Ungoverned wins over the item count: a directory whose only governing item
+  // reaches none of its files is a gap, whatever its `governs` union says.
+  assert.equal(coverageDot(node(['A'], 0)), 'w');
+});
+
+
+/**
+ * **Both halves, because the pinned items are hoisted out of the per-path
+ * answer.** A corpus holding nothing but an `always:true` item governs every
+ * path in the repository, and a screen that read only `files` would draw
+ * *"Nothing governs this project yet"* over a project that is fully governed —
+ * which is `cov.pinhelp`'s recorded defect, pointed the other way.
+ */
+test('coverageIsEmpty reads the pinned hoist as well as the paths', async () => {
+  const { coverageIsEmpty } = await vm();
+  assert.equal(coverageIsEmpty({ pinned: [], files: [] }), true);
+  assert.equal(coverageIsEmpty({ pinned: [], files: [{ governs: [] }] }), true);
+  assert.equal(coverageIsEmpty({ pinned: ['CONST-1'], files: [{ governs: [] }] }), false);
+  assert.equal(coverageIsEmpty({ pinned: [], files: [{ governs: ['RULE-1'] }] }), false);
+});
+
+
+/** The plan's own Step 1 assertions for the layout, unchanged. */
+test('layoutGraph is deterministic and layered by BFS depth', async () => {
+  const { layoutGraph } = await vm();
+  const nodes = [{ id: 'A' }, { id: 'B' }, { id: 'C' }];
+  const edges = [
+    { from: 'A', to: 'B', type: 'supersedes' },
+    { from: 'A', to: 'C', type: 'relates' },
+  ];
+  const first = layoutGraph(nodes, edges, 'A');
+  const second = layoutGraph(nodes, edges, 'A');
+  assert.deepEqual(first, second); // deterministic — run twice, same pixels
+  const a = first.find((p) => p.id === 'A');
+  const b = first.find((p) => p.id === 'B');
+  const c = first.find((p) => p.id === 'C');
+  assert.equal(a?.x, 0);
+  assert.equal(b?.x, 1);
+  assert.equal(c?.x, 1);
+  assert.notEqual(b?.y, c?.y);
+});
+
+
+/**
+ * **Direction is the layout** (`gr.note`), and this is the assertion that says
+ * so: what points AT the focus sits in a column BEFORE it, what the focus points
+ * at sits after, and the focus is in the middle. The test above passes for a
+ * plain unsigned BFS too — every node in it is an out-neighbour — so without
+ * this one the mockup's three columns would be unpinned.
+ *
+ * The empty column is not reserved: with nothing pointing at the focus the
+ * layout draws two columns and the focus is at index 0, which is exactly what
+ * the assertion above depends on.
+ */
+test('layoutGraph puts what points at the focus in the column before it', async () => {
+  const { layoutGraph } = await vm();
+  const placed = layoutGraph(
+    [{ id: 'IN' }, { id: 'F' }, { id: 'OUT' }],
+    [
+      { from: 'IN', to: 'F', type: 'constrains' },
+      { from: 'F', to: 'OUT', type: 'refines' },
+    ],
+    'F',
+  );
+  assert.deepEqual(
+    placed.map((p) => [p.id, p.x, p.depth]),
+    [['F', 1, 0], ['IN', 0, -1], ['OUT', 2, 1]],
+  );
+});
+
+
+/**
+ * Rows inside a column come out in (relation type, id) order — the same
+ * comparison `/api/graph` sorts its own adjacency by, so the server's order and
+ * the drawing's order are one decision rather than two that can disagree.
+ */
+test('layoutGraph orders a column by relation type then id', async () => {
+  const { layoutGraph } = await vm();
+  const placed = layoutGraph(
+    [{ id: 'F' }, { id: 'Z' }, { id: 'A' }, { id: 'M' }],
+    [
+      { from: 'F', to: 'Z', type: 'refines' },
+      { from: 'F', to: 'A', type: 'refines' },
+      { from: 'F', to: 'M', type: 'constrains' },
+    ],
+    'F',
+  );
+  assert.deepEqual(placed.filter((p) => p.x === 1).map((p) => p.id), ['M', 'A', 'Z']);
+});
+
+
+/**
+ * An edge naming a node this response does not carry is not placed. The cap
+ * drops NODES and reports `omitted` as a count, so a client must not invent a
+ * position for an id it was never sent.
+ */
+test('layoutGraph places no node the response does not carry', async () => {
+  const { layoutGraph } = await vm();
+  const placed = layoutGraph(
+    [{ id: 'F' }],
+    [{ from: 'F', to: 'DROPPED', type: 'relates_to' }],
+    'F',
+  );
+  assert.deepEqual(placed, [{ id: 'F', x: 0, y: 0, depth: 0 }]);
+});
+
+
+/**
+ * **`dangling` outranks `bearing`, and that ordering is the point.** `gr.note`
+ * keeps breakage and severity apart — *"a dangling `relates_to` reads as noise
+ * and a dangling `constrains` reads as an alarm"* — and a broken load-bearing
+ * relation has to draw as broken or the legend's third line style is never
+ * reached by the case it exists for.
+ */
+test('edgeClass draws breakage over severity, and severity over neither', async () => {
+  const { edgeClass } = await vm();
+  assert.equal(edgeClass({ dangling: true, loadBearing: true }), 'dangling');
+  assert.equal(edgeClass({ dangling: true, loadBearing: false }), 'dangling');
+  assert.equal(edgeClass({ dangling: false, loadBearing: true }), 'bearing');
+  assert.equal(edgeClass({ dangling: false, loadBearing: false }), 'ref');
+});
+
+
+/** The three node states the legend names, and the empty fourth that is none. */
+test('egoNodeClass reads the response fields rather than deriving a state', async () => {
+  const { egoNodeClass } = await vm();
+  const node = (id: string, missing: boolean, status: string | null) => ({ id, missing, status });
+  assert.equal(egoNodeClass(node('F', false, 'active'), 'F'), 'focus');
+  assert.equal(egoNodeClass(node('X', true, null), 'F'), 'missing');
+  assert.equal(egoNodeClass(node('X', false, 'superseded'), 'F'), 'superseded');
+  assert.equal(egoNodeClass(node('X', false, 'active'), 'F'), '');
+  // The focus wears its own state even when it is superseded: it is the item
+  // the reader asked about, and the column it sits in is what says so.
+  assert.equal(egoNodeClass(node('F', false, 'superseded'), 'F'), 'focus');
+});
+
+interface TreeNode {
+  name: string;
+  path: string;
+  children: TreeNode[];
+  governs: string[];
+  fileCount: number;
+  governedCount: number;
+}
+
+interface Placed { id: string; x: number; y: number; depth: number }
+
+interface ViewModelModule {
+  describeRecord: (record: Record<string, unknown>) => DescribedRecord;
+  dedupeKey: (record: unknown) => string;
+  formatAge: (ms: number) => string;
+  contextStrip: (body: unknown, isCold: boolean) => Strip;
+  sparkline: (buckets: { total: number }[], width: number, height: number) => string;
+  describeStreamEvent: (event: string, data: unknown) => StreamEvent;
+  /** Task 17: the query grammar all three nav.inj selection screens share. */
+  selectQuery: (
+    event: string, path: string | null, session: string,
+    extra?: Record<string, string | number>,
+  ) => string;
+  /** Task 17: a budget's fill, clamped, with the overflow kept as a fact. */
+  budgetBar: (used: number, budget: number) => { pct: number; over: boolean };
+  /** Task 18: the coverage tree, the gap list, and the ego graph's columns. */
+  buildTree: (files: { path: string; governs: string[] }[]) => TreeNode;
+  coverageGaps: (tree: TreeNode) => string[];
+  coverageGapRows: (tree: TreeNode) => { path: string; files: number }[];
+  treeRows: (tree: TreeNode) => { node: TreeNode; depth: number }[];
+  coverageDot: (node: TreeNode) => 'g' | 'o' | 'w';
+  coverageIsEmpty: (body: { pinned: string[]; files: { governs: string[] }[] }) => boolean;
+  layoutGraph: (
+    nodes: { id: string }[],
+    edges: { from: string; to: string; type: string }[],
+    focusId: string,
+  ) => Placed[];
+  edgeClass: (edge: { dangling: boolean; loadBearing: boolean }) => 'bearing' | 'ref' | 'dangling';
+  egoNodeClass: (
+    node: { id: string; missing: boolean; status: string | null }, focusId: string,
+  ) => 'focus' | 'missing' | 'superseded' | '';
+}

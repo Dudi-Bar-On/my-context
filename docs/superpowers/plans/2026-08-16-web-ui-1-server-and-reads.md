@@ -6040,7 +6040,7 @@ git commit -m "feat(ui): nav.inj screens — preview with seen and focus, budget
   - `coverageGaps(tree: TreeNode): string[]` — directory paths whose `governedCount === 0` (the §4 inverse view; empty categories come from `/api/status`).
   - `layoutGraph(nodes, edges, focusId): { id, x, y }[]` — deterministic layered layout: focus at column 0, neighbours in columns by BFS depth, rows sorted by (relation type of the connecting edge, id) — no force simulation, no physics (spec §4).
 
-- [ ] **Step 1: Failing tests** (append to `test/ui/viewmodel.test.ts`)
+- [x] **Step 1: Failing tests** (append to `test/ui/viewmodel.test.ts`)
 
 ```ts
 test('buildTree aggregates governance up directories; coverageGaps names the ungoverned', async () => {
@@ -6079,7 +6079,7 @@ test('layoutGraph is deterministic and layered by BFS depth', async () => {
 });
 ```
 
-- [ ] **Step 2: See them fail, implement the view-models** (append to `viewmodel.js`)
+- [x] **Step 2: See them fail, implement the view-models** (append to `viewmodel.js`)
 
 ```js
 export function buildTree(files) {
@@ -6171,7 +6171,7 @@ export function layoutGraph(nodes, edges, focusId) {
 
 Run the two tests; if `buildTree`'s upward aggregation loop proves wrong against them (the parent-walk is the fiddly part), fix the loop until the assertions pass — the assertions, not the loop, are the contract.
 
-- [ ] **Step 3: Implement the two screens**
+- [x] **Step 3: Implement the two screens**
 
 ```js
 // src/ui/public/screens/coverage.js
@@ -6374,11 +6374,11 @@ export async function render(root, ctx) {
 }
 ```
 
-- [ ] **Step 4: Run tests, suite, smoke (including print preview for the coverage map)**
+- [x] **Step 4: Run tests, suite, smoke (including print preview for the coverage map)**
 
 Run: `node --test test/ui/viewmodel.test.ts && npm test`; manual smoke per Task 16 Step 6.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/public/screens/coverage.js src/ui/public/screens/gaps.js src/ui/public/screens/graph.js src/ui/public/lib/viewmodel.js test/ui/viewmodel.test.ts

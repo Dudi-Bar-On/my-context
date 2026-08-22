@@ -335,4 +335,277 @@ export function repairCommandFor(code, item) {
     return composeCommand(['mycontext', 'refresh', item]);
   }
   return null;
+// --- The coverage tree, the gap list and the ego layout (web-ui plan 1, Task 18)
+
+/**
+ * Every walked path as a tree, with governance aggregated up the directories.
+ *
+ * `/api/coverage` answers a FLAT list — one entry per walked file, carrying the
+ * ids that govern it — because the rule that produced it (`injection()` then
+ * `matchesScope`) is per file and per item. The screen draws a tree, and the
+ * roll-up is the whole of the difference between the two: a directory's
+ * `fileCount` is every file beneath it, its `governedCount` is how many of
+ * those any item governs, and its `governs` is the UNION of its files', so the
+ * count on a row and the list in the detail pane are the same fact twice.
+ *
+ * **The union, never a re-match.** This function never asks whether an item
+ * governs a directory — no glob is evaluated here and none may be. `select.ts`
+ * is where `matchesScope` lives and the server is where it ran; a second
+ * matcher in the browser is the defect `/api/coverage`'s own docblock names by
+ * name (`ui/read-model.ts` · `never `matchesAnyGlob`. An empty scope` · ~1109).
+ *
+ * Children sort DIRECTORIES BEFORE FILES, then by name, which is the mockup's
+ * own tree order (`src/`, `src/billing/`, `src/billing/prices.js`, `src/api/`,
+ * ... — every directory's own subtree drawn before the next sibling). The order
+ * is part of the answer: two runs over one corpus draw the same rows.
+ */
+export function buildTree(files) {
+  const root = { name: '', path: '', children: [], governs: [], fileCount: 0, governedCount: 0 };
+  const dirs = new Map([['', root]]);
+  const ensureDir = (dirPath) => {
+    const existing = dirs.get(dirPath);
+    if (existing !== undefined) return existing;
+    const cut = dirPath.lastIndexOf('/');
+    const parent = ensureDir(cut === -1 ? '' : dirPath.slice(0, cut));
+    const node = {
+      name: cut === -1 ? dirPath : dirPath.slice(cut + 1),
+      path: dirPath,
+      children: [], governs: [], fileCount: 0, governedCount: 0,
+    };
+    parent.children.push(node);
+    dirs.set(dirPath, node);
+    return node;
+  };
+
+  for (const file of files) {
+    const cut = file.path.lastIndexOf('/');
+    const dirPath = cut === -1 ? '' : file.path.slice(0, cut);
+    const dir = ensureDir(dirPath);
+    const governs = [...new Set(file.governs)].sort();
+    const leaf = {
+      name: cut === -1 ? file.path : file.path.slice(cut + 1),
+      path: file.path,
+      children: [],
+      governs,
+      fileCount: 1,
+      governedCount: governs.length > 0 ? 1 : 0,
+    };
+    dir.children.push(leaf);
+    // Up to the root INCLUSIVE, one ancestor at a time. The plan's own sketch
+    // walked with a ternary chain inside the `for`'s update clause that could
+    // not express "stop after the root", and its own note said the assertions
+    // are the contract rather than the loop. This is the loop that satisfies
+    // them: every ancestor of the file's directory, the empty-path root last.
+    for (let ancestor = dirPath; ; ) {
+      const node = dirs.get(ancestor);
+      node.fileCount += 1;
+      node.governedCount += leaf.governedCount;
+      for (const id of governs) if (!node.governs.includes(id)) node.governs.push(id);
+      if (ancestor === '') break;
+      const up = ancestor.lastIndexOf('/');
+      ancestor = up === -1 ? '' : ancestor.slice(0, up);
+    }
+  }
+
+  const sortRec = (node) => {
+    node.children.sort((a, b) => {
+      const aDir = a.children.length > 0;
+      const bDir = b.children.length > 0;
+      if (aDir !== bDir) return aDir ? -1 : 1;
+      return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+    });
+    node.governs.sort();
+    node.children.forEach(sortRec);
+  };
+  sortRec(root);
+  return root;
+}
+
+/**
+ * The directories nothing scopes — `gaps.sub`'s "directories no item scopes".
+ *
+ * **The SHALLOWEST ungoverned directory is the name, and its subtree is not
+ * repeated.** `src/workers/` with three ungoverned files beneath it is one gap,
+ * not four: `cov.e2`'s rule for the empty state — "one sentence, said once —
+ * not repeated per row" — is the same rule this list obeys, and a gaps table
+ * that named every descendant of an ungoverned directory would bury the one
+ * row a reader can act on.
+ *
+ * A FILE is never a gap here. The gaps table's first column is a `Where`, and
+ * every ungoverned file already shows as a `.dot w` on the coverage tree; the
+ * actionable unit is the directory a scope glob can be written for.
+ */
+export function coverageGaps(tree) {
+  const gaps = [];
+  const walk = (node) => {
+    for (const child of node.children) {
+      if (child.children.length === 0) continue;
+      if (child.governedCount === 0) { gaps.push(child.path); continue; }
+      walk(child);
+    }
+  };
+  walk(tree);
+  return gaps.sort();
+}
+
+/**
+ * The same gaps, each carrying the file count `gaps.r1` interpolates —
+ * "{files} files, no item scopes here".
+ *
+ * A second function rather than a second shape from `coverageGaps`, because the
+ * plan pins that one's `string[]` contract and a screen still needs the number
+ * the sentence is about. Reading it off the tree in the DOM glue instead would
+ * put the "which count goes in this sentence" decision on the untested side of
+ * spec §6's line.
+ */
+export function coverageGapRows(tree) {
+  const byPath = new Map();
+  const index = (node) => { byPath.set(node.path, node); node.children.forEach(index); };
+  index(tree);
+  return coverageGaps(tree).map((gapPath) => ({
+    path: gapPath,
+    files: byPath.get(gapPath).fileCount,
+  }));
+}
+
+/**
+ * The tree flattened to the mockup's own drawing order — a FLAT list of rows,
+ * each with the depth its `data-depth` step reads.
+ *
+ * The mockup draws the tree as sibling `<button role="treeitem">`s indented by
+ * `data-depth` rather than as nested lists, "so it mirrors" (`cov.magn`), and
+ * the root itself is never a row: its children start at depth 0, exactly as
+ * `src/` and `vendor/` do there.
+ */
+export function treeRows(tree) {
+  const rows = [];
+  const walk = (node, depth) => {
+    for (const child of node.children) {
+      rows.push({ node: child, depth });
+      walk(child, depth + 1);
+    }
+  };
+  walk(tree, 0);
+  return rows;
+}
+
+/**
+ * Which of the mockup's four dots a row wears — `g` scoped, `o` one item, `w`
+ * gap (`cov.k1`, `cov.k2`, `cov.k3`).
+ *
+ * **`n` — "not examined" (`cov.k4`) — is never returned, and that is a REFUSAL
+ * rather than an oversight.** It is a third state about paths the walk did not
+ * reach, and `/api/coverage` carries one global `truncated` boolean and no path
+ * list at all; the read model records the gap in its own words
+ * (`ui/read-model.ts` · `needs the paths `listRepoFiles` did not reach` · ~1074).
+ * Every path this function is ever asked about came out of the walk, so it was
+ * examined; returning `n` for one would be inventing the state `gaps.note` says
+ * must never be folded into another.
+ */
+export function coverageDot(node) {
+  if (node.governedCount === 0) return 'w';
+  return node.governs.length === 1 ? 'o' : 'g';
+}
+
+/**
+ * Whether the coverage screen draws `#covempty` — "Nothing governs this project
+ * yet" (`cov.e1`).
+ *
+ * Both halves, because the pinned items are hoisted out of the per-path answer
+ * and a corpus holding only pinned items governs every path in it. A repository
+ * whose walk found no files at all is also this state and not an error.
+ */
+export function coverageIsEmpty(body) {
+  return body.pinned.length === 0 && body.files.every((file) => file.governs.length === 0);
+}
+
+/**
+ * The ego graph's layout — **columns by DIRECTION, which is what the mockup
+ * draws and what `gr.note` says it means**: "Direction is the layout: the column
+ * decides which way the relation points, so nothing has to be simulated."
+ *
+ * A node's column is its SIGNED BFS depth from the focus: negative on the side
+ * that points AT the focus, positive on the side the focus points at, zero for
+ * the focus itself. Those signed depths are then sorted and collapsed to
+ * indices, so a graph with nothing pointing at its focus draws two columns
+ * rather than reserving an empty one — and the focus lands at index 0 in
+ * exactly that case, which is the plan's own pinned assertion.
+ *
+ * **Deterministic, and by the server's own ordering rule.** Neighbours are
+ * sorted by relation type then id before the walk — the same comparison
+ * `/api/graph` sorts its adjacency by — so the rows in a column come out in
+ * (type, id) order, the same on every machine and on every call. No physics, no
+ * simulation, no random seed: two runs over one corpus are the same pixels.
+ *
+ * A node named only by an edge and absent from `nodes` is not placed: the cap
+ * drops nodes and keeps `omitted` as a count, so an edge can name an id this
+ * response does not carry.
+ */
+export function layoutGraph(nodes, edges, focusId) {
+  const present = new Set(nodes.map((node) => node.id));
+  const adjacency = new Map();
+  const add = (key, entry) => {
+    const list = adjacency.get(key);
+    if (list === undefined) adjacency.set(key, [entry]);
+    else list.push(entry);
+  };
+  for (const edge of edges) {
+    add(edge.from, { other: edge.to, type: edge.type, direction: 1 });
+    add(edge.to, { other: edge.from, type: edge.type, direction: -1 });
+  }
+  for (const list of adjacency.values()) {
+    list.sort((a, b) => (a.type === b.type
+      ? (a.other < b.other ? -1 : a.other > b.other ? 1 : 0)
+      : (a.type < b.type ? -1 : 1)));
+  }
+
+  const signed = new Map([[focusId, 0]]);
+  const order = [focusId];
+  for (let i = 0; i < order.length; i++) {
+    const base = signed.get(order[i]);
+    for (const neighbour of adjacency.get(order[i]) ?? []) {
+      if (signed.has(neighbour.other) || !present.has(neighbour.other)) continue;
+      signed.set(neighbour.other, base === 0 ? neighbour.direction : base + Math.sign(base));
+      order.push(neighbour.other);
+    }
+  }
+
+  const columns = [...new Set(signed.values())].sort((a, b) => a - b);
+  const index = new Map(columns.map((depth, i) => [depth, i]));
+  const rows = new Map();
+  return order.map((id) => {
+    const depth = signed.get(id);
+    const x = index.get(depth);
+    const y = rows.get(x) ?? 0;
+    rows.set(x, y + 1);
+    return { id, x, y, depth };
+  });
+}
+
+/**
+ * Which line style an edge wears — the legend's three, and no fourth.
+ *
+ * `dangling` outranks `bearing` because a broken load-bearing relation is drawn
+ * as broken: `gr.note` keeps the two facts apart on purpose — "a dangling
+ * relates_to reads as noise and a dangling constrains reads as an alarm" — and
+ * the alarm is the severity the dashed `--crit` line carries. The
+ * classification itself is the SERVER's: `loadBearing` is `isLoadBearing(type)`
+ * called in `/api/graph`, never a vocabulary re-listed in the browser.
+ */
+export function edgeClass(edge) {
+  if (edge.dangling) return 'dangling';
+  return edge.loadBearing ? 'bearing' : 'ref';
+}
+
+/**
+ * Which node style a node wears — `focus`, `missing`, `superseded`, or none.
+ *
+ * The three the legend names (`gr.lfocus`, `gr.lmiss`, `gr.lsup`), read off the
+ * response's own fields rather than derived: `focus` is the body's `focus`,
+ * `missing` is the node's, and superseded is `status`.
+ */
+export function egoNodeClass(node, focusId) {
+  if (node.id === focusId) return 'focus';
+  if (node.missing) return 'missing';
+  return node.status === 'superseded' ? 'superseded' : '';
 }
