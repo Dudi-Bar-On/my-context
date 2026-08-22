@@ -194,7 +194,12 @@
    2 the row  (.row)       6 the chip  (.chip)
    3 the literal field (.lit/.blk)  7 the rail (.rail)
    4 the static card = .pane, no :hover  8 the header (.hdr)
-   Plus .plate (§4) — defined here, applied across the 18 data views by Task 7.
+   Plus .plate (§4) — defined here, applied across the 18 data views by Task 7 (done
+   2026-08-22): the hero's gate ladder and budget ribbon, coverage's tree and detail
+   table, the simulator's staircase/ladder/tier-table/ratio, the audit stream's pulse
+   and table, ask's result table, decay's comb and heatstrip, the relations ego-graph,
+   the composer's live glob tree, config's delta rows and blast-radius panel, and the
+   item-detail aside's sparkline.
 
    NAME COLLISION, called out rather than hidden: `.pane`, `.rail` and `.chip`
    already existed pre-repaint — `.pane` as the item-detail aside's grid-area,
@@ -274,7 +279,8 @@
 
 /* §4 — the plate. Text may float on glass; data may not. An opaque field
    inside a pane so a mark's colour can be trusted at any position; Task 7
-   wraps the 18 data views in it. */
+   wraps the 18 data views in it (done 2026-08-22 — see the primitives block
+   comment above for the roster, and test/ui/plate-usage.test.ts for the check). */
 .plate{background:var(--plate);border-radius:9px;padding:12px 13px}
 
 /* 3 — the literal field: a darker field inside the pane, for the machine's
@@ -1239,7 +1245,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
     <div class="card pane"><h3 data-t="preview.why">Why not — the first gate that failed</h3>
       <div class="segbar" id="gatepick" role="group" aria-label="Item" data-t-aria="aria.gatepick"></div>
-      <div class="gladder" id="gates"></div>
+      <div class="gladder plate" id="gates"></div>
       <p class="small" style="margin-block-start:8px" data-t="preview.whyn">The gates in
         <span class="m">select()</span>'s own order — eligible, tier, focus, scope, seen, budget —
         because the <b>order is the explanation</b>: a list of six reasons is noise, and the one
@@ -1251,7 +1257,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
     <div class="card pane">
       <h3 data-t="preview.ribbon">Budget ribbon — four tiers, and what fell out of each</h3>
-      <div id="ribbons"></div>
+      <div class="plate" id="ribbons"></div>
       <p class="small" data-t="preview.ribbonn">One segment per admitted item, sized by its real
         <span class="m">itemCost</span>. Beneath each track is the <b>ghost lane</b>: every spilled
         item at the width it would have taken, in the position the selector considered it. A wide
@@ -1284,7 +1290,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <div id="covfull">
       <div class="two">
         <div class="card gloss"><h3 data-t="cov.tree">Repository</h3>
-          <div class="tree" id="tree" role="tree"></div>
+          <div class="tree plate" id="tree" role="tree"></div>
           <p class="small" style="margin-block-start:8px" data-t="cov.magn">Each row carries a
             <b>magnitude</b>, not only a state: the bar is governed / ungoverned / not-examined of
             the files rolled up under it, and the count is <span class="m">governed of total</span>.
@@ -1298,7 +1304,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
             <span class="dot n" style="display:inline-block"></span> <b data-t="cov.k4">not examined</b></p>
         </div>
         <div class="card gloss"><h3><span data-t="cov.gov">What governs</span> <span class="m" id="detf"></span></h3>
-          <div id="det"></div>
+          <div class="plate" id="det"></div>
         </div>
       </div>
     </div>
@@ -1340,7 +1346,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <div class="card gloss sim">
       <div>
         <h3 data-t="sim.stair">Admission staircase — items admitted, per budget</h3>
-        <div id="stair"></div>
+        <div class="plate" id="stair"></div>
         <div class="simctl">
           <span class="m" id="tierName">jit</span>
           <input type="range" id="slider" min="0" max="12000" step="50" value="6000"
@@ -1356,7 +1362,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       </div>
       <div>
         <h3 data-t="sim.thresh">Thresholds</h3>
-        <div class="ladder" id="ladder"></div>
+        <div class="ladder plate" id="ladder"></div>
         <p class="small" data-t="sim.snap">Every value between two rungs behaves identically, so the
           slider snaps to rungs — dragging lands on meaning rather than on
           <span class="v" data-v="offrung">6,050</span>. A red rung is an
@@ -1365,9 +1371,11 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     </div>
 
     <div class="card gloss">
+      <div class="plate">
       <table><thead><tr><th data-t="sim.tier">Tier</th><th data-t="sim.budget">Budget</th>
         <th data-t="sim.fits">Fits</th><th data-t="sim.spills">Spills</th></tr></thead>
         <tbody id="simtbl"></tbody></table>
+      </div>
       <p class="small" style="margin-block-start:8px" data-t="sim.chipn">The fits column is a
         <b>ratio</b>, not a count: "<span class="v" data-v="fits">2</span> of
         <span class="v" data-v="eligible">6</span>" says how much of what was eligible actually arrived, and
@@ -1382,7 +1390,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
     <div class="card gloss">
       <h3 data-t="sim.ratio">Selected, then not delivered</h3>
-      <div id="ratio"></div>
+      <div class="plate" id="ratio"></div>
       <p class="small" style="margin-block-start:8px" data-t="sim.ration">Delivered grows from the
         centre toward the reading start, spilled toward the reading end, both normalised to the
         largest count in the table. A long red half names <b>which budget is too small</b>, which is
@@ -1417,7 +1425,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       changes, access refusals and progress steps. A focus change is a <b>regime change</b>, drawn as
       a rule across the feed rather than as one row.</p>
     <div class="card gloss">
-      <div class="pulse" id="pulse"></div>
+      <div class="pulse plate" id="pulse"></div>
       <p class="small" style="margin-block:0 9px" data-t="watch.pulsen"><b>Activity pulse</b> — one
         column per ten seconds, newest at the reading-end edge. Height is records in that column,
         colour is the record kind. It is the only thing that makes a live stream feel live, and the
@@ -1435,8 +1443,10 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-block-end:9px" id="wfilters" role="group" aria-label="Filter" data-t-aria="aria.wfilters">
         <button class="icon" style="inline-size:auto" data-k="all" aria-pressed="true" data-t="watch.all">All</button>
       </div>
+      <div class="plate">
       <table><thead><tr><th data-t="th.at">At</th><th data-t="th.kind">Kind</th><th data-t="th.what">What</th></tr></thead>
         <tbody id="atbl"></tbody></table>
+      </div>
       <!-- The live region has four things to say and could say one of them.
            Its record count was BUILT IN SCRIPT behind a `HEB ? … : …` ternary —
            the defect the #ctx comment below names against itself — so no key
@@ -1567,10 +1577,12 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
            same defect watch.voidn exists to prevent, inverted. Ask's is also
            the only result table in this file without a caption; preview.cap is
            the pattern. Run cycles the three states. -->
-      <table style="margin-block-start:10px">
+      <div class="plate" style="margin-block-start:10px">
+      <table>
         <caption data-t="ask.rows"><span class="v" data-v="rows">2</span> rows</caption>
         <thead><tr><th data-t="th.at">At</th>
         <th data-t="th.item">Item</th><th data-t="th.role">Role</th></tr></thead><tbody id="qres"></tbody></table>
+      </div>
       <p class="small" id="qstate"><span
         data-t="ask.truncated">capped at <span class="v" data-v="rows">200</span> rows — more matched; raise the limit to see them</span><span
         data-t="ask.noRows">no rows matched</span></p>
@@ -1642,7 +1654,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       delivery history in the second card is a different measurement from a different source.</p>
     <div class="card gloss">
       <h3 data-t="dec.comb">Recency comb — one tooth per item, never bucketed</h3>
-      <div id="comb"></div>
+      <div class="plate" id="comb"></div>
       <div class="legend">
         <span><i class="warm"></i><span data-t="dec.warm">warm</span></span>
         <span><i class="cold"></i><span data-t="dec.cold">cold</span></span>
@@ -1659,7 +1671,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     </div>
     <div class="card gloss">
       <h3 data-t="dec.heat">90-day delivery, per item — delivered against spilled</h3>
-      <div class="heat" id="heat"></div>
+      <div class="heat plate" id="heat"></div>
       <p class="small" style="margin-block-start:10px" data-t="dec.heatn">One cell per day. Intensity
         is how much was delivered that day, a <b>hatched</b> cell is a day the item was
         <b>spilled</b>, and an empty cell is a day nothing happened — six quiet weeks are six weeks
@@ -1678,7 +1690,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="gr.sub">One focused item, radius 1, deterministic layered layout, hard cap
       of 60 nodes with an explicit "+N more". No physics, no dependency.</p>
     <div class="card gloss">
-      <div id="ego"></div>
+      <div class="plate" id="ego"></div>
       <div class="legend">
         <span><i class="focusn"></i><span data-t="gr.lfocus">focus</span></span>
         <span><i class="missn"></i><span data-t="gr.lmiss">target not in corpus</span></span>
@@ -1800,7 +1812,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <div><input class="globin" id="globin" value="src/billing/**" spellcheck="false"
           autocomplete="off" aria-describedby="globcount"></div>
         <p class="small" id="globcount" aria-live="polite"></p>
-        <div class="globtree" id="globtree"></div>
+        <div class="globtree plate" id="globtree"></div>
         <p class="small" data-t="pal.globn">Every file in the repository, with the matches
           <b>lit as you type</b>. A count on its own — "<span class="v" data-v="matches">7</span> files" —
           is a count you cannot inspect, and a count you cannot inspect is a count you cannot
@@ -1828,7 +1840,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         </tbody></table>
       </div>
       <div class="card gloss"><h3 data-t="cfg.effect">What changes</h3>
-        <div id="cfgdelta"></div>
+        <div class="plate" id="cfgdelta"></div>
         <p class="small" style="margin-block-start:8px" data-t="cfg.deltan">Each row is the
           <b>pair</b>, not the direction alone: the old value struck through, the new one
           highlighted, and the row tinted by which way it went. "What was it before" is half of
@@ -1839,7 +1851,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <div class="card gloss">
       <h3><span class="m">categories.lesson.scopePolicy</span></h3>
       <div class="segbar" id="spbar" role="group" aria-label="scopePolicy" data-t-aria="aria.scopepolicy"></div>
-      <div id="spout"></div>
+      <div class="plate" id="spout"></div>
       <p class="small" style="margin-block-start:8px" data-t="cfg.spn">The border colour and the
         count <b>are</b> the blast radius: how much of the corpus stops working if this value
         changes. <span class="m">inert</span> is the most destructive change the configuration
@@ -2134,7 +2146,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <dt data-t="pane.file">file</dt><dd class="m" id="panefile"></dd>
     </dl>
     <div class="welllabel" data-t="pane.hist">Delivered — twelve weeks</div>
-    <div class="spark" id="panespark"></div>
+    <div class="spark plate" id="panespark"></div>
     <p class="small" id="panespn"></p>
     <p class="small" data-t="pane.histn">Twelve weekly buckets from the audit projection, hatched
       where the item was <b>spilled</b> that week and grey where nothing was delivered. It is the

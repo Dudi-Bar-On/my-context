@@ -465,7 +465,7 @@ await page.click('[data-choice="b3"]');
 **Interfaces:**
 - Consumes: `.plate` from Task 3.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```js
 test('every data view sits on a plate', () => {
@@ -476,11 +476,74 @@ test('every data view sits on a plate', () => {
 });
 ```
 
-- [ ] **Step 2: Run it red, wrap each view, run it green**
+**As built, and why the plan's own sketch could not run as written.** `closestHasClass`
+assumes a DOM; this project ships no HTML/DOM parser (`package.json` has none) and a
+Playwright page cannot live under `test/` — `primitives.test.ts`'s own header explains
+why (`node:test` cannot run it, and `check:test-glob`'s file-count parity would catch
+the mismatch). `test/ui/plate-usage.test.ts` instead walks a real tag-nesting stack
+over the markup between `</style>` and the real `<script>`, tracking which open
+ancestor (if any) carries `class="plate"` at the point each target id appears.
+**Verified red before trusted green**, per this project's own rule that "a checker
+that has never been red is not a checker": eight synthetic-markup controls first
+(exact-element match, two-level ancestor match, no-ancestor miss, a CLOSED sibling
+plate wrongly counted, multi-token class match, substring-vs-token rejection, a
+missing id failing loudly rather than passing by absence, and a void `<input>`
+proven not to desync the stack), then the real file with `#ego`'s `class="plate"`
+mutated out by hand — confirmed red with the exact id named in the failure message —
+and reverted to byte-identical.
 
-- [ ] **Step 3: Verify the reason it exists** — sample a gold ribbon segment's rendered pixel at two positions on one screen. Before the plate they differ; after, they match. **A quantity whose colour cannot be trusted is not a quantity.**
+**The eighteen, resolved by evidence rather than guessed.** The plan's own sketch
+names five illustrative ids (`#ribbon`, `#coverage`, `#relations`, `#comb`,
+`#stream`) that do not exist verbatim in the mockup — no id is `ribbon`,
+`coverage`, `relations` or `stream` anywhere in the file. Read as a real
+enumeration instead of illustration: the script's own "RESTORED GRAPHICAL VIEWS"
+section carries eighteen numbered `── N ·` view comments (1–5, 7–10, 12–15, 17–18)
+across its helper functions, and three further ids are filled by sibling render
+functions sharing the same helpers and the same job (`renderDet` — coverage
+detail, named explicitly in the ui1 Task 18 reconciliation note; `renderAudit`;
+`renderQ`) plus `paneSpark` (the item-detail aside's delivery sparkline). That
+reading lands on exactly eighteen: `#gates`, `#ribbons` (hero); `#tree`, `#det`
+(coverage); `#stair`, `#ladder`, `#simtbl`, `#ratio` (simulate); `#pulse`, `#atbl`
+(audit stream); `#qres` (ask); `#comb`, `#heat` (decay); `#ego` (relations);
+`#globtree` (composer); `#cfgdelta`, `#spout` (configure); `#panespark`
+(item-detail aside, cross-screen). Segmented CONTROLS beside these views
+(`#tierPick`, `#gatepick`, `#spbar`, `#asktabs`, `#wfilters`) are excluded — a tab
+strip selects, it does not display a quantity. Static reference tables carrying no
+computed quantity (doctor's findings, the gaps list, injected-now, work's diff,
+status's counts, and the port/packs/tut/docs/learn screens) are also outside this
+eighteen; see the Task 7 report for the standing question of whether any of them
+should move too.
 
-- [ ] **Step 4: Commit**
+**Two of the eighteen are `<tbody>` targets inside a `<table>`, so the table itself
+is wrapped in a new `<div class="plate">` (`#atbl`, `#qres`; `#simtbl` likewise).
+The other fifteen are empty leaf `<div>`s the script fills — `class="plate"` is
+added directly to the existing element (`plate` appended where the div already
+carried a class, e.g. `class="tree plate"`, so nothing already on it is lost).
+
+- [x] **Step 2: Run it red, wrap each view, run it green** — done; see above.
+
+- [x] **Step 3: Verify the reason it exists** — sample a gold ribbon segment's rendered pixel at two positions on one screen. Before the plate they differ; after, they match. **A quantity whose colour cannot be trusted is not a quantity.**
+
+**Done in a real (headless Chromium) browser**, not reasoned about — `file://` is
+blocked for the MCP browser tool, same constraint Task 6 hit, so this used the
+project's own installed `@playwright/test` directly via a throwaway script (not
+committed). A standalone fixture reproduced `--ground`, `.pane` and `.plate`
+verbatim from this file, with `#tree`'s actual `.mini i.u{background:var(--warn);
+opacity:.34}` magnitude-bar mark (genuinely translucent, not a solid swatch)
+placed once inside the ground's purple hotspot (radial centre 14%,6%) and once
+inside its teal hotspot (88%,92%), with and without `.plate`. Sampled 1×1-pixel
+screenshots at each swatch's centre: **without** `.plate`, the same mark measured
+RGB(93,71,70) at the purple position and RGB(77,76,55) at the teal position — a
+Euclidean distance of 22.5, a real hue shift, not noise. **With** `.plate`, the
+same two positions measured RGB(75,56,36) and RGB(72,59,35) — distance 4.4, about
+five times tighter. Not exactly zero: `--plate` (`rgb(6 7 11/.72)`) is itself 72%
+opaque, not 100%, so a small residual of the pane's own backdrop-blurred ground
+still shows through — expected given the token as defined, and still a five-fold
+tightening. Confirmed visually too: a full-page screenshot shows the unplated
+swatches reading as visibly different hues (mauve-brown vs. olive) while the
+plated pair both read as the same warm amber-brown.
+
+- [x] **Step 4: Commit**
 
 ---
 
