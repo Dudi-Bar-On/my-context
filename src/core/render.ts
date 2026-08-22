@@ -1,21 +1,105 @@
 import { describeFocus, type FocusReport } from './focus.ts';
-import { renderIndexLine, renderItemBlock } from './render-item.ts';
-import type { Selection, Spill } from './select.ts';
+import { CARRIED_MARKER, renderIndexLine, renderItemBlock } from './render-item.ts';
+import type { CarriedSummary, Selection, Spill } from './select.ts';
+
+/**
+ * **The cross-session carry disclosure — §6n.2, and the CLI half of "the same
+ * provenance in the CLI and the UI".**
+ *
+ * Every number and every word below is READ OUT of `IndexSummary.carried`.
+ * Nothing here is recomputed and no reason is re-worded, and that is the
+ * requirement rather than a tidiness preference: `/api/select` serves that same
+ * object to the browser unchanged —
+ * `ui/read-model.ts` · `export function apiSelect(ws: Workspace, url: URL): JsonResult {` · ~336 —
+ * so a renderer with its own vocabulary would be a second spelling of a
+ * sentence a second surface renders from the same field. Two surfaces that
+ * agree today is the defect this project has paid for most often; the fix is
+ * one derivation, not two careful edits.
+ *
+ * **The count is what ARRIVED**, after the dedupe and after the budget —
+ * `carried.shown`, computed inside `buildIndex` off the admitted lines rather
+ * than off the input length (§6g). Saying how many were sent would be a
+ * disclosure of a delivery that did not happen.
+ *
+ * **The dropped clause is `INV-nothing-is-dropped-silently` itself.** Every
+ * carried id that got no line is named with `select`'s own reason, so
+ * `shown + dropped.length` is the whole carry and a reader can check it.
+ *
+ * **The displacement clause is not optional — §6n.2 — and this line is the
+ * ONLY place a reader of the injected block can learn of it.**
+ * `renderSpill` below drops a spill whose only tier is `index`, so a line this
+ * session's own index would have shown and does not is invisible everywhere
+ * else in this text. It names the ids — ids are scope, not content, and
+ * `mycontext show <id>` fetches any of them — and it is omitted ENTIRELY when
+ * `carried.displaced` is empty, which on an index that is not exhausted is
+ * always. A clause that appeared with a zero in it every session is how a
+ * reader learns to skim past the one session where it matters.
+ *
+ * **The label is not invented here either.** It is the session's name when a
+ * person gave it one and its short prefix when they did not, decided by
+ * `core/continuity.ts` · `function labelFor(root: string, sessionId: string): string {` · ~226
+ * and passed through unchanged.
+ *
+ * Like the focus and spill notes it is scaffolding rather than an item: outside
+ * `budgets.index` and outside `Selection.tokens`. A disclosure a budget could
+ * drop is not a disclosure.
+ */
+function renderCarried(carried: CarriedSummary | null): string {
+  if (carried === null) return '';
+
+  const parts = [
+    `${carried.shown} index line(s) carried from session \`${carried.label}\` and marked ` +
+    `\`${CARRIED_MARKER.trim()}\` below.`,
+  ];
+  if (carried.dropped.length > 0) {
+    parts.push(
+      `${carried.dropped.length} carried id(s) got no line: ` +
+      `${carried.dropped.map((d) => `${d.id} (${d.reason})`).join(', ')}.`,
+    );
+  }
+  if (carried.displaced.length > 0) {
+    parts.push(
+      `${carried.displaced.length} of this session's own line(s) displaced to make room: ` +
+      `${carried.displaced.join(', ')}.`,
+    );
+  }
+  // Only when there is something to fetch. On a carry that cost nothing the
+  // line is one sentence, and an invitation to fetch nothing would be noise on
+  // the sentence a reader is meant to skim.
+  if (parts.length > 1) parts.push('Fetch any of these with mycontext show <id>.');
+
+  return `_${parts.join(' ')}_`;
+}
 
 function renderIndex(selection: Selection): string {
-  const { normative, counts, drafts, retired, truncated, ineligible } = selection.index;
+  const { normative, counts, drafts, retired, truncated, ineligible, carried } = selection.index;
   const ineligibleEntries = Object.entries(ineligible).sort((a, b) => b[1] - a[1]);
 
+  // `carried` joins the emptiness test deliberately. A carry whose every id was
+  // dropped — every one already delivered in full, say — leaves an index with
+  // no lines and nothing else to print, and returning '' there would lose the
+  // ONLY account of a carry that arrived and delivered nothing.
   if (
     normative.length === 0 && Object.keys(counts).length === 0 &&
-    drafts === 0 && retired === 0 && truncated === 0 && ineligibleEntries.length === 0
+    drafts === 0 && retired === 0 && truncated === 0 && ineligibleEntries.length === 0 &&
+    carried === null
   ) {
     return '';
   }
 
   const lines: string[] = ['## my_context index'];
-  for (const n of normative) lines.push(renderIndexLine(n));
-  if (truncated > 0) lines.push(`- … +${truncated} more (fetch with mycontext show <id>)`);
+  // Under the heading and above the list: the marker it explains is on the
+  // lines that follow, so a reader meets the explanation before the thing it
+  // explains rather than after it.
+  const carry = renderCarried(carried);
+  if (carry) lines.push(carry);
+
+  const listed: string[] = normative.map((n) => renderIndexLine(n));
+  if (truncated > 0) listed.push(`- … +${truncated} more (fetch with mycontext show <id>)`);
+  // The blank line exists only to separate the disclosure from the list. With
+  // no carry the list still sits directly under the heading, byte-identical to
+  // before this clause existed.
+  if (listed.length > 0) lines.push(...(carry ? [''] : []), ...listed);
 
   const summary = Object.entries(counts)
     .sort((a, b) => b[1] - a[1])

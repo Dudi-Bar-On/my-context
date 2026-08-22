@@ -581,3 +581,36 @@ test('carry refuses in its own words, not in `name`\'s', () => {
     assert.match(flat(name.out), /attach a name/);
   } finally { p.dispose(); }
 });
+
+/**
+ * The two CLI surfaces that talk about one carry, and the number that is not
+ * the same number.
+ *
+ * `--show` counts the ids the SOURCE session had; the injected block counts the
+ * index lines that arrived, after the dedupe and after `budgets.index`. Those
+ * differ on every corpus with a pinned item in it — on this repository's own,
+ * by seven. A `--show` that presented its figure as what the next session will
+ * see would be the second, quieter answer to a question the injected block
+ * already answers with ids and reasons, and the reader has no way to tell which
+ * of the two is the one that happened.
+ *
+ * So `--show` names the other surface instead of restating it: there is one
+ * disclosure of what arrived, and it is not this command.
+ */
+test('carry --show does not claim its count is what arrives — it points at the block that says so', () => {
+  const p = project();
+  try {
+    seed(p.root);
+    appendSeen(p.root, UNNAMED, [{ id: 'RULE-a', tier: 'jit', at: '2026-08-19T09:00:00.000Z' }]);
+
+    const { code, out } = run(['session', 'carry', '--show'], p.cwd);
+    assert.equal(code, 0, out);
+    assert.match(flat(out), /1 item id\(s\) forward/,
+      'the figure it does have is the source session’s, and it still prints it');
+    assert.match(flat(out), /injected block/,
+      'the surface that says how many actually got a line has to be named, or this number ' +
+      'reads as that one');
+    assert.match(flat(out), /index heading/,
+      'named precisely enough to find: the disclosure sits under the index heading');
+  } finally { p.dispose(); }
+});

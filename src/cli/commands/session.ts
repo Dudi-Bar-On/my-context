@@ -508,6 +508,19 @@ function showCarry(root: string, out: Emit): number {
     'ever saw as an index line is not carried at all. The CLI is handed no session id, so this ' +
     'answer excludes nothing as the current session — a live session start excludes its own.',
     'note: ');
+  // **The number above is the source session's, and the number that matters is
+  // decided later.** How many of these ids reach the index is settled at the
+  // session start, against that moment's corpus and `budgets.index`, and the
+  // injected block discloses the difference itself — by id and by reason. This
+  // sentence NAMES that disclosure rather than restating any of it: a second
+  // account of which ids got a line would be a second answer to a question one
+  // surface already answers, and the reader would have no way to tell which of
+  // the two happened.
+  say(out,
+    'this count is what the source session HAD. How many of those ids get an index line is ' +
+    'decided at the next session start, and the injected block says which ones did not and ' +
+    'why, under its index heading.',
+    'note: ');
   return 0;
 }
 

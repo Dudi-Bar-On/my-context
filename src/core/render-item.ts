@@ -254,8 +254,14 @@ export function renderItemBlock(item: Item): string {
  * Measured on this repository's own corpus (Task 3's probe,
  * `reports/probes/2026-08-20-carry-set.md`): 29 tokens across 11 marked lines,
  * taking the index from 470 to 499 against a budget of 1200.
+ *
+ * **Exported so the carry disclosure can QUOTE it rather than retype it**
+ * (`core/render.ts` · `function renderCarried(` · ~74). That line tells the
+ * reader which marker to look for; a second literal there would be a second
+ * spelling of one string, and the failure mode is the quiet one — a renamed
+ * marker with a disclosure still pointing at the old word, both green.
  */
-const CARRIED_MARKER = ' · carried';
+export const CARRIED_MARKER = ' · carried';
 
 /**
  * Renders a single index-summary line for a normative item. Shared so
@@ -266,7 +272,7 @@ const CARRIED_MARKER = ' · carried';
  * requirement rather than a style choice.** This function is called twice for
  * every line: once by `select.ts` · `const cost = estimateTokens(renderIndexLine(line));` · ~379
  * to charge `budgets.index`, and once by `core/render.ts` ·
- * `for (const n of normative) lines.push(renderIndexLine(n));` · ~18 to emit
+ * `const listed: string[] = normative.map((n) => renderIndexLine(n));` · ~112 to emit
  * it. A marker appended anywhere else would charge the budget for a line
  * shorter than the one delivered — mis-sizing an injection, which is the
  * failure §6a names. Both call sites pass the whole entry object, so both see

@@ -94,7 +94,14 @@ export interface CarriedSummary {
   label: string;
   /** Carried ids that got a line, after the budget. */
   shown: number;
-  /** Carried ids that could get no line, and why. Sorted by id. */
+  /**
+   * Carried ids that got no line, and why. Sorted by id.
+   *
+   * **`shown + dropped.length` is every id that was carried in**, and that
+   * identity is the field's contract rather than a property it happens to
+   * have: an id that is neither shown nor explained is exactly the silent drop
+   * this summary exists to make impossible.
+   */
   dropped: { id: string; reason: string }[];
   /**
    * §6n.2's cost, named: ids this session's own index WOULD have shown under
@@ -484,6 +491,13 @@ function fitIndexOrder(order: IndexCandidate[], budget: number): {
  * normative and undelivered, so the only thing that kept it out of `eligible`
  * is the narrowing the user asked for. Calling that "no longer eligible" would
  * be a false label on a live item, which is a silent drop wearing a badge.
+ *
+ * **Five reasons live here and a sixth does not.** `over the index budget` is
+ * decided by the caller, because it is the only one that is not about the item
+ * at all — the item was a perfectly good candidate and the budget ran out. This
+ * function answers "why was it never a candidate"; asking it to also know
+ * whether a candidate fitted would hand it the budget pass's result for no
+ * gain.
  */
 function carriedDropReason(
   id: string, item: Item | undefined, config: Config, chosenIds: Set<string>,
@@ -582,13 +596,32 @@ function buildIndex(
   const normative = fitted.admitted.map((c) => c.line);
   const used = fitted.used;
 
-  // Every carried id that is NOT a candidate gets no line at all, and says why.
+  // **Every carried id that got no line says why — the identity being kept is
+  // `shown + dropped.length === carried.ids.length`.**
+  //
+  // The test is against the ADMITTED lines, not against candidacy, and that is
+  // the correction rather than a detail. Skipping every candidate left a real
+  // hole: a carried line is at the FRONT of `fitIndexOrder`, not exempt from
+  // it, so on an exhausted index a carried candidate can overflow — and such an
+  // id had no line, no reason, and reached the reader only as an anonymous unit
+  // of "+N more". That is `INV-nothing-is-dropped-silently` failing inside the
+  // feature written to enforce it.
+  //
+  // It is a sixth REASON rather than a fourth field, so the shape every surface
+  // reads stays "one list of ids that got no line, each with why" — one string
+  // table key in the UI, one clause in the rendered disclosure.
   const byId = new Map(all.map((i) => [i.id, i]));
+  const admittedIds = new Set(normative.map((line) => line.id));
   const candidateIds = new Set(candidates.map((c) => c.line.id));
   const dropped: { id: string; reason: string }[] = [];
   for (const id of [...carriedIds].sort(compareStrings)) {
-    if (candidateIds.has(id)) continue;
-    dropped.push({ id, reason: carriedDropReason(id, byId.get(id), config, chosenIds) });
+    if (admittedIds.has(id)) continue;
+    dropped.push({
+      id,
+      reason: candidateIds.has(id)
+        ? 'over the index budget'
+        : carriedDropReason(id, byId.get(id), config, chosenIds),
+    });
   }
 
   const counts: Record<string, number> = {};
