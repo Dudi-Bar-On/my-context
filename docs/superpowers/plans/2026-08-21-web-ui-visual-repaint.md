@@ -677,17 +677,45 @@ rather than silently including it in Step 3's commit without a paper trail.
 - Modify: `docs/design/web-ui-mockup.html` — `@media print`
 - Modify: `e2e/print.spec.ts`
 
-- [ ] **Step 1: Write the failing test — print from dark**
+- [x] **Step 1: Write the failing test — print from dark**
 
-The existing spec asserts `bodyBg === white` and `bodyColor === black`, and **both still pass while 246 text-contrast failures exist**, because the body is the one thing the print block does reset. Assert the *tokens*, not the body.
+**Done.** `e2e/print.spec.ts`'s per-screen loop now also asserts the nine print-
+register custom properties (`--ground`, `--ink`, `--dim`, `--faint`, `--gold`,
+`--ok`, `--warn`, `--crit`, `--carry`) read off `:root`, plus one rendered
+element's actual computed colour (`.psub`, the screen's own subtitle) — the
+check `bodyBg`/`bodyColor` alone could not do, since a token can be declared
+correctly while nothing still reads it. Written and run red against the
+unmodified file first (every `--token` assertion failed, reporting the
+screen's own light values), confirming it was the tokens and not the body
+that had to move; green after Step 2's register landed.
 
-- [ ] **Step 2: Design a printed register rather than converting the screen**
+- [x] **Step 2: Design a printed register rather than converting the screen**
 
-There is no light theme to fall back on. Glass, the ground and the layered shadow all print as nothing or as grey mud. Print gets: white ground, black ink, the plate as a hairline rule, chips as glyph-plus-label.
+**Done.** The register lives entirely inside `@media print{ :root{…} }` as
+~24 custom-property overrides (ground, the three ink steps, all five meaning
+hues, the pane/plate/glass tokens), because every rule in the file already
+paints through `var(--token)` — no selector-by-selector repaint needed, and
+`--goldbg`/`--okbg`/`--warnbg`/`--critbg`/`--carrybg` re-resolve for free
+since they are themselves `color-mix(in oklch, var(--gold) 12%, var(--panel))`
+etc. On top of the token layer: `.pane,.card` lose the glass (backdrop-filter,
+box-shadow, gradient fills) for a plain hairline border — this also fixes a
+latent bug the old `.pane{border:0}` rule had (it removed the pane's only
+boundary and leaned on `--pane-edge`, a near-white line, to stay visible on
+white paper, which it never did — the item-detail aside printed with no
+outline at all); `.plate,.lit` drop their opaque fill for the same hairline,
+per "the plate as a hairline rule"; `.chip` drops colour entirely for a black
+border/label, relying on the `::before` glyph (`content`, not `fill`) for the
+five-hue distinction paper cannot carry; and the 3.2° `.plane` tilt is
+flattened (`transform:none`), since a screen-only appraisal cue reads as a
+rendering defect at an angle on a static page.
 
-- [ ] **Step 3: Measure — 21 screens, both languages, printed. Report the failure count.**
+- [x] **Step 3: Measure — 21 screens, both languages, printed. Report the failure count.**
 
-- [ ] **Step 4: Commit**
+**Done.** See the task report for the harness and numbers: 889 EN + 829 HE
+per-element occurrences (57 / 47 unique fg/bg/threshold triples) before, 0
+after, both languages, all 21 screens, under print media emulation.
+
+- [x] **Step 4: Commit**
 
 ---
 

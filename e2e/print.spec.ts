@@ -1,5 +1,6 @@
 /**
- * **The print stylesheet, which has already shipped printing a blank page.**
+ * **The print stylesheet, which has already shipped printing a blank page —
+ * and, separately, shipped printing the dark theme's own colours.**
  *
  * The previous pass hid every screen but Coverage under `@media print` and then
  * never un-hid it, so Ctrl+P produced a blank sheet. That is not a defect any
@@ -15,6 +16,18 @@
  *
  * Twenty-one, not one, for exactly the reason the defect existed: the rule that
  * un-hides one screen is not evidence about any other.
+ *
+ * **`bodyBg`/`bodyColor` were never enough, and stayed green through 246
+ * contrast failures to prove it.** `body{background:#fff;color:#000}` is the
+ * one rule the old print block carried, and it says nothing about `.psub`,
+ * `.chip`, a table cell or any of the other places colour actually gets
+ * painted — those still read `var(--ink)`/`var(--dim)`/`var(--gold)` etc.,
+ * the SCREEN'S light-on-dark values, on a suddenly-white page. So this suite
+ * now also asserts the declared print REGISTER itself — the custom
+ * properties every rule in the file paints through — and one rendered
+ * element's actual computed colour, which is the thing a token assertion
+ * alone still cannot see (a correctly-declared token painting nothing, if
+ * some rule stopped reading it, would pass a token check and fail a person).
  */
 import { test, expect } from '@playwright/test';
 import { SCREENS, expectNoFaults, openMockup, showScreen } from './mockup.ts';
@@ -36,6 +49,14 @@ test('every screen prints itself, and only itself', async ({ page }) => {
         const el = document.querySelector(sel);
         return el === null ? '(absent)' : getComputedStyle(el).display;
       };
+      const root = getComputedStyle(document.documentElement);
+      const token = (name: string): string => root.getPropertyValue(name).trim();
+      // A representative rendered element, not just the token declaration:
+      // `.psub` (the screen's own subtitle, one per screen) paints its colour
+      // from `var(--dim)` rather than inheriting `body`'s, so this is the
+      // check that would have caught the token existing but nothing actually
+      // reading it.
+      const psub = mine.querySelector<HTMLElement>('.psub');
       return {
         height: Math.round(box.height),
         width: Math.round(box.width),
@@ -50,6 +71,24 @@ test('every screen prints itself, and only itself', async ({ page }) => {
         // The page must not print white-on-white or on a dark ground.
         bodyBg: getComputedStyle(document.body).backgroundColor,
         bodyColor: getComputedStyle(document.body).color,
+        // The declared print register (spec §7.3, plan Task 10 step 2):
+        // every one of the five meaning hues and all three ink steps
+        // collapse to black, because printing from the dark theme measured
+        // 246 contrast failures and there is no light theme to fall back to.
+        // `--faint` is checked here too — it never paints text at any size
+        // on screen either (enforced separately by check-faint-usage.ts),
+        // but it does paint the "not run" hatch, which must still read as a
+        // hatch and not a smudge on white.
+        tokenGround: token('--ground'),
+        tokenInk: token('--ink'),
+        tokenDim: token('--dim'),
+        tokenFaint: token('--faint'),
+        tokenGold: token('--gold'),
+        tokenOk: token('--ok'),
+        tokenWarn: token('--warn'),
+        tokenCrit: token('--crit'),
+        tokenCarry: token('--carry'),
+        psubColor: psub === null ? '(absent)' : getComputedStyle(psub).color,
       };
     }, screen);
 
@@ -67,6 +106,18 @@ test('every screen prints itself, and only itself', async ({ page }) => {
 
     expect(sheet.bodyBg, `"${screen}" must print on white`).toBe('rgb(255, 255, 255)');
     expect(sheet.bodyColor, `"${screen}" must print in black`).toBe('rgb(0, 0, 0)');
+
+    expect(sheet.tokenGround, `"${screen}": the print register's ground must be white`).toBe('#fff');
+    for (const [name, value] of [
+      ['--ink', sheet.tokenInk], ['--dim', sheet.tokenDim], ['--faint', sheet.tokenFaint],
+      ['--gold', sheet.tokenGold], ['--ok', sheet.tokenOk], ['--warn', sheet.tokenWarn],
+      ['--crit', sheet.tokenCrit], ['--carry', sheet.tokenCarry],
+    ] as const) {
+      expect(value, `"${screen}": ${name} must be the print register's black, not the screen's colour`)
+        .toBe('#000');
+    }
+    expect(sheet.psubColor, `"${screen}": its own subtitle must actually render in ink, not just declare the token`)
+      .toBe('rgb(0, 0, 0)');
   }
 
   await page.emulateMedia({ media: 'screen' });
