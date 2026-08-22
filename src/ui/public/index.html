@@ -1,4 +1,61 @@
 <!doctype html>
-<!-- Shell content is Task 16's; this file exists so static serving is testable first. The title is the mockup's own. -->
-<html lang="en" dir="ltr"><head><meta charset="utf-8"><title>mycontext Console</title></head>
-<body></body></html>
+<!-- The app shell — Task 16. Structure only: the mockup's item detail pane
+     (aside.pane#pane), provenance bar (div.prov#prov) and footer strip
+     (footer.strip) are named "unowned" by this plan (§0.2) and are not built
+     here; nor is the .app grid wrapper that lays the rail beside the body in
+     the mockup (docs/design/web-ui-mockup.html ~1026) — that is structural
+     wiring this repaint-scoped stylesheet does not carry (see styles.css's
+     own header), and is called out as an open question in this task's
+     report rather than invented. -->
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- The mockup's own <title> (web-ui-mockup.html ~54) and what
+       test/ui/server-e2e.test.ts already pins against the served page. -->
+  <title>mycontext Console</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header id="topbar" class="hdr">
+    <!-- .hdr is primitive 8: "git where the avatar would have gone" — branch,
+         working tree, and the commit the corpus was reconciled against; no
+         account, no bell, no plan badge. That content is not wired here: the
+         provenance bar it was meant to sit beside is itself unowned (above),
+         so this header carries only the pickers the mockup's third pass
+         shows in it. -->
+    <!-- The wordmark is not a translated string: the mockup renders it as a
+         bare <b>mycontext</b> with no data-t, and a product name is not
+         translated. -->
+    <div class="logo"><span class="mark"></span><b>mycontext</b></div>
+    <div class="topr">
+      <!-- #focuspop has no markup here — nothing in this task's shell or its
+           app.js wires it, and building the dialog itself would be inventing
+           UI the mockup shows only as a target, not a source (open question,
+           this task's report). The trigger renders inert until it does. -->
+      <button class="sel" id="focusbtn" aria-haspopup="dialog" aria-expanded="false">
+        <span id="focus-label"></span> <b id="focuslbl"></b>
+      </button>
+      <!-- #sesspop is the same story. app.js still computes and exposes the
+           default/cold session (ctx.session()), it just has no dropdown to
+           paint it into yet — see app.js's loadSessions() and this task's
+           report. -->
+      <button class="sel" id="sessbtn" aria-haspopup="dialog" aria-expanded="false">
+        <span class="live"></span> <span id="session-label"></span> <b id="sesslbl"></b>
+      </button>
+      <button class="icon" id="lang" title="English / עברית">א/A</button>
+      <!-- The accessible name for this button is an open question (§0.4,
+           Task 1 Step 3) — a plain title attribute is the interim, not an
+           answer to it. No #theme button: dark only (repaint Task 1). -->
+    </div>
+  </header>
+  <nav class="rail" id="nav" aria-label="Screens"></nav>
+  <main class="body" id="screen"></main>
+  <!-- The exit banner IS in the mockup: <div class="banner" id="exited"> with
+       ex.msg and ex.ok. Its children are populated at runtime by app.js's
+       banner() helper, never authored here — see the "no innerHTML anywhere"
+       rule i18n.js and app.js both follow. -->
+  <div class="banner" id="exited" hidden role="alert"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

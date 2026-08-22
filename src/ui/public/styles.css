@@ -1,1 +1,223 @@
-/* Real stylesheet is Task 16's. Logical properties ONLY — see the plan's Global Constraints. */
+/**
+ * The shell's real stylesheet — replacing the Task 12 placeholder.
+ *
+ * `docs/design/web-ui-mockup.html` is the design of record (its own header:
+ * "WHERE THIS FILE AND THE SPEC DISAGREE ABOUT APPEARANCE, THIS FILE WINS").
+ * This file is assembled from it, not written from memory, in three tiers:
+ *
+ *   1. TOKENS and the two PRIMITIVE-ADJACENT `:root` blocks (sans/mono, the
+ *      vendored `@font-face` faces) — copied BYTE FOR BYTE from the mockup's
+ *      own `<style>` block. `test/ui/styles-parity.test.ts` pins this: it
+ *      reads both files and fails the day one drifts from the other. The
+ *      `@font-face` `url()` paths are the one deliberate exception (see the
+ *      comment above that block) and are excluded from the byte-parity check
+ *      for exactly that reason.
+ *   2. The PRIMITIVE RULES §3 names — `.pane`/`.rail`/`.hdr`'s shared glass
+ *      material, `.scene`/`.pair`/`.plane`, `.row` (+ its hover and reduced-
+ *      motion transition), `.plate`, `.lit`/`.blk`, `.chip`'s base rule — also
+ *      copied byte for byte and also pinned by the parity test. Screen-
+ *      specific WIRING that sits beside these in the mockup (`.lit.linked`,
+ *      `.blk .linkid` — the injection preview's own composition, Task 17) is
+ *      deliberately NOT here: it is a screen's job to bring in, not a shell's.
+ *   3. Foundational wiring the primitives need to be visible AT ALL —
+ *      `*{box-sizing:border-box}`, `html,body{block-size:100%}`, and the
+ *      `body{background:var(--ground)…}` rule the mockup's own comment calls
+ *      out as necessary "globally… on all 21 screens" (mockup ~335-343). This
+ *      is not named by plan Task 16 Step 4a/4c in so many words, but omitting
+ *      it is the literal failure this task's brief warns against — glass with
+ *      nothing behind it to admit. Also copied byte for byte; NOT covered by
+ *      the parity test (out of Step 4b's stated scope: ":root block and
+ *      primitive rules"), so noted here instead.
+ *
+ * Utility classes for the injection/i18n runtime (`.m`, `.v`, `bdi`, and the
+ * `[dir="rtl"] code/pre/.path` override) are sourced from the mockup too —
+ * `t()`/`tFlat()` in `lib/i18n.js` build `<span class="m">` / `<span
+ * class="v">` nodes on every translated run with a slot (Task 1's grammar),
+ * so these are load-bearing the moment any string renders, not speculative.
+ *
+ * **Deliberately NOT shipped here — `.bar`, `.bar-track`, `.gap`, `.edge`,
+ * `.edge-dangling`, `.dim`, `.spill`, `.decay-bar`.** The plan's Step 4c
+ * sketch proposed bare top-level rules for these, but the mockup ALREADY
+ * defines `.bar` (block-size:9px, a fill track with `.bar i.f`/`.bar i.s`
+ * children), `.gap` (only as the compound `.ghosts .gap{background:none;
+ * border:0}`) and `.edge` (only as `svg.chart .edge{fill:none;stroke:var(
+ * --edge-3)}`) for specific existing screens, in shapes that do not match
+ * Step 4c's proposal. Shipping a second, conflicting definition now is the
+ * exact "same tokens in two files with no test holding them together" drift
+ * this task's own styles-parity step exists to prevent — see the report for
+ * this task. `.spill` and `.decay-bar` have no such collision (grepped: zero
+ * hits), but nothing in THIS shell renders one either, so they are left for
+ * whichever of Tasks 18/19 actually builds the screen that needs them, with
+ * full view of that screen's real markup — the same deferral primitives.test.ts
+ * and plate-usage.test.ts both already document for call-site-specific choices.
+ *
+ * No `@media print` here — Task 16 Step 4d: dark glass has no light theme to
+ * fall back on, so print needs its own designed register, left to Task 10 of
+ * the repaint plan.
+ *
+ * LOGICAL PROPERTIES ONLY. A physical `left`/`right`/`margin-left`/
+ * `text-align:left` anywhere below is a defect (spec §3) — none of the copied
+ * blocks contain one; grepped before this file was written.
+ */
+
+/* ─── TOKENS — docs/design/web-ui-mockup.html, byte-identical, pinned by
+   test/ui/styles-parity.test.ts ─────────────────────────────────────────── */
+:root{
+  --ground:
+    radial-gradient(120% 90% at 14% 6%, #433580 0%, transparent 58%),
+    radial-gradient(115% 85% at 88% 92%, #0f6069 0%, transparent 60%),
+    radial-gradient(90% 70% at 56% 46%, #23306f 0%, transparent 66%),
+    #0b0c11;
+  --pane-gloss: linear-gradient(133deg, rgb(255 255 255/.07) 0%, rgb(255 255 255/.02) 46%, rgb(0 0 0/.05) 100%);
+  --pane-tint:  linear-gradient(133deg, rgb(9 10 16/.56) 0%, rgb(9 10 16/.62) 34%, rgb(9 10 16/.64) 100%);
+  --pane-edge:  rgb(255 255 255/.14);
+  --pane-lit:   inset 0 1px 0 rgb(255 255 255/.20);
+  --lift: 0 2px 3px rgb(0 0 0/.4), 0 10px 22px rgb(0 0 0/.34), 0 26px 56px rgb(0 0 0/.3);
+  --plate: rgb(6 7 11/.72);
+  --ink:#f0eef6; --dim:#a9a6b8; --faint:#7d7a90;
+  /* Five meaning colours, not four — ruled 2026-08-22 (spec §2.5). --warn is
+     promoted here from the LEGACY SCALE block below: same #c78f3d, same 25
+     call sites (the refusal banner's border/background/text, the PROPOSED
+     badges, an over-budget count, the dashed state dot, the provenance
+     bar's emphasis, 22 chips), none repointed — a promotion, not a retune.
+     Never in §2.4's table because it was never a named hue; measured now,
+     from rendered pixels: 5.08-6.95 against the glass (worst at the
+     ground's own bloom peak, 14%/6%; the rail's real badges run 5.60-6.95)
+     and 5.41 against its own opaque chip pill (--warnbg, position-
+     independent since both colours are opaque). Clears 4.5:1 everywhere
+     sampled. */
+  --gold:#e8c368; --ok:#7cc0a0; --carry:#8b9ce6; --crit:#e08b8b; --warn:#c78f3d;
+  --ease:cubic-bezier(.23,1,.32,1);
+  --dur-nav:180ms; --dur-act:200ms; --dur-link:280ms; --dur-retime:420ms;
+}
+
+:root{
+  --sans: "Geist", "IBM Plex Sans Hebrew", system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+/* One token, pulled in from the mockup's LEGACY SCALE block (mockup ~146) —
+   not the whole block, on purpose: `--fs-00/0/1/3/4`, `--sp-*` and `--r-*`
+   sit beside `--fs-2` there and none of them is used by anything this shell
+   ships, so importing the block whole would be exactly the "same tokens in
+   two files" duplication this file's header already declines for `.bar`/
+   `.gap`/`.edge`. `--fs-2` alone is unavoidable: the FOUNDATION `body{}` rule
+   below sets `font:var(--fs-2)/1.55 var(--sans)` byte-for-byte from the
+   mockup, and `scripts/check-faint-usage.ts` (`npm test`) treats an
+   unresolvable custom property as a FAILURE, not a pass — measured by
+   running it against this file with the token missing before adding it. */
+:root{ --fs-2: 16px; }
+
+/* ─── FACES — self-hosted .woff2, vendored under src/ui/public/fonts/.
+   Family/weight declarations are byte-identical to the mockup; the `url()`
+   paths are NOT — the mockup lives at docs/design/ and reaches the fonts via
+   `../../src/ui/public/fonts/…`, while this file IS src/ui/public/styles.css
+   and is served at `/styles.css`, so a relative URL resolves against `/` and
+   the fonts are simply `fonts/…` from here. `test/ui/fonts.test.ts` already
+   proves every vendored file exists on disk; this file's own font-face rules
+   are checked by a resolve-from-`/styles.css` variant added alongside the
+   parity test. Reachable only once `static.ts` serves `.woff2` — see that
+   file's CONTENT_TYPES table and this task's report for the allow-list widen. */
+@font-face{font-family:"Geist";font-weight:400;font-style:normal;font-display:swap;
+  src:url("fonts/geist-400.woff2") format("woff2")}
+@font-face{font-family:"Geist";font-weight:450;font-style:normal;font-display:swap;
+  src:url("fonts/geist-450.woff2") format("woff2")}
+@font-face{font-family:"Geist";font-weight:500;font-style:normal;font-display:swap;
+  src:url("fonts/geist-500.woff2") format("woff2")}
+@font-face{font-family:"Geist";font-weight:600;font-style:normal;font-display:swap;
+  src:url("fonts/geist-600.woff2") format("woff2")}
+@font-face{font-family:"Geist Mono";font-weight:400;font-style:normal;font-display:swap;
+  src:url("fonts/geist-mono-400.woff2") format("woff2")}
+@font-face{font-family:"Geist Mono";font-weight:500;font-style:normal;font-display:swap;
+  src:url("fonts/geist-mono-500.woff2") format("woff2")}
+@font-face{font-family:"IBM Plex Sans Hebrew";font-weight:400;font-style:normal;font-display:swap;
+  src:url("fonts/plex-sans-hebrew-400.woff2") format("woff2")}
+@font-face{font-family:"IBM Plex Sans Hebrew";font-weight:500;font-style:normal;font-display:swap;
+  src:url("fonts/plex-sans-hebrew-500.woff2") format("woff2")}
+@font-face{font-family:"IBM Plex Sans Hebrew";font-weight:600;font-style:normal;font-display:swap;
+  src:url("fonts/plex-sans-hebrew-600.woff2") format("woff2")}
+
+/* ─── PRIMITIVES §3 — docs/design/web-ui-mockup.html, byte-identical rule
+   bodies, pinned by test/ui/styles-parity.test.ts. Screen-specific wiring
+   that sits beside these in the mockup (.lit.linked, .blk .linkid — Task 17's
+   own composition) is not copied here; it belongs to the screen that uses it.
+
+   1/7/8 — the pane. Panels, cards and the rail (and the header) are all this
+   material; nothing in the product is a plain box. */
+.pane,.rail,.hdr{
+  position:relative;border-radius:12px;overflow:hidden;
+  backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);
+  border:1px solid var(--pane-edge);
+  background:var(--pane-gloss),var(--pane-tint);
+  box-shadow:var(--lift),var(--pane-lit);
+}
+/* 4 — the static card is .pane with no :hover rule at all, anywhere in this
+   file. Stillness is how the interface says "not a control". */
+
+/* 5 — the plane. Perspective on the CONTAINER (.pair) only, never a negative
+   translateZ on a child (§7.1). .scene stays an explicit empty rule: the
+   negative-space marker for "not here". */
+.scene{}
+.pair{perspective:1600px;perspective-origin:50% 42%}
+.plane.l{transform:rotateY(3.2deg)}
+.plane.r{transform:rotateY(-3.2deg)}
+
+/* 2 — the actionable row. The only primitive that moves. */
+.row{display:flex;align-items:center;gap:10px;inline-size:100%;padding:10px 12px;
+  font:14.5px/1.3 var(--mono);color:var(--ink);
+  background:transparent;border:1px solid transparent;border-radius:8px;cursor:pointer}
+.row:hover{transform:translateY(-3px);background:rgb(255 255 255/.06);
+  border-color:rgb(255 255 255/.13);box-shadow:0 6px 16px rgb(0 0 0/.32)}
+@media (prefers-reduced-motion:no-preference){
+  .row{transition:transform var(--dur-act) var(--ease),background var(--dur-act) ease,
+             border-color var(--dur-act) ease,box-shadow var(--dur-act) var(--ease)}
+}
+/* Selection is a screen's own wiring (Task 17), but the LOOK is the
+   primitive's: held-selected reuses :hover's exact look, unconditionally, so
+   a reduced-motion user still sees the state change. */
+.row[aria-pressed="true"]{transform:translateY(-3px);background:rgb(255 255 255/.06);
+  border-color:rgb(255 255 255/.13);box-shadow:0 6px 16px rgb(0 0 0/.32)}
+
+/* §4 — the plate. Text may float on glass; data may not. */
+.plate{background:var(--plate);border-radius:9px;padding:12px 13px}
+
+/* 3 — the literal field: a darker field inside the pane, for the machine's
+   own voice. */
+.lit{background:var(--plate);border-radius:9px;padding:12px 13px;
+  display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+.blk{font:14.5px/1.5 var(--mono);color:var(--ink);border-radius:4px}
+
+/* 6 — the chip. Base rule only: no border, no bare colour, so the four
+   .chip.gov/.ok/.warn/.crit modifier rules (a later task's) keep theirs. */
+.chip{font:700 11.5px/1 var(--mono);padding:3px 7px;border-radius:3px;color:#0b0c11}
+
+/* ─── FOUNDATION — what the primitives need to be visible at all. Byte-
+   identical to the mockup (~333-343); the ground is what glass has to admit,
+   per the mockup's own comment there ("used identically on all 21 screens").
+   Not covered by the styles-parity byte check (out of Step 4b's stated
+   scope), copied here by the same "copy the mockup, don't invent" rule. */
+*{box-sizing:border-box}
+html,body{block-size:100%}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font:var(--fs-2)/1.55 var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+
+/* ─── i18n runtime utility classes — docs/design/web-ui-mockup.html
+   (~345-355), byte-identical. `.m`/`.v` are what `t()`/`tFlat()` in
+   lib/i18n.js build for every `{m:…}`, `{mv:…}` and plain `{name}` run
+   (Task 1's grammar; owner ruling A1, §0.6) — load-bearing from the first
+   translated string this shell renders, not speculative scaffolding.
+
+   Direction KNOWN ltr: identifiers, paths, globs, commands, flags. */
+.m,code,kbd,pre{font-family:var(--mono);font-size:.87em;font-variant-numeric:tabular-nums;
+  direction:ltr;unicode-bidi:isolate}
+/* Direction UNKNOWN: anything read off disk or out of the corpus. */
+bdi{unicode-bidi:isolate}
+/* A VALUE SLOT: the isolation and nothing else — carries no colour or weight
+   of its own, so marking a value changes nothing on screen by itself. */
+.v{unicode-bidi:isolate}
+/* Paths and code stay LTR inside an RTL page — a path is not prose (spec §3,
+   "honestly out of scope"). Not in the mockup verbatim (nothing there is
+   RTL-conditional for code/pre — the rule above already makes them
+   unconditionally LTR); .path is a class no screen uses yet, kept for the
+   day one does, since the declaration costs nothing unused. */
+[dir="rtl"] code, [dir="rtl"] pre, [dir="rtl"] .path { direction: ltr; unicode-bidi: isolate; }
