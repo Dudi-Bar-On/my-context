@@ -67,16 +67,25 @@ const SCREENS = {
   status: () => import('/screens/status.js'),
   learn: () => import('/screens/learn.js'),
 };
-// FOUR groups, by TENSE, in the mockup's own order. `watch` and `ask` join
-// nav.ev (plan 3); `work`, `capture`, `palette`, `config` join nav.ch (plan
-// 2). `docs` and `tut` belong to nav.read and are unassigned (§0.4). A group
-// with nothing in it yet renders as nothing (renderNav below), not as a bare
-// heading — nav.ch is empty until plan 2 lands.
+// FOUR groups, by TENSE, and ALL TWENTY-ONE SCREENS, in the mockup's own
+// order (`web-ui-mockup.html` ~1260-1290).
+//
+// It used to list only the ten screens that were built, which is why the rail
+// showed 10 entries against the mockup's 21 and read as a different product.
+// Hiding a screen because its content is not written yet tells the reader the
+// product is smaller than it is; the mockup answers this itself, and the
+// answer is `<span class="prop">PROPOSED</span>` — it badges `proc`,
+// `port` and `packs` exactly that way. So every screen is listed, and the
+// ones with no module behind them carry that badge.
+//
+// The list is spelled here rather than derived from SCREENS, deliberately:
+// derived, a screen would silently leave the rail the moment its import broke,
+// and the rail is how a person learns what exists.
 const NAV = [
   ['nav.inj', ['preview', 'coverage', 'gaps', 'simulate', 'injected']],
-  ['nav.ev', ['doctor', 'decay', 'graph', 'status']],
-  ['nav.ch', []],
-  ['nav.read', ['learn']],
+  ['nav.ev', ['watch', 'ask', 'doctor', 'decay', 'graph', 'status']],
+  ['nav.ch', ['work', 'capture', 'palette', 'config', 'proc', 'port', 'packs']],
+  ['nav.read', ['docs', 'tut', 'learn']],
 ];
 
 let token = null;
@@ -196,33 +205,189 @@ async function loadSessions() {
   for (const fn of sessionListeners) fn(sessionValue);
 }
 
+/**
+ * **The provenance bar and the status strip — the app's two missing rows.**
+ *
+ * `.app` declares `grid-template-rows:46px 1fr 26px 30px` with areas
+ * `top / rail body / prov / strip`, so the grid reserved both rows from the day
+ * the shell landed while nothing was ever built to sit in them. 26 + 30 = 56,
+ * and that is exactly the band of bare `.app` the owner saw across the bottom
+ * of every screen, showing the body's gradient through.
+ *
+ * BUILT IN SCRIPT, NOT COPIED AS MARKUP, and that is deliberate. The mockup
+ * writes these as static HTML carrying `data-t` attributes and scans for them.
+ * This app has no such scanner — `index.html` contains zero `data-t`
+ * attributes and every string it draws comes through `translate()` — so
+ * pasting the mockup's markup would ship English literals the א/A toggle could
+ * never reach. Take the mockup's DESIGN, never its BEHAVIOUR: the classes, the
+ * order and the states are the mockup's; how the text gets there is this app's.
+ *
+ * WHAT IS REAL, AND WHAT IS HONESTLY ABSENT. The git group is live off
+ * `/api/meta`'s `git`, whose four `upstream` values map one-to-one onto the
+ * mockup's states; the item count is live off `/api/status`. The context group
+ * renders `strip.ctx.noBridge` — its own keyed state for "no status line
+ * bridge is installed" — which is the true answer here, not a blank.
+ *
+ * NOT BUILT, and named rather than dropped: "injections today" and the audit
+ * append p95. Both need an audit aggregate this read surface does not expose,
+ * and inventing a number for a bar whose whole job is provenance would be the
+ * exact defect this bar exists to prevent. Their separators are omitted with
+ * them, so the strip reads as a shorter TRUE bar rather than a complete one
+ * with holes.
+ */
+function renderChrome() {
+  const app = document.getElementById('app');
+  if (app === null) return;
+
+  // Present and empty: the bar is "one home for every qualification the
+  // screens owe", and when no screen owes one there is nothing to say. The
+  // row is reserved by the grid either way, so building it empty is what
+  // stops the background showing through; screens fill #provparts later.
+  if (document.getElementById('prov') === null) {
+    const prov = document.createElement('div');
+    prov.className = 'prov';
+    prov.id = 'prov';
+    prov.setAttribute('aria-label', flat(table.strings, 'aria.prov'));
+    const parts = document.createElement('span');
+    parts.className = 'provparts';
+    parts.id = 'provparts';
+    prov.append(parts);
+    app.append(prov);
+  }
+
+  let strip = document.getElementById('strip');
+  if (strip === null) {
+    strip = document.createElement('footer');
+    strip.className = 'strip';
+    strip.id = 'strip';
+    app.append(strip);
+  }
+  strip.replaceChildren();
+
+  const sep = () => {
+    const e = document.createElement('span');
+    e.className = 'sep';
+    return e;
+  };
+
+  const git = document.createElement('span');
+  git.className = 'gitstate';
+  git.id = 'gitstate';
+  strip.append(git, sep());
+
+  const count = document.createElement('span');
+  count.className = 'm';
+  count.id = 'stripitems';
+  const itemsLabel = document.createElement('span');
+  itemsLabel.append(...translate(table.strings, 'strip.items'));
+  strip.append(count, document.createTextNode(' '), itemsLabel, sep());
+
+  const ctx = document.createElement('span');
+  ctx.className = 'ctxstate';
+  ctx.id = 'ctx';
+  const noBridge = document.createElement('span');
+  noBridge.append(...translate(table.strings, 'strip.ctx.noBridge'));
+  ctx.append(noBridge);
+  strip.append(ctx);
+}
+
+/**
+ * Fill the strip from the two endpoints that can answer it.
+ *
+ * Separate from `renderChrome` because the shell must exist before the first
+ * fetch resolves — a bar that appears late is a layout that jumps, and the
+ * 56px row is reserved from first paint whether or not the data has landed.
+ */
+async function fillChrome() {
+  const git = document.getElementById('gitstate');
+  const count = document.getElementById('stripitems');
+  if (git === null || count === null) return;
+
+  try {
+    const meta = await api('/api/meta');
+    const g = meta.git;
+    // `branch` is checked BEFORE `detached`, because git-info.ts documents one
+    // shape where both `branch === null` and `detached === false` hold — a HEAD
+    // it could not understand — and there `upstream: 'unknown'` is what should
+    // render, never "on a branch".
+    if (g === undefined || g === null) {
+      git.append(...translate(table.strings, 'strip.notARepo'));
+    } else if (typeof g.branch === 'string') {
+      git.append(...translate(table.strings, 'strip.branch',
+        { branch: g.branch, commit: String(g.commit ?? '').slice(0, 7) }));
+      const chip = document.createElement('span');
+      const key = g.upstream === 'in-sync' ? 'strip.inSync'
+        : g.upstream === 'differs' ? 'strip.differs'
+          : g.upstream === 'no-upstream' ? 'strip.noUpstream' : 'strip.unknownTip';
+      chip.className = g.upstream === 'in-sync' ? 'chip ok' : 'chip warn';
+      chip.dataset.g = g.upstream === 'in-sync' ? '●' : '▲';
+      chip.append(...translate(table.strings, key, { branch: g.branch }));
+      git.append(chip);
+    } else if (g.detached === true) {
+      git.append(...translate(table.strings, 'strip.detached',
+        { commit: String(g.commit ?? '').slice(0, 7) }));
+    } else {
+      const chip = document.createElement('span');
+      chip.className = 'chip warn';
+      chip.dataset.g = '▲';
+      chip.append(...translate(table.strings, 'strip.unknownTip'));
+      git.append(chip);
+    }
+  } catch {
+    // A failed read is not "not a git repository" — it is nothing known, and
+    // the strip says nothing rather than guessing.
+  }
+
+  try {
+    const status = await api('/api/status');
+    count.textContent = String(status.items.total);
+  } catch { /* leave the count empty rather than show a wrong one */ }
+}
+
 function renderNav() {
   const nav = document.getElementById('nav');
   nav.replaceChildren();               // never innerHTML — see i18n above
   for (const [groupKey, names] of NAV) {
-    if (names.length === 0) continue;
     const group = document.createElement('div');
     group.className = 'grp';
     const label = document.createElement('p');
     label.append(...translate(table.strings, groupKey));
     group.append(label);
     for (const name of names) {
-      const a = document.createElement('a');
-      a.href = `#/${name}`;
-      // The RAIL LABEL, from the string table — `s.<name>` — not the route
-      // name. `preview` is a URL; "Injection preview" is the product's word
-      // for it, and it has a Hebrew pair.
-      a.append(...translate(table.strings, `s.${name}`));
-      // `.nav` is the mockup's own rail-link class (`.nav[aria-current=
-      // "page"]`, docs/design/web-ui-mockup.html ~459) — not styled by
-      // Task 16's own stylesheet (out of the primitives/utility scope this
-      // task ships; see styles.css's header), but the class and the
-      // aria-current attribute are the accessibility-load-bearing part, and
-      // both are set unconditionally so a later task's CSS lands on the
-      // right hook without a app.js change.
-      a.className = 'nav';
-      if (location.hash === `#/${name}`) a.setAttribute('aria-current', 'page');
-      group.append(a);
+      // **A <button>, not an <a>, because the mockup's rail is buttons**
+      // (`web-ui-mockup.html` ~1262: `<button class="nav" data-s="preview">`).
+      // It is not cosmetic: `e2e/mockup.ts`'s showScreen() and every spec in
+      // this suite reach the rail as `.nav[data-s="<name>"]`, so an anchor
+      // without `data-s` is a rail no test can drive.
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'nav';
+      button.dataset.s = name;
+      // The label is wrapped in its own <span>, as the mockup does, so the
+      // badge beside it is a sibling rather than part of the translated run.
+      const text = document.createElement('span');
+      text.append(...translate(table.strings, `s.${name}`));
+      button.append(text);
+
+      const built = Object.hasOwn(SCREENS, name);
+      if (built) {
+        button.addEventListener('click', () => { location.hash = `#/${name}`; });
+      } else {
+        // The mockup's own vocabulary for "named but not real yet". Untranslated
+        // there too — `<span class="prop">PROPOSED</span>` carries no data-t —
+        // so this copies it rather than inventing a key the tables do not have.
+        const badge = document.createElement('span');
+        badge.className = 'prop';
+        badge.textContent = 'PROPOSED';
+        button.append(badge);
+        // `aria-disabled`, never the `disabled` property: a disabled button
+        // leaves the tab order, so a keyboard user would never learn the screen
+        // exists — which is the whole reason it is listed. This stays reachable
+        // and announces itself as unavailable, and carries no click handler.
+        button.setAttribute('aria-disabled', 'true');
+      }
+      if (location.hash === `#/${name}`) button.setAttribute('aria-current', 'page');
+      group.append(button);
     }
     nav.append(group);
   }
@@ -304,6 +469,11 @@ async function main() {
     onSessionChange: (fn) => sessionListeners.push(fn),
     navigate: (hash) => { location.hash = hash; },
   };
+
+  // The two grid rows the shell always reserved and never filled. Drawn before
+  // the first data call so the 56px band never exists, not even for a frame.
+  renderChrome();
+  void fillChrome();
 
   await loadSessions();
   stopHeartbeat = startHeartbeat(document, () => api('/api/ping').catch(() => {}), 60_000);

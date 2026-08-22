@@ -362,6 +362,55 @@ bdi{unicode-bidi:isolate}
 .body{grid-area:body;overflow-y:auto;padding:var(--sp-4);min-inline-size:0}
 
 /* index.html's `<div class="banner" id="exited">` (app.js's showExited). */
+/* ── CARRIED: the provenance bar and the status strip ─────────────────────
+   Byte-identical from `docs/design/web-ui-mockup.html` (~663-695).
+
+   These two were never carried, and their absence is the 56px band of bare
+   `.app` the owner saw across the bottom of every screen: `.app` declares
+   `grid-template-rows:46px 1fr 26px 30px` with areas `top / rail body / prov
+   / strip`, so the grid reserved both rows whether or not anything was built
+   to sit in them. 26 + 30 = 56. The grid was right; the markup was missing.
+
+   `.prov [hidden]` and `.strip [hidden]` are not redundant with the UA sheet
+   and the mockup says why: these are flex containers, and `.chip` sets
+   `display`, which beats `[hidden]` at equal specificity. Both bars show one
+   state out of several and hide the rest, so without these rules every state
+   would paint at once. */
+/* provenance bar — one home for every qualification the screens owe */
+.prov{grid-area:prov;background:var(--panel-2);border-block-start:1px solid var(--rule);
+  display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);
+  font-size:var(--fs-0);color:var(--dim);overflow-x:auto;white-space:nowrap}
+.prov b{color:var(--warn);font-weight:600}
+/* The painted parts and the keyed projection group are each one flex item, so
+   each lays its own label/value pairs out the way the bar lays out theirs. */
+.provparts,.provproj{display:flex;align-items:center;gap:var(--sp-3)}
+/* The projection group shows one of three states and hides the other two. Same
+   trap `.strip [hidden]` dodges below: a hidden child stays hidden only while
+   nothing else sets its `display`, and this bar is a flex container. */
+.prov [hidden]{display:none}
+
+/* status strip */
+.strip{grid-area:strip;background:var(--panel);border-block-start:1px solid var(--rule);
+  display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);
+  font-size:var(--fs-0);color:var(--dim)}
+.strip .sep{inline-size:1px;block-size:14px;background:var(--rule)}
+/* The git group shows one of six states; the rest are `hidden`. .chip sets
+   `display`, and an author rule beats the UA sheet's [hidden] at equal
+   specificity — the same trap .pop[hidden] and .pane[hidden] already dodge. */
+.strip [hidden]{display:none}
+.gitstate,.ctxstate{display:flex;align-items:center;gap:var(--sp-3)}
+/* The no-bridge state is a whole SENTENCE in a bar sized for a phrase, and the
+   known state is a long one. Exactly one item in the strip is allowed to give
+   way, and it is that one: everything else is `flex:none`, so a squeeze cannot
+   wrap the git chip or shave the separators, and the context group ellipsizes
+   instead. `min-inline-size:0` is what lets a flex item shrink below its
+   content at all — without it the group refuses and pushes the strip's tail
+   off the end. */
+.strip>*{flex:0 0 auto}
+.ctxstate{flex:1 1 auto;min-inline-size:0}
+.ctxstate>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+
 .banner{position:fixed;inset-block-end:64px;inset-inline:var(--sp-3);background:var(--critbg);
   border:1px solid var(--crit);color:var(--crit);border-radius:var(--r-lg);
   padding:var(--sp-2) var(--sp-3);font-size:var(--fs-1);display:flex;gap:var(--sp-2);
@@ -370,6 +419,62 @@ bdi{unicode-bidi:isolate}
 
 /* ─── Screen head — parts.js's screenHead(), every screen's opening
    `.phd`+`h2`+`.verdict` then `.psub` (mockup ~503-505). */
+/* ── CARRIED: the rail's badges and the navigation crossfade ──────────────
+   Byte-identical from `docs/design/web-ui-mockup.html`. `.nav` and `.grp`
+   were already carried; these were not, because until now the rail built no
+   badges and the body held one screen's loose children rather than 21 stacked
+   sections.
+
+   `.cnt` is the count pill (`7` beside Coverage gaps, `2` beside Doctor);
+   `.prop` is the PROPOSED badge the mockup itself uses to mark a screen that
+   is named but not yet real — which is exactly what this app needs for the
+   eleven screens plans 2 and 3 have not built.
+
+   The crossfade block is the one that was wholly missing, and its absence is
+   why `.body` was a plain block: the mockup stacks every `[data-p]` screen in
+   ONE grid cell so an outgoing and incoming screen overlap for ~180ms instead
+   of the incoming one being laid out below the outgoing one, which reads as a
+   jump-cut. Nothing in the app carried `.body{display:grid}` at all —
+   `grep -c data-p styles.css` returned 0 before this. */
+.cnt{font-family:var(--mono);font-size:11px;padding-inline:4px;border-radius:var(--r-sm);
+  border:1px solid var(--edge-3);color:var(--dim);direction:ltr;unicode-bidi:isolate}
+.cnt.x{color:var(--warn);border-color:var(--warn)}
+.prop{font-size:10.5px;letter-spacing:.05em;color:var(--warn);border:1px solid var(--warn);
+  border-radius:var(--r-sm);padding-inline:3px}
+
+/* Task 8 — navigation crossfade (spec §5). The rail never moves; only
+   .body's current [data-p] screen changes, and it crossfades at --dur-nav
+   rather than travelling — nothing here is translateX, so there is no axis
+   for dir="rtl" to mirror and Hebrew costs nothing.
+   `display` rides along in the transition list with `allow-discrete`, and
+   `@starting-style` supplies the frame a hidden→visible flip has no prior
+   frame to animate from (without it the browser skips the transition
+   outright, per spec — a `[hidden]` element was never rendered, so there is
+   no "before" frame to interpolate from until one is declared explicitly).
+   Screen-only: `@media print` above already owns [data-p]'s display with its
+   own `!important` rules, and a leaked `opacity:0` would print invisible ink
+   on the one screen print still renders — checked against
+   e2e/print.spec.ts before landing this, not assumed safe. */
+@media screen{
+  [data-p][hidden]{opacity:0}
+  /* Stacks the outgoing and incoming screen in the same box for the ~180ms
+     both are simultaneously un-hidden mid-crossfade; ordinary block flow
+     would lay the incoming screen out BELOW the outgoing one instead of over
+     it, which reads as a jump-cut, not a fade. Inert outside that window: a
+     `[hidden]` (display:none) pane never occupies a grid track, and with
+     motion reduced no two panes are ever simultaneously un-hidden in the
+     first place — go() flips every pane's `hidden` attribute in one
+     synchronous pass, with no frame in between for a viewer to see. */
+  .body{display:grid}
+  .body>[data-p]{grid-column:1;grid-row:1}
+}
+@media screen and (prefers-reduced-motion:no-preference){
+  [data-p]{transition:opacity var(--dur-nav) var(--ease),
+    display var(--dur-nav) allow-discrete}
+  @starting-style{ [data-p]:not([hidden]){opacity:0} }
+}
+
+
 .phd{display:flex;flex-wrap:wrap;gap:6px var(--sp-3);align-items:baseline;margin-block-end:3px}
 .verdict{font-size:var(--fs-0);color:var(--dim)}
 .psub{color:var(--dim);font-size:var(--fs-1);margin:0 0 var(--sp-4);max-inline-size:78ch}

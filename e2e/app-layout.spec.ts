@@ -47,12 +47,21 @@ test('the app boots authenticated and draws the corpus, not an empty shell', asy
   // The complaint this answers, in the owner's words: "it does not include any
   // info on screen only clean background". A page that painted its background
   // and nothing else satisfied every gate we had.
-  const text = await page.evaluate(() => {
-    const body = document.querySelector<HTMLElement>('.body') ?? document.body;
-    return (body.innerText ?? '').trim();
-  });
-  expect(text.length, `the main region rendered ${text.length} characters of text — ` +
-    'a page with a background and no content is the failure this asserts against')
+  // POLLED. The fixture resolves on the rail, which is drawn before the first
+  // /api response lands — and since the shell also builds the provenance bar
+  // and the strip before the router runs, there is now a real window where the
+  // rail exists and the screen is still empty. Sampling once measured whether
+  // the fetch happened to have returned. retries are 0 by policy here, so that
+  // is not flake, it is a wrong test.
+  await expect
+    .poll(() => page.evaluate(() => {
+      const body = document.querySelector<HTMLElement>('.body') ?? document.body;
+      return (body.innerText ?? '').trim().length;
+    }), {
+      message: 'the main region never rendered more than a background — a page with ' +
+        'no content is the failure this asserts against',
+      timeout: 10_000,
+    })
     .toBeGreaterThan(200);
 
   // An exit banner while the server is plainly alive means the page lost its
@@ -122,16 +131,16 @@ test('the page never scrolls sideways on any screen', async ({ app }) => {
  * Written generically rather than as "prov and strip must exist", because the
  * defect is the empty band and the next one will be in a different row.
  *
- * `test.fail()` because the gap is REAL and still open: the mockup declares
- * both elements (`web-ui-mockup.html` ~2369 and ~2376) and `index.html` builds
- * neither. Marking it expected-to-fail keeps the suite honest in both
- * directions — the gap is recorded IN the suite rather than in a TODO nobody
- * reads, and the day someone builds them this test PASSES, which makes
- * `test.fail()` itself fail and forces this annotation to be removed. It cannot
- * rot into a permanently-ignored red.
+ * **This carried a `test.fail()` and no longer does, which is the annotation
+ * working exactly as designed.** The gap was real when it was written: the
+ * mockup declared both elements (`web-ui-mockup.html` ~2369 and ~2376) and
+ * `index.html` built neither, so the grid reserved 26 + 30 = 56px that nothing
+ * filled. Recording it as expected-to-fail put the gap IN the suite rather than
+ * in a TODO nobody reads. When `app.js` grew `renderChrome()` the test started
+ * passing, which made `test.fail()` itself fail and forced this edit. It could
+ * not rot into a permanently-ignored red, and it did not.
  */
 test('every row of the app shell is occupied — no empty band', async ({ app }) => {
-  test.fail();
   const gaps = await app.page.evaluate(() => {
     const shell = document.querySelector<HTMLElement>('.app');
     if (shell === null) return [{ from: 0, to: 0, note: 'no .app element at all' }];
