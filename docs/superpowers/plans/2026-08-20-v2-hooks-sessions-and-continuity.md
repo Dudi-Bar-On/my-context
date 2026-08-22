@@ -101,8 +101,8 @@ Every row names the **class** of error, not only the instance.
 | The survey quotes `hooks.json`'s commands as `node "${CLAUDE_PLUGIN_ROOT}/src/hooks/….ts"` | **Every command in the manifest carries `--disable-warning=ExperimentalWarning`** — four when this row was written, **six** since Tasks 7 and 11 registered `PostToolUseFailure` and `SubagentStart` — `hooks/hooks.json` · `--disable-warning=ExperimentalWarning` · ~10. A new block copied from the survey's quotation writes an `ExperimentalWarning` to stderr on **every subagent dispatch** | A manifest is copied from the file it configures, never from a document quoting it | Tasks 7, 11 |
 | The survey cites `preToolUseContext` at `io.ts:70-74`, `ledgerKey` at `:46-49`, `pre-tool-use.ts`'s entry guard at `:363-377` | `preToolUseContext` is at ~169, the entry guard at ~376. `ledgerKey` really is at ~46 | Survey line numbers are hints that drift; the verbatim fragment is the identity, and every citation below carries one | all tasks |
 | The survey measured **15** `.seen.jsonl` files for one session id | On 2026-08-20 the same directory holds **47**: one parent, **45** `session::agent` siblings for the same session id, and one unrelated. Roughly a tripling in one day. **Re-measured 2026-08-21 while implementing Task 6:** that directory is unchanged at 47 — and it is not the only one. The OUTER workspace, the root this project's own `mycontext` commands are run from, holds a **separate** `state/` with **27** seen files across **7** distinct parent ids, **20** of them `session::agent` siblings of the same session id. One session id therefore owns 65 seen files across two workspaces, and neither directory's count predicts the other's | A growth measurement taken once is a lower bound, not a rate — and a count taken in one workspace is not the count, because `state/` is per workspace and a session writes into whichever one it was launched from | Tasks 6, 12 |
-| The survey recommends the audit projection as the carry source, *"the strongest: it records the `index` tier too"* | This plan reads the **source session's seen file**. `core/audit.ts` · `the hook path calls this` · ~410 documents `readAudit` as off the hook path *by design*, and `SessionStart` carries a 500 ms budget. The cost is named in Task 18: an item the source session only ever saw as an index line is not carried | A read that is correct for a CLI surface is not automatically affordable on a latency-budgeted hook path | Task 18 |
-| §6c / §6g / §6m.11: carried lines *"deduplicate against the new session's own index first"*, and what survives *"queues inside the same `budgets.index`"* | **The dedupe can leave no residue of extra lines.** `buildIndex`'s candidate set is every eligible normative item not already delivered in full — `core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~358 — so a carried id that still governs is **always already a candidate**. Carry is therefore a **priority and a marker on an existing candidate**, never an added line; a carried id that is *not* a candidate is not shown at all and is disclosed with a reason. Measured on this repository's own corpus: 44 items, 7 pinned, **18 index lines, 0 truncated** — a naive "add the carried lines" implementation would add nothing and report success | A dedupe rule stated over two sets that are, by construction, one set | Tasks 17, 19 |
+| The survey recommends the audit projection as the carry source, *"the strongest: it records the `index` tier too"* | This plan reads the **source session's seen file**. `core/audit.ts` · `the hook path calls this` · ~594 documents `readAudit` as off the hook path *by design*, and `SessionStart` carries a 500 ms budget. The cost is named in Task 18: an item the source session only ever saw as an index line is not carried | A read that is correct for a CLI surface is not automatically affordable on a latency-budgeted hook path | Task 18 |
+| §6c / §6g / §6m.11: carried lines *"deduplicate against the new session's own index first"*, and what survives *"queues inside the same `budgets.index`"* | **The dedupe can leave no residue of extra lines.** `buildIndex`'s candidate set is every eligible normative item not already delivered in full — `core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~522 — so a carried id that still governs is **always already a candidate**. Carry is therefore a **priority and a marker on an existing candidate**, never an added line; a carried id that is *not* a candidate is not shown at all and is disclosed with a reason. Measured on this repository's own corpus: 44 items, 7 pinned, **18 index lines, 0 truncated** — a naive "add the carried lines" implementation would add nothing and report success | A dedupe rule stated over two sets that are, by construction, one set | Tasks 17, 19 |
 | §6c: `SubagentStart` blocks, *"and `INV-hooks-fail-open` applies at full force"* | §6j corrects this and the corrected form is a Global Constraint above: the invariant is satisfied by an **external kill**, not by anything mycontext does. There is no in-process bound on the synchronous selection and this plan does not add one | An invariant named as covering a risk it does not describe | Tasks 9, 10, 11 |
 | §6a: *"Clearing the seen file when the window is destroyed"* | **No delete or truncate existed anywhere in the module when this plan was written.** `core/seen-file.ts` exported `seenFilePath`, `appendSeen`, `readSeen`, `seenIds` and `restoredFor` and nothing else; the only removal path in the product was a 30-day mtime sweep behind a manual `mycontext rebuild`. **Task 6 shipped the operation on 2026-08-21** — `core/seen-file.ts` · `export function clearSeen(root: string, sessionId: string): ClearSeenReport {` · ~290 — and it *does* reach the `session::agent` siblings, by an anchored filename prefix, in every case where the parent id's own shape lets that prefix be computed; where it cannot, it says so rather than reporting a sweep | A decision that names an operation is checked against the module that would have to provide it | Tasks 6, 8 |
 | §6g's first form of the naming command — *"`mycontext session name <name>` renames the current session"* | Withdrawn by §6m.8. `mycontext session name <id> <name>`, with `mycontext session list` to find the id. `core/focus.ts` · `has a trustworthy session id: the CLI runs in a terminal and is handed none,` · ~25 records the codebase hitting this and conceding it | A command's argument list is derived from what its process can actually know | Tasks 14, 15, 16 |
@@ -118,9 +118,9 @@ proposal awaiting a ruling, it now states the ruling.
 
 | Was | Is | Class | Where |
 |---|---|---|---|
-| This plan's own proposal, awaiting a ruling: front-of-queue is where the ordering ruling lives, **and §6m.11 does not make it** — and, in the decisions-it-does-not-make list, *"whether a carried line may displace a line the new session's own index would otherwise show"* | **§6n.2 makes it.** Carried lines take priority; a line the new session would otherwise have shown is **displaced**, and the displaced line spills visibly. The proposal becomes the implementation, and the open question leaves the decisions-not-made list. §6n.2's own words are the shape the plan must now build: *"displace something, and say so."* So the **disclosure** is specified as concretely as the priority — which matters because `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59 drops an index-**only** spill from the rendered spill note, so "spills exactly as any other index line does" alone would have meant a displaced line disclosed to the model as nothing but "+N more" | A ruling that costs somebody a line is not delivered until the cost is said out loud, in the surface the cost is paid in | Decisions-not-made list (third bullet removed), decision 9, Tasks 3, 17, 19, 20 |
+| This plan's own proposal, awaiting a ruling: front-of-queue is where the ordering ruling lives, **and §6m.11 does not make it** — and, in the decisions-it-does-not-make list, *"whether a carried line may displace a line the new session's own index would otherwise show"* | **§6n.2 makes it.** Carried lines take priority; a line the new session would otherwise have shown is **displaced**, and the displaced line spills visibly. The proposal becomes the implementation, and the open question leaves the decisions-not-made list. §6n.2's own words are the shape the plan must now build: *"displace something, and say so."* So the **disclosure** is specified as concretely as the priority — which matters because `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~143 drops an index-**only** spill from the rendered spill note, so "spills exactly as any other index line does" alone would have meant a displaced line disclosed to the model as nothing but "+N more" | A ruling that costs somebody a line is not delivered until the cost is said out loud, in the surface the cost is paid in | Decisions-not-made list (third bullet removed), decision 9, Tasks 3, 17, 19, 20 |
 | §6c/§6j on the killed hook, restated by this plan as its own residual risk: a subagent can be killed mid-delivery and **nothing is written, so nothing says it happened** — *"the one hole this plan opens and does not close"* | **§6n.3 closes it, and rules the 5-second timeout and the write ordering as ONE decision.** The hook **records the intent to deliver before doing the work**, so a kill leaves a record saying delivery was attempted and did not complete. What remains open is narrower and is still stated plainly: that subagent runs with none of this project's knowledge — the record discloses the loss, it does not prevent it | Evidence has to be written before the thing that can kill you, or it is not evidence. A hole named honestly is still a hole; naming it is not the fix | Decision 5, Tasks 9, 10, 11 |
-| Task 4 registers two new audit ops and says nothing about a reader that does not know them | **§6n.5 rules that the audit log gains a format version, now.** The same validator that refuses an unknown *kind* refuses an unknown **op** — `core/audit.ts` · `declares op ${JSON.stringify(row.op)}, which is not one of` · ~470 — so Task 4's two ops break a v1.0.2 reader by exactly the mechanism §6n.5 argues from, and Task 4 could be the first commit that does it. **The version field is not implemented here.** It is one edit beside `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59, and its owner is `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md`, which adds the new `AuditKind` §6n.5 argues from and already owns the `CHANGELOG.md` disclosure of the downgrade break. Task 4 gains a precondition and a named escalation | Two plans implementing one shared field is the second-spelling defect this project has paid for four times. A shared decision gets one owner; every other plan records the dependency and implements none of it | Task 4, "What this plan is not doing" |
+| Task 4 registers two new audit ops and says nothing about a reader that does not know them | **§6n.5 rules that the audit log gains a format version, now.** The same validator that refuses an unknown *kind* refuses an unknown **op** — `core/audit.ts` · `declares op ${JSON.stringify(row.op)}, which is not one of` · ~470 — so Task 4's two ops break a v1.0.2 reader by exactly the mechanism §6n.5 argues from, and Task 4 could be the first commit that does it. **The version field is not implemented here.** It is one edit beside `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~83, and its owner is `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md`, which adds the new `AuditKind` §6n.5 argues from and already owns the `CHANGELOG.md` disclosure of the downgrade break. Task 4 gains a precondition and a named escalation | Two plans implementing one shared field is the second-spelling defect this project has paid for four times. A shared decision gets one owner; every other plan records the dependency and implements none of it | Task 4, "What this plan is not doing" |
 | The scope split's *"`runbook` steps and the `## Steps` file-format change"*, and *"`todo` and `note`"* as the new categories | **§6o reverses §6m.1: both categories exist.** `runbook` ships **unchanged** and repeatable; the steps, the lifecycle and the `## Steps` field belong to the new one-shot **`procedure`**, and the count of new categories is **three**. Those two lines of the scope split are the whole of §6o's reach into this plan: it references no `runbook` progress, no `runbook` audit op and no `mycontext runbook step`, so there is nothing else here to rename | A category renamed in a sibling plan reaches every document that named the category — including the ones that named it only in order to exclude it | Scope split |
 
 ### Written while implementing Task 9 — 2026-08-21
@@ -159,7 +159,7 @@ repeating itself one task later.
 
 | Was | Is | Class | Where |
 |---|---|---|---|
-| Task 11 Step 3 on the SIGKILL assertion: *"Make the work slow **deterministically** — hold the index write lock from the test process"* | **The same dead mechanism the Task 10 row above already recorded, prescribed again one task later.** The subagent event opens no database at all — `core/inject.ts` · `**THE SUBAGENT EVENT SKIPS THIS ENTIRELY**` · ~533 — so a held lock is invisible to this hook and cannot delay it by a millisecond. Shipped with a block that IS deterministic and needs no lock: the child is spawned with `--import` and a preload that replaces `JSON.parse` with one that blocks the thread forever the first time it sees a sentinel this test planted in `config.json`. The parse it stops at is `core/workspace.ts` · `raw = JSON.parse(readFileSync(configPath, 'utf8'));` · ~34, the first thing `buildInjection` does, so the child is provably past the attempt record and provably short of the selection; it writes a marker file when it gets there, and the kill is sequenced on that file rather than on any clock. Falsified before being trusted: moving the same sentinel into the PAYLOAD, so the block fires before the attempt record, leaves the audit log absent entirely — which is what the test would report as a failure | A prescribed test mechanism is checked against the code path as it stands on the day the test is written — and a correction recorded against one task does not propagate itself to the next task that copied the same sentence | Tasks 10, 11 |
+| Task 11 Step 3 on the SIGKILL assertion: *"Make the work slow **deterministically** — hold the index write lock from the test process"* | **The same dead mechanism the Task 10 row above already recorded, prescribed again one task later.** The subagent event opens no database at all — `core/inject.ts` · `**THE SUBAGENT EVENT SKIPS THIS ENTIRELY**` · ~559 — so a held lock is invisible to this hook and cannot delay it by a millisecond. Shipped with a block that IS deterministic and needs no lock: the child is spawned with `--import` and a preload that replaces `JSON.parse` with one that blocks the thread forever the first time it sees a sentinel this test planted in `config.json`. The parse it stops at is `core/workspace.ts` · `raw = JSON.parse(readFileSync(configPath, 'utf8'));` · ~34, the first thing `buildInjection` does, so the child is provably past the attempt record and provably short of the selection; it writes a marker file when it gets there, and the kill is sequenced on that file rather than on any clock. Falsified before being trusted: moving the same sentinel into the PAYLOAD, so the block fires before the attempt record, leaves the audit log absent entirely — which is what the test would report as a failure | A prescribed test mechanism is checked against the code path as it stands on the day the test is written — and a correction recorded against one task does not propagate itself to the next task that copied the same sentence | Tasks 10, 11 |
 | Task 11 Step 1: *"Write the perf test and watch it fail"* | **It cannot fail for the reason the step gives.** The parenthetical — *"no binary registered yet is fine — it imports the function"* — is the whole of it: the function shipped in Task 10, so a perf test written over it is green on its first run, and a red-first step that cannot go red proves nothing about the assertion. Falsified deliberately instead: the ceiling was driven to ~0, the assertion went red twice and printed the measurement (243.4 ms, then 200.9 ms), and the ceiling was restored. Recorded because "watch it fail" is a real instruction and skipping it silently is how a perf test that asserts nothing ships | A red-first step is meaningful only where the subject does not exist yet; a test written after its subject needs a different falsification, not a skipped one | Task 11 |
 | Task 11's case for `timeout: 5`: a subagent *"dispatched while another process holds the index write lock (`core/store.ts` · `Worst case ~1.06s: two attempts` · ~122) plus the per-line append backoff"* | **Half that arithmetic is not on this path.** The contended store open cannot happen on the subagent event for the reason in the first row. What IS on it, measured rather than assumed: the corpus parse plus selection plus render — p95 184.8 ms on a 500-item corpus on a loaded machine, against 212.4 ms for SessionStart's own case measured back to back in the same process — plus the seen-file append, whose worst case really does scale with the delivered lines (`core/seen-file.ts` · `= 200 ms of backoff PER LINE` · ~81) and which measured ~40 ms for 25 lines. **Plus a cold `node` start that nothing in this repository measures at all.** The 5 stands; the reasoning for it is now the measured path rather than the lock | A budget is justified against the path it actually bounds, and the components nobody measured are named rather than rounded away | Task 11 |
 | Task 11 Step 3 orders *"Rewrite the header"* of a file this plan CITES — twice, at §7 and inside the step itself | Both citations went broken the moment the rewrite landed, and `npm run verify:citations` exited 1 on them. Repaired as the gate intends, with a line-scoped historical-citation marker on each — the form this gate documents, closed on one line, carrying its reason, because the pre-change wording is exactly what those two lines are quoting | A step that orders a change to text the plan quotes has to expect the plan's own citations to become historical, and says so where it orders the change | Task 11 |
@@ -177,22 +177,22 @@ says "establish by executing" instead of asserting it.
 
 | Fact | Where verified |
 |---|---|
-| `ledgerKey` returns `session_id` alone for a parent and `session_id::agent_id` for a subagent | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string` · ~46 |
-| …and it reads only those two fields, so the same payload shape produces the same key at any event | `hooks/io.ts` · `return input.agent_id ?` · ~48 |
+| `ledgerKey` returns `session_id` alone for a parent and `session_id::agent_id` for a subagent | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string` · ~61 |
+| …and it reads only those two fields, so the same payload shape produces the same key at any event | `hooks/io.ts` · `return input.agent_id ?` · ~63 |
 | `agent_id` is declared on `HookInput` and is the only subagent discriminator the hooks have | `hooks/io.ts` · `agent_id?: string;` · ~23 |
 | `source` is declared as `SessionStart only`, with `clear` already named | `hooks/io.ts` · `SessionStart only: startup` · ~8 |
-| Stdin was read **only synchronously** in the shared IO module when this plan was written; Task 5 adds `readStdinAsync` beside it and `readStdin` is unchanged | `hooks/io.ts` · `return readFileSync(0, 'utf8');` · ~54 |
-| The only output envelope builder was `PreToolUse`-specific — Task 5 generalises it to `hookContext` and this function stays as its one-line wrapper | `hooks/io.ts` · `export function preToolUseContext(text: string): string {` · ~169 |
-| …and its envelope shape is `hookSpecificOutput` + `additionalContext`, which Task 5 preserves byte for byte in `hookContext` | `hooks/io.ts` · `hookSpecificOutput: { hookEventName: event, additionalContext: text },` · ~183 |
-| `io.ts` already records that `AUDIT_OPS` is closed and the reader refuses a whole segment on an unknown op | `hooks/io.ts` · `refuses a whole segment on an unknown op` · ~144 |
-| `SessionStart` writes **raw text**, not a JSON envelope | `hooks/session-start.ts` · `if (text) process.stdout.write(text);` · ~59 |
-| …and documents that it deliberately carries no runtime safety timer | `hooks/session-start.ts` · `// No runtime safety timer here: buildSessionStartOutput is fully` · ~39 |
+| Stdin was read **only synchronously** in the shared IO module when this plan was written; Task 5 adds `readStdinAsync` beside it and `readStdin` is unchanged | `hooks/io.ts` · `return readFileSync(0, 'utf8');` · ~69 |
+| The only output envelope builder was `PreToolUse`-specific — Task 5 generalises it to `hookContext` and this function stays as its one-line wrapper | `hooks/io.ts` · `export function preToolUseContext(text: string): string {` · ~250 |
+| …and its envelope shape is `hookSpecificOutput` + `additionalContext`, which Task 5 preserves byte for byte in `hookContext` | `hooks/io.ts` · `hookSpecificOutput: { hookEventName: event, additionalContext: text },` · ~241 |
+| `io.ts` already records that `AUDIT_OPS` is closed and the reader refuses a whole segment on an unknown op | `hooks/io.ts` · `refuses a whole segment on an unknown op` · ~191 |
+| `SessionStart` writes **raw text**, not a JSON envelope | `hooks/session-start.ts` · `if (text) process.stdout.write(text);` · ~114 |
+| …and documents that it deliberately carries no runtime safety timer | `hooks/session-start.ts` · `// No runtime safety timer here: buildSessionStartOutput is fully` · ~93 |
 | `PreToolUse` documents the same, and names `hooks.json` as the real bound | `hooks/pre-tool-use.ts` · `// No runtime safety timer here: runPreToolUse is fully synchronous, so a` · ~376 |
 | `PreToolUse` keys its seen file on `ledgerKey`, not the bare session id | `hooks/pre-tool-use.ts` · `const dedupeKey = ledgerKey(input)!;` · ~135 |
 | …on both the read | `hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~183 |
-| `PostToolUse` was the **only** hook with an in-process timeout when this row was written; **`SubagentStart` gained the same unref'd 2 s timer in Task 11**, so two of the six carry one and four do not | `hooks/post-tool-use.ts` · `const timer = setTimeout(() => process.exit(0), 2000);` · ~121 |
+| `PostToolUse` was the **only** hook with an in-process timeout when this row was written; **`SubagentStart` gained the same unref'd 2 s timer in Task 11**, so two of the six carry one and four do not | `hooks/post-tool-use.ts` · `const timer = setTimeout(() => process.exit(0), 2000);` · ~132 |
 | …and it works only because stdin is read asynchronously — the reader itself moved to `io.ts` in Task 5 and the timer did not follow it | `hooks/post-tool-use.ts` · `process.stdin.on('end', () => resolve(data));` · ~100 <!-- historical-citation: quotes the reader in the file it was moved OUT of; Task 5 makes it `hooks/io.ts` · `process.stdin.on('end', () => resolve(data));` --> |
-| …which the file states as the reason no timer can help the other four | `hooks/post-tool-use.ts` · `A synchronous readFileSync(0), by contrast, blocks the thread` · ~115 |
+| …which the file states as the reason no timer can help the other four | `hooks/post-tool-use.ts` · `A synchronous readFileSync(0), by contrast, blocks the thread` · ~120 |
 | `PreCompact` is the precedent for an audit-only hook that injects nothing | `hooks/pre-compact.ts` · `export function buildRestoreSnapshot(` · ~23 |
 | …and for disclosing a state-file failure on stderr **and** in the audit log, still exiting 0 | `hooks/pre-compact.ts` · `SNAPSHOT WRITE FAILED (` · ~90 |
 | `SessionStart`'s matcher already includes `clear`, so the hook fires on `/clear` today | `hooks/hooks.json` · `"matcher": "startup` · ~6 |
@@ -203,48 +203,48 @@ says "establish by executing" instead of asserting it.
 
 | Fact | Where verified |
 |---|---|
-| One injection implementation, shared on purpose | `core/inject.ts` · `this selection is precisely the divergence the single-write-path design` · ~22 |
-| `InjectionEvent` is a **three**-member union since 2026-08-21 — `'subagent'` joined it in Task 9; it was two when this row was written | `core/inject.ts` · `export type InjectionEvent = 'session-start'` · ~48 |
-| `source` is branched on **twice** — `compacting` here, and `clearing` immediately below it, whose own comment names itself as the other branch | `core/inject.ts` · `const compacting = options.source === 'compact';` · ~210 |
-| The session id is dropped structurally on the manual path | `core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~248 |
-| The seen file is read **after** that, and is what a clear must precede. Since Task 9 it is read under `seenKey`, which is `sessionId` on every event but `'subagent'` | `core/inject.ts` · `const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;` · ~279 |
-| The injection path opens the store **writable** for a best-effort refresh — on every event but `'subagent'`, which since Task 9 skips the whole block (design decision 3) | `core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~412 |
-| …disclosed rather than swallowed when it is dropped | `core/inject.ts` · `// 3. BEST-EFFORT INDEX REFRESH` · ~382 |
-| `source` already reaches the audit note | `core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~515 |
-| Seen entries are appended keyed on `seenKey` — the bare session id on every event but `'subagent'`, which uses `dedupeKey` and, since Task 9, never falls back to the parent's id | `core/inject.ts` · `appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({` · ~599 |
-| The MCP server's session id is a different id on a resumed session — measured, in this repository | `core/inject.ts` · `on a RESUMED session that value is a freshly-generated id that does` · ~218 |
+| One injection implementation, shared on purpose | `core/inject.ts` · `this selection is precisely the divergence the single-write-path design` · ~27 |
+| `InjectionEvent` is a **three**-member union since 2026-08-21 — `'subagent'` joined it in Task 9; it was two when this row was written | `core/inject.ts` · `export type InjectionEvent = 'session-start'` · ~57 |
+| `source` is branched on **twice** — `compacting` here, and `clearing` immediately below it, whose own comment names itself as the other branch | `core/inject.ts` · `const compacting = options.source === 'compact';` · ~290 |
+| The session id is dropped structurally on the manual path | `core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~337 |
+| The seen file is read **after** that, and is what a clear must precede. Since Task 9 it is read under `seenKey`, which is `sessionId` on every event but `'subagent'` | `core/inject.ts` · `const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;` · ~396 |
+| The injection path opens the store **writable** for a best-effort refresh — on every event but `'subagent'`, which since Task 9 skips the whole block (design decision 3) | `core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~578 |
+| …disclosed rather than swallowed when it is dropped | `core/inject.ts` · `// 3. BEST-EFFORT INDEX REFRESH` · ~548 |
+| `source` already reaches the audit note | `core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~699 |
+| Seen entries are appended keyed on `seenKey` — the bare session id on every event but `'subagent'`, which uses `dedupeKey` and, since Task 9, never falls back to the parent's id | `core/inject.ts` · `appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({` · ~806 |
+| The MCP server's session id is a different id on a resumed session — measured, in this repository | `core/inject.ts` · `on a RESUMED session that value is a freshly-generated id that does` · ~307 |
 | `SelectEvent` is a closed six-member union (`access` joined 2026-08-20, `progress` 2026-08-21) | `core/select.ts` · `export type SelectEvent = 'session-start'` · ~17 |
 | `SelectContext` is where every input to selection arrives | `core/select.ts` · `export interface SelectContext {` · ~19 |
-| The pinned tier is admitted for `session-start`, `compact` and `manual` — never `tool` | `core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~487 |
-| A tool event returns an **empty** index | `core/select.ts` · `index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,` · ~535 |
-| Seen items are removed before budgeting | `core/select.ts` · `const seen = new Set(ctx.seen ?? []);` · ~478 |
-| `buildIndex`'s candidate set is every eligible normative item not delivered in full | `core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~358 |
-| …**carried-first, then** by id since Task 17 (§6n.2); it was by id alone when this row was written. Budgeted line by line with a spill for each miss, one greedy pass per order | `core/select.ts` · `if (used + candidate.cost > budget) {` · ~460 |
-| …and it is called with the whole eligible set, not the seen-filtered one — plus the carried ids since Task 17 | `core/select.ts` · `buildIndex(eligible, merged, config, chosenIds, ctx.carried ?? null);` · ~814 |
-| `IndexSummary` is the shape every index consumer reads | `core/select.ts` · `export interface IndexSummary {` · ~52 |
-| An index line's cost is the rendered line — including the carried marker since Task 17, which widened the parameter from id/type/title alone | `core/render-item.ts` · `export function renderIndexLine(` · ~275 |
-| The index heading the renderer emits | `core/render.ts` · `const lines: string[] = ['## my_context index'];` · ~16 |
-| The full-text block's heading — the existing provenance frame | `core/render.ts` · `## my_context — these govern this project` · ~144 |
-| Default budgets, index = 1200 | `core/config.ts` · `export const DEFAULT_BUDGETS: Budgets = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };` · ~51 |
+| The pinned tier is admitted for `session-start`, `compact` and `manual` — never `tool` | `core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~756 |
+| A tool event returns an **empty** index | `core/select.ts` · `index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,` · ~842 |
+| Seen items are removed before budgeting | `core/select.ts` · `const seen = new Set(ctx.seen ?? []);` · ~785 |
+| `buildIndex`'s candidate set is every eligible normative item not delivered in full | `core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~522 |
+| …**carried-first, then** by id since Task 17 (§6n.2); it was by id alone when this row was written. Budgeted line by line with a spill for each miss, one greedy pass per order | `core/select.ts` · `if (used + candidate.cost > budget) {` · ~467 |
+| …and it is called with the whole eligible set, not the seen-filtered one — plus the carried ids since Task 17 | `core/select.ts` · `buildIndex(eligible, merged, config, chosenIds, ctx.carried ?? null);` · ~847 |
+| `IndexSummary` is the shape every index consumer reads | `core/select.ts` · `export interface IndexSummary {` · ~117 |
+| An index line's cost is the rendered line — including the carried marker since Task 17, which widened the parameter from id/type/title alone | `core/render-item.ts` · `export function renderIndexLine(` · ~281 |
+| The index heading the renderer emits | `core/render.ts` · `const lines: string[] = ['## my_context index'];` · ~90 |
+| The full-text block's heading — the existing provenance frame | `core/render.ts` · `## my_context — these govern this project` · ~291 |
+| Default budgets, index = 1200 | `core/config.ts` · `export const DEFAULT_BUDGETS: Budgets = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };` · ~56 |
 | `select` may import only pure modules | `.my_context/items/invariant/INV-select-is-pure.md` · `- [invariant] select imports only types and config` · ~29 |
-| An index miss's spill shape — the id, `tier: 'index'`, and a free-form `reason` string | `core/select.ts` · `tier: 'index' as const,` · ~575 |
-| …and an index-**only** spill is filtered **out** of the rendered spill note, so the model sees "+N more" and no reason | `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59 |
+| An index miss's spill shape — the id, `tier: 'index'`, and a free-form `reason` string | `core/select.ts` · `tier: 'index' as const,` · ~589 |
+| …and an index-**only** spill is filtered **out** of the rendered spill note, so the model sees "+N more" and no reason | `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~143 |
 
 ### The seen ledger and `state/`
 
 | Fact | Where verified |
 |---|---|
-| The seen file path, and that the key is sanitised | `core/seen-file.ts` · `export function seenFilePath(root: string, key: string): string {` · ~39 |
-| Accepted tiers are a closed set — `carried` is not one and must not become one | `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~37 |
-| The module's stated failure direction: unreadable means inject without dedupe and disclose | `core/seen-file.ts` · `unreadable seen file means "inject WITHOUT dedupe and disclose"` · ~18 |
-| An append retries per line, with a named worst case | `core/seen-file.ts` · `= 200 ms of backoff PER LINE` · ~67 |
-| Sanitisation is lossy for a composite key — a digest, not reversible | `core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~353 |
-| The restore snapshot lives beside the seen file, keyed the same way | `core/ledger.ts` · `export function snapshotPath(root: string, sessionId: string): string {` · ~361 |
-| `state/` is gitignored by the file that writes into it | `core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~406 |
-| Reading a snapshot never throws | `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta` · ~503 |
-| The only cleanup is age-based, 30 days by mtime | `core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;` · ~434 |
-| …its signature, including the per-file callback a caller needs to disclose what went | `core/ledger.ts` · `export function pruneSnapshots(` · ~456 |
-| …and its production callers are `mycontext rebuild` and `SessionStart`'s stale-state sweep | `cli/index.ts` · `const pruned = pruneSnapshots(root, undefined, (name) => {` · ~675 |
+| The seen file path, and that the key is sanitised | `core/seen-file.ts` · `export function seenFilePath(root: string, key: string): string {` · ~48 |
+| Accepted tiers are a closed set — `carried` is not one and must not become one | `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~38 |
+| The module's stated failure direction: unreadable means inject without dedupe and disclose | `core/seen-file.ts` · `unreadable seen file means "inject WITHOUT dedupe and disclose"` · ~19 |
+| An append retries per line, with a named worst case | `core/seen-file.ts` · `= 200 ms of backoff PER LINE` · ~81 |
+| Sanitisation is lossy for a composite key — a digest, not reversible | `core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~667 |
+| The restore snapshot lives beside the seen file, keyed the same way | `core/ledger.ts` · `export function snapshotPath(root: string, sessionId: string): string {` · ~675 |
+| `state/` is gitignored by the file that writes into it | `core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~720 |
+| Reading a snapshot never throws | `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta` · ~817 |
+| The only cleanup is age-based, 30 days by mtime | `core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;` · ~748 |
+| …its signature, including the per-file callback a caller needs to disclose what went | `core/ledger.ts` · `export function pruneSnapshots(` · ~770 |
+| …and its production callers are `mycontext rebuild` and `SessionStart`'s stale-state sweep | `cli/index.ts` · `const pruned = pruneSnapshots(root, undefined, (name) => {` · ~1013 |
 | A contended writable store open is bounded at ~1.06 s | `core/store.ts` · `Worst case ~1.06s: two attempts` · ~122 |
 | The transient-EPERM retry wrapper every filesystem write in `core/` goes through | `core/rebuild.ts` · `export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {` · ~205 |
 
@@ -254,39 +254,39 @@ says "establish by executing" instead of asserting it.
 |---|---|
 | `INJECTION_OPS` was closed and named no subagent op — `subagent-start` joined it 2026-08-21 | `core/audit.ts` · `export const INJECTION_OPS = ['session-start', 'compact-restore', 'jit', 'manual'] as const;` · ~94 | <!-- historical-citation: quotes the vocabulary as it stood before subagent-start and post-tool-use-failure were registered; the survey and the instruction are both about the prior state -->
 | `HOOK_OPS` was closed and named no failure op — `post-tool-use-failure` joined it 2026-08-21 | `core/audit.ts` · `export const HOOK_OPS = ['pre-compact', 'post-tool-use', 'deny'] as const;` · ~98 | <!-- historical-citation: quotes the vocabulary as it stood before subagent-start and post-tool-use-failure were registered; the survey and the instruction are both about the prior state -->
-| `KIND_OF` is the one total table; a new op must appear here too | `core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~124 |
+| `KIND_OF` is the one total table; a new op must appear here too | `core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~247 |
 | `parseAudit` **refuses** an unregistered op | `core/audit.ts` · `declares op ${JSON.stringify(row.op)}, which is not one of` · ~470 |
-| The hook-name union named four hooks; it names **six** since 2026-08-21 (`SubagentStart`, `PostToolUseFailure`) | `core/audit.ts` · `hook?: 'SessionStart'` · ~180 |
-| `LEDGER_TIERS` is what a replayed ledger claims as delivered — `carried` must stay out of it | `core/audit.ts` · `const LEDGER_TIERS = new Set(['pinned', 'jit', 'restored']);` · ~567 |
-| `readAudit` reads whole files and is documented as off the hook path | `core/audit.ts` · `the hook path calls this` · ~410 |
-| The one filter implementation, which already takes a `sessionId` | `core/audit.ts` · `export interface AuditFilter {` · ~458 |
-| The existing totality test — it catches an op with no kind, **not** a missing op | `test/core/audit.test.ts` · `for (const op of AUDIT_OPS) assert.ok(kindOf(op),` · ~225 |
-| Every record already carries a protocol string. It is `@2` since 2026-08-21 — `@1` when this row was written — this is where §6n.5's version field goes, and it is not this plan's to write | `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59 |
+| The hook-name union named four hooks; it names **six** since 2026-08-21 (`SubagentStart`, `PostToolUseFailure`) | `core/audit.ts` · `hook?: 'SessionStart'` · ~345 |
+| `LEDGER_TIERS` is what a replayed ledger claims as delivered — `carried` must stay out of it | `core/audit.ts` · `const LEDGER_TIERS = new Set(['pinned', 'jit', 'restored']);` · ~751 |
+| `readAudit` reads whole files and is documented as off the hook path | `core/audit.ts` · `the hook path calls this` · ~594 |
+| The one filter implementation, which already takes a `sessionId` | `core/audit.ts` · `export interface AuditFilter {` · ~642 |
+| The existing totality test — it catches an op with no kind, **not** a missing op | `test/core/audit.test.ts` · `for (const op of AUDIT_OPS) assert.ok(kindOf(op),` · ~317 |
+| Every record already carries a protocol string. It is `@2` since 2026-08-21 — `@1` when this row was written — this is where §6n.5's version field goes, and it is not this plan's to write | `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~83 |
 | …and a protocol mismatch is refused on **every** line, torn tail included, with "a different version" already in the message | `core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43 |
-| The audit write is deliberately ordered **before** the seen-file append, and the file says why | `core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~436 |
-| The injection record is written **only** when something was injected or spilled — **except on `'subagent'`, where Task 9 relaxed it on 2026-08-21** and the record is written unconditionally | `core/inject.ts` · `if (subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0) {` · ~554 |
+| The audit write is deliberately ordered **before** the seen-file append, and the file says why | `core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~602 |
+| The injection record is written **only** when something was injected or spilled — **except on `'subagent'`, where Task 9 relaxed it on 2026-08-21** and the record is written unconditionally | `core/inject.ts` · `if (subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0) {` · ~761 |
 
 ### Sessions
 
 | Fact | Where verified |
 |---|---|
-| Session enumeration over the audit projection, most recent first | `core/audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~447 |
+| Session enumeration over the audit projection, most recent first | `core/audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~794 |
 | …and the same answer without a projection | `cli/commands/audit.ts` · `function sessionsWithoutDb(list: AuditRecord[]): SummaryRow[] {` · ~492 |
 | …already printed to users today | `cli/commands/audit.ts` · `my_context: sessions this log has recorded (most recent ` · ~421 |
-| A third enumeration over the ledger projection | `core/ledger.ts` · `recentSessions(limit: number): string[] {` · ~242 |
-| "What that session had", from the ledger | `core/ledger.ts` · `itemsUsedIn(sessionIds: string[]): string[] {` · ~263 |
+| A third enumeration over the ledger projection | `core/ledger.ts` · `recentSessions(limit: number): string[] {` · ~487 |
+| "What that session had", from the ledger | `core/ledger.ts` · `itemsUsedIn(sessionIds: string[]): string[] {` · ~538 |
 | No writable surface has a trustworthy session id — the codebase already conceded this | `core/focus.ts` · `has a trustworthy session id: the CLI runs in a terminal and is handed none,` · ~25 |
 | …and retreated to workspace scope, one file per workspace | `core/focus.ts` · `export function focusPath(root: string): string {` · ~285 |
 | Command registration | `cli/commands/registry.ts` · `export function registerCommand(def: CommandDef): void {` · ~46 |
 | Hand-written slash commands are excluded from generation by name | `scripts/gen-commands.ts` · `const KEEP = new Set(['LoadMyContext.md']);` · ~23 |
-| …and from the parity test by the same list, kept separately | `test/plugin/commands.test.ts` · `const HAND_WRITTEN = new Set(['LoadMyContext.md']);` · ~38 |
+| …and from the parity test by the same list, kept separately | `test/plugin/commands.test.ts` · `const HAND_WRITTEN = new Set(['LoadMyContext.md']);` · ~40 |
 
 ### Tests and budgets
 
 | Fact | Where verified |
 |---|---|
 | The e2e binary test's stdin-held-open asymmetry, which Task 11 must extend | `test/hooks/hook-binaries-e2e.test.ts` · `The stdin-held-open case is PostToolUse only, deliberately.` · ~15 | <!-- historical-citation: §7 quotes the pre-Task-11 header; Task 11 rewrote that line to cover two async readers -->
-| The SessionStart latency ceiling and the CI widener | `test/perf/session-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~64 |
+| The SessionStart latency ceiling and the CI widener | `test/perf/session-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~72 |
 | …the helper itself | `test/helpers/perf.ts` · `export function perfCeiling(` · ~55 |
 | `INV-hooks-fail-open`'s observation list carries a `[limit]` for two hooks only | `.my_context/items/invariant/INV-hooks-fail-open.md` · `- [limit] PreToolUse/JIT is held to p95 under 50ms; SessionStart to 500ms #performance` · ~30 |
 | Recursive tree removal in tests goes through one owner | `test/no-bare-rmsync.test.ts` · `removeTree is the one owner` · ~42 |
@@ -340,16 +340,16 @@ line, so there is nothing a carry could add.
 
 ## Design decisions this plan fixes (so no implementer has to guess)
 
-1. **`SubagentStart` reuses `buildInjection`.** `core/inject.ts` · `this selection is precisely the divergence the single-write-path design` · ~21 says what a second selection path costs, and this
+1. **`SubagentStart` reuses `buildInjection`.** `core/inject.ts` · `this selection is precisely the divergence the single-write-path design` · ~27 says what a second selection path costs, and this
    project names "a second spelling of one concept" as the defect class it has paid for four times.
    The hook binary is a thin wrapper, exactly as `session-start.ts` is.
 2. **`SelectEvent` does not change.** A subagent gets the `'session-start'` selection: pinned in full
    plus the index. A distinct `'subagent'` member would need three new branches
-   (`core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~487
+   (`core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~756
    and two more) to arrive at the same answer. `InjectionEvent` **does** change, because the audit op,
    the hook name and the dedupe key differ.
 3. **The subagent injection skips the best-effort index refresh.** That refresh opens the store
-   **writable** (`core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~412)
+   **writable** (`core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~578)
    with a ~1.06 s contended worst case, on a path that now runs once per dispatch. The parent's
    `SessionStart` already refreshed; a subagent adds nothing but latency and lock contention.
 4. **The dedupe key is `ledgerKey(input)`, never the bare `session_id`.** Writing the parent's file
@@ -376,7 +376,7 @@ line, so there is nothing a carry could add.
    counting `subagent-start` rows counts each dispatch twice unless it reads the note. A delivery
    that legitimately carried nothing must therefore still write its `complete` record, or an empty
    corpus is indistinguishable from a kill — **Task 9 relaxed the guard on 2026-08-21** at
-   `core/inject.ts` · `if (subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0) {` · ~554
+   `core/inject.ts` · `if (subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0) {` · ~761
    for this event alone. And a subagent dispatched while another process holds the index write lock still
    loses its context entirely: the record discloses that loss, it does not prevent it.
 6. **Async stdin bounds the wait, not the work.** `SubagentStart` copies `post-tool-use.ts`'s
@@ -385,13 +385,13 @@ line, so there is nothing a carry could add.
    it. Both halves are stated in the binary's own docstring so the next reader does not infer a
    bound that is not there.
 7. **No new audit op for the clear.** The `session-start` record is written anyway
-   (`core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~515 already puts
+   (`core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~699 already puts
    `source=clear` in its note); the clear's outcome joins it there. A new op would have to be
    registered in three places and would record a second row for one event.
 8. **A clear removes the restore snapshot as well as the seen files.** A pre-clear snapshot describes
    a context window that no longer exists; a post-clear compaction restoring it would deliver items
    the current window never had. That is not over-restore within one window, it is restoring a
-   different one. Deleting is safe — `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta` · ~503
+   different one. Deleting is safe — `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta` · ~817
    degrades a missing file to `null`.
 9. **Carry is a priority and a marker, never an added index line — and the ordering is ruled by
    §6n.2, not proposed here.** See §0. A carried id that is already a candidate is hoisted to the
@@ -402,7 +402,7 @@ line, so there is nothing a carry could add.
 
    **Both halves are load-bearing, and the second one needs help.** The displaced line spills through
    the existing `spilled` path at `tier: 'index'` — no new channel, no fifth budget. But that path
-   alone does not *say* it: `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59
+   alone does not *say* it: `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~143
    drops an index-only spill from the rendered spill note, leaving a reader of the injected block
    with "+N more" and no account of the carry. So the *why* travels in two places that already
    exist — the spill's own `reason` string, which names the carry rather than only the budget and is
@@ -625,7 +625,7 @@ git commit -m "probe: which hook a slash command reaches, and whether it carries
 |---|---|
 | A prompt event fires and carries `session_id` | Register it in `hooks/hooks.json`, with a binary that recognises a sentinel line the slash command emits and calls `setSessionName` / `setCarrySource`. **State its cost in the same commit:** it is a hook on every prompt, and the Global Constraint about the absent in-process bound applies to it exactly as it does to `SubagentStart` |
 | A prompt event fires but carries no `session_id` | No hook. The slash command becomes documentation: it tells the user to run `mycontext session list` and then `mycontext session name <id> <name>`. Record in the probe file and in `README.md` §8 that the "supplies the id automatically" half of §6m.8 is **not delivered**, and why |
-| No prompt event fires at all | As above. **Do not substitute a claim protocol** — a pending-name file stamped by whichever hook fires next — without a separate ruling: `core/inject.ts` · `on a RESUMED session that value is a freshly-generated id that does` · ~218 is this project's record of what writing under a mismatched key costs, and a claim race between two terminals on one workspace is the concurrency case R7 exists to serve |
+| No prompt event fires at all | As above. **Do not substitute a claim protocol** — a pending-name file stamped by whichever hook fires next — without a separate ruling: `core/inject.ts` · `on a RESUMED session that value is a freshly-generated id that does` · ~307 is this project's record of what writing under a mismatched key costs, and a claim race between two terminals on one workspace is the concurrency case R7 exists to serve |
 
 ---
 
@@ -702,14 +702,14 @@ that silently did not run.
 
 **Three edits, and all three are required.** `core/audit.ts` · `export const INJECTION_OPS = ['session-start', 'compact-restore', 'jit', 'manual'] as const;` · ~94 <!-- historical-citation: quotes the vocabulary as it stood before subagent-start and post-tool-use-failure were registered; the survey and the instruction are both about the prior state -->
 and `core/audit.ts` · `export const HOOK_OPS = ['pre-compact', 'post-tool-use', 'deny'] as const;` · ~98 <!-- historical-citation: quotes the vocabulary as it stood before subagent-start and post-tool-use-failure were registered; the survey and the instruction are both about the prior state -->
-declare the vocabulary; `core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~124 maps
-each to a kind; `core/audit.ts` · `hook?: 'SessionStart'` · ~180 names which hook ran. `KIND_OF` is
+declare the vocabulary; `core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~247 maps
+each to a kind; `core/audit.ts` · `hook?: 'SessionStart'` · ~345 names which hook ran. `KIND_OF` is
 typed `Record<AuditOp, AuditKind>`, so omitting a row is a **compile** error — but adding an op
 without a writer is not, which is why the test below writes one.
 
-**`LEDGER_TIERS` is not touched.** `core/audit.ts` · `const LEDGER_TIERS = new Set(['pinned', 'jit', 'restored']);` · ~567
+**`LEDGER_TIERS` is not touched.** `core/audit.ts` · `const LEDGER_TIERS = new Set(['pinned', 'jit', 'restored']);` · ~751
 decides what a replayed ledger claims was delivered. `'carried'` (Task 17) must stay out of it and
-out of `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~37,
+out of `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~38,
 or a rebuilt ledger claims deliveries that never happened.
 
 **The audit log's format version is NOT added here — §6n.5, and the dependency is recorded rather
@@ -720,7 +720,7 @@ this task registers make a v2.0 log unreadable by a v1.0.2 reader by exactly §6
 this task may well be the first commit in the product that does it.
 
 **Where it belongs, and why not here.** The field sits beside
-`core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59 and is read by
+`core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~83 and is read by
 `core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43 —
 one edit, in one place, shared by every plan that widens the vocabulary.
 `docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md` adds a whole new `AuditKind`
@@ -811,10 +811,10 @@ git commit -m "feat(audit): register subagent-start and post-tool-use-failure op
 - Produces:
   - `export type HookEventName = 'PreToolUse' | 'PostToolUse' | 'SubagentStart';` — the events whose
     output is a `hookSpecificOutput` envelope. `SessionStart` is deliberately absent: it writes raw
-    text (`hooks/session-start.ts` · `if (text) process.stdout.write(text);` · ~59) and must keep
+    text (`hooks/session-start.ts` · `if (text) process.stdout.write(text);` · ~114) and must keep
     doing so.
   - `export function hookContext(event: HookEventName, text: string): string` — the generalisation of
-    `hooks/io.ts` · `export function preToolUseContext(text: string): string {` · ~169.
+    `hooks/io.ts` · `export function preToolUseContext(text: string): string {` · ~250.
     `preToolUseContext` stays, as a one-line wrapper, so its two existing call sites and their tests
     do not move in this task.
   - `export function readStdinAsync(): Promise<string>` — moved verbatim from
@@ -915,8 +915,8 @@ sentence, so a caller has to delete a call rather than forget to invent a phrase
 the consequence, not only the count: a failed removal carries *"items already delivered may be
 suppressed"*.
 
-**The sibling sweep, and exactly when it is sound.** `core/seen-file.ts` · `export function seenFilePath(root: string, key: string): string {` · ~39
-sanitises the key, and `core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~353
+**The sibling sweep, and exactly when it is sound.** `core/seen-file.ts` · `export function seenFilePath(root: string, key: string): string {` · ~48
+sanitises the key, and `core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~667
 passes a canonical id through byte-stable while turning a composite `sid::agent` into
 `sid__agent-<12 hex>`. Measured in `.my_context/state/` today: the parent file is
 `9e5b6b17-…-775b4eccd9e7.seen.jsonl` and the 45 siblings are
@@ -945,7 +945,7 @@ passes a canonical id through byte-stable while turning a composite `sid::agent`
   fold preserves — an uppercase id, say, whose composite really is `Sess__agent-<digest>` — now
   **does** get its siblings swept, where `san === sessionId` would have stranded all 45 of them.
 
-**Never throws**, per `core/seen-file.ts` · `unreadable seen file means "inject WITHOUT dedupe and disclose"` · ~18.
+**Never throws**, per `core/seen-file.ts` · `unreadable seen file means "inject WITHOUT dedupe and disclose"` · ~19.
 A file that cannot be removed is one entry in `failed`, never an exception. Each removal goes through
 `core/rebuild.ts` · `export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {` · ~205,
 for the same Windows reason `appendSeen` does — a scanner holding a handle open for a moment must
@@ -1131,14 +1131,14 @@ that cannot fire.
 - Produces: no new export. The behaviour is observable through the injected block's note and through
   the audit record's `note` field.
 
-**Where the branch goes, and why the order is the whole task.** `core/inject.ts` · `const compacting = options.source === 'compact';` · ~210
+**Where the branch goes, and why the order is the whole task.** `core/inject.ts` · `const compacting = options.source === 'compact';` · ~290
 is the single decision point. Add beside it:
 
 ```ts
 const clearing = options.source === 'clear';
 ```
 
-and run the clear **before** `core/inject.ts` · `const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;` · ~279
+and run the clear **before** `core/inject.ts` · `const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;` · ~396
 (that read was `sessionId`-keyed when this task was written; Task 9 moved it to `seenKey`, which is
 `sessionId` on every event but `'subagent'` — a clear is a `SessionStart`, so nothing here changes).
 Running it after would read the state it is about to delete, and the window would come up empty while
@@ -1146,10 +1146,10 @@ the knowledge base believed it was full — which is precisely today's behaviour
 task fixes.
 
 **What is removed:** the parent seen file, the `session::agent` siblings (Task 6), **and** the restore
-snapshot at `core/ledger.ts` · `export function snapshotPath(root: string, sessionId: string): string {` · ~361 —
+snapshot at `core/ledger.ts` · `export function snapshotPath(root: string, sessionId: string): string {` · ~675 —
 design decision 8.
 
-**What is disclosed, and where.** `core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~515
+**What is disclosed, and where.** `core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~699
 already records `source=clear`. Push one further note built from the `ClearSeenReport`:
 
 - everything removed: `cleared N seen file(s) and the restore snapshot for this session`;
@@ -1179,9 +1179,9 @@ test('startup and resume are unchanged — no clear, no note', () => { /* … */
 test('compact is unchanged — the restore still fires', () => { /* … */ });
 ```
 
-The last two matter as much as the first: `core/inject.ts` · `const compacting = options.source === 'compact';` · ~210
+The last two matter as much as the first: `core/inject.ts` · `const compacting = options.source === 'compact';` · ~290
 is read by every injection surface including the `load_context` MCP tool, and
-`core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~248 must stay true —
+`core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~337 must stay true —
 a manual load must never clear anything.
 
 - [x] **Step 2: Run it and see it fail.**
@@ -1190,7 +1190,7 @@ a manual load must never clear anything.
 
 - [x] **Step 4: `npm test` and `npm run test:perf` green.** The clear adds one `readdirSync` of
   `state/` to a `SessionStart` whose ceiling is
-  `test/perf/session-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~64 — confirm
+  `test/perf/session-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~72 — confirm
   the perf test still passes rather than assuming it does.
 
 - [x] **Step 5: Commit**
@@ -1214,7 +1214,7 @@ Core-only. No hook yet, so the suite stays green with nothing calling the new pa
 **Interfaces:**
 - Consumes: Task 4's `'subagent-start'` op and `'SubagentStart'` hook name.
 - Produces:
-  - `InjectionEvent` gains `'subagent'` — `core/inject.ts` · `export type InjectionEvent = 'session-start'` · ~48.
+  - `InjectionEvent` gains `'subagent'` — `core/inject.ts` · `export type InjectionEvent = 'session-start'` · ~57.
   - `InjectionOptions` gains `dedupeKey?: string` — *"the seen-file key, when it is not `sessionId`.
     `SubagentStart` passes `ledgerKey(input)`; every other caller leaves it unset."*
   - **`InjectionOptions` gains `agentId?: string` as well — this list was incomplete.** Behaviour 2
@@ -1228,11 +1228,11 @@ Core-only. No hook yet, so the suite stays green with nothing calling the new pa
 **Four behaviours the subagent event must have, each different from `'session-start'`:**
 
 1. **The selection is identical.** It calls `select` with `event: 'session-start'`, which admits the
-   pinned tier at `core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~487
+   pinned tier at `core/select.ts` · `if (ctx.event === 'session-start' \|\| ctx.event === 'compact' \|\| ctx.event === 'manual') {` · ~756
    and builds the index at
-   `core/select.ts` · `buildIndex(eligible, merged, config, chosenIds, ctx.carried ?? null);` · ~814.
+   `core/select.ts` · `buildIndex(eligible, merged, config, chosenIds, ctx.carried ?? null);` · ~847.
    **Never `'tool'`** — a tool event returns
-   `core/select.ts` · `index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,` · ~535,
+   `core/select.ts` · `index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,` · ~842,
    so the subagent would get the pinned tier and no index at all.
 2. **The audit record differs:** `op: 'subagent-start'`, `hook: 'SubagentStart'`, `sessionId` still the
    **parent's** id so `mycontext audit --session` groups a subagent's delivery under the session it
@@ -1242,7 +1242,7 @@ Core-only. No hook yet, so the suite stays green with nothing calling the new pa
    decision 5).
 
    **And for this event the record is written unconditionally.** The guard —
-   `core/inject.ts` · `if (subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0) {` · ~554,
+   `core/inject.ts` · `if (subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0) {` · ~761,
    which read `if (injected.length > 0 || selection.spilled.length > 0) {` before this task — skips the
    record when a selection delivered nothing. That is right for `session-start` and **wrong here**:
    §6n.3's evidence is an attempt with no matching completion, so "delivered nothing" and "was killed
@@ -1250,8 +1250,8 @@ Core-only. No hook yet, so the suite stays green with nothing calling the new pa
    written even when `injected` and `spilled` are both empty. Say that in the comment beside the
    guard, naming the invariant it serves — otherwise the next reader tightens it back.
 3. **The seen key is `dedupeKey`, not `sessionId`.** One `seenKey` local, used at
-   `core/inject.ts` · `const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;` · ~279
-   and at `core/inject.ts` · `appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({` · ~599.
+   `core/inject.ts` · `const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;` · ~396
+   and at `core/inject.ts` · `appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({` · ~806.
    **Leave the snapshot read alone** — `readSnapshotMeta` stays parent-keyed, because `PreCompact` is a
    parent-only event by measurement and a composite key there would write dedupe records no restore can
    ever find.
@@ -1267,9 +1267,9 @@ Core-only. No hook yet, so the suite stays green with nothing calling the new pa
    `'subagent'` and on no other event, so a stray one can never file a parent's own deliveries under
    a name PreCompact and the restore never look at.
 4. **The best-effort index refresh is skipped** — design decision 3. Guard
-   `core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~412
+   `core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~578
    so the subagent event never reaches it, and say in the comment beside
-   `core/inject.ts` · `// 3. BEST-EFFORT INDEX REFRESH` · ~382 that the parent's SessionStart already
+   `core/inject.ts` · `// 3. BEST-EFFORT INDEX REFRESH` · ~548 that the parent's SessionStart already
    refreshed. A skip is not a drop: nothing is lost, so nothing needs disclosing — but the comment must
    say which caller skips and why, or the next reader will restore it.
 
@@ -1361,10 +1361,10 @@ git commit -m "feat(inject): a subagent event, keyed on ledgerKey, skipping the 
 `'SubagentStart'`, not `'PreToolUse'`. `hookContext('SubagentStart', text)` builds it.
 
 **The stdin shape, and exactly what it buys.** Copy
-`hooks/post-tool-use.ts` · `const timer = setTimeout(() => process.exit(0), 2000);` · ~121 —
+`hooks/post-tool-use.ts` · `const timer = setTimeout(() => process.exit(0), 2000);` · ~132 —
 `readStdinAsync()` plus an unref'd timer. That bounds **one** failure: a pipe that never closes. It
 does **not** bound the selection, because `buildInjection` is synchronous once it starts and, as
-`hooks/post-tool-use.ts` · `A synchronous readFileSync(0), by contrast, blocks the thread` · ~115
+`hooks/post-tool-use.ts` · `A synchronous readFileSync(0), by contrast, blocks the thread` · ~120
 explains for the mirror case, nothing can preempt synchronous work. Write both halves into the
 binary's docstring. Do not write, in the binary or anywhere else, that this hook is bounded by
 mycontext — the Global Constraints say what bounds it.
@@ -1399,7 +1399,7 @@ not the presence**:
    `sessionId` = the payload's `session_id` (the **parent's**), `injected: []`, `tokens: 0`,
    `note: delivery=attempted agent=<agent_id>`. Scope, not content: no payload, no item text, no
    rendered block. `recordAudit` never throws, and the log is JSONL beside the database
-   (`core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~436),
+   (`core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~602),
    so this write survives everything that can stop the selection.
 3. **Then** `buildInjection(…, { event: 'subagent', … })`, which writes the completion record with
    `delivery=complete agent=<agent_id>` — unconditionally for this event (Task 9).
@@ -1418,10 +1418,10 @@ double count in anything tallying `subagent-start` rows; that cost is named in d
 in the commit message.
 
 **The provenance frame.** Add to `src/core/render.ts`, beside
-`core/render.ts` · `## my_context — these govern this project` · ~144, a preamble rendered **only**
+`core/render.ts` · `## my_context — these govern this project` · ~291, a preamble rendered **only**
 for the subagent event, and prepended by `buildInjection`:
 
-**Shipped as `core/render.ts` · `export const SUBAGENT_PREAMBLE =` · ~188, and the wording moved
+**Shipped as `core/render.ts` · `export const SUBAGENT_PREAMBLE =` · ~272, and the wording moved
 where the draft above claimed a property the product does not have** (§0, Task 10 block):
 
 > _This block was added by my_context, the knowledge plugin installed in this repository, when this
@@ -1540,7 +1540,7 @@ carries:
 ordering as **one decision**, so this task does not land without Task 10's attempt record. A subagent
 dispatched while another process holds the index write lock
 (`core/store.ts` · `Worst case ~1.06s: two attempts` · ~122) plus the per-line append backoff
-(`core/seen-file.ts` · `= 200 ms of backoff PER LINE` · ~67, multiplied by the number of pinned items
+(`core/seen-file.ts` · `= 200 ms of backoff PER LINE` · ~81, multiplied by the number of pinned items
 delivered at birth) can still be killed. What changes is what the kill leaves behind: because the
 record precedes the work, it leaves `delivery=attempted` with no `delivery=complete` — evidence, in
 the log, that a subagent started with no context.
@@ -1554,7 +1554,7 @@ register this hook.** Registering first puts a hook on the critical path of ever
 be killed with nothing recorded — the state §6n.3 exists to end.
 
 **The perf test.** `test/perf/subagent-start-latency.perf.ts`, modelled on
-`test/perf/session-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~64 and using
+`test/perf/session-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~72 and using
 `test/helpers/perf.ts` · `export function perfCeiling(` · ~55. Same 500 ms p95 ceiling and the same
 500-item corpus, because it does the same selection. It is what turns "5 seconds is enough" from an
 assertion into a measurement — and it measures the **in-process** function, not `node` startup, which
@@ -1646,11 +1646,11 @@ makes a known problem measurably worse.
 - Test: `test/hooks/session-start.test.ts` (extend), `test/perf/session-start-latency.perf.ts` (extend)
 
 **Interfaces:**
-- Consumes: `core/ledger.ts` · `export function pruneSnapshots(` · ~456.
+- Consumes: `core/ledger.ts` · `export function pruneSnapshots(` · ~770.
 - Produces: no new export.
 
 **Where it runs, and why there.** In the entry guard, **after**
-`hooks/session-start.ts` · `if (text) process.stdout.write(text);` · ~59. The model already has its
+`hooks/session-start.ts` · `if (text) process.stdout.write(text);` · ~114. The model already has its
 text, so the sweep cannot delay the injection it follows; it is once per session rather than once per
 tool call; and it is best-effort in a `try/catch` that cannot change the exit code. `pruneSnapshots`
 never throws and takes a per-file callback so the caller can disclose what went — and the disclosure
@@ -1716,7 +1716,7 @@ explicit**: the caller always supplies the id. That is §6m.8's ruling expressed
 **Write mechanics:** temp file then rename through
 `core/rebuild.ts` · `export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {` · ~205,
 the same shape `writeSnapshot` uses, and write a `.gitignore` of `*` beside it exactly as
-`core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~406 does — because
+`core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~720 does — because
 `state/` may not have one yet if no snapshot has ever been written, and a name file that reaches git
 is a session identifier travelling with the corpus.
 
@@ -1729,7 +1729,7 @@ is a session identifier travelling with the corpus.
   renaming that session frees it. Refusing at write is what lets every selector treat a name as
   unambiguous.
 
-**Never throws on read**, matching `core/seen-file.ts` · `unreadable seen file means "inject WITHOUT dedupe and disclose"` · ~18:
+**Never throws on read**, matching `core/seen-file.ts` · `unreadable seen file means "inject WITHOUT dedupe and disclose"` · ~19:
 a corrupt name file costs labels, never an injection.
 
 - [x] **Step 1: Write the failing test** — round trip; each refusal with its own assertion; corrupt
@@ -1755,7 +1755,7 @@ git commit -m "feat(sessions): a workspace-scoped session-name store, keyed by e
 - Modify: `src/cli/commands/index.ts`
 
 **Interfaces:**
-- Consumes: `core/audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~447,
+- Consumes: `core/audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~794,
   its no-database sibling `cli/commands/audit.ts` · `function sessionsWithoutDb(list: AuditRecord[]): SummaryRow[] {` · ~492,
   and `readSessionNames` (Task 13).
 - Produces: one registered command `session`, with subcommand dispatch, via
@@ -1847,7 +1847,7 @@ repeated here; what follows is common to every branch.
 
 **Both files are hand-written and must be excluded from generation, in two places.**
 `scripts/gen-commands.ts` · `const KEEP = new Set(['LoadMyContext.md']);` · ~23 stops the generator
-deleting them; `test/plugin/commands.test.ts` · `const HAND_WRITTEN = new Set(['LoadMyContext.md']);` · ~38
+deleting them; `test/plugin/commands.test.ts` · `const HAND_WRITTEN = new Set(['LoadMyContext.md']);` · ~40
 stops the parity test failing on them. **The two lists are kept separately and both must be edited** —
 that is exactly the two-hand-kept-lists drift this project has found repeatedly, and it bites here.
 
@@ -1921,7 +1921,7 @@ displacement be disclosed.
   `/api/select` serialises `select()`'s output and nothing else.
 
 **The rule, stated once.** `buildIndex`'s candidate set is
-`core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~358 — every
+`core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~522 — every
 eligible normative item not already delivered in full. So:
 
 - A carried id **in** that candidate set is **marked**, and hoisted to the front of the by-id order.
@@ -1933,7 +1933,7 @@ eligible normative item not already delivered in full. So:
   disclosure is the whole of `INV-nothing-is-dropped-silently` here — an item the previous session
   relied on that this one will not see must be visible, not absent.
 - A carried, marked line that still does not fit the budget spills exactly as any other index line
-  does, through `core/select.ts` · `if (used + candidate.cost > budget) {` · ~460, with tier
+  does, through `core/select.ts` · `if (used + candidate.cost > budget) {` · ~467, with tier
   `'index'`. **No fifth budget, no new config key.**
 
 **Where §6n.2's ordering lives.** The partition is two lines:
@@ -1964,16 +1964,16 @@ channel:
   is discarded: it exists only to name what the ruling cost, and it is one extra loop over numbers
   already in hand — no second render, no second token estimate, nothing read from disk. **A cheaper
   approximation is not available**, because the budget loop `continue`s rather than `break`s on an
-  overflow (`core/select.ts` · `if (used + candidate.cost > budget) {` · ~460), so the admitted
+  overflow (`core/select.ts` · `if (used + candidate.cost > budget) {` · ~467), so the admitted
   set is not a prefix of the order and cannot be inferred from a count. The marker does not perturb
   this: a carried line costs the same in either order, because the flag is a property of the item,
   not of its position.
 - **Say why, in the two places that already exist.** The displaced line goes into `spilled` at
   `tier: 'index'` exactly as any other index miss does
-  (`core/select.ts` · `tier: 'index' as const,` · ~575), and its `reason` names the carry —
+  (`core/select.ts` · `tier: 'index' as const,` · ~589), and its `reason` names the carry —
   `displaced by a line carried from session <label> (index budget …)` — rather than the budget alone.
   That reason is what `--json` and the web UI read. **But it is not what a reader of the injected
-  block sees:** `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59
+  block sees:** `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~143
   removes an index-only spill from the rendered spill note, so on that path alone the model gets
   "+N more" and no account of the carry at all. The rendered *why* therefore lives in the carry
   disclosure line under the index heading, which **Task 19** writes — and `IndexSummary.carried`
@@ -1982,7 +1982,7 @@ channel:
 A displaced line that spills without saying why would be this project's most-named defect committed
 deliberately. The two bullets above are what stop that, and neither is optional.
 
-**The marker must be inside the costed line.** `core/render-item.ts` · `export function renderIndexLine(` · ~275
+**The marker must be inside the costed line.** `core/render-item.ts` · `export function renderIndexLine(` · ~281
 is called twice for every line: once by `estimateTokens` to charge the budget and once by the
 renderer. If the marker is appended anywhere else, the budget is charged for a line shorter than the
 one delivered — and mis-sizing injection is exactly the failure §6a names. Widen the parameter type,
@@ -2048,7 +2048,7 @@ git commit -m "feat(select): carried index lines take priority and carry a marke
   Task 19 renders it; the `session carry` subcommand writes it.
 
 **Where the ids come from — the seen file, and the cost of that.** §0's fourth row: the survey
-recommends the audit projection, and `core/audit.ts` · `the hook path calls this` · ~410 is why this
+recommends the audit projection, and `core/audit.ts` · `the hook path calls this` · ~594 is why this
 plan does not follow it — `readAudit` reads whole files and is documented as off the hook path, and
 this read happens inside a `SessionStart` bounded at 500 ms. The seen file holds the three delivery
 tiers, is one small file, and `readSeen` already never throws. **The cost, named in the module's
@@ -2059,7 +2059,7 @@ carried is what that session actually had in context, which is the stronger evid
 `state/continuity.json` (design decision 11). Absent, the default is **the most recent parent session
 other than the current one** — most recent by mtime over `state/*.seen.jsonl` whose name contains no
 `__`, which is the sibling marker
-(`core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~353).
+(`core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~667).
 Excluding the current id is not optional: on a resume the current session is already the most recent
 thing in `state/`, and carrying from yourself is a no-op that reports success.
 
@@ -2074,7 +2074,7 @@ the id is not carryable), `carry --none`, `carry --show`.
 **Wiring into `inject.ts`:** call `resolveCarry` on the `'session-start'` and `'subagent'` events
 only — never `'compact'` (a compaction is the same window continuing; carrying into it would
 duplicate the restore) and never `'manual'` (which has no session id at all, structurally:
-`core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~248). Pass the
+`core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~337). Pass the
 result through `SelectContext.carried`.
 
 - [x] **Step 1: Write the failing test** — `test/core/continuity.test.ts`: the default is the most
@@ -2106,7 +2106,7 @@ git commit -m "feat(continuity): resolve a carry source from state/, defaulting 
 - Consumes: `IndexSummary.carried` (Task 17).
 - Produces: one rendered disclosure, and the note text the audit record carries.
 
-**The line, under the index heading** (`core/render.ts` · `const lines: string[] = ['## my_context index'];` · ~16):
+**The line, under the index heading** (`core/render.ts` · `const lines: string[] = ['## my_context index'];` · ~90):
 
 ```
 _12 index line(s) carried from session `auth-refactor` (3 no longer available: KNOWN-x superseded, …;
@@ -2118,7 +2118,7 @@ hoped to send. That is §6g's own condition and it is the reason `IndexSummary.c
 computed inside `buildIndex` rather than taken from the input length.
 
 **The displacement clause is not optional — §6n.2.**
-`core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~59 keeps
+`core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~143 keeps
 an index-only spill out of the rendered spill note, so **this line is the only place a reader of the
 injected block learns that a line was displaced rather than merely over budget.** It names the ids
 (ids are scope, not content, and the reader can `mycontext show <id>` any of them) and it is omitted
@@ -2131,9 +2131,9 @@ is invented.
 
 **The audit record.** Add the carried ids to the existing injection record's `injected` array with
 `tier: 'carried'`. That works with no type change: `InjectedRef.tier` is `string`,
-`core/audit.ts` · `const LEDGER_TIERS = new Set(['pinned', 'jit', 'restored']);` · ~567 filters it
+`core/audit.ts` · `const LEDGER_TIERS = new Set(['pinned', 'jit', 'restored']);` · ~751 filters it
 out of `ledgerRows` by construction, and
-`core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~37 refuses it
+`core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~38 refuses it
 in the seen file. **Do not widen either set.** A carried line is not a delivery of full text, and a
 replayed ledger that claimed it was would be claiming a delivery that never happened — the exact
 failure the `index` tier's own treatment was written to prevent.
@@ -2226,7 +2226,7 @@ git commit -m "docs: six hooks, session commands, the clear handler and the cros
 - **The audit log's format version — §6n.5.** It lands now, and this plan's Task 4 is one of the two
   things that make it urgent, because `core/audit.ts` · `declares op ${JSON.stringify(row.op)}, which is not one of` · ~470 refuses an
   unknown **op** as flatly as an unknown kind. But it is a single field beside
-  `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~59, read by
+  `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~83, read by
   `core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43,
   and **`docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md` owns it**: it adds the new
   `AuditKind` §6n.5 argues from and already discloses the downgrade break in `CHANGELOG.md`. Task 4

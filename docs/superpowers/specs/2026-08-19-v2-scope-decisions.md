@@ -70,7 +70,7 @@ questions — *"what did I jot down"* against *"what am I being asked to let gov
 
 > **CORRECTED 2026-08-19, by implementation survey.** This paragraph originally ended *"`todo`
 > appears in the review queue, in search, and in the UI"*. It cannot: `reviewQueue` is
-> `status === 'draft' && layer === 'project'` (`src/core/select.ts` · `i.status === 'draft' && i.layer === 'project'` · ~360) and a rationale item is
+> `status === 'draft' && layer === 'project'` (`src/core/select.ts` · `i.status === 'draft' && i.layer === 'project'` · ~435) and a rationale item is
 > never forced to draft — which the paragraph above already says (*"no draft queue"*). Ruled in
 > §6m.9.
 
@@ -1123,7 +1123,7 @@ recorded here rather than quietly amended.
 
 **Scale, for planning:** 31 files must change (28 existing, plus 6 generated `commands/*.md`), 8 of
 them high-risk. `todo` and `note` are nearly free — the rationale tier already delivers
-never-injected, never-indexed and no draft gate through `isNormative` (`src/core/select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~132).
+never-injected, never-indexed and no draft gate through `isNormative` (`src/core/select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~204).
 **Their real cost is 22 hand-typed enumeration sites**, which is the "half-added category" hazard,
 not the engine.
 
@@ -1140,7 +1140,7 @@ cost was understated.
 
 ### 2. `ready` has no home in the status vocabulary
 
-`isEligible` admits exactly `'active'` (`src/core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~126); everything else is `draft` or a
+`isEligible` admits exactly `'active'` (`src/core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198); everything else is `draft` or a
 retired status. §2.1's four procedure states therefore need a mapping rather than four new statuses.
 
 | §2.1 state | Maps to | Note |
@@ -1157,7 +1157,7 @@ listed among deprecated items rather than under a status of its own — cosmetic
 
 ### 3. The full-text / index-line split has never been per-item
 
-It is a **category** lookup — `isNormative(item, config)` (`src/core/select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~132), applied by `select()` for the full-text half (`src/core/select.ts` · `const injectable = eligible.filter((i) => isNormative(i, config));` · ~532) and by `buildIndex` for the index half (`src/core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~372).
+It is a **category** lookup — `isNormative(item, config)` (`src/core/select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~204), applied by `select()` for the full-text half (`src/core/select.ts` · `const injectable = eligible.filter((i) => isNormative(i, config));` · ~780) and by `buildIndex` for the index half (`src/core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~522).
 `always`, `scope` and `severity` modulate *tier membership*; none of them has ever modulated that
 split. §2.1's "index line only when `ready`, full text when `active`" would be **the first per-item
 case**, and `select()` documents itself as the one place that rule may live.
@@ -1247,7 +1247,7 @@ mycontext does. The plan must say so explicitly rather than implying the invaria
 ### ⚠️ Seen files accumulate, and the unit is context windows
 
 `pruneSnapshots` (`ledger.ts` · `export function pruneSnapshots(` · ~770) is age-based — 30 days by mtime — and when this was written its **only production
-caller was `cmdRebuild`** (`cli/index.ts` · `function cmdRebuild(ws: Workspace, out: Emit): number {` · ~731), with no hook pruning and no `clearSeen` anywhere.
+caller was `cmdRebuild`** (`cli/index.ts` · `function cmdRebuild(ws: Workspace, out: Emit): number {` · ~1001), with no hook pruning and no `clearSeen` anywhere.
 **Both halves have since closed.** A hook prunes: `SessionStart` sweeps `state/` once per session, after the write to stdout (`hooks/session-start.ts` · `function sweepStaleState(cwd: string): void {` · ~64) — its docblock carries this finding's own measurement, "15 files one day and 47 the next". And `clearSeen` exists (`core/seen-file.ts` · `export function clearSeen(root: string, sessionId: string): ClearSeenReport {` · ~290), so pruning is no longer age-only.
 There is still no `SessionEnd` hook, and a project whose sessions never start still never prunes.
 
@@ -1385,7 +1385,7 @@ accepts both without complaint because every value is valid:
 
 1. every future agent-authored `rule` lands **active** instead of draft — `tierOf` reads the
    resolved config (`trust.ts` · `export function tierOf(ctx: MutationContext, item: Item): Tier {` · ~285) and `trustedStatus` gates on tier;
-2. every existing `rule` **stops being injected at all** — `isNormative` (`select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~132).
+2. every existing `rule` **stops being injected at all** — `isNormative` (`select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~204).
 
 **That is strictly more power than the flag §6h refuses, delivered through the surface §6h calls
 safe.** A pack can silently disarm the trust boundary and un-inject the importer's whole normative
@@ -1468,8 +1468,8 @@ gets bulk-approved unread — supports *"make bulk review tractable"*, not *"ski
 
 ### F3 — §2.1's four states are three new `Status` values, and two are unreachable
 
-`Status` has five members (`types.ts` · `export type Status = 'active' | 'draft' | 'superseded' | 'deprecated' | 'validated';` · ~2). `ready` cannot produce an index line — `buildIndex` (`select.ts` · `function buildIndex(` · ~363)
-enumerates only `eligible`, and `isEligible` requires `active` (`select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~126). `done` is
+`Status` has five members (`types.ts` · `export type Status = 'active' | 'draft' | 'superseded' | 'deprecated' | 'validated';` · ~2). `ready` cannot produce an index line — `buildIndex` (`select.ts` · `function buildIndex(` · ~512)
+enumerates only `eligible`, and `isEligible` requires `active` (`select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198). `done` is
 counted in **no** tally: not `retired`, not `counts`, not `ineligible` — it vanishes from every
 session-visible number, which is a direct hit on `INV-nothing-is-dropped-silently`. And "injected in
 full every session" is the `always` flag, not a status — so "the owner initiated it" is **two**
@@ -1492,7 +1492,7 @@ one-shot procedure, or does `procedure` ship beside it"** — and §2 never asks
 ### The rest, in one line each
 
 - **F9** — `todo` can never reach the review queue: the queue is `status === 'draft'`
-  (`select.ts` · `i.status === 'draft' && i.layer === 'project'` · ~360) and a rationale item is never forced to draft. §1's own §1.1 says "no draft
+  (`select.ts` · `i.status === 'draft' && i.layer === 'project'` · ~435) and a rationale item is never forced to draft. §1's own §1.1 says "no draft
   queue". It needs its own listing surface.
 - **F14** — the rule-file exporter writes normative text into `.cursor/rules/` and
   `.github/instructions/`, which **no gate protects**: the deny hook covers `.my_context/items/`
@@ -1898,7 +1898,7 @@ this write legal.
 
 **The project already drew this line, in the same place, for the same reason.** `mycontext review`
 promotes a draft with `const patch: UpdateInput = { id: item.id, status: 'active', origin: 'human' };`
-(`src/cli/commands/review.ts` · `const patch: UpdateInput = { id: item.id, status: 'active', origin: 'human' };` · ~750), after a confirmation — and the export-and-packs plan defends
+(`src/cli/commands/review.ts` · `const patch: UpdateInput = { id: item.id, status: 'active', origin: 'human' };` · ~1068), after a confirmation — and the export-and-packs plan defends
 re-using that move in one sentence: *"A human took it, at their terminal, one prompt ago"*
 (`docs/superpowers/plans/2026-08-20-v2-export-import-and-packs.md`, §0, "On item 7"). `origin` there
 is not a claim about who authored the content; it is a claim about **who took the act**. R14.1 makes

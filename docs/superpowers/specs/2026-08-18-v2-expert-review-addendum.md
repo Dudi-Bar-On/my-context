@@ -74,8 +74,8 @@ direct consequences of it, and each one produces a screen that is confidently wr
 ### 2.1 `/api/select` never passes `focus` **[V]**
 
 The hooks pass it — `pre-tool-use.ts` · `focus: focusState.focus },` · ~205 and
-`inject.ts` · `focus: focusState.focus,` · ~443 — and
-`select.ts` · `const eligible = isFocusActive(focus)` · ~529 narrows
+`inject.ts` · `focus: focusState.focus,` · ~468 — and
+`select.ts` · `const eligible = isFocusActive(focus)` · ~777 narrows
 the eligible set by `focusHides` **before every tier and before budgeting**:
 
 ```ts
