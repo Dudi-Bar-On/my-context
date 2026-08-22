@@ -111,7 +111,7 @@ export function apiReviewQueue(ws: Workspace, url: URL): JsonResult {
           return {
             id: i.id, type: i.type, title: i.title, severity: i.severity,
             always: i.always, scope: i.scope, origin: i.origin,
-            injected: verdict.injected, phrase: verdict.phrase,
+            injected: verdict.injected, phrase: verdict.phrase, gate: verdict.gate,
           };
         }),
       },
@@ -196,7 +196,7 @@ export function apiSearch(ws: Workspace, url: URL): JsonResult {
           return {
             id: i.id, type: i.type, title: i.title, status: i.status,
             always: i.always, scope: i.scope,
-            injected: verdict.injected, phrase: verdict.phrase,
+            injected: verdict.injected, phrase: verdict.phrase, gate: verdict.gate,
           };
         }),
         total: matched.length,
@@ -341,7 +341,7 @@ export function apiOverlap(ws: Workspace, url: URL, body: unknown): JsonResult {
         return {
           id: i.id, type: i.type, title: i.title,
           score: Math.round(score * 100) / 100,
-          injected: verdict.injected, phrase: verdict.phrase,
+          injected: verdict.injected, phrase: verdict.phrase, gate: verdict.gate,
         };
       });
     return { status: 200, body: { candidates } };

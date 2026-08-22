@@ -427,12 +427,12 @@ be the largest instance yet.
 
 | Question | Function | Where |
 |---|---|---|
-| What would be injected here, and what spills | `select()` | `select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~766 |
+| What would be injected here, and what spills | `select()` | `select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~833 |
 | Does this item govern this path | `matchesScope(item, target, config)` | `select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~266 |
 | Is this item eligible at all | `isEligible(item, config)` | `select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198 |
 | What does an empty scope mean for this category | `scopePolicyFor(config, type)` | `config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~143 |
 | Does an agent's edit apply or wait | `agentEditsFor(config, type)` | `config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~165 |
-| Is this item injected, and **on what terms** | `injection(item, config)` | `cli/commands/injection.ts` · `export function injection(` · ~42 |
+| Is this item injected, and **on what terms** | `injection(item, config)` | `cli/commands/injection.ts` · `export function injection(` · ~84 |
 | Estimated tokens for a body | `estimateTokens()` | `select.ts` · `export function estimateTokens(text: string): number {` · ~178 |
 | **What is the active focus** | `readFocus(root)` → `FocusState` | `core/focus.ts` · `export function readFocus(root: string): FocusState {` · ~321 |
 | **Is a focus actually narrowing** | `isFocusActive(focus)` | `core/focus.ts` · `export function isFocusActive(focus: FocusAxes \| null): focus is FocusAxes {` · ~271 |
@@ -482,7 +482,7 @@ selection than the hook produces, and shown a different spill set**, which is fa
 entire value is "see exactly what Claude gets".
 
 The reason is `seen`. `select()` filters already-injected items **before** budgeting
-(`select.ts` · `hardening and must not be reverted` · ~783), and the comment above it says this is
+(`select.ts` · `hardening and must not be reverted` · ~850), and the comment above it says this is
 Plan 1's hardening and **must not be reverted**: an already-injected item must not consume budget and
 spill a fresh one in its place. Without it, every item ever injected in the session competes for budget
 again, and the items that spill are not the items that would really spill.
@@ -506,7 +506,7 @@ those inputs does not preview `select()` — it previews a different question wi
 | `focus` | `readFocus(projectRoot).focus`, exactly as the hook reads it |
 
 **`focus` is the input the third pass missed.** It is applied inside `select()` before every tier and
-before budgeting (`select.ts` · `const focus = ctx.focus ?? null;` · ~776), so omitting it previews a
+before budgeting (`select.ts` · `const focus = ctx.focus ?? null;` · ~843), so omitting it previews a
 different delivered set *and* a different spill set — the same failure, and the same consequence, that
 `seen` had. The hook passes it as `focus: focusState.focus` from `readFocus(ws.projectRoot)`
 (`pre-tool-use.ts` · `const focusState = readFocus(ws.projectRoot);` · ~199). The response carries
@@ -1824,7 +1824,7 @@ recorded here as decisions.
    `mycontext review promote-revision <id> --yes` for the user's own shell (§2, §4).
 3. **Which function answers "does this item govern this path"?** **`matchesScope(item, target, config)`**
    (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~266), filtered by **`isEligible`** (`select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198) and the normative-tier test, which
-   **`injection()`** (`cli/commands/injection.ts` · `export function injection(` · ~42) already composes in `select`'s own order.
+   **`injection()`** (`cli/commands/injection.ts` · `export function injection(` · ~84) already composes in `select`'s own order.
    **Not `matchesAnyGlob`** — that is a defect `select.ts` documents by name (`select.ts` · ``asks the same function. `query_items` re-derived it as a bare`` · ~244), recording that the bare form *"kept hiding unscoped items from a path query long after they had become injectable on that path"* (§3).
 4. **Where does the audit log live, and what is in a record?** **JSONL is the source of truth; SQLite is
    a disposable projection that records its position in the log.** An injection record carries the

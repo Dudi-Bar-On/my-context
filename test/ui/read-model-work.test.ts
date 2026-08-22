@@ -101,11 +101,15 @@ test('/api/review-queue lists project-layer drafts with their injection verdicts
     } finally { store.close(); }
 
     const result = apiReviewQueue(ws, new URL('http://x/api/review-queue'));
-    const drafts = (result.body as { drafts: { id: string; injected: boolean; phrase: string }[] }).drafts;
+    const drafts = (result.body as
+      { drafts: { id: string; injected: boolean; phrase: string; gate: string }[] }).drafts;
     assert.equal(drafts.length, 1);
     assert.equal(drafts[0].id, 'RULE-a-drafted-rule');
     assert.equal(drafts[0].injected, false); // a draft is in no injection tier
     assert.equal(drafts[0].phrase, 'not injected (status "draft")');
+    // The same refusal as a CODE: rung 1, the eligibility gate. The queue can
+    // group by it without matching on the sentence beside it.
+    assert.equal(drafts[0].gate, 'eligible');
   } finally { done(); }
 });
 

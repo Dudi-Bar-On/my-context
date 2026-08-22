@@ -1157,7 +1157,7 @@ listed among deprecated items rather than under a status of its own — cosmetic
 
 ### 3. The full-text / index-line split has never been per-item
 
-It is a **category** lookup — `isNormative(item, config)` (`src/core/select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~204), applied by `select()` for the full-text half (`src/core/select.ts` · `const injectable = eligible.filter((i) => isNormative(i, config));` · ~780) and by `buildIndex` for the index half (`src/core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~522).
+It is a **category** lookup — `isNormative(item, config)` (`src/core/select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~204), applied by `select()` for the full-text half (`src/core/select.ts` · `const injectable = eligible.filter((i) => isNormative(i, config));` · ~847) and by `buildIndex` for the index half (`src/core/select.ts` · `.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` · ~522).
 `always`, `scope` and `severity` modulate *tier membership*; none of them has ever modulated that
 split. §2.1's "index line only when `ready`, full text when `active`" would be **the first per-item
 case**, and `select()` documents itself as the one place that rule may live.

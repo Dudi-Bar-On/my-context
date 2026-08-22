@@ -51,7 +51,7 @@
  */
 import { statSync } from 'node:fs';
 import path from 'node:path';
-import { injection } from '../cli/commands/injection.ts';
+import { injection, type InjectionVerdict } from '../cli/commands/injection.ts';
 import { scopePolicyFor } from '../core/config.ts';
 import { resolveCarry } from '../core/continuity.ts';
 import { computeDecay, type DecayReport } from '../core/decay.ts';
@@ -64,7 +64,7 @@ import { renderSelection } from '../core/render.ts';
 import { pendingRevisionCounts, pendingRevisionSummaries } from '../core/revision-log.ts';
 import {
   itemCost, matchesScope, reviewQueue, select, tiersRun,
-  type SelectContext, type SelectEvent, type Selection,
+  type GateCode, type SelectContext, type SelectEvent, type Selection,
 } from '../core/select.ts';
 import { readSeen, seenIds, type SeenLine } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
@@ -1014,6 +1014,16 @@ export function apiDecay(ws: Workspace, url: URL): JsonResult {
  * `injected` and `phrase` are `injection()`'s, never re-derived: the phrase a
  * reader sees here is the phrase `mycontext edit` and `mycontext supersede`
  * print for the same item.
+ *
+ * `gate` is the same verdict's third field, and it travels for the reason the
+ * other two do. The gate ladder (`docs/design/web-ui-mockup.html`, `#gates` /
+ * `preview.why`) has to name the gate an item FIRST failed, and the only other
+ * way to know it from here would be to parse the phrase — a second
+ * implementation of `select`'s own decision, which stops working the day
+ * someone improves the wording. `injected` stays beside it rather than being
+ * folded into `gate === 'passed'`: the yes/no is what most of these screens
+ * ask, and the two cannot disagree, because one branch inside `injection()`
+ * writes both (`GateCode`, core/select.ts).
  */
 export interface ItemSummary {
   id: string;
@@ -1024,6 +1034,7 @@ export interface ItemSummary {
   scope: string[];
   injected: boolean;
   phrase: string;
+  gate: GateCode;
 }
 
 function itemSummary(item: Item, config: Config): ItemSummary {
@@ -1031,7 +1042,7 @@ function itemSummary(item: Item, config: Config): ItemSummary {
   return {
     id: item.id, type: item.type, title: item.title, status: item.status,
     always: item.always, scope: item.scope,
-    injected: verdict.injected, phrase: verdict.phrase,
+    injected: verdict.injected, phrase: verdict.phrase, gate: verdict.gate,
   };
 }
 
@@ -1397,7 +1408,13 @@ export function apiItems(ws: Workspace, url: URL): JsonResult {
  */
 export interface ItemBody {
   item: Item;
-  injection: { phrase: string; injected: boolean };
+  /**
+   * The whole verdict — phrase, `injected` AND `gate` — rather than the two
+   * fields the pane prints today. This endpoint is what every
+   * `button.linkid` on every screen resolves to, so it is where a ladder drawn
+   * for ONE item reads which rung bound it.
+   */
+  injection: InjectionVerdict;
   ledger: LedgerPresence;
   usage: Usage | null;
 }

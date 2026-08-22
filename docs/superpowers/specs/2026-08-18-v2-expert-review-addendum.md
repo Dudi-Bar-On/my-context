@@ -75,7 +75,7 @@ direct consequences of it, and each one produces a screen that is confidently wr
 
 The hooks pass it — `pre-tool-use.ts` · `focus: focusState.focus },` · ~205 and
 `inject.ts` · `focus: focusState.focus,` · ~468 — and
-`select.ts` · `const eligible = isFocusActive(focus)` · ~777 narrows
+`select.ts` · `const eligible = isFocusActive(focus)` · ~844 narrows
 the eligible set by `focusHides` **before every tier and before budgeting**:
 
 ```ts

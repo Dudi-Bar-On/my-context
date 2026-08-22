@@ -223,7 +223,7 @@ the task says "establish by executing" instead of asserting it.
 | `Tier = 'normative'\|'rationale'` | `core/types.ts` · `export type Tier = 'normative' \| 'rationale';` · ~1 |
 | `matchesAnyGlob(subject, patterns)` exported | `core/paths.ts` · `export function matchesAnyGlob(subject: string, patterns: string[]): boolean {` · ~70 |
 | `mycontext search` already validates against the **moved** `STATUSES` | `cli/commands/search.ts` · `import { STATUSES } from '../../core/validate.ts';` · ~4 |
-| `injection(item, config)` composes eligibility + tier + scope in `select`'s order | `cli/commands/injection.ts` · `export function injection(` · ~42 |
+| `injection(item, config)` composes eligibility + tier + scope in `select`'s order | `cli/commands/injection.ts` · `export function injection(` · ~84 |
 | `reviewQueue(items, type?)` — project-layer drafts | `core/select.ts` · `export function reviewQueue(items: Item[], type: string \| null = null): Item[] {` · ~433 |
 
 **Facts that are absences, re-checked by execution rather than citation:**
@@ -659,7 +659,7 @@ git commit -m "refactor(review): extract the LCS diff to core so the UI serves t
 - Test: `test/ui/read-model-work.test.ts`
 
 **Interfaces:**
-- Consumes: `pendingRevisionViews`, `pendingRevisionCounts`, `PendingRevision`, `RevisionField` (revision-log.ts, Task 1), `lineDiff`, `valueLines`, `DiffLine` (revision-diff.ts, Task 2), `reviewQueue` (`select.ts` · `export function reviewQueue(items: Item[], type: string | null = null): Item[] {` · ~433), `injection` (`cli/commands/injection.ts` · `export function injection(` · ~42), plan 1's `withStores`, `badRequest`, `unknownParams` (`read-model.ts`), `registerRoute` / `ApiContext` / `JsonResult` (`routes.ts`).
+- Consumes: `pendingRevisionViews`, `pendingRevisionCounts`, `PendingRevision`, `RevisionField` (revision-log.ts, Task 1), `lineDiff`, `valueLines`, `DiffLine` (revision-diff.ts, Task 2), `reviewQueue` (`select.ts` · `export function reviewQueue(items: Item[], type: string | null = null): Item[] {` · ~433), `injection` (`cli/commands/injection.ts` · `export function injection(` · ~84), plan 1's `withStores`, `badRequest`, `unknownParams` (`read-model.ts`), `registerRoute` / `ApiContext` / `JsonResult` (`routes.ts`).
 - Produces:
   - `registerWorkRoutes(): void` — registers every route this module owns; called once from `server.ts`. All routes sit behind the plan-1 security gate by construction; none is `kind: 'stream'`.
   - `apiRevisions(ws: Workspace, url: URL): JsonResult` — `GET /api/revisions` →

@@ -167,7 +167,7 @@ a fragment and is re-checked by execution instead — the second table.
 | Fact | Where verified |
 |---|---|
 | `Tier` is closed | `types.ts` · `export type Tier = 'normative' \| 'rationale';` · ~1 |
-| The full-text tier admits normative items only — this is the whole of "never injected" | `select.ts` · `const injectable = eligible.filter((i) => isNormative(i, config));` · ~780 |
+| The full-text tier admits normative items only — this is the whole of "never injected" | `select.ts` · `const injectable = eligible.filter((i) => isNormative(i, config));` · ~847 |
 | The index names normative items and reduces every rationale type to a bare count | `select.ts` · `    if (isNormative(item, config)) continue;` · ~629 |
 | The split is a **category** lookup, never a per-item one | `select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~204 |
 | `status === 'active'` is a hard precondition for any injection at all, index line included | `select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198 |
