@@ -345,7 +345,7 @@ test('progress joins the register as the sixth kind, and moves no kind before it
  * from it, so every op this module has EVER registered stays pinned to the kind
  * it was born with — `progress` added the three `step-*` rows below to the
  * twenty it inherited, the hooks round added two more to those twenty-three,
- * and `session-end` makes twenty-six.
+ * `session-end` made twenty-six, and `post-compact` makes twenty-seven.
  */
 test('no pre-existing op changed kind', () => {
   const before: Record<string, string> = {
@@ -359,15 +359,16 @@ test('no pre-existing op changed kind', () => {
     'ui-refused': 'access',
     'step-done': 'progress', 'step-undone': 'progress', 'step-reset': 'progress',
     'subagent-start': 'injection', 'post-tool-use-failure': 'hook',
+    'session-end': 'hook',
   };
   for (const [op, kind] of Object.entries(before)) {
     assert.equal(kindOf(op as (typeof AUDIT_OPS)[number]), kind, `${op} changed kind`);
   }
-  // …and the vocabulary grew by exactly the op the SessionEnd round adds, in
-  // the position its family puts it: `session-end` ends the hook ops.
+  // …and the vocabulary grew by exactly the op the PostCompact round adds, in
+  // the position its family puts it: `post-compact` ends the hook ops.
   assert.deepEqual(
     AUDIT_OPS.filter((op) => !(op in before)),
-    ['session-end'],
+    ['post-compact'],
   );
 });
 

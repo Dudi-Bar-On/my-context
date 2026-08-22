@@ -5,7 +5,8 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, utimesSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  pruneSnapshots, readSnapshotMeta, sanitizeSessionId, scanTranscriptIds, snapshotPath,
+  pruneSnapshots, readSnapshotMeta, sanitizeSessionId, scanTextIds, scanTranscriptIds,
+  snapshotPath,
   writeSnapshot, SNAPSHOT_RENAME_ATTEMPTS,
 } from '../../src/core/ledger.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -208,5 +209,37 @@ test('the transcript scan reads the tail of an oversized transcript', () => {
   writeFileSync(transcript, `CONST-buried-at-the-start\n${filler}\nCONST-near-the-end\n`);
   const known = new Set(['CONST-buried-at-the-start', 'CONST-near-the-end']);
   assert.deepEqual(scanTranscriptIds(transcript, known), ['CONST-near-the-end']);
+  removeTree(root);
+});
+
+/**
+ * `scanTextIds` is the same scan over text a caller already holds, split out
+ * for `hooks/post-compact.ts` — whose input is the `compact_summary` on the
+ * payload, a string that exists nowhere on disk. What matters is that it is a
+ * SPLIT and not a second implementation: one regex knows what an id looks
+ * like, and a second one agreeing with `makeId` today is a second one to keep
+ * agreeing with it forever.
+ *
+ * Asserted by equivalence rather than by re-listing the cases: the same text,
+ * through the file reader and through the string reader, must give the same
+ * answer.
+ */
+test('scanTextIds is the file scan without the file, filter and all', () => {
+  const root = sandbox();
+  const text = 'CONST-alpha then STD-beta then CONST-alpha again, plus NOTANID and lowercase-x.';
+  const transcript = path.join(root, 'same.jsonl');
+  writeFileSync(transcript, text);
+
+  const known = new Set(['CONST-alpha', 'STD-beta']);
+  assert.deepEqual(scanTextIds(text, known), scanTranscriptIds(transcript, known));
+  assert.deepEqual(scanTextIds(text, known), ['CONST-alpha', 'STD-beta']);
+
+  // No filter means take every id-shaped token, the same over-capture the
+  // file reader accepts; an EMPTY filter means the index knew nothing and the
+  // answer is empty, which is the distinction the `null` carries.
+  assert.deepEqual(scanTextIds(text, null), scanTranscriptIds(transcript, null));
+  assert.deepEqual(scanTextIds(text, new Set()), []);
+
+  assert.deepEqual(scanTextIds('', known), []);
   removeTree(root);
 });

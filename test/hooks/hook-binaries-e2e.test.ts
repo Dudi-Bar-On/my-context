@@ -1,5 +1,5 @@
 /**
- * The seven hook binaries, run as real OS processes over real stdio.
+ * The eight hook binaries, run as real OS processes over real stdio.
  *
  * Every other test in `test/hooks/` imports a function and calls it. That
  * leaves the part Claude Code actually uses — `node <file>` with a JSON payload
@@ -171,7 +171,7 @@ const COMMANDS = Object.entries(MANIFEST.hooks).flatMap(([event, entries]) =>
  * task added.
  */
 test('every registered hook command disables the experimental warning', () => {
-  assert.ok(COMMANDS.length >= 7, `only ${COMMANDS.length} hook command(s) registered`);
+  assert.ok(COMMANDS.length >= 8, `only ${COMMANDS.length} hook command(s) registered`);
   for (const command of COMMANDS) {
     assert.match(
       command.command, /--disable-warning=ExperimentalWarning/,
@@ -291,7 +291,7 @@ const GARBAGE = 'not json at all {{{ \u0000 ]]';
 
 for (const name of [
   'session-start', 'pre-tool-use', 'pre-compact', 'post-tool-use-failure', 'subagent-start',
-  'session-end',
+  'session-end', 'post-compact',
 ]) {
   test(`${name} exits 0 and discloses the parse failure when stdin is garbage`, async () => {
     const cwd = project();
@@ -346,6 +346,7 @@ test('session-start puts the parse failure in the injected block as well', async
  */
 for (const name of [
   'pre-tool-use', 'pre-compact', 'post-tool-use-failure', 'subagent-start', 'session-end',
+  'post-compact',
 ]) {
   test(`${name} still writes nothing to stdout when stdin is garbage`, async () => {
     const cwd = project();
@@ -416,7 +417,7 @@ test('post-tool-use exits 0 and says nothing when stdin is garbage', async () =>
  */
 for (const name of [
   'session-start', 'pre-tool-use', 'pre-compact', 'post-tool-use', 'post-tool-use-failure',
-  'subagent-start', 'session-end',
+  'subagent-start', 'session-end', 'post-compact',
 ]) {
   test(`${name} exits 0 and says nothing when stdin is empty`, async () => {
     const cwd = project();
@@ -530,6 +531,49 @@ test('pre-compact writes a restore snapshot and keeps stdout clean', async () =>
     const written = readdirSync(stateDir, { recursive: true, encoding: 'utf8' })
       .filter((entry) => entry.includes('sess-e2e-4'));
     assert.ok(written.length > 0, `no snapshot naming the session: ${readdirSync(stateDir).join(', ')}`);
+  } finally { removeTree(cwd); }
+});
+
+/**
+ * The other half of the compaction pair, through the binaries, in the order
+ * the platform fires them: `PreCompact` writes the snapshot, then — after the
+ * `SessionStart(source: 'compact')` that this test does not need to stage —
+ * `PostCompact` records that the compaction finished and what its summary did
+ * to the captured ids.
+ *
+ * Empty stdout is the contract and not an accident: `PostCompact` has no
+ * `hookSpecificOutput` variant in the platform's own output schema, and what a
+ * byte written here WOULD become is a user-facing
+ * `PostCompact [<command>] completed successfully: <output>` banner after every
+ * single compaction.
+ */
+test('post-compact records the completed compaction and writes nothing to stdout', async () => {
+  const cwd = project();
+  try {
+    const pre = await runHook(HOOK('pre-compact'), JSON.stringify({
+      hook_event_name: 'PreCompact', session_id: 'sess-e2e-pc', cwd, trigger: 'auto',
+    }), cwd);
+    assert.equal(pre.code, 0, `pre-compact stderr: ${pre.stderr}`);
+
+    const result = await runHook(HOOK('post-compact'), JSON.stringify({
+      hook_event_name: 'PostCompact', session_id: 'sess-e2e-pc', cwd, trigger: 'auto',
+      compact_summary: 'The user was mid-task on CONST-pool when the window filled up.',
+    }), cwd);
+
+    assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+    assert.equal(result.stdout, '', 'a byte here becomes a banner after every compaction');
+    assert.equal(result.stderr, '');
+
+    const records = readAudit(path.join(cwd, '.my_context'));
+    const post = records.filter((r) => r.op === 'post-compact');
+    assert.equal(post.length, 1, 'the compaction was not recorded as completed');
+    assert.equal(post[0].hook, 'PostCompact');
+    assert.equal(post[0].sessionId, 'sess-e2e-pc');
+    assert.match(post[0].note ?? '', /^trigger=auto;/);
+    assert.equal(
+      records.filter((r) => r.op === 'pre-compact').length, 1,
+      'the pair this row exists to close is not in the log',
+    );
   } finally { removeTree(cwd); }
 });
 
@@ -857,7 +901,7 @@ test('readStdinAsync does not bound itself: a pipe that never closes never resol
 });
 
 // ---------------------------------------------------------------------------
-// INV-hooks-fail-open, one failure mode at a time, over all seven binaries.
+// INV-hooks-fail-open, one failure mode at a time, over all eight binaries.
 //
 // The invariant is stated absolutely — every binary sets `process.exitCode = 0`
 // unconditionally and wraps its work in try/catch — and the two modes above
@@ -872,7 +916,7 @@ test('readStdinAsync does not bound itself: a pipe that never closes never resol
 // replaced by a regular FILE is refused by `mkdirSync` everywhere.
 // ---------------------------------------------------------------------------
 
-/** A payload every one of the seven reads something out of. */
+/** A payload every one of the eight reads something out of. */
 function anyPayload(cwd: string): string {
   return JSON.stringify({
     hook_event_name: 'PostToolUse',
@@ -941,7 +985,7 @@ const FAILURE_MODES: { name: string; prepare: () => string }[] = [
 for (const mode of FAILURE_MODES) {
   for (const name of [
     'session-start', 'pre-tool-use', 'pre-compact', 'post-tool-use', 'post-tool-use-failure',
-    'subagent-start', 'session-end',
+    'subagent-start', 'session-end', 'post-compact',
   ]) {
     test(`${name} fails open with ${mode.name}`, async () => {
       const cwd = mode.prepare();

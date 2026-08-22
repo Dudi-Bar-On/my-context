@@ -182,9 +182,19 @@ export type InjectionOp = (typeof INJECTION_OPS)[number];
  * when the hook FAILS (`hooks/session-end.ts` · `NOTHING A SUCCESSFUL SessionEnd HOOK WRITES IS EVER SHOWN` · ~48),
  * so a hook that exits 0 — which `INV-hooks-fail-open` requires — is mute
  * everywhere else.
+ *
+ * **`post-compact` closes the pair `pre-compact` opens.** `PreCompact` writes
+ * the restore snapshot; nothing said whether the compaction it was written for
+ * then COMPLETED. A `pre-compact` row with no `post-compact` row beside it is a
+ * compaction that threw after the snapshot was taken — the same
+ * attempted/complete shape `subagent-start` uses, and the same reason. It is
+ * also the only row that can carry `trigger`, because
+ * `SessionStart(source: 'compact')` — the proxy this project inferred a
+ * compaction from before `PostCompact` was registered — cannot tell a
+ * user-typed `/compact` from one the context window forced.
  */
 export const HOOK_OPS = [
-  'pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure', 'session-end',
+  'pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure', 'session-end', 'post-compact',
 ] as const;
 export type HookOp = (typeof HOOK_OPS)[number];
 
@@ -268,7 +278,7 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   'step-done': 'progress', 'step-undone': 'progress', 'step-reset': 'progress',
   'subagent-start': 'injection',
   'post-tool-use-failure': 'hook',
-  'session-end': 'hook',
+  'session-end': 'hook', 'post-compact': 'hook',
 };
 
 export function kindOf(op: AuditOp): AuditKind {
@@ -356,7 +366,7 @@ export interface AuditRecord {
   sessionId?: string;
   /** Injections and hook actions: which hook ran. Absent for `manual`. */
   hook?: 'SessionStart' | 'PreToolUse' | 'PreCompact' | 'PostToolUse' | 'SubagentStart' |
-    'PostToolUseFailure' | 'SessionEnd';
+    'PostToolUseFailure' | 'SessionEnd' | 'PostCompact';
   /** Injections: what was delivered, by tier. THE SCOPE, NOT THE CONTENT. */
   injected?: InjectedRef[];
   /**

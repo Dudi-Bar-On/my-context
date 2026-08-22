@@ -876,6 +876,24 @@ export function scanTranscriptIds(
     return [];
   }
 
+  return scanTextIds(text, knownIds);
+}
+
+/**
+ * The same scan over text a caller already holds, rather than a file.
+ *
+ * Split out of `scanTranscriptIds` for `hooks/post-compact.ts`, whose input is
+ * the `compact_summary` on the payload — a string that exists nowhere on disk.
+ * It is a split and not a second implementation on purpose: `ID_PATTERN` is
+ * the one place that knows what an id looks like, and a second regex agreeing
+ * with it today is a second regex to keep agreeing with `makeId` forever.
+ *
+ * `knownIds: null` means "no known-id filter", exactly as above, and the
+ * safe direction is the same: over-capture, because every consumer of the
+ * result re-checks the ids against something real.
+ */
+export function scanTextIds(text: string, knownIds: Set<string> | null): string[] {
+  if (knownIds !== null && knownIds.size === 0) return [];
   const found = new Set<string>();
   for (const match of text.matchAll(ID_PATTERN)) {
     if (knownIds === null || knownIds.has(match[0])) found.add(match[0]);
