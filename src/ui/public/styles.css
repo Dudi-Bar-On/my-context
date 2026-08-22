@@ -758,3 +758,65 @@ tr.regime td{background:var(--goldbg);border-block:1px solid var(--gold);color:v
 tr.regime .ln{flex:1;block-size:1px;background:var(--gold);opacity:.45}
 tr.regime .rw{display:flex;gap:9px;align-items:center}
 
+
+/* ── CARRIED: the four-tier budget ribbon, its ghost lane, and the gate
+   ladder ────────────────────────────────────────────────────────────
+   Byte-identical from `docs/design/web-ui-mockup.html` (~813-851 and
+   ~927-936), the same discipline every other carry in this file follows and
+   the same one `test/ui/styles-parity.test.ts` holds it to.
+
+   `screens/preview.js` builds both: `#ribbons` is a `.plate` of four
+   `.ribbon`s — one per tier, each a `.rlabel`, a `.track` of `.seg`s, a
+   `.ghosts` lane and a `.hint` — and `#gates` is a `.gladder.plate` of six
+   `.rung`s in `select()`'s own order.
+
+   The ribbon is CSS flex rather than SVG, and that is the mockup's own
+   ruling rather than a convenience: "a quantity bar must mirror, and flex
+   with logical properties mirrors for free". Every width here is set through
+   the CSSOM by that file, never as a style attribute. */
+/* — the four-tier budget ribbon, with the ghost lane beneath — */
+.ribbon{margin-block-end:14px}
+.rlabel{display:flex;gap:var(--sp-2);align-items:baseline;font-size:var(--fs-0);
+  margin-block-end:4px;flex-wrap:wrap}
+.rlabel .n{margin-inline-start:auto;color:var(--dim);font-family:var(--mono);
+  font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
+.track{block-size:24px;background:var(--sink);border:1px solid var(--edge);
+  border-radius:var(--r-md);display:flex;overflow:hidden}
+.track .seg{block-size:100%;border-inline-end:1px solid #00000066;
+  min-inline-size:2px}
+/* Spec §5's retiming: change the event and a segment TRAVELS to its new
+   width rather than redrawing, because here the movement is the data. It is
+   wired and inert for the same reason the mockup records against its own
+   copy — `renderRibbons()` there, and `drawRibbons()` here, rebuild every
+   `.seg` from scratch on each event change, and a brand-new node has no
+   "before" width to animate from. Carried anyway, byte-identical: the day
+   either file keys its segments across a re-render, the declaration is
+   already in both. */
+@media (prefers-reduced-motion:no-preference){
+  .track .seg{transition:inline-size var(--dur-retime) var(--ease)}
+}
+.seg.pinned{background:var(--gold)}
+.seg.jit{background:var(--ok)}
+.seg.restored{background:color-mix(in oklch,var(--ok) 50%,var(--gold))}
+.seg.index{background:var(--edge-3)}
+.seg.head{background:transparent;flex:1;border:0}
+.ghosts{block-size:14px;display:flex;margin-block-start:3px;gap:2px}
+.ghosts .gh{background:repeating-linear-gradient(45deg,var(--crit) 0 3px,transparent 3px 6px);
+  border:1px solid var(--crit);border-radius:var(--r-sm);block-size:100%;min-inline-size:3px}
+.ghosts .gap{background:none;border:0}
+.notrun{background:repeating-linear-gradient(45deg,var(--faint) 0 4px,transparent 4px 8px);
+  opacity:.3;flex:1;block-size:100%}
+.hint{font-size:var(--fs-0);color:var(--dim);margin-block-start:4px}
+.hint b{color:var(--crit)}
+
+/* — the gate ladder: select()'s filters in execution order — */
+.gladder{display:grid;font-size:var(--fs-1)}
+.rung{display:grid;grid-template-columns:24px 116px 1fr;gap:var(--sp-2);padding-block:7px;
+  border-block-end:1px solid var(--rule);align-items:start}
+.rung:last-child{border-block-end:0}
+.rung .n{font-family:var(--mono);font-size:var(--fs-0);color:var(--dim)}
+.rung.pass .n{color:var(--ok)}
+.rung.binds{background:var(--warnbg);border-radius:var(--r-md);padding-inline:var(--sp-2)}
+.rung.binds .n{color:var(--warn)}
+.rung.after{opacity:.42}
+.rung .q{color:var(--dim);font-size:var(--fs-0)}
