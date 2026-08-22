@@ -618,13 +618,32 @@ details.help[open]>summary{margin-block-end:6px}
 
 /* item detail pane — material comes from the `.pane,.rail,.hdr` primitive
    rule above; this consumer of it keeps only its grid slot and its own
-   scroll/padding, same split as `.rail` immediately above. */
-.pane{grid-area:pane;overflow-y:auto;padding:var(--sp-3)}
-.pane[hidden]{display:none}
-.pane h3{margin:0 0 var(--sp-1);font-size:var(--fs-2)}
-.pane dl{display:grid;grid-template-columns:auto 1fr;gap:3px var(--sp-2);
+   scroll/padding, same split as `.rail` immediately above.
+
+   COLLISION found repainting Task 9's twenty screens, fixed here rather than
+   left for later: this block used to read `.pane{…}` — fine while the item-
+   detail aside was the ONLY element carrying the bare `.pane` class, exactly
+   the state Task 3 left it in ("Structure — grid-area, overflow-y, padding —
+   is untouched"). Task 9 puts `.pane` on 37 more elements via `.card.pane`,
+   and `#covfull .two` lays two of them out as CSS Grid items — `grid-area:
+   pane` on the class made both cards resolve the unrelated named line
+   "pane" and collapse onto each other, full width, one on top of the other;
+   the coverage screen's file-tree `role="treeitem"` buttons underneath
+   became unclickable, caught by `e2e/states.spec.ts`, not by reading the
+   CSS. The same class collision also silently overrode `.card>h3` (line
+   ~508) on every `.card.pane` already shipped by Task 6's hero — same
+   specificity, later source position wins, so every card heading was
+   rendering at `--fs-2`/`--sp-1` instead of the intended `--fs-0`/`--sp-2`
+   caption style. Rescoped this whole block from the class to the element's
+   own `id="pane"`, which is unique and was already on the markup — the
+   aside keeps byte-identical layout, and no other `.pane`-classed element
+   is affected any more. */
+#pane{grid-area:pane;overflow-y:auto;padding:var(--sp-3)}
+#pane[hidden]{display:none}
+#pane h3{margin:0 0 var(--sp-1);font-size:var(--fs-2)}
+#pane dl{display:grid;grid-template-columns:auto 1fr;gap:3px var(--sp-2);
   font-size:var(--fs-0);margin:var(--sp-2) 0}
-.pane dt{color:var(--dim)} .pane dd{margin:0}
+#pane dt{color:var(--dim)} #pane dd{margin:0}
 
 /* R1 — rendered markdown. Corpus text sits in an inset well with <bdi>;
    the product's own words are never inside one. */
@@ -1275,7 +1294,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="cov.sub">Every path, coloured by what governs it — through
       <span class="m">matchesScope</span> and <span class="m">injection()</span>, never a bare glob match.</p>
 
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="cov.pin">Pinned — governs every path, independent of scope</h3>
       <p class="small"><span class="chip gov" data-g="◆">2 pinned</span>
         <span class="m">CONST-postgres-pool-capped-at-20</span> ·
@@ -1289,7 +1308,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
     <div id="covfull">
       <div class="two">
-        <div class="card gloss"><h3 data-t="cov.tree">Repository</h3>
+        <div class="card pane"><h3 data-t="cov.tree">Repository</h3>
           <div class="tree plate" id="tree" role="tree"></div>
           <p class="small" style="margin-block-start:8px" data-t="cov.magn">Each row carries a
             <b>magnitude</b>, not only a state: the bar is governed / ungoverned / not-examined of
@@ -1303,7 +1322,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
             <span class="dot w" style="display:inline-block"></span> <span data-t="cov.k3">gap</span> ·
             <span class="dot n" style="display:inline-block"></span> <b data-t="cov.k4">not examined</b></p>
         </div>
-        <div class="card gloss"><h3><span data-t="cov.gov">What governs</span> <span class="m" id="detf"></span></h3>
+        <div class="card pane"><h3><span data-t="cov.gov">What governs</span> <span class="m" id="detf"></span></h3>
           <div class="plate" id="det"></div>
         </div>
       </div>
@@ -1325,7 +1344,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <div class="phd"><h2 data-t="gaps.h">Coverage gaps</h2>
       <span class="verdict">✅ <span data-t="gaps.v">names what is missing, which no listing can</span></span></div>
     <p class="psub" data-t="gaps.sub">Directories no item scopes, and categories with nothing in them.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <table><thead><tr><th data-t="th.where">Where</th><th data-t="th.what">What</th><th data-t="th.act">Next</th></tr></thead><tbody>
         <tr><td class="m">src/workers/</td><td class="small" data-t="gaps.r1"><span class="v" data-v="files">3</span> files, no item scopes here</td>
           <td><button class="icon" style="inline-size:auto" data-t="btn.compose">Compose</button></td></tr>
@@ -1343,7 +1362,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="sim.v">all four tiers</span></span></div>
     <p class="psub" data-t="sim.sub">Drag a budget and watch what fits. Raising a budget can
       <b>evict</b> an item — the selector is first-fit, not a stable ranking with a cut line.</p>
-    <div class="card gloss sim">
+    <div class="card pane sim">
       <div>
         <h3 data-t="sim.stair">Admission staircase — items admitted, per budget</h3>
         <div class="plate" id="stair"></div>
@@ -1370,7 +1389,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       </div>
     </div>
 
-    <div class="card gloss">
+    <div class="card pane">
       <div class="plate">
       <table><thead><tr><th data-t="sim.tier">Tier</th><th data-t="sim.budget">Budget</th>
         <th data-t="sim.fits">Fits</th><th data-t="sim.spills">Spills</th></tr></thead>
@@ -1388,7 +1407,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       </details>
     </div>
 
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="sim.ratio">Selected, then not delivered</h3>
       <div class="plate" id="ratio"></div>
       <p class="small" style="margin-block-start:8px" data-t="sim.ration">Delivered grows from the
@@ -1406,7 +1425,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="inj.v">live, not hypothetical</span></span></div>
     <p class="psub" data-t="inj.sub">What this context window actually received, from the per-session
       seen file — the parent thread's, keyed as the hook keys it.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <table><thead><tr><th data-t="th.item">Item</th><th data-t="th.tier">Tier</th><th data-t="th.when">When</th></tr></thead><tbody>
         <tr><td><button class="linkid m" data-id="CONST-postgres-pool-capped-at-20">CONST-postgres-pool-capped-at-20</button></td><td><span class="chip gov" data-g="◆">pinned</span></td><td class="m small">09:14:02</td></tr>
         <tr><td><button class="linkid m" data-id="RULE-never-log-customer-email">RULE-never-log-customer-email</button></td><td><span class="chip ok" data-g="●">jit</span></td><td class="m small">09:22:41</td></tr>
@@ -1424,7 +1443,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="watch.sub">Six record kinds — mutations, injections, hook actions, focus
       changes, access refusals and progress steps. A focus change is a <b>regime change</b>, drawn as
       a rule across the feed rather than as one row.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <div class="pulse plate" id="pulse"></div>
       <p class="small" style="margin-block:0 9px" data-t="watch.pulsen"><b>Activity pulse</b> — one
         column per ten seconds, newest at the reading-end edge. Height is records in that column,
@@ -1494,7 +1513,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="ask.v">filters, for people who do not write SQL</span></span></div>
     <p class="psub" data-t="ask.sub">Fields, operators and values — bound as parameters, composed on
       the server. No query text crosses the wire.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <!-- Two corpora, not one. `ask.recallq` below is a disclosure about
            CORPUS search recall — "the corpus says 'dropped silently'",
            `core/search.ts`, `search` and `query_items` — and it has always sat
@@ -1609,7 +1628,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="doc.v">a findings list flattened to "exit 1" is what a terminal loses</span></span></div>
     <p class="psub" data-t="doc.sub">Grouped by finding code, three levels kept distinct, each linked
       to the item it names and the command that repairs it — composed, not run.</p>
-    <div class="card gloss"><h3>error</h3>
+    <div class="card pane"><h3>error</h3>
       <table><tbody>
         <tr><td class="m">source_drift</td><td><button class="linkid m" data-id="RULE-never-log-customer-email">RULE-never-log-customer-email</button></td>
           <td class="small" data-t="doc.d1">its source document changed since the snapshot</td></tr>
@@ -1617,7 +1636,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <div class="cmd"><code>mycontext refresh RULE-never-log-customer-email</code>
         <button data-copy data-t="btn.copy">Copy</button></div>
     </div>
-    <div class="card gloss"><h3>warning</h3>
+    <div class="card pane"><h3>warning</h3>
       <table><tbody>
         <tr><td class="m">dead_scope</td><td class="m">INV-prices-are-integer-cents</td>
           <td class="small" data-t="doc.d2">scope <span class="m v" data-v="scope">src/billing/**</span> matches no file</td></tr>
@@ -1629,7 +1648,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <div class="cmd"><code>mycontext init --rewrite-watched</code>
         <button data-copy data-t="btn.copy">Copy</button></div>
     </div>
-    <div class="card gloss"><h3 data-t="doc.notice">notice</h3>
+    <div class="card pane"><h3 data-t="doc.notice">notice</h3>
       <table><tbody>
         <tr><td class="m">foreign_store</td><td class="m">~/.gsd/knowledge/</td>
           <td class="small"><span data-t="doc.d4">a second cross-project knowledge store exists on
@@ -1652,7 +1671,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       inside one session collides, so what it stores is a set of first-injections, not an event
       stream — and an axis against a clock would be wrong here even where it would look better. The
       delivery history in the second card is a different measurement from a different source.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="dec.comb">Recency comb — one tooth per item, never bucketed</h3>
       <div class="plate" id="comb"></div>
       <div class="legend">
@@ -1669,7 +1688,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           item is a bug in selection, not decay.</span></div>
       </details>
     </div>
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="dec.heat">90-day delivery, per item — delivered against spilled</h3>
       <div class="heat plate" id="heat"></div>
       <p class="small" style="margin-block-start:10px" data-t="dec.heatn">One cell per day. Intensity
@@ -1689,7 +1708,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="gr.v">an ego-graph, not a hairball</span></span></div>
     <p class="psub" data-t="gr.sub">One focused item, radius 1, deterministic layered layout, hard cap
       of 60 nodes with an explicit "+N more". No physics, no dependency.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <div class="plate" id="ego"></div>
       <div class="legend">
         <span><i class="focusn"></i><span data-t="gr.lfocus">focus</span></span>
@@ -1717,7 +1736,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">⚠️ <span data-t="st.v">a table is a terminal's home ground — a recorded exception</span></span></div>
     <p class="psub" data-t="st.sub">Not the landing screen, and no longer justified by being one. It
       is where the header's corpus counts lead.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <table><tbody>
         <tr><td data-t="st.items">Items</td><td class="m">43</td></tr>
         <tr><td data-t="st.drafts">Drafts awaiting review</td><td class="m">3</td></tr>
@@ -1735,7 +1754,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <div class="phd"><h2 data-t="work.h">Review queue</h2>
       <span class="verdict">✅ <span data-t="work.v">the diff is the capability; the approval is a paste</span></span></div>
     <p class="psub" data-t="work.sub">Per-field staleness against the text in force. Nothing here writes.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <h3><span class="m">RULE-never-log-customer-email</span> · <span class="m">REV-8c21</span></h3>
       <table><thead><tr><th data-t="work.field">Field</th><th data-t="work.now">In force</th><th data-t="work.prop">Proposed</th></tr></thead><tbody>
         <tr><td class="m">title</td><td><bdi>Never log customer email</bdi></td>
@@ -1776,7 +1795,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="cap.v">shows what already governs before you add another</span></span></div>
     <p class="psub" data-t="cap.sub">Composes an <span class="m">add</span>. What it contributes over
       the CLI is the overlap check — the items already governing this scope.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="cap.already">Already governing <span class="m v" data-v="scope">src/billing/**</span></h3>
       <table><tbody>
         <tr><td class="m">INV-prices-are-integer-cents</td><td class="small" data-t="cap.o1">invariant, normative</td></tr>
@@ -1797,7 +1816,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="pal.v">real pickers and a live glob tester</span></span></div>
     <p class="psub" data-t="pal.sub">Builds a command from selections. The argument list is shown as
       chips, so a value carrying shell syntax is visible before it reaches your clipboard.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="pal.argv">Arguments</h3>
       <p><span class="chip ok" data-g="●">mycontext</span> <span class="chip ok" data-g="●">add</span>
          <span class="chip ok" data-g="●">constraint</span>
@@ -1831,7 +1850,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="cfg.sub">Every change previewed as a diff of what would govern, validated
       against the same <span class="m">resolveConfig</span> that will read it.</p>
     <div class="two">
-      <div class="card gloss"><h3 data-t="cfg.budgets">Budgets</h3>
+      <div class="card pane"><h3 data-t="cfg.budgets">Budgets</h3>
         <table><tbody>
           <tr><td class="m">pinned</td><td class="m">6000</td></tr>
           <tr><td class="m">jit</td><td class="m">6000 → <b>8000</b></td></tr>
@@ -1839,7 +1858,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <tr><td class="m">index</td><td class="m">1200</td></tr>
         </tbody></table>
       </div>
-      <div class="card gloss"><h3 data-t="cfg.effect">What changes</h3>
+      <div class="card pane"><h3 data-t="cfg.effect">What changes</h3>
         <div class="plate" id="cfgdelta"></div>
         <p class="small" style="margin-block-start:8px" data-t="cfg.deltan">Each row is the
           <b>pair</b>, not the direction alone: the old value struck through, the new one
@@ -1848,7 +1867,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           the pairing.</p>
       </div>
     </div>
-    <div class="card gloss">
+    <div class="card pane">
       <h3><span class="m">categories.lesson.scopePolicy</span></h3>
       <div class="segbar" id="spbar" role="group" aria-label="scopePolicy" data-t-aria="aria.scopepolicy"></div>
       <div class="plate" id="spout"></div>
@@ -1860,7 +1879,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         hidden.</p>
     </div>
 
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="cfg.apply">Apply this</h3>
       <p class="small" data-t="cfg.nocmd">There is no command that edits a budget. Configuration is a
         file, and the deny hook says so in those words: <i>"changes to
@@ -1908,7 +1927,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       &mdash; as against a rule, which is one instruction that applies every time. A rule is a single
       instruction; a procedure is a sequence. Decided; nothing implements it yet.</p>
 
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="pr.states">Four states, and exactly one of them injects</h3>
       <table><thead><tr><th data-t="th.state">State</th><th data-t="pr.mean">Meaning</th><th data-t="pr.inj">Injection</th></tr></thead><tbody>
         <tr><td class="m">proposed</td><td class="small" data-t="pr.s1">written, not approved. An agent may author one here</td><td><span class="chip warn" data-g="&#9650;" data-t="pr.none">not injected</span></td></tr>
@@ -1925,7 +1944,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     </div>
 
     <div class="two">
-      <div class="card gloss">
+      <div class="card pane">
         <h3 data-t="pr.item"><span class="m v" data-v="item">PROC-migrate-money-columns-to-integer-cents</span></h3>
         <p class="small"><span class="chip gov" data-g="&#9670;">active</span>
           <span class="m">3 / 5</span> <span data-t="pr.steps">steps</span></p>
@@ -1943,7 +1962,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <span class="v" data-v="steps">5</span>" is counted, never stored</b>
           &mdash; there is no second place a procedure could disagree with itself.</p>
       </div>
-      <div class="card gloss">
+      <div class="card pane">
         <h3 data-t="pr.write">Who may tick a box</h3>
         <p class="small" data-t="pr.w1"><span class="m">mycontext procedure step</span> may flip
           <b>one checkbox</b>, matched by a strict pattern, and may reach no other byte of the item.
@@ -1972,7 +1991,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       open questions; all five are answered now, so it lists the answers instead. The label stays
       until a command implements it.</p>
     <div class="two">
-      <div class="card gloss">
+      <div class="card pane">
         <h3 data-t="port.what">What travels</h3>
         <table><tbody>
           <tr><td class="m">items/**</td><td><span class="chip ok" data-g="&#9679;" data-t="port.yes">travels</span></td></tr>
@@ -1988,7 +2007,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <span class="m">.audit/imported/</span> so a receiver can always tell what it witnessed
           from what it was told.</p>
       </div>
-      <div class="card gloss">
+      <div class="card pane">
         <h3 data-t="port.fmt">The format, in order of preference</h3>
         <table><tbody>
           <tr><td><b data-t="port.f1">A plain directory</b></td><td class="small" data-t="port.f1n">canonical. Readable, diffable, and needs no tool to open</td></tr>
@@ -2000,7 +2019,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           &mdash; another workspace, another team, or a machine with no remote in common.</p>
       </div>
     </div>
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="port.coll">On import &mdash; three buckets, and nothing applies unconfirmed</h3>
       <table><thead><tr><th data-t="th.bucket">Bucket</th><th data-t="th.example">Example</th></tr></thead><tbody>
         <tr><td><span class="chip ok" data-g="&#9679;" data-t="port.b1">new</span></td><td class="m">STD-api-errors-use-problem-json</td></tr>
@@ -2020,7 +2039,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       regulated-industry flavour" &mdash; imported at <span class="m">init</span> to start from an
       opinion instead of an empty directory. Decided; nothing implements it yet.</p>
     <div class="two">
-      <div class="card gloss">
+      <div class="card pane">
         <h3 data-t="pk.trust">Where it lands, and why that differs</h3>
         <table><tbody>
           <tr><td><span class="m">init --pack</span></td><td><span class="chip ok" data-g="&#9679;" data-t="pk.active">active</span></td></tr>
@@ -2033,7 +2052,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <b>There is no <span class="m">--trust</span> flag</b>; a boundary a flag can override is
           not a boundary.</p>
       </div>
-      <div class="card gloss">
+      <div class="card pane">
         <h3 data-t="pk.what">What a pack may carry</h3>
         <table><tbody>
           <tr><td class="m">items/**</td><td><span class="chip ok" data-g="&#9679;" data-t="port.yes">travels</span></td></tr>
@@ -2047,7 +2066,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           either.</p>
       </div>
     </div>
-    <div class="card gloss">
+    <div class="card pane">
       <h3 data-t="pk.man">Integrity, described accurately</h3>
       <table><tbody>
         <tr><td data-t="pk.m1">Digest</td><td class="small"><span class="m">sha256</span>, <b data-t="pk.m1n">full, per file, sorted</b></td></tr>
@@ -2072,7 +2091,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="dv.sub">The repository's own README, rendered here and addressed by heading
       ordinal — so one integer gives both a deep link and a language switch that lands on the same section.</p>
     <div class="two">
-      <div class="card gloss"><h3 data-t="dv.toc">Contents</h3>
+      <div class="card pane"><h3 data-t="dv.toc">Contents</h3>
         <div class="small" style="line-height:2">
           <div>1 · <span data-t="dv.t1">What this is</span></div>
           <div>2 · <span data-t="dv.t2">Install</span></div>
@@ -2083,7 +2102,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <p class="small" style="margin-block-start:8px" data-t="dv.parity">The EN/HE switch
           self-disables when the parity test is red — a mirror that has drifted is worse than none.</p>
       </div>
-      <div class="card gloss"><h3 data-t="dv.rendered">§<span class="v" data-v="ordinal">3</span> — <span class="v" data-v="heading">The four tiers</span></h3>
+      <div class="card pane"><h3 data-t="dv.rendered">§<span class="v" data-v="ordinal">3</span> — <span class="v" data-v="heading">The four tiers</span></h3>
         <div class="md" id="mdout"></div>
         <p class="small" style="margin-block-start:8px" data-t="dv.mdnote">Rendered by a hand-written
           subset renderer: no HTML string is ever produced, so there is nothing to sanitise. Raw HTML,
@@ -2098,7 +2117,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">✅ <span data-t="tu.v">each one titled with a job, not a feature</span></span></div>
     <p class="psub" data-t="tu.sub">Six replacing two. Every transcript is a generated block, so a
       tutorial cannot teach a flag that no longer exists without a test going red.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <table><thead><tr><th data-t="tu.t">Tutorial</th><th data-t="tu.job">The job it answers</th><th>EN</th><th>HE</th></tr></thead><tbody>
         <tr><td data-t="tu.1">First twenty minutes</td><td class="small" data-t="tu.j1">I have just installed this</td><td>✅</td><td><span class="chip warn" data-g="▲" data-t="tu.todo">to write</span></td></tr>
         <tr><td data-t="tu.2">When it did not fire</td><td class="small" data-t="tu.j2">the model did the banned thing</td><td><span class="chip warn" data-g="▲" data-t="tu.todo">to write</span></td><td><span class="chip warn" data-g="▲" data-t="tu.todo">to write</span></td></tr>
@@ -2119,7 +2138,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict">⚠️ <span data-t="ln.v">conditional pass — the corpus cross-links earn it</span></span></div>
     <p class="psub" data-t="ln.sub">The four help topics, each linked to the items in <i>this</i>
       corpus that demonstrate it. That join is what a docs page cannot do.</p>
-    <div class="card gloss">
+    <div class="card pane">
       <table><tbody>
         <tr><td class="m">categories</td><td class="small"><span data-t="ln.c">which are normative</span> · <span class="m">CONST-zero-runtime-dependencies</span></td></tr>
         <tr><td class="m">scope</td><td class="small"><span data-t="ln.s">how scope restricts</span> · <span class="m">INV-prices-are-integer-cents</span></td></tr>

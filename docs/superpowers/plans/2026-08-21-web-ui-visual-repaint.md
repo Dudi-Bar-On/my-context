@@ -591,11 +591,83 @@ Nothing travels horizontally. **A crossfade has no axis to get wrong**, which is
 
 Split across four commits by rail group so a reviewer can reject one group without rejecting all twenty.
 
-- [ ] **Step 1: Injection group** — scope coverage, coverage gaps, budget simulator, injected now
-- [ ] **Step 2: Evidence group** — audit stream, ask, doctor, decay, relations, status
-- [ ] **Step 3: Change group** — review queue, capture, composer, configure, procedures, export/import
-- [ ] **Step 4: Read group** — documentation, tutorials, learn
-- [ ] **Step 5: After each, run `npm run test:e2e` and confirm every screen still renders in both languages**
+- [x] **Step 1: Injection group** — scope coverage, coverage gaps, budget simulator, injected now
+
+**Done.** The `.card.gloss` → `.card.pane` material swap (8 sites), the same drop-in
+substitution Task 6 already used on the hero — `.card` keeps the layout, `.pane`
+supplies the glass. **One real collision found and fixed, not just a class-name
+question:** `#covfull .two{display:grid;grid-template-columns:1fr 1fr}` lays the
+"Repository" and "What governs" cards out as CSS Grid items, and the legacy
+`.pane{grid-area:pane;…}` rule (written when the item-detail aside was the only
+element carrying bare `.pane`, per Task 3's own note that its structure was left
+"untouched") now matches every `.card.pane` too — both cards resolved the
+unrelated named line `pane` and collapsed onto each other at full width, one over
+the other. `e2e/states.spec.ts` caught it as a hard click-timeout on the file-tree
+`role="treeitem"`, not as a visual glitch; a synthetic-markup check first reproduced
+it against master (test passed clean on unmodified HEAD, confirming the patch was
+the cause) before the fix. Rescoped that whole legacy block from `.pane` to `#pane`
+(the aside's own unique id), which also silently fixes a second, already-shipped
+defect on Task 6's hero: `.pane h3` (later in source than `.card>h3`, same
+specificity) had been overriding every card heading's font-size/margin from
+`--fs-0`/`--sp-2` to `--fs-2`/`--sp-1` since Task 6 landed — confirmed by
+`getComputedStyle` before (16px/4px) and after (13px/8px) the rescoping. Verified
+in a real Chromium page (`chromium.launch()`, file:// — the MCP browser tool
+blocks it, same constraint Tasks 6-8 hit): screenshots of all four screens in
+English and one in Hebrew, side-by-side cards no longer overlapping, tree item
+clickable again. Full `npm run test:e2e` 25/25 green.
+
+- [x] **Step 2: Evidence group** — audit stream, ask, doctor, decay, relations, status
+
+**Done.** Same `.card.gloss` → `.card.pane` swap, 9 sites across six screens (audit
+stream 1, ask 1, doctor 3, decay 2, relations 1, status 1). No new legacy
+collision — none of these screens lay their cards out in a CSS grid the way
+coverage's `.two` did, so Step 1's `#pane` rescoping was the fix this group
+needed too, not a new one. Verified in a real Chromium page: all six screens
+screenshotted in English, cards rendering as glass with no overlap; ask's nested
+flat "query this composed" sub-card (deliberately `background:var(--sunk)`, not
+`.pane` — a card-in-a-card would be glass-on-glass, which no primitive calls
+for) still reads correctly against its now-glass parent. `npm run test:e2e`
+25/25.
+- [x] **Step 3: Change group** — review queue, capture, composer, configure, procedures, export/import, template packs
+
+**Done.** Same swap, 16 sites across the seven screens (work 1, capture 1,
+palette 1, config 4, proc 3, port 3, packs 3). This group is where the `.two`
+grid layout the Injection group's coverage screen surfaced is most common —
+config, proc, port and packs each lay two cards out side by side in it. All
+four screenshotted and confirmed rendering as two non-overlapping glass panes,
+confirming the `#pane` rescoping from Step 1 generalises rather than being a
+one-off patch for coverage specifically. `npm run test:e2e` 25/25.
+
+- [x] **Step 4: Read group** — documentation, tutorials, learn
+
+**Done.** Same swap, 4 sites (docs 2, tut 1, learn 1) — docs' Contents/rendered-
+README pair is the group's own `.two` grid, screenshotted and confirmed as two
+non-overlapping glass panes. `grep -c 'class="card gloss'` across the whole
+file is **0** after this commit: all 37 sites Task 9 owned are `.card.pane`,
+the same primitive the hero (Task 6) already used for its 4. `npm run
+test:e2e` 25/25.
+
+- [x] **Step 5: After each, run `npm run test:e2e` and confirm every screen still renders in both languages**
+
+**Done, after all four groups.** `npm run test:e2e` run and green (25/25) after
+every one of the four commits above, not only at the end. Every-language
+rendering is exercised by `e2e/runs.spec.ts`'s two "every screen renders"
+specs (English and Hebrew) plus `e2e/language.spec.ts`'s round trip, all in
+that same 25 — not a separate manual pass per screen. Manual browser
+verification (screenshots, both languages) was done per group and is recorded
+in Steps 1-4 above, since e2e proves the page runs clean and un-hidden, not
+that the intended material is what actually painted — Step 1's grid collision
+is exactly the kind of defect e2e's `runs.spec.ts` cannot see (the screen
+"renders clean," it is simply two panes occupying one rectangle) and only a
+real click (`states.spec.ts`) or a screenshot caught.
+
+**Corrected while implementing:** Step 3's own list omits **Template packs** —
+the rail's own `.grp` markup (`<!-- ══ rail: three groups by tense … ══ -->`,
+itself stale too — there are four groups, not three) has seven buttons in the
+Change group (`work`, `capture`, `palette`, `config`, `proc`, `port`, `packs`),
+not six. 4 (Injection) + 6 (Evidence) + 7 (Change) + 3 (Read) = 20, matching this
+task's own title; the plan's list without `packs` only reaches 19. Added it above
+rather than silently including it in Step 3's commit without a paper trail.
 
 ---
 
