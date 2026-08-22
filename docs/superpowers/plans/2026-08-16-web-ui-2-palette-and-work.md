@@ -1918,7 +1918,7 @@ git commit -m "feat(ui): config preview — the real selector and the real injec
 - Consumes: plan 1's spawn harness (`test/ui/helpers.ts`: `startUiChild`, `redeemNonce`), `TOKEN_HEADER` (`security.ts`).
 - Produces: the proof that registering routes from new modules kept them inside the security gate — the property plan 1's routes.ts comment promises ("registering a route can never bypass it"), now asserted for the routes this plan registered.
 
-- [ ] **Step 1: Write the test — it fails until Tasks 3-7 are merged (route 404s read as gate failures), passes after**
+- [x] **Step 1: Write the test — it fails until Tasks 3-7 are merged (route 404s read as gate failures), passes after**
 
 ```ts
 // test/ui/plan2-e2e.test.ts
@@ -1985,17 +1985,17 @@ test('every plan-2 route refuses a tokenless request and answers a tokened one',
 });
 ```
 
-- [ ] **Step 2: Run it and see it pass — then verify it is alive**
+- [x] **Step 2: Run it and see it pass — then verify it is alive**
 
 Run: `node --test test/ui/plan2-e2e.test.ts` → PASS.
 Aliveness check (every test needs a failure mode it actually detects): temporarily comment out the `registerWorkRoutes();` call in `server.ts`, run again, and watch the `/api/revisions` assertions fail with 404 in place of 200. Restore. Run once more: PASS. Record having done this in the commit message body.
 
-- [ ] **Step 3: Run the whole suite**
+- [x] **Step 3: Run the whole suite**
 
 Run: `npm test && npx tsc --noEmit`
 Expected: green.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add test/ui/plan2-e2e.test.ts
