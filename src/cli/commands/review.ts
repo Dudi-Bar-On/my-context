@@ -454,9 +454,10 @@ function cmdPromoteAll(
   // The same disclosure the one-item path makes, once for the set: a human
   // promoting these is entitled to know that an agent's proposed text is not
   // what they are approving.
-  const proposed = promotable.filter(
-    (i) => revisionQueue(ctx).some((r) => r.itemId === i.id),
-  );
+  // Asked ONCE for the set, not once per member: `pendingRevisions` reads the
+  // revision log, and a forty-item pack would otherwise read it forty times.
+  const revs = revisionQueue(ctx);
+  const proposed = promotable.filter((i) => revs.some((r) => r.itemId === i.id));
   if (proposed.length > 0) {
     out('');
     say(out,
