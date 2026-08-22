@@ -17,12 +17,15 @@ import {
   alwaysInjection, emptyScopeInjection, RATIONALE_NOT_INJECTED, scopeField,
 } from '../../core/render-item.ts';
 import type { Workspace } from '../../core/workspace.ts';
+import { readImportRecords, type ImportRecord } from '../../pack/imported-audit.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
 import {
   DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, paragraph, records, refuseUnknownFlag, table,
   wantsJson,
 } from './format.ts';
-import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
+import {
+  flag, flagOccurrences, hasFlag, listFlag, positionals, registerCommand, type Emit,
+} from './registry.ts';
 import { fieldDiff, renderRevision, renderSettled } from './revision-view.ts';
 
 /**
@@ -72,7 +75,10 @@ const REVISION_SUBCOMMANDS = ['revisions', 'promote-revision', 'discard-revision
 const REVIEW_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
   list: { allowed: [...DETAIL_FLAGS, 'type'], values: ['type'] },
   show: { allowed: [], values: [] },
-  promote: { allowed: ['scope', 'severity', 'always', 'yes'], values: ['scope', 'severity'] },
+  promote: {
+    allowed: ['scope', 'severity', 'always', 'yes', 'all', 'pack'],
+    values: ['scope', 'severity', 'pack'],
+  },
   discard: { allowed: ['yes'], values: [] },
   revisions: { allowed: [...DETAIL_FLAGS], values: [] },
   'promote-revision': { allowed: ['revision', 'force', 'yes'], values: ['revision'] },
@@ -82,6 +88,8 @@ const REVIEW_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
 const USAGE = `usage: mycontext review [list] [--type <category>] ${DETAIL_USAGE}
        mycontext review show <id>
        mycontext review promote <id> [--scope "a/**,b/**"] [--always] [--severity hard|soft] [--yes]
+       mycontext review promote --all --pack <name> [--yes]
+             (every draft that pack imported, in one confirmation — no per-item flags)
        mycontext review discard <id> [--yes]
        mycontext review revisions [<id>] ${DETAIL_USAGE}
        mycontext review promote-revision <id> [--revision REV-...] [--force] [--yes]
@@ -199,6 +207,299 @@ function emitDraftRevisionNote(
     `${one ? 'it' : 'them'} with \`mycontext review revisions ${item.id}\`.`,
   );
   out('');
+}
+
+/* ---------------------------------------------------------------------------
+ * `mycontext review promote --all --pack <name>` — the other half of
+ * "everything lands draft".
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Why a bulk promote exists at all, and why it is shaped like this.
+ *
+ * A forty-item pack produces a forty-item review queue on an empty project,
+ * and a queue that size is bulk-approved unread — which is a WORSE outcome
+ * than no gate, not a better one. What that argument supports is making bulk
+ * review tractable, not skipping the gate. So the bulk act exists, it is one
+ * human confirmation, and it is taken **after** the corpus is visible rather
+ * than before — which is why there is deliberately no `--promote-all` on the
+ * import itself (§6m.5).
+ *
+ * Every rule here is a refusal, and each closes a way the act could quietly
+ * mean more than the human meant:
+ *
+ *  - **`--all` requires `--pack`.** There is no unbounded bulk promote: the
+ *    licence granted is for the corpus a human just chose to import, not for
+ *    every draft in the workspace.
+ *  - **`--pack` without `--all` is refused**, rather than accepted and
+ *    ignored. It is the flag that names a whole membership list; accepting it
+ *    where nothing reads it is the silent swallow `unknownFlag` exists to stop.
+ *  - **`--scope`, `--severity` and `--always` are refused with `--all`.** They
+ *    are per-item decisions, and applying one of them to forty items is a bulk
+ *    edit wearing a promotion's clothes.
+ *  - **An id positional is refused with `--all`**: the two name different
+ *    promotions, and honouring either would honour it against a command line
+ *    that asked for the other.
+ *
+ * Each item is promoted by the same single `updateItem` call the one-item path
+ * uses, with `origin: 'human'` — which is the only thing that evidences a
+ * human did it, and the only thing that makes the status change legal on a
+ * normative item.
+ *
+ * **The queue definition is not widened.** Eligibility is `reviewQueue`'s, via
+ * `drafts` above, asked once and intersected with the membership list; the
+ * category check is the same one the one-item path makes. Nothing here
+ * re-derives what a draft is — four surfaces each kept their own copy of that
+ * filter once and they disagreed.
+ */
+
+/** The skip reason for a member whose file is gone, spelled once. */
+const MISSING_MEMBER = 'no longer present';
+
+/**
+ * Why one pack member is not promoted, or `null` when nothing stops it.
+ *
+ * **Everything skipped is named**, because a bulk operation that reports only
+ * its successes is the exact shape of a silent drop. Four reasons, in the
+ * order the underlying facts stop being true rather than in the order they are
+ * cheap to test: an item that is gone cannot have a layer, an item outside the
+ * project layer is read-only here whatever its status, a settled item is not
+ * in the queue, and a category nobody enabled would never inject the result.
+ *
+ * `inQueue` is `reviewQueue`'s answer, handed in rather than recomputed — the
+ * point of this function is to EXPLAIN that answer for one id, never to be a
+ * second opinion about it. `categoryEnabled` is the same `Object.hasOwn` check
+ * the one-item promote makes, for the same prototype-pollution reason.
+ *
+ * Exported for the one branch no artefact can reach: an import creates in the
+ * project layer, so a pack member is never global, and standing up a fake
+ * `HOME` to exercise one sentence would cost a whole test file (see
+ * `test/cli/edit-global-layer.test.ts` for why).
+ */
+export function promoteAllSkipReason(
+  item: Item | null, inQueue: boolean, categoryEnabled: boolean,
+): string | null {
+  if (item === null) return MISSING_MEMBER;
+  if (item.layer !== 'project') {
+    return 'belongs to the global layer, which is read-only from this project';
+  }
+  if (!inQueue) return `already ${item.status}`;
+  if (!categoryEnabled) {
+    return `category "${item.type}" is not enabled here, so it would never be injected`;
+  }
+  return null;
+}
+
+/** `rule 6   standard 4   constraint 2` — what the count above it is made of. */
+function typeBreakdown(items: readonly Item[]): string {
+  const counts = new Map<string, number>();
+  for (const item of items) counts.set(item.type, (counts.get(item.type) ?? 0) + 1);
+  return [...counts.entries()]
+    .toSorted(([a], [b]) => a.localeCompare(b))
+    .map(([type, n]) => `${type} ${n}`)
+    .join('   ');
+}
+
+/**
+ * The membership sentence, and the one thing this command cannot repair.
+ *
+ * `writeImportRecord` files `<packDir>/import.json` and `packDir` slugs the
+ * pack's OWN name, so a second pack calling itself the same thing REPLACES the
+ * first one's record — and that record is the membership list read here. By
+ * the time this command runs the earlier list is gone; there is nothing to
+ * reconstruct it from, and inventing one from the corpus would be guessing
+ * which drafts a stranger's pack brought in.
+ *
+ * What is available is refusing to be quiet about it. The record is named by
+ * the two facts that identify WHICH import it is — where it came from and
+ * when — so a user with two packs of one name can see which one they are
+ * promoting, and the replacement rule is stated rather than left to be
+ * discovered. The direction the collision fails in is the safe one: a
+ * membership list that has narrowed leaves the earlier pack's items in the
+ * queue to be promoted one at a time, where one that had widened would promote
+ * items nobody chose. `mycontext pack import --name <text>` is how a receiver
+ * avoids the collision in the first place, and its own refusal says so.
+ */
+function membershipLine(out: Emit, record: ImportRecord): void {
+  say(out,
+    `this is the membership list \`mycontext pack list\` shows for ` +
+    `${JSON.stringify(record.pack)}: ${record.items.length} item(s), imported ` +
+    `${record.importedAt} from ${record.source}. A pack imported again under this name ` +
+    'REPLACES that record, so what --all promotes is the most recent import\'s membership — ' +
+    'anything an earlier pack of the same name brought in is not in it, and stays in the queue ' +
+    'to be promoted one at a time.');
+}
+
+/**
+ * `mycontext review promote --all --pack <name>`.
+ *
+ * Reached whenever either flag is present, so that every refusal above belongs
+ * to this command rather than being reported as a missing id by the one-item
+ * path — a bulk promote refused for "no id" would be refused for the one thing
+ * it is not missing.
+ */
+function cmdPromoteAll(
+  ws: Workspace, ctx: MutationContext, args: string[], id: string | null,
+  errors: LoadError[], out: Emit,
+): number {
+  const all = hasFlag(args, 'all');
+  const pack = flag(args, 'pack');
+
+  if (!all) {
+    say(out,
+      'my_context: --pack names the pack whose drafts --all promotes, and means nothing on its ' +
+      'own — a promotion of one item is named by its id. Nothing was promoted. Pass ' +
+      '`--all --pack <name>` for the whole pack, or drop --pack and name the draft you mean.');
+    return 1;
+  }
+  if (pack === null || pack === '') {
+    say(out,
+      'my_context: --all needs --pack <name>. There is no unbounded bulk promote here: the ' +
+      'licence a bulk act can be given is for the corpus a human just chose to import, not for ' +
+      'every draft in this workspace, which is why this is refused rather than defaulted. ' +
+      '`mycontext pack list` names every pack imported here.');
+    return 1;
+  }
+  if (id !== null) {
+    say(out,
+      `my_context: --all promotes a whole pack and ${id} names one draft, so this command line ` +
+      'asks for two different promotions. Nothing was promoted. Drop --all to promote ' +
+      `${id} alone, or drop the id to promote everything --pack names.`);
+    return 1;
+  }
+  // Every occurrence, not just a resolved value: `--always=false` and an empty
+  // `--scope=` were typed too, and a flag that was typed and changed nothing is
+  // reported rather than swallowed.
+  const perItem = ['scope', 'severity', 'always']
+    .filter((name) => flagOccurrences(args, name).length > 0);
+  if (perItem.length > 0) {
+    say(out,
+      `my_context: ${perItem.map((n) => `--${n}`).join(', ')} ` +
+      `${perItem.length === 1 ? 'is refused' : 'are refused'} with --all. ` +
+      'Each is a per-item decision, and applying one of them to every draft a pack imported is ' +
+      'a bulk edit wearing a promotion\'s clothes — a field nobody chose per item, set on items ' +
+      'nobody looked at one at a time. Nothing was promoted. Promote the pack, then edit the ' +
+      'items that need it.');
+    return 1;
+  }
+
+  const known = readImportRecords(ctx.root);
+  const record = known.find((r) => r.pack === pack);
+  if (!record) {
+    say(out,
+      `my_context: no pack named ${JSON.stringify(pack)} has been imported into this workspace, ` +
+      'so there is no membership list to promote. ' + (known.length === 0
+        ? '`mycontext pack list` says the same; `mycontext pack import <path>` reads one in.'
+        : `Imported here: ${known.map((r) => JSON.stringify(r.pack)).join(', ')}. ` +
+          '`mycontext pack list` shows each with its version, its size and where it came from.'));
+    return 1;
+  }
+
+  // ONE call to the queue, for every member. `drafts` is `reviewQueue` ordered
+  // for a human; membership is intersected with it rather than the filter being
+  // re-derived here.
+  const queue = new Set(drafts(ctx, null).map((i) => i.id));
+  const promotable: Item[] = [];
+  const skipped: { id: string; reason: string }[] = [];
+  for (const memberId of record.items) {
+    const item = ctx.store.get(memberId);
+    // `Object.hasOwn` for `resolveCategory`'s reason: a category named
+    // `constructor` would otherwise resolve to Object.prototype.constructor.
+    const enabled = item !== null
+      && Object.hasOwn(ws.config.categories, item.type)
+      && ws.config.categories[item.type].enabled;
+    const reason = promoteAllSkipReason(item, queue.has(memberId), enabled);
+    if (item === null || reason !== null) {
+      skipped.push({ id: memberId, reason: reason ?? MISSING_MEMBER });
+      continue;
+    }
+    promotable.push(item);
+  }
+
+  // The preview, printed before the gate and regardless of `--yes`:
+  // `confirmAction` only asks its question on a TTY, so without this the
+  // non-interactive refusal would never say what it declined.
+  if (promotable.length > 0) {
+    say(out,
+      `about to promote ${promotable.length} draft(s) imported from pack ` +
+      `${JSON.stringify(record.pack)} — every one becomes active and starts governing this ` +
+      'project.');
+    out(`  ${typeBreakdown(promotable)}`);
+  }
+  if (skipped.length > 0) {
+    if (promotable.length > 0) out('');
+    say(out,
+      `skipping ${skipped.length} of the ${record.items.length} item(s) this pack imported:`);
+    const width = Math.max(...skipped.map((s) => s.id.length));
+    // A hanging indent, so a wrapped reason cannot be read as the next id's.
+    const hang = `  ${' '.repeat(width + 2)}`;
+    for (const s of skipped) {
+      for (const line of paragraph(`${s.id.padEnd(width)}  ${s.reason}`, '  ', undefined, hang)) {
+        out(line);
+      }
+    }
+  }
+  out('');
+  membershipLine(out, record);
+
+  if (promotable.length === 0) {
+    say(out,
+      `my_context: nothing to promote — not one of the ${record.items.length} item(s) pack ` +
+      `${JSON.stringify(record.pack)} imported is a draft in this project's review queue. Every ` +
+      'one is named above with its reason. Nothing was written.');
+    emitLoadErrors(errors, out);
+    return 0;
+  }
+
+  // The same disclosure the one-item path makes, once for the set: a human
+  // promoting these is entitled to know that an agent's proposed text is not
+  // what they are approving.
+  const proposed = promotable.filter(
+    (i) => revisionQueue(ctx).some((r) => r.itemId === i.id),
+  );
+  if (proposed.length > 0) {
+    out('');
+    say(out,
+      `note: ${proposed.length} of these also carry a pending revision ` +
+      `(${proposed.map((i) => i.id).join(', ')}) proposing new content. This promotion neither ` +
+      'applies nor discards them — each item starts governing the text it has NOW. Read them ' +
+      'with `mycontext review revisions`.');
+  }
+
+  out('');
+  if (!confirmAction(
+    args, out,
+    `Promote ${promotable.length} draft(s) from ${JSON.stringify(record.pack)} to active? ` +
+    'Every one starts governing this project.',
+  )) return 1;
+
+  const promoted: string[] = [];
+  try {
+    for (const item of promotable) {
+      // The one-item path's call, unchanged: `origin: 'human'` is what makes
+      // the status change legal, and it is true — a human answered one prompt
+      // ago, for this set.
+      updateItem(ctx, { id: item.id, status: 'active', origin: 'human' });
+      promoted.push(item.id);
+    }
+  } catch (err) {
+    // There is no transaction here. The partial state is NAMED rather than
+    // left for the user to discover from a queue that shrank by an amount
+    // nobody reported.
+    out(err instanceof Error ? err.message : String(err));
+    say(out,
+      `${promoted.length} of the ${promotable.length} item(s) had already been promoted and are ` +
+      `active${promoted.length === 0 ? '' : ` — ${promoted.join(', ')}`}. The rest are still ` +
+      'drafts, and running this again promotes them.');
+    emitLoadErrors(errors, out);
+    return 1;
+  }
+
+  say(out,
+    `my_context: ${promoted.length} item(s) from pack ${JSON.stringify(record.pack)} are now ` +
+    `active — ${promoted.join(', ')}. Nothing else in the review queue was touched.`);
+  emitLoadErrors(errors, out);
+  return 0;
 }
 
 /**
@@ -520,7 +821,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
 
-  const valueFlags = ['type', 'scope', 'severity', 'revision', 'reason'];
+  const valueFlags = ['type', 'scope', 'severity', 'revision', 'reason', 'pack'];
   const [subcommand = 'list', id] = positionals(args, valueFlags);
 
   if (!(SUBCOMMANDS as readonly string[]).includes(subcommand)) {
@@ -664,6 +965,16 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
       return subcommand === 'promote-revision'
         ? cmdPromoteRevision(ctx, args, id, errors, out)
         : cmdDiscardRevision(ctx, args, id, errors, out);
+    }
+
+    // Before the missing-id refusal, because the bulk form has no id by
+    // design: `review promote --all --pack x` answered with the usage block
+    // would be refused for the one thing it is not missing. Entered whenever
+    // either flag is PRESENT — `--pack` typed alone reaches its own refusal
+    // here rather than being consumed as a value flag and forgotten.
+    if (subcommand === 'promote'
+      && (hasFlag(args, 'all') || flagOccurrences(args, 'pack').length > 0)) {
+      return cmdPromoteAll(ws, ctx, args, id ?? null, errors, out);
     }
 
     if (!id) { out(USAGE); return 1; }

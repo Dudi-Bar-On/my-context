@@ -244,7 +244,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 | Flag readers | `cli/commands/registry.ts` · `export function flag(args: string[], name: string): string \| null {` · ~157, `cli/commands/registry.ts` · `export function listFlag(args: string[], name: string): string[] \| null {` · ~175, `cli/commands/registry.ts` · `export function hasFlag(args: string[], name: string): boolean {` · ~263, `cli/commands/registry.ts` · `export function positionals(args: string[], valueFlags: string[]): string[] {` · ~268 |
 | The confirmation gate, and the non-interactive refusal | `cli/commands/review.ts` · `export function confirmAction(` · ~489 |
 | Subcommand dispatch to imitate for `pack` | `cli/commands/review.ts` · `export const SUBCOMMANDS = [` · ~37 |
-| …and its per-subcommand flag table | `cli/commands/review.ts` · `  promote: { allowed: ['scope', 'severity', 'always', 'yes'], values: ['scope', 'severity'] },` · ~75 |
+| …and its per-subcommand flag table | `cli/commands/review.ts` · `const REVIEW_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {` · ~75 |
 | Mutating corpus access, always rebuilt | `cli/commands/context.ts` · `export function openMutateContext(ws: Workspace): { ctx: MutationContext; errors: LoadError[] } {` · ~67 |
 | Load errors reported on every path | `cli/commands/context.ts` · `export function emitLoadErrors(errors: LoadError[], out: Emit): void {` · ~15 |
 | One `my_context:` line, never a stack trace | `cli/commands/context.ts` · `export function toCliMessage(err: unknown): string {` · ~29 |
@@ -2334,7 +2334,7 @@ skipping 3 of the 15 item(s) this pack imported:
   CONST-z       no longer present
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 test('--all without --pack is refused', () => { … });
@@ -2356,9 +2356,9 @@ test('the review queue definition is not widened — reviewQueue still means one
 });
 ```
 
-- [ ] **Step 2–3: fail, implement.** Add `'all'` and `'pack'` to the promote row of the per-subcommand flag table, `'pack'` to the value flags, and the two new lines to the usage block — there is a test in the existing suite that holds the usage block and the subcommand list equal, and it will catch a half-update.
-- [ ] **Step 4: Update both READMEs** — the review section gains the bulk form in both languages, with the sentence that makes it honest: *this is one human act on a corpus you can see, not a way around the gate.*
-- [ ] **Step 5: Full gate and commit**
+- [x] **Step 2–3: fail, implement.** Add `'all'` and `'pack'` to the promote row of the per-subcommand flag table, `'pack'` to the value flags, and the two new lines to the usage block — there is a test in the existing suite that holds the usage block and the subcommand list equal, and it will catch a half-update.
+- [x] **Step 4: Update both READMEs** — the review section gains the bulk form in both languages, with the sentence that makes it honest: *this is one human act on a corpus you can see, not a way around the gate.*
+- [x] **Step 5: Full gate and commit**
 
 ```bash
 npm test && npx tsc --noEmit && npm run verify:citations && npm run check:retired
