@@ -696,15 +696,21 @@ There is no light theme to fall back on. Glass, the ground and the layered shado
 **Files:**
 - Modify: `docs/design/web-ui-mockup.html` — `@media (forced-colors: active)` and `@media (prefers-reduced-transparency: reduce)`
 
-- [ ] **Step 1: Confirm the finding by measurement**
+- [x] **Step 1: Confirm the finding by measurement**
 
 **The glass does not survive High Contrast.** `backdrop-filter`, both tint gradients and the layered shadow are stripped or overridden. Measured during the icon evaluation.
 
-- [ ] **Step 2: Declare a register rather than letting the browser improvise**
+**Done 2026-08-22 — re-measured in a real Chromium (Playwright `forcedColors:'active'`) against the file as it stood before this task's CSS existed.** Confirmed: both `--pane-gloss`/`--pane-tint` gradients strip to `background-image:none` with no `background-color` to fall back to (the pane goes fully transparent, not merely dimmed) and `box-shadow` strips to `none`. **Corrected in the process:** `backdrop-filter` is NOT auto-stripped — it measured unchanged (`blur(20px) saturate(1.4)`) — so it has to be dropped explicitly in both registers, not assumed away.
+
+- [x] **Step 2: Declare a register rather than letting the browser improvise**
 
 `.pane` → `Canvas` with a `CanvasText` border. `.plate` → `Canvas` with a hairline. Chips keep their `::before` glyph, which is `content` and therefore not forced. **SVG `fill`/`stroke` are NOT force-adjusted in Chromium** — restate them by system colour name.
 
-- [ ] **Step 3: Verify the tier ribbon still distinguishes four tiers** — under forced-colors the segments previously collapsed to one visual state. Patterns survive; `repeating-linear-gradient` is a `background-image` and does.
+**Done 2026-08-22.** `.pane,.rail,.hdr{background:Canvas;border-color:CanvasText;box-shadow:none;backdrop-filter:none}` — `.rail` and `.hdr` included, not `.pane` alone: both joined the shared material rule on 2026-08-22 (after this task was written), so both share the same failure and need the same fix. `.plate,.lit{background:Canvas;border:1px solid CanvasText}` — `.lit` included too, since it consumes the same `--plate` token and has the same missing-border problem. `symbol[id^="i-"]{fill:none;stroke:CanvasText}` restates the six icon glyphs. Chips needed no CSS change: `::before{content:"◆ "}` etc. measured present, verbatim, under forced-colors. **Corrected in the process:** the six icons' `stroke="currentColor"` already measured a correctly-forced stroke via the inherited, forced `color` — not literally invisible today — but restated anyway per this step's own instruction, since that is the more robust contract to build to.
+
+- [x] **Step 3: Verify the tier ribbon still distinguishes four tiers** — under forced-colors the segments previously collapsed to one visual state. Patterns survive; `repeating-linear-gradient` is a `background-image` and does.
+
+**Done 2026-08-22 — and this step's own premise measured false.** Verified first: yes, `.seg.pinned/.jit/.restored/.index` still collapse to an identical `rgb(255,255,255)` background with no image. But **`repeating-linear-gradient` does NOT survive forced-colors** — measured `background-image:none` on every existing hatch pattern already in the file (`.ghosts .gh`, `.notrun`, `.mini i.x`, `.div-r i`, `.tokvoid`), no different from a plain gradient. `border-style` (dashed/dotted/double) is not on Chromium's forced list and measured unchanged in the same test, so the fix uses that instead: `.seg.pinned{border-block:3px solid CanvasText}`, `.jit` dashed, `.restored` dotted, `.index` double — confirmed rendering as four visually distinct patterns (screenshot, `deviceScaleFactor:3`) and asserted in `e2e/degraded.spec.ts`.
 
 - [ ] **Step 4: Honour `prefers-reduced-transparency: reduce`**
 
