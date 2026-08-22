@@ -495,6 +495,11 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   '/api/watch/volume?minutes=20&bucket=10',
   '/api/watch/spills',
   '/api/watch/spills?item=RULE-no-such-item',
+  // The spill ratio's two tallies. The parameterless form is the one the
+  // chart draws; the second probe pins the limit, because a cap that is
+  // never exercised is a cap nothing proves does not open a database.
+  '/api/watch/ratio',
+  '/api/watch/ratio?limit=6',
   // `session` is required, and a session the corpus has never seen is the
   // no-sample state — "the file is not there", the case that tempts a read
   // into creating it.

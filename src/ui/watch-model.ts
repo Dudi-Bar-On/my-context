@@ -392,6 +392,155 @@ export function apiWatchSpills(ws: Workspace, url: URL): JsonResult {
   };
 }
 
+// --- The spill ratio (mockup `#ratio`, `sim.ratio` / `sim.ration`) -----------
+//
+// The diverging bar on the simulator screen: delivered growing one way from
+// the centre, spilled the other, per item, so the long red half NAMES which
+// budget is too small. The mockup is the specification and it names its own
+// source in the note under the chart — "The two numbers come from
+// `audit_item.role` through `topItems` — already exported, already indexed,
+// called twice" (`docs/design/web-ui-mockup.html`, the `sim.ration` note under
+// `<div class="plate" id="ratio">`). No route exposed it, so the screen could
+// not be drawn; this is that route, and it reads exactly what the note says
+// rather than inventing a second aggregate beside `topItems`
+// (`core/audit-db.ts` · `export function topItems(db: DatabaseSync, role: string | null, limit: number): SummaryRow[] {` · ~779).
+//
+// **`delivered` is the prose word and `injected` is the column value.** The
+// role literal written into `audit_item` is `injected`
+// (`core/audit-db.ts` · `insertItem.run(seq, entry.id, 'injected', entry.tier);` · ~215);
+// every word the mockup puts in front of a reader for the same thing is
+// *delivered*. The field takes the design's word, the query takes the
+// database's, and neither is respelled to match the other.
+
+/**
+ * How many DISTINCT items each half of the ratio is tallied over.
+ *
+ * `topItems` groups by item, so this bounds the number of ROWS the aggregate
+ * returns rather than the number of audit records behind them, and the group
+ * is served from the index that exists for it
+ * (`core/audit-db.ts` · `CREATE INDEX IF NOT EXISTS idx_audit_item_id ON audit_item(item_id, role);` · ~93).
+ * A corpus with more distinct items in one role than this is possible, and
+ * `truncated` is what says so out loud — see `spillRatio`, where the window is
+ * the whole difference between a measured zero and an unmeasured one.
+ */
+const RATIO_ROLE_WINDOW = 1000;
+
+/** One bar: an item, what was delivered for it, and what spilled. */
+export interface RatioRow {
+  id: string;
+  /** Records that DELIVERED this item — `audit_item.role = 'injected'`. */
+  delivered: number | null;
+  /** Records that selected it and could not fit it — `audit_item.role = 'spilled'`. */
+  spilled: number | null;
+}
+
+/**
+ * Pure: the two role tallies merged into one row per item, ordered so the
+ * longest red half is at the top, and cut to `limit`.
+ *
+ * **The row set is the UNION of the two tallies, not either one of them.** The
+ * mockup's own chart draws an item with twelve deliveries and NO spills beside
+ * one with three deliveries and forty-one spills; ranking by spills alone
+ * would drop the first, and ranking by deliveries alone would drop the second.
+ * Both belong to the question the chart asks.
+ *
+ * **A count missing from one tally is a zero only when that tally is
+ * COMPLETE.** A tally that came back short of the window listed every item
+ * holding that role, so an item absent from it truly holds the role zero
+ * times. A tally that FILLED the window did not, and an item missing from it
+ * has a count somewhere below the window's cutoff — which is unknown, not
+ * zero. Drawing it as zero would put a full-length delivered bar's worth of
+ * missing history on screen as an empty one, which is the same silent drop
+ * `absent`-versus-zeroes refuses one level up. So it stays `null`, and
+ * `truncated` says why.
+ *
+ * A `null` sorts BELOW a measured zero, deliberately: a magnitude nobody
+ * measured cannot claim a rank in a chart ordered by magnitude.
+ */
+export function spillRatio(
+  delivered: SummaryRow[], spilled: SummaryRow[], window: number, limit: number,
+): { rows: RatioRow[]; truncated: boolean } {
+  // `length === window` is read as "possibly more", not as "exactly this
+  // many". The two are indistinguishable from here, and only one of them is
+  // safe to assume.
+  const deliveredComplete = delivered.length < window;
+  const spilledComplete = spilled.length < window;
+
+  const byId = new Map<string, RatioRow>();
+  const tally = (rows: SummaryRow[], side: 'delivered' | 'spilled'): void => {
+    for (const row of rows) {
+      const existing = byId.get(row.label) ?? { id: row.label, delivered: null, spilled: null };
+      existing[side] = row.count;
+      byId.set(row.label, existing);
+    }
+  };
+  tally(delivered, 'delivered');
+  tally(spilled, 'spilled');
+
+  for (const row of byId.values()) {
+    if (row.delivered === null && deliveredComplete) row.delivered = 0;
+    if (row.spilled === null && spilledComplete) row.spilled = 0;
+  }
+
+  const rank = (n: number | null): number => (n === null ? -1 : n);
+  const rows = [...byId.values()].sort((a, b) => (
+    rank(b.spilled) - rank(a.spilled)
+    || rank(b.delivered) - rank(a.delivered)
+    || a.id.localeCompare(b.id)
+  ));
+  return { rows: rows.slice(0, limit), truncated: !deliveredComplete || !spilledComplete };
+}
+
+/**
+ * `GET /api/watch/ratio` — the spill-ratio bar's server half.
+ *
+ * `topItems` twice, through the READ-ONLY door, exactly as every other
+ * projection read on this surface: `openProjectionReadOnlyChecked` creates
+ * nothing, so a GET here does not bring `.audit/audit.db` into existence, and
+ * `readProjection` — the one spelling of the policy, imported by `ask-model.ts`
+ * as well — carries the three outcomes to the wire unchanged. Fresh answers;
+ * never built is 200 with NO rows (a chart of zeroes asserts that nothing
+ * spilled, over a log this endpoint has not read); behind, diverged or damaged
+ * is a 503 naming the state and naming `mycontext audit`, because syncing is a
+ * write.
+ *
+ * The default draws ten bars. The mockup draws six, and `/api/watch/spills`
+ * already reports its top spilled ten; ten leaves the chart room without the
+ * request becoming a scan, and the cap says where that line is.
+ */
+export function apiWatchRatio(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, ['limit']) ?? repeatedParams(url);
+  if (bad !== null) return badRequest(bad);
+  const limit = intParam(url, 'limit', 1, 100, 10);
+  if (limit === null) return badRequest('limit must be an integer between 1 and 100');
+  const root = ws.projectRoot;
+  if (root === null) return { status: 500, body: { error: 'no project workspace' } };
+
+  // Two reads, one handle, one open — the door is opened once and closed in
+  // `readProjection`'s `finally`, including when either aggregate throws.
+  const read = readProjection(root, (db) => ({
+    delivered: topItems(db, 'injected', RATIO_ROLE_WINDOW),
+    spilled: topItems(db, 'spilled', RATIO_ROLE_WINDOW),
+  }));
+  if (!read.ok) return read.refusal;
+
+  const ratio: { rows: RatioRow[]; truncated: boolean } = read.value === null
+    // An absent projection truncated nothing: there was nothing to truncate,
+    // and `projectionState` is what says the difference.
+    ? { rows: [], truncated: false }
+    : spillRatio(read.value.delivered, read.value.spilled, RATIO_ROLE_WINDOW, limit);
+
+  return {
+    status: 200,
+    body: {
+      rows: ratio.rows,
+      roleWindow: RATIO_ROLE_WINDOW,
+      truncated: ratio.truncated,
+      projectionState: read.state,
+    },
+  };
+}
+
 // --- The stream -------------------------------------------------------------
 
 function sseSend(res: ServerResponse, event: string, data: unknown): void {
@@ -481,5 +630,6 @@ export function registerWatchRoutes(): void {
   registerRoute('GET', '/api/watch/volume', json(apiWatchVolume));
   registerRoute('GET', '/api/watch/context', json(apiWatchContext));
   registerRoute('GET', '/api/watch/spills', json(apiWatchSpills));
+  registerRoute('GET', '/api/watch/ratio', json(apiWatchRatio));
   registerRoute('GET', '/api/watch/stream', { kind: 'stream', handle: streamHandler });
 }
