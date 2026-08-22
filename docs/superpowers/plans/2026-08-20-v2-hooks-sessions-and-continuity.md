@@ -498,7 +498,15 @@ README.md, docs/README.he.md    # §8 and the command/hook tables (Task 20)
 
 ---
 
-## Task 1: Measure `/clear` — **BLOCKED on an interactive session**
+## Task 1: Measure `/clear` — **ANSWERED, one step short of done**
+
+> **2026-08-22, branch `b16-clear-probe`.** The premise below is **false on 2.1.239**: `claude -p`
+> *can* produce a `/clear`. `claude --resume <id> -p "/clear"` runs the same `clearConversation`,
+> fires the same hooks and mints the same new id. Both questions are answered from measured
+> payloads in `reports/probes/2026-08-20-clear-and-prompt-hooks.md`, cross-checked against a call
+> trace of the shipped binary. **Only Step 2 stays open**, because it names the interactive route
+> specifically and that route is still unrun — see the note under it. The measured answers fill the
+> decision table at the end of this task: `source` is `clear`, and the `session_id` is **new**.
 
 `claude -p` cannot produce a `/clear`. This task requires a human at a terminal. Nothing downstream
 is blocked on it *structurally* — Task 6 ships a tested function either way — but Tasks 6 and 8 each
@@ -516,7 +524,10 @@ matches it — but *listing a value in a comment and a matcher is not evidence t
 it*, and nothing in the code or either spec records whether `/clear` mints a new `session_id`. Both
 answers change what the clear handler is for.
 
-- [ ] **Step 1: Write the probe hook**
+- [x] **Step 1: Write the probe hook** — written as `echo.mjs` in the probe scratchpad rather than
+  under `reports/probes/`, and registered through `--settings <file>` rather than a checked-in local
+  settings file. Both constraints the step actually imposes are met: `src/hooks/session-start.ts`
+  was not touched, and neither was `hooks/hooks.json`.
 
 A throwaway `SessionStart` hook that appends its raw payload to a file. Do **not** modify
 `src/hooks/session-start.ts`. Put it outside `src/`:
@@ -536,7 +547,13 @@ process.exitCode = 0;
 Register it as a **second** `SessionStart` entry in a local settings file, not in
 `hooks/hooks.json` — the manifest is shipped and this hook is not.
 
-- [ ] **Step 2: Run the interactive sequence**
+- [ ] **Step 2: Run the interactive sequence** — **still open, and deliberately so.** The step names
+  a route: a human typing `claude`, then `/clear`, in one terminal. That was not done. What was done
+  is the non-interactive equivalent (`--resume <id> -p "/clear"`, three separate runs, plus a chained
+  `--resume` confirming the post-clear id is durable), and it answers every question Step 3 asks. The
+  residual risk is stated in the probe file §5.1: `--print` is a different entry point, and nothing on
+  the id-minting path is gated on interactivity, but this probe cannot rule out an interactive-only
+  difference it did not think to look for.
 
 In one terminal, in this repository:
 
@@ -546,7 +563,7 @@ In one terminal, in this repository:
 4. Do one more tool call.
 5. Exit.
 
-- [ ] **Step 3: Record the answers verbatim**
+- [x] **Step 3: Record the answers verbatim**
 
 Write `reports/probes/2026-08-20-clear-and-prompt-hooks.md` with, for each firing: the raw
 payload line, the `hook_event_name`, the `source` value **exactly as received** (including "the field
@@ -560,11 +577,13 @@ Then answer the two questions in a table:
 | If it fires, what is `source`? | `clear` / something else / absent | payload line N |
 | Is `session_id` after the clear the same as before? | same / different | payload lines N and M |
 
-- [ ] **Step 4: Delete the probe hook and its settings entry**
+- [x] **Step 4: Delete the probe hook and its settings entry** — nothing to delete. The harness ran
+  entirely out of the scratchpad behind `--settings`, so no user, project, plugin or managed settings
+  file ever held an entry.
 
 The recorded payloads stay; the hook does not.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add reports/probes/2026-08-20-clear-and-prompt-hooks.md
@@ -582,7 +601,17 @@ git commit -m "probe: what SessionStart reports on /clear, and whether session_i
 
 ---
 
-## Task 2: Measure the slash-command carrier — **BLOCKED on an interactive session**
+## Task 2: Measure the slash-command carrier — **ANSWERED, one step short of done**
+
+> **2026-08-22, branch `b16-clear-probe`.** Answered non-interactively; see
+> `reports/probes/2026-08-20-clear-and-prompt-hooks.md` §3. A slash command fires **two** events that
+> carry `session_id`: `UserPromptExpansion` — with `command_name`, `command_args` and `command_source`
+> already parsed, measured as `mycontext:status` / `plugin` on this project's own commands — and then
+> `UserPromptSubmit`, carrying the raw `/name args` as `prompt`, sharing one `prompt_id`. Plain typed
+> text fires only the second, which is what makes a slash command distinguishable. **Row 1 of the
+> decision table applies**, with one correction it could not have made: `UserPromptExpansion` is *not*
+> a hook on every prompt and needs no sentinel line, which removes the cost the row tells Task 16 to
+> state. **Only Step 2 stays open**, for the same reason as Task 1's.
 
 §6m.8 rules that the slash command *"arrives as a prompt and therefore reaches a hook that does carry
 `session_id`"*. **No probe in the record names that event**, and mycontext registers no hook that
@@ -595,24 +624,31 @@ fires on a prompt. This task establishes which event exists, before Task 16 is w
 - Consumes: nothing.
 - Produces: the event name and payload shape Task 16 branches on.
 
-- [ ] **Step 1: Register echo hooks for every candidate prompt event**
+- [x] **Step 1: Register echo hooks for every candidate prompt event** — `UserPromptSubmit`,
+  `SubagentStart` and `SubagentStop` as the step names, all three with no matcher, plus
+  **`UserPromptExpansion`**, which no probe in the record had named and which turned out to be the
+  answer. `SubagentStart` and `SubagentStop` were registered and stayed silent on both a slash command
+  and a plain prompt — a measured silence, not an unregistered one.
 
 Reuse the Step-1 echo binary from Task 1, registered under each of `UserPromptSubmit`,
 `SubagentStart` and `SubagentStop` in the local settings file (not `hooks/hooks.json`), each writing
 to its own file. If an event does not exist, Claude Code will simply never invoke it — that is the
 negative answer, and it is recorded as one.
 
-- [ ] **Step 2: Run the interactive sequence**
+- [ ] **Step 2: Run the interactive sequence** — **still open**, same reason as Task 1's Step 2: the
+  step names a human typing into a terminal. The equivalent was run under `claude -p` — a project
+  slash command, a plugin slash command and a plain prompt — and answers Step 3 in full.
 
 In one terminal: `claude`, then type `/mycontext:add-rule` (any existing slash command — the point is
 that a slash command is submitted as a prompt), then a plain prompt, then exit.
 
-- [ ] **Step 3: Record**
+- [x] **Step 3: Record**
 
 For each candidate event: did it fire, on a slash command and/or on a plain prompt, and does its
 payload carry `session_id`? Quote one raw payload per event that fired.
 
-- [ ] **Step 4: Delete the probe hooks and settings entries. Commit.**
+- [x] **Step 4: Delete the probe hooks and settings entries. Commit.** — nothing to delete; see
+  Task 1's Step 4.
 
 ```bash
 git add reports/probes/2026-08-20-clear-and-prompt-hooks.md
