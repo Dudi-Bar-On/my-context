@@ -2172,28 +2172,28 @@ git commit -m "feat(continuity): one carry disclosure, rendered the same in the 
 - Consumes: everything above.
 - Produces: nothing code reads.
 
-- [ ] **Step 1: Update the hook table** — six hooks, with `SubagentStart`'s timeout and the sentence
+- [x] **Step 1: Update the hook table** — six hooks, with `SubagentStart`'s timeout and the sentence
   that mycontext does not bound its runtime. Do not write that it is bounded.
 
-- [ ] **Step 2: Update §8** — a subagent now receives the pinned tier in full plus the index, at
+- [x] **Step 2: Update §8** — a subagent now receives the pinned tier in full plus the index, at
   birth, framed with its provenance. The section's title claim stays true (`SessionStart` still does
   not fire for a subagent) and the remaining gap changes shape: it is now a **latency and kill** gap,
   not a delivery gap. Say which.
 
-- [ ] **Step 3: Document the new commands** — `session list`, `session name <id> <name>`,
+- [x] **Step 3: Document the new commands** — `session list`, `session name <id> <name>`,
   `session carry`. Include the sentence that the CLI cannot know which session it is in and the
   one-line reason, because a user who does not know that reads the explicit id as clumsiness.
 
-- [ ] **Step 4: Document `/clear`** — against Task 1's measured outcome, and only that. If Task 1
+- [x] **Step 4: Document `/clear`** — against Task 1's measured outcome, and only that. If Task 1
   found no firing, the README says the clear handler does not exist and why.
 
-- [ ] **Step 5: Document the carry** — what it carries, what it does not (index-tier-only sightings),
+- [x] **Step 5: Document the carry** — what it carries, what it does not (index-tier-only sightings),
   that it shares `budgets.index`, and that a carried line **does** displace one of this session's own
   when the index is exhausted (§6n.2, not a possibility but the rule) — **and where that displacement
   is said**: in the carry line under the index heading, naming the displaced ids, not in the spill
   note, which never shows an index-only spill.
 
-- [ ] **Step 6: `npm test` green** (the docs parity test compares the two documents' structure), then
+- [x] **Step 6: `npm test` green** (the docs parity test compares the two documents' structure), then
   `npm run verify:citations` and `npm run check:retired`. Commit.
 
 ```bash
