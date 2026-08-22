@@ -1,0 +1,336 @@
+/**
+ * `nav.inj` — **Scope coverage**, `<section data-p="coverage">` in the design of
+ * record. Every walked path, coloured by what governs it, with the detail pane
+ * beside the tree.
+ *
+ * **Built from the mockup's markup and its own `renderTree`/`renderDet`, not
+ * from the plan's Step 3 sketch.** That sketch names six string keys —
+ * `coverage.truncated`, `coverage.print`, `coverage.governs`,
+ * `coverage.wouldInject`, `coverage.gapDirs`, `coverage.emptyCategories` — and
+ * **no string table declares one of them**, because both tables are transcribed
+ * key-for-key from the design of record and it declares none either. `t()`
+ * throws on a key it cannot find, so that sketch cannot render a line. It also
+ * folds the gaps into this screen as two trailing paragraphs; the mockup gives
+ * them their own `<section data-p="gaps">`, their own rail entry and their own
+ * three-column table, and `screens/gaps.js` is that screen.
+ *
+ * **The tree and the detail are DATA, so each sits on `.plate` inside the
+ * `.pane` its card already is** (repaint Task 7, spec §4: *"Text may float on
+ * glass. Data may not."*). The mockup already marks both that way —
+ * `<div class="tree plate" id="tree">` and `<div class="plate" id="det">` — and
+ * `test/ui/plate-usage.test.ts` names `#tree` and `#det` among the eighteen, so
+ * this file copies the marking rather than deciding it.
+ *
+ * **WHAT THIS SCREEN DOES NOT DRAW, AND WHY IT DRAWS NOTHING WEAKER IN ITS
+ * PLACE** — *"Where a view cannot be drawn, stop and ask; do not draw a weaker
+ * one"*:
+ *
+ *   - **The per-directory magnitude bar** (`.mini`, with `cov.magn`). Its three
+ *     segments are governed / ungoverned / **not examined**, and the third is
+ *     about paths the walk never reached. `/api/coverage` answers one global
+ *     `truncated` boolean and no path list, and the read model records the ask
+ *     in its own words
+ *     (`ui/read-model.ts` · `needs the paths `listRepoFiles` did not reach` · ~1074).
+ *     Every path this screen can draw came OUT of the walk, so a bar built from
+ *     what is served would paint its third segment at zero on every row — which
+ *     on a truncated walk asserts the opposite of the one thing `gaps.note`
+ *     says must never be folded into another. Two of three segments is the
+ *     `preview.ribbon` case exactly, and it is refused the same way. `cov.magn`
+ *     goes with it: a paragraph describing a bar that is not there is worse
+ *     than the missing bar. **Needs: the paths `listRepoFiles` did not reach.**
+ *   - **A print button.** The plan's sketch adds one on `coverage.print`; the
+ *     mockup's coverage section has no such button and no table declares the
+ *     key. Print is a STYLESHEET register here (`@media print`, repaint Task
+ *     10), not a control this screen owns, and the browser's own print command
+ *     reaches it without a button this screen would have to invent a word for.
+ *
+ * The four-dot legend keeps all four of its entries, `cov.k4` included: the dot
+ * IS drawn, and the legend is the mockup's own static markup. `coverageDot`
+ * (`lib/viewmodel.js`) simply never returns `n` — recorded there, not hidden.
+ */
+import {
+  buildTree, coverageDot, coverageIsEmpty, treeRows,
+} from '/lib/viewmodel.js';
+import { composeCommand } from '/lib/command.js';
+import { el, errorNote, linkId, mono, screenHead, spaced } from '/screens/parts.js';
+
+/**
+ * The mockup's own empty-state command, composed through the ONE module that
+ * owns quoting rather than spelled as a literal — `mycontext add constraint "…"
+ * --scope "src/**"`. `lib/command.js` never runs anything; a settlement is a
+ * string the reader pastes into their own shell.
+ */
+const EMPTY_COMMAND = composeCommand(
+  ['mycontext', 'add', 'constraint', '…', '--scope', 'src/**'],
+);
+
+/**
+ * The mockup's `.tree button` indent, continued past the two depths its
+ * stylesheet spells. `padding-inline:5px` is the base, `data-depth="1"` is 19px
+ * and `data-depth="2"` is 33px — a 14px step — and a real repository is deeper
+ * than the mockup's three-level demo. `data-depth` is set on every row either
+ * way, so the stylesheet keeps the depths it owns; only depths past its last
+ * rule are given the same step through CSSOM, which is what CSP permits and a
+ * `style` attribute is not.
+ */
+const DEPTH_STYLED = 2;
+const INDENT_BASE = 5;
+const INDENT_STEP = 14;
+
+export async function render(root, ctx) {
+  root.replaceChildren();
+  screenHead(ctx, root, 'cov.h', 'cov.v', 'cov.sub');
+
+  let data;
+  try {
+    data = await ctx.api('/api/coverage');
+  } catch (error) {
+    // The endpoint's own words, drawn INSTEAD of the view and never beside an
+    // empty one: a refusal and a corpus that governs nothing are two facts.
+    root.append(errorNote(error.message));
+    return;
+  }
+
+  // --- Pinned — hoisted, never coloured per path --------------------------
+  // `cov.pinhelp` is the reason this card exists: an `always:true` item governs
+  // every path, and colouring it per path "is why a directory that is governed
+  // used to render as a gap". `/api/coverage` hoists them server-side, so this
+  // draws the hoist rather than performing it.
+  const pinCard = el('div', 'card pane');
+  const pinH = el('h3');
+  pinH.append(...ctx.t('cov.pin'));
+  const pinLine = el('p', 'small');
+  // The chip's text is a count plus the tier's own name, which is a literal
+  // everywhere in this product — `parts.js`' TIERCHIP records why: "the tier
+  // NAME is not a translated string anywhere in the mockup".
+  const pinChip = el('span', 'chip gov', `${data.pinned.length} pinned`);
+  pinChip.dataset.g = '◆';
+  pinLine.append(pinChip);
+  data.pinned.forEach((id, index) => {
+    pinLine.append(index === 0 ? ' ' : ' · ', mono(id));
+  });
+  const pinHelp = el('details', 'help');
+  const pinSummary = el('summary');
+  pinSummary.append(...ctx.t('help.whyTree'));
+  const pinBox = el('div', 'helpbox');
+  const pinText = el('span');
+  pinText.append(...ctx.t('cov.pinhelp'));
+  pinBox.append(pinText);
+  pinHelp.append(pinSummary, pinBox);
+  pinCard.append(pinH, pinLine, pinHelp);
+  root.append(pinCard);
+
+  // --- The zero-data view, which is drawn rather than omitted -------------
+  if (coverageIsEmpty(data)) {
+    root.append(emptyView(ctx));
+    return;
+  }
+
+  const tree = buildTree(data.files);
+  const itemsById = new Map(data.items.map((item) => [item.id, item]));
+  const rows = treeRows(tree);
+
+  const two = el('div', 'two');
+  root.append(two);
+
+  // --- The repository tree ------------------------------------------------
+  const treeCard = el('div', 'card pane');
+  const treeH = el('h3');
+  treeH.append(...ctx.t('cov.tree'));
+  const treeBox = el('div', 'tree plate');
+  treeBox.id = 'tree';
+  treeBox.setAttribute('role', 'tree');
+  treeCard.append(treeH, treeBox, spaced(legend(ctx)));
+  // The walk stopped short, and that is disclosed rather than left to be
+  // inferred from a short tree. The two keys are the mockup's own pairing for
+  // this fact, joined the way its gaps table joins them:
+  // `<b data-t="cov.k4">not examined</b> — <span data-t="gaps.r2">past the
+  // file limit</span>`. No third key is invented, and no path is named,
+  // because no path is served.
+  if (data.truncated) {
+    const stopped = el('p', 'small');
+    const what = el('b');
+    what.append(...ctx.t('cov.k4'));
+    const why = el('span');
+    why.append(...ctx.t('gaps.r2'));
+    stopped.append(what, ' — ', why);
+    treeCard.append(spaced(stopped));
+  }
+
+  // --- What governs the selected path -------------------------------------
+  const detCard = el('div', 'card pane');
+  const detH = el('h3');
+  const detTitle = el('span');
+  detTitle.append(...ctx.t('cov.gov'));
+  const detFile = el('span', 'm');
+  detFile.id = 'detf';
+  detH.append(detTitle, ' ', detFile);
+  const detBox = el('div', 'plate');
+  detBox.id = 'det';
+  detCard.append(detH, detBox);
+
+  two.append(treeCard, detCard);
+
+  /**
+   * The detail table — the mockup's `renderDet`, one row per governing item.
+   *
+   * **The second column is the item's DECLARED SCOPE, not the glob that
+   * matched.** `matchesScope` ran on the server and `/api/coverage` reports the
+   * ids it admitted, never which of an item's globs did the admitting; asking
+   * that question in the browser would be a second matcher, which this screen's
+   * own subtitle forbids — *"through `matchesScope` and `injection()`, never a
+   * bare glob match"*. An item with an empty scope governs by category policy
+   * rather than by a glob, so it shows `injection()`'s own phrase, which is the
+   * sentence `mycontext edit` prints for the same item.
+   *
+   * **A path nothing governs renders the table with no rows**, which is the
+   * ruled treatment of empty: the real markup, zero rows. The mockup's script
+   * writes two unkeyed sentences for that state and neither table declares
+   * them; a sentence invented here would be an untranslated one.
+   */
+  function renderDet(node) {
+    // The same spelling the tree row uses, trailing slash and all: the heading
+    // names the row that is selected, and two spellings of one path on one
+    // screen is how a reader comes to wonder whether they are two paths.
+    detFile.textContent = node.children.length > 0 ? `${node.path}/` : node.path;
+    detBox.replaceChildren();
+    const table = el('table');
+    const thead = el('thead');
+    const headRow = el('tr');
+    const itemTh = el('th');
+    itemTh.append(...ctx.t('th.item'));
+    const whyTh = el('th');
+    // The mockup's second header is written inside its own script as an
+    // unkeyed `HEB ? … : 'why it applies'` ternary, so the design of record
+    // declares no key for it. `th.what` is the nearest word the shared table-
+    // header vocabulary does declare, and it is translated; the exact wording
+    // is an open question for the owner, raised in this task's report rather
+    // than settled here with an invented key.
+    whyTh.append(...ctx.t('th.what'));
+    headRow.append(itemTh, whyTh);
+    thead.append(headRow);
+    const tbody = el('tbody');
+    for (const id of node.governs) {
+      const item = itemsById.get(id);
+      const row = el('tr');
+      const idCell = el('td');
+      // The full id as text, the way the mockup's own `renderDet` draws it
+      // (`btn.textContent = id`) — the split `.idkind`/`.idslug` treatment
+      // belongs to the preview's rows.
+      idCell.append(linkId(id, false));
+      const whyCell = el('td');
+      if (item === undefined) whyCell.append(mono(id));
+      else if (item.scope.length > 0) whyCell.append(mono(item.scope.join(' ')));
+      else whyCell.append(el('span', 'small', item.phrase));
+      row.append(idCell, whyCell);
+      tbody.append(row);
+    }
+    table.append(thead, tbody);
+    detBox.append(table);
+  }
+
+  const buttons = [];
+  for (const { node, depth } of rows) {
+    const button = el('button');
+    button.type = 'button';
+    button.setAttribute('role', 'treeitem');
+    button.dataset.f = node.path;
+    button.dataset.depth = String(depth);
+    button.setAttribute('aria-selected', 'false');
+    if (depth > DEPTH_STYLED) {
+      button.style.setProperty(
+        'padding-inline-start', `${INDENT_BASE + INDENT_STEP * depth}px`,
+      );
+    }
+    // A directory keeps its trailing slash, exactly as the mockup's own rows
+    // do (`src/`, `src/billing/`) — the one glance that tells a directory from
+    // a file before the dot or the count is read.
+    const isDir = node.children.length > 0;
+    button.append(
+      el('span', `dot ${coverageDot(node)}`),
+      el('span', 'nm', isDir ? `${node.name}/` : node.name),
+      el('span', 'covn', `${node.governedCount}/${node.fileCount}`),
+    );
+    button.addEventListener('click', () => {
+      for (const other of buttons) other.setAttribute('aria-selected', 'false');
+      button.setAttribute('aria-selected', 'true');
+      renderDet(node);
+    });
+    buttons.push(button);
+    treeBox.append(button);
+  }
+
+  // The mockup opens with a row already selected and its detail drawn. The
+  // first row is that row here: deterministic, and the top of the tree is the
+  // widest answer the screen has.
+  if (rows.length > 0) {
+    buttons[0].setAttribute('aria-selected', 'true');
+    renderDet(rows[0].node);
+  }
+}
+
+/** The four dots, in the mockup's own order and with its own separators. */
+function legend(ctx) {
+  const line = el('p', 'small');
+  const keys = [['g', 'cov.k1'], ['o', 'cov.k2'], ['w', 'cov.k3'], ['n', 'cov.k4']];
+  keys.forEach(([dot, key], index) => {
+    const swatch = el('span', `dot ${dot}`);
+    // The mockup writes `style="display:inline-block"` on each swatch; CSP
+    // forbids the attribute in the shipped app, so the same declaration goes
+    // through CSSOM. `.dot` is a flex child in a tree row and an inline run
+    // here, which is why the mockup overrides it in exactly this one place.
+    swatch.style.setProperty('display', 'inline-block');
+    // The last entry is bold in the mockup — "not examined" is the state the
+    // screen most often has to say is NOT what a reader is looking at.
+    const label = el(index === keys.length - 1 ? 'b' : 'span');
+    label.append(...ctx.t(key));
+    if (index > 0) line.append(' · ');
+    line.append(swatch, ' ', label);
+  });
+  return line;
+}
+
+/**
+ * `#covempty` — *"Nothing governs this project yet"*, said ONCE.
+ *
+ * Drawn, never omitted: `cov.e2` is the whole argument for it — *"That is the
+ * normal state of a new workspace, not a wall of warnings. One sentence, said
+ * once — not repeated per row."*
+ */
+function emptyView(ctx) {
+  const box = el('div', 'empty');
+  const headline = el('b');
+  headline.append(...ctx.t('cov.e1'));
+  const note = el('p', 'small');
+  note.append(...ctx.t('cov.e2'));
+
+  const cmd = el('div', 'cmd');
+  const code = el('code', null, EMPTY_COMMAND);
+  const copy = el('button');
+  copy.type = 'button';
+  copy.append(...ctx.t('btn.copy'));
+  // The mockup's `[data-copy]` handler AWAITS and CATCHES — its own comment
+  // records that an earlier pass "said 'Copied' regardless" — and swaps the
+  // label for 1.5s. Both label swaps are unkeyed `HEB ? … : …` ternaries in
+  // the mockup's script, so they are transcribed as its own English literals
+  // and raised in this task's report: keys first in the mockup, then in both
+  // tables. Saying nothing at all would be the worse defect — a copy that
+  // silently failed is the one outcome this button must not have.
+  copy.addEventListener('click', async () => {
+    const original = copy.textContent;
+    try {
+      await navigator.clipboard.writeText(EMPTY_COMMAND);
+      copy.textContent = 'Copied';
+    } catch {
+      copy.textContent = 'Copy failed';
+    }
+    setTimeout(() => { copy.replaceChildren(document.createTextNode(original)); }, 1500);
+  });
+  cmd.append(code, copy);
+
+  box.append(headline, note, cmd);
+  const wrap = el('div');
+  wrap.id = 'covempty';
+  wrap.append(box);
+  return wrap;
+}
