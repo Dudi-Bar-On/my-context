@@ -2,10 +2,15 @@
  * English UI string table — TRANSCRIBED from the design of record, not authored here.
  *
  * `docs/design/web-ui-mockup.html` is the UI specification. Every key below is one of its
- * 396 distinct string keys — the 379 it declares with `data-t`, the 12 accessibility
- * labels it declares with `data-t-aria` and the 5 tooltips it declares with
- * `data-t-title`. The English values are the rendered text of those elements — or, for
- * the seventeen keyed by an ATTRIBUTE, that attribute’s value, because neither an
+ * 398 distinct string keys — the 382 it declares with `data-t`, the 12 accessibility
+ * labels it declares with `data-t-aria` and the 4 tooltips it declares with
+ * `data-t-title`. Those four numbers are a READING of the file and nothing tests
+ * them — `strings-parity.test.ts` derives its own count for exactly that reason. This
+ * block said 396/379/12/5 against a mockup declaring 395/379/12/4, so the tooltip line
+ * had been wrong since a title key left, and the total wore the error.
+ *
+ * The English values are the rendered text of those elements — or, for the sixteen
+ * keyed by an ATTRIBUTE, that attribute’s value, because neither an
  * `aria-label` nor a `title` is reachable by the text path and both stayed English in
  * the Hebrew UI until they were keyed. The Hebrew values are the mockup’s own
  * `const HE = {…}` table. Adding a key the mockup does not declare, or dropping one it
@@ -127,6 +132,18 @@ export const strings = {
   'th.tier': 'Tier',
   'tier.carried': 'carried',
   'preview.carried': '{lines} index lines carried from session {mv:session}. Shown here and in {m:mycontext context} identically — an item arriving from somewhere you cannot see is the same defect as one dropped silently, pointed the other way.',
+  // The other three clauses of the SAME disclosure, transcribed from the one
+  // renderer that already composes it —
+  // `core/render.ts` · `function renderCarried(carried: CarriedSummary | null): string {` · ~47
+  // — out of the one field /api/select serves this page unchanged. There is no
+  // `index.carriedFrom`: `preview.carried` above is that sentence, and a second
+  // key for it would be a second spelling. Each clause is omitted entirely when
+  // its list is empty, and the drop reasons ride inside `{mv:ids}` untranslated
+  // because `core/select.ts` · `function carriedDropReason(` · ~502 is where
+  // they are spelled and no stable code exists to translate from.
+  'index.carriedDropped': '{dropped} carried ids got no line: {mv:ids}.',
+  'index.carriedDisplaced': "{displaced} of this session's own lines displaced to make room: {mv:ids}.",
+  'index.carriedFetch': 'Fetch any of these with {m:mycontext show <id>}.',
   'preview.why': 'Why not — the first gate that failed',
   'aria.gatepick': 'Item',
   'preview.whyn': "The gates in {m:select()}'s own order — eligible, tier, focus, scope, seen, budget — because the order is the explanation: a list of six reasons is noise, and the one that binds is only meaningful in the position it holds. Rungs above it passed, the rung itself carries the diagnosis, and everything below is not reached rather than passed. Composing the fix needs a stable code on {m:injection()}; today the five causes differ only in English prose.",
