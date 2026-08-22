@@ -96,17 +96,68 @@
   --mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 
-/* One token, pulled in from the mockup's LEGACY SCALE block (mockup ~146) —
-   not the whole block, on purpose: `--fs-00/0/1/3/4`, `--sp-*` and `--r-*`
-   sit beside `--fs-2` there and none of them is used by anything this shell
-   ships, so importing the block whole would be exactly the "same tokens in
-   two files" duplication this file's header already declines for `.bar`/
-   `.gap`/`.edge`. `--fs-2` alone is unavoidable: the FOUNDATION `body{}` rule
-   below sets `font:var(--fs-2)/1.55 var(--sans)` byte-for-byte from the
-   mockup, and `scripts/check-faint-usage.ts` (`npm test`) treats an
-   unresolvable custom property as a FAILURE, not a pass — measured by
-   running it against this file with the token missing before adding it. */
-:root{ --fs-2: 16px; }
+/* The mockup's LEGACY SCALE `:root` block (mockup ~117-149), byte-identical,
+   pinned by test/ui/styles-parity.test.ts (content-addressed by `--fs-00:`,
+   the one marker no other `:root` block in the mockup carries — checked,
+   because `--panel:`/`--paper:` each recur inside the print and reduced-
+   transparency registers' own `:root` overrides and would have picked the
+   wrong block).
+
+   Task 16 shipped only `--fs-2` out of this block, on the reasoning that
+   `--fs-00/0/1/3/4`, `--sp-*`, `--r-*`, `--panel`, `--panel-2`, `--sink`,
+   `--rule`, `--edge`/`--edge-3` and the four `--*bg` mixes "sit beside
+   `--fs-2` there and none of them is used by anything this shell ships".
+   That is no longer true: this task's screen-level rules below (`.icon`,
+   `.sel`, `.nav`, `.card`, `.chip.gov`/`.ok`/`.warn`/`.crit`/`.carry`,
+   `.helpbox`, `.segbar`, `.simctl`, table borders, and more) read `--sp-1`
+   through `--sp-4`, `--r-sm`/`--r-md`/`--r-lg`, `--fs-00`/`--fs-0`/`--fs-1`/
+   `--fs-3`, `--panel`, `--sink`, `--rule`, `--edge-3` and all five `--*bg`
+   mixes directly — grepped across every rule this task adds, below. Twenty
+   of the block's thirty-two declarations are now load-bearing; hand-
+   selecting just those twenty out of one semantic unit (the block carries
+   its own retirement/promotion history in the comments between them) would
+   itself be the "hand-written rule the mockup already spells" this file's
+   header forbids. Importing the block whole, content-addressed and parity-
+   pinned, is the same treatment the TOKENS and sans/mono blocks above
+   already get — `--paper`, `--panel-2`, `--edge`, `--e1`/`--e3` and the
+   `--rim-*`/`--sheen-*` quartet (all `.gloss`-only, and `.gloss` is not
+   shipped here — R5 in the mockup, unused by any of the three nav.inj
+   screens) ride along unused, same as this file already accepts for TOKENS
+   entries no current screen reads. `--fs-2` was already here and is
+   unchanged. */
+:root{
+  --paper:#0f0f12;
+  --panel:#17171c;
+  --panel-2:#1d1d24;
+  --sink:#101014;
+
+  --rule:#262630;
+  /* --edge bounds CONTROLS, so it owes 3:1; --rule stays decorative. */
+  --edge:#3a3a45;
+  --edge-3:#6e6e7e;
+
+  --warnbg:color-mix(in oklch, var(--warn) 12%, var(--panel));
+  --goldbg:color-mix(in oklch, var(--gold) 12%, var(--panel));
+  --okbg:color-mix(in oklch, var(--ok) 12%, var(--panel));
+  --critbg:color-mix(in oklch, var(--crit) 12%, var(--panel));
+  /* --carry has 0 uses so far (spec §2.5) — this gives it a background-mix
+     token to match the other four, for whenever `.chip.carry` is drawn. */
+  --carrybg:color-mix(in oklch, var(--carry) 12%, var(--panel));
+
+  --e1:0 1px 1px rgb(0 0 0/.5), 0 3px 10px rgb(0 0 0/.35);
+  --e3:0 4px 6px rgb(0 0 0/.6), 0 16px 38px rgb(0 0 0/.55);
+
+  /* R5 — the gloss, entire. Four tokens, no filter. Still used by `.gloss` /
+     `.gloss.float`, the un-repainted card material `.pane` (Task 3) replaces. */
+  --rim-lit:rgb(255 255 255/.10);
+  --rim-shade:rgb(0 0 0/.55);
+  --sheen-top:rgb(255 255 255/.055);
+  --sheen-bottom:rgb(0 0 0/.18);
+
+  --fs-00:12px; --fs-0:13px; --fs-1:14.5px; --fs-2:16px; --fs-3:18px; --fs-4:24px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
+  --r-sm:3px; --r-md:5px; --r-lg:8px;
+}
 
 /* ─── FACES — self-hosted .woff2, vendored under src/ui/public/fonts/.
    Family/weight declarations are byte-identical to the mockup; the `url()`
@@ -218,6 +269,253 @@ bdi{unicode-bidi:isolate}
 /* Paths and code stay LTR inside an RTL page — a path is not prose (spec §3,
    "honestly out of scope"). Not in the mockup verbatim (nothing there is
    RTL-conditional for code/pre — the rule above already makes them
-   unconditionally LTR); .path is a class no screen uses yet, kept for the
-   day one does, since the declaration costs nothing unused. */
+   unconditionally LTR); .path is now consumed by the preview screen's file
+   picker (`screens/preview.js`'s `drawPathSlot`, Task 17) — checked: the
+   mockup itself declares no OTHER rule for `.path` either (grepped its own
+   `<style>` block for a `.path` selector and for `class="path"` — zero hits
+   beyond this RTL line), so a bare `<select>`/`<option>` is exactly how the design of
+   record renders it too, not a gap this file introduces. */
 [dir="rtl"] code, [dir="rtl"] pre, [dir="rtl"] .path { direction: ltr; unicode-bidi: isolate; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * SCREEN-LEVEL CLASSES — the `nav.inj` screens' own composition (Task 17:
+ * `screens/preview.js`, `screens/simulate.js`, `screens/injected.js`,
+ * `screens/parts.js`) and the shell markup that renders beside them
+ * (`index.html`'s header/rail/banner, `app.js`'s `renderNav`). Task 16's own
+ * header explained why these were NOT shipped with the primitives — "it is a
+ * screen's job to bring in, not a shell's" — and that screen has now been
+ * built, so this is that job. Every block below is copied byte-for-byte from
+ * `docs/design/web-ui-mockup.html`, content- or line-anchored, never
+ * hand-written, and pinned by test/ui/styles-parity.test.ts exactly like the
+ * primitives above.
+ *
+ * Two selectors recur from earlier in this file — `.chip{}` and `.pair{}` —
+ * because the mockup itself declares each TWICE: once as the primitive
+ * (already shipped above) and once again here, further down its own
+ * stylesheet, adding properties the primitive doesn't set rather than
+ * replacing it. Both copies are kept, in the mockup's own relative order,
+ * exactly as two rules with the same selector legitimately combine in CSS.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Shell layout — index.html's header/rail/banner, app.js's renderNav.
+   `.app`/`.app.pane-open` (mockup ~396-399) are the grid that seats the
+   header, rail and body beside each other; shipped here because they are
+   named explicitly for this task, but `index.html` has no element carrying
+   `class="app"` yet (Task 16 called this "an open question in this task's
+   report" rather than inventing the wrapper) — so this rule has nothing to
+   grid until a shell task adds `<div class="app" id="app">`. See this task's
+   own report for what that leaves stacked instead of side-by-side. */
+.app{display:grid;grid-template-rows:46px 1fr 26px 30px;grid-template-columns:214px 1fr;
+  block-size:100vh;grid-template-areas:"top top" "rail body" "prov prov" "strip strip"}
+.app.pane-open{grid-template-columns:214px 1fr 330px;
+  grid-template-areas:"top top top" "rail body pane" "prov prov prov" "strip strip strip"}
+
+/* The header's own layout — grid-area is inert without .app above, but
+   display:flex/gap/padding-inline apply regardless, which is what turns
+   index.html's logo + picker buttons into a real row instead of a stack. */
+.hdr{grid-area:top;
+  display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);z-index:5}
+.logo{display:flex;align-items:center;gap:var(--sp-2);flex:none}
+.mark{inline-size:19px;block-size:19px;border-radius:var(--r-sm);background:var(--gold);
+  position:relative;flex:none}
+.mark::after{content:"";position:absolute;inset-block:4px;inset-inline:4px 9px;
+  background:var(--panel);border-radius:1px}
+.logo b{font-size:var(--fs-2);letter-spacing:-.02em}
+.topr{margin-inline-start:auto;display:flex;align-items:center;gap:var(--sp-2)}
+
+.sel{display:flex;align-items:center;gap:6px;background:var(--sink);
+  border:1px solid var(--edge-3);border-radius:var(--r-md);
+  padding-block:4px;padding-inline:var(--sp-2);font-size:var(--fs-1);color:var(--dim);cursor:pointer}
+.sel b{font-family:var(--mono);font-size:var(--fs-0);color:var(--ink);
+  direction:ltr;unicode-bidi:isolate}
+.live{inline-size:6px;block-size:6px;border-radius:50%;background:var(--ok);flex:none}
+.icon{min-inline-size:29px;block-size:27px;border:1px solid var(--edge-3);background:var(--sink);
+  border-radius:var(--r-md);cursor:pointer;color:var(--dim);display:grid;place-items:center;
+  font-size:var(--fs-1);padding-inline:6px}
+.icon:hover,.sel:hover{border-color:var(--ink);color:var(--ink)}
+.icon[aria-pressed="true"]{background:var(--goldbg);border-color:var(--gold);color:var(--gold)}
+
+/* The rail's own layout — same story as .hdr: grid-area is inert without
+   .app, but overflow-y/padding-block apply regardless. Its INLINE-SIZE
+   (214px in the mockup) comes ONLY from .app's grid-template-columns, so
+   without that wrapper the rail is exactly as wide as its content forces it
+   — the open item this task's report names first. */
+.rail{grid-area:rail;overflow-y:auto;padding-block:var(--sp-2) var(--sp-4)}
+.grp{padding-block:var(--sp-2) 1px;padding-inline:var(--sp-2)}
+.grp>p{margin:0 0 var(--sp-1);margin-inline-start:9px;font-size:var(--fs-00);
+  letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:700}
+/* .nav — the rail LINK itself (app.js's renderNav sets this class
+   unconditionally on every `<a>`, per that file's own comment: "not styled
+   by Task 16's own stylesheet… but the class and the aria-current attribute
+   are the accessibility-load-bearing part… so a later task's CSS lands on
+   the right hook without an app.js change"). This is that later task. */
+.nav{display:flex;inline-size:100%;text-align:start;background:none;border:0;color:var(--dim);
+  padding-block:5px;padding-inline:9px;border-radius:var(--r-md);font-size:15px;cursor:pointer;
+  justify-content:space-between;align-items:center;gap:6px}
+.nav:hover{background:var(--sink);color:var(--ink)}
+.nav[aria-current="page"]{background:var(--goldbg);color:var(--ink);font-weight:600;
+  box-shadow:inset 2px 0 0 var(--gold)}
+
+/* index.html's `<main class="body" id="screen">` — grid-area is inert
+   without .app, but overflow-y/padding apply regardless, so screens are no
+   longer flush against the viewport edge. */
+.body{grid-area:body;overflow-y:auto;padding:var(--sp-4);min-inline-size:0}
+
+/* index.html's `<div class="banner" id="exited">` (app.js's showExited). */
+.banner{position:fixed;inset-block-end:64px;inset-inline:var(--sp-3);background:var(--critbg);
+  border:1px solid var(--crit);color:var(--crit);border-radius:var(--r-lg);
+  padding:var(--sp-2) var(--sp-3);font-size:var(--fs-1);display:flex;gap:var(--sp-2);
+  align-items:center;z-index:30}
+.banner[hidden]{display:none}
+
+/* ─── Screen head — parts.js's screenHead(), every screen's opening
+   `.phd`+`h2`+`.verdict` then `.psub` (mockup ~503-505). */
+.phd{display:flex;flex-wrap:wrap;gap:6px var(--sp-3);align-items:baseline;margin-block-end:3px}
+.verdict{font-size:var(--fs-0);color:var(--dim)}
+.psub{color:var(--dim);font-size:var(--fs-1);margin:0 0 var(--sp-4);max-inline-size:78ch}
+
+/* ─── Cards, the two-plane scene, and tables. `.card` (mockup ~507-508) is
+   always composed as `.card.pane` (parts.js/preview.js/simulate.js/
+   injected.js all write `el('div', 'card pane')`) — the padding/heading
+   rule here, the glass material from the primitive above. */
+.card{padding:var(--sp-3) 13px;margin-block-end:var(--sp-3)}
+.card>h3{margin:0 0 var(--sp-2);font-size:var(--fs-0);letter-spacing:.08em;
+  text-transform:uppercase;color:var(--dim);font-weight:700;
+  display:flex;align-items:center;gap:6px}
+
+/* `.pair`, again — the SECOND mockup declaration (mockup ~520-521), "the
+   injection preview's two-plane scene… the composition pattern the other
+   twenty screens copy": side-by-side columns for `.plane.l`/`.plane.r`. THIS
+   is the rule whose absence tilted the scene off the page — the primitive
+   `.pair{perspective:…}` above supplies the 3D context but never a width for
+   the two children to share, so without this they stacked full-width, each
+   independently rotated. */
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);margin-block-end:var(--sp-3)}
+@media (max-width:1000px){.pair{grid-template-columns:1fr}}
+.plane>.pane{block-size:100%}
+.rows{display:flex;flex-direction:column;gap:6px;padding:10px}
+.row .idfull{flex:1;min-inline-size:0}
+/* Not yet composed by any screen this task ships (drawCarry in preview.js
+   writes plain text, not a `.carrieditem`) — copied anyway because it is
+   the other half of the `.blk .linkid,.carrieditem .linkid` rule below,
+   which cannot be split without hand-writing a selector the mockup didn't
+   write. */
+.carrieditem{display:flex;align-items:center;gap:8px;margin-block-start:4px}
+
+/* Table base — simulate.js's fits table and injected.js's delivery table
+   both render a literal `<table><thead><tr><th>…<tbody><tr><td>` (mockup
+   ~527-532); without this every border/weight/case comes from the browser's
+   own UA sheet instead of the design of record's. */
+table{inline-size:100%;border-collapse:collapse;font-size:var(--fs-1)}
+caption{text-align:start;font-size:var(--fs-0);color:var(--dim);padding-block-end:6px}
+th{text-align:start;font-weight:700;color:var(--dim);font-size:var(--fs-00);letter-spacing:.07em;
+  text-transform:uppercase;padding-block-end:5px;border-block-end:1px solid var(--rule)}
+td{padding-block:5px;border-block-end:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-block-end:0}
+
+/* ─── The chip, again — the SECOND mockup declaration (mockup ~534-560),
+   adding the border/size/line-height the primitive above doesn't set, plus
+   the five meaning-colour modifiers and their glyphs. `parts.js`'s
+   `tierChip()` writes `chip gov`/`chip ok`/plain `chip`;
+   `screens/simulate.js` writes `chip warn`/`chip ok` directly. `.chip.crit`
+   and `.chip.carry` have no call site in this task's three screens yet —
+   copied anyway, same reasoning as `.carrieditem` above: the mockup
+   declares all five together as one meaning-colour set and splitting it
+   would be inventing which four "belong". */
+.chip{display:inline-block;font-size:var(--fs-00);padding-inline:5px;border-radius:var(--r-sm);
+  border:1px solid;line-height:1.7}
+.chip.gov{color:var(--gold);border-color:var(--gold);background:var(--goldbg)}
+.chip.ok{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+.chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
+.chip.crit{color:var(--crit);border-color:var(--crit);background:var(--critbg)}
+.chip.carry{color:var(--carry);border-color:var(--carry);background:var(--carrybg)}
+.chip.gov::before{content:"◆ "}
+.chip.ok::before{content:"● "}
+.chip.warn::before{content:"▲ "}
+.chip.crit::before{content:"■ "}
+.chip.carry::before{content:"◇ "}
+.chip::before{content:attr(data-g) " ";font-family:var(--mono)}
+
+/* `.small` (mockup ~560) — every screen's secondary caption text; parts.js's
+   errorNote() composes it as `small spill` for a refusal message. The
+   mockup declares no `.spill{}` rule anywhere in its own stylesheet
+   (grepped: zero hits, and zero `class="spill"` usages in its markup
+   either) — `.spill` styles nothing there either, so a refusal renders in
+   plain `.small` dim text, not a critical colour. Not invented here for the
+   same reason `.bar`/`.gap`/`.edge` aren't: there is nothing in the design
+   of record to copy. Flagged in this task's report. */
+.small{font-size:var(--fs-0);color:var(--dim)}
+
+/* ─── The help disclosure — preview.js and simulate.js each open a
+   `<details class="help"><summary>…<div class="helpbox">` (mockup
+   ~572-582). */
+details.help{margin-block-start:6px}
+details.help>summary{font-size:var(--fs-0);color:var(--gold);cursor:pointer;
+  list-style:none;display:inline-flex;align-items:center;gap:4px}
+details.help>summary::-webkit-details-marker{display:none}
+details.help>summary::before{content:"?";display:inline-grid;place-items:center;
+  inline-size:14px;block-size:14px;border:1px solid var(--gold);border-radius:50%;
+  font-size:10.5px;font-weight:700}
+details.help[open]>summary{margin-block-end:6px}
+.helpbox{border-inline-start:2px solid var(--gold);padding-inline-start:10px;
+  font-size:var(--fs-0);color:var(--dim);display:grid;gap:5px}
+.helpbox b{color:var(--ink)}
+
+/* ─── simulate.js's own controls (mockup ~852-861): `.segbar` is the tier
+   picker's button row, `.simctl` wraps the budget slider. */
+.segbar{display:flex;gap:6px;flex-wrap:wrap;margin-block-start:var(--sp-2)}
+.segbar button{border:1px solid var(--edge-3);background:var(--sink);border-radius:var(--r-md);
+  padding-block:3px;padding-inline:var(--sp-2);font-size:var(--fs-0);cursor:pointer;color:var(--dim)}
+.segbar button[aria-pressed="true"]{background:var(--goldbg);border-color:var(--gold);color:var(--gold)}
+.simctl{display:flex;gap:9px;align-items:center;margin-block-start:var(--sp-2)}
+.simctl input[type=range]{flex:1;accent-color:var(--gold)}
+
+/* ─── preview.js's row-to-block linkage (mockup ~309-325): every other
+   `.blk` dims to .58 opacity while one is selected, and each block's own id
+   header (`.linkid`, built by parts.js's linkId()) opens the full item. */
+.lit.linked .blk{padding:9px 10px;display:flex;flex-direction:column;gap:6px;opacity:.58}
+.lit.linked .blk.sel{opacity:1}
+@media (prefers-reduced-motion:no-preference){
+  .lit.linked .blk{transition:opacity var(--dur-act) var(--ease)}
+}
+.blk .linkid,.carrieditem .linkid{display:inline-flex;align-items:center;gap:6px;
+  background:none;border:0;padding:0;font:inherit;color:var(--gold);cursor:pointer}
+.blk .linkid:hover,.carrieditem .linkid:hover{text-decoration:underline}
+
+/* parts.js's idFull()/linkId() split (mockup ~362-363) — the kind prefix
+   keeps full ink, the slug drops to dim. */
+.idkind{color:var(--ink)}
+.idslug{color:var(--dim)}
+
+/* ─── Element-level base the screens' own markup needs (mockup ~365-367):
+   every screenHead() writes a bare `<h2>`; `.row`/`.linkid`/the tier-pick
+   and event buttons are all `<button>` elements that would otherwise draw
+   in the browser's own UI font; focus-visible is the one focus ring the
+   whole app draws, on every interactive element these screens use. */
+h2{margin:0;font-size:var(--fs-3);font-weight:620;letter-spacing:-.012em}
+button{font:inherit;color:inherit}
+:where(button,a,input,select,summary):focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+/* ─── Icon sizing (mockup ~1020-1025) — parts.js's openIcon() builds
+   `<svg class="icon-open"><use href="#i-open">`. The attribute selector is
+   the mockup's own "shared sizing for any consumed glyph" rule, so this one
+   declaration covers every future `class="icon-<name>"`, not just this one.
+   index.html now carries the mockup's own `<symbol id="i-open">` sprite
+   (mockup ~1169-1200, added alongside the `.app` wrapper — see this task's
+   report), so this icon resolves to a real glyph rather than an empty box. */
+[dir="rtl"] .icon-open{transform:scaleX(-1)}
+[class^="icon-"]{inline-size:16px;block-size:16px;flex:none;vertical-align:-3px}
+
+/* index.html's icon sprite is hidden by CLASS in the mockup's own markup —
+   `<svg style="display:none" aria-hidden="true">` — but the server's CSP is
+   `style-src 'self'` with no `unsafe-inline` (`ui/security.ts` ~321), which
+   blocks the attribute the mockup writes; index.html's own comment on the
+   sprite names this rule as the replacement. Scoped to a DIRECT CHILD of
+   `body` (`>`) so it cannot also catch `.icon-open` itself, which is always
+   nested inside a `.blk .linkid`, never a body child — checked: `grep -c
+   '<svg' index.html` is 2 (the sprite, and none of this task's screens build
+   a body-level one), so the combinator is a belt no current markup needs yet
+   but costs nothing to keep. NOT a mockup byte-copy — the mockup has no
+   `body>svg` rule because it never faced this CSP — so it carries no parity
+   assertion, the same treatment @font-face's `url()` paths get above. */
+body>svg[aria-hidden="true"]{display:none}
