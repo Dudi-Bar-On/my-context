@@ -398,19 +398,52 @@ async function route() {
   // event=session-start on the most recent session, rendering with no
   // input. NOT 'status' — that screen is built by Task 19 and deferred to
   // wave 3 ("Corrected 2026-08-20", plan Task 16 note).
-  const name = (location.hash.replace(/^#\//, '') || 'preview');
-  const loader = SCREENS[name] || SCREENS.preview;
+  const asked = (location.hash.replace(/^#\//, '') || 'preview');
+  // Resolve BEFORE building the section. `SCREENS[name] || SCREENS.preview`
+  // renders the preview for an unknown route, and naming the section after the
+  // route rather than the screen would create a `[data-p="nonsense"]` holding
+  // the preview's markup — a lie in the DOM that any parity check would read
+  // as a screen that exists.
+  const name = Object.hasOwn(SCREENS, asked) ? asked : 'preview';
+  const loader = SCREENS[name];
   renderNav();
-  const root = document.getElementById('screen');
+
+  // **Every screen is a `<section data-p="NAME">`, and they STACK.**
+  //
+  // The mockup writes all 21 as siblings of `.body` and shows one by flipping
+  // `hidden` (`web-ui-mockup.html` ~1295-2312), with `.body{display:grid}` and
+  // `.body>[data-p]{grid-column:1;grid-row:1}` putting every one of them in the
+  // SAME grid cell so an outgoing and incoming screen overlap during the
+  // crossfade instead of the incoming one being laid out below the outgoing —
+  // which reads as a jump-cut, not a fade. Until now this app had neither: no
+  // `[data-p]` element and, before the CSS carry, not one `data-p` rule in the
+  // stylesheet. `.body` was a plain block holding one screen's loose children,
+  // which is why the whole stylesheet was being applied to a container it was
+  // not written for.
+  //
+  // Sections are created ON FIRST VISIT rather than all 21 up front, because
+  // screen modules are dynamically imported and eleven of them do not exist
+  // yet. A section with nothing behind it would be an empty grid cell claiming
+  // to be a screen. The ones already visited stay in the DOM, hidden, exactly
+  // as the mockup keeps all 21.
+  const body = document.getElementById('screen');
+  let section = body.querySelector(`[data-p="${name}"]`);
+  if (section === null) {
+    section = document.createElement('section');
+    section.dataset.p = name;
+    body.append(section);
+  }
+  for (const other of body.querySelectorAll('[data-p]')) other.hidden = other !== section;
+
   // No string-table key exists yet for a transient loading state (checked:
   // neither the mockup nor the string tables declare one) — inventing an
   // untranslated string here would be exactly the defect this shell's i18n
   // discipline exists to prevent, so the screen is simply cleared while the
   // dynamic import resolves rather than shown a placeholder. Open question,
   // this task's report.
-  root.replaceChildren();
+  section.replaceChildren();
   const mod = await loader();
-  await mod.render(root, window.myctx);
+  await mod.render(section, window.myctx);
 }
 
 async function main() {
