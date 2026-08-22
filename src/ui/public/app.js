@@ -80,6 +80,34 @@ const NAV = [
 ];
 
 let token = null;
+
+/**
+ * The token, for as long as this tab lives.
+ *
+ * NOT localStorage: a token that outlives the tab outlives the server that
+ * issued it, and the next `mycontext ui` mints a different one — so a stored
+ * token would be stale far more often than it was useful. sessionStorage dies
+ * with the tab, which is the same lifetime the in-memory token already had,
+ * plus reloads.
+ *
+ * A stale token — the server restarted while the tab stayed open — is not a
+ * silent failure: the first `/api` call refuses, `forgetToken()` clears it,
+ * and the exit banner says the server this page was talking to is gone. That
+ * is true, and it is what the banner is for.
+ */
+const TOKEN_KEY = 'myctx-token';
+
+function rememberToken(value) {
+  try { sessionStorage.setItem(TOKEN_KEY, value); } catch { /* private mode: memory only */ }
+}
+
+function rememberedToken() {
+  try { return sessionStorage.getItem(TOKEN_KEY); } catch { return null; }
+}
+
+function forgetToken() {
+  try { sessionStorage.removeItem(TOKEN_KEY); } catch { /* nothing to forget */ }
+}
 let table = null;
 let sessionValue = 'cold';
 const sessionListeners = [];
@@ -118,6 +146,12 @@ async function api(path) {
     showExited();
     stopHeartbeat();
     throw new Error('server exited');
+  }
+  if (response.status === 401 || response.status === 403) {
+    // The token this tab remembered is not this server's. Clear it, so a
+    // reload after the next `mycontext ui` starts from the handoff instead of
+    // presenting a dead token forever.
+    forgetToken();
   }
   if (!response.ok) {
     // A refusal from the security gate carries the STATUS AND NOTHING ELSE
@@ -230,7 +264,16 @@ async function main() {
   if (nonce !== null) {
     token = await exchangeNonce(fetch.bind(window), nonce);
     history.replaceState(null, '', location.pathname); // the fragment dies here (§2)
+    if (token !== null) rememberToken(token);
   }
+  // A reload has no nonce: the fragment died on the first load and the nonce
+  // is one-shot at the server. Without this the page came back blank —
+  // every /api call 401ing — and the only cure was restarting the server.
+  // sessionStorage is the same trust boundary the token already sits in:
+  // one origin, one tab, gone when the tab closes, and unreadable by anything
+  // `script-src 'self'` does not already let run. It buys a reload, and it
+  // buys the language toggle, which reloads by design.
+  if (token === null) token = rememberedToken();
   if (token === null) {
     showExited();
     return;
