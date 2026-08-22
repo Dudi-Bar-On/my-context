@@ -66,7 +66,7 @@ import { registerConfigRoutes } from './read-model-config.ts';
 import { registerWorkRoutes } from './read-model-work.ts';
 import { matchRoute, registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import {
-  mintToken, NonceStore, recordRefusal, SECURITY_HEADERS, validateApiRequest,
+  mintToken, NonceStore, recordRefusal, SECURITY_HEADERS, TOKEN_COOKIE, validateApiRequest,
 } from './security.ts';
 import { serveStatic } from './static.ts';
 import { registerWatchRoutes } from './watch-model.ts';
@@ -377,6 +377,17 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
         sendRefusal(res, 403);
         return;
       }
+      // The token also goes back as a cookie, which is what makes a RELOAD
+      // work: the fragment is erased on first load and the nonce is one-shot,
+      // so the second load has no other credential to present. HttpOnly keeps
+      // it out of reach of script — strictly tighter than the sessionStorage
+      // copy the page used to keep — and SameSite=Strict keeps it off any
+      // request another site started. See `TOKEN_COOKIE` in security.ts.
+      //
+      // No `Secure`: the server is plain http on loopback by design, and a
+      // Secure cookie would simply never be stored.
+      res.setHeader('set-cookie',
+        `${TOKEN_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict`);
       sendJson(res, { status: 200, body: { token } });
       return;
     }

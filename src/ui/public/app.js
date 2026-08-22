@@ -139,7 +139,13 @@ function showExited() {
 async function api(path) {
   let response;
   try {
-    response = await fetch(path, { headers: { 'X-Mycontext-Token': token } });
+    // Only send the header when there is something to send. A null token
+    // stringifies to the literal "null" in a header, which the gate reads as a
+    // WRONG token (403) rather than an absent one — and a 403 would mask the
+    // cookie, which is the credential a reloaded page actually has.
+    response = await fetch(path, {
+      headers: token === null ? {} : { 'X-Mycontext-Token': token },
+    });
   } catch {
     // The server has exited (idle or closed). Say so; NEVER reconnect —
     // silent reconnection would reintroduce the daemon by another name (§2).
@@ -274,10 +280,19 @@ async function main() {
   // `script-src 'self'` does not already let run. It buys a reload, and it
   // buys the language toggle, which reloads by design.
   if (token === null) token = rememberedToken();
-  if (token === null) {
-    showExited();
-    return;
-  }
+  // **No token is NOT a dead server, and the page must not say it is.**
+  //
+  // This used to `showExited()` and return, which is how the owner came to be
+  // looking at a page whose only content was "The server has exited" while the
+  // server was running perfectly. The message was wrong, and because the boot
+  // returned here, nothing else was ever drawn.
+  //
+  // There is now a third credential this code cannot see: the `mycontext_token`
+  // cookie, set at handoff and HttpOnly by design, so `document.cookie` will
+  // never show it. The only way to find out whether this page is authenticated
+  // is to ASK THE SERVER — so the boot continues, and `api()` deals with a real
+  // 401 if one actually comes back. Bailing here would refuse to use a
+  // credential the browser is already holding.
 
   window.myctx = {
     api,

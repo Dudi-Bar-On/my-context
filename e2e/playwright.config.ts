@@ -23,12 +23,22 @@
  * viewport are all pinned here so that a layout assertion means the same thing
  * on a hosted runner as it does on the owner's workstation.
  *
- * **One browser.** Chromium only. The mockup's own header says the shipped app
- * serves this page itself under `style-src 'self'; script-src 'self'`; this
- * suite is about whether the page RUNS and what it DRAWS, not about vendor
- * differences, and a second engine would triple the browser download for a
- * question nobody has asked. Adding Firefox or WebKit is one line if that
- * changes.
+ * **Two projects, and they are not two engines.** `chromium` is Playwright's
+ * bundled build; `chrome` is GOOGLE CHROME ITSELF, via `channel: 'chrome'`.
+ *
+ * Owner ruling, 2026-08-22: it "also must occur correct on the chrome browser".
+ * That is not pedantry. Bundled Chromium and shipped Chrome differ in exactly
+ * the places this app lives — proprietary codecs, PDF and print, component
+ * updates, and the enterprise policies a real profile carries. A page can be
+ * green on Chromium and wrong in the browser the owner actually opens, and the
+ * browser the owner actually opens is the one that decides whether it works.
+ *
+ * `chrome` needs no extra download: it drives the installed Chrome. If none is
+ * installed the project fails LOUDLY at launch rather than skipping, which is
+ * the correct outcome for a requirement stated as "must".
+ *
+ * Still no Firefox or WebKit: nobody has asked what this page does in Gecko,
+ * and each is a real download. Adding one is a line here if that changes.
  *
  * **The browsers are a separate download.** `@playwright/test@1.62` declares no
  * install hook, so `npm ci` installs the package and NOT the ~275 MB of browser
@@ -70,5 +80,9 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
 
-  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' } },
+    // Google Chrome as installed on this machine, not the bundled build.
+    { name: 'chrome', use: { browserName: 'chromium', channel: 'chrome' } },
+  ],
 });

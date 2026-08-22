@@ -37,6 +37,59 @@ export function mintToken(): string {
 export const TOKEN_HEADER = 'x-mycontext-token';
 
 /**
+ * The same token, carried as a cookie, so that A RELOAD ALWAYS WORKS.
+ *
+ * Owner ruling, 2026-08-22: "the refresh issue should not exist anymore, don't
+ * matter what refresh will show the page correct, if there is a security issue
+ * it should be solved in a way that will not destruct the page view."
+ *
+ * The handoff nonce is one-shot by design and the fragment carrying it is
+ * erased on first load, so the SECOND load has nothing to present. The page
+ * kept a copy in `sessionStorage`, which bought a reload in the same tab and
+ * nothing else: a second tab on the same origin, or a tab whose storage was
+ * cleared, still arrived with no credential and was told "The server has
+ * exited" — which was false, and is a sentence a person cannot act on.
+ *
+ * **The cookie is STRICTLY MORE SECURE than the sessionStorage copy it
+ * replaces**, which is worth stating plainly because "add a cookie" usually
+ * reads as the other direction:
+ *
+ *   - `HttpOnly` — script cannot read it. The `sessionStorage` copy was
+ *     readable by anything running on the page; this is not. Since the page
+ *     renders agent-authored item bodies, that is the exact exposure worth
+ *     removing.
+ *   - `SameSite=Strict` — never attached to a request another site initiated.
+ *   - The Host and Origin checks above are UNCHANGED and still run first, so
+ *     the DNS-rebinding and cross-origin defences do not depend on this at all.
+ *
+ * What it does not change: the nonce is still one-shot, and a token is still
+ * only ever issued by redeeming one. This is where the credential is kept, not
+ * how it is earned.
+ */
+export const TOKEN_COOKIE = 'mycontext_token';
+
+/**
+ * One cookie's value out of a `Cookie` header, or `undefined`.
+ *
+ * Hand-parsed rather than depending on a parser: this project ships zero
+ * runtime dependencies. The header is `name=value; name=value`, values here
+ * are hex from `randomBytes`, and anything that does not split cleanly on the
+ * first `=` is skipped rather than guessed at.
+ */
+export function cookieValue(header: string | string[] | undefined, name: string): string | undefined {
+  const raw = typeof header === 'string' ? header : undefined;
+  if (raw === undefined) return undefined;
+  for (const part of raw.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() !== name) continue;
+    const value = part.slice(eq + 1).trim();
+    return value === '' ? undefined : value;
+  }
+  return undefined;
+}
+
+/**
  * One-shot handoff nonces (spec §3, "Opening the browser"). A nonce is minted
  * with its own ttl — 10 seconds for a URL that transits a process command
  * line, longer for a URL that is only ever printed — and redeems at most
@@ -147,9 +200,17 @@ export function validateApiRequest(
   if (origin !== undefined && origin !== `http://${wantHost}`) {
     return { ok: false, status: 403, check: 'origin', reason: 'Origin header did not match the expected scheme, host and port' };
   }
-  const token = headerValue(req.headers[TOKEN_HEADER]);
+  // Header first, cookie second. The header is what a script-driven caller
+  // sends and what the node suite exercises; the cookie is what a RELOADED page
+  // has, because the nonce that earned the header is long spent. Either proves
+  // the same thing — that this caller redeemed a nonce — so either is accepted.
+  const token = headerValue(req.headers[TOKEN_HEADER])
+    ?? cookieValue(req.headers.cookie, TOKEN_COOKIE);
   if (token === undefined) {
-    return { ok: false, status: 401, check: 'token-missing', reason: 'missing x-mycontext-token header' };
+    return {
+      ok: false, status: 401, check: 'token-missing',
+      reason: `missing ${TOKEN_HEADER} header and ${TOKEN_COOKIE} cookie`,
+    };
   }
   if (!tokenEquals(token, expected.token)) {
     return { ok: false, status: 403, check: 'token-mismatch', reason: 'wrong token' };

@@ -288,7 +288,10 @@ test('every refusal names the check that refused it', () => {
     },
     {
       headers: { host: HOST },
-      is: 'missing x-mycontext-token header',
+      // Names BOTH credentials it looked for. A reloaded page has no header
+      // and is authenticated by the cookie instead, so a refusal that mentioned
+      // only the header would send a reader hunting for the wrong thing.
+      is: 'missing x-mycontext-token header and mycontext_token cookie',
       names: new RegExp(TOKEN_HEADER),
       check: 'token-missing',
     },
