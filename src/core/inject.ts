@@ -1,20 +1,17 @@
-import { rmSync } from 'node:fs';
 import { recordAudit, type InjectedRef, type SpilledRef } from './audit.ts';
 import { resolveCarry, resolveSubagentCarry } from './continuity.ts';
 import { focusErrorNote, readFocus } from './focus.ts';
-import { readSnapshotMeta, snapshotPath } from './ledger.ts';
+import { readSnapshotMeta } from './ledger.ts';
 import { rebuildRoots } from './open-store.ts';
 import {
-  crossLayerCollisions, loadErrorNote, loadLayer, rebuild, retryOnTransientFsError,
-  type LoadError,
+  crossLayerCollisions, loadErrorNote, loadLayer, rebuild, type LoadError,
 } from './rebuild.ts';
 import { renderSelection, SUBAGENT_PREAMBLE } from './render.ts';
 import { agentRevisionNotice, pendingRevisions } from './revision.ts';
 import { select } from './select.ts';
-import {
-  appendSeen, clearSeen, describeClearSeen, readSeen, restoredFor, SEEN_CLEAR_ATTEMPTS,
-} from './seen-file.ts';
+import { appendSeen, readSeen, restoredFor } from './seen-file.ts';
 import { HOOK_OPEN_PROFILE, isBusyError, Store } from './store.ts';
+import { clearWindowState } from './window-state.ts';
 import { resolveWorkspace } from './workspace.ts';
 import type { Item, Layer } from './types.ts';
 
@@ -65,7 +62,7 @@ export type InjectionEvent = 'session-start' | 'manual' | 'subagent';
 
 export interface InjectionOptions {
   event?: InjectionEvent;
-  /** SessionStart only: startup | clear | resume | compact. */
+  /** SessionStart only: startup | clear | resume | compact | fork. */
   source?: string;
   /**
    * The hook payload's `session_id`, and ONLY that. It is the audit record's
@@ -166,59 +163,6 @@ export function hookParseErrorNote(parseError: string | null | undefined): strin
 }
 
 /**
- * Removes everything this workspace holds about a context window the user
- * destroyed with `/clear`, and returns ONE non-empty sentence saying what
- * actually went. **Never throws for any filesystem outcome.**
- *
- * Three things are removed, and the third is the one that is not dedupe
- * state: the parent seen file, its `session::agent` siblings (both
- * `clearSeen`), and the restore snapshot at `snapshotPath`. The snapshot is
- * here because it describes a context window rather than a dedupe key — it
- * lists what the DESTROYED window was holding, so a compaction later in the
- * same session would otherwise restore items the new window never held, with
- * nothing in the block to say where they came from.
- *
- * **A FAILED DELETE OVER-INJECTS, WHICH IS THE SAFE DIRECTION** — the same
- * direction `seen-file.ts` takes everywhere. A seen file that will not go
- * suppresses a re-delivery; a snapshot that will not go costs one re-restore.
- * Neither is a miss, and neither may cost the injection. What they may not do
- * is go unsaid, which is what the sentence is for.
- *
- * The sentence is `describeClearSeen`'s, with one clause appended rather than
- * rebuilt: that function already distinguishes "cleared nothing" from
- * "cleared", an unlistable `state/` from an id whose siblings cannot be
- * named, and a file that would not go — and a second spelling of any of those
- * here would be a second spelling that drifts. This module speaks only for
- * the one thing `clearSeen` does not remove.
- */
-function clearSessionState(root: string, sessionId: string): string {
-  const report = clearSeen(root, sessionId);
-  let snapshotClause: string;
-  try {
-    // `rmSync` WITHOUT `force: true`, for `clearSeen`'s reason: `force`
-    // suppresses exactly one thing — ENOENT — and that is the one outcome
-    // this sentence must keep separate from success. With it, a session that
-    // never compacted would be told its restore snapshot was removed, which
-    // is the false-claim half of INV-nothing-is-dropped-silently.
-    //
-    // The retry budget is the CLEAR's (`SEEN_CLEAR_ATTEMPTS`), deliberately,
-    // not the snapshot WRITE's far more patient `SNAPSHOT_RENAME_ATTEMPTS`.
-    // A write the product must not lose can afford ~2.1 s of backoff; this
-    // runs inside a SessionStart whose `hooks.json` kill is 10 s and whose
-    // whole latency budget is 500 ms, and its worst outcome is a re-restore.
-    retryOnTransientFsError(() => rmSync(snapshotPath(root, sessionId)), SEEN_CLEAR_ATTEMPTS);
-    snapshotClause = 'the restore snapshot for this session was removed too';
-  } catch (err) {
-    snapshotClause = (err as NodeJS.ErrnoException)?.code === 'ENOENT'
-      ? 'no restore snapshot was there to remove'
-      : 'the restore snapshot could not be removed ' +
-        `(${err instanceof Error ? err.message : String(err)}), so a later compaction in this ` +
-        'session may restore items this window never held';
-  }
-  return `${describeClearSeen(report)}; ${snapshotClause}`;
-}
-
-/**
  * The line a cleared window carries into the block the model reads.
  *
  * The sibling of `focusErrorNote` and `hookParseErrorNote`, and it is here for
@@ -296,14 +240,31 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     errors.push(...collisions);
 
     const compacting = options.source === 'compact';
-    // The other `source` this function branches on. The value is `'clear'`
-    // because that is what `hooks/io.ts` documents and what
-    // `hooks/hooks.json`'s matcher already admits — a measurement of a real
-    // payload (plan Task 1) would replace this literal, not the branch. The
-    // branch is safe under every row of that task's decision table except
-    // "SessionStart never fires on /clear", where it is dead code that costs
-    // one comparison: a session id that owns no state clears nothing, and
-    // `describeClearSeen` says so rather than claiming a clear happened.
+    // The other `source` this function branches on. The literal `'clear'` is
+    // now MEASURED rather than documented: a real payload carrying it was
+    // captured on build 2.1.239 and is quoted in
+    // `reports/probes/2026-08-20-clear-and-prompt-hooks.md`.
+    //
+    // **What that measurement did to this branch: it can no longer reach any
+    // state, and the reason is in the payload it receives.** `/clear` MINTS a
+    // new `session_id` — the order is `SessionEnd(reason: clear)` on the OLD
+    // id, then `SessionStart(source: clear)` on a NEW one — so `sessionId`
+    // here is an id that was created microseconds ago. Its seen file cannot
+    // exist (this very call is the first thing to write one), its
+    // `session::agent` siblings cannot exist (no subagent has been dispatched
+    // under it), and its restore snapshot cannot exist (no PreCompact has
+    // fired for it). The old window's state is reached by `hooks/session-end.ts`
+    // instead, which is the only firing that carries the old id.
+    //
+    // **It is kept, and NOT because it might one day clear something.** It
+    // cannot. It is kept for the sentence: `clearWindowState` is what produces
+    // the note the model reads below, and that note is how a window that
+    // started from a clear learns it started from a clear. The deletion half
+    // costs one `readdirSync` of `state/` and one failing `rmSync`, and
+    // `describeClearSeen` reports "cleared no seen file" rather than claiming
+    // a clear happened — which is exactly the honest answer for an id that
+    // owns nothing. Whether the deletion half should go at all is the owner's
+    // call, not this comment's.
     const clearing = options.source === 'clear';
     // The session id is dropped on the manual path, structurally, rather
     // than merely left unset by its one caller — and dropping it is also
@@ -365,7 +326,10 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
 
     // 1b. THE CLEAR. `/clear` destroyed this context window, so everything
     // this workspace holds *about that window* goes with it — the seen files
-    // and the restore snapshot (see `clearSessionState`).
+    // and the restore snapshot (see `clearWindowState`). For the id in THIS
+    // payload that set is always empty; see the note on `clearing` above for
+    // why, and `hooks/session-end.ts` for where the old window's state is
+    // actually removed.
     //
     // **It runs BEFORE the seen file is read below, and the order is the
     // whole branch.** Running it after would hand the rest of this function
@@ -373,7 +337,6 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // return the destroyed window's deliveries and `readSnapshotMeta` would
     // return a snapshot listing what it was holding, so the new, empty window
     // would come up short while the knowledge base believed it was full.
-    // That is today's behaviour and the defect this closes.
     //
     // **Gated on a real session id and on neither of the other two events.**
     // `manual` has already dropped its id a few lines up, structurally, so a
@@ -388,7 +351,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // A failed delete over-injects, which is the safe direction; the sentence
     // is what keeps it from being a silent one.
     const clearNote = clearing && !subagent && sessionId !== undefined
-      ? clearSessionState(ws.projectRoot, sessionId)
+      ? clearWindowState(ws.projectRoot, sessionId)
       : null;
 
     // 2. RESTORE DEDUPE FROM THE SEEN FILE (was: the ledger's rows). The

@@ -50,8 +50,85 @@ test('each new op is appended to its own family, moving no member before it', ()
   );
   assert.deepEqual(
     [...HOOK_OPS],
-    ['pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure'],
+    ['pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure', 'session-end',
+      'post-compact'],
   );
+});
+
+/**
+ * **`session-end` is registered because it records a DELETION.**
+ *
+ * The `SessionEnd` hook removes the seen files and restore snapshot of the
+ * context window `/clear` destroyed — the only firing that carries that
+ * window's id — and it is also the one hook in this project with no channel to
+ * the user at all: Claude Code copies a `SessionEnd` hook's output to stderr
+ * only when the hook FAILS, and `INV-hooks-fail-open` requires this one to exit
+ * 0. So the row is not a convenience. It is the only place the deletion is ever
+ * named, which is `INV-nothing-is-dropped-silently` at its narrowest.
+ *
+ * A `hook` op and not an `injection` one, for the reason `INJECTION_OPS`'
+ * comment gives in the other direction: nothing was put in front of a model
+ * here.
+ */
+/**
+ * **`post-compact` closes the pair `pre-compact` opens.** `PreCompact` writes
+ * the restore snapshot and the compaction can still throw afterwards, so a
+ * `pre-compact` row with no `post-compact` row beside it is a compaction that
+ * never finished. It is also the only row that can carry `trigger`: the proxy
+ * this project used before — `SessionStart(source: 'compact')` — spells a
+ * user-typed `/compact` and a window that filled up with the same string.
+ */
+test('post-compact is a hook op that joins pre-compact on the session', () => {
+  assert.ok(AUDIT_OPS.includes('post-compact'), 'post-compact is registered');
+  assert.equal(kindOf('post-compact'), 'hook');
+
+  const b = box();
+  try {
+    recordAudit(b.root, {
+      kind: 'hook', op: 'pre-compact', sessionId: 's1', hook: 'PreCompact',
+      injected: [{ id: 'RULE-a', tier: 'snapshot' }], at: '2026-08-22T00:00:00.000Z',
+    });
+    const written = recordAudit(b.root, {
+      kind: 'hook', op: 'post-compact', sessionId: 's1', hook: 'PostCompact',
+      note: 'trigger=auto; summary 1200 chars; snapshot 1 id(s), 1 re-delivered by the restore ' +
+        'tier, 1 still named in the summary',
+      at: '2026-08-22T00:00:01.000Z',
+    });
+    assert.equal(written.written, true, written.error);
+
+    const records = readAudit(b.root);
+    assert.deepEqual(records.map((r) => r.op), ['pre-compact', 'post-compact']);
+    assert.deepEqual(records.map((r) => r.hook), ['PreCompact', 'PostCompact']);
+    assert.equal(new Set(records.map((r) => r.sessionId)).size, 1, 'the pair must join');
+
+    const raw = readFileSync(auditLogPath(b.root), 'utf8');
+    assert.deepEqual(
+      parseAudit(raw, 'audit.jsonl').map((r) => r.op), ['pre-compact', 'post-compact'],
+    );
+  } finally { b.dispose(); }
+});
+
+test('session-end is a hook op, and a record written under it parses back', () => {
+  assert.ok(AUDIT_OPS.includes('session-end'), 'session-end is registered');
+  assert.equal(kindOf('session-end'), 'hook');
+
+  const b = box();
+  try {
+    const written = recordAudit(b.root, {
+      kind: 'hook', op: 'session-end', sessionId: 's1', hook: 'SessionEnd',
+      note: 'reason=clear; cleared 2 seen file(s)', at: '2026-08-22T00:00:00.000Z',
+    });
+    assert.equal(written.written, true, written.error);
+
+    const records = readAudit(b.root);
+    assert.deepEqual(records.map((r) => r.op), ['session-end']);
+    assert.equal(records[0].hook, 'SessionEnd');
+    assert.equal(records[0].kind, 'hook');
+
+    // …and through the raw-bytes parser, which is what a segment reader calls.
+    const raw = readFileSync(auditLogPath(b.root), 'utf8');
+    assert.deepEqual(parseAudit(raw, 'audit.jsonl').map((r) => r.op), ['session-end']);
+  } finally { b.dispose(); }
 });
 
 test('a record written with each new op parses back, hook name included', () => {

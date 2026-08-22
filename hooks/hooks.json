@@ -36,6 +36,17 @@
         ]
       }
     ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/src/hooks/session-end.ts\"",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
     "PreCompact": [
       {
         "hooks": [
@@ -43,6 +54,17 @@
             "type": "command",
             "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/src/hooks/pre-compact.ts\"",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --disable-warning=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/src/hooks/post-compact.ts\"",
+            "timeout": 5
           }
         ]
       }

@@ -16,6 +16,45 @@ export interface HookInput {
    * `reports/probes/2026-08-20-clear-and-prompt-hooks.md`.
    */
   source?: string;
+  /**
+   * `SessionEnd` only: `clear | resume | logout | prompt_input_exit | other`.
+   *
+   * Five, and only two of them have ever been seen on the wire — `clear` and
+   * `other`, both in
+   * `reports/probes/2026-08-20-clear-and-prompt-hooks.md`. The list itself is
+   * build 2.1.239's own payload schema, byte-identical in 2.1.237 and 2.1.238;
+   * `hooks/session-end.ts` · `export const SESSION_END_REASONS = [` · ~74
+   * carries the quotation and is the one place that enumerates it.
+   *
+   * **`other` is the DEFAULT, not a residual category.** The shutdown entry
+   * point is declared `async function oc(e=0,t="other",r)`, so every ordinary
+   * exit that names no reason arrives as `other` — which is why the probe saw
+   * it on five of its six session ends.
+   *
+   * `PreCompact` and `PostCompact` carry `trigger` rather than this field, and
+   * it is deliberately a separate key below: the two are matched on by the same
+   * mechanism but they are different vocabularies, and one field spelling both
+   * would let a `PostCompact` matcher silently accept a `SessionEnd` word.
+   */
+  reason?: string;
+  /**
+   * `PreCompact` and `PostCompact` only: `manual | auto`.
+   *
+   * The value the hook matcher is tested against on those two events, exactly
+   * as `source` is on `SessionStart` and `reason` is on `SessionEnd`.
+   */
+  trigger?: string;
+  /**
+   * `PostCompact` only: the conversation summary compaction produced, verbatim.
+   *
+   * The platform's own schema describes it as *"The conversation summary
+   * produced by compaction"*. It is the entire content of the context window
+   * that comes out of a compaction, which is what makes it the one thing
+   * `SessionStart(source: 'compact')` — the proxy this project inferred a
+   * compaction from before `PostCompact` was registered — can never supply.
+   * See `hooks/post-compact.ts` for what is done with it and what is not.
+   */
+  compact_summary?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
   /**

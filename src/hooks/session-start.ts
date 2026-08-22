@@ -6,7 +6,7 @@ import { findProjectRoot } from '../core/workspace.ts';
 import { hookParseErrorLine, parseHookInput, readStdin } from './io.ts';
 
 export interface SessionStartOptions {
-  /** startup | clear | resume | compact */
+  /** startup | clear | resume | compact | fork */
   source?: string;
   sessionId?: string;
   /**
