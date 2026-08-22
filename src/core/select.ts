@@ -729,6 +729,73 @@ function jitTarget(ctx: SelectContext): string {
 }
 
 /**
+ * The gates an item passes on its way into a session, in the order `select`
+ * puts them, plus the state of an item that cleared all six — as CODES, so a
+ * surface can name the gate that bound without reading English.
+ *
+ * The order is this file, read downwards. `select` narrows with `isEligible`
+ * first (`eligibleAll`), then `isNormative` (`injectable`), then `focusHides`
+ * (`eligible`), then each tier's own predicate — `matchesScope` on the jit
+ * tier — then the `seen` filter (`fresh`), and `fitToBudget` last. It is the
+ * same order `injection()` (`cli/commands/injection.ts`) walks, which is the
+ * only thing that makes that function's phrase true, and the order the
+ * injection preview draws its ladder in (`docs/design/web-ui-mockup.html`,
+ * `#gates` / `preview.whyn`).
+ *
+ * **A code BESIDE the sentence, never instead of it and never a second
+ * derivation of it.** `Spill.reason` and `injection()`'s `phrase` are
+ * unchanged: they are what the CLI prints and what a human reads. What no read
+ * model could say before is WHICH gate an item first failed, and a screen that
+ * answered by parsing those sentences would be a second implementation of this
+ * file's decision — one that breaks the day someone improves the wording. So
+ * it is a second FIELD, written by the same branch that writes the sentence.
+ *
+ * **Nothing here decides anything.** These are names for decisions the
+ * functions above already take. A `GateCode` is only ever attached at the
+ * branch that took the decision, never re-derived from the item afterwards —
+ * a second `if` chain over the same fields is exactly the two-spellings defect
+ * this project has paid for most often.
+ *
+ * `passed` is a member rather than an absence for the same reason `tiersRun`
+ * exists: "cleared every gate" and "no gate was asked" are different facts,
+ * and a nullable code would collapse them.
+ */
+export type GateCode = 'eligible' | 'tier' | 'focus' | 'scope' | 'seen' | 'budget' | 'passed';
+
+/**
+ * Each gate's RUNG — its 1-based position on the ladder, which is the whole of
+ * what the ladder shows: the mockup's `preview.whyn` says *"the order is the
+ * explanation … the one that binds is only meaningful in the position it
+ * holds"*. `passed` holds no rung and is `null` rather than a seventh number:
+ * an item that cleared the ladder failed nothing, and a 0 or a 7 would be a
+ * position on it.
+ *
+ * **`Record<GateCode, …>` rather than a list of the six**, for the reason
+ * `core/trust.ts` · `export const GOVERNING_STATUS: Record<Status, boolean> = {` · ~350
+ * is a Record: a seventh gate added to the union fails to compile HERE, where
+ * a list would keep compiling and answer `undefined` for it — a ladder drawn
+ * with a rung missing and nothing saying so.
+ */
+export const GATE_RUNG: Record<GateCode, number | null> = {
+  eligible: 1,
+  tier: 2,
+  focus: 3,
+  scope: 4,
+  seen: 5,
+  budget: 6,
+  passed: null,
+};
+
+/**
+ * The ladder: the six gates in rung order, DERIVED from `GATE_RUNG` rather
+ * than written out a second time beside it. Two spellings of one order is how
+ * an order drifts, and here the order is the explanation.
+ */
+export const GATE_LADDER: GateCode[] = (Object.keys(GATE_RUNG) as GateCode[])
+  .filter((code) => GATE_RUNG[code] !== null)
+  .sort((a, b) => GATE_RUNG[a]! - GATE_RUNG[b]!);
+
+/**
  * Which tiers this event actually reaches — `select`'s own dispatch, named.
  *
  * **A tier that does not run is a different fact from a tier that ran and

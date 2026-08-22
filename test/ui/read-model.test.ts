@@ -1582,6 +1582,16 @@ test('/api/coverage colours a file through matchesScope AND injection(), never a
       'the phrase is injection()\'s own, so this screen and `mycontext edit` say one thing',
     );
 
+    // The same two items, as CODES. Their phrases differ only in English, so
+    // a screen asking "why does this colour nothing" had to match on prose —
+    // and the two answers are not even the same rung.
+    assert.deepEqual(
+      ['RULE-draft-rule', 'DEC-we-chose-sqlite'].map(
+        (id) => body.items.find((i) => i.id === id)?.gate),
+      ['eligible', 'tier'],
+      'rung 1 and rung 2, in a word each — the answer the ladder itself gives',
+    );
+
     // Every item is listed, injected or not — the screen needs the ones that
     // colour nothing in order to say WHY a directory is a gap.
     const indexed = withStores(ws, (store) => store.all());
@@ -1592,7 +1602,7 @@ test('/api/coverage colours a file through matchesScope AND injection(), never a
     for (const summary of body.items) {
       const item = indexed.find((i) => i.id === summary.id)!;
       assert.deepEqual(
-        { injected: summary.injected, phrase: summary.phrase },
+        { injected: summary.injected, phrase: summary.phrase, gate: summary.gate },
         injection(item, ws.config),
         `${summary.id}: the verdict is injection()'s, composed rather than restated`,
       );
@@ -1871,11 +1881,16 @@ test('/api/items carries every item with the injection verdict, sorted by id', (
         always: item.always, scope: item.scope,
         injected: injection(item, f.ws.config).injected,
         phrase: injection(item, f.ws.config).phrase,
+        gate: injection(item, f.ws.config).gate,
       });
     }
     // Non-vacuity: the four rows must not be four copies of one verdict.
     assert.equal(new Set(body.items.map((i) => i.phrase)).size, 3,
       'pinned, scoped and rationale are three phrases; the two src/** rules share the third');
+    // The gate collapses the two injected shapes and keeps the refusal apart:
+    // three rows cleared the ladder, and the rationale one binds at rung 2.
+    assert.deepEqual(body.items.filter((i) => i.gate !== 'passed').map((i) => i.gate), ['tier'],
+      'only the rationale row fails a gate, and the gate it fails is the tier gate');
   } finally { f.done(); }
 });
 
@@ -1895,6 +1910,7 @@ test('/api/item/:id joins the injection phrase to the ledger usage; unknown id i
     assert.deepEqual(body.injection, {
       phrase: 'PINNED — injected in full at every session start, regardless of scope',
       injected: true,
+      gate: 'passed',
     });
     assert.equal(body.ledger, 'ready');
     assert.deepEqual(body.usage,
@@ -1909,10 +1925,13 @@ test('/api/item/:id joins the injection phrase to the ledger usage; unknown id i
     // from a literal — a pane that printed "PINNED" over a rationale-tier
     // decision would be asserting a property the selector does not have.
     assert.deepEqual(unused.injection,
-      { phrase: 'injected when work touches src/**', injected: true });
+      { phrase: 'injected when work touches src/**', injected: true, gate: 'passed' });
     const rationale = apiItem(f.ws, url(`item/${D}`, ''), { id: D }).body as ItemBody;
     assert.deepEqual(rationale.injection, injection(f.items.find((i) => i.id === D)!, f.ws.config));
     assert.equal(rationale.injection.injected, false);
+    // The pane is where a ladder drawn for ONE item reads its binding rung.
+    assert.equal(rationale.injection.gate, 'tier',
+      'a decision reaches the index line and no further — rung 2, said in a word');
     assert.equal(new Set([body.injection.phrase, unused.injection.phrase,
       rationale.injection.phrase]).size, 3, 'non-vacuity: three different phrases');
 

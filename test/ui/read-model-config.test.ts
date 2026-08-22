@@ -206,15 +206,20 @@ test('scopePolicy inert names the unscoped items that become injectable nowhere'
     assert.equal(result.status, 200);
     const body = result.body as {
       scopePolicy: { category: string; before: string; after: string; unscopedItems: { id: string }[] }[];
-      governing: { stopsBeingInjected: { id: string }[] };
+      governing: { stopsBeingInjected: { id: string; gateAfter: string }[] };
     };
     const rulePolicy = body.scopePolicy.find((p) => p.category === 'rule');
     assert.ok(rulePolicy);
     assert.deepEqual([rulePolicy.before, rulePolicy.after], ['global', 'inert']);
     assert.equal(rulePolicy.unscopedItems.length, 1); // the 'Unscoped rule' fixture item
     // And the governing diff agrees: injection() under inert refuses the unscoped rule.
-    assert.ok(body.governing.stopsBeingInjected.some(
-      (i) => i.id === rulePolicy.unscopedItems[0].id));
+    const stopped = body.governing.stopsBeingInjected.find(
+      (i) => i.id === rulePolicy.unscopedItems[0].id);
+    assert.ok(stopped);
+    // WHICH gate the candidate config closes, as a code rather than as prose:
+    // rung 4, the scope gate — under `inert` an unscoped item is matched by
+    // no path at all, which is `matchesScope` refusing it everywhere.
+    assert.equal(stopped.gateAfter, 'scope');
   } finally { done(); }
 });
 
@@ -227,7 +232,7 @@ test('disabling a category shows the governing-set diff, not a warning', () => {
     });
     const body = result.body as {
       governing: {
-        stopsBeingInjected: { phraseBefore: string; phraseAfter: string }[];
+        stopsBeingInjected: { phraseBefore: string; phraseAfter: string; gateAfter: string }[];
         becomesInjected: unknown[];
       };
     };
@@ -236,6 +241,11 @@ test('disabling a category shows the governing-set diff, not a warning', () => {
     // The phrases are `injection()`'s, not this module's: a preview that
     // worded the verdict itself would be a second spelling of one fact.
     assert.match(body.governing.stopsBeingInjected[0].phraseAfter, /is disabled in this project/);
+    // And the rung, which the sentence alone cannot be asked for: 1, the
+    // eligibility gate. Same branch of `injection()` writes both halves — a
+    // disabled category and an inert scopePolicy differ by a WORD here, where
+    // in English they differ by two unrelated sentences.
+    assert.equal(body.governing.stopsBeingInjected[0].gateAfter, 'eligible');
   } finally { done(); }
 });
 

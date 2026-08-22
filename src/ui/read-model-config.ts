@@ -23,7 +23,7 @@ import {
   AGENT_EDITS, DEFAULT_BUDGETS, SCOPE_POLICIES, agentEditsFor, resolveConfig,
   scopePolicyFor, skippedKeyNotice, type Config,
 } from '../core/config.ts';
-import { select } from '../core/select.ts';
+import { select, type GateCode } from '../core/select.ts';
 import type { Item, Tier } from '../core/types.ts';
 import type { Workspace } from '../core/workspace.ts';
 import { badRequest, parseSelectQuery, unknownParams, withStores } from './read-model.ts';
@@ -273,9 +273,20 @@ export function apiConfigPreview(ws: Workspace, url: URL, body: unknown): JsonRe
     //    and `scopePolicy` changes uniformly, which is what spec §4 means by
     //    "shown as a diff of the governing set, not as a warning": a warning
     //    would be this module's opinion, and a diff is the system's answer.
+    //
+    //    `gateAfter` rides on the STOPS bucket and on that bucket alone, and
+    //    the asymmetry is the information rather than an oversight: everywhere
+    //    else the gate is a constant the bucket already states — `passed` for
+    //    anything that becomes or stays injected, and `passed` BEFORE for
+    //    anything that stops. What no bucket can say is WHICH gate the
+    //    candidate config closes: rung 1 when a category is disabled, rung 2
+    //    when its tier drops to rationale, rung 4 when `scopePolicy` goes
+    //    `inert`. That is one field off `after`, never a second reading of
+    //    the config (`GateCode`, core/select.ts).
     const becomesInjected: { id: string; title: string; type: string; phraseAfter: string }[] = [];
     const stopsBeingInjected: {
-      id: string; title: string; type: string; phraseBefore: string; phraseAfter: string;
+      id: string; title: string; type: string;
+      phraseBefore: string; phraseAfter: string; gateAfter: GateCode;
     }[] = [];
     let unchanged = 0;
     for (const item of items) {
@@ -289,7 +300,7 @@ export function apiConfigPreview(ws: Workspace, url: URL, body: unknown): JsonRe
       } else {
         stopsBeingInjected.push({
           id: item.id, title: item.title, type: item.type,
-          phraseBefore: before.phrase, phraseAfter: after.phrase,
+          phraseBefore: before.phrase, phraseAfter: after.phrase, gateAfter: after.gate,
         });
       }
     }
