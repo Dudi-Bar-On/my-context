@@ -438,6 +438,20 @@ because the id is new, the seen file is empty, so nothing downstream compensates
 
 That is the exact shape of `INV-nothing-is-dropped-silently`, one layer out.
 
+> **Resolved while this probe was running.** `6b65b42` — *"fix(hooks): the SessionStart matcher
+> admits fork, ruled by the owner"* — landed on `master` the same morning, widening the matcher to
+> `"startup|clear|resume|compact|fork"` and pinning it with `test/hooks/session-start-matcher.test.ts`.
+> Its message says the defect was *"Found by reading build 2.1.239's own schema, not by running
+> anything"*. **§4c is the run.** It is worth keeping for exactly that reason: the schema argument was
+> sound, and this is the independent confirmation that a schema value which nobody had seen on the
+> wire really did reach a real user through two ordinary routes, and really did produce silence. A
+> value found in a schema is only slightly better evidence than a value found in a comment — except
+> when someone goes and measures it.
+>
+> **One thing that fix did not carry.** `src/hooks/io.ts` · `SessionStart only: startup | clear | resume | compact.` · ~8
+> still enumerates four of the five on `master`. Untouched here: `src/` belongs to other branches in
+> flight. Worth a one-line follow-up, because that comment is the next reader's map.
+
 **`hooks/hooks.json` was NOT changed by this probe.** Adding `fork` to the matcher is a behaviour
 change to a shipped manifest. The evidence is here; the ruling is the owner's. Two notes for whoever
 carries it:
