@@ -2006,7 +2006,7 @@ written out beside it.
 | `mycontext edit <id>` | change an item — `--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--unlink <relation> <target>`, `--yes`. The gate scales with what the change can do: none while the item neither governs nor starts governing, a preview and a confirmation otherwise — including the edit that makes a draft `active` |
 | `mycontext pin <id>` / `mycontext unpin <id>` | `mycontext edit <id> --always=true` and `--always=false`, under a shorter name |
 | `mycontext harden <id>` / `mycontext soften <id>` | `mycontext edit <id> --severity=hard` and `--severity=soft`, under a shorter name |
-| `mycontext review promote <id>` | turn a draft into an active governing item |
+| `mycontext review promote <id>` | turn a draft into an active governing item — `--scope`, `--severity`, `--always`, `--yes`. `--all --pack <name>` promotes every draft one imported pack brought in, in one confirmation taken after the corpus is visible; it refuses an id and all three per-item flags, and names everything it skips |
 | `mycontext review discard <id>` | retire a draft |
 | `mycontext supersede <id> --by <id>` | retire a governing item in favour of a replacement |
 | `mycontext procedure [list\|show\|activate\|done\|step]` | the lifecycle of a [`procedure`](#what-each-category-means) — the one category that has one. `list` groups every procedure by stage, `show <id>` prints it with its ticks laid over the steps, `activate <id>` starts it (`status: active` **and** `always: true`, which are different properties), `done <id>` retires it to `deprecated`, and `step <id> <n>` ticks one step. A `runbook` is refused by name: it is repeatable, so it has no lifecycle to activate or finish |
@@ -2165,6 +2165,22 @@ makes it govern; `--always` pins it at the same time, which is the shortest rout
 `always: true` for something still in the queue (`mycontext pin <id>` is the route once it
 governs — see [section 6](#6-configuration)). `mycontext review discard <id>` retires it
 instead.
+
+**A whole pack, in one act.** `mycontext review promote --all --pack <name>` promotes every
+draft one imported pack brought in, behind a single confirmation. It exists because a
+forty-item pack makes a forty-item queue, and a queue that size gets bulk-approved unread —
+which is a worse outcome than no gate, not a better one. **This is one human act on a corpus
+you can see, not a way around the gate.** The licence is bounded to the pack a human just
+chose to import: `--all` is refused without `--pack`, so there is no unbounded bulk promote,
+and an id, `--scope`, `--severity` and `--always` are each refused with it, because those are
+per-item decisions and setting one across forty items is a bulk edit wearing a promotion's
+clothes. The preview prints before the confirmation on every path, `--yes` included, and
+everything it will **not** promote is named with its reason — already settled, outside the
+project layer, a category you have not enabled, or no longer present. The membership list it
+reads is the one [`mycontext pack list`](#bringing-one-in--mycontext-pack-import) shows, and
+the preview names which import that is: a second pack imported under the same name replaces
+that record, so the list is the most recent import's, and anything an earlier one brought in
+stays in the queue to be promoted one at a time.
 
 **Review what an agent proposed.** A second queue sits beside the draft queue, and it holds
 *changes* rather than items. When an agent revises the title, body, tags or `extra` of an item in a
@@ -3088,7 +3104,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--json` | one JSON document instead of a table, including any corpus load errors. The only faithful rendering of a nested report | the same six, plus `query`, `audit`, `search`, `focus`, `export`, `pack import` and `pack list` |
 | `--quiet` | on `mycontext doctor` only, an older spelling of `--summary`. If you pass both `--quiet` and a detail level, `--quiet` wins and nothing says so | `doctor` |
 | `--sessions <n>` | how many recent sessions count as "lately" in the decay report. Default 20; must be a whole number above zero. On `audit` the bare `--sessions` means something else — roll the log up per session — and takes no number | `decay`, and see `audit` |
-| `--all` | also list the *warm* items — the ones that **were** injected inside the window, which the report otherwise leaves out. `--full` already includes them | `decay` |
+| `--all` | three things, on three commands, and the row says all three because the flag has one name. On `decay`: also list the *warm* items — the ones that **were** injected inside the window, which the report otherwise leaves out (`--full` already includes them). On `todo`: also list the retired ones, which are otherwise hidden and counted. On `review promote`: promote every draft one pack imported, in one confirmation — it **requires** `--pack <name>`, and refuses an id and every per-item flag beside it | `decay`, `todo`, `review promote` |
 | `--limit <n>` | the maximum number of rows returned. On `query` the default is 1000 and the minimum 1; `search` defaults to 50. There is no unlimited setting, and when the cap bites the report says so | `query`, `search`, `audit` |
 | `--type <category>` | show only items of one category — drafts, on `review list`; on `export`, what travels. A name no category has simply matches nothing; it is not an error | `review list`, `search`, `export` |
 
@@ -3181,6 +3197,7 @@ a workspace exists.
 | `--name <text>` | what to call the pack **here**: the directory its history is filed under, and the name `mycontext pack list` shows. It defaults to the name the pack's own manifest declares, and is **required** for a full export, which carries none. Two packs that call themselves the same thing need it, or the second one's record lands on the first one's | `pack import` |
 | `--overwrite-changed` | the answer to the **second** confirmation — replace the items you had changed with the pack's versions. It is separate from `--yes` deliberately, and `--yes` does not imply it: consent to an import is not consent to replacing a rule you wrote. Each replaced item lands `draft` and its previous version stays in the audit log. On a pack with nothing in the `changed` bucket it is accepted and does nothing, so a script that imports the same pack repeatedly does not have to know in advance whether this run collides. On `mycontext init` it is **refused**, with a message naming `pack import`: a corpus that does not exist yet has nothing to overwrite, and a flag accepted where it can do nothing is the silent swallow every refusal here exists to stop | `pack import` |
 | `--pack <path>` | found this workspace from an artefact, in the same command that creates it. It is the only flag `mycontext init` accepts, and everything else — a positional, `--global`, `--yes`, `--overwrite-changed` — is still refused by name. It asks nothing and takes no `--name`, so a full export is refused there and pointed at `pack import` | `init` |
+| `--pack <name>` | on `review promote`, which pack's drafts `--all` promotes — a **name**, not a path: the one `mycontext pack list` shows, which is the name the pack was filed under here. A name no import record carries is refused and points at that command; `--pack` without `--all` is refused too, rather than accepted where nothing would read it | `review promote` |
 
 #### Three rules that hold across all of them
 
@@ -4680,7 +4697,7 @@ Two more rules, below, for the same reason.
 
 | Command | What it does with no human in the loop |
 |---|---|
-| `mycontext review promote <id>` | turns a draft into an `active` governing item |
+| `mycontext review promote <id>` | turns a draft into an `active` governing item. `--all --pack <name>` does it for every draft one imported pack brought in, behind the same single confirmation — bounded to that pack's membership list and refusing an id and every per-item flag beside it, but still one `--yes` away from promoting a stranger's whole corpus. The deny rule below already covers both forms: it matches the command string, and both spell `mycontext review promote` |
 | `mycontext review discard <id>` | retires a draft |
 | `mycontext lesson-accept <lesson> <key>` | creates an `active` rule from a staged candidate |
 | `mycontext add <normative category> "…" --yes` | creates an `active` governing item **directly** — it passes `origin: 'human'`, so the draft demotion never applies. It requires `--yes`, on the same terms as `promote`: anything that can run `mycontext` can pass `--yes`, so the gate buys an explicit token in the transcript, not protection |

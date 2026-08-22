@@ -2135,7 +2135,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 | <span dir="ltr">`mycontext edit <id>`</span> | משנה פריט — <span dir="ltr">`--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--unlink <relation> <target>`, `--yes`</span>. השער מדורג לפי מה שהשינוי יכול לעשות: אין אישור כל עוד הפריט אינו שולט ואינו מתחיל לשלוט, ויש תצוגה מקדימה ואישור בכל מקרה אחר — כולל העריכה שהופכת טיוטה ל-<span dir="ltr">`active`</span> |
 | <span dir="ltr">`mycontext pin <id>`</span> / <span dir="ltr">`mycontext unpin <id>`</span> | <span dir="ltr">`mycontext edit <id> --always=true`</span> ו-<span dir="ltr">`--always=false`</span>, בשם קצר יותר |
 | <span dir="ltr">`mycontext harden <id>`</span> / <span dir="ltr">`mycontext soften <id>`</span> | <span dir="ltr">`mycontext edit <id> --severity=hard`</span> ו-<span dir="ltr">`--severity=soft`</span>, בשם קצר יותר |
-| <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט פעיל ששולט |
+| <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט פעיל ששולט — <span dir="ltr">`--scope`, `--severity`, `--always`, `--yes`</span>. <span dir="ltr">`--all --pack <name>`</span> מקדמת כל טיוטה שחבילה מיובאת אחת הביאה, באישור אחד הנלקח אחרי שהקורפוס גלוי לעין; היא מסרבת למזהה ולשלושת הדגלים שהם החלטה לכל פריט, ונוקבת בכל מה שהיא מדלגת עליו |
 | <span dir="ltr">`mycontext review discard <id>`</span> | מוציאה טיוטה לגמלאות |
 | <span dir="ltr">`mycontext supersede <id> --by <id>`</span> | מוציאה לגמלאות פריט ששולט לטובת מחליף |
 | <span dir="ltr">`mycontext procedure [list\|show\|activate\|done\|step]`</span> | מחזור החיים של <span dir="ltr">`procedure`</span> — הקטגוריה היחידה שיש לה אחד. <span dir="ltr">`list`</span> מקבצת כל נוהל לפי שלב, <span dir="ltr">`show <id>`</span> מדפיסה אותו כשהסימונים מונחים על הצעדים, <span dir="ltr">`activate <id>`</span> מתחילה אותו (<span dir="ltr">`status: active`</span> **וגם** <span dir="ltr">`always: true`</span>, שהן תכונות שונות), <span dir="ltr">`done <id>`</span> מוציאה אותו לגמלאות כ-<span dir="ltr">`deprecated`</span>, ו-<span dir="ltr">`step <id> <n>`</span> מסמנת צעד. <span dir="ltr">`runbook`</span> נדחה בשמו: הוא חוזר על עצמו, ולכן אין לו מחזור חיים להפעיל או לסיים |
@@ -2303,6 +2303,21 @@ current text. Read them as diffs with `mycontext review revisions`.
 (<span dir="ltr">`mycontext pin <id>`</span> הוא המסלול ברגע שהפריט שולט — ראו
 [פרק 6](#6-תצורה)). <span dir="ltr">`mycontext review discard <id>`</span> מוציא אותה
 לגמלאות במקום זאת.
+
+**חבילה שלמה, במעשה אחד.** <span dir="ltr">`mycontext review promote --all --pack <name>`</span>
+מקדמת כל טיוטה שחבילה מיובאת אחת הביאה, מאחורי אישור יחיד. היא קיימת מפני שחבילה בת ארבעים
+פריטים יוצרת תור בן ארבעים פריטים, ותור בגודל כזה מאושר בגוש בלי שנקרא — וזו תוצאה גרועה יותר
+מהיעדר שער, לא טובה יותר. **זהו מעשה אנושי אחד על קורפוס שאתם רואים, ולא דרך לעקוף את השער.**
+הרישיון תחום לחבילה שאדם בחר לייבא זה עתה: <span dir="ltr">`--all`</span> מסורבת בלי
+<span dir="ltr">`--pack`</span>, ולכן אין קידום גורף בלתי חסום; ומזהה,
+<span dir="ltr">`--scope`, `--severity`</span> ו-<span dir="ltr">`--always`</span> מסורבים כל אחד
+לצידה, מפני שאלה החלטות לכל פריט, וקביעת אחת מהן על פני ארבעים פריטים היא עריכה גורפת בלבוש של
+קידום. התצוגה המקדימה מודפסת לפני האישור בכל מסלול, ובכלל זה עם <span dir="ltr">`--yes`</span>,
+וכל מה ש**לא** יקודם נקוב יחד עם הסיבה — כבר הוכרע, מחוץ לשכבת הפרויקט, קטגוריה שלא הפעלתם, או
+שאיננו עוד. רשימת החברות שהיא קוראת היא זו ש-<span dir="ltr">`mycontext pack list`</span> מציגה
+([הבאת אחת פנימה](#הבאת-אחת-פנימה--mycontext-pack-import)), והתצוגה המקדימה נוקבת באיזה ייבוא
+מדובר: חבילה שנייה שיובאה תחת אותו שם מחליפה את הרשומה הזו, ולכן הרשימה היא של הייבוא האחרון,
+וכל מה שחבילה מוקדמת יותר הביאה נשאר בתור ומקודם פריט אחר פריט.
 
 **סקירת מה שסוכן הציע.** לצד תור הטיוטות יושב תור שני, והוא מחזיק *שינויים* ולא פריטים.
 כשסוכן מתקן את הכותרת, הגוף, התגיות או ה-<span dir="ltr">`extra`</span> של פריט בקטגוריה שמוגדרת
@@ -3318,7 +3333,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--json`</span> | מסמך JSON אחד במקום טבלה, כולל שגיאות טעינה של הקורפוס. הייצוג הנאמן היחיד של דוח מקונן | אותן שש, ובנוסף <span dir="ltr">`query`, `audit`, `search`, `focus`, `export`, `pack import`</span> ו-<span dir="ltr">`pack list`</span> |
 | <span dir="ltr">`--quiet`</span> | ב-<span dir="ltr">`mycontext doctor`</span> בלבד, איות ותיק יותר של <span dir="ltr">`--summary`</span>. אם תעבירו גם <span dir="ltr">`--quiet`</span> וגם רמת פירוט, <span dir="ltr">`--quiet`</span> מנצח ואף אחד לא אומר זאת | `doctor` |
 | <span dir="ltr">`--sessions <n>`</span> | כמה סשנים אחרונים נחשבים "לאחרונה" בדוח הדעיכה. ברירת מחדל 20; חייב להיות מספר שלם גדול מאפס. ב-`audit` המשמעות של <span dir="ltr">`--sessions`</span> שונה — לגלגל את היומן לפי סשן — והוא אינו מקבל מספר | `decay`, וראו `audit` |
-| <span dir="ltr">`--all`</span> | להציג גם את הפריטים ה*חמימים* — אלה שכן הוזרקו בתוך החלון, ושהדוח משמיט אחרת. <span dir="ltr">`--full`</span> כבר כולל אותם | `decay` |
+| <span dir="ltr">`--all`</span> | שלושה דברים, בשלוש פקודות, והשורה אומרת את שלושתם מפני שלדגל יש שם אחד. ב-`decay`: להציג גם את הפריטים ה*חמימים* — אלה שכן הוזרקו בתוך החלון, ושהדוח משמיט אחרת (<span dir="ltr">`--full`</span> כבר כולל אותם). ב-`todo`: להציג גם את אלה שהוצאו משימוש, שאחרת מוסתרים ונספרים. ב-<span dir="ltr">`review promote`</span>: לקדם כל טיוטה שחבילה אחת ייבאה, באישור אחד — הוא **דורש** <span dir="ltr">`--pack <name>`</span>, ומסרב למזהה ולכל דגל שהוא החלטה לכל פריט לצידו | <span dir="ltr">`decay`, `todo`, `review promote`</span> |
 | <span dir="ltr">`--limit <n>`</span> | מספר השורות המרבי שמוחזר. ב-`query` ברירת המחדל היא 1000 והמינימום 1; ב-`search` ברירת המחדל היא 50. אין הגדרה של "בלי הגבלה", וכשהתקרה נוגסת הדוח אומר זאת | <span dir="ltr">`query`, `search`, `audit`</span> |
 | <span dir="ltr">`--type <category>`</span> | להציג רק פריטים מקטגוריה אחת — טיוטות, ב-<span dir="ltr">`review list`</span>. שם שאין לו קטגוריה פשוט לא תואם דבר; זו אינה שגיאה | <span dir="ltr">`review list`, `search`, `export`</span> |
 
@@ -3414,6 +3429,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--name <text>`</span> | איך לקרוא לחבילה **כאן**: הספרייה שההיסטוריה שלה מתויקת תחתיה, והשם ש-<span dir="ltr">`mycontext pack list`</span> מציג. ברירת המחדל היא השם שהמניפסט של החבילה מצהיר עליו, והוא **נדרש** עבור ייצוא מלא, שאינו נושא שם. שתי חבילות שקוראות לעצמן אותו דבר זקוקות לו, אחרת הרשומה של השנייה נוחתת על זו של הראשונה | <span dir="ltr">`pack import`</span> |
 | <span dir="ltr">`--overwrite-changed`</span> | התשובה לאישור ה**שני** — להחליף את הפריטים ששיניתם בגרסאות של החבילה. הוא נפרד מ-<span dir="ltr">`--yes`</span> במכוון, ו-<span dir="ltr">`--yes`</span> אינו גורר אותו: הסכמה לייבוא אינה הסכמה להחליף כלל שאתם כתבתם. כל פריט שהוחלף נוחת <span dir="ltr">`draft`</span> והגרסה הקודמת שלו נשארת ביומן הביקורת. בחבילה שדלי ה-<span dir="ltr">`changed`</span> שלה ריק הוא מתקבל ואינו עושה דבר, כך שסקריפט שמייבא את אותה חבילה שוב ושוב אינו צריך לדעת מראש אם ההרצה הזאת מתנגשת. ב-<span dir="ltr">`mycontext init`</span> הוא **מסורב**, והמסר נוקב ב-<span dir="ltr">`pack import`</span>: לקורפוס שאינו קיים עדיין אין מה לדרוס, ודגל שמתקבל היכן שאינו יכול לעשות דבר הוא הבליעה השקטה שכל סירוב כאן קיים כדי למנוע | <span dir="ltr">`pack import`</span> |
 | <span dir="ltr">`--pack <path>`</span> | לייסד את סביבת העבודה הזאת מארטיפקט, באותה פקודה שיוצרת אותה. זהו הדגל היחיד ש-<span dir="ltr">`mycontext init`</span> מקבלת, וכל השאר — ארגומנט מיקומי, <span dir="ltr">`--global`, `--yes`, `--overwrite-changed`</span> — עדיין מסורבים בשמם. היא אינה שואלת דבר ואין לה <span dir="ltr">`--name`</span>, ולכן ייצוא מלא מסורב שם ומופנה אל <span dir="ltr">`pack import`</span> | `init` |
+| <span dir="ltr">`--pack <name>`</span> | ב-<span dir="ltr">`review promote`</span>, של איזו חבילה הטיוטות ש-<span dir="ltr">`--all`</span> מקדמת — **שם**, לא נתיב: זה ש-<span dir="ltr">`mycontext pack list`</span> מציגה, השם שהחבילה תויקה תחתיו כאן. שם שאין לו רשומת ייבוא מסורב ומפנה לפקודה ההיא; גם <span dir="ltr">`--pack`</span> בלי <span dir="ltr">`--all`</span> מסורב, במקום להתקבל היכן ששום דבר לא היה קורא אותו | <span dir="ltr">`review promote`</span> |
 
 #### שלושה כללים שחלים על כולם
 
@@ -5098,7 +5114,7 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 
 | פקודה | מה היא עושה בלי אדם בלולאה |
 |---|---|
-| <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט `active` ששולט |
+| <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט `active` ששולט. <span dir="ltr">`--all --pack <name>`</span> עושה זאת לכל טיוטה שחבילה מיובאת אחת הביאה, מאחורי אותו אישור יחיד — תחומה לרשימת החברות של אותה חבילה ומסרבת למזהה ולכל דגל שהוא החלטה לכל פריט לצידה, אבל עדיין <span dir="ltr">`--yes`</span> אחד מלקדם קורפוס שלם של זר. כלל המניעה שלמטה כבר מכסה את שתי הצורות: הוא מותאם מול מחרוזת הפקודה, ושתיהן נכתבות <span dir="ltr">`mycontext review promote`</span> |
 | <span dir="ltr">`mycontext review discard <id>`</span> | מוציאה טיוטה לגמלאות |
 | <span dir="ltr">`mycontext lesson-accept <lesson> <key>`</span> | יוצרת כלל `active` ממועמד שהועמד |
 | <span dir="ltr">`mycontext add <normative category> "…" --yes`</span> | יוצרת פריט ששולט **ישירות** — היא מעבירה <span dir="ltr">`origin: 'human'`</span>, ולכן הורדת הדרגה לטיוטה אינה חלה. היא דורשת <span dir="ltr">`--yes`</span>, באותם תנאים כמו `promote`: כל דבר שיכול להריץ `mycontext` יכול להעביר <span dir="ltr">`--yes`</span>, כך שהשער קונה סימן מפורש בתמליל, לא הגנה |
