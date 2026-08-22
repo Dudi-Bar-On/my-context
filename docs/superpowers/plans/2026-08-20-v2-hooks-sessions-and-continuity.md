@@ -180,7 +180,7 @@ says "establish by executing" instead of asserting it.
 | `ledgerKey` returns `session_id` alone for a parent and `session_id::agent_id` for a subagent | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string` · ~61 |
 | …and it reads only those two fields, so the same payload shape produces the same key at any event | `hooks/io.ts` · `return input.agent_id ?` · ~63 |
 | `agent_id` is declared on `HookInput` and is the only subagent discriminator the hooks have | `hooks/io.ts` · `agent_id?: string;` · ~23 |
-| `source` is declared as `SessionStart only`, with `clear` already named | `hooks/io.ts` · `SessionStart only: startup` · ~8 |
+| `source` is declared as `SessionStart only`, with `clear` already named | `hooks/io.ts` · `SessionStart only:` · ~9 |
 | Stdin was read **only synchronously** in the shared IO module when this plan was written; Task 5 adds `readStdinAsync` beside it and `readStdin` is unchanged | `hooks/io.ts` · `return readFileSync(0, 'utf8');` · ~69 |
 | The only output envelope builder was `PreToolUse`-specific — Task 5 generalises it to `hookContext` and this function stays as its one-line wrapper | `hooks/io.ts` · `export function preToolUseContext(text: string): string {` · ~250 |
 | …and its envelope shape is `hookSpecificOutput` + `additionalContext`, which Task 5 preserves byte for byte in `hookContext` | `hooks/io.ts` · `hookSpecificOutput: { hookEventName: event, additionalContext: text },` · ~241 |
@@ -519,7 +519,7 @@ carry a decision table this task resolves.
 - Consumes: nothing.
 - Produces: two recorded answers, quoted from a real payload, consumed by Tasks 6, 8 and 12.
 
-**The two questions, and why neither may be assumed.** `hooks/io.ts` · `SessionStart only: startup` · ~8 lists `clear` as a `source` value and `hooks/hooks.json` · `"matcher": "startup` · ~6 already
+**The two questions, and why neither may be assumed.** `hooks/io.ts` · `SessionStart only:` · ~9 lists `clear` as a `source` value and `hooks/hooks.json` · `"matcher": "startup` · ~6 already
 matches it — but *listing a value in a comment and a matcher is not evidence the platform ever sends
 it*, and nothing in the code or either spec records whether `/clear` mints a new `session_id`. Both
 answers change what the clear handler is for.

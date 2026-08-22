@@ -50,8 +50,46 @@ test('each new op is appended to its own family, moving no member before it', ()
   );
   assert.deepEqual(
     [...HOOK_OPS],
-    ['pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure'],
+    ['pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure', 'session-end'],
   );
+});
+
+/**
+ * **`session-end` is registered because it records a DELETION.**
+ *
+ * The `SessionEnd` hook removes the seen files and restore snapshot of the
+ * context window `/clear` destroyed — the only firing that carries that
+ * window's id — and it is also the one hook in this project with no channel to
+ * the user at all: Claude Code copies a `SessionEnd` hook's output to stderr
+ * only when the hook FAILS, and `INV-hooks-fail-open` requires this one to exit
+ * 0. So the row is not a convenience. It is the only place the deletion is ever
+ * named, which is `INV-nothing-is-dropped-silently` at its narrowest.
+ *
+ * A `hook` op and not an `injection` one, for the reason `INJECTION_OPS`'
+ * comment gives in the other direction: nothing was put in front of a model
+ * here.
+ */
+test('session-end is a hook op, and a record written under it parses back', () => {
+  assert.ok(AUDIT_OPS.includes('session-end'), 'session-end is registered');
+  assert.equal(kindOf('session-end'), 'hook');
+
+  const b = box();
+  try {
+    const written = recordAudit(b.root, {
+      kind: 'hook', op: 'session-end', sessionId: 's1', hook: 'SessionEnd',
+      note: 'reason=clear; cleared 2 seen file(s)', at: '2026-08-22T00:00:00.000Z',
+    });
+    assert.equal(written.written, true, written.error);
+
+    const records = readAudit(b.root);
+    assert.deepEqual(records.map((r) => r.op), ['session-end']);
+    assert.equal(records[0].hook, 'SessionEnd');
+    assert.equal(records[0].kind, 'hook');
+
+    // …and through the raw-bytes parser, which is what a segment reader calls.
+    const raw = readFileSync(auditLogPath(b.root), 'utf8');
+    assert.deepEqual(parseAudit(raw, 'audit.jsonl').map((r) => r.op), ['session-end']);
+  } finally { b.dispose(); }
 });
 
 test('a record written with each new op parses back, hook name included', () => {

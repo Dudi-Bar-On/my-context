@@ -344,7 +344,8 @@ test('progress joins the register as the sixth kind, and moves no kind before it
  * The table grows by exactly the ops each task adds and nothing is ever removed
  * from it, so every op this module has EVER registered stays pinned to the kind
  * it was born with — `progress` added the three `step-*` rows below to the
- * twenty it inherited, and this task adds two more to those twenty-three.
+ * twenty it inherited, the hooks round added two more to those twenty-three,
+ * and `session-end` makes twenty-six.
  */
 test('no pre-existing op changed kind', () => {
   const before: Record<string, string> = {
@@ -357,16 +358,16 @@ test('no pre-existing op changed kind', () => {
     'focus-set': 'focus', 'focus-clear': 'focus',
     'ui-refused': 'access',
     'step-done': 'progress', 'step-undone': 'progress', 'step-reset': 'progress',
+    'subagent-start': 'injection', 'post-tool-use-failure': 'hook',
   };
   for (const [op, kind] of Object.entries(before)) {
     assert.equal(kindOf(op as (typeof AUDIT_OPS)[number]), kind, `${op} changed kind`);
   }
-  // …and the vocabulary grew by exactly the two ops this task adds, in the
-  // position each family puts them: `subagent-start` ends the injection ops,
-  // `post-tool-use-failure` ends the hook ops.
+  // …and the vocabulary grew by exactly the op the SessionEnd round adds, in
+  // the position its family puts it: `session-end` ends the hook ops.
   assert.deepEqual(
     AUDIT_OPS.filter((op) => !(op in before)),
-    ['subagent-start', 'post-tool-use-failure'],
+    ['session-end'],
   );
 });
 
