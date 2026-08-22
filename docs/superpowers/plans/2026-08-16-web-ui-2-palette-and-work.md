@@ -2009,6 +2009,17 @@ assertions into 404 failures; restored before commit."
 
 ## Task 9: `lib/command.js` — command composition, once
 
+> **As built, 2026-08-22 — one correction to step 1, and one addition.** Step 1's
+> `await import('../../src/ui/public/lib/command.js')` is green under `node --test` and RED under
+> `npm run typecheck`: `allowJs` is off and `tsconfig.json`'s `include` is `.ts` only, so a resolved
+> `.js` module is an implicit `any` and `strict` refuses it three times (TS7016). The shipped test
+> uses the `file://` URL specifier `strings-parity.test.ts` already established for exactly this, and
+> which is also the only form that survives a Windows path. **Task 11 and every later task that
+> imports a browser module from a `.ts` test must use the URL form too.**
+> The addition: two scanning tests hold the composed-not-executed rule over
+> `src/ui/public/lib/`, which is outside `no-writes.test.ts`'s `.ts` graph — nothing in that
+> directory may bind a name that runs, sends or navigates, and nothing may import out of it.
+
 **Files:**
 - Create: `src/ui/public/lib/command.js`
 - Test: `test/ui/palette-lib.test.ts`
@@ -2111,6 +2122,41 @@ git commit -m "feat(ui): command composition and quoting in one module"
 
 ## Task 10: `lib/palette-defs.js` — the command catalogue
 
+> **As built, 2026-08-22 — the flag sets below are stale and the deny test passes while being
+> wrong.** Every fact in this section was re-derived by probing the real argument parser, and six
+> of them no longer held. The shipped catalogue carries the derived sets; this section's code block
+> does not.
+>
+> - **The deny test is the important one.** Written exactly as step 1 gives it, against exactly this
+>   catalogue, it **passes** — and its fourteen hand-copied prefixes are four short of the recipe
+>   `approvalBoundary()` derives today (`inbox-promote`, `pack import`, `procedure activate`,
+>   `procedure done`, all of which change what governs with no human in the loop). A green test over
+>   a stale list is the failure `test/helpers/approval-boundary.ts` exists to end; copying the list
+>   into a test would have re-created it one layer down. The shipped test asks
+>   `approvalBoundary().denyRequired` and checks BOTH directions, with the four commands the palette
+>   does not offer named and reasoned rather than absent.
+> - **`add`** is missing `--step` and `--extra` in the code block, which this section's own prose
+>   above says belong in it.
+> - **`edit`** is missing `--unlink`, and `--always` is spelled as a value flag. It is not:
+>   `mycontext edit <id> --always false` is REFUSED ("unexpected argument"), and `--always=false` is
+>   the form that unsets — so the def carries `joined: true` and `commandFor` composes `--name=value`
+>   for it. `--unlink <relation> <target>` takes TWO operands, which this one-value-per-flag model
+>   cannot compose, so it is named as deliberately not offered.
+> - **`supersede`** is missing `--reason` and `--yes`; **`refresh`** is missing `--yes` (it is on the
+>   approval boundary); **`lesson-accept`** is missing `--title`/`--scope`/`--severity`/`--directive`
+>   and is the one boundary member with NO `--yes` to show — the def marks it `ungated` so the screen
+>   says so instead of drawing a checkbox that does not exist.
+> - **`review promote`** also accepts `--all --pack <name>`, the bulk form. It is deliberately NOT
+>   offered: promotion is a human act, and turning a whole pack's unreviewed drafts into one palette
+>   checkbox is a decision about the approval boundary rather than a convenience. The reason is
+>   written into `FLAGS_NOT_OFFERED` so adding it later means editing a test that states it.
+>
+> Everything the catalogue claims is now checked against the running CLI: command strings against
+> `COMMANDS` and the four `SUBCOMMANDS` exports, flag sets against the parser, boundary and `--yes`
+> markings against `approvalBoundary()`, category pickers against `CATEGORIES`, and — the
+> load-bearing one — **every argv the catalogue can compose is handed to the real parser and must
+> not be refused.**
+
 **Files:**
 - Create: `src/ui/public/lib/palette-defs.js`
 - Test: extend `test/ui/palette-lib.test.ts`
@@ -2139,7 +2185,7 @@ git commit -m "feat(ui): command composition and quoting in one module"
     - **write**: `add` (args category+title; flags body/file/note/**step**/scope/tags/severity/**extra**/yes — `cli/index.ts` · `const ADD_USAGE =` · ~450; **`--step` and `--extra` landed after this list was written** and belong in it, because the sentence above says a def carries the flag set exactly as the CLI declares it), `edit` (arg id; flags title/body/scope/tags/severity/always/status/extra/yes — `cli/commands/edit.ts` · `usage: 'edit <id> [--title|--body|--scope|--tags|--severity|--always|--status|--extra]',` · ~713), `pin`/`unpin`/`harden`/`soften` (arg id; flag yes — `cli/commands/edit.ts` · ``usage: `${entry.name} <id> [--yes]`,`` · ~857), `supersede` (args id + `--by` id — `cli/commands/supersede.ts` · `usage: 'supersede <id> --by <id>',` · ~160), `refresh` (arg id — `cli/commands/refresh.ts` · `usage: 'refresh <id>',` · ~155), `repair` (flag yes — `cli/commands/repair.ts` · `usage: 'repair [--yes]',` · ~191), `lesson-accept` / `lesson-discard` (args id+key — `cli/commands/lesson.ts` · `usage: 'lesson-accept <id> <key>',` · ~441 and `cli/commands/lesson.ts` · `usage: 'lesson-discard <id> <key>',` · ~448), `review promote` (arg id; flags scope/always/severity/yes — `cli/commands/review.ts` · `mycontext review promote <id> [--scope "a/**,b/**"] [--always] [--severity hard|soft] [--yes]` · ~90), `review discard` (arg id; flag yes — `:85`), `review promote-revision` (arg id; flags revision/force/yes — `:87`), `review discard-revision` (arg id; flags revision/reason/yes — `:88`), and `rebuild` (no args — `cli/index.ts` · `usage: 'rebuild',` · ~1158; classified write because it rewrites `.index.db` on disk, Design decision 12).
     - **read**: `status` → screen `#/status`; `doctor` → `#/doctor`; `decay` → `#/decay`; `review revisions` → `#/work`; `help <topic>` → `#/learn`; `list [category]` → endpoint `/api/items` (client filters by the chosen category); `show <id>` → endpoint `/api/item/<id>`; `search …` → endpoint `/api/search?…` (Task 4).
 
-- [ ] **Step 1: Write the failing tests** (append to `test/ui/palette-lib.test.ts`)
+- [x] **Step 1: Write the failing tests** (append to `test/ui/palette-lib.test.ts`)
 
 ```ts
 test('commandFor builds the exact argv for representative commands', async () => {
@@ -2201,7 +2247,7 @@ test('every read def names a screen or an endpoint — a read the UI cannot exec
 });
 ```
 
-- [ ] **Step 2: Run and see them fail, then implement**
+- [x] **Step 2: Run and see them fail, then implement**
 
 Run: `node --test test/ui/palette-lib.test.ts` → new tests FAIL.
 
@@ -2358,12 +2404,12 @@ export function commandFor(def, values) {
 }
 ```
 
-- [ ] **Step 3: Run the tests and see them pass**
+- [x] **Step 3: Run the tests and see them pass**
 
 Run: `node --test test/ui/palette-lib.test.ts`
 Expected: PASS — including the deny-rule coverage test, which is the §8 risk row ("a UI write silently voids the user's Bash deny rules") operationalized against the catalogue.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/ui/public/lib/palette-defs.js test/ui/palette-lib.test.ts
