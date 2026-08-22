@@ -170,9 +170,9 @@ permitted the UI to call `createItem`, `updateItem`, `supersedeItem`, `promoteRe
 
 **1. The boundary is enforced on the command *string*, so an HTTP route is outside it.** `README.md`
 §7 is explicit: *"What actually enforces it: your Bash permissions, and nothing else"*
-(`README.md` · `What actually enforces it: your Bash permissions, and nothing else` · ~4448). The
+(`README.md` · `What actually enforces it: your Bash permissions, and nothing else` · ~4659). The
 recipe it ships is **seventeen `Bash(mycontext … *)` deny rules**
-(`README.md` · `"Bash(mycontext lesson-accept *)",` · ~4546) — `lesson-accept`, `review promote`,
+(`README.md` · `"Bash(mycontext lesson-accept *)",` · ~4765) — `lesson-accept`, `review promote`,
 `review discard`, `review promote-revision`, `review discard-revision`, `procedure activate`,
 `procedure done`, `add`, `supersede`, `inbox-promote`, `refresh`, `edit`, `pin`, `unpin`, `harden`,
 `soften`, `repair`. It was fourteen when this section was written — `procedure activate`,
@@ -197,7 +197,7 @@ the agent POSTs to a promote endpoint; the proposal applies **as a human edit** 
 already governing. **The agent approves its own proposal.** And it does so with no `--yes` anywhere,
 which matters for a reason §7 states in as many words: `--yes` is not a security boundary, what it buys
 is *legibility* — *"an explicit, greppable token in the transcript"*
-(`README.md` · `an explicit, greppable token in the transcript` · ~4501). An HTTP request produces no
+(`README.md` · `an explicit, greppable token in the transcript` · ~4720). An HTTP request produces no
 such token.
 
 **3. "Reaching localhost implies having a shell" is empirically false.** Browser-automation MCP tools
@@ -214,13 +214,13 @@ any local account for the lifetime of the spawn. Not-on-disk is not the property
 
 ### The boundary, stated as it actually is
 
-Read `README.md` §7 (`README.md` · `## 7. The trust boundary` · ~4321) before implementing anything
+Read `README.md` §7 (`README.md` · `## 7. The trust boundary` · ~4532) before implementing anything
 in this document. In summary, and each clause verified in the code:
 
 - **The draft gate is `trustedStatus`
   (`src/core/trust.ts` · `export function trustedStatus(` · ~267)**: a non-human origin capturing a
   normative item is forced to `draft` regardless of what it requested, and a draft is in no injection
-  tier (`isEligible`, `src/core/select.ts` · `export function isEligible(` · ~126, plus the
+  tier (`isEligible`, `src/core/select.ts` · `export function isEligible(` · ~198, plus the
   normative-tier test in `select`).
 - **No MCP tool takes an `origin` argument.** `create_item`, `update_item` and `supersede_item` each
   stamp `agent` themselves, so an agent cannot claim to have been a human.
@@ -427,19 +427,19 @@ be the largest instance yet.
 
 | Question | Function | Where |
 |---|---|---|
-| What would be injected here, and what spills | `select()` | `select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~460 |
-| Does this item govern this path | `matchesScope(item, target, config)` | `select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~191 |
-| Is this item eligible at all | `isEligible(item, config)` | `select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~123 |
+| What would be injected here, and what spills | `select()` | `select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~766 |
+| Does this item govern this path | `matchesScope(item, target, config)` | `select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~266 |
+| Is this item eligible at all | `isEligible(item, config)` | `select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198 |
 | What does an empty scope mean for this category | `scopePolicyFor(config, type)` | `config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~143 |
 | Does an agent's edit apply or wait | `agentEditsFor(config, type)` | `config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~165 |
 | Is this item injected, and **on what terms** | `injection(item, config)` | `cli/commands/injection.ts` · `export function injection(` · ~42 |
-| Estimated tokens for a body | `estimateTokens()` | `select.ts` · `export function estimateTokens(text: string): number {` · ~106 |
+| Estimated tokens for a body | `estimateTokens()` | `select.ts` · `export function estimateTokens(text: string): number {` · ~178 |
 | **What is the active focus** | `readFocus(root)` → `FocusState` | `core/focus.ts` · `export function readFocus(root: string): FocusState {` · ~321 |
 | **Is a focus actually narrowing** | `isFocusActive(focus)` | `core/focus.ts` · `export function isFocusActive(focus: FocusAxes \| null): focus is FocusAxes {` · ~271 |
 | **What did focus hide, and how much** | `Selection.focus` → `FocusReport \| null` | `core/focus.ts` · `export interface FocusReport {` · ~237 |
-| What has this context window already been given | `readSeen(root, key)` → `seenIds(state)` | `seen-file.ts` · `export function readSeen(root: string, key: string): SeenState {` · ~109 |
-| Which key is that, for a session or a subagent | `ledgerKey(input)` | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~46 |
-| Which sessions exist, most recent first | `Ledger.recentSessions(n)` | `ledger.ts` · `recentSessions(limit: number): string[] {` · ~242 |
+| What has this context window already been given | `readSeen(root, key)` → `seenIds(state)` | `seen-file.ts` · `export function readSeen(root: string, key: string): SeenState {` · ~123 |
+| Which key is that, for a session or a subagent | `ledgerKey(input)` | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~61 |
+| Which sessions exist, most recent first | `Ledger.recentSessions(n)` | `ledger.ts` · `recentSessions(limit: number): string[] {` · ~487 |
 
 **Three of those rows are new in the fifth pass, and two of them replace a row that was wrong.**
 
@@ -463,7 +463,7 @@ that needed it. The UI is the third caller, not a fourth spelling.
 
 **The correction that matters most here.** The earlier version said the expensive screens were cheap
 because *"the coverage map is `matchesAnyGlob` over a file tree, not a second matcher."* That is
-precisely the defect `select.ts` documents by name (`select.ts` · `` `query_items` re-derived it as a bare `` · ~169): the `query_items` MCP tool
+precisely the defect `select.ts` documents by name (`select.ts` · `` `query_items` re-derived it as a bare `` · ~244): the `query_items` MCP tool
 re-derived scope matching as a bare `matchesAnyGlob(path, item.scope)` *"and consequently kept hiding
 unscoped items from a path query long after they had become injectable on that path."* An unscoped item
 matches every path under the default `scopePolicy` and no path under `inert`, and `matchesAnyGlob`
@@ -472,7 +472,7 @@ normative tier — via `injection()` — or drafts and rationale items would col
 which is the same class of false statement in a different medium.
 
 One caveat for the implementer, because it is a real friction rather than an oversight: **`isNormative`
-is private** to `select.ts` (`select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~129 — note the absent `export`). The UI must not copy its one-line body. Either
+is private** to `select.ts` (`select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~204 — note the absent `export`). The UI must not copy its one-line body. Either
 call `injection()`, which already encapsulates it, or export it — but not both, and never neither.
 
 ### `/api/select` — the endpoint the flagship screen rests on
@@ -482,7 +482,7 @@ selection than the hook produces, and shown a different spill set**, which is fa
 entire value is "see exactly what Claude gets".
 
 The reason is `seen`. `select()` filters already-injected items **before** budgeting
-(`select.ts` · `hardening and must not be reverted` · ~476), and the comment above it says this is
+(`select.ts` · `hardening and must not be reverted` · ~783), and the comment above it says this is
 Plan 1's hardening and **must not be reverted**: an already-injected item must not consume budget and
 spill a fresh one in its place. Without it, every item ever injected in the session competes for budget
 again, and the items that spill are not the items that would really spill.
@@ -506,7 +506,7 @@ those inputs does not preview `select()` — it previews a different question wi
 | `focus` | `readFocus(projectRoot).focus`, exactly as the hook reads it |
 
 **`focus` is the input the third pass missed.** It is applied inside `select()` before every tier and
-before budgeting (`select.ts` · `const focus = ctx.focus ?? null;` · ~469), so omitting it previews a
+before budgeting (`select.ts` · `const focus = ctx.focus ?? null;` · ~776), so omitting it previews a
 different delivered set *and* a different spill set — the same failure, and the same consequence, that
 `seen` had. The hook passes it as `focus: focusState.focus` from `readFocus(ws.projectRoot)`
 (`pre-tool-use.ts` · `const focusState = readFocus(ws.projectRoot);` · ~199). The response carries
@@ -1196,7 +1196,7 @@ Queries were covered; the three reporting commands had no screen at all.
   *"`injected_at` is a value, not part of the key: a repeat injection a millisecond later **must
   collide**, or once-per-session dedupe never fires."* The write is
   `ON CONFLICT(session_id, item_id, tier) DO NOTHING`
-  (`ledger.ts` · `ON CONFLICT(session_id, item_id, tier) DO NOTHING` · ~122), so the ledger holds
+  (`ledger.ts` · `ON CONFLICT(session_id, item_id, tier) DO NOTHING` · ~321), so the ledger holds
   **one row per (session, item, tier)** carrying the FIRST injection time. Repeat injections within a
   session add nothing. There is no series of injection events to plot.
 
@@ -1529,7 +1529,7 @@ subset written before the code — omitted both:
 **One extension, decided with the owner's assent.** §4b's sentence needs a token count for mycontext's
 contribution. Deriving it later from the items as they are now has the same drift problem as the ids
 would. So the record carries the **estimated token count computed at injection time** (`estimateTokens`,
-`src/core/select.ts` · `export function estimateTokens(` · ~106) — the number as it was when the
+`src/core/select.ts` · `export function estimateTokens(` · ~178) — the number as it was when the
 injection happened, never re-derived from the present corpus. An earlier version wrote this as a
 proposal awaiting the owner's assent, with a fallback re-scoping §4b to item counts if refused;
 **the owner has assented**, the extension to the
@@ -1538,7 +1538,7 @@ recorded Q3 shape is a decision, and the fallback branch is dead and deleted.
 **The deferral to a branch is also spent — it merged.** This paragraph said the field's name and
 coverage *"are being settled by the implementation on the `audit-injection-token-count` branch, and
 that branch — not this spec — is where the spelling binds."* It has shipped. The field is
-**`tokens?: number`** on `AuditRecord` (`core/audit.ts` · `tokens?: number;` · ~206), and what it counts is
+**`tokens?: number`** on `AuditRecord` (`core/audit.ts` · `tokens?: number;` · ~372), and what it counts is
 pinned in its own doc comment:
 
 > It is `Selection.tokens` verbatim — the sum of the chars/4 estimates … the selector charged its
@@ -1641,8 +1641,8 @@ destroyed audit history."*
 **`rebuild` drops `items` and nothing else.**
 `src/core/rebuild.ts` · `store.deleteByLayer(layer);` · ~458 calls `store.deleteByLayer`, which is
 `DELETE FROM items WHERE layer = ?`
-(`store.ts` · `this.#db.prepare('DELETE FROM items WHERE layer = ?').run(layer);` · ~527). The `ledger`
-table (`ledger.ts` · `injected_at TEXT NOT NULL,` · ~34) lives in the same file and **survives a rebuild
+(`store.ts` · `this.#db.prepare('DELETE FROM items WHERE layer = ?').run(layer);` · ~548). The `ledger`
+table (`ledger.ts` · `injected_at TEXT NOT NULL,` · ~53) lives in the same file and **survives a rebuild
 untouched.** The half of the claim that is true is the parenthesis: `query`
 (`cli/commands/query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query rebuilds the` · ~47) and `context`
 (`cli/commands/context.ts` · `This ALWAYS rebuilds before returning the context` · ~42) do each run a
@@ -1823,9 +1823,9 @@ recorded here as decisions.
 2. **Does the review queue promote over HTTP?** **No.** It renders the diff and composes
    `mycontext review promote-revision <id> --yes` for the user's own shell (§2, §4).
 3. **Which function answers "does this item govern this path"?** **`matchesScope(item, target, config)`**
-   (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~191), filtered by **`isEligible`** (`select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~123) and the normative-tier test, which
+   (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~266), filtered by **`isEligible`** (`select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198) and the normative-tier test, which
    **`injection()`** (`cli/commands/injection.ts` · `export function injection(` · ~42) already composes in `select`'s own order.
-   **Not `matchesAnyGlob`** — that is a defect `select.ts` documents by name (`select.ts` · ``asks the same function. `query_items` re-derived it as a bare`` · ~172), recording that the bare form *"kept hiding unscoped items from a path query long after they had become injectable on that path"* (§3).
+   **Not `matchesAnyGlob`** — that is a defect `select.ts` documents by name (`select.ts` · ``asks the same function. `query_items` re-derived it as a bare`` · ~244), recording that the bare form *"kept hiding unscoped items from a path query long after they had become injectable on that path"* (§3).
 4. **Where does the audit log live, and what is in a record?** **JSONL is the source of truth; SQLite is
    a disposable projection that records its position in the log.** An injection record carries the
    delivered set as (id, tier) pairs, **the spilled set as (id, tier, reason)**, timestamp, `session_id`

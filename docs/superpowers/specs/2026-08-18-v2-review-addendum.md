@@ -75,7 +75,7 @@ worth exactly that difference, and the difference is now measured rather than mo
 
 The audit note `index refresh dropped: database locked` appeared in 3/3 locked runs and 0/3
 unlocked. It lands *while the lock is held*, because the log is JSONL beside the database rather
-than a table inside it — as `inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~576 claims.
+than a table inside it — as `inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~602 claims.
 
 ### 1.3 The PreCompact snapshot lands in every degraded state
 
@@ -161,7 +161,7 @@ from ids, paths and errno strings, so their longest token is unbounded:
 | full note, markdown fallback | 94 | 100 — fits, barely |
 | full note, refresh drop | 100 | 100 — zero slack |
 | full note, `dropped by the fallback (first: <file>)` | 113 | **186 — budget unreachable** |
-| full note, `cross-layer duplicate id(s):` — `inject.ts` · `cross-layer duplicate id(s):` · ~672 | 123 | **178 — budget unreachable** |
+| full note, `cross-layer duplicate id(s):` — `inject.ts` · `cross-layer duplicate id(s):` · ~733 | 123 | **178 — budget unreachable** |
 | full note, `SNAPSHOT WRITE FAILED (<msg>)` — `pre-compact.ts` · `SNAPSHOT WRITE FAILED (${reason}).` · ~90 | 123 | **209 — budget unreachable** |
 
 Three real note shapes push the floor past the point where `table()` stops narrowing at all, so

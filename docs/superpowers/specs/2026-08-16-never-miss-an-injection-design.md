@@ -86,11 +86,11 @@ The durability problem was entirely self-inflicted.
 
 **0.4 SessionStart was the biggest writer of all.** `buildInjection` ran a full `rebuild` —
 delete-and-reinsert of the whole corpus inside one write transaction
-(`src/core/inject.ts` · `const refreshErrors = rebuild(store, roots, ws.config, byLayer).errors;` · ~560,
+(`src/core/inject.ts` · `const refreshErrors = rebuild(store, roots, ws.config, byLayer).errors;` · ~586,
 `src/core/rebuild.ts` · `store.transaction(() => {` · ~452) — on every session start and *before*
 the injection was built, then read back what it had just written with `store.all()` to feed
 `select`; the selection now reads the parsed corpus directly
-(`src/core/inject.ts` · `const items: Item[] = [...(byLayer.global ?? []), ...byLayer.project];` · ~271).
+(`src/core/inject.ts` · `const items: Item[] = [...(byLayer.global ?? []), ...byLayer.project];` · ~272).
 So the highest-traffic injection path was also the process most likely to be *holding* the write
 lock that kills a concurrent hook. And `rebuild` discarded the very items it loaded: `loadLayer`
 parses every Markdown file into `Item[]` (`src/core/rebuild.ts` · `export function loadLayer(` · ~103),
@@ -158,7 +158,7 @@ count.
 | P3 | `file:…?immutable=1` opened fresh **against a live writer** (200 trials) | **113/200 errored `database disk image is malformed`; 2/200 returned silently inconsistent data AS SUCCESS** (`count(*)` ≠ `max(id)` on a pair-invariant table). The file itself was intact throughout (`integrity_check` ok after the run) |
 | P5 | Windows lock hygiene | write lock reacquirable **4.2 ms** after `taskkill /F` of the holder; `rmSync` of `.db`/`-wal`/`-shm` fails `EPERM` while any handle lives — validating `retryOnTransientFsError` (`src/core/rebuild.ts` · `export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {` · ~205) and `Store.open`'s EPERM note (`src/core/store.ts` · ``fails with `EPERM`, so the OS,`` · ~81) |
 | M7 | `journal_mode` after a normal `Store.open` + close | persists as `wal` — **WAL is already on** for every `.index.db` this code has ever opened (`src/core/store.ts` · `db.exec('PRAGMA journal_mode = WAL;');` · ~155). WAL is the status quo, not a remedy, and P4 shows it cannot fix a write-lock stall |
-| R1 | **Fallback ≡ primary selection**, executed on the 44-item dogfood corpus [R] | `select(loadLayer(…))` vs `select(store.all())` (session-start) and vs the JS-filtered `activeInjectable` shape (tool event): **IDENTICAL in 5/5 comparisons**, including under a deliberately shrunken pinned budget. The structural reasons: `select` is pure and order-insensitive (`fitToBudget` sorts internally, `select.ts` · `for (const item of [...candidates].sort(byPriority)) {` · ~287), and `items.id` PRIMARY KEY reproduces `mergeLayers`' project-over-global resolution |
+| R1 | **Fallback ≡ primary selection**, executed on the 44-item dogfood corpus [R] | `select(loadLayer(…))` vs `select(store.all())` (session-start) and vs the JS-filtered `activeInjectable` shape (tool event): **IDENTICAL in 5/5 comparisons**, including under a deliberately shrunken pinned budget. The structural reasons: `select` is pure and order-insensitive (`fitToBudget` sorts internally, `select.ts` · `for (const item of [...candidates].sort(byPriority)) {` · ~362), and `items.id` PRIMARY KEY reproduces `mergeLayers`' project-over-global resolution |
 | R2 | Concurrent seen-file appends, 2 processes × 3,000 interleaved [R] | **6,000/6,000 lines intact**; the heal-then-append race against a file that *starts torn*: 0 damaged lines, 0 lost records in 3,000 races. The analytical worst case (a heal truncating a rival's just-appended whole line) is a lost seen-record → one re-injection, the accepted direction |
 | R3 | NTFS `renameSync` over an existing target vs a concurrent reader of that target [R] | **654 of 2,000 renames failed `EPERM`** — rename-over-open-target is *unavailable*, not atomic-but-slow. The successful renames were clean: **0 torn or empty reads in 22,791 contended read trials**. See §4.4, which this finding rewrote |
 | R4 | Read-only open that must recover a **936 MB** crashed WAL [R] | recovery + query completed in **1,062 ms** — the one pre-fallback cost that scales with leftover WAL size (it required a deliberately checkpoint-suppressed writer to construct); within the 10 s budget by 9× even at that absurd size |
@@ -227,7 +227,7 @@ Three assets are lying in place, and the recommendation is mostly connecting the
    ran *before* the ledger write on both SessionStart and JIT, and it still goes first — what it
    now precedes is the per-session seen-file append, the ledger write having left the hook path
    altogether
-   (`src/core/inject.ts` · `// 5. THE SEEN-FILE APPEND (was: the ledger write)` · ~731;
+   (`src/core/inject.ts` · `// 5. THE SEEN-FILE APPEND (was: the ledger write)` · ~792;
    `src/hooks/pre-tool-use.ts` · `// The dedupe record: an append to the per-session seen file` · ~298).
    The ledger was already documented as "a derived cache, rebuildable from here" with `ledgerRows`
    as the replayer
@@ -235,10 +235,10 @@ Three assets are lying in place, and the recommendation is mostly connecting the
    The hooks' SQLite *writes* were already redundant records of facts the JSONL holds — with one
    field doing load-bearing work: the restored tier's identity marker survives only because
    `InjectedRef.at` carries the snapshot's `capturedAt` into the audit record
-   (`src/core/inject.ts` · `? { at: snapshotCapturedAt }` · ~612); the redundancy claim rests on
+   (`src/core/inject.ts` · `? { at: snapshotCapturedAt }` · ~656); the redundancy claim rests on
    that field, and §4.2 preserved it.
 2. **`select` is pure over `Item[]`**
-   (`src/core/select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~518,
+   (`src/core/select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~766,
    `INV-select-is-pure`), and `loadLayer` produces `Item[]` from Markdown alone
    (`src/core/rebuild.ts` · `export function loadLayer(` · ~103). The complete
    injection decision can be computed with zero database access — M1 says what that costs.
@@ -248,7 +248,7 @@ Three assets are lying in place, and the recommendation is mostly connecting the
    and a snapshot containing ids the corpus no longer has is
    harmless: the restore path re-selects through `select`, and an id matching no live item
    simply selects nothing
-   (`src/core/select.ts` · `fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id)),` · ~557).
+   (`src/core/select.ts` · `fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id)),` · ~805).
    Over-capture is the safe direction, which `readSnapshotMeta` already exploits for a missing
    `capturedAt`
    (`src/core/ledger.ts` · `// A missing/non-string capturedAt degrades to "now": nothing recorded` · ~824).
@@ -290,9 +290,9 @@ identical 30 s hold returns in 0.2 ms.
   ledger and, on SessionStart, the index itself. Option B was the enabler, not a separate remedy,
   and it landed: the ledger write is gone from both hooks
   (`src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({` · ~303,
-  `src/core/inject.ts` · `appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({` · ~745),
+  `src/core/inject.ts` · `appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({` · ~806),
   and the index write moved behind the render as a best-effort refresh
-  (`src/core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~552).
+  (`src/core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~578).
 - **Verdict: adopt — this is the core of the answer — with B required to make it possible and
   C required behind it** for the fast-failing cases it cannot serve.
 
@@ -479,11 +479,11 @@ resolveWorkspace
   not a failure, so C never fires for it. Measured bound: 936 MB of WAL recovered in 1,062 ms
   (R4), and a WAL that size takes a deliberately checkpoint-suppressed writer to construct;
   normal leftovers recover in ~12 ms (P2c).
-- JIT keeps its indexed `activeInjectable` query on the fast path (`src/core/store.ts` · `activeInjectable(types: string[]): Item[] {` · ~511);
+- JIT keeps its indexed `activeInjectable` query on the fast path (`src/core/store.ts` · `activeInjectable(types: string[]): Item[] {` · ~532);
   the fallback applies the same status/type filter in JS over `loadLayer`'s output (measured
   inside M1's totals) — **and the filter must be applied before `select`, not only to the
   tiers**: `activeInjectable` pre-filters the candidate set, so on the DB path `select`'s
-  focus-report universe (`buildFocusReport` over `eligibleAll`, `src/core/select.ts` · `function buildFocusReport(` · ~445)
+  focus-report universe (`buildFocusReport` over `eligibleAll`, `src/core/select.ts` · `function buildFocusReport(` · ~693)
   contains normative items only. A fallback that fed `select` the unfiltered corpus would
   produce identical *injections* (R1) but different focus-disclosure *counts* — a
   disclosure-consistency defect the review caught (its I3). Same rule, both paths, including
@@ -504,7 +504,7 @@ resolveWorkspace
   argument are `jsonl-log.ts`'s, verbatim (`src/core/jsonl-log.ts` · `export function healTornTail(file: string): void {` · ~157). The restored tier's
   identity-marker semantics (`injected_at = capturedAt`, equality-compared —
   `src/core/ledger.ts` · `recordRestored(sessionId: string, itemIds: string[], at: string = new Date().toISOString()): void {` · ~365,
-  `src/core/inject.ts` · `? { at: snapshotCapturedAt }` · ~612) carried over unchanged: the marker
+  `src/core/inject.ts` · `? { at: snapshotCapturedAt }` · ~656) carried over unchanged: the marker
   is data in the line, and last-line-wins per `(id, tier)` on read reproduces
   `recordRestored`'s refresh
   (`src/core/seen-file.ts` · `export function restoredFor(state: SeenState, capturedAt: string): Set<string> {` · ~149).
