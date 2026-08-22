@@ -5,7 +5,16 @@ export interface HookInput {
   transcript_path?: string;
   cwd?: string;
   hook_event_name?: string;
-  /** SessionStart only: startup | clear | resume | compact. */
+  /**
+   * SessionStart only: `startup | resume | clear | compact | fork`.
+   *
+   * Five, and the fifth was missing here and from `hooks.json`'s matcher
+   * until 2026-08-22. A `source` the matcher omits does not fail — the hook
+   * does not RUN, so a forked session got no injection and no disclosure.
+   * The list is the platform's own payload schema, read off build 2.1.239
+   * and then confirmed by running a fork; see
+   * `reports/probes/2026-08-20-clear-and-prompt-hooks.md`.
+   */
   source?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
