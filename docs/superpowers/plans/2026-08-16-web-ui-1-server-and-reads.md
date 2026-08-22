@@ -5730,7 +5730,7 @@ git commit -m "feat(ui): app shell — nonce bootstrap, visibility-gated heartbe
 > Its composition pattern is not optional for this task: left plane a `.pane` holding `.row` items
 > (spec primitive 2), right plane a `.pane` holding `.lit` with `.blk` children (primitive 3), the
 > rail (primitive 7) outside both, and selecting a row lights its block while siblings drop to
-> `opacity:.42` (repaint Task 6 Step 2). The flat `<ul>`/`<pre>` shape Step 3 below writes is data flow
+> `opacity:.58` (repaint Task 6 Step 2, amended 2026-08-22 from `.42` on a measured contrast failure). The flat `<ul>`/`<pre>` shape Step 3 below writes is data flow
 > only — build against the finished mockup's actual markup for this screen, not against this list.
 > `simulate.js` and `injected.js` are not the hero; they join repaint Task 9 Step 1's **Injection
 > group** (scope coverage, coverage gaps, budget simulator, injected now) and take the pane/plate
