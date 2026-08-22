@@ -91,6 +91,36 @@ const BUILT = [
  * `injected` is empty because that screen is complete. It is the proof the
  * comparison can reach zero.
  */
+/**
+ * **Screens whose gap set moves with the DATA, not with the code.**
+ *
+ * For these the ledger is a CEILING, not an exact match: a gap must still be
+ * listed, but an entry that is temporarily closed does not fail. Everywhere
+ * else the ledger stays exact and can only shrink.
+ *
+ * `watch` is here because it draws what the audit log happens to contain.
+ * `div.tokbar`, `div.tokvoid`, `div.nt` and `span.chip.ok` need an INJECTION
+ * record in the recent window; `div.rw`, `span.ln` and `tr.regime` need a FOCUS
+ * record; `rect` needs any record at all inside the pulse's twenty-minute
+ * window. `screens/watch.js` builds all of them — photographed doing so in
+ * `reports/2026-08-22-ui3-11-watch/watch-live-1568x779.png` — and this
+ * repository's own newest fifty records happen to be mutations, so most are
+ * absent here on most runs.
+ *
+ * That is not a hypothetical. The ledger was measured at 15 gaps, shrank to 8
+ * an hour later as the corpus changed, and `rect` came back on the very next
+ * run because the pulse window emptied. An exact ledger over live data is a
+ * test that fails for a reason that is not a regression, which this project has
+ * already learned is the most expensive kind of red.
+ *
+ * **The real fix is a fixture corpus** holding one record of every kind, so the
+ * comparison measures the code instead of the day. `e2e/app.ts` already takes
+ * `MYCONTEXT_E2E_CORPUS`, so the hook exists. Tracked as its own task; until
+ * then this exemption is the honest way to keep the gate useful for the other
+ * ten screens rather than switching it off.
+ */
+const DATA_DEPENDENT = new Set<string>(['watch']);
+
 const KNOWN_GAPS: Record<string, string[]> = {
   preview: [
     'button', 'div.binds.rung', 'div.carrieditem.small', 'div.gap', 'div.gh',
@@ -136,8 +166,11 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // that is not a regression. Tracked as
   // TASK-on-a-working-corpus-the-audit-projection-is-stale-within.
   watch: [
-    'b', 'div.nt', 'div.rw', 'div.tokbar', 'div.tokvoid', 'span.chip.ok',
-    'span.ln', 'tr.regime',
+    // The union of every kind observed absent across runs — a ceiling, not a
+    // measurement of one moment. See DATA_DEPENDENT above.
+    'b', 'bdi', 'div.nt', 'div.rw', 'div.tokbar', 'div.tokvoid', 'rect',
+    'span.chip.crit', 'span.chip.ok', 'span.chip.warn', 'span.ln', 'svg', 'td',
+    'td.m.small', 'tr.regime',
   ],
   doctor: ['b', 'span.m', 'span.m.v', 'span.prop'],
   decay: [
@@ -215,7 +248,11 @@ test('every screen draws every KIND of element its mockup section draws', async 
       const missing = mockKinds!.filter((k) => !appKinds.includes(k));
       const known = KNOWN_GAPS[screen] ?? [];
       const unexpected = missing.filter((k) => !known.includes(k));
-      const closed = known.filter((k) => !missing.includes(k));
+      // A data-dependent screen's ledger is a ceiling: an entry that is closed
+      // today may be open tomorrow because the corpus moved, not because the
+      // code did, so 'no longer missing' is not a finding there.
+      const closed = DATA_DEPENDENT.has(screen)
+        ? [] : known.filter((k) => !missing.includes(k));
 
       if (unexpected.length > 0) {
         report.push(`${screen}: the mockup draws these and the app does not, and they are ` +
