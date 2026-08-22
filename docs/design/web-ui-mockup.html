@@ -320,9 +320,9 @@
    ALWAYS gold rather than only on hover. currentColor is untouched as the
    icon's own contract (spec §6: "no icon-specific colour token") — this sets
    the colour the icon INHERITS, from the one place that actually needs it. */
-.blk .linkid,.carrieditem .linkid{display:inline-flex;align-items:center;gap:6px;
+.linkid{display:inline-flex;align-items:center;gap:6px;
   background:none;border:0;padding:0;font:inherit;color:var(--gold);cursor:pointer}
-.blk .linkid:hover,.carrieditem .linkid:hover{text-decoration:underline}
+.linkid:hover{text-decoration:underline}
 
 /* 6 — the chip. font-weight and font-family are the only base properties
    that can win against the legacy rule below (border, colour and

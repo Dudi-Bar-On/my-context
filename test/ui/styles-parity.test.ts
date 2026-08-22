@@ -201,7 +201,15 @@ const SCREEN_SELECTORS = [
   '.segbar', '.segbar button', '.segbar button[aria-pressed="true"]',
   '.simctl', '.simctl input[type=range]',
   '.lit.linked .blk', '.lit.linked .blk.sel',
-  '.blk .linkid,.carrieditem .linkid', '.blk .linkid:hover,.carrieditem .linkid:hover',
+  // Widened from `.blk .linkid,.carrieditem .linkid` on 2026-08-22, in the
+  // mockup and here together. `.linkid` is a bare `<button>` that relies on
+  // this rule for its whole appearance, and it is built OUTSIDE those two
+  // containers on four screens — inside a `<td>` on `injected`, in the
+  // coverage detail pane, on `doctor` and on `learn`. Scoped to the two, those
+  // instances fell back to the UA button chrome: 22 white rectangles on
+  // coverage and 12 on injected, measured. The mockup carried the same gap and
+  // was fixed in the same commit, so these stay byte-identical.
+  '.linkid', '.linkid:hover',
   '.idkind', '.idslug', 'h2', 'button',
   ':where(button,a,input,select,summary):focus-visible',
   '[dir="rtl"] .icon-open', '[class^="icon-"]',
