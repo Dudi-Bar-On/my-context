@@ -1023,6 +1023,117 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
    sprite). The injection preview is the first screen to consume one — #i-open,
    on the literal field's id header, since clicking it opens the full item. */
 [class^="icon-"]{inline-size:16px;block-size:16px;flex:none;vertical-align:-3px}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DEGRADED REGISTER 2 — prefers-reduced-transparency: reduce. Plan Task 11
+   Step 4 / spec §8. Carried from review 2: a person who asked their OS for
+   less transparency has asked for exactly the thing this whole direction is
+   built out of, so the answer is not to ignore it. The smallest honest
+   register — `--pane-tint` and `--plate` go fully opaque and every consumer
+   of `backdrop-filter` drops it. Nothing else changes: the ground, the
+   type, the lift (`--lift`/`--pane-lit`, i.e. box-shadow) and the icons all
+   stay exactly as authored.
+
+   `.pane,.rail,.hdr` — not `.pane` alone, which is what the plan's own code
+   sample (written before Task 3's "What is in the file now" note) still
+   shows. `.hdr` joined the shared material rule 2026-08-22 ("the live .top
+   bar became .hdr… It is glass, ruled 2026-08-22" — §3 primitive 8) and
+   `.rail` was primitive 1 from the start ("panels, cards AND THE RAIL are
+   one material"); both consume the same `backdrop-filter` and the same
+   `--pane-tint` as `.pane`. Dropping the filter on `.pane` only would leave
+   the header and the nav rail still blurring the ground behind them while
+   every card went opaque — a half-applied register, the exact failure mode
+   §7.2 warns a half-removed theme is. Verified in a real Chromium via CDP
+   `Emulation.setEmulatedMedia` (`prefers-reduced-transparency: reduce`):
+   before this block existed, `.pane`'s computed `background-image` still
+   carried the .56–.64 alpha tint and `backdrop-filter` still measured
+   `blur(20px) saturate(1.4)` — the register was previously unhonoured, as
+   review 2 recorded. */
+@media (prefers-reduced-transparency:reduce){
+  :root{
+    --pane-tint:linear-gradient(133deg,#12141c 0%,#101219 100%);
+    --plate:#06070b;
+  }
+  .pane,.rail,.hdr{backdrop-filter:none;-webkit-backdrop-filter:none}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DEGRADED REGISTER 1 — forced-colors: active. Plan Task 11 Steps 2–3 / spec
+   §8. The icon evaluation measured that the glass does not survive High
+   Contrast at all, so the direction DECLARES a register rather than letting
+   the browser improvise it.
+
+   Measured in a real Chromium (Playwright `forcedColors:'active'`) against
+   the file as it stood before this block existed, because several of the
+   plan's own claims turned out to need correcting against rendered pixels
+   rather than reasoned about from CSS text:
+
+     - `.pane`/`.rail`/`.hdr` never declare a `background-color`, only two
+       gradient `background-image`s (gloss, tint) — forced-colors strips
+       BOTH to `none` and there is no colour underneath to fall back to, so
+       the computed background measured fully transparent
+       (`rgba(255,255,255,0)`). The glass does not degrade, it disappears;
+       only the forced border was left standing.
+     - `.plate` sets a solid `background-color` (`var(--plate)`), which
+       forced-colors DOES recolour — but it keeps the token's own .72 alpha
+       (measured `rgba(255,255,255,.72)`), and `.plate` declares no border
+       at all today. A translucent, borderless wash next to a pane that has
+       just gone fully transparent reads as nothing.
+     - `backdrop-filter` is NOT on the forced list — measured UNCHANGED
+       (`blur(20px) saturate(1.4)`) on the unedited file. The plan's "the
+       glass does not survive… backdrop-filter… stripped" is only true in
+       effect once the background beneath it is forced opaque; the filter
+       itself has to be dropped explicitly here too, same as register 2.
+     - **Correction to the plan's own Step 3: patterns do NOT survive.**
+       "`repeating-linear-gradient` is a `background-image` and is not
+       stripped" does not hold — measured on `.ghosts .gh`, `.notrun`,
+       `.mini i.x`, `.div-r i` and `.tokvoid`, every one of which already
+       uses a `repeating-linear-gradient`: `background-image` measured
+       `none` on all five under forced-colors, no different from a plain
+       gradient. `border-style` (dashed/dotted/double), however, is NOT on
+       the forced list and measured unchanged in the same test — a border
+       pattern survives where a background pattern does not, so that is
+       what marks the four tiers below.
+     - The six icon glyphs' `stroke="currentColor"` measured a forced BLACK
+       stroke already — Chromium forces the inherited `color` this resolves
+       against, so today they are not literally invisible. Restated below
+       anyway, by system colour name: the spec's own instruction is the
+       more robust contract to build to, independent of one inheritance
+       path through a hidden `<symbol>` sprite that a future engine, or a
+       future Chromium, has no obligation to keep resolving the same way.
+     - The chip glyphs need no change here and get none: `::before{content:
+       "◆ "}` etc. measured present, verbatim, under forced-colors — content
+       is exactly what `forced-colors` cannot strip (§3 primitive 6). */
+@media (forced-colors:active){
+  /* 1/7/8 — the pane, the rail and the header. Canvas with a CanvasText
+     hairline, declared rather than left to the two effects above. */
+  .pane,.rail,.hdr{
+    background:Canvas;border-color:CanvasText;box-shadow:none;
+    backdrop-filter:none;-webkit-backdrop-filter:none;
+  }
+  /* §4/primitive 3 — the plate and the literal field share the `--plate`
+     token and the same problem: without an explicit surface they read as a
+     wash with no edge next to a pane that has gone fully transparent. */
+  .plate,.lit{background:Canvas;border:1px solid CanvasText}
+
+  /* primitive 6/§6.2 — the six Tabler glyphs, restated by system colour
+     name. `fill` stays `none` (never a colour, nothing to force); `stroke`
+     is restated even though it already renders correctly today (see the
+     block comment above). */
+  symbol[id^="i-"]{fill:none;stroke:CanvasText}
+
+  /* the four-tier budget ribbon (§5, Task 11 Step 3): background-COLOUR is
+     what forced-colors flattens to one system tone — measured, every
+     `.seg.pinned/.jit/.restored/.index` collapses to an identical
+     `rgb(255,255,255)` with no image. A border-STYLE survives where a
+     background pattern does not (see the correction above), so each tier
+     gets its own pattern on the block edges, not fighting the min 2px
+     width narrow segments can have. */
+  .seg.pinned{border-block:3px solid CanvasText}
+  .seg.jit{border-block:3px dashed CanvasText}
+  .seg.restored{border-block:3px dotted CanvasText}
+  .seg.index{border-block:3px double CanvasText}
+}
 </style>
 
 <!--
