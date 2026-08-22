@@ -960,6 +960,39 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 [class^="icon-"]{inline-size:16px;block-size:16px;flex:none;vertical-align:-3px}
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   DEGRADED REGISTER 2 — prefers-reduced-transparency: reduce. Plan Task 11
+   Step 4 / spec §8. Carried from review 2: a person who asked their OS for
+   less transparency has asked for exactly the thing this whole direction is
+   built out of, so the answer is not to ignore it. The smallest honest
+   register — `--pane-tint` and `--plate` go fully opaque and every consumer
+   of `backdrop-filter` drops it. Nothing else changes: the ground, the
+   type, the lift (`--lift`/`--pane-lit`, i.e. box-shadow) and the icons all
+   stay exactly as authored.
+
+   `.pane,.rail,.hdr` — not `.pane` alone, which is what the plan's own code
+   sample (written before Task 3's "What is in the file now" note) still
+   shows. `.hdr` joined the shared material rule 2026-08-22 ("the live .top
+   bar became .hdr… It is glass, ruled 2026-08-22" — §3 primitive 8) and
+   `.rail` was primitive 1 from the start ("panels, cards AND THE RAIL are
+   one material"); both consume the same `backdrop-filter` and the same
+   `--pane-tint` as `.pane`. Dropping the filter on `.pane` only would leave
+   the header and the nav rail still blurring the ground behind them while
+   every card went opaque — a half-applied register, the exact failure mode
+   §7.2 warns a half-removed theme is. Verified in a real Chromium via CDP
+   `Emulation.setEmulatedMedia` (`prefers-reduced-transparency: reduce`):
+   before this block existed, `.pane`'s computed `background-image` still
+   carried the .56–.64 alpha tint and `backdrop-filter` still measured
+   `blur(20px) saturate(1.4)` — the register was previously unhonoured, as
+   review 2 recorded. */
+@media (prefers-reduced-transparency:reduce){
+  :root{
+    --pane-tint:linear-gradient(133deg,#12141c 0%,#101219 100%);
+    --plate:#06070b;
+  }
+  .pane,.rail,.hdr{backdrop-filter:none;-webkit-backdrop-filter:none}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    DEGRADED REGISTER 1 — forced-colors: active. Plan Task 11 Steps 2–3 / spec
    §8. The icon evaluation measured that the glass does not survive High
    Contrast at all, so the direction DECLARES a register rather than letting
