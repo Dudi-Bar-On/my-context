@@ -37,6 +37,7 @@
  * exactly — it is that an element which establishes a perspective has to fit in
  * the window it is seen through.
  */
+import type { Page } from '@playwright/test';
 import { test, expect } from './app.ts';
 import { SCREENS } from './mockup.ts';
 
@@ -285,4 +286,197 @@ test('nothing inside a perspective element is taller than that element', async (
   });
   expect(escaped, 'a box inside a perspective is taller than the perspective, so the ' +
     'rotation shears it — bound the grid ROW, not only the container').toEqual([]);
+});
+
+/**
+ * ── THE AUDIT STREAM SCREEN (`data-p="watch"`, ui3 Task 11) ────────────────
+ *
+ * Five assertions, every one of them written and watched go RED against the
+ * unbuilt screen before the screen existed — which is the only thing that
+ * makes them evidence. On `master` the rail's `watch` button carries
+ * `PROPOSED` and has no click handler, so `showWatch()` below times out and
+ * four of the five fail for the same true reason: there is no screen.
+ *
+ * They measure SHAPES, per the header of this file. Nothing here pins a
+ * pixel, a string or a record count — the corpus this runs over is live, its
+ * audit log grows while the suite runs, and an assertion that depended on how
+ * many records landed today would be a clock, not a test.
+ */
+
+/** Navigate the rail to `watch` and wait for the card the screen builds. */
+async function showWatch(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.querySelector<HTMLElement>('.nav[data-s="watch"]')?.click();
+  });
+  await page.locator('section[data-p="watch"] .card.pane')
+    .first().waitFor({ state: 'visible', timeout: 15_000 });
+}
+
+/**
+ * **The rail button stops advertising a screen that now exists.** The badge is
+ * computed from `Object.hasOwn(SCREENS, name)` in `app.js`'s `renderNav`, so
+ * this fails until the loader is registered — and it is the one assertion here
+ * that fails for a reason a screenshot cannot show, because the badge is nine
+ * characters wide in a rail of twenty-one entries.
+ */
+test('the rail no longer badges watch as PROPOSED', async ({ app }) => {
+  const badges = await app.page.locator('.nav[data-s="watch"] .prop').count();
+  expect(badges, 'watch has a module now; the rail must stop saying it is proposed')
+    .toBe(0);
+});
+
+/**
+ * **The screen draws its own furniture, and the live region SAYS something.**
+ *
+ * `#alive` is an `aria-live="polite"` region. An empty one is the worst
+ * possible state: a screen reader announces nothing, and a sighted reader sees
+ * a stream that may be connected, may be waiting, may have faulted — the four
+ * states `watch.shown` / `watch.streamWaiting` / `watch.streamFault` /
+ * `watch.resync` exist precisely because "a stream with nothing arriving looks
+ * broken, a stream that stops looks correct".
+ */
+test('the audit stream screen draws its pulse, its filters and a live region that speaks', async ({ app }) => {
+  const { page } = app;
+  await showWatch(page);
+  const read = () => page.evaluate(() => {
+    const section = document.querySelector<HTMLElement>('section[data-p="watch"]');
+    const alive = section?.querySelector<HTMLElement>('#alive') ?? null;
+    return {
+      pulse: section?.querySelector('#pulse') !== null,
+      filters: section?.querySelector('#wfilters button') !== null,
+      table: section?.querySelector('#atbl') !== null,
+      aliveLive: alive?.getAttribute('aria-live') ?? null,
+      aliveSaid: (alive?.innerText ?? '').trim().length,
+      text: (section?.innerText ?? '').trim().length,
+    };
+  });
+  // POLLED, for the reason the boot assertion above is: the card is appended
+  // before the screen's first /api call resolves, so sampling once measures
+  // whether the fetch happened to have returned. retries are 0 by policy here,
+  // so that is not flake — it is a wrong test.
+  await expect
+    .poll(async () => (await read()).text, {
+      message: 'the watch screen never rendered more than its heading',
+      timeout: 10_000,
+    })
+    .toBeGreaterThan(200);
+  const shape = await read();
+  expect(shape, 'the watch screen must draw the mockup’s pulse, filter row, table and live region')
+    .toMatchObject({ pulse: true, filters: true, table: true, aliveLive: 'polite' });
+  expect(shape.aliveSaid, 'the aria-live region rendered empty — it has four states and must be in one')
+    .toBeGreaterThan(0);
+  expect(shape.text, 'the screen rendered little more than its heading').toBeGreaterThan(200);
+});
+
+/**
+ * **No element paints `rgb(240, 240, 240)`.**
+ *
+ * That colour is the UA's `buttonface`: a `<button>` with no rule matching it.
+ * It is not a hypothetical here — 957 of them were measured on the coverage
+ * screen on 2026-08-22, a wall of white rectangles 5,843px tall, and the
+ * stopgap element rule in `styles.css` was written for exactly that. This
+ * screen is the next place it could happen: the filter row is one `<button>`
+ * per audit kind, DERIVED from the server rather than written down, so a kind
+ * that arrives later arrives as a new button nobody styled.
+ *
+ * Asserted over the whole document while `watch` is showing, not over the
+ * section alone, so the rail and the header are covered by the same sweep.
+ */
+test('nothing on the audit stream screen paints the UA buttonface', async ({ app }) => {
+  const { page } = app;
+  await showWatch(page);
+  const bare = await page.evaluate(() => {
+    const out: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>('*')) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (getComputedStyle(el).backgroundColor !== 'rgb(240, 240, 240)') continue;
+      out.push(`${el.tagName.toLowerCase()}.${[...el.classList].join('.')} "${(el.textContent ?? '').slice(0, 20)}"`);
+    }
+    return out.slice(0, 8);
+  });
+  expect(bare, 'these elements fell back to the UA button chrome — a bare <button> ' +
+    'draws nothing of its own, see styles.css’s stopgap rule').toEqual([]);
+});
+
+/**
+ * **The pulse fills its plate's CONTENT box exactly.**
+ *
+ * `.pulse` is a fixed 34px box, and `.pulse.plate` spends 12px of padding on
+ * each side of it plus a 1px border — so the chart's own area is **eight
+ * pixels**, and the 900x34 viewBox is squeezed into it by
+ * `preserveAspectRatio="none"`. That is not a defect to be asserted away: the
+ * design of record draws its own pulse at exactly the same eight, measured in
+ * both files on 2026-08-22 (`#pulse` host 34, svg 8, padding 12px 13px,
+ * box-sizing border-box, in the mockup and in the app alike).
+ *
+ * So the invariant is not a MINIMUM height — an earlier version of this
+ * assertion demanded 20px, which the design itself fails — it is that the SVG
+ * resolves to the box it is given. Both failure modes are silent: an unsized
+ * inline SVG falls back to a 150px intrinsic height and overflows a plate that
+ * clips it, losing its tallest columns; one that resolves to zero is a chart
+ * that renders as nothing at all.
+ */
+test('the activity pulse fills its plate exactly, neither collapsed nor overflowing', async ({ app }) => {
+  const { page } = app;
+  await showWatch(page);
+  const box = await page.evaluate(() => {
+    const host = document.querySelector<HTMLElement>('#pulse');
+    if (host === null) return null;
+    const svg = host.querySelector<SVGElement>('svg');
+    const cs = getComputedStyle(host);
+    return {
+      hostH: Math.round(host.getBoundingClientRect().height),
+      // The area the chart is actually given: `clientHeight` is inside the
+      // border, and the plate's padding comes out of it too.
+      contentH: host.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom),
+      contentW: host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight),
+      svgH: svg === null ? null : svg.getBoundingClientRect().height,
+      svgW: svg === null ? null : svg.getBoundingClientRect().width,
+    };
+  });
+  expect(box, 'there is no #pulse element at all').not.toBeNull();
+  expect(box!.hostH, 'the pulse plate collapsed').toBeGreaterThan(20);
+  expect(box!.contentH, 'the plate left the chart no room at all').toBeGreaterThan(4);
+  // The SVG is only drawn when the volume endpoint answers; when it refuses,
+  // the plate carries the refusal beside it instead and there is no chart to
+  // measure. Both are correct — what is not correct is a chart that misses its
+  // box in either direction.
+  if (box!.svgH !== null) {
+    expect(Math.abs(box!.svgH! - box!.contentH),
+      `the pulse SVG is ${box!.svgH}px in a ${box!.contentH}px content box — an inline SVG that ` +
+      'does not resolve to its box falls back to a 150px intrinsic height and is clipped')
+      .toBeLessThanOrEqual(1);
+    expect(Math.abs(box!.svgW! - box!.contentW)).toBeLessThanOrEqual(1);
+  }
+});
+
+/**
+ * **`text-align: left` is a defect, not a style** (spec §3): a physical
+ * direction draws correctly in English and backwards in Hebrew, and this
+ * project ships both from one stylesheet. `start` is the same thing that
+ * survives `dir="rtl"`.
+ *
+ * Swept over the whole document with `watch` showing, because the screen's own
+ * table, its filter row and its regime rules are all new surfaces where a
+ * physical value could enter — and because the UA sheet is where one usually
+ * does.
+ */
+test('nothing on the audit stream screen resolves to a physical text-align', async ({ app }) => {
+  const { page } = app;
+  await showWatch(page);
+  const physical = await page.evaluate(() => {
+    const out: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>('*')) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      const a = getComputedStyle(el).textAlign;
+      if (a === 'left' || a === 'right') {
+        out.push(`${el.tagName.toLowerCase()}.${[...el.classList].join('.')} -> ${a}`);
+      }
+    }
+    return out.slice(0, 8);
+  });
+  expect(physical, 'a physical text-align mirrors wrongly in RTL — use start/end')
+    .toEqual([]);
 });

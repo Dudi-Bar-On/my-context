@@ -25,6 +25,10 @@
 //        ctx.api(path)              GET, token-headered, JSON-parsed;
 //                                    throws on any refusal or network failure
 //                                    (see api() below for exactly what).
+//        ctx.stream(p, onEv, onEnd) GET, token-headered, SSE-parsed; returns a
+//                                    stop() that aborts it. onEnd(reason) fires
+//                                    exactly once. NEVER reconnects (§2).
+//                                    See stream() below.
 //        ctx.t(key, subs)           Node[] — the ONLY renderer. Append it:
 //                                    `el.append(...ctx.t(key, vals))`. Never
 //                                    assign with textContent/innerHTML (owner
@@ -66,6 +70,7 @@ const SCREENS = {
   graph: () => import('/screens/graph.js'),
   status: () => import('/screens/status.js'),
   learn: () => import('/screens/learn.js'),
+  watch: () => import('/screens/watch.js'),
 };
 // FOUR groups, by TENSE, and ALL TWENTY-ONE SCREENS, in the mockup's own
 // order (`web-ui-mockup.html` ~1260-1290).
@@ -181,6 +186,102 @@ async function api(path) {
     throw new Error(detail === '' ? String(response.status) : detail);
   }
   return await response.json();
+}
+
+/**
+ * The SAME door as `api()`, held open — a token-carrying `fetch` whose body is
+ * fed to the SSE parser frame by frame. `ui3` Task 11 adds it for
+ * `/api/watch/stream`, and it closes over `token` for the same reason `api()`
+ * does: the credential never leaves this module.
+ *
+ * **Not `EventSource`.** `EventSource` sends no custom headers, and the token
+ * travels in `X-Mycontext-Token` on every `/api` request (spec §2), so the
+ * stream has to be a fetch and `lib/sse.js` does what `EventSource` would have
+ * (`lib/sse.js` · `use EventSource: EventSource sends no custom headers, and the token travels` · ~4).
+ *
+ * **It never reconnects, and neither does anything it returns.** A closed
+ * stream is rendered as closed; silent reconnection would reintroduce the
+ * daemon by another name, which is the same §2 rule `api()` already implements
+ * for a failed fetch. The one thing that DOES happen on a network failure is
+ * what `api()` does — the exit banner, once — because a stream that dies
+ * without an abort is the server having gone away.
+ *
+ * `onEnd(reason)` fires EXACTLY once: `'aborted'` when the caller stopped it,
+ * `'closed'` otherwise. Every frame, including `fault`, is delivered to
+ * `onEvent` first — the fault carries the server's own message and swallowing
+ * it here would leave the screen with a state and no reason for it.
+ *
+ * A refusal has no frames at all, so it is turned INTO one: a screen that
+ * renders `fault` already knows how to say why a stream is not running, and a
+ * second failure shape would be a second thing for every caller to handle.
+ *
+ * The returned function aborts and is idempotent.
+ */
+function stream(path, onEvent, onEnd) {
+  const controller = new AbortController();
+  let ended = false;
+  const end = (reason) => {
+    if (ended) return;
+    ended = true;
+    onEnd(reason);
+  };
+
+  void (async () => {
+    let response;
+    try {
+      response = await fetch(path, {
+        headers: token === null ? {} : { 'X-Mycontext-Token': token },
+        signal: controller.signal,
+      });
+    } catch {
+      // An abort is this page's own doing and says nothing about the server.
+      if (!controller.signal.aborted) {
+        showExited();
+        stopHeartbeat();
+      }
+      end(controller.signal.aborted ? 'aborted' : 'closed');
+      return;
+    }
+    if (response.status === 401 || response.status === 403) forgetToken();
+    if (!response.ok) {
+      // The gate's refusals carry the status and nothing else (ruling A4), so
+      // a body is read only when there is one — `.json()` on an empty body
+      // throws, and it would throw here rather than at the caller.
+      const raw = await response.text();
+      let detail = '';
+      if (raw !== '') { try { detail = String(JSON.parse(raw).error ?? ''); } catch { detail = ''; } }
+      onEvent('fault', { error: detail === '' ? String(response.status) : detail });
+      end('closed');
+      return;
+    }
+
+    const { createSseParser } = await import('/lib/sse.js');
+    const feed = createSseParser(onEvent);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        // `{ stream: true }` — a multi-byte character split across two socket
+        // reads is one character, not two replacement marks.
+        feed(decoder.decode(value, { stream: true }));
+      }
+    } catch (error) {
+      // A frame the parser could not read is a BROKEN stream, and a broken
+      // stream is reported rather than skipped. Swallowing it here would be
+      // this shell deciding the server said nothing.
+      if (!controller.signal.aborted) {
+        onEvent('fault', { error: error && error.message ? error.message : String(error) });
+      }
+    }
+    end(controller.signal.aborted ? 'aborted' : 'closed');
+  })();
+
+  return () => {
+    controller.abort();
+    end('aborted');
+  };
 }
 
 let stopHeartbeat = () => {};
@@ -494,6 +595,9 @@ async function main() {
 
   window.myctx = {
     api,
+    // The held-open door. Same token, same no-reconnect rule; the caller gets
+    // back the stop() that aborts it.
+    stream,
     // Nodes. Screens append: `el.append(...ctx.t(key, vals))`. The flattened
     // form is a SEPARATE call, so reaching for it is a visible decision.
     t: (key, subs) => translate(table.strings, key, subs),

@@ -210,6 +210,12 @@ const SCREEN_SELECTORS = [
   // coverage and 12 on injected, measured. The mockup carried the same gap and
   // was fixed in the same commit, so these stay byte-identical.
   '.linkid', '.linkid:hover',
+  // The audit stream's own seven (ui3 Task 11, mockup ~907-923). Added with
+  // the carry, per this file's own standing brief — "Extend that test with
+  // every block you add" — so the pulse, the token bar, the not-recorded void
+  // and the regime rule cannot drift from the design of record either way.
+  '.pulse', '.pulse svg', '.tokbar', '.tokvoid', '.nt',
+  'tr.regime td', 'tr.regime .ln', 'tr.regime .rw',
   '.idkind', '.idslug', 'h2', 'button',
   ':where(button,a,input,select,summary):focus-visible',
   '[dir="rtl"] .icon-open', '[class^="icon-"]',
