@@ -109,6 +109,17 @@
  *   `pruneSnapshots` alone over the same 200 fresh entries, n=40:
  *             min   7.6  median   11.1              p95   12.6  max   15.3
  *
+ * And the gate itself, run end to end on the same box an hour later — all
+ * three timing tests RED, correctly and for the machine rather than for the
+ * code (every statistic up together, median included):
+ *
+ *   plain     min 377.4  median  662.9              p95 4413.6  max  7981.7
+ *   compact   min 426.9  median  706.0              p95 6228.7  max 10361.8
+ *   +sweep    min 541.6  median 1269.3              p95 5246.7  max  7871.2
+ *
+ * That run cost 556s of wall clock for the file, against roughly 45s if the
+ * per-call costs were the idle ones — the ~12× is the load, not the count.
+ *
  * Read those honestly: they are 40–60× the idle baselines, the plain shape's
  * MINIMUM sample (504.4ms) is already over the 500ms ceiling, and no choice
  * of statistic rescues a measurement taken there. That is precisely the
@@ -149,6 +160,12 @@
  * 3183.7ms outlier — 66× the median — does not redden the gate, where the
  * old max-of-20 would have reported that one sample as the "p95" and failed
  * the build on it.
+ *
+ * The same pair again at `CORPUS_SIZE` 5, which is also how the `t.after`
+ * cleanup below was checked rather than assumed: control p95 294.3ms
+ * (median 89.4) PASS, 20× the work per call p95 1861.1ms (median 599.2)
+ * FAIL — and the count of `myctx-perf-session-*` directories in the temp
+ * directory was unchanged by BOTH runs, the red one included.
  *
  * The THIRD test below covers what Task 12 added after the write to stdout:
  * the `state/` sweep. See its own docblock for why it recomposes the entry
@@ -272,8 +289,13 @@ function report(label: string, d: Distribution): string {
   );
 }
 
-test('SessionStart stays under the 500ms p95 ceiling on a 500-item corpus rebuild', () => {
+test('SessionStart stays under the 500ms p95 ceiling on a 500-item corpus rebuild', (t) => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-perf-session-'));
+  // Registered before anything can throw: a perf gate is BUILT to go red, and
+  // a cleanup line placed after the assertion leaks a 500-item corpus into the
+  // temp directory on exactly the runs that matter. Sixty-odd such directories
+  // sitting in `%TEMP%`, the oldest four days old, are how it was noticed.
+  t.after(() => removeTree(cwd));
   runCli(['init'], cwd, () => {});
 
   const ws = resolveWorkspace(cwd);
@@ -296,8 +318,6 @@ test('SessionStart stays under the 500ms p95 ceiling on a 500-item corpus rebuil
   const measured = summarize(samples);
   console.log(report('session-start', measured));
   assert.ok(measured.p95 < CEILING_MS, report('session-start', measured));
-
-  removeTree(cwd);
 });
 
 /**
@@ -333,8 +353,9 @@ test('SessionStart stays under the 500ms p95 ceiling on a 500-item corpus rebuil
  * does not grow with the iteration count. That is worth stating because it
  * is the property that lets the sample count be raised at all.
  */
-test('SessionStart(compact) with a session id and a snapshot stays under the 500ms p95 ceiling', () => {
+test('SessionStart(compact) with a session id and a snapshot stays under the 500ms p95 ceiling', (t) => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-perf-compact-'));
+  t.after(() => removeTree(cwd));
   runCli(['init'], cwd, () => {});
 
   const ws = resolveWorkspace(cwd);
@@ -362,8 +383,6 @@ test('SessionStart(compact) with a session id and a snapshot stays under the 500
   const measured = summarize(samples);
   console.log(report('session-start(compact)', measured));
   assert.ok(measured.p95 < CEILING_MS, report('session-start(compact)', measured));
-
-  removeTree(cwd);
 });
 
 /**
@@ -393,8 +412,9 @@ test('SessionStart(compact) with a session id and a snapshot stays under the 500
  * entries, measured rather than assumed, which is what Step 4 of the plan
  * asked for.
  */
-test('SessionStart plus its state/ sweep stays under the 500ms p95 ceiling with 200 state entries', () => {
+test('SessionStart plus its state/ sweep stays under the 500ms p95 ceiling with 200 state entries', (t) => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-perf-sweep-'));
+  t.after(() => removeTree(cwd));
   runCli(['init'], cwd, () => {});
 
   const root = resolveWorkspace(cwd).projectRoot!;
@@ -435,8 +455,6 @@ test('SessionStart plus its state/ sweep stays under the 500ms p95 ceiling with 
   const measured = summarize(samples);
   console.log(report('session-start+sweep', measured));
   assert.ok(measured.p95 < CEILING_MS, report('session-start+sweep', measured));
-
-  removeTree(cwd);
 });
 
 /**
