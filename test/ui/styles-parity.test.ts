@@ -227,6 +227,15 @@ const SCREEN_SELECTORS = [
   '.ghosts', '.ghosts .gh', '.ghosts .gap', '.notrun', '.hint', '.hint b',
   '.gladder', '.rung', '.rung:last-child', '.rung .n', '.rung.pass .n',
   '.rung.binds', '.rung.binds .n', '.rung.after', '.rung .q',
+  // The four families carried on 2026-08-23 for the six screens dispatched
+  // in wave 1 (mockup ~650-655, ~951-958, ~1006-1007). Carried BEFORE the
+  // screens that consume them, so six agents building six modules at once
+  // never touch styles.css — measured first: `ask`, `config` and `tut` need
+  // nothing new here at all. Added with the carry, per this file's standing
+  // brief: "Extend that test with every block you add."
+  '.md', '.md h1,.md h2,.md h3', '.md p', '.md ul', '.md pre',
+  '.globtree', '.globtree div', '.globtree div.hit', '.globin',
+  'td.stale', '[dir="rtl"] td.stale',
   '.idkind', '.idslug', 'h2', 'button',
   ':where(button,a,input,select,summary):focus-visible',
   '[dir="rtl"] .icon-open', '[class^="icon-"]',
