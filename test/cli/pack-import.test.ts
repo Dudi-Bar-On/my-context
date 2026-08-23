@@ -564,6 +564,199 @@ test('two imports of packs with the same name are kept apart, and list shows bot
 });
 
 /* -------------------------------------------------------------------------- *
+ * The --name override, which is a name a stranger's artefact suggested and an
+ * operator retyped — and which reaches a terminal
+ * -------------------------------------------------------------------------- */
+
+/**
+ * `--name` is the one pack name no guard used to see.
+ *
+ * `planImport` screens the MANIFEST's name and version (`pack/import.ts` step
+ * 3) and `parseManifest` puts the manifest's name through `refusePackName`
+ * before that. `--name` replaces the screened value AFTER both have run, and
+ * the replacement is what every surface then prints: the collision report's
+ * `pack:` line, the confirmation question, the outcome sentence, the
+ * `.audit/imported/<slug>/import.json` record and `pack list`.
+ *
+ * Measured before this gate existed, and both exited 0:
+ *
+ *   --name "acme<U+202E>drowssap-ytiruces"  printed verbatim into `pack:`,
+ *       into the outcome line and into the `pack list` table, and written
+ *       verbatim into `import.json`;
+ *   --name "acme-security\nmy_context: 12 item(s) promoted and now govern."
+ *       forged a whole second line of the report, which then read as one of
+ *       this product's own outcome sentences.
+ *
+ * So the assertions here are about the DOOR, not about the two guards, which
+ * have their own tests: `test/pack/screen.test.ts` owns the screened table and
+ * `test/pack/manifest.test.ts` owns `refusePackName`'s rules. What is only
+ * true at this seam is that the override is put through both of them, that it
+ * is put through them BEFORE anything is written or printed, and that the
+ * refusal does not carry the attack into the sentence complaining about it.
+ */
+const RLO = '‮';
+
+/** Nothing landed: no items, no membership record, no pack directory. */
+function nothingImported(cwd: string): void {
+  assert.deepEqual(
+    itemsOf(cwd).map((i) => i.id), [RULE_ID],
+    'the import was refused, so the corpus must still hold only its own rule',
+  );
+  const imported = importedDir(rootOf(cwd));
+  const filed = existsSync(imported)
+    ? readdirSync(imported).filter((e) => e !== '.gitignore')
+    : [];
+  assert.deepEqual(filed, [], 'a refused import filed a pack directory');
+}
+
+test('--name carrying U+202E is refused, and the refusal does not carry the override', () => {
+  const cwd = project();
+  const hostile = `acme${RLO}drowssap-ytiruces`;
+
+  const { code, out } = run(
+    ['pack', 'import', artefact({ items: newItems() }), '--yes', '--name', hostile], cwd,
+  );
+
+  assert.equal(code, 1, out);
+  // The screen's own words, so the reason is the screen's and not a second
+  // sentence written here that could disagree with it.
+  assert.match(out, /U\+202E/);
+  assert.match(flat(out), /the pack name/);
+  assert.match(out, /--name/);
+  // The whole point: a refusal that interpolated the value would be reordered
+  // by the very control it is complaining about.
+  assert.equal(
+    out.includes(RLO), false,
+    `the refusal printed U+202E itself: ${JSON.stringify(out)}`,
+  );
+  nothingImported(cwd);
+});
+
+test('--name carrying an embedded newline is refused, and forges no second line', () => {
+  const cwd = project();
+  const forged = 'my_context: 12 item(s) promoted and now govern.';
+  const hostile = `acme-security\n${forged}`;
+
+  const { code, out } = run(
+    ['pack', 'import', artefact({ items: newItems() }), '--yes', '--name', hostile], cwd,
+  );
+
+  assert.equal(code, 1, out);
+  // `refusePackName`'s rule, in its own words: the name is printed as ONE line.
+  assert.match(out, /control character/);
+  assert.match(out, /--name/);
+  // The forged sentence must never stand as a line of its own. It may appear
+  // escaped inside a quoted value — that is the value being named — but a raw
+  // newline here is the forgery itself.
+  assert.equal(
+    out.split('\n').some((line) => line.trim() === forged), false,
+    `the refusal forged the line it was refusing: ${JSON.stringify(out)}`,
+  );
+  nothingImported(cwd);
+});
+
+test('the --name gate runs before the preview, so --dry-run refuses it too', () => {
+  const cwd = project();
+  const { code, out } = run(
+    ['pack', 'import', artefact({ items: newItems() }), '--dry-run', '--name', `x${RLO}y`], cwd,
+  );
+
+  assert.equal(code, 1, out);
+  assert.match(out, /U\+202E/);
+  // Nothing about the pack was printed: the report names the pack on its first
+  // line, and that line would have printed the override.
+  assert.equal(out.includes('manifest: every file verified'), false, out);
+  nothingImported(cwd);
+});
+
+test('a --name refusal names a bounded number of findings and says how many it did not', () => {
+  const cwd = project();
+  // A name that is nothing but overrides. The screen reports EVERY screened
+  // code point by design, so an uncapped refusal would print one line per
+  // character at a reader who needed one — the shape `REFUSAL_VALUE_MAX`
+  // (src/ui/security.ts) settled for a value, applied to a list.
+  const { code, out } = run(
+    ['pack', 'import', artefact({ items: newItems() }), '--yes', '--name', RLO.repeat(500)], cwd,
+  );
+
+  assert.equal(code, 1, out);
+  assert.ok(
+    out.split('\n').length < 40,
+    `500 screened code points printed ${out.split('\n').length} lines of refusal`,
+  );
+  // Visibly truncated: a reader must not mistake what is shown for the whole.
+  assert.match(flat(out), /\bmore\b/);
+  assert.equal(out.includes(RLO), false, `the refusal printed U+202E itself`);
+  nothingImported(cwd);
+});
+
+test('a --name refusal quotes no unbounded value, and marks the cut visibly', () => {
+  const cwd = project();
+  // Measured before the bound existed: `refusePackName` quotes the value it
+  // refuses, and its whitespace rules fire BEFORE its code-point limit does —
+  // so this name printed a 10,489-character refusal with the value in it
+  // twice, and 50,000 characters printed 100,231.
+  const { code, out } = run(
+    ['pack', 'import', artefact({ items: newItems() }), '--yes', '--name', `${'z'.repeat(5000)} `],
+    cwd,
+  );
+
+  assert.equal(code, 1, out);
+  assert.ok(
+    out.length < 2000,
+    `the refusal echoed an unbounded value: ${out.length} characters`,
+  );
+  // The cap is on the VALUE, not on the message: `refuseOpaqueMeta` puts the
+  // value first and says what is wrong with it AFTER, so a message-width cut
+  // would keep the five thousand characters and throw the reason away.
+  assert.match(flat(out), /leading or trailing whitespace/);
+  // Visibly cut, so what is shown cannot be read as the whole of what arrived.
+  assert.match(out, /…/);
+  nothingImported(cwd);
+});
+
+test('--name "" is refused as an empty name, not misreported as a full export', () => {
+  const cwd = project();
+  const { code, out } = run(
+    ['pack', 'import', artefact({ items: newItems() }), '--yes', '--name', ''], cwd,
+  );
+
+  assert.equal(code, 1, out);
+  // The artefact IS a pack and carries a name; the flag is what is empty.
+  assert.match(flat(out), /is empty/);
+  nothingImported(cwd);
+});
+
+test('the same gate guards --name on the full-export path, which cannot go without one', () => {
+  const cwd = project();
+  // A whole-workspace export carries no name, so `--name` is not an override
+  // here but the only name there is — and it is the one nothing screened.
+  const source = artefact({
+    items: newItems(), meta: { kind: 'export', name: null, version: null },
+  });
+
+  const { code, out } = run(['pack', 'import', source, '--yes', '--name', `a${RLO}b`], cwd);
+
+  assert.equal(code, 1, out);
+  assert.match(out, /U\+202E/);
+  assert.equal(out.includes(RLO), false, `the refusal printed U+202E itself`);
+  nothingImported(cwd);
+});
+
+test('a legal --name still names the pack everywhere it is printed', () => {
+  const cwd = project();
+  const { code, out } = run(
+    ['pack', 'import', artefact({ items: newItems() }), '--yes', '--name', 'acme-security-b'], cwd,
+  );
+
+  assert.equal(code, 0, out);
+  assert.match(out, /acme-security-b/);
+  const json = run(['pack', 'list', '--json'], cwd);
+  const document = JSON.parse(json.out) as { packs: { pack: string }[] };
+  assert.deepEqual(document.packs.map((p) => p.pack), ['acme-security-b']);
+});
+
+/* -------------------------------------------------------------------------- *
  * F2, and the one-document rule
  * -------------------------------------------------------------------------- */
 

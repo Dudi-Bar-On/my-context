@@ -9,7 +9,9 @@ import {
   applyImport, planImport, type ImportOutcome, type ImportPlan,
 } from '../../pack/import.ts';
 import { readImportRecords, type ImportRecord } from '../../pack/imported-audit.ts';
+import { refusePackName } from '../../pack/manifest.ts';
 import { readArtefact } from '../../pack/reader.ts';
+import { screenPackMeta } from '../../pack/screen.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import { emitJson, paragraph, refuseUnknownFlag, table, wantsJson } from './format.ts';
 import { flag, hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
@@ -43,6 +45,9 @@ import { confirmAction, readLineSync } from './review.ts';
  *      deciding something;
  *   2. read and verify the artefact, then plan the import — `planImport` is
  *      pure, so everything it refuses is refused with nothing written;
+ *   2b. `--name`, through the two refusals every other pack name takes. It is
+ *      before the report and not after it because the report's own first line
+ *      PRINTS the name — see `refuseOverrideName`;
  *   3. print the collision report, **always**. Not "unless `--yes`": the
  *      confirmation only asks its question on a TTY, so a non-interactive
  *      refusal would otherwise never say what it declined. The `changed`
@@ -267,6 +272,170 @@ export function outcomeLines(out: Emit, name: string, outcome: ImportOutcome): v
   }
 }
 
+/**
+ * The most screened code points a `--name` refusal prints, and the reason
+ * there is a most.
+ *
+ * `screenText` reports EVERY finding by design — a screen that stopped at the
+ * first would send an author round the loop once per character, and would let
+ * a reviewer believe they had seen the whole of what arrived. That is right
+ * for an artefact, whose fields are bounded by a file somebody wrote, and
+ * wrong for a command-line value: `--name` is an unbounded string, and a name
+ * of five hundred overrides would otherwise print five hundred paragraphs at a
+ * reader who needed one. Four, because every finding from one row repeats that
+ * row's `why` verbatim and a fifth copy of one sentence teaches nothing the
+ * fourth did not.
+ *
+ * This is `ui/security.ts`'s field rule applied to a LIST instead of to a
+ * string: bound what is shown, and mark the truncation VISIBLY so it cannot be
+ * mistaken for the whole of what arrived
+ * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~291).
+ */
+const NAME_FINDING_MAX = 4;
+
+/**
+ * The most characters of a QUOTED VALUE a `--name` refusal prints.
+ *
+ * The screen's own findings are bounded by construction — they name a code
+ * point, a row and an offset, and never interpolate the value at all.
+ * `refusePackName` is not: its message quotes the value, and two of its rules
+ * ("only whitespace", "has leading or trailing whitespace") fire BEFORE its
+ * code-point limit does, so a name that trips one of them is quoted at whatever
+ * length it arrived at. Measured through this command: `--name` holding 5,000
+ * characters and one trailing space printed a 10,489-character refusal with the
+ * value in it twice, and 50,000 characters printed 100,231.
+ *
+ * **The cap is on the VALUE and not on the message**, and the difference is the
+ * whole point. Capping the message was tried first and was wrong: a sentence
+ * cut at a fixed width loses its ENDING, and the ending is where
+ * `refuseOpaqueMeta` says what was wrong — the value comes first and
+ * "…has leading or trailing whitespace" comes after it, so a message-width cap
+ * keeps the attacker's 5,000 characters and throws away the reason. That is the
+ * house rule backwards. Capping the value keeps the whole sentence and shortens
+ * only the part whose length somebody else chose.
+ *
+ * 256, the number this codebase already settled on for exactly this job
+ * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~291), and
+ * comfortably above the longest value that could legally have been a name: 64
+ * code points quote to at most 128 characters here, because the screen runs
+ * first and has already refused every code point `JSON.stringify` would expand
+ * to `\uXXXX`.
+ */
+const QUOTED_VALUE_MAX = 256;
+
+/** The marker that makes a capped value unmistakable. One character. */
+const VALUE_TRUNCATED = '…';
+
+/**
+ * A guard's own message, with every value it quotes capped and marked.
+ *
+ * The pattern is one JSON string literal, which is the only shape a value is in
+ * here: `refuseOpaqueMeta` interpolates every value through `JSON.stringify`,
+ * and the prose around them uses backticks. It is built per call rather than
+ * shared, because a `/g` regular expression carries `lastIndex` with it.
+ *
+ * The cut is never made between the halves of a surrogate pair: half a pair is
+ * a lone surrogate, which is itself a row of the screen this gate enforces, and
+ * printing one in order to complain about Unicode would be its own small joke.
+ */
+function capQuotedValues(message: string): string {
+  return message.replace(/"(?:[^"\\]|\\.)*"/g, (quoted) => {
+    if (quoted.length <= QUOTED_VALUE_MAX) return quoted;
+    const code = quoted.charCodeAt(QUOTED_VALUE_MAX - 1);
+    const end = code >= 0xd800 && code <= 0xdbff ? QUOTED_VALUE_MAX - 1 : QUOTED_VALUE_MAX;
+    return `${quoted.slice(0, end)}${VALUE_TRUNCATED}"`;
+  });
+}
+
+/** A refusal in two parts: the sentence, and the bounded lines under it. */
+interface NameRefusal {
+  headline: string;
+  details: readonly string[];
+}
+
+/**
+ * The two refusals every other pack name takes, applied to the one an operator
+ * typed — or `null` when the value may be this pack's name.
+ *
+ * ## Why the value arrives here having passed neither
+ *
+ * A manifest's name is refused twice before a plan exists: `parseManifest` puts
+ * it through `refusePackName` (`pack/manifest.ts` · `export function refusePackName(v: unknown): string | null {` · ~230),
+ * and `planImport` puts it through the Unicode screen
+ * (`pack/import.ts` · `    ...screenPackMeta(manifest.name ?? '', manifest.version ?? ''),` · ~318).
+ * `--name` REPLACES that value after both have run, and the replacement is what
+ * every surface prints from then on — the collision report's first line, the
+ * confirmation question, the outcome sentence, `.audit/imported/<slug>/import.json`
+ * and `mycontext pack list`. The name is not the operator's own text either: it
+ * is what a stranger's artefact suggested calling itself, retyped.
+ *
+ * Measured before this gate existed, both exiting 0 and both written verbatim
+ * into `import.json`: a `--name` carrying U+202E RIGHT-TO-LEFT OVERRIDE, which
+ * the report then printed, and a `--name` carrying a newline, which forged a
+ * second line of that report reading as one of this product's own sentences.
+ *
+ * ## Both guards, because they are not two spellings of one rule
+ *
+ * `refusePackName` refuses what cannot be ONE LINE of a report — empty,
+ * whitespace-only, untrimmed, past its code-point limit, a C0 or C1 control,
+ * or not NFC. The screen refuses what IS a legal, trimmed, NFC line and still
+ * lies about what it says: the bidi controls, the invisibles, the Tags block.
+ * `screen.ts` names the gap itself — of these two strings it says
+ * "`refusePackName` and `refuseDescriptiveVersion` do not catch them: neither
+ * is a C0 or C1 control, none changes under NFC, and each costs one code
+ * point". Neither is redundant and neither is sufficient.
+ *
+ * ## The screen goes first, because of what the other one's message contains
+ *
+ * `refusePackName` interpolates the value it refuses, and `JSON.stringify`
+ * escapes a newline but leaves U+202E exactly as it is. A name carrying both a
+ * trailing space and an override would then be refused in a sentence the
+ * override reorders — a refusal defeated by the thing it is refusing. Screening
+ * first means every value that reaches `refusePackName` from here has no
+ * screened code point left in it, and the screen's own findings never
+ * interpolate the value at all: they name the code point, the row and the
+ * offset.
+ *
+ * `version` is the plan's, which `planImport` has already screened; it is
+ * passed rather than a stand-in `''` so the call is about the PAIR this import
+ * will actually print about itself, which is what `screenPackMeta` is for.
+ * Re-screening a screened string finds nothing, which is the same reason
+ * `planImport` asks the screen instead of branching around an export's absent
+ * name.
+ */
+function refuseOverrideName(value: string, version: string): NameRefusal | null {
+  const findings = screenPackMeta(value, version);
+  if (findings.length > 0) {
+    const details = findings.slice(0, NAME_FINDING_MAX).map((f) => capQuotedValues(f.message));
+    const hidden = findings.length - details.length;
+    if (hidden > 0) {
+      details.push(`… and ${hidden} more screened code point(s) in this value, not listed here. `
+        + `The ${details.length} above are the first ${details.length} in the order they appear.`);
+    }
+    return {
+      headline:
+        `my_context: the value --name gave carries ${findings.length} screened code point(s) and `
+        + 'nothing was imported. A pack name is printed with nothing beside it — on the first '
+        + 'line of the report this would have shown, in the confirmation question, in the import '
+        + 'record and in `mycontext pack list` — so a code point that reorders or hides its '
+        + 'neighbours there is read by someone who never opened the artefact. Nothing was '
+        + 'normalised: the value is refused exactly as it was typed, and each finding below names '
+        + 'its code point rather than printing it.',
+      details,
+    };
+  }
+
+  const bad = refusePackName(value);
+  if (bad === null) return null;
+  return {
+    headline:
+      'my_context: the value --name gave cannot be this pack\'s name here, and nothing was '
+      + 'imported. It is the same rule a name inside a manifest is held to — the flag chooses '
+      + 'what this workspace files the pack under, which is not a weaker thing to be.',
+    details: [capQuotedValues(bad)],
+  };
+}
+
 function cmdImport(
   ws: Workspace, args: string[], out: Emit, cwd: string,
   isTTY: boolean, readLine: () => string,
@@ -308,8 +477,20 @@ function cmdImport(
       local: ws.config,
     });
 
-    // Before the preview, because it decides what the preview calls the pack.
-    const name = flag(args, 'name') ?? plan.pack;
+    // Before the preview, because it decides what the preview calls the pack —
+    // and, for the same reason, before the preview is where the override is
+    // refused: the report's first line prints the name.
+    const override = flag(args, 'name');
+    if (override !== null) {
+      const refusal = refuseOverrideName(override, plan.version ?? '');
+      if (refusal !== null) {
+        say(out, refusal.headline);
+        for (const detail of refusal.details) say(out, detail, '  ');
+        return 1;
+      }
+    }
+
+    const name = override ?? plan.pack;
     if (name === null || name === '') {
       say(out,
         `my_context: ${JSON.stringify(source)} is a full export and carries no pack name, so `
