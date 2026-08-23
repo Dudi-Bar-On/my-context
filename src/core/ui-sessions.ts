@@ -5,7 +5,8 @@
  * ── WHAT THIS FIXES ────────────────────────────────────────────────────────
  *
  * The token was minted per process and kept only in memory
- * (`src/ui/security.ts` · `minted per invocation, held in memory on both sides and nowhere else` · ~28).
+ * (`src/ui/security.ts` · `minted per invocation, held in memory on both sides and nowhere else` · ~28). <!-- historical-citation: the OLD text of that comment; THIS module is what changed it, and security.ts now quotes the sentence inside the paragraph explaining the change — so an unmarked citation resolves to a line reading "Before that, this sentence read …" and cites the history as if it were the claim -->
+ *
  * A restarted server therefore recognised no credential an open tab held, and a
  * page can only earn a new one by redeeming a nonce PRINTED IN THE TERMINAL. So
  * a reload answered 403, the server expired the stale cookie, and every refresh

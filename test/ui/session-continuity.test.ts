@@ -13,7 +13,8 @@
  *     refresh                  ->  401   (forever)
  *
  * The cause is one sentence: **a token was minted per process and kept only in
- * memory** (`security.ts` · `minted per invocation, held in memory on both sides and nowhere else` · ~28),
+ * memory** (`security.ts` · `minted per invocation, held in memory on both sides and nowhere else` · ~28), <!-- historical-citation: the OLD text of that comment; the fix this file pins is what replaced it -->
+ *
  * so a restarted server could not recognise any credential an open tab held,
  * and a page can only earn a new one by redeeming a nonce PRINTED IN THE
  * TERMINAL. Refresh therefore moved a page from 403 to 401 and held it there.

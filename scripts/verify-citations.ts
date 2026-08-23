@@ -91,6 +91,26 @@
  * file but is followed by prose rather than by a fragment or a line ending —
  * the one place a wrapped citation can put its other half.
  *
+ * **THE THIRD TREE: source, where most of the citations actually are.**
+ *
+ * This walked `docs/` and nothing else, which left every citation written in a
+ * comment ungated — on 2026-08-23, 248 of them across 67 files, an eighteenth
+ * of the corpus, checked by nobody. A comment that names the code it leans on
+ * makes exactly the claim a plan makes and rots exactly the same way; the first
+ * run over source found six already quoting code that had been rewritten, two
+ * of them the same deleted sentence about how a session token is held.
+ *
+ * Source is read differently in one respect, and only one. In Markdown a
+ * citation split over two lines is a fault, because Markdown could have held it
+ * on one. In source it is the house style — comments wrap near 80 columns and a
+ * fragment that is a whole function signature cannot share a line with its file
+ * and its hint. Thirty-nine wrapped on the day this landed. So a run of comment
+ * lines is joined into one logical line before anything reads it (see
+ * `Segment`), which is what the author wrote and how a reader reads it.
+ * Scanning source line-at-a-time instead measured 203 citations rather than
+ * 241 — thirty-eight invisible, not broken — and raised seventy extra faults
+ * against a style the whole tree uses on purpose.
+ *
  * Zero dependencies, no build step, erasable syntax only — the same
  * constraints as `src/`.
  *
@@ -98,6 +118,9 @@
  *   node scripts/verify-citations.ts            check, exit 1 on any miss
  *   node scripts/verify-citations.ts --fix      also rewrite stale ~line hints
  *   node scripts/verify-citations.ts --json     machine-readable report
+ *   node scripts/verify-citations.ts --strict-source
+ *                                               also FAIL on source findings,
+ *                                               which are reported either way
  */
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
@@ -108,6 +131,37 @@ const REPO = path.resolve(import.meta.dirname, '..');
 /** Documents whose citations are checked. Everything under these, recursively. */
 const DOC_ROOTS = ['docs/superpowers/specs', 'docs/superpowers/plans', 'docs/design'];
 
+/**
+ * Source trees whose comment citations are checked. Walked on every run and
+ * reported on every run; gated only under `--strict-source`.
+ */
+const SOURCE_ROOTS = ['src', 'test', 'scripts'];
+
+/**
+ * **The gate's own specimens, which it must not report as defects.**
+ *
+ * This script's header documents the citation form by writing citations, and
+ * documents the malformed shapes by writing malformed ones — a fragment cut
+ * mid-span, a hint orphaned on its own line, a marker excusing a `README.md`
+ * count. Its two tests then do the same on purpose, thirteen markers' worth in
+ * one and twenty-one unreadable separators in the other, because that is what a
+ * test of a malformed citation IS. Walked like ordinary source, these three
+ * files reported forty-six faults against text that is doing its job.
+ *
+ * A specimen cannot be told from a defect by inspection — that is what makes it
+ * a good specimen — so the list is EXACT PATHS. Not a glob, which would swallow
+ * the next real test file to appear beside them; not a suppression comment,
+ * which would let any file opt itself out and turn this exemption into the
+ * blanket suppressor the marker rules exist to prevent. Three paths, named, and
+ * `citations-in-source.test.ts` plants a defect in a file OUTSIDE the list and
+ * proves it is still reported.
+ */
+const SOURCE_EXEMPT = new Set([
+  'scripts/verify-citations.ts',
+  'test/scripts/verify-citations.test.ts',
+  'test/scripts/citations-in-source.test.ts',
+]);
+
 /** Where a bare `select.ts` may be resolved from, in priority order. */
 const SEARCH_ROOTS = ['src', 'test', 'scripts', 'docs', '.'];
 
@@ -117,7 +171,7 @@ const SEARCH_ROOTS = ['src', 'test', 'scripts', 'docs', '.'];
  * optional: a citation may carry the fragment alone.
  */
 const CITATION =
-  /`([^`\n]+?\.(?:ts|js|mjs|cjs|md|json))`[ \t]*·[ \t]*(?:``(.+?)``|`([^`\n]+?)`)(?:[ \t]*·[ \t]*~(\d+))?/g;
+  /`([^`\n]+?\.(?:ts|js|mjs|cjs|md|json))`[ \t]*·[ \t]*(?:``(.+?)``|`((?:\\.|[^`\n\\])+?)`)(?:[ \t]*·[ \t]*~(\d+))?/g;
 
 /**
  * `<!-- historical-citation: why -->`, matched a line at a time because one
@@ -154,6 +208,12 @@ interface Citation {
   fragment: string;
   hint: number | null;
   raw: string;
+  /**
+   * The citation spans more than one physical line — legal in source, where a
+   * comment run is joined before it is read. `raw` is then the JOINED text and
+   * appears nowhere in the file, which is why `--fix` may not rewrite it.
+   */
+  wrapped: boolean;
 }
 
 /** A well-formed `<!-- historical-citation: … -->`, and the line it governs. */
@@ -194,7 +254,7 @@ type Verdict =
   | { kind: 'no-match' }
   | { kind: 'historical'; reason: string };
 
-function walk(dir: string, out: string[]): string[] {
+function walk(dir: string, out: string[], accept: (name: string) => boolean): string[] {
   let entries: string[];
   try {
     entries = readdirSync(dir);
@@ -202,6 +262,7 @@ function walk(dir: string, out: string[]): string[] {
     return out;
   }
   for (const entry of entries) {
+    if (entry === 'node_modules' || entry === '.git') continue;
     const full = path.join(dir, entry);
     let s;
     try {
@@ -209,11 +270,15 @@ function walk(dir: string, out: string[]): string[] {
     } catch {
       continue;
     }
-    if (s.isDirectory()) walk(full, out);
-    else if (entry.endsWith('.md')) out.push(full);
+    if (s.isDirectory()) walk(full, out, accept);
+    else if (accept(entry)) out.push(full);
   }
   return out;
 }
+
+const isMarkdown = (name: string): boolean => name.endsWith('.md');
+const isTypeScript = (name: string): boolean =>
+  name.endsWith('.ts') && !name.endsWith('.d.ts');
 
 /**
  * A citation names `select.ts`, not `src/core/select.ts`, because the short
@@ -315,6 +380,91 @@ function findFragment(fileRel: string, fragment: string): number[] {
   return hits;
 }
 
+/**
+ * **In source, the unit a citation lives on is the comment, not the line.**
+ *
+ * `docs/` calls a wrapped citation a fault and tells the author to join it onto
+ * one line, and in Markdown that costs nothing. In source it is not a defect at
+ * all — it is the house style. Every comment in this tree wraps near 80
+ * columns, and a citation whose fragment is a whole function signature cannot
+ * fit beside its file and its hint. Thirty-eight of them wrap today. Demanding
+ * they be joined would mean 200-column comment lines everywhere, and a gate
+ * that asks for that gets turned off.
+ *
+ * So a run of consecutive comment lines is joined into ONE logical line before
+ * anything looks at it, with the comment markers taken off and a single space
+ * where each newline was — which is what the author wrote and how a reader
+ * reads it. `pieces` remembers where each physical line's text landed, so a
+ * citation still reports the line it starts on.
+ *
+ * The UNREAD fault survives this intact, and is sharper for it: after joining,
+ * a `·` still standing alone is one the author mangled, not one the wrapper
+ * moved.
+ */
+interface Piece {
+  /** Offset in the joined text where this physical line's payload begins. */
+  at: number;
+  /** 1-based physical line number. */
+  line: number;
+}
+
+interface Segment {
+  text: string;
+  pieces: Piece[];
+}
+
+/** `//`, `/*`, `/**` or a continuation `*`, plus the one blank that follows. */
+const COMMENT_PREFIX = /^[ \t]*(?:\/\/+|\/\*+|\*+(?!\/))[ \t]?/;
+
+/** The star-slash closing a block comment at the end of a comment line. */
+const COMMENT_CLOSE = /[ \t]*\*+\/[ \t]*$/;
+
+function commentPayload(line: string): string | null {
+  const m = COMMENT_PREFIX.exec(line);
+  if (m === null) return null;
+  return line.slice(m[0]!.length).replace(COMMENT_CLOSE, '');
+}
+
+function segmentsOf(lines: string[], joinComments: boolean): Segment[] {
+  const segs: Segment[] = [];
+  const plain = (i: number): Segment => ({ text: lines[i]!, pieces: [{ at: 0, line: i + 1 }] });
+  if (!joinComments) {
+    for (let i = 0; i < lines.length; i++) segs.push(plain(i));
+    return segs;
+  }
+  let i = 0;
+  while (i < lines.length) {
+    const payload = commentPayload(lines[i]!);
+    if (payload === null) {
+      segs.push(plain(i));
+      i++;
+      continue;
+    }
+    let text = payload;
+    const pieces: Piece[] = [{ at: 0, line: i + 1 }];
+    let j = i + 1;
+    for (; j < lines.length; j++) {
+      const next = commentPayload(lines[j]!);
+      if (next === null) break;
+      pieces.push({ at: text.length + 1, line: j + 1 });
+      text = `${text} ${next}`;
+    }
+    segs.push({ text, pieces });
+    i = j;
+  }
+  return segs;
+}
+
+/** The physical line an offset in a joined segment came from. */
+function lineAt(seg: Segment, offset: number): number {
+  let line = seg.pieces[0]!.line;
+  for (const p of seg.pieces) {
+    if (p.at > offset) break;
+    line = p.line;
+  }
+  return line;
+}
+
 interface DocScan {
   citations: Citation[];
   markers: Marker[];
@@ -331,11 +481,13 @@ interface DocScan {
  * eventually leave one attached to nothing, which is the habit rule 1 exists
  * to break.
  */
-function scanMarkers(doc: string, docLine: number, line: string, out: DocScan): void {
+function scanMarkers(doc: string, seg: Segment, out: DocScan): void {
+  const line = seg.text;
   MARKER_OPEN.lastIndex = 0;
   let m: RegExpExecArray | null;
   let honoured = 0;
   while ((m = MARKER_OPEN.exec(line)) !== null) {
+    const docLine = lineAt(seg, m.index);
     const rest = line.slice(m.index);
     const full = MARKER_FULL.exec(rest);
     if (full === null) {
@@ -410,11 +562,11 @@ function diagnoseSeparator(left: string, right: string): string | null {
  */
 function scanSeparators(
   doc: string,
-  docLine: number,
-  line: string,
+  seg: Segment,
   spans: Array<[number, number]>,
   out: DocScan,
 ): void {
+  const line = seg.text;
   for (let i = line.indexOf(SEPARATOR); i !== -1; i = line.indexOf(SEPARATOR, i + 1)) {
     if (spans.some(([start, end]) => i >= start && i < end)) continue;
     const left = line.slice(0, i).replace(/[ \t]+$/, '');
@@ -423,7 +575,7 @@ function scanSeparators(
     if (why === null) continue;
     out.faults.push({
       doc,
-      docLine,
+      docLine: lineAt(seg, i),
       label: 'UNREAD',
       raw: `${left.length > 40 ? `…${left.slice(-40)}` : left} ${SEPARATOR} ${right.slice(0, 40)}`.trim(),
       why,
@@ -431,29 +583,32 @@ function scanSeparators(
   }
 }
 
-function collect(doc: string): DocScan {
+function collect(doc: string, joinComments: boolean): DocScan {
   const text = readFileSync(doc, 'utf8');
-  const lines = text.split(/\r?\n/);
   const rel = path.relative(REPO, doc).split(path.sep).join('/');
   const out: DocScan = { citations: [], markers: [], faults: [] };
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
+  for (const seg of segmentsOf(text.split(/\r?\n/), joinComments)) {
+    const line = seg.text;
     CITATION.lastIndex = 0;
     let m: RegExpExecArray | null;
     const spans: Array<[number, number]> = [];
     while ((m = CITATION.exec(line)) !== null) {
-      spans.push([m.index, m.index + m[0]!.length]);
+      const start = m.index;
+      const end = start + m[0]!.length;
+      spans.push([start, end]);
+      const docLine = lineAt(seg, start);
       out.citations.push({
         doc: rel,
-        docLine: i + 1,
+        docLine,
         file: m[1]!,
         fragment: m[2] ?? m[3]!,
         hint: m[4] ? Number(m[4]) : null,
         raw: m[0]!,
+        wrapped: docLine !== lineAt(seg, end - 1),
       });
     }
-    scanSeparators(rel, i + 1, line, spans, out);
-    scanMarkers(rel, i + 1, line, out);
+    scanSeparators(rel, seg, spans, out);
+    scanMarkers(rel, seg, out);
   }
   return out;
 }
@@ -476,22 +631,33 @@ function main(): number {
   const argv = process.argv.slice(2);
   const fix = argv.includes('--fix');
   const asJson = argv.includes('--json');
+  const strictSource = argv.includes('--strict-source');
 
   indexFiles();
 
   const docs: string[] = [];
-  for (const root of DOC_ROOTS) walk(path.join(REPO, root), docs);
+  for (const root of DOC_ROOTS) walk(path.join(REPO, root), docs, isMarkdown);
   docs.sort();
+
+  const rel = (full: string): string => path.relative(REPO, full).split(path.sep).join('/');
+
+  const found: string[] = [];
+  for (const root of SOURCE_ROOTS) walk(path.join(REPO, root), found, isTypeScript);
+  const sources = found.filter((f) => !SOURCE_EXEMPT.has(rel(f))).sort();
+  const sourceFiles = new Set(sources.map(rel));
 
   const rows: Array<{ c: Citation; v: Verdict }> = [];
   const markers: Marker[] = [];
   const faults: Fault[] = [];
-  for (const doc of docs) {
-    const scan = collect(doc);
+  for (const file of [...docs, ...sources]) {
+    // Only source is joined: in Markdown a wrapped citation is a fault, and
+    // joining it would hide the very thing the UNREAD check exists to say.
+    const scan = collect(file, sourceFiles.has(rel(file)));
     for (const c of scan.citations) rows.push({ c, v: judge(c) });
     markers.push(...scan.markers);
     faults.push(...scan.faults);
   }
+  const fromSource = (doc: string): boolean => sourceFiles.has(doc);
 
   // Markers are applied AFTER judging, never instead of it, so a marked
   // citation is still resolved against the tree and can still come back green
@@ -533,28 +699,76 @@ function main(): number {
   const ambiguous = rows.filter((r) => r.v.kind === 'ambiguous');
   const historical = rows.filter((r) => r.v.kind === 'historical');
 
+  /**
+   * **What sets the exit code, and the one thing that does not yet.**
+   *
+   * `docs/` is unchanged: a broken or ambiguous citation, or any fault, fails.
+   * A MOVED hint never has — the fragment resolved, which is the claim.
+   *
+   * Source is REPORTED on every run and GATED only under `--strict-source`.
+   * The day the walk landed it found six broken citations and three faults it
+   * was not that task's business to repair — they sit in `src/` and `test/`
+   * files other work owns. Failing on them would have handed everyone else a
+   * red gate they did not break and could not clear, and the first thing that
+   * happens to such a gate is that someone stops running it. So the numbers go
+   * on the screen now, where they can be counted and argued with, and the
+   * teeth arrive with the repair: fix the nine, flip this one expression to
+   * `true`, delete this paragraph.
+   *
+   * `--strict-source` is not decoration — it is how the repair proves itself,
+   * and it is the whole of the change needed to flip.
+   */
+  const gated = (doc: string): boolean => strictSource || !fromSource(doc);
+  const failing =
+    broken.filter((r) => gated(r.c.doc)).length +
+    ambiguous.filter((r) => gated(r.c.doc)).length +
+    faults.filter((f) => gated(f.doc)).length;
+  const ungated =
+    broken.filter((r) => !gated(r.c.doc)).length +
+    ambiguous.filter((r) => !gated(r.c.doc)).length +
+    faults.filter((f) => !gated(f.doc)).length;
+
   if (asJson) {
     process.stdout.write(
       `${JSON.stringify(
         {
           checked: rows.length,
           documents: docs.length,
-          broken: broken.map((r) => ({ ...r.c, verdict: r.v })),
-          moved: moved.map((r) => ({ ...r.c, verdict: r.v })),
-          ambiguous: ambiguous.map((r) => ({ ...r.c, verdict: r.v })),
-          historical: historical.map((r) => ({ ...r.c, verdict: r.v })),
-          faults,
+          // Files WALKED, not files that turned out to carry a citation — the
+          // human summary counts the latter, and one number named for the other
+          // is how a walk that quietly stopped covering half the tree hides.
+          sourceFilesWalked: sources.length,
+          strictSource,
+          ungatedFailures: ungated,
+          broken: broken.map((r) => ({ ...r.c, source: fromSource(r.c.doc), verdict: r.v })),
+          moved: moved.map((r) => ({ ...r.c, source: fromSource(r.c.doc), verdict: r.v })),
+          ambiguous: ambiguous.map((r) => ({ ...r.c, source: fromSource(r.c.doc), verdict: r.v })),
+          historical: historical.map((r) => ({ ...r.c, source: fromSource(r.c.doc), verdict: r.v })),
+          faults: faults.map((f) => ({ ...f, source: fromSource(f.doc) })),
         },
         null,
         2,
       )}\n`,
     );
-    return broken.length > 0 || ambiguous.length > 0 || faults.length > 0 ? 1 : 0;
+    return failing > 0 ? 1 : 0;
   }
 
-  if (fix && moved.length > 0) {
+  // A wrapped citation's `raw` is the JOINED text, which appears nowhere in the
+  // file. Rewriting by string replace would either miss it or, worse, hit some
+  // other occurrence. `--fix` says so and leaves it to a human.
+  const unfixable = moved.filter((r) => r.c.wrapped);
+  const fixable = moved.filter((r) => !r.c.wrapped);
+  if (fix && unfixable.length > 0) {
+    for (const r of unfixable) {
+      process.stdout.write(
+        `skipped ${r.c.doc}:${r.c.docLine}  ${r.c.file}  ` +
+          'the citation wraps across lines — update the ~line hint by hand\n',
+      );
+    }
+  }
+  if (fix && fixable.length > 0) {
     const byDoc = new Map<string, Array<{ c: Citation; v: Verdict }>>();
-    for (const r of moved) {
+    for (const r of fixable) {
       const list = byDoc.get(r.c.doc);
       if (list) list.push(r);
       else byDoc.set(r.c.doc, [r]);
@@ -610,12 +824,26 @@ function main(): number {
     }
   }
 
-  const ok =
-    rows.length - broken.length - moved.length - ambiguous.length - historical.length;
+  // Two trees, two lines. One combined total would let a source regression hide
+  // inside a four-figure documentation count, which is the arithmetic version
+  // of the silence this whole script exists to end.
+  const line = (label: string, subset: Array<{ c: Citation; v: Verdict }>): string => {
+    const b = subset.filter((r) => r.v.kind === 'no-file' || r.v.kind === 'no-match').length;
+    const mv = subset.filter((r) => r.v.kind === 'moved').length;
+    const am = subset.filter((r) => r.v.kind === 'ambiguous').length;
+    const hi = subset.filter((r) => r.v.kind === 'historical').length;
+    return (
+      `${subset.length} citation(s) in ${label}: ` +
+      `${subset.length - b - mv - am - hi} ok, ${mv} moved, ${am} ambiguous, ` +
+      `${hi} historical, ${b} broken\n`
+    );
+  };
+  const docRows = rows.filter((r) => !fromSource(r.c.doc));
+  const srcRows = rows.filter((r) => fromSource(r.c.doc));
+  const srcFilesSeen = new Set(srcRows.map((r) => r.c.doc)).size;
   process.stdout.write(
-    `\n${rows.length} citation(s) in ${docs.length} document(s): ` +
-      `${ok} ok, ${moved.length} moved, ${ambiguous.length} ambiguous, ` +
-      `${historical.length} historical, ${broken.length} broken; ` +
+    `\n${line(`${docs.length} document(s)`, docRows)}` +
+      `${line(`${srcFilesSeen} source file(s)`, srcRows)}` +
       `${markers.length} marker(s), ${faults.length} fault(s)\n`,
   );
   if (broken.length === 0 && ambiguous.length === 0 && moved.length === 0 && faults.length === 0) {
@@ -625,11 +853,21 @@ function main(): number {
         : `every citation resolves, or says in writing that it quotes the past (${historical.length}).\n`,
     );
   }
+  // The one thing this script must never do is let a reader mistake a printed
+  // failure for a checked one. If source failures were reported and the run
+  // still exits 0, it says so in the same breath, with the flag that changes it.
+  if (ungated > 0) {
+    process.stdout.write(
+      `\n${ungated} source failure(s) above are REPORTED, not gated — they do not set the ` +
+        `exit code${failing > 0 ? ', which is 1 for the documentation failures above' : ' and this run exits 0'}.\n` +
+        'Run with --strict-source to gate them; that flag is the whole of the flip.\n',
+    );
+  }
   // A moved hint is not a failure — the fragment resolved, which is the claim.
   // `--fix` refreshes the hint; CI does not need to. A marker fault IS a
   // failure: it is the only thing standing between this exception and a
   // blanket suppressor.
-  return broken.length > 0 || ambiguous.length > 0 || faults.length > 0 ? 1 : 0;
+  return failing > 0 ? 1 : 0;
 }
 
 process.exit(main());
