@@ -35,6 +35,21 @@
  * would be a caption contradicting its own subject. Same treatment every other
  * endpoint string in this UI gets: the producer's words, unedited.
  *
+ * **Unedited, and ISOLATED where he QUOTED a machine literal.** The mockup's
+ * own `dead_scope` cell reads `scope <span class="m v">src/billing/**</span>
+ * matches no file`: the glob is lifted out of the sentence and isolated,
+ * because a glob inside prose reorders in an RTL page
+ * (`e2e/bidi.spec.ts` · `renders with its segments reversed` · ~6). This
+ * screen cannot draw that span's `.v` half — `lib/i18n.js` builds `m v` for an
+ * `{mv:}` SLOT and only for one, and nothing here substitutes a value into a
+ * translated string. What it has is a literal the PRODUCER wrote, which is the
+ * other half of the same pair
+ * (`src/ui/public/lib/i18n.js` · `out.push(run('m', payload));` · ~71), and
+ * `.m` is precisely what the stylesheet reserves for one
+ * (`src/ui/public/styles.css` · `Direction KNOWN ltr: identifiers, paths, globs, commands, flags.` · ~261).
+ * So `messageRuns` isolates what he quoted and changes not one character of
+ * what he wrote.
+ *
  * **The repair command is composed and never run** (spec §4). Which codes get
  * one, and why most do not, is `repairCommandFor`'s docstring — established by
  * reading `src/doctor/checks.ts`'s messages and then the usage banner of every
@@ -43,12 +58,25 @@
  * the commands under the table rather than inside it and two rows sharing a
  * code share a command.
  *
+ * **A card whose findings compose nothing draws no `.cmd`, and that is the
+ * design of record's own answer rather than a hole in this file.** The
+ * mockup's warning card carries a `dead_scope` row and composes NO command for
+ * it — the `.cmd` under that card belongs to `watched_docs_no_match`, one of
+ * the three PROPOSED checks this build does not have. Measured 2026-08-23
+ * against `.demo-corpus`, the corpus `e2e/screen-parity.spec.ts` runs over:
+ * `/api/doctor` answers three findings, all `dead_scope`, all `warn`, so the
+ * screen draws three cards, three rows and, correctly, not one `.cmd`. That —
+ * and not a missing implementation — is why `div.cmd`, `code` and `button` sit
+ * in that gate's ledger for this screen; `commandRow` below has built all
+ * three since the screen was written, and `screens/work.js` cites it as the
+ * precedent for its own.
+ *
  * **A clean corpus draws three empty cards, not an empty screen.** Owner
  * ruling: empty renders the real markup with zero rows. A refusal is the other
  * case, and is drawn INSTEAD of the data, in the endpoint's own words.
  */
 import { groupFindings, repairCommandFor } from '/lib/viewmodel.js';
-import { el, errorNote, linkId, screenHead } from '/screens/parts.js';
+import { el, errorNote, linkId, mono, screenHead } from '/screens/parts.js';
 
 /**
  * The mockup's three cards, in its order, each with the heading it draws.
@@ -70,6 +98,110 @@ const CARDS = [
   { level: 'warn', literal: 'warning', key: null },
   { level: 'info', literal: null, key: 'doc.notice' },
 ];
+
+/**
+ * One card's rows: every finding at this LEVEL, in `groupFindings`' order.
+ *
+ * Lifted out of `render` rather than left inside it because THREE decisions
+ * live here and spec §6 puts DOM glue outside what any test can reach — which
+ * findings a card claims, the order they arrive in, and whether a row names an
+ * item at all. `screens/work.js` took the same cut for the same reason
+ * (`fieldView`), and `test/ui/doctor-screen.test.ts` reads all three without
+ * standing up a `document`.
+ *
+ * **`item` is normalised to `null` HERE, once.** A `Finding` may omit it, and
+ * an empty string is the same fact as an absent one — `linkId('')` would
+ * compose a button that opens the detail pane for no item at all. Both become
+ * `null`, which is what the em dash below and `repairCommandFor` each read,
+ * rather than two spellings of absence drifting apart in two loops.
+ */
+export function cardRows(groups, level) {
+  const rows = [];
+  for (const [code, findings] of groups) {
+    for (const finding of findings) {
+      if (finding.level !== level) continue;
+      const named = typeof finding.item === 'string' && finding.item !== '';
+      rows.push({ code, item: named ? finding.item : null, message: finding.message });
+    }
+  }
+  return rows;
+}
+
+/**
+ * The DISTINCT repair commands one card offers, in the order its rows first
+ * asked for them.
+ *
+ * Nothing here builds a command string. Which code earns one is
+ * `repairCommandFor`'s decision and the composition is `lib/command.js`'s, the
+ * one place quoting lives in this UI
+ * (`src/ui/public/lib/command.js` · `// Command-string composition for every composed write in the UI — the ONE` · ~1),
+ * so an id carrying a space is escaped once rather than in a second spelling
+ * invented here. `test/ui/doctor-screen.test.ts` pins both halves — the line
+ * against the mockup's own `<code>`, and the quoting against an id with a
+ * space — because a screen that quietly grew its own composer would still draw
+ * a `.cmd` and still look right.
+ */
+export function cardCommands(rows) {
+  const commands = [];
+  for (const row of rows) {
+    const repair = repairCommandFor(row.code, row.item);
+    if (repair !== null && !commands.includes(repair)) commands.push(repair);
+  }
+  return commands;
+}
+
+/** A literal the checker delimited: `"a glob"` or `` `a command` ``. */
+const QUOTED_LITERAL = /"([^"\n]+)"|`([^`\n]+)`/g;
+
+/**
+ * The checker's sentence split at the literals HE marked — text, run, text —
+ * so the cell can isolate those and nothing else.
+ *
+ * **The rule is the producer's own punctuation, never a guess at what looks
+ * like a path.** Every message in `src/doctor/checks.ts` that embeds a value
+ * wraps it in double quotes
+ * (`src/doctor/checks.ts` · `scope glob "${glob}" matches no file in the repository.` · ~396)
+ * and every message that names a command wraps it in backticks. A heuristic
+ * over slashes and asterisks would isolate half a sentence the first time one
+ * of them writes "and/or", and it would have to be re-guessed every time a
+ * check is added; a delimiter the producer typed is a fact about the message
+ * rather than an inference from it.
+ *
+ * **The delimiters STAY.** They are his characters, and this screen shows his
+ * words unedited — only the isolation is added. Joining the runs reproduces
+ * the message byte for byte, which is the first thing the test asserts and the
+ * only thing that makes "unedited" checkable rather than claimed.
+ *
+ * An unbalanced quote matches nothing and falls through to one text run, which
+ * is exactly what this screen drew before. The failure mode is the old
+ * behaviour, never a dropped clause.
+ */
+export function messageRuns(message) {
+  const text = typeof message === 'string' ? message : String(message ?? '');
+  const runs = [];
+  let last = 0;
+  QUOTED_LITERAL.lastIndex = 0;
+  for (let m = QUOTED_LITERAL.exec(text); m !== null; m = QUOTED_LITERAL.exec(text)) {
+    const literal = m[1] === undefined ? m[2] : m[1];
+    // The OPENING delimiter belongs to the text before the run and the closing
+    // one to the text after it, so both survive as his characters.
+    const open = m.index + 1;
+    if (open > last) runs.push({ mono: false, text: text.slice(last, open) });
+    runs.push({ mono: true, text: literal });
+    last = open + literal.length;
+  }
+  if (last < text.length) runs.push({ mono: false, text: text.slice(last) });
+  return runs;
+}
+
+/** `<td class="small">` — the message, with its quoted literals isolated. */
+function messageCell(message) {
+  const cell = el('td', 'small');
+  for (const run of messageRuns(message)) {
+    cell.append(run.mono ? mono(run.text) : document.createTextNode(run.text));
+  }
+  return cell;
+}
 
 /**
  * `<div class="cmd"><code>…</code><button>Copy</button></div>` — the mockup's
@@ -129,33 +261,26 @@ export async function render(root, ctx) {
 
     const table = el('table');
     const tbody = el('tbody');
-    const commands = [];
+    const rows = cardRows(groups, card.level);
 
-    for (const [code, findings] of groups) {
-      for (const finding of findings) {
-        if (finding.level !== card.level) continue;
-        const row = el('tr');
-        row.append(el('td', 'm', code));
+    for (const row of rows) {
+      const tr = el('tr');
+      tr.append(el('td', 'm', row.code));
 
-        // `item` is OPTIONAL on a Finding and its absence is real —
-        // `watched_docs_no_match` and `audit_log_size` name none. The mockup
-        // draws an em dash for exactly that row, which is this design's own
-        // mark for "no value here"; an empty cell would read as a bug.
-        const named = typeof finding.item === 'string' && finding.item !== '';
-        const who = named ? el('td') : el('td', 'small', '—');
-        if (named) who.append(linkId(finding.item, false));
+      // `item` is OPTIONAL on a Finding and its absence is real —
+      // `watched_docs_no_match` and `audit_log_size` name none. The mockup
+      // draws an em dash for exactly that row, which is this design's own
+      // mark for "no value here"; an empty cell would read as a bug.
+      const who = row.item === null ? el('td', 'small', '—') : el('td');
+      if (row.item !== null) who.append(linkId(row.item, false));
 
-        row.append(who, el('td', 'small', finding.message));
-        tbody.append(row);
-
-        const repair = repairCommandFor(code, named ? finding.item : null);
-        if (repair !== null && !commands.includes(repair)) commands.push(repair);
-      }
+      tr.append(who, messageCell(row.message));
+      tbody.append(tr);
     }
 
     table.append(tbody);
     pane.append(heading, table);
-    for (const command of commands) pane.append(commandRow(ctx, command));
+    for (const command of cardCommands(rows)) pane.append(commandRow(ctx, command));
     root.append(pane);
   }
 }

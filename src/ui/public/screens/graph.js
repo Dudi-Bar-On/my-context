@@ -50,10 +50,34 @@
  * is the first item by id — deterministic, and the same answer twice — and
  * choosing it is the open question this task's report raises. The radius stays
  * the endpoint's own default of 1, which is what `gr.sub` promises: *"One
- * focused item, radius 1"*.
+ * focused item, radius 1"* — and is now SENT rather than relied on, so the
+ * readout below can name the horizon it actually asked for instead of quoting
+ * a default from memory.
+ *
+ * **EVERY DECISION IS IN `egoDrawing`, AND NOTHING IS DECIDED IN THE GLUE.**
+ * Spec §6 names `screens/*.js` as the untested surface, so this file computes
+ * the entire picture — every coordinate, every class, every truncation — as
+ * plain data first, and `chart()` does nothing but turn that list into
+ * elements. `test/ui/graph-screen.test.ts` drives `egoDrawing` with no
+ * `document` in the room and pins the routing against the mockup's own
+ * numbers, which is the only way to check the one thing a kind count cannot:
+ * an edge either arrives at its own two nodes or it does not.
+ *
+ * **NOTHING IS DROPPED IN SILENCE.** Three ends were loose. A *dangling*
+ * relation is drawn, not swallowed — the server answers `missing: true` on the
+ * node and `dangling: true` on the edge, so it is a `path.edge.dangling`
+ * arriving at a `rect.node.missing` and the legend names both. A relation
+ * whose target lies past the radius is never SENT (`/api/graph` stops the walk
+ * at the horizon) and one whose target the 60-node cap refused is dropped
+ * server-side with that node — neither is knowable from this response, so the
+ * readout states `radius` and `omitted` outright rather than letting the
+ * reader assume the picture is the whole corpus. And an edge this layout
+ * cannot place — an endpoint absent from `nodes`, which a well-formed response
+ * never contains — used to be `continue`d away without a trace; it is now
+ * counted and reported as the defect it would be.
  */
 import { edgeClass, egoNodeClass, layoutGraph } from '/lib/viewmodel.js';
-import { el, errorNote, screenHead, spaced } from '/screens/parts.js';
+import { el, errorNote, mono, screenHead, spaced } from '/screens/parts.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -71,6 +95,15 @@ const H_PAD = 56;
 const ROW = 26;
 /** The mockup's own id truncation — an ego graph is read, not audited. */
 const ID_MAX = 28;
+/** The baseline the mockup writes its three column captions on. */
+const CAPTION_Y = 16;
+/**
+ * The radius this screen asks for. It is also `/api/graph`'s own default, and
+ * is sent anyway: the readout tells the reader how far the picture reaches,
+ * and a screen that reads that number off a server default it never named
+ * would be repeating a fact rather than stating one.
+ */
+const RADIUS = 1;
 
 export async function render(root, ctx) {
   root.replaceChildren();
@@ -95,13 +128,31 @@ export async function render(root, ctx) {
 
   let data;
   try {
-    data = await ctx.api(`/api/graph?focus=${encodeURIComponent(items.items[0].id)}`);
+    data = await ctx.api(
+      `/api/graph?focus=${encodeURIComponent(items.items[0].id)}&radius=${RADIUS}`,
+    );
   } catch (error) {
     box.append(errorNote(error.message));
     return;
   }
 
-  box.append(drawEgo(ctx, data));
+  // Mirroring is by PROJECTION, not by transform: `scale(-1,1)` would reverse
+  // the digits too. The page direction is `<html dir>`, which `applyLanguage`
+  // sets from the string table itself — a layout fact, not a translated one,
+  // and the one piece of the drawing that has to be read from the document.
+  const drawing = egoDrawing(data, document.documentElement.dir === 'rtl');
+  box.append(chart(ctx, drawing));
+  card.append(spaced(readout(data, drawing)));
+  // An endpoint no column holds is a response this layout cannot honour, and
+  // the one thing it must not do is quietly draw the rest. Reported in the
+  // refusal register the screen already uses for a server that said no.
+  const lost = drawing.undrawnEdges + drawing.undrawnNodes;
+  if (lost > 0) {
+    card.append(errorNote(
+      `${drawing.undrawnEdges} edge(s) and ${drawing.undrawnNodes} node(s) in this response ` +
+      'name an id the ego layout could not place, and are not in the drawing above',
+    ));
+  }
 }
 
 /** `sv(tag, attrs)` — the mockup's own SVG factory, argument for argument. */
@@ -117,15 +168,30 @@ function svText(attrs, text) {
   return node;
 }
 
-function drawEgo(ctx, data) {
-  // Mirroring is by PROJECTION, not by transform: `scale(-1,1)` would reverse
-  // the digits too. The page direction is `<html dir>`, which `applyLanguage`
-  // sets from the string table itself — a layout fact, not a translated one.
-  const rtl = document.documentElement.dir === 'rtl';
+/**
+ * **The whole picture, as data, before one element exists.**
+ *
+ * `data` is `/api/graph`'s body verbatim and `rtl` is the page direction; the
+ * return value is every coordinate, class and label the chart will carry, plus
+ * the count of anything the response named and this layout could not place.
+ * No `document` is touched, which is what lets `test/ui/graph-screen.test.ts`
+ * assert that an edge leaves its OWN node's box and arrives at its OWN
+ * target's — the fact a parity gate counting element kinds is blind to.
+ *
+ * **Both facts on an edge are the server's** (`type` is the relation
+ * vocabulary, `loadBearing` is `isLoadBearing(type)` called in `/api/graph`),
+ * and `edgeClass` turns the pair into the legend's three line styles here in
+ * the browser without re-listing one word of that vocabulary.
+ */
+export function egoDrawing(data, rtl = false) {
   const X = (u) => (rtl ? W - u : u);
   const px = (x, width) => (rtl ? W - x - width : x);
 
   const placed = layoutGraph(data.nodes, data.edges, data.focus);
+  // `at` is the whole reason an edge can find its ends: `layoutGraph` answers
+  // in ITS order, not the response's, so an edge's two ids are resolved
+  // through this index rather than by position in either array.
+  const at = new Map(placed.map((p) => [p.id, p]));
   const byId = new Map(data.nodes.map((node) => [node.id, node]));
   const columns = Math.max(...placed.map((p) => p.x)) + 1;
   // The "+N more" node is a ROW in the last column, exactly as the mockup adds
@@ -145,71 +211,75 @@ function drawEgo(ctx, data) {
     return 34 + gap * index + gap / 2;
   };
 
-  const kids = [];
+  // Rows within a column, in `layoutGraph`'s (relation type, id) order.
+  const yOf = (p) => spread(perColumn[p.x], p.y);
 
-  // The column captions. `gr.lfocus` is a declared key and is used for the
-  // middle one; the two direction captions are written in the mockup's own
-  // script as unkeyed `HEB ? … : …` ternaries, so they are transcribed as its
-  // English and raised in this task's report — dropping them would leave the
-  // reader unable to tell which column points which way, which is the entire
-  // claim this layout makes. An SVG `<text>` cannot hold an element, so `tFlat`
-  // is the sink here whatever the renderer does.
-  const CAPTION = {
-    '-1': 'these point at the focus',
-    '1': 'the focus points at these',
-  };
+  // The column captions, one per occupied column, carrying the SIGNED depth
+  // rather than a sentence: the middle one is the declared key `gr.lfocus` and
+  // only `chart()` holds a `ctx` to resolve it with.
+  const captions = [];
   const captionSeen = new Set();
   for (const p of placed) {
     if (captionSeen.has(p.x)) continue;
     captionSeen.add(p.x);
-    const caption = p.depth === 0 ? ctx.tFlat('gr.lfocus') : CAPTION[String(Math.sign(p.depth))];
-    if (caption === undefined) continue;
-    kids.push(svText(
-      { x: X(colX(p.x) + NW / 2), y: 16, 'text-anchor': 'middle' }, caption,
-    ));
+    captions.push({ depth: Math.sign(p.depth), x: X(colX(p.x) + NW / 2), y: CAPTION_Y });
   }
 
-  // Rows within a column, in `layoutGraph`'s (relation type, id) order.
-  const yOf = (p) => spread(perColumn[p.x], p.y);
-
-  // EDGES FIRST, so a node box is never drawn under its own connectors.
+  // **HOW AN EDGE FINDS ITS TWO ENDPOINTS.** `edge.from` and `edge.to` are ids,
+  // and each is looked up in `at` to get the column/row the layout gave THAT
+  // id — never an index into `data.nodes`, whose order is the server's walk
+  // order and not the layout's. The curve then leaves the trailing side of the
+  // earlier column's box and arrives at the leading side of the later one, so
+  // both ends land on a box edge rather than under a label; `forward` is what
+  // makes that true for a relation that points leftward as well as rightward.
+  const edges = [];
+  let undrawnEdges = 0;
   for (const edge of data.edges) {
-    const a = placed.find((p) => p.id === edge.from);
-    const b = placed.find((p) => p.id === edge.to);
-    if (a === undefined || b === undefined) continue;
-    // From the right-hand side of the earlier column to the left-hand side of
-    // the later one, so the curve leaves and arrives at a box edge.
+    const a = at.get(edge.from);
+    const b = at.get(edge.to);
+    // An id no column holds cannot be routed to, and guessing a coordinate for
+    // it would draw a line to a place nothing is. Counted, and said out loud
+    // by `render` — the previous `continue` lost it without a trace.
+    if (a === undefined || b === undefined) { undrawnEdges += 1; continue; }
     const forward = a.x <= b.x;
     const x1 = forward ? colX(a.x) + NW : colX(a.x);
     const x2 = forward ? colX(b.x) : colX(b.x) + NW;
     const y1 = yOf(a);
     const y2 = yOf(b);
     const mx = (x1 + x2) / 2;
-    kids.push(sv('path', {
-      class: `edge ${edgeClass(edge)}`,
+    edges.push({
+      from: edge.from,
+      to: edge.to,
+      // Every edge carries its relation TYPE, because "broken" and "how much it
+      // matters" are two different facts (`gr.note`). A relation type is the
+      // vocabulary's own word and is not translated anywhere in the mockup.
+      type: edge.type,
+      cls: `edge ${edgeClass(edge)}`,
       d: `M ${X(x1)} ${y1} C ${X(mx)} ${y1} ${X(mx)} ${y2} ${X(x2)} ${y2}`,
-    }));
-    // Every edge carries its relation TYPE, because "broken" and "how much it
-    // matters" are two different facts (`gr.note`). A relation type is the
-    // vocabulary's own word and is not translated anywhere in the mockup.
-    kids.push(svText(
-      { x: X(mx), y: (y1 + y2) / 2 - 5, 'text-anchor': 'middle', class: 'rel' }, edge.type,
-    ));
+      labelX: X(mx),
+      labelY: (y1 + y2) / 2 - 5,
+    });
   }
 
+  const nodes = [];
   for (const p of placed) {
-    const node = byId.get(p.id);
+    // `layoutGraph` places the focus whether or not the response listed it, and
+    // an unlisted id is exactly the "target not in corpus" the legend names —
+    // so it is drawn as MISSING rather than read off an undefined.
+    const node = byId.get(p.id) ?? { id: p.id, status: null, missing: true };
     const y = yOf(p);
     const state = egoNodeClass(node, data.focus);
-    kids.push(sv('rect', {
-      class: state === '' ? 'node' : `node ${state}`,
-      x: px(colX(p.x), NW), y: y - NH / 2, width: NW, height: NH, rx: 4,
-    }));
-    kids.push(svText(
-      { x: X(colX(p.x) + NW / 2), y: y + 3.5, 'text-anchor': 'middle', class: 'nid' },
-      p.id.length > ID_MAX ? `${p.id.slice(0, ID_MAX - 1)}…` : p.id,
-    ));
+    nodes.push({
+      id: p.id,
+      cls: state === '' ? 'node' : `node ${state}`,
+      x: px(colX(p.x), NW), y: y - NH / 2, width: NW, height: NH,
+      labelX: X(colX(p.x) + NW / 2), labelY: y + 3.5,
+      label: p.id.length > ID_MAX ? `${p.id.slice(0, ID_MAX - 1)}…` : p.id,
+    });
   }
+  // A served node the walk from the focus never reaches has no column either.
+  // Same rule as an unroutable edge: counted, never quietly absent.
+  const undrawnNodes = data.nodes.filter((node) => !at.has(node.id)).length;
 
   // The cap dropped nodes, and saying so is not optional — `gr.sub` promises
   // "a hard cap of 60 nodes with an explicit '+N more'". The mockup writes the
@@ -218,29 +288,103 @@ function drawEgo(ctx, data) {
   // attribute, and the repaint's rule is a class either way, so the fill is
   // left to the stylesheet through `text.nid.more` and only the word is
   // transcribed. Raised in this task's report with the other five.
+  let more = null;
   if (data.omitted > 0) {
     const lastColumn = columns - 1;
     const y = spread(perColumn[lastColumn], perColumn[lastColumn] - 1);
-    kids.push(sv('rect', {
-      class: 'node more', x: px(colX(lastColumn), NW), y: y - NH / 2,
-      width: NW, height: NH, rx: 4,
-    }));
-    kids.push(svText(
-      { x: X(colX(lastColumn) + NW / 2), y: y + 3.5, 'text-anchor': 'middle', class: 'nid more' },
-      `+${data.omitted} more`,
-    ));
+    more = {
+      cls: 'node more',
+      x: px(colX(lastColumn), NW), y: y - NH / 2, width: NW, height: NH,
+      labelX: X(colX(lastColumn) + NW / 2), labelY: y + 3.5,
+      label: `+${data.omitted} more`,
+    };
   }
 
+  return { width: W, height, columns, captions, edges, nodes, more, undrawnEdges, undrawnNodes };
+}
+
+/**
+ * The drawing turned into elements, and nothing else decided here.
+ *
+ * EDGES FIRST, so a node box is never drawn under its own connectors — the
+ * mockup's own order, and the reason `egoDrawing` keeps the two lists apart.
+ */
+function chart(ctx, drawing) {
   const svg = sv('svg', {
-    viewBox: `0 0 ${W} ${height}`,
+    viewBox: `0 0 ${drawing.width} ${drawing.height}`,
     class: 'chart',
     role: 'img',
     // An accessible name is an ATTRIBUTE, so no element could survive here and
     // no key declares this sentence: the mockup writes it as a ternary too.
     'aria-label': 'Relation ego-graph: columns by direction, relation type on every edge',
   });
-  for (const kid of kids) svg.append(kid);
+
+  // `gr.lfocus` is a declared key and is used for the middle column; the two
+  // direction captions are written in the mockup's own script as unkeyed
+  // `HEB ? … : …` ternaries, so they are transcribed as its English and raised
+  // in this task's report — dropping them would leave the reader unable to tell
+  // which column points which way, which is the entire claim this layout makes.
+  // An SVG `<text>` cannot hold an element, so `tFlat` is the sink here whatever
+  // the renderer does.
+  const CAPTION = {
+    '-1': 'these point at the focus',
+    '1': 'the focus points at these',
+  };
+  for (const caption of drawing.captions) {
+    const text = caption.depth === 0 ? ctx.tFlat('gr.lfocus') : CAPTION[String(caption.depth)];
+    if (text === undefined) continue;
+    svg.append(svText({ x: caption.x, y: caption.y, 'text-anchor': 'middle' }, text));
+  }
+
+  for (const edge of drawing.edges) {
+    svg.append(sv('path', { class: edge.cls, d: edge.d }));
+    svg.append(svText(
+      { x: edge.labelX, y: edge.labelY, 'text-anchor': 'middle', class: 'rel' }, edge.type,
+    ));
+  }
+
+  for (const node of [...drawing.nodes, ...(drawing.more === null ? [] : [drawing.more])]) {
+    svg.append(sv('rect', {
+      class: node.cls, x: node.x, y: node.y, width: node.width, height: node.height, rx: 4,
+    }));
+    svg.append(svText(
+      {
+        x: node.labelX, y: node.labelY, 'text-anchor': 'middle',
+        class: node.cls === 'node more' ? 'nid more' : 'nid',
+      },
+      node.label,
+    ));
+  }
   return svg;
+}
+
+/**
+ * **What this picture is of, and how far it reaches.**
+ *
+ * Five numbers in the endpoint's own vocabulary — `focus`, `radius`, `nodes`,
+ * `edges`, `omitted` — and not one translated word, for the same reason a
+ * relation type is drawn untranslated: these are `/api/graph`'s parameter and
+ * field names, literals rather than prose, so no string key is invented for
+ * them and neither table gains one.
+ *
+ * It exists because three different absences look identical without it. A
+ * focus with no relations draws one box; a focus whose neighbours all sit past
+ * `radius=1` draws one box; a screen whose edge code was never written draws
+ * one box. `edges=0` beside `radius=1` separates the first two from the third
+ * on sight, and `omitted` says outright that a graph is a partial view — the
+ * one thing the "+N more" node cannot say when the cap dropped nothing.
+ *
+ * One `span.m` rather than five: `.m` is `direction:ltr; unicode-bidi:isolate`,
+ * and an id set loose in an RTL paragraph is the bidi defect this whole screen
+ * keeps titles out of its SVG to avoid.
+ */
+function readout(data, drawing) {
+  const p = el('p', 'small');
+  p.append(mono(
+    `focus=${data.focus} · radius=${RADIUS} · nodes=${data.nodes.length}` +
+    ` · edges=${data.edges.length} · drawn=${drawing.edges.length} · omitted=${data.omitted}`,
+  ));
+  return p;
 }
 
 /**

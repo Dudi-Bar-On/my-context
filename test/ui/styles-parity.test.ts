@@ -263,6 +263,24 @@ const SCREEN_SELECTORS = [
   '.legend', '.legend i', '.legend .ln', '.legend i.warm', '.legend i.cold',
   '.legend i.never', '.legend i.badpin', '.legend i.focusn', '.legend i.missn',
   '.legend i.supn', '.legend .ln.bearing', '.legend .ln.ref', '.legend .ln.dang',
+  // **The SVG chart, which this stylesheet had no rules for at all.** Measured
+  // in a browser on 2026-08-23: with only styles.css loaded, `path` resolved to
+  // `fill:rgb(0,0,0); stroke:none` and `rect` to `fill:rgb(0,0,0)` — every node
+  // a black slab and every edge a black filled blob, on graph, watch, decay and
+  // simulate alike. The only mention of `svg.chart` in the file was a comment.
+  //
+  // Two earlier carries missed it for a STRUCTURAL reason worth keeping:
+  // `screen-parity`'s COLLECT_KINDS reads `el.className`, which on an SVG
+  // element is an SVGAnimatedString rather than a string, so every SVG element
+  // is recorded as a bare tag with no classes. A carry derived from that ledger
+  // cannot see an SVG class. The same blindness means the gate cannot tell
+  // `<path class="edge dangling">` from `<path>` — filed separately.
+  'svg.chart', 'svg.chart text', 'svg.chart text.mono', 'svg.chart .axis',
+  'svg.chart .step', 'svg.chart .nowline', 'svg.chart .defline', 'svg.chart .never',
+  'svg.chart .node', 'svg.chart .node.focus', 'svg.chart .node.missing',
+  'svg.chart .node.superseded', 'svg.chart .node.more',
+  'svg.chart .edge', 'svg.chart .edge.bearing', 'svg.chart .edge.ref',
+  'svg.chart .edge.dangling', 'svg.chart text.nid', 'svg.chart text.rel',
   '.idkind', '.idslug', 'h2', 'button',
   ':where(button,a,input,select,summary):focus-visible',
   '[dir="rtl"] .icon-open', '[class^="icon-"]',

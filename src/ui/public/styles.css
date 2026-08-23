@@ -964,3 +964,41 @@ del{background:var(--critbg);color:var(--dim);text-decoration:line-through;borde
 .legend .ln.bearing{border-block-start:1.5px solid var(--ink);opacity:.55}
 .legend .ln.ref{border-block-start:1px solid var(--faint)}
 .legend .ln.dang{border-block-start:1.6px dashed var(--crit)}
+
+/* ── CARRIED: the SVG chart, which had no rules at all ────────────────
+   2026-08-23. Measured in a browser: with only this stylesheet loaded,
+   `path` resolved to `fill:rgb(0,0,0); stroke:none` and `rect` to
+   `fill:rgb(0,0,0)` — every node a solid black slab, every edge a black
+   filled blob, on FOUR screens (graph, watch, decay, simulate). The only
+   mention of `svg.chart` in this file was inside a comment.
+
+   Two carries missed it, and the cause is structural rather than careless:
+   screen-parity’s COLLECT_KINDS reads `el.className`, which on an SVG
+   element is an SVGAnimatedString and not a string, so every SVG element is
+   recorded as a BARE TAG with no classes. The ledger literally cannot name
+   an SVG class, so a carry derived from it is blind to every rule below.
+   The same blindness means the gate cannot tell `<path class="edge
+   dangling">` from `<path>` — filed, and not fixable from here. */
+
+/* — SVG chart primitives — */
+svg.chart{display:block;inline-size:100%;block-size:auto;overflow:visible}
+svg.chart text{font-family:var(--sans);font-size:var(--fs-00);fill:var(--dim)}
+svg.chart text.mono{font-family:var(--mono);font-size:11px}
+svg.chart .axis{stroke:var(--rule);stroke-width:1}
+svg.chart .step{stroke:var(--ok);stroke-width:2;fill:none;stroke-linejoin:round}
+svg.chart .nowline{stroke:var(--gold);stroke-width:1.5}
+svg.chart .defline{stroke:var(--edge-3);stroke-width:1;stroke-dasharray:3 3}
+svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
+
+/* — ego graph: edge class carries severity, node style carries state — */
+svg.chart .node{fill:var(--panel);stroke:var(--edge-3);stroke-width:1}
+svg.chart .node.focus{fill:var(--goldbg);stroke:var(--gold);stroke-width:2}
+svg.chart .node.missing{fill:none;stroke:var(--crit);stroke-dasharray:3 2}
+svg.chart .node.superseded{fill:var(--sink);stroke:var(--faint)}
+svg.chart .node.more{fill:var(--warnbg);stroke:var(--warn);stroke-dasharray:3 2}
+svg.chart .edge{fill:none;stroke:var(--edge-3)}
+svg.chart .edge.bearing{stroke:var(--ink);stroke-width:1.4;opacity:.55}
+svg.chart .edge.ref{stroke:var(--faint);stroke-width:.8}
+svg.chart .edge.dangling{stroke:var(--crit);stroke-width:1.6;stroke-dasharray:4 3}
+svg.chart text.nid{font-family:var(--mono);font-size:10.5px;fill:var(--ink)}
+svg.chart text.rel{font-family:var(--mono);font-size:10px;fill:var(--dim)}

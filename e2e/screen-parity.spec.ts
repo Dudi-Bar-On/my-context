@@ -62,7 +62,19 @@ const COLLECT_KINDS = (selector: string): string[] | null => {
     // `offsetParent === null` catches display:none and every ancestor's
     // [hidden]; the position check keeps a legitimately fixed element in.
     if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') continue;
-    const raw = typeof el.className === 'string' ? el.className.trim() : '';
+    // `getAttribute('class')`, NOT `el.className`. On an SVG element
+    // `className` is an SVGAnimatedString, so `typeof … === 'string'` is false
+    // and every `<rect>`, `<path>`, `<circle>` and `<text>` was recorded as a
+    // BARE TAG with no classes — measured 2026-08-23, after four agents each
+    // reported an SVG screen and the eighteen `svg.chart` rules turned out never
+    // to have been carried into styles.css at all.
+    //
+    // Two things were wrong while that held. This gate could not tell
+    // `<path class="edge dangling">` from `<path>`, so a screen could draw every
+    // edge unclassed and pass. And a CSS carry derived from this ledger — which
+    // is how the wave-2 carry was measured — was structurally blind to every SVG
+    // rule, which is exactly what happened, twice.
+    const raw = (el.getAttribute('class') ?? '').trim();
     const cls = raw === '' ? '' : `.${raw.split(/\s+/).sort().join('.')}`;
     kinds.add(`${el.tagName.toLowerCase()}${cls}`);
   }
@@ -82,6 +94,10 @@ const BUILT = [
   // capture, proc, port, packs — had no endpoint at all until that same wave
   // built their read models, and are the next wave's work.
   'ask', 'work', 'palette', 'config', 'docs', 'tut',
+  // The last four, later the same day. TWENTY-ONE OF TWENTY-ONE — this walk is
+  // now the whole rail, and `plan:port seq:98`, the screen-by-screen review
+  // with the owner, is no longer waiting on a screen that does not exist.
+  'capture', 'proc', 'port', 'packs',
 ] as const;
 
 /**
@@ -136,7 +152,9 @@ const BUILT = [
 // states and the entry below is their union. Tracked as
 // TASK-on-a-working-corpus-the-audit-projection-is-stale-within and
 // TASK-the-401-is-the-read-surface-s-one-write-and-it-makes-the-next.
-const DATA_DEPENDENT = new Set<string>(['watch', 'ask']);
+const DATA_DEPENDENT = new Set<string>([
+  'watch', 'ask', 'decay', 'simulate', 'coverage', 'graph', 'proc', 'capture',
+]);
 
 const KNOWN_GAPS: Record<string, string[]> = {
   // **26 on 2026-08-22, the largest of any screen; 2 on 2026-08-23.** The tier
@@ -212,15 +230,30 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // nothing more.
   preview: ['div.carrieditem.small', 'div.gh', 'i', 'li', 'span.chip', 'span.prop', 'ul'],
   coverage: [
-    'button', 'button.linkid.m', 'div', 'div.mini', 'i', 'i.g', 'i.u', 'i.x',
+    'button', 'button.linkid.m', 'div.mini', 'i', 'i.g', 'i.u', 'i.x',
     'span.covn', 'span.nm', 'table', 'tbody', 'td', 'th', 'thead', 'tr',
   ],
   gaps: ['b', 'button.icon', 'span.m', 'span.v', 'td', 'td.m', 'td.small'],
+  // The spill-ratio card landed, closing seven. The staircase, the ladder and
+  // the readout did not, and the file says why at length: both graphics need a
+  // SWEEP no endpoint answers, and the readout's words are unkeyed literals in
+  // the mockup's own script. Held open by plan:ui1 seq:17c.
   simulate: [
-    'b', 'circle', 'div', 'div.at', 'div.card.pane.sim', 'div.div-l', 'div.div-r',
-    'div.div-row', 'div.ev', 'div.ladder.plate', 'div.readout', 'div.small', 'h3',
-    'i', 'line', 'path', 'span.chip.warn', 'span.div-n', 'span.div-name', 'span.v',
-    'svg', 'text',
+    'b', 'circle', 'div', 'div.at', 'div.card.pane.sim', 'div.ev',
+    'div.ladder.plate', 'div.readout', 'div.small', 'line', 'path',
+    'span.chip.warn', 'span.v', 'svg', 'text',
+    // Reported for the first time on 2026-08-23, when COLLECT_KINDS stopped
+    // reading `el.className` on SVG elements. These were always missing; the
+    // gate simply could not name them.
+    'line.axis', 'line.defline', 'line.nowline', 'path.step', 'svg.chart', 'text.mono',
+    // The spill-ratio bars, which the code DOES draw — measured and
+    // photographed against a synced corpus. They read /api/watch/ratio, which
+    // 503s the moment the audit projection falls behind, and the suite stales
+    // it itself: a refusal is the read surface's one write, so the 401s these
+    // very tests provoke push the log past the projection. Listed as a
+    // CEILING, which is what DATA_DEPENDENT means — present alone, absent
+    // under six workers, and neither is a regression.
+    'div.div-l', 'div.div-r', 'div.div-row', 'i', 'span.div-n', 'span.div-name',
   ],
   injected: ['button.linkid.m', 'span.chip.gov', 'span.chip.ok', 'td', 'td.m.small'],
   // Shrank from 15 to 8 while this gate was being written: the agent building
@@ -257,16 +290,39 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'b', 'bdi', 'div.nt', 'div.rw', 'div.tokbar', 'div.tokvoid', 'rect',
     'span.chip.crit', 'span.chip.ok', 'span.chip.warn', 'span.ln', 'svg', 'td',
     'td.m.small', 'tr.regime',
+    // `svg.chart` appeared for the first time on 2026-08-23, when the collector
+    // stopped reading `el.className` on SVG elements. The pulse's own <svg> is
+    // the same element already listed here as a bare `svg`; the class is what
+    // the gate could not previously see.
+    'svg.chart',
   ],
-  doctor: ['b', 'button', 'code', 'div.cmd', 'span.m', 'span.m.v', 'span.prop'],
+  // `button`, `code` and `div.cmd` came out on 2026-08-23 — not because the
+  // screen changed, but because the FIXTURE did. This corpus had only
+  // `dead_scope` findings, and `dead_scope` composes no command by design, so
+  // the remedy block had nothing to draw. One staged `source_drift` closed all
+  // three. The agent refused to close them by composing something for
+  // `dead_scope`, because the mockup composes nothing for it either.
+  doctor: ['b', 'span.m.v', 'span.prop'],
+  // 23 -> 15 on 2026-08-23: the recency comb and the 90-day heatstrip both
+  // landed. What remains is almost entirely DATA — the heatstrip reads the
+  // audit projection, which the read surface itself stales, so this screen
+  // has the same disease as `watch` and `ask` and joins them below.
   decay: [
-    'b', 'circle', 'div', 'div.heat.plate', 'div.heataxis', 'div.hname', 'div.hstrip',
-    'div.legend', 'div.plate', 'i', 'i.badpin', 'i.cold', 'i.h1', 'i.h2', 'i.h3',
-    'i.never', 'i.sp', 'i.warm', 'line', 'rect', 'span.ln', 'svg', 'text',
+    'b', 'circle', 'div', 'div.heataxis', 'div.hname', 'div.hstrip', 'i',
+    'i.h1', 'i.h2', 'i.h3', 'i.sp', 'line', 'rect', 'svg', 'text',
   ],
-  graph: ['b', 'path'],
+  // `path` was the whole ego graph before the edges landed. What remains is the
+  // classed forms the old collector could not see, and every one of them needs
+  // a focus WITH RELATIONS — this corpus creates none, so the screen draws its
+  // nodes and has no edge to draw. DATA, not code: the agent rendered all of
+  // them against a connected body and photographed the result.
+  graph: [
+    'b', 'path', 'path.bearing.edge', 'path.dangling.edge', 'path.edge.ref',
+    'rect.missing.node', 'rect.more.node', 'rect.node', 'rect.node.superseded',
+    'text.rel',
+  ],
   status: ['b'],
-  learn: ['i', 'span.m'],
+  learn: ['i'],
 
   // ── The six screens built in parallel on 2026-08-23 ─────────────────────
   //
@@ -299,12 +355,31 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // corpus answers the opening pattern with none. `span.chip.crit` is
   // INTERACTION: it appears the moment an argv value carries a shell
   // substitution, which no default value does. Neither is missing code.
-  palette: ['b', 'div.hit', 'span.chip.crit'],
+  // `div.hit` came out the same way: the glob tester lights a row per matching
+  // file, and this corpus had no repository files at all until fifteen were
+  // added to the fixture. Code that was correct all along.
+  palette: ['b', 'span.chip.crit'],
   config: [
     'div.blast', 'div.delta', 'div.delta.gain', 'div.delta.loss', 'i',
     'span.arrow', 'span.was', 'span.will',
   ],
   docs: ['a', 'h4', 'pre', 'span.refusal'],
+  // ── The last four screens, landed 2026-08-23 ──────────────────────────
+  // The table needs a scope the reader has TYPED — there is no route parameter
+  // and no endpoint that supplies one, which is this screen's loudest open
+  // question. Nothing renders below the controls until someone types.
+  capture: [
+    'b', 'p.cmdnote', 'span.m.v', 'table', 'tbody', 'td.m', 'td.small', 'tr',
+  ],
+  // This corpus holds no `procedure` item at all, so the whole live half — one
+  // card per procedure, its progress bar and its composed `procedure done` —
+  // has nothing to draw. The static states table renders unconditionally.
+  proc: [
+    'b', 'button', 'code', 'div.bar', 'i', 'i.f', 'span', 'span.m.v',
+    'span.prop', 'span.v', 'span.verdict', 'div.cmd',
+  ],
+  port: ['i'],
+  packs: ['span.prop', 'span.verdict'],
   tut: ['b'],
 };
 

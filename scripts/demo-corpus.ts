@@ -125,6 +125,49 @@ config['categories'] = {
 writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 console.log('demo-corpus: budgets set small so the ribbon spills; task category enabled');
 
+// ── A REPOSITORY FOR THE CORPUS TO BE ABOUT ────────────────────────────────
+//
+// Measured on 2026-08-23 by the agents closing the Coverage-gaps and Scope-
+// coverage screens: this corpus contained NO repository files at all.
+// `/api/coverage` answers `files: []`, so the gaps table renders three column
+// heads over an empty body and the magnitude bar has nothing to size — on a
+// build where both are written and correct. Two screens undemonstrable, for a
+// reason that is the fixture's and not the code's, which is the exact confusion
+// `DEC-the-ui-is-developed-against-a-simulated-corpus-until-the` was written to
+// end. The hook records below already NAME `src/api/handler.ts` and
+// `src/db/migrate.ts`; nothing ever created them.
+//
+// So: a small tree, deliberately shaped rather than uniform. Some directories
+// fall inside a pinned item's scope and some do not, because a coverage screen
+// whose every row is governed reports nothing and a screen whose every row is
+// ungoverned reports noise. `src/billing/**` is the scope the Capture screen's
+// own mockup sample uses, so the two screens agree about one path.
+const REPO_FILES: string[] = [
+  'src/api/handler.ts', 'src/api/router.ts', 'src/api/middleware.ts',
+  'src/billing/invoice.ts', 'src/billing/ledger.ts', 'src/billing/tax.ts',
+  'src/db/migrate.ts', 'src/db/pool.ts',
+  'src/ui/render.ts', 'src/ui/theme.ts',
+  'docs/architecture.md', 'docs/onboarding.md',
+  'scripts/release.ts',
+  'test/api/handler.test.ts', 'test/billing/invoice.test.ts',
+];
+for (const rel of REPO_FILES) {
+  const file = path.join(OUT, rel);
+  mkdirSync(path.dirname(file), { recursive: true });
+  // Deterministic, and long enough to be a real file rather than a stub — this
+  // script has no randomness anywhere and must not gain any.
+  writeFileSync(file, [
+    `// ${rel} — demo repository file, written by scripts/demo-corpus.ts.`,
+    '// It exists so the coverage walk has something to walk. Its CONTENT is',
+    '// not read by anything: coverage is about paths and the scopes that match',
+    '// them, never about what a file says.',
+    '',
+    'export const placeholder = true;',
+    '',
+  ].join('\n'));
+}
+console.log(`demo-corpus: ${REPO_FILES.length} repository files written, so /api/coverage has a tree`);
+
 // ── Items: every tier, every category, and enough to overrun ───────────────
 // PINNED (always:true) — more than the 2,400-token budget, so some spill and
 // the ghost lane draws.
@@ -282,6 +325,42 @@ for (let i = 0; i < 24; i++) {
 
 // A focus change — the feed draws this as a regime RULE across the table rather
 // than as a row, and it is the only thing that draws one.
+// ── ONE DOCTOR FINDING THAT EARNS A COMMAND ────────────────────────────────
+//
+// Measured 2026-08-23 by the agent closing the Doctor screen: `mycontext doctor`
+// over this corpus answered THREE findings, all `dead_scope`, all `warn` — and
+// `dead_scope` composes nothing, because re-scoping is an edit to an item file
+// rather than a command. So the screen's `div.cmd`, `code` and `button` had
+// nothing to draw, on a build where all three have been built since the screen
+// was written. The decision behind this corpus names "doctor findings" among
+// what it must exercise; a finding that earns no remedy only exercises half.
+//
+// `source_drift` WITH AN ITEM is the deterministic one: capture an item from a
+// file, then change the file. `doctor` reports the drift, names the item, and
+// its remedy is `mycontext refresh <id>` — a real command the screen composes
+// through the one quoting implementation. Nothing here fakes a finding: the
+// checker measures a genuine divergence between a snapshot and its source.
+const driftDoc = path.join(OUT, 'docs', 'retention-policy.md');
+writeFileSync(driftDoc, [
+  'Records are retained for ninety days and then deleted.',
+  '',
+  'Deletion is irreversible and runs nightly.',
+  '',
+].join('\n'));
+cli(['add', 'standard', 'Records are retained for ninety days', '--file', driftDoc, '--yes']);
+// The source moves on, exactly as a document does between one capture and the
+// next read. The item still holds the old text — which is the whole point of
+// the finding, and what `mycontext refresh` exists to settle.
+writeFileSync(driftDoc, [
+  'Records are retained for one hundred and eighty days and then deleted.',
+  '',
+  'Deletion is irreversible and runs nightly.',
+  '',
+  'A legal hold suspends deletion until the hold is lifted.',
+  '',
+].join('\n'));
+console.log('demo-corpus: one source_drift finding staged, so Doctor has a remedy to compose');
+
 cli(['focus', 'billing']);
 cli(['focus', '--clear']);
 
@@ -414,4 +493,18 @@ if (existsSync(stateDir)) {
 // one that greets the owner with a 503 he has to know how to clear.
 cli(['audit', '--limit', '1']);
 console.log('demo-corpus: audit projection built');
+
+// **The LEDGER projection, which is a different projection and was never
+// built.** Measured 2026-08-23 by the agent building the Decay screen:
+// `/api/decay` over this corpus answered `ledger: "not-projected"`,
+// `report: null`, `series: []`, so the recency comb had nothing to plot — on a
+// build where the comb is written and correct.
+//
+// The line above builds the AUDIT projection and nothing else. `topUpLedger` is
+// reached only by `status`, `decay` and `audit replay-ledger`, and this script
+// ran none of them, so a corpus that has recorded every injection still could
+// not say when any item was last used. One command closes it, and `decay` is
+// the honest one to run: it is the command whose own screen needs the answer.
+cli(['decay']);
+console.log('demo-corpus: ledger projection built, so the recency comb has teeth');
 console.log(`demo-corpus: done. Serve it with:\n  node src/cli/index.ts ui --port 58888 --no-open   (cwd: ${OUT})`);

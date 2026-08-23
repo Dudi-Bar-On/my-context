@@ -70,8 +70,51 @@
  * **`markdown` is fetched and not drawn.** It is the largest field in each of
  * the four responses and the design of record's Learn screen has nowhere to
  * put it — reported, not repurposed.
+ *
+ * ── HOW A VALUE IS MARKED AS MACHINE TEXT, AND WHY IT IS A `span.m` ───────
+ *
+ * This section marks a value as machine text in exactly two shapes, and this
+ * file draws both of them:
+ *
+ *   - the TOPIC NAME, `<td class="m">categories</td>` — the cell itself
+ *     carries the mark, four times;
+ *   - the CROSS-LINKED ID, `<span class="m">INV-prices-are-integer-cents</span>`
+ *     — `mono()`, twice.
+ *
+ * **`.m` is `direction:ltr; unicode-bidi:isolate`, not a font choice — and
+ * what it buys here was MEASURED, not assumed.** Rendered into the Hebrew
+ * (`dir="rtl"`) page against the shipped stylesheet, a value whose first and
+ * last characters are both strong left-to-right reads the same way marked or
+ * unmarked: `INV-prices-are-integer-cents` and
+ * `CONST-postgres-pool-capped-at-20` do not reorder at all, and dropping the
+ * mark changes only the font. A value whose first or last character is a
+ * NEUTRAL does reorder — `src/**`, `(2 pinned)` and an id with a leading
+ * hyphen each read right-to-left unmarked and left-to-right marked, the run
+ * jumping to the far side of the sentence.
+ *
+ * So the mark is neither decoration nor a live defect on today's two ids. It
+ * is what makes the rendering a property of the CODE rather than of which
+ * items this corpus happens to hold: `firstId()` hands this cell whatever
+ * `/api/help/:topic` carries, and the day that is a slug with a neutral at
+ * either end, an unmarked run breaks the sentence around it. Every
+ * machine-text run is therefore marked where it is DRAWN, not where somebody
+ * looked at it once and it happened to be fine.
+ *
+ * **The id is a `span.m` and not the `button.linkid m` the rest of the app
+ * draws, because that is what the design of record draws HERE.** The mockup
+ * knows the `linkid` primitive — it writes one on five other sections — and
+ * did not reach for it in `<section data-p="learn">`, which makes a plain run
+ * the drawn intent rather than an omission. Nothing is lost by it today: the
+ * item detail pane `parts.js`' `linkId()` delegates to has not been built
+ * (`index.html` declares no `aside#pane`, `app.js` registers no delegated
+ * click — the pane is one of the "unowned" surfaces its own header lists), so
+ * every `linkId` in this app is inert. `ask` made the opposite call for
+ * consistency with the other screens and still carries `span.m` in
+ * `KNOWN_GAPS` for it; this screen carries the mockup's shape instead. The
+ * day the pane lands, the question is worth re-asking with the owner — and on
+ * the mockup, which is where the two ids would have to become buttons first.
  */
-import { el, errorNote, linkId, screenHead } from '/screens/parts.js';
+import { el, errorNote, mono, screenHead } from '/screens/parts.js';
 
 /**
  * The four topics in the mockup's own order, each with the description key it
@@ -135,7 +178,12 @@ export async function render(root, ctx) {
       cell.append(errorNote(failure));
     } else {
       const id = firstId(body.corpus, entry.link);
-      if (id !== null) cell.append(' · ', linkId(id, false));
+      // `mono()`, which is `<span class="m">` — the mockup's own shape for this
+      // cell, and the `unicode-bidi:isolate` that makes the id read
+      // left-to-right in Hebrew whatever its first and last characters are.
+      // See this file's header for the measurement and for why this is not the
+      // `linkId()` button the other screens draw.
+      if (id !== null) cell.append(' · ', mono(id));
       // No `else`: a topic whose join carries no item id shows its description
       // and stops. Drawing a placeholder there would say the corpus has
       // nothing to demonstrate it, which is a different claim from "this

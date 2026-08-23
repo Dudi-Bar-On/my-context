@@ -86,6 +86,14 @@ const SCREENS = {
   config: () => import('/screens/config.js'),
   docs: () => import('/screens/docs.js'),
   tut: () => import('/screens/tut.js'),
+  // The last four, 2026-08-23. Their read models were built the day before and
+  // wired in the same merge, which is what unblocked them: until then these
+  // were the only four screens in the mockup with no endpoint at all behind
+  // them. TWENTY-ONE OF TWENTY-ONE.
+  capture: () => import('/screens/capture.js'),
+  proc: () => import('/screens/proc.js'),
+  port: () => import('/screens/port.js'),
+  packs: () => import('/screens/packs.js'),
 };
 // FOUR groups, by TENSE, and ALL TWENTY-ONE SCREENS, in the mockup's own
 // order (`web-ui-mockup.html` ~1260-1290).

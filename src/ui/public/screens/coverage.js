@@ -21,23 +21,57 @@
  * `test/ui/plate-usage.test.ts` names `#tree` and `#det` among the eighteen, so
  * this file copies the marking rather than deciding it.
  *
- * **WHAT THIS SCREEN DOES NOT DRAW, AND WHY IT DRAWS NOTHING WEAKER IN ITS
- * PLACE** — *"Where a view cannot be drawn, stop and ask; do not draw a weaker
- * one"*:
+ * **THE PER-DIRECTORY MAGNITUDE BAR** — `.mini` and its three `<i>` segments,
+ * with `cov.magn`, the paragraph that explains them. The first pass of this
+ * file REFUSED both; both are drawn now, and the part of that refusal that was
+ * right is still standing. What the bar exists for is `cov.magn`'s own
+ * sentence: *"Four categorical dots said which rows were dark; they could not
+ * say how dark."*
  *
- *   - **The per-directory magnitude bar** (`.mini`, with `cov.magn`). Its three
- *     segments are governed / ungoverned / **not examined**, and the third is
- *     about paths the walk never reached. `/api/coverage` answers one global
- *     `truncated` boolean and no path list, and the read model records the ask
- *     in its own words
- *     (`ui/read-model.ts` · `needs the paths `listRepoFiles` did not reach` · ~1074).
- *     Every path this screen can draw came OUT of the walk, so a bar built from
- *     what is served would paint its third segment at zero on every row — which
- *     on a truncated walk asserts the opposite of the one thing `gaps.note`
- *     says must never be folded into another. Two of three segments is the
- *     `preview.ribbon` case exactly, and it is refused the same way. `cov.magn`
- *     goes with it: a paragraph describing a bar that is not there is worse
- *     than the missing bar. **Needs: the paths `listRepoFiles` did not reach.**
+ * The mockup's `renderTree` sizes the three segments off a row of
+ * `[path, depth, label, dot, governed, files, examined]`, and its `isz` writes
+ * each share as a percentage of ONE denominator — which is the whole of why
+ * they fill the track exactly:
+ *
+ *     g = governed / files    u = max(0, examined − governed) / files
+ *     x = (files − examined) / files
+ *
+ * `magnitude()` below is that arithmetic and nothing else. A bar whose
+ * segments do not sum to the track is worse than no bar: it reads as a
+ * measurement and is not one.
+ *
+ * **`examined` equals `files` on every row this screen can build, and that is
+ * a fact about the endpoint rather than a shortcut.** `/api/coverage` answers
+ * the paths the walk REACHED
+ * (`ui/read-model.ts` · `export function coverageFiles(` · ~1087), so every
+ * path `buildTree` is ever handed was examined and `x` comes out zero. On a
+ * COMPLETE walk that zero is true — the walk reached everything — and it is
+ * what the mockup itself draws on six of its own seven rows.
+ *
+ * **On a TRUNCATED walk that zero would be a lie, and there the refusal
+ * survives.** The endpoint carries one global `truncated` boolean and no path
+ * list, and the read model records the ask in its own words
+ * (`ui/read-model.ts` · `needs the paths `listRepoFiles` did not reach` · ~1074),
+ * so no row can say how many of its files the walk missed. Painting `x` at
+ * zero anyway would assert the opposite of the one thing `gaps.note` says must
+ * never be folded into another. So `magnitude()` carries `unknownRemainder`,
+ * and a row whose remainder is unknown does not CLAIM the zero: the segment is
+ * still drawn at zero width — there is no width to draw — and the row's
+ * tooltip drops the count in favour of the screen's two keyed words for the
+ * state, `cov.k4` — `gaps.r2`, *"not examined — past the file limit"*. That is
+ * the same pair the truncation line under the legend uses and the same pair
+ * the mockup's own gaps table joins. Nothing is dropped
+ * (INV-nothing-is-dropped-silently) and no number is invented.
+ *
+ * **The paths themselves are still missing, and this does not close that.**
+ * `plan:ui1 seq:17e` — *"page or filter /api/coverage, and disclose any
+ * truncation"* — stays OPEN. Disclosing that a walk stopped is not knowing
+ * where it stopped.
+ *
+ * **WHAT THIS SCREEN STILL DOES NOT DRAW, AND WHY IT DRAWS NOTHING WEAKER IN
+ * ITS PLACE** — *"Where a view cannot be drawn, stop and ask; do not draw a
+ * weaker one"*:
+ *
  *   - **A print button.** The plan's sketch adds one on `coverage.print`; the
  *     mockup's coverage section has no such button and no table declares the
  *     key. Print is a STYLESHEET register here (`@media print`, repaint Task
@@ -76,6 +110,104 @@ const EMPTY_COMMAND = composeCommand(
 const DEPTH_STYLED = 2;
 const INDENT_BASE = 5;
 const INDENT_STEP = 14;
+
+/**
+ * One row's magnitude: the three shares `.mini` paints, and whether the third
+ * of them is a measurement or an absence.
+ *
+ * **The counts and the shares are returned together on purpose.** The shares
+ * are what the bar is sized with and the counts are what the tooltip says, and
+ * a screen that derived one from the other twice is a screen where the picture
+ * and the words can disagree. `governedCount` and `fileCount` come off
+ * `buildTree`'s roll-up, so the bar and the `.covn` count beside it are the
+ * same fact drawn two ways rather than two answers to one question.
+ *
+ * **`unexamined` is zero, and `unknownRemainder` is what stops that being a
+ * claim.** Every path in the tree came out of the walk (see this file's
+ * header); on a complete walk zero is the true count, and on a truncated one
+ * the true count is unavailable — not zero. The caller must not paint the
+ * difference away, and `renderMini` below is where it does not.
+ *
+ * **A zero-file row divides by nothing and draws nothing.** `buildTree` cannot
+ * produce one — a directory node exists only because a file needed it — but
+ * `0/0` is `NaN`, `inline-size:NaN%` is an unparsable declaration, and the
+ * segment would keep whatever width it last had. The empty track is the
+ * correct picture for "no files rolled up here" and it is drawn deliberately.
+ *
+ * **`governed` is clamped to `total` for the same reason `budgetBar` clamps at
+ * 100** (`lib/viewmodel.js`): a segment wider than its track is hidden by
+ * `.mini`'s `overflow:hidden`, so an over-count would draw a full gold bar and
+ * look like a fully-governed directory. The roll-up cannot produce one; if it
+ * ever does, the shares still sum to the track and the counts still say what
+ * happened.
+ *
+ * **This belongs in `lib/viewmodel.js`**, beside `buildTree` and
+ * `coverageDot`, by that file's own rule that nothing decidable is decided in
+ * the glue. It is exported from the screen because this task owns
+ * `screens/coverage.js` and not that file. Raised in this task's report.
+ */
+export function magnitude(node, truncated) {
+  const total = node.fileCount;
+  const governed = Math.min(node.governedCount, total);
+  const ungoverned = total - governed;
+  // The walk reached every path it reported, so the third count is zero. What
+  // that zero MEANS is the caller's problem, and `unknownRemainder` is it.
+  const unexamined = 0;
+  const share = (n) => (total === 0 ? 0 : (n / total) * 100);
+  return {
+    total,
+    governed,
+    ungoverned,
+    unexamined,
+    unknownRemainder: truncated === true,
+    g: share(governed),
+    u: share(ungoverned),
+    x: share(unexamined),
+  };
+}
+
+/**
+ * The mockup's `isz` — a segment's share of the track, written through CSSOM.
+ * `setAttribute('style', …)` is what the shipped CSP forbids and what the
+ * mockup is exempt from (`screens/parts.js`' header); the declaration is the
+ * same one either way, and it is LOGICAL, so the bar mirrors with the tree.
+ */
+function sized(segment, pct) {
+  segment.style.setProperty('inline-size', `${pct}%`);
+  return segment;
+}
+
+/**
+ * `<div class="mini"><i class="g"><i class="u"><i class="x"></div>` — the
+ * mockup's own three segments, in its own order, sized off ONE `magnitude()`.
+ *
+ * **The tooltip is the mockup's `mini.title` and it is where the truncated
+ * walk gets said out loud.** The mockup writes it as an unkeyed English
+ * ternary in its own script — `gov+' governed · '+…+' with no rule · '+…+'
+ * not examined'` — so no table declares a key for those two words, and they
+ * are transcribed as its literals here the same way `preview.js` transcribes
+ * its own segment tooltips. Keys first in the mockup, then in both tables:
+ * raised in this task's report rather than invented at this call site.
+ *
+ * The THIRD clause is not transcribed when the walk stopped short. A row whose
+ * unreached count is unknown gets the two keyed strings this screen already
+ * pairs for exactly that state — `cov.k4` — `gaps.r2` — instead of a `0` it
+ * cannot stand behind. `tFlat` because a `title` is an attribute sink; `t()`
+ * returns nodes and an attribute cannot hold one.
+ */
+function renderMini(ctx, mag) {
+  const mini = el('div', 'mini');
+  mini.append(
+    sized(el('i', 'g'), mag.g),
+    sized(el('i', 'u'), mag.u),
+    sized(el('i', 'x'), mag.x),
+  );
+  const counted = `${mag.governed} governed · ${mag.ungoverned} with no rule`;
+  mini.title = mag.unknownRemainder
+    ? `${counted} · ${ctx.tFlat('cov.k4')} — ${ctx.tFlat('gaps.r2')}`
+    : `${counted} · ${mag.unexamined} not examined`;
+  return mini;
+}
 
 export async function render(root, ctx) {
   root.replaceChildren();
@@ -130,8 +262,16 @@ export async function render(root, ctx) {
   const itemsById = new Map(data.items.map((item) => [item.id, item]));
   const rows = treeRows(tree);
 
+  // `<div id="covfull">` — the mockup's own wrapper around the populated view,
+  // the sibling of `#covempty`. The mockup swaps the two with its `∅` toggle;
+  // this screen decides between them from the data instead (`coverageIsEmpty`,
+  // above), which is why only one of the two is ever built. The wrapper is
+  // still the mockup's, and `e2e/states.spec.ts` reads both ids there.
+  const full = el('div');
+  full.id = 'covfull';
+  root.append(full);
   const two = el('div', 'two');
-  root.append(two);
+  full.append(two);
 
   // --- The repository tree ------------------------------------------------
   const treeCard = el('div', 'card pane');
@@ -140,7 +280,13 @@ export async function render(root, ctx) {
   const treeBox = el('div', 'tree plate');
   treeBox.id = 'tree';
   treeBox.setAttribute('role', 'tree');
-  treeCard.append(treeH, treeBox, spaced(legend(ctx)));
+  // `cov.magn` — the design of record's own account of the bar, in the slot the
+  // mockup gives it: between the tree and the four-dot legend. It was withheld
+  // while the bar was withheld, on the grounds that a paragraph describing a
+  // bar that is not there is worse than the missing bar. The bar is there.
+  const magn = el('p', 'small');
+  magn.append(...ctx.t('cov.magn'));
+  treeCard.append(treeH, treeBox, spaced(magn), spaced(legend(ctx)));
   // The walk stopped short, and that is disclosed rather than left to be
   // inferred from a short tree. The two keys are the mockup's own pairing for
   // this fact, joined the way its gaps table joins them:
@@ -246,9 +392,14 @@ export async function render(root, ctx) {
     // do (`src/`, `src/billing/`) — the one glance that tells a directory from
     // a file before the dot or the count is read.
     const isDir = node.children.length > 0;
+    // The mockup's own order — dot, name, bar, count — and its own division of
+    // labour: the dot is the CATEGORY (its shape survives monochrome), the bar
+    // is the magnitude, the count is the same magnitude in figures for anyone
+    // the bar is too small for.
     button.append(
       el('span', `dot ${coverageDot(node)}`),
       el('span', 'nm', isDir ? `${node.name}/` : node.name),
+      renderMini(ctx, magnitude(node, data.truncated)),
       el('span', 'covn', `${node.governedCount}/${node.fileCount}`),
     );
     button.addEventListener('click', () => {
