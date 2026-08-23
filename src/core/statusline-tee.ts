@@ -1,4 +1,4 @@
-import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { ensureLogDir } from './jsonl-log.ts';
 
@@ -19,9 +19,14 @@ import { ensureLogDir } from './jsonl-log.ts';
 // EXTERNAL SCHEMA, marked as such (spec §4b): everything `classifyContext`
 // knows about the payload — `context_window`, `current_usage` and its three
 // input fields — is a claim about Claude Code's interface, established by
-// reading the installed 2.1.233 binary, and no test here fails when Claude
-// Code changes it. The states are ordered so that every unrecognised shape
-// degrades to 'unknown', never to a number.
+// reading the installed binary, and no test here fails when Claude Code
+// changes it. First read on 2.1.233; RE-VERIFIED 2026-08-23 on the installed
+// build 2.1.239 (GIT_SHA 9bf8e952…) — every field named above is still
+// present and the builder is byte-identical to the 2.1.233 reading once the
+// minifier's symbol names are normalised (TAw/wMo → pgA/HZo). The version is
+// recorded because it dates the verification; it is not a claim that any
+// other build behaves this way. The states are ordered so that every
+// unrecognised shape degrades to 'unknown', never to a number.
 
 export function statuslineDir(root: string): string {
   return path.join(root, '.statusline');
@@ -42,6 +47,112 @@ export function teePath(root: string, sessionId: string): string | null {
   return safe === null ? null : path.join(statuslineDir(root), `${safe}.json`);
 }
 
+/**
+ * How old a `<session>.json.tmp-…` has to be before `sweepStaleTeeTemps` will
+ * remove it.
+ *
+ * The only file this could wrongly delete is one a CONCURRENT writer is
+ * between `writeFileSync` and `renameSync` on, so the gate has to sit far
+ * above that window's real length. Measured on Windows/Node 24, 500 writes of
+ * a real status-line payload: the WHOLE of `writeTee` runs p50 1.8 ms, p95
+ * 3.0 ms, worst observed 15 ms — and the exposed window is a fraction of that,
+ * being one `writeFileSync` of a few hundred bytes plus one rename syscall.
+ * An hour is roughly a thousand times the worst case observed, which is the
+ * margin an age gate standing between a live file and `rmSync` should have,
+ * while still bounding a directory that gains at most one leftover per killed
+ * process.
+ *
+ * Deliberately NOT the 30 days that
+ * `core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS` · ~748 gives
+ * `state/`: that retention protects snapshots and seen-files, which are DATA a
+ * later run may still need. A tee temp file is a discarded write that no
+ * reader has ever opened — `readTee` only ever opens `<session>.json` — so
+ * there is nothing on the other side of the trade to be generous towards.
+ */
+export const TEE_TMP_MAX_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * A temp file this module wrote: the sample's own name, then `.tmp-<pid>` and
+ * optionally `-<counter>`.
+ *
+ * Anchored at the END rather than matching `.tmp-` anywhere in the name, which
+ * is what `core/ledger.ts` · `|| entry.name.includes('.tmp-'))) continue;` · ~787
+ * can afford on `state/` and this cannot: `sanitizeSessionId` accepts `.` and
+ * `-`, so `run.tmp-3` is a legal session id whose real sample is named
+ * `run.tmp-3.json`. A substring predicate would sweep a live session's sample
+ * and the UI would show that session as never having reported.
+ */
+const TEE_TMP_NAME = /\.json\.tmp-\d+(?:-\d+)?$/;
+
+/**
+ * Removes tee temp files older than `maxAgeMs` from `<root>/.statusline`, and
+ * returns how many went. **Never throws** — an unreadable directory, an
+ * entry that cannot be stat'd and a removal that fails all degrade to "leave
+ * it for the next sweep", the same way `pruneSnapshots` does, because this is
+ * housekeeping and no sample is worth failing over.
+ *
+ * **Why this exists at all when `writeTee` now cleans up its own failures.**
+ * The cleanup below covers every path where `writeTee` RETURNS. It cannot
+ * cover the one where the process does not: a bridge process killed between
+ * the write and the rename leaves a temp file no `catch` will ever run for.
+ * That is a real shape here — `mycontext statusline` is a fresh process per
+ * assistant message, on Claude Code's own timeout — and it is the only source
+ * of new orphans left. Nothing else sweeps `.statusline/`: `pruneSnapshots`
+ * walks `state/` only.
+ *
+ * A swept temp file is NOT disclosed to the caller, matching
+ * `hooks/session-start.ts` · `leftover carries no such consequence, so the` · ~78:
+ * nothing ever reads one, so removing it costs a reader nothing there is to
+ * say. `INV-nothing-is-dropped-silently` is about dropping what someone would
+ * otherwise have received.
+ *
+ * **What it costs, because `writeTee` calls it on Claude Code's per-message
+ * path** (the addendum's §8.4 concern, and the reason ui3 task 4 ships a perf
+ * test). One `readdirSync` plus one `statSync` per NAME THAT MATCHES — a
+ * sample file costs only the regex, never a stat. Measured on Windows/Node 24
+ * against `.statusline/` holding one leftover and: 1 sample p50 0.24 ms, 200
+ * samples p50 0.41 ms, 1,000 p50 1.11 ms, 5,000 p50 4.37 ms, beside a
+ * `writeTee` whose own p50 is 1.8 ms. Linear in directory size, and the
+ * directory gains one file per session and has nothing that prunes THOSE —
+ * so a workspace with thousands of sessions behind it pays milliseconds here.
+ * That bound belongs to whoever prunes the samples, which nothing yet does.
+ */
+export function sweepStaleTeeTemps(root: string, maxAgeMs: number = TEE_TMP_MAX_AGE_MS): number {
+  const dir = statuslineDir(root);
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+
+  const cutoff = Date.now() - maxAgeMs;
+  let swept = 0;
+  for (const entry of entries) {
+    if (!entry.isFile() || !TEE_TMP_NAME.test(entry.name)) continue;
+    const full = path.join(dir, entry.name);
+    try {
+      if (statSync(full).mtimeMs < cutoff) {
+        rmSync(full, { force: true });
+        swept++;
+      }
+    } catch {
+      // Could not stat or remove this one entry — leave it for a later sweep.
+    }
+  }
+  return swept;
+}
+
+/**
+ * A per-process counter, so no two writes from this process can ever name the
+ * same temp file.
+ * `core/rebuild.ts` · `The temp name carries both the pid and a per-process counter` · ~373
+ * gives the reason, and it is what makes the cleanup below provably safe: the
+ * path being removed on the failure branch cannot be a file any other writer
+ * — in this process or another — has created in the meantime.
+ */
+let writeCounter = 0;
+
 export function writeTee(
   root: string,
   payload: unknown,
@@ -59,9 +170,51 @@ export function writeTee(
     ensureLogDir(statuslineDir(root));
     // Atomic: the UI reads this file while Claude Code rewrites it on every
     // response. A rename is whole-or-old; a plain overwrite can be read torn.
-    const tmp = `${file}.tmp-${process.pid}`;
-    writeFileSync(tmp, JSON.stringify({ receivedAt, payload }));
-    renameSync(tmp, file);
+    const tmp = `${file}.tmp-${process.pid}-${writeCounter++}`;
+    try {
+      writeFileSync(tmp, JSON.stringify({ receivedAt, payload }));
+      renameSync(tmp, file);
+    } catch (err) {
+      // **The cleanup is in the CATCH, not in a `finally`, and that is the
+      // whole fix.** The atomic write is correct for the writer whose rename
+      // lands; what leaked was the other one. On Windows `renameSync` is
+      // `MoveFileEx`, and replacing a destination a reader holds open fails
+      // EPERM outright rather than merely losing — `writeTee` then reports
+      // `written: false`, the previous WHOLE sample stays on disk (the right
+      // degradation; `receivedAt` is what exposes its age), and the temp file
+      // this call had already written was left in `.statusline/` forever. One
+      // per losing process, and the bridge is a fresh process per message.
+      //
+      // A `finally` is the obvious shape and is the wrong one: it would run
+      // after a rename that SUCCEEDED, where `tmp` is a path this process no
+      // longer owns. It happens to be harmless today only because the counter
+      // above makes that path unique and `force: true` swallows ENOENT — a
+      // safety that rests on two coincidences instead of on control flow. In
+      // the `catch`, the removal is unreachable unless the rename threw, and a
+      // rename that throws moved nothing.
+      //
+      // It also covers the earlier failure — a `writeFileSync` that ran out of
+      // disk part-way leaves a partial temp file, and that is a leftover too.
+      try { rmSync(tmp, { force: true }); } catch { /* best-effort: nothing reads a temp file */ }
+      throw err;
+    }
+    // AFTER the sample is on disk, never before, so the reader gets its fresh
+    // sample without waiting on housekeeping — the ordering, and the reason
+    // for it, of
+    // `hooks/session-start.ts` · `**Why here, after the write to stdout.** The model already has its text, so` · ~49.
+    // What keeps this from deleting a temp file some OTHER writer is about to
+    // rename is not the ordering but `TEE_TMP_MAX_AGE_MS`; see there.
+    //
+    // On the failure branch above there is deliberately no sweep: that writer
+    // has already removed its own leftover, and a tee whose every write fails
+    // is a broken statusline rather than a housekeeping problem.
+    //
+    // Wrapped even though `sweepStaleTeeTemps` never throws, for the reason
+    // `sweepStaleState` wraps `pruneSnapshots`: the sample is ALREADY on disk
+    // by this line, so a throw escaping here would be caught below and report
+    // `written: false` for a write that succeeded — housekeeping lying about
+    // the thing it was housekeeping for.
+    try { sweepStaleTeeTemps(root); } catch { /* never a reason to fail a written sample */ }
     return { written: true };
   } catch (err) {
     return { written: false, reason: err instanceof Error ? err.message : String(err) };

@@ -49,6 +49,10 @@
  * Usage:  node scripts/demo-corpus.ts [--out <dir>]
  * Default output: `<repo>/.demo-corpus` (gitignored — it is a build product).
  */
+import { updateItem } from '../src/core/mutate.ts';
+import { openRebuiltStore } from '../src/core/open-store.ts';
+import { stageRevision } from '../src/core/revision.ts';
+import { resolveWorkspace } from '../src/core/workspace.ts';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -280,6 +284,63 @@ for (let i = 0; i < 24; i++) {
 // than as a row, and it is the only thing that draws one.
 cli(['focus', 'billing']);
 cli(['focus', '--clear']);
+
+// ── ONE PENDING REVISION, because the Work screen has nothing to draw without
+//    one ─────────────────────────────────────────────────────────────────────
+//
+// Measured on 2026-08-23, while six screens were being built in parallel:
+// `/api/revisions` over this corpus answered
+// `{"counts":{"revisions":0,"items":0},"revisions":[]}`, and the agent building
+// `screens/work.js` reported SEVENTEEN element kinds it could not render as a
+// result — `del`, `ins`, `td.m.stale`, `div.cmd`, `details.help` and the rest.
+// Every one of them was CODE THAT EXISTS meeting DATA THAT DOES NOT, which is
+// the precise confusion this whole demo corpus was built to end
+// (`DEC-the-ui-is-developed-against-a-simulated-corpus-until-the`).
+//
+// **Written by the real mutation surface, not fabricated.** `stageRevision`
+// with `origin: 'agent'` is exactly what an agent's `update_item` does when it
+// proposes a change to an item a human owns — the trust boundary turns the
+// write into a proposal rather than an edit. The human update that follows is
+// an ordinary `updateItem`. Both append their own audit records, which the
+// clock rewrite below then spreads like every other record here.
+//
+// **Three fields, chosen so the screen's three row shapes all appear**, per the
+// mockup's own table (`docs/design/web-ui-mockup.html` · `<td class="m stale">`
+// · ~1941): `title` is prose and stays fresh (a `<td>` with a `<bdi>` and the
+// `<ins>`/`<del>` runs of the word diff), `tags` is a token field and stays
+// fresh (`td.m`), and `body` is made STALE by a human editing the same field
+// after the proposal was staged — the one case the mockup draws a `chip warn`
+// and replaces both value cells with `work.moved`/`work.blocked`. Staleness is
+// scoped to the fields a revision touches, so editing `body` leaves the other
+// two rows alone; that is the property being exercised, not a side effect.
+{
+  const ws = resolveWorkspace(OUT);
+  const { store } = openRebuiltStore(ws);
+  try {
+    const ctx = { root: ws.projectRoot!, store, config: ws.config };
+    // The oldest human-authored item, so the choice is deterministic across
+    // runs — this script has no randomness anywhere and must not gain any.
+    const target = store.all()
+      .filter((it) => it.origin === 'human' && it.status === 'active')
+      .sort((a, b) => a.id.localeCompare(b.id))[0];
+    if (target === undefined) throw new Error('demo-corpus: no human item to propose against');
+    stageRevision(ctx, target.id, {
+      title: `${target.title}, and the retry budget it implies`,
+      body: `${target.body}\n\nProposed by an agent: name the budget explicitly, because a ` +
+        `caller that cannot see the ceiling cannot honour it.`,
+      tags: [...target.tags, 'reviewed'],
+    }, 'agent');
+    updateItem(ctx, {
+      id: target.id,
+      body: `${target.body}\n\nA human edited this line after the proposal was staged, which ` +
+        `is what makes the body field stale and the whole revision refuse to promote.`,
+      origin: 'human',
+    });
+    console.log(`demo-corpus: staged one revision against ${target.id} (body made stale)`);
+  } finally {
+    store.close();
+  }
+}
 
 const lines = readFileSync(auditLog, 'utf8').split('\n').filter(Boolean);
 for (const line of lines) {

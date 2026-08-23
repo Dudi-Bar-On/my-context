@@ -71,6 +71,21 @@ const SCREENS = {
   status: () => import('/screens/status.js'),
   learn: () => import('/screens/learn.js'),
   watch: () => import('/screens/watch.js'),
+  // The six screens whose endpoints already existed, built in parallel on
+  // 2026-08-23 and registered here at the merge rather than ahead of it.
+  //
+  // Registering a loader before its module lands does two bad things at once:
+  // the route 404s on click, and the rail's PROPOSED badge — computed from
+  // `Object.hasOwn(SCREENS, name)` in renderNav() — disappears, so the shell
+  // claims a screen is built while it is still being written. The badge is
+  // the honest half of this object, and it is only honest if these lines and
+  // the files arrive together.
+  ask: () => import('/screens/ask.js'),
+  work: () => import('/screens/work.js'),
+  palette: () => import('/screens/palette.js'),
+  config: () => import('/screens/config.js'),
+  docs: () => import('/screens/docs.js'),
+  tut: () => import('/screens/tut.js'),
 };
 // FOUR groups, by TENSE, and ALL TWENTY-ONE SCREENS, in the mockup's own
 // order (`web-ui-mockup.html` ~1260-1290).

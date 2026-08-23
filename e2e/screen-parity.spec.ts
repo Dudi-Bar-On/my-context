@@ -77,6 +77,11 @@ const COLLECT_KINDS = (selector: string): string[] | null => {
 const BUILT = [
   'preview', 'coverage', 'gaps', 'simulate', 'injected',
   'watch', 'doctor', 'decay', 'graph', 'status', 'learn',
+  // Landed 2026-08-23: the six screens whose endpoints already existed, built
+  // in one parallel wave. Seventeen of twenty-one now. The four still absent —
+  // capture, proc, port, packs — had no endpoint at all until that same wave
+  // built their read models, and are the next wave's work.
+  'ask', 'work', 'palette', 'config', 'docs', 'tut',
 ] as const;
 
 /**
@@ -174,15 +179,38 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // only, leaving the mockup as drawn. The app renders `chip index`, so the
   // bare `span.chip` kind legitimately disappears from this screen. A label
   // nobody can read is a label that is not there.
-  preview: ['div.gh', 'i', 'span.chip', 'span.prop'],
-  coverage: ['div', 'div.mini', 'i', 'i.g', 'i.u', 'i.x'],
+  // ── RE-BASED 2026-08-23: the reference corpus changed ───────────────────
+  //
+  // Every entry from here down was re-measured on that date, because `e2e/app.ts`
+  // stopped serving the project's LIVE corpus and started serving `.demo-corpus`,
+  // the deterministic simulated one. Read that file's `CORPUS` for the argument;
+  // the short version is that a gate whose entire output is a list of what is
+  // missing cannot have a reference that changes every time somebody files a
+  // task. Numbers before and after this line are NOT comparable, and the growth
+  // below is a change of instrument rather than a regression.
+  //
+  // **What that means for the entries these five gained.** Each was measured, so
+  // each is true of the app over this corpus today. What has NOT been done is
+  // the work of separating, per kind, "the code cannot draw this" from "this
+  // corpus gives it nothing to draw" — the distinction that cost this project a
+  // day and produced `DEC-the-ui-is-developed-against-a-simulated-corpus-until-the`.
+  // That separation is exactly what `plan:port seq:98`, the screen-by-screen
+  // review with the owner, exists to do. Recorded honestly rather than sorted
+  // by guess: an entry here is a claim that the app does not draw the kind, and
+  // nothing more.
+  preview: ['div.carrieditem.small', 'div.gh', 'i', 'li', 'span.chip', 'span.prop', 'ul'],
+  coverage: [
+    'button', 'button.linkid.m', 'div', 'div.mini', 'i', 'i.g', 'i.u', 'i.x',
+    'span.covn', 'span.nm', 'table', 'tbody', 'td', 'th', 'thead', 'tr',
+  ],
   gaps: ['b', 'button.icon', 'span.m', 'span.v', 'td', 'td.m', 'td.small'],
   simulate: [
     'b', 'circle', 'div', 'div.at', 'div.card.pane.sim', 'div.div-l', 'div.div-r',
     'div.div-row', 'div.ev', 'div.ladder.plate', 'div.readout', 'div.small', 'h3',
-    'i', 'line', 'path', 'span.div-n', 'span.div-name', 'svg', 'text',
+    'i', 'line', 'path', 'span.chip.warn', 'span.div-n', 'span.div-name', 'span.v',
+    'svg', 'text',
   ],
-  injected: [],
+  injected: ['button.linkid.m', 'span.chip.gov', 'span.chip.ok', 'td', 'td.m.small'],
   // Shrank from 15 to 8 while this gate was being written: the agent building
   // screens/watch.js landed the SVG (rect, svg), the bidi runs and the table,
   // and the gate demanded the ledger follow. Exactly the mechanism.
@@ -218,7 +246,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'span.chip.crit', 'span.chip.ok', 'span.chip.warn', 'span.ln', 'svg', 'td',
     'td.m.small', 'tr.regime',
   ],
-  doctor: ['b', 'span.m', 'span.m.v', 'span.prop'],
+  doctor: ['b', 'button', 'code', 'div.cmd', 'span.m', 'span.m.v', 'span.prop'],
   decay: [
     'b', 'circle', 'div', 'div.heat.plate', 'div.heataxis', 'div.hname', 'div.hstrip',
     'div.legend', 'div.plate', 'i', 'i.badpin', 'i.cold', 'i.h1', 'i.h2', 'i.h3',
@@ -227,10 +255,64 @@ const KNOWN_GAPS: Record<string, string[]> = {
   graph: ['b', 'path'],
   status: ['b'],
   learn: ['i', 'span.m'],
+
+  // ── The six screens built in parallel on 2026-08-23 ─────────────────────
+  //
+  // Every entry below was measured by the agent that built the screen, against
+  // the mockup section and its own render, and then RE-MEASURED here by a real
+  // run of this gate before it was committed. Where the two disagreed, the run
+  // won and the agent's number was corrected — a gap list derived from reading
+  // code is a prediction, and this file only records measurements.
+  //
+  // `b` recurs in five of the six for one reason: `lib/i18n.js`'s run grammar
+  // has `{m:}`, `{mv:}` and `{name}` and NO emphasis marker, so a mockup string
+  // whose English bolds a run renders flat in the app and no string table can
+  // carry the difference. That is now its ninth site across the ledger. Tracked
+  // as TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup, whose
+  // title undercounts by six.
+  // `span.prop` is the PROPOSED badge, an ACCEPTED DIVERGENCE by the owner's
+  // ruling of 2026-08-23 and not a gap: the mockup keeps it for history, the app
+  // drops it because the screen is built. Same entry, same reason, as `preview`
+  // and `doctor` carry above.
+  ask: ['b', 'span.prop'],
+  work: ['b'],
+  // `div.hit` is DATA: the glob tester lights a row per matching file, and this
+  // corpus answers the opening pattern with none. `span.chip.crit` is
+  // INTERACTION: it appears the moment an argv value carries a shell
+  // substitution, which no default value does. Neither is missing code.
+  palette: ['b', 'div.hit', 'span.chip.crit'],
+  config: [
+    'div.blast', 'div.delta', 'div.delta.gain', 'div.delta.loss', 'i',
+    'span.arrow', 'span.was', 'span.will',
+  ],
+  docs: ['a', 'h4', 'pre', 'span.refusal'],
+  tut: ['b'],
 };
 
+/**
+ * **Two kinds the APP draws that the mockup does not, on `ask`.** Recorded
+ * here because this gate does not check that direction, so nothing else would
+ * ever say them out loud.
+ *
+ * `button.linkid.m` — the mockup writes the item cell as a bare `span.m`.
+ * Every screen this project has shipped writes an id as `linkId()`, the
+ * `button.linkid` whose click the shell will route to the item detail pane.
+ * The agent chose consistency with the app over consistency with the mockup;
+ * the alternative would be one screen whose ids are the only dead ones.
+ *
+ * `span.chip.index` — the neutral chip for `subject`, the third of the audit
+ * projection's three roles. The mockup hues only `injected` and `spilled` and
+ * gives the third no treatment at all.
+ *
+ * Both await the owner's confirmation, alongside the two divergences already
+ * registered above (`span.prop`, `span.chip`).
+ */
+const APP_ONLY_KINDS_ON_ASK = ['button.linkid.m', 'span.chip.index'] as const;
+void APP_ONLY_KINDS_ON_ASK;
+
 test('every screen draws every KIND of element its mockup section draws', async ({ app }) => {
-  // **This one test walks ELEVEN screens twice**, waits 300ms for each mockup
+  // **This one test walks SEVENTEEN screens twice** (eleven until 2026-08-23),
+  // waits 300ms for each mockup
   // section to settle and up to 25 x 400ms for each app screen to stop growing.
   // Alone it takes 16s; inside the full suite, with six workers each running
   // their own server over the same corpus, it took 22.5s in `chrome` and

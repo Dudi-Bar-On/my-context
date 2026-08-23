@@ -236,6 +236,14 @@ const SCREEN_SELECTORS = [
   '.md', '.md h1,.md h2,.md h3', '.md p', '.md ul', '.md pre',
   '.globtree', '.globtree div', '.globtree div.hit', '.globin',
   'td.stale', '[dir="rtl"] td.stale',
+  // Carried at the merge, after the first carry's measurement proved partial:
+  // it read `class=` attributes out of the mockup's static markup, so it could
+  // see neither a BARE ELEMENT rule nor a class a script emits. Both were
+  // missed. `work.js` builds `<ins>`/`<del>` for its diff and `docs.js` emits
+  // `span.refusal` for a markdown construct its renderer refuses to perform —
+  // found by re-measuring over what the six modules CONSTRUCT rather than over
+  // what the design of record draws.
+  '.refusal', 'ins', 'del',
   '.idkind', '.idslug', 'h2', 'button',
   ':where(button,a,input,select,summary):focus-visible',
   '[dir="rtl"] .icon-open', '[class^="icon-"]',

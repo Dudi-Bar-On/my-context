@@ -56,6 +56,10 @@ import { isMainEntry } from '../core/paths.ts';
 import { VERSION } from '../core/version.ts';
 import { resolveWorkspace, type Workspace } from '../core/workspace.ts';
 import { registerAskRoutes } from './ask-model.ts';
+import { registerCaptureRoutes } from './capture-model.ts';
+import { registerPacksRoutes } from './packs-model.ts';
+import { registerPortRoutes } from './port-model.ts';
+import { registerProcedureRoutes } from './proc-model.ts';
 import { readGitInfo } from './git-info.ts';
 import { IDLE_MS, IdleMonitor } from './idle.ts';
 import {
@@ -184,6 +188,31 @@ export function registerReadRoutes(): void {
   // would be. A route nobody wired is one of the two things that assertion
   // exists to say out loud.
   registerAskRoutes();
+  // The four screens the mockup draws that had no endpoint at all, wired here
+  // on 2026-08-23 for the same two reasons as every call above — and for a
+  // third the other four did not have to state, because they were never
+  // unwired long enough to meet it.
+  //
+  // `no-writes.test.ts`'s "the walk examines a real graph" equates every
+  // module on disk under `src/ui/` with the set reachable from THIS file, and
+  // says of the difference: "either dead code or a route nobody wired". All
+  // four models below were written in parallel by agents forbidden to touch
+  // this file, so for the length of that wave the assertion was DETERMINISTIC­LY
+  // red — it failed twelve consecutive full-suite runs, which made `npm test`
+  // unreadable rather than merely noisy. These four calls are what clears it.
+  //
+  // Each model was measured against the mutation surface before it landed:
+  // none binds a symbol in `WRITERS`, and the only genuinely new modules any
+  // of them adds to this server's import graph are `core/progress.ts` (pure,
+  // imports one type) and `pack/layout.ts` (a leaf whose sole import is
+  // `node:buffer`). `core/mutate.ts` IS reachable from here, by the
+  // pre-existing `read-model.ts → help/index.ts → mcp/tools.ts` edge this
+  // file's own test header already records; not one of these four adds a path
+  // to it.
+  registerCaptureRoutes();
+  registerProcedureRoutes();
+  registerPortRoutes();
+  registerPacksRoutes();
 }
 
 function sendJson(res: ServerResponse, result: JsonResult): void {

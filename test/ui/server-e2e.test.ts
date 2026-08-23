@@ -592,6 +592,28 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   '/api/ask/summary?report=ops',
   '/api/ask/summary?report=items&role=spilled',
   '/api/ask/summary?report=sessions',
+  // ── The four screens that had no endpoint at all, wired 2026-08-23 ───────
+  //
+  // These are the routes behind Capture, Procedures, Export/import and Template
+  // packs. Three of the four sit on top of domain modules that DO write — the
+  // pack importer binds `createItem`/`updateItem`, `procedure activate|done`
+  // mutates, and export writes an artefact — so each read model was built to
+  // reach the read half only, and this sweep is what turns that from a design
+  // claim into a measurement. `no-writes.test.ts` proves which symbols they
+  // BIND; only the byte-identical assertion below proves nothing is CALLED.
+  //
+  // Probed with arguments that match AND with arguments that match nothing,
+  // for the reason the entries above give: "there is nothing to return" is the
+  // case that tempts a read into creating something. `/api/capture` is also
+  // probed with a repeated parameter, because refusing one is the behaviour its
+  // model added deliberately after measuring that `/api/glob` silently drops a
+  // repeat — a 400 writes nothing and proves the guard runs.
+  '/api/capture?scope=src/**',
+  '/api/capture?scope=no-such-directory/**',
+  '/api/procedures',
+  '/api/procedure/PROC-no-such-procedure',
+  '/api/port',
+  '/api/packs',
 ];
 
 /** Does a registered path template match this concrete pathname? */

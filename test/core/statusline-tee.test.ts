@@ -1,20 +1,34 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import {
+  closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync,
+  utimesSync, writeFileSync,
+} from 'node:fs';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { removeTree } from '../helpers/tmp.ts';
 import {
   sanitizeSessionId, statuslineDir, teePath, writeTee, readTee, classifyContext,
+  sweepStaleTeeTemps, TEE_TMP_MAX_AGE_MS,
 } from '../../src/core/statusline-tee.ts';
 
-/** A payload in the shape Claude Code 2.1.233 actually sends (see the plan's external-facts table). */
+/**
+ * A payload in the shape Claude Code actually sends (see the plan's external-facts table).
+ * Shape first read on 2.1.233; re-verified 2026-08-23 on the installed build 2.1.239, where
+ * the real payload carries strictly more (`session_name`, `output_style`, `fast_mode`,
+ * `thinking`, …). Extra fields are deliberately NOT added here: `writeTee` stores the payload
+ * WHOLE and `classifyContext` reads only `context_window`, so a fixture that mirrored every
+ * field would assert a schema this repository does not own. `version` is inert — nothing under
+ * test reads it — and is set to the build this fixture was last checked against.
+ */
 function payload(contextWindow: unknown): Record<string, unknown> {
   return {
     session_id: 'sess-abc123',
     transcript_path: '/tmp/t.jsonl',
     cwd: '/repo',
-    version: '2.1.233',
+    version: '2.1.239',
     model: { id: 'claude-opus-4-5', display_name: 'Opus 4.5' },
     workspace: { current_dir: '/repo', project_dir: '/repo' },
     cost: { total_cost_usd: 0.42 },
@@ -66,6 +80,231 @@ test('readTee: no sample is null; a half-written sample is null, not a crash', (
     mkdirSync(statuslineDir(root), { recursive: true });
     writeFileSync(teePath(root, 'sess-abc123')!, '{"receivedAt": "2026');
     assert.equal(readTee(root, 'sess-abc123'), null);
+  } finally { removeTree(root); }
+});
+
+// --- The losing writer's temp file ------------------------------------------
+//
+// `writeTee` is temp-then-rename, which is correct for the writer whose rename
+// lands. These tests are about the OTHER one. On Windows `renameSync` is
+// `MoveFileEx`, and replacing a destination something else holds open fails
+// EPERM outright rather than merely losing — so the whole previous sample
+// stays on disk (the right degradation, asserted below) and the temp file the
+// loser had already written is what needs to go.
+//
+// **How the race is made deterministic rather than hoped for.** Nothing here
+// depends on two writers landing in the same microsecond. The contended
+// resource — an open handle on the destination — is PINNED for the entire
+// window instead, so every writer inside that window loses, every time, on
+// every scheduling. The multi-process half follows the shape of
+// `test/core/session-names.test.ts` · `concurrent writes from separate processes lose no entry` · ~214.
+
+const WRITER = fileURLToPath(new URL('../fixtures/statusline-tee-writer.ts', import.meta.url));
+
+/** Every `<session>.json.tmp-…` currently sitting in `.statusline/`. */
+function strays(root: string): string[] {
+  return readdirSync(statuslineDir(root)).filter((n) => n.includes('.tmp-')).sort();
+}
+
+/** One child writer, racing on `root`'s tee for `sessionId`. Never rejects. */
+function race(root: string, sessionId: string, marker: string):
+Promise<{ code: number; out: string; err: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(
+      process.execPath,
+      ['--disable-warning=ExperimentalWarning', WRITER, root, sessionId, marker],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    let out = ''; let err = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => { out += chunk; });
+    child.stderr.on('data', (chunk: string) => { err += chunk; });
+    child.on('close', (code) => resolve({ code: code ?? 1, out, err }));
+  });
+}
+
+/**
+ * Windows only, and skipped elsewhere with the reason rather than passing
+ * vacuously: POSIX `rename` is indifferent to open handles, so there is no
+ * such thing there as a rename that loses to a reader. The cross-platform
+ * half of the property is the test above it, which fails the rename by a
+ * cause every platform has.
+ */
+const WINDOWS_ONLY = process.platform === 'win32'
+  ? false
+  : 'rename-over-an-open-destination fails only on Windows (MoveFileEx); POSIX rename ignores handles';
+
+test('a rename that fails strands NO temp file — the loser cleans up after itself', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-tee-'));
+  try {
+    // A directory standing where the sample file belongs makes `renameSync`
+    // fail on every platform (measured: EPERM on Windows, ENOTEMPTY on
+    // POSIX). WHY the rename failed is irrelevant to the cleanup — what this
+    // pins is that the failing branch is the branch taken, on any box.
+    mkdirSync(statuslineDir(root), { recursive: true });
+    mkdirSync(teePath(root, 'sess-abc123')!);
+    const result = writeTee(root, payload(null), '2026-08-16T10:00:00.000Z');
+    assert.equal(result.written, false, 'the rename should have failed — this test has no lever left');
+    assert.match(result.reason ?? '', /rename/, 'the reason must still name what failed');
+    assert.deepEqual(strays(root), [], 'the temp file the failed write left behind was never removed');
+  } finally { removeTree(root); }
+});
+
+test('a write that fails BEFORE the rename strands no temp file either', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-tee-'));
+  try {
+    // `JSON.stringify` of a circular payload throws — and it throws *before*
+    // the temp file is opened, so this asserts the absence of a file that was
+    // never created. It is here because it is the one failure mode that must
+    // NOT be "cleaned up" by inventing a path: the cleanup has to be scoped
+    // to a temp file this call actually wrote.
+    const circular: Record<string, unknown> = { session_id: 'sess-abc123' };
+    circular.self = circular;
+    const result = writeTee(root, circular, '2026-08-16T10:00:00.000Z');
+    assert.equal(result.written, false);
+    assert.deepEqual(strays(root), []);
+    assert.equal(existsSync(teePath(root, 'sess-abc123')!), false);
+  } finally { removeTree(root); }
+});
+
+test('the filed Windows loser: a reader holds the sample open, the rename loses, the temp file still goes', { skip: WINDOWS_ONLY }, () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-tee-'));
+  let fd: number | null = null;
+  try {
+    assert.deepEqual(writeTee(root, payload(null), 'FIRST'), { written: true });
+    // A reader mid-read across the rename — the UI polling the tee is exactly
+    // this. Measured on this box: an ordinary read handle is enough to make
+    // MoveFileEx fail.
+    fd = openSync(teePath(root, 'sess-abc123')!, 'r');
+
+    const lost = writeTee(root, payload(null), 'SECOND');
+    assert.equal(
+      lost.written, false,
+      'an open read handle no longer blocks the rename on this platform — this test\'s lever ' +
+      'has stopped working, so the losing branch is no longer being exercised at all',
+    );
+    assert.match(lost.reason ?? '', /EPERM|EACCES|EBUSY/);
+
+    // The degradation this defect deliberately did NOT change: the previous
+    // WHOLE sample is what a reader still sees, never a torn one, and
+    // `receivedAt` is what exposes its age.
+    assert.equal(readTee(root, 'sess-abc123')?.receivedAt, 'FIRST');
+    assert.deepEqual(strays(root), [], 'the loser stranded its temp file in .statusline/');
+  } finally {
+    if (fd !== null) closeSync(fd);
+    removeTree(root);
+  }
+});
+
+test('six processes race one session and leave one whole sample and zero temp files', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-tee-'));
+  try {
+    const markers = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6'];
+    const results = await Promise.all(markers.map((m) => race(root, 'sess-abc123', m)));
+    for (const [i, r] of results.entries()) {
+      assert.equal(r.code, 0, `writer ${markers[i]} threw: ${r.err}`);
+    }
+    // Whoever won, the invariant is the same on every platform: one whole
+    // sample, parseable, carrying one of the six markers — and nothing else.
+    const back = readTee(root, 'sess-abc123');
+    assert.ok(back !== null, 'the racers left no readable sample at all');
+    assert.ok(markers.includes(back.receivedAt), `receivedAt is ${JSON.stringify(back.receivedAt)}`);
+    assert.deepEqual(strays(root), [], 'a racer stranded its temp file');
+  } finally { removeTree(root); }
+});
+
+test('every racer loses at once (Windows, sample pinned open) and not one temp file survives', { skip: WINDOWS_ONLY }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-tee-'));
+  let fd: number | null = null;
+  try {
+    assert.deepEqual(writeTee(root, payload(null), 'FIRST'), { written: true });
+    // Pinned for the WHOLE window: six separate processes, no timing luck
+    // required, every one of them takes the losing branch.
+    fd = openSync(teePath(root, 'sess-abc123')!, 'r');
+
+    const markers = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6'];
+    const results = await Promise.all(markers.map((m) => race(root, 'sess-abc123', m)));
+    const parsed = results.map((r) => JSON.parse(r.out) as { written: boolean; reason?: string });
+    for (const [i, r] of results.entries()) {
+      assert.equal(r.code, 0, `writer ${markers[i]} threw: ${r.err}`);
+      assert.equal(parsed[i].written, false, `writer ${markers[i]} was expected to lose the rename`);
+      assert.match(parsed[i].reason ?? '', /EPERM|EACCES|EBUSY/);
+    }
+    assert.equal(readTee(root, 'sess-abc123')?.receivedAt, 'FIRST', 'the whole previous sample must survive');
+    assert.deepEqual(strays(root), [], 'six losers stranded six temp files — this is the filed defect');
+  } finally {
+    if (fd !== null) closeSync(fd);
+    removeTree(root);
+  }
+});
+
+// --- The orphans already on disk --------------------------------------------
+
+/** Backdate a path so an age gate can be tested without ever sleeping. */
+function backdate(file: string, ageMs: number): void {
+  const when = new Date(Date.now() - ageMs);
+  utimesSync(file, when, when);
+}
+
+test('sweepStaleTeeTemps removes aged temp files ONLY — never a live one, never a sample', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-tee-'));
+  try {
+    const dir = statuslineDir(root);
+    mkdirSync(dir, { recursive: true });
+    const put = (name: string, ageMs?: number): void => {
+      const full = path.join(dir, name);
+      writeFileSync(full, '{}');
+      if (ageMs !== undefined) backdate(full, ageMs);
+    };
+    const aged = TEE_TMP_MAX_AGE_MS + 60_000;
+    put('sess-abc123.json.tmp-4242', aged);        // what the build WITHOUT the counter stranded
+    put('sess-abc123.json.tmp-4242-7', aged);      // what this build would strand if killed mid-write
+    put('sess-abc123.json.tmp-9999');              // a LIVE writer's temp, seconds old — must survive
+    put('sess-abc123.json');                       // the sample itself
+    // A session id may legitimately contain `.tmp-`: `sanitizeSessionId`
+    // accepts `.` and `-`, so `run.tmp-3` is a real id and `run.tmp-3.json` is
+    // its real sample. A predicate matching `.tmp-` anywhere in the name —
+    // which is what `pruneSnapshots` uses on `state/` — would delete it.
+    put('run.tmp-3.json', aged);
+
+    assert.equal(sweepStaleTeeTemps(root), 2);
+    assert.deepEqual(readdirSync(dir).sort(), [
+      'run.tmp-3.json', 'sess-abc123.json', 'sess-abc123.json.tmp-9999',
+    ]);
+  } finally { removeTree(root); }
+});
+
+test('sweepStaleTeeTemps never throws: no directory, and a name it cannot stat', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-tee-'));
+  try {
+    assert.equal(sweepStaleTeeTemps(root), 0, 'a workspace with no .statusline/ sweeps nothing');
+    const dir = statuslineDir(root);
+    mkdirSync(dir, { recursive: true });
+    // A DIRECTORY wearing a temp file's name is not a file and is left alone
+    // rather than recursively removed.
+    mkdirSync(path.join(dir, 'sess-abc123.json.tmp-1'));
+    backdate(path.join(dir, 'sess-abc123.json.tmp-1'), TEE_TMP_MAX_AGE_MS + 60_000);
+    assert.equal(sweepStaleTeeTemps(root), 0);
+    assert.equal(existsSync(path.join(dir, 'sess-abc123.json.tmp-1')), true);
+  } finally { removeTree(root); }
+});
+
+test('a successful write sweeps the orphans an earlier build left, and never a live temp', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-tee-'));
+  try {
+    const dir = statuslineDir(root);
+    mkdirSync(dir, { recursive: true });
+    const orphan = path.join(dir, 'sess-other.json.tmp-4242');
+    writeFileSync(orphan, '{}');
+    backdate(orphan, TEE_TMP_MAX_AGE_MS + 60_000);
+    const live = path.join(dir, 'sess-other.json.tmp-9999');
+    writeFileSync(live, '{}');
+
+    assert.deepEqual(writeTee(root, payload(null), '2026-08-16T10:00:00.000Z'), { written: true });
+    assert.equal(existsSync(orphan), false, 'the pre-existing orphan was never swept');
+    assert.equal(existsSync(live), true, 'a concurrent writer\'s live temp file was destroyed');
+    assert.equal(readTee(root, 'sess-abc123')?.receivedAt, '2026-08-16T10:00:00.000Z');
   } finally { removeTree(root); }
 });
 

@@ -1361,7 +1361,14 @@ opt-in.** Installing mycontext will not take over a status line; asking for the 
 > `triggered_by`; that a status line command receives a `context_window` object with the fields listed
 > below — is a claim about **another product's** interface. **This repository cannot confirm any of it**,
 > and no test here will fail when it changes. It was checked against Claude Code's documentation, and
-> the Claude Code present when this pass was written was **2.1.233**. An implementer must **re-check
+> the Claude Code present when this pass was written was **2.1.233**. **Re-verified 2026-08-23 against
+> the installed build `2.1.239`** (`VERSION:"2.1.239"`, `GIT_SHA:"9bf8e9521fe06414183309865310e27c9b8db3dd"`,
+> `BUILD_TIME:"2026-08-21T04:40:30Z"`) by re-running the string-extraction the plan's external-facts
+> table describes — **every field this subsection names is still present and still carries the same
+> meaning**; the `context_window` builder is byte-identical to the 2.1.233 reading once the minifier's
+> symbol names are normalised. The 2.1.233 binary is **no longer on disk** (only `2.1.237`, `2.1.238`,
+> `2.1.239` are), so that reading cannot be re-run — the re-verification above stands on the installed
+> build alone. An implementer must **re-check
 > against the version they are building on and update the version recorded here**, because the
 > alternative is a spec that ages into a false statement without anyone touching it. What this
 > repository *can* confirm is the other half: `HookInput`

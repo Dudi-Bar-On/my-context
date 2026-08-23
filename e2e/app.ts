@@ -50,20 +50,74 @@
  */
 import { test as base, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..');
 
 /**
- * The corpus the app is served over. The outer repository root, not
- * `my-context/` — the plugin's own directory carries a second, near-empty
- * corpus, and a server started there answers with it instead. That has already
- * cost this project one wrong answer, and there is a rule item about it.
+ * The corpus the app is served over: **`.demo-corpus`, the simulated one**,
+ * since 2026-08-23.
+ *
+ * ── WHY THIS MOVED OFF THE LIVE CORPUS ────────────────────────────────────
+ *
+ * It used to be the outer repository root — the project's own live corpus, on
+ * the reasoning that testing over real data is stronger than testing over a
+ * fixture. It is, for everything except a gate whose whole output is a LIST OF
+ * WHAT IS MISSING. `screen-parity.spec.ts` compares each screen to its mockup
+ * section and holds the gaps in a shrink-only ledger; over a live corpus that
+ * ledger records what the corpus happened to contain on the day it was
+ * written, and every later run measures a different day.
+ *
+ * Measured, both ways, on 2026-08-23 with seventeen screens built:
+ *
+ *   over the LIVE corpus   `ask` reports 17 absent kinds and `work` 17 more —
+ *                          every one of them present in the code and unreachable
+ *                          because that corpus has no pending revision and its
+ *                          audit projection holds nothing the Ask tab can query.
+ *                          `preview` reports 11, because there is no undelivered
+ *                          session to preview.
+ *   over `.demo-corpus`    `ask` reports one, `work` none, `preview` three.
+ *
+ * Not one of those differences is a line of code. This is
+ * `TASK-the-parity-gate-needs-a-fixture-corpus-holding-one-record-of` (plan:port
+ * seq:9) answered, and it follows the owner's standing ruling that the UI is
+ * developed against the simulated corpus until the screens are finished
+ * (`DEC-the-ui-is-developed-against-a-simulated-corpus-until-the`). `plan:port
+ * seq:99`, the last UI task, moves it back — and the point of moving it back is
+ * precisely to find what a fixture hid.
+ *
+ * **Dogfooding is not abandoned by this.** The demo corpus is written BY the
+ * real code — the hooks write its injections, `mycontext focus` writes its focus
+ * record, `stageRevision` stages its one revision — and only the clock is
+ * synthetic. It is also deterministic: `scripts/demo-corpus.ts` contains no
+ * randomness, so two builds produce the same corpus and the ledger measures the
+ * code rather than the day.
+ *
+ * **It refuses rather than falling back.** `.demo-corpus` is gitignored, so a
+ * fresh checkout does not have it. Silently serving the live corpus instead
+ * would produce exactly the failure above — thirty-odd phantom gaps and no hint
+ * why — so a missing corpus is an error naming the one command that builds it.
+ * `MYCONTEXT_E2E_CORPUS` still overrides everything, for the same reason
+ * `MYCONTEXT_MOCKUP` exists: to point a run at a deliberately broken copy and
+ * watch it go red.
  */
-export const CORPUS = process.env['MYCONTEXT_E2E_CORPUS'] !== undefined
-  ? path.resolve(process.env['MYCONTEXT_E2E_CORPUS'])
-  : path.resolve(REPO, '..');
+export const CORPUS = ((): string => {
+  const override = process.env['MYCONTEXT_E2E_CORPUS'];
+  if (override !== undefined) return path.resolve(override);
+  const demo = path.join(REPO, '.demo-corpus');
+  if (!existsSync(path.join(demo, '.my_context'))) {
+    throw new Error(
+      `e2e: the simulated corpus is missing at ${demo}. It is gitignored and deterministic — ` +
+      'build it with `node scripts/demo-corpus.ts` from my-context/, then run this suite ' +
+      'again. Refused rather than falling back to the live corpus, because a parity gate ' +
+      'measured against a different corpus reports code gaps that are only data gaps. Set ' +
+      'MYCONTEXT_E2E_CORPUS to point somewhere else deliberately.',
+    );
+  }
+  return demo;
+})();
 
 export interface App {
   readonly page: Page;

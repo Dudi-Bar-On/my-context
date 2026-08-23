@@ -21,10 +21,19 @@
  * by the time its `finally` runs there is no `exit` event left to fire — a bare
  * `child.once('exit', …); child.kill();` would wait for an event that has
  * already happened and hang the file until the runner's timeout.
+ *
+ * **`startUiChild` does not return a port Chrome refuses.** `--port 0` asks the
+ * OS for a free port, and the OS answers without knowing who will connect;
+ * Chrome refuses 80 specific ports outright with `net::ERR_UNSAFE_PORT`, and on
+ * this machine 17 of them sit inside the ephemeral range. Drawing one killed a
+ * browser run on 2026-08-23 with no assertion behind it. `startOnSafePort` is
+ * the check that was missing — see `unsafe-ports.ts` for the measurement, the
+ * retry bound, and why a fixed port was not the answer.
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { connect } from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { startOnSafePort } from './unsafe-ports.ts';
 
 const SERVER = fileURLToPath(new URL('../../src/ui/server.ts', import.meta.url));
 
@@ -40,9 +49,29 @@ export interface UiHarness {
   stop(): Promise<void>;
 }
 
-/** Resolved once the child is listening; rejected with its output if it never is. */
+/**
+ * Resolved once the child is listening on a port a browser will open; rejected
+ * with the child's output if it never listens at all.
+ *
+ * The port is not the OS's last word: `startOnSafePort` throws away a child
+ * that landed on one of Chrome's refused ports and asks for another, up to a
+ * bounded number of attempts. Callers see no difference — the same `UiHarness`,
+ * the same rejection on a bad command line — except that the port they are
+ * given is one the browser will actually connect to.
+ */
 export function startUiChild(cwd: string, extraArgs: string[] = []): Promise<UiHarness> {
-  const child = spawn(process.execPath, [SERVER, '--port', '0', ...extraArgs], { cwd });
+  return startOnSafePort(() => spawnUiChild(cwd, ['--port', '0', ...extraArgs]));
+}
+
+/**
+ * One attempt: spawn the server with a complete argv and wait for its readiness
+ * line. Exported for `unsafe-ports.test.ts`, which needs to start a REAL server
+ * on a port Chrome refuses — `--port 6669` rather than `--port 0` — to
+ * demonstrate the retry against real sockets instead of only against a fake.
+ * `startUiChild` is the entry point for everyone else.
+ */
+export function spawnUiChild(cwd: string, args: string[]): Promise<UiHarness> {
+  const child = spawn(process.execPath, [SERVER, ...args], { cwd });
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
   return new Promise((resolve, reject) => {

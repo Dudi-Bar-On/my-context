@@ -860,3 +860,27 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
 /* — per-field staleness on the work screen’s table (mockup ~1006-1007) — */
 td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 [dir="rtl"] td.stale{box-shadow:inset -2px 0 0 var(--warn)}
+
+/* ── CARRIED: the three rules the six wave-1 screens construct ────────
+   Merge of 2026-08-23. The first carry (29875d3) measured the mockup’s
+   static class= attributes and so could see neither a BARE ELEMENT rule nor
+   a class a script emits at runtime. Both kinds were missed: work.js builds
+   <ins>/<del> for its diff, and docs.js emits span.refusal for a markdown
+   construct its renderer will not perform. Re-measured the other way round —
+   over what the six modules actually construct — which is the measurement
+   that cannot miss either.
+
+   NOT carried, deliberately: .well/.welllabel, and config’s .delta and
+   .blast families. No built module emits them — config’s two are held in
+   screen-parity’s KNOWN_GAPS until ctx.api can POST. CSS for markup nothing
+   renders is the same defect as a field no screen reads. */
+
+/* — a refused markdown construct, named rather than dropped (mockup ~660) — */
+.refusal{border:1px solid var(--warn);background:var(--warnbg);color:var(--warn);
+  border-radius:var(--r-sm);padding:2px 6px;font-size:var(--fs-00);display:inline-block}
+
+/* — word-level diff: <ins>/<del> are announced without extra ARIA (~1002) — */
+ins{background:var(--okbg);color:var(--ink);text-decoration:none;border-radius:2px;
+  padding-inline:2px}
+del{background:var(--critbg);color:var(--dim);text-decoration:line-through;border-radius:2px;
+  padding-inline:2px}
