@@ -1740,7 +1740,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <button class="icon" style="inline-size:auto" data-t="ask.predefined.injected">Most-injected items</button>
         <button class="icon" style="inline-size:auto" data-t="ask.predefined.sessions">Sessions</button>
       </div>
-      <div class="card" style="margin-block-start:10px;background:var(--sunk)">
+      <div class="card" style="margin-block-start:10px">
         <h3 data-t="ask.sqlh">The query this composed</h3>
         <p class="small" data-t="ask.sqlCaption">the SQL this answer ran — shown so it teaches. The
           final <span class="m">LIMIT</span> binds one row more than the cap: that extra row is the
@@ -1936,8 +1936,6 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <tr><td class="m">title</td><td><bdi>Never log customer email</bdi></td>
           <td><bdi>Never log customer email<ins> or phone</ins></bdi></td></tr>
         <tr><td class="m">tags</td><td class="m">pii</td><td class="m">pii<ins>, gdpr</ins></td></tr>
-        <tr><td class="m">severity</td><td class="m">advisory</td>
-          <td class="m"><del>advisory</del><ins>hard</ins></td></tr>
         <tr><td class="m stale">body <span class="chip warn" data-g="▲">stale</span></td>
           <td class="small" data-t="work.moved">changed since staging</td>
           <td class="small" data-t="work.blocked">promote refuses until re-based</td></tr>
@@ -2163,9 +2161,8 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
   <section data-p="port" hidden>
     <div class="phd"><h2 data-t="port.h">Export / import</h2>
       <span class="verdict"><span class="prop">PROPOSED</span></span></div>
-    <p class="psub" data-t="port.sub"><b>Decided, not yet built.</b> This screen used to list five
-      open questions; all five are answered now, so it lists the answers instead. The label stays
-      until a command implements it.</p>
+    <p class="psub" data-t="port.sub"><b>Built, and this screen reports it.</b> It used to list five
+      open questions; all five are answered now, so it lists the answers instead.</p>
     <div class="two">
       <div class="card pane">
         <h3 data-t="port.what">What travels</h3>
@@ -2178,10 +2175,10 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <tr><td class="m">state/focus.json</td><td><span class="chip warn" data-g="&#9650;" data-t="port.no">rebuilt</span></td></tr>
         </tbody></table>
         <p class="small" style="margin-block-start:8px" data-t="port.hist"><b>History travels, and
-          it is filtered.</b> Mutations carry; injections, hook actions and focus records do not
-          &mdash; they describe a machine, not a corpus. Imported records land in
-          <span class="m">.audit/imported/</span> so a receiver can always tell what it witnessed
-          from what it was told.</p>
+          it is filtered.</b> Mutations carry; injections, hook actions, focus records, refused
+          requests and procedure ticks do not &mdash; they describe a machine, not a corpus.
+          Imported records land in <span class="m">.audit/imported/</span> so a receiver can always
+          tell what it witnessed from what it was told.</p>
       </div>
       <div class="card pane">
         <h3 data-t="port.fmt">The format, in order of preference</h3>
@@ -2202,7 +2199,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <tr><td><span class="chip warn" data-g="&#9650;" data-t="port.b2">same id, different content</span></td><td class="m">RULE-never-log-customer-email</td></tr>
         <tr><td><span class="chip gov" data-g="&#9670;" data-t="port.b3">identical</span></td><td class="m">CONST-zero-runtime-dependencies</td></tr>
       </tbody></table>
-      <div class="cmd"><code>mycontext export --to ../shared/context-2026-08-19</code>
+      <div class="cmd"><code>mycontext export --out ../shared/context-2026-08-19</code>
         <button data-copy data-t="btn.copy">Copy</button></div>
     </div>
   </section>
@@ -2213,20 +2210,20 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="verdict"><span class="prop">PROPOSED</span></span></div>
     <p class="psub" data-t="pk.sub">A pre-authored corpus someone published &mdash; "the
       regulated-industry flavour" &mdash; imported at <span class="m">init</span> to start from an
-      opinion instead of an empty directory. Decided; nothing implements it yet.</p>
+      opinion instead of an empty directory.</p>
     <div class="two">
       <div class="card pane">
         <h3 data-t="pk.trust">Where it lands, and why that differs</h3>
         <table><tbody>
-          <tr><td><span class="m">init --pack</span></td><td><span class="chip ok" data-g="&#9679;" data-t="pk.active">active</span></td></tr>
+          <tr><td><span class="m">init --pack</span></td><td><span class="chip warn" data-g="&#9650;" data-t="pk.active">draft</span></td></tr>
           <tr><td><span class="m">pack import</span></td><td><span class="chip warn" data-g="&#9650;" data-t="pk.draft">draft</span></td></tr>
         </tbody></table>
-        <p class="small" style="margin-block-start:8px" data-t="pk.trustn"><b>Choosing a pack at
-          init is itself the act of trust</b> &mdash; you are picking your foundation, deliberately,
-          and an empty corpus has nothing for a draft to be reviewed against. Importing later is
-          different: a stranger's opinion joins knowledge you already verified, so it waits for you.
-          <b>There is no <span class="m">--trust</span> flag</b>; a boundary a flag can override is
-          not a boundary.</p>
+        <p class="small" style="margin-block-start:8px" data-t="pk.trustn"><b>Both routes land the same
+          way, and it is draft</b> &mdash; there is one importer behind them, and it writes every
+          item a pack brings in as a proposal. Choosing a pack at init looks like the act of trust,
+          but an empty corpus is exactly where an unreviewed opinion is hardest to notice, so the
+          import asks rather than assumes. <b>There is no <span class="m">--trust</span>
+          flag</b>; a boundary a flag can override is not a boundary.</p>
       </div>
       <div class="card pane">
         <h3 data-t="pk.what">What a pack may carry</h3>

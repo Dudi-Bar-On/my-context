@@ -39,7 +39,7 @@
  */
 import { openProjection, syncProjection } from '../../core/audit-db.ts';
 import type { Workspace } from '../../core/workspace.ts';
-import { IDLE_MS } from '../../ui/idle.ts';
+import { IDLE_MS, MAX_IDLE_MS } from '../../ui/idle.ts';
 import { openBrowser } from '../../ui/open.ts';
 import {
   OPENER_NONCE_TTL_MS, PRINTED_NONCE_TTL_MS, startUiServer,
@@ -49,24 +49,94 @@ import {
   flagOccurrences, hasFlag, registerCommand, repeatedFlagError, type Emit,
 } from './registry.ts';
 
-const USAGE = 'usage: mycontext ui [--port N] [--no-open]';
+const USAGE = 'usage: mycontext ui [--port N] [--no-open] [--idle-ms N]';
 
 /** The flags this command accepts, and which of them take a following value. */
-const UI_FLAGS = ['port', 'no-open'];
-const UI_VALUE_FLAGS = ['port'];
+const UI_FLAGS = ['port', 'no-open', 'idle-ms'];
+const UI_VALUE_FLAGS = ['port', 'idle-ms'];
 
 /**
- * The idle window as the two messages below say it, read from `idle.ts` rather
- * than typed — the same constant `startUiServer` falls back to when no `idleMs`
- * is passed, and this command passes none, so the number and the sentence have
- * exactly one source today.
+ * **The flag this file's previous comment said would arrive, and the sentence
+ * it said must move with it. It arrived on 2026-08-23, and it did.**
  *
- * A task that gives this command an `--idle-ms` flag breaks that, and it was
- * measured rather than reasoned about: shortening the window to 1500ms under
- * `scripts/mutate.ts` produced an exit at 1.8s and a line that still read
- * "15 idle minutes". The flag and these sentences move together or not at all.
+ * What stood here was a constant, `IDLE_MS / 60_000`, with a warning: "A task
+ * that gives this command an `--idle-ms` flag breaks that, and it was measured
+ * rather than reasoned about: shortening the window to 1500ms under
+ * `scripts/mutate.ts` produced an exit at 1.8s and a line that still read '15
+ * idle minutes'. The flag and these sentences move together or not at all."
+ *
+ * So the constant is gone rather than left beside the flag, and both messages
+ * now read the RESOLVED window through `idleMinutesText` — there is still
+ * exactly one source for the number and the sentence, and it is now the value
+ * actually in force rather than the default that used to be the only value
+ * possible. `IDLE_MS` survives as the default `resolveIdleMs` returns when the
+ * flag is absent, which is the one thing it was ever really for.
  */
-const IDLE_MINUTES = IDLE_MS / 60_000;
+
+/**
+ * `--idle-ms`, the window before an untouched server exits.
+ *
+ * ── WHY THIS FLAG EXISTS, MEASURED RATHER THAN WANTED ─────────────────────
+ *
+ * The default is fifteen minutes and it is right for the case it was designed
+ * for: a person opens the UI, reads it, wanders off, and a forgotten tab does
+ * not hold a process open forever (spec §2.3).
+ *
+ * It is wrong for the case that actually kept happening. On 2026-08-23 a server
+ * was started for the owner to look at, three separate times, and each time it
+ * reaped itself before they got to it — because the work of finishing the
+ * change took longer than fifteen minutes and nothing was touching `/api` in
+ * the meantime. Each death was then read as "the page is blank again" and
+ * investigated as a fresh defect. It was not one. The log said so plainly every
+ * time — `mycontext ui: exited after 15 idle minutes.` — and that line was not
+ * looked at until the third occurrence.
+ *
+ * Worse, it compounded a real defect. A page that could not authenticate drew
+ * nothing AND started no heartbeat, so it issued no `/api` request at all; the
+ * lockout starved the very timer that then killed the server, fifteen minutes
+ * later, in a different layer. One symptom, two causes, and the second one
+ * looked exactly like the first.
+ *
+ * ── WHY THE BOUND IS NOT RE-SPELLED HERE ──────────────────────────────────
+ *
+ * `IdleMonitor`'s constructor already refuses NaN, Infinity, zero, negative and
+ * anything past `MAX_IDLE_MS`, and says why at length — it refuses THERE "so
+ * the invariant covers every caller rather than only the caller that happens to
+ * be written first". This function validates the same window against the same
+ * imported constant rather than a literal, so there is one bound and one place
+ * it is written down. The shape check happens here only because this command
+ * refuses everything it can BEFORE starting a server it will not be around to
+ * see fail — the ordering the file header argues for.
+ */
+function resolveIdleMs(args: string[]): number {
+  const found = flagOccurrences(args, 'idle-ms');
+  if (found.length > 1) throw repeatedFlagError('idle-ms', found.map((o) => o.value));
+  const occurrence = found[0];
+  if (occurrence === undefined) return IDLE_MS;
+  if (occurrence.value === null || occurrence.value === '') {
+    throw new Error(
+      'my_context: --idle-ms needs a value — whole milliseconds of idleness before the server ' +
+      `exits, from 1 to ${MAX_IDLE_MS} (24 hours). It is refused rather than defaulted, because ` +
+      'a window silently chosen for you is a server that disappears at a time you did not pick.',
+    );
+  }
+  const ms = Number(occurrence.value);
+  if (!Number.isInteger(ms) || ms < 1 || ms > MAX_IDLE_MS) {
+    throw new Error(
+      `my_context: --idle-ms must be a whole number of milliseconds from 1 to ${MAX_IDLE_MS} ` +
+      `(24 hours) (got ${JSON.stringify(occurrence.value)}). A day is 96 times the default ` +
+      'fifteen minutes — far more than any session needs, and the point past which the window ' +
+      'stops meaning anything.',
+    );
+  }
+  return ms;
+}
+
+/** The window as the two messages below say it, in whole minutes where that is exact. */
+function idleMinutesText(idleMs: number): string {
+  const minutes = idleMs / 60_000;
+  return Number.isInteger(minutes) ? `${minutes} idle minutes` : `${idleMs} idle milliseconds`;
+}
 
 /**
  * `--port`, or `0` meaning "ask the operating system for a free one".
@@ -125,8 +195,10 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
 
   let port: number;
   let noOpen: boolean;
+  let idleMs: number;
   try {
     port = resolvePort(args);
+    idleMs = resolveIdleMs(args);
     noOpen = hasFlag(args, 'no-open');
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
@@ -172,6 +244,7 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
   startUiServer({
     cwd,
     port,
+    idleMs,
     onExit: (reason) => {
       // NOT `process.exit(0)`, which is what the plan's sample called here.
       // `IdleMonitor.start` unrefs its poll and `stop()`s before firing, and
@@ -181,7 +254,7 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
       // truncating this very line on a pipe, which is the one output that
       // explains why the terminal came back.
       if (reason === 'idle') {
-        out(`mycontext ui: exited after ${IDLE_MINUTES} idle minutes.`);
+        out(`mycontext ui: exited after ${idleMinutesText(idleMs)}.`);
       }
     },
   })
@@ -203,7 +276,7 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
       }
       out(
         `mycontext ui: serving on http://127.0.0.1:${running.port} — opening your browser. ` +
-        `Read-only; exits after ${IDLE_MINUTES} idle minutes.`,
+        `Read-only; exits after ${idleMinutesText(idleMs)}.`,
       );
     })
     .catch((err: unknown) => {
@@ -219,7 +292,7 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
 
 registerCommand({
   name: 'ui',
-  usage: 'ui [--port N] [--no-open]',
+  usage: 'ui [--port N] [--no-open] [--idle-ms N]',
   summary: 'read-only web UI on 127.0.0.1 — preview, coverage, reports',
   run: cmdUi,
 });

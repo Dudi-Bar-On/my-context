@@ -291,6 +291,19 @@ test('every bad command line is refused synchronously, before anything is starte
       [['ui', '--port', '-1'], /--port must be a whole number from 0 to 65535/],
       [['ui', '--port', '1.5'], /--port must be a whole number from 0 to 65535/],
       [['ui', '--port', '1', '--port', '2'], /--port was given 2 times/],
+      // `--idle-ms`, added 2026-08-23. Same four spellings of the same silent
+      // drop the port flag refuses, against the same bound `IdleMonitor`'s
+      // constructor enforces — one bound, imported, not re-typed here either.
+      [['ui', '--idle-ms'], /--idle-ms needs a value/],
+      [['ui', '--idle-ms='], /--idle-ms needs a value/],
+      [['ui', '--idle-ms', 'abc'], /--idle-ms must be a whole number of milliseconds from 1 to 86400000 \(24 hours\) \(got "abc"\)/],
+      [['ui', '--idle-ms', '0'], /--idle-ms must be a whole number of milliseconds from 1 to 86400000/],
+      [['ui', '--idle-ms', '-1'], /--idle-ms must be a whole number of milliseconds from 1 to 86400000/],
+      [['ui', '--idle-ms', '1.5'], /--idle-ms must be a whole number of milliseconds from 1 to 86400000/],
+      // One past MAX_IDLE_MS — the day the class calls the point where the
+      // window "stops meaning anything", not the point where the timer breaks.
+      [['ui', '--idle-ms', '86400001'], /--idle-ms must be a whole number of milliseconds from 1 to 86400000/],
+      [['ui', '--idle-ms', '1000', '--idle-ms', '2000'], /--idle-ms was given 2 times/],
     ];
     for (const [argv, message] of cases) {
       const result = run(argv, cwd);
