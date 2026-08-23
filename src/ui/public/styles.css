@@ -884,3 +884,83 @@ ins{background:var(--okbg);color:var(--ink);text-decoration:none;border-radius:2
   padding-inline:2px}
 del{background:var(--critbg);color:var(--dim);text-decoration:line-through;border-radius:2px;
   padding-inline:2px}
+
+/* ── CARRIED: the graphics the eight gap screens draw ─────────────────
+   Wave-2 pre-work, 2026-08-23. Carried BEFORE the screens that consume
+   them, because these are screens that already exist and open: an agent
+   building a heat map has to be able to look at it, and an unstyled heat
+   map is not a heat map. Five of the eight gap screens need nothing here
+   at all — gaps, graph, doctor, learn and status are pure code.
+
+   Derived from screen-parity’s KNOWN_GAPS, which names the element kinds
+   each screen must gain, rather than from the mockup’s class= attributes.
+   That scan was wrong three times in one day: blind to bare element rules,
+   to classes a script emits, and to a module building DOM through its own
+   helper. The ledger enumerates the destination; the markup only shows one
+   spelling of it. */
+
+/* — the admission staircase, its slider and its threshold ladder — */
+.sim{display:grid;grid-template-columns:1fr 232px;gap:var(--sp-3)}
+@media (max-width:1000px){.sim{grid-template-columns:1fr}}
+.ladder{font-size:var(--fs-0);max-block-size:196px;overflow-y:auto}
+.ladder>div{display:flex;justify-content:space-between;gap:var(--sp-2);padding-block:3px;
+  border-block-end:1px solid var(--rule);font-variant-numeric:tabular-nums}
+.ladder>div.at{background:var(--goldbg);font-weight:620}
+.ladder>div.ev{color:var(--crit)}
+.readout{font-size:var(--fs-1);margin-block-start:var(--sp-2);min-block-size:34px}
+.readout b{font-variant-numeric:tabular-nums}
+
+/* — spill ratio: a diverging bar. Both halves are logical, so RTL mirrors for
+     free — including the corner radii, which the source sketch had to restate
+     by hand because it used physical ones. — */
+.div-row{display:grid;grid-template-columns:minmax(96px,168px) 1fr 1fr 56px;gap:var(--sp-2);
+  align-items:center;font-size:var(--fs-0);padding-block:3px}
+.div-l,.div-r{block-size:11px;display:flex}
+.div-l{justify-content:flex-end}
+.div-l i{background:var(--ok);border-start-start-radius:2px;border-end-start-radius:2px}
+.div-r i{background:repeating-linear-gradient(45deg,var(--crit) 0 3px,transparent 3px 6px);
+  border:1px solid var(--crit);border-start-end-radius:2px;border-end-end-radius:2px}
+.div-name,.div-n{font-family:var(--mono);direction:ltr;unicode-bidi:isolate;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.div-n{color:var(--dim);text-align:end;font-variant-numeric:tabular-nums}
+
+/* — 90-day heatstrip: one cell per day. An empty cell is nothing happening; a
+     hatched cell is a spill. Six quiet weeks are six weeks of empty cells. — */
+.heat{display:grid;grid-template-columns:minmax(96px,170px) 1fr;gap:5px var(--sp-3);
+  align-items:center;font-size:var(--fs-00)}
+/* .hstrip, not .strip — the footer status bar already owns that name, and a
+   second meaning for one class is how a layout silently comes apart. */
+.hstrip{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:1px;block-size:13px}
+.hstrip i{border-radius:1px;background:#1e1e28}
+.hstrip i.h1{background:#544620}
+.hstrip i.h2{background:#8a6d24}
+.hstrip i.h3{background:var(--gold)}
+.hstrip i.sp{background:repeating-linear-gradient(45deg,var(--crit) 0 2px,transparent 2px 4px)}
+.hname{direction:ltr;unicode-bidi:isolate;font-family:var(--mono);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.heataxis{display:flex;justify-content:space-between;font-size:var(--fs-00);color:var(--dim)}
+
+/* — per-directory coverage magnitude: governed / total, not a category — */
+.mini{display:flex;block-size:7px;inline-size:74px;border-radius:2px;overflow:hidden;
+  background:var(--sink);border:1px solid var(--edge);flex:none}
+.mini i.g{background:var(--gold)}
+.mini i.u{background:var(--warn);opacity:.34}
+.mini i.x{background:repeating-linear-gradient(45deg,var(--edge-3) 0 2px,transparent 2px 4px)}
+
+.legend{display:flex;flex-wrap:wrap;gap:5px var(--sp-4);font-size:var(--fs-00);
+  color:var(--dim);margin-block-start:var(--sp-2)}
+.legend i{display:inline-block;inline-size:11px;block-size:11px;border-radius:2px;
+  vertical-align:-1px;margin-inline-end:5px}
+.legend .ln{display:inline-block;inline-size:16px;vertical-align:4px;margin-inline-end:5px}
+/* --gold and --warn are nearly the same hue in light mode, so warm and cold are
+   separated by FILL as well as colour: warm is a solid disc, cold is a ring. */
+.legend i.warm{background:var(--gold);border-radius:50%}
+.legend i.cold{background:transparent;border:1.6px solid var(--warn);border-radius:50%}
+.legend i.never{background:var(--critbg);border:1px dashed var(--crit)}
+.legend i.badpin{background:var(--critbg);border:2px solid var(--crit);border-radius:50%}
+.legend i.focusn{background:var(--goldbg);border:1.5px solid var(--gold)}
+.legend i.missn{border:1px dashed var(--crit)}
+.legend i.supn{background:var(--sink);border:1px solid var(--faint)}
+.legend .ln.bearing{border-block-start:1.5px solid var(--ink);opacity:.55}
+.legend .ln.ref{border-block-start:1px solid var(--faint)}
+.legend .ln.dang{border-block-start:1.6px dashed var(--crit)}

@@ -244,6 +244,25 @@ const SCREEN_SELECTORS = [
   // found by re-measuring over what the six modules CONSTRUCT rather than over
   // what the design of record draws.
   '.refusal', 'ins', 'del',
+  // Wave-2 pre-work, 2026-08-23: the graphics the eight gap screens draw,
+  // carried ahead of them because these screens already exist and open — an
+  // agent building a heat map has to be able to look at one. Derived from
+  // screen-parity's KNOWN_GAPS, which names the element kinds each screen must
+  // gain, rather than from the mockup's class= attributes; that scan was wrong
+  // three times in one day. `.simctl` and its range input are deliberately NOT
+  // re-listed: they were already carried for the built simulate screen, and
+  // re-carrying them duplicated the rule — which `ruleAt` would not have caught,
+  // because it takes the first match.
+  '.sim', '.ladder', '.ladder>div', '.ladder>div.at', '.ladder>div.ev',
+  '.readout', '.readout b',
+  '.div-row', '.div-l,.div-r', '.div-l', '.div-l i', '.div-r i',
+  '.div-name,.div-n', '.div-n',
+  '.heat', '.hstrip', '.hstrip i', '.hstrip i.h1', '.hstrip i.h2',
+  '.hstrip i.h3', '.hstrip i.sp', '.hname', '.heataxis',
+  '.mini', '.mini i.g', '.mini i.u', '.mini i.x',
+  '.legend', '.legend i', '.legend .ln', '.legend i.warm', '.legend i.cold',
+  '.legend i.never', '.legend i.badpin', '.legend i.focusn', '.legend i.missn',
+  '.legend i.supn', '.legend .ln.bearing', '.legend .ln.ref', '.legend .ln.dang',
   '.idkind', '.idslug', 'h2', 'button',
   ':where(button,a,input,select,summary):focus-visible',
   '[dir="rtl"] .icon-open', '[class^="icon-"]',
