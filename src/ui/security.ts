@@ -16,21 +16,47 @@
  * bindings under `src/ui/` is *exactly* this one — so a second binding fails
  * the build and so does deleting this one.
  */
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
   recordAudit,
   type AuditWriteResult, type RefusalCheck, type RefusalDetail,
 } from '../core/audit.ts';
 
 /**
- * The session token: 32 random bytes, minted per invocation, held in memory
- * on both sides and nowhere else. It is required in a custom header on every
- * /api request — the custom header is the CSRF defence: a cross-origin form
- * post cannot set one, and with no CORS headers the browser blocks the fetch
- * outright (spec §2).
+ * The session token: 32 random bytes, minted per invocation and held in memory
+ * on both sides. It is required in a custom header on every /api request — the
+ * custom header is the CSRF defence: a cross-origin form post cannot set one,
+ * and with no CORS headers the browser blocks the fetch outright (spec §2).
+ *
+ * **The token itself is still never written anywhere.** What outlives the
+ * process is its DIGEST — see `tokenDigest` below and `core/ui-sessions.ts` —
+ * so a tab that was open when the server restarted is still recognised while
+ * disk holds nothing anyone could present. Before that, this sentence read
+ * "held in memory on both sides and nowhere else", and the price of the "and
+ * nowhere else" was that a restarted server locked out every open tab
+ * permanently: the reload answered 403, the stale cookie was expired, and every
+ * refresh afterwards answered 401 with no way back except a nonce printed in
+ * the terminal.
  */
 export function mintToken(): string {
   return randomBytes(32).toString('hex');
+}
+
+/**
+ * `sha256(token)`, lowercase hex — the only form of a token that is ever
+ * written down.
+ *
+ * It lives here rather than in the store because this module owns the token,
+ * and because the two must agree by construction: a store that hashed
+ * differently from the gate would accept nothing and report nothing, which is
+ * the lockout again wearing a different hat.
+ *
+ * A digest is not a credential. Presenting one is refused exactly as any other
+ * wrong value is — `validateApiRequest` hashes what ARRIVES and compares that,
+ * so a reader of the session file holds the answer to a question nobody asks.
+ */
+export function tokenDigest(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
 }
 
 /** Node lower-cases incoming header names; the page sends `X-Mycontext-Token`. */
@@ -126,6 +152,43 @@ function tokenEquals(given: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+/**
+ * Does this caller hold a credential THIS INSTALLATION issued?
+ *
+ * Two ways to be yes, and they answer different questions. The live token is
+ * this process's own, compared directly — the fast path, and what every
+ * script-driven caller and the whole node suite exercise. `priorDigests` are
+ * tokens EARLIER processes issued, recognised by hashing what arrived: that is
+ * what lets a tab which was open when the server restarted carry on, rather
+ * than 401ing forever with no way to earn a new token but a nonce printed in a
+ * terminal it may no longer have.
+ *
+ * The loop does not break early. There is nothing secret about which digest
+ * matched, but a loop whose length depends on the answer is a habit worth not
+ * having in this file, and eight iterations of a buffer compare costs nothing.
+ */
+function tokenAccepted(given: string, expected: ExpectedCredential): boolean {
+  if (tokenEquals(given, expected.token)) return true;
+  const priors = expected.priorDigests;
+  if (priors === undefined || priors.length === 0) return false;
+  const presented = tokenDigest(given);
+  let matched = false;
+  for (const digest of priors) if (tokenEquals(presented, digest)) matched = true;
+  return matched;
+}
+
+/**
+ * What the gate compares against. `priorDigests` is optional and absent means
+ * an empty list — a caller that has no session store, and every existing test,
+ * gets exactly the behaviour it had before this field existed.
+ */
+export interface ExpectedCredential {
+  token: string;
+  port: number;
+  /** `sha256` hex of tokens issued by EARLIER runs; see `core/ui-sessions.ts`. */
+  priorDigests?: readonly string[];
+}
+
 function headerValue(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
@@ -183,7 +246,7 @@ function headerValue(v: string | string[] | undefined): string | undefined {
  */
 export function validateApiRequest(
   req: { headers: Record<string, string | string[] | undefined> },
-  expected: { token: string; port: number },
+  expected: ExpectedCredential,
 ): { ok: true } | { ok: false; status: number; check: RefusalCheck; reason: string } {
   const wantHost = `127.0.0.1:${expected.port}`;
   const host = headerValue(req.headers.host);
@@ -212,7 +275,7 @@ export function validateApiRequest(
       reason: `missing ${TOKEN_HEADER} header and ${TOKEN_COOKIE} cookie`,
     };
   }
-  if (!tokenEquals(token, expected.token)) {
+  if (!tokenAccepted(token, expected)) {
     return { ok: false, status: 403, check: 'token-mismatch', reason: 'wrong token' };
   }
   return { ok: true };

@@ -133,6 +133,13 @@ const WRITERS: Record<string, string[]> = {
   // quietly into one.
   'src/core/continuity.ts': ['setCarrySource'],
   'src/core/session-names.ts': ['setSessionName'],
+  // Reached from 2026-08-23, when `startUiServer` began persisting the digest
+  // of the token it mints so that a tab open across a restart is not locked
+  // out for good. Named here BEFORE it was ruled in, and the assertion below
+  // went red exactly as it should have: an undeclared writer in this graph is
+  // the failure mode this table exists to make loud, and a new module quietly
+  // widening the surface would otherwise have shipped green.
+  'src/core/ui-sessions.ts': ['recordSessionDigest'],
 };
 
 const isWriter = (module: string, symbol: string): boolean =>
@@ -154,6 +161,28 @@ const BANNED_NAMES = new Set(Object.values(WRITERS).flat());
  */
 const RULED_WRITES = [
   'src/ui/security.ts binds recordAudit (defined in src/core/audit.ts)',
+  // Owner ruling, 2026-08-23. `startUiServer` records `sha256(token)` for the
+  // token it mints, so the NEXT process still recognises a tab that was open
+  // across a restart. Before it, a restarted server locked out every open tab
+  // permanently: the reload answered 403, the stale cookie was expired, and
+  // every refresh after that answered 401 with no way back but a nonce printed
+  // in the terminal — measured over real HTTP after three earlier fixes that
+  // each addressed a different layer of the same symptom.
+  //
+  // Three properties keep this from widening the surface it sits in, and each
+  // is checkable rather than promised:
+  //
+  //   - it runs BEFORE the socket binds, in `startUiServer`'s body, so it is
+  //     not reachable from any request path — unlike `recordAudit` above, which
+  //     is on the refusal path and needs `server-e2e.test.ts` to bound WHEN;
+  //   - what it writes is a DIGEST, never a token, so the artefact is not a
+  //     credential. `mode: 0o600` is not honoured on win32, so a plain token
+  //     file would have been one;
+  //   - it writes OUTSIDE every corpus, under the global root, which is why
+  //     `server-e2e.test.ts`'s byte snapshot of the workspace still holds. That
+  //     assertion is the one that would otherwise have caught this, and it
+  //     still means what it says.
+  'src/ui/server.ts binds recordSessionDigest (defined in src/core/ui-sessions.ts)',
 ];
 
 /**

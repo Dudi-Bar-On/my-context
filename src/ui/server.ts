@@ -69,9 +69,10 @@ import {
 import { registerConfigRoutes } from './read-model-config.ts';
 import { registerWorkRoutes } from './read-model-work.ts';
 import { matchRoute, registerRoute, type ApiContext, type JsonResult } from './routes.ts';
+import { loadSessionDigests, recordSessionDigest } from '../core/ui-sessions.ts';
 import {
   cookieValue, mintToken, NonceStore, recordRefusal, SECURITY_HEADERS, TOKEN_COOKIE,
-  TOKEN_HEADER, validateApiRequest,
+  TOKEN_HEADER, tokenDigest, validateApiRequest,
 } from './security.ts';
 import { serveStatic } from './static.ts';
 import { registerWatchRoutes } from './watch-model.ts';
@@ -93,6 +94,13 @@ export interface UiServerOptions {
   onExit?: (reason: 'idle' | 'closed') => void;
   /** Test-only override for handoff nonce ttl; production callers omit it. */
   nonceTtlMs?: number;
+  /**
+   * Told when the session store could not be read or written, with a sentence
+   * naming the file and what it costs. Not an error: the server serves either
+   * way. Omitting this handler discards the notice, which is a caller's choice
+   * to make and not a default this module takes on its behalf.
+   */
+  onSessionStoreIssue?: (message: string) => void;
 }
 
 export interface RunningUiServer {
@@ -308,6 +316,30 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
   const corpusRoot = ws.projectRoot;   // narrowed here so the refusal recorder below has a string
   const repoRoot = path.dirname(corpusRoot);
   const token = mintToken();
+
+  /**
+   * **The tokens EARLIER runs issued, so a tab that was open when the server
+   * restarted is not locked out for good.**
+   *
+   * Read before the socket binds, and the new token's digest recorded in the
+   * same breath, because both are decisions about this run rather than
+   * responses to a request — nothing under `src/ui/` may touch this on a
+   * request path, and nothing does. `core/ui-sessions.ts` carries the full
+   * reasoning; the two facts that matter here are that what is stored is
+   * `sha256(token)` and never the token, and that the file lives outside every
+   * corpus so the read surface still changes not one byte of the workspace.
+   *
+   * Both failures are REPORTED rather than thrown. A server that cannot write
+   * its session file must still serve — the corpus is readable and the person
+   * is waiting — but it must not pretend it persisted, because the cost lands
+   * later and somewhere else: the tab opened now would stop working at the next
+   * restart, which is precisely the symptom this removes.
+   */
+  const restored = loadSessionDigests();
+  if (restored.error !== null) options.onSessionStoreIssue?.(restored.error);
+  const persisted = recordSessionDigest(tokenDigest(token));
+  if (persisted.error !== null) options.onSessionStoreIssue?.(persisted.error);
+
   const nonces = new NonceStore();
   const nonceTtl = options.nonceTtlMs;
 
@@ -412,7 +444,9 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     // Host/Origin are validated for EVERY /api request, handoff included; the
     // token check is what handoff alone is exempt from (it is how the page
     // first obtains the token).
-    const gate = validateApiRequest(req, { token, port: boundPort });
+    const gate = validateApiRequest(req, {
+      token, port: boundPort, priorDigests: restored.digests,
+    });
 
     // Rule 2. Not a registered route: a route in the table is a route behind
     // the gate, and this is the one that must not be.

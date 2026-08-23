@@ -505,6 +505,6 @@ export const strings = {
   'prov.projCaughtUp': '{mv:state} and caught up before answering',
   'prov.projFailed': 'could not catch up — no partial answer is shown: {error}',
   'ex.msg': 'The server has exited. This page shows what it last knew.',
-  'ex.stale': 'Not connected. Refresh this page — if it stays that way the server was restarted, and the link it printed is the way back.',
+  'ex.stale': 'Not connected. Refresh this page — if it stays that way this browser holds no credential for the server, and the link it printed is the way back.',
   'ex.ok': 'OK',
 };

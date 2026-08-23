@@ -278,6 +278,12 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     cwd,
     port,
     idleMs,
+    // The session store is what lets a tab survive this server restarting. It
+    // is not required for the server to work TODAY, so a failure here is a
+    // notice rather than a refusal — but it is said out loud, because the cost
+    // lands later and somewhere else: the tab you are about to open would stop
+    // working at the next restart, which is the exact symptom this removes.
+    onSessionStoreIssue: (message) => { out(`mycontext ui: ${message}`); },
     onExit: (reason) => {
       // NOT `process.exit(0)`, which is what the plan's sample called here.
       // `IdleMonitor.start` unrefs its poll and `stop()`s before firing, and

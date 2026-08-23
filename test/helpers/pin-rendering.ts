@@ -29,6 +29,33 @@
  * layout budget exported for a maintainer's own terminal must not reshape the
  * suite's expected output.
  */
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 process.env.MYCONTEXT_ASCII = '1';
 delete process.env.MYCONTEXT_UNICODE;
 delete process.env.MYCONTEXT_WIDTH;
+
+/**
+ * **And pins the UI session store out of the developer's real home directory.**
+ *
+ * `core/ui-sessions.ts` defaults to `GLOBAL_DIR` — `~/.my-context` — which is
+ * correct for a person and wrong for a suite: every `startUiServer` call, in
+ * process or in a spawned child, records the digest of the token it just
+ * minted. Left unpinned, a full run would append to the file a real session
+ * uses, and `test/ui/session-continuity.test.ts` would be asserting against
+ * state some earlier run left behind rather than against what it set up.
+ *
+ * This is the same class of defect as the rendering pin above, and it has
+ * already happened once in a worse form: on 2026-08-22 a fixture wrote items
+ * into the real `~/.my-context/` and turned 134 unrelated tests red with a
+ * message pointing nowhere near the cause. A child process inherits this
+ * environment, so pinning it here covers `spawnUiChild` too.
+ *
+ * The path is per-process, so parallel test files cannot fight over one file.
+ * It is left behind on purpose — a few hundred bytes of digests in the OS
+ * temporary directory, which the OS reclaims, and deleting it from a preload
+ * would race with the very processes that are still writing to it.
+ */
+process.env.MYCONTEXT_UI_SESSIONS_DIR = mkdtempSync(path.join(tmpdir(), 'myctx-test-sessions-'));
