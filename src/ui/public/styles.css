@@ -820,3 +820,13 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
 .rung.binds .n{color:var(--warn)}
 .rung.after{opacity:.42}
 .rung .q{color:var(--dim);font-size:var(--fs-0)}
+
+/* ── PROPOSAL, NOT YET APPROVED: the index tier's chip is legible ─────────
+   `TIERCHIP.index` is the one tier with no modifier class, so its chip takes
+   only `.chip`, which sets `color:#0b0c11` and no background — near-black text
+   on a near-black panel, in the mockup and here alike. A label nobody can read
+   is a label that is not there.
+   Neutral rather than a new hue: the index tier is the quiet one, and `--dim`
+   on `--sink` is what `.cnt` already uses for a count that must be read and
+   must not shout. Awaiting the owner's look. */
+.chip.index{color:var(--dim);border-color:var(--edge-3);background:var(--sink)}

@@ -66,7 +66,8 @@ import { registerConfigRoutes } from './read-model-config.ts';
 import { registerWorkRoutes } from './read-model-work.ts';
 import { matchRoute, registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import {
-  mintToken, NonceStore, recordRefusal, SECURITY_HEADERS, TOKEN_COOKIE, validateApiRequest,
+  cookieValue, mintToken, NonceStore, recordRefusal, SECURITY_HEADERS, TOKEN_COOKIE,
+  TOKEN_HEADER, validateApiRequest,
 } from './security.ts';
 import { serveStatic } from './static.ts';
 import { registerWatchRoutes } from './watch-model.ts';
@@ -334,6 +335,33 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
       host: headerFirst(req.headers.host),
       origin: headerFirst(req.headers.origin),
     });
+
+    // **A token cookie THIS server did not issue is expired here, or the page
+    // is locked out for good.**
+    //
+    // The lockout, measured on 2026-08-23: restart `mycontext ui` on the same
+    // port, reload the page WITHOUT the nonce fragment, and the browser sends
+    // the previous server's `mycontext_token`. It does not match, every /api
+    // call answers 403, and the page cannot recover — the cookie is `HttpOnly`
+    // so script cannot clear it, and with no nonce in the URL there is nothing
+    // left to re-handshake with. The screen goes blank and stays blank however
+    // many times it is reloaded.
+    //
+    // That is a direct breach of the owner's requirement that a reload always
+    // works, and the earlier exemption on `/api/handoff` does not reach it:
+    // that one only helps when a nonce IS present.
+    //
+    // Only the COOKIE is expired, and only when the header did not carry the
+    // token. A caller that sent a wrong token in the header chose that value
+    // and gets a plain refusal; a browser that merely still had a cookie from
+    // the last server is handed a clean slate, so the next load presents
+    // nothing, answers 401 rather than 403, and the page can say what is
+    // actually wrong.
+    if (gate.check === 'token-mismatch'
+      && headerFirst(req.headers[TOKEN_HEADER]) === null
+      && cookieValue(req.headers.cookie, TOKEN_COOKIE) !== undefined) {
+      res.setHeader('set-cookie', `${TOKEN_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
+    }
     sendRefusal(res, gate.status);
   }
 

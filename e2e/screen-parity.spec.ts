@@ -166,7 +166,15 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // reports/2026-08-23-ui3-1s-preview/, absent only because this corpus does
   // not spill at its real budgets. `i` is the string grammar's missing emphasis
   // marker, the same defect as the bold run on the audit stream.
-  preview: ['div.gh', 'i', 'span.prop'],
+  // `span.chip` is a SECOND accepted divergence, and a legibility fix rather
+  // than an omission. `TIERCHIP.index` is the only tier the mockup gives no
+  // modifier class, so its chip takes bare `.chip` — which sets `color:#0b0c11`
+  // and no background, i.e. near-black text on a near-black panel, invisible in
+  // the mockup and in the app alike. Owner ruling 2026-08-23: fix it in the app
+  // only, leaving the mockup as drawn. The app renders `chip index`, so the
+  // bare `span.chip` kind legitimately disappears from this screen. A label
+  // nobody can read is a label that is not there.
+  preview: ['div.gh', 'i', 'span.chip', 'span.prop'],
   coverage: ['div', 'div.mini', 'i', 'i.g', 'i.u', 'i.x'],
   gaps: ['b', 'button.icon', 'span.m', 'span.v', 'td', 'td.m', 'td.small'],
   simulate: [

@@ -162,7 +162,7 @@ const TIERCHIP = {
   pinned: ['chip gov', '◆'],
   jit: ['chip ok', '●'],
   restored: ['chip ok', '●'],
-  index: ['chip', '◇'],
+  index: ['chip index', '◇'],
 };
 
 export function tierChip(tier) {

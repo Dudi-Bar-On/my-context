@@ -37,6 +37,7 @@
  * port". Both are refused below, from the occurrences rather than from the
  * collapsed answer.
  */
+import { openProjection, syncProjection } from '../../core/audit-db.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { IDLE_MS } from '../../ui/idle.ts';
 import { openBrowser } from '../../ui/open.ts';
@@ -131,6 +132,38 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     out(err instanceof Error ? err.message : String(err));
     return 1;
   }
+
+  // **The audit projection is synced HERE, before the server exists.**
+  //
+  // Owner decision, 2026-08-23. The read surface may never sync it — building
+  // the projection is a write, and `audit-db.ts` refuses on that ground by
+  // design, answering 503 with a sentence telling the reader to run
+  // `mycontext audit`. That is correct for a read surface and useless as a
+  // product: every audit endpoint then fails until somebody knows to run a
+  // command nobody mentioned.
+  //
+  // And it happens constantly, not rarely. A refusal is the read surface's ONE
+  // write: a single stale-tab heartbeat answering `token-mismatch 403 GET
+  // /api/ping` appends an access record, the log outgrows the projection, and
+  // the Audit stream 503s from then on. The surface disables itself by doing
+  // the one thing it is allowed to do. Measured repeatedly on 2026-08-23; it is
+  // the whole reason that screen kept appearing empty.
+  //
+  // This command is a CLI invocation and IS a write context, so it may do what
+  // the server may not. Syncing once here means the UI works when it opens.
+  //
+  // **Best effort, never fatal.** A corpus with no audit log yet, one whose
+  // projection is damaged, a read-only checkout — none of those is a reason to
+  // refuse to start a UI that reads twenty other things perfectly well. The
+  // endpoints keep their own 503 for the case where this could not help, so
+  // nothing is hidden by trying.
+  try {
+    // `ws.projectRoot`, never `cwd`: the workspace can be a directory ABOVE the
+    // one the command was run from, and `audit.ts` resolves it the same way for
+    // the same reason. Passing cwd worked only when they happened to coincide.
+    const db = openProjection(ws.projectRoot);
+    try { syncProjection(ws.projectRoot, db); } finally { db.close(); }
+  } catch { /* the endpoints still report a stale projection in their own words */ }
 
   // From here the server outlives this function. `runCli` returns, the CLI
   // main sets `process.exitCode` without calling `process.exit`
