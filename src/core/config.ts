@@ -1,4 +1,4 @@
-import { CATEGORIES, PROFILES, type ProfileName } from './categories.ts';
+import { CATEGORIES, PROFILES, type CategoryUpdates, type ProfileName } from './categories.ts';
 import { enumError } from './teach.ts';
 import type { AgentEdits, ScopePolicy, Tier } from './types.ts';
 // One direction only: `validate.ts` imports item.ts/teach.ts/vocabulary.ts and
@@ -91,6 +91,18 @@ export interface ResolvedCategory {
   extraFields: string[];
   agentEdits: AgentEdits;
   scopePolicy: ScopePolicy;
+  /**
+   * What may be updated on an item of this category, beyond what its TIER
+   * already declares in `TIER_UPDATES` (core/categories.ts).
+   *
+   * Every resolved category has one; `{}` says "this category adds nothing of
+   * its own", which is true of nineteen of the twenty-four shipped ones and is
+   * a declaration rather than a gap. A CUSTOM category resolves to `{}` today
+   * — making it authorable in config.json is plan:categories seq 14, and until
+   * then a custom category is honestly described as declaring nothing rather
+   * than dishonestly described as declaring its shipped neighbour's rules.
+   */
+  updates: CategoryUpdates;
 }
 
 /** Declaration order is the order the refusal lists them in — `enumError`
@@ -679,6 +691,7 @@ export function resolveConfig(raw: unknown): Config {
       extraFields: [...def.extraFields],
       agentEdits: defaultAgentEdits(def.tier),
       scopePolicy: DEFAULT_SCOPE_POLICY,
+      updates: def.updates,
     };
   }
 
@@ -749,6 +762,11 @@ export function resolveConfig(raw: unknown): Config {
         scopePolicy: override.scopePolicy === undefined
           ? DEFAULT_SCOPE_POLICY
           : requireEnum(name, 'scopePolicy', override.scopePolicy, SCOPE_POLICIES),
+        // A custom category has no catalogue entry to inherit a declaration
+        // from, and `{}` is the honest answer until config.json can carry one
+        // (plan:categories seq 14). Describing it with its shipped neighbour's
+        // rules would be worse than describing it with none.
+        updates: {} as CategoryUpdates,
       };
       continue;
     }

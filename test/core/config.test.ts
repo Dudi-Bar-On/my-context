@@ -345,6 +345,12 @@ test('a custom category named after an Object.prototype key works end to end', (
     extraFields: [],
     agentEdits: 'review',
     scopePolicy: 'global',
+    // A custom category has no catalogue entry to inherit an `updates`
+    // declaration from, so it resolves to the empty one — which is a
+    // declaration ("this category adds nothing of its own") and not a gap.
+    // Making it authorable in config.json is plan:categories seq 14; asserting
+    // the whole object here is what will make that change visible.
+    updates: {},
   });
   // It has to be visible to every consumer that enumerates or looks up
   // categories, not merely present on the object.

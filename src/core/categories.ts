@@ -1,5 +1,115 @@
 import type { Tier } from './types.ts';
 
+/**
+ * Where a value lives — and therefore which operations are legal on it.
+ *
+ * **Owner ruling, 2026-08-23: `update` is not a legal operation on a tag.** A
+ * tag is a MEMBERSHIP, and a set supports add and remove; what looks like an
+ * update is a remove plus an add, two operations that can half-fail and that a
+ * typo turns into a silent third membership. The `key:value` convention hides
+ * that by making two distinct tags feel like one slot with two values.
+ *
+ * So the test is one sentence: **if you would ever want to update it, it is a
+ * field.** A `tag` is legitimate only while its value is fixed for the life of
+ * the item.
+ *
+ * This is not theory. Measured across 276 task items on 2026-08-23: all 276
+ * carried a `state:` TAG, 213 also carried a `state` FIELD, and THIRTEEN
+ * disagreed — five reading `done` as a tag and `doing` as a field. `state` is
+ * the one name that got "updated" hundreds of times, and it is the one that
+ * drifted. The category error and the defect are the same thing.
+ */
+export type UpdateStore = 'field' | 'tag';
+
+/**
+ * One updatable name on an item, and everything a person or a refusal needs to
+ * know about it.
+ *
+ * `store` and `note` are required; the rest is absent when it does not apply.
+ * That asymmetry is deliberate — an absent `values` means "free text", which is
+ * a real answer, whereas an absent `note` would mean this declaration cannot be
+ * rendered, and rendering is half of what it exists for.
+ */
+export interface UpdatableName {
+  /** `field` for a value that changes; `tag` for a membership fixed for the item's life. */
+  store: UpdateStore;
+  /**
+   * The closed vocabulary. Absent means free text.
+   *
+   * **This is what makes a typo impossible rather than merely unlikely.** Until
+   * it existed, `state:donee` would have removed a task from every progress
+   * view with no gate noticing — grepped the source on 2026-08-23 and found
+   * nothing anywhere reading or checking the `plan:`/`seq:`/`state:` prefixes.
+   */
+  values?: readonly string[];
+  /**
+   * For a `field` that must stay filterable: the tag prefix the tool keeps in
+   * sync with it, writing `<projectsTo>:<value>` and rewriting it on change.
+   *
+   * The projection is GENERATED, never typed. That is what makes remove-then-add
+   * atomic — a machine does both — and it is why grouping keeps working
+   * unchanged while the value itself moves to the field that can hold it.
+   */
+  projectsTo?: string;
+  /**
+   * How it is changed, as it is typed. Absent means the generic spelling for an
+   * extra field, `mycontext edit <id> --extra <name>=<value>`.
+   *
+   * Spelled out per name because it is not derivable and getting it wrong costs
+   * a person an attempt: `always` has two spellings (`edit --always=true` and
+   * `mycontext pin`), and `source_file` has no command at all.
+   */
+  command?: string;
+  /** One line a person reads. Rendered by `mycontext help` and `mycontext examples`. */
+  note: string;
+}
+
+/** A category's own updatable surface, by name. Empty is a real answer. */
+export type CategoryUpdates = Readonly<Record<string, UpdatableName>>;
+
+/**
+ * **The update rules that belong to the TIER, declared once.**
+ *
+ * REQ-every-category-declares-what-may-be-updated-on-its-items-and names this
+ * as a constraint on the design rather than a convenience: "Most update rules
+ * belong to the TIER, not the category… Declaring those per category would put
+ * 23 copies of one fact in the catalogue. Tier declares the general rules; a
+ * category declares only what is genuinely its own."
+ *
+ * So `CATEGORIES[x].updates` below carries a category's OWN names and nothing
+ * else, and every one of the 24 shipped categories is silent about `title`,
+ * `status` and the rest — because this table already said it.
+ *
+ * **The two tiers differ in exactly two entries, and the difference is read off
+ * the code that enforces it** (`cli/commands/edit.ts` · `      if (patch.always === true) {` · ~525),
+ * not off the comment table above it. On a rationale-tier item `--always true`
+ * and `--severity hard` are refused through `inertFieldError`; `--always=false`
+ * and `--severity soft` are accepted, because they assert nothing about the
+ * pinned tier and clearing a stored-but-inert value is a legitimate cleanup.
+ * `scope` is NOT refused on the rationale tier, which is why it appears
+ * identically under both.
+ */
+export const TIER_UPDATES: Record<Tier, CategoryUpdates> = {
+  normative: {
+    title: { store: 'field', command: 'mycontext edit <id> --title "…"', note: 'The one-line name. Changing it does not change the id.' },
+    body: { store: 'field', command: 'mycontext edit <id> --body "…" | --file <path>', note: 'What the item actually says. On a governing item this is gated and previewed.' },
+    scope: { store: 'field', command: 'mycontext edit <id> --scope "a/**,b/**"', note: 'The globs this governs. Empty means everywhere, unless the category sets scopePolicy required.' },
+    tags: { store: 'tag', command: 'mycontext edit <id> --tags "a,b"', note: 'REPLACES the whole list. Read the current tags back first or the others are dropped.' },
+    status: { store: 'field', values: ['draft', 'active', 'validated', 'deprecated', 'superseded'], command: 'mycontext edit <id> --status <status>', note: 'Whether it governs. Moving a normative item into active or validated is gated and previewed.' },
+    severity: { store: 'field', values: ['hard', 'soft'], command: 'mycontext harden <id> | mycontext soften <id>', note: 'Binding or advisory. `edit --severity` is the same change under another name.' },
+    always: { store: 'field', values: ['true', 'false'], command: 'mycontext pin <id> | mycontext unpin <id>', note: 'Injected at every session start. `edit --always=true` is the same change under another name.' },
+  },
+  rationale: {
+    title: { store: 'field', command: 'mycontext edit <id> --title "…"', note: 'The one-line name. Changing it does not change the id.' },
+    body: { store: 'field', command: 'mycontext edit <id> --body "…" | --file <path>', note: 'What the item actually says. Ungated on this tier — nothing governs before or after.' },
+    scope: { store: 'field', command: 'mycontext edit <id> --scope "a/**,b/**"', note: 'The globs this is about. Accepted on this tier, unlike severity and always.' },
+    tags: { store: 'tag', command: 'mycontext edit <id> --tags "a,b"', note: 'REPLACES the whole list. Read the current tags back first or the others are dropped.' },
+    status: { store: 'field', values: ['draft', 'active', 'validated', 'deprecated', 'superseded'], command: 'mycontext edit <id> --status <status>', note: 'Ungated on this tier: a rationale item governs nothing before or after.' },
+    severity: { store: 'field', values: ['soft'], command: 'mycontext soften <id>', note: 'Only soft. `--severity hard` is REFUSED here — severity governs on the normative tier only.' },
+    always: { store: 'field', values: ['false'], command: 'mycontext unpin <id>', note: 'Only false. `--always true` is REFUSED here — pinning governs on the normative tier only.' },
+  },
+};
+
 export interface CategoryDef {
   name: string;
   prefix: string;
@@ -7,13 +117,24 @@ export interface CategoryDef {
   defaultEnabled: boolean;
   description: string;
   extraFields: string[];
+  /**
+   * What may be updated on an item of THIS category, beyond what its tier
+   * already declares in `TIER_UPDATES`.
+   *
+   * Every category has one, and `{}` is a real declaration rather than a gap:
+   * it says this category adds nothing of its own, which is true of nineteen of
+   * the twenty-four shipped ones. What it must never be is absent — a category
+   * that cannot describe its own updates teaches nobody anything, which is the
+   * sentence the requirement opens with.
+   */
+  updates: CategoryUpdates;
 }
 
 function def(
   name: string, prefix: string, tier: Tier, defaultEnabled: boolean,
-  description: string, extraFields: string[] = [],
+  description: string, extraFields: string[] = [], updates: CategoryUpdates = {},
 ): CategoryDef {
-  return { name, prefix, tier, defaultEnabled, description, extraFields };
+  return { name, prefix, tier, defaultEnabled, description, extraFields, updates };
 }
 
 export const CATEGORIES: Record<string, CategoryDef> = {
@@ -22,9 +143,29 @@ export const CATEGORIES: Record<string, CategoryDef> = {
   invariant:     def('invariant', 'INV', 'normative', true,
     'Condition that must always hold during execution'),
   rule:          def('rule', 'RULE', 'normative', true,
-    'A do/dont directive', ['directive']),
+    'A do/dont directive', ['directive'], {
+      // The ONE vocabulary here read off code rather than guessed at:
+      // `revision-diff.ts` renders a directive change as
+      // `- directive: dont` / `+ directive: do` (~70), and the shipped example
+      // carries `dont`. Both members, both attested.
+      directive: {
+        store: 'field', values: ['do', 'dont'],
+        note: 'Whether this rule tells you to do something or not to. It is what the rule MEANS, which is why `directive` can never be removed from the category.',
+      },
+    }),
   requirement:   def('requirement', 'REQ', 'normative', true,
-    'What must be built', ['kind']),
+    'What must be built', ['kind'], {
+      // NO `values`, deliberately. `functional` is the only value this build
+      // attests — the shipped example and the one requirement in this corpus
+      // both carry it — and nothing in `src/` constrains the field. Declaring
+      // a vocabulary from one observed member would be exactly the invented
+      // claim this requirement exists to stop: four statements in the design
+      // of record were measured false in one week that way.
+      kind: {
+        store: 'field',
+        note: 'What kind of requirement this is. The shipped example uses `functional`; nothing constrains the value today.',
+      },
+    }),
   standard:      def('standard', 'STD', 'normative', true,
     'Formatting, coding convention, architectural guideline'),
   pattern:       def('pattern', 'PAT', 'normative', true,
@@ -36,7 +177,12 @@ export const CATEGORIES: Record<string, CategoryDef> = {
   non_goal:      def('non_goal', 'NOGOAL', 'normative', true,
     'Explicit prohibition on building something'),
   open_question: def('open_question', 'OPENQ', 'normative', true,
-    'Deliberately undecided; the agent must not decide it alone', ['blocks']),
+    'Deliberately undecided; the agent must not decide it alone', ['blocks'], {
+      blocks: {
+        store: 'field',
+        note: 'What cannot proceed until this is answered. Free text — name the work, not the person.',
+      },
+    }),
   runbook:       def('runbook', 'RUN', 'normative', true,
     'The steps for a named operation, in the order they must be taken'),
   // The one-shot sibling of `runbook`, and the pair is deliberate (spec §6o).
@@ -84,11 +230,33 @@ export const CATEGORIES: Record<string, CategoryDef> = {
   tradeoff:      def('tradeoff', 'TRADE', 'rationale', true,
     'What was sacrificed for what'),
   assumption:    def('assumption', 'ASSUME', 'rationale', true,
-    'Unverified premise plus validation deadline', ['validate_by', 'validated_on']),
+    'Unverified premise plus validation deadline', ['validate_by', 'validated_on'], {
+      validate_by: {
+        store: 'field',
+        note: 'The date by which this premise must be checked, as YYYY-MM-DD. An assumption with no deadline is a belief.',
+      },
+      validated_on: {
+        store: 'field',
+        note: 'The date it was actually checked, as YYYY-MM-DD. Absent means it has not been.',
+      },
+    }),
   edge_case:     def('edge_case', 'EDGE', 'rationale', true,
     'Boundary condition; frequently worth promoting'),
   risk:          def('risk', 'RISK', 'rationale', true,
-    'May occur and would harm', ['likelihood', 'impact']),
+    'May occur and would harm', ['likelihood', 'impact'], {
+      // Same restraint as `requirement.kind`. The shipped example attests
+      // `medium` and `high`; `low` is an inference from a familiar triple, and
+      // an inference is not an attestation. Left open until the owner rules,
+      // rather than declared and enforced against items nobody checked.
+      likelihood: {
+        store: 'field',
+        note: 'How likely it is. The shipped example uses `medium`; nothing constrains the value today.',
+      },
+      impact: {
+        store: 'field',
+        note: 'How much it would harm. The shipped example uses `high`; nothing constrains the value today.',
+      },
+    }),
   // RATIONALE, and the tier is the trust boundary rather than a taxonomy
   // judgement. A reference's body is a snapshot of a file, so if the category
   // were normative, whoever can edit that file — an agent included — would
