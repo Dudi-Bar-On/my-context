@@ -361,9 +361,31 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     // the gate, and this is the one that must not be.
     if (url.pathname === '/api/handoff' && req.method === 'POST') {
       // `check`, never the status: three of the gate's refusing exits answer
-      // 403, so the status cannot say which one refused. `token-missing` is
-      // exactly the exemption — a WRONG token is still refused here.
-      if (!gate.ok && gate.check !== 'token-missing') { refuse(req, url, gate, res); return; }
+      // 403, so the status cannot say which one refused.
+      //
+      // **BOTH token exits are exempt here, and the second one had to be added
+      // after it locked a real browser out of a real server.** The exemption
+      // used to be `token-missing` alone, on the reasoning that a WRONG token
+      // should still be refused. That reasoning does not survive the token
+      // being kept in a cookie: cookies are scoped to a HOST, not to a port, so
+      // `127.0.0.1:58901`'s cookie is sent to `127.0.0.1:58902`, and the next
+      // `mycontext ui` mints a different token. The gate reads
+      // `header ?? cookie`, so a fresh page arriving with a valid NONCE and a
+      // stale cookie presented a mismatched token, was refused 403, and could
+      // never obtain a good one — the cookie is `HttpOnly`, so the page cannot
+      // clear it either. Measured: handoff with no cookie 200, handoff with a
+      // stale token cookie 403.
+      //
+      // Exempting it costs nothing, because **the nonce is the credential on
+      // this route** and it always was. A caller who cannot present an unspent
+      // nonce is refused below whatever token it holds; a caller who can has
+      // proven exactly what this route asks. Whatever token it happened to be
+      // carrying is not evidence about either question — and the 200 response
+      // overwrites that cookie, which is how the stale one is cleared.
+      if (!gate.ok && gate.check !== 'token-missing' && gate.check !== 'token-mismatch') {
+        refuse(req, url, gate, res);
+        return;
+      }
       let nonce: unknown;
       try {
         nonce = (JSON.parse(await readBody(req)) as { nonce?: unknown }).nonce;

@@ -39,7 +39,7 @@ import { readAudit, recordAudit } from '../../src/core/audit.ts';
 import { HELP_TOPICS } from '../../src/core/teach.ts';
 import { DIR_NAME } from '../../src/core/workspace.ts';
 import { registeredRoutes } from '../../src/ui/routes.ts';
-import { TOKEN_HEADER } from '../../src/ui/security.ts';
+import { TOKEN_COOKIE, TOKEN_HEADER } from '../../src/ui/security.ts';
 import { registerReadRoutes } from '../../src/ui/server.ts';
 import { rawGet, redeemNonce, runUiChild, startUiChild, type UiHarness } from './helpers.ts';
 
@@ -144,24 +144,87 @@ test('wrong token 403, missing header 401, bad Origin 403 — and no CORS header
   } finally { await h.stop(); removeTree(cwd); }
 });
 
-test('a WRONG token is refused at /api/handoff; only a MISSING one is exempt', async () => {
-  // The exemption exists so the page can obtain a token it does not yet have.
-  // A page that presents a wrong one is not that case, and keying the exemption
-  // on the gate's `check` rather than on its status code is what tells them
-  // apart: three of the gate's refusing exits answer 403.
+/**
+ * **A STALE token must not lock a page out of `/api/handoff`.**
+ *
+ * This test used to assert the opposite — that a wrong token is refused here
+ * and only a missing one is exempt — and the reasoning was that a page
+ * presenting a wrong token is not the case the exemption exists for.
+ *
+ * **That reasoning did not survive the token being kept in a cookie**, and it
+ * locked a real browser out of a real server on 2026-08-23. Cookies are scoped
+ * to a HOST, not to a port: `127.0.0.1:58901`'s `mycontext_token` is sent to
+ * `127.0.0.1:58902`, and the next `mycontext ui` mints a different token. The
+ * gate reads `header ?? cookie`, so a fresh page arriving with a VALID NONCE
+ * and a stale cookie presented a mismatched token and was refused 403 — and
+ * could never obtain a good one, because the cookie is `HttpOnly` and the page
+ * cannot clear it. The only cure was clearing cookies by hand.
+ *
+ * Exempting the mismatch costs nothing, because **the nonce is the credential
+ * on this route** and always was: a caller who cannot present an unspent nonce
+ * is refused whatever token it holds, and a caller who can has proven exactly
+ * what this route asks. The token it happened to be carrying is not evidence
+ * about either question. The 200 also overwrites the cookie, which is how the
+ * stale one is cleared.
+ *
+ * The refusals that are NOT about the token are asserted below to still refuse,
+ * because widening an exemption is the kind of edit that quietly widens two.
+ */
+test('a stale or wrong token does not lock a page out of /api/handoff', async () => {
   const cwd = project();
   const h = await startUiChild(cwd);
   try {
-    const refused = await fetch(`http://127.0.0.1:${h.port}/api/handoff`, {
+    // A stale cookie, exactly as a browser sends after the server restarted on
+    // another port. This answered 403 before the fix.
+    const viaCookie = await fetch(`http://127.0.0.1:${h.port}/api/handoff`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', [TOKEN_HEADER]: 'f'.repeat(64) },
+      headers: {
+        'content-type': 'application/json',
+        cookie: `${TOKEN_COOKIE}=${'b'.repeat(64)}`,
+      },
       body: JSON.stringify({ nonce: h.nonce }),
     });
-    assert.equal(refused.status, 403);
-    assert.equal((await refused.text()).length, 0);
-    // …and the nonce it carried is still good, because the gate refused before
-    // redemption: the wrong token cost the page nothing it cannot retry.
+    assert.equal(viaCookie.status, 200,
+      'a stale token cookie must not stop a valid nonce being redeemed — it is how a ' +
+      'restarted server locked the browser out permanently');
+    const token = ((await viaCookie.json()) as { token: string }).token;
+    assert.equal(typeof token, 'string');
+    // The response must REPLACE the stale cookie, or the next request carries
+    // it again and nothing has been fixed.
+    const setCookie = viaCookie.headers.get('set-cookie') ?? '';
+    assert.match(setCookie, new RegExp(`${TOKEN_COOKIE}=${token}`),
+      'the handoff must overwrite the stale cookie with the token it just issued');
+  } finally { await h.stop(); removeTree(cwd); }
+});
+
+test('widening the token exemption did not widen the others: Origin and nonce still refuse', async () => {
+  const cwd = project();
+  const h = await startUiChild(cwd);
+  try {
+    const badOrigin = await fetch(`http://127.0.0.1:${h.port}/api/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
+      body: JSON.stringify({ nonce: h.nonce }),
+    });
+    assert.equal(badOrigin.status, 403, 'a cross-origin handoff must still be refused');
+    assert.equal((await badOrigin.text()).length, 0);
+
+    const badNonce = await fetch(`http://127.0.0.1:${h.port}/api/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nonce: 'deadbeef' }),
+    });
+    assert.equal(badNonce.status, 403, 'a wrong nonce must still be refused');
+
+    // Neither refusal spent the real nonce, so it is still redeemable — and
+    // then one-shot, as before.
     assert.equal(typeof await redeemNonce(h.port, h.nonce), 'string');
+    const replay = await fetch(`http://127.0.0.1:${h.port}/api/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nonce: h.nonce }),
+    });
+    assert.equal(replay.status, 403, 'the nonce must remain one-shot');
   } finally { await h.stop(); removeTree(cwd); }
 });
 
