@@ -152,7 +152,21 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // and no emphasis marker, so no string table can carry one. Identical in
   // kind to watch's `b`, and tracked with it under
   // TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup.
-  preview: ['div.gh', 'i'],
+  // `span.prop` is an ACCEPTED DIVERGENCE, not a gap. Owner ruling 2026-08-23:
+  // "leave the mockup intact, do it only in the real, i need it to stay on the
+  // mockup for history, when comparing to mockup the proposed word is a known
+  // diff and it is ok." The mockup badges the carried-item block PROPOSED; the
+  // block is now built, and the app's own tested rule is that a built feature
+  // drops the badge. The two files differ on purpose — the mockup keeps the
+  // historical record of what was proposed when it was drawn, the app reports
+  // what exists. Listed here so the gate still fails for any OTHER missing kind
+  // and nobody later reads this as a screen that forgot something.
+  //
+  // `div.gh` is DATA, not code — built and photographed in
+  // reports/2026-08-23-ui3-1s-preview/, absent only because this corpus does
+  // not spill at its real budgets. `i` is the string grammar's missing emphasis
+  // marker, the same defect as the bold run on the audit stream.
+  preview: ['div.gh', 'i', 'span.prop'],
   coverage: ['div', 'div.mini', 'i', 'i.g', 'i.u', 'i.x'],
   gaps: ['b', 'button.icon', 'span.m', 'span.v', 'td', 'td.m', 'td.small'],
   simulate: [

@@ -516,18 +516,27 @@ export async function render(root, ctx) {
    * wholesale from the string table, which knows nothing of a button or a chip
    * someone put inside one.
    *
-   * **The `PROPOSED` badge is the mockup's and is drawn ONCE**, on the first
-   * block, because it badges the FEATURE rather than an item — that is what
-   * `.prop` means everywhere else in the design of record, on three rail
-   * buttons and on three whole screens' verdicts. Drawing it nineteen times
-   * beside nineteen carried ids would be saying it about the ids. **It is also
-   * now arguably false, and that is a question for the owner rather than an
-   * edit made here**: this block is built, and the app's own rule for a built
-   * feature is that it stops advertising itself as proposed
+   * **The `PROPOSED` badge is NOT drawn, and this is an ACCEPTED DIVERGENCE
+   * from the design of record — the first one this project has recorded.**
+   *
+   * Owner ruling, 2026-08-23, in his own words: "leave the mockup intact, do it
+   * only in the real, i need it to stay on the mockup for history, when
+   * comparing to mockup the proposed word is a known diff and it is ok."
+   *
+   * The badge marks a FEATURE as proposed — that is what `.prop` means
+   * everywhere else in the design of record, on rail buttons and on whole
+   * screens' verdicts. This block is now BUILT, and the app's own tested rule
+   * is that a built feature stops advertising itself as proposed
    * (`e2e/app-layout.spec.ts` · `the rail no longer badges watch as PROPOSED` · ~322).
-   * The design of record still carries the badge, the 1:1 ruling of 2026-08-23
-   * says match it, and the mockup is the owner's to change — so it is drawn,
-   * and reported.
+   * Drawing it here would label a working feature a proposal.
+   *
+   * So the two files deliberately differ, and each is right for its own job:
+   * the mockup keeps the badge as the historical record of what was proposed
+   * when it was drawn, and the app drops it because the thing exists. The
+   * divergence is REGISTERED rather than silent — `e2e/screen-parity.spec.ts`
+   * carries `span.prop` in `preview`'s ledger with this reason, so the gate
+   * still fails if any OTHER kind goes missing, and nobody later mistakes this
+   * for a screen that forgot something.
    */
   function drawCarry(index) {
     const carried = index.carried;
@@ -539,7 +548,6 @@ export async function render(root, ctx) {
     }));
     out.append(spaced(line));
 
-    let badged = false;
     for (const indexLine of index.normative) {
       if (indexLine.carried !== true) continue;
       const block = el('div', 'carrieditem small');
@@ -547,10 +555,6 @@ export async function render(root, ctx) {
       chip.dataset.g = '◇';
       chip.append(...ctx.t('tier.carried'));
       block.append(linkId(indexLine.id), chip);
-      if (!badged) {
-        block.append(el('span', 'prop', 'PROPOSED'));
-        badged = true;
-      }
       out.append(block);
     }
 
