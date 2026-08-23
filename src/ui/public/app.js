@@ -25,6 +25,15 @@
 //        ctx.api(path)              GET, token-headered, JSON-parsed;
 //                                    throws on any refusal or network failure
 //                                    (see api() below for exactly what).
+//        ctx.post(path, body)       POST, and THE SAME DOOR as api(): same
+//                                    token header, same refusal handling, same
+//                                    JSON parse, same throw. `body` is any
+//                                    JSON-encodable value; it is stringified
+//                                    and sent as application/json. Omit it and
+//                                    the request carries no body at all — an
+//                                    empty POST, not `"undefined"`.
+//                                    Both are request() below, which is where
+//                                    the credential and the refusal live ONCE.
 //        ctx.stream(p, onEv, onEnd) GET, token-headered, SSE-parsed; returns a
 //                                    stop() that aborts it. onEnd(reason) fires
 //                                    exactly once. NEVER reconnects (§2).
@@ -370,7 +379,46 @@ function showExited() {
   banner(msg, cmd, ok);
 }
 
-async function api(path) {
+/**
+ * **A refusal's message, read from a response that may carry no body at all.**
+ *
+ * The gate's refusals carry the STATUS AND NOTHING ELSE (Task 13, ruling A4),
+ * so `response.json()` on one throws — and it throws at whichever caller
+ * forgot, turning a clean 403 into a mystery. Other failures (an unknown
+ * route, a handler error) still answer a JSON `error`, so a body is read only
+ * when there IS one, and a body that parses to nothing useful falls back to
+ * the status for the same reason: the reader gets a number rather than an
+ * empty string.
+ *
+ * It is a function rather than four lines repeated because it WAS four lines
+ * repeated — `api()` and `stream()` each carried their own copy, and this
+ * shell now has a third caller in `post()`. Three copies of "what did the
+ * server actually refuse with" is three places for the answer to drift, and
+ * this codebase treats that drift as the defect rather than as duplication.
+ */
+async function refusalDetail(response) {
+  const raw = await response.text();
+  if (raw === '') return String(response.status);
+  let detail = '';
+  try { detail = String(JSON.parse(raw).error ?? ''); } catch { detail = ''; }
+  return detail === '' ? String(response.status) : detail;
+}
+
+/**
+ * **The one door: every credentialled request this page makes goes through
+ * here, and the method is the only thing that varies.**
+ *
+ * `api()` and `post()` below are both this function. That is the point of it:
+ * the token rule, the 401/403 recovery, the banner-clearing and the refusal
+ * body are ONE implementation with a method and a body as inputs, not two that
+ * agree today. A second copy would agree until the first time one of them was
+ * fixed — which is exactly the history the 401/403 branch below records.
+ *
+ * `body === undefined` means NO body and NO content-type, so `api()`'s GET is
+ * byte-for-byte the request it always was; a POST with a body sends it as
+ * JSON, which is what `server.ts` parses (`JSON.parse(await readBody(req))`).
+ */
+async function request(path, method, body) {
   let response;
   try {
     // Only send the header when there is something to send. A null token
@@ -378,7 +426,16 @@ async function api(path) {
     // WRONG token (403) rather than an absent one — and a 403 would mask the
     // cookie, which is the credential a reloaded page actually has.
     response = await fetch(path, {
-      headers: token === null ? {} : { 'X-Mycontext-Token': token },
+      method,
+      headers: {
+        ...(token === null ? {} : { 'X-Mycontext-Token': token }),
+        // Only when there is a body: a bare `content-type` on a GET describes
+        // content that does not exist.
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
+      // Spread rather than `body: undefined`, so a GET's init is the same
+      // object shape it has always been.
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   } catch {
     // The server has exited (idle or closed). Say so; NEVER reconnect —
@@ -426,18 +483,56 @@ async function api(path) {
     document.getElementById('exited').hidden = true;
   }
   if (!response.ok) {
-    // A refusal from the security gate carries the STATUS AND NOTHING ELSE
-    // (Task 13, ruling A4): there is no body, so this must not assume one —
-    // response.json() on an empty body throws, and it would throw HERE,
-    // outside the catch above, turning a clean 403 into a mystery. Other
-    // failures (an unknown route, a handler error) still answer a JSON
-    // `error`, so read a body only when there IS one.
-    const raw = await response.text();
-    let detail = '';
-    if (raw !== '') { try { detail = String(JSON.parse(raw).error ?? ''); } catch { detail = ''; } }
-    throw new Error(detail === '' ? String(response.status) : detail);
+    // A refusal from the security gate carries the status and nothing else, so
+    // the body is read only when there is one — see refusalDetail() above,
+    // which is that rule, once, for this function and for stream().
+    throw new Error(await refusalDetail(response));
   }
   return await response.json();
+}
+
+/**
+ * The screen contract's GET. Unchanged in every observable way — one argument,
+ * no method, no body — and now one line, because everything it used to say is
+ * said by request() for both verbs.
+ */
+async function api(path) {
+  return await request(path, 'GET', undefined);
+}
+
+/**
+ * **The same door, opened with a body.** `POST /api/config/check`,
+ * `POST /api/config/preview` and `POST /api/overlap` are registered and tested
+ * and, until this existed, unreachable from any screen: `api()` took a path
+ * and nothing else, and the token is closed over inside this module, so a
+ * hand-rolled `fetch` from a screen would carry no credential and be refused
+ * by the gate — which would be the gate working.
+ *
+ * **A POST here is not a write, and this shell does not gain one.** All three
+ * routes read, validate or preview; `src/ui/` binds no writer at all and
+ * `test/ui/no-writes.test.ts` asserts that structurally. The verb is HTTP's,
+ * chosen because the question does not fit in a query string — a candidate
+ * `config.json`, a draft's title and body — not because anything is stored.
+ *
+ * `body` is any JSON-encodable value and is optional: omitting it sends an
+ * empty POST, which the endpoints answer with the 400 that names the field
+ * they wanted. Returns the parsed JSON, throws on any refusal or network
+ * failure, exactly as `api()` does, because it IS `api()` with a method.
+ *
+ * **It is `post(path, body)` and not the `api(path, init)` that plan-2 Task 12
+ * sketched, and the difference is worth the four lines it costs a reader** —
+ * `screens/config.js` names the sketch, and this is what it got instead. An
+ * `init` bag gives ONE entry two behaviours that a caller tells apart only by
+ * reading the argument, where two named entries say which door was opened at
+ * the call site; and the sketch's own `headers` line sends
+ * `'X-Mycontext-Token': token` unconditionally, which is precisely the bug
+ * request() carries a paragraph about — a null token stringifies to "null",
+ * the gate reads a WRONG token, and the 403 masks the cookie. The shared half
+ * is request(), so nothing about that sketch is lost except the shape of the
+ * argument list.
+ */
+async function post(path, body) {
+  return await request(path, 'POST', body);
 }
 
 /**
@@ -497,12 +592,12 @@ function stream(path, onEvent, onEnd) {
     if (response.status === 401 || response.status === 403) forgetToken();
     if (!response.ok) {
       // The gate's refusals carry the status and nothing else (ruling A4), so
-      // a body is read only when there is one — `.json()` on an empty body
-      // throws, and it would throw here rather than at the caller.
-      const raw = await response.text();
-      let detail = '';
-      if (raw !== '') { try { detail = String(JSON.parse(raw).error ?? ''); } catch { detail = ''; } }
-      onEvent('fault', { error: detail === '' ? String(response.status) : detail });
+      // a body is read only when there is one — refusalDetail() is that rule,
+      // shared with request(). What differs here is what is DONE with the
+      // answer: a stream turns it into a `fault` frame rather than throwing,
+      // because a screen that renders `fault` already knows how to say why a
+      // stream is not running.
+      onEvent('fault', { error: await refusalDetail(response) });
       end('closed');
       return;
     }
@@ -847,6 +942,9 @@ async function main() {
 
   window.myctx = {
     api,
+    // The same door with a body. Reaches the three POST routes no screen could
+    // call before; it reads, validates and previews, and it writes nothing.
+    post,
     // The held-open door. Same token, same no-reconnect rule; the caller gets
     // back the stop() that aborts it.
     stream,
