@@ -76,44 +76,126 @@ registerRoute('GET', '/api/test-boom-stream', {
  * prevent.
  *
  * Measured rather than asserted in prose, and measured against its own control:
- * two servers with the same one-second window, each sent one request at 900ms,
+ * two servers with the same window, each sent one request halfway through it,
  * one to a stream route and one to a JSON route. If the stream touched the
  * monitor its server would outlive the other's expiry; the control is what says
  * the instrument can tell those apart, so a green line here is not "both exited
  * eventually".
+ *
+ * ── WHY NOTHING HERE IS COMPARED TO A WALL-CLOCK CONSTANT ──────────────────
+ *
+ * This test asserts a BEHAVIOUR — was the monitor touched — and the clock is
+ * only the messenger. It used to phrase that as two absolute deadlines
+ * (`stream < IDLE + 500`, `json >= IDLE + 800`) against a 1000ms window with a
+ * request at 900ms, and both halves of that were wrong on a loaded box:
+ *
+ *   - **The 100ms margin was not 100ms.** `/api/handoff` is answered ABOVE the
+ *     dispatch loop and deliberately does NOT `idle.touch()`, so the window
+ *     opens in `listen()`'s callback — before the token round trip, not after
+ *     it. The real margin was 100ms MINUS however long minting and redeeming
+ *     the nonce took. When the box stalled past it the monitor fired first and
+ *     `closeAllConnections()` tore the socket down under the in-flight fetch,
+ *     which surfaced as ECONNRESET rather than as a failed assertion.
+ *   - **`IDLE + 500` was not a property of the server.** `IdleMonitor.start()`
+ *     polls at `idleMs / 10`, so an expiry is noticed up to a tenth of a window
+ *     late even when nothing is loaded, and the `onExit` callback runs on an
+ *     event loop that the rest of the suite is competing for.
+ *
+ * Measured 2026-08-23 over 10 full-suite runs with a second full suite running
+ * alongside: this test failed 9 times — 5 as ECONNRESET, 4 on the `IDLE + 500`
+ * bound, at 1597, 1606, 1776 and 3220ms against a 1500ms ceiling. Neither
+ * number was ever evidence about the dispatch loop.
+ *
+ * So the two servers are now compared to EACH OTHER rather than to constants.
+ * Both run in the same process off the same event loop, so a stall that delays
+ * one delays the other and cancels out of the difference:
+ *
+ *   - `push` is how far past the window a server actually exited. A route that
+ *     is not activity leaves it near zero; a route that IS activity leaves it
+ *     near the delay before the request went out.
+ *   - The control asserts `json`'s push is most of its own MEASURED request
+ *     time — a floor, and load can only ever push an exit later, never earlier.
+ *   - The property asserts the two pushes differ by most of that same measured
+ *     delay. If a stream ever touched the monitor the two would move together
+ *     and the difference would collapse to zero.
+ *
+ * The window is 3s with the request at 1.5s rather than 1s and 900ms: the same
+ * shape, but the margin the ECONNRESET came out of is 1500ms instead of under
+ * 100ms, and the two exits are 1500ms apart, so a stall has to span 1.5s of
+ * wall clock before it can blur them together. And the send moment is POLLED
+ * rather than slept: if the window closes before the request goes out, or the
+ * socket is torn down under it, that sample is void — it measured nothing —
+ * and the pair is taken again rather than reported as a defect.
  */
-test('an open stream is not activity; a json request is', async () => {
+test('an open stream is not activity; a json request is', async (t) => {
   const cwd = project();
-  const IDLE = 1_000;
-  const measure = async (route: string): Promise<number> => {
-    const started = Date.now();
+  const IDLE = 3_000;
+  /** Halfway through the window: far from the open edge and far from the close. */
+  const SEND_AT = 1_500;
+  const ATTEMPTS = 4;
+  const pause = (ms: number): Promise<unknown> => new Promise((r) => setTimeout(r, ms));
+
+  interface Reading { push: number; requestAt: number }
+
+  /** `null` means the sample measured nothing, not that the server misbehaved. */
+  const measure = async (route: string): Promise<Reading | null> => {
     let exitedAt = 0;
     const server = await startUiServer({
       cwd, idleMs: IDLE, onExit: (reason) => { if (reason === 'idle') exitedAt = Date.now(); },
     });
-    const token = await tokenFor(server);
-    await new Promise((r) => setTimeout(r, 900));
-    const response = await fetch(`http://127.0.0.1:${server.port}${route}`, {
-      headers: { [TOKEN_HEADER]: token },
-    });
-    assert.equal(response.status, 200, route);
-    void response.body?.cancel().catch(() => { /* the server tears this down itself */ });
-    while (exitedAt === 0 && Date.now() - started < 5_000) {
-      await new Promise((r) => setTimeout(r, 20));
+    // `listen()`'s callback touched the monitor and started it, and it resolved
+    // this promise in the same turn — so the window opened here, and NOT at the
+    // handoff below, which is answered without touching it.
+    const openedAt = Date.now();
+    try {
+      const token = await tokenFor(server);
+      while (exitedAt === 0 && Date.now() - openedAt < SEND_AT) await pause(20);
+      if (exitedAt !== 0) return null; // the window closed before the request went out
+      const response = await fetch(`http://127.0.0.1:${server.port}${route}`, {
+        headers: { [TOKEN_HEADER]: token },
+      });
+      assert.equal(response.status, 200, route);
+      const requestAt = Date.now() - openedAt;
+      void response.body?.cancel().catch(() => { /* the server tears this down itself */ });
+      // Wait for the exit as a CONDITION. The bound is ten windows, which is
+      // not a deadline anything is expected to approach — it is the point at
+      // which "it never idled out" is the likelier reading.
+      while (exitedAt === 0 && Date.now() - openedAt < IDLE * 10) await pause(20);
+      assert.ok(exitedAt > 0, `${route}: the server never idled out`);
+      return { push: exitedAt - openedAt - IDLE, requestAt };
+    } catch (err) {
+      // ECONNRESET: the monitor fired and closed the connections under the
+      // request. Nothing was measured, so nothing is concluded.
+      if ((err as { name?: string })?.name === 'AssertionError') throw err;
+      return null;
+    } finally {
+      await server.close();
     }
-    await server.close();
-    assert.ok(exitedAt > 0, `${route}: the server never idled out`);
-    return exitedAt - started;
   };
 
   try {
-    const [stream, json] = await Promise.all([measure('/api/test-hold'), measure('/api/ping')]);
-    assert.ok(stream < IDLE + 500,
-      `a stream request pushed the idle window out: exited after ${stream}ms, and a window that `
-      + `was never touched expires at ${IDLE}ms`);
-    assert.ok(json >= IDLE + 800,
-      `the control failed: a /api/ping at 900ms must delay the exit to about ${IDLE + 900}ms, `
-      + `and this server exited after ${json}ms — so this test cannot tell a touch from no touch`);
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
+      const [stream, json] = await Promise.all([
+        measure('/api/test-hold'), measure('/api/ping'),
+      ]);
+      if (stream === null || json === null) continue;
+
+      assert.ok(json.push >= json.requestAt * 0.6,
+        `the control failed: a /api/ping answered ${json.requestAt}ms into a ${IDLE}ms window must `
+        + `delay the exit by about that much, and this server exited only ${json.push}ms past the `
+        + `window — so this test cannot tell a touch from no touch`);
+      assert.ok(json.push - stream.push >= json.requestAt * 0.5,
+        `a stream request pushed the idle window out: the stream server exited ${stream.push}ms `
+        + `past its window and the control ${json.push}ms past its own, a difference of `
+        + `${json.push - stream.push}ms where the control's request went out at `
+        + `${json.requestAt}ms — a stream that is not activity leaves the whole of that delay `
+        + `between them`);
+      return;
+    }
+    t.diagnostic(
+      `the dispatch loop was NOT exercised: ${ATTEMPTS} attempts, and on every one of them a `
+      + `${IDLE}ms window closed before a request sent ${SEND_AT}ms into it could be answered. `
+      + `That is this machine, not the server.`);
   } finally { removeTree(cwd); }
 });
 
