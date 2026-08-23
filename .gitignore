@@ -19,5 +19,14 @@ test-results/
 playwright-report/
 blob-report/
 
-# Built by scripts/demo-corpus.ts — a build product, never committed.
+# Built by scripts/demo-corpus.ts — build products, never committed.
+#
+# `.demo-pack` and `.demo-pack-author` are the pack round trip: the fixture
+# needs a pack written by SOMEBODY ELSE, so a throwaway corpus is built, exported
+# as a pack, and imported. Both land beside `.demo-corpus` rather than inside it,
+# because a pack the corpus contains is a pack the corpus already has — measured,
+# that round trip reports `0 new, 0 changed, 4 identical` and the screen draws a
+# pack that carried nothing.
 .demo-corpus/
+.demo-pack/
+.demo-pack-author/

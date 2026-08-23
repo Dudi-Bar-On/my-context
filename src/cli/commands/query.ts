@@ -57,6 +57,53 @@ const FORBIDDEN = [
 ];
 
 /**
+ * FORBIDDEN entries that are ALSO the name of a SQLite function, so the token
+ * has a read-only meaning as well as a write one.
+ *
+ * `REPLACE` is the only one, and that is measured rather than remembered: this
+ * engine (SQLite 3.51.2, node:sqlite) exposes 166 functions, and `replace` is
+ * the single one of them whose name the keyword scan's `\bWORD\b` regex hits.
+ * `json_replace`, `jsonb_replace`, `last_insert_rowid` and the `pragma_*`
+ * table-valued functions all embed a guarded word but are NOT hit, because `_`
+ * is a word character and so blocks the boundary — each verified through
+ * `mycontext query` itself, not by reading the regex. Re-run the census
+ * (`SELECT name FROM pragma_function_list`) before adding to this set.
+ *
+ * The exemption below is "followed by `(`", and it is safe for the whole
+ * FORBIDDEN list rather than only for this member: no write statement in SQLite
+ * puts `(` directly after its LEADING keyword. Every one of them takes another
+ * bare word first — `REPLACE INTO`, `INSERT INTO`, `INSERT OR REPLACE INTO`,
+ * `DELETE FROM`, `UPDATE <table>`, `DROP TABLE`, `VACUUM INTO`, `PRAGMA <name>`,
+ * `ATTACH DATABASE`. `VACUUM` in particular is not exempted at all, which
+ * matters because `VACUUM INTO '<path>'` is the one statement where this
+ * function, not the read-only connection, is the actual write barrier.
+ */
+const ALSO_A_FUNCTION_NAME = new Set(['REPLACE']);
+
+/**
+ * The scan pattern for one FORBIDDEN keyword.
+ *
+ * For a keyword that also names a function, a trailing `(` means the token is
+ * being APPLIED rather than starting a statement, so it is not a write:
+ * `SELECT replace(title,'a','b') FROM items` writes nothing, and refusing it
+ * (which this guard did) is a false positive a reader has to work around with
+ * `substr`. `\s*` is part of the exemption because SQLite accepts whitespace
+ * between a function name and its argument list, and `strip` above turns a
+ * comment in that gap into a space — without it the false positive would only
+ * move rather than go.
+ *
+ * This is a RELAXATION of a security-relevant guard, so it is deliberately the
+ * narrowest shape that fixes the defect: `REPLACE` anywhere else — including
+ * `REPLACE INTO` on the next line, and `INSERT OR REPLACE INTO` — is still
+ * refused. See `test/cli/query-guard-scalar-functions.test.ts`, which pins the
+ * write forms next to the reason the exemption exists.
+ */
+function forbiddenPattern(keyword: string): RegExp {
+  const boundary = `\\b${keyword}\\b`;
+  return new RegExp(ALSO_A_FUNCTION_NAME.has(keyword) ? `${boundary}(?!\\s*\\()` : boundary);
+}
+
+/**
  * Remove comments and `'…'`/`"…"` literals so a keyword inside one is not read
  * as a keyword. Backtick and `[bracket]` identifiers — both legal SQLite — are
  * NOT handled, so this function cannot be relied on to see every keyword in a
@@ -110,6 +157,13 @@ function strip(sql: string): string {
  * then the prefix check, then the keyword scan. `BEGIN; DELETE …` therefore
  * reports "pass exactly one statement", not the read-only message — the tests
  * assert each error where it is actually produced.
+ *
+ * The keyword scan has ONE exemption, and it is narrow on purpose: see
+ * `forbiddenPattern` and `ALSO_A_FUNCTION_NAME` above. It exists because this
+ * guard is not only the CLI's — `DEC-the-ask-screen-accepts-typed-sql-reversing-
+ * shown-never-typed` rules that the web Ask screen will reuse THIS function
+ * rather than grow a second one, so a false positive here is a refusal a reader
+ * meets in a browser, where there is no `substr` workaround to discover.
  */
 export function assertSelectOnly(sql: string): void {
   const bare = strip(sql).trim().replace(/;\s*$/, '');
@@ -129,7 +183,7 @@ export function assertSelectOnly(sql: string): void {
 
   const upper = bare.toUpperCase();
   for (const keyword of FORBIDDEN) {
-    if (new RegExp(`\\b${keyword}\\b`).test(upper)) {
+    if (forbiddenPattern(keyword).test(upper)) {
       throw new Error(
         `my_context: query is read-only — "${keyword}" is not allowed. ` +
         `Use the CLI commands to change items; the index is rebuilt from Markdown anyway.`,
