@@ -1,12 +1,16 @@
-import { scopePolicyFor } from '../../core/config.ts';
+import type { UpdatableName } from '../../core/categories.ts';
+import { scopePolicyFor, type Config } from '../../core/config.ts';
 import { normalizePosix } from '../../core/paths.ts';
 import { updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
 import { globalLayerRefusal } from '../../core/persist.ts';
 import {
   missingRelationRefusal, retirementEdgeRefusal, unlinkItems,
 } from '../../core/relations.ts';
+import {
+  handWrittenProjectionError, projectFieldUpdate, updatableFor, updatesFor,
+} from '../../core/tag-projection.ts';
 import { inertFieldError, scopeRequirementError } from '../../core/trust.ts';
-import { SEVERITIES, STATUSES, validateExtra } from '../../core/validate.ts';
+import { SEVERITIES, STATUSES, updatableValueError, validateExtra } from '../../core/validate.ts';
 import { scopeField } from '../../core/render-item.ts';
 import { extraFlag } from './registry.ts';
 import {
@@ -69,6 +73,122 @@ const USAGE =
                         [--tags "a,b"] [--severity hard|soft] [--always[=false]]
                         [--status active|draft|deprecated|validated]
                         [--extra key=value] [--unlink <relation> <target>] [--yes]`;
+
+/* -------------------------------------------------------------------------- *
+ * What may be changed, READ off the declaration rather than spelled here.
+ *
+ * REQ-…-the-cli-refusals-read-the-declaration: five rules of this command were
+ * each learned by trying something and reading the refusal — `--severity hard`
+ * being refused on the rationale tier, `always` having two spellings, `--tags`
+ * replacing the whole list, `source_file` having no command at all, and `state`
+ * on a task being a TAG rather than a field. Every one of them is now declared
+ * (`TIER_UPDATES` and `CategoryDef.updates`, categories.ts; `updates` in
+ * config.json, config.ts), so the refusals below are COMPOSED from that
+ * declaration. Guidance and behaviour cannot disagree if there is only one of
+ * them, and a category added tomorrow cannot leave a refusal behind.
+ * -------------------------------------------------------------------------- */
+
+/** The flag names this command spells itself, and therefore never derives. */
+const BUILT_IN = new Set(ALLOWED);
+
+/**
+ * Whether a declaration says its name is typed as a flag OF THIS COMMAND.
+ *
+ * The declared `command` is the whole test, and that direction is deliberate:
+ * `mycontext help categories` and `mycontext examples <type>` print that string
+ * verbatim as the spelling a person types, so anything else would let the
+ * printed instruction and the accepted argv drift — which is the defect this
+ * requirement exists to close, reproduced one level down. A declaration with no
+ * `command` means the generic `--extra <name>=<value>` spelling (see
+ * `UpdatableName.command`), and one naming a different command — `mycontext
+ * pin`, `mycontext harden` — is that command's business, not this one's.
+ *
+ * `store: 'field'` as well, because a `tag` is a membership: `--tags` is the
+ * only thing that writes one, and a second flag writing a single tag would be
+ * the remove-then-add-by-hand the ruling of 2026-08-23 refuses outright.
+ *
+ * Tokenised rather than matched with a regular expression built from a
+ * user-supplied name: these names come out of `config.json`, and `--state` must
+ * not match `--stateful` or be able to carry metacharacters into a pattern.
+ */
+function isEditFlag(name: string, decl: UpdatableName): boolean {
+  if (decl.store !== 'field' || decl.command === undefined) return false;
+  if (!decl.command.startsWith('mycontext edit ')) return false;
+  return decl.command.split(/[\s=]+/).includes(`--${name}`);
+}
+
+/**
+ * Every value flag this command accepts BEYOND the ten it spells itself, in
+ * name order, unioned over the categories this project has.
+ *
+ * The union rather than one category's, because argv is parsed before the item
+ * — and therefore its type — is known. A flag declared by SOME category is
+ * accepted here and then checked against the item's OWN declaration once it is
+ * loaded (`undeclaredFlagError`), which is the same two-stage shape `--severity`
+ * already has: the vocabulary is checked against `SEVERITIES` up front and
+ * against the category's declaration afterwards.
+ *
+ * Nothing in the shipped catalogue derives a flag: `title`, `body`, `scope` and
+ * `status` name `mycontext edit` but are already spelled above, `severity` and
+ * `always` name `harden`/`pin`, and every other declared name has no command
+ * and is therefore the generic `--extra` spelling. So this is empty for a
+ * project that has declared nothing of its own, and costs it one pass over the
+ * catalogue.
+ */
+function declaredFlags(config: Config): string[] {
+  const names = new Set<string>();
+  for (const category of Object.values(config.categories)) {
+    for (const [name, decl] of Object.entries(updatesFor(config, category.name))) {
+      if (!BUILT_IN.has(name) && isEditFlag(name, decl)) names.add(name);
+    }
+  }
+  return [...names].sort();
+}
+
+/** The usage block with the declared flags appended, so a person reads them
+ * BEFORE the attempt rather than out of the refusal that follows one. */
+function usageFor(declared: string[]): string {
+  if (declared.length === 0) return USAGE;
+  // The same 24 columns the three continuation lines of `USAGE` are written
+  // to: a derived line indented to anything else reads as a different block.
+  const indent = ' '.repeat(24);
+  return [USAGE, ...paragraph(declared.map((n) => `[--${n} <value>]`).join(' '), indent)].join('\n');
+}
+
+/**
+ * A declared flag typed at an item whose category does not declare it.
+ *
+ * Every clause is read off the declaration — which category owns the name, and
+ * what this one declares of its own — for the reason the block comment above
+ * gives, and it is shaped like `unknownExtraFieldError` (trust.ts) because it
+ * answers the same question one field further out: not "is this value legal"
+ * but "is this name yours at all".
+ */
+function undeclaredFlagError(config: Config, type: string, name: string): string {
+  const owners = Object.values(config.categories)
+    .filter((c) => {
+      const decl = updatableFor(config, c.name, name);
+      return decl !== null && isEditFlag(name, decl);
+    })
+    .map((c) => c.name)
+    .sort();
+  const own = Object.hasOwn(config.categories, type)
+    ? Object.keys(config.categories[type].updates)
+    : [];
+  const declares = own.length > 0
+    ? `A "${type}" declares its own: ${own.join(', ')}.`
+    : `A "${type}" declares no names of its own — what may be changed on one is exactly what ` +
+      `its tier declares.`;
+  const elsewhere = owners.length > 0
+    ? ` "--${name}" is declared by ${owners.join(', ')}.`
+    : '';
+  return (
+    `my_context: "--${name}" is not something a "${type}" declares, so it would be stored on ` +
+    `an item whose category never promises it and read back by nothing. ${declares}${elsewhere} ` +
+    `Nothing was changed. Run \`mycontext examples ${type}\` for everything this category ` +
+    `declares, and the command each one is changed with. See mycontext_help("categories").`
+  );
+}
 
 /**
  * The three classes spec §2 decomposes an edit into, and the whole reason this
@@ -397,21 +517,31 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
 
+  // The accepted surface is the built-in one PLUS whatever this project's
+  // categories declare a `mycontext edit` flag for — see `declaredFlags`. Read
+  // once and threaded through `refuseUnknownFlag`, `positionals` and every
+  // usage line below, so those three cannot disagree about which token is a
+  // flag's value and which is the id.
+  const declared = declaredFlags(ws.config);
+  const allowed = declared.length === 0 ? ALLOWED : [...ALLOWED, ...declared];
+  const valueFlags = declared.length === 0 ? VALUE_FLAGS : [...VALUE_FLAGS, ...declared];
+  const usage = usageFor(declared);
+
   // Refused before the corpus is opened and before any preview or prompt, on
   // the same terms as `review` and `supersede`: a `--sever` that silently
   // became "no severity flag at all" would edit the item without the change
   // the operator typed and report success.
-  if (refuseUnknownFlag(args, ALLOWED, VALUE_FLAGS, USAGE, out)) return 1;
+  if (refuseUnknownFlag(args, allowed, valueFlags, usage, out)) return 1;
 
-  const [id, extra] = positionals(args, VALUE_FLAGS);
-  if (!id) { out(USAGE); return 1; }
+  const [id, extra] = positionals(args, valueFlags);
+  if (!id) { out(usage); return 1; }
   // `mycontext edit ID "new title"` reads like it ought to work; silently
   // ignoring the second positional would report a successful edit that changed
   // nothing the operator asked for.
   if (extra !== undefined) {
     say(out, `my_context: unexpected argument "${extra}" — every field is named with a flag ` +
       `(--title, --body, …), not given as a positional.`);
-    out(USAGE);
+    out(usage);
     return 1;
   }
 
@@ -432,15 +562,44 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     const status = flag(args, 'status');
     const always = boolFlag(args, 'always');
     const extraFields = extraFlag(args);
+    // The declared flags, read with the same `flag` helper as everything else
+    // so a repeat is refused in `repeatedFlagError`'s words rather than in a
+    // second wording of its own.
+    const declaredValues: Record<string, string> = {};
+    for (const name of declared) {
+      const value = flag(args, name);
+      if (value !== null) declaredValues[name] = value;
+    }
 
-    if (extraFields !== null) {
+    // One field, two spellings, two values. Refused rather than resolved by
+    // precedence, for `boolFlag`'s reason at `--always` given as both true and
+    // false: there is no reading of that which honours both, and honouring
+    // either would drop the other while reporting success. An ECHO — the same
+    // value through both spellings — is not a conflict and is left alone.
+    for (const [name, value] of Object.entries(declaredValues)) {
+      if (extraFields === null || !Object.hasOwn(extraFields, name)) continue;
+      if (extraFields[name] === value) continue;
+      say(out, `my_context: "${name}" was given twice, as \`--${name} ${value}\` and as ` +
+        `\`--extra ${name}=${extraFields[name]}\`, with two different values. There is no ` +
+        `reading of that which honours both. Nothing was changed — pass it once.`);
+      return 1;
+    }
+
+    if (extraFields !== null || Object.keys(declaredValues).length > 0) {
+      // The two spellings land in ONE map, because they are one field: a
+      // declared flag is `--extra <name>=<value>` under the name its category
+      // gave it, so everything downstream — `validateExtra`, the projection,
+      // `changesOf`'s diff, `updateItem`'s merge — sees one patch and cannot
+      // treat the two spellings differently.
+      //
       // Validated HERE, before the preview, on the same terms as `--severity`
       // and `--status` below: `updateItem` would refuse an unstorable value
       // anyway, but from inside the write — after a human had been shown what
       // the edit would do and asked to approve it. `validateExtra` owns the
       // wording, so this surface cannot drift from `create_item`'s.
-      validateExtra(extraFields);
-      patch.extra = extraFields;
+      const fields = { ...extraFields, ...declaredValues };
+      validateExtra(fields);
+      patch.extra = fields;
     }
     if (title !== null) patch.title = title.trim();
     if (body !== null) patch.body = body;
@@ -547,6 +706,89 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
       if (patch.scope !== undefined && patch.scope.length === 0 && item.scope.length > 0) {
         const refusal = scopeRequirementError(category, patch.scope, 'edit');
         if (refusal) { say(out, refusal); return 1; }
+      }
+    }
+
+    // --- what this item's category declares (see the block comment above) ---
+    //
+    // Everything from here to the projection is refused BEFORE the preview,
+    // for the reason stated at `item.layer`: a refusal must never be preceded
+    // by "about to edit", which reads as a report of something that then did
+    // not happen — and every sentence below ends in "Nothing was changed",
+    // which is only true from here.
+
+    // Step 1 of the seam (`src/core/tag-projection.ts`): a hand-written
+    // projected tag is refused, and it is refused BEFORE the field edit below
+    // is honoured. `--tags state:done --state doing` has two readings, and
+    // honouring either drops the other in silence — the same rule
+    // `--clear --tag` is already refused under (focus.ts).
+    if (tags !== null) {
+      const refusal = handWrittenProjectionError(ws.config, item.type, tags);
+      if (refusal) { say(out, refusal); return 1; }
+    }
+
+    // A declared flag is accepted by the parse because SOME category declares
+    // it; whether THIS one does is a question only the loaded item can answer.
+    for (const name of Object.keys(declaredValues)) {
+      const decl = updatableFor(ws.config, item.type, name);
+      if (decl !== null && isEditFlag(name, decl)) continue;
+      say(out, undeclaredFlagError(ws.config, item.type, name));
+      return 1;
+    }
+
+    // The three fields this command spells itself that carry a closed
+    // vocabulary, checked a second time against what the item's own category
+    // declares. The first check (against `SEVERITIES`/`STATUSES`, above) is the
+    // grammar and runs before the item is known; this one is the CATEGORY's
+    // narrowing, which is the whole reason `updates` is authorable in
+    // config.json — a project declaring `updates.status.values` gets a refusal
+    // that agrees with what `mycontext help categories` prints for it, without
+    // this file learning that the narrowing exists.
+    //
+    // `inertFieldError` above keeps precedence on the two cases it covers:
+    // `--severity hard` and `--always true` on the rationale tier are also
+    // outside the declared vocabulary there, and its sentence says the part the
+    // vocabulary cannot — that the value would be stored and then do nothing,
+    // and that retiering the category is the remedy.
+    const vocabularies: [string, string][] = [];
+    if (patch.severity !== undefined) vocabularies.push(['severity', patch.severity]);
+    if (patch.status !== undefined) vocabularies.push(['status', patch.status]);
+    if (patch.always !== undefined) vocabularies.push(['always', String(patch.always)]);
+    for (const [name, value] of vocabularies) {
+      const decl = updatableFor(ws.config, item.type, name);
+      if (decl === null) continue;
+      const refusal = updatableValueError(name, value, decl);
+      if (refusal) { say(out, refusal); return 1; }
+    }
+
+    // Step 2 of the seam: the field moves and the tag projected from it is
+    // rewritten onto the SAME patch, so the diff a human approves shows both
+    // halves of the change rather than showing the field and performing the
+    // tag.
+    //
+    // The item is handed to `projectFieldUpdate` with `--tags`' replacement
+    // list already applied, so `--tags v2,ui --state done` reconciles onto the
+    // list the caller asked for instead of onto the one being replaced. Passing
+    // the stored tags would silently discard the `--tags` half.
+    //
+    // `projected.tags` is the WHOLE replacement list and is assigned outright —
+    // `updateItem` does `item.tags = input.tags`, so merging it again would
+    // duplicate every tag. Caught rather than left to the handler at the bottom
+    // of this function, purely so the refusal is wrapped to the layout budget
+    // like every other refusal this command prints; the ordering is the same
+    // one `validateExtra` already has.
+    if (patch.extra !== undefined) {
+      try {
+        const projected = projectFieldUpdate(
+          ws.config,
+          { type: item.type, tags: patch.tags ?? item.tags, extra: item.extra },
+          patch.extra,
+        );
+        patch.extra = { ...patch.extra, ...projected.extra };
+        if (projected.tags !== undefined) patch.tags = projected.tags;
+      } catch (err) {
+        say(out, err instanceof Error ? err.message : String(err));
+        return 1;
       }
     }
 
