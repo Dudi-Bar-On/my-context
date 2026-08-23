@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   resolveConfig, extraFieldNames, skippedKeyNotice, DEFAULT_BUDGETS, DEFAULT_UI,
 } from '../../src/core/config.ts';
+import { CATEGORIES } from '../../src/core/categories.ts';
 import { isEligible } from '../../src/core/select.ts';
 import type { Item } from '../../src/core/types.ts';
 
@@ -346,10 +347,11 @@ test('a custom category named after an Object.prototype key works end to end', (
     agentEdits: 'review',
     scopePolicy: 'global',
     // A custom category has no catalogue entry to inherit an `updates`
-    // declaration from, so it resolves to the empty one — which is a
-    // declaration ("this category adds nothing of its own") and not a gap.
-    // Making it authorable in config.json is plan:categories seq 14; asserting
-    // the whole object here is what will make that change visible.
+    // declaration from, and this one declares none of its own, so it resolves
+    // to the empty declaration — which says "this category adds nothing of its
+    // own" and is not a gap. What a custom category CAN now declare is in
+    // `config-updates.test.ts`; the whole object is asserted here so that any
+    // further key added to a resolved category has to arrive through a test.
     updates: {},
   });
   // It has to be visible to every consumer that enumerates or looks up
@@ -598,6 +600,7 @@ test('every documented category key is still accepted together', () => {
       rule: {
         enabled: false, tier: 'rationale', description: 'D', prefix: 'RL',
         agentEdits: 'review', scopePolicy: 'inert', extraFields: ['owner'],
+        updates: { owner: { store: 'field', note: 'Who owns it.' } },
       },
     },
   });
@@ -607,10 +610,18 @@ test('every documented category key is still accepted together', () => {
       description: cfg.categories.rule.description, prefix: cfg.categories.rule.prefix,
       agentEdits: cfg.categories.rule.agentEdits, scopePolicy: cfg.categories.rule.scopePolicy,
       extraFields: cfg.categories.rule.extraFields,
+      // Both list keys EXTEND on this branch — the catalogue's `directive` is
+      // still declared, and still described. `config-updates.test.ts` holds the
+      // rest of the merge.
+      updates: cfg.categories.rule.updates,
     },
     {
       enabled: false, tier: 'rationale', description: 'D', prefix: 'RL',
       agentEdits: 'review', scopePolicy: 'inert', extraFields: ['directive', 'owner'],
+      updates: {
+        directive: CATEGORIES.rule.updates.directive,
+        owner: { store: 'field', note: 'Who owns it.' },
+      },
     },
   );
 });

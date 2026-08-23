@@ -38,12 +38,11 @@ test('an exported config round-trips through resolveConfig', () => {
   const config = resolveConfig({ profile: 'standard', categories: { rule: { scopePolicy: 'required' } } });
   const raw = projectExportConfig(config);
   assert.doesNotThrow(() => resolveConfig(raw));
-  // `extraFields` is not carried — see the module docstring, where the reason
-  // is an OPEN question and not a rule. `name` is refused by the category key
-  // check on the way in, so serialising the resolved shape would produce a
-  // file this product wrote and cannot read.
+  // `name` is refused by the category key check on the way in, so serialising
+  // the resolved shape would produce a file this product wrote and cannot
+  // read back. It is the reason the projection is a stated key list rather
+  // than a spread — and the reason the key list needs the gate below.
   const text = JSON.stringify(raw);
-  assert.equal(text.includes('extraFields'), false);
   assert.equal(text.includes('"name"'), false);
   assert.deepEqual(resolveConfig(raw).skippedKeys, [], 'the projection writes no key this build cannot read');
 });
@@ -70,16 +69,100 @@ test('the export projection re-resolves to the same config, key for key', () => 
   for (const [name, category] of Object.entries(config.categories)) {
     const seen = back.categories[name];
     assert.ok(seen, `${name} did not survive the round trip`);
-    for (const key of ['enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy'] as const) {
+    for (const key of [
+      'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy', 'extraFields',
+    ] as const) {
       assert.deepEqual(seen[key], category[key], `${name}.${key}`);
     }
   }
 });
 
-test('the ONE key the export projection does not carry is extraFields, and the loss is visible here', () => {
-  // Not an assertion that dropping it is right — it is the open question
-  // named in the module docstring, pinned so that a ruling either way lands
-  // as a change to a test rather than as a silent difference in an artefact.
+/**
+ * The gate the drift this file was written to end could not get past.
+ *
+ * `config.json` accepted seven category keys and a whole-workspace export
+ * wrote six: `extraFields` was settable, was set, and did not travel. Nothing
+ * noticed, because nothing compared the two lists. This is that comparison,
+ * and it is what fails when an EIGHTH key is added to one list and not the
+ * other.
+ *
+ * The accepted list is READ FROM THE RESOLVER rather than written out here. A
+ * list typed into this test would be a third copy of the same list, drifting
+ * from the other two exactly as they drifted from each other — the defect one
+ * level up, in the test that exists to catch it.
+ */
+function categoryKeysConfigAccepts(): string[] {
+  // `CATEGORY_KEYS` is module-private to core/config.ts, and the ONE surface
+  // that renders it verbatim is this refusal: `A category accepts:
+  // ${CATEGORY_KEYS.join(', ')}.` So the key check is asked a question only
+  // that list can answer.
+  let message = '';
+  try {
+    resolveConfig({ categories: { rule: { thisIsNotAKeyAnyConfigAccepts: true } } });
+  } catch (err) {
+    message = err instanceof Error ? err.message : String(err);
+  }
+  const match = /A category accepts: ([^.]+)\./.exec(message);
+  // Loudly, not by returning a short list: a helper that silently returned
+  // fewer keys than `CATEGORY_KEYS` holds would make the gate below pass by
+  // asking nothing, which is the failure mode the gate exists to prevent.
+  assert.ok(
+    match,
+    `this test reads the keys config.json accepts out of core/config.ts's own refusal, and that ` +
+    `refusal no longer contains "A category accepts: <list>." — it said: ${JSON.stringify(message)}. ` +
+    `Re-point this helper at whatever now renders CATEGORY_KEYS, or export CATEGORY_KEYS and ` +
+    `import it. Do NOT paste the list in here: a hand-copied list is the drift this gate exists ` +
+    `to catch, one level up.`,
+  );
+  const keys = (match[1] ?? '').split(', ');
+  assert.ok(keys.includes('enabled') && keys.length >= 7, `parsed an implausible key list: ${keys.join(', ')}`);
+  return keys;
+}
+
+test('every key config.json ACCEPTS is a key a whole-workspace export WRITES', () => {
+  const accepted = categoryKeysConfigAccepts();
+  // What the export actually wrote, not what a constant says it writes: the
+  // projection is the thing an artefact is made of, and EXPORT_KEYS is only
+  // how it is spelled today.
+  const raw = projectExportConfig(resolveConfig({}));
+  const entries = Object.entries(raw.categories);
+  assert.ok(entries.length > 0, 'an export with no categories cannot answer this question');
+
+  for (const [name, entry] of entries) {
+    const written = Object.keys(entry);
+    const missing = accepted.filter((key) => !written.includes(key));
+    assert.deepEqual(
+      missing, [],
+      `config.json ACCEPTS ${missing.join(', ')} on a category, and a whole-workspace export ` +
+      `does not write ${missing.length === 1 ? 'it' : 'them'} (checked on "${name}"). Add ` +
+      `${missing.join(', ')} to EXPORT_KEYS in src/pack/config-io.ts — and to RawCategoryJson ` +
+      `beside it — because a key config.json ACCEPTS must also TRAVEL: a user who sets it has ` +
+      `an export that silently drops it, and the artefact then describes a workspace nobody ` +
+      `has. Pick the position deliberately and say why in a comment; config.json's BYTES are ` +
+      `hashed into the manifest, so key order is fixed once written. If the new key genuinely ` +
+      `must not travel, that is a decision, and it belongs here as a named exception with its ` +
+      `reason — not as a key quietly missing from a list. (extraFields drifted out of ` +
+      `EXPORT_KEYS exactly this way and nothing noticed for the life of the feature.)`,
+    );
+    // The other direction, which costs one line: a key the export writes that
+    // config.json cannot read is a file this product wrote and refuses.
+    const unreadable = written.filter((key) => !accepted.includes(key));
+    assert.deepEqual(
+      unreadable, [],
+      `a whole-workspace export writes ${unreadable.join(', ')} on "${name}", and config.json ` +
+      `does not accept ${unreadable.length === 1 ? 'it' : 'them'} — an artefact this build ` +
+      `wrote and this build refuses to read back. Remove ${unreadable.join(', ')} from ` +
+      `EXPORT_KEYS, or add it to CATEGORY_KEYS in src/core/config.ts.`,
+    );
+  }
+});
+
+test('extraFields travels on a whole-workspace export, on a built-in and on a custom category', () => {
+  // The measured defect: `task` exported with a description reading "Its plan,
+  // sequence, state and progress live in extra fields" and carried none of
+  // them. An export is the author's workspace travelling whole, so both
+  // branches of `extraFields` travel — the union a config added to a built-in
+  // and the whole list a custom category is.
   const config = resolveConfig({
     categories: {
       rule: { extraFields: ['owner'] },
@@ -88,8 +171,27 @@ test('the ONE key the export projection does not carry is extraFields, and the l
   });
   assert.deepEqual(config.categories.rule.extraFields, ['directive', 'owner']);
   const back = resolveConfig(projectExportConfig(config));
-  assert.deepEqual(back.categories.rule.extraFields, ['directive'], 'the union the config added is gone');
-  assert.deepEqual(back.categories.threat_model.extraFields, [], 'and a custom category keeps none at all');
+  assert.deepEqual(back.categories.rule.extraFields, ['directive', 'owner'], 'the union survives');
+  assert.deepEqual(back.categories.threat_model.extraFields, ['likelihood'], 'and so does a custom list');
+  // Idempotent, which is why writing a built-in's resolved list cannot freeze
+  // this build's catalogue: the built-in branch resolves by UNION, so reading
+  // back a list that already contains the catalogue's defaults adds nothing.
+  assert.equal(
+    JSON.stringify(projectExportConfig(back)),
+    JSON.stringify(projectExportConfig(config)),
+    'a second export of a re-read export is byte-identical',
+  );
+});
+
+test('the export projection hands back its own arrays, not the resolved config\'s', () => {
+  // Every other field of this projection is copied (`{...budgets}`,
+  // `[...watchedDocs]`); `extraFields` is the one array inside a category
+  // entry, and an alias would let a later mutation of either show up in the
+  // other.
+  const config = resolveConfig({ categories: { rule: { extraFields: ['owner'] } } });
+  const raw = projectExportConfig(config);
+  assert.notEqual(raw.categories.rule?.extraFields, config.categories.rule.extraFields);
+  assert.deepEqual(raw.categories.rule?.extraFields, ['directive', 'owner']);
 });
 
 test('the export projection does not carry "ui" either, and the omission is pinned rather than assumed', () => {
@@ -145,15 +247,39 @@ test('a pack config carries vocabulary and nothing about the importer', () => {
   assert.equal(configured.categories.rule.prefix, 'POLICY');
 });
 
-test('a pack carrying a CUSTOM category also carries its tier and description', () => {
+test('a pack carrying a CUSTOM category also carries its tier, description and extraFields', () => {
   // The exporter's own workspace defines `threat_model`; the receiver's does
-  // not. Without these two keys `resolveConfig` refuses the pack's config on
-  // arrival, so omitting them would ship a pack that cannot be imported.
+  // not. Without tier and description `resolveConfig` refuses the pack's
+  // config on arrival, so omitting them would ship a pack that cannot be
+  // imported; without `extraFields` the config loads and every item the pack
+  // carries for that category is then refused by `unknownExtraFieldError`,
+  // which is the quieter half of the same failure.
   const raw = projectPackConfig(WITH_CUSTOM, ['rule', 'threat_model']);
   assert.deepEqual(Object.keys(raw.categories.rule).toSorted(), ['enabled', 'prefix', 'scopePolicy']);
   assert.deepEqual(
     Object.keys(raw.categories.threat_model).toSorted(),
-    ['description', 'enabled', 'prefix', 'scopePolicy', 'tier'],
+    // `updates` joined this list on 2026-08-23, on the same predicate and for
+    // the reason one step further on: `extraFields` says which fields an item
+    // may carry, `updates` says what may be CHANGED on them. A pack carrying
+    // the fields and not their rules lands a category whose items are accepted
+    // and whose every update refusal has to be rediscovered by trial.
+    ['description', 'enabled', 'extraFields', 'prefix', 'scopePolicy', 'tier', 'updates'],
+  );
+  // Written even when empty — see the projection's docstring: `[]` from the
+  // author is a fact, an omission read as `[]` by the receiver is a guess.
+  assert.deepEqual(raw.categories.threat_model.extraFields, []);
+  const withFields = projectPackConfig(
+    resolveConfig({
+      categories: { threat_model: { tier: 'normative', description: 'A threat.', extraFields: ['likelihood'] } },
+    }),
+    ['threat_model'],
+  );
+  assert.deepEqual(withFields.categories.threat_model.extraFields, ['likelihood']);
+  // The pack's key order is fixed for the same reason the export's is: a
+  // pack's config.json is hashed into its manifest too.
+  assert.deepEqual(
+    Object.keys(withFields.categories.threat_model),
+    ['enabled', 'tier', 'description', 'prefix', 'scopePolicy', 'extraFields', 'updates'],
   );
   assert.equal(raw.categories.threat_model.tier, 'normative');
   assert.equal(raw.categories.threat_model.prefix, 'THREAT');
@@ -348,26 +474,55 @@ test('an unknown top-level key is refused rather than skipped, and the message s
   assert.ok(refusals[0]?.includes(PACK_PROTOCOL));
 });
 
-test('extraFields from a pack is refused today, on both branches, as a key a pack may not carry', () => {
-  // OPEN QUESTION, pinned rather than settled: §6n.1 enumerated the keys that
-  // move the trust boundary before `extraFields` became settable, so nothing
-  // has ruled on it. It is refused here because the permitted set is stated
-  // POSITIVELY — a key is excluded until someone adds it deliberately — and
-  // that is the direction a later ruling can reverse without invalidating an
-  // artefact anyone has already written. The message must therefore name the
-  // key and the permitted set, and must NOT read as a decided prohibition.
+test('extraFields from a pack splits the way tier and description do: refused on a name this build HAS', () => {
+  // §6n.1's asymmetry, reached through a third key. A pack may name knowledge
+  // this build has never heard of — and for a custom category `extraFields`
+  // is most of what the name MEANS — and may not re-declare knowledge it has:
+  // the built-in branch of `resolveConfig` resolves extraFields by UNION, so
+  // a pack could not delete a field, but it could ADD one to `rule` for every
+  // rule the importer already wrote.
   const onExisting = refusePackConfig({ categories: { rule: { extraFields: ['owner'] } } }, LOCAL);
+  assert.equal(onExisting.length, 1);
+  assert.match(onExisting[0] ?? '', /extraFields/);
+  assert.match(onExisting[0] ?? '', /already has/);
+  // The refusal must say what a pack MAY do instead, or an author reads it as
+  // "packs cannot carry a custom category's fields" and ships one that cannot
+  // accept its own items.
+  assert.match(onExisting[0] ?? '', /MAY declare extraFields for a category name this build does not have/);
+
   const onNew = refusePackConfig({
-    categories: { threat_model: { tier: 'normative', description: 'A threat.', extraFields: ['owner'] } },
+    categories: {
+      threat_model: { tier: 'normative', description: 'A threat.', extraFields: ['owner'] },
+    },
   }, LOCAL);
-  for (const refusals of [onExisting, onNew]) {
-    assert.equal(refusals.length, 1);
-    assert.match(refusals[0] ?? '', /extraFields/);
-  }
+  assert.deepEqual(onNew, [], 'a custom category may carry the fields its own items need');
+
   // The permitted set differs between the two branches, and naming the wrong
   // one sends an author to write a key that will be refused again.
-  assert.match(onExisting[0] ?? '', /a pack may set: enabled, prefix, scopePolicy\./);
-  assert.match(onNew[0] ?? '', /a pack may set: enabled, tier, description, prefix, scopePolicy\./);
+  const otherKey = refusePackConfig({ categories: { rule: { nonsense: 1 } } }, LOCAL);
+  const otherKeyNew = refusePackConfig({
+    categories: { threat_model: { tier: 'normative', description: 'A threat.', nonsense: 1 } },
+  }, LOCAL);
+  assert.match(otherKey[0] ?? '', /a pack may set: enabled, prefix, scopePolicy\./);
+  assert.match(
+    otherKeyNew[0] ?? '',
+    /a pack may set: enabled, tier, description, prefix, scopePolicy, extraFields, updates\./,
+  );
+});
+
+test('a pack carrying a custom category arrives able to accept that category\'s own items', () => {
+  // The end of the chain the refusal used to break: project a pack from a
+  // workspace whose custom category declares frontmatter, refuse it against a
+  // build that has never heard of the name, merge it, and the field is there.
+  const authored = resolveConfig({
+    categories: {
+      threat_model: { tier: 'normative', description: 'A threat.', extraFields: ['likelihood'] },
+    },
+  });
+  const packed = projectPackConfig(authored, ['threat_model']);
+  assert.deepEqual(refusePackConfig(packed, LOCAL), []);
+  const resolved = resolveConfig(mergePackConfig({ categories: {} }, packed));
+  assert.deepEqual(resolved.categories.threat_model.extraFields, ['likelihood']);
 });
 
 test('a category named __proto__ is refused, because assigning it would set a prototype', () => {
@@ -493,10 +648,11 @@ test('the merge keeps a key the importer set that a pack may not carry', () => {
   assert.deepEqual(merged.categories.lesson, { enabled: false });
 });
 
-test('the merge copies only the five permitted fields, whatever a pack put in the entry', () => {
+test('the merge copies only the six permitted fields, whatever a pack put in the entry', () => {
   // The refusal above is what a user is told; this is what protects them if a
   // caller ever forgets to ask. A merge that copied the entry wholesale would
-  // make every refusal in this file advisory.
+  // make every refusal in this file advisory. `agentEdits` is the trust
+  // boundary itself and is dropped here even though the pack sent it.
   const merged = mergePackConfig({ categories: {} }, {
     categories: {
       threat_model: {
@@ -506,7 +662,8 @@ test('the merge copies only the five permitted fields, whatever a pack put in th
     },
   });
   assert.deepEqual(Object.keys(merged.categories.threat_model).toSorted(),
-    ['description', 'enabled', 'prefix', 'scopePolicy', 'tier']);
+    ['description', 'enabled', 'extraFields', 'prefix', 'scopePolicy', 'tier']);
+  assert.deepEqual(merged.categories.threat_model.extraFields, ['owner']);
 });
 
 test('the merge writes nothing for an entry the pack sent as something other than an object', () => {

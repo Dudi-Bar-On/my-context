@@ -40,31 +40,43 @@
  *
  * `ResolvedCategory` carries `name`, and `requireCategoryKeys` refuses `name`
  * as a key a category entry may not have — so serialising the resolved shape
- * writes a file this product cannot read back. It also carries the catalogue's
- * own `description` and `extraFields` for all 24 built-in categories, which
- * would freeze this build's catalogue into the file: a later build that
- * reworded a description would be silently overridden by an export taken
- * today. The projection therefore writes the RAW shape, deliberately, and the
- * round trip is asserted in the test rather than assumed here.
+ * writes a file this product cannot read back. It also carries `updates`,
+ * which no config spelling can set. The projection therefore writes the RAW
+ * shape, deliberately, from a stated key list, and the round trip is asserted
+ * in the test rather than assumed here.
  *
- * ## Two keys the projections do not carry, both pinned by a test
+ * ## `extraFields` — the key that ACCEPTED and did not TRAVEL
  *
- * - **`extraFields` — OPEN, not decided.** §6n.1 enumerated the keys that move
- *   the trust boundary while `extraFields` was still refused by name, so it
- *   ruled on a key that could not appear. It is settable now: on a built-in
- *   category it EXTENDS by union, on a custom one it is the whole list.
- *   Neither projection writes it and `refusePackConfig` refuses it — not as a
- *   ruling, but because the permitted set is stated POSITIVELY, so a key is
- *   excluded until someone adds it deliberately. That is the direction a
- *   ruling can reverse without invalidating an artefact already written. **The
- *   cost of the refusal is real and is not hidden:** a pack that ships a
- *   custom category cannot ship the frontmatter fields that category declares,
- *   so its own items are refused on arrival by `unknownExtraFieldError` —
- *   which is most of what a custom category is for.
+ * §6n.1 enumerated the keys that move the trust boundary while `extraFields`
+ * was still refused by name, so it ruled on a key that could not appear. The
+ * key became settable — on a built-in category it EXTENDS by union, on a
+ * custom one it is the whole list — and neither projection was updated. The
+ * cost was not theoretical and was measured on this product's own corpus: the
+ * `task` entry exported with a description reading "Its plan, sequence, state
+ * and progress live in extra fields" and carried none of the fields that
+ * sentence names.
+ *
+ * Both projections now carry it, and the pack side carries it under the SAME
+ * predicate as `tier` and `description` — written for a name this product's
+ * catalogue does not ship, refused for one it does. That is §6n.1's asymmetry
+ * unchanged, not a hole in it: for a custom name there is nothing at that name
+ * to override and the fields are most of what the category IS (without them
+ * the pack's own items are refused on arrival by `unknownExtraFieldError`);
+ * for a built-in name it would be a stranger's file editing what this build's
+ * categories mean. A whole-workspace export is not a pack and writes it on
+ * every entry — see `projectExportConfig`, where writing a built-in's list
+ * cannot freeze the catalogue because that branch resolves by UNION.
+ *
+ * `test/pack/config-io.test.ts` holds the gate that would have caught this:
+ * every key `config.json` ACCEPTS is a key a whole-workspace export WRITES.
+ *
+ * ## The one key the projections do not carry, pinned by a test
+ *
  * - **`ui`.** It joined `TOP_LEVEL_KEYS` after this projection's key list was
  *   written. It is a permission about the receiving machine rather than
  *   knowledge, so it is omitted like `profile` — but a whole-workspace export
- *   is meant to be faithful, and a UI switched off does not survive one.
+ *   is meant to be faithful, and a UI switched off does not survive one. (It
+ *   is a TOP-LEVEL key, so the category gate above cannot see it.)
  *
  * ## What this module never sees
  *
@@ -74,7 +86,7 @@
  * set-level check belongs where a set of paths is assembled (the bundle walk)
  * and where one is read back (the reader).
  */
-import { CATEGORIES } from '../core/categories.ts';
+import { CATEGORIES, type CategoryUpdates } from '../core/categories.ts';
 import { resolveConfig, scopePolicyFor, type Config, type ResolvedCategory } from '../core/config.ts';
 import type { AgentEdits, ScopePolicy, Tier } from '../core/types.ts';
 import { comparePaths, PACK_PROTOCOL } from './layout.ts';
@@ -95,6 +107,8 @@ export interface RawCategoryJson {
   prefix?: string;
   agentEdits?: AgentEdits;
   scopePolicy?: ScopePolicy;
+  extraFields?: string[];
+  updates?: CategoryUpdates;
   [key: string]: unknown;
 }
 
@@ -107,17 +121,87 @@ export interface RawConfigJson {
   [key: string]: unknown;
 }
 
-/** The six keys a whole-workspace export writes for every category. */
-const EXPORT_KEYS = ['enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy'] as const;
+/**
+ * Every key a whole-workspace export writes for every category — which must be
+ * every key `config.json` ACCEPTS (`CATEGORY_KEYS`, core/config.ts). The two
+ * lists drifted once, silently, and `test/pack/config-io.test.ts` now fails
+ * when they do; a key this build accepts and does not export is a setting a
+ * user made and an artefact quietly lost.
+ *
+ * `extraFields` is written LAST, and the position is not arbitrary:
+ * `config.json`'s bytes are hashed into the manifest, so wherever it goes it
+ * is fixed there for every export this build writes. Last is where
+ * `CATEGORY_KEYS` itself declares it, so the two lists read in the same order
+ * side by side — the comparison that is the whole point of the gate above; and
+ * appending is the one position that leaves the six existing keys' byte order
+ * untouched, so a diff of an export taken before this change against one taken
+ * after shows a key ADDED rather than the whole entry reordered.
+ */
+const EXPORT_KEYS = [
+  'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy', 'extraFields',
+  // The eighth, appended 2026-08-23 for the same reason and in the same
+  // position as the seventh. It arrived through the gate below rather than
+  // through a plan: `updates` landed in `CATEGORY_KEYS` while this file was
+  // being edited, the assertion went red naming the key and this list, and
+  // carrying it here is what turned it green. That is the whole point of that
+  // gate — the seventh key was lost silently for months because nothing asked.
+  'updates',
+] as const;
 
 /** What a pack may set on a category name that already resolves here. */
 const PACK_KEYS_EXISTING = ['enabled', 'prefix', 'scopePolicy'];
 
-/** …and on one that does not, where `tier` and `description` are required. */
-const PACK_KEYS_NEW = ['enabled', 'tier', 'description', 'prefix', 'scopePolicy'];
+/** …and on one that does not, where `tier` and `description` are required and
+ *  `extraFields` is what makes the category's own items acceptable. */
+const PACK_KEYS_NEW = ['enabled', 'tier', 'description', 'prefix', 'scopePolicy', 'extraFields', 'updates'];
 
 /** The fields `mergePackConfig` will copy — the union of the two lists above. */
-const MERGED_FIELDS = ['enabled', 'tier', 'description', 'prefix', 'scopePolicy'] as const;
+const MERGED_FIELDS = ['enabled', 'tier', 'description', 'prefix', 'scopePolicy', 'extraFields', 'updates'] as const;
+
+/**
+ * The key order INSIDE one update declaration, and the reason it has to exist.
+ *
+ * The category level has had a fixed key order since this module was written,
+ * because `config.json`'s bytes are hashed into the manifest and two exports
+ * differing only in key order are two artefacts that do not verify against each
+ * other. `updates` is the first key whose VALUE is a nested object, so it needs
+ * the same treatment one level down — and it was not obvious until the byte
+ * stability test caught it on 2026-08-23:
+ *
+ *     first export      "directive":{"store":…,"values":…,"note":…}
+ *     re-read, export   "directive":{"store":…,"note":…,"values":…}
+ *
+ * The catalogue declares `directive` in one order and the loader rebuilds it in
+ * another, so a workspace exported, imported and exported again produced
+ * different bytes for identical settings. Normalising here makes the projection
+ * — not the source it read — decide the order, which is what every other key in
+ * this file already does.
+ */
+const UPDATE_LINE_KEYS = ['store', 'values', 'projectsTo', 'command', 'note'] as const;
+
+/**
+ * One `updates` map, rebuilt with a stable key order at both levels.
+ *
+ * Names are sorted for the same reason categories are: a map's insertion order
+ * is a fact about the build that wrote it, not about the settings. Absent keys
+ * stay absent — an omitted `values` MEANS free text, and writing `undefined`
+ * for it would turn "no vocabulary" into a declared empty one.
+ */
+function projectUpdates(updates: CategoryUpdates): CategoryUpdates {
+  const out: Record<string, unknown> = {};
+  for (const name of Object.keys(updates).toSorted(comparePaths)) {
+    const line = updates[name];
+    if (line === undefined) continue;
+    const entry: Record<string, unknown> = {};
+    for (const key of UPDATE_LINE_KEYS) {
+      const value = (line as unknown as Record<string, unknown>)[key];
+      if (value === undefined) continue;
+      setKey(entry, key, Array.isArray(value) ? [...value] : value);
+    }
+    setKey(out, name, entry);
+  }
+  return out as CategoryUpdates;
+}
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -156,18 +240,40 @@ function setKey<T>(target: Record<string, T>, key: string, value: T): void {
  * two exports of one workspace that differ only in key order are two artefacts
  * that do not verify against each other.
  *
- * This writes what a PACK may not: `tier` and `description` on names the
- * receiver already has. That is not an oversight — an export is the author's
- * own workspace travelling whole, and `ArtefactKind` in the manifest is what
- * tells a reader which of the two it is holding. Nothing may feed this
+ * This writes what a PACK may not: `tier`, `description` and `extraFields` on
+ * names the receiver already has. That is not an oversight — an export is the
+ * author's own workspace travelling whole, and `ArtefactKind` in the manifest
+ * is what tells a reader which of the two it is holding. Nothing may feed this
  * projection through `mergePackConfig`.
+ *
+ * Writing a BUILT-IN category's `extraFields` cannot freeze this build's
+ * catalogue into the file, which is the objection that would otherwise apply:
+ * that branch of `resolveConfig` resolves `extraFields` by UNION with the
+ * catalogue's own list rather than by replacement, so a later build that adds
+ * a field to `rule` still gets it after reading an export taken today. The
+ * round trip is exact for the same reason — the union of a resolved list with
+ * the defaults it already contains is that list.
  */
 export function projectExportConfig(config: Config): RawConfigJson {
   const categories: Record<string, RawCategoryJson> = {};
   for (const name of Object.keys(config.categories).toSorted(comparePaths)) {
     const category: ResolvedCategory = config.categories[name];
     const entry: RawCategoryJson = {};
-    for (const key of EXPORT_KEYS) setKey(entry as Record<string, unknown>, key, category[key]);
+    for (const key of EXPORT_KEYS) {
+      const value = category[key];
+      // `updates` is the one key whose value is a nested OBJECT, so copying it
+      // is not enough — its own keys need a stable order too, or the manifest
+      // hash moves for settings that did not. `projectUpdates` owns both.
+      if (key === 'updates') {
+        setKey(entry as Record<string, unknown>, key, projectUpdates(category.updates));
+        continue;
+      }
+      // Copied, not aliased: `extraFields` is the one array here, and handing
+      // the caller the resolved config's own array would let a later mutation
+      // of either show up in the other. `budgets` and `watchedDocs` below are
+      // copied for the same reason.
+      setKey(entry as Record<string, unknown>, key, Array.isArray(value) ? [...value] : value);
+    }
     setKey(categories, name, entry);
   }
   return {
@@ -186,14 +292,23 @@ export function projectExportConfig(config: Config): RawConfigJson {
  * than knowledge about a domain. `enabled: true` is explicit on every entry,
  * which is the additive half of what `profile` would have said wholesale.
  *
- * `tier` and `description` are written for a category this PRODUCT's catalogue
- * does not have, and withheld for one it does. The predicate is the catalogue
- * (`CATEGORIES`) rather than the exporting workspace's resolved config, since
- * the resolved config holds every built-in name too — and it is the exporter
- * GUESSING what the importer knows, which is the one thing about this format
- * that cannot be checked from here: a category this build ships and an older
- * one does not is written as built-in and refused on arrival as an unknown
- * name with no tier.
+ * `tier`, `description` and `extraFields` are written for a category this
+ * PRODUCT's catalogue does not have, and withheld for one it does. The
+ * predicate is the catalogue (`CATEGORIES`) rather than the exporting
+ * workspace's resolved config, since the resolved config holds every built-in
+ * name too — and it is the exporter GUESSING what the importer knows, which is
+ * the one thing about this format that cannot be checked from here: a category
+ * this build ships and an older one does not is written as built-in and
+ * refused on arrival as an unknown name with no tier.
+ *
+ * The three share one predicate because they answer one question — what this
+ * name MEANS to a build that has never seen it — and `extraFields` is the half
+ * of that answer its items depend on: a custom category arriving without them
+ * declares no frontmatter at all, and every item the pack carries for it is
+ * refused on arrival by `unknownExtraFieldError`. It is written even when the
+ * list is empty, for the reason the whole projection is explicit: `[]` from
+ * the author is a fact about the category, and an omission read as `[]` by the
+ * receiver is a coincidence.
  *
  * `agentEdits` is written on neither branch, ever.
  */
@@ -217,8 +332,11 @@ export function projectPackConfig(config: Config, typesInPack: readonly string[]
       );
     }
     const category: ResolvedCategory = config.categories[type];
+    // The ONE predicate, evaluated once and named, because three keys now ride
+    // on it and three copies of it could disagree about one category.
+    const receiverLacks = !Object.hasOwn(CATEGORIES, type);
     const entry: RawCategoryJson = { enabled: true };
-    if (!Object.hasOwn(CATEGORIES, type)) {
+    if (receiverLacks) {
       entry.tier = category.tier;
       entry.description = category.description;
     }
@@ -227,6 +345,22 @@ export function projectPackConfig(config: Config, typesInPack: readonly string[]
     // scope. Its missing-category branch cannot fire here — the refusal above
     // has already run — and it is still what asks the question.
     entry.scopePolicy = scopePolicyFor(config, type);
+    // Written after `scopePolicy` rather than beside `tier` and `description`,
+    // even though it shares their predicate: a pack's config.json is hashed
+    // into its manifest too, so this order is fixed once written, and the
+    // order that costs nothing to read is the one `CATEGORY_KEYS` and
+    // `EXPORT_KEYS` already use — enabled, tier, description, prefix,
+    // scopePolicy, extraFields, with `agentEdits` the single gap.
+    if (receiverLacks) entry.extraFields = [...category.extraFields];
+    // And its update rules, on the same predicate and for the same reason one
+    // step further on: `extraFields` says which fields an item of this category
+    // may carry, `updates` says what may be CHANGED on them and how. A pack
+    // that carried the fields and not their rules would land a category whose
+    // items are accepted and whose every update refusal has to be rediscovered
+    // by trial — which is the state this product was in before the declaration
+    // existed. Spread rather than passed by reference: `ResolvedCategory` is
+    // the live config, and a pack projection must not alias it.
+    if (receiverLacks) entry.updates = projectUpdates(category.updates);
     setKey(categories, type, entry);
   }
   return { categories };
@@ -287,6 +421,46 @@ function refuseCategoryKey(name: string, key: string, value: unknown, known: boo
       `this build already has. A pack may name knowledge this build has never heard of; it may ` +
       `not re-describe knowledge it has, because the description is what your own build tells ` +
       `every agent that category means. Nothing was imported.`;
+  }
+  if (key === 'extraFields') {
+    // The same asymmetry as `tier` and `description`, and the same reason. For
+    // a name this build does not have there is nothing to override and the
+    // fields are most of what the category IS — without them every item the
+    // pack carries for it is refused on arrival by `unknownExtraFieldError`.
+    // For a name this build HAS, the built-in branch of `resolveConfig`
+    // resolves `extraFields` by UNION, so a pack could not delete a field —
+    // but it could ADD one to `rule` for every rule the importer already has,
+    // which is a stranger's file changing what this build's own categories
+    // declare. That is the same boundary the tier refusal holds.
+    if (!known) return null;
+    return `my_context: this pack sets categories.${name}.extraFields, and "${name}" is a ` +
+      `category this build already has. A pack may name knowledge this build has never heard ` +
+      `of; it may not re-declare what a category it HAS carries in frontmatter, because that ` +
+      `list is what your own build accepts on every ${name} you write — a pack extending it ` +
+      `would widen what counts as a valid ${name} here, permanently and for items the pack ` +
+      `never carried. Nothing was imported. (A pack MAY declare extraFields for a category ` +
+      `name this build does not have; there it can override nothing, and without it that ` +
+      `category's own items are refused on arrival.)`;
+  }
+  if (key === 'updates') {
+    // The same asymmetry as `extraFields` above, one step further on, and the
+    // reason is the resolver's merge rule rather than an analogy: the built-in
+    // branch of `resolveConfig` resolves `updates` by UNION BY NAME with the
+    // config declaration winning a collision. So a pack could not delete a
+    // rule from `rule` — but it could REPLACE the whole entry for `directive`,
+    // silently changing the legal values this build enforces on every rule the
+    // importer already wrote. That is strictly more than re-describing a
+    // category; it is a stranger's file deciding what your own writes are
+    // allowed to say.
+    if (!known) return null;
+    return `my_context: this pack sets categories.${name}.updates, and "${name}" is a category ` +
+      `this build already has. A pack may declare how to update knowledge this build has never ` +
+      `heard of; it may not redeclare the update rules of a category it HAS, because those rules ` +
+      `are what your own build enforces on every ${name} you write — a pack replacing an entry ` +
+      `would change which values are legal here, permanently and for items the pack never ` +
+      `carried. Nothing was imported. (A pack MAY declare updates for a category name this ` +
+      `build does not have; there it can override nothing, and without them that category ` +
+      `arrives with fields nobody can be told how to change.)`;
   }
   if (key === 'enabled') {
     if (value === true) return null;
@@ -422,14 +596,23 @@ export function refusePackConfig(raw: unknown, local: Config): string[] {
  * is the silent drop R14.2 exists to stop, reached from the writing side.
  *
  * Inside a category the same rule again: each permitted field is assigned
- * individually onto the entry that is there, so a pack adding `prefix` to a
- * category the importer configured with `extraFields` leaves the `extraFields`
- * alone. An entry the pack does not name is not touched at all.
+ * individually onto the entry that is there, and only for a field the pack's
+ * entry actually carries — so a pack that sets `prefix` on a category the
+ * importer configured with `extraFields` leaves those `extraFields` alone. An
+ * entry the pack does not name is not touched at all.
  *
- * Only the five permitted fields are copied, and `enabled` only when it is
+ * Only the six permitted fields are copied, and `enabled` only when it is
  * exactly `true`. `refusePackConfig` is what TELLS a user about the rest; this
  * is what holds if a caller ever forgets to ask, because a boundary that is
  * enforced only in the sentence a caller may skip is not a boundary.
+ *
+ * `extraFields` is copied on the same terms as `tier` and `description`: this
+ * function does not re-ask which names the importer already has, so all three
+ * are copied for whatever entry the pack named, and `refusePackConfig` is what
+ * stops a pack naming them for a category this build has. A pack that reached
+ * here unasked and set `rule.extraFields` would REPLACE the raw value in the
+ * importer's own file — and `resolveConfig` would then union it with the
+ * catalogue's list, so no catalogue field is lost either way.
  */
 export function mergePackConfig(existingRaw: unknown, packRaw: unknown): RawConfigJson {
   if (existingRaw !== undefined && existingRaw !== null && !isObject(existingRaw)) {

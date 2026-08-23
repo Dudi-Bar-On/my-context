@@ -64,7 +64,19 @@ export interface UpdatableName {
   note: string;
 }
 
-/** A category's own updatable surface, by name. Empty is a real answer. */
+/**
+ * A category's own updatable surface, by name. Empty is a real answer.
+ *
+ * Two places produce one: the catalogue below, for the twenty-four shipped
+ * categories, and `.my_context/config.json`, for the ones a person defines —
+ * "custom categories are created by humen and it should be written in a way a
+ * user could edit and define it in the config" (owner, 2026-08-23). The loader
+ * that reads, validates and merges the config half is `requireUpdates`
+ * (core/config.ts), and it states the merge: a CUSTOM category's declaration is
+ * whatever its entry says, and an override on a SHIPPED one EXTENDS this table
+ * by name rather than replacing it — the same direction as `extraFields`,
+ * because they are two halves of one description.
+ */
 export type CategoryUpdates = Readonly<Record<string, UpdatableName>>;
 
 /**

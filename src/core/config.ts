@@ -1,4 +1,7 @@
-import { CATEGORIES, PROFILES, type CategoryUpdates, type ProfileName } from './categories.ts';
+import {
+  CATEGORIES, PROFILES,
+  type CategoryUpdates, type ProfileName, type UpdatableName, type UpdateStore,
+} from './categories.ts';
 import { enumError } from './teach.ts';
 import type { AgentEdits, ScopePolicy, Tier } from './types.ts';
 // One direction only: `validate.ts` imports item.ts/teach.ts/vocabulary.ts and
@@ -97,10 +100,15 @@ export interface ResolvedCategory {
    *
    * Every resolved category has one; `{}` says "this category adds nothing of
    * its own", which is true of nineteen of the twenty-four shipped ones and is
-   * a declaration rather than a gap. A CUSTOM category resolves to `{}` today
-   * — making it authorable in config.json is plan:categories seq 14, and until
-   * then a custom category is honestly described as declaring nothing rather
-   * than dishonestly described as declaring its shipped neighbour's rules.
+   * a declaration rather than a gap.
+   *
+   * A CUSTOM category resolves to what its `config.json` entry declares, and
+   * `{}` when it declares none — the owner's constraint, 2026-08-23: "custom
+   * categories are created by humen and it should be written in a way a user
+   * could edit and define it in the config". A BUILT-IN with an `updates`
+   * override resolves to the catalogue's declaration EXTENDED by name; see
+   * `requireUpdates` and the merge beside it in `resolveConfig` for why that
+   * direction and not the other.
    */
   updates: CategoryUpdates;
 }
@@ -109,6 +117,14 @@ export interface ResolvedCategory {
  * prints `allowed.join(', ')` verbatim — so it is user-facing, not incidental. */
 export const AGENT_EDITS: AgentEdits[] = ['allow', 'review'];
 export const SCOPE_POLICIES: ScopePolicy[] = ['global', 'required', 'inert'];
+/**
+ * The `store` vocabulary, in the same shape and here for the same reason: the
+ * TYPE (`UpdateStore`) lives in categories.ts and erases to nothing at runtime,
+ * exactly as `AgentEdits` lives in types.ts while `AGENT_EDITS` lives here —
+ * the value list is what the LOADER checks a config against, and `requireEnum`
+ * is the only thing that reads it.
+ */
+export const UPDATE_STORES: UpdateStore[] = ['field', 'tag'];
 
 /**
  * The default splits by tier because that is where the difference is real:
@@ -253,6 +269,7 @@ interface RawCategory {
   agentEdits?: AgentEdits;
   scopePolicy?: ScopePolicy;
   extraFields?: string[];
+  updates?: CategoryUpdates;
 }
 
 /**
@@ -275,9 +292,22 @@ interface RawCategory {
  * accepted. The two halves shipped in ONE commit for that reason: validation
  * without this key would refuse every `task` item in the corpora the feature
  * was built for, since a custom category could declare nothing.
+ *
+ * `updates` is the eighth and the same argument one step further on. With
+ * `extraFields` settable, a person could describe what their category's items
+ * CARRY and had no way to describe how any of it is CHANGED — so a custom
+ * category resolved to `{}` updates and taught nobody anything, which is the
+ * sentence REQ-every-category-declares-what-may-be-updated-on-its-items-and
+ * opens with. The owner's constraint, 2026-08-23: "custom categories are
+ * created by humen and it should be written in a way a user could edit and
+ * define it in the config". `task` is the measured case and is not a special
+ * case: it is not named anywhere in `src/`, it is an entry in this repo's own
+ * `.my_context/config.json` with a tier, a prefix, a description and seven
+ * extra fields, exactly like any category a user defines.
  */
 const CATEGORY_KEYS = [
   'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy', 'extraFields',
+  'updates',
 ];
 
 /**
@@ -387,6 +417,211 @@ function requireExtraFields(name: string, value: unknown): string[] {
     );
   }
   return fields;
+}
+
+/**
+ * Every key ONE update declaration may carry — the `CATEGORY_KEYS` shape a
+ * level down, rendered verbatim in the refusal, and in the order a person
+ * writes them. Only `store` is required.
+ */
+const UPDATE_KEYS = ['store', 'values', 'projectsTo', 'command', 'note'];
+
+/** The shape, spelled ONCE so the two refusals that show it cannot drift into
+ * two different examples of the same thing. */
+const UPDATES_EXAMPLE =
+  '{"updates": {"state": {"store": "field", "values": ["todo", "done"], ' +
+  '"projectsTo": "state", "note": "Where this task is."}}}';
+
+/**
+ * The `updates` a category declares — what may be changed on one of its items,
+ * beyond what its TIER already declares in `TIER_UPDATES` (categories.ts).
+ *
+ * ## The merge, stated here so a reader never has to find it out by experiment
+ *
+ * On a BUILT-IN category this **EXTENDS the catalogue's declaration BY NAME**,
+ * and a name the config declares wins for that name, replacing the WHOLE entry.
+ * On a CUSTOM category it is simply the declaration, because there is no
+ * catalogue entry and "extend" and "replace" name the same operation there.
+ *
+ * Extend rather than replace, because `extraFields` extends and these are the
+ * two halves of one description. `rule` declares the extra field `directive`,
+ * and `extraFields` cannot remove it — it is part of what `rule` MEANS. Under a
+ * replace reading of `updates`, a user adding one name of their own would leave
+ * `directive` undroppable and its rules gone: a category still declaring a
+ * field and no longer able to say one thing about changing it. Two halves of
+ * one description following opposite rules is a category that can contradict
+ * itself, which is why the asymmetry `watchedDocs` earns (see
+ * `requireWatchedDocs`) is not earned here.
+ *
+ * Config wins on a name collision rather than the catalogue, because both
+ * alternatives are worse. The catalogue winning is a setting a user wrote and
+ * the product ignored — INV-nothing-is-dropped-silently, the failure this whole
+ * file is a defence against. Refusing the collision would mean the next
+ * category the catalogue teaches something about breaks a `config.json` that
+ * was valid before the upgrade, turning a catalogue improvement into a load
+ * failure on somebody else's machine.
+ *
+ * WHOLE ENTRY, not key by key, because an entry is one statement read together.
+ * A per-key merge would let a config supply `values` and inherit a `note`
+ * describing a different vocabulary, and it would make "absent `values` means
+ * free text" — a real answer, per `UpdatableName` — inexpressible, because an
+ * inherited vocabulary could never be cleared.
+ */
+function requireUpdates(name: string, value: unknown): CategoryUpdates {
+  if (!isObject(value)) {
+    throw new Error(
+      `my_context: category "${name}" has invalid updates ${JSON.stringify(value)}. ` +
+      `Expected an object mapping an updatable name to its rules, e.g. ${UPDATES_EXAMPLE} — ` +
+      `use {} to declare none. Only "store" is required on an entry, and it is ` +
+      `${UPDATE_STORES.join(' or ')}. Nothing was loaded — a setting that cannot be acted ` +
+      `on is refused rather than ignored.`,
+    );
+  }
+  const declared: [string, UpdatableName][] = Object.entries(value)
+    .map(([updatable, entry]) => [updatable, requireUpdatableName(name, updatable, entry)]);
+  // `Object.fromEntries`, never `result[updatable] = …`: every one of these
+  // names comes from user-supplied JSON, and a plain assignment of
+  // `"__proto__"` reaches the prototype SETTER — no own key created and the
+  // whole declaration dropped in silence. That is this codebase's oldest bug
+  // (see the null-prototype note on `categories` in `resolveConfig`, which
+  // counted six occurrences) arriving through the one map added since it was
+  // last found. `fromEntries` DEFINES the property, so the pathological name
+  // resolves to a readable declaration like any other.
+  return Object.fromEntries(declared);
+}
+
+/** One entry of `updates`, validated key by key. The refusals name the entry —
+ * `updates.<name>.<key>` — because a person with a dozen of them needs to know
+ * which one, and `enumError` has no slot for that context. */
+function requireUpdatableName(category: string, updatable: string, raw: unknown): UpdatableName {
+  if (updatable === '') {
+    throw new Error(
+      `my_context: category "${category}" declares an updates entry under the empty name "". ` +
+      `An updatable name is the thing a person types to change it, so it cannot be empty. ` +
+      `Nothing was loaded — a setting that cannot be acted on is refused rather than ignored.`,
+    );
+  }
+  const where = `updates.${updatable}`;
+  if (!isObject(raw)) {
+    throw new Error(
+      `my_context: category "${category}" has invalid ${where} ${JSON.stringify(raw)}. ` +
+      `Expected an object with "store" (${UPDATE_STORES.join(' or ')}) and any of: ` +
+      `${UPDATE_KEYS.slice(1).join(', ')} — e.g. ${UPDATES_EXAMPLE}. Nothing was loaded — ` +
+      `a setting that cannot be acted on is refused rather than ignored.`,
+    );
+  }
+  const unknown = Object.keys(raw).filter((key) => !UPDATE_KEYS.includes(key));
+  if (unknown.length > 0) {
+    throw new Error(
+      `my_context: category "${category}" declares ` +
+      `${unknown.map((k) => JSON.stringify(k)).join(', ')} on ${where}, which ` +
+      `${unknown.length === 1 ? 'is not a key' : 'are not keys'} an update declaration ` +
+      `understands. An update declaration accepts: ${UPDATE_KEYS.join(', ')} — and only ` +
+      `"store" is required. Nothing was loaded — a setting that cannot be acted on is ` +
+      `refused rather than ignored.`,
+    );
+  }
+  // Absent gets its own sentence rather than falling through to `enumError`'s
+  // `You passed "undefined"`: a missing `store` is not a mistyped value, it is
+  // the one thing a declaration cannot leave out, and the reason is the ruling
+  // that produced this key (categories.ts: "if you would ever want to update
+  // it, it is a field").
+  if (raw.store === undefined) {
+    throw new Error(
+      `my_context: category "${category}" declares ${where} with no "store". Every update ` +
+      `declaration must say where the value lives: "field" for a value that changes, or ` +
+      `"tag" for a membership fixed for the item's life. If you would ever want to update ` +
+      `it, it is a field. Nothing was loaded — a setting that cannot be acted on is refused ` +
+      `rather than ignored.`,
+    );
+  }
+  // The vocabulary goes through `enumError` like `agentEdits` and `scopePolicy`
+  // — the ONE wording this project has for "not one of the allowed values". A
+  // second phrasing for that fact is the drift this codebase keeps producing,
+  // and the shared one supplies a closest match ("feild" → "field") for free.
+  const store = requireEnum(category, `${where}.store`, raw.store, UPDATE_STORES);
+
+  const declaration: UpdatableName = {
+    store,
+    // `note` is REQUIRED on `UpdatableName` and OPTIONAL in config, and the two
+    // are not in conflict: the ruling that made it required is about rendering
+    // ("an absent note would mean this declaration cannot be rendered, and
+    // rendering is half of what it exists for"), so what a config may omit is
+    // the SENTENCE, not the slot. The filled one asserts only what this loader
+    // actually knows — the store and the category — and says where to write a
+    // better one. Inventing a description of what the name MEANS is the
+    // fabrication the `requirement.kind` and `risk.likelihood` entries in the
+    // catalogue were deliberately left open to avoid.
+    note: requireUpdateLine(category, where, 'note', raw.note)
+      ?? `A ${store} on a ${category} item. `
+        + `No note was written for it in .my_context/config.json.`,
+  };
+  if (raw.values !== undefined) {
+    if (
+      !Array.isArray(raw.values) || raw.values.length === 0
+      || raw.values.some((v) => typeof v !== 'string' || v.trim() === '')
+    ) {
+      throw new Error(
+        `my_context: category "${category}" has invalid ${where}.values ` +
+        `${JSON.stringify(raw.values)}. Expected a non-empty array of the values this name ` +
+        `may take, e.g. ["todo", "doing", "done"] — omit "values" entirely to mean free ` +
+        `text, which is a real answer and not a gap. An empty list would be a closed ` +
+        `vocabulary with no members, which admits nothing. Nothing was loaded — a setting ` +
+        `that cannot be acted on is refused rather than ignored.`,
+      );
+    }
+    declaration.values = raw.values as string[];
+  }
+  if (raw.projectsTo !== undefined) {
+    // Refused on a `tag` rather than accepted and never acted on. A projection
+    // is what keeps a FIELD filterable — a machine writes the tag beside it and
+    // rewrites it on change — and on a tag store the value already IS the tag.
+    if (store === 'tag') {
+      throw new Error(
+        `my_context: category "${category}" declares ${where}.projectsTo on a "tag" store. ` +
+        `A projection keeps a FIELD filterable by writing "<projectsTo>:<value>" beside it ` +
+        `and rewriting it on change; a tag is already the tag, so there is nothing to ` +
+        `project. Drop "projectsTo", or set "store": "field". Nothing was loaded — a ` +
+        `setting that cannot be acted on is refused rather than ignored.`,
+      );
+    }
+    if (typeof raw.projectsTo !== 'string' || !/^[A-Za-z0-9_-]+$/.test(raw.projectsTo)) {
+      throw new Error(
+        `my_context: category "${category}" has invalid ${where}.projectsTo ` +
+        `${JSON.stringify(raw.projectsTo)}. Expected a tag prefix — letters, digits, "_" or ` +
+        `"-" and nothing else — because the generated tag is "<projectsTo>:<value>", so a ` +
+        `colon or a space in the prefix makes a tag nobody can filter on. Nothing was ` +
+        `loaded — a setting that cannot be acted on is refused rather than ignored.`,
+      );
+    }
+    declaration.projectsTo = raw.projectsTo;
+  }
+  const command = requireUpdateLine(category, where, 'command', raw.command);
+  if (command !== undefined) declaration.command = command;
+  return declaration;
+}
+
+/**
+ * `command` and `note`: each is ONE line rendered to a person — by `mycontext
+ * help` and `mycontext examples` — so a blank one is a blank row and an
+ * embedded newline breaks the table it is rendered in. Absent is legal for
+ * both; blank is not the same thing as absent and is not read as it.
+ */
+function requireUpdateLine(
+  category: string, where: string, key: 'command' | 'note', value: unknown,
+): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.trim() === '' || /[\r\n]/.test(value)) {
+    throw new Error(
+      `my_context: category "${category}" has invalid ${where}.${key} ` +
+      `${JSON.stringify(value)}. Expected one non-empty line — ` +
+      (key === 'command'
+        ? 'the change as it is typed, e.g. "mycontext edit <id> --extra state=done"'
+        : 'the one line a person reads, rendered by `mycontext help` and `mycontext examples`') +
+      `. Nothing was loaded — a setting that cannot be acted on is refused rather than ignored.`,
+    );
+  }
+  return value;
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -762,11 +997,26 @@ export function resolveConfig(raw: unknown): Config {
         scopePolicy: override.scopePolicy === undefined
           ? DEFAULT_SCOPE_POLICY
           : requireEnum(name, 'scopePolicy', override.scopePolicy, SCOPE_POLICIES),
-        // A custom category has no catalogue entry to inherit a declaration
-        // from, and `{}` is the honest answer until config.json can carry one
-        // (plan:categories seq 14). Describing it with its shipped neighbour's
-        // rules would be worse than describing it with none.
-        updates: {} as CategoryUpdates,
+        // The rules half of what a person may author, and the sibling of
+        // `extraFields` directly above: until this key existed a custom
+        // category could describe what its items CARRY and nothing about how
+        // any of it is CHANGED, so it resolved to `{}` and taught nobody
+        // anything. The owner's constraint, 2026-08-23: "custom categories are
+        // created by humen and it should be written in a way a user could edit
+        // and define it in the config".
+        //
+        // The whole declaration, not an extension of anything, for the same
+        // reason `extraFields` is the whole list on this branch: a custom
+        // category has no catalogue entry, so there is nothing here to protect
+        // and "extend" and "replace" name the same operation. Its TIER still
+        // declares the general rules (`TIER_UPDATES`, categories.ts); this is
+        // the category's own, which is all `CategoryDef.updates` ever carries.
+        //
+        // `{}` when the key is absent, and it stays a declaration rather than a
+        // gap: it says this category adds nothing of its own.
+        updates: override.updates === undefined
+          ? {}
+          : requireUpdates(name, override.updates),
       };
       continue;
     }
@@ -849,6 +1099,23 @@ export function resolveConfig(raw: unknown): Config {
     if (override.extraFields !== undefined) {
       const added = requireExtraFields(name, override.extraFields);
       existing.extraFields = [...new Set([...existing.extraFields, ...added])];
+    }
+    // EXTENDS the catalogue's declaration BY NAME, the same direction as
+    // `extraFields` directly above — and deliberately so, because these are the
+    // two halves of ONE description of a category and halves that follow
+    // opposite rules can contradict each other. `extraFields` cannot remove
+    // `directive` from `rule`; under a replace reading here, a user adding one
+    // update name of their own would leave `directive` undroppable and its
+    // rules gone. `requireUpdates` above carries the full argument, including
+    // why a name the config declares wins for that name and replaces the WHOLE
+    // entry rather than merging into it.
+    //
+    // A fresh object every time: `existing.updates` is still the catalogue's
+    // own `CategoryDef.updates` at this point, shared by every config this
+    // process resolves, and spreading is what keeps one workspace's override
+    // out of the next one's categories.
+    if (override.updates !== undefined) {
+      existing.updates = { ...existing.updates, ...requireUpdates(name, override.updates) };
     }
   }
 
