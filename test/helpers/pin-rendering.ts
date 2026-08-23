@@ -32,6 +32,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { installRealHomeGuard } from './real-home-guard.ts';
 
 process.env.MYCONTEXT_ASCII = '1';
 delete process.env.MYCONTEXT_UNICODE;
@@ -59,3 +60,19 @@ delete process.env.MYCONTEXT_WIDTH;
  * would race with the very processes that are still writing to it.
  */
 process.env.MYCONTEXT_UI_SESSIONS_DIR = mkdtempSync(path.join(tmpdir(), 'myctx-test-sessions-'));
+
+/**
+ * **And fails the run if anything writes into the real `~/.my-context` anyway.**
+ *
+ * The two pins above are conventions — a person has to know to write them. That
+ * is what failed on 2026-08-22 (134 tests red from two stray fixture files) and
+ * what nearly failed again the next day with the session store.
+ * `installRealHomeGuard` turns the property into a check: it snapshots the real
+ * global directory here, BEFORE any test file's top-level code can redirect
+ * `HOME`, and fails the test that changed it. Because it compares the DIRECTORY
+ * rather than intercepting `fs`, a write by one of this suite's many spawned
+ * children is caught too.
+ * See `test/helpers/real-home-guard.ts` for the whole argument, and
+ * `test/core/real-home-guard.test.ts` for the proof it fires.
+ */
+installRealHomeGuard();
