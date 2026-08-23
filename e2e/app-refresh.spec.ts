@@ -124,6 +124,66 @@ test('with no credential at all, the rail still renders and the router still run
     .toBeAttached({ timeout: 15_000 });
 });
 
+/**
+ * **A tab holding a DEAD token recovers on its own, without a reload.** The
+ * sixth distinct cause of "the screen will not load", reported by the owner as
+ * "still 403" against a server that was healthy.
+ *
+ * `api()` cleared the sessionStorage copy on a 401/403 and left the module-level
+ * `token` holding the dead value, so every later call in that page's life sent
+ * the same rejected header again. One 403 meant 403 forever, and nothing told
+ * the reader to reload.
+ *
+ * The recovery this pins is the one `api()`'s own header describes: with the
+ * in-memory token cleared, the next request goes out bare, the browser attaches
+ * the `mycontext_token` cookie, and a tab whose stored token is stale but whose
+ * cookie is current carries on. That is exactly a tab that was open when the
+ * server restarted on the same port.
+ *
+ * Note what this does NOT assert: that any particular pane holds data. The
+ * claim is narrower and checkable — after a poisoned token, a later call
+ * succeeds rather than repeating the refusal forever.
+ */
+test('a dead token is dropped in memory, so the next call can use the cookie', async ({ app }) => {
+  const { page } = app;
+  await expectRendered(page, 'first load');
+
+  // Poison the tab exactly as a server restart does: a token this server never
+  // issued, in the place the shell reads it from on boot.
+  await page.evaluate(() => { sessionStorage.setItem('myctx-token', 'deadbeefdeadbeefdeadbeefdeadbeef'); });
+  await page.reload();
+
+  // **Through `ctx.api`, not through a bare `fetch`.** Written the other way
+  // first, this test passed against an app.js with the fix deliberately removed
+  // — because a raw fetch never touches the module-level `token` and so proves
+  // only that the server accepts a cookie, which was never in doubt. The claim
+  // is about the CLIENT keeping a dead token, so the client's own call is the
+  // only thing that can check it.
+  const outcome = await page.evaluate(async () => {
+    const shell = window as unknown as { myctx: { api(path: string): Promise<unknown> } };
+    const call = async (): Promise<string> => {
+      try { await shell.myctx.api('/api/status'); return 'ok'; }
+      catch (err) { return err instanceof Error ? err.message : String(err); }
+    };
+    return { first: await call(), second: await call() };
+  });
+
+  // **Both must succeed, and that is the discriminating claim.** The boot
+  // itself spends the refusal: `main()` reads the poisoned token, its own first
+  // request is refused, and the fix clears the dead value there — so by the
+  // time these two calls run the page has already healed. Without the fix, the
+  // dead token survives that refusal and BOTH calls below refuse too, because
+  // every request for the life of the page keeps presenting it. Measured both
+  // ways against a deliberately reverted app.js.
+  expect(outcome, 'a dead token survived the first refusal, so every later call kept presenting '
+    + 'it: one 403 means 403 for the life of the page, and nothing tells the reader to reload')
+    .toEqual({ first: 'ok', second: 'ok' });
+
+  // And the page itself is still alive: the rail is drawn and the router ran.
+  await expect(page.locator('.nav').first(), 'the rail did not survive a poisoned token')
+    .toBeVisible({ timeout: 15_000 });
+});
+
 test('a second tab on the same origin is not locked out', async ({ app }) => {
   const { page } = app;
   await expectRendered(page, 'first load');

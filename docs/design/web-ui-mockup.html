@@ -694,10 +694,12 @@ details.help[open]>summary{margin-block-end:6px}
 .ctxstate{flex:1 1 auto;min-inline-size:0}
 .ctxstate>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-.banner{position:fixed;inset-block-end:64px;inset-inline:var(--sp-3);background:var(--critbg);
+.banner{position:fixed;inset:0;margin:auto;block-size:fit-content;
+  inline-size:min(340px,calc(100vw - 2*var(--sp-4)));background:var(--critbg);
   border:1px solid var(--crit);color:var(--crit);border-radius:var(--r-lg);
-  padding:var(--sp-2) var(--sp-3);font-size:var(--fs-1);display:flex;gap:var(--sp-2);
-  align-items:center;z-index:30}
+  padding:var(--sp-4);font-size:var(--fs-1);display:flex;flex-direction:column;
+  gap:var(--sp-3);align-items:center;text-align:center;
+  box-shadow:0 12px 44px rgb(0 0 0/.55);z-index:30}
 .banner[hidden]{display:none}
 
 /* ── print: a real stylesheet, and its own declared register (spec §7.3,
@@ -2417,7 +2419,10 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
   <div class="banner" id="exited" hidden role="alert">
     <span data-t="ex.msg">The server has exited. This page shows what it last knew.</span>
+    <span data-t="ex.stale" hidden>Not connected. Refresh this page &mdash; if it stays that way the
+      server was restarted, and the link it printed is the way back.</span>
     <code>mycontext ui</code>
+    <button class="icon" id="exrefresh" data-t="btn.refresh" hidden>Refresh</button>
     <button class="icon" id="exdismiss" data-t="ex.ok">OK</button>
   </div>
 </div>

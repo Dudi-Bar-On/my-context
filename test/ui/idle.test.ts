@@ -22,8 +22,14 @@ import { IdleMonitor, IDLE_MS, MAX_IDLE_MS } from '../../src/ui/idle.ts';
  * `#lastTouch` its constructor records comes from the mocked clock too.
  */
 
-test('IDLE_MS is fifteen minutes — the number the spec fixes', () => {
-  assert.equal(IDLE_MS, 15 * 60_000);
+test('IDLE_MS is eight hours — the number the spec fixes', () => {
+  // Was fifteen minutes until 2026-08-23. The owner raised it after that window
+  // reaped a server three times before they could open it. The reasoning is in
+  // `idle.ts`: an OPEN tab already heartbeats, so this window only ever governs
+  // a server nobody has open YET — exactly the case fifteen minutes was too
+  // short for, and never the forgotten-tab case it was designed against.
+  // Spec §2.3 moved with it.
+  assert.equal(IDLE_MS, 8 * 60 * 60_000);
 });
 
 /**
@@ -254,7 +260,10 @@ test('the largest accepted window is MAX_IDLE_MS, and one millisecond more is re
  */
 test('MAX_IDLE_MS is a day, and the poll it derives still fits setInterval\'s 32-bit delay', () => {
   assert.equal(MAX_IDLE_MS, 24 * 60 * 60_000, 'one day, stated in the milliseconds the flag speaks');
-  assert.equal(MAX_IDLE_MS, 96 * IDLE_MS, 'and 96 production windows — the argument the refusal makes');
+  // Three, not ninety-six: the default moved on 2026-08-23, and this ratio is
+  // the argument the refusal message makes out loud, so it moves with the
+  // default or the message becomes false.
+  assert.equal(MAX_IDLE_MS, 3 * IDLE_MS, 'and three default windows — the argument the refusal makes');
 
   const TIMEOUT_MAX = 2 ** 31 - 1;
   const widestPoll = Math.floor(MAX_IDLE_MS / 10);
@@ -287,7 +296,7 @@ test('the maximum refusal names the value and defends the bound it enforces', ()
   );
   assert.match(
     message,
-    /96 times production's fifteen-minute window/,
+    /three times the eight-hour default/,
     'the bound is defended in the message, not asserted — a reader can disagree with a stated reason',
   );
 

@@ -411,10 +411,12 @@ bdi{unicode-bidi:isolate}
 .ctxstate>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 
-.banner{position:fixed;inset-block-end:64px;inset-inline:var(--sp-3);background:var(--critbg);
+.banner{position:fixed;inset:0;margin:auto;block-size:fit-content;
+  inline-size:min(340px,calc(100vw - 2*var(--sp-4)));background:var(--critbg);
   border:1px solid var(--crit);color:var(--crit);border-radius:var(--r-lg);
-  padding:var(--sp-2) var(--sp-3);font-size:var(--fs-1);display:flex;gap:var(--sp-2);
-  align-items:center;z-index:30}
+  padding:var(--sp-4);font-size:var(--fs-1);display:flex;flex-direction:column;
+  gap:var(--sp-3);align-items:center;text-align:center;
+  box-shadow:0 12px 44px rgb(0 0 0/.55);z-index:30}
 .banner[hidden]{display:none}
 
 /* ─── Screen head — parts.js's screenHead(), every screen's opening

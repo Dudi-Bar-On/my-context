@@ -1,12 +1,39 @@
 /**
- * Ephemerality (spec §2): idle means NO non-stream /api request for fifteen
- * minutes. The caller decides what counts as activity — this class only
- * measures the gap since the last `touch()`. An open stream holding a
- * connection never calls `touch()`, so it cannot hold the server up; the
- * page's visibility-gated heartbeat (GET /api/ping, Task 16) is what keeps a
- * server alive exactly as long as a tab is actually visible.
+ * Ephemerality (spec §2): idle means NO non-stream /api request for this long.
+ * The caller decides what counts as activity — this class only measures the gap
+ * since the last `touch()`. An open stream holding a connection never calls
+ * `touch()`, so it cannot hold the server up; the page's visibility-gated
+ * heartbeat (GET /api/ping, Task 16) is what keeps a server alive exactly as
+ * long as a tab is actually visible.
+ *
+ * ── WHY THIS IS EIGHT HOURS AND NOT FIFTEEN MINUTES ───────────────────────
+ *
+ * Owner ruling, 2026-08-23, after the fifteen-minute window reaped a server
+ * three separate times before they could open it: *"the timeout should be much
+ * longer."*
+ *
+ * Fifteen minutes was the right number for the case §2.3 names — a forgotten
+ * background tab must not hold a process open forever — and the wrong number
+ * for every other case, because it measures the wrong thing. **An open tab is
+ * already safe: its heartbeat touches `/api/ping` once a minute while visible,
+ * so a tab someone is actually using never reaches this window at all.** What
+ * the window really governs is a server nobody has open yet, and fifteen
+ * minutes is far shorter than the gap between starting one and walking back to
+ * it.
+ *
+ * So the failure mode it produced was never the one it was designed against. It
+ * was: start the server, finish the work, hand over the URL, and find the
+ * process gone — reported each time as "the page is blank", investigated as a
+ * fresh defect, and answered by the log's own line, unread until the third
+ * occurrence.
+ *
+ * Eight hours is a working day: long enough that a server started in the
+ * morning is there in the afternoon, and short enough that a machine left
+ * running overnight does not accumulate them. It is still ephemeral — it still
+ * exits on its own, and it still dies with the terminal. `--idle-ms` moves it in
+ * either direction, and `MAX_IDLE_MS` below still bounds it at a day.
  */
-export const IDLE_MS = 15 * 60_000;
+export const IDLE_MS = 8 * 60 * 60_000;
 
 /**
  * The longest window the constructor will accept: one day.
@@ -24,10 +51,10 @@ export const IDLE_MS = 15 * 60_000;
  * is where the TIMER breaks, and a day is where the WINDOW stops meaning
  * anything: this class exists to make the server ephemeral (spec §2), and a
  * server that sits idle for a day has outlived the session, very likely the
- * machine's uptime, and any reason it was started. A day is 96 times
- * production's fifteen minutes — far more than any session needs, and four
- * orders of magnitude below anything that breaks — so it bounds the mistake
- * without bounding a real use. It is stated in the units the flag speaks
+ * machine's uptime, and any reason it was started. A day is three times
+ * the eight-hour default — headroom for a session that genuinely runs long,
+ * and four orders of magnitude below anything that breaks — so it bounds the
+ * mistake without bounding a real use. It is stated in the units the flag speaks
  * (milliseconds of idleness), not in the units `setInterval` happens to use.
  */
 export const MAX_IDLE_MS = 24 * 60 * 60_000;
@@ -150,7 +177,7 @@ export class IdleMonitor {
         `unwise — past 21474836470ms the poll derived from it no longer fits setInterval's 32-bit ` +
         `delay, so Node clamps that poll to 1ms with a TimeoutOverflowWarning: the same hot poll ` +
         `that can never fire that NaN produced. The bound is a day, not that overflow point, ` +
-        `because a day is already 96 times production's fifteen-minute window — more than any ` +
+        `because a day is already three times the eight-hour default — longer than any ` +
         `session needs, and far less than anything that breaks.`,
       );
     }

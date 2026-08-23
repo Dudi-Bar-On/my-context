@@ -165,6 +165,7 @@ export const strings = {
   'cov.gov': 'What governs',
   'cov.e1': 'Nothing governs this project yet.',
   'cov.e2': 'That is the normal state of a new workspace, not a wall of warnings. One sentence, said once — not repeated per row.',
+  'btn.refresh': 'Refresh',
   'btn.copy': 'Copy',
   // Coverage gaps
   'gaps.h': 'Coverage gaps',
@@ -504,5 +505,6 @@ export const strings = {
   'prov.projCaughtUp': '{mv:state} and caught up before answering',
   'prov.projFailed': 'could not catch up — no partial answer is shown: {error}',
   'ex.msg': 'The server has exited. This page shows what it last knew.',
+  'ex.stale': 'Not connected. Refresh this page — if it stays that way the server was restarted, and the link it printed is the way back.',
   'ex.ok': 'OK',
 };

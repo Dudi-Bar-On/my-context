@@ -117,6 +117,9 @@ const NAV = [
 ];
 
 let token = null;
+/** The disconnected banner is said ONCE, not once per pane. Twenty screens each
+ *  reporting the same dead credential is noise; the state is one fact. */
+let disconnectedShown = false;
 
 /**
  * The token, for as long as this tab lives.
@@ -161,6 +164,42 @@ function banner(...nodes) {
   el.hidden = false;
 }
 
+/**
+ * **"Not connected" — said out loud, with a button that fixes it.**
+ *
+ * Owner instruction, 2026-08-23: *"the user should be known that currently the
+ * server is not connected and needs to be refreshed."*
+ *
+ * Until now a page whose credential had died said NOTHING. Every pane rendered
+ * its own `403`, which reads as twenty broken screens rather than one dead
+ * token, and the only banner this shell had says "The server has exited" — which
+ * is FALSE here and the more misleading for being confident: the server is
+ * listening, healthy, and refusing this tab specifically.
+ *
+ * The message has to be true in both halves of that state, because the page
+ * cannot tell them apart from a refusal alone. A stale sessionStorage token
+ * against a LIVE server is fixed by exactly what it says — the reload drops the
+ * dead token and the cookie carries the tab. A server that was RESTARTED has
+ * never issued this browser anything, so no refresh can conjure a credential,
+ * and the honest second clause points at the link it printed. One sentence
+ * covers both without claiming more than it knows.
+ *
+ * The refresh button reloads rather than re-fetching: a reload re-runs `main()`,
+ * which reads the cleared storage, sends nothing, and lets the browser attach
+ * the cookie — the whole recovery, in the one gesture a reader would try first.
+ */
+function showDisconnected() {
+  if (disconnectedShown) return;
+  disconnectedShown = true;
+  const msg = document.createElement('span');
+  msg.append(...translate(table.strings, 'ex.stale'));
+  const refresh = document.createElement('button');
+  refresh.className = 'icon';
+  refresh.append(...translate(table.strings, 'btn.refresh'));
+  refresh.onclick = () => { location.reload(); };
+  banner(msg, refresh);
+}
+
 function showExited() {
   const msg = document.createElement('span');
   msg.append(...translate(table.strings, 'ex.msg'));
@@ -195,6 +234,38 @@ async function api(path) {
     // reload after the next `mycontext ui` starts from the handoff instead of
     // presenting a dead token forever.
     forgetToken();
+    // **AND clear it IN MEMORY, which is the half that was missing.**
+    //
+    // `forgetToken()` only removes the sessionStorage copy. The module-level
+    // `token` kept the dead value, so every later call in this page's life sent
+    // the same rejected header again — a page that 403s once 403s until it is
+    // reloaded, and the reader is given no reason to reload. Measured against a
+    // restarted server on 2026-08-23: the rail drew, every pane said 403, and
+    // the state was permanent.
+    //
+    // Clearing it is also what lets the page recover WITHOUT a reload. This
+    // function's own header explains that a null token means no header is sent,
+    // "and a 403 would mask the cookie, which is the credential a reloaded page
+    // actually has" — so the very next request goes out bare, the browser
+    // attaches the `mycontext_token` cookie, and a tab whose sessionStorage is
+    // stale but whose cookie is current simply carries on. When neither is
+    // current the answer becomes 401, which is the honest state and the one the
+    // shell is built to survive.
+    token = null;
+    // Say it once, plainly. Every pane would otherwise print its own bare
+    // `403` and the reader would count twenty broken screens instead of one
+    // dead credential — which is exactly what the owner met on 2026-08-23.
+    showDisconnected();
+  }
+  if (response.ok && disconnectedShown) {
+    // **The banner says "not connected", so it must stop saying it the moment
+    // the page IS connected.** Found by looking, not by reasoning: after a
+    // nonce redeemed the tab in place and every pane filled with real data, the
+    // red bar was still sitting across the bottom claiming otherwise — a stale
+    // warning is its own defect, and a warning that outlives its cause teaches
+    // the reader to ignore the next one.
+    disconnectedShown = false;
+    document.getElementById('exited').hidden = true;
   }
   if (!response.ok) {
     // A refusal from the security gate carries the STATUS AND NOTHING ELSE

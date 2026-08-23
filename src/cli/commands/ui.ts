@@ -79,15 +79,17 @@ const UI_VALUE_FLAGS = ['port', 'idle-ms'];
  *
  * ── WHY THIS FLAG EXISTS, MEASURED RATHER THAN WANTED ─────────────────────
  *
- * The default is fifteen minutes and it is right for the case it was designed
- * for: a person opens the UI, reads it, wanders off, and a forgotten tab does
- * not hold a process open forever (spec §2.3).
+ * The default WAS fifteen minutes, and it was right for the case it was
+ * designed for: a person opens the UI, reads it, wanders off, and a forgotten
+ * tab does not hold a process open forever (spec §2.3).
  *
- * It is wrong for the case that actually kept happening. On 2026-08-23 a server
- * was started for the owner to look at, three separate times, and each time it
- * reaped itself before they got to it — because the work of finishing the
- * change took longer than fifteen minutes and nothing was touching `/api` in
- * the meantime. Each death was then read as "the page is blank again" and
+ * It was wrong for the case that actually kept happening. On 2026-08-23 a
+ * server was started for the owner to look at, three separate times, and each
+ * time it reaped itself before they got to it — because the work of finishing
+ * the change took longer than fifteen minutes and nothing was touching `/api`
+ * in the meantime. The owner raised the default to eight hours the same day
+ * (`IDLE_MS`, and spec §2.3 with it); this flag is what moves it per run,
+ * shorter as readily as longer. Each death was then read as "the page is blank again" and
  * investigated as a fresh defect. It was not one. The log said so plainly every
  * time — `mycontext ui: exited after 15 idle minutes.` — and that line was not
  * looked at until the third occurrence.
@@ -125,9 +127,9 @@ function resolveIdleMs(args: string[]): number {
   if (!Number.isInteger(ms) || ms < 1 || ms > MAX_IDLE_MS) {
     throw new Error(
       `my_context: --idle-ms must be a whole number of milliseconds from 1 to ${MAX_IDLE_MS} ` +
-      `(24 hours) (got ${JSON.stringify(occurrence.value)}). A day is 96 times the default ` +
-      'fifteen minutes — far more than any session needs, and the point past which the window ' +
-      'stops meaning anything.',
+      `(24 hours) (got ${JSON.stringify(occurrence.value)}). A day is three times the default ` +
+      'eight hours — headroom for a session that genuinely runs long, and the point past which ' +
+      'the window stops meaning anything.',
     );
   }
   return ms;
@@ -138,9 +140,8 @@ function resolveIdleMs(args: string[]): number {
  * than the ten minutes it has always been.**
  *
  * The printed nonce is one-shot, loopback-only, and dies with the server, and
- * it lives for `PRINTED_NONCE_TTL_MS` — ten minutes. That is the right answer
- * for the default fifteen-minute server: a person starts the UI, glances at the
- * terminal, opens the link.
+ * `PRINTED_NONCE_TTL_MS` is ten minutes — the floor, and once the whole answer,
+ * back when the server itself only lived fifteen minutes unattended.
  *
  * It is the wrong answer the moment somebody passes `--idle-ms` to say "this
  * server is for a long session". Measured 2026-08-23: a server was started with

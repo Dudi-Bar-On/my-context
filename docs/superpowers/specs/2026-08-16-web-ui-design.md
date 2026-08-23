@@ -383,7 +383,10 @@ of the audit log. Those two promises are in conflict: a tab left open holds a st
 idle timer that counts connections never fires, and the daemon you forgot arrives through the front
 door. Resolved:
 
-- **Idle means: no `/api` request other than the stream, for 15 minutes.** An open stream connection is
+- **Idle means: no `/api` request other than the stream, for 8 hours** (owner ruling 2026-08-23; it was
+  15 minutes, which reaped servers before anyone could open them — an open tab heartbeats, so this
+  window only governs a server nobody has open yet. `--idle-ms` moves it; a day is the ceiling).
+  An open stream connection is
   explicitly **not** activity, and never resets the timer. That is the whole of the fix.
 - **The page heartbeats only while visible.** A `GET /api/ping` every 60 seconds, sent only when
   `document.visibilityState === 'visible'`. A tab in a background window stops heartbeating, so a
@@ -1805,7 +1808,7 @@ test file should say so.
 | **An agent promotes its own proposal over HTTP** | Closed by the same rule. `promoteRevision` stamps `origin: 'human'` (`revision.ts` · ``the change is applied through `updateItem` with `origin: 'human'`,`` · ~763) and would have laundered origin through any endpoint that called it; nothing calls it |
 | DNS rebinding / CSRF | Custom-header token, no CORS, `Origin` and `Host` validated, loopback-only bind |
 | The token leaks through the browser-opening command line | The spawned URL carries a one-shot 10-second handoff nonce, not the token; the token never touches a process argument list (§3) |
-| A forgotten server left running | Idle is defined as no non-stream request for 15 minutes; **an open stream is not activity**; the page heartbeats only while visible; on exit the page says so and does not reconnect (§2) |
+| A forgotten server left running | Idle is defined as no non-stream request for 8 hours; **an open stream is not activity**; the page heartbeats only while visible; on exit the page says so and does not reconnect (§2) |
 | Audit writes slow the hot path | Measured before committing to always-on, against the corrected budget — hit-path p95 ~20.7–22.7ms of 50ms, ~27ms remaining — and the hook appends one JSONL line rather than opening a database (§5) |
 | The audit projection answers from stale data without saying so | The projection records its log position; a query behind its log catches up first or reports that it is behind, and a diverged or version-mismatched projection is discarded and rebuilt whole (§5) |
 | **The audit view cannot name what was injected** | The record shape is pinned to scope, tier **and item ids** per `docs/ROADMAP.md` · `the injection's scope, tier and item ids, not its content` · ~183, so the view never re-derives from the present corpus (§5) |
