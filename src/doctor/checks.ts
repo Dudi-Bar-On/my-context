@@ -6,6 +6,7 @@ import { matchesAnyGlob, relPosix } from '../core/paths.ts';
 import { isSnapshot, snapshotText } from '../core/reference.ts';
 import { RATIONALE_NOT_INJECTED } from '../core/render-item.ts';
 import { checksum } from '../core/slug.ts';
+import { projectionMismatches } from '../core/tag-projection.ts';
 import type { Item } from '../core/types.ts';
 import { chunkDocument } from '../ingest/chunk.ts';
 import { ingestDir, SESSION_PROTOCOL } from '../ingest/session.ts';
@@ -745,6 +746,97 @@ export function checkCorpusSize(items: Item[]): Finding[] {
   }];
 }
 
+/**
+ * **A field and the tag projected from it, disagreeing — the defect this
+ * check's absence let run for the life of the corpus.**
+ *
+ * Measured on 2026-08-23 over this project's own items with the real parser:
+ * 293 `task` items, all 293 carrying a `state:` TAG, 213 also carrying a
+ * `state` FIELD, and fifteen of those disagreeing — `done` as a tag against
+ * `todo`, `doing` or `blocked` as a field. Nothing synced them and, until this
+ * function, nothing looked: no code anywhere read the `plan:`/`seq:`/`state:`
+ * prefixes at all, so a `state:donee` typo removed a task from every progress
+ * view and no gate noticed. The corpus was clean by discipline, not by
+ * enforcement, and fifteen items are what discipline missed.
+ *
+ * `projectionMismatch` (core/tag-projection.ts) owns the classification, not
+ * this file: `doctor`, the seq-19 migration and any future caller have to read
+ * the same corpus the same way, and a second hand-written predicate here is how
+ * two readings of one rule come to disagree — which is the very failure being
+ * reported.
+ *
+ * **Two codes, not one, because a doctor code carries exactly one level.** The
+ * grouped report prints `bucket[0].level` as the heading for the whole group
+ * (doctor.ts), so a code with mixed levels would label its own findings wrong.
+ *
+ *  - `tag_projection_drift` is an **error**: the index gives a WRONG answer.
+ *    A stale, duplicated, absent or out-of-vocabulary projection means
+ *    `mycontext focus state:todo` and `search --tag state:todo` return a set
+ *    that is not the set of items whose `state` is `todo` — silently, and in
+ *    both directions. Unlike a dead scope glob, nothing here is cosmetic and
+ *    nothing is a false alarm on the day someone renames a directory.
+ *  - `tag_projection_unprojected` is **info**: a projected tag with no field
+ *    behind it. Nothing is wrong with the filtering — the tag is there and
+ *    resolves — the value simply lives only in the index and has not been
+ *    adopted into the field that can hold it. That is the ordinary state of
+ *    every item captured before a projection was declared (eighty `task` items
+ *    here on the day this shipped), and turning a whole corpus red for not yet
+ *    having been migrated would make the exit code useless on the one day it
+ *    matters. The migration is plan:categories seq 19; this is its worklist.
+ */
+export function checkTagProjection(items: Item[], config: Config): Finding[] {
+  return projectionMismatches(items, config).map((m) => {
+    const { field, prefix, command, values } = m.projection;
+    const tag = m.tagValues.map((v) => `"${prefix}:${v}"`).join(', ');
+    const vocabulary = values === undefined ? '' : ` Declared values: ${values.join(', ')}.`;
+    const fix =
+      ` The field is the store and the tag is the index generated from it, so the fix is to ` +
+      `set the field and let my_context rewrite the tag: \`${command}\`. Do not edit the tag ` +
+      `by hand — update is not a legal operation on a tag, and a remove-then-add done by a ` +
+      `person is exactly how this item got here.`;
+
+    if (m.kind === 'unprojected') {
+      return {
+        level: 'info' as const, code: 'tag_projection_unprojected', item: m.itemId,
+        message:
+          `carries the projected tag ${tag} but no "${field}" field, so the value lives only in ` +
+          `the index. Filtering is unaffected — the tag is there and \`mycontext focus ` +
+          `${prefix}:${m.tagValues[0]}\` still finds this item — but nothing can UPDATE it: a ` +
+          `tag is a membership, and changing one by hand is a remove plus an add that can ` +
+          `half-fail. Adopting the value into the field makes the tag generated from then on.` +
+          `${vocabulary}`,
+      };
+    }
+
+    const said =
+      m.kind === 'duplicate'
+        ? `carries ${m.tagValues.length} tags under "${prefix}:" — ${tag} — where a projection ` +
+          `permits exactly one. That is the silent third membership a hand-written ` +
+          `remove-then-add produces: this item is now returned by two different ` +
+          `\`--tag ${prefix}:…\` filters at once, and its "${field}" field says ` +
+          `${m.field === null ? 'nothing at all' : `"${m.field}"`}.`
+        : m.kind === 'absent'
+          ? `has "${field}": "${m.field}" and no "${prefix}:" tag projected from it, so it is ` +
+            `invisible to \`mycontext focus ${prefix}:${m.field}\`, to ` +
+            `\`search --tag ${prefix}:${m.field}\` and to every progress view that groups by ` +
+            `"${field}" — the field is right and the item is in no answer.`
+          : m.kind === 'unknown_value'
+            ? `carries a "${field}" value outside the declared vocabulary — field ` +
+              `${m.field === null ? '(absent)' : `"${m.field}"`}, tag ${tag || '(none)'}. This ` +
+              `is the \`${prefix}:donee\` case: a value nothing reads back, filed under a group ` +
+              `no filter names, removing the item from every view that groups by "${field}".` +
+              `${vocabulary}`
+            : `says "${field}": "${m.field}" in its field and ${tag} in its tag. The two ` +
+              `disagree, so one of \`--tag ${prefix}:${m.field}\` and \`--tag ${tag.replace(/"/g, '')}\` ` +
+              `returns this item wrongly and the other misses it. Nothing syncs them by hand.`;
+
+    return {
+      level: 'error' as const, code: 'tag_projection_drift', item: m.itemId,
+      message: `${said}${fix}`,
+    };
+  });
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
@@ -759,6 +851,7 @@ export function runChecks(opts: {
     () => checkSessionIdMismatch(opts.root),
     () => checkAuditSize(opts.root),
     () => checkCorpusSize(opts.items),
+    () => checkTagProjection(opts.items, opts.config),
   ];
 
   const findings: Finding[] = [];

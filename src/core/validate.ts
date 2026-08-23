@@ -10,6 +10,7 @@
  * responsibility living inside the mutation module. Every function kept its
  * doc comment: the reasoning is the load-bearing part.
  */
+import type { CategoryUpdates, UpdatableName } from './categories.ts';
 import { isValidObservationCategory } from './item.ts';
 import { enumError } from './teach.ts';
 import { ID_GRAMMAR, isUsableId } from './vocabulary.ts';
@@ -47,6 +48,91 @@ export function validateEnums(input: { status?: Status; severity?: Severity; ori
   if (input.origin !== undefined && !ORIGINS.includes(input.origin)) {
     throw new Error(enumError('origin', input.origin, ORIGINS, 'capture'));
   }
+}
+
+/**
+ * The spelling `UpdatableName.command` means when it is ABSENT — its own doc
+ * comment in categories.ts says so, and a refusal that has to name the command
+ * that works cannot print `undefined`.
+ */
+export const GENERIC_EXTRA_COMMAND = 'mycontext edit <id> --extra <name>=<value>';
+
+/**
+ * **The gate that makes `state:donee` impossible rather than merely
+ * undetected.**
+ *
+ * Measured on 2026-08-23, before this existed: nothing anywhere in `src/` read
+ * or checked the `plan:`/`seq:`/`state:` tag prefixes, and 15 of this project's
+ * 293 `task` items already carried a `state` field and a `state:` tag that
+ * disagreed. A one-character typo in the value would have removed a task from
+ * every progress view, every `mycontext focus state:todo` and every
+ * `search --tag`, and no gate would have said a word — the item would simply
+ * have stopped being in any answer.
+ *
+ * Returns the refusal rather than throwing, so a CLI surface can print it and
+ * return 1 without unwinding, the way `unknownExtraFieldError` and
+ * `scopeRequirementError` (trust.ts) are already shaped. `null` means the value
+ * is legal — or that the declaration has no `values` list, which is a real
+ * answer meaning free text and not a gap.
+ *
+ * The first sentence is `enumError`'s, verbatim and by call rather than by
+ * copy: the vocabulary, the "You passed …", the closest-match suggestion and
+ * the help pointer are the house wording for exactly this refusal, and a second
+ * hand-written copy is this project's most-repeated defect. What is added after
+ * it is the part `enumError` cannot know — that the value is about to be
+ * PROJECTED into a tag, which is why an unknown one does not merely sit in a
+ * field being wrong but removes the item from every filter that groups by the
+ * name — and the command that does work.
+ */
+export function updatableValueError(
+  name: string, value: string, decl: UpdatableName,
+): string | null {
+  if (decl.values === undefined || decl.values.includes(value)) return null;
+  const command = decl.command ?? GENERIC_EXTRA_COMMAND;
+  const projected = decl.projectsTo === undefined
+    ? ''
+    : ` "${name}" is projected into the tag "${decl.projectsTo}:${value}", generated from the ` +
+      `field and never typed, so accepting this value would not merely store a wrong one — it ` +
+      `would file this item under a group no filter names and nothing reads back, which is how ` +
+      `an item disappears from every view that groups by "${name}".`;
+  return (
+    `${enumError(name, value, [...decl.values], 'categories')} Nothing was changed.${projected} ` +
+    `Set it with \`${command}\`.`
+  );
+}
+
+/** `updatableValueError` as a throw, for the write paths that already refuse by
+ * exception (`updateItem`, `projectFieldUpdate`) rather than by return. */
+export function validateUpdatableValue(
+  name: string, value: string, decl: UpdatableName,
+): void {
+  const refusal = updatableValueError(name, value, decl);
+  if (refusal !== null) throw new Error(refusal);
+}
+
+/**
+ * The same check over a whole `extra` patch, against a category's merged
+ * declaration (`updatesFor`, tag-projection.ts).
+ *
+ * Keys the declaration does not mention are skipped, not refused: whether an
+ * `extra` key belongs to the category at all is `unknownExtraFieldError`'s
+ * question (trust.ts), asked against `extraFields`, and answering it twice in
+ * two different vocabularies is how two guards come to disagree. This one
+ * answers only "is this value one of the declared ones".
+ *
+ * Insertion order, so a patch carrying two bad values reports the one the
+ * caller wrote first — deterministic, and the same rule
+ * `unknownExtraFieldError` uses for the first offending key.
+ */
+export function updatableExtraError(
+  extra: Record<string, string>, updates: CategoryUpdates,
+): string | null {
+  for (const [name, value] of Object.entries(extra)) {
+    if (!Object.hasOwn(updates, name)) continue;
+    const refusal = updatableValueError(name, value, updates[name]);
+    if (refusal !== null) return refusal;
+  }
+  return null;
 }
 
 /** The frontmatter keys `renderItem` (item.ts) already writes for every item —
