@@ -1092,16 +1092,98 @@ export function coverageFiles(
 }
 
 /**
+ * What a PAGE of `/api/coverage` left out — three states, kept apart.
+ *
+ * This block exists because the path picker's options are every file in the
+ * repository (614 in the corpus this was measured on, unbounded elsewhere) and
+ * `plan:ui1 seq:17e` rules that the cap must never be silent:
+ * *"a truncated list must SAY it is truncated and how many were left out"*.
+ * `INV-nothing-is-dropped-silently` decides the shape, and the shape is three
+ * distinguishable answers, never two:
+ *
+ *  1. **this is everything** — `omitted: 0`, `uncounted: null`.
+ *  2. **this is a page and there is more** — `omitted: n > 0`, `uncounted:
+ *     null`, and `more` says whether the *next* page exists.
+ *  3. **this could not be counted** — `omitted: null` and `uncounted` NAMES
+ *     the store that could not answer. A `0` here would be state 1 wearing
+ *     state 3's clothes: "the page holds everything" said about a repository
+ *     nobody finished walking.
+ *
+ * `omitted` counts every matching path this answer does not carry — the ones
+ * `offset` skipped as well as the ones past `limit` — so the total a picker
+ * draws is `files.length + omitted` and no second field can disagree with it.
+ *
+ * `more` is the `limit + 1` probe's own answer and is NOT derivable from
+ * `omitted`: with an offset in play a page can leave two paths out and still
+ * be the last page. It is a fact about the WALKED matches, which is why state
+ * 3 keeps it a boolean rather than folding it into `null` — a caller reading
+ * `more: false` beside a non-null `uncounted` has been told both halves: this
+ * is the end of what was walked, and the walk did not finish.
+ *
+ * `limit: null` is "no cap was asked for", not a cap of zero. Echoing the
+ * walked length there would report a bound this endpoint never applied.
+ */
+export interface CoveragePage {
+  /** The substring filter as it was applied, or `null` when none was given. */
+  path: string | null;
+  /** The cap asked for, or `null` when none was — never a fabricated bound. */
+  limit: number | null;
+  offset: number;
+  /** At least one further matching path exists past this page, by the probe. */
+  more: boolean;
+  /** Matching paths this answer does not carry; `null` when uncountable. */
+  omitted: number | null;
+  /** Which store could not answer, and why. `null` when the count was taken. */
+  uncounted: string | null;
+}
+
+/**
  * `GET /api/coverage`' body — every walked path with the ids that govern it,
  * the pinned items that govern all of them, and every item's verdict.
  *
  * `truncated` says the WALK stopped, and nothing more. See `coverageFiles`.
+ *
+ * **`page` is ABSENT unless a caller asked for one, and that absence is load
+ * bearing.** Four screens read this body with no query string —
+ * `public/screens/coverage.js`, `gaps.js`, `preview.js` and `simulate.js` —
+ * and they are frozen. A key appearing in an answer none of them asked to
+ * change is a change to a response four un-updatable readers parse, so the
+ * parameterless body is byte-for-byte what it was before paging existed
+ * (pinned by digest in `read-model.test.ts`, *"answers the pre-paging
+ * bytes"*). The consequence is stated rather than hidden: **the default is
+ * still the unbounded walk**, and the endpoint being able to page does not
+ * bound it until a consumer passes `limit`. Closing that is the screens'
+ * half of `plan:ui1 seq:17e`, and it cannot be done from here.
  */
 export interface CoverageBody {
   files: { path: string; governs: string[] }[];
   pinned: string[];
   items: ItemSummary[];
   truncated: boolean;
+  page?: CoveragePage;
+}
+
+/**
+ * A query parameter written in DIGITS and bounded on both sides.
+ *
+ * Three answers, because there are three cases: `undefined` is "not asked",
+ * `null` is "asked, and not something this endpoint can act on", and a number
+ * is the value. Folding the first two together is how `?limit=` — which
+ * `Number('')` reads as `0` — becomes an empty page nobody requested.
+ *
+ * Digits only, deliberately, rather than `Number(raw)`: that accepts `' 2 '`,
+ * `'1e1'`, `'0x10'`, `'+5'` and `'1.0'`. `/api/simulate`, `/api/decay` and
+ * `/api/graph` all refuse on exactly this reasoning; a page is the same kind
+ * of parameter and gets the same rule rather than a fourth spelling of it.
+ */
+function boundedDigits(
+  url: URL, name: string, min: number, max: number,
+): number | null | undefined {
+  const raw = url.searchParams.get(name);
+  if (raw === null) return undefined;
+  if (!/^[0-9]+$/.test(raw) || !Number.isSafeInteger(Number(raw))) return null;
+  const value = Number(raw);
+  return value >= min && value <= max ? value : null;
 }
 
 /**
@@ -1134,12 +1216,74 @@ export interface CoverageBody {
  * categories with no items are a presentation over `files` plus `/api/status`'
  * `byCategory` (spec §4, Task 18) — not a second matcher, which is how the
  * first and second answers to "what governs this path" came to disagree.
+ *
+ * ## `?path=`, `?limit=` and `?offset=` — a page, and what it left out
+ *
+ * The walk is the whole repository, and the picker that draws it is where a
+ * user meets that directly (`plan:ui1 seq:17e`). Three parameters, all
+ * optional, none of them changing the answer when absent:
+ *
+ *  - **`path=<substring>`** — case-insensitive, matched against the walked
+ *    repository-relative POSIX path. A SUBSTRING and not a glob: `/api/glob`
+ *    already owns the glob question through `matchesAnyGlob`, and a second
+ *    glob implementation behind a different parameter is how two surfaces come
+ *    to disagree about what `src/**` means.
+ *  - **`limit=<n>`** — at most `n` paths in `files`, `1..COVERAGE_FILE_LIMIT`.
+ *  - **`offset=<n>`** — skip `n` matching paths first.
+ *
+ * **The `limit + 1` truncation probe, which is this codebase's settled
+ * spelling and not a new one.** `corpusSelect`
+ * (`ui/ask-model.ts` · `export function corpusSelect(f: CorpusFilter): { sql: string; params: (string | number)[] } {` · ~96)
+ * binds `limit + 1` and slices back, and `coverageFiles` above walks to
+ * `limit + 1` for the same reason: `files.length >= limit` cannot tell an
+ * answer holding EXACTLY the page from one holding more, so it reports a
+ * complete answer as a partial one. The same probe runs here over the matched
+ * paths, and `page.more` is its answer.
+ *
+ * **`page.omitted` is a subtraction and not a probe, because here the whole
+ * matched list is in hand** — the walk already produced it — and subtracting
+ * two exact counts is exact. The probe earns its place where a count is NOT in
+ * hand, which is `more`, and it is the only place it is used.
+ *
+ * **What paging does NOT touch: `pinned`, `items` and `truncated`.** Those are
+ * corpus-wide answers, and a screen whose item list shrank with the tree would
+ * lose the items it needs to say why a directory is a gap. `truncated` keeps
+ * its one meaning — the WALK stopped — for the frozen screens that read it.
+ *
+ * **The filter runs AFTER the walk, and cannot see past its bound.** That is
+ * the whole reason `omitted` is `null` on a truncated walk rather than a
+ * number: the matches among 20,000 walked paths are a LOWER BOUND on the
+ * matches in the repository, and serving a lower bound as a total is the
+ * fabricated total this project treats as a defect. `page.uncounted` names the
+ * walk that could not answer, so the caller is told which store fell short
+ * rather than merely that something did.
  */
 export function apiCoverage(ws: Workspace, url: URL): JsonResult {
-  // `repeatedParams` is subsumed: with an empty allow-list every parameter is
-  // refused already, a repeat of one included.
-  const bad = unknownParams(url, []);
+  const bad = unknownParams(url, ['path', 'limit', 'offset']) ?? repeatedParams(url);
   if (bad) return badRequest(bad);
+
+  const filter = url.searchParams.get('path');
+  if (filter !== null && filter.trim() === '') {
+    return badRequest(
+      'path=<substring> must not be empty — an empty filter matches every path, so a page ' +
+      'labelled with one would claim a filter it never applied',
+    );
+  }
+  const limit = boundedDigits(url, 'limit', 1, COVERAGE_FILE_LIMIT);
+  if (limit === null) {
+    return badRequest(
+      `limit must be written in digits, between 1 and ${COVERAGE_FILE_LIMIT} — the bound the ` +
+      `repository walk itself stops at (got ${JSON.stringify(url.searchParams.get('limit'))})`,
+    );
+  }
+  const offset = boundedDigits(url, 'offset', 0, COVERAGE_FILE_LIMIT);
+  if (offset === null) {
+    return badRequest(
+      `offset must be written in digits, between 0 and ${COVERAGE_FILE_LIMIT} — the walk holds ` +
+      `no path past its own bound to skip to (got ${JSON.stringify(url.searchParams.get('offset'))})`,
+    );
+  }
+
   return withStores(ws, (store): JsonResult => {
     const root = projectRootAfterOpen(ws, '/api/coverage');
     const items = store.all();
@@ -1150,8 +1294,25 @@ export function apiCoverage(ws: Workspace, url: URL): JsonResult {
     // The repository, not the workspace: `projectRoot` IS `<repo>/.my_context`
     // (`findProjectRoot`), and `listRepoFiles` skips `.my_context` itself.
     const walk = coverageFiles(path.dirname(root));
+
+    const needle = filter === null ? null : filter.toLowerCase();
+    const matched = needle === null
+      ? walk.files
+      : walk.files.filter((file) => file.toLowerCase().includes(needle));
+    const from = offset ?? 0;
+    // The probe: one path more than will be returned, so "there is another
+    // page" is a fact rather than an inference from a length that equals its
+    // own bound. Sliced back on the next line; `more` is the only trace it
+    // leaves.
+    const probe = matched.slice(from, limit === undefined ? undefined : from + limit + 1);
+    const page = limit === undefined ? probe : probe.slice(0, limit);
+
     const body: CoverageBody = {
-      files: walk.files.map((file) => ({
+      // The scope join runs over the PAGE, not the walk. It is the per-file
+      // half of the cost this endpoint was measured for, and a caller that
+      // asked for 200 paths should not pay for 20,000 matches to have them
+      // thrown away.
+      files: page.map((file) => ({
         path: file,
         governs: governing
           .filter((d) => matchesScope(d.item, file, ws.config))
@@ -1161,6 +1322,25 @@ export function apiCoverage(ws: Workspace, url: URL): JsonResult {
       items: decorated.map((d) => itemSummary(d.item, ws.config)),
       truncated: walk.truncated,
     };
+    // Assigned rather than declared in the literal above, and only when asked
+    // for: the four frozen screens send no query string, and their answer must
+    // stay the bytes it has always been — key order included.
+    if (filter !== null || limit !== undefined || offset !== undefined) {
+      body.page = {
+        path: filter,
+        limit: limit ?? null,
+        offset: from,
+        more: limit !== undefined && probe.length > limit,
+        // A walk that stopped leaves nobody who counted the repository, so
+        // there is no total to subtract from. `0` here would say this page
+        // holds everything.
+        omitted: walk.truncated ? null : matched.length - page.length,
+        uncounted: walk.truncated
+          ? `the repository walk stopped at ${COVERAGE_FILE_LIMIT} files (listRepoFiles, ` +
+            'COVERAGE_FILE_LIMIT), so paths past it were never listed and no total exists'
+          : null,
+      };
+    }
     return { status: 200, body };
   });
 }

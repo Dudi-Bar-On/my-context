@@ -1652,6 +1652,15 @@ test('coverageFiles stops at its bound and DISCLOSES that it stopped', () => {
  * one exists because the endpoint's own wiring is what a client reads, and a
  * `truncated: false` written straight into the body passes every cheap test
  * in this file.
+ *
+ * **One fixture, two requests, and the second one is why the cost went up.**
+ * The paged request below is the ONLY producer of `page.uncounted` — the
+ * "could not be counted" state exists exactly when the walk stopped, so no
+ * cheap fixture can reach it — and it pays for a second walk of the same
+ * 20,001 files (this test now runs ~2× its former wall time). The alternative
+ * was a walk bound injected into `apiCoverage` for the tests' benefit, which
+ * buys speed by making the handler's signature answer to a test rather than to
+ * a caller. Reusing the fixture that already exists is the smaller change.
  */
 test('/api/coverage discloses a walk that stopped at COVERAGE_FILE_LIMIT', () => {
   const f = fixture();
@@ -1672,14 +1681,218 @@ test('/api/coverage discloses a walk that stopped at COVERAGE_FILE_LIMIT', () =>
     // be drawn from it. Recorded here so Task 18 does not infer them.
     assert.ok(!Object.hasOwn(body, 'notExamined'),
       'no per-path not-examined data exists yet; see coverageFiles');
+
+    // **The third state, on the one fixture that can produce it.** A page over
+    // a walk that stopped cannot report how many paths it left out, because
+    // nobody counted the repository: `matched.length` here is a count over the
+    // 20,000 paths the walk reached, and serving it as the total would present
+    // a lower bound as a measurement. So `omitted` is `null` and `uncounted`
+    // NAMES the walk that could not answer — never a `0`, which would say the
+    // page holds everything.
+    const paged = apiCoverage(resolveWorkspace(f.dir), url('coverage', 'limit=5'))
+      .body as CoverageBody;
+    assert.equal(paged.files.length, 5);
+    assert.equal(paged.page?.omitted, null,
+      'a total nobody could take is not a zero — INV-nothing-is-dropped-silently');
+    assert.match(paged.page?.uncounted ?? '', /listRepoFiles/,
+      'the disclosure names WHICH store could not answer, not merely that one could not');
+    assert.equal(paged.page?.more, true);
+    assert.equal(paged.truncated, true,
+      '`truncated` still says the WALK stopped, unchanged, for the frozen screens that read it');
   } finally { f.done(); }
 });
 
-test('/api/coverage, /api/items, /api/item and /api/help accept no parameters, and say so', () => {
+/**
+ * **The parameterless answer is the SAME BYTES it was before this endpoint
+ * could page, and this is the comparison that says so.**
+ *
+ * Four screens call `ctx.api('/api/coverage')` with no query string —
+ * `screens/coverage.js`, `screens/gaps.js`, `screens/preview.js` and
+ * `screens/simulate.js` — and all four are frozen. A field appearing in that
+ * body is a change to a response four un-updatable readers parse, so the
+ * parameters are OPT-IN and the default is untouched.
+ *
+ * The digest is the PRE-CHANGE body's, taken by running `apiCoverage` over
+ * this fixture from the working tree as it stood before the parameters
+ * existed. Printing the NEW body and pasting its digest back would assert only
+ * that the code is what it is. Both halves are pinned, because they fail
+ * differently: the key list catches an added or reordered field with a
+ * readable message, and the digest catches a changed VALUE the key list cannot
+ * see.
+ */
+test('/api/coverage answers the pre-paging bytes when no parameter is given', () => {
+  const { f, ws } = coverageFixture();
+  try {
+    const body = apiCoverage(ws, url('coverage', '')).body as CoverageBody;
+    assert.deepEqual(Object.keys(body), ['files', 'pinned', 'items', 'truncated'],
+      'the four keys the frozen screens read, in the order they were served in');
+    assert.ok(!Object.hasOwn(body, 'page'),
+      'the disclosure block is opt-in: a caller that asked for no page is told about no page, ' +
+      'because a key appearing unasked changes the answer four frozen screens parse');
+    assert.equal(
+      createHash('sha256').update(JSON.stringify(body)).digest('hex'),
+      '0e9cad50727ff958611c2376e7bb6f5703ea2a4fa31e78422cd82b084b1a149b',
+      'byte-for-byte what /api/coverage answered before it could page',
+    );
+  } finally { f.done(); }
+});
+
+/**
+ * **A page, and what it left out — the three states, told apart.**
+ *
+ * `limit + 1` is the probe `corpusSelect` settled on
+ * (`ui/ask-model.ts` · `export function corpusSelect(f: CorpusFilter): { sql: string; params: (string | number)[] } {` · ~96),
+ * asserted at both sides of a bound of 2 for the reason `coverageFiles` is:
+ * `files.length >= limit` cannot tell an answer holding EXACTLY the page from
+ * one holding more, so it reports a complete answer as a partial one.
+ *
+ * `omitted` is the count `plan:ui1 seq:17e` asks the endpoint to carry — *"a
+ * truncated list must SAY it is truncated and how many were left out"* — and
+ * it counts every matching path this answer does not hold, the ones `offset`
+ * skipped included. `more` is a different fact and is not derivable from it:
+ * with an offset in play a page can leave two out and still be the last page.
+ */
+test('/api/coverage pages with limit and offset, and says how many paths it left out', () => {
+  const { f, ws } = coverageFixture();
+  try {
+    const whole = apiCoverage(ws, url('coverage', '')).body as CoverageBody;
+    assert.deepEqual(whole.files.map((e) => e.path), ['src/a.ts', 'src/deep/b.ts', 'top.md'],
+      'non-vacuity: three walked files, so a limit of 2 has something to leave out');
+
+    const first = apiCoverage(ws, url('coverage', 'limit=2')).body as CoverageBody;
+    assert.deepEqual(first.files, whole.files.slice(0, 2),
+      'a page is a WINDOW on the one answer — the same rows carrying the same governs, ' +
+      'never a second composition of the same question');
+    assert.deepEqual(first.page, {
+      path: null, limit: 2, offset: 0, more: true, omitted: 1, uncounted: null,
+    });
+
+    const second = apiCoverage(ws, url('coverage', 'limit=2&offset=2')).body as CoverageBody;
+    assert.deepEqual(second.files, whole.files.slice(2));
+    assert.deepEqual(second.page, {
+      path: null, limit: 2, offset: 2, more: false, omitted: 2, uncounted: null,
+    }, 'the last page: two paths left out behind the offset, and none past it');
+
+    // The boundary a bare `files.length >= limit` gets wrong. An answer holding
+    // EXACTLY the page was served in full, and `more: true` here would send a
+    // picker after a page that does not exist.
+    const exact = apiCoverage(ws, url('coverage', 'limit=3')).body as CoverageBody;
+    assert.deepEqual(exact.files, whole.files);
+    assert.deepEqual(exact.page, {
+      path: null, limit: 3, offset: 0, more: false, omitted: 0, uncounted: null,
+    }, 'this is everything: nothing past the page, nothing behind the offset, nothing uncounted');
+
+    // An offset past the end is an empty PAGE and not an empty ANSWER: three
+    // paths matched and this response carries none of them, which is exactly
+    // what `omitted` says.
+    const past = apiCoverage(ws, url('coverage', 'offset=9')).body as CoverageBody;
+    assert.deepEqual(past.files, []);
+    assert.deepEqual(past.page, {
+      path: null, limit: null, offset: 9, more: false, omitted: 3, uncounted: null,
+    });
+
+    // Paging windows the FILE list and nothing else: `pinned` and `items` are
+    // corpus-wide answers, and a screen whose item list shrank with the tree
+    // would lose the items it needs to say why a directory is a gap.
+    for (const body of [first, second, exact, past]) {
+      assert.deepEqual(body.pinned, whole.pinned);
+      assert.deepEqual(body.items, whole.items);
+      assert.equal(body.truncated, false);
+    }
+  } finally { f.done(); }
+});
+
+/**
+ * **The search half.** The picker's problem is 614 options with no way to find
+ * one (`plan:ui1 seq:17e`), and a cap alone answers half of it: a capped list
+ * that cannot be searched hides the file the reader came for.
+ *
+ * A SUBSTRING, not a glob. `/api/glob` already owns the glob question
+ * (`ui/read-model-work.ts` · `export function apiGlob(ws: Workspace, url: URL): JsonResult {` · ~239)
+ * and answers it with `matchesAnyGlob`; a second glob implementation reachable
+ * from a different parameter is how two surfaces come to disagree about what
+ * `src/**` means.
+ */
+test('/api/coverage?path= filters the walk, and the disclosure counts the matches', () => {
+  const { f, ws } = coverageFixture();
+  try {
+    const src = apiCoverage(ws, url('coverage', 'path=src/')).body as CoverageBody;
+    assert.deepEqual(src.files.map((e) => e.path), ['src/a.ts', 'src/deep/b.ts']);
+    assert.deepEqual(src.page, {
+      path: 'src/', limit: null, offset: 0, more: false, omitted: 0, uncounted: null,
+    }, 'an uncapped filtered answer holds every match, and says it left nothing out');
+
+    // Case-insensitive, because a picker is typed into and a reader who types
+    // `SRC` is not asking a different question.
+    const shouty = apiCoverage(ws, url('coverage', 'path=SRC/')).body as CoverageBody;
+    assert.deepEqual(shouty.files, src.files);
+
+    // Filter and cap together — the shape the picker actually needs.
+    const capped = apiCoverage(ws, url('coverage', 'path=src/&limit=1')).body as CoverageBody;
+    assert.deepEqual(capped.files.map((e) => e.path), ['src/a.ts']);
+    assert.deepEqual(capped.page, {
+      path: 'src/', limit: 1, offset: 0, more: true, omitted: 1, uncounted: null,
+    });
+
+    // Nothing matched is a real answer with a real zero: the walk ran, the
+    // count was taken, and it came to nothing. That is NOT the uncounted
+    // state, and `uncounted: null` is what keeps the two apart.
+    const none = apiCoverage(ws, url('coverage', 'path=vendor')).body as CoverageBody;
+    assert.deepEqual(none.files, []);
+    assert.deepEqual(none.page, {
+      path: 'vendor', limit: null, offset: 0, more: false, omitted: 0, uncounted: null,
+    });
+
+    // The filter narrows the FILE list and never the corpus.
+    const whole = apiCoverage(ws, url('coverage', '')).body as CoverageBody;
+    assert.deepEqual(none.items, whole.items);
+    assert.deepEqual(none.pinned, whole.pinned);
+  } finally { f.done(); }
+});
+
+/**
+ * Every parameter this endpoint cannot act on is refused BY NAME
+ * (INV-nothing-is-dropped-silently). Digits only, for the reason `/api/decay`
+ * and `/api/graph` are digits only: `Number('')` is `0` and `Number(' 2 ')` is
+ * `2`, so a caller who sent a stray space would be answered about a page they
+ * never asked for.
+ */
+test('/api/coverage refuses a page it cannot act on, and names what it accepts', () => {
+  const { f, ws } = coverageFixture();
+  try {
+    for (const [qs, pattern] of [
+      ['limit=0', /limit must be written in digits/],
+      ['limit=-1', /limit must be written in digits/],
+      ['limit=1.5', /limit must be written in digits/],
+      ['limit=%202', /limit must be written in digits/],
+      ['limit=1e1', /limit must be written in digits/],
+      ['limit=20001', /limit must be written in digits/],
+      ['limit=', /limit must be written in digits/],
+      ['offset=-1', /offset must be written in digits/],
+      ['offset=x', /offset must be written in digits/],
+      ['offset=20001', /offset must be written in digits/],
+      ['path=', /path=<substring> must not be empty/],
+      ['path=%20%20', /path=<substring> must not be empty/],
+      ['limit=1&limit=2', /parameter "limit" was given more than once/],
+      ['sort=title', /unknown parameter "sort"/],
+    ] as const) {
+      const refused = apiCoverage(ws, url('coverage', qs));
+      assert.equal(refused.status, 400, `coverage?${qs} must be refused`);
+      assert.match((refused.body as { error: string }).error, pattern, `coverage?${qs}`);
+    }
+    // And the refusal NAMES the three it does take, so a caller learns the
+    // shape from the error rather than from the source.
+    assert.match(
+      (apiCoverage(ws, url('coverage', 'sort=title')).body as { error: string }).error,
+      /this endpoint accepts: path, limit, offset/,
+    );
+  } finally { f.done(); }
+});
+
+test('/api/items, /api/item and /api/help accept no parameters, and say so', () => {
   const f = fixture();
   try {
     for (const result of [
-      apiCoverage(f.ws, url('coverage', 'path=src')),
       apiItems(f.ws, url('items', 'sort=title')),
       apiHelp(f.ws, url('help/scope', 'lang=he'), { topic: 'scope' }),
       apiItem(f.ws, url('item/RULE-pin-me', 'full=1'), { id: 'RULE-pin-me' }),
