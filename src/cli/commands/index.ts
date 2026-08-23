@@ -20,6 +20,7 @@ import './review.ts';
 import './search.ts';
 import './session.ts';
 import './status.ts';
+import './statusline.ts';
 import './supersede.ts';
 import './todo.ts';
 import './ui.ts';

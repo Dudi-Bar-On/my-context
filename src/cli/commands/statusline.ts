@@ -1,0 +1,323 @@
+import { fileURLToPath } from 'node:url';
+import { filterSelect, openProjection, syncProjection } from '../../core/audit-db.ts';
+import { isMainEntry } from '../../core/paths.ts';
+import { classifyContext, writeTee, type ContextSample } from '../../core/statusline-tee.ts';
+import { resolveWorkspace, type Workspace } from '../../core/workspace.ts';
+import { readStdin } from '../../hooks/io.ts';
+import { refuseUnknownFlag } from './format.ts';
+import { registerCommand, type Emit } from './registry.ts';
+import { cmdStatuslineInstall, cmdStatuslineUninstall } from './statusline-install.ts';
+
+// --- The status line bridge (spec §4b) --------------------------------------
+//
+// Claude Code runs the configured statusLine command on every assistant
+// message and pipes a JSON payload to its stdin. This command does two things
+// with it: TEES it whole to a per-session file (core/statusline-tee.ts) so the
+// web UI can join the context number to the audit log on `session_id`, and
+// PRINTS one line for Claude Code to display.
+//
+// This is the ONE thing in the web-ui plans that writes a file, and it is a
+// CLI command the user installs deliberately (`statusline install`, opt-in,
+// print-and-ask — see statusline-install.ts) rather than a UI endpoint. The UI
+// itself stays read-only.
+//
+// Every branch below exits 0 once a payload has been read. The line IS the
+// surface here: a thrown error or a non-zero exit makes Claude Code's status
+// line flicker or disappear between messages, so a failure is DIAGNOSED IN THE
+// LINE and the process still succeeds. The one non-zero exit is the case where
+// there is no payload at all, which is a human running the verb by hand.
+
+export interface MyctxShare {
+  tokens: number;
+  injections: number;
+  unrecorded: number;
+}
+
+/**
+ * The three figures, computed IN SQLITE over `filterSelect`'s own SELECT.
+ *
+ * **Why an aggregate rather than `queryProjection` and a loop.** The obvious
+ * version — ask for the matching records, sum them in JavaScript — was written
+ * first and then measured, because this runs on Claude Code's per-message
+ * path. `test/perf/statusline-latency.perf.ts` took it at **p95 71.8 ms over
+ * 5,000 injection records for one session**, growing linearly, because every
+ * matching record is re-serialized by `json(rec)` and parsed again in JS just
+ * to read one number off it. The same question answered as an aggregate
+ * returns ONE row: p95 47.0 ms at 5,000 and 16.2 ms at 1,000 on the same
+ * machine, and the JS side stops being proportional to the session's history
+ * at all.
+ *
+ * **What is single-sourced and what is not.** The FILTER is not respelled:
+ * `filterSelect` (audit-db.ts) is the one implementation, exposed for exactly
+ * this, and it is nested here verbatim. What this SQL does duplicate is one
+ * fact about the record shape — that `tokens` may be ABSENT, and that an
+ * absence is counted rather than summed as zero (`audit.ts`, the field's own
+ * contract). Two spellings of a rule is how this project has repeatedly
+ * shipped drift, so the two are pinned against each other by a test that runs
+ * the loop and this aggregate over the same corpus and requires the same
+ * answer — the shape `test/core/audit-projection.test.ts` already uses to hold
+ * `filterSelect` to `filterAudit`.
+ *
+ * `json_type`, not `IS NOT NULL`: a JSON `null` and a missing key are both
+ * "no number here", and so is a string, which is what makes this agree with
+ * the loop's `typeof record.tokens === 'number'` rather than merely resemble
+ * it.
+ */
+function shareSql(inner: string): string {
+  return `SELECT
+      count(*) AS injections,
+      coalesce(sum(CASE WHEN ty IN ('integer', 'real') THEN t ELSE 0 END), 0) AS tokens,
+      coalesce(sum(CASE WHEN ty IN ('integer', 'real') THEN 0 ELSE 1 END), 0) AS unrecorded
+    FROM (SELECT json_type(rec, '$.tokens') AS ty, rec ->> '$.tokens' AS t FROM (${inner}))`;
+}
+
+/**
+ * The §4b numerator: what mycontext put into this session, from the injection
+ * records' `tokens` — the estimate frozen at injection time, never re-derived
+ * from today's corpus.
+ *
+ * Records that predate that field are COUNTED as unrecorded, not summed as
+ * zero: an absent estimate is an absence, and a status line that quietly read
+ * it as 0 would understate the share by exactly the amount it could not see,
+ * confidently.
+ *
+ * The projection is synced first and this THROWS when it cannot answer, so the
+ * caller can print "unavailable" rather than a number that is quietly behind
+ * the log.
+ */
+export function myctxShare(projectRoot: string, sessionId: string): MyctxShare {
+  const db = openProjection(projectRoot);
+  try {
+    syncProjection(projectRoot, db);
+    const { sql, params } = filterSelect({ sessionId, kind: 'injection' });
+    const row = db.prepare(shareSql(sql)).get(...params) as {
+      injections: number; tokens: number; unrecorded: number;
+    };
+    return {
+      tokens: Number(row.tokens),
+      injections: Number(row.injections),
+      unrecorded: Number(row.unrecorded),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * The loop the aggregate above replaced, kept so the two can be held to the
+ * same answer over a real corpus rather than by reading the SQL.
+ *
+ * Exported for the test and used nowhere else, deliberately: a rule spelled
+ * twice needs the second spelling to stay executable, or the pin is a comment.
+ */
+export function myctxShareByRow(
+  records: { tokens?: unknown }[],
+): MyctxShare {
+  let tokens = 0;
+  let unrecorded = 0;
+  for (const record of records) {
+    if (typeof record.tokens === 'number') tokens += record.tokens;
+    else unrecorded++;
+  }
+  return { tokens, injections: records.length, unrecorded };
+}
+
+function fmtK(n: number): string {
+  return `${(n / 1000).toFixed(1)}k`;
+}
+
+/**
+ * One line, one spelling per state — the same honesty rules the UI strip
+ * renders, so a user who reads both never sees them disagree.
+ *
+ * `myctxNote` is why the myctx half is MISSING; `teeNote` is why the sample
+ * did not reach disk. They are two facts and they are two parameters, because
+ * folding them into one drops whichever did not win: `writeTee` refuses an
+ * unsafe `session_id` while `myctxShare` answers for that same id perfectly
+ * well, so a single note rendered only when the share is absent would print a
+ * confident myctx figure and never mention that the web UI is getting nothing
+ * (`INV-nothing-is-dropped-silently`, on the one surface whose job is
+ * disclosure).
+ */
+export function statusLineText(
+  sample: ContextSample,
+  model: string | null,
+  myctx: MyctxShare | null,
+  myctxNote: string | null,
+  teeNote: string | null = null,
+): string {
+  const parts: string[] = [];
+  if (model !== null) parts.push(model);
+
+  if (sample.state === 'known' && sample.usedTokens !== null) {
+    const pct = sample.percent !== null ? `${sample.percent.toFixed(1)}%` : '?%';
+    const size = sample.windowSize !== null ? fmtK(sample.windowSize) : '?';
+    parts.push(`ctx ${pct} (${fmtK(sample.usedTokens)}/${size})`);
+  } else if (sample.state === 'not-yet-known') {
+    parts.push('ctx not yet known (no API call since the last compact)');
+  } else {
+    parts.push('ctx unknown (this Claude Code sends no context_window)');
+  }
+
+  if (myctx !== null) {
+    if (myctx.injections > 0) {
+      // `≥` rather than a rounded-up guess: some records carry no estimate, so
+      // the true share is at least this and the line says exactly that.
+      const approx = myctx.unrecorded > 0 ? '≥' : '';
+      const suffix = myctx.unrecorded > 0
+        ? ` (${myctx.injections} injections, ${myctx.unrecorded} not recorded)`
+        : ` (${myctx.injections} injections)`;
+      parts.push(`myctx ${approx}${fmtK(myctx.tokens)} of it${suffix}`);
+    }
+  } else if (myctxNote !== null) {
+    parts.push(`myctx unavailable (${myctxNote})`);
+  }
+
+  if (teeNote !== null) parts.push(teeNote);
+  return parts.join(' | ');
+}
+
+const USAGE =
+  'usage: mycontext statusline                    (reads Claude Code\'s payload on stdin)\n' +
+  '       mycontext statusline install   [--settings <path>] [--yes]\n' +
+  '       mycontext statusline uninstall [--settings <path>] [--yes]';
+
+const NO_PAYLOAD =
+  'my_context: `mycontext statusline` expects Claude Code\'s status-line JSON on stdin. It is ' +
+  'installed as a statusLine command by `mycontext statusline install`, which prints your ' +
+  'existing setting and what it would replace it with, and writes nothing without --yes.';
+
+/**
+ * The entry file this command's own CLI is launched as.
+ *
+ * Used to answer one question before stdin is touched: is fd 0 this command's
+ * to consume? See `cmdStatusline`.
+ */
+const CLI_ENTRY = fileURLToPath(new URL('../index.ts', import.meta.url));
+
+/**
+ * Whether reading stdin to EOF is safe in THIS process.
+ *
+ * `readStdin` is `readFileSync(0)`, which blocks until end-of-file. That is
+ * exactly right for the installed bridge — Claude Code writes one payload and
+ * closes the pipe — and it is a hang everywhere else:
+ *
+ *  - `runCli` is also a library. `test/docs/inventory.test.ts` runs every
+ *    command the usage banner advertises, bare and in process, to prove each
+ *    one dispatches; a `node --test` child's stdin is a pipe nobody ever
+ *    closes, so a `statusline` that read it there would not fail the suite, it
+ *    would HANG it, with nothing in the output naming the cause. Measured on
+ *    this machine before this guard was written.
+ *  - a human typing `mycontext statusline` in a terminal gets a TTY, where
+ *    "to EOF" means "until you press Ctrl-D" — a prompt with no prompt.
+ *
+ * In both cases there is no payload to read, so the answer is the same
+ * explanation the empty-stdin path gives, and the process exits rather than
+ * waiting on something that is never coming.
+ */
+function stdinIsOurs(): boolean {
+  return isMainEntry(CLI_ENTRY, process.argv[1]) && process.stdin.isTTY !== true;
+}
+
+function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): number {
+  const sub = args[0];
+  if (sub === 'install') return cmdStatuslineInstall(ws, args.slice(1), out);
+  if (sub === 'uninstall') return cmdStatuslineUninstall(ws, args.slice(1), out);
+
+  // The bare verb takes NO arguments at all — every flag on this command
+  // belongs to a subcommand. Refusing them here is what keeps `--yes` from
+  // being readable as consent on a verb that never asks for any (see
+  // test/helpers/approval-boundary.ts, which probes exactly this), and it has
+  // to happen BEFORE stdin: a status line that silently ignored a mistyped
+  // argument and then blocked on a pipe would be the worst of both.
+  if (refuseUnknownFlag(args, [], [], USAGE, out)) return 1;
+  if (args.length > 0) {
+    out(`my_context: unknown subcommand "${sub}".\n${USAGE}`);
+    return 1;
+  }
+
+  if (!stdinIsOurs()) {
+    out(NO_PAYLOAD);
+    return 1;
+  }
+
+  const raw = readStdin();
+  if (raw.trim() === '') {
+    out(NO_PAYLOAD);
+    return 1;
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    out('mycontext: unreadable status payload (not JSON)');
+    return 0;
+  }
+
+  const p = payload as {
+    cwd?: unknown;
+    workspace?: { project_dir?: unknown };
+    session_id?: unknown;
+    model?: { display_name?: unknown; id?: unknown };
+  } | null;
+
+  // Resolve the workspace from where the payload says the session lives, not
+  // from this process's cwd: Claude Code documents no working directory for a
+  // statusLine command, and the payload carries the truth. When that directory
+  // has no workspace there is deliberately no fallback to `cwd` — teeing one
+  // project's context into another project's `.statusline/` would be worse
+  // than the missing sample it replaced.
+  const sessionCwd =
+    typeof p?.workspace?.project_dir === 'string' ? p.workspace.project_dir
+    : typeof p?.cwd === 'string' ? p.cwd
+    : cwd;
+
+  let projectRoot: string | null;
+  try {
+    projectRoot = resolveWorkspace(sessionCwd).projectRoot;
+  } catch {
+    // A corrupt config.json in that tree. Not this command's business, and not
+    // a reason to blank the status line.
+    projectRoot = null;
+  }
+
+  const sample = classifyContext(payload);
+  const model =
+    typeof p?.model?.display_name === 'string' ? p.model.display_name
+    : typeof p?.model?.id === 'string' ? p.model.id
+    : null;
+
+  let myctx: MyctxShare | null = null;
+  let myctxNote: string | null = null;
+  let teeNote: string | null = null;
+
+  if (projectRoot !== null) {
+    const tee = writeTee(projectRoot, payload);
+    if (!tee.written) teeNote = `tee not written (${tee.reason ?? 'no reason given'})`;
+
+    if (typeof p?.session_id === 'string') {
+      try {
+        myctx = myctxShare(projectRoot, p.session_id);
+      } catch (err) {
+        myctx = null;
+        myctxNote = err instanceof Error ? err.message : String(err);
+      }
+    } else {
+      // No session key: there is nothing to sum, and saying so is the point.
+      // The tee refused for the same reason and its note already carries it,
+      // so this half stays quiet rather than repeating it.
+      myctx = null;
+    }
+  }
+
+  out(statusLineText(sample, model, myctx, myctxNote, teeNote));
+  return 0;
+}
+
+registerCommand({
+  name: 'statusline',
+  usage: 'statusline [install|uninstall] [--yes]',
+  summary: 'the opt-in status line bridge: tee Claude Code’s context figure for the web UI',
+  run: cmdStatusline,
+});

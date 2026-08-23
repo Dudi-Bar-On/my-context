@@ -18,17 +18,137 @@
  * no session id, so it performs the same full rebuild every call with no
  * ledger state carried between iterations — the true steady-state cost.
  *
- * Recorded baseline (2026-08-16, dev machine, `npm run test:perf`,
- * two runs): p95 ~45.6–46.3ms, well inside the 500ms ceiling. Re-derived
- * after the never-miss change moved the index rebuild off the
- * injection-critical path (plan Task 5); the 500ms ceiling is unchanged and
- * was re-verified against the new shape, per the rule that a widened
- * ceiling records why (`focus-latency.perf.ts:21-22`). The previous
- * baseline (2026-08-13, same machine, before the reorder) was ~54.9–55.5ms
- * — the fall matches the design's prediction, since selection no longer
- * waits on the write transaction. Compare future CI/local p95 readings
- * against these figures to tell a genuine regression from ordinary
- * machine-to-machine variance.
+ * ── The statistic, and why it is a percentile rather than a maximum ──────
+ *
+ * Until 2026-08-23 every assertion in this file called itself a p95 and
+ * computed a MAXIMUM. The local `p95` helper indexed `floor(n * 0.95)`,
+ * which is the LAST index of the sorted array whenever `0.05 * n <= 1` —
+ * that is, for every `n <= 20` — and `ITERATIONS` was exactly 20. So each
+ * "p95" was the single worst of twenty runs; `p95` and `max` were observed
+ * printing the identical 5167.7ms. One GC pause, one disk stall, or one
+ * descheduled iteration reddened the file, which is why it was described as
+ * failing locally and passing on CI: intolerant of a single outlier by
+ * construction, and a development box is noisier than a quiet runner.
+ *
+ * **Resolved by making the statistic match its name, not by renaming the
+ * ceilings to "max".** The deciding question is what the gate is FOR:
+ *
+ *   - Nothing in the product promises that no individual SessionStart ever
+ *     exceeds 500ms. 500ms is a per-session budget for a hook that fires
+ *     once per session, and one descheduled iteration inside an in-process
+ *     measurement loop is not a user-visible event at all.
+ *   - What this gate exists to catch is a REGRESSION: a change that moves
+ *     the whole distribution — an accidental O(n) rescan per call, a
+ *     per-call process spawn, the 16.9s lock-stall class E4 fixed.
+ *     `test/helpers/perf.ts` says the same in its own words ("certifies the
+ *     absence of order-of-magnitude regressions"), and this header already
+ *     instructed the reader to compare readings run over run.
+ *   - A regression detector wants a STABLE statistic. A maximum is the least
+ *     stable one available, and uniquely it gets worse the harder you
+ *     measure: E[max] rises with the sample count, so honest extra sampling
+ *     makes a max-based gate redder. That is the ratchet that ends with
+ *     somebody widening a ceiling until the gate can no longer fail.
+ *
+ * So `percentile` is nearest-rank (`ceil(n * q) - 1`, never `floor(n * q)`)
+ * and `ITERATIONS` is 100. At n=100 the p95 is the 95th of 100 sorted
+ * samples with FIVE samples above it — the smallest count at which a 95th
+ * percentile is an order statistic with a real tail over it instead of a
+ * synonym for the maximum. 100 rather than the 200 that `jit-latency`,
+ * `focus-latency` and `audit-latency` use because one iteration here is a
+ * full 500-item corpus rebuild (tens of ms) rather than one hook call
+ * (single-digit ms); 200 would roughly triple this file's wall clock to
+ * sharpen an estimate that is already an order statistic. The last test
+ * below pins that property so the file cannot quietly regress to a max
+ * again.
+ *
+ * **The 500ms ceiling was NOT changed.** Widening a ceiling to quiet a noisy
+ * statistic is the failure this change exists to remove, not a substitute
+ * for it.
+ *
+ * What a green run does NOT certify, stated so nobody reads more into it:
+ * a regression that afflicts fewer than ~5% of calls will not move the p95.
+ * `max` is therefore still measured and still printed, in the console line
+ * and in the failure message — diagnostic, not the verdict. Read a red run
+ * by its SHAPE: every statistic up together → the machine, re-run; p95 and
+ * max up while the median holds → tail noise, re-run; the MEDIAN moved →
+ * the code, investigate before any retry.
+ *
+ * ── Recorded baselines ──────────────────────────────────────────────────
+ *
+ * Everything recorded before 2026-08-23 was a max-of-20, and is kept here
+ * relabelled rather than deleted — it remains the best record of how this
+ * shape's worst case moved, and it is NOT comparable with a p95:
+ *
+ *   2026-08-13, dev machine, before the never-miss reorder:
+ *     plain max-of-20 ~54.9–55.5ms; compact ~123.9ms.
+ *   2026-08-16, dev machine, two runs:
+ *     plain max-of-20 ~45.6–46.3ms; compact ~149.1–163.6ms. The fall in the
+ *     plain shape matches the design's prediction — selection no longer
+ *     waits on the write transaction (plan Task 5). The rise in the compact
+ *     shape is the restore path's new work: the seen-file restore marker and
+ *     the best-effort index refresh both run per call in that shape.
+ *   2026-08-21, dev machine with five worktrees' suites running:
+ *     sweepless max-of-20 218.9 and 266.1ms; with-sweep 234.0 and 383.4ms.
+ *     `pruneSnapshots` measured in isolation over 200 fresh entries: 3.1,
+ *     3.5, 4.0, 4.1, 4.3ms.
+ *
+ * First p95-of-100 figures, and the conditions they were taken under —
+ * 2026-08-23, same dev machine (20 logical cores, i9-13900H), DELIBERATELY
+ * NOT IDLE: sixteen agents were working this tree, 100–120 concurrent `node`
+ * processes were resident and the box sat at 100% CPU. A probe in the same
+ * window timed single `buildSessionStartOutput` calls at 1254, 1687, 2055,
+ * 2235, 3016, 4239, 5270 and 5695ms against the 45ms idle baseline above.
+ * Sampled at n=120 per shape (all figures in ms):
+ *
+ *   plain     min 504.4  median  861.9  p90 2139.0  p95 2868.5  max 3920.8
+ *   compact   min 620.6  median 1066.8  p90 3602.4  p95 5385.5  max 7017.4
+ *   compact   min 596.0  median 1446.3  p90 6105.7  p95 7640.6  max 9496.4
+ *             (the same shape again minutes later — the run-to-run spread of
+ *              this shape under load is four times the entire budget)
+ *   +sweep    min 513.2  median 1787.4  p90 5420.7  p95 6867.4  max 8838.4
+ *   `pruneSnapshots` alone over the same 200 fresh entries, n=40:
+ *             min   7.6  median   11.1              p95   12.6  max   15.3
+ *
+ * Read those honestly: they are 40–60× the idle baselines, the plain shape's
+ * MINIMUM sample (504.4ms) is already over the 500ms ceiling, and no choice
+ * of statistic rescues a measurement taken there. That is precisely the
+ * "every statistic up together → the machine" reading, and the response is
+ * to re-measure somewhere quieter — never to widen the ceiling to fit.
+ *
+ * Those same pools also measure what the change bought, by resampling them.
+ * On the plain pool the OLD max-of-20 estimator lands anywhere in
+ * 1056–3921ms run to run on IDENTICAL code (a 3.7× spread); p95-of-100 lands
+ * in 1838–3432ms (1.9×). On the compact pool: 1616–7017ms (4.3×) against
+ * 2399–5566ms (2.3×). Resampling at 200 rather than 100 narrows the plain
+ * spread only from 1.9× to 1.7×, which is what decided 100 over 200. And
+ * max-of-20 and the old floor-indexed "p95-of-20" returned the identical
+ * median and the identical worst case on both pools — the defect restated as
+ * a measurement rather than as arithmetic.
+ *
+ * An idle-machine p95-of-100 re-derivation is still owed; take it before
+ * reading any of these as a regression signal, and record it here beside
+ * them rather than over them.
+ *
+ * ── Watched failing, 2026-08-23 ─────────────────────────────────────────
+ *
+ * A gate nobody has watched fail is not a gate. Four runs on the loaded
+ * machine described above, against the real UNWIDENED 500ms ceiling, with
+ * `CORPUS_SIZE` temporarily at 25 for the first three — on a box where the
+ * 500-item shape's *minimum* sample is 504ms no control run can be green at
+ * all, and a proof needs a green control. Every edit reverted afterwards:
+ *
+ *   control, unmodified        p95   51.6ms  median  47.4  max  247.0  PASS
+ *   12× the work per call      p95 2236.6ms  median 863.0  max 3351.5  FAIL
+ *   ONE iteration given 40×    p95  204.8ms  median  64.7  max 3183.7  PASS
+ *   `ITERATIONS` back to 20    the guard test below FAILS — "only 1 of 20
+ *                              samples sit above the p95"
+ *
+ * Rows two and three are the entire argument, side by side. A regression
+ * that moves the DISTRIBUTION is caught, and the median moves with it,
+ * which is the signature the reading rule above says to look for. A single
+ * 3183.7ms outlier — 66× the median — does not redden the gate, where the
+ * old max-of-20 would have reported that one sample as the "p95" and failed
+ * the build on it.
  *
  * The THIRD test below covers what Task 12 added after the write to stdout:
  * the `state/` sweep. See its own docblock for why it recomposes the entry
@@ -36,19 +156,13 @@
  * are fresh rather than stale.
  *
  * The second test below covers the compact/restore branch this one
- * deliberately skips (no session id): with a session id and a real
- * snapshot present — recorded baseline (2026-08-16, dev machine, two runs)
- * is p95 ~149.1–163.6ms, still comfortably inside the 500ms ceiling. The
- * pre-reorder baseline (2026-08-13) was ~123.9ms; the rise is the restore
- * path's new work — the seen-file restore marker and the best-effort
- * index refresh both run per call in this shape — measured, recorded, and
- * inside the unchanged ceiling. See that test's own docblock for the two
- * conditions (a normative corpus, a fresh session/snapshot per iteration)
- * this depends on.
+ * deliberately skips (no session id): with a session id and a real snapshot
+ * present. See that test's own docblock for the two conditions (a normative
+ * corpus, a fresh session/snapshot per iteration) this depends on.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
@@ -65,7 +179,16 @@ const CORPUS_SIZE = 500;
 /** The `state/` fixture for the sweep case below: 200 entries, all inside the retention window. */
 const STATE_FILES = 200;
 const WARMUP = 3;
-const ITERATIONS = 20;
+/**
+ * 100, not 20. See "The statistic" in the header: at 20 samples the 95th
+ * percentile is the maximum as this file used to index it, and a maximum with
+ * one sample above it even indexed correctly. The count is therefore part of
+ * the assertion's MEANING rather than a tuning knob, and the last test in this
+ * file fails if it drops back below the point where the p95 has a tail.
+ */
+const ITERATIONS = 100;
+/** The quantile every ceiling in this file is asserted at. */
+const PERCENTILE = 0.95;
 // 500ms is the product budget; widened 10× on the GitHub Windows runner only
 // (an 819ms breach was observed there on unchanged code, run 31674652091) —
 // see test/helpers/perf.ts for what the widened ceiling certifies.
@@ -102,9 +225,51 @@ function constraintItem(i: number): Item {
   };
 }
 
-function p95(samples: number[]): number {
+/**
+ * Nearest-rank percentile of an ALREADY SORTED ascending array: the smallest
+ * sample with at least a `q` fraction of the distribution at or below it.
+ *
+ * `ceil(n * q) - 1`, deliberately not `floor(n * q)`. The floor form is what
+ * turned every ceiling in this file into a max-of-20: it indexes the last
+ * element whenever `(1 - q) * n <= 1`, and it is off by one high everywhere
+ * else too (at n=200 it returns the 191st of 200, not the 190th).
+ */
+function percentile(sorted: readonly number[], q: number): number {
+  const index = Math.ceil(sorted.length * q) - 1;
+  return sorted[Math.min(sorted.length - 1, Math.max(0, index))];
+}
+
+interface Distribution {
+  readonly n: number;
+  readonly min: number;
+  readonly median: number;
+  readonly p95: number;
+  readonly max: number;
+}
+
+/**
+ * The whole shape, not just the number being asserted. The median is what
+ * separates "this machine is slow" from "this code is slow", and the max is
+ * kept visible so the outlier information the old max-based assertion carried
+ * is not lost — it simply no longer decides the verdict.
+ */
+function summarize(samples: readonly number[]): Distribution {
   const sorted = [...samples].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))];
+  return {
+    n: sorted.length,
+    min: sorted[0],
+    median: percentile(sorted, 0.5),
+    p95: percentile(sorted, PERCENTILE),
+    max: sorted[sorted.length - 1],
+  };
+}
+
+function report(label: string, d: Distribution): string {
+  return (
+    `${label} p95 ${d.p95.toFixed(1)}ms over ${d.n} samples ` +
+    `(min ${d.min.toFixed(1)}, median ${d.median.toFixed(1)}, max ${d.max.toFixed(1)}ms) ` +
+    `against a ${CEILING_MS}ms ceiling`
+  );
 }
 
 test('SessionStart stays under the 500ms p95 ceiling on a 500-item corpus rebuild', () => {
@@ -128,11 +293,9 @@ test('SessionStart stays under the 500ms p95 ceiling on a 500-item corpus rebuil
     samples.push(Number(process.hrtime.bigint() - started) / 1e6);
   }
 
-  const measured = p95(samples);
-  assert.ok(
-    measured < CEILING_MS,
-    `session-start p95 was ${measured.toFixed(1)}ms (max ${Math.max(...samples).toFixed(1)}ms)`,
-  );
+  const measured = summarize(samples);
+  console.log(report('session-start', measured));
+  assert.ok(measured.p95 < CEILING_MS, report('session-start', measured));
 
   removeTree(cwd);
 });
@@ -162,6 +325,13 @@ test('SessionStart stays under the 500ms p95 ceiling on a 500-item corpus rebuil
  *    session/snapshot would make every call after the first see its own
  *    prior seen-file append as "already restored for this generation" —
  *    `restore` would collapse to `[]` on every iteration but the first.
+ *
+ * `writeSnapshot` runs OUTSIDE the timed window on every iteration, so the
+ * hundred snapshots this now leaves in `state/` cost the measurement
+ * nothing: `buildSessionStartOutput` reads one snapshot by session id
+ * (`readSnapshotMeta`) and never lists the directory, so the per-call cost
+ * does not grow with the iteration count. That is worth stating because it
+ * is the property that lets the sample count be raised at all.
  */
 test('SessionStart(compact) with a session id and a snapshot stays under the 500ms p95 ceiling', () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-perf-compact-'));
@@ -189,11 +359,9 @@ test('SessionStart(compact) with a session id and a snapshot stays under the 500
     samples.push(Number(process.hrtime.bigint() - started) / 1e6);
   }
 
-  const measured = p95(samples);
-  assert.ok(
-    measured < CEILING_MS,
-    `session-start(compact) p95 was ${measured.toFixed(1)}ms (max ${Math.max(...samples).toFixed(1)}ms)`,
-  );
+  const measured = summarize(samples);
+  console.log(report('session-start(compact)', measured));
+  assert.ok(measured.p95 < CEILING_MS, report('session-start(compact)', measured));
 
   removeTree(cwd);
 });
@@ -212,23 +380,18 @@ test('SessionStart(compact) with a session id and a snapshot stays under the 500
  * case and the expensive one. `pruneSnapshots` is a `readdirSync` plus one
  * `statSync` per matching entry; nothing is removed here, so that scan runs in
  * full on every iteration and the directory still holds 200 files at the last
- * one. A stale fixture would delete itself on the first call and leave the
- * remaining nineteen iterations measuring an empty directory — a number that
- * would pass while asserting nothing.
+ * one. A stale fixture would delete itself on the first call and leave every
+ * remaining iteration measuring an empty directory — a number that would pass
+ * while asserting nothing. The assertion below checks the fixture survived,
+ * because that is not something a timing number can tell you.
  *
- * Recorded baseline (2026-08-21, dev machine, two runs of the pair measured
- * back to back in one process): sweepless p95 218.9 and 266.1ms, with-sweep
- * p95 234.0 and 383.4ms, against the unchanged 500ms ceiling. Those absolute
- * numbers are 5-6x the 45.6-46.3ms this file's header records for the same
- * sweepless shape in 2026-08-16 — the machine was running five worktrees'
- * suites at once, and the spread between the two runs of the SAME shape (47ms
- * apart sweepless, 149ms apart with the sweep) is larger than anything the
- * sweep could contribute. So the sweep's own share was measured directly
- * instead, isolated from the build: `pruneSnapshots` over 200 fresh entries
- * took 3.1, 3.5, 4.0, 4.1 and 4.3ms. Single-digit milliseconds at 200 entries,
- * measured rather than assumed, which is what Step 4 of the plan asked for.
- * Re-derive all three on an idle machine before reading any of them as a
- * regression signal.
+ * The sweep's own share is too small to read out of the pair on a shared
+ * machine — the spread between two runs of the SAME shape has repeatedly been
+ * larger than anything the sweep could contribute — so it was measured
+ * directly instead, in isolation: `pruneSnapshots` over 200 fresh entries took
+ * 3.1, 3.5, 4.0, 4.1 and 4.3ms (2026-08-21). Single-digit milliseconds at 200
+ * entries, measured rather than assumed, which is what Step 4 of the plan
+ * asked for.
  */
 test('SessionStart plus its state/ sweep stays under the 500ms p95 ceiling with 200 state entries', () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-perf-sweep-'));
@@ -269,11 +432,53 @@ test('SessionStart plus its state/ sweep stays under the 500ms p95 ceiling with 
     'the sweep removed fixture entries that are inside the retention window',
   );
 
-  const measured = p95(samples);
-  assert.ok(
-    measured < CEILING_MS,
-    `session-start+sweep p95 was ${measured.toFixed(1)}ms (max ${Math.max(...samples).toFixed(1)}ms)`,
-  );
+  const measured = summarize(samples);
+  console.log(report('session-start+sweep', measured));
+  assert.ok(measured.p95 < CEILING_MS, report('session-start+sweep', measured));
 
   removeTree(cwd);
+});
+
+/**
+ * The guard for the defect the three tests above used to carry, kept in this
+ * file because it is this file's constants that it protects.
+ *
+ * A percentile only means what those assertions claim while it has samples
+ * ABOVE it. Two edits silently take that away and nothing else in the suite
+ * would notice: dropping `ITERATIONS` back towards 20, or restoring the
+ * `floor(n * q)` index. Either turns all three ceilings back into a
+ * max-of-n — still green, still called a p95, and once again reddening on
+ * one GC pause until somebody "fixes" it by widening the ceiling.
+ *
+ * This costs no wall clock and fails on arithmetic, not on timing, so it is
+ * the one test in this file that cannot be flaky.
+ */
+test('the ceilings in this file are percentiles, not maxima wearing a percentile name', () => {
+  // A ramp is its own index, so `percentile` reads out the rank directly.
+  const ramp = Array.from({ length: ITERATIONS }, (_, i) => i);
+  const rank = percentile(ramp, PERCENTILE);
+
+  assert.notEqual(
+    rank,
+    ITERATIONS - 1,
+    `the p${PERCENTILE * 100} over ${ITERATIONS} samples is the maximum — the ` +
+      'statistic and its name have come apart again. Raise ITERATIONS.',
+  );
+  const above = ITERATIONS - 1 - rank;
+  assert.ok(
+    above >= 5,
+    `only ${above} of ${ITERATIONS} samples sit above the p${PERCENTILE * 100}; ` +
+      'that is a maximum with rounding, not a percentile. Raise ITERATIONS to at least 100.',
+  );
+
+  // Nearest-rank, pinned against cases checked by hand rather than by the
+  // same formula: the 95th percentile of 1..100 is 95, and the floor form
+  // this file used to carry would answer 96.
+  const hundred = Array.from({ length: 100 }, (_, i) => i + 1);
+  assert.equal(percentile(hundred, 0.95), 95);
+  assert.equal(percentile(hundred, 0.5), 50);
+  assert.equal(percentile(hundred, 1), 100);
+  assert.equal(percentile([7], 0.95), 7);
+  const twenty = Array.from({ length: 20 }, (_, i) => i + 1);
+  assert.equal(percentile(twenty, 0.95), 19, 'at n=20 even nearest-rank leaves one sample above');
 });

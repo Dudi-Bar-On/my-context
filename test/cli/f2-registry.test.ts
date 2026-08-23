@@ -157,6 +157,13 @@ const DOES_NOT_REBUILD = new Set([
   // item file cannot reach their output. Registered since Wave 5, covered
   // here since Wave 5.
   'help', 'examples',
+  // `statusline` never opens the item index on any of its paths. The bridge
+  // reads a payload, writes a tee file and queries the AUDIT projection — the
+  // same append-only log `audit` reads, which is not derived from the corpus —
+  // and `install`/`uninstall` only read and write a Claude Code settings file.
+  // A corrupt item file cannot reach any of those answers, so there is nothing
+  // for it to disclose (verified by reading the command, not assumed).
+  'statusline',
 ]);
 
 const SETUPS: Record<string, (cwd: string) => string[]> = {
@@ -196,6 +203,17 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   examples: (cwd) => {
     plantUnrelatedCorruptItem(cwd);
     return ['constraint'];
+  },
+
+  // `install` with no --yes is this command's success path that neither reads
+  // stdin nor writes anything: it prints the current setting and the
+  // replacement and returns 0. The bare verb cannot be used here — it reads
+  // Claude Code's payload from stdin, which nothing in this process is going
+  // to send, and `--settings` keeps the probe off the developer's own
+  // Claude Code configuration.
+  statusline: (cwd) => {
+    plantUnrelatedCorruptItem(cwd);
+    return ['install', '--settings', path.join(cwd, 'settings.json')];
   },
 
   audit: (cwd) => {

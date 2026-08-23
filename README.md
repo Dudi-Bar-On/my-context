@@ -1837,7 +1837,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>77 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>37 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>38 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -1894,13 +1894,13 @@ claude plugin details mycontext@mycontext
 ```
 
 It prints the component inventory — every command file in `commands/` and the `mycontext`
-skill, the eight hooks and the one MCP server — which is how you confirm the plugin is loaded
+skill, the eighteen hooks and the one MCP server — which is how you confirm the plugin is loaded
 rather than assuming it. Read the counts with one correction in hand: `claude plugin details`
 has no commands line, and reports the commands and the skill together under one `Skills`
 heading, so the number it shows there is the command count plus one. Every command in
 this section was established by running it, not by reading the documentation.
 
-The eight hooks, and what each one is for:
+The eighteen hooks, and what each one is for:
 
 | Hook | Fires | What my_context does with it | `timeout` |
 |---|---|---|---|
@@ -1912,6 +1912,16 @@ The eight hooks, and what each one is for:
 | `PostToolUse` | after `Write`, `Edit` or `MultiEdit` | the capture nudge | 5 |
 | `SessionEnd` | a session ends — including the `SessionEnd(reason: "clear")` that `/clear` fires on the OLD session id before minting a new one | removes the destroyed window's seen files and restore snapshot, which is state no other firing can reach, and records the deletion. On the four reasons whose session id survives the event it deliberately removes nothing | 2 |
 | `PostToolUseFailure` | after a tool call fails | one audit row per failed call, and nothing else. **Unverified**: no probe here has established that Claude Code fires this event at all, or what its payload calls the failure reason. If it never fires, nothing is written and nothing breaks | 5 |
+| `FileChanged` | a file changes under `.my_context/items/` or `.my_context/config.json` — the only event that sees a corpus file edited by hand, in an editor, outside my_context | one audit row naming the file and the verb (`change`, `add`, `unlink`). It rebuilds nothing: the index is a projection and is rebuilt on every open. It cannot tell your edit from my_context's own write, and the row says so. The watch set deliberately excludes the audit log, because this hook appends to it | 3 |
+| `InstructionsLoaded` | a `CLAUDE.md` loads, at session start, on a glob match, through an include, or after a compaction | one audit row naming the memory tier and the reason. This is the other thing that reaches your context, and until this hook existed my_context could only account for its own half of it. It proposes nothing and edits nothing | 3 |
+| `ConfigChange` | one of Claude Code's own settings tiers changes — `user_settings`, `project_settings`, `local_settings`, `policy_settings` or `skills` | one audit row naming the tier. **Not** `.my_context/config.json`, which is not one of the five sources and is covered by `FileChanged` above. It reads nothing and reloads nothing | 3 |
+| `PermissionDenied` | a tool call is refused — most often by my_context's own `PreToolUse` deny | one audit row naming the tool, and whether the refusal was ours. Never the `tool_input`, which is the arguments of the refused call. It does not set the platform's `retry` flag | 3 |
+| `SubagentStop` | a subagent finishes | one audit row naming the agent, which closes the pair `SubagentStart` opens: an attempt, a completion, and an end. It does **not** remove the subagent's seen file — that is a change to the dedupe state, and it is not this hook's to make | 3 |
+| `Stop` | an assistant turn ends | one audit row. It is the only boundary in the log that is not a tool call, a mutation or a session edge, which is what makes a session readable back. It emits no capture nudge: that stays on `PostToolUse` | 3 |
+| `Setup` | Claude Code runs setup, with `trigger` `init` or `maintenance` | one audit row, **in workspaces that already exist**. On a directory with no workspace it does nothing at all: creating one, or running the doctor checks, is a decision about what my_context does without being asked, and it has not been made | 3 |
+| `TaskCreated` | the harness creates a task | one audit row carrying the task id and its subject. No corpus item is written — tying the harness's tasks to the corpus's own `task` category means creating content nobody asked for, and that is a separate decision | 3 |
+| `TaskCompleted` | the harness completes a task | the same row, under its own op, so the two can be filtered apart | 3 |
+| `UserPromptExpansion` | one of this plugin's own `/mycontext:*` commands is typed — the event a slash command fires ~600 ms *before* the `UserPromptSubmit` carrying its raw text | one audit row naming the command. The matcher is `^mycontext:`, so no process is spawned for anybody else's slash commands and none at all for plain typed text. It never fills `additionalContext` and never suppresses your prompt | 3 |
 
 `timeout` is in seconds, and it is **Claude Code's** number rather than my_context's: it is
 when Claude Code kills the process. None of these hooks bounds its own runtime once the
@@ -2081,7 +2091,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-37 commands. `mycontext help` prints the same list from the program itself, and
+38 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2219,6 +2229,55 @@ directive: dont
 # Never log request bodies on auth endpoints
 
 Bodies carry passwords and reset tokens; logs are retained for 90 days.
+
+What may be changed on a `rule`, and by which command.
+
+Every `normative`-tier item:
+┌──────────┬───────────┬────────────────────────┬────────────────────────┬─────────────────────────┐
+│ name     │ stored as │ values                 │ how to change it       │ what it is              │
+├──────────┼───────────┼────────────────────────┼────────────────────────┼─────────────────────────┤
+│ title    │ field     │ free text              │ mycontext edit <id>    │ The one-line name.      │
+│          │           │                        │ --title "…"            │ Changing it does not    │
+│          │           │                        │                        │ change the id.          │
+│ body     │ field     │ free text              │ mycontext edit <id>    │ What the item actually  │
+│          │           │                        │ --body "…" | --file    │ says. On a governing    │
+│          │           │                        │ <path>                 │ item this is gated and  │
+│          │           │                        │                        │ previewed.              │
+│ scope    │ field     │ free text              │ mycontext edit <id>    │ The globs this governs. │
+│          │           │                        │ --scope "a/**,b/**"    │ Empty means everywhere, │
+│          │           │                        │                        │ unless the category     │
+│          │           │                        │                        │ sets scopePolicy        │
+│          │           │                        │                        │ required.               │
+│ tags     │ tag       │ free text              │ mycontext edit <id>    │ REPLACES the whole      │
+│          │           │                        │ --tags "a,b"           │ list. Read the current  │
+│          │           │                        │                        │ tags back first or the  │
+│          │           │                        │                        │ others are dropped.     │
+│ status   │ field     │ draft, active,         │ mycontext edit <id>    │ Whether it governs.     │
+│          │           │ validated, deprecated, │ --status <status>      │ Moving a normative item │
+│          │           │ superseded             │                        │ into active or          │
+│          │           │                        │                        │ validated is gated and  │
+│          │           │                        │                        │ previewed.              │
+│ severity │ field     │ hard, soft             │ mycontext harden <id>  │ Binding or advisory.    │
+│          │           │                        │ | mycontext soften     │ `edit --severity` is    │
+│          │           │                        │ <id>                   │ the same change under   │
+│          │           │                        │                        │ another name.           │
+│ always   │ field     │ true, false            │ mycontext pin <id> |   │ Injected at every       │
+│          │           │                        │ mycontext unpin <id>   │ session start. `edit    │
+│          │           │                        │                        │ --always=true` is the   │
+│          │           │                        │                        │ same change under       │
+│          │           │                        │                        │ another name.           │
+└──────────┴───────────┴────────────────────────┴────────────────────────┴─────────────────────────┘
+
+And on a `rule` in particular:
+┌───────────┬───────────┬──────────┬───────────────────────────────┬───────────────────────────────┐
+│ name      │ stored as │ values   │ how to change it              │ what it is                    │
+├───────────┼───────────┼──────────┼───────────────────────────────┼───────────────────────────────┤
+│ directive │ field     │ do, dont │ mycontext edit <id> --extra   │ Whether this rule tells you   │
+│           │           │          │ directive=<value>             │ to do something or not to. It │
+│           │           │          │                               │ is what the rule MEANS, which │
+│           │           │          │                               │ is why `directive` can never  │
+│           │           │          │                               │ be removed from the category. │
+└───────────┴───────────┴──────────┴───────────────────────────────┴───────────────────────────────┘
 ```
 <!-- /example -->
 
@@ -2402,6 +2461,7 @@ moves no count of what governs.
 | `mycontext session name <id> <name>` | give one session a handle you can type instead of a hex prefix. **The id is explicit and never guessed** — no CLI surface is handed a session id at all — and a prefix is accepted only while it picks out exactly one of the sessions `mycontext session list` shows: a prefix that matches two is refused with both named, never resolved to one of them, because a name that landed on the wrong session looks exactly like one that landed on the right one. An id this log has never seen is refused too, since it is a typo and accepting it would put an entry in the store nothing can reach. Nothing about the name is quietly fixed up: one that is empty, over 64 characters, carries a newline, or is already held by another session is **refused** rather than trimmed or renumbered, and the refusal names the session holding it. It writes no audit record — naming is session metadata, it changes nothing about what governs this project, and it puts no text in front of a model. The names live in `.my_context/state/session-names.json`, gitignored generated state like everything else under `state/`, because a session id identifies one machine and one afternoon and has no business travelling with the corpus. Unlike the dedupe files beside it, that store is **not** swept at 30 days: a name outlives the session it describes on purpose, since it is the only human-readable handle on an entry the audit log still carries |
 | `mycontext session carry <id>` | choose which session a new one carries forward from — its index lines arrive marked and hoisted to the front of this session's index ([the carry](#the-index--so-nothing-is-invisible)). `--none` carries nothing, and is a state of its own rather than a return to the default; `--show` reads back what a new session would carry today and whether that is a choice or the default. An id the listing marks not `carryable` is refused rather than stored. Like `session name`, the id is explicit and never guessed — **the CLI is handed no session id at all**, because it runs in a terminal rather than inside a session |
 | `mycontext ui` | the read-only web UI, served on `127.0.0.1` — `--port N`, and `--no-open` to print the URL instead of opening a browser. Loopback only: it refuses to start on any other address rather than warning. The page trades a one-shot URL fragment nonce for a token that reaches neither disk nor a process command line, and the server exits after fifteen idle minutes. The browser app is still being built — today the served page is an empty shell |
+| `mycontext statusline` | the opt-in bridge to Claude Code's status line, and the only thing here that writes outside `.my_context/`. `mycontext statusline install` prints the `statusLine` setting you have now and exactly what would replace it, and writes **nothing** without `--yes`; `--settings <path>` chooses the file, defaulting to Claude Code's own (`CLAUDE_CONFIG_DIR`, else `~/.claude/settings.json`). Once installed, `mycontext statusline` runs on every assistant message: it prints the model, the context in use and how much of that came from project knowledge, and tees Claude Code's payload to a per-session file the web UI reads. `mycontext statusline uninstall --yes` puts the replaced setting back **byte for byte** — the whole file is saved, not just the key — and refuses outright when the `statusLine` in the file is no longer this bridge, because a setting you made after installing is not ours to overwrite on the way out |
 
 **Hand it on.**
 
@@ -2585,22 +2645,24 @@ Three consequences worth knowing:
 > durable yourself.
 
 > [!NOTE]
-> **Decided for v2.0 and not built: half of the log will travel, deliberately filtered.**
-> The v2.0 scope decision reverses "never" for one half of the log, and only that half. When
-> a corpus is exported, its **mutations** are to go with it — `create`, `update`, `stage`,
-> `promote`, `discard`, `supersede`, `accept`, `refresh`, `link`, `unlink` — because an
-> item's Markdown carries no `created` or `updated` field, so those records are the only
-> thing that can date an item or say who touched it. **Injections, hook actions and focus
-> records are not to travel**, for the reason the warning above already gives: they describe
-> a machine rather than a corpus, and they are where the local paths and the session ids
-> are. History that arrives from elsewhere is to land in `.audit/imported/` rather than be
-> merged into your own `audit.jsonl`, so a receiver can always tell what it witnessed from
-> what it was told — and even then it can only rank a review queue by risk, never justify
-> trust, because the log has no hash chain, no signature and no sequence number. **None of
-> this is built: there is no export command in this release, and nothing in the log travels
-> today.** What does exist is the split it rests on — the per-record kind you can already
-> filter by with `mycontext audit --kind`. It is recorded here, rather than only in
-> [section 8](#8-not-yet-available), because the claim it changes is this section's own.
+> **Half of the log travels with an export, deliberately filtered.** When a corpus is
+> exported, its **mutations** go with it — `create`, `update`, `stage`, `promote`,
+> `discard`, `supersede`, `accept`, `refresh`, `link`, `unlink` — because an item's
+> Markdown carries no `created` or `updated` field, so those records are the only thing
+> that can date an item or say who touched it. **The five other kinds
+> `mycontext audit --kind` accepts do not travel** — injections, hook actions, focus
+> records, access records and progress records — for the reason the warning above already
+> gives: they describe a machine rather than a corpus, and they are where the local paths
+> and the session ids are. History that arrives from elsewhere lands in
+> `.audit/imported/<pack>/` rather than being merged into your own `audit.jsonl`, so a
+> receiver can always tell what it witnessed from what it was told — and even then it can
+> only rank a review queue by risk, never justify trust, because the log has no hash chain,
+> no signature and no sequence number. Verified by execution: an export of this repository's
+> own corpus wrote a `history.jsonl` whose every record was kind `mutation`, and importing
+> that artefact into a fresh workspace filed the receiving copy under
+> `.audit/imported/<pack>/history.jsonl`.
+> [Handing the corpus on](#handing-the-corpus-on--mycontext-export) is where the command
+> that writes it is described.
 
 > [!WARNING]
 > **A hook that fails to write its record does not tell you.** Hooks must fail open
@@ -3153,11 +3215,17 @@ because it is what you are relying on:
   to discover.
 - **Query before asserting how this project works** — a limit, a policy, a rejected option, a
   naming rule — and never guess an id, because ids look guessable and are not.
-- **Print the human's command instead of running it.** The skill names promotion, discard,
-  `lesson-accept`, `supersede`, `edit` and `repair` as human actions, states that a staged
-  revision is not in force and must be reported as staged, and says outright that
+- **Print the human's command instead of running it.** The skill carries two enumerations
+  rather than a summary of them. The first names every command that changes what governs
+  here. The second — its never-run-these sentence — is that list plus
+  `review discard-revision`, which changes nothing about what governs but ends a proposal
+  for good, plus the four `edit` aliases `pin`, `unpin`, `harden` and `soften`, because an
+  agent told never to run `edit` is not thereby told never to run `pin`. String for string,
+  that second list is the deny block section 7 recommends. The skill also states that a
+  staged revision is not in force and must be reported as staged, and says outright that
   [nothing in the plugin stops an agent with a shell](#7-the-trust-boundary) from running any
-  of them.
+  of them. Both enumerations are checked against what the real argument parser accepts, so
+  neither can fall behind a command that ships.
 
 Read it before trusting it: it is instruction, not enforcement, and it is the one component
 here whose effect depends on a model choosing to follow it. What *is* enforced is the draft
@@ -3311,16 +3379,20 @@ every other switch, not just to `--yes`.
 
 **An unrecognised flag is refused — on most commands.** `mycontext status --ful` stops and
 names the typo rather than printing the default report and exiting 0. The commands that
-check are `add`, `list`, `status`, `decay`, `doctor`, `review` (each subcommand against its
-own set), `ingest-status`, `query`, `repair`, `supersede`, `edit`, `focus`, `audit`,
-`search`, `refresh`, `examples`, `export` and `pack` (each subcommand against its own set).
-`init` refuses too, in its own words — it takes no
-arguments at all, and says so rather than ignoring one. `mycontext help` refuses by a third
-route: it reads whatever follows as a topic name, and `--anything` is not one of its four
-topics. The ones that do **not** check are `show`, `rebuild`, `ingest`, `ingest-apply`,
-`lesson`, `lesson-stage`, `lesson-accept` and `lesson-discard`: a flag those do not know is
-ignored without a word. The gap is real and worth knowing before you trust a flag to have
-taken effect.
+check are `add`, `audit`, `decay`, `doctor`, `edit`, `examples`, `export`, `focus`,
+`harden`, `inbox-promote`, `ingest-status`, `lesson`, `list`, `pin`, `query`, `refresh`,
+`repair`, `search`, `soften`, `status`, `supersede`, `todo`, `ui` and `unpin`, plus
+`pack`, `procedure`, `review` and `session`, each of which checks a subcommand against its
+own set rather than against one union. `init` refuses too, in its own words — it takes
+exactly one flag, `--pack <path>`, and names the argument it will not act on rather than
+ignoring it. `mycontext help` refuses by a third route: it reads whatever follows as a topic
+name, and `--anything` is not one of its seven topics. The ones that do **not** check are
+`show`, `rebuild`, `ingest`, `ingest-apply`, `lesson-stage`, `lesson-accept` and
+`lesson-discard`: hand one of those the arguments it asks for, and a flag it does not know
+is ignored without a word. Each name above was measured rather than remembered — every
+command run with the positionals it requires and one flag no command accepts — and nothing
+pins the list to the parsers, so this is the paragraph to re-measure when a command is
+added. The gap is real and worth knowing before you trust a flag to have taken effect.
 
 ## 6. Configuration
 
@@ -3379,7 +3451,7 @@ and applying that rule (`toDocumentMarkdown`), so `npm run gen:docs` regenerates
 `test/docs/examples.test.ts` re-runs the command and applies the same rule from the same
 function on every test run, so a block that has fallen behind the catalogue fails the suite.
 The headings are folded rather than kept because they are the *tool's* headings, not
-sections of this document: written as headings they would put 27 entries into this
+sections of this document: written as headings they would put 28 entries into this
 document's outline that its table of contents does not link to.
 
 It is printed here in full rather than folded away. The comparisons are the part of this
@@ -3437,6 +3509,110 @@ Only the types below are accepted in this project. Anything else is refused.
 | `risk` | rationale | `RISK-` | May occur and would harm |
 | `todo` | rationale | `TODO-` | Something to build or fix later, captured the moment it occurs to you |
 | `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
+
+**What may be changed on an item, and by which command**
+
+Everything in this section is rendered from the catalogue's own declarations,
+so it says what the write path enforces rather than what someone once believed
+it enforced.
+
+Read each entry as three answers and a sentence. **Where it is stored** decides
+what may be done to it at all: a `field` holds one value and is changed in
+place, while a `tag` is a membership — added and removed, never updated, which
+is why a name you would ever want to change is a field and not a tag. **Which
+values are legal** is a closed list or free text. **The command** is the
+spelling, as it is typed; some names have two, and some have none.
+
+The rules mostly belong to the **tier** rather than to the type, so they are
+declared once per tier — and the two tiers differ, for the reason given above
+the table. A type then adds only the names that are its own.
+
+**Every `normative`-tier item:**
+
+- **`title`** — a field; free text; `mycontext edit <id> --title "…"`
+  The one-line name. Changing it does not change the id.
+- **`body`** — a field; free text; `mycontext edit <id> --body "…" | --file <path>`
+  What the item actually says. On a governing item this is gated and previewed.
+- **`scope`** — a field; free text; `mycontext edit <id> --scope "a/**,b/**"`
+  The globs this governs. Empty means everywhere, unless the category sets
+  scopePolicy required.
+- **`tags`** — a tag; free text; `mycontext edit <id> --tags "a,b"`
+  REPLACES the whole list. Read the current tags back first or the others are
+  dropped.
+- **`status`** — a field; `draft`, `active`, `validated`, `deprecated`, `superseded`; `mycontext edit <id> --status <status>`
+  Whether it governs. Moving a normative item into active or validated is gated
+  and previewed.
+- **`severity`** — a field; `hard`, `soft`; `mycontext harden <id> | mycontext soften <id>`
+  Binding or advisory. `edit --severity` is the same change under another name.
+- **`always`** — a field; `true`, `false`; `mycontext pin <id> | mycontext unpin <id>`
+  Injected at every session start. `edit --always=true` is the same change
+  under another name.
+
+**Every `rationale`-tier item:**
+
+- **`title`** — a field; free text; `mycontext edit <id> --title "…"`
+  The one-line name. Changing it does not change the id.
+- **`body`** — a field; free text; `mycontext edit <id> --body "…" | --file <path>`
+  What the item actually says. Ungated on this tier — nothing governs before or
+  after.
+- **`scope`** — a field; free text; `mycontext edit <id> --scope "a/**,b/**"`
+  The globs this is about. Accepted on this tier, unlike severity and always.
+- **`tags`** — a tag; free text; `mycontext edit <id> --tags "a,b"`
+  REPLACES the whole list. Read the current tags back first or the others are
+  dropped.
+- **`status`** — a field; `draft`, `active`, `validated`, `deprecated`, `superseded`; `mycontext edit <id> --status <status>`
+  Ungated on this tier: a rationale item governs nothing before or after.
+- **`severity`** — a field; `soft`; `mycontext soften <id>`
+  Only soft. `--severity hard` is REFUSED here — severity governs on the
+  normative tier only.
+- **`always`** — a field; `false`; `mycontext unpin <id>`
+  Only false. `--always true` is REFUSED here — pinning governs on the
+  normative tier only.
+
+**`open_question`** — the `normative` rules above, and 1 of its own:
+
+- **`blocks`** — a field; free text; `mycontext edit <id> --extra blocks=<value>`
+  What cannot proceed until this is answered. Free text — name the work, not
+  the person.
+
+**`requirement`** — the `normative` rules above, and 1 of its own:
+
+- **`kind`** — a field; free text; `mycontext edit <id> --extra kind=<value>`
+  What kind of requirement this is. The shipped example uses `functional`;
+  nothing constrains the value today.
+
+**`rule`** — the `normative` rules above, and 1 of its own:
+
+- **`directive`** — a field; `do`, `dont`; `mycontext edit <id> --extra directive=<value>`
+  Whether this rule tells you to do something or not to. It is what the rule
+  MEANS, which is why `directive` can never be removed from the category.
+
+**`assumption`** — the `rationale` rules above, and 2 of its own:
+
+- **`validate_by`** — a field; free text; `mycontext edit <id> --extra validate_by=<value>`
+  The date by which this premise must be checked, as YYYY-MM-DD. An assumption
+  with no deadline is a belief.
+- **`validated_on`** — a field; free text; `mycontext edit <id> --extra validated_on=<value>`
+  The date it was actually checked, as YYYY-MM-DD. Absent means it has not
+  been.
+
+**`risk`** — the `rationale` rules above, and 2 of its own:
+
+- **`likelihood`** — a field; free text; `mycontext edit <id> --extra likelihood=<value>`
+  How likely it is. The shipped example uses `medium`; nothing constrains the
+  value today.
+- **`impact`** — a field; free text; `mycontext edit <id> --extra impact=<value>`
+  How much it would harm. The shipped example uses `high`; nothing constrains
+  the value today.
+
+The other 19 — `constraint`, `environment`, `glossary`, `instruction`,
+`invariant`, `known_issue`, `non_goal`, `pattern`, `procedure`, `runbook`,
+`standard`, `adr`, `decision`, `edge_case`, `lesson`, `note`, `reference`,
+`todo`, `tradeoff` — declare nothing of their own: what may be changed on one
+is exactly its tier's rules above, and nothing else.
+
+`mycontext examples <type>` prints the same surface for one type, beside a
+worked specimen of it.
 
 **What each type is for, and its nearest neighbour**
 
@@ -5029,7 +5205,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 12 of the 37 CLI commands have none, each for a reason
+is **listed rather than discovered**. 13 of the 38 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
@@ -5061,6 +5237,11 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
   that only *previewed* an import and then printed the `mycontext pack import` for you to
   run is the shape `/mycontext:lesson-stage` already uses, and it is what this row is
   waiting for.
+- `statusline` is Claude Code's own configuration rather than anything in this corpus. Run
+  bare it reads a payload only Claude Code sends, on stdin, which a slash command has no way
+  to produce; and `statusline install` edits `settings.json`, which is a decision about the
+  user's own editor. A slash command for it would be the model reconfiguring the tool it is
+  running inside.
 
 Two more one-sided rows, both deliberate. `load_context` has no CLI counterpart because
 injection happens into a session and a terminal is not one — the absence is a property of
@@ -5268,7 +5449,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "12 of the 37 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "13 of the 38 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

@@ -139,6 +139,11 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
     'read in a terminal before choosing one. A model running INSIDE a session is not the ' +
     'reader of that table: it already has the session it is in, and what it would need is ' +
     'the ability to name one or carry from one, neither of which this listing does.',
+  statusline: 'Configuration belonging to Claude Code rather than anything in this corpus. '
+    + 'Run bare it reads a payload that only Claude Code sends, on stdin, which a slash '
+    + 'command has no way to produce; and `statusline install` edits settings.json, which is '
+    + 'a decision about the editor the user is sitting in, taken by that user, in a terminal. '
+    + 'A slash command for it would be the model reconfiguring the tool it runs inside.',
 };
 
 /**

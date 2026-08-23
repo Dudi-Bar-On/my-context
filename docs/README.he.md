@@ -1935,7 +1935,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 ```mermaid
 flowchart TB
   U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>77 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>37 פקודות שורת פקודה"]
+  U --> CL["<b>mycontext …</b><br/>38 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>ארבעה-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2012,12 +2012,12 @@ claude plugin details mycontext@mycontext
 <div dir="rtl">
 
 הוא מדפיס את מצאי הרכיבים — כל קובץ פקודה שב-<span dir="ltr">`commands/`</span> והמיומנות
-`mycontext`, שמונת ה-hooks ושרת ה-MCP האחד. כך אתם מוודאים שהתוסף נטען, במקום להניח שכן.
+`mycontext`, שמונה עשר ה-hooks ושרת ה-MCP האחד. כך אתם מוודאים שהתוסף נטען, במקום להניח שכן.
 קראו את הספירות עם תיקון אחד ביד: ל-<span dir="ltr">`claude plugin details`</span> אין שורת
 פקודות, והיא מדווחת על הפקודות ועל המיומנות יחד תחת כותרת `Skills` אחת, כך שהמספר שמופיע
 שם הוא מספר הפקודות ועוד אחת. כל פקודה בפרק הזה נקבעה על ידי הרצתה, לא מקריאת התיעוד.
 
-שמונת ה-hooks, ולשם מה כל אחד מהם:
+שמונה עשר ה-hooks, ולשם מה כל אחד מהם:
 
 | Hook | מתי נורה | מה my_context עושה בו | `timeout` |
 |---|---|---|---|
@@ -2029,6 +2029,16 @@ claude plugin details mycontext@mycontext
 | <span dir="ltr">`PostToolUse`</span> | אחרי <span dir="ltr">`Write`, `Edit`</span> או <span dir="ltr">`MultiEdit`</span> | נדנוד הלכידה | 5 |
 | <span dir="ltr">`SessionEnd`</span> | סשן מסתיים — כולל ה-<span dir="ltr">`SessionEnd(reason: "clear")`</span> ש-<span dir="ltr">`/clear`</span> יורה על מזהה הסשן הישן לפני שהוא טובע חדש | מסיר את קבצי ה-seen ואת תצלום השחזור של החלון שהושמד — מצב ששום ירייה אחרת אינה יכולה להגיע אליו — ורושם את המחיקה. בארבע הסיבות שבהן מזהה הסשן שורד את האירוע הוא אינו מסיר דבר, במכוון | 2 |
 | <span dir="ltr">`PostToolUseFailure`</span> | אחרי שקריאת כלי נכשלה | שורת ביקורת אחת לכל קריאה שנכשלה, ותו לא. **לא מאומת**: שום גשוש כאן לא קבע ש-Claude Code יורה את האירוע הזה בכלל, ולא איך המטען שלו קורא לסיבת הכשל. אם הוא לעולם אינו נורה, דבר אינו נכתב ודבר אינו נשבר | 5 |
+| <span dir="ltr">`FileChanged`</span> | קובץ משתנה תחת <span dir="ltr">`.my_context/items/`</span> או <span dir="ltr">`.my_context/config.json`</span> — האירוע היחיד שרואה קובץ קורפוס נערך ביד, בעורך, מחוץ ל-my_context | שורת ביקורת אחת שנוקבת בקובץ ובפועל (<span dir="ltr">`change`, `add`, `unlink`</span>). אינו בונה מחדש דבר: האינדקס הוא היטל והוא נבנה מחדש בכל פתיחה. אינו יכול להבחין בין העריכה שלכם לכתיבה של my_context עצמו, והשורה אומרת זאת. קבוצת הצפייה מחריגה במכוון את יומן הביקורת, מפני שה-hook הזה מוסיף אליו | 3 |
+| <span dir="ltr">`InstructionsLoaded`</span> | קובץ <span dir="ltr">`CLAUDE.md`</span> נטען — בתחילת סשן, בהתאמת glob, דרך include, או אחרי כיווץ | שורת ביקורת אחת שנוקבת בדרג הזיכרון ובסיבה. זה הדבר האחר שמגיע להקשר שלכם, ועד שה-hook הזה נולד my_context יכול היה לתת דין וחשבון רק על המחצית שלו. אינו מציע דבר ואינו עורך דבר | 3 |
+| <span dir="ltr">`ConfigChange`</span> | אחד מדרגי ההגדרות של Claude Code עצמו משתנה — <span dir="ltr">`user_settings`, `project_settings`, `local_settings`, `policy_settings`</span> או <span dir="ltr">`skills`</span> | שורת ביקורת אחת שנוקבת בדרג. **לא** <span dir="ltr">`.my_context/config.json`</span>, שאינו אחד מחמשת המקורות ומכוסה על ידי <span dir="ltr">`FileChanged`</span> שלמעלה. אינו קורא דבר ואינו טוען דבר מחדש | 3 |
+| <span dir="ltr">`PermissionDenied`</span> | קריאת כלי נדחית — לרוב על ידי ה-<span dir="ltr">`PreToolUse`</span> של my_context עצמו | שורת ביקורת אחת שנוקבת בכלי, ובשאלה אם הסירוב היה שלנו. לעולם לא ה-<span dir="ltr">`tool_input`</span>, שהוא הארגומנטים של הקריאה שנדחתה. אינו מציב את דגל ה-<span dir="ltr">`retry`</span> של הפלטפורמה | 3 |
+| <span dir="ltr">`SubagentStop`</span> | תת-סוכן מסיים | שורת ביקורת אחת שנוקבת בסוכן, וסוגרת את הזוג ש-<span dir="ltr">`SubagentStart`</span> פותח: ניסיון, השלמה, וסיום. הוא **אינו** מסיר את קובץ ה-seen של התת-סוכן — זה שינוי במצב הדה-דופליקציה, והוא אינו של ה-hook הזה לעשות | 3 |
+| <span dir="ltr">`Stop`</span> | תור של העוזר מסתיים | שורת ביקורת אחת. זה הגבול היחיד ביומן שאינו קריאת כלי, מוטציה או קצה סשן, וזה מה שהופך סשן לקריא לאחור. אינו פולט נדנוד לכידה: זה נשאר ב-<span dir="ltr">`PostToolUse`</span> | 3 |
+| <span dir="ltr">`Setup`</span> | Claude Code מריץ setup, עם <span dir="ltr">`trigger`</span> של <span dir="ltr">`init`</span> או <span dir="ltr">`maintenance`</span> | שורת ביקורת אחת, **במרחבי עבודה שכבר קיימים**. בתיקייה בלי מרחב עבודה הוא אינו עושה דבר: ליצור אחד, או להריץ את בדיקות ה-doctor, זו החלטה על מה my_context עושה בלי שביקשו ממנו, והיא טרם התקבלה | 3 |
+| <span dir="ltr">`TaskCreated`</span> | הרתמה יוצרת משימה | שורת ביקורת אחת הנושאת את מזהה המשימה ואת נושאה. שום פריט קורפוס אינו נכתב — לקשור את משימות הרתמה לקטגוריית ה-<span dir="ltr">`task`</span> של הקורפוס פירושו ליצור תוכן שאיש לא ביקש, וזו החלטה נפרדת | 3 |
+| <span dir="ltr">`TaskCompleted`</span> | הרתמה משלימה משימה | אותה שורה, תחת ה-op שלה, כך שאפשר לסנן ביניהן | 3 |
+| <span dir="ltr">`UserPromptExpansion`</span> | אחת מפקודות ה-<span dir="ltr">`/mycontext:*`</span> של התוסף הזה מוקלדת — האירוע שפקודת סלאש יורה כ-600 מילישניות *לפני* ה-<span dir="ltr">`UserPromptSubmit`</span> שנושא את הטקסט הגולמי שלה | שורת ביקורת אחת שנוקבת בפקודה. ה-matcher הוא <span dir="ltr">`^mycontext:`</span>, כך שאף תהליך אינו נטען עבור פקודות סלאש של אחרים ואף אחד כלל עבור טקסט מוקלד רגיל. לעולם אינו ממלא <span dir="ltr">`additionalContext`</span> ולעולם אינו מדכא את הפרומפט שלכם | 3 |
 
 <span dir="ltr">`timeout`</span> נמדד בשניות, והוא המספר של **Claude Code** ולא של
 my_context: זה הרגע שבו Claude Code הורג את התהליך. אף אחד מה-hooks האלה אינו חוסם את זמן
@@ -2207,7 +2217,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 
 ### מה שאתה מריץ: שורת הפקודה
 
-37 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+38 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד משבעה. ארבעה מהם הם מושגים —
 <span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span> — ושלושה הם עמוד אחד לכל
 משטח הפעלה: <span dir="ltr">`cli`, `tools`, `slash`</span>, שכל אחד מהם נוצר מהרישום,
@@ -2346,6 +2356,55 @@ directive: dont
 # Never log request bodies on auth endpoints
 
 Bodies carry passwords and reset tokens; logs are retained for 90 days.
+
+What may be changed on a `rule`, and by which command.
+
+Every `normative`-tier item:
+┌──────────┬───────────┬────────────────────────┬────────────────────────┬─────────────────────────┐
+│ name     │ stored as │ values                 │ how to change it       │ what it is              │
+├──────────┼───────────┼────────────────────────┼────────────────────────┼─────────────────────────┤
+│ title    │ field     │ free text              │ mycontext edit <id>    │ The one-line name.      │
+│          │           │                        │ --title "…"            │ Changing it does not    │
+│          │           │                        │                        │ change the id.          │
+│ body     │ field     │ free text              │ mycontext edit <id>    │ What the item actually  │
+│          │           │                        │ --body "…" | --file    │ says. On a governing    │
+│          │           │                        │ <path>                 │ item this is gated and  │
+│          │           │                        │                        │ previewed.              │
+│ scope    │ field     │ free text              │ mycontext edit <id>    │ The globs this governs. │
+│          │           │                        │ --scope "a/**,b/**"    │ Empty means everywhere, │
+│          │           │                        │                        │ unless the category     │
+│          │           │                        │                        │ sets scopePolicy        │
+│          │           │                        │                        │ required.               │
+│ tags     │ tag       │ free text              │ mycontext edit <id>    │ REPLACES the whole      │
+│          │           │                        │ --tags "a,b"           │ list. Read the current  │
+│          │           │                        │                        │ tags back first or the  │
+│          │           │                        │                        │ others are dropped.     │
+│ status   │ field     │ draft, active,         │ mycontext edit <id>    │ Whether it governs.     │
+│          │           │ validated, deprecated, │ --status <status>      │ Moving a normative item │
+│          │           │ superseded             │                        │ into active or          │
+│          │           │                        │                        │ validated is gated and  │
+│          │           │                        │                        │ previewed.              │
+│ severity │ field     │ hard, soft             │ mycontext harden <id>  │ Binding or advisory.    │
+│          │           │                        │ | mycontext soften     │ `edit --severity` is    │
+│          │           │                        │ <id>                   │ the same change under   │
+│          │           │                        │                        │ another name.           │
+│ always   │ field     │ true, false            │ mycontext pin <id> |   │ Injected at every       │
+│          │           │                        │ mycontext unpin <id>   │ session start. `edit    │
+│          │           │                        │                        │ --always=true` is the   │
+│          │           │                        │                        │ same change under       │
+│          │           │                        │                        │ another name.           │
+└──────────┴───────────┴────────────────────────┴────────────────────────┴─────────────────────────┘
+
+And on a `rule` in particular:
+┌───────────┬───────────┬──────────┬───────────────────────────────┬───────────────────────────────┐
+│ name      │ stored as │ values   │ how to change it              │ what it is                    │
+├───────────┼───────────┼──────────┼───────────────────────────────┼───────────────────────────────┤
+│ directive │ field     │ do, dont │ mycontext edit <id> --extra   │ Whether this rule tells you   │
+│           │           │          │ directive=<value>             │ to do something or not to. It │
+│           │           │          │                               │ is what the rule MEANS, which │
+│           │           │          │                               │ is why `directive` can never  │
+│           │           │          │                               │ be removed from the category. │
+└───────────┴───────────┴──────────┴───────────────────────────────┴───────────────────────────────┘
 ```
 <!-- /example -->
 
@@ -2552,6 +2611,7 @@ changes, can be.
 | <span dir="ltr">`mycontext session name <id> <name>`</span> | נותנת לסשן אחד ידית שאפשר להקליד במקום קידומת הקסדצימלית. **המזהה מפורש ולעולם אינו מנוחש** — שום משטח של שורת הפקודה אינו מקבל מזהה סשן כלל — וקידומת מתקבלת רק כל עוד היא מבודדת בדיוק אחד מהסשנים ש-<span dir="ltr">`mycontext session list`</span> מציגה: קידומת שמתאימה לשניים נדחית תוך נקיבה בשם שניהם, ולעולם אינה מיושבת לאחד מהם, כי שם שנחת על הסשן הלא נכון נראה בדיוק כמו שם שנחת על הנכון. גם מזהה שהיומן הזה מעולם לא ראה נדחה, כי הוא שגיאת הקלדה, וקבלתו הייתה מכניסה למאגר רשומה ששום דבר לא יכול להגיע אליה. שום דבר בשם עצמו אינו מתוקן בשקט: שם ריק, ארוך מ-64 תווים, שמכיל שורה חדשה, או שסשן אחר כבר מחזיק בו — **נדחה** במקום להיחתך או להשתנות, והדחייה נוקבת בשם הסשן שמחזיק בו. היא אינה כותבת שום רשומת ביקורת — מתן שם הוא מטא-נתון של סשן, הוא אינו משנה דבר במה שמנהל את הפרויקט הזה, והוא אינו מעמיד שום טקסט לפני מודל. השמות יושבים ב-<span dir="ltr">`.my_context/state/session-names.json`</span>, מצב מיוצר ב-gitignore ככל מה שתחת <span dir="ltr">`state/`</span>, מפני שמזהה סשן מזהה מכונה אחת ואחר צהריים אחד ואין לו מה לנסוע עם הקורפוס. בשונה מקובצי הדה-דופליקציה שלצדו, המאגר הזה **אינו** נסרק ומנוקה אחרי 30 יום: שם שורד את הסשן שהוא מתאר במכוון, כי הוא הידית הקריאה־לאדם היחידה על רשומה שיומן הביקורת עדיין נושא |
 | <span dir="ltr">`mycontext session carry <id>`</span> | בוחרת מאיזה סשן סשן חדש נושא קדימה — שורות האינדקס שלו מגיעות מסומנות ומורמות לראש האינדקס של הסשן הזה ([הנשיאה](#האינדקס--כדי-ששום-דבר-לא-יהיה-בלתי-נראה)). <span dir="ltr">`--none`</span> לא נושאת דבר, והיא מצב בפני עצמו ולא חזרה לברירת המחדל; <span dir="ltr">`--show`</span> קוראת בחזרה מה סשן חדש היה נושא היום, והאם זו בחירה או ברירת המחדל. מזהה שהרשימה מסמנת כלא-<span dir="ltr">`carryable`</span> נדחה במקום להישמר. כמו ב-<span dir="ltr">`session name`</span>, המזהה מפורש ולעולם אינו מנוחש — **שורת הפקודה אינה מקבלת שום מזהה סשן**, כי היא רצה במסוף ולא בתוך סשן |
 | `mycontext ui` | ממשק הרשת לקריאה בלבד, מוגש על <span dir="ltr">`127.0.0.1`</span> — <span dir="ltr">`--port N`</span>, ו-<span dir="ltr">`--no-open`</span> מדפיסה את הכתובת במקום לפתוח דפדפן. לולאה מקומית בלבד: הוא מסרב לעלות בכל כתובת אחרת במקום להזהיר. הדף מחליף nonce חד-פעמי שבמקטע הכתובת באסימון שאינו מגיע לא לדיסק ולא לשורת פקודה, והשרת יוצא אחרי חמש-עשרה דקות של חוסר פעילות. יישום הדפדפן עדיין נבנה — היום הדף המוגש הוא מעטפת ריקה |
+| `mycontext statusline` | הגשר האופציונלי אל שורת הסטטוס של Claude Code, והדבר היחיד כאן שכותב מחוץ ל-<span dir="ltr">`.my_context/`</span>. <span dir="ltr">`mycontext statusline install`</span> מדפיסה את הגדרת ה-<span dir="ltr">`statusLine`</span> שיש לך עכשיו ואת מה שיחליף אותה בדיוק, ואינה כותבת **דבר** בלי <span dir="ltr">`--yes`</span>; <span dir="ltr">`--settings <path>`</span> בוחרת את הקובץ, וברירת המחדל היא זה של Claude Code (<span dir="ltr">`CLAUDE_CONFIG_DIR`</span>, ואחרת <span dir="ltr">`~/.claude/settings.json`</span>). לאחר ההתקנה <span dir="ltr">`mycontext statusline`</span> רצה בכל הודעה של העוזר: היא מדפיסה את המודל, את ההקשר שבשימוש וכמה ממנו הגיע מידע הפרויקט, ומעתיקה את המטען של Claude Code לקובץ אחד לכל סשן שממשק הרשת קורא. <span dir="ltr">`mycontext statusline uninstall --yes`</span> מחזירה את ההגדרה שהוחלפה **בית אחר בית** — הקובץ כולו נשמר, לא רק המפתח — ומסרבת לחלוטין כאשר ה-<span dir="ltr">`statusLine`</span> שבקובץ אינו הגשר הזה, משום שהגדרה שקבעת אחרי ההתקנה אינה שלנו לדרוס ביציאה |
 
 **מסירה הלאה.**
 
@@ -2769,22 +2829,24 @@ recorded" — לעולם לא כאפס**. אפס הוא מדידה; היעדר �
 > [!NOTE]
 > <div dir="rtl">
 >
-> **הוכרע ל-v2.0 ולא נבנה: מחצית מהיומן תיסע, מסוננת במכוון.** הכרעת ההיקף של v2.0 מבטלת
-> את ה"לעולם לא" עבור מחצית אחת של היומן, ורק עבורה. כשקורפוס מיוצא, **רשומות השינוי** שלו
-> אמורות לנסוע איתו — <span dir="ltr">`create`, `update`, `stage`, `promote`, `discard`,
+> **מחצית מהיומן נוסעת עם ייצוא, מסוננת במכוון.** כשקורפוס מיוצא, **רשומות השינוי** שלו
+> נוסעות איתו — <span dir="ltr">`create`, `update`, `stage`, `promote`, `discard`,
 > `supersede`, `accept`, `refresh`, `link`, `unlink`</span> — מפני שב-Markdown של פריט אין
 > שדה <span dir="ltr">`created`</span> ואין שדה <span dir="ltr">`updated`</span> כלל, ולכן
-> רשומות השינוי הן הדבר היחיד שיכול לומר מתי פריט נוצר או מי נגע בו. **הזרקות, פעולות
-> hooks ורשומות מיקוד אינן אמורות לנסוע**, מהסיבה שהאזהרה שלמעלה כבר נותנת: הן מתארות
-> מכונה ולא קורפוס, והן המקום שבו נמצאים הנתיבים המקומיים ומזהי הסשן. היסטוריה שמגיעה
-> ממקום אחר אמורה לנחות ב-<span dir="ltr">`.audit/imported/`</span> ולא להתמזג לתוך
-> <span dir="ltr">`audit.jsonl`</span> שלכם, כך שהצד המקבל תמיד יכול להבחין בין מה שהוא
-> עצמו היה עד לו ובין מה שסופר לו — וגם אז היא יכולה רק לדרג תור סקירה לפי סיכון, לעולם
-> לא להצדיק אמון, מפני שליומן אין שרשרת גיבוב, אין חתימה ואין מספר סידורי. **שום דבר מזה
-> אינו בנוי: אין פקודת ייצוא בגרסה הזאת, ושום דבר ביומן אינו נוסע היום.** מה שכן קיים הוא
-> ההבחנה שהמימוש יישען עליה — סוג הרשומה, שכבר אפשר לסנן לפיו עם
-> <span dir="ltr">`mycontext audit --kind`</span>. הדבר נרשם כאן, ולא רק
-> ב[פרק 8](#8-עדיין-לא-זמין), מפני שהטענה שההכרעה משנה היא הטענה של הפרק הזה עצמו.
+> רשומות השינוי הן הדבר היחיד שיכול לומר מתי פריט נוצר או מי נגע בו. **חמשת הסוגים האחרים
+> ש-<span dir="ltr">`mycontext audit --kind`</span> מקבלת אינם נוסעים** — הזרקות, פעולות
+> hooks, רשומות מיקוד, רשומות גישה ורשומות התקדמות — מהסיבה שהאזהרה שלמעלה כבר נותנת: הן
+> מתארות מכונה ולא קורפוס, והן המקום שבו נמצאים הנתיבים המקומיים ומזהי הסשן. היסטוריה
+> שמגיעה ממקום אחר נוחתת ב-<span dir="ltr">`.audit/imported/<pack>/`</span> ואינה מתמזגת
+> לתוך <span dir="ltr">`audit.jsonl`</span> שלכם, כך שהצד המקבל תמיד יכול להבחין בין מה
+> שהוא עצמו היה עד לו ובין מה שסופר לו — וגם אז היא יכולה רק לדרג תור סקירה לפי סיכון,
+> לעולם לא להצדיק אמון, מפני שליומן אין שרשרת גיבוב, אין חתימה ואין מספר סידורי. אומת
+> בהרצה: ייצוא של הקורפוס של המאגר הזה עצמו כתב <span dir="ltr">`history.jsonl`</span> שכל
+> רשומה בו הייתה מסוג <span dir="ltr">`mutation`</span>, וייבוא של אותו ארטיפקט לסביבת
+> עבודה חדשה תייק את העותק המתקבל תחת
+> <span dir="ltr">`.audit/imported/<pack>/history.jsonl`</span>.
+> [מסירת הקורפוס הלאה](#מסירת-הקורפוס-הלאה--mycontext-export) היא המקום שבו מתוארת הפקודה
+> שכותבת אותו.
 >
 > </div>
 
@@ -3382,10 +3444,17 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
   והמיומנות אומרת זאת במפורש במקום להשאיר למודל לגלות.
 - **לתשאל לפני שטוענים איך הפרויקט הזה עובד** — מגבלה, מדיניות, אפשרות שנדחתה, כלל שמות —
   ולעולם לא לנחש מזהה, מפני שמזהים נראים ניחושיים ואינם.
-- **להדפיס את הפקודה של האדם במקום להריץ אותה.** המיומנות נוקבת בקידום, בפסילה,
-  ב-`lesson-accept`, ב-`supersede`, ב-`edit` וב-`repair` כפעולות של אדם, קובעת שרוויזיה
-  ממתינה אינה בתוקף ושיש לדווח עליה ככזאת, ואומרת במפורש
-  ש[שום דבר בתוסף אינו עוצר סוכן שיש לו shell](#7-גבול-האמון) מלהריץ כל אחת מהן.
+- **להדפיס את הפקודה של האדם במקום להריץ אותה.** המיומנות נושאת שתי רשימות מנויות ולא
+  סיכום שלהן. הראשונה נוקבת בכל פקודה שמשנה את מה שמושל כאן. השנייה — משפט "לעולם אל
+  תריץ" שלה — היא אותה רשימה בתוספת <span dir="ltr">`review discard-revision`</span>,
+  שאינה משנה דבר במה שמושל אך מסיימת הצעה לתמיד, ובתוספת ארבעת הכינויים של `edit` —
+  <span dir="ltr">`pin`, `unpin`, `harden`</span> ו-`soften` — מפני שסוכן שנאמר לו לעולם
+  לא להריץ `edit` לא נאמר לו בכך לעולם לא להריץ `pin`. מחרוזת מול מחרוזת, הרשימה השנייה
+  היא בלוק הסירוב שפרק 7 ממליץ עליו. המיומנות גם קובעת שרוויזיה ממתינה אינה בתוקף ושיש
+  לדווח עליה ככזאת, ואומרת במפורש
+  ש[שום דבר בתוסף אינו עוצר סוכן שיש לו shell](#7-גבול-האמון) מלהריץ כל אחת מהן. שתי
+  הרשימות נבדקות מול מה שהמפרסר האמיתי מקבל, ולכן אף אחת מהן אינה יכולה לפגר אחרי פקודה
+  שנשלחת.
 
 קראו אותה לפני שאתם סומכים עליה: זו הנחיה, לא אכיפה, וזה הרכיב היחיד כאן שהאפקט שלו תלוי
 בכך שמודל יבחר לציית לו. מה שכן נאכף הוא כלל הטיוטה ש[בפרק 7](#7-גבול-האמון) — המיומנות
@@ -3543,17 +3612,22 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 **דגל שאינו מוכר מסורב — ברוב הפקודות.** <span dir="ltr">`mycontext status --ful`</span>
 נעצר ונוקב בשגיאת ההקלדה במקום להדפיס את דוח ברירת המחדל ולצאת עם 0. הפקודות שבודקות הן
-<span dir="ltr">`add`, `list`, `status`, `decay`, `doctor`, `review`</span> (כל תת-פקודה
-מול המערך שלה), <span dir="ltr">`ingest-status`, `query`, `repair`, `supersede`, `edit`,
-`focus`, `audit`, `search`, `refresh`, `examples`, `export`</span> ו-`pack` (כל תת-פקודה מול
-הקבוצה שלה). גם `init` מסרבת, בניסוח משלה — היא
-אינה מקבלת ארגומנטים כלל, ואומרת זאת במקום להתעלם מאחד. גם
+<span dir="ltr">`add`, `audit`, `decay`, `doctor`, `edit`, `examples`, `export`, `focus`,
+`harden`, `inbox-promote`, `ingest-status`, `lesson`, `list`, `pin`, `query`, `refresh`,
+`repair`, `search`, `soften`, `status`, `supersede`, `todo`, `ui`</span> ו-`unpin`, ובנוסף
+<span dir="ltr">`pack`, `procedure`, `review`</span> ו-`session`, שכל אחת מהן בודקת כל
+תת-פקודה מול המערך שלה ולא מול איחוד אחד. גם `init` מסרבת, בניסוח משלה — היא מקבלת דגל
+אחד בדיוק, <span dir="ltr">`--pack <path>`</span>, ונוקבת בארגומנט שלא תפעל לפיו במקום
+להתעלם ממנו. גם
 <span dir="ltr">`mycontext help`</span> מסרבת, בדרך שלישית: היא קוראת את מה שבא אחריה כשם
-נושא, ו-<span dir="ltr">`--anything`</span> אינו אחד מארבעת הנושאים שלה.
+נושא, ו-<span dir="ltr">`--anything`</span> אינו אחד משבעת הנושאים שלה.
 
 הפקודות ש**אינן** בודקות הן <span dir="ltr">`show`, `rebuild`,
-`ingest`, `ingest-apply`, `lesson`, `lesson-stage`, `lesson-accept`,
-`lesson-discard`</span>: דגל שהן אינן מכירות נזרק בלי מילה.
+`ingest`, `ingest-apply`, `lesson-stage`, `lesson-accept`,
+`lesson-discard`</span>: תנו לאחת מהן את הארגומנטים שהיא מבקשת, ודגל שהיא אינה מכירה נזרק
+בלי מילה. כל שם למעלה נמדד ולא נזכר — כל פקודה הורצה עם הארגומנטים שהיא דורשת ועם דגל שאף
+פקודה אינה מקבלת — ושום דבר אינו מקבע את הרשימה מול המפרסרים, ולכן זו הפסקה שיש למדוד
+מחדש כשנוספת פקודה.
 הפער אמיתי, וכדאי להכיר אותו לפני שסומכים על כך שדגל אכן נכנס לתוקף.
 
 ## 6. תצורה
@@ -3623,7 +3697,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 על ידי הרצת הפקודה והחלת אותו כלל (`toDocumentMarkdown`), כך ש-`npm run gen:docs` מייצר אותו
 מחדש; ו-`test/docs/examples.test.ts` מריץ את הפקודה שוב ומחיל את אותו כלל מאותה פונקציה בכל
 הרצת בדיקות, כך שגוש שפיגר אחרי הקטלוג מפיל את חבילת הבדיקות. הכותרות מקופלות ולא נשמרות
-משום שהן הכותרות של *הכלי*, לא סעיפים של המסמך הזה: לו נכתבו ככותרות, הן היו מוסיפות 27
+משום שהן הכותרות של *הכלי*, לא סעיפים של המסמך הזה: לו נכתבו ככותרות, הן היו מוסיפות 28
 ערכים למתאר של המסמך שתוכן העניינים שלו אינו מקשר אליהם.
 
 הוא מודפס כאן במלואו ולא מקופל. ההשוואות הן החלק במסמך שקובע לרוב תחת איזה סוג עובדה
@@ -3691,6 +3765,110 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | `risk` | rationale | `RISK-` | עלול להתרחש, ויזיק אם יתרחש |
 | `todo` | rationale | `TODO-` | משהו לבנות או לתקן בהמשך, שנלכד ברגע שהוא עולה בדעתכם |
 | `tradeoff` | rationale | `TRADE-` | מה הוקרב, ותמורת מה |
+
+**מה מותר לשנות בפריט, ובאיזו פקודה**
+
+כל מה שבסעיף הזה נוצר מתוך ההצהרות של הקטלוג עצמו, כך שהוא אומר מה שנתיב
+הכתיבה באמת אוכף ולא מה שמישהו האמין פעם שהוא אוכף. השמות, הערכים והפקודות
+הם מזהים שמקלידים אותם, ולכן הם מודפסים באותה צורה בכל שפה — בדיוק כמו
+העמודות המכונָתיות של הטבלה שלמעלה.
+
+קראו כל ערך כשלוש תשובות ומשפט. **היכן הוא נשמר** מכריע מה בכלל מותר לעשות
+בו: `field` מחזיק ערך אחד ומשתנה במקומו, בעוד `tag` הוא חברוּת — מוסיפים
+ומסירים אותה ולעולם לא מעדכנים אותה, ולכן שם שאי-פעם תרצו לשנות הוא שדה ולא
+תג. **אילו ערכים חוקיים** הוא רשימה סגורה או טקסט חופשי. **הפקודה** היא
+האיות, כפי שמקלידים אותו; לחלק מהשמות יש שניים, ולחלק אין אף אחד.
+
+הכללים שייכים ברובם ל**דרג** ולא לסוג, ולכן הם מוצהרים פעם אחת לכל דרג —
+ושני הדרגים אכן נבדלים זה מזה, מהסיבה שניתנה מעל הטבלה. סוג מוסיף רק את
+השמות שהם שלו.
+
+**Every `normative`-tier item:**
+
+- **`title`** — a field; free text; `mycontext edit <id> --title "…"`
+  The one-line name. Changing it does not change the id.
+- **`body`** — a field; free text; `mycontext edit <id> --body "…" | --file <path>`
+  What the item actually says. On a governing item this is gated and previewed.
+- **`scope`** — a field; free text; `mycontext edit <id> --scope "a/**,b/**"`
+  The globs this governs. Empty means everywhere, unless the category sets
+  scopePolicy required.
+- **`tags`** — a tag; free text; `mycontext edit <id> --tags "a,b"`
+  REPLACES the whole list. Read the current tags back first or the others are
+  dropped.
+- **`status`** — a field; `draft`, `active`, `validated`, `deprecated`, `superseded`; `mycontext edit <id> --status <status>`
+  Whether it governs. Moving a normative item into active or validated is gated
+  and previewed.
+- **`severity`** — a field; `hard`, `soft`; `mycontext harden <id> | mycontext soften <id>`
+  Binding or advisory. `edit --severity` is the same change under another name.
+- **`always`** — a field; `true`, `false`; `mycontext pin <id> | mycontext unpin <id>`
+  Injected at every session start. `edit --always=true` is the same change
+  under another name.
+
+**Every `rationale`-tier item:**
+
+- **`title`** — a field; free text; `mycontext edit <id> --title "…"`
+  The one-line name. Changing it does not change the id.
+- **`body`** — a field; free text; `mycontext edit <id> --body "…" | --file <path>`
+  What the item actually says. Ungated on this tier — nothing governs before or
+  after.
+- **`scope`** — a field; free text; `mycontext edit <id> --scope "a/**,b/**"`
+  The globs this is about. Accepted on this tier, unlike severity and always.
+- **`tags`** — a tag; free text; `mycontext edit <id> --tags "a,b"`
+  REPLACES the whole list. Read the current tags back first or the others are
+  dropped.
+- **`status`** — a field; `draft`, `active`, `validated`, `deprecated`, `superseded`; `mycontext edit <id> --status <status>`
+  Ungated on this tier: a rationale item governs nothing before or after.
+- **`severity`** — a field; `soft`; `mycontext soften <id>`
+  Only soft. `--severity hard` is REFUSED here — severity governs on the
+  normative tier only.
+- **`always`** — a field; `false`; `mycontext unpin <id>`
+  Only false. `--always true` is REFUSED here — pinning governs on the
+  normative tier only.
+
+**`open_question`** — the `normative` rules above, and 1 of its own:
+
+- **`blocks`** — a field; free text; `mycontext edit <id> --extra blocks=<value>`
+  What cannot proceed until this is answered. Free text — name the work, not
+  the person.
+
+**`requirement`** — the `normative` rules above, and 1 of its own:
+
+- **`kind`** — a field; free text; `mycontext edit <id> --extra kind=<value>`
+  What kind of requirement this is. The shipped example uses `functional`;
+  nothing constrains the value today.
+
+**`rule`** — the `normative` rules above, and 1 of its own:
+
+- **`directive`** — a field; `do`, `dont`; `mycontext edit <id> --extra directive=<value>`
+  Whether this rule tells you to do something or not to. It is what the rule
+  MEANS, which is why `directive` can never be removed from the category.
+
+**`assumption`** — the `rationale` rules above, and 2 of its own:
+
+- **`validate_by`** — a field; free text; `mycontext edit <id> --extra validate_by=<value>`
+  The date by which this premise must be checked, as YYYY-MM-DD. An assumption
+  with no deadline is a belief.
+- **`validated_on`** — a field; free text; `mycontext edit <id> --extra validated_on=<value>`
+  The date it was actually checked, as YYYY-MM-DD. Absent means it has not
+  been.
+
+**`risk`** — the `rationale` rules above, and 2 of its own:
+
+- **`likelihood`** — a field; free text; `mycontext edit <id> --extra likelihood=<value>`
+  How likely it is. The shipped example uses `medium`; nothing constrains the
+  value today.
+- **`impact`** — a field; free text; `mycontext edit <id> --extra impact=<value>`
+  How much it would harm. The shipped example uses `high`; nothing constrains
+  the value today.
+
+The other 19 — `constraint`, `environment`, `glossary`, `instruction`,
+`invariant`, `known_issue`, `non_goal`, `pattern`, `procedure`, `runbook`,
+`standard`, `adr`, `decision`, `edge_case`, `lesson`, `note`, `reference`,
+`todo`, `tradeoff` — declare nothing of their own: what may be changed on one
+is exactly its tier's rules above, and nothing else.
+
+<span dir="ltr">`mycontext examples <type>`</span> מדפיס את אותו משטח עבור סוג
+אחד, לצד דוגמה עובדת שלו.
 
 **למה כל סוג משמש, ומהו שכנו הקרוב**
 
@@ -5465,7 +5643,7 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
 מדפיסה ומול הקבצים ב-<span dir="ltr">`commands/`</span>.
 
 מה שנשאר הוא אי-סימטריה בכיוון השני — פקודות בלי פקודת סלאש — והיא **מפורטת ולא מתגלה**.
-ל-12 מתוך 37 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
+ל-13 מתוך 38 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
 ב-<span dir="ltr">`CLI_WITHOUT_SLASH`</span>:
 
 - <span dir="ltr">`init`</span> ו-<span dir="ltr">`rebuild`</span> רצות לפני סשן, או מחוצה
@@ -5500,6 +5678,11 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
   <span dir="ltr">`mycontext pack import`</span> שתריץ בעצמך היא בדיוק הצורה
   ש-<span dir="ltr">`/mycontext:lesson-stage`</span> כבר משתמשת בה, וזה מה שהשורה הזאת
   ממתינה לו.
+- <span dir="ltr">`statusline`</span> היא הגדרה של Claude Code עצמו ולא דבר שבקורפוס הזה.
+  בהרצה חשופה היא קוראת מ-stdin מטען ש-Claude Code לבדו שולח, ולפקודת סלאש אין דרך לייצר
+  אותו; ו-<span dir="ltr">`statusline install`</span> עורכת את
+  <span dir="ltr">`settings.json`</span>, שהיא החלטה על העורך של המשתמש עצמו. פקודת סלאש
+  עבורה הייתה המודל מגדיר מחדש את הכלי שהוא רץ בתוכו.
 
 שתי שורות חד-צדדיות נוספות, שתיהן במכוון. ל-<span dir="ltr">`load_context`</span> אין
 מקבילה בשורת הפקודה משום שהזרקה קורית אל תוך סשן וטרמינל אינו סשן — ההיעדרות היא תכונה של
@@ -5711,7 +5894,7 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 המצוטט בפרקים 3, 4 ו-6 הוא מה שה-hooks פולטים; שלכל פרק שתוכן העניינים מקשר אליו יש שורה
 בסיכום היכולות שבראש המסמך, או שהוא מנוי — עם נימוק — כמשהו שהמוצר אינו *עושה*; וששני
 המסמכים נושאים את אותו רצף כותרות ואת אותן דוגמאות באותו
-סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "12 מתוך 37
+סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "13 מתוך 38
 פקודות שורת הפקודה" שלמעלה ונכשל ב**שתי** השפות אם אחד מחצאיו סוטה — הוא סטה פעמיים לפני
 שהבדיקה נולדה — והוא מחשב באותה דרך גם את מניין הקבצים שבפסקה הזאת עצמה.
 <span dir="ltr">`parity.test.ts`</span> מחזיק את רצף הכותרות של הפרק הזה מול המקור האנגלי.
