@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, existsSync } from 'node:fs';
+import { mkdtempSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { Store } from '../../src/core/store.ts';
-import { recordAudit } from '../../src/core/audit.ts';
+import { auditLogPath, recordAudit } from '../../src/core/audit.ts';
 import { auditDbPath } from '../../src/core/audit-db.ts';
 import { corpusSelect, apiAskCorpus, apiAskAudit, apiAskSummary } from '../../src/ui/ask-model.ts';
 
@@ -305,5 +305,304 @@ test('/api/ask/summary serves the three predefined reports', () => {
     assert.equal(apiAskSummary(ws, url('/api/ask/summary', 'report=ops&role=spilled')).status, 400);
     assert.equal(apiAskSummary(ws, url('/api/ask/summary', 'report=ops&limit=0')).status, 400);
     assert.equal(apiAskSummary(ws, url('/api/ask/summary', 'report=ops&bogus=1')).status, 400);
+  } finally { done(); }
+});
+
+// --- report=tasks: the fourth report, and the join it is made of ------------
+//
+// **The claim this report exists to answer is that `items.updated_at` is NOT a
+// change time**, and these tests measure it rather than repeating it. The index
+// is rebuilt whole from Markdown on every write path, so every row carries one
+// identical rebuild stamp — asserted below over the fixture, and true of the
+// real corpus too (368 items, ONE distinct `updated_at`, measured 2026-08-23).
+// The per-item change time lives in the audit log's `mutation` records, which
+// is a DIFFERENT STORE behind a different door, so this report joins the two.
+
+/**
+ * A corpus with the project-defined `task` category enabled, five tasks, and a
+ * mutation history to join to.
+ *
+ * **Separate from `workspace()` rather than folded into it**: three tests above
+ * assert exact row counts over that corpus, and a fixture that grows under them
+ * measures something nobody asked for.
+ *
+ * `task` is NOT in any stock profile — it is defined in `config.json`, which is
+ * why `init` alone cannot add one and why the config is patched here exactly as
+ * `scripts/demo-corpus.ts` patches it. A test that invented a different shape
+ * of task would pass against a category the product does not have.
+ */
+function taskWorkspace(): { dir: string; root: string; done: () => void } {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-ask-tasks-'));
+  const quiet = (): void => {};
+  const run = (args: string[]): void => {
+    assert.equal(runCli(args, dir, quiet), 0, `fixture command failed: ${args.join(' ')}`);
+  };
+  run(['init']);
+  const configPath = path.join(dir, '.my_context', 'config.json');
+  const config = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+  config['categories'] = {
+    task: {
+      tier: 'rationale',
+      prefix: 'TASK',
+      description: 'A unit of planned work, tracked to completion.',
+      extraFields: ['plan', 'seq', 'state', 'progress', 'source', 'last_change', 'priority'],
+    },
+  };
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+
+  run(['add', 'task', 'Wire the retry budget', '--body', 'B.',
+    '--tags', 'plan:alpha,seq:1,state:done', '--yes']);
+  // **A `state` FIELD that disagrees with the `state:` TAG.** Measured on the
+  // real corpus 2026-08-23: 293 tasks, all 293 carry the tag, 213 also carry
+  // the field, and FIFTEEN of those disagree. Reconciling them is
+  // `plan:categories seq:18`, not this report; what this report owes is to say
+  // which one it read, and this row is what pins that answer.
+  run(['add', 'task', 'Backfill the invoice ids', '--body', 'B.',
+    '--tags', 'plan:alpha,seq:2,state:doing', '--extra', 'state=todo', '--yes']);
+  // `seq:10` sorts AFTER `seq:2` here and BEFORE it under a string compare.
+  run(['add', 'task', 'Split the settlement job', '--body', 'B.',
+    '--tags', 'plan:alpha,seq:10,state:todo', '--yes']);
+  run(['add', 'task', 'Retire the webhook path', '--body', 'B.',
+    '--tags', 'plan:beta,seq:1,state:blocked', '--yes']);
+  // No tags at all: plan, seq and progress are NULL — the corpus does not say,
+  // which is not the same fact as any particular value.
+  run(['add', 'task', 'An untagged task', '--body', 'B.', '--yes']);
+  // A non-task with a mutation history of its own. It must not reach the report.
+  run(['add', 'decision', 'A decision', '--body', 'B.']);
+  return { dir, root: path.join(dir, '.my_context'), done: () => removeTree(dir) };
+}
+
+/**
+ * Two later records for one task, at stamps the test KNOWS.
+ *
+ * The year is 2099 on purpose: `add` stamps its `create` with `Date.now()`, so
+ * a fixture that wrote its updates at a plausible date would be asserting
+ * `MAX(at)` against a race with the clock. A stamp no `create` can outrank
+ * makes the newest record a value this test states rather than recomputes.
+ */
+function laterUpdates(root: string, itemId: string): void {
+  recordAudit(root, {
+    kind: 'mutation', op: 'update', origin: 'human', itemId, fields: ['body'],
+    at: '2099-03-01T00:00:00.000Z',
+  });
+  recordAudit(root, {
+    kind: 'mutation', op: 'refresh', origin: 'agent', itemId, fields: ['tags'],
+    at: '2099-03-02T00:00:00.000Z',
+  });
+}
+
+test('/api/ask/summary?report=tasks joins the index to the audit log for a REAL change time', () => {
+  const { dir, root, done } = taskWorkspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    laterUpdates(root, 'TASK-wire-the-retry-budget');
+    buildProjection(dir);
+
+    // **The premise, measured on this very corpus before anything is asserted
+    // about the report.** `items.updated_at` records when the INDEX ROW was
+    // written, which is not when the item changed. On a corpus where every read
+    // path rebuilds the index whole it collapses to a single value — measured
+    // 2026-08-23, all 368 items of the real corpus and all 29 of the demo
+    // corpus carry ONE distinct `updated_at` — and here, where six `add` calls
+    // wrote the rows in turn, it is a second-granularity write clock spanning
+    // the few seconds this fixture took to build.
+    //
+    // Either way it is the same defect, and the assertion is written as the
+    // defect rather than as the coincidence: the whole corpus is stamped inside
+    // one minute, so this column cannot separate two items whose real change
+    // times are DECADES apart. Asserting one distinct value here instead would
+    // pass or fail on whether the fixture straddled a second boundary — which
+    // it does, roughly one run in six.
+    const store = Store.openReadOnly(ws.dbPath);
+    let stamps: Record<string, unknown>[];
+    try {
+      stamps = store.raw('SELECT DISTINCT updated_at FROM items');
+    } finally { store.close(); }
+    const written = stamps.map((r) => Date.parse(`${String(r['updated_at']).replace(' ', 'T')}Z`));
+    const indexSpread = Math.max(...written) - Math.min(...written);
+    assert.ok(indexSpread < 60_000,
+      `every index row was stamped within a minute (spread ${indexSpread}ms), yet the items they `
+      + 'describe were changed 73 years apart — which is the whole reason this report exists');
+
+    const result = apiAskSummary(ws, url('/api/ask/summary', 'report=tasks'));
+    assert.equal(result.status, 200);
+    const body = result.body as {
+      report: string; truncated: boolean; sql: string; params: unknown[];
+      projectionState: string;
+      rows: {
+        label: string; title: string; plan: string | null; seq: string | null;
+        state: string | null; status: string; count: number | null;
+        lastOp: string | null; last: string | null;
+      }[];
+    };
+    assert.equal(body.report, 'tasks');
+    assert.equal(body.projectionState, 'fresh');
+    assert.equal(body.truncated, false);
+
+    // Plan, then seq NUMERICALLY, then the tasks the corpus says nothing about.
+    assert.deepEqual(body.rows.map((r) => r.label), [
+      'TASK-wire-the-retry-budget',
+      'TASK-backfill-the-invoice-ids',
+      'TASK-split-the-settlement-job',
+      'TASK-retire-the-webhook-path',
+      'TASK-an-untagged-task',
+    ], 'the decision leaked into a report about tasks, or seq sorted as text');
+
+    const first = body.rows[0]!;
+    assert.equal(first.title, 'Wire the retry budget');
+    assert.equal(first.plan, 'alpha');
+    assert.equal(first.seq, '1');
+    assert.equal(first.state, 'done');
+    assert.equal(first.status, 'active');
+    // One `create` from `add`, plus the two appended above.
+    assert.equal(first.count, 3);
+    assert.equal(first.lastOp, 'refresh');
+    assert.equal(first.last, '2099-03-02T00:00:00.000Z');
+
+    // **The whole point, stated as an assertion.** Two tasks the index stamped
+    // within a minute of each other are separated here by 73 years, because the
+    // change time came from the OTHER STORE. The gap is compared against the
+    // index spread measured above: a report that had quietly fallen back to
+    // `updated_at` would collapse this to at most that minute.
+    const second = body.rows[1]!;
+    const realGap = Date.parse(String(first.last)) - Date.parse(String(second.last));
+    const A_YEAR = 365 * 24 * 60 * 60 * 1000;
+    assert.ok(realGap > A_YEAR,
+      `the two change times are ${realGap}ms apart where the index separates the same two rows by `
+      + `${indexSpread}ms — a report that had quietly fallen back to \`updated_at\` would show `
+      + 'the second number, and this asserts it is showing the first');
+    assert.equal(second.count, 1);
+    assert.equal(second.lastOp, 'create');
+    assert.match(String(second.last), /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/,
+      'the change time is an audit stamp, not the YYYY-MM-DD HH:MM:SS rebuild stamp');
+
+    // The `state:` TAG is what `state` reports. This row carries a `state`
+    // FIELD saying `todo` and a tag saying `doing`; the tag is on 293 of 293
+    // tasks and the field on 213, so the tag is the only one that answers for
+    // every task. Which is canonical is `plan:categories seq:18`, not this.
+    assert.equal(second.state, 'doing');
+
+    const untagged = body.rows[4]!;
+    assert.equal(untagged.plan, null);
+    assert.equal(untagged.seq, null);
+    assert.equal(untagged.state, null, 'an absent progress tag became a value nobody wrote');
+
+    // The SQL the screen would show is the SQL that ran — BOTH halves of the
+    // join, because a report showing one would explain half of its own answer.
+    assert.match(body.sql, /FROM items/);
+    assert.match(body.sql, /FROM audit/);
+    assert.deepEqual(body.params, ['task', 21]);
+  } finally { done(); }
+});
+
+test('/api/ask/summary?report=tasks discloses its cap with the same limit + 1 probe', () => {
+  const { dir, done } = taskWorkspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    buildProjection(dir);
+
+    const capped = apiAskSummary(ws, url('/api/ask/summary', 'report=tasks&limit=2')).body as
+      { rows: unknown[]; truncated: boolean; params: unknown[] };
+    assert.equal(capped.rows.length, 2, 'the probe row was returned instead of dropped');
+    assert.equal(capped.truncated, true);
+    assert.deepEqual(capped.params, ['task', 3], 'the cap is bound as limit + 1, never as limit');
+
+    // Exactly as many tasks as the cap is NOT truncated: the probe fires on the
+    // row after the last one asked for, which is the difference between "there
+    // were this many" and "there were more and you are not seeing them".
+    const exact = apiAskSummary(ws, url('/api/ask/summary', 'report=tasks&limit=5')).body as
+      { rows: unknown[]; truncated: boolean };
+    assert.equal(exact.rows.length, 5);
+    assert.equal(exact.truncated, false);
+  } finally { done(); }
+});
+
+test('/api/ask/summary?report=tasks: a projection nobody built is NULL columns, never zeroes', () => {
+  const { dir, done } = taskWorkspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    // No `mycontext audit`: the endpoint must not build one for itself.
+    const result = apiAskSummary(ws, url('/api/ask/summary', 'report=tasks'));
+    assert.equal(result.status, 200);
+    const body = result.body as {
+      projectionState: string; sql: string;
+      rows: { label: string; state: string | null; count: number | null; last: string | null }[];
+    };
+    assert.equal(body.projectionState, 'absent');
+    // The corpus half still answers — the index knows these five tasks exist,
+    // and dropping them because a SECOND store was silent would throw away the
+    // half of the report that could be measured.
+    assert.equal(body.rows.length, 5);
+    assert.equal(body.rows[0]!.state, 'done');
+    for (const row of body.rows) {
+      assert.equal(row.count, null, `${row.label}: a count the audit store never answered`);
+      assert.equal(row.last, null);
+    }
+    // A statement that did not run is not shown as one that did.
+    assert.doesNotMatch(body.sql, /FROM audit/);
+    assert.equal(existsSync(auditDbPath(path.join(dir, '.my_context'))), false,
+      'a GET created the audit projection — the read surface wrote to the corpus');
+  } finally { done(); }
+});
+
+test('/api/ask/summary?report=tasks: a fresh projection with no record is a MEASURED zero', () => {
+  const { dir, root, done } = taskWorkspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    // The log emptied before it was ever projected — what a rotated-away or
+    // truncated segment leaves behind. The projection is then FRESH and holds
+    // no mutation for these items, which is a zero this endpoint measured and
+    // is a different fact from the `absent` nulls above.
+    writeFileSync(auditLogPath(root), '');
+    buildProjection(dir);
+
+    const body = apiAskSummary(ws, url('/api/ask/summary', 'report=tasks')).body as {
+      projectionState: string;
+      rows: { count: number | null; lastOp: string | null; last: string | null }[];
+    };
+    assert.equal(body.projectionState, 'fresh');
+    assert.equal(body.rows.length, 5);
+    for (const row of body.rows) {
+      assert.equal(row.count, 0, 'a projection that answered "none" was reported as silence');
+      assert.equal(row.lastOp, null);
+      assert.equal(row.last, null);
+    }
+  } finally { done(); }
+});
+
+test('/api/ask/summary?report=tasks: a stale projection is refused, exactly as report=ops is', () => {
+  const { dir, root, done } = taskWorkspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    buildProjection(dir);
+    // One record the projection has not consumed — on the read surface this is
+    // routinely an `access` record from a 401. Catching it up is a write.
+    recordAudit(root, { kind: 'focus', op: 'focus-clear', origin: 'agent' });
+
+    const ops = apiAskSummary(ws, url('/api/ask/summary', 'report=ops'));
+    const tasks = apiAskSummary(ws, url('/api/ask/summary', 'report=tasks'));
+    assert.equal(tasks.status, 503);
+    assert.equal(tasks.status, ops.status, 'the fourth report refuses differently from the first');
+    const body = tasks.body as { error: string; projectionState: string };
+    assert.equal(body.projectionState, 'behind');
+    assert.match(body.error, /mycontext audit/);
+  } finally { done(); }
+});
+
+test('/api/ask/summary?report=tasks validates its parameters like the other three', () => {
+  const { dir, done } = taskWorkspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    buildProjection(dir);
+    // `role` is a property of `report=items` and is REFUSED here rather than
+    // ignored: accepted and dropped, it would answer a different question from
+    // the one on screen and report it as the same one.
+    assert.equal(apiAskSummary(ws, url('/api/ask/summary', 'report=tasks&role=spilled')).status, 400);
+    assert.equal(apiAskSummary(ws, url('/api/ask/summary', 'report=tasks&limit=0')).status, 400);
+    assert.equal(apiAskSummary(ws, url('/api/ask/summary', 'report=tasks&limit=201')).status, 400);
+    assert.equal(apiAskSummary(ws, url('/api/ask/summary', 'report=tasks&bogus=1')).status, 400);
+    assert.equal(apiAskSummary(ws, url('/api/ask/summary', 'report=task')).status, 400);
+    const named = apiAskSummary(ws, url('/api/ask/summary', 'report=task')).body as { error: string };
+    assert.match(named.error, /tasks/, 'the refusal does not name the fourth report it now serves');
   } finally { done(); }
 });

@@ -258,9 +258,237 @@ export function apiAskAudit(ws: Workspace, url: URL): JsonResult {
   };
 }
 
+// --- report=tasks: the one report that joins two stores ---------------------
+//
+// **`items.updated_at` IS NOT A CHANGE TIME, and that fact is the whole reason
+// this report exists.** The index is rebuilt whole from Markdown on every write
+// path, so every row is stamped in the same instant: measured on the real
+// corpus 2026-08-23, all 368 items carry ONE distinct `updated_at`, and on the
+// demo corpus all 29 carry one. A progress view drawn from that column would
+// show 293 tasks that all changed at the same second, which is not a caveat —
+// it is a wrong answer delivered with confidence. `corpusSelect` returns the
+// column and the Ask screen's own caveat string warns about it; this report
+// does not return it at all.
+//
+// The per-item change time lives in the AUDIT LOG's `mutation` records, whose
+// `at` is stamped by `recordAudit` at the moment of the write. That is a
+// different store behind a different door, so this report reads BOTH: the index
+// through the checked read-only `Store` that `apiAskCorpus` uses, and the
+// projection through `readProjection`, which is the one spelling of the
+// stale-projection policy. Neither door writes, and neither is widened here.
+//
+// **The item's own `last_change` extra field is NOT used, having been measured
+// and rejected.** The `task` category declares one, 133 of 293 tasks carry it,
+// and on 2026-08-23 ALL 133 disagreed with the newest `mutation` for the same
+// item — usually by seconds, once by nearly three hours in the direction that
+// claims a change which had not happened yet. It is hand-typed, so it drifts,
+// which is the same defect `plan:categories seq:18` records about the `state`
+// tag. The log is the store that knows.
+//
+// **`state` is read from the `state:` TAG.** Measured 2026-08-23 across 293
+// tasks: all 293 carry the tag, 213 also carry a `state` FIELD, and FIFTEEN of
+// those disagree. Which of the two is canonical is `plan:categories seq:18`'s
+// ruling to make and its work to land — the field becomes canonical and the tag
+// becomes GENERATED from it, at which point the two cannot disagree and this
+// SQL keeps working unchanged, because a projected tag is still a tag. Until
+// then the tag is the only source that answers for EVERY task; the field
+// answers for 73% of them, and a progress view with 80 blank cells is not a
+// progress view. This report reads the tag, reports what it read, and repairs
+// nothing.
+
 /**
- * `GET /api/ask/summary` — the three predefined reports, straight from
- * `summaryByOp` / `topItems` / `sessions`.
+ * The index half. `plan`, `seq` and `state` are lifted out of the `tags` array
+ * inside the `data` JSON, which is where a tag lives — the index has no tags
+ * table and no tag column, which is exactly why `corpusSelect` cannot filter on
+ * one and why this is a canned report rather than another filter field.
+ *
+ * The prefix is written twice in each subquery — once in the `LIKE` and once
+ * inside `length(…)` — so the offset can never drift from the string it is the
+ * length of. `LIKE` needs no `ESCAPE` here because these three patterns are
+ * literals in this file and hold no `%` or `_`; the only value a caller can
+ * spell reaches this statement as a bind parameter, as everywhere else in this
+ * module.
+ *
+ * A second `state:` tag on one item is possible today — a tag is a set
+ * membership and nothing enforces one — so the pick is made DETERMINISTIC by
+ * `ORDER BY t.value` rather than left to storage order. Making it impossible is
+ * `plan:categories seq:18`.
+ *
+ * `ORDER BY` is plan, then seq NUMERICALLY (`seq:10` follows `seq:2`, which a
+ * text sort reverses), then id; tasks the corpus says nothing about sort last
+ * rather than first, because an unplanned task is not the head of every plan.
+ * The final `LIMIT ?` binds `limit + 1` — the same truncation probe
+ * `corpusSelect` uses, and for the same reason: a progress view that silently
+ * shows 20 of 293 tasks is worse than one that refuses.
+ */
+const TASKS_CORPUS_SQL = `SELECT id AS label, title, status,
+       (SELECT substr(t.value, length('plan:') + 1)
+          FROM json_each(items.data, '$.tags') t
+         WHERE t.value LIKE 'plan:%'  ORDER BY t.value LIMIT 1) AS plan,
+       (SELECT substr(t.value, length('seq:') + 1)
+          FROM json_each(items.data, '$.tags') t
+         WHERE t.value LIKE 'seq:%'   ORDER BY t.value LIMIT 1) AS seq,
+       (SELECT substr(t.value, length('state:') + 1)
+          FROM json_each(items.data, '$.tags') t
+         WHERE t.value LIKE 'state:%' ORDER BY t.value LIMIT 1) AS state
+FROM items
+WHERE type = ?
+ORDER BY plan IS NULL, plan, CAST(seq AS INTEGER), seq, label
+LIMIT ?`;
+
+/**
+ * The audit half: how many times each item has been changed, when it was last
+ * changed, and what the last change WAS.
+ *
+ * `kind = 'mutation'` and nothing else. An `injection` names an item too — it
+ * is why `audit_item` exists — but being injected into a session is not a
+ * change to the item, and counting it would report a task nobody has touched
+ * as this week's busiest.
+ *
+ * Constant: it binds NOTHING. It aggregates every item rather than the page of
+ * tasks above, which costs a grouped scan of an indexed column and buys a
+ * statement whose text does not vary with the request — so the SQL shown beside
+ * the answer is this string, not a reconstruction of it.
+ *
+ * The last op is a correlated subquery rather than a bare column beside
+ * `MAX(at)`. SQLite would in fact answer the bare column from the max row, but
+ * that is an engine guarantee a reader has to know to trust, and this statement
+ * is written to be READ on a screen.
+ */
+const TASKS_CHANGES_SQL = `SELECT a.item_id AS id, COUNT(*) AS changes, MAX(a.at) AS last,
+       (SELECT b.op FROM audit b
+         WHERE b.item_id = a.item_id AND b.kind = 'mutation'
+         ORDER BY b.at DESC, b.seq DESC LIMIT 1) AS last_op
+FROM audit a
+WHERE a.kind = 'mutation' AND a.item_id IS NOT NULL
+GROUP BY a.item_id`;
+
+/** What the audit log knows about one item, or nothing at all. */
+interface ItemChanges { count: number; lastOp: string | null; last: string | null }
+
+/**
+ * One row per task.
+ *
+ * `label`, `count` and `last` carry `SummaryRow`'s own names on purpose: the
+ * other three reports return `{ label, count, last }`, the Ask screen already
+ * maps exactly those three into its At · Item · Role columns
+ * (`src/ui/public/screens/ask.js` · `export function summaryRows(report, role, rows) {` · ~323),
+ * and a fourth report that renamed them would need a fourth mapper to show
+ * anything at all. This row is that shape plus the columns a progress view
+ * needs, so it fits the screen as it stands and a screen that wants the extra
+ * columns can reach for them without a translation layer.
+ *
+ * **`count`, `lastOp` and `last` are `null` when the AUDIT STORE could not
+ * answer, and `0`/`null` when it answered "none".** Those are different facts.
+ * A projection nobody has built has measured nothing, and reporting it as zero
+ * changes would invent a number; a fresh projection holding no `mutation` for
+ * an item has measured zero, which is a real answer. `projectionState` on the
+ * body says which of the two the reader is looking at.
+ */
+export interface TaskProgressRow {
+  /** The item id. */
+  label: string;
+  /** The name the owner asked for. */
+  title: string;
+  plan: string | null;
+  seq: string | null;
+  /** Progress, from the `state:` tag. `null` means the corpus does not say. */
+  state: string | null;
+  status: string;
+  /** Mutations in the audit log. `null` = the audit store could not answer. */
+  count: number | null;
+  lastOp: string | null;
+  /** The real change time: the newest `mutation` for this item. */
+  last: string | null;
+}
+
+/**
+ * `report=tasks` — name, plan, seq, progress, status, change count, last op and
+ * last change time, per task.
+ *
+ * The corpus is read FIRST and is the spine of the report: it is what says
+ * which tasks exist. The audit projection is read second and only decorates
+ * rows the index already produced — so a task with no history is a task with an
+ * empty history, never a task that vanished.
+ *
+ * A stale projection REFUSES the whole report (503, naming the state), exactly
+ * as `report=ops` does through the same `readProjection`. Half a report served
+ * under the same name as a whole one is the failure mode this codebase keeps
+ * finding, and on this surface a stale projection is routine rather than
+ * exotic: every 401 appends an `access` record, which pushes the log past the
+ * projection and leaves it `behind` until `mycontext audit` runs.
+ */
+function taskProgressReport(ws: Workspace, root: string, limit: number): JsonResult {
+  const params: (string | number)[] = ['task', limit + 1];
+  const store = Store.openReadOnlyChecked(ws.dbPath);
+  let fetched: Record<string, unknown>[];
+  try {
+    fetched = store.raw(TASKS_CORPUS_SQL, params);
+  } finally {
+    store.close();
+  }
+  const truncated = fetched.length > limit;
+  const page = truncated ? fetched.slice(0, limit) : fetched;
+
+  const read = readProjection(root, (db) => {
+    const changes = new Map<string, ItemChanges>();
+    for (const row of db.prepare(TASKS_CHANGES_SQL).all() as
+      { id: string; changes: number; last: string | null; last_op: string | null }[]) {
+      changes.set(row.id, {
+        count: Number(row.changes), lastOp: row.last_op, last: row.last,
+      });
+    }
+    return changes;
+  });
+  if (!read.ok) return read.refusal;
+  const changes = read.value;
+
+  const rows: TaskProgressRow[] = page.map((row) => {
+    const label = String(row['label']);
+    // The two silences, kept apart. `changes === null` is the ABSENT
+    // projection — nothing was asked, so nothing is claimed. A `Map` that
+    // simply has no entry for this id is a projection that WAS asked and holds
+    // no mutation for it, which is a measured zero and a different sentence.
+    const found: ItemChanges | null = changes === null
+      ? null
+      : changes.get(label) ?? { count: 0, lastOp: null, last: null };
+    return {
+      label,
+      title: String(row['title']),
+      plan: (row['plan'] as string | null) ?? null,
+      seq: (row['seq'] as string | null) ?? null,
+      state: (row['state'] as string | null) ?? null,
+      status: String(row['status']),
+      count: found === null ? null : found.count,
+      lastOp: found === null ? null : found.lastOp,
+      last: found === null ? null : found.last,
+    };
+  });
+
+  return {
+    status: 200,
+    body: {
+      report: 'tasks',
+      rows,
+      // **Only the statements that RAN.** The screen shows the SQL as the
+      // account of how an answer was reached, so an audit statement displayed
+      // beside rows whose change columns are null — because there was no
+      // projection to run it against — would be an account of something that
+      // did not happen.
+      sql: changes === null
+        ? `${TASKS_CORPUS_SQL};`
+        : `${TASKS_CORPUS_SQL};\n\n${TASKS_CHANGES_SQL};`,
+      params,
+      truncated,
+      projectionState: read.state,
+    },
+  };
+}
+
+/**
+ * `GET /api/ask/summary` — the four predefined reports. Three come straight
+ * from `summaryByOp` / `topItems` / `sessions`; the fourth is `taskProgressReport`
+ * above, the only one that reads a second store.
  *
  * `summaryByOp` takes no limit: it reports every op, of which there are a
  * couple of dozen in the whole vocabulary. `topItems`' `role: null` form
@@ -273,8 +501,8 @@ export function apiAskSummary(ws: Workspace, url: URL): JsonResult {
   const root = ws.projectRoot;
   if (root === null) return { status: 500, body: { error: 'no project workspace' } };
   const report = url.searchParams.get('report');
-  if (report !== 'ops' && report !== 'items' && report !== 'sessions') {
-    return badRequest('report must be one of ops, items, sessions');
+  if (report !== 'ops' && report !== 'items' && report !== 'sessions' && report !== 'tasks') {
+    return badRequest('report must be one of ops, items, sessions, tasks');
   }
   const role = url.searchParams.get('role');
   // Refused rather than ignored: a `role` accepted and dropped would answer a
@@ -285,6 +513,12 @@ export function apiAskSummary(ws: Workspace, url: URL): JsonResult {
   }
   const limit = intParam(url, 'limit', 1, 200, 20);
   if (limit === null) return badRequest('limit must be an integer between 1 and 200');
+
+  // Answered before the three below because it is not one of them: its rows
+  // come from the index as well as the projection, it discloses a cap, and it
+  // shows the SQL it ran. Folding it into the ternary would have made those
+  // three differences invisible at the call site.
+  if (report === 'tasks') return taskProgressReport(ws, root, limit);
 
   const read = readProjection(root, (db) => (
     report === 'ops' ? summaryByOp(db)
