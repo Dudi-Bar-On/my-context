@@ -55,7 +55,8 @@ const USAGE = 'usage: mycontext ui [--port N] [--no-open] [--idle-ms N]';
 const UI_FLAGS = ['port', 'no-open', 'idle-ms'];
 const UI_VALUE_FLAGS = ['port', 'idle-ms'];
 
-/**
+/* ── WHAT USED TO STAND HERE, AND WHY IT DOES NOT ─────────────────────────
+ *
  * **The flag this file's previous comment said would arrive, and the sentence
  * it said must move with it. It arrived on 2026-08-23, and it did.**
  *
@@ -130,6 +131,37 @@ function resolveIdleMs(args: string[]): number {
     );
   }
   return ms;
+}
+
+/**
+ * **How long the PRINTED url stays usable: the session's own window, never less
+ * than the ten minutes it has always been.**
+ *
+ * The printed nonce is one-shot, loopback-only, and dies with the server, and
+ * it lives for `PRINTED_NONCE_TTL_MS` — ten minutes. That is the right answer
+ * for the default fifteen-minute server: a person starts the UI, glances at the
+ * terminal, opens the link.
+ *
+ * It is the wrong answer the moment somebody passes `--idle-ms` to say "this
+ * server is for a long session". Measured 2026-08-23: a server was started with
+ * an eight-hour window so it would still be there when the owner came back, and
+ * the only credential it ever printed expired ten minutes later. The process
+ * was healthy, listening and answering — and unreachable. A live server you
+ * cannot get into is indistinguishable, from the outside, from a dead one, and
+ * it was reported as exactly that.
+ *
+ * So the URL's life follows the window the operator asked for. One knob, one
+ * meaning: how long is this session expected to last. What it does NOT do is
+ * shorten anything — an operator asking for a two-minute server still gets the
+ * ten-minute link, because the nonce outliving the server is harmless (it dies
+ * with it) while the reverse is the failure above.
+ *
+ * The credential this lengthens is still single-use, still refused off
+ * loopback, and still gone when the process exits. What changes is only how
+ * long a person has to walk back to their terminal.
+ */
+function printedNonceTtl(idleMs: number): number {
+  return Math.max(PRINTED_NONCE_TTL_MS, idleMs);
 }
 
 /** The window as the two messages below say it, in whole minutes where that is exact. */
@@ -262,7 +294,7 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
       if (noOpen) {
         // The same one line `src/ui/server.ts`'s own main entry prints, so the
         // two ways of starting this server are readable as the same thing.
-        out(`mycontext ui: ${running.urlWithNonce(PRINTED_NONCE_TTL_MS)}`);
+        out(`mycontext ui: ${running.urlWithNonce(printedNonceTtl(idleMs))}`);
         return;
       }
       const launch = openBrowser(running.urlWithNonce(OPENER_NONCE_TTL_MS));
@@ -271,7 +303,7 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
         // A server that started and a browser that did not is a working
         // session, and the URL is the whole remedy — so the exit code stays 0
         // and the reason is named rather than swallowed.
-        out(fallbackLine(running.urlWithNonce(PRINTED_NONCE_TTL_MS), launch.reason));
+        out(fallbackLine(running.urlWithNonce(printedNonceTtl(idleMs)), launch.reason));
         return;
       }
       out(
