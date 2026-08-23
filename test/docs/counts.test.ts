@@ -685,6 +685,11 @@ const HOOK_WORDS: Record<number, { en: string; he: string }> = {
   6: { en: 'six', he: 'ששת' },
   7: { en: 'seven', he: 'שבעת' },
   8: { en: 'eight', he: 'שמונת' },
+  // The hooks plan's seq:21 (nine ruled-in events) and seq:2b
+  // (`UserPromptExpansion`) take the manifest from eight to eighteen in one
+  // step, so the intervening words are not spelled: adding a word for a count
+  // this project has never had would be a claim that it did.
+  18: { en: 'eighteen', he: 'שמונה עשר' },
 };
 
 /** Every event the shipped manifest registers, with the timeout it declares. */
@@ -694,12 +699,20 @@ function manifestHooks(): { name: string; timeout: number }[] {
   ) as { hooks: Record<string, { hooks: { timeout: number }[] }[]> };
   const out = Object.entries(manifest.hooks).map(([name, entries]) => {
     const commands = entries.flatMap((entry) => entry.hooks);
+    assert.ok(commands.length >= 1, `${name} registers no command at all`);
+    // One ROW per event, not per entry — so an event registered twice must
+    // declare one timeout, or the row would have to state a number that is only
+    // sometimes true. `FileChanged` is the only such event and it is two
+    // entries for one reason (`src/hooks/file-changed.ts`): the platform reads
+    // a FileChanged matcher once as a watch-path list and once as a basename
+    // filter, and no single string can be both.
+    const timeouts = [...new Set(commands.map((c) => c.timeout))];
     assert.equal(
-      commands.length, 1,
-      `${name} registers ${commands.length} commands; the README table has one row per hook ` +
-      `and this parser assumes one command per event. Update both, do not delete this.`,
+      timeouts.length, 1,
+      `${name} registers ${timeouts.length} different timeouts (${timeouts.join(', ')}); the ` +
+      `README table has one row per hook and one timeout per row. Update both, do not delete this.`,
     );
-    return { name, timeout: commands[0].timeout };
+    return { name, timeout: timeouts[0] };
   });
   assert.ok(out.length > 0, 'hooks.json registered no hooks — the parser is broken');
   return out;
@@ -752,8 +765,12 @@ test('both documents state the real number of hooks in prose', () => {
     `rather than deleting this test.`,
   );
   const PATTERNS: Record<string, RegExp> = {
-    'README.md': /(four|five|six|seven|eight) hooks/gi,
-    [path.join('docs', 'README.he.md')]: /(ארבעת|חמשת|ששת|שבעת|שמונת) ה-hooks/gu,
+    // `eighteen` before `eight`: the alternation is leftmost-first, and although
+    // `eight` cannot complete against `eighteen hooks` (it would need a space
+    // where the `e` is), stating the longer word first keeps the reading obvious
+    // rather than dependent on that backtrack.
+    'README.md': /(four|five|six|seven|eighteen|eight) hooks/gi,
+    [path.join('docs', 'README.he.md')]: /(ארבעת|חמשת|ששת|שבעת|שמונה עשר|שמונת) ה-hooks/gu,
   };
   for (const doc of documents) {
     const expected = doc.relative === 'README.md' ? words.en : words.he;

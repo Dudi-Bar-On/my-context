@@ -24,6 +24,30 @@ Only the types below are accepted in this project. Anything else is refused.
 
 {{CATEGORY_TABLE}}
 
+## What may be changed on an item, and by which command
+
+Everything in this section is rendered from the catalogue's own declarations,
+so it says what the write path enforces rather than what someone once believed
+it enforced.
+
+Read each entry as three answers and a sentence. **Where it is stored** decides
+what may be done to it at all: a `field` holds one value and is changed in
+place, while a `tag` is a membership — added and removed, never updated, which
+is why a name you would ever want to change is a field and not a tag. **Which
+values are legal** is a closed list or free text. **The command** is the
+spelling, as it is typed; some names have two, and some have none.
+
+The rules mostly belong to the **tier** rather than to the type, so they are
+declared once per tier — and the two tiers differ, for the reason given above
+the table. A type then adds only the names that are its own.
+
+{{TIER_UPDATES}}
+
+{{CATEGORY_UPDATES}}
+
+`mycontext examples <type>` prints the same surface for one type, beside a
+worked specimen of it.
+
 ## What each type is for, and its nearest neighbour
 
 One entry per type: what it is for, and the single type it is most often

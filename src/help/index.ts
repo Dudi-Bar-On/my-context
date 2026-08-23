@@ -1,6 +1,10 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import {
+  TIER_UPDATES, type CategoryUpdates, type UpdatableName,
+} from '../core/categories.ts';
 import type { Config, ResolvedCategory } from '../core/config.ts';
+import { table, wrap } from '../cli/commands/format.ts';
 import { parseFrontmatter } from '../core/frontmatter.ts';
 import { computeItemChecksum, renderItem } from '../core/item.ts';
 import { snapshotBody, snapshotChecksum, snapshotText } from '../core/reference.ts';
@@ -88,6 +92,24 @@ function tierRank(category: ResolvedCategory): number {
 }
 
 /**
+ * The resolved category a caller named, or a teaching refusal.
+ *
+ * `Object.hasOwn`, not a bare index: `config.categories[type]` on a
+ * prototype-polluting `type` (e.g. `"constructor"`) resolves to
+ * `Object.prototype.constructor` instead of `undefined`, producing a raw
+ * `TypeError` deep inside the caller rather than a teaching message — the same
+ * hazard `mutate.ts`'s `resolveCategory` guards against twice. Shared by the
+ * two things `mycontext examples` prints, so the specimen and the update
+ * surface cannot answer differently about whether a type exists.
+ */
+function categoryOf(type: string, config: Config): ResolvedCategory {
+  if (!Object.hasOwn(config.categories, type)) {
+    throw new Error(enumError('type', type, Object.keys(config.categories), 'categories'));
+  }
+  return config.categories[type];
+}
+
+/**
  * The category table, generated from the resolved config (spec §9).
  *
  * The `locale` changes ONLY the language column and the header. Name, tier
@@ -107,6 +129,210 @@ export function categoryTable(config: Config, locale?: HelpLocale): string {
 
   const header = locale === 'he' ? HE_TABLE_HEADER : '| type | tier | id prefix | use for |';
   return [header, '|---|---|---|---|', ...rows].join('\n');
+}
+
+/* -------------------------------------------------------------------------- *
+ * The updatable surface: what may be changed on an item, and by which command.
+ *
+ * Every line of it is rendered from `TIER_UPDATES` and `CategoryDef.updates`
+ * (core/categories.ts). Nothing below re-states a fact those declarations
+ * carry, and that restraint is the requirement rather than a style: five rules
+ * — `state` on a task being a TAG, `--tags` replacing the whole list,
+ * `--severity hard` being refused on the rationale tier, `always` having two
+ * spellings, `source_file` having no command at all — were each learned by
+ * trying something and reading the refusal, which is guidance arriving after
+ * the attempt. A sentence written here beside a declaration would be free to
+ * drift from it, and four statements in this project's design of record were
+ * measured false in one week that way.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * How a name is written where the surrounding surface can carry a code span
+ * (`SPAN`, the Markdown topic) or cannot (`PLAIN`, a bordered terminal table).
+ * One pair of renderers, so the two surfaces cannot come to disagree about
+ * which facts they print — only about how they mark them up.
+ */
+type Code = (s: string) => string;
+const PLAIN: Code = (s) => s;
+const SPAN: Code = (s) => `\`${s}\``;
+
+/**
+ * The width the topic sources' own paragraphs are hard-wrapped to, so a
+ * generated sentence sits in the document at the same measure as the
+ * hand-written ones around it. Not `outputWidth()`: this is a committed
+ * Markdown document rendered into two READMEs, and a width read from the
+ * environment would make the generated block a fact about the terminal the
+ * maintainer last ran `npm run gen:docs` in.
+ */
+const TOPIC_PROSE_WIDTH = 79;
+
+/**
+ * The spelling for a name whose declaration carries no `command` of its own.
+ *
+ * `UpdatableName.command` states the default in as many words — "Absent means
+ * the generic spelling for an extra field, `mycontext edit <id> --extra
+ * <name>=<value>`" — and that flag is a real flag of a real command
+ * (`cli/commands/edit.ts` · `[--extra key=value]`). The name is substituted
+ * into it rather than left as `<name>`, because the reader is looking at one
+ * name and the whole point of the column is that they can type what it says.
+ */
+function changeCommand(name: string, entry: UpdatableName): string {
+  return entry.command ?? `mycontext edit <id> --extra ${name}=<value>`;
+}
+
+/**
+ * Where the value lives — and, when the declaration names one, the tag prefix
+ * the tool keeps in sync with it. `projectsTo` is the one thing a reader
+ * cannot see from the item: a field whose value is also written as a tag looks
+ * like two facts that must be kept in step by hand, and it is not one.
+ */
+function storedAs(entry: UpdatableName, code: Code): string {
+  return entry.projectsTo === undefined
+    ? entry.store
+    : `${entry.store}, projected to ${code(`${entry.projectsTo}:`)} tags`;
+}
+
+/** The closed vocabulary, or the answer an absent one declares: free text. */
+function legalValues(entry: UpdatableName, code: Code): string {
+  return entry.values === undefined ? 'free text' : entry.values.map(code).join(', ');
+}
+
+/**
+ * One name as two Markdown lines: what it is and how it is typed, then the
+ * declaration's own note verbatim.
+ *
+ * A LIST rather than a table, and for the reason `commandList` gives above:
+ * `body`'s command is `mycontext edit <id> --body "…" | --file <path>`, and a
+ * literal `|` ends a GFM table cell. The escape that fixes the rendering is
+ * printed literally by `mycontext help categories` — a backslash inside the
+ * exact string the reader is about to type.
+ */
+function updateList(updates: CategoryUpdates): string[] {
+  return Object.entries(updates).flatMap(([name, entry]) => [
+    // Unwrapped, like a row of the category table above it: the three answers
+    // are one line each so the names line up, and a break inside the command
+    // would put half of a string the reader is about to type on its own line.
+    `- **\`${name}\`** — a ${storedAs(entry, SPAN)}; ${legalValues(entry, SPAN)}; ` +
+    `\`${changeCommand(name, entry)}\``,
+    // The note IS prose, and is wrapped to the width this topic's own
+    // paragraphs are written to. Markdown reflows it either way; a terminal
+    // does not, and `mycontext help categories` is read in one.
+    ...wrap(entry.note, TOPIC_PROSE_WIDTH - 2).map((line) => `  ${line}`),
+  ]);
+}
+
+/** The header every rendering of the surface carries, spelled once. */
+const UPDATE_HEADERS = ['name', 'stored as', 'values', 'how to change it', 'what it is'];
+
+/** The same names as rows for `table` (cli/commands/format.ts), unmarked up. */
+function updateRows(updates: CategoryUpdates): string[][] {
+  return Object.entries(updates).map(([name, entry]) => [
+    name,
+    storedAs(entry, PLAIN),
+    legalValues(entry, PLAIN),
+    changeCommand(name, entry),
+    entry.note,
+  ]);
+}
+
+/**
+ * `{{TIER_UPDATES}}` — the rules that belong to the TIER, one block per tier.
+ *
+ * They are rendered here, in the topic every category shares, because that is
+ * where they are declared: `TIER_UPDATES` holds them once rather than in 24
+ * copies. The two tiers genuinely differ, and the difference is the part a
+ * reader cannot guess — on `rationale`, `severity` offers only `soft` and
+ * `always` only `false`, because the governing values are refused there — so
+ * both blocks are printed in full rather than one being described as "the
+ * other, except…".
+ */
+export function tierUpdateList(): string {
+  return Object.entries(TIER_UPDATES)
+    .flatMap(([tier, updates]) => [
+      `**Every \`${tier}\`-tier item:**`, '', ...updateList(updates), '',
+    ])
+    .join('\n').trimEnd();
+}
+
+/**
+ * `{{CATEGORY_UPDATES}}` — what each enabled category adds beyond its tier.
+ *
+ * From the resolved config, so a category defined only in `config.json` is
+ * rendered by this function and no other: it is listed here if it declares
+ * names of its own and named in the closing line if it does not, on exactly
+ * the terms every shipped category is. There is no branch for a built-in, and
+ * that absence is the check that the data path is the only path.
+ *
+ * The categories that declare nothing are named in one line rather than given
+ * a block each. Nineteen of the twenty-four shipped ones are silent, and
+ * nineteen blocks saying "nothing of its own" would bury the five that are
+ * not — but leaving them out entirely would leave a reader unable to tell "no
+ * declaration" from "not rendered", which is the distinction the whole
+ * requirement is about.
+ */
+export function categoryUpdateList(config: Config): string {
+  const enabled = Object.values(config.categories)
+    .filter((c) => c.enabled)
+    .sort((a, b) => tierRank(a) - tierRank(b) || a.name.localeCompare(b.name));
+
+  const lines: string[] = [];
+  const silent: string[] = [];
+  for (const category of enabled) {
+    const names = Object.keys(category.updates);
+    if (names.length === 0) { silent.push(category.name); continue; }
+    lines.push(
+      `**\`${category.name}\`** — the \`${category.tier}\` rules above, and ` +
+      `${names.length} of its own:`,
+      '', ...updateList(category.updates), '',
+    );
+  }
+  if (silent.length > 0) {
+    // "The other 20 … declare nothing of THEIR own" against "Every enabled
+    // category … declares nothing of ITS own": the subject is plural only in
+    // the first form, and only when there is more than one of them. A
+    // catalogue where every category declares something is a real state and
+    // prints no sentence at all.
+    const all = lines.length === 0;
+    const one = !all && silent.length === 1;
+    lines.push(...wrap(
+      `${all ? 'Every enabled category' : `The other ${silent.length}`} — ` +
+      `${silent.map((n) => `\`${n}\``).join(', ')} — ` +
+      `${all || one ? 'declares nothing of its own' : 'declare nothing of their own'}: ` +
+      `what may be changed on one is exactly its tier's rules above, and nothing else.`,
+      TOPIC_PROSE_WIDTH,
+    ));
+  }
+  return lines.join('\n').trimEnd();
+}
+
+/**
+ * The same surface for ONE category, as `mycontext examples <category>` prints
+ * it beside the specimen.
+ *
+ * Two tables rather than one merged table, because the split is the fact: the
+ * first is everything true of any item on that tier, the second is what this
+ * category adds. A single table would have to carry a "declared where?" column
+ * to say the same thing, and would then say it once per row.
+ *
+ * Bordered through `table` (cli/commands/format.ts), which is what the six
+ * reporting commands draw with and which honours `MYCONTEXT_ASCII` /
+ * `MYCONTEXT_UNICODE` — this is terminal output, not the Markdown the help
+ * topic is.
+ */
+export function updatableSurface(type: string, config: Config): string {
+  const category = categoryOf(type, config);
+  const own = updateRows(category.updates);
+  return [
+    `What may be changed on a \`${category.name}\`, and by which command.`,
+    '',
+    `Every \`${category.tier}\`-tier item:`,
+    ...table(UPDATE_HEADERS, updateRows(TIER_UPDATES[category.tier])),
+    '',
+    own.length === 0
+      ? `A \`${category.name}\` declares nothing of its own: those are all of them.`
+      : `And on a \`${category.name}\` in particular:`,
+    ...table(UPDATE_HEADERS, own),
+  ].join('\n');
 }
 
 /**
@@ -445,11 +671,13 @@ function expand(text: string, token: string, value: string): string {
  * acquire one on the `commands/` directory being present. A section whose
  * source is unavailable must fail only for the topic that prints it.
  *
- * `{{CATEGORY_TABLE}}` is not here: it is the one section that takes the
- * caller's `config` and `locale`, and it has no precondition to defer.
+ * `{{CATEGORY_TABLE}}` and `{{CATEGORY_UPDATES}}` are not here: they are the
+ * sections that take the caller's `config` (and, for the table, its `locale`),
+ * and neither has a precondition to defer.
  */
 const GENERATED: Record<string, () => string> = {
   '{{COMMAND_LIST}}': () => commandList(),
+  '{{TIER_UPDATES}}': () => tierUpdateList(),
   '{{TOOL_REFERENCE}}': () => toolReference(),
   '{{TOOL_PARITY_TABLE}}': () => toolParityTable(),
   '{{TOOL_PARITY_NOTES}}': () => toolParityNotes(),
@@ -465,6 +693,7 @@ export function helpTopic(topic: string, config: Config, locale?: HelpLocale): s
   let text = expand(
     readTopicFile(topic, locale), '{{CATEGORY_TABLE}}', categoryTable(config, locale),
   );
+  text = expand(text, '{{CATEGORY_UPDATES}}', categoryUpdateList(config));
   for (const [token, render] of Object.entries(GENERATED)) {
     if (text.includes(token)) text = expand(text, token, render());
   }
@@ -864,15 +1093,7 @@ export function exampleItemShort(type: string, config: Config): string {
  * drift from the full one the same document prints a few hundred lines above.
  */
 function exampleItemOf(type: string, config: Config): Item {
-  // `Object.hasOwn`, not a bare index: `config.categories[type]` on a
-  // prototype-polluting `type` (e.g. `"constructor"`) resolves to
-  // `Object.prototype.constructor` instead of `undefined`, producing a raw
-  // `TypeError` deep inside this function rather than a teaching message —
-  // the same hazard `mutate.ts`'s `resolveCategory` guards against twice.
-  if (!Object.hasOwn(config.categories, type)) {
-    throw new Error(enumError('type', type, Object.keys(config.categories), 'categories'));
-  }
-  const category = config.categories[type];
+  const category = categoryOf(type, config);
 
   const seed = seedFor(category);
   const id = makeId(category.prefix, seed.title);

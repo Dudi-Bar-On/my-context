@@ -19,7 +19,9 @@ import type { Store } from '../core/store.ts';
 import {
   DIR_NAME, GLOBAL_DIR, findProjectRoot, resolveWorkspace, type Workspace,
 } from '../core/workspace.ts';
-import { HELP_TOPICS, docLocale, exampleItem, exampleItemShort, helpTopic } from '../help/index.ts';
+import {
+  HELP_TOPICS, docLocale, exampleItem, exampleItemShort, helpTopic, updatableSurface,
+} from '../help/index.ts';
 import { enumError } from '../core/teach.ts';
 import { renderCollisionReport } from '../pack/collide.ts';
 import {
@@ -1068,7 +1070,21 @@ function cmdExamples(ws: Workspace, args: string[], out: Emit): number {
   if (!type) { out(EXAMPLES_USAGE); return 1; }
   const short = args.includes('--short');
   try {
-    out(short ? exampleItemShort(type, ws.config) : exampleItem(type, ws.config));
+    // The specimen answers "what does one look like"; the surface answers
+    // "and what may I change on it, by which command" — the question nothing
+    // in this product answered until now, so that five of its rules were each
+    // learned by trying something and reading the refusal.
+    //
+    // `exampleItem` is left EXACTLY as it was, ending in its own newline, and
+    // the surface is printed after it rather than inside it: its contract is
+    // "a complete, correct item, rendered exactly as it is stored", three
+    // tests parse its output back into an `Item`, and `mycontext_examples`
+    // hands it to a model to copy. The `--short` form stays four to six lines
+    // for the reason its own doc comment gives — it is the form both READMEs
+    // print once per category.
+    out(short
+      ? exampleItemShort(type, ws.config)
+      : `${exampleItem(type, ws.config)}\n${updatableSurface(type, ws.config)}`);
     return 0;
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
@@ -1168,7 +1184,7 @@ registerCommand({
 registerCommand({
   name: 'examples',
   usage: 'examples <category> [--short]',
-  summary: 'print an example item (--short: the distinctive fields)',
+  summary: 'an example item, and what may be changed on one (--short: the item alone)',
   run: (ws, args, out) => cmdExamples(ws, args, out),
 });
 
