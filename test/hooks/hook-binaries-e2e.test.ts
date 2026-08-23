@@ -1,6 +1,14 @@
 /**
  * The eight hook binaries, run as real OS processes over real stdio.
  *
+ * **Eight of eighteen, and the other ten are next door.** `hooks seq:21` and
+ * `seq:2b` added ten observation binaries whose stdio contract is one shared
+ * implementation (`src/hooks/observe.ts`), so covering them here would be nine
+ * copies of one assertion beside eight that genuinely differ.
+ * `test/hooks/observation-binaries-e2e.test.ts` runs those ten in one loop and
+ * says why. This file stays the place where each binary's OWN decisions about
+ * the reader, the timer and the envelope are executed.
+ *
  * Every other test in `test/hooks/` imports a function and calls it. That
  * leaves the part Claude Code actually uses — `node <file>` with a JSON payload
  * on stdin, an exit code, and whatever landed on stdout — with no test that

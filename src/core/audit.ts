@@ -192,9 +192,29 @@ export type InjectionOp = (typeof INJECTION_OPS)[number];
  * `SessionStart(source: 'compact')` — the proxy this project inferred a
  * compaction from before `PostCompact` was registered — cannot tell a
  * user-typed `/compact` from one the context window forced.
+ *
+ * **The ten OBSERVATION ops close the gap the hook survey found** (hooks plan
+ * seq 21 and 2b). `file-changed`, `instructions-loaded`, `config-change`,
+ * `permission-denied`, `subagent-stop`, `stop`, `setup`, `task-created`,
+ * `task-completed` and `prompt-expansion` are one op per platform EVENT, for
+ * `post-tool-use-failure`'s reason and no other: a reader asking "did a hand
+ * edit of the corpus ever reach us" wants a value it can pass to `--op`, not a
+ * `note` to grep, and an op that named a different event would claim a firing
+ * that did not happen. They all inject nothing, so they are all `hook` and none
+ * of them is an `injection` — the line `subagent-start` sits on the other side
+ * of.
+ *
+ * They are inside the break `@2` already declares. `AUDIT_PROTOCOL`'s note
+ * above rules that `@2` covers *the whole v2.0 vocabulary widening, not the
+ * `progress` kind alone*, and these are that widening continuing: no new
+ * `AuditKind`, no new field on `AuditRecord`, one unreleased version step for
+ * one release's vocabulary. A second bump would spend a downgrade break that
+ * has not been paid back yet.
  */
 export const HOOK_OPS = [
   'pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure', 'session-end', 'post-compact',
+  'file-changed', 'instructions-loaded', 'config-change', 'permission-denied', 'subagent-stop',
+  'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion',
 ] as const;
 export type HookOp = (typeof HOOK_OPS)[number];
 
@@ -279,6 +299,9 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   'subagent-start': 'injection',
   'post-tool-use-failure': 'hook',
   'session-end': 'hook', 'post-compact': 'hook',
+  'file-changed': 'hook', 'instructions-loaded': 'hook', 'config-change': 'hook',
+  'permission-denied': 'hook', 'subagent-stop': 'hook', stop: 'hook', setup: 'hook',
+  'task-created': 'hook', 'task-completed': 'hook', 'prompt-expansion': 'hook',
 };
 
 export function kindOf(op: AuditOp): AuditKind {
@@ -366,7 +389,14 @@ export interface AuditRecord {
   sessionId?: string;
   /** Injections and hook actions: which hook ran. Absent for `manual`. */
   hook?: 'SessionStart' | 'PreToolUse' | 'PreCompact' | 'PostToolUse' | 'SubagentStart' |
-    'PostToolUseFailure' | 'SessionEnd' | 'PostCompact';
+    'PostToolUseFailure' | 'SessionEnd' | 'PostCompact' |
+    // The observation events (hooks plan seq 21 and 2b). Spelled exactly as
+    // the platform spells them in `hook_event_name`, because that is the
+    // string a reader of the log will have seen in `hooks/hooks.json` and in
+    // Claude Code's own diagnostics; a friendlier spelling here would be a
+    // second name for one event.
+    'FileChanged' | 'InstructionsLoaded' | 'ConfigChange' | 'PermissionDenied' | 'SubagentStop' |
+    'Stop' | 'Setup' | 'TaskCreated' | 'TaskCompleted' | 'UserPromptExpansion';
   /** Injections: what was delivered, by tier. THE SCOPE, NOT THE CONTENT. */
   injected?: InjectedRef[];
   /**

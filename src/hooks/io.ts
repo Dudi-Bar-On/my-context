@@ -86,6 +86,105 @@ export interface HookInput {
    * here.
    */
   prompt_id?: string;
+
+  // --- The observation events (hooks plan seq 21 and 2b) -------------------
+  //
+  // Every field below was read off build 2.1.239's own payload schema at
+  // `C:/Users/UserC/.local/share/claude/versions/2.1.239`, by
+  // `grep -a -b -o 'hook_event_name:kt("<Event>")'` and dumping the bytes that
+  // follow. Each is present, byte-for-byte equivalent, in `2.1.237` and
+  // `2.1.238` as well, so none of them is a value that appeared yesterday.
+  // They are VALIDATION schemas, which makes them what the platform accepts;
+  // it does not make them what it sends, and every handler below treats an
+  // absent field as absent rather than defaulting it.
+
+  /**
+   * `FileChanged` (`file_path:L(),event:Or(["change","add","unlink"])`),
+   * `InstructionsLoaded` and `ConfigChange` (both `file_path`, optional on
+   * `ConfigChange`).
+   *
+   * NOT the same field as `tool_input.file_path`, which is a tool ARGUMENT and
+   * is typed inside `tool_input` above. This one is the platform's own
+   * top-level key and three different events spell it.
+   */
+  file_path?: string;
+  /**
+   * `FileChanged` only: `change | add | unlink`.
+   *
+   * Named `event`, not `change` or `kind`, because that is what is on the
+   * wire. It collides with nothing else in this interface today, and it is
+   * deliberately NOT folded into `reason`/`trigger`/`source`: those three are
+   * already three vocabularies wearing three key names, and a fourth sharing
+   * one of them is how a matcher silently accepts another event's word (see
+   * `reason` above).
+   */
+  event?: string;
+  /**
+   * `InstructionsLoaded` only: `User | Project | Local | Managed` — which
+   * memory tier the loaded CLAUDE.md came from.
+   */
+  memory_type?: string;
+  /**
+   * `InstructionsLoaded` only: `session_start | nested_traversal |
+   * path_glob_match | include | compact`. **This is also the field
+   * `InstructionsLoaded`'s hook MATCHER is tested against**, which is why the
+   * manifest registers that event with no matcher at all — see
+   * `hooks/instructions-loaded.ts`.
+   */
+  load_reason?: string;
+  /** `InstructionsLoaded` only, optional: the globs that selected the file. */
+  globs?: string[];
+  /**
+   * `PermissionDenied` (`tool_name,tool_input,tool_use_id,reason`) and, per the
+   * same probe, `PreToolUse`. Declared here only because `PermissionDenied`
+   * pairs a denial with the call that caused it and the id is the only join.
+   */
+  tool_use_id?: string;
+  /**
+   * `Stop` and `SubagentStop`: the platform's own re-entrancy guard, true when
+   * the turn is continuing BECAUSE a stop hook asked it to. Nothing in this
+   * project blocks a stop, so nothing here acts on it; it is recorded so the
+   * log can say whether a turn ended on its own.
+   */
+  stop_hook_active?: boolean;
+  /** `SubagentStop` only: the subagent's own transcript, distinct from the parent's. */
+  agent_transcript_path?: string;
+  /**
+   * `TaskCreated` and `TaskCompleted`. `task_description`, `teammate_name` and
+   * `team_name` are on the wire and are deliberately NOT declared: nothing
+   * reads them, and `prompt_id`'s note above states the rule — a declared field
+   * nothing reads is a claim about the payload that no test can hold up.
+   */
+  task_id?: string;
+  /** `TaskCreated` and `TaskCompleted`: the task's one-line subject. */
+  task_subject?: string;
+  /**
+   * `UserPromptExpansion` only: `slash_command | mcp_prompt`.
+   *
+   * The event a slash command actually announces, measured on this project's
+   * own `/mycontext:status` in
+   * `reports/probes/2026-08-20-clear-and-prompt-hooks.md` §3a. It fires FIRST,
+   * ~600 ms before the `UserPromptSubmit` carrying the same raw text, and the
+   * two share one `prompt_id`. Plain typed text fires only the second, which is
+   * what makes a slash command distinguishable with no sentinel line and no
+   * hook on every prompt.
+   */
+  expansion_type?: string;
+  /**
+   * `UserPromptExpansion` only: the command, already parsed and already carrying
+   * its plugin prefix (`mycontext:status`). **This is the field
+   * `UserPromptExpansion`'s matcher is tested against**, which is what lets the
+   * manifest spawn this hook for this plugin's own commands and nothing else.
+   */
+  command_name?: string;
+  /** `UserPromptExpansion` only: everything after the command name, unparsed. */
+  command_args?: string;
+  /**
+   * `UserPromptExpansion` only, optional in the schema: where the command was
+   * defined — `plugin` for this project's own, `projectSettings` for a
+   * `.claude/commands/*.md`.
+   */
+  command_source?: string;
 }
 
 /**

@@ -51,7 +51,14 @@ test('each new op is appended to its own family, moving no member before it', ()
   assert.deepEqual(
     [...HOOK_OPS],
     ['pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure', 'session-end',
-      'post-compact'],
+      'post-compact',
+      // The ten observation ops (hooks plan seq:21 and seq:2b), appended in one
+      // block and in the order the manifest registers their events. Ten in one
+      // step rather than one at a time, because they landed in one round and a
+      // reader of `mycontext audit --op` sees them as one family: everything
+      // Claude Code tells my_context about that my_context does not act on.
+      'file-changed', 'instructions-loaded', 'config-change', 'permission-denied',
+      'subagent-stop', 'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion'],
   );
 });
 
@@ -168,12 +175,19 @@ test('a record written with each new op parses back, hook name included', () => 
 test('an unregistered op is still refused, and the refusal names it', () => {
   const line = `${JSON.stringify({
     protocol: AUDIT_PROTOCOL, at: '2026-08-21T00:00:00.000Z',
-    kind: 'hook', op: 'subagent-stop',
+    // A NEAR-MISS of a registered op, deliberately. This test used to spell its
+    // unregistered example `subagent-stop`, which hooks seq:21 then registered
+    // — so the assertion quietly became "a real op is refused", which would have
+    // failed loudly, and did. The lesson is kept rather than papered over: the
+    // realistic way an unknown op reaches this log is a misspelling of a known
+    // one, so the example is now a misspelling of one, and `post-compaction` is
+    // not an event name in the platform's own 31 either.
+    kind: 'hook', op: 'post-compaction',
   })}\n`;
   assert.throws(
     () => parseAudit(line, 'audit.jsonl'),
     (err: Error) => {
-      assert.match(err.message, /declares op "subagent-stop", which is not one of/);
+      assert.match(err.message, /declares op "post-compaction", which is not one of/);
       assert.match(err.message, /subagent-start/, 'the message lists the vocabulary it does know');
       return true;
     },

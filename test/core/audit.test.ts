@@ -364,12 +364,23 @@ test('no pre-existing op changed kind', () => {
   for (const [op, kind] of Object.entries(before)) {
     assert.equal(kindOf(op as (typeof AUDIT_OPS)[number]), kind, `${op} changed kind`);
   }
-  // …and the vocabulary grew by exactly the op the PostCompact round adds, in
-  // the position its family puts it: `post-compact` ends the hook ops.
+  // …and the vocabulary grew by exactly the ops the rounds since have added, in
+  // the position their family puts them: `post-compact` ends the PostCompact
+  // round's hook ops, and the ten behind it are the observation events
+  // (hooks plan seq:21 and seq:2b), appended as one block in the order the
+  // manifest registers them. Every one of them is a `hook` — they inject
+  // nothing — which is the half of this test that matters: a new op that
+  // arrived as an `injection` would make `mycontext audit --kind injection`
+  // over-report what models were shown.
   assert.deepEqual(
     AUDIT_OPS.filter((op) => !(op in before)),
-    ['post-compact'],
+    ['post-compact',
+      'file-changed', 'instructions-loaded', 'config-change', 'permission-denied',
+      'subagent-stop', 'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion'],
   );
+  for (const op of AUDIT_OPS.filter((o) => !(o in before))) {
+    assert.equal(kindOf(op), 'hook', `${op} joined a family that claims something it did not do`);
+  }
 });
 
 // --- filtering --------------------------------------------------------------
