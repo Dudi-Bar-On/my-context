@@ -614,7 +614,44 @@ async function main() {
 
   await loadSessions();
   stopHeartbeat = startHeartbeat(document, () => api('/api/ping').catch(() => {}), 60_000);
-  window.addEventListener('hashchange', route);
+
+  // **A nonce pasted into a LIVE page is redeemed, not routed.**
+  //
+  // The fragment is how this app receives a credential, and until now only the
+  // BOOT looked at it. Pasting the URL `mycontext ui` prints into a tab already
+  // showing the app changed the hash without reloading the document — a
+  // same-document navigation — so `main()` never re-ran, the nonce was never
+  // exchanged, and the router treated the hex as a screen name and fell back to
+  // the preview. The page stayed exactly as locked out as before, and the one
+  // action a person would naturally take to fix it did nothing at all.
+  //
+  // That is not a corner case. It is the ONLY route back after the server
+  // restarts: the old token is stale, the cookie for it has been expired by the
+  // refusal path, and the printed URL is the sole source of a new one. It cost
+  // three wrong diagnoses on 2026-08-23 before the refusal log showed that
+  // `POST /api/handoff` had never been called at all.
+  //
+  // Redeeming in place rather than reloading, because a reload would drop the
+  // fragment before the new document could read it — the same trap the boot
+  // already dodges with `history.replaceState`.
+  window.addEventListener('hashchange', () => {
+    const pasted = extractNonce(location.hash);
+    if (pasted === null) { void route(); return; }
+    void (async () => {
+      const fresh = await exchangeNonce(fetch.bind(window), pasted);
+      history.replaceState(null, '', location.pathname);
+      if (fresh !== null) {
+        token = fresh;
+        rememberToken(fresh);
+        // The screens were drawn with no credential, so they drew nothing.
+        // Everything the shell computed is stale for the same reason.
+        renderChrome();
+        void fillChrome();
+        await loadSessions();
+      }
+      await route();
+    })();
+  });
   await route();
 }
 
