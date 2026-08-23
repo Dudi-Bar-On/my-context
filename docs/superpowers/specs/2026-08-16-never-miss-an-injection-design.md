@@ -174,7 +174,7 @@ Prior measurements this document reuses rather than re-running: JIT whole-hook h
 (`test/perf/focus-latency.perf.ts` · `hook with that focus applied measured p95 10.5 ms on the same run, inside the` · ~20);
 SessionStart ~55 ms p95 on 500 items, ~124 ms with compact restore — the pre-reorder baseline the
 perf file still carries
-(`test/perf/session-start-latency.perf.ts` · `baseline (2026-08-13, same machine, before the reorder) was ~54.9–55.5ms` · ~27),
+(`test/perf/session-start-latency.perf.ts` · `plain max-of-20 ~54.9–55.5ms; compact ~123.9ms.` · ~83),
 re-derived after the change at ~45.6–46.3 ms and ~149.1–163.6 ms;
 audit append 0.55 ms p95, flat from empty to 32 MiB
 (`src/core/audit-db.ts` · `measures 0.55 ms p95 and` · ~21, `test/perf/audit-latency.perf.ts`).
@@ -554,7 +554,7 @@ hands it the items it already parsed as `preloaded`
 Net effect on the numbers: the injection-critical work is what M1 prices; the 500-item p95
 (~55 ms) should *fall*, since the write transaction leaves the critical path — it did, to
 ~45.6–46.3 ms
-(`test/perf/session-start-latency.perf.ts` · `after the never-miss change moved the index rebuild off the` · ~23).
+(`test/perf/session-start-latency.perf.ts` · `Everything recorded before 2026-08-23 was a max-of-20, and is kept here` · ~78).
 The 5,000-item figure (598 ms) exceeds the
 500 ms perf ceiling — that ceiling was set assuming rebuild cost
 (`test/perf/session-start-latency.perf.ts` · `The 500ms budget itself is correct and unchanged from the plan: it is` · ~14)

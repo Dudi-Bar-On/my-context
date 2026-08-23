@@ -233,7 +233,7 @@ const browserModule = async <T>(...segments: string[]): Promise<T> =>
 /**
  * `ctx`, with `tFlat` wired to THROW.
  *
- * Owner ruling A1 (`src/ui/public/app.js` · `string cannot carry an element` · ~40 —
+ * Owner ruling A1 (`src/ui/public/app.js` · `the ONLY renderer` · ~41 —
  * and `lib/i18n.js`'s own header at length): `t()` returns Node[] and is the
  * only renderer; `tFlat` is for attribute and text-only sinks, and "a caller
  * reaching for this to fill an ELEMENT is the bug". **This screen has no

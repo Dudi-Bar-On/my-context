@@ -211,7 +211,7 @@ the task says "establish by executing" instead of asserting it.
 | `DEFAULT_BUDGETS = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 }` | `core/config.ts` · `export const DEFAULT_BUDGETS: Budgets = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };` · ~56 |
 | `agentEditsFor(config,type)` | `core/config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~165 |
 | `scopePolicyFor(config,type)` | `core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~143 |
-| `PROFILES` imported from `core/categories.ts` | `core/config.ts` · `import { CATEGORIES, PROFILES, type ProfileName } from './categories.ts';` · ~1 |
+| `PROFILES` imported from `core/categories.ts` | `core/config.ts` · `  CATEGORIES, PROFILES,` · ~2 |
 | Config file is `<projectRoot>/config.json` | `core/workspace.ts` · `const configPath = projectRoot ? path.join(projectRoot, 'config.json') : null;` · ~29 |
 | The deny hook's config wording | `hooks/pre-tool-use.ts` · `changes to ` · ~118 |
 | `filterItems(items, filters, config)` — the ONE corpus filter | `core/search.ts` · `export function filterItems(items: Item[], filters: ItemFilters, config: Config): Item[] {` · ~70 |

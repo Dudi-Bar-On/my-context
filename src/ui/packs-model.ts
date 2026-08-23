@@ -274,7 +274,7 @@ export interface PackRow {
  * — and `planImport` does run it over the MANIFEST's name and version
  * (`pack/import.ts` · `    ...screenPackMeta(manifest.name ?? '', manifest.version ?? ''),` · ~318).
  * But `pack import --name <text>` overrides the manifest's name AFTER the plan
- * has been screened (`cli/commands/pack.ts` · `    const name = flag(args, 'name') ?? plan.pack;` · ~312),
+ * has been screened (`cli/commands/pack.ts` · `    const name = override ?? plan.pack;` · ~312),
  * and nothing re-checks the override. Measured, not inferred: importing with
  * `--name` holding U+202E RIGHT-TO-LEFT OVERRIDE exits 0 and writes the control
  * character into `import.json`'s `pack` field verbatim, and so does a `--name`
