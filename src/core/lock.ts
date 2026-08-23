@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import {
   closeSync, existsSync, openSync, readdirSync, readFileSync, rmSync, statSync,
@@ -49,7 +49,7 @@ const LOCK_TIMEOUT_MS = 15_000;
 
 // The age at which a lock file whose payload CANNOT name a holder — and only
 // such a file — is treated as abandoned. A payload that does name a pid is
-// decided by that pid's liveness instead, at any age; see `isStaleLock`.
+// decided by that pid's liveness instead, at any age; see `judgeStale`.
 // Also the age at which an orphaned `<basename>.tmp-*` file is reclaimed (see
 // `reclaimStaleTemps`). Set well above any realistic single critical section:
 // this is a crash-recovery backstop, not a normal-path timing knob — a
@@ -109,6 +109,14 @@ function isProcessAlive(pid: number): boolean {
 }
 
 /**
+ * Whether the lock file was left behind by a process that died without
+ * releasing it — and if so, the exact PAYLOAD that was judged, so the caller
+ * can remove the file the judgement was ABOUT rather than whatever file
+ * happens to sit at that path when the removal runs. `null` means "not
+ * stale", which includes "vanished underneath this judgement". See
+ * `reclaimStaleLock` for why returning the payload, rather than a bare
+ * boolean, is the difference between crash recovery and a double-hold.
+ *
  * A lock left behind by a process that Ctrl-C (or a crash) killed without
  * running its `finally` — this codebase has no signal handler anywhere in
  * `src/`, so that is the normal way a lock outlives its holder, not an edge
@@ -158,28 +166,22 @@ function isProcessAlive(pid: number): boolean {
  * function needs to tolerate with a grace period — or unless it was written
  * by the `openSync('wx')` fallback, whose window this module already accepts.
  */
-function isStaleLock(file: string): boolean {
+function judgeStale(file: string): string | null {
   let mtimeMs: number;
   try {
     mtimeMs = statSync(file).mtimeMs;
   } catch {
-    return false; // vanished between our EEXIST and this stat — its owner just released it
+    return null; // vanished between our EEXIST and this stat — its owner just released it
   }
 
   let raw: string;
   try {
     raw = readFileSync(file, 'utf8');
   } catch {
-    return false; // vanished between stat and read — as above
+    return null; // vanished between stat and read — as above
   }
 
-  const pid = recordedPid(raw);
-  // Not `if (pid)` — pid 0 is not a pid this can ask about (`process.kill(0,
-  // 0)` addresses a process GROUP, not a process), so `recordedPid` returns
-  // null for it and the mtime backstop answers instead.
-  if (pid !== null) return !isProcessAlive(pid);
-
-  return Date.now() - mtimeMs > LOCK_STALE_MS;
+  return staleBy(raw, mtimeMs) ? raw : null;
 }
 
 /** The payload's `pid`, or null when the payload is unparseable or carries
@@ -191,9 +193,167 @@ function recordedPid(raw: string): number | null {
       return payload.pid;
     }
   } catch {
-    // Genuine corruption, not a mid-write race — see the doc comment above.
+    // Genuine corruption, not a mid-write race — see `judgeStale`'s doc
+    // comment above on why an unparseable payload is not a race this has to
+    // tolerate with a grace period.
   }
   return null;
+}
+
+/**
+ * The staleness rule itself, over a payload ALREADY READ and the mtime of the
+ * same file. Split out from `judgeStale` so `reclaimStaleLock` can re-apply
+ * the identical rule to its re-read without a second definition of stale
+ * drifting away from this one.
+ */
+function staleBy(raw: string, mtimeMs: number): boolean {
+  const pid = recordedPid(raw);
+  // Not `if (pid)` — pid 0 is not a pid this can ask about (`process.kill(0,
+  // 0)` addresses a process GROUP, not a process), so `recordedPid` returns
+  // null for it and the mtime backstop answers instead.
+  if (pid !== null) return !isProcessAlive(pid);
+
+  return Date.now() - mtimeMs > LOCK_STALE_MS;
+}
+
+/**
+ * The exclusive marker one reclaimer creates so no OTHER reclaimer of the same
+ * lock can run beside it. Named after the VICTIM, never the reclaimer: every
+ * process that judged the same payload stale contends for this one name and
+ * exactly one wins, which is the whole point of it.
+ *
+ * The victim is named by its `nonce` when it has one — already a unique,
+ * filename-safe name for exactly one acquisition — and by a digest of its
+ * bytes when it does not. A payload with no nonce is not an exotic case: the
+ * `openSync(file, 'wx')` fallback's empty/truncated window produces one, so
+ * does genuine corruption, and so does any lock file written by something
+ * other than this module (`test/cli/ingest-lock.test.ts` writes `{pid, at}`
+ * by hand). Those are exactly the payloads the `LOCK_STALE_MS` mtime backstop
+ * exists to recover, so they must be reclaimable, and a digest gives them the
+ * same one-marker-per-victim contention a nonce gives the rest.
+ *
+ * Built from `tempPrefix`, so a marker leaked by a process killed mid-reclaim
+ * is already swept by `reclaimStaleTemps` at `LOCK_STALE_MS`, and two
+ * different locks living in one directory cannot sweep each other's.
+ */
+function reclaimMarker(file: string, raw: string): string {
+  let key: string;
+  try {
+    const payload = JSON.parse(raw) as Partial<LockPayload>;
+    key = typeof payload?.nonce === 'string' && payload.nonce !== '' ? payload.nonce : '';
+  } catch {
+    key = '';
+  }
+  if (key === '') key = `sha-${createHash('sha256').update(raw).digest('hex').slice(0, 32)}`;
+  return path.join(path.dirname(file), `${tempPrefix(file)}reclaim-${key}`);
+}
+
+/**
+ * Removes `file` **only if it is still the exact lock that was judged**, and
+ * reports whether it did. `judgedRaw` is the payload `judgeStale` read and
+ * ruled on.
+ *
+ * `judgeStale` answers a question about a payload read at ONE INSTANT; the
+ * removal happens at a later one. In between, the lock just judged can be
+ * released and REPLACED by a live acquirer's. An unconditional `rmSync(file)`
+ * there deletes that new, legitimately-held lock, and the reclaimer then walks
+ * straight in beside its holder — two processes inside one critical section,
+ * which is the entire failure this module exists to prevent, produced by the
+ * recovery path meant to protect it. It is the same "delete a lock that is not
+ * mine" cascade `releaseFnFor` carries a nonce check against; the release path
+ * had that guard and this one did not.
+ *
+ * Not a theoretical window. Reproduced on this machine from separate real
+ * processes with zero artificial delay, by raising
+ * `test/core/session-names.test.ts`'s concurrent writers to 24 and then 32: a
+ * reclaimer read a payload naming a pid that had just exited, and ~8ms later —
+ * the cost of a `process.kill` liveness probe plus ordinary scheduler delay —
+ * deleted a DIFFERENT payload belonging to a live holder that was mid-write.
+ * That holder's `release()` then correctly declined to remove a file no longer
+ * naming it, by which point both had read the store and one's entry was gone.
+ * Eleven rounds in twenty lost at least one of 32 entries, every writer
+ * reporting success. The trigger is ordinary rather than exotic: a short-lived
+ * process makes "the recorded pid is dead" true within milliseconds of a
+ * NORMAL release, so a healthy release-then-reacquire is indistinguishable
+ * from a crash to a check that consults liveness alone.
+ *
+ * **Why the marker makes this structural rather than merely narrower.** Once
+ * the re-read under the marker confirms `file` still carries `judgedRaw`,
+ * nothing can replace it before the `rmSync`:
+ *
+ *   - Replacement requires prior REMOVAL. Both constructions in `acquireLock`
+ *     (`linkSync`, `openSync(file, 'wx')`) fail against an existing target,
+ *     and nothing in this module writes the lock file in place.
+ *   - The only removals of `file` are `releaseFnFor` and this function.
+ *     `releaseFnFor` removes it only on behalf of the acquisition whose nonce
+ *     the payload names — i.e. from the process recorded in it, which is
+ *     already dead on the pid path, and which on the mtime path has not
+ *     touched this file for `LOCK_STALE_MS`.
+ *   - Another reclaimer of the SAME payload cannot create the marker. A
+ *     reclaimer of any OTHER payload re-reads `file`, finds `judgedRaw`
+ *     instead of the bytes it judged, and declines exactly as this one would.
+ *
+ * So the check and the removal cannot be separated by a replacement, and no
+ * timing assumption is carrying the guarantee — which matters here
+ * specifically, because a grace period standing in for a structural guarantee
+ * is the defect `acquireLock`'s `linkSync` construction was written to retire.
+ *
+ * The staleness rule is re-applied to the re-read as well as the payload
+ * compared, and the second check is not redundant: two DIFFERENT lock files
+ * can carry identical bytes when those bytes are the empty string, which is
+ * precisely what the `openSync(file, 'wx')` fallback puts on disk for an
+ * instant. Byte equality alone would let a five-minute-old empty lock's
+ * reclaimer delete a brand-new one; re-checking staleness sees the fresh mtime
+ * and declines.
+ *
+ * **The residual, stated because it is real:** a process killed between
+ * creating the marker and the `finally` that removes it leaves that ONE victim
+ * unreclaimable until `reclaimStaleTemps` sweeps the marker at
+ * `LOCK_STALE_MS`, so a crashed holder's lock wedges for up to that long
+ * instead of being reclaimed at once. That is a bounded delay in CRASH
+ * RECOVERY, traded for the removal of a silent double-hold on the NORMAL path
+ * — the same asymmetry `judgeStale` chose when it preferred a loudly-reported
+ * wedge to a silent double-hold.
+ *
+ * **Exported for testing on purpose**, for the reason `isCorruptionError`
+ * (core/store.ts) is: exercising this only THROUGH `acquireLock` proves
+ * nothing. The old unconditional `rmSync` and this identity-checked removal
+ * differ only inside a window measured in milliseconds, so a test driven
+ * through the public API can observe the difference only PROBABILISTICALLY —
+ * it would have stayed green on the broken code most of the time, which is how
+ * this defect survived five sightings and roughly twenty clean isolated runs.
+ * The distinction has to be asserted directly, and
+ * `test/core/lock-stale-reclaim.test.ts` does; the multi-process test in
+ * `test/core/session-names.test.ts` remains the end-to-end evidence.
+ */
+export function reclaimStaleLock(file: string, judgedRaw: string): boolean {
+  const marker = reclaimMarker(file, judgedRaw);
+  try {
+    // `wx` is atomic create-or-fail on win32 (`CREATE_NEW`) exactly as on
+    // POSIX (`O_CREAT|O_EXCL`). No payload: the NAME is the claim, so there is
+    // no second syscall for a concurrent reader to land inside.
+    closeSync(openSync(marker, 'wx'));
+  } catch {
+    return false; // another process owns this victim's reclaim; leave it to them
+  }
+  try {
+    let mtimeMs: number;
+    let raw: string;
+    try {
+      mtimeMs = statSync(file).mtimeMs;
+      raw = readFileSync(file, 'utf8');
+    } catch {
+      return false; // already gone — released or reclaimed since we judged it
+    }
+    // The two checks this whole function exists for: the file at this path may
+    // no longer be the one that was judged, and bytes alone do not identify it.
+    if (raw !== judgedRaw) return false;
+    if (!staleBy(raw, mtimeMs)) return false;
+    try { rmSync(file, { force: true }); } catch { return false; }
+    return true;
+  } finally {
+    try { rmSync(marker, { force: true }); } catch { /* best-effort; swept by reclaimStaleTemps */ }
+  }
 }
 
 /**
@@ -302,8 +462,13 @@ let hardLinksSupported = true;
 function retryOrThrow(err: unknown, spec: LockSpec, deadline: number, attempt: number): number {
   const file = spec.file;
   if (!isRetryableLockError((err as NodeJS.ErrnoException)?.code)) throw err;
-  if (isStaleLock(file)) {
-    try { rmSync(file, { force: true }); } catch { /* someone else reclaimed it first; fine */ }
+  const stale = judgeStale(file);
+  // Only a reclaim that ACTUALLY removed the lock this attempt judged skips
+  // the backoff. A declined one — the file was replaced since the judgement,
+  // or another process owns this victim's reclaim — falls through to the
+  // deadline check and the sleep below, rather than hot-spinning against a
+  // lock somebody else legitimately holds.
+  if (stale !== null && reclaimStaleLock(file, stale)) {
     return attempt; // retry immediately — no reason to wait out a stale lock
   }
   if (Date.now() >= deadline) {
@@ -311,7 +476,7 @@ function retryOrThrow(err: unknown, spec: LockSpec, deadline: number, attempt: n
       `my_context: could not acquire the ${spec.name} lock (${file}) after ${LOCK_TIMEOUT_MS}ms. ` +
       `${describeHolder(file)} If that process is not a running \`mycontext\`, the lock is wedged ` +
       `— its holder crashed and the operating system has since reused its pid, which this lock ` +
-      `cannot detect (see isStaleLock) — and deleting ${file} clears it. Otherwise ` +
+      `cannot detect (see judgeStale) — and deleting ${file} clears it. Otherwise ` +
       `${spec.otherHolder}; try again shortly.`,
     );
   }
@@ -353,7 +518,7 @@ function releaseFnFor(file: string, nonce: string): () => void {
   return () => {
     // Ownership check before removal: an unconditional `rmSync` here is
     // what let a stolen-from holder's release() delete the THIEF's lock in
-    // the hazard `isStaleLock`'s doc comment describes — this process may
+    // the hazard `judgeStale`'s doc comment describes — this process may
     // no longer be the one holding `file` by the time `release()` runs
     // (e.g. a bug elsewhere wrongly judged this holder's lock stale and
     // reclaimed it while this process was still working). Only remove the
@@ -383,7 +548,8 @@ function releaseFnFor(file: string, nonce: string): () => void {
  * Blocks (via a bounded, backing-off poll — `sleepMs` blocks the thread
  * without a dependency, see core/sleep.ts) until this process holds
  * `spec.file`, then returns a function that releases it. A lock found stale
- * (`isStaleLock`) is reclaimed immediately, without waiting out the rest of
+ * (`judgeStale`) is reclaimed immediately — but only if it is still the same
+ * lock that was judged (`reclaimStaleLock`) — without waiting out the rest of
  * the poll budget. Throws a `my_context:`-prefixed message if the lock is
  * still legitimately held by someone else after `LOCK_TIMEOUT_MS`.
  *
@@ -407,7 +573,7 @@ function releaseFnFor(file: string, nonce: string): () => void {
  * inode that is already completely written, and fails `EEXIST` cleanly if
  * the target already exists. There is no window in which the target exists
  * but is empty or partial, so there is nothing left for a grace period to
- * protect against — see `isStaleLock`'s doc comment for the other half of
+ * protect against — see `judgeStale`'s doc comment for the other half of
  * this.
  *
  * `linkSync` itself is not universally available: see `hardLinksSupported`'s
@@ -418,7 +584,7 @@ function releaseFnFor(file: string, nonce: string): () => void {
  * which has no hard-link dependency. That construction reintroduces the
  * empty/truncated-payload window the `linkSync` path closes, but not a new
  * hazard beyond what this codebase already tolerates for any OTHER corrupt
- * payload: `isStaleLock` treats an unparseable payload the same way
+ * payload: `judgeStale` treats an unparseable payload the same way
  * regardless of cause, falling through to the `LOCK_STALE_MS` mtime backstop
  * rather than reclaiming it quickly — a filesystem that cannot support the
  * stronger construction still gets a working, merely slower-to-recover,
@@ -430,7 +596,7 @@ function releaseFnFor(file: string, nonce: string): () => void {
  * describe. There is a second, PERSISTENT one, and it is named here because
  * an unstated window is how a "brief" claim gets read as a complete one: if
  * the `writeSync` itself fails, the zero-byte lock file it opened stays on
- * disk. Nothing recovers that quickly — `isStaleLock` cannot parse it, so it
+ * disk. Nothing recovers that quickly — `judgeStale` cannot parse it, so it
  * waits out the full `LOCK_STALE_MS` backstop and wedges every acquirer,
  * including this process's own retry, for five minutes over a purely local
  * write failure. The fallback therefore removes the file before letting the
@@ -511,7 +677,7 @@ export function acquireLock(spec: LockSpec): () => void {
       // the second one matters more here because the file being written IS
       // the lock: a `writeSync` that throws used to leak the descriptor AND
       // leave a zero-byte lock file behind. That empty lock is not
-      // recoverable the way a stray temp file is — `isStaleLock` cannot parse
+      // recoverable the way a stray temp file is — `judgeStale` cannot parse
       // it, so it falls through to the `LOCK_STALE_MS` mtime backstop and
       // wedges every acquirer, including this process's own retry, for five
       // minutes over a purely local write failure. Removing it before the
