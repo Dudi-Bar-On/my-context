@@ -421,6 +421,153 @@ cli(['focus', '--clear']);
   }
 }
 
+// ── THE THREE SCREENS THIS FIXTURE STILL STARVED ───────────────────────────
+//
+// Measured 2026-08-23 by asking every endpoint what it answers over this
+// corpus, rather than by looking at screens — because a blank pane has two
+// causes and only the endpoint tells them apart:
+//
+//     /api/review-queue   {"drafts":[]}                      -> learn draws nothing
+//     /api/procedures     {"stages":[5],"procedures":[]}     -> proc draws nothing
+//     /api/packs          {"packs":[],"dropped":[]}          -> packs draws nothing
+//
+// Everything below is produced by the REAL commands, exactly like the rest of
+// this script. Nothing writes a row into a table to make a screen look full;
+// the owner's standing rule is that a fixture which fakes data teaches the
+// gate to accept a lie, and three agents refused to break it on 2026-08-23.
+
+// ── DRAFTS, so the Learn screen's review queue has something to settle ─────
+//
+// `add` creates an ACTIVE item with no draft step — the workflow topic says so
+// in its own words — so the draft state is reached the way a human reaches it,
+// by editing the status afterwards. Two, because one draft cannot show that
+// the queue is a list.
+{
+  const drafts: [string, string, string][] = [
+    ['rule', 'Retries use full jitter, never a fixed backoff',
+      'A fixed backoff synchronises every caller onto the same retry instant, which is how a '
+      + 'recovering service is knocked over a second time by the clients waiting for it.'],
+    ['constraint', 'The export bundle stays under fifty megabytes',
+      'Above that the artefact stops fitting the transports people actually use to move it, and '
+      + 'a bundle nobody can send is a backup nobody has.'],
+  ];
+  for (const [category, title, text] of drafts) {
+    cli(['add', category, title, '--body', text, '--yes']);
+    const made = idsOf(category).find((i) => i.title === title);
+    if (made === undefined) throw new Error(`demo-corpus: ${category} "${title}" was not created`);
+    cli(['edit', made.id, '--status', 'draft', '--yes']);
+  }
+  console.log(`demo-corpus: ${drafts.length} drafts, so the review queue is a queue`);
+}
+
+// ── PROCEDURES, so the Procedures screen has a lifecycle to draw ───────────
+//
+// `/api/procedures` already answered five STAGES and zero procedures: the
+// vocabulary existed and nothing occupied it. Three, deliberately left in
+// three different states — one untouched, one running, one finished — because
+// the screen's whole subject is which stage a procedure is in, and three
+// procedures all sitting in `ready` would draw one state three times.
+{
+  // **With STEPS.** `procedure activate` warns in its own words that a
+  // procedure declaring none leaves "nothing to tick", and the Procedures
+  // screen's whole middle column is the step list — three procedures with no
+  // steps would fill the screen's index and leave its detail empty, which is
+  // the same starvation one level down.
+  const procedures: [string, string, string[]][] = [
+    ['Rotate the signing key', 'Generate the new key, publish it alongside the old one, wait a '
+      + 'full token lifetime, then retire the old key. Skipping the overlap invalidates every '
+      + 'token issued in the last hour.', [
+      'Generate the new key pair offline',
+      'Publish the new public key alongside the old one',
+      'Wait one full token lifetime',
+      'Retire the old key and verify nothing still presents it',
+    ]],
+    ['Restore a corpus from an export', 'Verify the manifest checksum first. An export whose '
+      + 'config.json bytes have changed does not verify against its own manifest, and importing '
+      + 'it anyway is how a corpus acquires a category nothing declares.', [
+      'Verify the manifest checksum before reading anything else',
+      'Import into an empty workspace, never over a live one',
+      'Run doctor and compare the item count against the manifest',
+    ]],
+    ['Cut a release', 'Run every gate the way the project runs it, tag, then publish. A '
+      + 'hand-assembled gate invocation is not the gate.', [
+      'Run every gate through its own npm script',
+      'Tag the commit the gates actually ran against',
+      'Publish, then confirm the published artefact matches the tag',
+    ]],
+  ];
+  for (const [title, text, steps] of procedures) {
+    cli(['add', 'procedure', title, '--body', text,
+      ...steps.flatMap((s) => ['--step', s]), '--yes']);
+  }
+  const made = idsOf('procedure');
+  // Deterministic by id, the same rule the staged revision above follows: this
+  // script has no randomness and must not gain any.
+  const ordered = made.filter((p) => procedures.some(([t]) => t === p.title))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  // `--yes` on every one: `procedure activate` sets both `status` and
+  // `always`, and refuses without confirmation when stdin is not interactive —
+  // which a build script never is. The refusal is correct and is the same gate
+  // `edit` applies; this script consents on the author's behalf exactly as it
+  // does for every other `--yes` above.
+  if (ordered.length >= 2) {
+    cli(['procedure', 'activate', ordered[0]!.id, '--yes']);
+    cli(['procedure', 'activate', ordered[1]!.id, '--yes']);
+    // One step ticked on the running procedure, so the screen has a partially
+    // complete list to draw rather than only empty and only full.
+    cli(['procedure', 'step', ordered[0]!.id, '1']);
+    cli(['procedure', 'done', ordered[1]!.id, '--yes']);
+  }
+  console.log(`demo-corpus: ${procedures.length} procedures across three lifecycle states`);
+}
+
+// ── ONE IMPORTED PACK, so the Template Packs screen has a pack ─────────────
+//
+// Built by EXPORTING this corpus as a pack and importing it back, which is the
+// only way to get an artefact the importer will accept without hand-writing a
+// manifest — and hand-writing one would be fabricating the very checksums the
+// import path exists to verify. The round trip exercises both halves.
+{
+  // **From a SEPARATE corpus, not from this one.** Exporting this corpus and
+  // importing it back was the obvious shape and it produces nothing: measured,
+  // `0 new, 0 changed, 4 identical` — every item is already here by
+  // construction, so the landing report is empty and the screen draws a pack
+  // that carried nothing. A pack is knowledge somebody ELSE wrote; the fixture
+  // has to model that or it models nothing.
+  const author = path.join(OUT, '..', '.demo-pack-author');
+  if (existsSync(author)) rmSync(author, { recursive: true, force: true });
+  mkdirSync(author, { recursive: true });
+  const authored = (args: string[]): void => {
+    execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, ...args], {
+      cwd: author, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  };
+  authored(['init']);
+  const carried: [string, string, string][] = [
+    ['constraint', 'Card numbers never reach application logs',
+      'PCI scope is defined by where the data goes. A log line is a copy, and a copy in a log is '
+      + 'ninety days of retained cardholder data nobody budgeted for.'],
+    ['rule', 'Money is an integer of minor units, never a float',
+      'A float cannot represent a tenth of a cent, and a rounding error that appears once per '
+      + 'transaction appears a million times per month.'],
+    ['invariant', 'A refund never exceeds the captured amount',
+      'Enforced at the ledger, not at the form. A form is a suggestion; the ledger is the record.'],
+    ['glossary', 'Capture',
+      'Moving an authorised amount to settlement. Distinct from authorisation, which only '
+      + 'reserves it, and the two are routinely confused in tickets.'],
+  ];
+  for (const [category, title, text] of carried) {
+    authored(['add', category, title, '--body', text, '--yes']);
+  }
+  const packDir = path.join(OUT, '..', '.demo-pack');
+  if (existsSync(packDir)) rmSync(packDir, { recursive: true, force: true });
+  authored(['export', '--out', packDir, '--as-pack',
+    '--pack-name', 'billing-starter', '--pack-version', '1.0.0']);
+  cli(['pack', 'import', packDir, '--yes']);
+  rmSync(author, { recursive: true, force: true });
+  console.log(`demo-corpus: one pack of ${carried.length} items imported from another corpus`);
+}
+
 const lines = readFileSync(auditLog, 'utf8').split('\n').filter(Boolean);
 for (const line of lines) {
   try { const k = (JSON.parse(line) as { kind: string }).kind; produced[k] = (produced[k] ?? 0) + 1; } catch { /* skip */ }
