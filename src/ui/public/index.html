@@ -109,6 +109,44 @@
        banner() helper, never authored here — see the "no innerHTML anywhere"
        rule i18n.js and app.js both follow. -->
   <div class="banner" id="exited" hidden role="alert"></div>
+  <!-- ITEM DETAIL PANE — docs/design/web-ui-mockup.html ~2328-2355.
+       Where every `button.linkid` on every screen leads. `parts.js`'s linkId()
+       has been writing those buttons since Task 16 and has said all along that
+       "the shell owns the pane and delegates from the document"; until now
+       there was no pane and no listener, so every id in the product was a
+       button that did nothing when clicked. Reported by the owner twice.
+
+       The `<dl>` labels carry `data-t` and are translated in place by
+       i18n.js's applyStatic, exactly as the rest of this shell's static text
+       is. The VALUES are filled at runtime by app.js — never authored here,
+       and never with innerHTML, which is the rule this whole file follows.
+
+       Two things the mockup draws that are deliberately absent, because the
+       data behind them does not exist: `#panespark` and its `pane.hist` /
+       `pane.histn` captions want twelve weekly delivered/spilled buckets, and
+       `read-model.ts` says in its own words that `Usage` is a count and "a
+       count cannot carry the spilled state at all" (~1433). Drawing an empty
+       sparkline would claim a history was measured. Filed rather than faked. -->
+  <aside class="pane" id="pane" hidden aria-label="Item detail" data-t-aria="aria.pane">
+    <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+      <h3 class="m" id="paneid">—</h3>
+      <button class="icon" id="paneclose" aria-label="Close" data-t-aria="aria.paneclose">✕</button>
+    </div>
+    <p class="small" id="panetitle"></p>
+    <dl>
+      <dt data-t="pane.type">type</dt><dd class="m" id="panetype"></dd>
+      <dt data-t="pane.status">status</dt><dd class="m" id="panestatus"></dd>
+      <dt data-t="pane.tier">tier</dt><dd class="m" id="panetier"></dd>
+      <dt data-t="pane.scope">scope</dt><dd class="m" id="panescope"></dd>
+      <dt data-t="pane.gov">governs</dt><dd class="small" id="panegov"></dd>
+      <dt data-t="pane.file">file</dt><dd class="m" id="panefile"></dd>
+    </dl>
+    <div class="welllabel" data-t="pane.body">Body — as authored</div>
+    <div class="well"><div class="md" id="panebody"></div></div>
+    <p class="small" style="margin-block-start:8px" data-t="pane.well">Corpus text sits in a well and
+      inside <span class="m">&lt;bdi&gt;</span>. The product's own words never do — that is how you tell
+      them apart.</p>
+  </aside>
 </div>
   <script type="module" src="/app.js"></script>
 </body>

@@ -210,6 +210,21 @@ const SCREEN_SELECTORS = [
   // coverage and 12 on injected, measured. The mockup carried the same gap and
   // was fixed in the same commit, so these stay byte-identical.
   '.linkid', '.linkid:hover',
+  // **The item detail pane, added 2026-08-23 with the element it styles.**
+  //
+  // These were absent for a reason worth recording, because it is how a
+  // designed, debugged and repainted feature shipped with every gate green:
+  // the app had no `#pane`, so there was nothing for a parity assertion to
+  // measure and no assertion was written. `plan:repaint seq:9c` rescoped this
+  // whole block from `.pane` to `#pane` after `.card.pane` collided with it —
+  // real work, done on the MOCKUP, on an element the app did not have. The two
+  // pane selectors that WERE listed (`.pane,.rail,.hdr` above and
+  // `.plane>.pane` below) both pass, because the app uses them elsewhere.
+  //
+  // The lesson generalises past this rule: parity measures what the app
+  // renders against what the mockup declares, so a whole element the app never
+  // built is invisible to it in both directions.
+  '#pane', '#pane[hidden]', '#pane h3', '#pane dl', '#pane dt', '#panetitle',
   // The audit stream's own seven (ui3 Task 11, mockup ~907-923). Added with
   // the carry, per this file's own standing brief — "Extend that test with
   // every block you add" — so the pulse, the token bar, the not-recorded void

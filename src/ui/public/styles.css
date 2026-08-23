@@ -842,6 +842,21 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
    held there by styles-parity, which gains eleven selectors with them. */
 
 /* — rendered markdown: the docs screen’s help topics (mockup ~650-655) — */
+/* Item detail pane — where every `button.linkid` on every screen leads.
+   Material comes from the `.pane,.rail,.hdr` primitive above; this consumer
+   keeps only its grid slot and its own scroll/padding, the same split `.rail`
+   takes. Scoped to the element's own `id="pane"` and NOT to `.pane`, which
+   `.card.pane` puts on 37 other elements — the mockup records what that
+   collision cost when it was a class (~624-640) and this carry inherits the
+   fix rather than repeating the mistake. */
+#pane{grid-area:pane;overflow-y:auto;padding:var(--sp-3)}
+#pane[hidden]{display:none}
+#pane h3{margin:0 0 var(--sp-1);font-size:var(--fs-2)}
+#pane dl{display:grid;grid-template-columns:auto 1fr;gap:3px var(--sp-2);
+  font-size:var(--fs-0);margin:var(--sp-2) 0}
+#pane dt{color:var(--dim)} #pane dd{margin:0}
+#panetitle{color:var(--ink)}
+
 .md{font-size:var(--fs-1);line-height:1.6}
 .md h1,.md h2,.md h3{font-size:var(--fs-2);margin:var(--sp-3) 0 var(--sp-1)}
 .md p{margin:0 0 var(--sp-2)}

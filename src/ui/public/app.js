@@ -58,6 +58,13 @@
 import { extractNonce, exchangeNonce } from '/lib/bootstrap.js';
 import { startHeartbeat } from '/lib/heartbeat.js';
 import { applyLanguage, pickLanguage, t as translate, tFlat as flat } from '/lib/i18n.js';
+// The ONE markdown renderer. The Docs screen owns it because Docs was the
+// first screen that needed one; the item pane is the second, and a second
+// implementation of "turn corpus text into nodes safely" is the last thing
+// this product should grow — that renderer is already the thing
+// `e2e/runs.spec.ts` points at when it asserts the page SHOWS a script tag
+// rather than running one.
+import { markdownNodes } from '/screens/docs.js';
 
 const SCREENS = {
   preview: () => import('/screens/preview.js'),
@@ -198,6 +205,157 @@ function showDisconnected() {
   refresh.append(...translate(table.strings, 'btn.refresh'));
   refresh.onclick = () => { location.reload(); };
   banner(msg, refresh);
+}
+
+/* ══ ITEM DETAIL PANE ═══════════════════════════════════════════════════════
+ *
+ * **Every `button.linkid` in this product was inert.** `parts.js`'s linkId()
+ * has written them since Task 16 and its header has said all along that "the
+ * shell owns the pane and delegates from the document, exactly as the mockup
+ * does, and a second listener here would open it twice" — a division of labour
+ * where one half was never built. So an id rendered as a button, hovered like a
+ * link, and did nothing. The owner reported it twice.
+ *
+ * Delegated from `document` rather than bound per button, which is not a
+ * micro-optimisation: every screen rebuilds its own subtree on every route and
+ * on every language change, so per-button listeners would have to be re-bound
+ * by twenty-one screens and one of them would forget. A document listener
+ * cannot go stale, and it is why linkId() was told not to bind its own.
+ */
+
+/** The pane's own elements, looked up once. `null` until the shell is parsed. */
+function paneEls() {
+  return {
+    aside: document.getElementById('pane'),
+    id: document.getElementById('paneid'),
+    title: document.getElementById('panetitle'),
+    type: document.getElementById('panetype'),
+    status: document.getElementById('panestatus'),
+    tier: document.getElementById('panetier'),
+    scope: document.getElementById('panescope'),
+    gov: document.getElementById('panegov'),
+    file: document.getElementById('panefile'),
+    body: document.getElementById('panebody'),
+  };
+}
+
+/** The id currently shown, so clicking the same id twice does not re-fetch. */
+let paneId = null;
+
+/**
+ * Close it, and give the grid its two columns back.
+ *
+ * `.app.pane-open` is what widens the layout to three columns (styles.css
+ * ~310, byte-identical to the mockup). Hiding the aside WITHOUT dropping that
+ * class would leave a 330px empty column on the right — the pane would be
+ * invisible and still taking a third of the screen.
+ */
+function closePane() {
+  const { aside } = paneEls();
+  if (aside === null) return;
+  aside.hidden = true;
+  document.getElementById('app')?.classList.remove('pane-open');
+  paneId = null;
+}
+
+/**
+ * Fill the pane from `/api/item/:id` and show it.
+ *
+ * Everything the `<dl>` needs is served: `item` carries type, status, scope and
+ * the source file, `injection` carries the verdict phrase the `governs` row
+ * shows. The mockup's twelve-week sparkline is NOT drawn, and that is a
+ * refusal rather than an omission — `read-model.ts` states in its own words
+ * that `Usage` is a count and "a count cannot carry the spilled state at all"
+ * (~1433). An empty chart would claim a history was measured.
+ *
+ * A failure REPLACES the pane's contents rather than leaving the previous
+ * item's values under a new id, which is the shape of wrongness that is worst
+ * here: the reader would be looking at one id's header above another id's
+ * fields with nothing saying so.
+ */
+async function openPane(id) {
+  const els = paneEls();
+  if (els.aside === null) return;
+  if (paneId === id && !els.aside.hidden) return;
+
+  els.aside.hidden = false;
+  document.getElementById('app')?.classList.add('pane-open');
+  paneId = id;
+
+  // The id and a holding state go up FIRST. The fetch is a round trip, and a
+  // pane that opens empty and fills later reads as broken for exactly as long
+  // as the request takes.
+  els.id.textContent = id;
+  els.title.textContent = '';
+  for (const key of ['type', 'status', 'tier', 'scope', 'gov', 'file']) els[key].textContent = '…';
+  els.body.replaceChildren();
+
+  let data;
+  try {
+    data = await api(`/api/item/${encodeURIComponent(id)}`);
+  } catch (err) {
+    // The id is kept on screen: it is the one thing known to be true, and it
+    // tells the reader WHICH click failed.
+    els.title.textContent = err instanceof Error ? err.message : String(err);
+    for (const key of ['type', 'status', 'tier', 'scope', 'gov', 'file']) els[key].textContent = '—';
+    paneId = null;
+    return;
+  }
+
+  // Guard against an out-of-order response: two fast clicks can land in the
+  // wrong order, and the later request is not necessarily the later answer.
+  if (paneId !== id) return;
+
+  const item = data.item ?? {};
+  els.id.textContent = item.id ?? id;
+  els.title.textContent = item.title ?? '';
+  els.type.textContent = item.type ?? '—';
+  els.status.textContent = item.status ?? '—';
+  // Tier is not on the item — it is a property of the item's CATEGORY, and the
+  // endpoint does not send it. Severity is what the item itself carries and is
+  // the honest value for this row until the endpoint sends the tier.
+  els.tier.textContent = item.severity ?? '—';
+  els.scope.textContent = Array.isArray(item.scope) && item.scope.length > 0
+    ? item.scope.join(', ')
+    : '—';
+  els.gov.textContent = data.injection?.phrase ?? '—';
+  els.file.textContent = item.source_file ?? '—';
+
+  // `<bdi>` because a body is corpus text in an unknown direction, sitting in
+  // a page whose direction is the product's. That is the whole point of the
+  // well, and `pane.well` is the caption that says so.
+  const bdi = document.createElement('bdi');
+  // `.nodes`, not the return value. It answers `{ nodes, refusals }` — spread
+  // bare it is not iterable, and the TypeError lands AFTER the `<dl>` is
+  // already filled, so the pane shows every field correctly and silently keeps
+  // the previous item's body. Caught by `e2e/item-pane.spec.ts` asserting the
+  // `<bdi>` is attached rather than assuming the append worked.
+  bdi.append(...markdownNodes(item.body ?? '', document).nodes);
+  els.body.replaceChildren(bdi);
+}
+
+/**
+ * The document-level delegation, installed once.
+ *
+ * `closest` rather than a target test, because a linkid contains two spans
+ * (`.idkind` and `.idslug`) and a click almost always lands on one of them
+ * rather than on the button itself.
+ */
+function installItemPane() {
+  document.addEventListener('click', (event) => {
+    const close = event.target.closest?.('#paneclose');
+    if (close !== null && close !== undefined) { closePane(); return; }
+    const link = event.target.closest?.('[data-id]');
+    if (link === null || link === undefined) return;
+    const id = link.dataset.id;
+    if (typeof id !== 'string' || id === '') return;
+    void openPane(id);
+  });
+  // Escape closes it, the same gesture the popovers already answer to
+  // (`e2e/keyboard.spec.ts` asserts that contract for those).
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closePane();
+  });
 }
 
 function showExited() {
@@ -710,6 +868,11 @@ async function main() {
   // THAT CAN FAIL. That ordering is the whole fix; see below.**
   stopHeartbeat = startHeartbeat(document, () => api('/api/ping').catch(() => {}), 60_000);
   installNonceRedemption();
+  // Installed here for the same reason as the two above: it is a document
+  // listener that must survive a boot which fails. A pane wired after
+  // `loadSessions()` would be a pane that does not open on exactly the pages
+  // where a reader most wants to inspect an item — the degraded ones.
+  installItemPane();
 
   // `loadSessions()` reads `/api/sessions`, and every refusal this server can
   // make lands here as a rejection. Awaited BARE, it took the entire boot with
