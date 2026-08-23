@@ -627,8 +627,52 @@ async function main() {
   renderChrome();
   void fillChrome();
 
-  await loadSessions();
+  // **THE RECOVERY PATH AND THE HEARTBEAT ARE INSTALLED BEFORE THE FIRST CALL
+  // THAT CAN FAIL. That ordering is the whole fix; see below.**
   stopHeartbeat = startHeartbeat(document, () => api('/api/ping').catch(() => {}), 60_000);
+  installNonceRedemption();
+
+  // `loadSessions()` reads `/api/sessions`, and every refusal this server can
+  // make lands here as a rejection. Awaited BARE, it took the entire boot with
+  // it — measured on 2026-08-23, with the owner looking at the result:
+  //
+  //   [EXCEPTION] app.js  Error: 401
+  //       at api  at async loadSessions  at async main
+  //
+  // and after it, nothing. Not the heartbeat, not the hashchange listener, not
+  // `renderNav()`, not `route()`. The header and the footer strip had already
+  // been drawn, so the page was not blank — it was a chrome around an empty
+  // rail and an empty body, which reads exactly like a broken router and is
+  // not one.
+  //
+  // **Two things made that far worse than a missing session name.**
+  //
+  // The heartbeat never started, so the page issued no `/api` request ever
+  // again — and `IdleMonitor` reaps a server after fifteen minutes without
+  // one. The lockout starved the timer that then killed the server, and the
+  // next reload met a port with nothing behind it. One symptom, two layers,
+  // fifteen minutes apart.
+  //
+  // And the `hashchange` listener below — which exists for precisely this
+  // state, and whose own comment calls itself "the ONLY route back after the
+  // server restarts" — was registered AFTER this line. The remedy for a
+  // locked-out page was installed after the call that fails when the page is
+  // locked out. Pasting the printed URL into the tab did nothing, and could
+  // never have done anything.
+  //
+  // So: a session read that fails is now a session that is `cold`, which is a
+  // state this shell already draws and `sess.cold` already has a string for.
+  // The rail, the router and both listeners survive it. **Nothing that can
+  // fail on a missing credential may run before the recovery path is
+  // installed** — that is the invariant, and the ordering above is it.
+  try {
+    await loadSessions();
+  } catch {
+    // Deliberately silent HERE and loud everywhere it matters: `fillChrome()`
+    // and every screen make their own calls and draw their own refusals, so
+    // the reason reaches the page through them rather than being swallowed.
+    // Re-throwing would restore exactly the defect this comment describes.
+  }
 
   // **A nonce pasted into a LIVE page is redeemed, not routed.**
   //
@@ -649,6 +693,18 @@ async function main() {
   // Redeeming in place rather than reloading, because a reload would drop the
   // fragment before the new document could read it — the same trap the boot
   // already dodges with `history.replaceState`.
+  await route();
+}
+
+/**
+ * The `hashchange` handler, lifted out of `main()`'s tail into its own
+ * function so it can be installed BEFORE the first call that can reject.
+ *
+ * It used to sit inline after `await loadSessions()`, which meant the one
+ * remedy for a page with no credential was registered after the call that
+ * fails when the page has no credential. See the ordering note in `main()`.
+ */
+function installNonceRedemption() {
   window.addEventListener('hashchange', () => {
     const pasted = extractNonce(location.hash);
     if (pasted === null) { void route(); return; }
@@ -662,12 +718,14 @@ async function main() {
         // Everything the shell computed is stale for the same reason.
         renderChrome();
         void fillChrome();
-        await loadSessions();
+        // Guarded for the same reason the boot's call is: a redemption that
+        // succeeded and a session list that then refused must still reach
+        // `route()`, or the page recovers its token and stays empty.
+        try { await loadSessions(); } catch { /* screens draw their own */ }
       }
       await route();
     })();
   });
-  await route();
 }
 
 main();

@@ -124,7 +124,19 @@ const BUILT = [
  * then this exemption is the honest way to keep the gate useful for the other
  * ten screens rather than switching it off.
  */
-const DATA_DEPENDENT = new Set<string>(['watch']);
+// `ask` joined on 2026-08-23, for the same reason and a sharper one. Its Audit
+// tab reads the AUDIT PROJECTION, and a projection goes stale the moment the
+// log outgrows it — which the read surface causes ITSELF: a refusal is the one
+// write this server makes, so every 401 an unauthenticated tab collects appends
+// an `access` record and pushes the log ahead. Measured within one session on
+// 2026-08-23: the gate passed, a test that deliberately provokes 401s ran, and
+// the next run reported sixteen absent kinds on `ask` alone. All sixteen are the
+// REFUSAL state of a screen whose code draws them perfectly well when the
+// projection is fresh; the agent that built it measured all four projection
+// states and the entry below is their union. Tracked as
+// TASK-on-a-working-corpus-the-audit-projection-is-stale-within and
+// TASK-the-401-is-the-read-surface-s-one-write-and-it-makes-the-next.
+const DATA_DEPENDENT = new Set<string>(['watch', 'ask']);
 
 const KNOWN_GAPS: Record<string, string[]> = {
   // **26 on 2026-08-22, the largest of any screen; 2 on 2026-08-23.** The tier
@@ -274,7 +286,14 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // ruling of 2026-08-23 and not a gap: the mockup keeps it for history, the app
   // drops it because the screen is built. Same entry, same reason, as `preview`
   // and `doctor` carry above.
-  ask: ['b', 'span.prop'],
+  ask: [
+    // The union across the four projection states the building agent measured:
+    // fresh-with-records (`b` alone), fresh-but-empty, `absent`, and `behind`.
+    // A ceiling, not a moment — see DATA_DEPENDENT above.
+    'b', 'caption', 'div.card', 'div.plate', 'h3', 'p.small', 'pre.m',
+    'span.chip.ok', 'span.chip.warn', 'span.m', 'span.prop', 'span.v',
+    'table', 'tbody', 'td', 'td.m.small', 'th', 'thead', 'tr',
+  ],
   work: ['b'],
   // `div.hit` is DATA: the glob tester lights a row per matching file, and this
   // corpus answers the opening pattern with none. `span.chip.crit` is
