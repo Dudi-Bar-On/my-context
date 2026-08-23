@@ -129,18 +129,41 @@ test('quarantine returns the count and loses nothing from the original row', () 
     sessionId: 'a field this build does not project',
   };
 
-  const n = quarantine(root, 'acme', [alienRow], 'history.jsonl');
+  // Line 40 of a file whose first row was fine: the reader is the only thing
+  // that saw the bytes, so its number is written down and not renumbered here.
+  const n = quarantine(root, 'acme', [{ row: alienRow, line: 40 }], 'history.jsonl');
 
   assert.equal(n, 1);
   const [wrapped] = readQuarantine(root);
   assert.deepEqual(wrapped.record, alienRow);
-  assert.equal(wrapped.line, 1);
+  assert.equal(wrapped.line, 40);
   assert.equal(wrapped.pack, 'acme');
   assert.equal(wrapped.source, 'history.jsonl');
   assert.deepEqual(Object.keys(wrapped), [
     'protocol', 'pack', 'at', 'source', 'line', 'record',
   ]);
   assert.equal(quarantine(root, 'acme', [], 'history.jsonl'), 0, 'nothing to file is not an error');
+});
+
+test('a row whose line could not be established is filed with a null line, not a made-up one', () => {
+  // `null` is written rather than the key being left out: an absent key reads
+  // as an older build that never had the field, and any NUMBER here would be
+  // one this function invented about a file it never opened.
+  const root = workspace();
+  const alienRow = { protocol: PACK_HISTORY_PROTOCOL, op: 'annotate' };
+
+  quarantine(root, 'acme', [{ row: alienRow, line: null }], 'history.jsonl');
+
+  const [wrapped] = readQuarantine(root);
+  assert.equal(wrapped.line, null);
+  assert.deepEqual(Object.keys(wrapped), [
+    'protocol', 'pack', 'at', 'source', 'line', 'record',
+  ]);
+  assert.match(
+    readFileSync(path.join(unknownDir(root), 'quarantine.jsonl'), 'utf8'),
+    /"line":null/,
+    'the key is on the line, saying so, rather than missing from it',
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -199,7 +222,10 @@ test('the import record round-trips and its items list is sorted', () => {
 test('the .audit gitignore covers the new subdirectories', () => {
   const root = workspace();
   writeImportedHistory(root, 'acme', [travelled()]);
-  quarantine(root, 'acme', [{ protocol: PACK_HISTORY_PROTOCOL, op: 'annotate' }], 'history.jsonl');
+  quarantine(
+    root, 'acme', [{ row: { protocol: PACK_HISTORY_PROTOCOL, op: 'annotate' }, line: 1 }],
+    'history.jsonl',
+  );
 
   assert.equal(readFileSync(path.join(importedDir(root), '.gitignore'), 'utf8'), '*\n');
   assert.equal(readFileSync(path.join(packDir(root, 'acme'), '.gitignore'), 'utf8'), '*\n');

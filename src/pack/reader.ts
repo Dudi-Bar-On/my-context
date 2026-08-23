@@ -53,9 +53,8 @@ import { Buffer } from 'node:buffer';
 import { closeSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { parseItem } from '../core/item.ts';
-import type { JsonlRow } from '../core/jsonl-log.ts';
 import type { Item } from '../core/types.ts';
-import { parseHistory, type PackHistoryRecord } from './history.ts';
+import { parseHistory, type PackHistoryRecord, type UnknownHistoryRow } from './history.ts';
 import {
   comparePaths, refuseArtefactPath,
   CONFIG_NAME, HISTORY_NAME, ITEMS_DIR, MANIFEST_NAME, type ExportFile,
@@ -89,8 +88,11 @@ export interface Artefact {
   items: Item[];
   config: unknown;
   history: PackHistoryRecord[];
-  /** History rows this build could not validate. Verbatim, in file order. */
-  unknownHistory: JsonlRow[];
+  /**
+   * History rows this build could not validate. Verbatim, in file order, each
+   * with the line of `history.jsonl` it was read from.
+   */
+  unknownHistory: UnknownHistoryRow[];
 }
 
 /** `PK` — the local file header every ZIP begins with. */

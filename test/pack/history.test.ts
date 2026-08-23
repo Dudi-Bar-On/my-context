@@ -373,9 +373,29 @@ test('parseHistory quarantines an unknown op instead of refusing the whole file'
   assert.equal(records.length, 1);
   assert.equal(records[0]?.itemId, 'RULE-a');
   assert.equal(unknown.length, 1);
-  assert.equal(unknown[0]?.op, 'annotate');
+  assert.equal(unknown[0]?.row.op, 'annotate');
   // Verbatim, so whoever quarantines it writes down what actually arrived.
-  assert.equal(unknown[0]?.itemId, 'RULE-b');
+  assert.equal(unknown[0]?.row.itemId, 'RULE-b');
+  assert.equal(unknown[0]?.line, 2, 'the line of the file, which here is also the second row');
+});
+
+test('a quarantined row carries its line in the FILE, not its place in the batch', () => {
+  // Thirty-nine rows this build reads without complaint — and two blank lines
+  // — stand between the top of the file and the row that is set aside, so the
+  // two numbers cannot be confused: the row is the FIRST one quarantined and
+  // the FORTIETH one read, and it is on line 42.
+  const good: Record<string, unknown>[] = [];
+  for (let i = 0; i < 39; i += 1) good.push(strangerRow({ itemId: `RULE-${i}` }));
+  const alien = strangerRow({ op: 'annotate' });
+  const text = `\n${good.map((r) => `${JSON.stringify(r)}\n`).join('')}\n${JSON.stringify(alien)}\n`;
+
+  const { records, unknown } = parseHistory(Buffer.from(text, 'utf8'), 'history.jsonl');
+
+  assert.equal(records.length, 39);
+  assert.equal(unknown.length, 1);
+  assert.equal(unknown[0]?.line, 42);
+  // Checked the way a person checks it: open the file, go to that line.
+  assert.equal(text.split('\n')[41], JSON.stringify(alien));
 });
 
 test('a row this build cannot act on is quarantined one row at a time, never dropped', () => {
@@ -396,7 +416,8 @@ test('a row this build cannot act on is quarantined one row at a time, never dro
     const { records, unknown } = parseHistory(jsonl(strangerRow(), row), 'history.jsonl');
     assert.equal(records.length, 1, why);
     assert.equal(unknown.length, 1, why);
-    assert.deepEqual(unknown[0], row, why);
+    assert.deepEqual(unknown[0]?.row, row, why);
+    assert.equal(unknown[0]?.line, 2, why);
   }
 });
 
@@ -437,6 +458,15 @@ test('a torn final line is tolerated; a damaged line anywhere else is not', () =
   const torn = parseHistory(Buffer.from(`${good}\n{"protocol":"my_c`, 'utf8'), 'history.jsonl');
   assert.equal(torn.records.length, 1);
   assert.equal(torn.unknown.length, 0);
+  // A row set aside BEFORE a torn tail still knows its own line. The tail is
+  // the one row the shared parser drops and it is always the last, so dropping
+  // it cannot shift anything that came before it.
+  const alien = JSON.stringify(strangerRow({ op: 'annotate' }));
+  const both = parseHistory(
+    Buffer.from(`${good}\n${alien}\n{"protocol":"my_c`, 'utf8'), 'history.jsonl',
+  );
+  assert.equal(both.records.length, 1);
+  assert.deepEqual(both.unknown.map((u) => u.line), [2]);
   assert.match(
     refusalOf(() => parseHistory(Buffer.from(`{"broken\n${good}\n`, 'utf8'), 'history.jsonl')),
     /line 1 is not valid JSON/,

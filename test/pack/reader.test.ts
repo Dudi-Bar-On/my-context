@@ -338,10 +338,13 @@ test('a history carrying an unknown op reads back with the record in unknownHist
     assert.equal(artefact.history.length, 1);
     assert.equal(artefact.history[0].op, 'create');
     assert.equal(artefact.unknownHistory.length, 1);
-    assert.equal(artefact.unknownHistory[0].op, 'teleport');
+    assert.equal(artefact.unknownHistory[0].row.op, 'teleport');
     // Verbatim, in file order: the row is kept as it arrived, not repaired
     // into something this build recognises.
-    assert.deepEqual(artefact.unknownHistory[0], unknown);
+    assert.deepEqual(artefact.unknownHistory[0].row, unknown);
+    // ...and with the line of `history.jsonl` it is on, which is the second of
+    // the two rows written above.
+    assert.equal(artefact.unknownHistory[0].line, 2);
   } finally {
     box.dispose();
     removeTree(dir);

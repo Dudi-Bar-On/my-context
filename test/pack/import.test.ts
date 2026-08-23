@@ -584,7 +584,31 @@ test('an unknown audit op is quarantined and counted, and the rest of the histor
   assert.equal(outcome.quarantined, 2);
   assert.equal(outcome.historyRecords, 39);
   assert.equal(readQuarantine(box.root).length, 2);
-  assert.deepEqual(readQuarantine(box.root).map((r) => r.line), [1, 2]);
+  // The fixture's two alien rows are the LAST two of forty-one, so the batch
+  // index and the line number cannot be mistaken for each other: a report that
+  // said 1 and 2 would send a reader to two rows this build read without
+  // complaint.
+  assert.deepEqual(readQuarantine(box.root).map((r) => r.line), [40, 41]);
+});
+
+test('the quarantined line is the line of the artefact a person would open', () => {
+  // Checked against the FILE and not against a second number this build
+  // computed: line N of the `history.jsonl` still sitting in the artefact is
+  // the row that was set aside, byte for byte.
+  const box = workspace();
+  const source = artefact();
+
+  applyImport(box.ctx, plan(box, source), options(source));
+
+  const fileLines = readFileSync(path.join(source, HISTORY_NAME), 'utf8').split('\n');
+  assert.equal(fileLines.length, 42, 'forty-one rows, each newline-terminated');
+  const wrapped = readQuarantine(box.root);
+  assert.equal(wrapped.length, 2);
+  for (const row of wrapped) {
+    assert.notEqual(row.line, null, 'a row that came out of a file has a line in it');
+    assert.equal(fileLines[(row.line ?? 0) - 1], JSON.stringify(row.record));
+    assert.match(fileLines[(row.line ?? 0) - 1], /"op":"annotate"/);
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -88,7 +88,9 @@
  *     closed three. Every one of these is version skew or a stranger's
  *     invention, and refusing a whole pack's history for one of them is the
  *     failure this module exists to prevent. A quarantined row is returned
- *     verbatim and counted — never dropped, and never applied.
+ *     verbatim and counted — never dropped, and never applied — carrying the
+ *     line of the file it sits on, so what a reader is eventually told to open
+ *     is a place they can go rather than a number that only looks like one.
  *
  * ## Determinism, and the comparator this module does NOT define
  *
@@ -175,11 +177,36 @@ export interface PackHistoryRecord {
   note?: string;
 }
 
+/**
+ * One row this build could not validate, and where in the file it is.
+ *
+ * The row is WRAPPED rather than annotated: it is a stranger's object, it
+ * travels verbatim into the quarantine, and a `line` key written onto it would
+ * be this build inventing a field inside somebody else's record — the one
+ * thing the quarantine exists not to do.
+ */
+export interface UnknownHistoryRow {
+  /** The row exactly as it arrived. */
+  row: JsonlRow;
+  /**
+   * The row's PHYSICAL line in the file, 1-based — the line a person lands on
+   * when they open `file` and go there.
+   *
+   * `null` when this build could not establish it, and `null` rather than a
+   * fallback: the number this field used to carry was the row's position among
+   * the rows the reader handed over, which for a file whose first thirty-nine
+   * rows are fine reads as 1 and sends a reader to a row nobody set aside. A
+   * number that is wrong in a way that reads as right is worse than no number,
+   * so the absence is spelled out and every writer of it has to say so too.
+   */
+  line: number | null;
+}
+
 /** What one `history.jsonl` held: what this build can act on, and what it cannot. */
 export interface HistoryRead {
   records: PackHistoryRecord[];
   /** Rows that are log lines this build could not validate. Verbatim, in file order. */
-  unknown: JsonlRow[];
+  unknown: UnknownHistoryRow[];
 }
 
 /**
@@ -512,20 +539,91 @@ function acceptRow(row: JsonlRow): PackHistoryRecord | null {
 }
 
 /**
+ * Every line of `raw` that is not blank, with its 1-based number — the
+ * candidates a row the shared parser returned can have come from.
+ *
+ * The blank-line rule is `parseJsonlLog`'s own (`core/jsonl-log.ts` ·
+ * `if (line.trim() === '') continue;`), and a second spelling of somebody
+ * else's rule is exactly the thing this module refuses to write elsewhere. It
+ * is written here because the alternative is worse — the line numbers live one
+ * layer down, in a module this task may not edit — and it is made safe by
+ * `lineOf` below, which CHECKS the pairing against the row's own bytes instead
+ * of trusting it. If that rule ever changes underneath this, the number goes
+ * absent, not wrong.
+ */
+function numberedLines(raw: string): { line: number; text: string }[] {
+  const out: { line: number; text: string }[] = [];
+  const all = raw.split('\n');
+  for (let i = 0; i < all.length; i++) {
+    if (all[i].trim() !== '') out.push({ line: i + 1, text: all[i] });
+  }
+  return out;
+}
+
+/**
+ * The physical line row number `index` came from, or `null` if this build
+ * cannot show that it is the right one.
+ *
+ * `parseJsonlLog` (`core/jsonl-log.ts` ·
+ * `export function parseJsonlLog(raw: string, spec: JsonlLogSpec): JsonlRow[] {`)
+ * returns its rows in file order and skips exactly two things: a blank line,
+ * and a torn FINAL line. Everything else it either returns or throws on. So
+ * the nth row it hands back is the nth non-blank line — but that is an
+ * invariant of a module this one does not own, so it is verified rather than
+ * assumed: the candidate line is re-parsed and compared with the row itself.
+ *
+ * `JSON.stringify` follows insertion order and `JSON.parse` builds insertion
+ * order from the text, and `row` IS the object that parse produced, so two
+ * renderings of the same line are equal string for string — including a
+ * duplicated key, an unusual number spelling, or any other shape this module
+ * has no vocabulary for.
+ */
+function lineOf(
+  candidates: readonly { line: number; text: string }[], index: number, row: JsonlRow,
+): number | null {
+  const candidate = candidates[index];
+  if (candidate === undefined) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(candidate.text);
+  } catch {
+    return null;
+  }
+  return JSON.stringify(parsed) === JSON.stringify(row) ? candidate.line : null;
+}
+
+/**
  * A `history.jsonl`'s bytes, read back into the records this build can act on
  * and the rows it cannot.
  *
  * Rows are returned in FILE order, not sorted: `compareHistory` is exported for
  * a caller that wants the order, and sorting here would silently reunite a
  * quarantined row's neighbours as if nothing had been set aside.
+ *
+ * A quarantined row carries the line of `file` it sits on, so the number a
+ * reader is eventually shown is one they can check by opening the artefact
+ * they still have. See `UnknownHistoryRow.line` for why it may be `null` and
+ * why `null` is the only alternative to a true line.
  */
 export function parseHistory(bytes: Buffer, file: string): HistoryRead {
+  const raw = bytes.toString('utf8');
   const records: PackHistoryRecord[] = [];
-  const unknown: JsonlRow[] = [];
-  for (const row of parseJsonlLog(bytes.toString('utf8'), specFor(file))) {
+  const unknown: UnknownHistoryRow[] = [];
+  // Built on the first row that needs it and not before: the shared parser has
+  // already walked these bytes once, and the overwhelmingly common read — a
+  // pack whose history this build understands whole — must not pay for a
+  // second walk it has no rows to spend on.
+  let candidates: { line: number; text: string }[] | null = null;
+  const rows = parseJsonlLog(raw, specFor(file));
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
     const record = acceptRow(row);
-    if (record === null) unknown.push(row);
-    else records.push(record);
+    if (record !== null) {
+      records.push(record);
+      continue;
+    }
+    candidates ??= numberedLines(raw);
+    unknown.push({ row, line: lineOf(candidates, i, row) });
   }
   return { records, unknown };
 }

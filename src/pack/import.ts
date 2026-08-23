@@ -59,7 +59,6 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { resolveConfig, type Config } from '../core/config.ts';
-import type { JsonlRow } from '../core/jsonl-log.ts';
 import {
   createItem, updateItem,
   type CreateInput, type MutationContext, type UpdateInput,
@@ -67,7 +66,7 @@ import {
 import type { Item } from '../core/types.ts';
 import { bucketise, type Buckets } from './collide.ts';
 import { mergePackConfig, refusePackConfig, type RawConfigJson } from './config-io.ts';
-import type { PackHistoryRecord } from './history.ts';
+import type { PackHistoryRecord, UnknownHistoryRow } from './history.ts';
 import { quarantine, writeImportRecord, writeImportedHistory } from './imported-audit.ts';
 import {
   comparePaths, HISTORY_NAME, IMPORT_RECORD_PROTOCOL, type ArtefactKind,
@@ -159,8 +158,11 @@ export interface ImportPlan {
   history: {
     /** Rows this build can act on, in file order. Counted, not yet written. */
     records: PackHistoryRecord[];
-    /** Rows whose op this build has never heard of. Wrapped, never rewritten. */
-    unknown: JsonlRow[];
+    /**
+     * Rows whose op this build has never heard of, each with the line of
+     * `history.jsonl` it was read from. Wrapped, never rewritten.
+     */
+    unknown: UnknownHistoryRow[];
   };
   notCarried: NotCarried[];
 }

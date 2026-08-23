@@ -29,9 +29,10 @@
  * has never heard of is version skew, not damage, so it is neither refused
  * (which would take the whole file with it) nor accepted (this build cannot
  * say what it means). It is WRAPPED — the original object carried verbatim
- * under `record` — filed under `.audit/imported/unknown/`, and COUNTED. The
- * count is returned rather than logged, because the caller has to report it:
- * a quarantine nobody is told about is a silent drop with extra steps.
+ * under `record`, beside the line of the artefact it was on — filed under
+ * `.audit/imported/unknown/`, and COUNTED. The count is returned rather than
+ * logged, because the caller has to report it: a quarantine nobody is told
+ * about is a silent drop with extra steps.
  *
  * Nothing here validates the wrapped row. It is not ours to validate, and
  * rewriting it into a shape this build recognises would be inventing content
@@ -57,7 +58,7 @@ import {
 } from '../core/jsonl-log.ts';
 import { normalizeForSlug } from '../core/slug.ts';
 import type { Origin } from '../core/types.ts';
-import type { PackHistoryRecord } from './history.ts';
+import type { PackHistoryRecord, UnknownHistoryRow } from './history.ts';
 import {
   comparePaths, IMPORT_RECORD_PROTOCOL, IMPORTED_DIR, IMPORTED_PROTOCOL,
   IMPORTED_UNKNOWN_PROTOCOL, UNKNOWN_PACK_DIR, type ArtefactKind,
@@ -154,19 +155,23 @@ export interface QuarantinedRow {
   /** The file inside the artefact the row came from. */
   source: string;
   /**
-   * The row's position among the rows the reader handed over, 1-based.
+   * The PHYSICAL line of `source` this row is on, 1-based — the line a person
+   * lands on when they open the artefact they still have and go there.
    *
-   * It is NOT the physical line number in `source`, and the difference is
-   * worth stating: `parseHistory` returns its unknown rows in file order but
-   * without line numbers (`pack/history.ts` ·
-   * `export function parseHistory(bytes: Buffer, file: string): HistoryRead {` · ~522),
-   * so file order is all there is to carry. Two rows quarantined out of a
-   * forty-line file are 1 and 2 here. That is enough to say WHICH row and to
-   * put two of them back in order, which is what a person reading the
-   * quarantine needs; recovering the byte offset means reading `source`,
-   * which is in the artefact they still have.
+   * It used to be the row's position among the rows the reader handed over,
+   * which is a different number wearing the same name: two rows quarantined
+   * out of a forty-one-line file were 1 and 2 here, and a reader told "line 1"
+   * opened the file and found a row this build had read without complaint.
+   * `parseHistory` now carries the true line (`pack/history.ts` ·
+   * `export interface UnknownHistoryRow {`), and this field is that line and
+   * nothing else.
+   *
+   * `null` when the reader could not establish it. The key is still written,
+   * because an absent key reads as an older build that never had the field
+   * while `null` says this build looked and could not tell — and either of
+   * those is honest in a way a made-up number is not.
    */
-  line: number;
+  line: number | null;
   /** The original object, verbatim. */
   record: JsonlRow;
 }
@@ -210,23 +215,27 @@ export function writeImportedHistory(
  * and gets the wall clock, exactly as `recordAudit` does.
  */
 export function quarantine(
-  root: string, name: string, rows: readonly JsonlRow[], source: string,
+  root: string, name: string, rows: readonly UnknownHistoryRow[], source: string,
   now: string = new Date().toISOString(),
 ): number {
   if (rows.length === 0) return 0;
   const dir = ensure(root, unknownDir(root));
   const file = path.join(dir, QUARANTINE_FILE);
-  rows.forEach((record, i) => {
+  for (const row of rows) {
+    // `row.line` is passed through and never defaulted or renumbered. The
+    // reader is the only thing that saw the bytes, so it is the only thing
+    // that can say where a row was; anything invented here would be a number
+    // this function made up about a file it never opened.
     const wrapped: QuarantinedRow = {
       protocol: IMPORTED_UNKNOWN_PROTOCOL,
       pack: name,
       at: now,
       source,
-      line: i + 1,
-      record,
+      line: row.line,
+      record: row.row,
     };
     appendJsonlLine(dir, file, wrapped);
-  });
+  }
   return rows.length;
 }
 
