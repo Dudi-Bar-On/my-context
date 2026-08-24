@@ -486,9 +486,10 @@ export const SESSIONS_LIMIT = 20;
  * `GET /api/sessions`' body — the session selector contract, which plan 3
  * consumes for the status-line bridge as well.
  *
- * `sessions` is `sessionSummaries` VERBATIM, never re-shaped field by field:
- * the `name` the owner ruled onto `SessionSummary` then reaches the picker
- * without this endpoint being touched.
+ * `sessions` is `sessionSummaries` VERBATIM, never re-shaped field by field —
+ * which is what let the `name` the owner ruled onto `SessionSummary` (ruling
+ * 12) reach the picker by adding ONE argument below rather than a mapping here.
+ * A field-by-field re-shape is where the next one would go missing.
  *
  * `sessionCount` is the total the window truncates against, and `null` when
  * there is no ledger to count in — `0` there would claim a count was taken.
@@ -530,7 +531,11 @@ export function apiSessions(ws: Workspace, url: URL): JsonResult {
     const body: SessionsBody = {
       ledger: ledgerPresence(ledger),
       default: ledger === null ? null : ledger.recentSessions(1)[0] ?? null,
-      sessions: ledger === null ? [] : ledger.sessionSummaries(SESSIONS_LIMIT),
+      // The root is what turns a session id into the name `mycontext session
+      // name` gave it (ruling 12). `Ledger` is opened from a `dbPath` and holds
+      // no workspace, so the caller that has one passes it; a workspace with no
+      // project root has no ledger to summarise either, and answers `[]` above.
+      sessions: ledger === null ? [] : ledger.sessionSummaries(SESSIONS_LIMIT, ws.projectRoot),
       sessionCount: ledger === null ? null : ledger.sessionCount(),
     };
     return { status: 200, body };

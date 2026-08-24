@@ -48,7 +48,14 @@
  * file's top-level code, so the path it watches is captured while `HOME` is
  * still real — a redirect afterwards cannot move the guard's aim.
  *
- * **Attribution.** `node --test` gives each test file its own process, so a
+ * **And why it does not fire for the developer's own product.** The mechanism
+ * is blind to WHO wrote, which is what makes it un-evadable — and it is why a
+ * `mycontext ui` running in another terminal, writing `ui-sessions.json` into
+ * this very directory, was reported as contamination 17 times in one loaded
+ * run. The files the shipped product writes here are forgiven by name; see
+ * `PRODUCT_OWNED_ENTRIES` below for the whole argument and the residual it
+ * accepts. Items and `config.json` are not on that list and never will be.
+ * * **Attribution.** `node --test` gives each test file its own process, so a
  * report already names the file. The per-test `afterEach` narrows it to the
  * test. With several test files running at once more than one process can
  * observe the same stray path and report it; the PATH is authoritative and the
@@ -191,6 +198,74 @@ export function diffTrees(
 }
 
 /**
+ * The entries in that directory the PRODUCT writes during a normal run, which
+ * this check forgives.
+ *
+ * **Why a guard needs an ignore list at all.** The mechanism above is blind to
+ * WHO wrote — that is the property that makes it un-evadable by a spawned
+ * child, and it is the same property seen from the other side: the filesystem
+ * is shared by every process on the machine. A developer running `mycontext
+ * ui` in another terminal writes `ui-sessions.json` into this exact directory,
+ * which is correct, intended production behaviour, and a suite running at the
+ * same time reported it as contamination against whichever test happened to be
+ * running. **Measured 2026-08-23: one loaded run produced 17 such failures**
+ * while a UI server served the demo corpus in another window, and the agent
+ * who hit them spent time deciding whether the defect was its own.
+ *
+ * A guard that cries wolf on the developer's own product is a guard that gets
+ * switched off — which is precisely how the convention this file replaced
+ * failed. So the narrowest possible remedy: forgive the files the product
+ * legitimately writes here, keep the reach over everything else, and SAY in
+ * the report that the list exists (`describeOffence`) so the next reader does
+ * not rediscover this from scratch.
+ *
+ * **What is on the list, and why nothing else is.** `ui-sessions.json` is the
+ * only file the product writes into the global directory today
+ * (`src/core/ui-sessions.ts`, whose store defaults to `GLOBAL_DIR`), and
+ * `ui-sessions.json.tmp` is the fixed-name temp file its write renames from —
+ * visible to a scan that lands mid-write, and left behind outright by a writer
+ * that died between the two calls. Items and `config.json` are deliberately
+ * absent: they are the shapes that turned 134 tests red on 2026-08-22, and
+ * `test/core/real-home-guard.test.ts` writes all three in ONE test to prove the
+ * forgiveness did not widen into a hole.
+ *
+ * **The residual, stated rather than hidden.** A test that unpinned
+ * `MYCONTEXT_UI_SESSIONS_DIR` and wrote the real store is no longer caught
+ * here. That is the cost of remedy (1) over remedy (2) — comparing CONTENT
+ * identity for these files rather than presence — and it is affordable because
+ * the pin lives in the preload every test file loads
+ * (`test/helpers/pin-rendering.ts`) and because what such a test would destroy
+ * is a list of token DIGESTS the developer's browser can re-obtain, not a
+ * corpus. An item or a config is neither.
+ */
+export const PRODUCT_OWNED_ENTRIES: ReadonlySet<string> = Object.freeze(new Set([
+  'ui-sessions.json',
+  'ui-sessions.json.tmp',
+])) as ReadonlySet<string>;
+
+/**
+ * The changes that are actually offences: everything the product does not own.
+ *
+ * The filter is applied HERE and not inside `diffTrees`, which stays a pure
+ * before/after diff — a forgiven change is still a change, the baseline still
+ * has to move on it, and a test of the diff should not have to know what the
+ * product writes.
+ */
+export function offendingChanges(changes: readonly TreeChange[]): TreeChange[] {
+  const rest = changes.filter((change) => !PRODUCT_OWNED_ENTRIES.has(change.entry));
+  // Nothing was forgiven, so nothing below applies.
+  if (rest.length === changes.length) return rest;
+  // The directory's own creation is the PRODUCT's when it arrived carrying
+  // nothing but the product's files: `mycontext ui` on a machine that has never
+  // run mycontext creates `~/.my-context` and writes one file into it, and
+  // reporting that is the same cry-wolf one level up. `.` on its own, with
+  // nothing forgiven beside it, is a test creating the directory and is still
+  // reported — an empty global directory is enough to switch the global layer
+  // on (`rebuildRoots`).
+  if (rest.length === 1 && rest[0]?.entry === '.' && rest[0]?.kind === 'created') return [];
+  return rest;
+}
+/**
  * The report. Written for whoever is staring at a red suite with no idea why,
  * which is the entire audience for this file: it names the directory, every
  * path that moved, where it was seen, what it costs if it is left there, and
@@ -228,6 +303,16 @@ export function describeOffence(dir: string, changes: TreeChange[], seenAfter: s
     'may report the same path: the PATH is authoritative, the test name above is a',
     'hint. If you were running mycontext yourself while the suite ran, that is the',
     'write you are looking at.',
+    '',
+    'The files the PRODUCT itself writes here during a normal run are IGNORED by',
+    'this check, so a `mycontext ui` in another terminal cannot turn the suite red',
+    '(it did, 17 times in one loaded run). That list is:',
+    '',
+    `  ${[...PRODUCT_OWNED_ENTRIES].join(', ')}`,
+    '',
+    'Nothing above is on it. To widen it, add to PRODUCT_OWNED_ENTRIES in',
+    'test/helpers/real-home-guard.ts — and only for a file the SHIPPED product',
+    'writes there, never to quieten a test.',
     '',
     'See test/helpers/real-home-guard.ts.',
   ].join('\n');
@@ -282,8 +367,13 @@ export function checkWatchedDirs(
     const current = snapshotTree(dir);
     const changes = diffTrees(before, current);
     if (changes.length === 0) continue;
+    // Re-baselined on ANY change, forgiven or not: a stray file is reported
+    // once rather than by every check that runs after it, and a forgiven one is
+    // not re-diffed by every remaining test in the file either.
     baselines.set(dir, current);
-    offences.push(describeOffence(dir, changes, seenAfter));
+    const offending = offendingChanges(changes);
+    if (offending.length === 0) continue;
+    offences.push(describeOffence(dir, offending, seenAfter));
   }
   return offences;
 }

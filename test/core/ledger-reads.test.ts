@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Ledger } from '../../src/core/ledger.ts';
+import { sessionNamesPath, setSessionName } from '../../src/core/session-names.ts';
 import { Store } from '../../src/core/store.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -37,13 +38,66 @@ test('sessionSummaries agrees with recentSessions on order, and carries last tim
     ledger.record('s2', 'RULE-a', 'jit', '2026-08-02T10:00:00.000Z');
     const summaries = ledger.sessionSummaries(20);
     assert.deepEqual(summaries.map((s) => s.sessionId), ledger.recentSessions(20));
+    // `name: null` on every row: this ledger was summarised without a root to
+    // read names from, and an unnamed session is null rather than a fallback.
     assert.deepEqual(summaries, [
-      { sessionId: 's2', lastInjectedAt: '2026-08-02T10:00:00.000Z', itemCount: 1 },
-      { sessionId: 's1', lastInjectedAt: '2026-08-01T11:00:00.000Z', itemCount: 2 },
+      { sessionId: 's2', lastInjectedAt: '2026-08-02T10:00:00.000Z', itemCount: 1, name: null },
+      { sessionId: 's1', lastInjectedAt: '2026-08-01T11:00:00.000Z', itemCount: 2, name: null },
     ]);
   } finally { close(); removeTree(dir); }
 });
 
+/**
+ * **Ruling 12: the summary carries the name `mycontext session name` gave the
+ * session.** The picker shows a short id, an optional NAME and a time, and
+ * `SessionSummary` is the read model it is built from — so the name belongs on
+ * the row rather than in a join every surface repeats for itself.
+ *
+ * The store is workspace-scoped JSON (`core/session-names.ts`) and the ledger
+ * is a SQLite projection that knows only a `dbPath`, so the root is passed in
+ * explicitly. A caller that has no workspace to read names from — and the
+ * ledger's own unit tests are the honest case — gets `name: null` on every row
+ * rather than a fabricated label.
+ */
+test('sessionSummaries carries the session name when it is given a root to read', () => {
+  const { ledger, dir, close } = open();
+  try {
+    ledger.record('s1', 'RULE-a', 'jit', '2026-08-01T10:00:00.000Z');
+    ledger.record('s2', 'RULE-a', 'jit', '2026-08-02T10:00:00.000Z');
+    assert.equal(setSessionName(dir, 's2', 'auth-refactor').written, true);
+
+    assert.deepEqual(ledger.sessionSummaries(20, dir), [
+      { sessionId: 's2', lastInjectedAt: '2026-08-02T10:00:00.000Z', itemCount: 1, name: 'auth-refactor' },
+      // Named by NOBODY is `null`, never the short id: `continuity.ts` derives a
+      // label when it has to print one, and a read model that did the same here
+      // would leave the picker unable to tell a name from a fallback.
+      { sessionId: 's1', lastInjectedAt: '2026-08-01T10:00:00.000Z', itemCount: 1, name: null },
+    ]);
+
+    // No root, no names — and no throw either: the row still exists, it just
+    // carries nothing it could not read.
+    assert.deepEqual(ledger.sessionSummaries(20).map((row) => row.name), [null, null]);
+  } finally { close(); removeTree(dir); }
+});
+
+/**
+ * `readSessionNames` fails OPEN — a corrupt store costs labels and nothing
+ * else (`core/session-names.ts`, and `core/seen-file.ts` before it). Pinned
+ * here because the alternative is a picker that shows no SESSIONS because one
+ * JSON file the user can delete went bad.
+ */
+test('an unreadable name store costs the labels and not the summaries', () => {
+  const { ledger, dir, close } = open();
+  try {
+    ledger.record('s1', 'RULE-a', 'jit', '2026-08-01T10:00:00.000Z');
+    mkdirSync(path.dirname(sessionNamesPath(dir)), { recursive: true });
+    writeFileSync(sessionNamesPath(dir), '{"protocol": "mycontext-sess', 'utf8');
+
+    assert.deepEqual(ledger.sessionSummaries(20, dir), [
+      { sessionId: 's1', lastInjectedAt: '2026-08-01T10:00:00.000Z', itemCount: 1, name: null },
+    ]);
+  } finally { close(); removeTree(dir); }
+});
 test('sessionSummaries(0) and an empty ledger both answer []', () => {
   const { ledger, dir, close } = open();
   try {
@@ -124,7 +178,7 @@ test('sessionSummaries itemCount counts distinct items, not ledger rows', () => 
     ledger.record('s1', 'RULE-b', 'jit', '2026-08-01T10:00:03.000Z');
     assert.equal(ledger.history().filter((e) => e.sessionId === 's1').length, 4);
     assert.deepEqual(ledger.sessionSummaries(5), [
-      { sessionId: 's1', lastInjectedAt: '2026-08-01T10:00:03.000Z', itemCount: 2 },
+      { sessionId: 's1', lastInjectedAt: '2026-08-01T10:00:03.000Z', itemCount: 2, name: null },
     ]);
   } finally { close(); removeTree(dir); }
 });

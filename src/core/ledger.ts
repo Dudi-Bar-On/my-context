@@ -6,6 +6,7 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { retryOnTransientFsError } from './rebuild.ts';
+import { readSessionNames } from './session-names.ts';
 
 export type LedgerTier = 'pinned' | 'jit' | 'restored';
 
@@ -38,6 +39,18 @@ export interface SessionSummary {
   sessionId: string;
   lastInjectedAt: string;
   itemCount: number;
+  /**
+   * The name `mycontext session name` gave this session, or `null` when nobody
+   * named it — owner ruling 12.
+   *
+   * **`null` and never a fallback.** `core/continuity.ts` ·
+   * `function labelFor(root: string, sessionId: string): string {` · ~200 derives
+   * a label — the name, or the short prefix — because it has to print ONE string
+   * into an injected block. This is a read model, and the picker draws the short
+   * id in its own column beside this one: substituting the prefix here would
+   * hand every surface a `name` that cannot be told from a real one.
+   */
+  name: string | null;
 }
 
 /**
@@ -511,8 +524,23 @@ export class Ledger {
    *  - `limit` truncates. Sessions past the window are simply absent, with
    *    nothing in the result to say so; a caller that needs to know how many
    *    exist asks `sessionCount()`.
+   *
+   * **`root` is what turns a session id into a NAME** (owner ruling 12), and it
+   * is a parameter rather than something this class holds because a `Ledger` is
+   * opened from a `dbPath` and nothing else. Deriving the workspace from
+   * `path.dirname(dbPath)` would be true of every caller today and silently
+   * wrong for the `:memory:` one, so the caller that HAS a workspace says so.
+   * `null` — the ledger's own tests, and any surface with no project root —
+   * yields `name: null` on every row rather than a fabricated label.
+   *
+   * The store is read ONCE for the whole window, not once per row, and
+   * `readSessionNames` fails open by design: a corrupt name file costs the
+   * labels and never the sessions. That disclosure belongs to the surface that
+   * has somewhere to print it (`cli/commands/session.ts` prints it under the
+   * listing); a read model that dropped the ROWS over it would be the much
+   * larger loss.
    */
-  sessionSummaries(limit: number): SessionSummary[] {
+  sessionSummaries(limit: number, root: string | null = null): SessionSummary[] {
     if (limit <= 0) return [];
     const rows = this.#db.prepare(`
       SELECT session_id, MAX(injected_at) AS last, COUNT(DISTINCT item_id) AS n
@@ -521,8 +549,12 @@ export class Ledger {
       ORDER BY MAX(injected_at) DESC, session_id DESC
       LIMIT ?
     `).all(limit) as { session_id: string; last: string; n: number }[];
+    const names = root === null ? null : readSessionNames(root).names;
     return rows.map((r) => ({
-      sessionId: r.session_id, lastInjectedAt: r.last, itemCount: Number(r.n),
+      sessionId: r.session_id,
+      lastInjectedAt: r.last,
+      itemCount: Number(r.n),
+      name: names?.get(r.session_id)?.name ?? null,
     }));
   }
 

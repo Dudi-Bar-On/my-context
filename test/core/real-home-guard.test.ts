@@ -91,6 +91,83 @@ test('a global-layer fixture written under a redirected HOME', () => {
 });
 `;
 
+/**
+ * **The product's own writes, which are not the suite's.** A developer running
+ * `mycontext ui` in another terminal writes `ui-sessions.json` into that exact
+ * directory — correct, intended behaviour — and one loaded run reported it as
+ * contamination 17 times. This fixture is that developer: it creates the store,
+ * rewrites it at the same length the way an eviction does, has a CHILD rewrite it
+ * the way a second server would, and leaves behind the temp file a writer that
+ * died mid-rename leaves (`core/ui-sessions.ts` · `const tmp = ...target}.tmp`; · ~206).
+ *
+ * No backslash escape appears anywhere below: this string is a template literal,
+ * so every escape in it is consumed HERE rather than reaching the fixture, and a
+ * newline escape written inside a fixture's single-quoted string would become a
+ * real newline there and a syntax error. Nested quoting goes through
+ * `JSON.stringify` for the same reason.
+ */
+const PRODUCT_WRITER = `
+import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import path from 'node:path';
+
+if (homedir() !== process.env.PROBE_HOME) {
+  throw new Error('PROBE_HOME did not take effect; refusing to write: ' + homedir());
+}
+const dir = path.join(homedir(), '.my-context');
+const store = path.join(dir, 'ui-sessions.json');
+
+test('the product creates its session store, directory and all', () => {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(store, JSON.stringify({ version: 1, sessions: ['aaaa'] }), 'utf8');
+});
+
+test('and rewrites it at the same length when a digest is evicted', () => {
+  writeFileSync(store, JSON.stringify({ version: 1, sessions: ['bbbb'] }), 'utf8');
+});
+
+test('and a UI server in another terminal rewrites it from its own process', () => {
+  const tmp = store + '.tmp';
+  const body = JSON.stringify({ version: 1, sessions: [] });
+  const script =
+    'const fs = require("node:fs");' +
+    'fs.writeFileSync(' + JSON.stringify(tmp) + ', ' + JSON.stringify(body) + ');' +
+    'fs.renameSync(' + JSON.stringify(tmp) + ', ' + JSON.stringify(store) + ');';
+  const result = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8' });
+  if (result.status !== 0) throw new Error('probe child failed: ' + result.stderr);
+});
+
+test('and a writer that died mid-rename leaves its temp file behind', () => {
+  writeFileSync(store + '.tmp', JSON.stringify({ version: 1, sessions: [] }), 'utf8');
+});
+`;
+
+/**
+ * **The offender that proves the ignore list did not become a blindfold**: one
+ * test, writing the product's own store AND a config AND an item in the same
+ * scan. The store has to be forgiven and its two neighbours must not be.
+ */
+const MIXED_OFFENDER = `
+import { test } from 'node:test';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import path from 'node:path';
+
+if (homedir() !== process.env.PROBE_HOME) {
+  throw new Error('PROBE_HOME did not take effect; refusing to write: ' + homedir());
+}
+const dir = path.join(homedir(), '.my-context');
+
+test('a fixture writing a config and an item beside the product store', () => {
+  mkdirSync(path.join(dir, 'items', 'constraint'), { recursive: true });
+  writeFileSync(path.join(dir, 'ui-sessions.json'), '{}', 'utf8');
+  writeFileSync(path.join(dir, 'config.json'), '{}', 'utf8');
+  writeFileSync(path.join(dir, 'items', 'constraint', 'CONST-mixed-probe.md'), 'x', 'utf8');
+});
+`;
+
 interface GuardedRun { code: number | null; output: string }
 
 /** Runs one fixture through the suite's own `--import` preload. */
@@ -185,6 +262,78 @@ test('and does not fire for a test that redirects HOME first, which is the whole
       'the control fixture wrote nothing, so it proves nothing',
     );
     assert.equal(existsSync(path.join(home, '.my-context')), false);
+  } finally {
+    removeTree(workspace);
+  }
+});
+
+/**
+ * **The blind spot, and the remedy for it.** The mechanism is deliberately
+ * blind to WHO wrote — that is why a spawned child cannot evade it — and the
+ * same property means it cannot tell this suite from the developer's own copy
+ * of the product running in another terminal. Measured on 2026-08-23: one
+ * loaded run produced 17 guard failures from `ui-sessions.json` being written
+ * while a UI server served the demo corpus in another window, and the agent
+ * who hit them spent time deciding whether the defect was its own.
+ *
+ * A guard that cries wolf on the developer's own product is a guard that gets
+ * switched off, which is exactly how the convention it replaced failed. So the
+ * files the PRODUCT legitimately writes there during a normal run are ignored
+ * — see `PRODUCT_OWNED_ENTRIES` — and this run is the proof that the ignore is
+ * real rather than intended.
+ */
+test('the guard forgives the product writing its own session store there', () => {
+  const workspace = mkdtempSync(path.join(tmpdir(), 'myctx-guard-product-'));
+  try {
+    const home = path.join(workspace, 'home');
+    mkdirSync(home);
+    const fixture = writeFixture(workspace, 'product.test.mjs', PRODUCT_WRITER);
+    const { code, output } = runGuarded(fixture, { HOME: home, USERPROFILE: home, PROBE_HOME: home });
+
+    assert.equal(code, 0, `the developer's own product must not turn the suite red:\n${output}`);
+    assert.doesNotMatch(output, /REAL global directory/, output);
+
+    // The forgiveness is only forgiveness if the writes actually happened —
+    // all four of them, including the directory the first test CREATED.
+    const store = path.join(home, '.my-context', 'ui-sessions.json');
+    assert.equal(readFileSync(store, 'utf8'), JSON.stringify({ version: 1, sessions: [] }),
+      'the last write through the fixture was the child rename; the store does not hold it');
+    assert.equal(existsSync(`${store}.tmp`), true,
+      'the abandoned temp file is part of what has to be forgiven, and it was never written');
+  } finally {
+    removeTree(workspace);
+  }
+});
+
+/**
+ * And the half that matters more: the ignore is a NAMED SET, not a hole around
+ * the whole directory. One test writes the product's store and, in the same
+ * scan, a config and an item — the two shapes that turned 134 tests red. The
+ * store is forgiven; its neighbours are reported, by name, in the same report.
+ */
+test('and still fires on a config or an item written beside it, in the same scan', () => {
+  const workspace = mkdtempSync(path.join(tmpdir(), 'myctx-guard-mixed-'));
+  try {
+    const home = path.join(workspace, 'home');
+    mkdirSync(home);
+    const fixture = writeFixture(workspace, 'mixed.test.mjs', MIXED_OFFENDER);
+    const { code, output } = runGuarded(fixture, { HOME: home, USERPROFILE: home, PROBE_HOME: home });
+
+    assert.notEqual(code, 0, `an item and a config in the real home are still offences:\n${output}`);
+    assert.match(output, /created\s+config\.json/, output);
+    assert.match(output, /created\s+items[\\/]constraint[\\/]CONST-mixed-probe\.md/, output);
+
+    // And the forgiven file is not among the paths it names. Asserted against
+    // the CHANGE LINES rather than the whole report, because the report also
+    // has to SAY the ignore list exists — see the next assertion.
+    assert.doesNotMatch(output, /(created|modified|removed)\s+ui-sessions\.json/,
+      `a forgiven file must not be listed as an offence:\n${output}`);
+
+    // The reason this reader is not staring at a mystery: the report says the
+    // ignore list exists and names it, so the next person does not rediscover
+    // the item this remedy came from.
+    assert.match(output, /ui-sessions\.json/, `the report must say what it ignores:\n${output}`);
+    assert.match(output, /PRODUCT_OWNED_ENTRIES/, output);
   } finally {
     removeTree(workspace);
   }
