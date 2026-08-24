@@ -21,6 +21,7 @@ import { SUPERSEDED_BY } from './relations.ts';
 import { stageRevision, type RevisionChanges } from './revision.ts';
 import { makeId } from './slug.ts';
 import type { Store } from './store.ts';
+import { projectFieldUpdate } from './tag-projection.ts';
 import { enumError, missingFieldError } from './teach.ts';
 import { normalizeEol } from './text.ts';
 import {
@@ -250,6 +251,41 @@ export function createItem(
     if (refusal) throw new Error(refusal);
   }
   validateTags(input.tags ?? []);
+  // **The capture half of the projection** (plan:categories seq 20). Two
+  // things, and they are the same rule seen from either end.
+  //
+  // It REFUSES a value outside the declared vocabulary, before anything is
+  // written — `mycontext add --extra state=donee` exited 0 and wrote the field
+  // until this line existed, because `validateExtra` and
+  // `unknownExtraFieldError` above answer "is this key writable" and "does this
+  // category own this key" and neither of them ever asked "is this value one of
+  // the declared ones". That made this the same class of rule as the four
+  // refusals it now stands beside, and the odd one out for living only in a
+  // command.
+  //
+  // And it WRITES the projected tag from the field, so an item cannot be born
+  // with a `state` field and no `state:` tag — which is `absent` in
+  // `projectionMismatch`'s terms: invisible to `focus`, to `search --tag` and
+  // to every progress view, from the moment of capture.
+  //
+  // A hand-written projected tag that AGREES with the field is a no-op:
+  // `reconcileTags` gives the first tag under the prefix the value and drops
+  // any further one, so `--tags state:todo --extra state=todo` stores one tag,
+  // and a duplicate membership cannot be captured even by hand. Capture does
+  // NOT refuse a hand-written projected tag the way `edit` does
+  // (`handWrittenProjectionError`): the ruling this implements names the
+  // projection and the vocabulary, and nothing else.
+  //
+  // Before `contentHash` below, deliberately: `tags` is part of content
+  // identity (`ContentShape`, content-hash.ts), so hashing the caller's list
+  // and storing the projected one would put the dedup key permanently out of
+  // step with the bytes on disk — the same "hash what you store" discipline
+  // `body`, `observations` and `steps` each get a few lines down.
+  const tags = projectFieldUpdate(
+    ctx.config,
+    { type: input.type, tags: input.tags ?? [], extra: input.extra ?? {} },
+    input.extra ?? {},
+  ).tags ?? input.tags ?? [];
   validateBody(body);
   // Normalized ONCE, here, into a local both `contentHash` below and the
   // stored item read — the same discipline `body` gets just above, for the
@@ -281,7 +317,10 @@ export function createItem(
 
   const sourceFile = normalizeSource(input.sourceFile);
   const sourceAnchor = input.sourceAnchor ?? null;
-  const hash = contentHash({ ...input, title, body, observations });
+  // `tags` overrides the spread's `input.tags` for the reason stated at its
+  // declaration: the projected list is what gets written, so it is what must
+  // be hashed.
+  const hash = contentHash({ ...input, title, body, observations, tags });
 
   // Spec §7.3: the idempotency key is `(source_file, source_anchor)` PLUS a
   // content hash — `type` is part of the match too, since a requirement and
@@ -319,7 +358,7 @@ export function createItem(
     severity: input.severity ?? 'soft',
     always: input.always ?? false,
     scope: (input.scope ?? []).map((g) => normalizePosix(g)),
-    tags: input.tags ?? [],
+    tags,
     origin,
     sourceFile,
     sourceAnchor,
@@ -570,8 +609,55 @@ export function updateItem(
     }
   }
 
+  // **The edit half of the projection** (plan:categories seq 20), and the
+  // last of the up-front checks: it THROWS on a value outside the declared
+  // vocabulary before `item` is touched, before the trust-boundary refusals
+  // below and before anything can be staged, so every sentence downstream that
+  // says "nothing was changed" is true. Measured before it existed: MCP
+  // `update_item({extra: {state: "donee"}})` was accepted and written and
+  // returned "updated", because this function called `validateExtra` and
+  // `unknownExtraFieldError` and never `updatableExtraError` — the declared
+  // vocabulary was not enforced on this path at all, and `mycontext edit` was
+  // the only closed door of three.
+  //
+  // Three things about the shape, each of which was a defect in some earlier
+  // reading of it:
+  //
+  //  - It projects from the INCOMING tag list, `input.tags ?? item.tags`, and
+  //    not from the stored one. `updateItem` MERGES `extra` and ASSIGNS `tags`
+  //    outright (see the block of assignments below), so reconciling onto
+  //    `item.tags` and then letting `input.tags` overwrite the result would
+  //    silently discard the caller's whole list — `update_item({tags: ["v2",
+  //    "ui"], extra: {state: "done"}})` measured exactly that, landing an item
+  //    with no `state:` tag at all. `edit.ts` composes them in this same order
+  //    and `test/cli/edit-projection.test.ts` pins it there.
+  //  - Only when the call actually carries `extra`. `projectFieldUpdate`
+  //    reconciles only the projections whose field the CALLER is moving, so a
+  //    bare `--title` edit projects nothing and the items that already
+  //    disagree are left for the migration that owns them (seq 19) — this is
+  //    not one.
+  //  - `projected.tags` is the WHOLE replacement list, already carrying every
+  //    tag outside the prefix in its original position, so it REPLACES
+  //    `input.tags` rather than merging with it.
+  //
+  // Everything below reads `update`, never `input`, so the projected list
+  // reaches BOTH exits: the staged-revision path (`contentChange`), where the
+  // tag rewrite must be staged WITH the field or a promoted revision lands the
+  // field without the tag and reopens this hole one door further in; and the
+  // direct apply. `input` itself is the caller's object and is never mutated.
+  const projected = input.extra === undefined
+    ? undefined
+    : projectFieldUpdate(
+      ctx.config,
+      { type: item.type, tags: input.tags ?? item.tags, extra: item.extra },
+      input.extra,
+    );
+  const update: UpdateInput = projected?.tags === undefined
+    ? input
+    : { ...input, tags: projected.tags };
+
   if (origin !== 'human' && governsNormatively(ctx, item)) {
-    const field = guardedChange(item, input);
+    const field = guardedChange(item, update);
     if (field) {
       // This message is only ever shown to a NON-HUMAN caller, so it must
       // name something that caller can actually do. It used to end by
@@ -620,7 +706,7 @@ export function updateItem(
   }
 
   if (
-    input.status !== undefined && input.status !== item.status &&
+    update.status !== undefined && update.status !== item.status &&
     origin !== 'human' && tierOf(ctx, item) === 'normative'
   ) {
     // The "what else is editable" clause has to match reality for *this*
@@ -683,7 +769,7 @@ export function updateItem(
   // `agentEditsFor` fails closed to `review` for a category absent from
   // config — see its doc comment.
   if (origin !== 'human' && agentEditsFor(ctx.config, item.type) === 'review') {
-    const proposed = contentChange(item, input, title, body);
+    const proposed = contentChange(item, update, title, body);
     if (proposed !== null) {
       // Nothing is dropped silently (`INV-nothing-is-dropped-silently`), and
       // nothing is applied by halves. A call that mixes a content change with
@@ -695,7 +781,7 @@ export function updateItem(
       // normative item the guard above has already refused such a call; this
       // covers the cases it does not reach — a normative DRAFT, and any
       // rationale category a user has set to `review`.
-      const alsoMoved = nonContentChanges(item, input);
+      const alsoMoved = nonContentChanges(item, update);
       if (alsoMoved.length > 0) {
         throw new Error(
           `my_context: this call to update ${item.id} mixes a content change ` +
@@ -753,12 +839,15 @@ export function updateItem(
 
   if (title !== undefined) item.title = title;
   if (body !== undefined) item.body = body;
-  if (input.scope !== undefined) item.scope = input.scope.map((g) => normalizePosix(g));
-  if (input.tags !== undefined) item.tags = input.tags;
-  if (input.severity !== undefined) item.severity = input.severity;
-  if (input.always !== undefined) item.always = input.always;
-  if (input.status !== undefined) {
-    item.status = input.status;
+  if (update.scope !== undefined) item.scope = update.scope.map((g) => normalizePosix(g));
+  // The projected list when this call moved a projected field, and the
+  // caller's own list otherwise — see the projection above for why an
+  // outright assignment is what makes passing `input.tags` into it mandatory.
+  if (update.tags !== undefined) item.tags = update.tags;
+  if (update.severity !== undefined) item.severity = update.severity;
+  if (update.always !== undefined) item.always = update.always;
+  if (update.status !== undefined) {
+    item.status = update.status;
     // Whichever write path retires an item, `validUntil` must move with it —
     // `supersedeItem` establishes this invariant at its own retirement point,
     // and a direct `update_item({status: 'deprecated'})` must not be a second,
@@ -767,7 +856,7 @@ export function updateItem(
     // un-retired item must not keep the stamp.
     stampValidUntil(item);
   }
-  if (input.extra !== undefined) item.extra = { ...item.extra, ...input.extra };
+  if (update.extra !== undefined) item.extra = { ...item.extra, ...update.extra };
 
   const moved = movedFields(before, item);
   persist(ctx, item);
