@@ -1,3 +1,4 @@
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { createItem } from '../../core/mutate.ts';
 import { makeId } from '../../core/slug.ts';
 import type { Item } from '../../core/types.ts';
@@ -11,6 +12,13 @@ import { scopeField } from '../../core/render-item.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';
 import { refuseUnknownFlag, table } from './format.ts';
 import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
+
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.lesson;
 
 function requireWorkspace(ws: Workspace, out: Emit): boolean {
   if (ws.projectRoot) return true;
@@ -41,7 +49,7 @@ function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
   // caller who typed the flag that exists precisely so they would not have
   // to make that claim — the wrong answer wearing the right one's face,
   // which is the failure this whole surface was fixed for.
-  if (refuseUnknownFlag(args, ['agent'], [], LESSON_USAGE, out)) return 1;
+  if (refuseUnknownFlag(args, ALLOWED, VALUE_FLAGS, LESSON_USAGE, out)) return 1;
 
   const subject = positionals(args, []).join(' ').trim();
   if (!subject) {

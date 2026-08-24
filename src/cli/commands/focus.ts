@@ -1,3 +1,4 @@
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import {
   focusReportLines, isFocusActive, readFocus, relationTableLines, setFocus, unsetFocus,
   RELATION_CLASSIFICATION, type Focus, type FocusAxes, type FocusReport,
@@ -35,8 +36,12 @@ import { dedupe, hasFlag, listFlag, positionals, registerCommand, type Emit } fr
  * focus says so and names the command that clears it.
  */
 
-const ALLOWED = ['tag', 'category', 'scope', 'clear', 'show', 'preview', 'relations', 'json'];
-const VALUE_FLAGS = ['tag', 'category', 'scope'];
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.focus;
 
 const USAGE = [
   'usage: mycontext focus [<tag>…] [--tag t] [--category c] [--scope path-or-glob]',

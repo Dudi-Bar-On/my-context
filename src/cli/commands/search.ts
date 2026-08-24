@@ -1,3 +1,4 @@
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { scopePolicyFor } from '../../core/config.ts';
 import type { LoadError } from '../../core/rebuild.ts';
 import { RELATION_TYPES } from '../../core/vocabulary.ts';
@@ -9,7 +10,7 @@ import type { Item, Status } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, paragraph, records, refuseUnknownFlag,
+  DETAIL_USAGE, detailLevel, emitJson, paragraph, records, refuseUnknownFlag,
   table, wantsJson,
 } from './format.ts';
 import { flag, positionals, registerCommand, type Emit } from './registry.ts';
@@ -40,8 +41,12 @@ import { flag, positionals, registerCommand, type Emit } from './registry.ts';
  * that message described is the one below.
  */
 
-const VALUE_FLAGS = ['text', 'type', 'tag', 'path', 'status', 'relation', 'limit'];
-const ALLOWED = [...VALUE_FLAGS, ...DETAIL_FLAGS];
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.search;
 
 const USAGE = `usage: mycontext search "<words>" ${DETAIL_USAGE}
        mycontext search [--text "<words>"] [--type <category>] [--tag <tag>]

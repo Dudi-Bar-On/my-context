@@ -1,13 +1,21 @@
 import path from 'node:path';
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { runChecks, type Finding } from '../../doctor/checks.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, outputWidth, paragraph, records,
+  DETAIL_USAGE, detailLevel, emitJson, outputWidth, paragraph, records,
   refuseUnknownFlag, wantsJson, type Detail,
 } from './format.ts';
 import { hasFlag, registerCommand, type Emit } from './registry.ts';
+
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.doctor;
 
 export function summarize(findings: Finding[]): { errors: number; warnings: number; infos: number } {
   return {
@@ -45,7 +53,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
   // check and print the ordinary text report, so a CI job that meant to parse
   // JSON got prose and a green exit code.
   const doctorUsage = `usage: mycontext doctor [--quiet] ${DETAIL_USAGE}`;
-  if (refuseUnknownFlag(args, [...DETAIL_FLAGS, 'quiet'], [], doctorUsage, out)) return 1;
+  if (refuseUnknownFlag(args, ALLOWED, VALUE_FLAGS, doctorUsage, out)) return 1;
 
   // Parsed BEFORE the corpus is opened: a malformed `--full=maybe` must
   // refuse without doing minutes of work first, and `hasFlag`/`detailLevel`

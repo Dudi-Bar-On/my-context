@@ -7,6 +7,7 @@ import {
   auditDbPath, openProjection, queryProjection, sessions, syncProjection, topItems,
   type SummaryRow,
 } from '../../core/audit-db.ts';
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { Ledger } from '../../core/ledger.ts';
 import { topUpLedger } from '../../core/ledger-replay.ts';
 import { enumError } from '../../core/teach.ts';
@@ -14,7 +15,7 @@ import type { Origin } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { toCliMessage } from './context.ts';
 import {
-  DETAIL_FLAGS, emitJson, paragraph, refuseUnknownFlag, table, wantsJson,
+  emitJson, paragraph, refuseUnknownFlag, table, wantsJson,
 } from './format.ts';
 import { flag, registerCommand, type Emit } from './registry.ts';
 
@@ -23,8 +24,12 @@ const USAGE =
   '[--op O] [--origin R] [--limit N] [--summary|--items [--role subject|injected|spilled]' +
   '|--sessions|--files] [--json]';
 
-const VALUE_FLAGS = ['since', 'until', 'item', 'session', 'kind', 'op', 'origin', 'limit', 'role'];
-const OWN_FLAGS = [...VALUE_FLAGS, 'items', 'sessions', 'files'];
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.audit;
 
 const DEFAULT_LIMIT = 50;
 const DEFAULT_TOP = 20;
@@ -304,7 +309,7 @@ function cmdAudit(ws: Workspace, args: string[], out: Emit): number {
       ledger.close();
     }
   }
-  if (refuseUnknownFlag(args, [...DETAIL_FLAGS, ...OWN_FLAGS], VALUE_FLAGS, USAGE, out)) return 1;
+  if (refuseUnknownFlag(args, ALLOWED, VALUE_FLAGS, USAGE, out)) return 1;
 
   const root = ws.projectRoot;
   let filter: AuditFilter;

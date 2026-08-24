@@ -2,9 +2,10 @@ import { readAudit, recordAudit, type AuditRecord } from '../../core/audit.ts';
 import { renderItem } from '../../core/item.ts';
 import { updateItem } from '../../core/mutate.ts';
 import { rebuildRoots } from '../../core/open-store.ts';
+import { STAGES, stageOf, type Stage } from '../../core/procedure-stage.ts';
 import { procedureProgress, progressLine, unreadableProgress } from '../../core/progress.ts';
 import { loadLayer, type LoadError } from '../../core/rebuild.ts';
-import { mergeLayers, RETIRED_STATUSES } from '../../core/select.ts';
+import { mergeLayers } from '../../core/select.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
@@ -48,17 +49,6 @@ import { confirmAction } from './review.ts';
 const CATEGORY = 'procedure';
 const NEAR_MISS = 'runbook';
 
-/**
- * The tag that marks a draft procedure as ready to run.
- *
- * A tag rather than a status, because §2.1 forbids building on "index line
- * only" until that is decided and a sixth status would be exactly that
- * decision taken quietly. What it costs is that a `ready` procedure reaches no
- * session at all, and `list` discloses that rather than leaving it to be
- * discovered.
- */
-const READY_TAG = 'ready';
-
 export const SUBCOMMANDS = ['list', 'show', 'activate', 'done', 'step'] as const;
 
 /**
@@ -82,27 +72,6 @@ const USAGE = `usage: mycontext procedure [list]
        mycontext procedure activate <id> [--yes]
        mycontext procedure done <id> [--yes]
        mycontext procedure step <id> <n> [--undo]`;
-
-/**
- * The lifecycle stage of one procedure, in the order the table above names
- * them.
- *
- * DERIVED from `RETIRED_STATUSES` (core/select.ts) rather than listing the
- * retired statuses again here: that set is what makes a finished procedure
- * appear in the session's `N retired` line instead of vanishing from every
- * tally, and a second hand-kept copy of it would be a defect waiting to go
- * stale the first time the set moves. `superseded` is tested first because it
- * is a member of that set with a stage of its own — abandoned is not done.
- */
-const STAGES = ['proposed', 'ready', 'active', 'done', 'abandoned'] as const;
-type Stage = (typeof STAGES)[number];
-
-function stageOf(item: Item): Stage {
-  if (item.status === 'superseded') return 'abandoned';
-  if (RETIRED_STATUSES.has(item.status)) return 'done';
-  if (item.status === 'active') return 'active';
-  return item.tags.includes(READY_TAG) ? 'ready' : 'proposed';
-}
 
 /**
  * The one category refusal, shared by all five subcommands, and it names BOTH

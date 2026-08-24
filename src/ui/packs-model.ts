@@ -52,7 +52,7 @@
  */
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Config } from '../core/config.ts';
+import { TOP_LEVEL_KEYS, type Config } from '../core/config.ts';
 import { normalizeForSlug } from '../core/slug.ts';
 import type { Item, Status } from '../core/types.ts';
 import type { Workspace } from '../core/workspace.ts';
@@ -69,30 +69,26 @@ import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 
 /**
  * The top-level keys a workspace `config.json` may hold, which is the domain
- * the `pk.what` table is drawn over.
+ * the `pk.what` table is drawn over — THE LOADER'S OWN LIST, imported.
  *
- * **Pinned to `Config` at COMPILE time, because the loader's own list is not
- * exported.** `TOP_LEVEL_KEYS` (`core/config.ts` · `const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'];` · ~452)
- * is module-private, so the honest options were a hand-typed copy that can
- * drift in silence, or a copy the compiler fails on the day the two disagree.
- * `Exclude` below is the second: `skippedKeys` is subtracted because it is the
- * loader's OUTPUT rather than a key a file may write
+ * It used to be a hand-typed `CONFIG_KEYS` pinned to `keyof Config` minus
+ * `skippedKeys`, because `TOP_LEVEL_KEYS` was module-private in `core/config.ts`
+ * and there was nothing to import. That pin caught one direction: a `Config`
+ * field missing from the copy failed `tsc`, and a key added to the loader's
+ * list that `Config` does not carry slipped past it — this table would then
+ * have been drawn over four of the loader's five keys, which is the silent drop
+ * this project bans arriving through a screen instead of through a file.
+ *
+ * The `Exclude` pin goes WITH the copy rather than being re-aimed at the
+ * import. It exists to catch a `Config` field with no key in the list, and the
+ * loader's own `resolveConfig` is what would now be wrong in that case, not
+ * this table; asserting it from a read model would be this file holding open a
+ * property of a module it only reads. `skippedKeys` is the loader's OUTPUT
+ * rather than a key a file may write
  * (`core/config.ts` · `   * The top-level keys this build did not understand, in the order the file` · ~215),
- * and every other member of `keyof Config` must appear here or `tsc` fails.
- * That is the same instrument `read-model-config.ts` uses to pin `TIERS` to the
- * `Tier` union, for the same reason: a list that silently stops matching is
- * the drift this project treats as a defect class.
- *
- * It is a PROXY for the loader's list and not the list itself, and saying so is
- * the point — the two coincide today, and a `TOP_LEVEL_KEYS` that grew a key
- * `Config` does not carry would slip past this pin. Exporting it is the small
- * refactor this wants, and is not made from here.
+ * and it was never a member of `TOP_LEVEL_KEYS`, so nothing has to subtract it
+ * here any more.
  */
-const CONFIG_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'] as const;
-type ConfigKeysExhaustive =
-  Exclude<keyof Config, 'skippedKeys' | (typeof CONFIG_KEYS)[number]> extends never ? true : never;
-const configKeysExhaustive: ConfigKeysExhaustive = true;
-void configKeysExhaustive;
 
 /** One row of the `pk.what` table: may a pack's `config.json` carry this key? */
 export interface CarriesRow {
@@ -139,7 +135,7 @@ export interface CarriesRow {
  * config so that they could not is how the answer stops being the real one.
  */
 function carriesFor(local: Config): CarriesRow[] {
-  return CONFIG_KEYS.map((key) => {
+  return TOP_LEVEL_KEYS.map((key) => {
     const refusals = refusePackConfig({ [key]: {} }, local);
     return { key, travels: refusals.length === 0, refusals };
   });

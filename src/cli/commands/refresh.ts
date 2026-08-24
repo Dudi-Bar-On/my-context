@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { updateItem } from '../../core/mutate.ts';
 import { globalLayerRefusal } from '../../core/persist.ts';
 import {
@@ -40,7 +41,12 @@ import { positionals, registerCommand, type Emit } from './registry.ts';
  * `origin: 'agent'` and therefore stages wherever the policy says it must.
  */
 
-const ALLOWED = ['yes'];
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.refresh;
 const USAGE = 'usage: mycontext refresh <id> [--yes]';
 
 function cmdRefresh(ws: Workspace, args: string[], out: Emit, cwd: string): number {
@@ -48,7 +54,7 @@ function cmdRefresh(ws: Workspace, args: string[], out: Emit, cwd: string): numb
     out('my_context: no workspace here. Run `mycontext init` to create one.');
     return 1;
   }
-  if (refuseUnknownFlag(args, ALLOWED, [], USAGE, out)) return 1;
+  if (refuseUnknownFlag(args, ALLOWED, VALUE_FLAGS, USAGE, out)) return 1;
 
   const [id, extra] = positionals(args, []);
   if (!id) { out(USAGE); return 1; }

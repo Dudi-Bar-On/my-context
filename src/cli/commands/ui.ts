@@ -38,6 +38,7 @@
  * collapsed answer.
  */
 import { openProjection, syncProjection } from '../../core/audit-db.ts';
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { IDLE_MS, MAX_IDLE_MS } from '../../ui/idle.ts';
 import { openBrowser } from '../../ui/open.ts';
@@ -52,8 +53,12 @@ import {
 const USAGE = 'usage: mycontext ui [--port N] [--no-open] [--idle-ms N]';
 
 /** The flags this command accepts, and which of them take a following value. */
-const UI_FLAGS = ['port', 'no-open', 'idle-ms'];
-const UI_VALUE_FLAGS = ['port', 'idle-ms'];
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: UI_FLAGS, values: UI_VALUE_FLAGS } = COMMAND_FLAGS.ui;
 
 /* ── WHAT USED TO STAND HERE, AND WHY IT DOES NOT ─────────────────────────
  *

@@ -23,18 +23,24 @@
  *   | done vs abandoned   | `core/select.ts` · `export const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);` · ~397 |
  *   | is it injected      | `cli/commands/injection.ts` · `export function injection(` · ~84 |
  *
- * **What could NOT be reused, and it is a defect rather than a preference.**
+ * **What could NOT be reused, and what was LIFTED so that it could be.**
  * `cli/commands/procedure.ts` imports the write surface at its third line
  * (`cli/commands/procedure.ts` · `import { updateItem }` · ~3),
  * because `activate` and `done` mutate. Measured: the import walk from that
  * module reaches `core/mutate.ts`, `core/relations.ts` and `core/revision.ts`.
  * So the module cannot be imported here at all, and the three things this file
  * needs out of it — the STAGE vocabulary, the `ready` tag that distinguishes
- * two of the stages, and the two disclosure sentences — are RE-SPELLED below
+ * two of the stages, and the two disclosure sentences — were RE-SPELLED here
  * with the original cited beside each. That is a second spelling of a closed
- * vocabulary, which this project treats as a defect class; the fix is to lift
- * `stageOf`/`STAGES`/`READY_TAG` into a core module both sides import, and
- * that is a change to files this task does not own. **Reported, not made.**
+ * vocabulary, which this project treats as a defect class.
+ *
+ * The vocabulary half of it is now FIXED rather than reported: `stageOf`,
+ * `STAGES` and `READY_TAG` live in `core/procedure-stage.ts`, a module with no
+ * write surface that both sides import, and `test/core/procedure-stage.test.ts`
+ * fails if either side declares its own again. The two DISCLOSURE SENTENCES
+ * below are still re-spelled, and deliberately: they are prose this surface
+ * says to a reader, not a vocabulary the two surfaces branch on, and each
+ * carries the CLI's original beside it.
  *
  * The citation above stops at the BINDING rather than quoting the whole import
  * line, and that is load-bearing rather than terse. `no-writes.test.ts`'s
@@ -88,7 +94,7 @@
 import { injection, type InjectionVerdict } from '../cli/commands/injection.ts';
 import { readAudit } from '../core/audit.ts';
 import { procedureProgress, unreadableProgress } from '../core/progress.ts';
-import { RETIRED_STATUSES } from '../core/select.ts';
+import { STAGES, stageOf, type Stage } from '../core/procedure-stage.ts';
 import type { Item, Status } from '../core/types.ts';
 import type { Workspace } from '../core/workspace.ts';
 import { badRequest, unknownParams, withStores } from './read-model.ts';
@@ -99,50 +105,23 @@ const CATEGORY = 'procedure';
 const NEAR_MISS = 'runbook';
 
 /**
- * The tag that separates `proposed` from `ready`.
+ * The lifecycle vocabulary — the five stages, the `ready` tag that separates
+ * two of them, and the `status` (+ tag) → stage map — IMPORTED rather than
+ * re-spelled.
  *
- * A TAG and not a status, and the reason is not this module's to restate:
- * (`cli/commands/procedure.ts` · `const READY_TAG = 'ready';` · ~60) records
- * that a sixth `Status` would be §2.1's "index line only" decision taken
- * quietly. Re-spelled here only because that module cannot be imported.
- */
-const READY_TAG = 'ready';
-
-/**
- * The lifecycle stages, in the order the CLI's own table names them
- * (`cli/commands/procedure.ts` · `const STAGES = ['proposed', 'ready', 'active', 'done', 'abandoned'] as const;` · ~97).
+ * All three used to be copied into this file with the CLI's original cited
+ * beside each, because `cli/commands/procedure.ts` imports `updateItem` at its
+ * third line and a read surface may not reach that module at all. They now
+ * live in `core/procedure-stage.ts`, which binds no writer, so there is one
+ * spelling of the lifecycle and the CLI and this screen cannot disagree about
+ * it. `test/core/procedure-stage.test.ts` is what holds that open: it fails if
+ * either side declares its own.
  *
- * **THERE ARE FIVE, AND THE MOCKUP'S TABLE HAS FOUR ROWS.** `pr.states` is
- * *"Four states, and exactly one of them injects"* and the table draws
- * `proposed`, `ready`, `active`, `done`. The fifth is not an invention here:
- * `pr.aband` is on the same screen and says *"Abandoned rather than finished
- * is `superseded`"*, so the screen knows the state exists and has no row for
- * it. Serving four and folding `superseded` into `done` would report an
- * abandoned procedure as a finished one — the exact silent-wrong-answer this
- * lifecycle exists to prevent — so all five are served and `stages` travels
- * with the list so a client can tell that it has been handed a stage its
- * static table cannot draw. **Which row the mockup grows is the owner's.**
+ * `Stage` is re-exported because it is part of what these routes' response
+ * types are written in, and a client typing against `ProcedureSummary` needs
+ * the name from the module that names the field.
  */
-const STAGES = ['proposed', 'ready', 'active', 'done', 'abandoned'] as const;
-export type Stage = (typeof STAGES)[number];
-
-/**
- * `status` (+ one tag) → stage. A re-spelling of
- * (`cli/commands/procedure.ts` · `function stageOf(item: Item): Stage {` · ~100),
- * kept line-for-line identical to it, including the ORDER of the tests:
- * `superseded` is checked before `RETIRED_STATUSES` because it is a member of
- * that set with a stage of its own. Abandoned is not done.
- *
- * The set is imported rather than re-listed, so the day a fourth retired
- * status is added this function moves with it — which is exactly the drift the
- * CLI's own comment refuses to hand-copy the set for.
- */
-function stageOf(item: Item): Stage {
-  if (item.status === 'superseded') return 'abandoned';
-  if (RETIRED_STATUSES.has(item.status)) return 'done';
-  if (item.status === 'active') return 'active';
-  return item.tags.includes(READY_TAG) ? 'ready' : 'proposed';
-}
+export type { Stage } from '../core/procedure-stage.ts';
 
 /**
  * A fact that is true whether or not a response mentions it, paired with the

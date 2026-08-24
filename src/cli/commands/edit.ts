@@ -1,4 +1,5 @@
 import type { UpdatableName } from '../../core/categories.ts';
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { scopePolicyFor, type Config } from '../../core/config.ts';
 import { normalizePosix } from '../../core/paths.ts';
 import { updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
@@ -1038,8 +1039,14 @@ export const NAMED_ENTRY_POINTS: NamedEntryPoint[] = [
  * stop being entry points onto `edit` and become a second, smaller `edit` with
  * its own argument surface to keep in step. `edit` is the command that takes
  * more than one field, and the refusal below names it.
+ *
+ * LIFTED to `core/command-flags.ts`, and looked up PER ENTRY rather than once
+ * for the four: they are four commands to the registry, to the approval
+ * boundary and to anything reading that map, and one shared array would make
+ * "which commands take `--yes`" unanswerable by reading it. The four entries
+ * there say the same thing today; the day one of them stops, this is already
+ * asking the right question.
  */
-const NAMED_ALLOWED = ['yes'];
 
 /**
  * The usage block, wrapped to the layout budget here rather than by the
@@ -1075,7 +1082,8 @@ function runNamed(entry: NamedEntryPoint, ws: Workspace, args: string[], out: Em
   // No value-taking flags: `--yes` is a switch, so nothing here consumes the
   // token after it, and `positionals` below is given the same empty list so
   // the two cannot disagree about which token is the id.
-  if (refuseUnknownFlag(args, NAMED_ALLOWED, [], usage, out)) return 1;
+  const { allowed, values } = COMMAND_FLAGS[entry.name];
+  if (refuseUnknownFlag(args, allowed, values, usage, out)) return 1;
 
   const [id, extra] = positionals(args, []);
   if (!id) { out(usage); return 1; }

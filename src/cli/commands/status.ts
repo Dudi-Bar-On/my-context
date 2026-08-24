@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { computeDecay } from '../../core/decay.ts';
 import { Ledger, type Usage } from '../../core/ledger.ts';
 import { topUpLedger } from '../../core/ledger-replay.ts';
@@ -16,10 +17,17 @@ import {
 } from './review.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, paragraph, refuseUnknownFlag, table,
+  DETAIL_USAGE, detailLevel, emitJson, paragraph, refuseUnknownFlag, table,
   wantsJson, type Detail,
 } from './format.ts';
 import { registerCommand, type Emit } from './registry.ts';
+
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.status;
 
 const DECAY_WINDOW = 20;
 
@@ -114,7 +122,7 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
   // Refused before any work is done — see `unknownFlag` (format.ts).
   // `mycontext status --ful` used to print the whole default report and exit
   // 0, which is the wrong report delivered confidently.
-  if (refuseUnknownFlag(args, DETAIL_FLAGS, [], `usage: mycontext status ${DETAIL_USAGE}`, out)) {
+  if (refuseUnknownFlag(args, ALLOWED, VALUE_FLAGS, `usage: mycontext status ${DETAIL_USAGE}`, out)) {
     return 1;
   }
 

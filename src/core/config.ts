@@ -695,8 +695,17 @@ export function extraFieldNames(config: Config): string[] {
  * (R14.2) — see the `skippedKeys` collection in `resolveConfig`. The list is
  * still the ONE list; what changed is the verdict for a name that is not on
  * it, and only at this level.
+ *
+ * EXPORTED, and `as const` so that it carries its members as literal types.
+ * `ui/packs-model.ts` draws the `pk.what` table over exactly this domain and
+ * could not have the list while it was module-private, so it pinned a copy to
+ * `keyof Config` instead and recorded that as a PROXY: a key added HERE that
+ * `Config` does not carry would have slipped past that pin. `as const` is what
+ * lets the copy go entirely rather than be re-pinned; the runtime value is
+ * unchanged, and the one call site that asks `.includes` of an arbitrary string
+ * widens it back at the call rather than weakening the type for every reader.
  */
-const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'];
+export const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'] as const;
 
 /**
  * Every key the `ui` section may carry — the `CATEGORY_KEYS` shape again, and
@@ -890,7 +899,8 @@ export function resolveConfig(raw: unknown): Config {
   //
   // Insertion order, not sorted: these are keys as the user wrote them, and
   // the notice is read next to the file.
-  const skippedKeys = Object.keys(input).filter((key) => !TOP_LEVEL_KEYS.includes(key));
+  const skippedKeys = Object.keys(input)
+    .filter((key) => !(TOP_LEVEL_KEYS as readonly string[]).includes(key));
 
   const profile = (input.profile ?? 'standard') as ProfileName;
   if (!Object.hasOwn(PROFILES, profile)) {

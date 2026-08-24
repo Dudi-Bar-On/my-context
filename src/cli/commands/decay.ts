@@ -1,3 +1,4 @@
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { computeDecay, type DecayRow } from '../../core/decay.ts';
 import { Ledger } from '../../core/ledger.ts';
 import { topUpLedger } from '../../core/ledger-replay.ts';
@@ -6,10 +7,17 @@ import { scopeCell } from '../../core/render-item.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, paragraph, records, refuseUnknownFlag, table,
+  DETAIL_USAGE, detailLevel, emitJson, paragraph, records, refuseUnknownFlag, table,
   wantsJson, type Detail,
 } from './format.ts';
 import { flag, hasFlag, registerCommand, type Emit } from './registry.ts';
+
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.decay;
 
 const DEFAULT_WINDOW = 20;
 
@@ -82,7 +90,7 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
   // anything, and so a bare `--sessions --json` cannot be read two ways by
   // this check and by `flag` below.
   const decayUsage = `usage: mycontext decay [--sessions N] [--all] ${DETAIL_USAGE}`;
-  if (refuseUnknownFlag(args, [...DETAIL_FLAGS, 'sessions', 'all'], ['sessions'], decayUsage, out)) {
+  if (refuseUnknownFlag(args, ALLOWED, VALUE_FLAGS, decayUsage, out)) {
     return 1;
   }
 

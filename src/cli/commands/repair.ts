@@ -1,3 +1,4 @@
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { computeItemChecksum } from '../../core/item.ts';
 import { persist } from '../../core/persist.ts';
 import type { Item } from '../../core/types.ts';
@@ -10,7 +11,12 @@ import { registerCommand, type Emit } from './registry.ts';
 const USAGE = 'usage: mycontext repair [--yes]';
 
 /** Every flag `mycontext repair` accepts. Anything else is refused, not absorbed. */
-const REPAIR_FLAGS = ['yes'];
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: REPAIR_FLAGS, values: REPAIR_VALUE_FLAGS } = COMMAND_FLAGS.repair;
 
 /**
  * Items whose RECORDED checksum disagrees with a fresh hash of their content

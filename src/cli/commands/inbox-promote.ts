@@ -1,3 +1,4 @@
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import type { ResolvedCategory } from '../../core/config.ts';
 import { createItem, updateItem } from '../../core/mutate.ts';
 import { globalLayerRefusal } from '../../core/persist.ts';
@@ -52,8 +53,12 @@ import { flag, positionals, registerCommand, type Emit } from './registry.ts';
  */
 const INBOX_TYPES = ['todo', 'note'];
 
-const VALUE_FLAGS = ['to', 'title'];
-const ALLOWED = [...VALUE_FLAGS, 'yes'];
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS['inbox-promote'];
 
 const USAGE =
   'usage: mycontext inbox-promote <todo or note id> --to <category> [--title <text>] [--yes]';

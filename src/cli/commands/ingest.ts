@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { relPosix, toPosix } from '../../core/paths.ts';
 import { applyCandidates } from '../../ingest/apply.ts';
 import { acquireApplyLock } from '../../ingest/lock.ts';
@@ -10,10 +11,17 @@ import {
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, refuseUnknownFlag, table, wantsJson,
+  DETAIL_USAGE, detailLevel, emitJson, refuseUnknownFlag, table, wantsJson,
   type Detail,
 } from './format.ts';
 import { flag, hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
+
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const INGEST_STATUS = COMMAND_FLAGS['ingest-status'];
 
 /** The repo root is the parent of `.my_context`. Source paths are relative to it. */
 function repoRoot(ws: Workspace): string {
@@ -242,7 +250,8 @@ function cmdIngestStatus(ws: Workspace, args: string[], out: Emit): number {
   // See `unknownFlag` (format.ts). This one is only a reporting command, so
   // the detail flags are its whole surface.
   if (refuseUnknownFlag(
-    args, DETAIL_FLAGS, [], `usage: mycontext ingest-status ${DETAIL_USAGE}`, out,
+    args, INGEST_STATUS.allowed, INGEST_STATUS.values,
+    `usage: mycontext ingest-status ${DETAIL_USAGE}`, out,
   )) return 1;
 
   let detail: Detail;

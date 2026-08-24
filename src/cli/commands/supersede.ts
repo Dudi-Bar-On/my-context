@@ -1,3 +1,4 @@
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { supersedeItem, type MutationContext } from '../../core/mutate.ts';
 import { globalLayerRefusal } from '../../core/persist.ts';
 import type { Item } from '../../core/types.ts';
@@ -23,8 +24,12 @@ import { flag, positionals, registerCommand, type Emit } from './registry.ts';
  */
 
 /** The flags this command accepts, and the value-taking subset. */
-const ALLOWED = ['by', 'reason', 'yes'];
-const VALUE_FLAGS = ['by', 'reason'];
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.supersede;
 
 const USAGE = `usage: mycontext supersede <retired id> --by <replacement id> [--reason <text>] [--yes]`;
 

@@ -1,3 +1,4 @@
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import type { ResolvedCategory } from '../../core/config.ts';
 import type { LoadError } from '../../core/rebuild.ts';
 import { filterItems } from '../../core/search.ts';
@@ -6,7 +7,7 @@ import type { Item, Tier } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, type Detail, detailLevel, emitJson, paragraph, records,
+  DETAIL_USAGE, type Detail, detailLevel, emitJson, paragraph, records,
   refuseUnknownFlag, table, wantsJson,
 } from './format.ts';
 import { flag, hasFlag, registerCommand, type Emit } from './registry.ts';
@@ -45,8 +46,12 @@ import { flag, hasFlag, registerCommand, type Emit } from './registry.ts';
  * governing.
  */
 
-const VALUE_FLAGS = ['tag', 'limit'];
-const ALLOWED = [...VALUE_FLAGS, 'all', ...DETAIL_FLAGS];
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.todo;
 
 const USAGE = `usage: mycontext todo [--tag <tag>] [--all] [--limit <n>] ${DETAIL_USAGE}
 

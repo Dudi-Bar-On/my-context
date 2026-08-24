@@ -1,3 +1,4 @@
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { openRebuiltStore } from '../../core/open-store.ts';
 import { Store } from '../../core/store.ts';
 import type { Workspace } from '../../core/workspace.ts';
@@ -22,8 +23,12 @@ import { flag, hasFlag, registerCommand, type Emit } from './registry.ts';
 const DEFAULT_ROW_CAP = 1000;
 
 /** Every flag `mycontext query` accepts. Anything else is refused, not absorbed. */
-const QUERY_VALUE_FLAGS = ['limit'];
-const QUERY_FLAGS = ['json', ...QUERY_VALUE_FLAGS];
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: QUERY_FLAGS, values: QUERY_VALUE_FLAGS } = COMMAND_FLAGS.query;
 
 const USAGE = `usage: mycontext query [--json] [--limit <n>] "SELECT ..."
        mycontext query [--json] [--limit <n>] -- "-- a query that starts with a SQL comment

@@ -360,8 +360,15 @@ export function emitJson(out: Emit, value: unknown): void {
  * The flag names every reporting command accepts, spelled once beside
  * `DETAIL_USAGE` so a command whose usage line advertises the detail levels
  * cannot forget to accept them (or accept ones it does not advertise).
+ *
+ * RE-EXPORTED from `core/command-flags.ts`, where the flag specs that are
+ * written in terms of it now live — the same shape `relations.ts` uses to keep
+ * `RELATION_TYPES` reachable from its old home after it moved to
+ * `vocabulary.ts`. It is the same ARRAY through both names, not a copy;
+ * `test/cli/command-flags.test.ts` asserts that, because a copy is the second
+ * spelling the move exists to remove.
  */
-export const DETAIL_FLAGS = ['full', 'short', 'summary', 'json'];
+export { DETAIL_FLAGS } from '../../core/command-flags.ts';
 
 /**
  * The first `--flag` in `args` whose name is not in `allowed`, or null.
