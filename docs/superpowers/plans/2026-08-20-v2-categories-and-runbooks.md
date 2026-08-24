@@ -184,7 +184,7 @@ a fragment and is re-checked by execution instead — the second table.
 | `deprecated` is counted in `retired`, so a finished procedure stays in a session-visible number | `select.ts` · `const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);` · ~397 |
 | `validated` would be **wrong** for `done` — it still governs | `trust.ts` · `export function governsNormatively(ctx: MutationContext, item: Item): boolean {` · ~331 |
 | The review queue is `status === 'draft' && layer === 'project'`, one definition for four surfaces | `select.ts` · `export function reviewQueue(items: Item[], type: string \| null = null): Item[] {` · ~433 |
-| A non-human caller cannot change the status of a normative item — §2.2's "human-only" already ships | `mutate.ts` · `    input.status !== undefined && input.status !== item.status &&` · ~623 |
+| A non-human caller cannot change the status of a normative item — §2.2's "human-only" already ships | `mutate.ts` · `    update.status !== undefined && update.status !== item.status &&` · ~623 |
 | `always` is a guarded field, so setting it is human-only too | `trust.ts` · `export const GUARDED_FIELDS = {` · ~369 |
 | `edit --status superseded` is refused on purpose; `supersede --by` is the route | `cli/commands/edit.ts` · `      if (status === 'superseded') {` · ~474 |
 
@@ -2237,7 +2237,7 @@ line — "injected in full" is a property of the `always` flag and its tier memb
 status. A command that set only the status would ship a procedure that is merely eligible: indexed, not
 delivered, and silently not doing the one thing this lifecycle exists for. Both fields are guarded
 (`trust.ts` · `export const GUARDED_FIELDS = {` · ~369 for `always`;
-`mutate.ts` · `    input.status !== undefined && input.status !== item.status &&` · ~623 for
+`mutate.ts` · `    update.status !== undefined && update.status !== item.status &&` · ~623 for
 `status`), so a non-human caller can reach neither — §2.2's human-only gate is **already implemented
 and this task adds no new gate**.
 

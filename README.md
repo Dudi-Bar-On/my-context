@@ -2460,8 +2460,8 @@ moves no count of what governs.
 | `mycontext session [list]` | the sessions this workspace has recorded, most recent first: the full id, its first eight characters, the name you gave it (**empty** when you gave it none — nothing is derived on your behalf), how many records the log holds for it, when it last did anything, and whether anything of it is still `carryable`. That last column is the one to read before choosing a session: carrying reads the source session's dedupe state out of `state/`, which is swept at 30 days, so a session this log still names can have nothing left. `--json` |
 | `mycontext session name <id> <name>` | give one session a handle you can type instead of a hex prefix. **The id is explicit and never guessed** — no CLI surface is handed a session id at all — and a prefix is accepted only while it picks out exactly one of the sessions `mycontext session list` shows: a prefix that matches two is refused with both named, never resolved to one of them, because a name that landed on the wrong session looks exactly like one that landed on the right one. An id this log has never seen is refused too, since it is a typo and accepting it would put an entry in the store nothing can reach. Nothing about the name is quietly fixed up: one that is empty, over 64 characters, carries a newline, or is already held by another session is **refused** rather than trimmed or renumbered, and the refusal names the session holding it. It writes no audit record — naming is session metadata, it changes nothing about what governs this project, and it puts no text in front of a model. The names live in `.my_context/state/session-names.json`, gitignored generated state like everything else under `state/`, because a session id identifies one machine and one afternoon and has no business travelling with the corpus. Unlike the dedupe files beside it, that store is **not** swept at 30 days: a name outlives the session it describes on purpose, since it is the only human-readable handle on an entry the audit log still carries |
 | `mycontext session carry <id>` | choose which session a new one carries forward from — its index lines arrive marked and hoisted to the front of this session's index ([the carry](#the-index--so-nothing-is-invisible)). `--none` carries nothing, and is a state of its own rather than a return to the default; `--show` reads back what a new session would carry today and whether that is a choice or the default. An id the listing marks not `carryable` is refused rather than stored. Like `session name`, the id is explicit and never guessed — **the CLI is handed no session id at all**, because it runs in a terminal rather than inside a session |
-| `mycontext ui` | the read-only web UI, served on `127.0.0.1` — `--port N`, and `--no-open` to print the URL instead of opening a browser. Loopback only: it refuses to start on any other address rather than warning. The page trades a one-shot URL fragment nonce for a token that reaches neither disk nor a process command line, and the server exits after fifteen idle minutes. The browser app is still being built — today the served page is an empty shell |
-| `mycontext statusline` | the opt-in bridge to Claude Code's status line, and the only thing here that writes outside `.my_context/`. `mycontext statusline install` prints the `statusLine` setting you have now and exactly what would replace it, and writes **nothing** without `--yes`; `--settings <path>` chooses the file, defaulting to Claude Code's own (`CLAUDE_CONFIG_DIR`, else `~/.claude/settings.json`). Once installed, `mycontext statusline` runs on every assistant message: it prints the model, the context in use and how much of that came from project knowledge, and tees Claude Code's payload to a per-session file the web UI reads. `mycontext statusline uninstall --yes` puts the replaced setting back **byte for byte** — the whole file is saved, not just the key — and refuses outright when the `statusLine` in the file is no longer this bridge, because a setting you made after installing is not ours to overwrite on the way out |
+| `mycontext ui` | the read-only web UI, served on `127.0.0.1` — `--port N`, `--no-open` to print the URL instead of opening a browser, and `--idle-ms N` to move the window before an untouched server exits. Loopback only: it refuses to start on any other address rather than warning. The page trades a one-shot URL fragment nonce for a token that reaches neither disk nor a process command line, and the server exits on its own after eight idle hours by default. [The web UI](#the-web-ui--mycontext-ui) describes the screens and what none of them can do |
+| `mycontext statusline` | the opt-in bridge to Claude Code's status line, and the only thing here that writes outside `.my_context/`. `mycontext statusline install` prints the `statusLine` setting you have now and exactly what would replace it, and writes **nothing** without `--yes`; `--settings <path>` chooses the file, defaulting to Claude Code's own (`CLAUDE_CONFIG_DIR`, else `~/.claude/settings.json`). Once installed, `mycontext statusline` runs on every assistant message: it prints the model, the context in use and how much of that came from project knowledge, and tees Claude Code's payload to a per-session file the web UI reads. `mycontext statusline uninstall --yes` puts the replaced setting back — the whole file is saved, not just the key, so an unchanged file is restored **byte for byte**, and one you have edited since keeps your edit and gets only its `statusLine` back. It refuses outright when the `statusLine` in the file is no longer this bridge, because a setting you made after installing is not ours to overwrite on the way out. [The status line bridge](#the-status-line-bridge-opt-in) |
 
 **Hand it on.**
 
@@ -2575,6 +2575,7 @@ mycontext audit --since 7d              everything in the last week
 mycontext audit --item RULE-x           everything that happened to one item
 mycontext audit --session <id>          one session, in order
 mycontext audit --op promote            one operation
+mycontext audit --kind progress         one kind of record, of the six below
 mycontext audit --origin agent          only what an agent did
 mycontext audit --summary               counts by operation
 mycontext audit --items                 which items this log names most
@@ -2609,6 +2610,38 @@ get edited, superseded and retired, so a count recomputed from today's corpus wo
 for exactly the history being maintained most actively. Records written before this field
 existed simply lack it, and every surface shows those as **"tokens not recorded" — never
 as zero**. Zero is a measurement; absent is not.
+
+##### Six kinds, and the version the log declares
+
+`--kind` cuts the log by what a record *is*, and it accepts exactly six names:
+`mutation`, `injection`, `hook`, `focus`, `access` and `progress`. A name outside that set
+is refused with the whole list, rather than silently matching nothing.
+
+The newest of them is **`progress`, which records a step tick against a `procedure`**. It
+belongs beside `focus` rather than under `mutation` for the same reason `focus` does: a tick
+changes no item. Everywhere else in the log a `mutation` means "this item's columns moved",
+and after a tick the procedure's file, its body, its steps and its `checksum` are all
+byte-for-byte what they were — the `- [x]` you see in `mycontext procedure show` is rendered
+over the stored list, not written into it. Filing a tick as a `mutation` would make
+`mycontext audit --kind mutation --item PROC-x` a question with a wrong answer, so it is a
+sixth kind instead. Its operations are `step-done`, `step-undone` and `step-reset`; the
+last is what `mycontext procedure activate` writes, before the activation it records.
+
+**The log now declares `my_context/audit@2` on every line it writes.** This build reads
+both `@1` and `@2`, so a log you already have keeps working across the upgrade with nothing
+to migrate. Anything else is refused as version skew, and the refusal names the *version*:
+
+```text
+line 2 declares protocol "my_context/audit@3", expected "my_context/audit@1" or
+"my_context/audit@2" (it may have been written by a different version)
+```
+
+The protocol is checked before the record's `kind` and `op` are looked at, which is what
+makes that message possible: the diagnosis is "this log is newer than I am" rather than a
+complaint about a vocabulary the reader happens not to know. **Upgrading is safe;
+downgrading is not.** A log containing `progress` records cannot be read by a build that
+predates the kind — `--kind`'s vocabulary is closed, and an unrecognised name takes the
+whole segment with it rather than being skipped.
 
 ##### Two files, and only one of them is the record
 
@@ -3016,6 +3049,12 @@ subprocess in shipped code, and the directory export is already the input it tak
 
 #### Bringing one in — `mycontext pack import`
 
+**Where packs come from: [`docs/TEMPLATES.md`](docs/TEMPLATES.md), and nowhere else.** Discovery
+is a curated list in this repository — there is no registry, no re-fetch, no update channel and
+no version check over the network, because this product makes no network request at all. That
+document is also where "updating a pack" is described, since the only way to do it is to import
+the newer artefact again.
+
 `mycontext pack import <path>` reads an artefact somebody else wrote — a directory or a ZIP
 — and lands its items in this workspace **as drafts**. That is true of every item in every
 pack, on both tiers: an item that was `active` in the author's corpus arrives `draft` in
@@ -3097,6 +3136,193 @@ one human act taken after the corpus is visible rather than before.
 > copy and nothing else — there is no signature and nothing to check one against. Everything
 > a pack brings in lands `draft` for exactly this reason: the check that matters is a person
 > reading it.
+
+#### The web UI — `mycontext ui`
+
+`mycontext ui [--port N] [--no-open] [--idle-ms N]` serves a read-only browser view of this
+workspace on `127.0.0.1`. It is loopback only — a request to bind anything else is a refusal
+at startup, not a warning — and `--no-open` prints the URL instead of launching a browser,
+which is what you want when the shell is not on the machine you are reading from.
+
+**No `/api` route reaches a mutating function, and the mechanism is the reason you can
+believe that rather than a promise.** It is held by a static
+import-graph test which asserts the *exact* set of write symbols bound anywhere under
+`src/ui/` — not that the set is empty, but that it is the two the owner ruled in by name, so
+a new write fails the suite as loudly as a deleted one. Every write the UI shows you is
+**composed for pasting into your own shell**, never run: which means your Bash permission
+rules go on matching command strings, exactly as they do when you type the command yourself.
+
+There is one write, and it is on the refusal path. **A request the gate refuses appends a
+single `access` record** to the audit log — `op: ui-refused` — naming the check that refused
+it and the `Host` and `Origin` that were submitted. A served read changes not one byte of
+the corpus; a refused request is recorded, because a rejected request to a local server is
+worth knowing about. Neither the token nor any part of it is in that record.
+
+**The token model, in two sentences.** Each invocation mints a fresh token, which the page
+sends in a custom header on every request and which reaches neither disk nor any process
+command line; what appears in the URL is a **one-shot nonce in the fragment**, traded once at
+`POST /api/handoff` for the token itself and dead thereafter. A request without the header is
+`401` before any route handler runs.
+
+**It is ephemeral, and it does not come back.** The server exits on its own after eight idle
+hours by default — `--idle-ms` moves that in either direction, bounded at a day — where idle
+means no `/api` request other than a stream. **An open stream is deliberately not activity**:
+a Watch tab left running cannot hold the process open. What does hold it open is a page you
+can actually see, which heartbeats once a minute while visible and stops when the window goes
+to the background. When the server does exit, the page says so in a banner and **never
+reconnects** — silent reconnection would be the daemon this design refuses, under another
+name.
+
+**The screens** are grouped in the rail four ways, and `mycontext ui` itself is the honest
+list — it is still growing, so an enumeration here would be stale before it was useful:
+
+- **injection** — the session-start preview (with per-session `seen`, so it answers what a
+  *particular* session would get), the scope coverage map, coverage gaps as their own screen,
+  the budget simulator, and what is injected right now;
+- **evidence** — Watch and Ask (below), `doctor`, `decay`, the relations ego graph, and
+  `status`;
+- **change** — Work, the Composer, Configure, capture, procedures, ports and packs;
+- **reading** — the documentation, the tutorial, and a Learn screen cross-linked to this
+  corpus.
+
+Two claims on those screens carry their condition in the same sentence, because without it
+they are false. The preview equals the hook's selection **when it is given the same session**;
+the cold option answers a different question and is labelled as one. And the budget simulator
+reports what would spill **under the candidate budgets, for the event and session you chose**
+— it runs the real selector rather than estimating it.
+
+##### Work, the Composer and Configure
+
+**Work** is the pending-revision queue. It shows each proposal as a **per-field diff against
+the text in force**, one entry per field the proposal actually touches, and marks staleness
+**per field** — a field whose underlying text moved since the proposal was staged is called
+out as stale rather than quietly rendered as though it still applied. A title proposal beside
+a stale body proposal is still readable, and still promotable.
+
+The approval is **one composed line**, and copying it is the whole interaction:
+
+```text
+mycontext review promote-revision <id> --revision <rev> --yes
+```
+
+**The UI does not promote.** There is no settlement endpoint for it to call: the diff is the
+capability the browser adds, and the decision stays where every other decision in this
+product stays. `--revision` is in the composed line deliberately — without it the CLI refuses
+as soon as an item has more than one pending revision — and the deny rule
+`Bash(mycontext review promote-revision *)` matches the longer form just as well.
+
+**The Composer** builds commands from real pickers — the items, the config and the queues
+this workspace actually has, not a text box. Its catalogue splits every command two ways, and
+the split is expressed as a shape rather than as a check: a **read** names a screen or an
+endpoint and the UI executes it; a **write** names neither, so there is nothing for the UI to
+run even if it wanted to. A composed write is shown with the note *"This is a write. Run it in
+your own shell."* State the mechanism in the same sentence as the claim: your Bash permission
+rules match command strings, and a pasted command stays one string — arguments are quoted
+into a single line rather than handed to a shell here. Where an argument contains shell
+substitution syntax the copy is **refused outright** rather than quoted, because double
+quotes do not neutralise `$(…)` and a command that looks safe is worse than one you cannot
+copy.
+
+**Configure** reads `.my_context/config.json` and lets you build a candidate edit of it. Three
+properties matter and each is exact:
+
+- **refusals are `resolveConfig`'s own words** — the endpoint surfaces the message the CLI
+  would have thrown, verbatim, rather than a paraphrase of it, and a test compares the two
+  against the real throw;
+- **the preview is computed by the real selector and the real injection rules against your
+  corpus** — `governing` is what starts and stops being injected, `agentEdits` and
+  `scopePolicy` name the affected items rather than counting them, and `selection` is the
+  actual selector run twice over the same context;
+- **the UI never writes the file.** It composes the JSON for you to paste into your own
+  editor — the same rule the deny hook states to agents (*"changes to
+  `.my_context/config.json` are the user's to make — ask, do not edit"*) applied to the UI
+  itself.
+
+> [!NOTE]
+> **The Configure screen does not yet call the preview.** `POST /api/config/check` and
+> `POST /api/config/preview` are live, tested and reachable, but the screen currently reads
+> `GET /api/config` only, and its "what changes" panel is drawn empty and disabled. The
+> preview above is a true description of the **endpoint**; it is not yet a description of the
+> screen. Read the screen as a config viewer with a composer attached until that lands.
+
+##### Watch and Ask
+
+**Watch** streams the audit log live — all six record kinds: mutations, injections, hook
+actions, focus changes, access refusals and progress steps. An injection row carries the
+count of what that injection **spilled**, and a spill is the one thing the corpus records
+nowhere else: the ledger records deliveries only, so *"an item was selected and did not fit
+the budget"* exists as a fact in the audit log and in no other store. Reading *which* items
+those were is a different question, and the screen does not answer it — it shows the count.
+`mycontext audit --item <id> --json` and the `audit_log` MCP tool are where the ids are.
+Injection records written before the token count existed are drawn as **not recorded, never
+as zero** — absent is not a measurement.
+
+**A visible Watch tab does keep the server alive, and the stream is not what does it.** The
+stream deliberately does not count as activity; the page's once-a-minute heartbeat does, and
+it stops when the tab stops being visible. So a tab you are looking at holds the server open
+and a backgrounded one does not. When the server does exit under an open stream, the stream
+reports that it refused to continue, the next failing request raises the "server has exited"
+banner, and nothing reconnects.
+
+**Ask** builds structured queries over the corpus and over the audit history. For the two
+filter tabs it shows the **exact SQL and parameters** each answer ran; the canned reports
+beside them do not carry their SQL, and the card is hidden rather than left blank. Corpus
+rows are read **as the hooks last left them** — Ask never rebuilds the index, and
+`updated_at` is index write time rather than a content timestamp, so it dates the row and not
+the claim in it.
+
+**Audit answers come from the projection through a read-only door — nothing catches it up,
+because syncing is a write and this is a read surface.** That gives three outcomes rather
+than two, and they must not be collapsed: a projection that is current answers normally; one
+that is **behind, diverged or damaged is a refusal** carrying its state and pointing at
+`mycontext audit` to rebuild it, because answering from a partial history would present it as
+a complete one; and one that has **never been built is not a refusal at all** — it answers
+empty and says the projection is absent.
+
+The endpoint accepts four canned reports — `ops`, `items`, `sessions` and `tasks`. The last
+joins task items to what the audit log records happening to them, and it is **reachable
+through the API only**: the Ask screen's buttons today are the operations report, the
+sessions report, and the items report under its `spilled` and `injected` roles.
+
+##### The status line bridge (opt-in)
+
+The UI cannot measure Claude's context by itself. Claude Code hands that number to a *status
+line command*, and this is the bridge to it.
+
+`mycontext statusline install` prints the `statusLine` setting you have now and exactly what
+would replace it, and **writes nothing until you re-run it with `--yes`**. `--settings <path>`
+chooses the file, defaulting to Claude Code's own. **Installing mycontext never touches your
+status line; only this command, run by you, does.**
+
+Uninstalling is reversible, and the extent of it is stated rather than promised.
+`mycontext statusline uninstall --yes` puts the **whole original file** back, byte for byte —
+indentation, key order and trailing newline included — **when the file has not changed since
+the install**. If it has, only the `statusLine` key is restored and the rest of the file is
+left as it now is, because putting the whole file back would discard your change; the command
+says which of the two it did. If there was no settings file before the install, uninstalling
+removes the one it made. And if the `statusLine` in the file is no longer this bridge, it
+**refuses outright** rather than overwriting a setting you made afterwards.
+
+Once installed, `mycontext statusline` runs on each assistant message — and on a sixty-second
+refresh besides, so the figure does not go stale while a session sits idle. It prints the
+model, the context in use, and how much of that came from project knowledge, and tees Claude
+Code's payload to a per-session file.
+
+**The context figure has exactly three states, and neither of the two negative ones is ever
+rendered as zero.** After a compact it reads **"not yet known"** until the next API call,
+because the payload carries a window with no usage in it yet. When the payload carries no
+usable `context_window` at all — an older Claude Code, or any shape this code does not
+recognise — it reads **"unknown"**. Otherwise it is the real number, computed input-only over
+the window size, matching what Claude Code itself displays. The "from project knowledge"
+share is computed from the audit log, which is local to this machine, so it covers this
+machine's sessions only.
+
+> [!NOTE]
+> **Today that number reaches Claude Code's status line and not the web UI.** The tee file is
+> written and `GET /api/watch/context` serves it, but no screen reads that route yet: the
+> UI's status strip is currently hardcoded to say that no bridge is installed, whether or not
+> one is. Install the bridge for the status line in your terminal; do not install it expecting
+> the browser view to change.
 
 ### Detail levels, and `--json`
 
@@ -4303,6 +4529,111 @@ a reference is rationale and is never injected in full — so this is a judgemen
 vocabulary a project wants, not a defect. Both ship today, and whether `runbook` keeps its
 entry is tracked as Q5 in
 [`docs/ROADMAP.md`](docs/ROADMAP.md). Nothing here is deprecated in the meantime.
+
+#### The inbox — `todo` and `note`
+
+Every other category in the catalogue expects you to already know what kind of knowledge you
+have. At the moment a thought actually arrives, you usually do not — and the price of making
+someone classify a thought before recording it is the thoughts that never get recorded.
+`todo` and `note` exist so that capture costs nothing: a `todo` is something to build or fix
+later, a `note` is anything that arose and must not be lost.
+
+**Both sit on the rationale tier, and that is what makes them an inbox rather than another
+way to govern the project.** A `todo` is never injected into a session in full, and the
+session index reduces the whole category to a bare count rather than naming any of its items
+— so a hundred captures cost a session one number, not a hundred lines. Nothing forces a
+capture to `draft`
+either, so an agent can write one without putting anything in front of you to settle:
+neither category enters the review queue, because `mycontext review` asks what should govern
+this project and an inbox is not part of that question.
+
+They have their own listing surfaces for the same reason. `mycontext todo` prints the inbox
+in the id order every other listing uses, with `--tag`, `--all` and `--limit`; retired
+captures are hidden and counted rather than dropped. Notes come back from
+`mycontext search --type note`.
+
+**The way out is `mycontext inbox-promote <id> --to <category>`.** It creates a real item of
+the category you name, carries the title, the body and the tags across, writes a
+`derived_from` relation on the new item pointing back at the capture, and retires the origin
+as `deprecated` rather than deleting it — the file, its body, its observations and its
+relations all stay, and it stays searchable and counted. The capture's `origin` is **carried
+forward, not restamped**, so promotion is not laundering: a note an agent wrote still lands
+as a draft when it becomes a normative item, exactly as an agent's direct capture would.
+
+> [!NOTE]
+> **`inbox-promote` and `review promote` are different commands and do different jobs.**
+> `inbox-promote` moves a capture out of the inbox into a real category. `review promote`
+> moves a draft into governing. Neither is a longer spelling of the other.
+
+The clearest worked example is a bug. Capture it the moment you hit it, before you
+understand it — `mycontext add note "The sandbox drops connections on Fridays" --tags bug`.
+Once you do understand it, it is a `known_issue`, and
+`mycontext inbox-promote NOTE-… --to known_issue` is the one step between the two.
+
+> [!WARNING]
+> **A known cost, recorded rather than solved.** Every other item in the corpus is true
+> until it is superseded. A `todo` is true until somebody does it, and the corpus has no way
+> to learn that this happened — nothing watches your commits, and no command marks one done.
+> Promoting it, or retiring it by hand, is the mitigation; it is not a fix, and an inbox
+> left unattended will quietly fill with work that is already finished.
+
+#### The `procedure` lifecycle
+
+`procedure` is the one category in the catalogue that has a lifecycle, and
+`mycontext procedure [list|show|activate|done|step]` is where that lifecycle lives. Nothing
+was added to `status` to carry it — the stages are the statuses that already shipped:
+
+| Stage | What it is on disk | What it injects |
+|---|---|---|
+| proposed | `status: draft` | nothing |
+| ready | `status: draft`, plus the tag `ready` | nothing, not even an index line |
+| active | `status: active` **and** `always: true` | the full block, at every session start |
+| done | `status: deprecated` | nothing; counted in `retired` |
+| abandoned | `status: superseded` | nothing |
+
+**Activation is two writes, and `mycontext procedure activate` does both** — which is worth
+saying plainly, because it is the thing a reader otherwise gets wrong. `status: active`
+only makes an item eligible to be selected at all; `always: true` is what delivers it in
+full at every session start rather than as one index line. They are different properties,
+and a procedure that has one without the other is not running. The command prints both
+transitions before it asks you to confirm.
+
+**`done` retires the item to `deprecated`, not to `validated`, and the difference is the
+point.** A `validated` procedure would keep governing, and a procedure that has been
+performed is precisely the thing that should stop arriving. Nothing is deleted: the file,
+its body and its steps all stay, and it is counted in the session banner's retired tally.
+The command also concludes nothing on your behalf — it prints the progress it can see and
+finishes the procedure because you said so, whether or not every step is ticked.
+
+**What a `ready` procedure does today is nothing.** It is a draft carrying a tag: it is not
+injected, and it is not named in the index either, so the model does not learn it exists
+until somebody activates it. That is a deliberate open question rather than an oversight —
+"index line only" is not a state this build has — and `mycontext procedure list`, which
+groups every procedure by stage, is where a `ready` one is visible in the meantime.
+
+##### `## Steps`, and where progress is kept
+
+A procedure's steps are a file-format feature: a `## Steps` section of `- [ ]` lines, in the
+Markdown, like `## Relations` and `## Observations` beside it. They are **create-only** —
+`mycontext add procedure "…" --step "…" --step "…"` writes them, and there is no flag that
+edits one afterwards. Correcting a step means editing the Markdown and running
+`mycontext repair` to re-stamp the checksum. An item with no steps is unchanged in every
+byte, so nothing in an existing corpus has to migrate.
+
+**Progress never enters the corpus.** `mycontext procedure step <id> <n>` writes one
+`progress` record to the audit log and touches no item: after a tick the file, its body, its
+steps and its `checksum` are byte-for-byte what they were, and the command says so in the
+line it prints back. The `- [x]` marks in `mycontext procedure show` are counted from those
+records at display time and **rendered over the stored list** — the Markdown on disk still
+reads `- [ ]`, and it remains the record. The limit belongs in the same breath: progress is
+recorded **per workspace, not per session**, so two terminals working the same workspace
+share one set of ticks. Every surface that shows progress says so.
+
+A procedure is performed **once**, and that is exactly why it is the category that carries a
+lifecycle: it stops being injected when it is finished. A `runbook` never finishes, so it has
+nothing to stop being — which is why `mycontext procedure activate` refuses a `runbook` by
+name rather than treating it as a feature that has not arrived yet. Choosing between the two
+is covered where the catalogue describes them, above.
 
 ### Categories you define yourself
 

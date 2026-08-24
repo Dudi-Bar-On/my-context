@@ -1936,8 +1936,8 @@ owns before now, and this is the decision to start.
 that list threw before anything was loaded — `src/core/config.ts` · `const unknownTop = Object.keys(input).filter((key) => !TOP_LEVEL_KEYS.includes(key));` · ~483 <!-- historical-citation: quotes the whole-file refusal R14.2 replaces; it is now a `skippedKeys` collection --> — with the message
 *"Nothing was loaded — a setting that cannot be acted on is refused rather than ignored."*
 
-**Shipped 2026-08-20, exactly as ruled.** `'ui'` is on the list (`src/core/config.ts` · `const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'];` · ~452), and an unrecognised
-top-level key is collected and disclosed rather than refused (`src/core/config.ts` · `const skippedKeys = Object.keys(input).filter((key) => !TOP_LEVEL_KEYS.includes(key));` · ~646). The paragraphs
+**Shipped 2026-08-20, exactly as ruled.** `'ui'` is on the list (`src/core/config.ts` · `export const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'] as const;` · ~452), and an unrecognised
+top-level key is collected and disclosed rather than refused (`src/core/config.ts` · `const skippedKeys = Object.keys(input)` · ~646). The paragraphs
 below are the reasoning that got it there and are left as they were argued.
 
 **So a config carrying `ui` disables the WHOLE plugin on any build predating the key.** Not the UI —

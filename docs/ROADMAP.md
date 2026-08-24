@@ -364,6 +364,26 @@ census ran the thing each item asserts.
 
 ---
 
+## Part G — v2.0, the categories and runbooks plan
+
+Tracking rows only, kept short. Nothing here is a tested artefact; the tests that hold these
+claims are named in the rows. Plan:
+`docs/superpowers/plans/2026-08-20-v2-categories-and-runbooks.md`.
+
+| # | Item | Status |
+|---|---|---|
+| G1 | **Three categories added — `todo`, `note`, `procedure`.** Catalogue 21 → 24. `todo` and `note` are rationale-tier captures (never injected in full, reduced to a bare count in the session index, never forced to `draft`, so neither enters the review queue); `procedure` is normative and is the one category with a lifecycle. `runbook` is unchanged and keeps its entry — it is repeatable, so it has nothing to finish. The enumeration sites are pinned by `test/docs/counts.test.ts` and the catalogue-completeness test, so the number is derived rather than typed. | ✅ |
+| G2 | **`mycontext todo` and `mycontext inbox-promote`.** The inbox listing surface, and the one way out of it: `inbox-promote <id> --to <category>` creates the real item, writes `derived_from` back to the capture, retires the capture as `deprecated` rather than deleting it, and carries the capture's `origin` forward without restamping — so an agent's note promoted into a normative category still lands a draft. | ✅ |
+| G3 | **`## Steps` — a file-format addition.** Create-only, via `mycontext add <category> --step`; `mycontext edit` refuses `--step` and says so. `steps` enters the checksum **only when non-empty**, so a stepless item's bytes and checksum are unchanged and nothing in an existing corpus has to migrate. Correcting a step is a Markdown edit plus `mycontext repair`. | ✅ |
+| G4 | **The `procedure` lifecycle — `list`, `show`, `activate`, `done`, `step`.** Five stages mapped onto statuses that already shipped; nothing was added to `Status`. `activate` sets `status: active` **and** `always: true` and prints both transitions. `done` retires to `deprecated`, never `validated`. A `runbook` is refused by name as a category error. | ✅ |
+| G5 | **A sixth audit kind — `progress`.** Step ticks are audit records (`step-done`, `step-undone`, `step-reset`), never item writes: after a tick the file, its body, its steps and its `checksum` are byte-identical, and `procedure show` renders `- [x]` over the stored list. **Progress is per workspace, not per session**, and every surface that shows it says so. | ✅ |
+| G6 | **The audit log declares `my_context/audit@2`.** This build writes `@2` and reads `@1` and `@2`, so an existing log needs no migration on upgrade. The protocol is checked before `kind` and `op`, so a newer log is refused as version skew naming the version rather than blaming a record kind. **Downgrading is not supported** — a log containing `progress` records cannot be read by a build that predates the kind. | ✅ |
+| G7 | **The `runbook` / `procedure` boundary, stated where an author is choosing.** `mycontext help categories`, both `mycontext examples` specimens, and the `procedure activate` refusal all carry it, and a guard fails if either description stops distinguishing them. | ✅ |
+| G8 | **A `ready` procedure does nothing today, and that is disclosed rather than fixed.** It is a draft carrying the tag `ready`: not injected, and not named in the index either, so the model does not learn it exists until somebody activates it. `mycontext procedure list` is where it is visible. Open question, deliberately unbuilt — "index line only" is not a state this build has. | ⏸ disclosed |
+| G9 | **A `todo` is true until somebody does it.** Every other item is true until superseded; nothing watches your commits and no command marks a todo done, so an inbox left unattended fills with finished work. Promotion is the mitigation, not a fix. Recorded rather than solved. | ⏸ known cost |
+
+---
+
 ## Decisions waiting on you
 
 **Q1–Q4 and Q6 are answered** — see the decisions table at the head of
