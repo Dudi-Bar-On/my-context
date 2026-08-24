@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { lstatSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { retryOnTransientFsError, type LoadError } from '../../core/rebuild.ts';
 import type { ItemFilters } from '../../core/search.ts';
 import { enumError } from '../../core/teach.ts';
@@ -66,8 +67,12 @@ import { flag, hasFlag, positionals, registerCommand, type Emit } from './regist
  * and both writers receive an absolute path with nothing left to interpret.
  */
 
-const VALUE_FLAGS = ['out', 'format', 'pack-name', 'pack-version', 'type', 'status', 'tag'];
-const ALLOWED = [...VALUE_FLAGS, 'as-pack', 'no-history', 'dry-run', 'json'];
+/**
+ * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
+ * surface can have it without reaching a module that writes. Nothing about
+ * what is accepted changed; the reasoning is in that module's header.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.export;
 
 const USAGE = `usage: mycontext export --out <path> [--format dir|zip]
                         [--as-pack --pack-name <name> --pack-version <text>]

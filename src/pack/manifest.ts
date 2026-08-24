@@ -154,6 +154,77 @@ function json(v: unknown): string {
   return JSON.stringify(v) ?? String(v);
 }
 
+/**
+ * The most characters of a QUOTED VALUE a refusal from this module prints.
+ *
+ * The values this module quotes are not all bounded by the time it quotes
+ * them. `refuseOpaqueMeta`'s 64-code-point limit is the fifth of its rules,
+ * and three that fire BEFORE it interpolate the value: the not-a-string
+ * branch, the all-whitespace branch and the trim-mismatch branch. So a value
+ * that trips one of those was quoted at whatever length it arrived at, and
+ * **it arrives from a stranger's file**: `parseManifest` puts a received
+ * manifest's `name` and `version` through `refuseMeta`, so nobody has to type
+ * a flag for this to reach a terminal.
+ *
+ * Measured on 2026-08-24 through the real commands, message length in
+ * characters: a 5,000-space name printed 5,175 through `pack import` and 5,178
+ * through `export --as-pack`; 5,000 characters and one trailing space printed
+ * 10,249 and 10,252, because the trim-mismatch branch quotes the value TWICE —
+ * once as what arrived and once as what to write instead; and a 1,000-element
+ * array printed 7,215.
+ *
+ * **The cap is on the VALUE and not on the message**, and the difference is
+ * the whole point. Capping the message was measured on the import door on
+ * 2026-08-23 and was wrong: the value is printed FIRST and the sentence saying
+ * what is wrong with it comes AFTER, so a message-width cut keeps the
+ * attacker's five thousand characters and throws away the reason. That is the
+ * rule backwards. Capping the value keeps the whole sentence and shortens only
+ * the part whose length somebody else chose.
+ *
+ * 256, the number this codebase already settled on for exactly this job
+ * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~291). It is
+ * restated here rather than imported because `src/pack/` does not depend on
+ * `src/ui/`, which is the same call `cli/commands/pack.ts` made.
+ */
+const QUOTED_VALUE_MAX = 256;
+
+/** The marker that makes a capped value unmistakable. One character. */
+const VALUE_TRUNCATED = '…';
+
+/**
+ * `json`, with the rendered value capped and the cut marked VISIBLY.
+ *
+ * **Used by every branch a value can reach UNBOUNDED, and by no other.** The
+ * branches below `refuseOpaqueMeta`'s code-point limit keep plain `json`,
+ * because the limit has already bounded what they quote and a value inside the
+ * limit is one the author is entitled to see whole — 64 C1 controls render
+ * past this cap in escapes alone, and cutting that would hide a legal length
+ * behind a marker that means "too long". That is a dependency on the ORDER of
+ * the checks, which is why it is written down at both ends rather than left
+ * for a reorder to quietly undo.
+ *
+ * Two things the cut is careful about, both so that complaining about a
+ * malformed value does not print a malformed value:
+ *
+ *   - never between the halves of a surrogate pair — half a pair is a lone
+ *     surrogate, which is itself a row of `screen.ts`'s table;
+ *   - never immediately after an odd run of backslashes, which would leave a
+ *     JSON escape with nothing to escape.
+ */
+function quoted(v: unknown): string {
+  const text = json(v);
+  if (text.length <= QUOTED_VALUE_MAX) return text;
+  const lead = text.charCodeAt(QUOTED_VALUE_MAX - 1);
+  let end = lead >= 0xd800 && lead <= 0xdbff ? QUOTED_VALUE_MAX - 1 : QUOTED_VALUE_MAX;
+  let backslashes = 0;
+  while (backslashes < end && text.charCodeAt(end - 1 - backslashes) === 0x5c) backslashes += 1;
+  if (backslashes % 2 === 1) end -= 1;
+  // A rendering that opened a string literal is re-closed, so a cut value
+  // still reads as a quoted string rather than as a sentence missing a quote.
+  const close = text.startsWith('"') ? '"' : '';
+  return `${text.slice(0, end)}${VALUE_TRUNCATED}${close}`;
+}
+
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
@@ -186,11 +257,18 @@ function revoice(lead: string, refusal: string, tail: string): string {
  * The order of the checks decides what the message SAYS: `'   '` breaks the
  * empty rule and the whitespace rule at once, and only one of them tells the
  * author what to type instead.
+ *
+ * **Every value it quotes goes through `quoted`, never `json`.** Three of
+ * these rules fire before the code-point limit does, so a value that trips one
+ * of them is quoted at whatever length it arrived at — and it arrives from a
+ * stranger's `manifest.json` as readily as from a flag somebody typed. See
+ * `quoted` above for the measurements and for why the cap sits on the VALUE
+ * rather than on the message.
  */
 function refuseOpaqueMeta(field: string, v: unknown): string | null {
   const lead = `my_context: this pack's ${field}`;
   if (typeof v !== 'string') {
-    return `${lead} is ${json(v)}, which is not a string. A pack carries a ${field} as opaque `
+    return `${lead} is ${quoted(v)}, which is not a string. A pack carries a ${field} as opaque `
       + 'text: it is shown to whoever imports the pack and is never parsed, ordered or compared '
       + 'against another one.';
   }
@@ -199,13 +277,13 @@ function refuseOpaqueMeta(field: string, v: unknown): string | null {
       + 'is no useful default to invent for it.';
   }
   if (v.trim() === '') {
-    return `${lead} is ${json(v)}, which is only whitespace. It is what a reader sees to tell one `
-      + 'pack from another, and whitespace shows as nothing at all.';
+    return `${lead} is ${quoted(v)}, which is only whitespace. It is what a reader sees to tell `
+      + 'one pack from another, and whitespace shows as nothing at all.';
   }
   if (v !== v.trim()) {
-    return `${lead} ${json(v)} has leading or trailing whitespace. It is refused rather than `
+    return `${lead} ${quoted(v)} has leading or trailing whitespace. It is refused rather than `
       + 'trimmed, because these bytes are written into the manifest and a value this product '
-      + `rewrote is not the value the author wrote. Write ${json(v.trim())}.`;
+      + `rewrote is not the value the author wrote. Write ${quoted(v.trim())}.`;
   }
   const codePoints = [...v].length;
   if (codePoints > MAX_META_CODE_POINTS) {
@@ -213,6 +291,12 @@ function refuseOpaqueMeta(field: string, v: unknown): string | null {
       + 'It is a label rather than a description — it is printed beside the pack on every line '
       + 'that mentions it.';
   }
+  // `json` and not `quoted`, from here down: the rule above has already bounded
+  // the value at 64 code points, and a value INSIDE the limit is one the author
+  // is entitled to see whole — a name of 64 C1 controls renders past the cap in
+  // escapes alone, and cutting it would hide legal length behind a marker that
+  // means "too long". The dependency is on the rule six lines up, so a reorder
+  // of these checks is where to look again.
   if (META_CONTROL.test(v)) {
     return `${lead} ${json(v)} contains a control character. It is printed as ONE line in the `
       + 'confirmation prompt and in `mycontext pack list`, so a newline or a carriage return '
@@ -246,7 +330,7 @@ export function refuseDescriptiveVersion(v: unknown): string | null {
 /** The `kind`/`name`/`version` triple, whose legal shapes depend on `kind`. */
 function refuseMeta(kind: unknown, name: unknown, version: unknown): string | null {
   if (typeof kind !== 'string' || !KINDS.includes(kind)) {
-    return `my_context: this artefact's "kind" is ${json(kind)}, and an artefact is either `
+    return `my_context: this artefact's "kind" is ${quoted(kind)}, and an artefact is either `
       + `"export" (a workspace travelling whole) or "pack" (a portable artefact). A change to `
       + `the artefact format is declared by its protocol, ${PACK_PROTOCOL}.`;
   }
@@ -254,11 +338,11 @@ function refuseMeta(kind: unknown, name: unknown, version: unknown): string | nu
     return refusePackName(name) ?? refuseDescriptiveVersion(version);
   }
   if (name !== null || version !== null) {
-    return `my_context: this artefact's "kind" is ${json(kind)} and it carries a name of ${json(name)} `
-      + `and a version of ${json(version)}. Both belong to a pack, which an author names and `
-      + `versions deliberately; an export is one workspace travelling whole and has neither, so `
-      + `both keys are null. Absence is written as null rather than omitted, so a reader never `
-      + `has to tell "absent" from "empty".`;
+    return `my_context: this artefact's "kind" is ${quoted(kind)} and it carries a name of `
+      + `${quoted(name)} and a version of ${quoted(version)}. Both belong to a pack, which an `
+      + `author names and versions deliberately; an export is one workspace travelling whole and `
+      + `has neither, so both keys are null. Absence is written as null rather than omitted, so `
+      + `a reader never has to tell "absent" from "empty".`;
   }
   return null;
 }

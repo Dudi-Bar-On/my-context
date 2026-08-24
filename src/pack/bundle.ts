@@ -96,16 +96,21 @@
  *
  * ## What this module deliberately does NOT check
  *
- *   - **`kind`, `name` and `version`.** `buildManifest` validates the triple
- *     through `refuseMeta`, which also guards `parseManifest` on the way back
- *     in — one enforcement, reached from both directions. Pre-checking here
- *     would be a second spelling that could drift from the export/pack
- *     asymmetry (`name` and `version` are non-null for a pack and null for an
- *     export), and the only thing it would buy is skipping an in-memory walk
- *     that writes nothing.
- *   - **The Unicode screen.** `screenPackMeta` and `screenItem` belong to
- *     `screen.ts`, which owns that table. Restating any part of it here would
- *     produce two lists that drift.
+ *   - **`kind`, `name` and `version`'s SHAPE.** `buildManifest` validates the
+ *     triple through `refuseMeta`, which also guards `parseManifest` on the
+ *     way back in — one enforcement, reached from both directions.
+ *     Pre-checking it here would be a second spelling that could drift from
+ *     the export/pack asymmetry (`name` and `version` are non-null for a pack
+ *     and null for an export), and the only thing it would buy is skipping an
+ *     in-memory walk that writes nothing. The Unicode SCREEN over those two
+ *     strings is a different question and is asked here — see
+ *     `refuseScreenedMeta` below.
+ *   - **`screenItem`.** The screen's table belongs to `screen.ts` and its
+ *     per-item half belongs to the import door, where a stranger's text
+ *     arrives. What this module exports is text this workspace already holds,
+ *     and an author is not smuggling an override past themselves — the two
+ *     strings below are different, because they are the two an author invents
+ *     at the command line and hands to somebody else.
  *   - **A category that no longer resolves.** `projectPackConfig` refuses an
  *     item whose `type` is not in the config, by name, with the reason. That
  *     refusal is `config-io.ts`'s and is left to fire: an item of a deleted
@@ -121,6 +126,7 @@ import type { Item } from '../core/types.ts';
 import { projectExportConfig, projectPackConfig } from './config-io.ts';
 import { exportableHistory, renderHistory } from './history.ts';
 import { buildManifest, renderManifest, type Manifest } from './manifest.ts';
+import { screenPackMeta } from './screen.ts';
 import {
   comparePaths, refuseArtefactPath, refuseArtefactPaths,
   CONFIG_NAME, HISTORY_NAME, MANIFEST_NAME,
@@ -293,6 +299,95 @@ function refuseFileSet(refusal: string, items: readonly Item[]): Error {
 }
 
 /**
+ * The most findings a screened-meta refusal lists, and the reason there is a
+ * most.
+ *
+ * `screenText` reports EVERY finding by design — a screen that stopped at the
+ * first would send an author round the loop once per character, and would let
+ * a reviewer believe they had seen the whole of what arrived. That is right
+ * for an artefact, whose fields are bounded by a file somebody wrote, and
+ * wrong here: `--pack-name` is an unbounded string typed at a command line,
+ * and a name of five hundred overrides would otherwise print five hundred
+ * paragraphs at a reader who needed one. Four, because every finding from one
+ * row of the table repeats that row's `why` verbatim and a fifth copy of one
+ * sentence teaches nothing the fourth did not.
+ *
+ * The same call `cli/commands/pack.ts` made at the import door
+ * (`cli/commands/pack.ts` · `const NAME_FINDING_MAX = 4;` · ~294), which is in
+ * turn `ui/security.ts`'s field rule applied to a LIST instead of to a string:
+ * bound what is shown, and mark the truncation VISIBLY so it cannot be
+ * mistaken for the whole of what arrived.
+ */
+const META_FINDING_MAX = 4;
+
+/**
+ * The two strings this artefact carries about ITSELF, refused when either
+ * holds a code point that lies about what it says — or `null` when both may
+ * travel.
+ *
+ * ## Why the export door needs its own answer to this
+ *
+ * The import door has been screened since seq 15s: `planImport` puts a
+ * received manifest's `name` and `version` through `screenPackMeta`, and
+ * `pack import --name` goes through it again because that flag replaces the
+ * screened value after the fact. Nothing did the same on the way OUT.
+ *
+ * Measured on 2026-08-24 through `mycontext export --out <dir> --as-pack`,
+ * every one exiting 0, printing to the terminal, and landing in
+ * `manifest.json`: `--pack-name` and `--pack-version` each carrying U+202E
+ * RIGHT-TO-LEFT OVERRIDE, U+E0041 from the Tags block, or U+200B ZERO WIDTH
+ * SPACE. A newline in the same flag was refused — so the guard was never
+ * absent, it was `refusePackName` standing on its own. None of those three is
+ * a C0 or C1 control, none changes under NFC, and each costs one code point,
+ * so every rule that function has let them through, which is the gap
+ * `screen.ts` describes in its own words.
+ *
+ * **What it cost, stated honestly rather than inflated.** The artefact that
+ * produced was UN-IMPORTABLE: `pack import` and `init --pack` both refuse it,
+ * because the import side is screened. So what this closes is a pack you
+ * cannot give away, not a pack that lands somewhere hostile. It is still a
+ * name this product writes into a file it signs, and the terminal it printed
+ * that name to is the author's own — `about to export 1 item(s) … as a pack
+ * named "invoice<U+202E>gnp.exe"` renders as `invoiceexe.png`, with the rest
+ * of the line reordered too, because the override has no PDF after it and its
+ * effect runs to the end of the paragraph.
+ *
+ * ## The screen goes first, and it is not decoration that it does
+ *
+ * `refusePackName` interpolates the value it refuses, and `JSON.stringify`
+ * escapes a newline while leaving U+202E exactly as it is. A name carrying
+ * both a trailing space and an override would then be refused in a sentence
+ * the override reorders — a refusal defeated by the thing it is refusing. So
+ * this runs before `buildManifest`, and the screen's own findings never
+ * interpolate the value at all: they name the code point, the row and the
+ * offset.
+ *
+ * A full export has neither string. The screen is asked about `''` rather than
+ * branched around, which is what `planImport` does on the way in, and
+ * screening the empty string finds nothing.
+ */
+function refuseScreenedMeta(name: string | null, version: string | null): Error | null {
+  const findings = screenPackMeta(name ?? '', version ?? '');
+  if (findings.length === 0) return null;
+
+  const details = findings.slice(0, META_FINDING_MAX).map((f) => f.message);
+  const hidden = findings.length - details.length;
+  if (hidden > 0) {
+    details.push(`… and ${hidden} more screened code point(s), not listed here. The `
+      + `${details.length} above are the first ${details.length} in the order they appear.`);
+  }
+  return new Error(
+    `my_context: this pack's name and version carry ${findings.length} screened code point(s), `
+    + 'and nothing was written. Those two strings are printed with nothing beside them — in this '
+    + 'command\'s own preview, in the confirmation question whoever imports the pack answers, in '
+    + 'their import record and in `mycontext pack list` — so a code point that reorders or hides '
+    + 'its neighbours there is read by someone who never opened the artefact. Nothing was '
+    + 'normalised: both strings are refused exactly as they were given, and each finding below '
+    + `names its code point rather than printing it.\n${details.join('\n')}`,
+  );
+}
+
+/**
  * The bytes of `config.json`: two-space JSON, LF, exactly one trailing
  * newline — the spelling `init` uses and the one `renderManifest` uses, so an
  * artefact's two JSON files are written the same way.
@@ -314,6 +409,14 @@ function renderConfig(raw: unknown): Buffer {
 export function buildBundle(
   root: string, config: Config, options: BundleOptions, errors: LoadError[] = [],
 ): Bundle {
+  // FIRST, before the corpus is opened and before `buildManifest` refuses.
+  // "Nothing was written" is true of every refusal in this module; of this one
+  // "nothing was even read" is true as well, and — the load-bearing half —
+  // every value that reaches `refusePackName` from here has no screened code
+  // point left in it to reorder the sentence refusing it.
+  const screened = refuseScreenedMeta(options.name, options.version);
+  if (screened !== null) throw screened;
+
   // `'project'` is the layer STAMPED on each item, not a choice of directory
   // — the root is whatever the caller passed — and `renderItem` writes
   // neither `layer` nor `filePath`, so `'global'` here produces byte-identical

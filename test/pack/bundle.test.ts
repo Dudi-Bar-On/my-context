@@ -33,19 +33,26 @@
  * would stay green with this module's own check deleted; the assertions below
  * name the item, which is the sentence `buildManifest` has no way to write.
  *
- * **One gap is recorded rather than tested, because it is not this module's
- * to close.** The byte layout says a pack's `name` and `version` are
- * "screened by the Unicode screen", and `screenPackMeta` has no call site
- * anywhere in the export plan. Measured rather than assumed: `refusePackName`
- * returns `null` for a name holding U+202E RIGHT-TO-LEFT OVERRIDE, for one
- * holding U+200B ZERO WIDTH SPACE, and for one holding a Tags-block code
- * point — none of the three is a C0/C1 control, none changes under NFC, and
- * each costs one code point, so every rule that function has lets them
- * through. The call site is `refuseMeta` in `manifest.ts`, because that
- * one function guards the triple on the way out (`buildManifest`) and on the
- * way back in (`parseManifest`); wiring the screen into this module would
- * screen only the half of the traffic this module produces, and a stranger's
- * name arrives through the other half.
+ * **The gap this file used to record is closed, and the tests for it live in
+ * `bundle-screen.test.ts`.** The byte layout says a pack's `name` and
+ * `version` are "screened by the Unicode screen", and `screenPackMeta` had no
+ * call site anywhere in the export plan: measured rather than assumed,
+ * `refusePackName` returns `null` for a name holding U+202E RIGHT-TO-LEFT
+ * OVERRIDE, for one holding U+200B ZERO WIDTH SPACE, and for one holding a
+ * Tags-block code point — none of the three is a C0/C1 control, none changes
+ * under NFC, and each costs one code point, so every rule that function has
+ * lets them through.
+ *
+ * This paragraph used to name `refuseMeta` in `manifest.ts` as the call site,
+ * on the reasoning that one function guards the triple on the way out
+ * (`buildManifest`) and on the way back in (`parseManifest`). That was wrong
+ * by the time it was written and is worth leaving on the record rather than
+ * quietly deleting: the way back in is ALREADY screened, by `planImport`,
+ * which reports every finding over the manifest and every item together —
+ * putting the screen inside `refuseMeta` would replace that report with a
+ * parse refusal, so the half this module does not produce would get a worse
+ * answer, not a first one. `buildBundle` is the export half's own
+ * `planImport`, and that is where it went.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
