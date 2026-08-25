@@ -863,6 +863,39 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
 .md pre{background:var(--sink);border:1px solid var(--rule);border-radius:var(--r-md);
   padding:var(--sp-2);overflow-x:auto;margin:0 0 var(--sp-2)}
 
+/* — the item pane's well and its label (mockup ~652-657) —
+
+   CARRIED 2026-08-25, having been deliberately NOT carried before it. The
+   note further down this file said "no built module emits them", and that was
+   true when the carry was measured — `app.js`'s `openPane()` was written
+   afterwards and emits BOTH: `div.welllabel` for `pane.body`, and `div.well`
+   wrapping `div.md#panebody`. Rendered against the real corpus the label came
+   out as ordinary body text and the body sat on bare panel, where the design
+   of record shows small dim caps above an inset quotation.
+
+   The lesson is the one this project keeps paying for: a deliberate omission
+   whose PREMISE can go stale needs the premise re-checked, not the decision
+   re-read. Nothing here could have caught it — `styles-parity` compares the
+   blocks the app carries against the mockup's, so a block the app is missing
+   is a block the comparison never sees. */
+.well{background:var(--sink);border:1px solid var(--rule);border-radius:var(--r-md);
+  padding:var(--sp-3);box-shadow:inset 0 1px 3px rgb(0 0 0/.4)}
+.welllabel{font-size:var(--fs-00);letter-spacing:.07em;text-transform:uppercase;
+  color:var(--dim);font-weight:700;margin-block-end:5px}
+
+/* — the per-item delivery sparkline, twelve weekly bars (mockup ~903-907) —
+
+   Three marks, and the mockup's own comment is the requirement: "a quiet week
+   and a rejected week must never look alike". A bar is gold for a week with
+   deliveries, `--edge-3` grey for a week with none, and a `--crit` hatch for a
+   week the item was SPILLED. Grey and hatched are two different facts and the
+   difference is why this cannot be one series. */
+.spark{display:flex;gap:2px;align-items:flex-end;block-size:26px;margin-block:5px}
+.spark i{inline-size:7px;background:var(--gold);display:block;border-radius:1px;min-block-size:2px}
+.spark i.dead{background:var(--edge-3)}
+.spark i.sp{background:repeating-linear-gradient(45deg,var(--crit) 0 2px,transparent 2px 4px);
+  border:1px solid var(--crit)}
+
 /* — live glob match: the palette’s file list, lit as you type (~951-958) — */
 .globtree{font-family:var(--mono);font-size:var(--fs-0);direction:ltr;unicode-bidi:isolate;
   max-block-size:154px;overflow-y:auto;border:1px solid var(--rule);border-radius:var(--r-md);
@@ -886,10 +919,22 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
    over what the six modules actually construct — which is the measurement
    that cannot miss either.
 
-   NOT carried, deliberately: .well/.welllabel, and config’s .delta and
-   .blast families. No built module emits them — config’s two are held in
-   screen-parity’s KNOWN_GAPS until ctx.api can POST. CSS for markup nothing
-   renders is the same defect as a field no screen reads. */
+   NOT carried, deliberately: config’s .delta and .blast families. No built
+   module emits them — they are held in screen-parity’s KNOWN_GAPS. CSS for
+   markup nothing renders is the same defect as a field no screen reads.
+
+   CORRECTED 2026-08-25, twice, because BOTH of this note's premises had gone
+   stale and neither was re-checked:
+
+     .well/.welllabel were on this list and are now CARRIED (above). app.js's
+     openPane() emits both. It was written after this measurement was taken.
+
+     The .delta/.blast half said they wait "until ctx.api can POST". ctx.post
+     shipped 2026-08-23 (app.js ~534, exported ~947) and has zero callers. The
+     blocker is gone; the work is plan:walk seq:10.
+
+   A deliberate omission is a decision plus a PREMISE. The decision keeps; the
+   premise expires, and nothing here expires with it. */
 
 /* — a refused markdown construct, named rather than dropped (mockup ~660) — */
 .refusal{border:1px solid var(--warn);background:var(--warnbg);color:var(--warn);

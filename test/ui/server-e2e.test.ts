@@ -519,6 +519,13 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   '/api/review-queue',
   `/api/item/${encodeURIComponent(from.item)}`,
   '/api/item/RULE-no-such-item',
+  // The item pane's twelve-week delivery sparkline. Probed on a REAL id and on
+  // an unknown one, because the two exercise different halves: a known id runs
+  // the projection query, and an unknown one must still answer rather than
+  // 404 — an item with no delivery history is a legitimate answer of twelve
+  // empty buckets, not a missing route.
+  `/api/item/${encodeURIComponent(from.item)}/history`,
+  '/api/item/RULE-no-such-item/history',
   ...(from.session === null ? [] : [`/api/session/${encodeURIComponent(from.session)}/injected`]),
   '/api/session/never-seen-session/injected',
   ...HELP_TOPICS.map((topic) => `/api/help/${topic}`),

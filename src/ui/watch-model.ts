@@ -392,6 +392,95 @@ export function apiWatchSpills(ws: Workspace, url: URL): JsonResult {
   };
 }
 
+// --- The per-item delivery sparkline (mockup `#panespark`, `pane.hist`) -----
+//
+// Twelve weekly buckets for ONE item, for the item detail pane. The mockup's
+// own note under the chart is the specification: *"Twelve weekly buckets from
+// the audit projection, hatched where the item was spilled that week and grey
+// where nothing was delivered. It is the cheapest possible answer to 'is this
+// thing still alive', and the one history that belongs on every item rather
+// than on a screen of its own."*
+//
+// **Why this is a route and not a field on `/api/item/:id`.** Two reasons, and
+// the second is the one that matters. `read-model.ts` cannot import this
+// module — `watch-model.ts` imports `read-model.ts` for `badRequest`, so the
+// dependency runs one way and adding the field would invert it. And a
+// projection that REFUSES must not take the pane down with it: the `<dl>` is
+// served by the corpus and is always answerable, so a reader whose projection
+// is behind still gets type, status, tier, scope, governs and file, and is
+// told about the chart alone. Folding it into one response would make the
+// whole pane share the weakest store it touches.
+//
+// **Two series, never one.** `weeks` is deliveries per bucket; `spillw` is
+// which buckets held a spill. The mockup's own comment says why they cannot be
+// merged: *"a quiet week and a rejected week must never look alike"*. A week
+// with no delivery is grey, a week the item was SPILLED is hatched, and an
+// item can be spilled in a week it was also delivered in.
+//
+// **`absent` is not zero, and the caller must keep them apart.** A never-built
+// projection answers `state: 'absent'` with a null series, and the pane says
+// so rather than drawing twelve grey bars — which would assert twelve measured
+// quiet weeks over a log nothing has read
+// (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`). A behind
+// or damaged projection is a refusal, exactly as it is on every other read
+// here: reported, never repaired.
+
+/** Twelve buckets, oldest first — the window `pane.hist` names. */
+const SPARK_WEEKS = 12;
+
+/**
+ * Bucket index for a record's timestamp, oldest-first, or `null` if it falls
+ * outside the window.
+ *
+ * The arithmetic is in JS rather than SQL on purpose: SQLite's `julianday`
+ * would do it, but the boundary then depends on the server's clock formatting
+ * rather than on one explicit `now`, and this function is the only place a
+ * week boundary is decided. `at` is ISO-8601 written by the audit log.
+ */
+function weekBucket(at: string, nowMs: number): number | null {
+  const t = Date.parse(at);
+  if (Number.isNaN(t)) return null;
+  const weeksAgo = Math.floor((nowMs - t) / (7 * 24 * 60 * 60 * 1000));
+  if (weeksAgo < 0 || weeksAgo >= SPARK_WEEKS) return null;
+  return SPARK_WEEKS - 1 - weeksAgo;
+}
+
+export function apiItemHistory(ws: Workspace, url: URL, params: { id: string }): JsonResult {
+  const bad = unknownParams(url, []) ?? repeatedParams(url);
+  if (bad !== null) return badRequest(bad);
+  if (params.id === '') return { status: 404, body: { error: 'no item named' } };
+  const root = ws.projectRoot;
+  if (root === null) return { status: 500, body: { error: 'no project workspace' } };
+
+  const nowMs = Date.now();
+  const since = new Date(nowMs - SPARK_WEEKS * 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const read = readProjection(root, (db) => db.prepare(
+    `SELECT a.at AS at, ai.role AS role
+       FROM audit_item ai JOIN audit a ON a.seq = ai.seq
+      WHERE ai.item_id = ? AND ai.role IN ('injected', 'spilled') AND a.at >= ?`,
+  ).all(params.id, since) as { at: string; role: string }[]);
+  if (!read.ok) return read.refusal;
+
+  // `null` value is the ABSENT projection — no series, and the pane says so.
+  if (read.value === null) {
+    return { status: 200, body: { weeks: null, spillw: null, projectionState: read.state } };
+  }
+
+  const weeks: number[] = Array.from({ length: SPARK_WEEKS }, () => 0);
+  const spilled = new Set<number>();
+  for (const row of read.value) {
+    const bucket = weekBucket(row.at, nowMs);
+    if (bucket === null) continue;
+    if (row.role === 'spilled') spilled.add(bucket);
+    else weeks[bucket] = (weeks[bucket] ?? 0) + 1;
+  }
+  return {
+    status: 200,
+    body: { weeks, spillw: [...spilled].sort((a, b) => a - b), projectionState: read.state },
+  };
+}
+
 // --- The spill ratio (mockup `#ratio`, `sim.ratio` / `sim.ration`) -----------
 //
 // The diverging bar on the simulator screen: delivered growing one way from
@@ -632,4 +721,12 @@ export function registerWatchRoutes(): void {
   registerRoute('GET', '/api/watch/spills', json(apiWatchSpills));
   registerRoute('GET', '/api/watch/ratio', json(apiWatchRatio));
   registerRoute('GET', '/api/watch/stream', { kind: 'stream', handle: streamHandler });
+  // Four segments against `/api/item/:id`'s three, so the two cannot collide —
+  // the table matches on length first. It lives here rather than beside
+  // `/api/item/:id` in `server.ts` because it reads the PROJECTION, and every
+  // projection read in this product goes through this module's one door.
+  registerRoute('GET', '/api/item/:id/history', {
+    kind: 'json',
+    handle: (ctx) => apiItemHistory(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
+  });
 }

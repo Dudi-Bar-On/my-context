@@ -245,7 +245,84 @@ function paneEls() {
     gov: document.getElementById('panegov'),
     file: document.getElementById('panefile'),
     body: document.getElementById('panebody'),
+    spark: document.getElementById('panespark'),
+    spn: document.getElementById('panespn'),
   };
+}
+
+/**
+ * The sparkline's summary sentence, in the reader's language.
+ *
+ * **Transcribed, not keyed, and that is forced rather than chosen.** The
+ * mockup builds this sentence inside its own script as a `HEB ? … : …`
+ * ternary and declares no `data-t` for it, so no key exists — and
+ * `strings-parity` holds both tables equal to the mockup's `data-t` set in
+ * BOTH directions, so inventing `pane.spn` would fail as an invented string.
+ * The same treatment `parts.js`'s `TIERCHIP` gives a tier name.
+ *
+ * Both languages are carried because the mockup carries both. Where the mockup
+ * offers only English (the gate-ladder descriptions, the ribbon hints) this
+ * app draws English; here it does not have to, and a Hebrew reader gets
+ * Hebrew. Filed as part of the "prose the mockup builds in script" family —
+ * `plan:screens seq:1s-b`.
+ */
+function sparkSentence(weeks, spillw, he) {
+  let lastIdx = -1;
+  weeks.forEach((v, i) => { if (v > 0) lastIdx = i; });
+  if (lastIdx < 0) {
+    return he ? 'לא נמסר באף אחד מ‑12 השבועות.' : 'Not delivered in any of the twelve weeks.';
+  }
+  const ago = weeks.length - 1 - lastIdx;
+  const spills = spillw.length;
+  if (he) {
+    return `נמסר לאחרונה ${ago ? `לפני ${ago} שבועות` : 'השבוע'}. ${spills} שפיכות בחלון הזה.`;
+  }
+  const when = ago === 0 ? 'this week' : `${ago} week${ago === 1 ? '' : 's'} ago`;
+  return `Last delivered ${when}. ${spills} spill${spills === 1 ? '' : 's'} in that window.`;
+}
+
+/**
+ * Draw the twelve-week delivery sparkline, or say why there is none.
+ *
+ * Three marks and they are three different facts, which is the whole reason
+ * this takes two series rather than one: a bar is GOLD for a week with
+ * deliveries, `.dead` grey for a week with none, and `.sp` hatched for a week
+ * the item was SPILLED. The mockup's own comment is the rule — "a quiet week
+ * and a rejected week must never look alike" — and an item can be spilled in a
+ * week it was also delivered in, so `.sp` wins the mark and the height still
+ * reports the deliveries.
+ *
+ * **A refusal and an empty history are not the same answer.** `weeks: null` is
+ * the ABSENT projection: nothing has read the log, so twelve grey bars would
+ * assert twelve measured quiet weeks. It says so instead
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`). A BEHIND
+ * or damaged projection never reaches here — the endpoint refuses and the
+ * catch below reports that refusal in the endpoint's own words.
+ */
+function drawSpark(els, data, he) {
+  if (els.spark === null || els.spn === null) return;
+  els.spark.replaceChildren();
+  els.spn.textContent = '';
+
+  const weeks = data?.weeks ?? null;
+  if (weeks === null) {
+    els.spn.textContent = he
+      ? 'אין היסטוריה מוקרנת לפריט הזה.'
+      : 'No projected history for this item.';
+    return;
+  }
+  const spillw = data.spillw ?? [];
+  const max = Math.max(...weeks, 1);
+  weeks.forEach((v, i) => {
+    const bar = document.createElement('i');
+    if (spillw.includes(i)) bar.className = 'sp';
+    else if (v === 0) bar.className = 'dead';
+    bar.style.setProperty('block-size', `${Math.max(5, (v / max) * 100)}%`);
+    bar.title = `${he ? 'שבוע ' : 'week '}${i + 1} · ${v}${he ? ' מסירות' : ' delivered'}`
+      + (spillw.includes(i) ? (he ? ' · נשפך' : ' · spilled') : '');
+    els.spark.append(bar);
+  });
+  els.spn.textContent = sparkSentence(weeks, spillw, he);
 }
 
 /** The id currently shown, so clicking the same id twice does not re-fetch. */
@@ -298,6 +375,8 @@ async function openPane(id) {
   els.title.textContent = '';
   for (const key of ['type', 'status', 'tier', 'scope', 'gov', 'file']) els[key].textContent = '…';
   els.body.replaceChildren();
+  els.spark?.replaceChildren();
+  if (els.spn !== null) els.spn.textContent = '';
 
   let data;
   try {
@@ -328,7 +407,18 @@ async function openPane(id) {
     ? item.scope.join(', ')
     : '—';
   els.gov.textContent = data.injection?.phrase ?? '—';
-  els.file.textContent = item.source_file ?? '—';
+  // `filePath`, the item's OWN file — which is what the design of record shows
+  // in this row (`items/constraint/CONST-postgres-pool-capped-at-20.md`).
+  //
+  // It read `item.source_file` until 2026-08-25, and that was wrong twice over.
+  // `source_file` is not a field on the wire in ANY case — the payload spells
+  // it `sourceFile` — so the row rendered `—` for every item ever opened, not
+  // merely for un-ingested ones. And even spelled correctly it is the wrong
+  // fact: `sourceFile` is INGEST PROVENANCE, the document an item was ingested
+  // from, and it is null for every hand-authored item. Two bugs that hid each
+  // other, and neither is visible to a parity gate — the `<dd>` is present,
+  // correctly classed, and holds a plausible dash.
+  els.file.textContent = item.filePath ?? '—';
 
   // `<bdi>` because a body is corpus text in an unknown direction, sitting in
   // a page whose direction is the product's. That is the whole point of the
@@ -341,6 +431,26 @@ async function openPane(id) {
   // `<bdi>` is attached rather than assuming the append worked.
   bdi.append(...markdownNodes(item.body ?? '', document).nodes);
   els.body.replaceChildren(bdi);
+
+  // The history is a SECOND request, and deliberately so: it reads the audit
+  // projection, which can refuse when the corpus itself cannot. Folding it
+  // into `/api/item/:id` would make the whole pane share the weakest store it
+  // touches — a behind projection would cost the reader the `<dl>` as well as
+  // the chart. Awaited after the pane is already filled, so the fields are on
+  // screen while this lands.
+  const he = document.documentElement.getAttribute('lang') === 'he';
+  try {
+    const history = await api(`/api/item/${encodeURIComponent(id)}/history`);
+    if (paneId !== id) return;
+    drawSpark(els, history, he);
+  } catch (err) {
+    if (paneId !== id) return;
+    // The endpoint's own refusal, in its own words — the treatment `errorNote`
+    // gives every server refusal in this product. A projection that is behind
+    // says so here rather than showing a chart of nothing.
+    drawSpark(els, null, he);
+    if (els.spn !== null) els.spn.textContent = err instanceof Error ? err.message : String(err);
+  }
 }
 
 /**
@@ -894,6 +1004,39 @@ async function route() {
   await mod.render(section, window.myctx);
 }
 
+/**
+ * Fill every `[data-t]` element in the shipped shell from the string table.
+ *
+ * **This did not exist until 2026-08-25, and ten elements were quietly English
+ * because of it.** `index.html` carries ten `data-t` attributes — the item
+ * pane's six `<dl>` labels, `pane.body`, `pane.hist`, `pane.histn` and
+ * `pane.well` — and the file's own comment says they "are translated in place
+ * by i18n.js's applyStatic". THERE WAS NO `applyStatic`: `applyLanguage()`
+ * sets `lang` and `dir` and nothing else, and nothing anywhere queried
+ * `[data-t]`. So those labels rendered their AUTHORED English on the Hebrew
+ * page, and `pane.histn` — added with no authored text, the way this shell
+ * builds everything else — rendered blank.
+ *
+ * No gate could see it. `strings-parity` compares the two tables against the
+ * mockup's `data-t` SET, and all ten keys are present in all three; a key that
+ * exists and is never rendered still matches.
+ *
+ * `translate()`, not `textContent`, because these keys carry `{b:}`/`{i:}`
+ * emphasis and `{m:}` runs — `pane.histn` bolds *spilled* and italicises
+ * *every* — and assigning text would flatten them. Owner ruling A1: `t()`
+ * returns nodes and they are appended.
+ *
+ * `replaceChildren` first, so the authored English that seeds the markup is
+ * REPLACED rather than appended to.
+ */
+function applyStatic(root) {
+  for (const el of root.querySelectorAll('[data-t]')) {
+    const key = el.getAttribute('data-t');
+    if (key === null || key === '') continue;
+    el.replaceChildren(...translate(table.strings, key));
+  }
+}
+
 async function main() {
   const lang = pickLanguage(localStorage.getItem('myctx-lang'), navigator.language);
   table = await import(`/strings/${lang}.js`);
@@ -902,6 +1045,7 @@ async function main() {
   // <b>mycontext</b> with no `data-t`, and a product name is not translated.
   document.getElementById('session-label').append(...translate(table.strings, 'top.session'));
   document.getElementById('focus-label').append(...translate(table.strings, 'top.focus'));
+  applyStatic(document);
   // The language control is an ICON BUTTON in the mockup (`#lang`, "א/A"), not
   // a labelled <select>. Its accessible name is an OPEN QUESTION (§0.4) — do
   // not invent a key for it here; raise it, change the mockup, then add it to

@@ -121,12 +121,25 @@
        is. The VALUES are filled at runtime by app.js — never authored here,
        and never with innerHTML, which is the rule this whole file follows.
 
-       Two things the mockup draws that are deliberately absent, because the
-       data behind them does not exist: `#panespark` and its `pane.hist` /
-       `pane.histn` captions want twelve weekly delivered/spilled buckets, and
-       `read-model.ts` says in its own words that `Usage` is a count and "a
-       count cannot carry the spilled state at all" (~1433). Drawing an empty
-       sparkline would claim a history was measured. Filed rather than faked. -->
+       `#panespark` and its `pane.hist` / `pane.histn` captions were ABSENT
+       here until 2026-08-25, and the reason was good: they want twelve weekly
+       delivered/spilled buckets, `read-model.ts` says in its own words that
+       `Usage` is a count and "a count cannot carry the spilled state at all"
+       (~1433), and drawing an empty sparkline would claim a history was
+       measured. Filed rather than faked, which was right.
+
+       What ended it was building the missing source rather than relaxing the
+       standard: `GET /api/item/:id/history` (watch-model.ts) reads the audit
+       projection through the same read-only door every other projection read
+       uses and answers TWO series — `weeks`, deliveries per bucket, and
+       `spillw`, the buckets that held a spill. Two, because the mockup's own
+       comment requires it: "a quiet week and a rejected week must never look
+       alike".
+
+       The refusal it replaces is still enforced, one level in: an ABSENT
+       projection answers `weeks: null` and the pane SAYS the history is not
+       measured instead of drawing twelve grey bars. -->
+
   <aside class="pane" id="pane" hidden aria-label="Item detail" data-t-aria="aria.pane">
     <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
       <h3 class="m" id="paneid">—</h3>
@@ -141,6 +154,11 @@
       <dt data-t="pane.gov">governs</dt><dd class="small" id="panegov"></dd>
       <dt data-t="pane.file">file</dt><dd class="m" id="panefile"></dd>
     </dl>
+    <div class="welllabel" data-t="pane.hist">Delivered — twelve weeks</div>
+    <div class="spark plate" id="panespark"></div>
+    <p class="small" id="panespn"></p>
+    <p class="small" data-t="pane.histn"></p>
+
     <div class="welllabel" data-t="pane.body">Body — as authored</div>
     <div class="well"><div class="md" id="panebody"></div></div>
     <p class="small" style="margin-block-start:8px" data-t="pane.well">Corpus text sits in a well and
