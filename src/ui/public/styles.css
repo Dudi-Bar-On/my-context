@@ -744,7 +744,6 @@ body>svg[aria-hidden="true"]{display:none}
 /* — audit stream: pulse, per-record token bar, and the not-recorded void — */
 .pulse{block-size:34px;border:1px solid var(--rule);border-radius:var(--r-md);
   background:var(--sink);overflow:hidden;margin-block-end:9px}
-.pulse svg{display:block;inline-size:100%;block-size:100%}
 .tokbar{block-size:6px;border-radius:3px;background:var(--gold);margin-block-start:4px;
   max-inline-size:100%}
 /* Absent is NOT zero. A zero-length bar would be a claim the record does not
@@ -999,6 +998,19 @@ del{background:var(--critbg);color:var(--dim);text-decoration:line-through;borde
 
 /* — SVG chart primitives — */
 svg.chart{display:block;inline-size:100%;block-size:auto;overflow:visible}
+
+/* **`.pulse svg` sits AFTER `svg.chart`, and moving it back is the defect.**
+   Both selectors are specificity (0,1,1), so SOURCE ORDER decides, and a
+   `<svg class="chart">` inside `.pulse` matches both. With this rule up in the
+   `.pulse` component block above, `block-size:auto` won: the SVG sized itself
+   from its width by the 900:34 aspect ratio and came back 36.375px in an 8px
+   plate -- overflowing a box that clips it and losing the tallest columns.
+   The design of record declares the identical pair in the opposite order
+   (`svg.chart` ~763, `.pulse svg` ~870), which is why it renders at the eight
+   pixels both files intend and this one did not.
+   `styles-parity` compares the BLOCKS and not their sequence, so both rules
+   were byte-identical to the mockup's and the gate was green throughout. */
+.pulse svg{display:block;inline-size:100%;block-size:100%}
 svg.chart text{font-family:var(--sans);font-size:var(--fs-00);fill:var(--dim)}
 svg.chart text.mono{font-family:var(--mono);font-size:11px}
 svg.chart .axis{stroke:var(--rule);stroke-width:1}
