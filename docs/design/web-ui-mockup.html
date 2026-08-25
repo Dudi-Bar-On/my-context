@@ -900,7 +900,8 @@ svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
 .heataxis{display:flex;justify-content:space-between;font-size:var(--fs-00);color:var(--dim)}
 
 /* — per-item delivery sparkline, for the detail pane — */
-.spark{display:flex;gap:2px;align-items:flex-end;block-size:26px;margin-block:5px}
+.spark{display:flex;gap:2px;align-items:flex-end;block-size:26px;margin-block:5px;
+  box-sizing:content-box}
 .spark i{inline-size:7px;background:var(--gold);display:block;border-radius:1px;min-block-size:2px}
 .spark i.dead{background:var(--edge-3)}
 .spark i.sp{background:repeating-linear-gradient(45deg,var(--crit) 0 2px,transparent 2px 4px);

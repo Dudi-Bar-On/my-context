@@ -889,8 +889,34 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
    and a rejected week must never look alike". A bar is gold for a week with
    deliveries, `--edge-3` grey for a week with none, and a `--crit` hatch for a
    week the item was SPILLED. Grey and hatched are two different facts and the
-   difference is why this cannot be one series. */
-.spark{display:flex;gap:2px;align-items:flex-end;block-size:26px;margin-block:5px}
+   difference is why this cannot be one series.
+
+   `box-sizing:content-box` IS THE FIX FOR A DEFECT IN THE DESIGN OF RECORD,
+   carried here in the same commit that puts it in the mockup (owner-approved
+   under DEC-claude-drafts-the-mockup-and-the-owner-approves).
+
+   The element is `<div class="spark plate">`. `.plate` sets `padding:12px 13px`
+   and `*{box-sizing:border-box}` is global, so `block-size:26px` was the BORDER
+   box: 26 − 12 − 12 = a TWO PIXEL content box. Every bar resolved its
+   percentage against 2px and then hit `min-block-size:2px`, so all twelve
+   rendered at exactly 2px whatever their value. Measured identically in the app
+   and in the mockup on 2026-08-25: `contentHeight: 2`, twelve bars at `2px`,
+   against style values of 14.2857%, 28.5714% and 100%. The chart was a row of
+   dashes and could not have been anything else.
+
+   Nothing could have caught it. `styles-parity` compares the mockup's blocks
+   against these and both files carried the same rule; tree-parity counts twelve
+   `<i>` elements and finds twelve. It is the same shape as the index tier's
+   invisible chip — a defect the two files AGREE about, which is the one kind
+   every gate here is blind to by construction. Only looking finds these, and
+   the owner found this one by looking.
+
+   `content-box` rather than a bigger `block-size`, because 26px is the author's
+   stated height for the BARS and the plate's padding is the plate's business.
+   The strip is now 26px of bars inside a 50px plate. `.spark` is used on
+   exactly one element in each file. */
+.spark{display:flex;gap:2px;align-items:flex-end;block-size:26px;margin-block:5px;
+  box-sizing:content-box}
 .spark i{inline-size:7px;background:var(--gold);display:block;border-radius:1px;min-block-size:2px}
 .spark i.dead{background:var(--edge-3)}
 .spark i.sp{background:repeating-linear-gradient(45deg,var(--crit) 0 2px,transparent 2px 4px);
