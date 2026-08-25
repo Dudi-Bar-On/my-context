@@ -10,13 +10,88 @@ export function pickLanguage(stored, navigatorLang) {
   return String(navigatorLang || '').toLowerCase().startsWith('he') ? 'he' : 'en';
 }
 
-// The three run markers, exactly as Task 1 transcribes them from the
-// mockup's grammar block. `mv` is listed before `m`, as the mockup's own
-// `SLOT` pattern lists it: the longer marker is tried first, so `{mv:branch}`
-// is read as the monospace VALUE slot and never as an `{m:…}` literal. The
-// payload cannot contain `}` — the same limit the mockup's own `slots()` has,
-// stated here rather than discovered later.
-const RUN = /\{(?:(mv|m):)?([^}]*)\}/g;
+// The run markers, as Task 1 transcribes them from the mockup's grammar block,
+// plus the two EMPHASIS markers added 2026-08-25.
+//
+//   {m:text}    a monospace literal          -> <span class="m">
+//   {mv:name}   a monospace value            -> <span class="m v">
+//   {name}      a value, isolated not mono   -> <span class="v">
+//   {b:runs}    bold                         -> <b>
+//   {i:runs}    italic                       -> <i>
+//
+// `mv` is listed before `m` for the reason the mockup's own `SLOT` pattern
+// lists it that way: the longer marker is tried first, so `{mv:branch}` is
+// read as the monospace VALUE slot and never as an `{m:…}` literal.
+//
+// **The emphasis markers NEST and the other three do not, which is why this
+// stopped being one regex.** The design of record wraps slots inside emphasis
+// in five places — `<b>"<span class="v">3</span> of <span class="v">5</span>"
+// is counted, never stored</b>` is the plainest — and a payload matched as
+// `[^}]*` cannot contain the `}` that closes an inner run. So `{m:}` and
+// `{mv:}` keep the old rule exactly, ending at the FIRST `}`, and only `{b:}`
+// and `{i:}` scan for the MATCHING one and recurse into what they enclose.
+const MARKER = /^\{(mv|m|b|i):/;
+
+/** The `}` that closes the run opening at `open`, or -1. Emphasis only. */
+function closer(template, open, end) {
+  let depth = 0;
+  for (let i = open; i < end; i++) {
+    if (template[i] === '{') depth += 1;
+    else if (template[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * One pass over `template[from, to)`, building nodes.
+ *
+ * Recursive for `{b:}` and `{i:}` and flat for everything else, which is the
+ * whole of the difference between the two kinds of marker.
+ */
+function scan(template, from, to, ctx) {
+  const out = [];
+  let text = '';
+  const flush = () => {
+    if (text !== '') { out.push(ctx.doc.createTextNode(text)); text = ''; }
+  };
+  let i = from;
+  while (i < to) {
+    if (template[i] !== '{') { text += template[i]; i += 1; continue; }
+    const marked = MARKER.exec(template.slice(i, to));
+    // A bare `{name}` value slot: unchanged, and it ends at the first `}`.
+    if (marked === null) {
+      const close = template.indexOf('}', i);
+      if (close === -1 || close >= to) { text += template[i]; i += 1; continue; }
+      flush();
+      out.push(ctx.run('v', ctx.value(template.slice(i + 1, close))));
+      i = close + 1;
+      continue;
+    }
+    const marker = marked[1];
+    const open = i + marked[0].length;
+    if (marker === 'm' || marker === 'mv') {
+      const close = template.indexOf('}', open);
+      if (close === -1 || close >= to) { text += template[i]; i += 1; continue; }
+      flush();
+      const payload = template.slice(open, close);
+      out.push(marker === 'm' ? ctx.run('m', payload) : ctx.run('m v', ctx.value(payload)));
+      i = close + 1;
+      continue;
+    }
+    const close = closer(template, i, to);
+    if (close === -1) { text += template[i]; i += 1; continue; }
+    flush();
+    const el = ctx.doc.createElement(marker);
+    el.append(...scan(template, open, close, ctx));
+    out.push(el);
+    i = close + 1;
+  }
+  flush();
+  return out;
+}
 
 /**
  * A translated string, AS NODES. Never as a string. (Owner ruling A1, §0.6.)
@@ -61,26 +136,29 @@ export function t(strings, key, subs = {}, doc = globalThis.document) {
     el.textContent = text;
     return el;
   };
-  const out = [];
-  let last = 0;
-  RUN.lastIndex = 0;
-  for (let m = RUN.exec(template); m !== null; m = RUN.exec(template)) {
-    if (m.index > last) out.push(doc.createTextNode(template.slice(last, m.index)));
-    const marker = m[1];
-    const payload = m[2];
-    if (marker === 'm') out.push(run('m', payload));                // a literal
-    else if (marker === 'mv') out.push(run('m v', value(payload))); // a value, same treatment
-    else out.push(run('v', value(payload)));                        // a value, isolated, not mono
-    last = RUN.lastIndex;
-  }
-  if (last < template.length) out.push(doc.createTextNode(template.slice(last)));
-  return out;
+  return scan(template, 0, template.length, { doc, run, value });
 }
 
-/** The two methods `t()` uses. Enough for `tFlat`, and enough for a test. */
+/**
+ * The methods `t()` uses. Enough for `tFlat`, and enough for a test.
+ *
+ * `append` and the `textContent` accessor pair exist because emphasis NESTS:
+ * a `{b:}` run holds child nodes rather than a string, and a stand-in whose
+ * `textContent` were a plain field would flatten to the empty string it was
+ * constructed with and silently drop every word inside the bold. That is the
+ * `aria-label` on eighteen screens, so it is worth eight lines.
+ */
 const FLAT_DOC = {
   createTextNode: (text) => ({ textContent: text }),
-  createElement: () => ({ className: '', textContent: '' }),
+  createElement: () => {
+    const kids = [];
+    return {
+      className: '',
+      append: (...ns) => { kids.push(...ns); },
+      get textContent() { return kids.map((n) => n.textContent).join(''); },
+      set textContent(v) { kids.length = 0; kids.push({ textContent: v }); },
+    };
+  },
 };
 
 /**
@@ -99,6 +177,32 @@ const FLAT_DOC = {
  */
 export function tFlat(strings, key, subs = {}) {
   return t(strings, key, subs, FLAT_DOC).map((n) => n.textContent).join('');
+}
+
+/**
+ * The substitution names a template REQUIRES -- what a caller must supply.
+ *
+ * Exported because eight test files had each grown their own copy of this
+ * scanner, every one of them the same `\{(?:(mv|m):)?([^}]*)\}` that predates
+ * emphasis. The moment `{b:}` and `{i:}` landed, all eight read `{b:` as a
+ * substitution named `b:...` and demanded the caller supply it -- eighteen
+ * failures, none of which was a defect in the code under test. A grammar with
+ * nine parsers has eight chances to disagree with itself.
+ *
+ * It reuses `scan`, deliberately, rather than describing the grammar a second
+ * time: a `value` that records instead of substituting, and a `doc` that
+ * builds nothing. Emphasis recurses, so a slot nested inside a `{b:}` run is
+ * collected exactly as one at the top level is.
+ */
+export function slots(template) {
+  const names = [];
+  const empty = { textContent: '' };
+  scan(template, 0, template.length, {
+    doc: { createTextNode: () => empty, createElement: () => ({ append: () => {} }) },
+    run: () => empty,
+    value: (name) => { names.push(name); return ''; },
+  });
+  return names;
 }
 
 /** `<html lang dir>` follows the language (spec §3). */

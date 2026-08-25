@@ -370,33 +370,48 @@ test('the screen GETs one help endpoint per topic, and touches no other part of 
  * kind the app invents is recorded there in prose and nowhere in code. Here it
  * fails, and the failure names it.
  */
-test('render draws every kind the mockup draws except the italic run, and invents none', async () => {
+test('English draws the italic run; Hebrew does not yet, and that is recorded', async () => {
   const drawn = kindsOf(learnSection());
   assert.deepEqual(drawn, [
     'div.card.pane', 'div.phd', 'h2', 'i', 'p.psub', 'span', 'span.m', 'span.verdict',
     'table', 'tbody', 'td.m', 'td.small', 'tr',
   ], 'the mockup section changed shape — re-measure before touching the screen');
 
-  for (const lang of ['en', 'he'] as const) {
-    const { root } = await renderLearn(lang);
-    // `i` is `ln.sub`'s italicised "this". `lib/i18n.js`'s run grammar has
-    // three markers — `{m:}`, `{mv:}`, `{name}` — and no emphasis one, so the
-    // run renders flat and NO string table can carry the difference. It is the
-    // same defect as the audit stream's `<b>`, tracked as
-    // TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup. The day a
-    // fourth marker lands, THIS assertion is what says the ledger entry may
-    // come out.
-    assert.deepEqual(renderedKinds(root), drawn.filter((kind) => kind !== 'i'),
-      `the ${lang} render no longer draws exactly the mockup's kinds`);
-  }
+  // **The two languages differ HERE, deliberately, and this is the record of
+  // it.** `i` is `ln.sub`'s italicised "this". The grammar gained `{b:}` and
+  // `{i:}` on 2026-08-25 and English was populated from the mockup's own
+  // markup, where every `<b>` and `<i>` says exactly where emphasis goes.
+  //
+  // Hebrew was NOT, and not by oversight: the mockup's `const HE` table is
+  // plain strings with no markup in any of them, so there is no source for
+  // where a Hebrew sentence puts its stress, and placing it by pattern-matching
+  // the language would be guessing. Owner ruling the same day
+  // (DEC-hebrew-gets-the-same-emphasis-english-does): Hebrew GETS the emphasis,
+  // from the owner, and until then this asymmetry is UNFINISHED WORK rather
+  // than a settled difference.
+  //
+  // So this assertion is the debt. The day `ln.sub` carries `{i:}` in he.js it
+  // fails, and the fix is to make both branches expect `drawn`.
+  const { root: enRoot } = await renderLearn('en');
+  assert.deepEqual(renderedKinds(enRoot), drawn,
+    'the English render no longer draws exactly the mockup\'s kinds, italic included');
+  const { root: heRoot } = await renderLearn('he');
+  assert.deepEqual(renderedKinds(heRoot), drawn.filter((kind) => kind !== 'i'),
+    'the Hebrew render changed. If it now draws `i`, the Hebrew emphasis has landed and BOTH '
+    + 'branches of this test should expect the mockup\'s full list.');
 
   // And the italic really is in `ln.sub`, and really is uncarryable: the
   // English table's own value has no marker in it at all.
   const sub = learnSection().slice(learnSection().indexOf('<p class="psub"'));
   assert.match(sub.slice(0, sub.indexOf('</p>')), /<i>this<\/i>/);
   const en = (await table('en')).strings;
-  assert.doesNotMatch(en['ln.sub']!, /\{(mv|m|i|b):/,
-    'a run marker appeared in ln.sub — the string grammar may now carry the emphasis');
+  assert.match(en['ln.sub']!, /\{i:/,
+    'ln.sub lost its italic marker — the English emphasis is carried in the string table now, '
+    + 'and the mockup is the source for where it goes');
+  const he = (await table('he')).strings;
+  assert.doesNotMatch(he['ln.sub']!, /\{(i|b):/,
+    'the HEBREW ln.sub gained an emphasis marker. That is the owner ruling arriving, not a '
+    + 'defect — update the Hebrew branch above to expect the mockup\'s full list of kinds.');
 });
 
 // ── 5. Machine text is MARKED, which is the whole of this task ─────────────

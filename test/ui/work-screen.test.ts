@@ -293,13 +293,12 @@ test('every string key the Work screen names is declared in both tables, with it
     `the scan found ${used.length} key(s) in work.js; the screen names sixteen. A collapse means `
     + 'the patterns stopped matching, not that the screen stopped naming keys.');
 
-  const slotsOf = (template: string): string[] => {
-    const found: string[] = [];
-    for (const m of template.matchAll(/\{(?:(mv|m):)?([^}]*)\}/g)) {
-      if (m[1] !== 'm') found.push(m[2]!);
-    }
-    return found;
-  };
+  // The grammar has ONE parser and this is it. Eight files used to carry a
+  // private scanner instead, all of them predating emphasis, and every one
+  // read `{b:` as a substitution named `b:...` the day emphasis landed.
+  const { slots: slotsOf } = await import(
+    new URL('../../src/ui/public/lib/i18n.js', import.meta.url).href
+  ) as { slots: (template: string) => string[] };
 
   for (const { key, args } of used) {
     assert.ok(key in en, `work.js names ${key}, missing from the English table`);

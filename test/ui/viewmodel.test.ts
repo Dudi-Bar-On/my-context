@@ -454,9 +454,14 @@ interface I18nModule {
     strings: Record<string, string>,
     key: string,
     subs: Record<string, unknown> | undefined,
-    doc: { createTextNode: (t: string) => unknown; createElement: (tag: string) => { className: string; textContent: string; tag?: string; kind?: string } },
-  ) => { kind?: string; tag?: string; className?: string; textContent: string }[];
+    // `append` is part of the contract since emphasis landed: a `{b:}` run
+    // holds CHILD nodes, so `t()` calls it on the element it just created.
+    doc: { createTextNode: (t: string) => unknown; createElement: (tag: string) => { className: string; textContent: string; append: (...ns: never[]) => void; tag?: string; kind?: string } },
+  ) => { kind?: string; tag?: string; className?: string; textContent: string;
+    kids?: { className?: string; textContent: string }[] }[];
   tFlat: (strings: Record<string, string>, key: string, subs?: Record<string, unknown>) => string;
+  /** The substitution names a template requires. The grammar's one parser. */
+  slots: (template: string) => string[];
   applyLanguage: (documentEl: { setAttribute: (name: string, value: string) => void }, table: { lang: string; dir: string }) => void;
 }
 
@@ -537,7 +542,9 @@ test('t() returns nodes, and each marker builds the element the grammar names', 
   const { t } = await i18n();
   const doc = {
     createTextNode: (text: string) => ({ kind: 'text', textContent: text }),
-    createElement: (tag: string) => ({ kind: 'element', tag, className: '', textContent: '' }),
+    createElement: (tag: string) => ({
+      kind: 'element', tag, className: '', textContent: '', append: (): void => {},
+    }),
   };
   const strings = {
     'a.plain': 'hello {name}, {n} items',
@@ -566,6 +573,85 @@ test('t() returns nodes, and each marker builds the element the grammar names', 
 
   assert.throws(() => t(strings, 'a.missing', {}, doc));           // an undeclared key
   assert.throws(() => t(strings, 'a.plain', { name: 'x' }, doc));  // a missing substitution
+});
+
+/**
+ * **The emphasis markers, and the nesting that is the whole reason they are not
+ * a fifth branch of the old regex.**
+ *
+ * The design of record wraps value slots INSIDE emphasis in five places -- the
+ * plainest is `<b>"<span class="v">3</span> of <span class="v">5</span>" is
+ * counted, never stored</b>`. A payload matched as `[^}]*` cannot contain the
+ * `}` that closes an inner run, so a flat pattern truncates the bold at the
+ * first inner slot and puts the rest of the sentence on screen as loose text
+ * with a stray brace in it. The third assertion below is the one that catches
+ * that, and it is the reason this test exists at all.
+ */
+test('emphasis builds b and i, and value slots survive INSIDE them', async () => {
+  const { t, tFlat } = await i18n();
+  // A richer stand-in than the one above: emphasis holds CHILDREN, so a doc
+  // whose elements cannot be appended to could not show the defect either way.
+  // `textContent` is an accessor pair rather than a field for the same reason
+  // -- a plain field would read back as the empty string it was constructed
+  // with and silently drop every word inside the bold.
+  const kidsOf = new Map<object, { className: string; textContent: string }[]>();
+  const doc = {
+    createTextNode: (text: string) => ({ kind: 'text', className: '', textContent: text }),
+    createElement: (tag: string) => {
+      const kids: { className: string; textContent: string }[] = [];
+      const node = {
+        kind: 'element', tag, className: '',
+        append: (...ns: never[]): void => { kids.push(...ns); },
+        get textContent(): string { return kids.map((n) => n.textContent).join(''); },
+        set textContent(v: string) {
+          kids.length = 0;
+          kids.push({ className: '', textContent: v });
+        },
+      };
+      kidsOf.set(node, kids);
+      return node;
+    },
+  };
+  const childrenOf = (n: object): { className: string; textContent: string }[] =>
+    kidsOf.get(n) ?? [];
+  const strings = {
+    'a.bold': 'and {b:then done} -- as against a rule',
+    'a.ital': 'it lets the agent {i:ask}',
+    'a.nested': '{b:"{done} of {steps}" is counted, never stored} beside it',
+    'a.mixed': '{b:Injecting only in {m:active} is the mechanism}',
+  };
+
+  const bold = t(strings, 'a.bold', {}, doc);
+  assert.deepEqual([bold[1]!.tag, bold[1]!.textContent], ['b', 'then done']);
+  assert.equal(bold[2]!.textContent, ' -- as against a rule',
+    'the text after a closed emphasis run must survive');
+
+  const ital = t(strings, 'a.ital', {}, doc);
+  assert.equal(ital[1]!.tag, 'i');
+
+  // THE ONE THAT MATTERS. A flat `[^}]*` payload stops at the `}` of `{done}`,
+  // so the bold would be `"` and the rest of the sentence would leak out.
+  const nested = t(strings, 'a.nested', { done: 3, steps: 5 }, doc);
+  const inner = childrenOf(nested[0]!);
+  assert.equal(nested[0]!.tag, 'b');
+  assert.deepEqual(inner.map((n) => (n.className === '' ? null : n.className)),
+    [null, 'v', null, 'v', null],
+    'the bold must hold text, slot, text, slot, text -- five children, in order');
+  assert.equal(nested[0]!.textContent, '"3 of 5" is counted, never stored');
+  assert.equal(nested[1]!.textContent, ' beside it',
+    'and the sentence must continue AFTER the bold, not inside it');
+
+  // A monospace literal nested in emphasis, which is the other shape the
+  // mockup uses.
+  const mixed = t(strings, 'a.mixed', {}, doc);
+  assert.deepEqual(childrenOf(mixed[0]!).map((n) => (n.className === '' ? null : n.className)),
+    [null, 'm', null]);
+
+  // Attributes cannot hold an element, so emphasis flattens like everything
+  // else -- INCLUDING what is nested inside it, which a stand-in with a plain
+  // textContent field would silently drop.
+  assert.equal(tFlat(strings, 'a.nested', { done: 3, steps: 5 }),
+    '"3 of 5" is counted, never stored beside it');
 });
 
 test('tFlat flattens the same three markers, and that is what attributes get', async () => {
@@ -701,13 +787,12 @@ test('every string key any screen names is declared, with its slots supplied', a
 
   // The three run markers, as `strings/en.js`'s own grammar block spells them.
   // `{m:…}` is a literal and is NOT a value slot; `{name}` and `{mv:name}` are.
-  const slotsOf = (template: string): string[] => {
-    const found: string[] = [];
-    for (const m of template.matchAll(/\{(?:(mv|m):)?([^}]*)\}/g)) {
-      if (m[1] !== 'm') found.push(m[2]!);
-    }
-    return found;
-  };
+  // The grammar has ONE parser, and this is it. Eight files used to carry a
+  // private `/\{(?:(mv|m):)?([^}]*)\}/` instead, which predates emphasis and
+  // read `{b:` as a substitution named `b:...` the day emphasis landed.
+  const { slots: slotsOf } = await import(
+    new URL('../../src/ui/public/lib/i18n.js', import.meta.url).href
+  ) as { slots: (template: string) => string[] };
 
   /** The argument object of a `ctx.t(key, {…})` call, by brace depth. */
   const argsAfter = (source: string, from: number): string | null => {
@@ -963,13 +1048,12 @@ test('every string key the built screens name is declared, with its slots suppli
 
   // The three run markers, as `strings/en.js`'s own grammar block spells them.
   // `{m:…}` is a literal and is NOT a value slot; `{name}` and `{mv:name}` are.
-  const slotsOf = (template: string): string[] => {
-    const found: string[] = [];
-    for (const m of template.matchAll(/\{(?:(mv|m):)?([^}]*)\}/g)) {
-      if (m[1] !== 'm') found.push(m[2]!);
-    }
-    return found;
-  };
+  // The grammar has ONE parser and this is it. Eight files used to carry a
+  // private scanner instead, all of them predating emphasis, and every one
+  // read `{b:` as a substitution named `b:...` the day emphasis landed.
+  const { slots: slotsOf } = await import(
+    new URL('../../src/ui/public/lib/i18n.js', import.meta.url).href
+  ) as { slots: (template: string) => string[] };
 
   /** The argument object of a `ctx.t(key, {…})` call, by brace depth. */
   const argsAfter = (source: string, from: number): string | null => {

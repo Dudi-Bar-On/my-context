@@ -702,18 +702,20 @@ const FRESH = async (route: string): Promise<unknown> => {
   throw new Error(`the screen asked for ${route}, which this fixture does not serve`);
 };
 
-test('render draws every kind the mockup draws, except the bold run no string can carry', async () => {
+test('render draws every kind the mockup draws, and invents only what it means to', async () => {
   const root = await draw(FRESH);
   const drawn = mockupKinds();
   const built = renderedKinds(root);
 
-  // `b` is the mockup's `<b>Shown, never typed.</b>` inside `ask.sqln`, and
-  // its three siblings. `lib/i18n.js`'s run grammar has three markers —
-  // `{m:}`, `{mv:}`, `{name}` — and no emphasis one, so NO string table can
-  // carry it: the same defect as the audit stream's three bold runs and the
-  // injection preview's `<i>`, tracked as
-  // TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup.
-  assert.deepEqual(drawn.filter((kind) => !built.includes(kind)), ['b']);
+  // **This list was `['b']` and is now empty.** `b` was the mockup's
+  // `<b>Shown, never typed.</b>` inside `ask.sqln` and its three siblings, and
+  // it was absent for one reason: `lib/i18n.js`'s run grammar had three
+  // markers — `{m:}`, `{mv:}`, `{name}` — and no emphasis one, so no string
+  // table could carry it. `{b:}` and `{i:}` landed 2026-08-25 and the run
+  // renders. Nothing is missing from this screen now.
+  assert.deepEqual(drawn.filter((kind) => !built.includes(kind)), [],
+    'a kind the mockup draws is missing from the render — emphasis is carryable now, so a '
+    + 'name here is a real gap rather than the grammar limit this list used to hold');
 
   // Two kinds this screen draws that the mockup does not, both deliberate and
   // both in this task's report. `button.linkid.m` is what every id on every
@@ -857,8 +859,21 @@ test('clicking Corpus asks the corpus endpoint, keys its field names and hangs t
     );
 
     // The trap note is a property of THIS query and hangs on this tab alone.
+    //
+    // Found by its BOLD run rather than by a text node beginning
+    // `' is index write time'`. That text was one node until 2026-08-25, when
+    // `ask.updatedAtTrap` gained `{b:index write time}` and the run split into
+    // `' is '`, a `<b>`, and the rest — so the old predicate matched nothing and
+    // the test died on a null. The bold is the stabler landmark: it is the
+    // phrase the design of record emphasises, and it moves only if the mockup
+    // does.
+    // Read through `children` and not `textContent`: this file's fake element
+    // keeps `textContent` as a plain FIELD, so a `<b>` that `t()` filled by
+    // `append` reads back as the empty string it was constructed with. The
+    // words are in its children.
     const note = find(root, (node) => node.children.some(
-      (run) => run.textContent.startsWith(' is index write time'),
+      (run) => run.tag === 'b'
+        && run.children.map((word) => word.textContent).join('') === 'index write time',
     ))!;
     assert.equal(note.hidden, false);
 

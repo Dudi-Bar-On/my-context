@@ -324,6 +324,7 @@ const MOCKUP = readFileSync(path.join(REPO, 'docs', 'design', 'web-ui-mockup.htm
 test('the spill-ratio card is the mockup\'s third card, mark for mark', async () => {
   const { root } = await draw(RICH);
   const en = (await table('en')).strings;
+  const { tFlat } = await i18n();
 
   // `<div class="card pane"><h3 data-t="sim.ratio"><div class="plate" id="ratio">
   //  <p class="small" style="margin-block-start:8px" data-t="sim.ration">`
@@ -332,7 +333,11 @@ test('the spill-ratio card is the mockup\'s third card, mark for mark', async ()
   assert.equal(cards.length, 3, 'the simulator no longer draws three cards');
   assert.deepEqual(card.children.map(kindOf), ['h3', 'div.plate', 'p.small']);
   assert.equal(flatText(card.children[0]!), en['sim.ratio']);
-  assert.equal(flatText(card.children[2]!), en['sim.ration'].replace(/\{m:([^}]*)\}/g, '$1'));
+  // `tFlat` and not a local `replace(/\{m:…\}/)`: that hand-rolled flattener
+  // knew one marker of five, so the day emphasis landed it compared rendered
+  // text against a template still carrying `{b:…}` and failed for a reason
+  // that had nothing to do with this card. The grammar has one parser.
+  assert.equal(flatText(card.children[2]!), tFlat(en, 'sim.ration', {}));
 
   // The note takes its margin through CSSOM and not a `style` attribute: the
   // server sends `style-src 'self'` with no `'unsafe-inline'`, so the mockup's
@@ -461,7 +466,7 @@ test('an empty projection draws an empty plate and no legend — absence is not 
 /**
  * **The ledger, as a set of literals, in both directions.**
  *
- * `e2e/screen-parity.spec.ts` records twenty-two element kinds absent from this
+ * `e2e/screen-parity.spec.ts` records twenty-one element kinds absent from this
  * screen and fails BOTH ways: a gap it does not list is a regression, and an
  * entry that is no longer missing is a ledger that rotted. It measures a real
  * browser over `.demo-corpus`, which this file cannot do and does not pretend
@@ -469,7 +474,7 @@ test('an empty projection draws an empty plate and no legend — absence is not 
  * that is the distinction `plan:port seq:98` exists to make and which the spec
  * says has not been done for most entries.
  *
- * So the twenty-two are partitioned here, exhaustively, and the partition is
+ * So the twenty-one are partitioned here, exhaustively, and the partition is
  * checked against two renders:
  *
  *   CLOSED — built unconditionally by this task's card.
@@ -479,7 +484,7 @@ test('an empty projection draws an empty plate and no legend — absence is not 
  *   ABSENT — the module cannot build them at all. The staircase, the ladder,
  *            the readout, and the two emphasis runs no string table can carry.
  *
- * The three lists must together be exactly the twenty-two, and each must hold
+ * The three lists must together be exactly the twenty-one, and each must hold
  * of both renders. When the sweep ruling lands, or a fourth run marker, or the
  * `#readout` gets a `data-t`, THIS is the assertion that goes red and says the
  * ledger entry may come out.
@@ -504,29 +509,28 @@ const ABSENT = [
   // sits between them — all of them wait on the same ruling.
   'div', 'div.at', 'div.card.pane.sim', 'div.ev', 'div.ladder.plate',
   'div.readout', 'div.small',
-  // `lib/i18n.js`'s run grammar has `{m:}`, `{mv:}` and `{name}` and NO
-  // emphasis marker, so a mockup string whose English bolds or italicises a run
-  // renders flat and no string table can carry the difference. `b` is six runs
+  // **`b` came out on 2026-08-25.** It sat here because the run grammar had
+  // `{m:}`, `{mv:}` and `{name}` and no emphasis marker, so the six bold runs
   // across `sim.sub`, `sim.stairn`, `sim.snap`, `sim.chipn`, `sim.evict` and
-  // `sim.ration`; tracked as
-  // TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup.
+  // `sim.ration` rendered flat and no string table could carry the difference.
+  // `{b:}` and `{i:}` landed and they render.
   //
-  // **`i` is NOT here, and that is a correction rather than an omission.** It
-  // reads as the same defect and is not one: the mockup's simulate section
-  // italicises nothing. Every `<i>` on this screen is a BAR — `.div-l i` and
-  // `.div-r i` are the two halves of the diverging chart — so `i` is a graphic
-  // this task built, and it sits under DATA above with the rest of that card.
-  'b',
+  // **`i` was never here, and that stays a correction rather than an
+  // omission.** It reads as the same defect and is not one: the mockup's
+  // simulate section italicises nothing. Every `<i>` on this screen is a BAR —
+  // `.div-l i` and `.div-r i` are the two halves of the diverging chart — so
+  // `i` is a graphic this task built, and it sits under DATA above with the
+  // rest of that card.
 ];
 
-test('the twenty-two ledger kinds partition into closed, data-dependent and absent', async () => {
+test('the twenty-one ledger kinds partition into closed, data-dependent and absent', async () => {
   const rich = renderedKinds((await draw(RICH)).root);
   const lean = renderedKinds((await draw(LEAN)).root);
 
   // The partition is exhaustive and disjoint, checked against the ledger's own
-  // twenty-two so that a name dropped from one list cannot hide in another.
+  // twenty-one so that a name dropped from one list cannot hide in another.
   const LEDGER = [
-    'b', 'circle', 'div', 'div.at', 'div.card.pane.sim', 'div.div-l', 'div.div-r',
+    'circle', 'div', 'div.at', 'div.card.pane.sim', 'div.div-l', 'div.div-r',
     'div.div-row', 'div.ev', 'div.ladder.plate', 'div.readout', 'div.small', 'h3',
     'i', 'line', 'path', 'span.chip.warn', 'span.div-n', 'span.div-name', 'span.v',
     'svg', 'text',

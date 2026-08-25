@@ -233,7 +233,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'button', 'button.linkid.m', 'div.mini', 'i', 'i.g', 'i.u', 'i.x',
     'span.covn', 'span.nm', 'table', 'tbody', 'td', 'th', 'thead', 'tr',
   ],
-  gaps: ['b', 'button.icon', 'span.m', 'span.v', 'td', 'td.m', 'td.small'],
+  gaps: ['button.icon', 'span.m', 'span.v', 'td', 'td.m', 'td.small'],
   // The spill-ratio card landed, closing seven. The staircase, the ladder and
   // the readout did not, and the file says why at length: both graphics need a
   // SWEEP no endpoint answers, and the readout's words are unkeyed literals in
@@ -321,8 +321,6 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'rect.missing.node', 'rect.more.node', 'rect.node', 'rect.node.superseded',
     'text.rel',
   ],
-  status: ['b'],
-  learn: ['i'],
 
   // ── The six screens built in parallel on 2026-08-23 ─────────────────────
   //
@@ -350,7 +348,6 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'span.chip.ok', 'span.chip.warn', 'span.m', 'span.prop', 'span.v',
     'table', 'tbody', 'td', 'td.m.small', 'th', 'thead', 'tr',
   ],
-  work: ['b'],
   // `div.hit` is DATA: the glob tester lights a row per matching file, and this
   // corpus answers the opening pattern with none. `span.chip.crit` is
   // INTERACTION: it appears the moment an argv value carries a shell
@@ -358,9 +355,9 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // `div.hit` came out the same way: the glob tester lights a row per matching
   // file, and this corpus had no repository files at all until fifteen were
   // added to the fixture. Code that was correct all along.
-  palette: ['b', 'span.chip.crit'],
+  palette: ['span.chip.crit'],
   config: [
-    'div.blast', 'div.delta', 'div.delta.gain', 'div.delta.loss', 'i',
+    'div.blast', 'div.delta', 'div.delta.gain', 'div.delta.loss',
     'span.arrow', 'span.was', 'span.will',
   ],
   docs: ['a', 'h4', 'pre', 'span.refusal'],
@@ -378,9 +375,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'b', 'button', 'code', 'div.bar', 'i', 'i.f', 'span', 'span.m.v',
     'span.prop', 'span.v', 'span.verdict', 'div.cmd',
   ],
-  port: ['i'],
   packs: ['span.prop', 'span.verdict'],
-  tut: ['b'],
 };
 
 /**

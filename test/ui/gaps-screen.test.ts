@@ -353,7 +353,9 @@ const NOTHING_TO_DRAW: CoverageBody = { files: [], pinned: [], items: [], trunca
  * the mockup and a `.demo-corpus`-shaped render, so the day the gate's entry
  * shrinks and this one does not, this file fails and names the difference.
  */
-const KNOWN_GAPS_GAPS = ['b', 'button.icon', 'span.m', 'span.v', 'td', 'td.m', 'td.small'];
+// `b` came OUT on 2026-08-25: the run grammar gained `{b:}` and `{i:}`, so a
+// string table can carry emphasis and the screen draws the bold it could not.
+const KNOWN_GAPS_GAPS = ['button.icon', 'span.m', 'span.v', 'td', 'td.m', 'td.small'];
 
 // ── The parser, checked before anything is measured with it ───────────────
 
@@ -508,8 +510,17 @@ test('a truncated walk is disclosed in the mockup\'s own two keys', async () => 
   // spelling of the same fact, and the mockup's own pairing of the same two
   // keys in the row this screen cannot build. A third key worded here would be
   // a string the design of record does not declare.
-  const bold = findOne(root, (node) => node.tag === 'b');
-  assert.equal(textOf(bold), 'not examined');
+  //
+  // **TWO bold runs now, and the second is not a defect.** `gaps.note` opens
+  // with `{b:Not examined}` since the run grammar gained `{b:}` and `{i:}` on
+  // 2026-08-25 and English was populated from the mockup's own markup. The one
+  // this test is about is the DISCLOSURE's, lower case, beside `cov.k4`. Both
+  // are asserted rather than one located, so a third appearing is reported
+  // instead of quietly satisfying a `findOne` that no longer means what it did.
+  const bolds = findAll(root, (node) => node.tag === 'b').map(textOf).sort();
+  assert.deepEqual(bolds, ['Not examined', 'not examined'],
+    'the bold runs on this screen are the disclosure\'s lower-case one beside cov.k4 and '
+    + 'gaps.note\'s capitalised one; anything else is a run the mockup does not draw');
 });
 
 test('the not-examined state is never a row in a table whose every row is a gap', async () => {

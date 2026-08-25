@@ -504,21 +504,22 @@ test("every st. key the screen names is declared in both tables, and it is the m
  * 6, 7 — the ledger entry, measured, and the divergence the gate cannot see.
  * -------------------------------------------------------------------------- */
 
-test('render draws every kind the mockup draws, except the bold run no table can carry', async () => {
+test('render draws every kind the mockup draws, and the bold run among them', async () => {
   const root = await draw(async () => BODY());
   const drawn = kindsOf(statusSection());
   const built = renderedKinds(root);
 
-  // `b` is `st.four`'s bolded "four". `lib/i18n.js`'s run grammar has three
-  // markers — `{m:}`, `{mv:}` and `{name}` — and no emphasis one, so no string
-  // table can carry it and no screen can draw it. That is the WHOLE of
-  // `status: ['b']` in `e2e/screen-parity.spec.ts`, tracked as
-  // TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup. The day a
-  // fourth marker lands, this assertion fails and says the entry may come out.
+  // **The fourth marker landed, so this list is empty and the ledger entry is
+  // gone.** `b` is `st.four`'s bolded "four"; it was absent because the run
+  // grammar had `{m:}`, `{mv:}` and `{name}` and no emphasis marker, which was
+  // the WHOLE of `status: ['b']` in `e2e/screen-parity.spec.ts`. The previous
+  // version of this assertion said in as many words that the day a fourth
+  // marker landed it would fail and the entry could come out. It did, on
+  // 2026-08-25, and it has.
   assert.ok(drawn.includes('b'), 'the mockup no longer bolds a run inside st.four');
-  assert.deepEqual(drawn.filter((kind) => !built.includes(kind)), ['b'],
-    'the ledger for `status` is exactly ["b"]. A second name here is a gap the parity gate will '
-    + 'report as unexpected; an empty list means `b` is closed and the ledger entry must go.');
+  assert.deepEqual(drawn.filter((kind) => !built.includes(kind)), [],
+    'a kind the mockup draws is missing from the render. This list used to hold `b` for a '
+    + 'grammar limit that no longer exists, so a name here now is a real gap.');
 
   // The other direction, which `screen-parity.spec.ts` does not check and
   // nothing else would ever say out loud. `td.small` is the em dash cell: the

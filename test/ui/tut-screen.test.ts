@@ -363,14 +363,15 @@ test('render draws every kind the mockup draws, except the bold run no table can
 
   const drawn = kindsOf(tutSection());
   const built = renderedKinds(root);
-  // `b` is `tu.gap`'s bolded "to write". `lib/i18n.js`'s run grammar has three
-  // markers and no emphasis one, so no string table can carry it — the same
-  // defect as the audit stream's three `<b>` runs and the injection preview's
-  // `<i>`, tracked as
-  // TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup. The day a
-  // fourth marker lands, THIS assertion is what fails and says the ledger
-  // entry may come out.
-  assert.deepEqual(built, drawn.filter((kind) => kind !== 'b'));
+  // **The fourth marker landed, so the filter is gone.** `b` is `tu.gap`'s
+  // bolded "to write". The run grammar had three markers and no emphasis one,
+  // so no string table could carry it; `{b:}` and `{i:}` landed 2026-08-25 and
+  // English was populated from the mockup's own markup. The previous version of
+  // this assertion said in as many words that the day a fourth marker landed it
+  // would fail and the ledger entry could come out. It did, and it has.
+  assert.deepEqual(built, drawn,
+    'the render no longer draws exactly the mockup\'s kinds. This used to exclude `b` for a '
+    + 'grammar limit that no longer exists, so a difference here now is a real one.');
   assert.ok(drawn.includes('b'), 'the mockup no longer bolds a run inside tu.gap');
 
   // The gap note gets its margin through CSSOM and not a `style` attribute:
