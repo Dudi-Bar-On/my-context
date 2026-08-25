@@ -99,6 +99,7 @@
  * runs the string grammar has no marker for.
  */
 import { selectQuery } from '/lib/viewmodel.js';
+import { markdownNodes } from '/screens/docs.js';
 import {
   el, errorNote, idFull, linkId, mono, num, openIcon, screenHead, spaced, tierChip,
 } from '/screens/parts.js';
@@ -178,50 +179,34 @@ const GATES = [
 /** `GATES`' index for a `GateCode`, or -1 for `passed` and anything unknown. */
 const RUNG = (code) => GATES.findIndex((gate) => gate.code === code);
 
-/** A markdown bullet, the one body shape the mockup's `.blkbody` draws besides a `<p>`. */
-const BULLET = /^[-*]\s+/;
-
 /**
- * An item's own body as the mockup's `.blkbody` draws it: `<p>` for prose and
- * `<ul>`/`<li>` for a bulleted run.
+ * An item's own body as the mockup's `.blkbody` draws it.
  *
- * **Not a markdown renderer, and not a second spelling of `renderItemBlock`.**
- * Its heading, its steps section and its scope footer are that function's
- * format and stay one click away in the detail pane, exactly as this file's
- * `draw()` has always said. What is here is the ONE structural shape the
- * design of record draws inside a block —
- * `docs/design/web-ui-mockup.html` · `<ul><li>never in logs</li>` · ~1377 —
- * and until it existed a bulleted body arrived as a single `<p>` holding every
- * bullet on one line, because HTML collapses the newlines that separated them.
- * That is not a stylistic loss: three obligations rendered as one sentence is
- * a screen misreporting what was injected.
+ * **This delegates to `markdownNodes` and used to be its own smaller
+ * renderer**, which handled `<p>` and `<ul>`/`<li>` and nothing else. That was
+ * wrong about what the design of record draws, and the owner found it by
+ * looking: the mockup's `.blkbody` is authored markup and it carries INLINE
+ * runs as well as blocks —
+ * `docs/design/web-ui-mockup.html` · `<p>The pool is capped at <b>20</b> connections.</p>` · ~1355
+ * and `<span class="m">pgbouncer</span>` in the paragraph under it. So a body
+ * written `The pool is capped at **20** connections` reached the screen with
+ * its asterisks showing, and one written with backticks kept them, on the one
+ * screen whose whole promise is "exactly what Claude gets".
+ *
+ * `markdownNodes` is the mockup's OWN renderer, branch for branch, and its
+ * vocabulary is exactly the four shapes `.blkbody` authors by hand: `<p>`,
+ * `<ul>`/`<li>`, `<b>` and `<span class="m">`. Reused rather than re-derived —
+ * a second spelling of the same subset is how two surfaces come to disagree
+ * about what a body says, and this file already carried one.
+ *
+ * The refusal list it returns is dropped here, deliberately. `docs.js` shows
+ * refusals inline because a help topic is a document a reader is READING; a
+ * delivered item's body is a quotation, the refusal treatment belongs to the
+ * detail pane one click away, and a `.blk` is drawn at `opacity:.58` where a
+ * warning chip would read as damage rather than as a note.
  */
 function bodyNodes(body) {
-  const out = [];
-  for (const para of String(body ?? '').split(/\n{2,}/)) {
-    const lines = para.split('\n').map((line) => line.trim()).filter((line) => line !== '');
-    let prose = [];
-    let list = null;
-    const flushProse = () => {
-      if (prose.length === 0) return;
-      out.push(el('p', null, prose.join(' ')));
-      prose = [];
-    };
-    for (const line of lines) {
-      const bullet = BULLET.exec(line);
-      if (bullet === null) {
-        if (list !== null) { out.push(list); list = null; }
-        prose.push(line);
-        continue;
-      }
-      flushProse();
-      if (list === null) list = el('ul');
-      list.append(el('li', null, line.slice(bullet[0].length)));
-    }
-    flushProse();
-    if (list !== null) out.push(list);
-  }
-  return out;
+  return markdownNodes(String(body ?? ''), document).nodes;
 }
 
 /** The mockup's `isz()` — a data width, through the CSSOM and logical. */

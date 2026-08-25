@@ -228,7 +228,30 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // review with the owner, exists to do. Recorded honestly rather than sorted
   // by guess: an entry here is a claim that the app does not draw the kind, and
   // nothing more.
-  preview: ['div.carrieditem.small', 'div.gh', 'i', 'li', 'span.chip', 'span.prop', 'ul'],
+  // **Two entries came out on 2026-08-25, and neither was closed by code.**
+  //
+  // `div.gh` — the ghost lane — and `div.carrieditem.small` — the carried item
+  // block — were both listed here for over a week and both were BUILT the whole
+  // time. What was missing was a fixture that made them draw:
+  //
+  //   `div.gh` needs a SPILL. The demo budgets were 2,400 pinned tokens against
+  //   six items of filler prose, and length was doing the spilling; when the
+  //   filler was replaced with the real short bodies the mockup shows, nothing
+  //   overran and the lane would have emptied. The budgets went to a tenth, so
+  //   the spill is now a property of the BUDGET rather than of how much text
+  //   somebody pasted — which is what a budget is.
+  //
+  //   `div.carrieditem.small` needs a session-start with a resolved root.
+  //   `read-model.ts` resolves `IndexSummary.carried` for that event alone, and
+  //   the fixture's re-clocking had left an unnumbered tool-event session as the
+  //   newest record, so the preview computed against a session that carried
+  //   nothing. It now stripes sessions across twelve weeks and keeps the newest
+  //   NUMBERED session newest.
+  //
+  // Both are the same lesson twice: an absent element here is a claim about the
+  // CODE, and this ledger cannot tell the difference between code that is
+  // missing and code the fixture never asked to run. That is `plan:port seq:94`.
+  preview: ['i', 'li', 'span.chip', 'span.prop', 'ul'],
   coverage: [
     'button', 'button.linkid.m', 'div.mini', 'i', 'i.g', 'i.u', 'i.x',
     'span.covn', 'span.nm', 'table', 'tbody', 'td', 'th', 'thead', 'tr',

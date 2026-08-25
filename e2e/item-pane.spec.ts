@@ -137,6 +137,24 @@ test('an id on a different screen opens the pane too', async ({ app }) => {
     // button — still present, now hidden. Written unscoped first, and it failed
     // here for that reason rather than for the reason this test is about.
     const candidate = page.locator(`[data-p="${screen}"] button.linkid`).first();
+    // **Wait for the screen to have DRAWN, not merely to have been attached.**
+    // `route()` appends the `<section>` and only then awaits a dynamic import
+    // and a fetch, so counting the moment the section attaches counts an empty
+    // element — and this loop would then move on to the next screen and
+    // eventually report that no screen renders a linkid at all.
+    //
+    // It measured nothing for exactly that reason on 2026-08-25: `doctor`
+    // renders one and `coverage` renders three against this fixture, and the
+    // loop walked past both. The race was always here; a fixture change moved
+    // the timing enough to lose it, which is the only kind of luck a
+    // time-dependent assertion ever has.
+    //
+    // Attached rather than visible: a linkid inside a card below the fold is
+    // still an id this test can click, and `.first()` on a hidden-by-scroll
+    // element is not a failure of the property under test.
+    try {
+      await candidate.waitFor({ state: 'attached', timeout: 4_000 });
+    } catch { continue; }
     if (await candidate.count() > 0) { link = candidate; break; }
   }
   expect(link, 'no screen besides the preview rendered a single button.linkid, so the '

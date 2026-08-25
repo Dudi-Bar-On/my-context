@@ -106,7 +106,7 @@ cli(['init']);
 // ── Budgets small enough that ordinary content spills ──────────────────────
 const configPath = path.join(OUT, '.my_context', 'config.json');
 const config = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
-config['budgets'] = { pinned: 2400, jit: 1800, restored: 2400, index: 900 };
+config['budgets'] = { pinned: 240, jit: 180, restored: 240, index: 90 };
 // **The same category configuration the real corpus runs**, so the demo
 // exercises the shape the product is actually used in. `task` is not in any
 // stock profile — it is a project-defined category — and a demo corpus without
@@ -169,29 +169,66 @@ for (const rel of REPO_FILES) {
 console.log(`demo-corpus: ${REPO_FILES.length} repository files written, so /api/coverage has a tree`);
 
 // ── Items: every tier, every category, and enough to overrun ───────────────
-// PINNED (always:true) — more than the 2,400-token budget, so some spill and
-// the ghost lane draws.
+//
+// PINNED (always:true) — these are the items the injection preview DELIVERS,
+// so they are the ones a reader sees rendered in the right-hand pane, and they
+// are the ones the mockup shows.
+//
+// **Their bodies are real, short sentences and not the `body()` filler.**
+// They were three paragraphs of "This text exists to occupy a measurable
+// number of tokens" until 2026-08-25 — about 1,400 characters each. That made
+// the delivered pane a wall of prose 3,882px tall against the mockup's 541,
+// and the owner's words for it were "a very long text and not formated as in
+// the mockup". He was right, and it was the FIXTURE saying it rather than the
+// screen: `.lit` scrolls correctly on both sides, and the only difference was
+// how much there was to scroll.
+//
+// So each body is now what an item of this kind actually looks like — and
+// deliberately exercises the shapes the mockup's own sample bodies exercise,
+// because a fixture that never produces a bulleted list cannot demonstrate
+// that the renderer draws one: **bold**, `code spans`, a bulleted list, and
+// plain two-paragraph prose all appear at least once below.
+//
+// The budgets moved with them (see above): short bodies against the old
+// 2,400-token budget would never spill, and the ghost lane is a feature this
+// fixture exists to demonstrate. Length was doing the spilling; now the budget
+// does, which is the honest arrangement — a spill should be a property of the
+// budget, not of how much filler somebody pasted.
 const pinned: [string, string, string][] = [
-  ['constraint', 'The pool is capped at 20 connections', 'connection pooling'],
-  ['constraint', 'Zero runtime dependencies', 'dependency policy'],
-  ['rule', 'Customer email is never logged', 'personally identifiable information'],
-  ['rule', 'Money is an integer number of cents', 'monetary representation'],
-  ['standard', 'Every endpoint answers within 200ms at p95', 'latency budget'],
-  ['requirement', 'The audit log is append-only', 'auditability'],
+  ['constraint', 'The pool is capped at 20 connections',
+    'The pool is capped at **20** connections.\n\n'
+    + 'Above that, `pgbouncer` queues rather than the app.'],
+  ['constraint', 'Zero runtime dependencies',
+    '`package.json` has no `dependencies` key, and must not gain one.'],
+  ['rule', 'Customer email is never logged',
+    'Customer email is PII.\n\n'
+    + '- never in logs\n- never in an error message\n- `redact()` before any sink'],
+  ['rule', 'Money is an integer number of cents',
+    'Money is an integer number of cents. Never a float.'],
+  ['standard', 'Every endpoint answers within 200ms at p95',
+    'p95 stays under **200ms**, measured at the edge rather than in the handler.\n\n'
+    + 'A handler that is fast while the queue in front of it is not has answered nothing.'],
+  ['requirement', 'The audit log is append-only',
+    'Records are appended and never rewritten.\n\n'
+    + 'A correction is a NEW record that supersedes an old one, so the history of a '
+    + 'mistake survives the fix.'],
 ];
-for (const [category, title, topic] of pinned) {
-  cli(['add', category, title, '--body', body(topic, 3), '--yes']);
+for (const [category, title, itemBody] of pinned) {
+  cli(['add', category, title, '--body', itemBody, '--yes']);
 }
-console.log(`demo-corpus: ${pinned.length} pinned candidates`);
+console.log(`demo-corpus: ${pinned.length} pinned candidates, with real bodies`);
 
 // A scoped set, so Scope coverage has governed AND ungoverned paths to colour.
-const scoped: [string, string, string][] = [
-  ['constraint', 'Migrations run forward only', 'src/db/**'],
-  ['rule', 'Handlers validate at the boundary', 'src/api/**'],
-  ['standard', 'Components carry no business logic', 'src/ui/**'],
+const scoped: [string, string, string, string][] = [
+  ['constraint', 'Migrations run forward only', 'src/db/**',
+    'No `down` migrations. A mistake is corrected by a new forward migration.'],
+  ['rule', 'Handlers validate at the boundary', 'src/api/**',
+    'Every handler validates its input before anything else runs.'],
+  ['standard', 'Components carry no business logic', 'src/ui/**',
+    'A component renders and dispatches. Decisions live behind the boundary.'],
 ];
-for (const [category, title, scope] of scoped) {
-  cli(['add', category, title, '--body', body(scope, 2), '--scope', scope, '--yes']);
+for (const [category, title, scope, itemBody] of scoped) {
+  cli(['add', category, title, '--body', itemBody, '--scope', scope, '--yes']);
 }
 
 // Rationale tiers — these are never injected, and the Relations and Decay
@@ -577,20 +614,119 @@ console.log(`demo-corpus: ${lines.length - before} records written by the real c
 
 // ── Only the clock is rewritten ────────────────────────────────────────────
 const NOW = Date.now();
+const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
+const WEEK = 7 * DAY;
+/** The window the item pane's sparkline plots (`pane.hist`). */
+const SPARK_WEEKS = 12;
+/** The newest records, held inside the pulse's twenty-minute window. */
+const PULSE_RECORDS = 180;
+
+/**
+ * The session index this script assigned, or `null` for a record that belongs
+ * to no session. `demo-session-a3f9c1-7` → `7`.
+ */
+const sessionIndex = (rec: Record<string, unknown>): number | null => {
+  const id = rec['sessionId'];
+  if (typeof id !== 'string') return null;
+  const m = /-(\d+)$/.exec(id);
+  return m === null ? null : Number(m[1]);
+};
+
 const parsed = lines.map((l) => JSON.parse(l) as Record<string, unknown>);
 // Newest first for spreading, then written back oldest first as the log is.
 parsed.sort((a, b) => String(b['at']).localeCompare(String(a['at'])));
-parsed.forEach((rec, i) => {
-  // 6.3s apart walks the whole twenty-minute window and lands several records
-  // in some ten-second buckets and none in others — the varied column heights
-  // the mockup shows. Beyond 180 records the history stretches back over days,
-  // which is what Decay and Status summarise.
-  const msAgo = i < 180 ? i * 6_300 : (i - 180) * 47 * 60_000 + 20 * 60_000;
-  rec['at'] = new Date(NOW - msAgo).toISOString();
+
+// The highest session index present, so the newest session stays newest.
+let newestSession = 0;
+for (const rec of parsed) {
+  const s = sessionIndex(rec);
+  if (s !== null && s > newestSession) newestSession = s;
+}
+
+// ── Two populations, split by whether the record belongs to a NUMBERED session
+//
+// It used to be one linear walk: `i * 6.3s` for the first 180 records and
+// `(i - 180) * 47 minutes` after that, reaching back about six days. That was
+// enough for the pulse and for Status, and it silently starved two views that
+// ask a longer question: the item pane's twelve-week delivery sparkline
+// (`pane.hist`) had eleven empty buckets and one full one, and decay's NINETY
+// -day heatstrip had six days of cells in a ninety-day field. Both drew
+// correctly. Both looked broken.
+//
+// **A linear walk cannot fix it, however far back it reaches.** The injection
+// records are CONTIGUOUS in the log — this script writes twenty-four sessions
+// in a loop — so any spread that preserves log order puts every delivery the
+// corpus has ever made inside one or two adjacent weeks. The stripe has to be
+// by SESSION, which is also the truer model: a project accumulates sessions
+// over months, not all in one afternoon.
+//
+// So: the twenty-four `session-start` records, one per numbered session and
+// each carrying an `injected[]`, are spread evenly across the sparkline's own
+// window — session 0 eleven weeks back, the newest just behind the pulse. Two
+// per bucket, so every bucket has something. Everything else — the `access`
+// and `mutation` records a used corpus accumulates, and the PreToolUse and
+// PostToolUse records that share the bare unnumbered session id — keeps the
+// old walk, so the pulse window is as full as it ever was.
+//
+// The split is on the NUMBERED id specifically. `demo-session-a3f9c1-7` is one
+// session in the loop; the bare `demo-session-a3f9c1` is the tool-event id and
+// belongs with the recent population, not striped across three months.
+const striped = parsed.filter((rec) => sessionIndex(rec) !== null);
+const recent = parsed.filter((rec) => sessionIndex(rec) === null);
+
+// **THE NEWEST NUMBERED SESSION MUST REMAIN THE NEWEST RECORD IN THE LOG**, and
+// getting this wrong is how the first draft of this stripe broke the fixture.
+//
+// The injection preview does not replay a recording — it RE-COMPUTES what the
+// most recent session would be given. "Most recent" is decided by the log. The
+// block further down clears the newest NUMBERED session's seen file so it has a
+// full delivery to show; every other session keeps its seen file and therefore
+// has almost nothing left. So if any other session ends up newer, the preview
+// computes against a session whose seen file still holds everything and draws
+// ONE item instead of six — measured, exactly that, on the first attempt.
+//
+// The bare unnumbered `demo-session-a3f9c1` is the tool-event id and sits in
+// the pulse window, minutes old. So the stripe puts session `newestSession` at
+// `NOW` itself and the pulse walk starts thirty seconds behind it.
+striped.forEach((rec) => {
+  const s = sessionIndex(rec) ?? 0;
+  // 0 for the newest session, growing going back.
+  const back = newestSession === 0 ? 0 : (newestSession - s) / newestSession;
+  const weeksAgo = back * (SPARK_WEEKS - 1);
+  // Jitter inside the week, so two sessions landing in one bucket do not share
+  // a timestamp — the audit stream orders by `at` and a column of identical
+  // stamps is not a history. Keyed on the DISTANCE from the newest session so
+  // that the newest gets exactly zero and stays the newest record.
+  const jitter = ((newestSession - s) % 7) * 9 * 60 * MINUTE;
+  rec['at'] = new Date(NOW - (weeksAgo * WEEK + jitter)).toISOString();
+});
+
+recent.forEach((rec, i) => {
+  // The first 180, 6.3s apart, walk the whole twenty-minute window and land
+  // several records in some ten-second buckets and none in others — the varied
+  // column heights the mockup's pulse shows. Offset thirty seconds so the
+  // newest striped session-start above stays the newest record in the log.
+  if (i < PULSE_RECORDS) {
+    rec['at'] = new Date(NOW - (30_000 + i * 6_300)).toISOString();
+    return;
+  }
+
+  // ── Beyond the pulse window, the old linear walk ─────────────────────────
+  //
+  // Unchanged: 47 minutes a record, which is what Decay and Status summarise
+  // for the `access` and `mutation` traffic a used corpus accumulates. The
+  // long history now comes from the striped population above, so this walk no
+  // longer has to carry a job it was never shaped for.
+  rec['at'] = new Date(NOW - (30_000 + (i - PULSE_RECORDS) * 47 * MINUTE + 20 * MINUTE)).toISOString();
 });
 parsed.sort((a, b) => String(a['at']).localeCompare(String(b['at'])));
 writeFileSync(auditLog, `${parsed.map((r) => JSON.stringify(r)).join('\n')}\n`);
-console.log(`demo-corpus: ${parsed.length} records re-clocked across the pulse window and ~2 weeks`);
+const spanDays = Math.round((Date.parse(String(parsed.at(-1)?.['at']))
+  - Date.parse(String(parsed[0]?.['at']))) / DAY);
+console.log(`demo-corpus: ${parsed.length} records re-clocked across the pulse window `
+  + `and ${spanDays} days — sessions striped so the twelve-week sparkline and the `
+  + 'ninety-day heatstrip both have something to plot');
 
 const missing = ['mutation', 'injection', 'hook', 'focus'].filter((k) => (produced[k] ?? 0) === 0);
 if (missing.length > 0) {
