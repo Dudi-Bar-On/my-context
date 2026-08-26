@@ -740,7 +740,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     const byLayer: Partial<Record<Layer, Item[]>> = {};
     if (roots.global) byLayer.global = loadLayer(roots.global, 'global', errors, ws.config);
     byLayer.project = loadLayer(roots.project, 'project', errors, ws.config);
-    const items: Item[] = [...(byLayer.global ?? []), ...byLayer.project];
+    const items: Item[] = [...(byLayer.global ?? []), ...(byLayer.project ?? [])];
 
     const compacting = options.source === 'compact';
     const sessionId = manual ? undefined : options.sessionId;
@@ -779,7 +779,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     let revisionNote = '';
     try {
       revisionNote = agentRevisionNotice(
-        pendingRevisions({ root: ws.projectRoot, store: null, items, config: ws.config }),
+        pendingRevisions({ root: ws.projectRoot ?? stateRoot, store: null, items, config: ws.config }),
       );
     } catch { /* the note is optional; the injection is not */ }
     const focusError = focusErrorNote(focusState.error);

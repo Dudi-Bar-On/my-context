@@ -90,7 +90,7 @@ delete-and-reinsert of the whole corpus inside one write transaction
 `src/core/rebuild.ts` · `store.transaction(() => {` · ~452) — on every session start and *before*
 the injection was built, then read back what it had just written with `store.all()` to feed
 `select`; the selection now reads the parsed corpus directly
-(`src/core/inject.ts` · `const items: Item[] = [...(byLayer.global ?? []), ...byLayer.project];` · ~272).
+(`src/core/inject.ts` · `const items: Item[] = [...(byLayer.global ?? []), ...(byLayer.project ?? [])];` · ~272).
 So the highest-traffic injection path was also the process most likely to be *holding* the write
 lock that kills a concurrent hook. And `rebuild` discarded the very items it loaded: `loadLayer`
 parses every Markdown file into `Item[]` (`src/core/rebuild.ts` · `export function loadLayer(` · ~103),
@@ -290,7 +290,7 @@ identical 30 s hold returns in 0.2 ms.
   ledger and, on SessionStart, the index itself. Option B was the enabler, not a separate remedy,
   and it landed: the ledger write is gone from both hooks
   (`src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({` · ~303,
-  `src/core/inject.ts` · `appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({` · ~806),
+  `src/core/inject.ts` · `appendSeen(stateRoot, seenKey, selection.full.map((e) => ({` · ~806),
   and the index write moved behind the render as a best-effort refresh
   (`src/core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~578).
 - **Verdict: adopt — this is the core of the answer — with B required to make it possible and

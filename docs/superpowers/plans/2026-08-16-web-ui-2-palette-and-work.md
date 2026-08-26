@@ -248,7 +248,7 @@ because every one of them is a fact with an expiry date that a later task will r
 
 1. **`decorate` has not been a store lookup since 2026-08-16** — `c4fbd51` gave it `itemNow`, which
    reads `ctx.store.get(id)` when there is a store and `ctx.items?.find(…)` when there is not. That
-   is the SessionStart injection path: `core/inject.ts` · `        pendingRevisions({ root: ws.projectRoot, store: null, items, config: ws.config }),` · ~509
+   is the SessionStart injection path: `core/inject.ts` · `        pendingRevisions({ root: ws.projectRoot ?? stateRoot, store: null, items, config: ws.config }),` · ~509
    passes `store: null` deliberately, so the note about the queue costs no database. The
    precondition row above was ticked "✅ unchanged" two days after that landed, and Step 3's
    replacement body — `decoratePending(record, ctx.store.get(record.itemId) ?? null)` — does not

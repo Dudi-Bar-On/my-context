@@ -282,3 +282,55 @@ test('a session that sweeps no dedupe state says nothing about pruning', () => {
   assert.equal(/pruned/.test(run.stderr), false, `unexpected stderr: ${run.stderr}`);
   removeTree(cwd);
 });
+
+/**
+ * **The global layer was unreachable in exactly the situation it exists for.**
+ *
+ * `buildInjection` opened with `if (!ws.projectRoot) return ''` from 2026-08-13
+ * until 2026-08-26. `rebuildRoots` a few lines below it has always known how to
+ * load `~/.my-context`, and nothing ever reached it without a PROJECT corpus
+ * beside it — so a person whose knowledge lives only in the global layer got
+ * nothing, everywhere, silently. Found while fixing the nine-day cwd defect;
+ * same branch, one step further along.
+ *
+ * **`USERPROFILE`/`HOME` are overridden for the child, never for this process.**
+ * `GLOBAL_DIR` is computed from `homedir()` at import time, so the only honest
+ * way to exercise it is a child with a different home — and
+ * `test/helpers/real-home-guard.ts` exists because this project has already had
+ * to stop code touching a real one.
+ */
+test('a global corpus injects even when there is no project workspace at all', () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'myctx-fake-home-'));
+  const nowhere = mkdtempSync(path.join(tmpdir(), 'myctx-no-project-'));
+  try {
+    const dir = path.join(home, '.my-context', 'items', 'constraint');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(home, '.my-context', 'config.json'),
+      `${JSON.stringify({ profile: 'standard', categories: {}, budgets: {} }, null, 2)}\n`);
+    writeFileSync(path.join(dir, 'CONST-global-only.md'),
+      '---\nid: CONST-global-only\ntype: constraint\ntitle: Global only\nstatus: active\n'
+      + 'severity: hard\nalways: true\n---\n\n# Global only\n\nThis lives in the global layer.\n');
+
+    const hook = fileURLToPath(new URL('../../src/hooks/session-start.ts', import.meta.url));
+    const run = spawnSync(
+      process.execPath,
+      ['--disable-warning=ExperimentalWarning', hook],
+      {
+        input: JSON.stringify({ session_id: 'g1', source: 'startup', cwd: nowhere }),
+        encoding: 'utf8',
+        env: { ...process.env, USERPROFILE: home, HOME: home },
+      },
+    );
+
+    assert.equal(run.status, 0, 'INV-hooks-fail-open');
+    assert.match(run.stdout, /CONST-global-only/,
+      'a global corpus with no project beside it injected nothing. That is the situation the '
+      + 'global layer exists for, and it was gated behind a project root for thirteen days.');
+    assert.doesNotMatch(run.stderr, /no corpus found/,
+      'the no-workspace disclosure must not fire when a global corpus WAS found — crying wolf '
+      + 'on a working setup is how a real warning stops being read');
+  } finally {
+    removeTree(nowhere);
+    removeTree(home);
+  }
+});

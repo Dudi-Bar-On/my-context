@@ -24,6 +24,26 @@ export function findProjectRoot(cwd: string): string | null {
   }
 }
 
+/**
+ * **A global corpus, not merely the global DIRECTORY.**
+ *
+ * `~/.my-context` is created by surfaces that have nothing to do with the
+ * corpus — the web UI writes `ui-sessions.json` there — so `existsSync` on the
+ * directory answers "has anything ever used this path", which is a different
+ * question and, on a machine that has run `mycontext ui`, always yes. Measured
+ * on 2026-08-26: the owner's home held `.my-context/ui-sessions.json` and no
+ * `items/` at all, and a check on the directory alone reported a corpus that
+ * does not exist.
+ *
+ * `items/` is the right marker because it is what `loadLayer` reads. A global
+ * root with no `items/` yields no items, so treating it as a corpus buys
+ * nothing and costs the one thing that matters here: it suppresses the
+ * "no corpus found" warning on a machine that genuinely has none.
+ */
+export function hasGlobalCorpus(globalRoot: string = GLOBAL_DIR): boolean {
+  return existsSync(path.join(globalRoot, 'items'));
+}
+
 export function resolveWorkspace(cwd: string): Workspace {
   const projectRoot = findProjectRoot(cwd);
   const configPath = projectRoot ? path.join(projectRoot, 'config.json') : null;

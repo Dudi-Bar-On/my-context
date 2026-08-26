@@ -207,11 +207,11 @@ says "establish by executing" instead of asserting it.
 | `InjectionEvent` is a **three**-member union since 2026-08-21 — `'subagent'` joined it in Task 9; it was two when this row was written | `core/inject.ts` · `export type InjectionEvent = 'session-start'` · ~57 |
 | `source` is branched on **twice** — `compacting` here, and `clearing` immediately below it, whose own comment names itself as the other branch | `core/inject.ts` · `const compacting = options.source === 'compact';` · ~290 |
 | The session id is dropped structurally on the manual path | `core/inject.ts` · `const sessionId = manual ? undefined : options.sessionId;` · ~337 |
-| The seen file is read **after** that, and is what a clear must precede. Since Task 9 it is read under `seenKey`, which is `sessionId` on every event but `'subagent'` | `core/inject.ts` · `const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;` · ~396 |
+| The seen file is read **after** that, and is what a clear must precede. Since Task 9 it is read under `seenKey`, which is `sessionId` on every event but `'subagent'` | `core/inject.ts` · `const seenState = seenKey ? readSeen(stateRoot, seenKey) : null;` · ~396 |
 | The injection path opens the store **writable** for a best-effort refresh — on every event but `'subagent'`, which since Task 9 skips the whole block (design decision 3) | `core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~578 |
 | …disclosed rather than swallowed when it is dropped | `core/inject.ts` · `// 3. BEST-EFFORT INDEX REFRESH` · ~548 |
 | `source` already reaches the audit note | `core/inject.ts` · `if (options.source !== undefined) noteParts.push(` · ~699 |
-| Seen entries are appended keyed on `seenKey` — the bare session id on every event but `'subagent'`, which uses `dedupeKey` and, since Task 9, never falls back to the parent's id | `core/inject.ts` · `appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({` · ~806 |
+| Seen entries are appended keyed on `seenKey` — the bare session id on every event but `'subagent'`, which uses `dedupeKey` and, since Task 9, never falls back to the parent's id | `core/inject.ts` · `appendSeen(stateRoot, seenKey, selection.full.map((e) => ({` · ~806 |
 | The MCP server's session id is a different id on a resumed session — measured, in this repository | `core/inject.ts` · `on a RESUMED session that value is a freshly-generated id that does` · ~307 |
 | `SelectEvent` is a closed six-member union (`access` joined 2026-08-20, `progress` 2026-08-21) | `core/select.ts` · `export type SelectEvent = 'session-start'` · ~17 |
 | `SelectContext` is where every input to selection arrives | `core/select.ts` · `export interface SelectContext {` · ~19 |
@@ -1174,7 +1174,7 @@ is the single decision point. Add beside it:
 const clearing = options.source === 'clear';
 ```
 
-and run the clear **before** `core/inject.ts` · `const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;` · ~396
+and run the clear **before** `core/inject.ts` · `const seenState = seenKey ? readSeen(stateRoot, seenKey) : null;` · ~396
 (that read was `sessionId`-keyed when this task was written; Task 9 moved it to `seenKey`, which is
 `sessionId` on every event but `'subagent'` — a clear is a `SessionStart`, so nothing here changes).
 Running it after would read the state it is about to delete, and the window would come up empty while
@@ -1286,8 +1286,8 @@ Core-only. No hook yet, so the suite stays green with nothing calling the new pa
    written even when `injected` and `spilled` are both empty. Say that in the comment beside the
    guard, naming the invariant it serves — otherwise the next reader tightens it back.
 3. **The seen key is `dedupeKey`, not `sessionId`.** One `seenKey` local, used at
-   `core/inject.ts` · `const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;` · ~396
-   and at `core/inject.ts` · `appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({` · ~806.
+   `core/inject.ts` · `const seenState = seenKey ? readSeen(stateRoot, seenKey) : null;` · ~396
+   and at `core/inject.ts` · `appendSeen(stateRoot, seenKey, selection.full.map((e) => ({` · ~806.
    **Leave the snapshot read alone** — `readSnapshotMeta` stays parent-keyed, because `PreCompact` is a
    parent-only event by measurement and a composite key there would write dedupe records no restore can
    ever find.

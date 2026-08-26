@@ -12,7 +12,7 @@ import { select } from './select.ts';
 import { appendSeen, readSeen, restoredFor } from './seen-file.ts';
 import { HOOK_OPEN_PROFILE, isBusyError, Store } from './store.ts';
 import { clearWindowState } from './window-state.ts';
-import { resolveWorkspace } from './workspace.ts';
+import { hasGlobalCorpus, resolveWorkspace } from './workspace.ts';
 import type { Item, Layer } from './types.ts';
 
 /**
@@ -199,7 +199,27 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
   const subagent = options.event === 'subagent';
   try {
     const ws = resolveWorkspace(cwd);
-    if (!ws.projectRoot) return '';
+    // **THE GLOBAL LAYER IS NO LONGER GATED BEHIND A PROJECT ROOT.**
+    //
+    // This read `if (!ws.projectRoot) return ''` from 2026-08-13 until
+    // 2026-08-26, which made the global corpus unreachable in exactly the
+    // situation it exists for: a directory that is not a my_context project.
+    // `rebuildRoots` a few lines below has always known how to load
+    // `~/.my-context`, and nothing ever reached it without a project beside it.
+    //
+    // `stateRoot` is where this injection's own bookkeeping lives — the seen
+    // file, the audit record, focus, the compaction snapshot, the carry. It is
+    // the project root when there is one and the GLOBAL root otherwise, because
+    // a global corpus is a real directory that can hold its own `state/` and
+    // `.audit/` exactly as a project one does.
+    //
+    // When there is NEITHER, this still returns '' and the caller still
+    // discloses on stderr (`hooks/io.ts` · `noWorkspaceLine`). Silence with a
+    // signal beside it is the correct answer for a directory that is simply not
+    // a my_context workspace; silence alone was the nine-day defect.
+    const globalRoot = hasGlobalCorpus(ws.globalRoot) ? ws.globalRoot : null;
+    const stateRoot = ws.projectRoot ?? globalRoot;
+    if (stateRoot === null) return '';
 
     // 1. THE CORPUS, FROM MARKDOWN, PARSED ONCE. No database on the
     // injection-critical path: `select` is pure over Item[] (select.ts,
@@ -220,8 +240,13 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     const roots = rebuildRoots(ws);
     const byLayer: Partial<Record<Layer, Item[]>> = {};
     if (roots.global) byLayer.global = loadLayer(roots.global, 'global', errors, ws.config);
-    byLayer.project = loadLayer(ws.projectRoot, 'project', errors, ws.config);
-    const items: Item[] = [...(byLayer.global ?? []), ...byLayer.project];
+    // Only when there IS a project. A global-only workspace has no project
+    // layer to load, and asking `loadLayer` for one would read a directory
+    // that does not exist.
+    if (ws.projectRoot) {
+      byLayer.project = loadLayer(ws.projectRoot, 'project', errors, ws.config);
+    }
+    const items: Item[] = [...(byLayer.global ?? []), ...(byLayer.project ?? [])];
 
     // The cross-layer duplicate-id check runs HERE, on the critical path,
     // over the layers just parsed — it needs no database (review C1,
@@ -351,7 +376,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // A failed delete over-injects, which is the safe direction; the sentence
     // is what keeps it from being a silent one.
     const clearNote = clearing && !subagent && sessionId !== undefined
-      ? clearWindowState(ws.projectRoot, sessionId)
+      ? clearWindowState(stateRoot, sessionId)
       : null;
 
     // 2. RESTORE DEDUPE FROM THE SEEN FILE (was: the ledger's rows). The
@@ -364,7 +389,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // including why equality survives a backwards clock step where `>` does
     // not). An UNREADABLE seen file means restore everything and disclose:
     // over-restore, never under (re-injection is the accepted direction).
-    const seenState = seenKey ? readSeen(ws.projectRoot, seenKey) : null;
+    const seenState = seenKey ? readSeen(stateRoot, seenKey) : null;
     let restore: string[] = [];
     let snapshotCapturedAt: string | null = null;
     // The snapshot stays PARENT-keyed — `sessionId`, never `seenKey`.
@@ -372,7 +397,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // here would look for a snapshot no PreCompact ever wrote, and (worse) a
     // write under one would leave dedupe records no restore can find.
     if (compacting && sessionId) {
-      const snapshot = readSnapshotMeta(ws.projectRoot, sessionId);
+      const snapshot = readSnapshotMeta(stateRoot, sessionId);
       if (snapshot) {
         snapshotCapturedAt = snapshot.capturedAt;
         const already = seenState !== null && seenState.error === null
@@ -404,7 +429,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // it costs is disclosed rather than swallowed — `focusErrorNote` goes into
     // the injected block below, because "your focus is not in effect" is
     // indistinguishable from "you have no focus" unless something says so.
-    const focusState = readFocus(ws.projectRoot);
+    const focusState = readFocus(stateRoot);
 
     // The cross-session carry, on the two events that begin a context window
     // and on nothing else.
@@ -434,8 +459,8 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // `mycontext session carry` choice or its `--none`.
     const carried = !manual && (subagent || !compacting)
       ? subagent
-        ? resolveSubagentCarry(ws.projectRoot, sessionId ?? null)
-        : resolveCarry(ws.projectRoot, sessionId ?? null)
+        ? resolveSubagentCarry(stateRoot, sessionId ?? null)
+        : resolveCarry(stateRoot, sessionId ?? null)
       : null;
 
     const selection = select(
@@ -485,7 +510,10 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     let revisionNote = '';
     try {
       revisionNote = agentRevisionNotice(
-        pendingRevisions({ root: ws.projectRoot, store: null, items, config: ws.config }),
+        // Revisions are a PROJECT mechanism: the log lives beside the project
+        // corpus. A global-only workspace has none, and asking for one would
+        // read a path that does not exist.
+        pendingRevisions({ root: ws.projectRoot ?? stateRoot, store: null, items, config: ws.config }),
       );
     } catch { /* the note is optional; the injection is not */ }
 
@@ -738,7 +766,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // So the completion is recorded even with `injected` and `spilled` both
     // empty. Do not tighten this back to "something was delivered".
     if (subagent || injected.length > 0 || selection.spilled.length > 0) {
-      recordAudit(ws.projectRoot, {
+      recordAudit(stateRoot, {
         kind: 'injection',
         // `subagent` is tested before `compacting` for the same reason it is
         // in the `select` call above: the op must name the event that fired.
@@ -782,7 +810,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // `'subagent'` — see its definition above for why that event never falls
     // back to the parent's.
     if (seenKey && selection.full.length > 0) {
-      appendSeen(ws.projectRoot, seenKey, selection.full.map((e) => ({
+      appendSeen(stateRoot, seenKey, selection.full.map((e) => ({
         id: e.item.id,
         tier: e.tier,
         at: e.tier === 'restored' && snapshotCapturedAt !== null

@@ -2,7 +2,7 @@ import { buildInjection } from '../core/inject.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { SEEN_FILE_SUFFIX } from '../core/seen-file.ts';
-import { findProjectRoot } from '../core/workspace.ts';
+import { findProjectRoot, hasGlobalCorpus } from '../core/workspace.ts';
 import { hookParseErrorLine, noWorkspaceLine, parseHookInput, readStdin } from './io.ts';
 
 export interface SessionStartOptions {
@@ -118,7 +118,15 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     // code is still 0, and nothing is blocked — the invariant is about not
     // breaking the session, not about saying nothing while the product's one
     // promise quietly stops being kept.
-    if (findProjectRoot(cwd) === null) process.stderr.write(noWorkspaceLine(cwd));
+    //
+    // **NEITHER root, not merely no project root.** A global corpus with no
+    // project beside it is a working setup that injects, and warning on it
+    // would be crying wolf — which is how a real warning stops being read. The
+    // first draft of this line checked only `findProjectRoot`, and the global
+    // test beside it caught that within the hour.
+    if (findProjectRoot(cwd) === null && !hasGlobalCorpus()) {
+      process.stderr.write(noWorkspaceLine(cwd));
+    }
     const text = buildSessionStartOutput(cwd, {
       source: input.source,
       sessionId: input.session_id,
