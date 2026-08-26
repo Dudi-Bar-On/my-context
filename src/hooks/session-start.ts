@@ -3,7 +3,7 @@ import { pruneSnapshots } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { SEEN_FILE_SUFFIX } from '../core/seen-file.ts';
 import { findProjectRoot } from '../core/workspace.ts';
-import { hookParseErrorLine, parseHookInput, readStdin } from './io.ts';
+import { hookParseErrorLine, noWorkspaceLine, parseHookInput, readStdin } from './io.ts';
 
 export interface SessionStartOptions {
   /** startup | clear | resume | compact | fork */
@@ -106,6 +106,19 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     const { input, parseError } = parseHookInput(readStdin());
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
     const cwd = input.cwd ?? process.cwd();
+    // **A workspace that does not resolve is DISCLOSED, never silent**, and
+    // this is the whole of the 2026-08-26 fix on this side.
+    // `buildSessionStartOutput` returns '' both when there is NO CORPUS and
+    // when there is one with nothing to say, and from outside those two were
+    // indistinguishable for the entire life of this hook. See
+    // `noWorkspaceLine` for the nine days that cost.
+    //
+    // **It does not weaken `INV-hooks-fail-open`, which names this exact case**
+    // ("This holds for a missing workspace"). Stdout is still empty, the exit
+    // code is still 0, and nothing is blocked — the invariant is about not
+    // breaking the session, not about saying nothing while the product's one
+    // promise quietly stops being kept.
+    if (findProjectRoot(cwd) === null) process.stderr.write(noWorkspaceLine(cwd));
     const text = buildSessionStartOutput(cwd, {
       source: input.source,
       sessionId: input.session_id,

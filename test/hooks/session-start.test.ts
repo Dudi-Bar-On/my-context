@@ -31,9 +31,50 @@ Body text.
 `);
 }
 
-test('with no workspace the hook outputs nothing', () => {
+/**
+ * **This test asserted the defect, and that is worth saying plainly.**
+ *
+ * "With no workspace the hook outputs nothing" was true, was intended, and was
+ * the shape of a failure that cost nine days on 2026-08-26: a session ran from
+ * 08-17 to 08-26 with its working directory outside the corpus, and the corpus
+ * reached the model exactly never. Its own audit records stop on 08-19 — 44 of
+ * them across three days, then nothing, on the very repository the corpus
+ * governs. Same session id, same plugin, same code; only the launch directory
+ * changed, and no surface anywhere reported it.
+ *
+ * The assertion below is unchanged and still right: STDOUT stays empty, because
+ * a plugin that announces itself inside every unrelated project a person opens
+ * is its own defect. What was missing is the other channel, and the test beside
+ * this one now pins it.
+ */
+test('with no workspace the hook writes nothing to STDOUT — the model is not told', () => {
   const cwd = sandbox();
   assert.equal(buildSessionStartOutput(cwd), '');
+  removeTree(cwd);
+});
+
+test('with no workspace the hook says so on STDERR, and still exits 0', () => {
+  const cwd = sandbox();
+  const hook = fileURLToPath(new URL('../../src/hooks/session-start.ts', import.meta.url));
+  const run = spawnSync(
+    process.execPath,
+    ['--disable-warning=ExperimentalWarning', hook],
+    { input: JSON.stringify({ session_id: 's1', source: 'startup', cwd }), encoding: 'utf8' },
+  );
+
+  assert.equal(run.status, 0,
+    'INV-hooks-fail-open: a missing workspace may never fail a session start');
+  assert.equal(run.stdout, '',
+    'stdout stays empty — the plugin does not announce itself inside unrelated projects');
+  assert.match(run.stderr, /no corpus found from/,
+    'a workspace that does not resolve must be DISCLOSED. Silence here is indistinguishable '
+    + 'from a corpus with nothing to say, and that ambiguity ran for nine days without one '
+    + 'surface reporting it — there is no audit log to write to when there is no workspace, so '
+    + 'stderr is the only channel left.');
+  assert.match(run.stderr, /start Claude Code in the project directory/,
+    'the line must name the fix, not merely the symptom — the reader who sees it is the only '
+    + 'one who can act on it');
+
   removeTree(cwd);
 });
 

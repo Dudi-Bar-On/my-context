@@ -349,6 +349,45 @@ export function parseHookInput(raw: string): ParsedHookInput {
  * "session_id never arrived" on stderr mid-task needs to know their tool call
  * was not blocked (`INV-hooks-fail-open`).
  */
+/**
+ * **The line that would have caught the nine-day silence.**
+ *
+ * `findProjectRoot` walks UP from the session's `cwd` looking for
+ * `.my_context`. From a directory with no workspace above it — a home
+ * directory, a scratch folder, anywhere the terminal happened to be — it
+ * reaches the filesystem root and returns null, and `buildInjection` then
+ * returns `''`. Exit 0, empty output, and NO AUDIT RECORD, because with no
+ * workspace there is nowhere to write one.
+ *
+ * **Measured on 2026-08-26 and it is the reason this function exists.** One
+ * session ran from 2026-08-17 to 2026-08-26 and its own audit records stop on
+ * 08-19: 44 of them across three days — `injection/jit`, `hook/deny`,
+ * `injection/compact-restore` — and then nothing, for six working days on the
+ * very repository the corpus governs. Same session id, same plugin, same code.
+ * What changed was the working directory it was relaunched in, and no surface
+ * anywhere reported that the corpus had stopped arriving. The failure was
+ * indistinguishable from success at every observable point.
+ *
+ * That is `INV-nothing-is-dropped-silently` broken at the product's most
+ * important path: everything else here names its absences — load errors are
+ * surfaced, an unparseable payload discloses on both channels, a measured zero
+ * is drawn and named — and "there is no corpus here" returned an empty string.
+ *
+ * **Stderr, because it is the only channel available.** There is no workspace,
+ * so there is no audit log; and the model cannot be told in the injected block
+ * without the plugin announcing itself inside every unrelated project a person
+ * ever opens. Claude Code surfaces stderr to the USER, who is the one who can
+ * fix it — and the fix is one thing, so the line says it.
+ */
+export function noWorkspaceLine(cwd: string): string {
+  return (
+    `my_context: no corpus found from ${cwd} — nothing was injected, and nothing ` +
+    'else here will inject either until this is fixed. `.my_context` is looked for in this ' +
+    'directory and every directory above it. If you expected a corpus, start Claude Code in ' +
+    'the project directory instead.\n'
+  );
+}
+
 export function hookParseErrorLine(parseError: string | null): string {
   if (parseError === null) return '';
   return (

@@ -1,6 +1,6 @@
 # Executing a composed command from the web UI — design
 
-**Status:** DRAFT, awaiting the owner's approval. No code until then.
+**Status:** APPROVED 2026-08-26. §4's three questions are answered in §6.
 **Owner ruling that asked for it:** 2026-08-26 — *"from the beginning i wanted to
 execute and not to copy but i compromised because the security risks where not
 mitigated yet … i definitly want to go back to my initial request."*
@@ -55,22 +55,24 @@ This is the same rule the markdown route took on 2026-08-26: *the boundary is
 enforced by construction rather than by validating a string.* A request naming a
 command the catalogue does not have is a 400, not a sanitisation problem.
 
-### 3.2 Only commands below the approval boundary run unattended
+### 3.2 The approval boundary decides which CONFIRM a command gets
 
 `test/helpers/approval-boundary.ts` already **derives** — from the real argument
 parser — the set of commands that *"change what governs this project with no
-human in the loop"*. That set is exactly the set this endpoint must not run on a
-bare click.
+human in the loop"*. Everything in the catalogue runs (§6.1); that set decides
+how much a person is shown before it does.
 
-- **Below the boundary** (reads, previews, `doctor`, `rebuild`, `decay`): run on
-  confirm.
-- **On or above it** (`add`, `promote-revision`, `refresh`, `inbox-promote`, …):
-  **refused by this endpoint entirely** in the first version. They keep the Copy
-  button.
+- **Below the boundary** (reads, previews, `doctor`, `rebuild`, `decay`): a plain
+  confirm naming the command and its resolved argv.
+- **On or above it** (`add`, `promote-revision`, `refresh`, `inbox-promote`,
+  `init --rewrite-watched`): a **field-by-field diff, before → after**, through
+  the same `fieldView` the Review queue already renders. A command whose effect
+  cannot be shown that way does not get a weaker confirm — it does not run.
 
-Deriving rather than listing is the point: a command added later joins the
-refused set automatically, the same way the READMEs and the skill file are kept
-honest today.
+Deriving rather than listing is the point, and it matters more under §6.1 than
+it would have under a refusal: a command added later automatically gets the
+STRONGER confirm. The failure mode of a stale derivation is "too much ceremony",
+which is the safe direction to fail in.
 
 ### 3.3 Intent is proved per action, not per session
 
@@ -96,18 +98,69 @@ cannot be recorded does not happen.**
 its own import graph, and `no-writes.test.ts` is narrowed to the read modules
 rather than deleted — so a future write sneaking into a read path still fails.
 
-## 4. What I need decided
+## 4. Answered
 
-1. **Is §3.2 the right first cut?** It means the Configure wizard and Review
-   queue — arguably the two you most want — keep Copy, because they cross the
-   approval boundary. The alternative is to allow them behind a stronger confirm
-   that names every field that changes.
-2. **Does the audit record satisfy you as the accountability story**, or do you
-   want a kill switch (`ui --no-execute`) and/or execute off by default?
-3. **Section 3.3 is the weakest link.** It reduces the browser-vs-person gap; it
-   does not close it. Accepting Execute means accepting that.
+See §6. §3.2's first cut was widened, §3.4's kill switch was declined, and
+§3.3's residual was accepted and must be stated in the product.
 
 ## 5. Not in this design
 
 Running arbitrary text typed by the user; anything that reaches outside the
 workspace; and any execution path that does not pass through the catalogue.
+
+---
+
+## 6. The owner's answers, 2026-08-26
+
+### 6.1 Everything in the catalogue runs — §3.2 is widened
+
+Boundary-crossing commands are NOT refused. `add`, `promote-revision`,
+`refresh`, `inbox-promote` and `init --rewrite-watched` execute like any other,
+**behind a stronger confirm**: it must NAME every field that changes and show
+**before → after**, the same diff the Review queue already renders through
+`fieldView`.
+
+So the approval boundary keeps its job, but the job changes. It no longer
+decides *what may run*; it decides **which confirm a command gets**:
+
+    below the boundary   a plain confirm naming the command
+    on or above it       a field-by-field diff, before -> after, per changed field
+
+Deriving the set from the real argument parser still matters, and matters more:
+a command added later automatically gets the STRONGER confirm rather than the
+weaker one. The failure mode of a stale list is now "too much ceremony", which
+is the safe direction.
+
+### 6.2 No kill switch — §3.4 stands alone
+
+Declined: `--no-execute` and execute-off-by-default. The audit record is the
+accountability story and the confirm is the gate. There is no flag that turns
+the endpoint off.
+
+**The combination is wider than either answer alone, and it is recorded here
+because neither question said so on its own:** every command in the catalogue is
+executable, on every `mycontext ui`, with no way to disable it short of not
+running the UI. That is the owner's decision, taken with the residual in §2
+in front of him twice.
+
+### 6.3 The residual is accepted, and the product says so
+
+The gate proves a request came from a browser on this machine. It never proves a
+person asked. That is not closed by anything in this design and it is not going
+to be.
+
+It is written where a reader MEETS it, not only where a reader could look it up:
+
+  - **in the confirm dialog**, in these words or better — *"This runs on your
+    machine, now. The UI can tell it came from your browser — not that you
+    asked. Only run what you recognise here."*
+  - **in §7 of both READMEs**, beside the existing trust boundary.
+
+This follows the project's own standard that an unstated limit is how a partial
+claim gets read as a complete one. A security boundary is the worst place to
+break it.
+
+**And it raises the stakes on §3.3 rather than lowering them.** With §6.1
+widening what can run, the single-use execution nonce bound to the exact id and
+args is no longer a nicety — it is the only thing standing between a silent
+local page and a corpus mutation. It is not optional and it is not deferred.

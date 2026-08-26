@@ -134,12 +134,39 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // an audit reader looks up) and names the subagent in its note instead.
     const dedupeKey = ledgerKey(input)!;
 
-    const ws = resolveWorkspace(cwd);
+    // **THE WORKSPACE IS THE FILE'S, NOT THE SESSION'S `cwd`.**
+    //
+    // This resolved from `cwd` from 2026-08-13, when this tier was written,
+    // until 2026-08-26, when the cost was finally measured: a session started
+    // in a home directory spent NINE DAYS editing a governed repository on
+    // another drive and received the corpus exactly never. `findProjectRoot`
+    // walks UP from what it is given; from a home directory it reaches the
+    // filesystem root and returns null, and the guard below returned ''.
+    //
+    // Nothing said so. Exit 0, empty output, and no audit record — because with
+    // no workspace there is nowhere to write one. The failure was
+    // indistinguishable from success at every observable point, which is how it
+    // survived nine days and was found by the owner asking a question rather
+    // than by any check in this repository.
+    //
+    // **`cwd` was never the right authority for this tier.** Its promise is
+    // "you are about to touch THIS FILE; here is what governs it", and what
+    // governs a file is the workspace the FILE lives in. `cwd` answers a
+    // different question — what governs the directory the terminal happened to
+    // be in — and the two coincide only by convention, which is exactly the
+    // kind of assumption this project has been bitten by before.
+    //
+    // Resolving from the file makes the whole class SELF-HEALING rather than
+    // merely visible: wherever the session was started, touching a governed
+    // file delivers that file's rules. It is also strictly narrower, not wider
+    // — a file in no workspace still injects nothing, which
+    // `pre-tool-use-jit.test.ts` pins so this cannot become a licence to guess.
+    const abs = path.resolve(cwd, filePath);
+    const ws = resolveWorkspace(path.dirname(abs));
     if (!ws.projectRoot) return '';
 
     // projectRoot is the `.my_context` directory; scope globs are repo-relative.
     const repoRoot = path.dirname(ws.projectRoot);
-    const abs = path.resolve(cwd, filePath);
     // On win32, `path.relative` returns an ABSOLUTE path (not a `..`-prefixed
     // one) when the two paths resolve to different drives/roots — e.g. repo
     // on C:, target on D: or a UNC share. Left unchecked, that absolute

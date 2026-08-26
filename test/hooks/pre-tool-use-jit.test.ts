@@ -618,3 +618,67 @@ test('an empty fallback selection stays silent — a disclosure with no content 
   );
   assert.equal(output, '');
 });
+
+/* -------------------------------------------------------------------------- *
+ * The workspace is the FILE'S, not the session's cwd.
+ *
+ * **This is the defect that cost a whole day of work on 2026-08-26, and it is
+ * the one failure this product cannot survive.** A session was started with
+ * `cwd` at the user's home directory and spent the day editing a governed
+ * repository on another drive. `findProjectRoot` walks UP from `cwd`; from a
+ * home directory it reaches the filesystem root and returns null, so BOTH
+ * injection tiers took the same branch — `if (!ws.projectRoot) return ''` —
+ * and the corpus reached the model exactly never.
+ *
+ * Nothing said so. Exit 0, empty stdout, no stderr, and no audit record,
+ * because with no workspace there is nowhere to write one. The failure was
+ * indistinguishable from success at every observable point, which is why it
+ * survived a full day and was found by the owner asking a question rather than
+ * by any check.
+ *
+ * **`cwd` was never the right authority for this tier.** The JIT tier's whole
+ * promise is "you are about to touch THIS FILE; here is what governs it". What
+ * governs a file is the workspace the FILE lives in. Resolving from `cwd`
+ * answers a different question — "what governs the directory the terminal
+ * happened to be in" — and the two coincide only by convention.
+ * -------------------------------------------------------------------------- */
+
+test('a governed file injects its own workspace\'s items even when cwd is outside it', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+
+  // A cwd with no `.my_context` above it, anywhere — the shape of a session
+  // started in a home directory. `tmpdir()` itself is used rather than a child
+  // of `cwd`, so nothing in the walk upward can find the sandbox.
+  const elsewhere = mkdtempSync(path.join(tmpdir(), 'myctx-no-workspace-'));
+
+  const out = runPreToolUse(
+    toolInput(elsewhere, 's-away', path.join(cwd, 'src/db/writer.ts')), elsewhere,
+  );
+  assert.match(context(out), /CONST-pool/,
+    'the file lives in a governed workspace and its rule did not arrive. The session cwd is '
+    + 'outside that workspace, which is the 2026-08-26 defect: the corpus reaches the model '
+    + 'never, and nothing anywhere says so.');
+
+  removeTree(elsewhere);
+  removeTree(cwd);
+});
+
+test('a file in no workspace at all still injects nothing — the fix is not a licence to guess', () => {
+  const cwd = sandbox();
+  addItem(cwd, 'CONST-pool', 'constraint', ['src/db/**'], 'Pool capped at 20.');
+  index(cwd);
+
+  // Both the cwd AND the file are outside any workspace. Resolving from the
+  // file must not fall back to something it found near the cwd, and must not
+  // walk anywhere it was not asked to: silence is the correct answer here and
+  // the previous test must not have bought itself noise everywhere else.
+  const elsewhere = mkdtempSync(path.join(tmpdir(), 'myctx-no-workspace-'));
+  const stray = path.join(elsewhere, 'src/db/writer.ts');
+
+  assert.equal(runPreToolUse(toolInput(elsewhere, 's-none', stray), elsewhere), '');
+
+  removeTree(elsewhere);
+  removeTree(cwd);
+});
