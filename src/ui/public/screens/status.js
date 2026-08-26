@@ -42,9 +42,23 @@
  * `reviewQueue.globalLayerDrafts` and the `health` tally all arrive in this
  * response and appear nowhere in `<section data-p="status">`. The plan's Step
  * 3 sketch draws three of them as extra `<table>`s and a `mycontext <version>`
- * line; the mockup draws none, and the mockup is the specification. Left
- * unread rather than promoted into columns the design of record does not
- * have — the same call `injected.js` made about its joined titles.
+ * line; the mockup draws none. Left unread rather than promoted into columns
+ * nothing asked for.
+ *
+ * **The precedent this used to cite has since been RESOLVED THE OTHER WAY, and
+ * that is the more useful fact.** This paragraph read "the same call
+ * `injected.js` made about its joined titles" — and on 2026-08-26 the owner
+ * ruled that field CUT rather than left unread
+ * (`src/ui/read-model.ts` · `export type InjectedLine = SeenLine;` · ~566). It
+ * was costing a `SELECT` plus a `JSON.parse` of every item's whole blob on
+ * every request to produce something with zero readers.
+ *
+ * So the open question above is sharper than "should this screen draw more":
+ * a field the server computes and nobody reads is work paid for nothing,
+ * whichever screen it lands on. The remedy there was to stop serving it. These
+ * seven are cheaper — `/api/status` computes them for its own summary anyway —
+ * which is why the same argument does not force the same answer here. But it is
+ * the argument, and it is now a decided one rather than a shared shrug.
  *
  * **Counts sit on glass, not on a plate, and that is deliberate.**
  * `test/ui/plate-usage.test.ts` names the eighteen graphical views the plate

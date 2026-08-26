@@ -373,6 +373,23 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'rect.missing.node', 'rect.more.node', 'rect.node', 'rect.node.superseded',
     'text.rel',
   ],
+  // **EMPTY, and deliberately written down as empty.** The walk found one
+  // divergence here and it produces no name: the mockup wraps two of the four
+  // description cells' label runs in `<span data-t="ln.c">` / `<span
+  // data-t="ln.s">` (`docs/design/web-ui-mockup.html` · `<td class="small"><span data-t="ln.c">which are normative</span> · <span class="m">CONST-zero-runtime-dependencies</span></td>` · ~2375)
+  // and `ctx.t()` returns text nodes, so `cell.append(...ctx.t(entry.key))`
+  // puts the words straight into the `td` with nothing around them.
+  //
+  // **ACCEPTED, on two counts.** There is no visual difference at all — the
+  // spans exist only to carry `data-t`, which is the mockup's OWN translation
+  // hook and not markup the app needs, since the app translates by calling the
+  // string table rather than by rewriting attributes. And bare `span` is a kind
+  // this screen draws anyway: `screenHead()` puts the verdict text in one
+  // (`src/ui/public/screens/parts.js` · `const vtext = el('span');` · ~94).
+  // This gate compares KINDS PER SCREEN, not placement, so a run that moved
+  // parents was never going to be namable here. Measured 2026-08-26: probing
+  // `['span']` came back stale, which is the ledger refusing the entry itself.
+  learn: [],
 
   // ── The six screens built in parallel on 2026-08-23 ─────────────────────
   //
@@ -400,6 +417,22 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'span.chip.ok', 'span.chip.warn', 'span.m', 'span.prop', 'span.v',
     'table', 'tbody', 'td', 'td.m.small', 'th', 'thead', 'tr',
   ],
+  // **EMPTY, and the divergence here runs the OTHER WAY: the app draws MORE.**
+  // `appendLines` and `appendRuns` put a `<br>` between every diff line
+  // (`src/ui/public/screens/work.js` · `if (index > 0) parent.append(el('br'));` · ~178 and ~186)
+  // and the mockup's three sample rows are one line each, so it never draws
+  // one. That is not decoration and not an oversight — a newline TEXT NODE
+  // collapses to a space in HTML, so without the `<br>` five changed lines run
+  // together into a single paragraph inside the two cells this whole screen
+  // exists to lay side by side. The file's header states it.
+  //
+  // **ACCEPTED, and unnamable here by construction.** This gate reports only
+  // what the mockup draws and the app does not; a kind the APP alone draws is
+  // invisible to it, which is exactly why `APP_ONLY_KINDS_ON_ASK` below is a
+  // prose note and not an entry. Measured 2026-08-26: probing `['br']` came
+  // back stale. Recorded so the next reader of this screen does not re-derive
+  // the finding and try to file it a fourth time.
+  work: [],
   // `div.hit` is DATA: the glob tester lights a row per matching file, and this
   // corpus answers the opening pattern with none. `span.chip.crit` is
   // INTERACTION: it appears the moment an argv value carries a shell
@@ -427,6 +460,25 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'b', 'button', 'code', 'div.bar', 'i', 'i.f', 'span', 'span.m.v',
     'span.prop', 'span.v', 'span.verdict', 'div.cmd',
   ],
+  // **EMPTY. The divergence is one CELL, and a cell is not a kind.**
+  // `bucketRow` draws `<td class="small">—</td>` in the Example column where
+  // the mockup puts a real id in `<td class="m">`, three rows, three em dashes
+  // (`src/ui/public/screens/port.js` · `tr.append(label, el('td', 'small', '—'));` · ~399).
+  //
+  // **ACCEPTED.** The endpoint's own disclosure says it: *"The bucket NAMES are
+  // served; the example ids beside them in the mockup are not, and cannot be."*
+  // There is no POST anywhere in this UI and no artefact path, so no build state
+  // has an id to put there — the mockup's three are illustrations of an import
+  // nobody ran. An em dash where the server can supply no value is the ruling
+  // `status.js` already carries for its two unmeasured rows
+  // (`src/ui/public/screens/status.js` · `row.append(label, value === null ? el('td', 'small', '—') : el('td', 'm', num(value)));` · ~112),
+  // and inventing an id inside a cell that reads as data would be worse than the
+  // dash by exactly the amount a reader would trust it.
+  //
+  // No entry follows, because both kinds survive elsewhere in the same section:
+  // What-travels draws six `td.m` rows and the format ladder draws three
+  // `td.small`. Measured 2026-08-26: probing `['td.m']` came back stale.
+  port: [],
   packs: ['span.prop', 'span.verdict'],
 };
 

@@ -76,6 +76,21 @@ export interface CorpusFilter {
   scoped?: boolean;
   titleContains?: string;
   limit: number;
+  /**
+   * The ONE field this query negates, **by name** — never an operator the
+   * caller spells. `CONST-no-http-route-accepts-sql-the-ask-screen-sends-a-structured`
+   * requires the request be composed of fields, operators and bound values, and
+   * this keeps to it exactly: a client sends a FIELD NAME out of a closed set,
+   * and the operator is chosen below, here, in code.
+   *
+   * **Before 2026-08-26 neither builder could negate at all.** The Ask screen
+   * offered `is not`, disabled it on every field with more than two values, and
+   * said nothing about why — `negatable()` could only FAKE a negation by
+   * flipping to the other value of a two-valued field, which is not negation,
+   * it is a coincidence that happens to hold for booleans. The owner ruled the
+   * cause be fixed rather than described.
+   */
+  negate?: 'type' | 'status' | 'layer' | 'always' | 'scoped' | 'titleContains';
 }
 
 const CORPUS_COLUMNS = 'id, type, title, status, always, has_scope, layer, file_path, updated_at';
@@ -96,13 +111,29 @@ const CORPUS_COLUMNS = 'id, type, title, status, always, has_scope, layer, file_
 export function corpusSelect(f: CorpusFilter): { sql: string; params: (string | number)[] } {
   const where: string[] = [];
   const params: (string | number)[] = [];
-  if (f.type !== undefined) { where.push('type = ?'); params.push(f.type); }
-  if (f.status !== undefined) { where.push('status = ?'); params.push(f.status); }
-  if (f.layer !== undefined) { where.push('layer = ?'); params.push(f.layer); }
-  if (f.always !== undefined) where.push(`always = ${f.always ? 1 : 0}`);
-  if (f.scoped !== undefined) where.push(`has_scope = ${f.scoped ? 1 : 0}`);
+  // `=` or `<>`, chosen HERE from the field NAME the caller sent. The operator
+  // is never a token that crossed the wire, which is the whole of what the
+  // no-SQL-on-the-route constraint asks for.
+  const op = (field: string): string => (f.negate === field ? '<>' : '=');
+  if (f.type !== undefined) { where.push(`type ${op('type')} ?`); params.push(f.type); }
+  if (f.status !== undefined) { where.push(`status ${op('status')} ?`); params.push(f.status); }
+  if (f.layer !== undefined) { where.push(`layer ${op('layer')} ?`); params.push(f.layer); }
+  // **The two booleans negate by FLIPPING THE DIGIT, not by `<>`.** Both are
+  // `NOT NULL` columns holding 1 or 0, so the two spellings select the same
+  // rows — and `always = 0` reads as what it means, where `always <> 1` makes a
+  // reader work out the complement of a two-valued column to get there.
+  if (f.always !== undefined) {
+    where.push(`always = ${(f.negate === 'always' ? !f.always : f.always) ? 1 : 0}`);
+  }
+  if (f.scoped !== undefined) {
+    where.push(`has_scope = ${(f.negate === 'scoped' ? !f.scoped : f.scoped) ? 1 : 0}`);
+  }
   if (f.titleContains !== undefined) {
-    where.push(`title LIKE ? ESCAPE '\\'`);
+    // **`NOT LIKE`, never `<>`.** The affirmative here is a SUBSTRING match, so
+    // its negation is "does not contain" — `title <> ?` would ask whether the
+    // title is not exactly that string, which answers a different question and
+    // would quietly return almost every row.
+    where.push(`title ${f.negate === 'titleContains' ? 'NOT LIKE' : 'LIKE'} ? ESCAPE '\\'`);
     params.push(`%${f.titleContains.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
   }
   const clause = where.length === 0 ? '' : `\nWHERE ${where.join('\n  AND ')}`;
@@ -142,7 +173,8 @@ function intParam(url: URL, name: string, min: number, max: number, fallback: nu
  * read-only open that creates nothing and migrates nothing.
  */
 export function apiAskCorpus(ws: Workspace, url: URL): JsonResult {
-  const bad = unknownParams(url, ['type', 'status', 'layer', 'always', 'scoped', 'title', 'limit'])
+  const bad = unknownParams(url,
+    ['type', 'status', 'layer', 'always', 'scoped', 'title', 'limit', 'not'])
     ?? repeatedParams(url);
   if (bad !== null) return badRequest(bad);
 
@@ -162,6 +194,40 @@ export function apiAskCorpus(ws: Workspace, url: URL): JsonResult {
   const type = url.searchParams.get('type');
   const title = url.searchParams.get('title');
 
+  // **`not` names a FIELD, and the name is checked against a closed set.**
+  //
+  // This is the whole of how negation crosses the wire: no operator token, no
+  // fragment of SQL, just one of six names the server already knows. An
+  // unknown name is a 400 rather than an ignored parameter, for the reason
+  // `unknownParams` refuses anything it did not declare — a filter that was
+  // silently dropped answers a wider question than the one that was asked and
+  // presents it as the answer.
+  //
+  // The wire spells the title filter `title` while the builder calls it
+  // `titleContains`; the map is here rather than in `corpusSelect` so the
+  // builder never sees a name the URL chose.
+  const NEGATABLE: Record<string, NonNullable<CorpusFilter['negate']>> = {
+    type: 'type', status: 'status', layer: 'layer',
+    always: 'always', scoped: 'scoped', title: 'titleContains',
+  };
+  const notField = url.searchParams.get('not');
+  if (notField !== null && !Object.hasOwn(NEGATABLE, notField)) {
+    return badRequest(`not must name one of ${Object.keys(NEGATABLE).join(', ')}`);
+  }
+  // Negating a field the query does not filter on is a contradiction rather
+  // than a no-op: `?not=status` with no `status=` would return every row while
+  // claiming to have excluded something.
+  const negated = notField === null ? null : NEGATABLE[notField];
+  if (notField !== null) {
+    const present: Record<string, boolean> = {
+      type: type !== null, status: status !== null, layer: layer !== null,
+      always: always !== undefined, scoped: scoped !== undefined, title: title !== null,
+    };
+    if (!present[notField]) {
+      return badRequest(`not=${notField} needs a ${notField} value to negate`);
+    }
+  }
+
   const filter: CorpusFilter = {
     ...(type === null ? {} : { type }),
     ...(status === null ? {} : { status: status as Status }),
@@ -169,6 +235,7 @@ export function apiAskCorpus(ws: Workspace, url: URL): JsonResult {
     ...(always === undefined ? {} : { always }),
     ...(scoped === undefined ? {} : { scoped }),
     ...(title === null ? {} : { titleContains: title }),
+    ...(negated === null ? {} : { negate: negated }),
     limit,
   };
   const { sql, params } = corpusSelect(filter);

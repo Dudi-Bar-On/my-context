@@ -542,10 +542,28 @@ export function apiSessions(ws: Workspace, url: URL): JsonResult {
   });
 }
 
-/** One delivery, as the `injected` screen draws it: the seen line plus a join. */
-export interface InjectedLine extends SeenLine {
-  title: string | null;
-}
+/**
+ * One delivery, as the `injected` screen draws it: the seen line, and nothing
+ * joined onto it.
+ *
+ * **The `title` join is GONE — the owner ruled CUT on 2026-08-26 (plan:ui1
+ * seq:17f).** This interface used to widen `SeenLine` with `title: string |
+ * null`, filled per line by the body below. It was verified dead first: a
+ * repo-wide search across `src/ui/public/`, `src/mcp/` and `src/cli/` found
+ * ZERO readers. The one client that could have read it declined by design —
+ * `src/ui/public/screens/injected.js` draws `th.item` / `th.tier` / `th.when`
+ * and no fourth cell, because *"No join invents a column"* (its header, ~11).
+ * The price of serving it was a full `store.all()` plus a `JSON.parse` of every
+ * item's whole JSON blob, on every request, for a field nothing drew.
+ *
+ * The NAME is kept as an alias rather than collapsed into `SeenLine` at the use
+ * site, because it says something `SeenLine` does not: a line in this response
+ * is one DELIVERY, not one item. `SeenLine`
+ * (`src/core/seen-file.ts` · `export interface SeenLine {` · ~27) is the file
+ * format, read by `/api/select` for a different question; anything that is ever
+ * genuinely per-delivery in this response belongs here and not there.
+ */
+export type InjectedLine = SeenLine;
 
 export interface InjectedBody {
   lines: InjectedLine[];
@@ -554,7 +572,13 @@ export interface InjectedBody {
 
 /**
  * `GET /api/session/:session/injected` — **the per-session seen file's lines**,
- * each joined to the item's current title.
+ * served as they were read.
+ *
+ * **Nothing is joined onto them any more.** Until 2026-08-26 every line also
+ * carried the item's current `title`, looked up in the corpus; the owner ruled
+ * that join CUT (plan:ui1 seq:17f) once it was verified that no client anywhere
+ * read the field. The reasoning is on `InjectedLine` above, with the cost it
+ * was charging. What the response is now is exactly what `readSeen` returned.
  *
  * **Not `Ledger.entries`, and not `Ledger.seen`.** The screen says its own
  * source twice: *"from the per-session seen file — the parent thread's, keyed
@@ -574,8 +598,9 @@ export interface InjectedBody {
  * **One row per DELIVERY, in the file's own order.** `seenIds` — what
  * `/api/select` needs — dedupes and sorts; this screen is a list of what
  * arrived, so a second delivery of an item is a second row, and an item the
- * corpus no longer holds keeps its row with `title: null` (the injection still
- * happened). Nothing here is sorted, grouped or collapsed.
+ * corpus no longer holds keeps its row (the injection still happened — and now
+ * that nothing is joined, there is no corpus lookup that could have dropped it
+ * on the way out). Nothing here is sorted, grouped or collapsed.
  *
  * `error` is `SeenState.error` verbatim: an unreadable seen file is a
  * DISCLOSED state, never an empty one. This is the only surface in plan 1 that
@@ -594,7 +619,12 @@ export function apiInjected(ws: Workspace, url: URL, params: { session: string }
       'would report about a fabricated key as though it were a session.',
     );
   }
-  return withStores(ws, (store): JsonResult => {
+  // The callback takes NO `store`. The index is still opened and still checked
+  // by `withStores` — that is what lets `projectRootAfterOpen` below assert
+  // rather than fabricate, and what makes a not-a-corpus directory refuse — but
+  // this endpoint no longer reads a row out of it. The one read it had was the
+  // `title` join, cut on 2026-08-26 (see `InjectedLine` above).
+  return withStores(ws, (): JsonResult => {
     // Structurally unreachable, and a throw rather than an empty answer: a
     // fabricated `{ lines: [], error: null }` here would say "this session
     // received nothing" about a corpus that does not exist. See
@@ -603,9 +633,13 @@ export function apiInjected(ws: Workspace, url: URL, params: { session: string }
     const root = projectRootAfterOpen(ws, '/api/session/:session/injected');
     // The SEEN FILE, not the Ledger: this screen shows live delivery state.
     const state = readSeen(root, params.session);
-    const titles = new Map(store.all().map((i) => [i.id, i.title]));
+    // `state.lines` verbatim, not a `.map` over it. The map that used to be
+    // here existed only to attach the joined title; with the join gone, copying
+    // each line into a fresh object would be a re-shape that could silently
+    // drop a field `SeenLine` gains later — the same failure the `SessionSummary`
+    // note above (~490) refuses a field-by-field re-shape to avoid.
     const body: InjectedBody = {
-      lines: state.lines.map((line) => ({ ...line, title: titles.get(line.id) ?? null })),
+      lines: state.lines,
       error: state.error,
     };
     return { status: 200, body };

@@ -916,6 +916,81 @@ export function checkNestedCorpus(root: string, repoRoot: string): Finding[] {
   }));
 }
 
+/**
+ * Directories inside the repository where ANOTHER tool keeps durable knowledge
+ * of the same kind my_context keeps. One entry today; a second is one line.
+ *
+ * `docs/solutions/` is the compound-engineering plugin's learnings store — a
+ * directory of Markdown files, written by an agent when it finishes a problem,
+ * describing what must hold next time. That is a `lesson` by any other name,
+ * spelled differently and with no ids either side can resolve.
+ *
+ * The list is HARD-CODED and repository-relative on purpose. The alternative
+ * shapes were weighed in
+ * `open_question/OPENQ-where-may-foreign-store-look-given-it-reads-outside-the.md`:
+ * a configured list is honest and needs someone to write it, and a filesystem
+ * scan is thorough and is the one that surprises people. A short named list
+ * goes stale, which is a cost paid by editing one line here.
+ */
+const FOREIGN_STORE_DIRS = ['docs/solutions'];
+
+/**
+ * **Another tool is keeping durable learnings inside this repository.**
+ *
+ * my_context exists to be the place durable knowledge lives. A second store in
+ * the same tree quietly defeats that: the learnings written there are real,
+ * they are the same KIND as a `lesson`, and my_context will never inject one of
+ * them — not because anything failed, but because it does not know they exist.
+ *
+ * **It is `info`, the same register as `checkNestedCorpus` above and for the
+ * same reason.** Two knowledge stores in one repository is a legitimate state —
+ * two plugins installed, each doing its own job — so this is a fact to learn
+ * HERE rather than from a surprise, not a defect to fix. `info` informs and
+ * does not nag, which is why `decision/DEC-foreign-store-becomes-a-real-check-at-notice-level.md`
+ * put it at notice level in the design.
+ *
+ * **What this check deliberately does NOT do: leave the repository.** The
+ * mockup's notice card draws TWO `foreign_store` rows, and the second one names
+ * `~/.gsd/knowledge/` — a path in the user's HOME directory. The owner dropped
+ * that row on 2026-08-26: it was a guess at one specific other plugin, no
+ * requirement or incident sits behind it, and a diagnostic that reads a home
+ * directory is a different KIND of thing from one that reads `.my_context/` —
+ * it can be slow, and on a shared machine it can see paths that are not the
+ * user's business. With that row gone this check never reads outside the
+ * repository, which DISSOLVES the open question rather than answering it, and
+ * means `test/core/real-home-guard.test.ts` has nothing here to guard against.
+ *
+ * The read is a single `statSync` per named directory rather than the bounded
+ * walk `checkNestedCorpus` needs — the paths are known, so there is nothing to
+ * search for.
+ */
+export function checkForeignStore(repoRoot: string): Finding[] {
+  const findings: Finding[] = [];
+  for (const where of FOREIGN_STORE_DIRS) {
+    // `FOREIGN_STORE_DIRS` is written POSIX and reported POSIX; only the join
+    // is native, per INV-posix-normalized-paths — a backslash must never reach
+    // a message a reader is meant to paste back at a shell.
+    const full = path.join(repoRoot, ...where.split('/'));
+    try {
+      if (!statSync(full).isDirectory()) continue;
+    } catch {
+      continue; // absent, or unreadable — either way there is nothing to report
+    }
+    findings.push({
+      level: 'info' as const,
+      code: 'foreign_store',
+      message:
+        `another plugin writes durable learnings in "${where}/" inside this repository — the ` +
+        'same KIND of knowledge as a `lesson`, in a second spelling, with no ids either store ' +
+        'can resolve in the other. my_context never reads that directory and never writes to ' +
+        'it: nothing there is indexed, and nothing there is ever injected into a session. It ' +
+        'is reported so you learn it HERE rather than from a surprise — what is written there ' +
+        'is knowledge this tool will not carry for you.',
+    });
+  }
+  return findings;
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
@@ -932,6 +1007,7 @@ export function runChecks(opts: {
     () => checkCorpusSize(opts.items),
     () => checkTagProjection(opts.items, opts.config),
     () => checkNestedCorpus(opts.root, opts.repoRoot),
+    () => checkForeignStore(opts.repoRoot),
   ];
 
   const findings: Finding[] = [];

@@ -10,11 +10,21 @@
  *
  * **Three columns, and no fourth.** `th.item` / `th.tier` / `th.when`, each
  * straight off a `SeenLine`. The plan's Step 3 sketch appends a fourth cell
- * holding the joined `title` — the response does carry one — and both the
- * mockup and the endpoint's own contract rule that out in the same words:
- * *"No join invents a column."* The title is left unread here rather than
- * silently promoted to a column the design of record does not draw; reported to
- * the owner as the loose end it is.
+ * holding a joined `title`, and both the mockup and the endpoint's own contract
+ * rule that out in the same words: *"No join invents a column."* That is still
+ * the design fact, and it is why the fourth cell was never drawn.
+ *
+ * **The join itself is now GONE, and the loose end with it.** The response used
+ * to carry the `title` anyway — joined per line out of the corpus — and this
+ * screen left it unread rather than promote it into a column the design of
+ * record does not have. It was reported to the owner as the loose end it was,
+ * and on 2026-08-26 the owner ruled it CUT (plan:ui1 seq:17f): a repo-wide
+ * search found ZERO readers of the field in `src/ui/public/`, `src/mcp/` and
+ * `src/cli/`, and serving it cost a full `SELECT` plus a `JSON.parse` of every
+ * item's whole JSON blob on every request. `src/ui/read-model.ts` ·
+ * `export type InjectedLine = SeenLine;` · ~566 holds the removal. So the rule
+ * above no longer has anything to refuse: a line of this response IS the three
+ * columns, and there is nothing left to leave unread.
  *
  * **One row per DELIVERY, in the file's own order.** Nothing is sorted, grouped
  * or collapsed: a second delivery of an item is a second row, and an item the

@@ -399,3 +399,49 @@ test('a corpus under a fixture directory is not reported — the check must stay
       + 'starts a session in');
   });
 });
+
+/* -------------------------------------------------------------------------- *
+ * foreign_store — the design of record's notice, built at last.
+ *
+ * The mockup's notice card has drawn this row since the v2 design, and
+ * `foreign_store` appeared in ZERO files under src/ until 2026-08-26. It reports
+ * a directory INSIDE the repository where another plugin keeps durable
+ * learnings — the same kind of knowledge as a `lesson`, in a second spelling
+ * with no shared ids — so a reader learns about it here rather than from a
+ * surprise.
+ *
+ * The mockup's second row named `~/.gsd/knowledge/` and was dropped by the
+ * owner the same day: no requirement sat behind it, and it read the user's home
+ * directory. So the check never leaves the repository, and these two tests need
+ * nothing that `test/core/real-home-guard.test.ts` would object to — the whole
+ * fixture is a `mkdir` inside a temp project.
+ * -------------------------------------------------------------------------- */
+
+test('a foreign learnings store inside the repository is reported', () => {
+  withProject((cwd) => {
+    mkdirSync(path.join(cwd, 'docs', 'solutions'), { recursive: true });
+    writeFileSync(path.join(cwd, 'docs', 'solutions', 'never-bind-a-boolean.md'),
+      '# Never bind a boolean\n\nSomeone else\'s lesson, in someone else\'s store.\n', 'utf8');
+
+    const { out } = runWithWorkspace(cwd, mkdtempSync(path.join(tmpdir(), 'myctx-g-')));
+    assert.match(out, /foreign_store/,
+      'another plugin writing durable learnings in this repository is a fact nothing else in '
+      + 'this product would tell the reader');
+    assert.match(out, /docs\/solutions/,
+      'the finding must name WHERE — a notice the reader cannot go and look at is not a notice');
+    assert.match(out, /never reads/,
+      'the notice must say plainly that my_context does not touch that directory, or a reader '
+      + 'will assume the doctor is reporting something it manages');
+  });
+});
+
+test('a repository with no foreign store stays quiet', () => {
+  withProject((cwd) => {
+    // The control. Without it, a check that always fires would pass the test
+    // above for the wrong reason — and `info` findings are exactly the kind
+    // that get tuned out when they appear on every repository.
+    const { out } = runWithWorkspace(cwd, mkdtempSync(path.join(tmpdir(), 'myctx-g-')));
+    assert.equal(/foreign_store/.test(out), false,
+      'a repository where no other plugin keeps learnings must not be told that one does');
+  });
+});

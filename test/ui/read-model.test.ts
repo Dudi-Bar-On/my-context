@@ -739,7 +739,7 @@ test('/api/sessions accepts no parameters, and says so rather than answering any
  * The three columns the screen draws — `th.item`, `th.tier`, `th.when` — are
  * exactly `SeenLine`'s three fields, so nothing is synthesised.
  */
-test('/api/session/:session/injected reads the SEEN FILE, joins titles, keeps vanished items', () => {
+test('/api/session/:session/injected reads the SEEN FILE, joins nothing, keeps vanished items', () => {
   const f = fixture();
   try {
     const root = f.ws.projectRoot!;
@@ -764,9 +764,14 @@ test('/api/session/:session/injected reads the SEEN FILE, joins titles, keeps va
       ['RULE-gone', 'jit', '2026-08-01T09:22:41.000Z'],
       [item.id, 'jit', '2026-08-01T09:31:07.000Z'],
     ], 'one row per delivery, in file order, nothing deduped, sorted, grouped or dropped');
-    assert.equal(body.lines[0].title, item.title);
-    assert.equal(body.lines[1].title, null,
-      'null, not dropped: an injection of a since-deleted item still happened');
+    // Two assertions stood here on `.title`: that line 0 carried the item's
+    // current title, and that `RULE-gone` carried `null` rather than losing its
+    // row. The FIELD was cut on 2026-08-26 (plan:ui1 seq:17f) — verified dead,
+    // no reader in `src/ui/public/`, `src/mcp/` or `src/cli/`, and it cost a
+    // full `store.all()` and a `JSON.parse` per item per request. What those
+    // assertions were really protecting is the vanished item's ROW, and the
+    // `deepEqual` above still measures it: `RULE-gone` is line 1 of three,
+    // because the injection happened whether or not the corpus still holds it.
   } finally { f.done(); }
 });
 

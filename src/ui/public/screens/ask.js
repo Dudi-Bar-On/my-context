@@ -59,14 +59,17 @@
  *
  * Named here and in this task's report rather than papered over:
  *
- *   1. **`is not`.** Neither builder emits `<>`: `corpusSelect` and
- *      `filterSelect` are equality, `LIKE` and range predicates only. On the
- *      three fields whose vocabulary is CLOSED — `layer`, `always`, `scoped` —
- *      the negation IS the other member and is sent as that equality (see
- *      `NEGATABLE_FIELDS` for why the other seven can never be, however many
- *      values they happen to hold). Everywhere else the option is DISABLED
- *      rather than silently sent as `is`, which would answer a different
- *      question from the one on screen and report it as the same one.
+ *   1. ~~**`is not`**~~ — **SERVED SINCE 2026-08-26, and the entry is kept
+ *      because what it used to say is the argument for what replaced it.** It
+ *      read: neither builder emits `<>`, so on the three fields with a CLOSED
+ *      vocabulary the negation is sent as the other member's equality, and
+ *      everywhere else the option is disabled rather than silently sent as
+ *      `is`. That was honest about the substitution and wrong about the
+ *      remedy — a control that greys out on nine fields of twelve and says
+ *      nothing is a defect of its own, which is what `plan:walk seq:36`
+ *      reported. Both builders negate for real now, `is not` is offered on
+ *      every field, and the request carries a FIELD NAME to negate rather than
+ *      an operator (`src/ui/ask-model.ts` · `  negate?: 'type' | 'status' | 'layer' | 'always' | 'scoped' | 'titleContains';` · ~93).
  *   2. **The canned queries as "a shortcut THROUGH the same filter fields".**
  *      Three of the four are aggregates (`GROUP BY`), and the filter row has no
  *      aggregate to fill. They call `/api/ask/summary` — a second way in, which
@@ -137,28 +140,37 @@ const BOOLEAN = [{ value: '1', label: 'true' }, { value: '0', label: 'false' }];
  * anything else, so — exactly like the booleans above — it is a shape rather
  * than a list that grows, and the mockup writes it out for the same reason
  * (`docs/design/web-ui-mockup.html` · `'ask.field.layer':['project','global'],` · ~3140).
- * Learning still runs over it: a third layer would be ADDED, and would switch
- * negation off by the second half of `negatable`'s rule.
+ * Learning still runs over it: a third layer would simply be ADDED. Before
+ * 2026-08-26 it would also have switched negation off, because the fake
+ * negation needed exactly two members; a real `<>` does not care how many
+ * there are.
  */
 const LAYER = [{ value: 'project', label: 'project' }, { value: 'global', label: 'global' }];
 
 /**
- * The three fields whose vocabulary is CLOSED, EXHAUSTIVE and MUTUALLY
- * EXCLUSIVE — the only ones where "is not X" and "is Y" are the same question.
+ * **`NEGATABLE_FIELDS` and `negatable()` are gone, and the reasoning they
+ * carried is kept here because it is still true and still load-bearing.**
  *
- * Every other field's list is derived from data and is none of those three
- * things, which is why the member count alone is not the test:
+ * They named the three fields whose vocabulary is CLOSED, EXHAUSTIVE and
+ * MUTUALLY EXCLUSIVE — `layer`, `always`, `scoped` — the only ones where
+ * "is not X" and "is Y" are the same question. That mattered when a negation
+ * could only be FAKED as the other member's equality. It stopped mattering on
+ * 2026-08-26, when both builders learned `<>`.
+ *
+ * What survives is WHY the other fields could never have been faked, and it is
+ * worth keeping because it is the argument for having fixed the builders
+ * rather than widened the fake:
  *
  *   - `type`, `status`, `kind`, `op`, `origin` are open lists this screen
  *     learns; two members today is an accident of the corpus, and "not a rule"
  *     is every category the log has not shown yet.
  *   - `title` is a `LIKE '%x%'` fragment. Two titles do not partition
- *     anything: a row can contain both, or neither.
+ *     anything: a row can contain both, or neither. Its negation is `NOT LIKE`,
+ *     which is why `corpusSelect` spells that one out separately.
  *   - `item` is worse still — one audit record names SEVERAL items (a subject,
  *     what it injected, what it spilled), so even in a corpus of exactly two
  *     items "item is not A" is not "item is B".
  */
-const NEGATABLE_FIELDS = new Set(['layer', 'always', 'scoped']);
 
 const IS = 'is';
 const IS_NOT = 'is not';
@@ -187,47 +199,46 @@ const ROLE_CHIP_NEUTRAL = ['chip index', '◇'];
 // and it belongs to another task; exporting from the screen module is the
 // smaller of the two evils and is named in this task's report.
 
-/**
- * Whether `is not` can be served for a field and the list it is showing.
- *
- * BOTH halves are required. The field must be one whose vocabulary is closed
- * and exhaustive (see `NEGATABLE_FIELDS` for why the other seven never are),
- * and the list must currently hold exactly two members — so the negation is
- * ONE other value, which every builder on this surface can express as the
- * equality it already emits. Anything else needs `<>`, and nothing
- * server-side emits one.
- */
-export function negatable(field, vocabulary) {
-  return NEGATABLE_FIELDS.has(field) && vocabulary.length === 2;
-}
 
 /**
  * One (field, operator, value) as the query parameter it becomes.
  *
  *   - `null`         — no filter at all. `(any)` is the empty value, and an
  *                      empty value with `is not` is still no question.
- *   - `[name, value]`— the equality to send.
- *   - `'unserved'`   — a negation this surface cannot express. The caller must
- *                      not fall back to the positive form: answering "is" for
- *                      "is not" is the silent substitution this project's own
- *                      invariant is named after.
+ *   - `[name, value]`        — the equality to send.
+ *   - `[name, value, true]`  — the same, NEGATED. The third member is a flag,
+ *                      not a value: `queryPath` turns it into `not=<name>` and
+ *                      the server chooses the operator. There is no longer an
+ *                      `'unserved'` third answer — every field this screen can
+ *                      offer, the server can now negate.
  */
-export function filterParam(field, operator, value, vocabulary) {
+export function filterParam(field, operator, value) {
   if (value === '') return null;
-  if (operator !== IS_NOT) return [field, value];
-  if (!negatable(field, vocabulary)) return 'unserved';
-  const others = vocabulary.filter((entry) => entry.value !== value);
-  return others.length === 1 ? [field, others[0].value] : 'unserved';
+  // **`is not` is now a real operator, and this no longer fakes one.**
+  //
+  // Until 2026-08-26 neither query builder could emit `<>` at all, so this
+  // function faked a negation the only way it could: on a field with exactly
+  // TWO values it swapped to the other one, and on anything wider it returned
+  // `'unserved'` and the screen greyed the operator out without saying why.
+  // That is not negation — it is a coincidence that holds for booleans.
+  //
+  // The owner ruled the cause be fixed rather than described, so `corpusSelect`
+  // and `filterSelect` now negate for real and this sends the FIELD NAME to
+  // negate rather than a swapped value. `'unserved'` is gone: there is no
+  // longer a field this screen can offer and the server cannot answer.
+  return operator === IS_NOT ? [field, value, true] : [field, value];
 }
 
-/** The path to fetch for one filter row, or `'unserved'`. */
-export function queryPath(mode, field, operator, value, vocabulary) {
-  const filter = filterParam(field, operator, value, vocabulary);
-  if (filter === 'unserved') return 'unserved';
+/** The path to fetch for one filter row. */
+export function queryPath(mode, field, operator, value) {
+  const filter = filterParam(field, operator, value);
   const base = mode === 'corpus' ? '/api/ask/corpus' : '/api/ask/audit';
   if (filter === null) return base;
   const params = new URLSearchParams();
   params.set(filter[0], filter[1]);
+  // `not` names the FIELD, never an operator: the server maps that name onto
+  // `<>` itself, so no fragment of SQL and no operator token crosses the wire.
+  if (filter[2] === true) params.set('not', filter[0]);
   return `${base}?${params.toString()}`;
 }
 
@@ -577,11 +588,13 @@ export async function render(root, ctx) {
     valueSelect.replaceChildren(option('', ctx.t('ask.field.any')));
     for (const entry of entries) valueSelect.append(option(entry.value, entry.label));
     valueSelect.value = entries.some((entry) => entry.value === held) ? held : '';
-    // Offered only where it can be served — see `filterParam`. Disabled rather
-    // than absent: the design draws the operator, and a control that vanishes
-    // per field teaches nothing about why.
-    isNotOption.disabled = !negatable(field, entries);
-    if (isNotOption.disabled && opSelect.value === IS_NOT) opSelect.value = IS;
+    // **Never disabled any more, on any field.** It was offered only where it
+    // could be served, which until 2026-08-26 meant the three two-valued
+    // fields — and on every other field it greyed out and silently swapped
+    // itself back to `is`, teaching nothing about why. Both builders negate for
+    // real now (`plan:walk seq:36`), so there is no field this screen can offer
+    // and the server cannot answer.
+    isNotOption.disabled = false;
   }
 
   function paintFields() {
@@ -682,11 +695,11 @@ export async function render(root, ctx) {
   async function runFilter() {
     const field = fieldSelect.value;
     const path = queryPath(mode, field, opSelect.value, valueSelect.value, vocabulary[field] ?? []);
-    // Unreachable from the controls — the option that produces it is disabled
-    // — and handled anyway, because a total function is what makes that
-    // disabling a policy rather than the only thing standing between a user
-    // and a wrong answer.
-    if (path === 'unserved') return;
+    // The `'unserved'` guard that stood here is gone with the thing it guarded:
+    // `queryPath` had a third answer for a negation this surface could not
+    // express, and since 2026-08-26 there is no such negation. Removed rather
+    // than left as a defensive branch — a check for a value nothing can produce
+    // reads to the next person as though something can.
     try {
       const body = await ctx.api(path);
       if (mode === 'corpus') {

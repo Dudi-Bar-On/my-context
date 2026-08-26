@@ -89,13 +89,11 @@ interface Row {
  * from it fails here rather than in a browser nobody type-checks.
  */
 interface AskModule {
-  negatable: (field: string, vocabulary: Choice[]) => boolean;
+  // `negatable` is gone with the fake negation it gated — see the block below.
   filterParam: (
-    field: string, operator: string, value: string, vocabulary: Choice[],
-  ) => [string, string] | 'unserved' | null;
-  queryPath: (
-    mode: string, field: string, operator: string, value: string, vocabulary: Choice[],
-  ) => string;
+    field: string, operator: string, value: string,
+  ) => [string, string] | [string, string, true] | null;
+  queryPath: (mode: string, field: string, operator: string, value: string) => string;
   clockOf: (at: string) => string;
   corpusRows: (rows: Record<string, unknown>[]) => Row[];
   auditRows: (records: Record<string, unknown>[]) => Row[];
@@ -119,85 +117,80 @@ const KINDS: Choice[] = ['mutation', 'injection', 'hook', 'focus', 'access', 'pr
 
 // ── The operator ──────────────────────────────────────────────────────────
 //
-// `is not` is the one control on this screen with no server behind it:
-// neither `corpusSelect` nor `filterSelect` emits `<>`. Everything below is
-// about the two ways that can be handled honestly — rewrite it, or refuse it
-// — and about never taking the third way, which is to send `is` and present
-// the answer as if the question had not changed.
+// **`is not` had no server behind it until 2026-08-26, and now it does.**
+//
+// What stood here tested the two honest ways to handle a control the builders
+// could not serve — rewrite the negation as the other member's equality where
+// the vocabulary was closed and exhaustive, or refuse it — and, above all, that
+// the third way was never taken: sending `is` for `is not` and presenting the
+// answer as though the question had not changed.
+//
+// That third way is still the thing that must never happen, and it is now
+// impossible by construction rather than by refusal: `corpusSelect` emits `<>`
+// (and `NOT LIKE` for the substring field), so there is no field this screen can
+// offer that the server cannot negate. `negatable`, `NEGATABLE_FIELDS` and the
+// `'unserved'` return are all gone.
+//
+// The reasoning those tests carried is not lost — `ask.js` keeps it where
+// `NEGATABLE_FIELDS` used to live, because WHY the other fields could never be
+// faked is the argument for having fixed the builders instead of widening the
+// fake.
 
-test('only a CLOSED two-member vocabulary can be negated', async () => {
-  const { negatable } = await ask();
-  assert.equal(negatable('layer', LAYERS), true, 'not project IS global');
-  assert.equal(negatable('always', BOOLEANS), true, 'not pinned IS unpinned');
-  assert.equal(negatable('kind', KINDS), false, 'six kinds: not-injection is five values, and no <> to say so');
-  assert.equal(negatable('layer', []), false, 'an empty vocabulary offers no negation either');
-  assert.equal(negatable('layer', [{ value: 'only', label: 'only' }]), false);
-  // THE HALF A MEMBER COUNT ALONE WOULD GET WRONG. Every other field's list is
-  // derived from data and is neither closed nor exhaustive: two categories in
-  // the corpus today does not make "not a rule" mean "a decision", a title
-  // fragment does not partition anything, and one audit record names several
-  // items at once — so "item is not A" is not "item is B" even in a corpus of
-  // exactly two.
-  const two = [{ value: 'rule', label: 'rule' }, { value: 'decision', label: 'decision' }];
-  assert.equal(negatable('type', two), false);
-  assert.equal(negatable('status', two), false);
-  assert.equal(negatable('title', two), false);
-  assert.equal(negatable('item', two), false);
-  assert.equal(negatable('op', two), false);
-  assert.equal(negatable('origin', two), false);
+test('filterParam flags a negation rather than rewriting the value', async () => {
+  const { filterParam } = await ask();
+  // The value is untouched and a third member carries the negation. Before
+  // this, `['layer','project']` with `is not` came back as `['layer','global']`
+  // — correct for a two-member list and a lie on any wider one.
+  assert.deepEqual(filterParam('layer', 'is not', 'project'), ['layer', 'project', true]);
+  assert.deepEqual(filterParam('layer', 'is', 'project'), ['layer', 'project']);
 });
 
-test('filterParam sends the OTHER member for a negation it can express', async () => {
+test('a wide-open vocabulary negates too — the case that used to be refused', async () => {
   const { filterParam } = await ask();
-  assert.deepEqual(filterParam('layer', 'is not', 'project', LAYERS), ['layer', 'global']);
-  assert.deepEqual(filterParam('layer', 'is not', 'global', LAYERS), ['layer', 'project']);
-});
-
-test('filterParam refuses a negation it cannot express rather than dropping it', async () => {
-  const { filterParam } = await ask();
-  // An open list that happens to hold two values is still an open list.
-  assert.equal(
-    filterParam('type', 'is not', 'rule',
-      [{ value: 'rule', label: 'rule' }, { value: 'decision', label: 'decision' }]),
-    'unserved',
-  );
-  // The single most important assertion in this file. `['kind','injection']`
-  // here would answer "kind is injection" for "kind is not injection" and
-  // report it under the same statement — the silent substitution this
-  // project's own INV-nothing-is-dropped-silently is named for.
-  assert.equal(filterParam('kind', 'is not', 'injection', KINDS), 'unserved');
+  // THE ASSERTION THIS FILE USED TO MAKE THE OTHER WAY. `kind` has six members
+  // and "not injection" is five of them, which no equality can express; it was
+  // returned as 'unserved' and the control greyed out. It is now a real query.
+  assert.deepEqual(filterParam('kind', 'is not', 'injection'), ['kind', 'injection', true]);
+  assert.deepEqual(filterParam('type', 'is not', 'rule'), ['type', 'rule', true]);
+  assert.deepEqual(filterParam('title', 'is not', 'cents'), ['title', 'cents', true]);
 });
 
 test('(any) is no filter at all, whichever operator is showing', async () => {
   const { filterParam } = await ask();
-  assert.equal(filterParam('kind', 'is', '', KINDS), null);
+  assert.equal(filterParam('kind', 'is', ''), null);
   // "is not (any)" is not a question either, so it is not an unserved one.
-  assert.equal(filterParam('kind', 'is not', '', KINDS), null);
+  assert.equal(filterParam('kind', 'is not', ''), null);
 });
 
 // ── The request ───────────────────────────────────────────────────────────
 
 test('queryPath asks the tab\'s own endpoint, and asks nothing when nothing is filtered', async () => {
   const { queryPath } = await ask();
-  assert.equal(queryPath('corpus', 'type', 'is', '', []), '/api/ask/corpus');
-  assert.equal(queryPath('audit', 'kind', 'is', '', KINDS), '/api/ask/audit');
-  assert.equal(queryPath('corpus', 'type', 'is', 'rule', []), '/api/ask/corpus?type=rule');
-  assert.equal(queryPath('audit', 'kind', 'is', 'injection', KINDS), '/api/ask/audit?kind=injection');
+  assert.equal(queryPath('corpus', 'type', 'is', ''), '/api/ask/corpus');
+  assert.equal(queryPath('audit', 'kind', 'is', ''), '/api/ask/audit');
+  assert.equal(queryPath('corpus', 'type', 'is', 'rule'), '/api/ask/corpus?type=rule');
+  assert.equal(queryPath('audit', 'kind', 'is', 'injection'), '/api/ask/audit?kind=injection');
 });
 
 test('queryPath encodes the value, so a title fragment cannot become a second parameter', async () => {
   const { queryPath } = await ask();
-  const composed = queryPath('corpus', 'title', 'is', 'cents & pence?x=1', []);
+  const composed = queryPath('corpus', 'title', 'is', 'cents & pence?x=1');
   const parsed = new URL(composed, 'http://127.0.0.1:1');
   assert.equal(parsed.pathname, '/api/ask/corpus');
   assert.equal(parsed.searchParams.get('title'), 'cents & pence?x=1');
   assert.equal([...parsed.searchParams.keys()].length, 1, 'one parameter went out, not two');
 });
 
-test('queryPath carries the negation rewrite through to the path', async () => {
+test('queryPath sends the field NAME to negate, never an operator', async () => {
   const { queryPath } = await ask();
-  assert.equal(queryPath('corpus', 'layer', 'is not', 'project', LAYERS), '/api/ask/corpus?layer=global');
-  assert.equal(queryPath('audit', 'kind', 'is not', 'focus', KINDS), 'unserved');
+  // `not=<field>`, and the server maps that onto `<>` itself. No operator token
+  // and no fragment of SQL crosses the wire, which is what
+  // CONST-no-http-route-accepts-sql asks of this screen.
+  assert.equal(queryPath('corpus', 'layer', 'is not', 'project'),
+    '/api/ask/corpus?layer=project&not=layer');
+  // The case that used to come back 'unserved'.
+  assert.equal(queryPath('audit', 'kind', 'is not', 'focus'),
+    '/api/ask/audit?kind=focus&not=kind');
 });
 
 // ── The At column ─────────────────────────────────────────────────────────
@@ -368,7 +361,7 @@ test('every filter the screen can compose is one the endpoint accepts', async ()
       ['always', '1'], ['scoped', '0'], ['title', 'Money'],
     ];
     for (const [field, value] of corpus) {
-      const composed = queryPath('corpus', field, 'is', value, []);
+      const composed = queryPath('corpus', field, 'is', value);
       const result = apiAskCorpus(ws, asUrl(composed));
       assert.equal(result.status, 200, `${composed} was refused: ${JSON.stringify(result.body)}`);
     }
@@ -377,7 +370,7 @@ test('every filter the screen can compose is one the endpoint accepts', async ()
       ['item', 'RULE-money-is-an-integer-number-of-cents'],
     ];
     for (const [field, value] of audit) {
-      const composed = queryPath('audit', field, 'is', value, []);
+      const composed = queryPath('audit', field, 'is', value);
       const result = apiAskAudit(ws, asUrl(composed));
       // 200 with no records: this fixture never runs `mycontext audit`, so the
       // projection is `absent` — an empty state, not a fault, and not a 400.
@@ -386,21 +379,55 @@ test('every filter the screen can compose is one the endpoint accepts', async ()
   } finally { done(); }
 });
 
-test('a negated filter runs as the equality it was rewritten into, and the SQL says so', async () => {
+test('a negated filter runs as a REAL `<>`, and the SQL on screen says so', async () => {
   const { queryPath } = await ask();
   const { dir, done } = workspace();
   try {
     const ws = resolveWorkspace(dir);
-    const composed = queryPath('corpus', 'layer', 'is not', 'global', LAYERS);
-    assert.equal(composed, '/api/ask/corpus?layer=project');
+    const composed = queryPath('corpus', 'layer', 'is not', 'global');
+    // The value is the one the reader chose. Before 2026-08-26 this path read
+    // `?layer=project` — the OTHER member, substituted here on the client — and
+    // the SQL pane showed `layer = ?` for a question that said "is not".
+    assert.equal(composed, '/api/ask/corpus?layer=global&not=layer');
     const result = apiAskCorpus(ws, asUrl(composed));
     assert.equal(result.status, 200);
     const body = result.body as { sql: string; params: unknown[]; rows: unknown[] };
-    // The pane shows what RAN, and what ran is the equality — every value
-    // still bound as a parameter.
-    assert.match(body.sql, /WHERE layer = \?/);
-    assert.equal(body.params[0], 'project');
-    assert.ok(body.rows.length > 0, 'the rewritten question still answers the original one');
+    // **The pane shows what RAN, and what ran is the negation itself.** That is
+    // the whole promise of this screen: `ask.sqlCaption` calls it "the SQL this
+    // answer ran", and a rewritten equality made that sentence true of the
+    // statement and false of the question.
+    assert.match(body.sql, /WHERE layer <> \?/);
+    assert.equal(body.params[0], 'global', 'the value is bound, and it is the one on screen');
+    assert.ok(body.rows.length > 0, 'the negation still answers');
+  } finally { done(); }
+});
+
+test('a negation on a WIDE field is served — the case that was refused outright', async () => {
+  const { queryPath } = await ask();
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    // `type` has as many values as the corpus has categories, so no equality
+    // could ever have expressed "not a rule". This used to be 'unserved'.
+    const composed = queryPath('corpus', 'type', 'is not', 'rule');
+    const result = apiAskCorpus(ws, asUrl(composed));
+    assert.equal(result.status, 200);
+    const body = result.body as { sql: string; params: unknown[] };
+    assert.match(body.sql, /WHERE type <> \?/);
+    assert.equal(body.params[0], 'rule');
+  } finally { done(); }
+});
+
+test('`not` naming a field the query does not filter on is refused, not ignored', async () => {
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    // A dropped filter answers a WIDER question and presents it as the answer —
+    // `?not=status` with no `status=` would return every row while claiming to
+    // have excluded something.
+    assert.equal(apiAskCorpus(ws, asUrl('/api/ask/corpus?not=status')).status, 400);
+    // And a name outside the closed set never reaches the builder.
+    assert.equal(apiAskCorpus(ws, asUrl('/api/ask/corpus?type=rule&not=id')).status, 400);
   } finally { done(); }
 });
 
