@@ -60,6 +60,7 @@ import { registerHooks } from 'node:module';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { styledClasses } from '../helpers/shipped-classes.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
 const PUBLIC = path.join(REPO, 'src', 'ui', 'public');
@@ -393,9 +394,22 @@ test('given a gap to draw, the screen draws every kind the mockup does but the c
   // the one kind this screen can build that the mockup has no counterpart for,
   // and it is drawn INSTEAD of all of this; the refusal test below is where it
   // belongs.
+  // **A kind the mockup does not draw is allowed when styles.css STYLES it** —
+  // see test/helpers/shipped-classes.ts, and
+  // `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`. This one
+  // works on KINDS rather than bare class tokens, so a kind passes only when
+  // every class in it has a rule; a bare tag the mockup never draws still
+  // fails, and so does `div.typo`.
+  const styled = styledClasses();
+  const invented = built.filter((kind) => {
+    if (drawn.includes(kind)) return false;
+    const classes = kind.split('.').slice(1);
+    return classes.length === 0 || !classes.every((c) => styled.has(c));
+  });
   assert.deepEqual(
-    built.filter((kind) => !drawn.includes(kind)), [],
-    'this screen invents no element the design of record does not draw',
+    invented, [],
+    'this screen draws an element the design of record does not draw AND styles.css does not '
+    + 'style — which is a typo rather than a feature',
   );
 });
 

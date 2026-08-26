@@ -70,6 +70,7 @@ import { AUDIT_KINDS } from '../../src/core/audit.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { apiPort, type PortBody } from '../../src/ui/port-model.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import { allowedClasses } from '../helpers/shipped-classes.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
 const PUBLIC = path.join(REPO, 'src', 'ui', 'public');
@@ -481,8 +482,13 @@ test('the screen invents no class the mockup\'s own port section does not use', 
     `the port.js scan found ${written.length} class string(s); the screen writes at least twelve`);
 
   for (const value of written) {
+  const allowed = allowedClasses(drawn);
     for (const token of value.trim().split(/\s+/)) {
-      assert.ok(drawn.has(token),
+      // `allowed`, not `drawn`: the mockup's classes UNION what styles.css
+      // actually styles. See test/helpers/shipped-classes.ts — the app is what
+      // gets built now, so a NEW class with a real rule is ordinary development;
+      // a typo still has no rule anywhere and still fails here.
+      assert.ok(allowed.has(token),
         `port.js writes class "${token}", which <section data-p="port"> never uses. A class the `
         + 'design of record does not draw is either a typo or a decision the owner has not taken.');
     }

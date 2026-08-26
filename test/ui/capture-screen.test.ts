@@ -54,6 +54,7 @@ import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { apiCapture, type CaptureBody } from '../../src/ui/capture-model.ts';
 import { apiConfigGet } from '../../src/ui/read-model-config.ts';
+import { allowedClasses } from '../helpers/shipped-classes.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
 const PUBLIC = path.join(REPO, 'src', 'ui', 'public');
@@ -520,10 +521,16 @@ test('the screen invents exactly one class the mockup\'s capture section does no
   // ledger in the direction that names what this screen draws and the design of
   // record does not.
   const INVENTED = new Set(['globin']);
+  // `allowed` is the mockup's classes UNION what styles.css styles — see
+  // test/helpers/shipped-classes.ts. The app is what gets built now, so a new
+  // class with a real rule is ordinary development; a typo has no rule
+  // anywhere and still lands in `offenders`. `INVENTED` stays because it
+  // records a DECISION about this screen rather than a styling fact.
+  const allowed = allowedClasses(drawn);
   const offenders: string[] = [];
   for (const value of written) {
     for (const token of value.trim().split(/\s+/)) {
-      if (!drawn.has(token) && !INVENTED.has(token)) offenders.push(token);
+      if (!allowed.has(token) && !INVENTED.has(token)) offenders.push(token);
     }
   }
   assert.deepEqual(offenders, [],

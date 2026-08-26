@@ -122,7 +122,35 @@ test('en and he string tables declare identical key sets — in both directions'
   assert.deepEqual([...heKeys].filter((k) => !enKeys.has(k)).sort(), [], 'in he, missing from en');
 });
 
-test('the tables and the mockup declare the same keys — in both directions', async () => {
+/**
+ * **ONE DIRECTION SINCE 2026-08-26, and the other was dropped by an owner
+ * ruling rather than by anyone finding it inconvenient.**
+ *
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`: the app is now
+ * what gets built, and the mockup's two jobs are HISTORY and a list of intended
+ * features not yet implemented. The direction kept below serves the second job
+ * exactly — a sentence the design drew that the product does not have is a gap,
+ * and it still fails, because a gap nobody is forced to look at is a gap that
+ * rots.
+ *
+ * The direction removed was INVENTED: an app string with no mockup entry. Under
+ * the old 1:1 rule that was "invent a screen, invent a string". Under this one
+ * it is ordinary development, and keeping it would have meant every new sentence
+ * in the app required a history edit first — the exact bottleneck that put
+ * sixteen unrelated tasks behind one person opening one file, and the reason
+ * `DEC-claude-drafts-the-mockup-and-the-owner-approves` had to exist at all.
+ *
+ * **What used to be caught here that no longer is, said plainly rather than
+ * left for someone to discover**: an app string that no screen places, and a
+ * string added to `en` alone. The second is fully covered — the en/he test above
+ * compares those two tables in BOTH directions and that has not changed. The
+ * first is covered per screen, by the `every string key this screen names is
+ * declared in both tables` tests, which read the screen module's own source. So
+ * the loss is a third check over ground two others already hold, and it is not
+ * the loss of the bidirectional guarantee between the LANGUAGES, which is the
+ * one that keeps Hebrew honest.
+ */
+test('every sentence the mockup declares exists in the string tables — the gap direction', async () => {
   const en = await table('en');
   const design = mockupKeys();
   const shipped = new Set(Object.keys(en.strings));
@@ -133,14 +161,6 @@ test('the tables and the mockup declare the same keys — in both directions', a
     [],
     `declared by the mockup (${design.size} keys), missing from the string tables `
       + `(${shipped.size} keys)`,
-  );
-  // INVENTED: a string with no design entry. Every such string is also an
-  // untranslated one, which is why this is a parity test and not a lint.
-  assert.deepEqual(
-    [...shipped].filter((k) => !design.has(k)).sort(),
-    [],
-    `in the string tables (${shipped.size} keys), not shown by the mockup `
-      + `(${design.size} keys) — invent a screen, invent a string`,
   );
 });
 

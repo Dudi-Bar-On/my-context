@@ -58,6 +58,7 @@ import { pathToFileURL } from 'node:url';
 import { injection } from '../../src/cli/commands/injection.ts';
 import { resolveConfig, type Config } from '../../src/core/config.ts';
 import type { Item } from '../../src/core/types.ts';
+import { allowedClasses } from '../helpers/shipped-classes.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
 const PUBLIC = path.join(REPO, 'src', 'ui', 'public');
@@ -541,8 +542,13 @@ test('the screen invents no class the mockup\'s own proc section does not use', 
     + 'fourteen. A collapse means the pattern stopped matching.');
 
   for (const value of written) {
+  const allowed = allowedClasses(drawn);
     for (const token of value.trim().split(/\s+/)) {
-      assert.ok(drawn.has(token),
+      // `allowed`, not `drawn`: the mockup's classes UNION what styles.css
+      // actually styles. See test/helpers/shipped-classes.ts — the app is what
+      // gets built now, so a NEW class with a real rule is ordinary development;
+      // a typo still has no rule anywhere and still fails here.
+      assert.ok(allowed.has(token),
         `proc.js writes class "${token}", which <section data-p="proc"> never uses. A class the `
         + 'design of record does not draw is either a typo or a decision the owner has not taken.');
     }
