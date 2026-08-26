@@ -264,6 +264,15 @@ export const strings = {
   'list.displayOnly': 'A display limit. All {total} were in the injection — none were dropped.',
   'list.showAll': 'Show all {total}',
   'list.showFewer': 'Show fewer',
+  // The rail's count badges. Three states, because a badge that is merely
+  // absent cannot tell "nothing needs attention" from "nobody looked" —
+  // STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is.
+  // Phrased to dodge verb agreement: "1 need attention" is wrong and
+  // "1 needs attention" would need a plural rule the i18n grammar has no
+  // marker for. A label form is correct at every count, in both languages.
+  'rail.cntSome': 'awaiting attention: {count}',
+  'rail.cntZero': 'nothing needs attention',
+  'rail.cntNone': 'not measured — this screen’s endpoint refused',
   'ask.noRows': 'no rows matched',
   'ask.recallq': 'Why a search can return nothing',
   'ask.recall1': 'Matching is literal today, so {m:search "silently drop"} finds nothing while the corpus says "dropped silently". {b:Full-text search with a stemmer is decided} — behind {m:search} and {m:query_items} only, never in {m:select()}, so what gets injected stays deterministic.',

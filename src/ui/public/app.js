@@ -74,6 +74,10 @@ import { applyLanguage, pickLanguage, t as translate, tFlat as flat } from '/lib
 // `e2e/runs.spec.ts` points at when it asserts the page SHOWS a script tag
 // rather than running one.
 import { markdownNodes } from '/screens/docs.js';
+// The rail's Coverage-gaps badge counts the SAME directories the gaps table
+// lists, through the same function. See `paintRailCounts` for why the count is
+// derived here rather than served as a number by `/api/status`.
+import { buildTree, coverageGaps } from '/lib/viewmodel.js';
 
 const SCREENS = {
   preview: () => import('/screens/preview.js'),
@@ -902,6 +906,90 @@ async function fillChrome() {
   } catch { /* leave the count empty rather than show a wrong one */ }
 }
 
+// --- The rail's count badges ------------------------------------------------
+//
+// `<span class="cnt x">7</span>` beside Coverage gaps, Doctor and Review queue:
+// the count of things wanting attention, on the rail, where a person sees it
+// without opening the screen. The design of record has drawn all three since it
+// was written and `styles.css` has carried `.cnt` and `.cnt.x` just as long —
+// and nothing in this shell ever created one, so the stylesheet had rules for
+// an element that did not exist. Invisible to `styles-parity` by construction:
+// it compares CSS BLOCKS, and both files have the block.
+//
+// **THREE STATES, THREE SPELLINGS, because two of them are easy to confuse and
+// `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` says they may
+// not be.** A badge that is simply absent cannot tell a reader whether nothing
+// needs attention or whether nobody looked:
+//
+//     .cnt.x   "7"   measured, and something wants attention
+//     .cnt     "0"   measured, and nothing does — drawn in the NEUTRAL class,
+//                    so it reports without shouting
+//     .cnt     "—"   NOT measured: the endpoint refused, and the em dash is
+//                    this product's own mark for a value nothing measured
+//                    (`status.js` draws one for the same reason)
+//
+// The zero badge is the one the design of record does not draw, and it is drawn
+// anyway: the mockup's scene happens to have a finding on all three screens, so
+// the question never arose there. `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`
+// is what makes that an ordinary decision rather than a divergence to file.
+//
+// **TWO REQUESTS, NOT THE `counts` FIELD THE TASK PROPOSED**, and the reason is
+// worth stating because the task's suggestion looked better on its face. One
+// `/api/status` carrying all three numbers would be one request and would keep
+// every derivation server-side. But the Coverage-gaps number is
+// `coverageGaps()` — a walk over the coverage tree that lives in
+// `lib/viewmodel.js` and is tested there — and moving it server-side means
+// either a SECOND implementation of one rule, which this project bans outright,
+// or a refactor that makes the gaps table read a server-computed list. Neither
+// belongs in a task about drawing a badge. Two boot requests against a local
+// server is the cheaper price, and it is paid once.
+const RAIL_COUNTS = ['gaps', 'doctor', 'work'];
+
+/** `null` means NOT MEASURED, which is never the same as `0`. */
+async function railCounts() {
+  const counts = { gaps: null, doctor: null, work: null };
+  // Each source is caught separately: `/api/coverage` refusing must not cost
+  // the two numbers `/api/status` answered perfectly well.
+  try {
+    const status = await api('/api/status');
+    counts.doctor = (status.health?.errors ?? 0) + (status.health?.warnings ?? 0);
+    counts.work = status.pendingRevisions?.revisions ?? 0;
+  } catch { /* stays null — named as unmeasured on the rail */ }
+  try {
+    const coverage = await api('/api/coverage');
+    counts.gaps = coverageGaps(buildTree(coverage.files ?? [])).length;
+  } catch { /* stays null */ }
+  return counts;
+}
+
+function railBadge(count) {
+  const badge = document.createElement('span');
+  if (count === null) {
+    badge.className = 'cnt';
+    badge.append(document.createTextNode('—'));
+    badge.title = flat(table.strings, 'rail.cntNone');
+    return badge;
+  }
+  badge.className = count > 0 ? 'cnt x' : 'cnt';
+  badge.append(document.createTextNode(String(count)));
+  badge.title = flat(table.strings, count > 0 ? 'rail.cntSome' : 'rail.cntZero', {
+    count: String(count),
+  });
+  return badge;
+}
+
+async function paintRailCounts() {
+  const counts = await railCounts();
+  for (const name of RAIL_COUNTS) {
+    const button = document.querySelector(`.nav[data-s="${name}"]`);
+    // The rail is rebuilt on a language change, so a badge from the previous
+    // paint would otherwise be appended beside a new one.
+    if (button === null) continue;
+    for (const stale of button.querySelectorAll('.cnt')) stale.remove();
+    button.append(railBadge(counts[name]));
+  }
+}
+
 function renderNav() {
   const nav = document.getElementById('nav');
   nav.replaceChildren();               // never innerHTML — see i18n above
@@ -965,6 +1053,10 @@ async function route() {
   const name = Object.hasOwn(SCREENS, asked) ? asked : 'preview';
   const loader = SCREENS[name];
   renderNav();
+  // Fire-and-forget, and NEVER awaited here — see main()'s note on the bare
+  // `await` that took a whole boot down over one 401. A rail badge is the least
+  // important thing on this page; it may not be able to delay or break the rest.
+  void paintRailCounts();
 
   // **Every screen is a `<section data-p="NAME">`, and they STACK.**
   //
