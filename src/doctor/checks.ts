@@ -837,6 +837,85 @@ export function checkTagProjection(items: Item[], config: Config): Finding[] {
   });
 }
 
+/**
+ * **A second `.my_context` below this one, which would shadow it.**
+ *
+ * `findProjectRoot` walks UP from the session's working directory and stops at
+ * the FIRST `.my_context` it finds. So a corpus nested inside the repository
+ * captures every session started at or below it — silently, and with a
+ * different corpus than the one the repository is about.
+ *
+ * **This project is its own example.** `my-context/.my_context` holds 44 items
+ * and ZERO tasks, on a different category set (`adr`, `invariant`, `non_goal`);
+ * the repository root holds 510 items and 361 tasks. A session started one
+ * directory in gets the small one and a board that looks empty.
+ *
+ * **It is `info`, not a defect.** A nested workspace is a legitimate thing —
+ * a plugin that carries its own design corpus, a fixture, a vendored project —
+ * and the notice exists so a reader learns it HERE rather than from a surprise,
+ * which is the register `foreign_store` is drawn in for the same reason.
+ *
+ * Written on 2026-08-26, the day a session spent nine days outside the
+ * workspace with nothing on any surface reporting it. That failure was a cwd
+ * ABOVE the corpus; this is the same failure with the cwd BELOW it, and it is
+ * the one variant the fixes that day do not cover: resolving from the file
+ * still finds the nearest root, and the nearest root is the nested one.
+ *
+ * The walk is bounded the way every other scan here is — `SKIP_DIRS` minus
+ * `.my_context` itself, since that is precisely what is being looked for.
+ */
+export function checkNestedCorpus(root: string, repoRoot: string): Finding[] {
+  // `SKIP_DIRS` minus `.my_context` itself — that is what is being looked for —
+  // plus the places a corpus is a FIXTURE rather than somewhere anyone works.
+  // Measured on this repository the first time it ran: four hits, of which one
+  // was the real hazard (`my-context/.my_context`, 44 items and no tasks) and
+  // three were a test fixture, a generated demo corpus and a harness scratch
+  // directory. A check whose true positives are outnumbered three to one is a
+  // check people learn to scroll past, which is worse than not having it.
+  const FIXTURE_DIRS = ['test', 'tests', 'fixtures', 'harness', '.scratch', '.demo-corpus'];
+  const skip = new Set([
+    ...[...SKIP_DIRS].filter((d) => d !== '.my_context'),
+    ...FIXTURE_DIRS,
+  ]);
+  const found: string[] = [];
+  const walk = (dir: string, depth: number): void => {
+    if (depth > 4 || found.length >= 8) return;
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return; // unreadable is not this check's problem
+    }
+    for (const name of entries) {
+      if (skip.has(name)) continue;
+      const full = path.join(dir, name);
+      try {
+        if (!statSync(full).isDirectory()) continue;
+      } catch {
+        continue;
+      }
+      if (name === '.my_context') {
+        // The workspace's own root is the thing every session is meant to
+        // find. Only a DIFFERENT one shadows it.
+        if (path.resolve(full) !== path.resolve(root)) found.push(relPosix(repoRoot, full));
+        continue; // never descend into a corpus
+      }
+      walk(full, depth + 1);
+    }
+  };
+  walk(repoRoot, 0);
+
+  return found.sort().map((where) => ({
+    level: 'info' as const,
+    code: 'nested_corpus',
+    message:
+      `a second corpus is nested at "${where}". \`findProjectRoot\` stops at the FIRST ` +
+      '`.my_context` above the working directory, so any session started at or below that path ' +
+      'gets THAT corpus instead of this one — a different board, silently. Nothing is wrong with ' +
+      'it existing; start sessions at the repository root, or cd out of it before you do.',
+  }));
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
@@ -852,6 +931,7 @@ export function runChecks(opts: {
     () => checkAuditSize(opts.root),
     () => checkCorpusSize(opts.items),
     () => checkTagProjection(opts.items, opts.config),
+    () => checkNestedCorpus(opts.root, opts.repoRoot),
   ];
 
   const findings: Finding[] = [];

@@ -351,3 +351,51 @@ test('the summary total matches the number of individually printed findings', ()
     assert.match(out, /across 3 finding\(s\)/);
   });
 });
+
+/* -------------------------------------------------------------------------- *
+ * nested_corpus — the one variant the 2026-08-26 fixes do not cover.
+ *
+ * That day's failure was a working directory ABOVE the corpus: `findProjectRoot`
+ * walked up, found nothing, and both injection tiers returned '' in silence for
+ * nine days. The fixes cover it — the JIT tier resolves from the FILE, and a
+ * missing workspace now discloses.
+ *
+ * This is the same failure with the cwd BELOW the corpus, and neither fix
+ * reaches it: `findProjectRoot` stops at the FIRST `.my_context` it meets, and
+ * resolving from the file finds that same nearest root. Nothing is missing, so
+ * nothing warns — a session started one directory in simply gets a different
+ * corpus. On this repository that is 44 items and zero tasks against 510 and
+ * 361, which reads as a board that emptied itself.
+ * -------------------------------------------------------------------------- */
+
+test('a corpus nested inside the repository is reported, and the workspace\'s own is not', () => {
+  withProject((cwd) => {
+    // The workspace's own root must never be reported as shadowing itself.
+    const clean = runWithWorkspace(cwd, mkdtempSync(path.join(tmpdir(), 'myctx-g-')));
+    assert.equal(/nested_corpus/.test(clean.out), false,
+      'the workspace reported ITSELF as a nested corpus');
+
+    mkdirSync(path.join(cwd, 'vendored', 'plugin', '.my_context', 'items'), { recursive: true });
+    const found = runWithWorkspace(cwd, mkdtempSync(path.join(tmpdir(), 'myctx-g-')));
+    assert.match(found.out, /nested_corpus/,
+      'a second .my_context below the repository root shadows every session started at or below '
+      + 'it, and nothing else in this product would say so');
+    assert.match(found.out, /vendored\/plugin\/\.my_context/,
+      'the finding must name WHERE — a reader cannot cd out of a path they were not told');
+  });
+});
+
+test('a corpus under a fixture directory is not reported — the check must stay readable', () => {
+  withProject((cwd) => {
+    // Measured on the real repository: the first draft returned four hits, one
+    // real and three fixtures. A check whose true positives are outnumbered is
+    // one people learn to scroll past.
+    for (const dir of ['test', 'harness', '.demo-corpus']) {
+      mkdirSync(path.join(cwd, dir, 'ws', '.my_context', 'items'), { recursive: true });
+    }
+    const out = runWithWorkspace(cwd, mkdtempSync(path.join(tmpdir(), 'myctx-g-'))).out;
+    assert.equal(/nested_corpus/.test(out), false,
+      'a corpus under test/, harness/ or .demo-corpus/ is a fixture, not a workspace anyone '
+      + 'starts a session in');
+  });
+});
