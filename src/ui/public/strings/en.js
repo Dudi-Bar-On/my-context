@@ -254,6 +254,16 @@ export const strings = {
   'ask.rows': '{rows} rows',
   'th.role': 'Role',
   'ask.truncated': 'capped at {rows} rows — more matched; raise the limit to see them',
+  // The bound every list declares — one vocabulary across five surfaces.
+  // `admittedOf` and `recentOf` are the two ORDERS a bounded list can honestly
+  // claim; `displayOnly` is the clause the preview must carry so a display cap
+  // is never read as a claim about what was injected.
+  'list.allOf': 'Showing all {total}.',
+  'list.admittedOf': 'Showing the first {shown} of {total}, in the order the selector admitted them.',
+  'list.recentOf': 'Showing the {shown} most recent of {total}.',
+  'list.displayOnly': 'A display limit. All {total} were in the injection — none were dropped.',
+  'list.showAll': 'Show all {total}',
+  'list.showFewer': 'Show fewer',
   'ask.noRows': 'no rows matched',
   'ask.recallq': 'Why a search can return nothing',
   'ask.recall1': 'Matching is literal today, so {m:search "silently drop"} finds nothing while the corpus says "dropped silently". {b:Full-text search with a stemmer is decided} — behind {m:search} and {m:query_items} only, never in {m:select()}, so what gets injected stays deterministic.',

@@ -100,7 +100,8 @@
  */
 import { selectQuery } from '/lib/viewmodel.js';
 import {
-  el, errorNote, idFull, linkId, mono, num, screenHead, spaced, tierChip,
+  BOUND_CAP_LIST, boundedList, el, errorNote, idFull, linkId, mono, num, screenHead, spaced,
+  tierChip,
 } from '/screens/parts.js';
 
 /**
@@ -412,14 +413,20 @@ export async function render(root, ctx) {
     // second listener: `app.js` already routes any click inside `[data-id]` to
     // `openPane`, and a screen adding its own would be a second implementation
     // of the one behaviour every id in this product shares.
-    for (const entry of selection.full) {
+    // **A DISPLAY cap, and the sentence says so in those words.** The order is
+    // the selector's own first-fit admission order, because `SelectionEntry` is
+    // `{item, tier}` and carries no time — see `boundedList`. Getting the
+    // wording wrong here turns "showing 20 of 47" into "you were given 20",
+    // which would be false about the one screen that promises *exactly what
+    // Claude gets*.
+    const deliveredBound = boundedList(ctx, rows, selection.full, (entry) => {
       const row = el('button', 'row');
       row.type = 'button';
       row.dataset.id = entry.item.id;
       row.append(idFull(entry.item.id), tierChip(entry.tier));
-      rows.append(row);
-    }
-    delivered.append(rows);
+      return row;
+    }, { cap: BOUND_CAP_LIST, order: 'admitted', displayOnly: true });
+    delivered.append(rows, deliveredBound);
 
     // Why not sits in the SECOND column, so `drawGates` is handed its host
     // rather than reaching for `out`.
@@ -491,15 +498,21 @@ export async function render(root, ctx) {
     }));
     out.append(spaced(line));
 
-    for (const indexLine of index.normative) {
-      if (indexLine.carried !== true) continue;
+    // The same rule as the delivered list, by the owner's own instruction:
+    // `IndexLine` is `{id, type, title, carried?}` and has no timestamp either.
+    // The blocks need a host of their own — they used to be appended straight
+    // to `out`, which leaves nothing for a bound line to sit under.
+    const carriedHost = el('div');
+    const carriedLines = index.normative.filter((line) => line.carried === true);
+    const carriedBound = boundedList(ctx, carriedHost, carriedLines, (indexLine) => {
       const block = el('div', 'carrieditem small');
       const chip = el('span', 'chip gov');
       chip.dataset.g = '◇';
       chip.append(...ctx.t('tier.carried'));
       block.append(linkId(indexLine.id), chip);
-      out.append(block);
-    }
+      return block;
+    }, { cap: BOUND_CAP_LIST, order: 'admitted', displayOnly: true });
+    out.append(carriedHost, carriedBound);
 
     if (carried.dropped.length > 0) {
       const dropped = el('p', 'small');

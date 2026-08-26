@@ -191,3 +191,124 @@ export function tierChip(tier) {
 export function errorNote(message) {
   return el('p', 'small spill', message);
 }
+
+// --- The bound every list declares ------------------------------------------
+//
+// `REQ-every-list-and-table-declares-what-leaves-it-and-when-and-says`: a
+// surface that grows with the corpus and never says what it dropped is two
+// defects at once — it becomes unusable at scale, and it cannot be told apart
+// from a surface that is showing everything.
+//
+// **ONE implementation, five call sites**, because five surfaces sharing one
+// mechanism must share their wording or the product grows five ways to say
+// "there is more". The five are the delivered list and the carried blocks
+// (`preview.js`), the injected-now table (`injected.js`), the review queue
+// (`work.js`) and the pack stack (`packs.js`).
+//
+// **The ORDER is a parameter, and it is the whole of the owner's ruling**
+// (`DEC-a-record-list-bounds-by-time-a-computed-list-bounds-by`):
+//
+//   'recent'   — a surface that REPLAYS A RECORD. Every row carries a real
+//                timestamp, so the last N by time is a meaningful selection and
+//                the remainder is fetchable because it is persisted.
+//   'admitted' — a surface that RE-COMPUTES. `SelectionEntry` is
+//                `{item, tier}` and `IndexLine` is `{id, type, title,
+//                carried?}`; neither carries a time field, and every item in a
+//                preview arrives at the same hypothetical instant. Its only
+//                real ordering is the one `select()` used: first-fit, tier by
+//                tier. Stamping a computation with a time it never happened at
+//                would be fabrication.
+//
+// **`displayOnly` is not decoration and not politeness.** On the preview the
+// cap is a DISPLAY cap over a list that was delivered WHOLE, so the sentence
+// has to say so in those words. Without it, "showing 20 of 47" reads as "you
+// were given 20" — a false claim about the injection itself, on the one screen
+// whose promise is *"exactly what Claude gets"*.
+//
+// The remainder costs no round trip anywhere: every one of the five already
+// receives its whole array in the response it is rendering. So "show all" is a
+// re-render, the total is always EXACT rather than "at least N", and the honest
+// sentence is available in every state — including the state where nothing was
+// truncated, which is why `list.allOf` exists. A list that shows everything and
+// says nothing cannot be told apart from one that truncated.
+
+/** Card lists sit in a scene the design of record sizes; tables and card stacks scroll. */
+export const BOUND_CAP_LIST = 20;
+export const BOUND_CAP_TABLE = 50;
+
+/**
+ * Draws `items` through `draw`, capped, and appends the bound line under them.
+ *
+ * `host` receives the drawn rows; the bound line is returned so the caller can
+ * place it where the reader reaches the end of the list — which is not always
+ * the same parent (a `<table>`'s rows go in a `<tbody>` and its bound line
+ * cannot).
+ */
+/** One keyed sentence, wrapped the way the design of record wraps it. */
+function sentence(ctx, key, slots) {
+  const span = el('span');
+  span.append(...ctx.t(key, slots));
+  return span;
+}
+
+/** A record bounds by time; a computation bounds by admission order. */
+function orderKeyFor(spec) {
+  return spec.order === 'recent' ? 'list.recentOf' : 'list.admittedOf';
+}
+
+export function boundedList(ctx, host, items, draw, spec) {
+  const cap = spec.cap;
+  const total = items.length;
+  const bound = el('div', 'bound');
+  const line = el('p', 'small');
+  const button = el('button');
+  button.type = 'button';
+  bound.append(line, button);
+
+  let expanded = false;
+
+  const paint = () => {
+    const shown = expanded ? total : Math.min(cap, total);
+    // **WHICH `shown` SURVIVE IS THE CLAIM THE SENTENCE MAKES**, so the slice
+    // has to match it. A record surface whose rows arrive OLDEST FIRST — which
+    // is how the design of record draws the injected table, ascending by its
+    // own When column — keeps its most recent rows at the END. Slicing the head
+    // there would show the oldest N under a sentence promising the newest N,
+    // which is the exact failure this requirement exists to prevent: a sample
+    // presented as a summary. The survivors are then drawn in their ORIGINAL
+    // order, so the table's direction is unchanged and only its membership is.
+    const kept = spec.take === 'last' ? items.slice(total - shown) : items.slice(0, shown);
+    host.replaceChildren(...kept.map((item, i) => draw(item, i)));
+
+    if (total <= cap) {
+      // Not a truncation, and it still says so. `STD-a-measured-zero-is-drawn`
+      // governs the empty end of this; this is the other one.
+      line.replaceChildren(sentence(ctx, 'list.allOf', { total: num(total) }));
+      button.hidden = true;
+      return;
+    }
+    button.hidden = false;
+    if (expanded) {
+      line.replaceChildren(sentence(ctx, 'list.allOf', { total: num(total) }));
+      button.replaceChildren(...ctx.t('list.showFewer'));
+      return;
+    }
+    // **Each sentence is its own `<span>`**, because that is how the design of
+    // record carries a keyed sentence inside a paragraph that holds more than
+    // one — `data-t` has to sit ON an element, and `applyLang` replaces that
+    // element's children wholesale. Appending the nodes bare into the `<p>`
+    // would render identically and diverge structurally, which is exactly the
+    // kind of difference `screen-parity` exists to catch.
+    line.replaceChildren(
+      sentence(ctx, orderKeyFor(spec), { shown: num(shown), total: num(total) }),
+      ...(spec.displayOnly === true
+        ? [document.createTextNode(' '), sentence(ctx, 'list.displayOnly', { total: num(total) })]
+        : []),
+    );
+    button.replaceChildren(...ctx.t('list.showAll', { total: num(total) }));
+  };
+
+  button.addEventListener('click', () => { expanded = !expanded; paint(); });
+  paint();
+  return bound;
+}

@@ -284,7 +284,21 @@ const KNOWN_GAPS: Record<string, string[]> = {
     // under six workers, and neither is a regression.
     'div.div-l', 'div.div-r', 'div.div-row', 'i', 'span.div-n', 'span.div-name',
   ],
-  injected: ['button.linkid.m', 'span.chip.gov', 'span.chip.ok', 'td', 'td.m.small'],
+  // **`button` is DATA, and it is the seventh instance of a class worth naming.**
+  // `boundedList` draws the bound line's "Show all N" control on every one of
+  // the five bounded surfaces, this table included — and hides it, correctly,
+  // when nothing was truncated. `BOUND_CAP_TABLE` is 50; the demo corpus's
+  // longest seen file holds 8 lines, so the cap cannot bite here and the button
+  // is `hidden`, which `COLLECT_KINDS` skips by construction (`offsetParent`).
+  //
+  // The code is built and the fixture never asks it to run. That is the same
+  // reading error `div.gh` and `div.carrieditem.small` cost this project twice
+  // before — a FIXTURE gap read as a CODE gap — and `plan:port seq:94` (the
+  // fixture mirrors the mockup scene) is the task that closes the whole class.
+  // Lowering the cap until the gate went green would have been tuning the
+  // ledger, which the header above names as the one edit that makes this file
+  // worse than nothing.
+  injected: ['button', 'button.linkid.m', 'span.chip.gov', 'span.chip.ok', 'td', 'td.m.small'],
   // Shrank from 15 to 8 while this gate was being written: the agent building
   // screens/watch.js landed the SVG (rect, svg), the bidi runs and the table,
   // and the gate demanded the ledger follow. Exactly the mechanism.

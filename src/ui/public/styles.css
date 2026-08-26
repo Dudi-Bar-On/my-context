@@ -508,6 +508,18 @@ bdi{unicode-bidi:isolate}
    which cannot be split without hand-writing a selector the mockup didn't
    write. */
 .carrieditem{display:flex;align-items:center;gap:8px;margin-block-start:4px}
+/* THE BOUND LINE. Carried byte for byte from the design of record — every list
+   and table in this product says what leaves it and when, under the list, where
+   the reader reaches its end. The dashed rule is the point: a solid one reads as
+   the card's own edge, and this is a seam INSIDE the card, between what is shown
+   and what is not. */
+.bound{display:flex;align-items:baseline;gap:var(--sp-2);flex-wrap:wrap;
+  margin-block-start:var(--sp-2);padding-block-start:var(--sp-2);
+  border-block-start:1px dashed var(--edge)}
+.bound p{margin:0;flex:1 1 14rem}
+.bound button{border:1px solid var(--edge-3);background:var(--sink);
+  border-radius:var(--r-md);padding-block:2px;padding-inline:var(--sp-2);
+  font-size:var(--fs-0);cursor:pointer;color:var(--dim);white-space:nowrap}
 
 /* Table base — simulate.js's fits table and injected.js's delivery table
    both render a literal `<table><thead><tr><th>…<tbody><tr><td>` (mockup

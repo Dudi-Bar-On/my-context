@@ -360,18 +360,29 @@ test('a kind:"export" row is drawn, labelled, and not filtered out of a list hea
   // for it, which is a different fact from a missing row.
   assert.equal(byLabel.get('version')?.text, '');
   assert.ok(!/\.filter\(/.test(packsCode),
-    'packs.js filters something. Every row /api/packs sends is a row this screen draws — no cap, '
-    + 'no paging, no filter.');
-  // The WHOLE statement, not its head. A first draft of this assertion checked
-  // only that the loop walked `body.packs`, and a mutation that added
-  // `if (pack.kind === 'export') continue;` inside the braces passed it — an
-  // undisclosed filter wearing a different keyword. The loop body must be one
-  // unconditional append, so a guard, a `continue` or a cap all have to edit
-  // this line to exist.
-  assert.ok(/for \(const pack of body\.packs\) root\.append\(packCard\(pack\)\);/.test(packsCode),
-    'the render loop is no longer an unconditional append per served pack. Every row /api/packs '
-    + 'sends is a row this screen draws — a `kind: "export"` record imported under `--name` is a '
-    + 'member of this list, and hiding it would be a filter with no disclosure.');
+    'packs.js filters something. Every row /api/packs sends is a row this screen draws.');
+  // **A DISCLOSED CAP IS NOT A FILTER, and that distinction is this assertion's
+  // whole subject.** Until 2026-08-26 this pinned "no cap, no paging, no
+  // filter" and matched the literal `for (const pack of body.packs)
+  // root.append(packCard(pack));` — which was right when the alternative was a
+  // silent truncation, and wrong once
+  // `REQ-every-list-and-table-declares-what-leaves-it-and-when-and-says`
+  // existed: an unbounded stack is not honest, it is merely unbounded.
+  //
+  // What has to stay pinned is that nothing is hidden WITHOUT SAYING SO. So the
+  // whole membership must still reach the renderer — `body.packs` entire, no
+  // guard, no `continue`, no slice at the call site — and the only thing
+  // allowed to hold rows back is `boundedList`, which cannot do it silently:
+  // it draws the sentence and the control in the same breath as the cut.
+  assert.ok(
+    /boundedList\(ctx, stack, body\.packs, \(pack\) => packCard\(pack\),/.test(packsCode),
+    'the render path is no longer boundedList over the WHOLE served array. A guard, a `continue` '
+    + 'or a hand-rolled slice here would hide a `kind: "export"` record imported under `--name` '
+    + 'with nothing on screen to say it happened.');
+  assert.ok(/order: 'recent', take: 'last'/.test(packsCode),
+    'the pack stack no longer declares its order. A pack import is a record — `.audit/imported/` '
+    + 'stamps each one — and a truncation whose ordering is unstated is a sample presented as a '
+    + 'summary.');
 });
 
 /* -------------------------------------------------------------------------- *
@@ -538,10 +549,14 @@ test('the kinds this screen adds beyond the mockup come from parts.js and are en
   // import list is where they are pinned: reaching for `linkId` or `tierChip`
   // adds a kind to the KNOWN_GAPS ledger's other column and must not happen
   // silently.
-  const imports = /import \{ ([^}]+) \} from '\/screens\/parts\.js'/.exec(packsCode);
+  // The specifier match tolerates a WRAPPED import list — the list outgrew one
+  // line when `boundedList` joined it, and a regex that silently stops matching
+  // is a pin that has stopped pinning rather than a failure anyone would see.
+  const imports = /import \{([^}]+)\} from '\/screens\/parts\.js'/.exec(packsCode);
   assert.ok(imports, 'packs.js no longer imports from parts.js by the browser\'s own specifier');
-  assert.deepEqual(imports[1].split(',').map((s) => s.trim()).sort(),
-    ['el', 'errorNote', 'idFull', 'mono', 'num', 'spaced']);
+  assert.deepEqual(
+    imports[1].split(',').map((s) => s.trim()).filter((s) => s !== '').sort(),
+    ['BOUND_CAP_TABLE', 'boundedList', 'el', 'errorNote', 'idFull', 'mono', 'num', 'spaced']);
   // `linkId` in particular is the wrong helper here and its absence is a
   // decision: a `missing` id names an item that is NOT in the corpus, so a
   // button opening the detail pane for it would open a pane on nothing.

@@ -20,7 +20,9 @@
  * or collapsed: a second delivery of an item is a second row, and an item the
  * corpus no longer holds keeps its row, because the injection still happened.
  */
-import { el, errorNote, linkId, screenHead, spaced, tierChip } from '/screens/parts.js';
+import {
+  BOUND_CAP_TABLE, boundedList, el, errorNote, linkId, screenHead, spaced, tierChip,
+} from '/screens/parts.js';
 
 export async function render(root, ctx) {
   root.replaceChildren();
@@ -44,6 +46,9 @@ export async function render(root, ctx) {
     thead.append(headRow);
     const tbody = el('tbody');
     table.append(thead, tbody);
+    // Null for a cold session: there is no seen file, so there is no list to
+    // bound and nothing truthful a bound line could say about one.
+    let bound = null;
 
     // A cold session has no id, so there is no seen file to read and nothing to
     // ask about. The table is drawn with no rows rather than replaced by a
@@ -67,7 +72,14 @@ export async function render(root, ctx) {
       if (data.error !== null && data.error !== undefined) {
         card.append(errorNote(data.error));
       }
-      for (const line of data.lines) {
+      // **A record, so it bounds by TIME** — every line carries `at`, which is
+      // the When column beside it. `take: 'last'` because the seen file is an
+      // APPEND log: its most recent lines are at the end, and slicing the head
+      // would show the oldest under a sentence promising the newest. The
+      // survivors keep the file's own order, so only the table's membership
+      // changes and never its direction — which is what the header above means
+      // by "one row per DELIVERY, in the file's own order".
+      bound = boundedList(ctx, tbody, data.lines, (line) => {
         const row = el('tr');
         const item = el('td');
         // The FULL id as text, the way the mockup draws it in this table —
@@ -78,13 +90,18 @@ export async function render(root, ctx) {
         tier.append(tierChip(line.tier));
         const when = el('td', 'm small', line.at);
         row.append(item, tier, when);
-        tbody.append(row);
-      }
+        return row;
+      }, { cap: BOUND_CAP_TABLE, order: 'recent', take: 'last' });
     }
 
     const note = el('p', 'small');
     note.append(...ctx.t('inj.note'));
-    card.append(table, spaced(note));
+    // The bound line cannot live inside the `<table>` — a `<div>` is not a row
+    // — so it sits between the table and the note, still directly under the
+    // last row a reader sees.
+    card.append(table);
+    if (bound !== null) card.append(bound);
+    card.append(spaced(note));
   }
 
   ctx.onSessionChange(() => { void show(); });

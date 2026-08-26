@@ -122,7 +122,9 @@
  */
 import { composeCommand } from '/lib/command.js';
 import { PALETTE, commandFor } from '/lib/palette-defs.js';
-import { el, errorNote, mono, screenHead, spaced } from '/screens/parts.js';
+import {
+  BOUND_CAP_TABLE, boundedList, el, errorNote, mono, screenHead, spaced,
+} from '/screens/parts.js';
 
 /**
  * The catalogue entry this screen composes from — looked up once, by name, and
@@ -455,5 +457,12 @@ export async function render(root, ctx) {
     return;
   }
 
-  for (const rev of revisions) root.append(revisionCard(ctx, rev));
+  // **A record: the revision log stamps each staging**, so the queue bounds by
+  // time. `take: 'last'` because that log is append-only — the newest
+  // revisions sit at its end. The stack keeps the log's own order, so a reader
+  // who knows the queue does not find it reversed under them.
+  const stack = el('div');
+  const bound = boundedList(ctx, stack, revisions, (rev) => revisionCard(ctx, rev),
+    { cap: BOUND_CAP_TABLE, order: 'recent', take: 'last' });
+  root.append(stack, bound);
 }

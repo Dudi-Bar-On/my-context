@@ -169,7 +169,9 @@
  * standing alone would report the good one.
  */
 import { composeCommand } from '/lib/command.js';
-import { el, errorNote, idFull, mono, num, spaced } from '/screens/parts.js';
+import {
+  BOUND_CAP_TABLE, boundedList, el, errorNote, idFull, mono, num, spaced,
+} from '/screens/parts.js';
 
 /**
  * A string this response read off disk, isolated and shown verbatim.
@@ -517,8 +519,14 @@ export async function render(root, ctx) {
   two.append(trustCard(ctx, body.landing), carriesCard(ctx, body.carries));
   root.append(two, manifestCard(ctx));
 
-  // Every row served, in the order served: no filter, no cap, no paging — the
-  // response's own contract, and `kind: 'export'` rows are members of it.
-  for (const pack of body.packs) root.append(packCard(pack));
+  // **Every row served, in the order served** — that part is unchanged and is
+  // the response's own contract, `kind: 'export'` rows included. What is new is
+  // that the stack now DECLARES its bound instead of growing without one. A
+  // pack import IS a record (`.audit/imported/` stamps each), so it bounds by
+  // time; `take: 'last'` because that directory is read in append order.
+  const stack = el('div');
+  const bound = boundedList(ctx, stack, body.packs, (pack) => packCard(pack),
+    { cap: BOUND_CAP_TABLE, order: 'recent', take: 'last' });
+  root.append(stack, bound);
   if (body.dropped.length > 0) root.append(droppedCard(body.dropped));
 }

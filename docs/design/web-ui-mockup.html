@@ -523,6 +523,18 @@ body.sim-rt .gloss,body.sim-rt .gloss.float{background-image:none;box-shadow:non
 .rows{display:flex;flex-direction:column;gap:6px;padding:10px}
 .row .idfull{flex:1;min-inline-size:0}
 .carrieditem{display:flex;align-items:center;gap:8px;margin-block-start:4px}
+/* THE BOUND LINE. Every list and table in this product says what leaves it
+   and when, and it says so in the one place a reader reaches the end of the
+   list: under it. The dashed rule is the point — a solid one reads as the
+   card's own edge, and this is a seam INSIDE the card, between what is shown
+   and what is not. */
+.bound{display:flex;align-items:baseline;gap:var(--sp-2);flex-wrap:wrap;
+  margin-block-start:var(--sp-2);padding-block-start:var(--sp-2);
+  border-block-start:1px dashed var(--edge)}
+.bound p{margin:0;flex:1 1 14rem}
+.bound button{border:1px solid var(--edge-3);background:var(--sink);
+  border-radius:var(--r-md);padding-block:2px;padding-inline:var(--sp-2);
+  font-size:var(--fs-0);cursor:pointer;color:var(--dim);white-space:nowrap}
 
 table{inline-size:100%;border-collapse:collapse;font-size:var(--fs-1)}
 caption{text-align:start;font-size:var(--fs-0);color:var(--dim);padding-block-end:6px}
@@ -1366,6 +1378,22 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
             <span class="chip ok" data-g="●">jit</span>
           </button>
         </div>
+        <!-- The delivered list CANNOT bound by time: `SelectionEntry` is
+             `{item, tier}` and every item in a preview arrives at the same
+             hypothetical instant. Its order is the selector's own first-fit
+             admission order, and its cap is a DISPLAY cap that says so — get
+             that wording wrong and "showing 20 of 47" becomes "you were given
+             20", which is a false claim about the injection itself. -->
+        <div class="bound">
+        <!-- BOTH SPELLINGS SIT IN THE DOM, the same way `ask.truncated` and
+             `ask.noRows` do: the app shows whichever is true, and the design of
+             record has to declare both or the untruncated case has no words.
+             `list.allOf` is not decoration — a list that shows everything and
+             says nothing cannot be told apart from one that truncated. -->
+        <p class="small"><span data-t="list.admittedOf">Showing the first <span class="v" data-v="shown">20</span> of <span class="v" data-v="total">47</span>, in the order the selector admitted them.</span> <span data-t="list.displayOnly">A display limit. All <span class="v" data-v="total">47</span> were in the injection — none were dropped.</span> <span data-t="list.allOf">Showing all <span class="v" data-v="total">4</span>.</span></p>
+        <button type="button" data-t="list.showAll">Show all <span class="v" data-v="total">47</span></button>
+        <button type="button" data-t="list.showFewer">Show fewer</button>
+      </div>
       </div>
 
       <div class="card pane"><h3 data-t="preview.why">Why not — the first gate that failed</h3>
@@ -1396,6 +1424,13 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       </button>
       <span class="chip gov" data-g="◇" data-t="tier.carried">carried</span><span class="prop">PROPOSED</span>
     </div>
+    <!-- The carried list takes the SAME rule as the delivered list, ruled
+         2026-08-26. `IndexLine` is `{id, type, title, carried?}` — no timestamp
+         either, and for the same reason. -->
+    <div class="bound">
+        <p class="small"><span data-t="list.admittedOf">Showing the first <span class="v" data-v="shown">20</span> of <span class="v" data-v="total">47</span>, in the order the selector admitted them.</span></p>
+        <button type="button" data-t="list.showAll">Show all <span class="v" data-v="total">26</span></button>
+      </div>
     <!-- The REST of the carry disclosure, and three keys rather than three
          sentences because `mycontext context` already prints these clauses.
          `core/render.ts` · `function renderCarried(carried: CarriedSummary | null): string {` · ~47
@@ -1584,6 +1619,13 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <tr><td><button class="linkid m" data-id="CONST-postgres-pool-capped-at-20">CONST-postgres-pool-capped-at-20</button></td><td><span class="chip gov" data-g="◆">pinned</span></td><td class="m small">09:14:02</td></tr>
         <tr><td><button class="linkid m" data-id="RULE-never-log-customer-email">RULE-never-log-customer-email</button></td><td><span class="chip ok" data-g="●">jit</span></td><td class="m small">09:22:41</td></tr>
       </tbody></table>
+      <!-- Injected now REPLAYS a record: every line carries `at`, which is the
+           When column beside it. So it bounds by TIME, newest first, and the
+           rest is fetched because it is persisted. -->
+      <div class="bound">
+        <p class="small"><span data-t="list.recentOf">Showing the <span class="v" data-v="shown">50</span> most recent of <span class="v" data-v="total">214</span>.</span></p>
+        <button type="button" data-t="list.showAll">Show all <span class="v" data-v="total">214</span></button>
+      </div>
       <p class="small" style="margin-block-start:8px" data-t="inj.note">Read from the seen file, not
         <span class="m">Ledger.seen</span> — that is a replayed projection nothing here updates, and it
         would show a different number.</p>
@@ -1925,6 +1967,13 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         screen reader announces the change without any added ARIA. The stale field carries a rule
         down its reading-start edge — the one physical offset in the sheet, and its mirror is
         written next to it rather than discovered later.</p>
+      <!-- One card per staged revision, and the stack is bounded like every
+           other record surface: the revision log stamps each staging, so the
+           order is time and the remainder is fetched. -->
+      <div class="bound">
+        <p class="small"><span data-t="list.recentOf">Showing the <span class="v" data-v="shown">25</span> most recent of <span class="v" data-v="total">60</span>.</span></p>
+        <button type="button" data-t="list.showAll">Show all <span class="v" data-v="total">60</span></button>
+      </div>
       <div class="cmd"><code>mycontext review promote-revision RULE-never-log-customer-email --revision REV-8c21 --yes</code>
         <button data-copy data-t="btn.copy">Copy</button></div>
       <div class="cmdstate"><span class="chip warn" data-g="▲" data-t="state.armed">armed</span>
@@ -2232,6 +2281,38 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         is a different thing entirely; a pack manifest does not reuse it.</p>
       <div class="cmd"><code>mycontext init --pack ../packs/regulated-industry</code>
         <button data-copy data-t="btn.copy">Copy</button></div>
+    </div>
+
+    <!-- ONE CARD PER IMPORTED PACK. Drawn 2026-08-26: the app has rendered this
+         stack since packs shipped and this screen never showed it, so the
+         product had a list with no design of record — which is also why no
+         parity gate could see it. `name` is author-supplied text and is
+         isolated, never trusted for direction. -->
+    <div class="card pane">
+      <h3><bdi class="m">regulated-industry</bdi></h3>
+      <!-- The left column is the WIRE'S OWN FIELD NAMES, drawn `.m`, and they are
+           deliberately NOT translated: `items.byStatus.draft` is an identifier
+           the reader can match against `/api/packs`, and prose in its place
+           would be a second vocabulary for one field. `packRows` in `packs.js`
+           is the list, in its order. -->
+      <table><tbody>
+        <tr><td class="m">kind</td><td><bdi class="m">pack</bdi></td></tr>
+        <tr><td class="m">version</td><td class="small">&mdash;</td></tr>
+        <tr><td class="m">source</td><td><bdi class="m">../packs/regulated-industry</bdi></td></tr>
+        <tr><td class="m">importedAt</td><td><bdi class="m">2026-08-19T11:04:22Z</bdi></td></tr>
+        <tr><td class="m">manifestFiles</td><td><span class="m">24</span></td></tr>
+        <tr><td class="m">items.total</td><td><span class="m">18</span></td></tr>
+        <tr><td class="m">items.byStatus.draft</td><td><span class="m">18</span></td></tr>
+        <tr><td class="m">missing</td><td><span class="m">0</span></td></tr>
+        <tr><td class="m">historyRecords</td><td><span class="m">1</span></td></tr>
+        <tr><td class="m">quarantined</td><td><span class="m">0</span></td></tr>
+      </tbody></table>
+      <!-- A pack import IS a record: `.audit/imported/` stamps each one. So the
+           stack bounds by time like every other record surface. -->
+      <div class="bound">
+        <p class="small"><span data-t="list.recentOf">Showing the <span class="v" data-v="shown">25</span> most recent of <span class="v" data-v="total">31</span>.</span></p>
+        <button type="button" data-t="list.showAll">Show all <span class="v" data-v="total">31</span></button>
+      </div>
     </div>
   </section>
 
@@ -2691,6 +2772,12 @@ const HE={_dir:'rtl',_lang:'he',
  's.proc':'נהלים','s.packs':'חבילות תבנית',
  'sess.name':'שמות הם רשות ו‑mycontext מחזיקה בהם. שיחה שאיש לא נתן לה שם שומרת על המזהה והקידומת שלה — לא מומצא לה דבר, כי שם נגזר עלול להיות שגוי ומתן שם הוא בדיוק הרגע שבו יודעים למה השיחה שימשה. {m:mycontext session name} · {m:/mycontext-session} — בחירה ומתן שם עובדים גם בלי הממשק הזה.',
  'tier.carried':'הועבר',
+ 'list.admittedOf':'מוצגים {v:shown=20} הראשונים מתוך {v:total=47}, בסדר שבו הבורר קיבל אותם.',
+ 'list.recentOf':'מוצגים {v:shown=50} העדכניים ביותר מתוך {v:total=214}.',
+ 'list.allOf':'מוצגים כל {v:total=4}.',
+ 'list.displayOnly':'מגבלת תצוגה. כל {v:total=47} נכללו בהזרקה — דבר לא הושמט.',
+ 'list.showAll':'הצג את כל {v:total=47}',
+ 'list.showFewer':'הצג פחות',
  'preview.carried':'{v:lines=3} שורות אינדקס הועברו מהשיחה {mv:session=a3f9c1 · billing-refactor}. מוצג כאן וב‑{m:mycontext context} באופן זהה — פריט שמגיע ממקום שאינכם רואים הוא אותו פגם כמו פריט שנשמט בשקט, רק מהכיוון ההפוך.',
  /* The other three clauses of the same disclosure. The ids and their reasons
     stay in one isolated LTR run: the reason is English because `select()` is
