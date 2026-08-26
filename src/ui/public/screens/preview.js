@@ -99,9 +99,8 @@
  * runs the string grammar has no marker for.
  */
 import { selectQuery } from '/lib/viewmodel.js';
-import { markdownNodes } from '/screens/docs.js';
 import {
-  el, errorNote, idFull, linkId, mono, num, openIcon, screenHead, spaced, tierChip,
+  el, errorNote, idFull, linkId, mono, num, screenHead, spaced, tierChip,
 } from '/screens/parts.js';
 
 /**
@@ -178,36 +177,6 @@ const GATES = [
 
 /** `GATES`' index for a `GateCode`, or -1 for `passed` and anything unknown. */
 const RUNG = (code) => GATES.findIndex((gate) => gate.code === code);
-
-/**
- * An item's own body as the mockup's `.blkbody` draws it.
- *
- * **This delegates to `markdownNodes` and used to be its own smaller
- * renderer**, which handled `<p>` and `<ul>`/`<li>` and nothing else. That was
- * wrong about what the design of record draws, and the owner found it by
- * looking: the mockup's `.blkbody` is authored markup and it carries INLINE
- * runs as well as blocks —
- * `docs/design/web-ui-mockup.html` · `<p>The pool is capped at <b>20</b> connections.</p>` · ~1355
- * and `<span class="m">pgbouncer</span>` in the paragraph under it. So a body
- * written `The pool is capped at **20** connections` reached the screen with
- * its asterisks showing, and one written with backticks kept them, on the one
- * screen whose whole promise is "exactly what Claude gets".
- *
- * `markdownNodes` is the mockup's OWN renderer, branch for branch, and its
- * vocabulary is exactly the four shapes `.blkbody` authors by hand: `<p>`,
- * `<ul>`/`<li>`, `<b>` and `<span class="m">`. Reused rather than re-derived —
- * a second spelling of the same subset is how two surfaces come to disagree
- * about what a body says, and this file already carried one.
- *
- * The refusal list it returns is dropped here, deliberately. `docs.js` shows
- * refusals inline because a help topic is a document a reader is READING; a
- * delivered item's body is a quotation, the refusal treatment belongs to the
- * detail pane one click away, and a `.blk` is drawn at `opacity:.58` where a
- * warning chip would read as damage rather than as a note.
- */
-function bodyNodes(body) {
-  return markdownNodes(String(body ?? ''), document).nodes;
-}
 
 /** The mockup's `isz()` — a data width, through the CSSOM and logical. */
 function sized(node, percent) {
@@ -405,74 +374,63 @@ export async function render(root, ctx) {
       used: num(selection.tokens),
       budget: num(budget),
     }));
+    // `.two` — Delivered beside Why not, the house two-column pattern this
+    // screen used before the repaint and five other screens still use.
+    const two = el('div', 'two');
     delivered.append(dh, cap);
-    out.append(delivered);
 
-    // The two-plane scene. `.pair` carries the perspective; `.plane.l` and
-    // `.plane.r` carry the tilt; the rail is outside both and untouched.
-    const scene = el('div', 'scene');
-    const pair = el('div', 'pair');
-    const left = el('div', 'plane l');
-    const rows = el('div', 'pane rows');
+    // ── The delivered rows live INSIDE the Delivered card ──────────────────
+    //
+    // Until 2026-08-26 they sat in a `.scene > .pair > .plane.l` beside a
+    // `.plane.r` holding each item's BODY, and that right plane was the only
+    // untitled card on the screen. The owner asked for it out, and he was
+    // right on the facts: it duplicated the item detail pane, which draws the
+    // same body PLUS type, status, tier, scope, governs, file and the
+    // twelve-week sparkline.
+    //
+    // It was not a misunderstanding — repaint Task 6 built it deliberately,
+    // for a stated reason: "never look at a rule without seeing the text it
+    // produced". What changed is that the detail pane can now do that job; when
+    // the linked view was written the pane had no sparkline, a `file` row that
+    // showed a dash on every item, and `.well`/`.welllabel` rules that were
+    // never carried.
+    //
+    // AND THE PATTERN HAD ONE INSTANCE. `.scene`, `.pair` and `.plane` were
+    // called "the composition pattern the other twenty screens copy"; measured
+    // across the whole mockup they appear EXACTLY ONCE each, here, and no
+    // screen ever copied them. `.two` — what the pre-repaint design used for
+    // this very screen — is used six times.
+    //
+    // So the layout returns to `.two`: Delivered beside Why not, the ribbon
+    // below both, and a row opens the pane.
+    const rows = el('div', 'rows');
     rows.id = 'deliveredRows';
     rows.setAttribute('role', 'group');
     rows.setAttribute('aria-label', ctx.tFlat('aria.gatepick'));
-    const right = el('div', 'plane r');
-    const lit = el('div', 'lit linked');
-    lit.id = 'deliveredLit';
 
-    selection.full.forEach((entry, index) => {
+    // **`data-id`, so the shell's own delegated handler opens the pane.** Not a
+    // second listener: `app.js` already routes any click inside `[data-id]` to
+    // `openPane`, and a screen adding its own would be a second implementation
+    // of the one behaviour every id in this product shares.
+    for (const entry of selection.full) {
       const row = el('button', 'row');
       row.type = 'button';
-      row.dataset.choice = entry.item.id;
-      // The FIRST item is held selected on first paint, so the screen never
-      // shows a rule without the text it produced.
-      row.setAttribute('aria-pressed', String(index === 0));
+      row.dataset.id = entry.item.id;
       row.append(idFull(entry.item.id), tierChip(entry.tier));
       rows.append(row);
+    }
+    delivered.append(rows);
 
-      const blk = el('div', index === 0 ? 'blk sel' : 'blk');
-      blk.dataset.for = entry.item.id;
-      const head = linkId(entry.item.id);
-      head.append(openIcon());
-      const body = el('div', 'blkbody');
-      // The item's own prose, paragraph for paragraph and list for list. NOT a
-      // client-side re-spelling of `renderItemBlock` — its heading, its steps
-      // section, its observation lines and its scope footer are that
-      // function's format, and a second implementation of a format is how two
-      // surfaces come to disagree about what was injected. The whole item is
-      // one click away in the global detail pane, which is where this
-      // `.linkid` leads. See `bodyNodes` for the two shapes and why the second
-      // one had to exist.
-      body.append(...bodyNodes(entry.item.body));
-      blk.append(head, body);
-      lit.append(blk);
-    });
-
-    // Delegated — one listener for the plane, exactly as the mockup does it.
-    rows.addEventListener('click', (event) => {
-      const row = event.target.closest('.row');
-      if (!row) return;
-      const id = row.dataset.choice;
-      for (const r of rows.querySelectorAll('.row')) {
-        r.setAttribute('aria-pressed', String(r === row));
-      }
-      for (const b of lit.querySelectorAll('.blk')) {
-        b.classList.toggle('sel', b.dataset.for === id);
-      }
-    });
-
-    left.append(rows);
-    right.append(lit);
-    pair.append(left, right);
-    scene.append(pair);
-    out.append(scene);
+    // Why not sits in the SECOND column, so `drawGates` is handed its host
+    // rather than reaching for `out`.
+    two.append(delivered);
+    drawGates(corpus, selection, two);
+    out.append(two);
 
     drawCarry(selection.index);
-    // The mockup's own order, and it is an argument rather than a layout: the
-    // ladder answers "why not" about what is NOT in the scene above, and the
-    // ribbon then shows what the budgets did with what was left.
-    drawGates(corpus, selection);
+    // The ribbon comes last, and the order is an argument rather than a layout:
+    // Why not answers about what is NOT in the Delivered card beside it, and the
+    // ribbon then shows what the budgets did with everything that was left.
     drawRibbons(selection, sim);
   }
 
@@ -600,7 +558,7 @@ export async function render(root, ctx) {
    * ladder has something to show above the break, and it is the case the design
    * of record opens on too.
    */
-  function drawGates(corpus, selection) {
+  function drawGates(corpus, selection, host) {
     const card = el('div', 'card pane');
     const heading = el('h3');
     heading.append(...ctx.t('preview.why'));
@@ -608,12 +566,12 @@ export async function render(root, ctx) {
     pick.id = 'gatepick';
     pick.setAttribute('role', 'group');
     pick.setAttribute('aria-label', ctx.tFlat('aria.gatepick'));
-    const host = el('div', 'gladder plate');
-    host.id = 'gates';
+    const ladderHost = el('div', 'gladder plate');
+    ladderHost.id = 'gates';
     const note = el('p', 'small');
     note.append(...ctx.t('preview.whyn'));
-    card.append(heading, pick, host, spaced(note));
-    out.append(card);
+    card.append(heading, pick, ladderHost, spaced(note));
+    host.append(card);
 
     const hidden = new Set(selection.focus === null ? [] : selection.focus.hidden);
     const spills = new Map(selection.spilled.map((spill) => [spill.id, spill]));
@@ -683,7 +641,7 @@ export async function render(root, ctx) {
         button.onclick = () => { who = candidate; paint(); };
         pick.append(button);
       }
-      host.replaceChildren();
+      ladderHost.replaceChildren();
       GATES.forEach((gate, i) => {
         // No candidate at all: every rung is drawn NEUTRAL rather than passed.
         // "Nothing was asked" and "everything passed" are different facts, and
@@ -700,7 +658,7 @@ export async function render(root, ctx) {
         else if (state === 'after') why.append(`not reached — ${gate.q}`);
         else why.append(gate.q);
         rung.append(name, why);
-        host.append(rung);
+        ladderHost.append(rung);
       });
     }
     paint();

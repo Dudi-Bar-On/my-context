@@ -1319,78 +1319,65 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       </details>
     </div>
 
-    <div class="card pane"><h3 data-t="preview.delivered">Delivered</h3>
-      <p class="small" data-t="preview.cap"><span class="v" data-v="items">4</span> items, <span class="v" data-v="used">4,260</span> of <span class="v" data-v="budget">6,000</span> tokens</p>
-    </div>
+    <!-- Delivered beside Why not, in `.two` — the layout this screen had before
+         the repaint, and the two-column pattern five other screens still use.
 
-    <!-- Two-plane scene — the composition pattern the other twenty screens copy.
-         Left `.plane`: a `.pane` of `.row`s. Right `.plane`: a `.pane` holding a
-         `.lit` of `.blk`s. Selecting a row lights its block (spec §3 #2/#3); the
-         rail persists outside both, untouched by anything here. -->
-    <div class="scene">
-      <div class="pair">
-        <div class="plane l">
-          <div class="pane rows" id="deliveredRows" role="group" aria-label="Item" data-t-aria="aria.gatepick">
-            <button class="row" type="button" data-choice="CONST-postgres-pool-capped-at-20" aria-pressed="true">
-              <span class="idfull m"><span class="idkind">CONST</span><span class="idslug">-postgres-pool-capped-at-20</span></span>
-              <span class="chip gov" data-g="◆">pinned</span>
-            </button>
-            <button class="row" type="button" data-choice="CONST-zero-runtime-dependencies" aria-pressed="false">
-              <span class="idfull m"><span class="idkind">CONST</span><span class="idslug">-zero-runtime-dependencies</span></span>
-              <span class="chip gov" data-g="◆">pinned</span>
-            </button>
-            <button class="row" type="button" data-choice="RULE-never-log-customer-email" aria-pressed="false">
-              <span class="idfull m"><span class="idkind">RULE</span><span class="idslug">-never-log-customer-email</span></span>
-              <span class="chip ok" data-g="●">jit</span>
-            </button>
-            <button class="row" type="button" data-choice="INV-prices-are-integer-cents" aria-pressed="false">
-              <span class="idfull m"><span class="idkind">INV</span><span class="idslug">-prices-are-integer-cents</span></span>
-              <span class="chip ok" data-g="●">jit</span>
-            </button>
-          </div>
+         RESTORED 2026-08-26, owner-approved. The repaint replaced it with a
+         `.scene > .pair > .plane.l + .plane.r`: the left plane held these rows,
+         the right plane held each item's BODY, and selecting a row lit its text
+         beside it. The right plane was the only untitled card in the product and
+         it duplicated the item detail pane, which draws the same body plus type,
+         status, tier, scope, governs, file and the twelve-week sparkline.
+
+         The linked view was deliberate and had a stated reason — "never look at
+         a rule without seeing the text it produced". What changed is that the
+         detail pane can now do that job; when the linked view was drawn the pane
+         had no sparkline, its `file` row read a dash on every item, and its
+         `.well`/`.welllabel` rules had never been carried into the app.
+
+         AND THE PATTERN HAD ONE INSTANCE. `.scene`, `.pair` and `.plane` were
+         called "the composition pattern the other twenty screens copy". Measured
+         across this file they appeared EXACTLY ONCE each, here, and no screen
+         ever copied them. Their rules stay in the sheet — `.lit`/`.blk` are
+         primitive 3 and `.pair`/`.plane` primitive 5, and a primitive is not
+         retired by one screen ceasing to use it — but nothing draws them today,
+         and that is recorded rather than left to be discovered. -->
+    <div class="two">
+      <div class="card pane"><h3 data-t="preview.delivered">Delivered</h3>
+        <p class="small" data-t="preview.cap"><span class="v" data-v="items">4</span> items, <span class="v" data-v="used">4,260</span> of <span class="v" data-v="budget">6,000</span> tokens</p>
+        <!-- A row carries `data-id`, so the shell's own delegated handler opens
+             the detail pane. Not a second listener: every id in this product
+             reaches the pane the same way. -->
+        <div class="rows" id="deliveredRows" role="group" aria-label="Item" data-t-aria="aria.gatepick">
+          <button class="row" type="button" data-id="CONST-postgres-pool-capped-at-20">
+            <span class="idfull m"><span class="idkind">CONST</span><span class="idslug">-postgres-pool-capped-at-20</span></span>
+            <span class="chip gov" data-g="◆">pinned</span>
+          </button>
+          <button class="row" type="button" data-id="CONST-zero-runtime-dependencies">
+            <span class="idfull m"><span class="idkind">CONST</span><span class="idslug">-zero-runtime-dependencies</span></span>
+            <span class="chip gov" data-g="◆">pinned</span>
+          </button>
+          <button class="row" type="button" data-id="RULE-never-log-customer-email">
+            <span class="idfull m"><span class="idkind">RULE</span><span class="idslug">-never-log-customer-email</span></span>
+            <span class="chip ok" data-g="●">jit</span>
+          </button>
+          <button class="row" type="button" data-id="INV-prices-are-integer-cents">
+            <span class="idfull m"><span class="idkind">INV</span><span class="idslug">-prices-are-integer-cents</span></span>
+            <span class="chip ok" data-g="●">jit</span>
+          </button>
         </div>
-        <div class="plane r">
-          <div class="lit linked" id="deliveredLit">
-            <div class="blk sel" data-for="CONST-postgres-pool-capped-at-20">
-              <button class="linkid m" type="button" data-id="CONST-postgres-pool-capped-at-20">
-                <span class="idkind">CONST</span><span class="idslug">-postgres-pool-capped-at-20</span>
-                <svg class="icon-open" aria-hidden="true" focusable="false"><use href="#i-open"></use></svg>
-              </button>
-              <div class="blkbody">
-                <p>The pool is capped at <b>20</b> connections.</p>
-                <p>Above that, <span class="m">pgbouncer</span> queues rather than the app.</p>
-              </div>
-            </div>
-            <div class="blk" data-for="CONST-zero-runtime-dependencies">
-              <button class="linkid m" type="button" data-id="CONST-zero-runtime-dependencies">
-                <span class="idkind">CONST</span><span class="idslug">-zero-runtime-dependencies</span>
-                <svg class="icon-open" aria-hidden="true" focusable="false"><use href="#i-open"></use></svg>
-              </button>
-              <div class="blkbody">
-                <p><span class="m">package.json</span> has no <span class="m">dependencies</span> key, and must not gain one.</p>
-              </div>
-            </div>
-            <div class="blk" data-for="RULE-never-log-customer-email">
-              <button class="linkid m" type="button" data-id="RULE-never-log-customer-email">
-                <span class="idkind">RULE</span><span class="idslug">-never-log-customer-email</span>
-                <svg class="icon-open" aria-hidden="true" focusable="false"><use href="#i-open"></use></svg>
-              </button>
-              <div class="blkbody">
-                <p>Customer email is PII.</p>
-                <ul><li>never in logs</li><li>never in an error message</li><li><span class="m">redact()</span> before any sink</li></ul>
-              </div>
-            </div>
-            <div class="blk" data-for="INV-prices-are-integer-cents">
-              <button class="linkid m" type="button" data-id="INV-prices-are-integer-cents">
-                <span class="idkind">INV</span><span class="idslug">-prices-are-integer-cents</span>
-                <svg class="icon-open" aria-hidden="true" focusable="false"><use href="#i-open"></use></svg>
-              </button>
-              <div class="blkbody">
-                <p>Money is an integer number of cents. Never a float.</p>
-              </div>
-            </div>
-          </div>
-        </div>
+      </div>
+
+      <div class="card pane"><h3 data-t="preview.why">Why not — the first gate that failed</h3>
+        <div class="segbar" id="gatepick" role="group" aria-label="Item" data-t-aria="aria.gatepick"></div>
+        <div class="gladder plate" id="gates"></div>
+        <p class="small" style="margin-block-start:8px" data-t="preview.whyn">The gates in
+          <span class="m">select()</span>'s own order — eligible, tier, focus, scope, seen, budget —
+          because the <b>order is the explanation</b>: a list of six reasons is noise, and the one
+          that binds is only meaningful in the position it holds. Rungs above it passed, the rung
+          itself carries the diagnosis, and everything below is <i>not reached</i> rather than
+          passed. Composing the fix needs a stable code on <span class="m">injection()</span>; today
+          the five causes differ only in English prose.</p>
       </div>
     </div>
 
@@ -1440,18 +1427,6 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       session's own lines displaced to make room: <span class="m v" data-v="ids">RULE-round-half-even</span>.</p>
     <p class="small" style="margin-block:6px 0" data-t="index.carriedFetch">Fetch any of these with
       <span class="m">mycontext show &lt;id&gt;</span>.</p>
-
-    <div class="card pane"><h3 data-t="preview.why">Why not — the first gate that failed</h3>
-      <div class="segbar" id="gatepick" role="group" aria-label="Item" data-t-aria="aria.gatepick"></div>
-      <div class="gladder plate" id="gates"></div>
-      <p class="small" style="margin-block-start:8px" data-t="preview.whyn">The gates in
-        <span class="m">select()</span>'s own order — eligible, tier, focus, scope, seen, budget —
-        because the <b>order is the explanation</b>: a list of six reasons is noise, and the one
-        that binds is only meaningful in the position it holds. Rungs above it passed, the rung
-        itself carries the diagnosis, and everything below is <i>not reached</i> rather than
-        passed. Composing the fix needs a stable code on <span class="m">injection()</span>; today
-        the five causes differ only in English prose.</p>
-    </div>
 
     <div class="card pane">
       <h3 data-t="preview.ribbon">Budget ribbon — four tiers, and what fell out of each</h3>
@@ -3350,26 +3325,27 @@ function openPane(id){
   $('#pane').hidden=false; $('#app').classList.add('pane-open');
   $('#paneclose').focus();
 }
+/* `[data-id]`, not `.linkid`. Every id in the product reaches the pane the
+   same way, and since 2026-08-26 that includes the Delivered card's `.row`s,
+   which are buttons carrying an id rather than `.linkid` spans. Matching on the
+   CLASS meant a row could carry a perfectly good `data-id` and still do nothing
+   when clicked — the defect the owner reported twice before the pane existed,
+   reintroduced by the selector rather than by the markup. */
 document.addEventListener('click',e=>{
-  const b=e.target.closest('.linkid'); if(!b) return;
+  const b=e.target.closest('[data-id]'); if(!b) return;
   e.stopPropagation(); openPane(b.dataset.id);
 });
 $('#paneclose').addEventListener('click',()=>{
   $('#pane').hidden=true; $('#app').classList.remove('pane-open');});
 
-/* ── the injection preview's row ↔ block linkage (Task 6) ──────────────────
-   The screen's whole job: never look at a rule without seeing the text it
-   produced, never look at injected text without seeing which rule produced
-   it. Selecting a `.row` holds it up (aria-pressed, §2 of the primitives)
-   and lights its paired `.blk` to full opacity; every other block drops to
-   .42 — not lower, so the two stay comparable. Delegated, like the .linkid
-   handler just above, rather than one listener per row. */
-$('#deliveredRows')?.addEventListener('click',e=>{
-  const row=e.target.closest('.row'); if(!row) return;
-  const id=row.dataset.choice;
-  $$('#deliveredRows .row').forEach(r=>r.setAttribute('aria-pressed',String(r===row)));
-  $$('#deliveredLit .blk').forEach(b=>b.classList.toggle('sel',b.dataset.for===id));
-});
+/* ── the injection preview's rows ──────────────────────────────────────────
+   No linkage handler any more, and none is needed: a `.row` carries `data-id`,
+   so the delegated `.linkid` handler immediately above already routes it to
+   `openPane`. One behaviour, one listener, for every id in the product.
+
+   What was here until 2026-08-26 held a row selected and lit its paired `.blk`
+   in the plane beside it — Task 6's linkage. That plane is gone (see the note
+   on the Delivered card), so this listener had nothing left to light. */
 
 /* ── provenance bar: one home for the qualifications every screen owes ──
    The projection part is markup and keyed — three states, hidden-toggled. The

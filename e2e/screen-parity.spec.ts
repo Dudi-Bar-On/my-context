@@ -251,7 +251,13 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // Both are the same lesson twice: an absent element here is a claim about the
   // CODE, and this ledger cannot tell the difference between code that is
   // missing and code the fixture never asked to run. That is `plan:port seq:94`.
-  preview: ['i', 'li', 'span.chip', 'span.prop', 'ul'],
+  // `li` and `ul` left on 2026-08-26 and NOT because the app started drawing
+  // them: the mockup stopped. They lived in the `.blkbody` of the two-plane
+  // linked view, and that plane was removed from the design of record when
+  // Delivered and Why-not went back side by side in `.two`. Both sides now
+  // draw zero, so there is no gap to record — which is the ledger working in
+  // the direction nobody expects it to.
+  preview: ['i', 'span.chip', 'span.prop'],
   coverage: [
     'button', 'button.linkid.m', 'div.mini', 'i', 'i.g', 'i.u', 'i.x',
     'span.covn', 'span.nm', 'table', 'tbody', 'td', 'th', 'thead', 'tr',

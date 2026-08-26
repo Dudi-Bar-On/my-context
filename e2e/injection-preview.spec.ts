@@ -1,90 +1,96 @@
 /**
- * **The injection preview's row ↔ block linkage — hit-tested, not read off the
- * CSS.**
+ * **The injection preview's delivered rows — hit-tested, not read off the CSS.**
  *
- * `docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` Task 6 composes
- * the hero screen: a tilted `.pane` of `.row`s on the left, a tilted `.pane`
- * holding a `.lit` of `.blk`s on the right. Selecting a row is the screen's
- * whole job — "you are never looking at a rule without seeing the text it
- * produced, and never looking at injected text without seeing which rule
- * produced it" — and the row only earns the right to move (§3 #2, the only
- * primitive that moves) because clicking it does exactly that.
+ * ── WHAT THIS FILE USED TO ASSERT, AND WHY IT DOES NOT ────────────────────
  *
- * Two things a static scan of the stylesheet cannot prove, the same split
- * `e2e/primitives.spec.ts` draws for its own hit-test:
+ * Until 2026-08-26 this measured repaint Task 6's ROW ↔ BLOCK LINKAGE: a
+ * tilted `.pane` of `.row`s on the left, a tilted `.pane` holding a `.lit` of
+ * `.blk`s on the right, and selecting a row lit its paired block to opacity 1
+ * while every other block sat at exactly .58. Two assertions a static scan of
+ * the stylesheet could not make — that a click reached a row inside `.pair`'s
+ * 3D context at all (§7.1: 3D and clickability fight each other silently), and
+ * that the linkage fired.
  *
- *  1. **The click actually reaches the row at its own centre.** Both planes
- *     sit inside `.pair`'s `perspective` and `.plane.l`/`.plane.r` tilt with
- *     `rotateY` — real 3D, and §7.1 is explicit that 3D and clickability fight
- *     each other silently unless hit-tested in a real browser.
- *  2. **The linkage itself**: the clicked row ends up `aria-pressed="true"`
- *     and lifted the way `:hover` lifts it, its paired `.blk` reaches opacity
- *     1, and every other `.blk` sits at exactly .58 — revised from the
- *     original .42 after owner review of the rendered page: `opacity` dims
- *     the block's TEXT along with its presence, and .42 composited over the
- *     plate measured under the 4.5:1 body-text floor this direction holds
- *     everywhere else. .58 clears it (~5.6:1) while staying a clearly
- *     de-emphasised reduction from the selected item's full opacity.
+ * **The design of record removed that plane**, owner-approved, on the same day.
+ * It was the only untitled card in the product and it duplicated the item
+ * detail pane, which draws the same body plus type, status, tier, scope,
+ * governs, file and the twelve-week sparkline. Delivered and Why-not went back
+ * side by side in `.two`, the pre-repaint layout, and a row now opens the pane.
+ *
+ * So the linkage assertions are gone because the linkage is gone — NOT because
+ * they were failing and were quieter to delete. What replaced them measures the
+ * behaviour that replaced it, at the same depth and in a real browser:
+ *
+ *  1. **A click reaches the row at its own centre.** Worth keeping even with
+ *     the 3D gone: `.row` is the one primitive that moves, and `elementFromPoint`
+ *     at the row's own centre is the only proof that the thing which moves is
+ *     also the thing which answers.
+ *  2. **The row carries `data-id`, so the shell's delegated handler opens the
+ *     pane.** That is the whole replacement for the linkage — one behaviour,
+ *     one listener, shared by every id in the product — and if a row ever loses
+ *     the attribute it goes back to being a button that does nothing, which is
+ *     the defect the owner reported twice before the pane existed.
  */
 import { test, expect } from '@playwright/test';
 import { expectNoFaults, openMockup } from './mockup.ts';
 
-test('clicking a row in the tilted left plane actually reaches the row', async ({ page }) => {
+const TARGET = 'RULE-never-log-customer-email';
+
+test('clicking a delivered row reaches the row at its own centre', async ({ page }) => {
   const faults = await openMockup(page);
 
-  const row = page.locator('#deliveredRows .row[data-choice="RULE-never-log-customer-email"]');
+  const row = page.locator(`#deliveredRows .row[data-id="${TARGET}"]`);
   const box = await row.boundingBox();
   if (!box) throw new Error('the row must have a layout box to hit-test');
   const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 
   const hitId = await page.evaluate(
-    ([x, y]) => document.elementFromPoint(x, y)?.closest('.row')?.getAttribute('data-choice') ?? null,
+    ([x, y]) => document.elementFromPoint(x, y)?.closest('.row')?.getAttribute('data-id') ?? null,
     [centre.x, centre.y] as const,
   );
-  expect(hitId, '.pair carries the perspective and .plane only rotates — nothing is pushed '
-    + 'behind its own parent, so the row at its own centre must answer for itself (§7.1)')
-    .toBe('RULE-never-log-customer-email');
+  expect(hitId, 'the row is the one primitive that moves, so the element that answers at its '
+    + 'own centre must be the row itself and not a parent that lifted over it')
+    .toBe(TARGET);
 
-  expectNoFaults(faults, 'locating the tilted row');
+  expectNoFaults(faults, 'locating the delivered row');
 });
 
-test('selecting a row lifts it, lights its block, and dims every other block to exactly .42', async ({ page }) => {
+test('a delivered row opens the item detail pane, filled with that item', async ({ page }) => {
   const faults = await openMockup(page);
 
-  const ids = [
-    'CONST-postgres-pool-capped-at-20', 'CONST-zero-runtime-dependencies',
-    'RULE-never-log-customer-email', 'INV-prices-are-integer-cents',
-  ] as const;
-  const row = (id: string) => page.locator(`#deliveredRows .row[data-choice="${id}"]`);
-  const blk = (id: string) => page.locator(`#deliveredLit .blk[data-for="${id}"]`);
+  const pane = page.locator('#pane');
+  await expect(pane, 'the pane starts closed').toBeHidden();
 
-  // Before any click: the first item is selected by default, so the screen
-  // never shows a rule without its text on first paint.
-  await expect(row('CONST-postgres-pool-capped-at-20')).toHaveAttribute('aria-pressed', 'true');
-  await expect(blk('CONST-postgres-pool-capped-at-20')).toHaveCSS('opacity', '1');
+  await page.locator(`#deliveredRows .row[data-id="${TARGET}"]`).click();
 
-  const target = 'RULE-never-log-customer-email';
-  await row(target).click();
+  await expect(pane, 'a row carries data-id, so the shell\'s delegated handler opens the pane — '
+    + 'the same path every other id in the product takes').toBeVisible();
+  await expect(page.locator('#paneid'), 'the pane shows the id that was clicked, not the one that '
+    + 'happened to be open before').toHaveText(TARGET);
 
-  // `toHaveCSS`/`toHaveAttribute` poll until they match or time out, which is
-  // the point: `opacity` animates over `--dur-act` under
-  // `prefers-reduced-motion:no-preference` (the browser's default), so a
-  // single `getComputedStyle` snapshot taken right after `click()` races the
-  // transition and reads the pre-click value — this is not a fixed sleep
-  // widened to paper over a flake, it is waiting on the actual end state.
-  await expect(row(target), 'the clicked row is held selected').toHaveAttribute('aria-pressed', 'true');
-  const liftedTransform = await row(target).evaluate((el) => getComputedStyle(el).transform);
-  expect(liftedTransform, 'the selected row is lifted the same way :hover lifts it').not.toBe('none');
+  // The grid gains its third column, which is what makes the pane a column
+  // rather than an overlay sitting on top of the screen it describes.
+  await expect(page.locator('#app')).toHaveClass(/pane-open/);
 
-  const pressedCount = await page.locator('#deliveredRows .row[aria-pressed="true"]').count();
-  expect(pressedCount, 'exactly one row is held selected at a time').toBe(1);
+  expectNoFaults(faults, 'opening the pane from a delivered row');
+});
 
-  await expect(blk(target), 'the selected block reaches full opacity').toHaveCSS('opacity', '1');
-  for (const id of ids.filter((i) => i !== target)) {
-    await expect(blk(id), `block ${id} must dim to exactly .58 — below that the block's own text `
-      + 'falls under the 4.5:1 body-text floor (owner review, revised from the original .42)')
-      .toHaveCSS('opacity', '0.58');
+test('every delivered row can open the pane, not only the first', async ({ page }) => {
+  const faults = await openMockup(page);
+
+  const ids = await page.locator('#deliveredRows .row').evaluateAll(
+    (rows) => rows.map((r) => r.getAttribute('data-id')),
+  );
+  expect(ids.length, 'the delivered card must render its rows to be worth measuring')
+    .toBeGreaterThan(1);
+  expect(ids.every((id) => id !== null && id !== ''),
+    'a row without data-id is a button that does nothing — the defect the owner reported twice')
+    .toBe(true);
+
+  for (const id of ids) {
+    await page.locator(`#deliveredRows .row[data-id="${id}"]`).click();
+    await expect(page.locator('#paneid'), `row ${id} must open its OWN item`).toHaveText(id!);
   }
 
-  expectNoFaults(faults, 'selecting a row');
+  expectNoFaults(faults, 'opening the pane from every delivered row');
 });

@@ -64,7 +64,18 @@ test.describe('forced-colors: active', () => {
     const faults = await openMockup(page);
     await page.emulateMedia({ forcedColors: 'active' });
 
+    // **`.lit` is in this list and may render nothing, and that is recorded
+    // rather than removed.** The literal field is primitive 3 and its rule is
+    // still in the sheet, but its only consumer — the injection preview's
+    // two-plane linked view — left the design of record on 2026-08-26. A
+    // selector that draws nothing is SKIPPED here rather than deleted, so the
+    // check returns by itself the day a screen draws one again; and `measured`
+    // below fails if the whole loop measured nothing, because a degraded-mode
+    // test that silently asserts over an empty set is worse than none.
+    let measured = 0;
     for (const sel of ['.plate', '.lit']) {
+      if (await page.locator(sel).count() === 0) continue;
+      measured += 1;
       const got = await page.locator(sel).first().evaluate((el) => {
         const cs = getComputedStyle(el);
         return { bg: cs.backgroundColor, borderWidth: cs.borderTopWidth };
@@ -73,6 +84,9 @@ test.describe('forced-colors: active', () => {
         'reads as nothing next to a pane that has gone fully transparent').not.toMatch(/^rgba\(.*, 0\)$/);
       expect(got.borderWidth, `${sel} must draw a hairline so the data surface has an edge`).not.toBe('0px');
     }
+
+    expect(measured, 'neither .plate nor .lit rendered, so this test measured nothing at all')
+      .toBeGreaterThan(0);
 
     await page.emulateMedia({ forcedColors: 'none' });
     expectNoFaults(faults, 'reading the plate and the literal field');

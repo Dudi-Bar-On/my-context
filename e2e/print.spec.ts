@@ -154,7 +154,11 @@ test('the item pane prints with the screen rather than disappearing', async ({ p
 
   // Opening an item is how the pane appears; the print sheet keeps it, because
   // the thing you were reading is the thing you meant to print.
-  await page.click('.linkid[data-id="CONST-zero-runtime-dependencies"]');
+  // `[data-id]`, not `.linkid`: since 2026-08-26 the Delivered card's ids are
+  // `.row` buttons rather than `.linkid` spans, and what opens the pane is the
+  // ATTRIBUTE, not the class. Selecting on the class made this test depend on
+  // one screen's markup choice for a behaviour every id in the product shares.
+  await page.click('[data-id="CONST-zero-runtime-dependencies"]');
   expect(
     await page.evaluate(() => document.querySelector<HTMLElement>('#pane')!.hidden),
     'the pane opens on screen',
