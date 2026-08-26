@@ -608,3 +608,82 @@ export function repairCommandFor(code, item) {
   }
   return null;
 }
+
+// --- The write preview, lifted out of one screen ----------------------------
+//
+// **`fieldView` was declared by `plan:ui2 seq:11` as `writeBlock` and never
+// produced under any name.** `plan:ui2 seq:12` and `seq:13` both name it in
+// their Interfaces as something they CONSUME, and a repo-wide search for
+// `writeBlock` returned nothing (`plan:walk seq:46`). What existed instead was
+// this — the same computation, correct and tested, trapped inside `work.js`
+// where only the Review queue could reach it.
+//
+// It moves HERE rather than to `screens/parts.js` because it is a DECISION, not
+// DOM: it takes a served field and returns a plain view model, which is exactly
+// what this module is for and why `node --test` can import it directly.
+//
+// Promoted under its own name rather than renamed to `writeBlock`: the thing
+// already exists and already has a tested name, so two plan edits cost less
+// than a new vocabulary for one function.
+//
+// `DEC-the-web-ui-executes-a-composed-command-and-the-residual-is` is why this
+// could not wait: a boundary-crossing command's confirm must name every field
+// that changes, before and after, and the design names THIS function as how it
+// is rendered. Configure needs it too. Building it twice was the outcome to
+// avoid.
+
+/**
+ * The fields the mockup draws in a `.m` cell rather than as prose.
+ *
+ * It draws four rows and splits them: `title` takes a bare `<td>` wrapping a
+ * `<bdi>`, while `tags` and `severity` take `<td class="m">`
+ * (`docs/design/web-ui-mockup.html` · `<tr><td class="m">tags</td><td class="m">pii</td><td class="m">pii<ins>, gdpr</ins></td></tr>` · ~1938).
+ * The split is prose versus token: a title and a body are sentences a human
+ * wrote and reads in the page's own direction, while a tag list and an `extra`
+ * key are keys and values with a direction of their own — which is what `.m`
+ * (`direction:ltr; unicode-bidi:isolate`) exists for.
+ *
+ * `severity` is the mockup's third row and is **not a revision field**:
+ * `REVISION_FIELDS` is `title`, `body`, `tags`, `extra`
+ * (`src/core/revision-log.ts` · `export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;` · ~291),
+ * so no `/api/revisions` answer can ever produce that row. The mockup's sample
+ * is ahead of the log's vocabulary; reported, not reconciled here. `extra` is
+ * classified with `tags` because `valueLines` renders it as `key: value` lines
+ * (`src/core/revision-diff.ts` · `is ONE LINE PER KEY, sorted by key, for the same reason and one` · ~68).
+ */
+export const MONO_FIELDS = new Set(['tags', 'extra']);
+
+/**
+ * One served field-diff, as the two columns the table draws it in.
+ *
+ * **The `In force` column is the diff with its additions removed**, not a
+ * second field the endpoint sends: there is no "current text" in the response
+ * beyond what the diff itself carries, and re-deriving one would be a second
+ * opinion about the same bytes. A `-` line and a ` ` context line are both
+ * text that is in force today; a `+` line is text that is not.
+ *
+ * **The `Proposed` column is the whole diff**, context included, which is why
+ * the mockup can draw `<del>advisory</del><ins>hard</ins>` inside one cell
+ * (`docs/design/web-ui-mockup.html` · `<td class="m"><del>advisory</del><ins>hard</ins></td></tr>` · ~1940).
+ * Both marks live in the proposed cell; the in-force cell is plain text. That
+ * asymmetry is the mockup's, transcribed rather than tidied.
+ *
+ * `noCurrent` is the server's own word for "there is nothing to diff against"
+ * — the item is gone, or the proposal names an `extra` key the item never had
+ * (`src/ui/read-model-work.ts` · `// No current text to diff against (item missing, or an extra key the` · ~63).
+ * There is no `work.noCurrent` in either table, so nothing is worded for it:
+ * the cell takes the em dash this design already uses for "no value here", the
+ * same mark `status.js` draws for a count nobody measured and `doctor.js` for
+ * a finding that names no item.
+ */
+export function fieldView(field) {
+  const diff = Array.isArray(field.diff) ? field.diff : [];
+  return {
+    field: field.field,
+    stale: field.changed === true,
+    mono: MONO_FIELDS.has(field.field),
+    noCurrent: field.noCurrent === true,
+    current: diff.filter((line) => line.mark !== '+').map((line) => line.text),
+    proposed: diff.map((line) => ({ mark: line.mark, text: line.text })),
+  };
+}

@@ -98,11 +98,16 @@ async function workModule(): Promise<WorkModule> {
     rewritten += 1;
     return `${head}${pathToFileURL(path.join(PUBLIC, spec)).href}'`;
   });
-  assert.equal(rewritten, 3,
-    `expected work.js to import three browser modules (/lib/command.js, /lib/palette-defs.js, `
-    + `/screens/parts.js); the rewrite matched ${rewritten}. A specifier this pattern cannot see `
-    + 'is a module Node would resolve from the drive root, and the import below would fail for a '
-    + 'reason that reads like a missing file.');
+  // FOUR since 2026-08-26: `/lib/viewmodel.js` joined the list when `fieldView`
+  // and `MONO_FIELDS` were lifted out of this screen into the shared decision
+  // layer (`plan:walk seq:46`), so Configure and the Execute confirm can reach
+  // the write preview too. This screen re-exports them, which is why the tests
+  // below still address them through this module.
+  assert.equal(rewritten, 4,
+    `expected work.js to import four browser modules (/lib/command.js, /lib/palette-defs.js, `
+    + `/lib/viewmodel.js, /screens/parts.js); the rewrite matched ${rewritten}. A specifier this `
+    + 'pattern cannot see is a module Node would resolve from the drive root, and the import '
+    + 'below would fail for a reason that reads like a missing file.');
   assert.ok(!/\bfrom\s+'\//.test(text),
     'a root-absolute specifier survived the rewrite — the module graph imported below would not '
     + 'be the one the browser runs');
