@@ -76,7 +76,7 @@
  * case, and is drawn INSTEAD of the data, in the endpoint's own words.
  */
 import { groupFindings, repairCommandFor } from '/lib/viewmodel.js';
-import { el, errorNote, linkId, mono, screenHead } from '/screens/parts.js';
+import { el, errorNote, linkId, mono, screenHead, spaced } from '/screens/parts.js';
 
 /**
  * The mockup's three cards, in its order, each with the heading it draws.
@@ -280,6 +280,28 @@ export async function render(root, ctx) {
 
     table.append(tbody);
     pane.append(heading, table);
+
+    // **A LEVEL WITH NO FINDINGS SAYS SO.** Until 2026-08-26 an empty level
+    // rendered as a heading over an empty `<tbody>` and nothing else — a card
+    // headed `error` containing nothing, which reads AS an error rather than as
+    // the absence of one (`plan:walk seq:34`).
+    //
+    // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`: a
+    // measured zero is drawn and named, and is never blank. This IS a measured
+    // zero — `runChecks` ran and this level had none — and it is reachable only
+    // here, because a doctor that could not run takes the `errorNote` branch
+    // above INSTEAD of the cards. So the two facts cannot be confused: a
+    // refusal replaces the cards, an empty level names itself inside one.
+    //
+    // The owner ruling at the head of this file is untouched: "a clean corpus
+    // draws three empty cards, not an empty screen". The card still draws. What
+    // it no longer does is stay silent inside.
+    if (rows.length === 0) {
+      const zero = el('p', 'small');
+      zero.append(...ctx.t('doc.zero'));
+      pane.append(spaced(zero));
+    }
+
     for (const command of cardCommands(rows)) pane.append(commandRow(ctx, command));
     root.append(pane);
   }

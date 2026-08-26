@@ -264,6 +264,13 @@ export const strings = {
   'list.displayOnly': 'A display limit. All {total} were in the injection — none were dropped.',
   'list.showAll': 'Show all {total}',
   'list.showFewer': 'Show fewer',
+  // The three empty states these two screens can be in. `zeroLines` and
+  // `noSession` are DIFFERENT FACTS — a session that received nothing, and no
+  // session being looked at — and `noSession` names the distinction out loud
+  // rather than leaving a reader to infer it.
+  'doc.zero': 'Checked — nothing at this level.',
+  'inj.zeroLines': 'This session was read and has received nothing yet.',
+  'inj.noSession': 'No session is selected, so nothing was read — which is not the same as a session that received nothing.',
   // The rail's count badges. Three states, because a badge that is merely
   // absent cannot tell "nothing needs attention" from "nobody looked" —
   // STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is.

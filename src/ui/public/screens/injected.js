@@ -49,12 +49,33 @@ export async function render(root, ctx) {
     // Null for a cold session: there is no seen file, so there is no list to
     // bound and nothing truthful a bound line could say about one.
     let bound = null;
+    // Which of the three states this render is in — see the note below. `null`
+    // until the fetch settles, so the cold path falls through with it unset.
+    let zeroKey = 'inj.noSession';
 
-    // A cold session has no id, so there is no seen file to read and nothing to
-    // ask about. The table is drawn with no rows rather than replaced by a
-    // sentence: a brand-new session has received nothing, which is what an empty
-    // table says, and the mockup declares no zero-data view for this screen for
-    // a sentence to be transcribed from. Recorded as an open question.
+    // **THREE STATES, AND UNTIL 2026-08-26 TWO OF THEM WERE THE SAME PIXELS.**
+    //
+    // This screen can be in one of three conditions, and the older comment here
+    // conflated the first two — both rendered as a bare table head, which is
+    // the blank `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+    // forbids outright:
+    //
+    //   NOT MEASURED   no session is selected, so no seen file was read. The
+    //                  screen knows nothing about what was injected.
+    //   MEASURED ZERO  a seen file was read and holds no lines. This session
+    //                  exists and has received nothing yet.
+    //   REFUSED        the read failed, and the seen file's own words are
+    //                  passed on below — already handled, and unchanged.
+    //
+    // The first two are DIFFERENT FACTS about the world and a reader who cannot
+    // tell them apart cannot tell "nothing has happened" from "I am not looking
+    // at anything". The keys say which is which; `inj.noSession` names the
+    // distinction out loud rather than leaving it to be inferred.
+    //
+    // The old comment closed with "the mockup declares no zero-data view for
+    // this screen for a sentence to be transcribed from. Recorded as an open
+    // question." That was true under the 1:1 rule and is not a reason any more:
+    // `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`.
     if (session !== null && session !== 'cold') {
       let data;
       try {
@@ -92,6 +113,13 @@ export async function render(root, ctx) {
         row.append(item, tier, when);
         return row;
       }, { cap: BOUND_CAP_TABLE, order: 'recent', take: 'last' });
+      // A seen file that WAS read and holds nothing. Distinct from the cold
+      // case above it — and silent when the read REFUSED, because `errorNote`
+      // has already said so in the seen file's own words and two explanations
+      // of one absence is worse than none. An unreadable seen file is not a
+      // zero, and must never be drawn as one.
+      const refused = data.error !== null && data.error !== undefined;
+      zeroKey = !refused && data.lines.length === 0 ? 'inj.zeroLines' : null;
     }
 
     const note = el('p', 'small');
@@ -101,6 +129,15 @@ export async function render(root, ctx) {
     // last row a reader sees.
     card.append(table);
     if (bound !== null) card.append(bound);
+    // Under the table, where a reader reaches the end of it and finds no rows.
+    // Never beside a refusal: `errorNote` was appended before the table and
+    // carries the seen file's own words, and two explanations of one absence
+    // is worse than none.
+    if (zeroKey !== null) {
+      const zero = el('p', 'small');
+      zero.append(...ctx.t(zeroKey));
+      card.append(spaced(zero));
+    }
     card.append(spaced(note));
   }
 
