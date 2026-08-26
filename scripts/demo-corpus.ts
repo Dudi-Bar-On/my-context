@@ -54,7 +54,9 @@ import { openRebuiltStore } from '../src/core/open-store.ts';
 import { stageRevision } from '../src/core/revision.ts';
 import { resolveWorkspace } from '../src/core/workspace.ts';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -98,7 +100,17 @@ function body(topic: string, paragraphs: number): string {
 }
 
 console.log(`demo-corpus: building at ${OUT}`);
-if (existsSync(OUT)) rmSync(OUT, { recursive: true, force: true });
+// **The CONTENTS are removed, not the directory itself.** On Windows a
+// directory cannot be removed while any process holds it — a shell whose `cd`
+// landed there, a server that has not fully exited, an indexer — and `rmSync`
+// surfaces that as `EPERM` on the fixture root, which reads as a permissions
+// problem and is not one. Emptying it needs no handle on the directory, so a
+// stray `cd` no longer costs a rebuild. The one thing this must not do is
+// leave the previous corpus half-standing: every entry goes, and `mkdirSync`
+// below still covers the first run.
+if (existsSync(OUT)) {
+  for (const entry of readdirSync(OUT)) rmSync(path.join(OUT, entry), { recursive: true, force: true });
+}
 mkdirSync(OUT, { recursive: true });
 
 cli(['init']);
@@ -124,6 +136,53 @@ config['categories'] = {
 };
 writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 console.log('demo-corpus: budgets set small so the ribbon spills; task category enabled');
+
+// ── THE REAL CORPUS IS THE BASE, AND ONLY THE SCENE IS SYNTHETIC ───────────
+//
+// **Owner ruling, 2026-08-26.** This script used to build every item from
+// nothing: six pinned candidates and three scoped ones, nine normative items in
+// total. That was too small to be a demo of anything, and the arithmetic is
+// what proved it — one session's delivery consumes about six of the nine, so
+// `Injected now` and the injection preview were competing for the same items.
+// The fixture papered over it by DELETING the newest session's seen file, which
+// is why that screen landed on an empty table
+// (`TASK-injected-now-lands-on-the-one-session-that-has-no-lines-and`), and why
+// every bounded list read "Showing all 4" against a cap of 20.
+//
+// The obvious answer was to write forty more items by hand, and the owner
+// rejected it for a better one: **copy the real corpus in as the base, and
+// author only what the scene needs and the real corpus does not have.** It is
+// better on three counts. The bodies are REAL — nobody invents plausible
+// project knowledge, which this script's own `body()` helper refuses to do and
+// which the owner has rejected by name once already. The depth is real: 51
+// normative items rather than 9, so a session can carry a full seen file AND
+// still have a full delivery ahead of it. And it costs nothing to maintain,
+// because it tracks the real corpus instead of drifting from it.
+//
+// **What is copied is `items/` and NOTHING else.** Not `config.json` (the
+// budgets above are deliberately small and the real ones are not), not
+// `state/`, not `.audit/`, not the index — every one of those is either scene
+// state this script builds itself or a projection `rebuild` derives. Copying a
+// projection would be copying a conclusion rather than its evidence.
+//
+// **The copied items get no `mutation` records, and that is correct.** They are
+// the corpus as it stood BEFORE this fixture's session history begins; the
+// items added below are the ones this scene authors, and they get their records
+// from the real code path like everything else here.
+const REAL_ITEMS = path.join(REPO, '..', '.my_context', 'items');
+if (existsSync(REAL_ITEMS)) {
+  cpSync(REAL_ITEMS, path.join(OUT, '.my_context', 'items'), { recursive: true });
+  cli(['rebuild']);
+  const copied = readdirSync(path.join(OUT, '.my_context', 'items'))
+    .map((dir) => readdirSync(path.join(OUT, '.my_context', 'items', dir)).length)
+    .reduce((a, b) => a + b, 0);
+  console.log(`demo-corpus: ${copied} real items copied in as the base, then rebuilt`);
+} else {
+  // Named rather than swallowed: a demo built without the base is a DIFFERENT
+  // fixture, and a screenshot taken against it would mean something else.
+  console.log(`demo-corpus: WARNING — no real corpus at ${REAL_ITEMS}; building the scene alone, `
+    + 'which is nine normative items and too small to demonstrate a bound');
+}
 
 // ── A REPOSITORY FOR THE CORPUS TO BE ABOUT ────────────────────────────────
 //
@@ -752,23 +811,38 @@ if (missing.length > 0) {
 // delivery. That difference is invisible until a fixture reproduces it, which
 // is one more argument for having one.
 //
-// So the newest session's seen file is removed: it is a session that HAS a
-// history in the audit log and is about to be injected into again. Both views
-// then agree — the stream shows what it was given, the preview shows what it
-// would be given now, and they are the same items.
+// **THE SEEN FILE IS NO LONGER DELETED, and the reason it used to be is gone.**
+//
+// It was removed because the newest session had already been injected with
+// almost everything the corpus held, so the preview — which excludes what a
+// session has already seen — computed a nearly empty delivery. That was true of
+// a corpus of NINE normative items. It is not true of one built on the real
+// corpus, which carries fifty-one.
+//
+// Measured both ways before and after the base landed, because the trade was
+// real and worth pricing rather than asserting:
+//
+//     nine items,  seen DELETED   Injected now  0 rows    Delivered  4 rows
+//     nine items,  seen KEPT      Injected now  5 rows    Delivered  2 rows
+//     real base,   seen KEPT      Injected now  6 rows    Delivered  4 rows
+//
+// The last line is the one that says the deletion was a workaround for the pool
+// and never a property anybody wanted: with depth behind it, both screens are
+// full at once and neither is borrowing from the other. Keeping the file is
+// also the HONEST state — a session that has a history in the audit log and no
+// seen file is a shape the product never produces, and a fixture that produces
+// it is teaching every screen a lie about what a real workspace looks like.
+//
+// This closes the fixture half of
+// `TASK-injected-now-lands-on-the-one-session-that-has-no-lines-and`. The other
+// half — that `{"lines":[]}` should say something rather than render a bare
+// table head — is independent and still open, and it should be: a corpus that
+// happens to have data is not a reason to stop wording the empty case.
 const stateDir = path.join(OUT, '.my_context', 'state');
 if (existsSync(stateDir)) {
-  const seen = readdirSync(stateDir).filter((f) => f.endsWith('.seen.jsonl'));
-  // Newest by the session index this script assigned, not by mtime: the files
-  // are written within the same second and mtime cannot order them.
-  const newest = seen.sort((a, b) => {
-    const n = (f: string) => Number(/-(\d+)\.seen\.jsonl$/.exec(f)?.[1] ?? -1);
-    return n(a) - n(b);
-  }).at(-1);
-  if (newest !== undefined) {
-    rmSync(path.join(stateDir, newest));
-    console.log(`demo-corpus: cleared ${newest} so the newest session has a full delivery to show`);
-  }
+  const kept = readdirSync(stateDir).filter((f) => f.endsWith('.seen.jsonl')).length;
+  console.log(`demo-corpus: ${kept} seen files kept — the newest session keeps its history, `
+    + 'so Injected now lands on rows rather than on a bare table head');
 }
 
 // The projection is a WRITE, and the read-only UI may never build it. Building

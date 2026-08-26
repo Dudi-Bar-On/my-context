@@ -284,21 +284,30 @@ const KNOWN_GAPS: Record<string, string[]> = {
     // under six workers, and neither is a regression.
     'div.div-l', 'div.div-r', 'div.div-row', 'i', 'span.div-n', 'span.div-name',
   ],
-  // **`button` is DATA, and it is the seventh instance of a class worth naming.**
-  // `boundedList` draws the bound line's "Show all N" control on every one of
-  // the five bounded surfaces, this table included — and hides it, correctly,
-  // when nothing was truncated. `BOUND_CAP_TABLE` is 50; the demo corpus's
-  // longest seen file holds 8 lines, so the cap cannot bite here and the button
-  // is `hidden`, which `COLLECT_KINDS` skips by construction (`offsetParent`).
+  // **FOUR ENTRIES CAME OUT ON 2026-08-26, and not one line of this screen
+  // changed.** `button.linkid.m`, `span.chip.gov`, `td` and `td.m.small` were
+  // listed because the table rendered NO ROWS: `scripts/demo-corpus.ts` deleted
+  // the newest session's seen file, and `/api/sessions` makes that same session
+  // the default, so the screen landed on a bare table head
+  // (`TASK-injected-now-lands-on-the-one-session-that-has-no-lines-and`). The
+  // fixture now carries the real corpus as its base, so the seen file can stay
+  // and the table draws its rows. Every one of the four was BUILT the whole
+  // time. That is the eighth instance of a fixture gap sitting in this ledger
+  // reading as a code gap, and the gate is what forced them out — it failed in
+  // the stale direction the moment they started drawing.
   //
-  // The code is built and the fixture never asks it to run. That is the same
-  // reading error `div.gh` and `div.carrieditem.small` cost this project twice
-  // before — a FIXTURE gap read as a CODE gap — and `plan:port seq:94` (the
-  // fixture mirrors the mockup scene) is the task that closes the whole class.
-  // Lowering the cap until the gate went green would have been tuning the
-  // ledger, which the header above names as the one edit that makes this file
-  // worse than nothing.
-  injected: ['button', 'button.linkid.m', 'span.chip.gov', 'span.chip.ok', 'td', 'td.m.small'],
+  // **`button` is the bound line's "Show all N" control**, and it is DATA for a
+  // different reason: `boundedList` hides it, correctly, when nothing was
+  // truncated. `BOUND_CAP_TABLE` is 50 and this session delivered 4, so the cap
+  // cannot bite and `COLLECT_KINDS` skips it by construction (`offsetParent`).
+  // Lowering the cap until the gate went green would be tuning the ledger,
+  // which the header above names as the one edit that makes this file worse
+  // than nothing.
+  //
+  // **`span.chip.ok` is the `jit` chip**, and it is DATA too: every row this
+  // session delivered is `pinned`, so the neutral chip has nothing to mark. It
+  // closes when the fixture's newest session carries a jit delivery.
+  injected: ['button', 'span.chip.ok'],
   // Shrank from 15 to 8 while this gate was being written: the agent building
   // screens/watch.js landed the SVG (rect, svg), the bidi runs and the table,
   // and the gate demanded the ledger follow. Exactly the mechanism.
