@@ -610,7 +610,27 @@ export function repairCommandFor(code, item) {
   if (code === 'audit_log_size') return composeCommand(['mycontext', 'audit', '--files']);
   if (code === 'corpus_size_fallback_ceiling') return composeCommand(['mycontext', 'decay']);
   if (code === 'source_drift' && typeof item === 'string' && item !== '') {
-    return composeCommand(['mycontext', 'refresh', item]);
+    // **`--yes`, which the doctor message's own recommendation does not carry.**
+    //
+    // Every other line here is that message's recommendation verbatim, and this
+    // one is deliberately one flag longer. `refresh` replaces an item's whole
+    // body, so it gates on a human by reading stdin — fine for the reader the
+    // message was written for, who is standing at a terminal, and impossible for
+    // this UI, which runs it as a child with no terminal. Owner-reported
+    // 2026-08-28: it computed the change, printed it, and refused, and the dry
+    // run behind the confirm refused first, so no confirm rendered either.
+    //
+    // The flag goes in the DISPLAYED line and not only in the executed argv,
+    // because the invariant this whole feature rests on is that the string a
+    // person reads is the argv that runs. A card showing `mycontext refresh X`
+    // beside a button running `mycontext refresh X --yes` would be the exact
+    // defect the confirm exists to prevent, wearing a tidier shape.
+    //
+    // The cost, stated: a reader who COPIES this line into their own terminal
+    // gets no prompt. That is the catalogue's standing rule working as intended
+    // — on the approval boundary `--yes` is SHOWN, never implied — and shown is
+    // what it now is, in the card, in the clipboard and in the confirm alike.
+    return composeCommand(['mycontext', 'refresh', item, '--yes']);
   }
   return null;
 }

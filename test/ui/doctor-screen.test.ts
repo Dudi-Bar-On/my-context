@@ -312,7 +312,7 @@ test('cardCommands quotes through the one quoting implementation', async () => {
   // CLI reads as three arguments.
   assert.deepEqual(
     await lines(cardCommands([{ code: 'source_drift', item: 'RULE with spaces', message: '' }])),
-    ['mycontext refresh "RULE with spaces"'],
+    ['mycontext refresh "RULE with spaces" --yes'],
   );
 });
 
@@ -323,7 +323,7 @@ test('cardCommands offers one row per DISTINCT command, in first-ask order', asy
     { code: 'index_stale', item: null, message: '' },
     { code: 'source_drift', item: 'RULE-a', message: '' },
     { code: 'corpus_size_fallback_ceiling', item: null, message: '' },
-  ])), ['mycontext refresh RULE-a', 'mycontext rebuild', 'mycontext decay']);
+  ])), ['mycontext refresh RULE-a --yes', 'mycontext rebuild', 'mycontext decay']);
 });
 
 /**
@@ -416,6 +416,33 @@ test("every repair the screen composes is byte-identical to viewmodel's own line
  * alone. That is the correct outcome and not a gap — nothing composed outside
  * the catalogue runs (spec §3.1).
  */
+test('every BOUNDARY repair this screen composes carries --yes, or it cannot run', async () => {
+  // The general property, not the one instance. A boundary command reaching a
+  // child process without `--yes` refuses on stdin and produces the owner's
+  // 2026-08-28 report; a future repair added here would do the same, silently,
+  // and the failure would look like the server rather than like this line.
+  const { repairFor } = await doctorModule();
+  const { PALETTE } = await browserModule<DefsModule>('lib', 'palette-defs.js');
+  const boundary = (name: string): boolean =>
+    (PALETTE as { name: string; boundary?: boolean }[]).find((def) => def.name === name)?.boundary !== false;
+
+  const composed = [
+    repairFor('index_stale', null),
+    repairFor('corpus_size_fallback_ceiling', null),
+    repairFor('source_drift', 'RULE-a'),
+  ].filter((r) => r !== null && typeof r.id === 'string');
+
+  assert.ok(composed.length > 0, 'no repair composed anything, so this checked nothing');
+
+  for (const repair of composed) {
+    if (!boundary(repair!.id as string)) continue;
+    assert.equal((repair!.values as Record<string, unknown>)['yes'], true,
+      `${String(repair!.id)} is on the approval boundary, so it gates on stdin — and the UI runs `
+      + 'it as a child with no terminal. Without --yes it refuses, and the dry run refuses first, '
+      + 'so no confirm renders either.');
+  }
+});
+
 test('a repair names the catalogue entry it IS, and null where the catalogue has none', async () => {
   const { repairFor } = await doctorModule();
   const { PALETTE } = await browserModule<DefsModule>('lib', 'palette-defs.js');
@@ -424,7 +451,18 @@ test('a repair names the catalogue entry it IS, and null where the catalogue has
   assert.equal(repairFor('index_stale', null)?.id, 'rebuild');
   assert.equal(repairFor('corpus_size_fallback_ceiling', null)?.id, 'decay');
   assert.equal(repairFor('source_drift', 'RULE-a')?.id, 'refresh');
-  assert.deepEqual(repairFor('source_drift', 'RULE-a')?.values, { id: 'RULE-a' });
+  // **`yes: true`, and the command cannot run without it.** Owner-reported
+  // 2026-08-28, twice: `refresh` replaces an item's whole body, so it gates on a
+  // human by reading stdin — and a command run from this UI is a child process
+  // with no terminal. It computed the change, printed it, and refused. The dry
+  // run that derives the confirm hit the same wall first, so the button was dead
+  // in both directions.
+  //
+  // This does not IMPLY the confirmation, it moves it: the flag is in the argv,
+  // so it appears in the code the reader reads and in the confirm's own copy of
+  // the resolved command, and the human decision is the confirm dialog. Omitting
+  // it did not preserve a gate — it removed the command.
+  assert.deepEqual(repairFor('source_drift', 'RULE-a')?.values, { id: 'RULE-a', yes: true });
   assert.equal(repairFor('audit_log_size', null)?.id, null,
     'mycontext audit is not in the catalogue; naming an id it does not have would make the '
     + 'confirm render a DIFFERENT command from the one the code above it shows');

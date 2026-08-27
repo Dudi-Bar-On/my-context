@@ -974,7 +974,7 @@ test('repairCommandFor composes only what a finding message itself recommends', 
   // The four that name a runnable command, in the message's own words.
   assert.equal(repairCommandFor('index_stale', null), 'mycontext rebuild');
   assert.equal(repairCommandFor('source_drift', 'RULE-never-log-customer-email'),
-    'mycontext refresh RULE-never-log-customer-email');
+    'mycontext refresh RULE-never-log-customer-email --yes');
   assert.equal(repairCommandFor('audit_log_size', null), 'mycontext audit --files');
   assert.equal(repairCommandFor('corpus_size_fallback_ceiling', null), 'mycontext decay');
 
@@ -1002,7 +1002,7 @@ test('repairCommandFor composes only what a finding message itself recommends', 
 test('repairCommandFor quotes its one argument, and refuses to compose without one', async () => {
   const { repairCommandFor } = await vm();
   assert.equal(repairCommandFor('source_drift', 'RULE with spaces'),
-    'mycontext refresh "RULE with spaces"');
+    'mycontext refresh "RULE with spaces" --yes');
   assert.equal(repairCommandFor('source_drift', null), null);
   assert.equal(repairCommandFor('source_drift', ''), null);
 });

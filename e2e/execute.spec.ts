@@ -372,3 +372,52 @@ base('a boundary command shows every field that changes, before and after, and o
       try { rmSync(workspace.root, { recursive: true, force: true }); } catch { /* see above */ }
     }
   });
+
+/**
+ * **Doctor's own repair reaches a confirm — the owner's 2026-08-28 report.**
+ *
+ * Twice, from this screen, Execute produced:
+ *
+ *     about to refresh: item REF-… checksum af12674273859b85 -> 244cac0d…
+ *     my_context: refusing without confirmation — stdin is not interactive.
+ *
+ * `refresh` replaces an item's whole body, so it gates on a human by reading
+ * stdin. A command run from this UI is a child process with NO TERMINAL, so it
+ * computed the change, printed it, and refused — and the dry run behind the
+ * confirm refused first, so no confirm rendered either. The button was dead in
+ * both directions, and `doctor.js` was the one screen composing a boundary
+ * command without `--yes` (`work.js` already did).
+ *
+ * This test presses Execute and asserts a CONFIRM appears. It deliberately does
+ * NOT press "Run it": the shared `.demo-corpus` is driven by every other spec
+ * in this suite, and refreshing an item there would rewrite a body underneath
+ * them. The defect was never in the running — it was that the confirm could not
+ * be reached — so reaching it is the whole assertion.
+ */
+test("Doctor's repair reaches a confirm instead of refusing for want of a terminal", async ({ app }) => {
+  const { page } = app;
+  await page.evaluate(() => { location.hash = '#/doctor'; });
+
+  // The command block only exists if this corpus HAS a source_drift finding.
+  // A screen is not a state: without this step the assertions below would pass
+  // against a Doctor that simply found nothing to repair.
+  const exec = page.locator('[data-p="doctor"] .cmdactions button', { hasText: 'Execute' }).first();
+  await exec.waitFor({ state: 'visible', timeout: 20_000 });
+
+  const shown = await page.locator('[data-p="doctor"] div.cmd code').first().innerText();
+  expect(shown, 'the composed line must carry --yes, or the command cannot run from a UI at all: '
+    + 'refresh gates on stdin and a child process has no terminal to answer through')
+    .toContain('--yes');
+
+  await exec.click();
+
+  const confirm = page.locator('[data-p="doctor"] div.confirm').first();
+  await confirm.waitFor({ state: 'visible', timeout: 30_000 });
+
+  const text = await confirm.innerText();
+  expect(text, 'the confirm must RENDER. Before this fix the dry run refused for want of '
+    + 'confirmation and the reader was shown that refusal instead of a confirm.')
+    .not.toContain('refusing without confirmation');
+  expect(text).toContain('--yes');
+  await expect(confirm.locator('button', { hasText: 'Run it' })).toBeVisible();
+});

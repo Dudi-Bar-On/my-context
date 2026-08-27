@@ -135,7 +135,31 @@ export function repairFor(code, item) {
   }
   if (code === 'corpus_size_fallback_ceiling') return catalogued('decay', {});
   if (code === 'source_drift' && typeof item === 'string' && item !== '') {
-    return catalogued('refresh', { id: item });
+    // **`yes: true`, and without it this command cannot run at all.**
+    //
+    // Owner-reported 2026-08-28, twice, from this screen:
+    //
+    //     about to refresh: item REF-… checksum af12674273859b85 -> 244cac0d…
+    //     my_context: refusing without confirmation — stdin is not interactive.
+    //     Rerun with --yes to confirm, or run this from an interactive terminal.
+    //
+    // `refresh` REPLACES an item's whole body, so it gates on a human. The gate
+    // reads stdin, and a command run from this UI is a child process with no
+    // terminal — so it computes the change, prints it, and refuses. The dry run
+    // that derives the confirm hits the same wall first, so the confirm never
+    // renders either: the button was dead in both directions.
+    //
+    // **This does not imply the confirmation, it MOVES it.** The catalogue's
+    // rule is that `--yes` on the approval boundary is SHOWN, never implied, and
+    // it is shown: it is in the argv this composes, so it appears in the `<code>`
+    // the reader reads and in the confirm's own copy of the resolved command. The
+    // human confirmation is the confirm dialog — that is the entire feature — and
+    // the flag is how that decision reaches a process that has no terminal to ask
+    // through. Omitting it does not preserve a gate; it removes the command.
+    //
+    // `work.js` already composes its boundary command this way (`revisionPlan`,
+    // `yes: true`). This line was the only one that did not.
+    return catalogued('refresh', { id: item, yes: true });
   }
   return null;
 }
