@@ -371,6 +371,33 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
     // fields change without saying which item each belongs to. That is the
     // absent-versus-zero standard applied to the confirm: a row naming a field
     // and not its item is a true statement that reads as a complete one.
+    // **An empty effect is a STATEMENT, and it has to be made out loud.**
+    //
+    // Owner-reported 2026-08-28 from the Doctor screen, whose command is
+    // `repair`: with the corpus clean, `repair` derives an effect of zero items
+    // and the confirm drew the residual, the command, and nothing else. Correct,
+    // and indistinguishable from "we could not show you what it changes".
+    //
+    // The blank is in fact trustworthy — a derivation that cannot answer throws
+    // an `EffectRefusal`, which is a 400 from the confirm GET and never reaches
+    // this branch, so reaching here means the command RAN against a copy and
+    // touched nothing. But a reader cannot know that by looking, and this is the
+    // absent-versus-zero standard applied to the reader instead of to a query.
+    //
+    // It was also a regression in legibility that no test caught: before the
+    // server derived effects, this command was refused LOUDLY with a sentence
+    // naming the reason; afterwards it succeeded silently. Every test drove the
+    // populated case, so nothing failed.
+    //
+    // NOT `exec.noeffect`, which was retired with the browser-side table: that
+    // sentence said the command "does not run", which is the opposite claim and
+    // is now false.
+    if (answer.boundary === true && items.length === 0) {
+      const nothing = el('p', 'effect-none');
+      nothing.append(...ctx.t('exec.nochange'));
+      confirm.append(nothing);
+    }
+
     for (const item of items) {
       const heading = el('p', 'effect-item');
       heading.append(...ctx.t(`exec.item.${item.kind}`, { id: item.id }));

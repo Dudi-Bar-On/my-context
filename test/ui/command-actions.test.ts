@@ -655,6 +655,49 @@ test('an item the corpus does not have leaves the BEFORE column empty rather tha
     + 'item this browser could not read');
 });
 
+test('a BOUNDARY command that changes nothing SAYS so — a blank is not an answer', async () => {
+  // Owner-reported 2026-08-28 from the Doctor screen. `repair` on a clean corpus
+  // derives an effect of zero items, and the confirm drew the residual, the
+  // command, and nothing else — correct, and identical on screen to "we could
+  // not show you what it changes".
+  //
+  // The blank IS trustworthy: a derivation that cannot answer throws, which is a
+  // 400 from the confirm GET, so a rendered confirm means the command ran
+  // against a copy and touched nothing. The reader cannot know that by looking.
+  //
+  // This case had NO test at all, which is why it shipped: every other boundary
+  // test here drives a populated `effect`.
+  const { root } = await draw(
+    { argv: ['mycontext', 'repair'], id: 'repair', values: {} },
+    {
+      confirm: {
+        id: 'repair', argv: ['repair'], boundary: true,
+        nonce: 'c'.repeat(32), residual: EXECUTION_RESIDUAL,
+        effect: [],
+      },
+    },
+  );
+  await click(findButton(root, EXEC));
+  const confirm = findOne(root, 'div.confirm');
+
+  assert.equal(findMaybe(confirm, 'table.diff'), null,
+    'there is nothing to tabulate: no item changed');
+  assert.notEqual(findMaybe(confirm, 'p.effect-none'), null,
+    'but the confirm must SAY that no item changed. Silence here reads exactly like the '
+    + 'derivation having failed, and those are different facts.');
+  assert.match(textOf(confirm), /changes nothing/i);
+
+  // The retired sentence must not come back with it: it said the command "does
+  // not run", which is the opposite claim and is now false.
+  assert.doesNotMatch(textOf(confirm), /not offered here|own shell/i,
+    'exec.noeffect was retired in seq:5b and says the opposite of what is true here');
+
+  // And it is still a write behind a real confirm — the sentence explains the
+  // empty table, it does not downgrade the gate.
+  assert.notEqual(findButtonMaybe(confirm, 'Run it'), null,
+    'a command that changes nothing today is still a write, and still runs behind the confirm');
+});
+
 test('a command BELOW the boundary gets the plain confirm and NO diff', async () => {
   const { root, calls } = await draw(
     { argv: ['mycontext', 'doctor'], id: 'doctor' }, { confirm: DOCTOR_CONFIRM },

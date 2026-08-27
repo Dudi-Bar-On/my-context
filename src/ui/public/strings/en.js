@@ -417,6 +417,7 @@ export const strings = {
   'exec.item.created': '{b:{mv:id}} — created',
   'exec.item.changed': '{b:{mv:id}} — changed',
   'exec.item.removed': '{b:{mv:id}} — removed',
+  'exec.nochange': '{b:This changes nothing.} It was run against a copy of the corpus and no item came out different. It is still a write, and it still runs.',
   // Configure
   'cfg.h': 'Configure',
   'cfg.v': 'the strongest "a terminal cannot do this"',

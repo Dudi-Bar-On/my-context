@@ -369,6 +369,7 @@ export const strings = {
   'exec.item.created': '{b:{mv:id}} — נוצר',
   'exec.item.changed': '{b:{mv:id}} — שונה',
   'exec.item.removed': '{b:{mv:id}} — הוסר',
+  'exec.nochange': '{b:זה לא משנה דבר.} הפקודה הורצה על עותק של הקורפוס ואף פריט לא יצא שונה. זו עדיין כתיבה, והיא עדיין רצה.',
   // Configure
   'cfg.h': 'הגדרות',
   'cfg.v': 'ה"מסוף לא יכול" החזק ביותר',
