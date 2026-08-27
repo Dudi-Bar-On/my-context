@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { select, isEligible, estimateTokens } from '../../src/core/select.ts';
+import { select, isEligible, estimateTokens, itemCost } from '../../src/core/select.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { renderItemBlock } from '../../src/core/render-item.ts';
 import { renderSelection } from '../../src/core/render.ts';
@@ -366,4 +366,136 @@ test('rationale per-category counts are unaffected by items admitted in full', (
   ], { event: 'session-start' }, CONFIG);
   assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-pinned']);
   assert.equal(sel.index.counts.lesson, 2);
+});
+
+// --- the pinned tier's spill disclosure ------------------------------------
+
+/**
+ * **`always: true` MEANS ALWAYS, so a pinned tier that delivers part of itself
+ * has to say which part it did not.**
+ *
+ * Measured on this repository's own corpus (REQ-a-pinned-item-is-delivered-or-
+ * the-user-is-told-it-was-not): 23 pinned items against a 16,000 budget, 16
+ * delivered, seven silently absent, and the injection record carried no account
+ * of them at all. Among the seven was the instruction telling the assistant to
+ * use my_context for everything it needs to remember — the corpus spilled the
+ * rules that would have said it was not following the rules, and reported
+ * success.
+ *
+ * `Selection.spilled` already named them, per item, in a list that also carries
+ * `jit`, `restored` and `index` — three tiers whose spilling is BY DESIGN. What
+ * no reader could get from it is the pair of numbers that answers "by how
+ * much": the tier's whole cost, and the budget it was measured against. Those
+ * are produced here, where the candidates and their costs are already in hand,
+ * rather than re-derived by each surface that wants to say it.
+ */
+test('a partial pinned delivery names the ids it dropped, with the tier cost and the budget', () => {
+  const items = [
+    item({ id: 'CONST-a', always: true }),
+    item({ id: 'CONST-b', always: true }),
+    item({ id: 'CONST-c', always: true }),
+  ];
+  const whole = items.reduce((sum, i) => sum + itemCost(i), 0);
+  // A budget that admits some and not all: the PARTIAL case, which is the one
+  // that lies. See the all-spilled case below for why this is the assertion.
+  const cfg = resolveConfig({ budgets: { pinned: itemCost(items[0]) } });
+
+  const sel = select(items, { event: 'session-start' }, cfg);
+
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-a'],
+    'the fixture must deliver something, or this is not the partial case');
+  assert.notEqual(sel.pinnedSpill, null);
+  assert.deepEqual(sel.pinnedSpill?.ids, ['CONST-b', 'CONST-c']);
+  assert.equal(sel.pinnedSpill?.cost, whole,
+    'the cost is the WHOLE tier — what it would take to honour `always` — not what was admitted');
+  assert.equal(sel.pinnedSpill?.budget, cfg.budgets.pinned);
+});
+
+test('a pinned tier that fits entirely discloses nothing — there is nothing to disclose', () => {
+  const sel = select(
+    [item({ id: 'CONST-a', always: true }), item({ id: 'CONST-b', always: true })],
+    { event: 'session-start' },
+    resolveConfig({ budgets: { pinned: 10_000 } }),
+  );
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-a', 'CONST-b']);
+  assert.equal(sel.pinnedSpill, null);
+});
+
+/**
+ * The mutation this file exists to catch: a disclosure that fires only when the
+ * WHOLE tier spills reports nothing for the case that actually happened. Seven
+ * of twenty-three is a partial always, and a partial always is the only one
+ * that reads as kept while being broken.
+ */
+test('every pinned item spilling is disclosed too, and by the same rule as one', () => {
+  const items = [item({ id: 'CONST-a', always: true }), item({ id: 'CONST-b', always: true })];
+  const cfg = resolveConfig({ budgets: { pinned: 1 } });
+  const sel = select(items, { event: 'session-start' }, cfg);
+  assert.deepEqual(sel.full, []);
+  assert.deepEqual(sel.pinnedSpill?.ids, ['CONST-a', 'CONST-b']);
+  assert.equal(sel.pinnedSpill?.budget, 1);
+});
+
+/**
+ * ONLY the pinned tier. `jit`, `restored` and `index` spill by design — a JIT
+ * budget is a per-tool-call bound and an index line is a title, not a promise —
+ * and widening this disclosure to them would make it a routine line nobody
+ * reads, which is how the one tier that matters stops being heard.
+ */
+test('an index spill is not a pinned spill', () => {
+  const cfg = resolveConfig({ budgets: { index: 20, pinned: 10_000 } });
+  const sel = select(
+    [item({ id: 'CONST-a' }), item({ id: 'CONST-b' }), item({ id: 'CONST-c' })],
+    { event: 'session-start' },
+    cfg,
+  );
+  assert.ok(sel.spilled.some((s) => s.tier === 'index'), 'fixture must spill an index line');
+  assert.equal(sel.pinnedSpill, null);
+});
+
+test('a jit spill is not a pinned spill', () => {
+  const cfg = resolveConfig({ budgets: { jit: 1 } });
+  const sel = select(
+    [item({ id: 'CONST-a', scope: ['src/**'] })],
+    { event: 'tool', path: 'src/index.ts' },
+    cfg,
+  );
+  assert.deepEqual(sel.spilled.map((s) => s.tier), ['jit']);
+  assert.equal(sel.pinnedSpill, null);
+});
+
+/**
+ * A tier that did not run has nothing to disclose, and that is a different fact
+ * from a tier that ran and fitted. Both answer `null` here because both
+ * delivered every pinned item they were asked for — none — and `tiersRun` is
+ * where "did the tier run" is answered.
+ */
+test('a tool event, whose pinned tier never runs, discloses nothing', () => {
+  const sel = select(
+    [item({ id: 'CONST-a', always: true })],
+    { event: 'tool', path: 'src/index.ts' },
+    resolveConfig({ budgets: { pinned: 1 } }),
+  );
+  assert.equal(sel.pinnedSpill, null);
+});
+
+/**
+ * The `trueSpills` correction, carried into this disclosure.
+ *
+ * An item can spill from `pinned` and still be admitted by a later tier — on a
+ * compaction the `restored` tier runs after it, with its own budget. The item
+ * REACHED the session, so naming it as undelivered would be a false alarm on
+ * the one channel this feature needs to stay credible.
+ */
+test('a pinned item the restored tier then admitted is not named as undelivered', () => {
+  const items = [item({ id: 'CONST-a', always: true }), item({ id: 'CONST-b', always: true })];
+  const cfg = resolveConfig({
+    budgets: { pinned: itemCost(items[0]), restored: 10_000 },
+  });
+  const sel = select(
+    items, { event: 'compact', restore: ['CONST-b'] }, cfg,
+  );
+  assert.deepEqual(sel.full.map((e) => e.item.id).sort(), ['CONST-a', 'CONST-b']);
+  assert.equal(sel.pinnedSpill, null,
+    'CONST-b spilled from pinned and arrived via restored — it is not missing');
 });

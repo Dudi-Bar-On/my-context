@@ -86,6 +86,9 @@ interface WorkModule {
     field: string; changed?: boolean; noCurrent?: boolean; diff?: DiffLine[];
   }) => FieldView;
   revisionCommand: (rev: { itemId?: string; revisionId?: string }) => string;
+  revisionPlan: (rev: { itemId?: string; revisionId?: string }) => {
+    id: string; values: Record<string, unknown>; argv: string[];
+  };
   render: (root: unknown, ctx: unknown) => Promise<void>;
 }
 
@@ -103,9 +106,10 @@ async function workModule(): Promise<WorkModule> {
   // layer (`plan:walk seq:46`), so Configure and the Execute confirm can reach
   // the write preview too. This screen re-exports them, which is why the tests
   // below still address them through this module.
-  assert.equal(rewritten, 4,
-    `expected work.js to import four browser modules (/lib/command.js, /lib/palette-defs.js, `
-    + `/lib/viewmodel.js, /screens/parts.js); the rewrite matched ${rewritten}. A specifier this `
+  assert.equal(rewritten, 5,
+    `expected work.js to import five browser modules (/lib/command.js, /lib/command-actions.js, `
+    + `/lib/palette-defs.js, /lib/viewmodel.js, /screens/parts.js); the rewrite matched `
+    + `${rewritten}. A specifier this `
     + 'pattern cannot see is a module Node would resolve from the drive root, and the import '
     + 'below would fail for a reason that reads like a missing file.');
   assert.ok(!/\bfrom\s+'\//.test(text),
@@ -260,6 +264,95 @@ test('revisionCommand quotes through the one quoting implementation', async () =
 });
 
 /* -------------------------------------------------------------------------- *
+ * The one control — and the catalogue id this screen hands it.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **The id is the catalogue entry the settlement IS, and the argv is the
+ * catalogue's own composition of it.**
+ *
+ * This is the assertion the whole screen-by-screen adoption exists for. The
+ * confirm renders the SERVER's rebuild of `(id, values)`, so a plausible but
+ * wrong id renders a plausible but wrong command — a confirm that looks right
+ * for something the reader never asked for. Composing the shown line through
+ * the same `commandFor` the server resolves with makes the two one computation
+ * rather than two that agree today.
+ */
+test('revisionPlan names the catalogue entry the settlement IS, and composes through it', async () => {
+  const { revisionPlan, revisionCommand } = await workModule();
+  const defs = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'palette-defs.js')).href) as {
+    PALETTE: { name: string }[];
+    commandFor: (def: unknown, values: Record<string, unknown>) => string[];
+  };
+  const command = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'command.js')).href) as {
+    composeCommand: (argv: string[]) => string;
+  };
+
+  const rev = { itemId: 'RULE-never-log-customer-email', revisionId: 'REV-8c21' };
+  const plan = revisionPlan(rev);
+
+  assert.equal(plan.id, 'review promote-revision');
+  const def = defs.PALETTE.find((entry) => entry.name === plan.id);
+  assert.ok(def, 'the catalogue no longer carries the entry this screen settles a revision with');
+  assert.deepEqual(plan.values, { id: rev.itemId, revision: rev.revisionId, yes: true });
+  assert.deepEqual(plan.argv, defs.commandFor(def, plan.values),
+    'the argv a reader is shown is not the catalogue\'s own composition of the id and values the '
+    + 'confirm will be given — which is how a screen comes to show one command and run another');
+  assert.equal(command.composeCommand(plan.argv), revisionCommand(rev),
+    'the <code> and the control are being fed from two different values');
+  assert.equal(plan.argv[0], 'mycontext',
+    'Copy hands a shell what a HUMAN types, and that includes the program name');
+});
+
+/**
+ * **RECORDED, not decorative: the Execute this screen now offers cannot run
+ * yet, and the reason is one line away in `lib/command-actions.js`.**
+ *
+ * `review promote-revision` is ON the approval boundary, so spec §3.2 gives it
+ * the stronger confirm — a field-by-field diff of what changes. `COMMAND_EFFECTS`
+ * is the map that says what a command changes, and it carries the five named
+ * entry points onto `edit` and nothing else. §3.2's own words: *"A command
+ * whose effect cannot be shown that way does not get a weaker confirm — it does
+ * not run."* So the button is drawn, the nonce is minted, and the reader is told
+ * the effect cannot be shown.
+ *
+ * That is the DESIGNED outcome and not a defect of this screen — the failure
+ * mode of a short map is "a command you must still paste into your own shell",
+ * which is where this line was before. It is pinned here so that the day
+ * somebody teaches `COMMAND_EFFECTS` what a revision promotion changes, this
+ * test fails and a person reads this paragraph rather than discovering the
+ * change in a confirm.
+ */
+test('the settlement is on the boundary and its effect is not yet renderable — recorded', async () => {
+  const defs = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'palette-defs.js')).href) as {
+    PALETTE: { name: string; boundary?: boolean }[];
+  };
+  const actions = await import(
+    pathToFileURL(path.join(PUBLIC, 'lib', 'command-actions.js')).href
+  ) as { COMMAND_EFFECTS: Map<string, unknown> };
+
+  const def = defs.PALETTE.find((entry) => entry.name === 'review promote-revision');
+  assert.equal(def?.boundary, true);
+  assert.equal(actions.COMMAND_EFFECTS.has('review promote-revision'), false,
+    'COMMAND_EFFECTS now knows what a revision promotion changes, so Execute on this screen runs '
+    + 'behind the stronger confirm instead of refusing. That is the outcome this line was '
+    + 'waiting for — read the paragraph above, then update it.');
+});
+
+/**
+ * **One control, not a tenth copy button.** The confirm is the security
+ * boundary and nine hand-rolled spellings of it would be nine chances to get it
+ * wrong. A source scan, because the adoption is exactly the ABSENCE of the old
+ * code.
+ */
+test('the screen adopts the shared control and keeps no copy button of its own', () => {
+  assert.ok(workSource.includes("from '/lib/command-actions.js'"),
+    'the screen does not import the shared Copy-and-Execute control');
+  assert.ok(!/navigator\.clipboard/.test(workSource),
+    'the screen still talks to the clipboard itself — Copy lives in lib/command-actions.js now');
+});
+
+/* -------------------------------------------------------------------------- *
  * The screen against the two string tables and against the mockup.
  * -------------------------------------------------------------------------- */
 
@@ -295,9 +388,12 @@ test('every string key the Work screen names is declared in both tables, with it
   const used = keysNamed();
 
   // A scanner that finds nothing reads exactly like a clean file.
-  assert.ok(used.length >= 16,
-    `the scan found ${used.length} key(s) in work.js; the screen names sixteen. A collapse means `
+  assert.ok(used.length >= 15,
+    `the scan found ${used.length} key(s) in work.js; the screen names fifteen. A collapse means `
     + 'the patterns stopped matching, not that the screen stopped naming keys.');
+  assert.ok(!used.some((u) => u.key === 'btn.copy'),
+    'the screen words its own Copy button again; Copy is lib/command-actions.js\' word now, and '
+    + 'two screens wording one button is how they come to disagree about it');
 
   // The grammar has ONE parser and this is it. Eight files used to carry a
   // private scanner instead, all of them predating emphasis, and every one

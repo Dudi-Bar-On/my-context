@@ -169,6 +169,7 @@
  * standing alone would report the good one.
  */
 import { composeCommand } from '/lib/command.js';
+import { commandActions } from '/lib/command-actions.js';
 import {
   BOUND_CAP_TABLE, boundedList, el, errorNote, idFull, mono, num, spaced,
 } from '/screens/parts.js';
@@ -287,31 +288,38 @@ export function importCommand() {
 }
 
 /**
- * `<div class="cmd"><code>…</code><button>Copy</button></div>`.
+ * `<div class="cmd"><code>…</code></div>` followed by the ONE Copy-and-Execute
+ * control.
  *
- * Transcribed from `doctor.js`/`work.js` rather than shared, because those two
- * transcribed it from the mockup and a fourth spelling in `parts.js` is a
- * refactor this task does not own. Success is silent and failure is loud, for
- * the reason both of them record: the mockup swaps the label to
- * "Copied"/"Copy failed" through an unkeyed ternary in script, so neither
- * string table can carry those two words and inventing them here would fail
- * `strings-parity` in the direction that names it.
+ * **The transcribed copy button is gone.** This file used to say it was
+ * transcribed from `doctor.js`/`work.js` "because a fourth spelling in
+ * `parts.js` is a refactor this task does not own" — that refactor is now owned
+ * and done, in `lib/command-actions.js`, because adding Execute to nine
+ * transcriptions would have been nine chances to get the confirm wrong and the
+ * confirm is the security boundary.
+ *
+ * **`id: null`, and this screen is one of the two places that is the ANSWER
+ * rather than a shortfall.** `mycontext init` is not in the command catalogue —
+ * it is the command that is run before there is a workspace for this UI to be
+ * served from, so there was never anything for the catalogue to carry — and the
+ * client sends a catalogue id, never a command. With no id there is nothing for
+ * the server to rebuild, so the control draws Copy alone. Weighed against
+ * passing the nearest id to get an Execute button, which is exactly how a
+ * different command ships behind a confirm that looks right.
+ *
+ * A fragment rather than a wrapping `<div>`: `.cmd` is the mockup's element and
+ * `.cmdactions` is the control's own, and a classless container between them is
+ * precisely what made the Composer's read button invisible on 2026-08-27 —
+ * `.cmdactions button` carries its own background so that it does not matter
+ * which of six containers it lands in, and nesting it inside `.cmd` would quietly
+ * make it matter again.
  */
-function commandRow(ctx, command) {
+function commandRow(ctx, argv) {
+  const block = document.createDocumentFragment();
   const box = el('div', 'cmd');
-  const code = el('code', null, command);
-  const copy = el('button');
-  copy.type = 'button';
-  copy.append(...ctx.t('btn.copy'));
-  copy.onclick = () => {
-    // Composed, never run: this hands the string to the clipboard and stops.
-    // The user's own shell is the only thing that ever executes it (§7).
-    navigator.clipboard.writeText(command).catch((error) => {
-      box.after(errorNote(error && error.message ? error.message : String(error)));
-    });
-  };
-  box.append(code, copy);
-  return box;
+  box.append(el('code', null, composeCommand(argv)));
+  block.append(box, commandActions({ argv, id: null, values: {}, ctx }));
+  return block;
 }
 
 /** `<span class="chip …" data-g="…">text</span>` — the mockup's chip, verbatim. */
@@ -425,7 +433,7 @@ function manifestCard(ctx) {
 
   const note = el('p', 'small');
   note.append(...ctx.t('pk.theatre'));
-  card.append(head, table, spaced(note), commandRow(ctx, importCommand()));
+  card.append(head, table, spaced(note), commandRow(ctx, IMPORT_ARGV));
   return card;
 }
 

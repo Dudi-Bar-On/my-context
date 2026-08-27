@@ -99,6 +99,7 @@ interface CaptureModule {
   capturePath: (patterns: string[]) => string;
   categoryOptions: (config: unknown) => string[];
   severityOptions: () => string[];
+  captureArgv: (values: Record<string, string | undefined>) => string[];
   captureCommand: (values: Record<string, string | undefined>) => string;
   rowCells: (row: GoverningRow) => { id: string; detail: string };
   render: (root: unknown, ctx: unknown) => Promise<void>;
@@ -122,8 +123,8 @@ async function captureModule(): Promise<CaptureModule> {
     rewritten += 1;
     return `${head}${publicUrl(spec)}'`;
   });
-  assert.equal(rewritten, 3,
-    'expected capture.js to import three browser modules (/lib/command.js, '
+  assert.equal(rewritten, 4,
+    'expected capture.js to import four browser modules (/lib/command.js, '
     + `/lib/palette-defs.js, /screens/parts.js); the rewrite matched ${rewritten}. A specifier `
     + 'this pattern cannot see is a module Node would resolve from the drive root, and the import '
     + 'below would fail for a reason that reads like a missing file.');
@@ -404,6 +405,92 @@ test('categoryOptions honours `enabled`, the `resolved` wrapper, and a config th
 });
 
 /* -------------------------------------------------------------------------- *
+ * The one control — and the one screen that keeps Copy alone by DECISION.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **`captureArgv` is the argv and `captureCommand` is what it composes to.**
+ * The Copy-and-Execute control takes an argv; a string cannot be executed, and
+ * a screen carrying both as independent values is the drift a confirm exists to
+ * prevent.
+ */
+test('captureCommand is exactly what captureArgv composes to, refusals included', async () => {
+  const { captureArgv, captureCommand } = await captureModule();
+  const command = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'command.js')).href) as {
+    composeCommand: (argv: string[]) => string;
+  };
+  const values = { category: 'rule', title: 'two words', scope: 'src/**' };
+  assert.equal(command.composeCommand(captureArgv(values)), captureCommand(values));
+  assert.equal(captureArgv(values)[0], 'mycontext',
+    'Copy hands a shell what a HUMAN types, and that includes the program name');
+  // A half-built capture is refused one layer down, and the refusal must reach
+  // the caller from either entry point.
+  assert.throws(() => captureArgv({ title: 'no category' }), /required/);
+  assert.throws(() => captureCommand({ title: 'no category' }), /required/);
+});
+
+/**
+ * **THE ONE SCREEN THAT KEEPS COPY ALONE FOR A COMMAND THE CATALOGUE DOES
+ * HAVE, and the decision is written down here so it cannot be quietly
+ * reversed.**
+ *
+ * `add` IS in the catalogue, so on the rule every other screen follows this one
+ * would pass `id: 'add'` and gain an Execute button. It does not, because of
+ * what stands beside the command: `cap.warn` — *"This is a write. Run it in
+ * your own shell."* — is a sentence of the DESIGN OF RECORD, drawn in the
+ * mockup's own capture section, and it is false the moment a button beside it
+ * runs the command. `palette.js` dropped its borrowed copy of that sentence for
+ * exactly this reason on 2026-08-27 and recorded, in the same edit, that *"the
+ * key stays in both tables for Capture, which still composes and copies only"*.
+ *
+ * So the two cannot both stand, and choosing between them is a change to what
+ * the design of record draws — an owner's call, not this task's. Reported
+ * rather than taken.
+ *
+ * **Nothing is lost by waiting.** `add` is on the approval boundary and
+ * `COMMAND_EFFECTS` does not know what it writes, so §3.2 refuses it a weaker
+ * confirm: an Execute button here would mint a nonce and then decline. Capture
+ * would trade a true sentence for a control that cannot do what it offers.
+ */
+test('Capture keeps cap.warn and offers Copy alone — the decision, pinned in both halves',
+  async () => {
+    const defs = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'palette-defs.js')).href) as {
+      PALETTE: { name: string; boundary?: boolean }[];
+    };
+    const actions = await import(
+      pathToFileURL(path.join(PUBLIC, 'lib', 'command-actions.js')).href
+    ) as { COMMAND_EFFECTS: Map<string, unknown> };
+
+    // The half that makes the choice cost nothing today.
+    assert.equal(defs.PALETTE.find((def) => def.name === 'add')?.boundary, true);
+    assert.equal(actions.COMMAND_EFFECTS.has('add'), false,
+      'COMMAND_EFFECTS now knows what `add` writes, so an Execute button here would actually '
+      + 'run. That is the day this decision has to be re-taken — with cap.warn.');
+
+    // The half that is the decision itself.
+    assert.ok(/commandActions\(\{[\s\S]{0,200}?id: null/.test(CODE),
+      'Capture now passes a catalogue id and offers Execute; cap.warn — "This is a write. Run it '
+      + 'in your own shell." — must not still be drawn beside a button that runs it');
+    assert.ok(CODE.includes("ctx.t('cap.warn')"),
+      'cap.warn is no longer drawn, and this screen still offers Copy alone; a sentence of the '
+      + 'design of record has been dropped without gaining the control that made it false');
+  });
+
+/**
+ * **One control, not a tenth copy button.** The confirm is the security
+ * boundary and nine hand-rolled spellings of it would be nine chances to get it
+ * wrong — and this screen adopts the control even though its half of it is Copy
+ * alone, because the copy behaviour is the same behaviour and one spelling of
+ * it is the whole point.
+ */
+test('the screen adopts the shared control and keeps no copy button of its own', () => {
+  assert.ok(CODE.includes("from '/lib/command-actions.js'"),
+    'the screen does not import the shared Copy-and-Execute control');
+  assert.ok(!/navigator\.clipboard/.test(CODE),
+    'the screen still talks to the clipboard itself — Copy lives in lib/command-actions.js now');
+});
+
+/* -------------------------------------------------------------------------- *
  * The screen against the two string tables and against the mockup.
  * -------------------------------------------------------------------------- */
 
@@ -428,9 +515,12 @@ test('every string key the Capture screen names is declared in both tables, with
   const used = keysNamed();
 
   // A scanner that finds nothing reads exactly like a clean file.
-  assert.ok(used.length >= 7,
-    `the scan found ${used.length} key(s) in capture.js; the screen names seven. A collapse means `
+  assert.ok(used.length >= 6,
+    `the scan found ${used.length} key(s) in capture.js; the screen names six. A collapse means `
     + 'the patterns stopped matching, not that the screen stopped naming keys.');
+  assert.ok(!used.some((u) => u.key === 'btn.copy'),
+    'the screen words its own Copy button again; Copy is lib/command-actions.js\' word now, and '
+    + 'two screens wording one button is how they come to disagree about it');
 
   // The grammar has ONE parser and this is it. Eight files used to carry a
   // private scanner instead, all of them predating emphasis, and every one

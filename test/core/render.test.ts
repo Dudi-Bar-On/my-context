@@ -23,6 +23,9 @@ const EMPTY: Selection = {
     carried: null,
   },
   spilled: [],
+  // Required-and-null, exactly as `focus` is: both are per-selection
+  // disclosures that are absent by having nothing to say, not by having no key.
+  pinnedSpill: null,
   focus: null,
   tokens: 0,
 };

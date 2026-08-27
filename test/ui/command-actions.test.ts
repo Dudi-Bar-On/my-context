@@ -236,6 +236,45 @@ function findMaybe(root: FakeNode, kind: string): FakeElement | null {
   return all.length === 0 ? null : (all[0] as FakeElement);
 }
 
+// ── Buttons are selected by their ACCESSIBLE NAME, never by a class ───────
+//
+// This file selected the control's buttons by class until 2026-08-27, and those
+// classes are gone. Nothing in `styles.css` ever selected them — the appearance
+// comes from the ancestor rule `.cmdactions button` — so they carried no
+// appearance and existed only as handles for these assertions, while
+// `e2e/screen-parity.spec.ts` compares kinds as `tag.class1.class2` and the
+// design of record draws a bare `<button>`. A classed button therefore deleted
+// the kind `button` from doctor, work and capture and failed the parity gate.
+//
+// The replacement is the button's TEXT, which is what a screen reader and a
+// Playwright `getByRole` already select by. Deliberately NOT a `data-`
+// attribute: that is the same departure from the mockup wearing another name,
+// and `screen-parity` would not catch the next one.
+
+/**
+ * The two labels, in the `en` table's own words. Held to that table by the
+ * first test below, so a reword there fails by name rather than turning every
+ * selector in this file into a silent miss.
+ */
+const COPY = 'Copy';
+const EXEC = 'Execute';
+
+/** The direct-child buttons of a node, as the labels a person reads. */
+function buttonLabels(root: FakeNode): string[] {
+  return root.children.filter((c) => c.tag === 'button').map((c) => textOf(c).trim());
+}
+
+function findButton(root: FakeNode, label: string): FakeElement {
+  const all = findAll(root, (node) => node.tag === 'button' && textOf(node).trim() === label);
+  assert.equal(all.length, 1, `expected exactly one button labelled "${label}", found ${all.length}`);
+  return all[0] as FakeElement;
+}
+
+function findButtonMaybe(root: FakeNode, label: string): FakeElement | null {
+  const all = findAll(root, (node) => node.tag === 'button' && textOf(node).trim() === label);
+  return all.length === 0 ? null : (all[0] as FakeElement);
+}
+
 /** Click a button the way a mouse or a keyboard would — its own listener. */
 async function click(node: FakeElement): Promise<void> {
   assert.equal(node.disabled, false, `${kindOf(node)} is disabled; a click would do nothing`);
@@ -355,16 +394,31 @@ async function draw(spec: {
 test('the control draws BOTH actions, and each is a real, keyboard-operable button', async () => {
   const { root } = await draw({ argv: ['mycontext', 'doctor'], id: 'doctor' });
 
+  // The labels this file selects by ARE the string table's, checked here so a
+  // reword fails by name instead of making every `findButton` below a miss.
+  const en = (await browserModule<{ strings: Record<string, string> }>('strings', 'en.js')).strings;
+  assert.equal(en['btn.copy'], COPY);
+  assert.equal(en['exec.btn'], EXEC);
+
   assert.equal(kindOf(root), 'div.cmdactions');
-  assert.deepEqual(childKinds(root).filter((k) => k.startsWith('button')),
-    ['button.copy', 'button.exec'],
+  assert.deepEqual(buttonLabels(root), [COPY, EXEC],
     'Copy and Execute are ONE control: nine screens composing a command must not grow nine '
     + 'spellings of the confirm, because the confirm is the security boundary');
 
+  // **And both are CLASSLESS.** `e2e/screen-parity.spec.ts` compares kinds as
+  // `tag.class1.class2` against the mockup, which draws a bare `<button>` here;
+  // a classed one deleted the kind `button` from doctor, work and capture. The
+  // classes were never what made these visible — `.cmdactions button`, the
+  // ancestor rule, is — so dropping them costs no appearance. Asserted rather
+  // than left to the browser gate so a reintroduction fails in milliseconds.
+  assert.deepEqual(childKinds(root).filter((k) => k.startsWith('button')), ['button', 'button'],
+    'these buttons carry no class: the mockup draws them bare and `.cmdactions button` '
+    + 'is what styles them');
+
   // `type="button"` on both, because these sit inside forms on three of the
   // seven adopting screens and a bare <button> in a form submits it.
-  for (const kind of ['button.copy', 'button.exec']) {
-    assert.equal(findOne(root, kind).type, 'button', `${kind} must declare type=button`);
+  for (const label of [COPY, EXEC]) {
+    assert.equal(findButton(root, label).type, 'button', `${label} must declare type=button`);
   }
 });
 
@@ -374,7 +428,7 @@ test('Copy still does what it always did — the composed string, verbatim', asy
   const { root, calls } = await draw({
     argv: ['mycontext', 'add', 'rule', 'two words'], id: 'add', values: { category: 'rule', title: 'two words' },
   });
-  await click(findOne(root, 'button.copy'));
+  await click(findButton(root, COPY));
 
   assert.deepEqual(clipboard.written, ['mycontext add rule "two words"'],
     'the quoting has ONE implementation (lib/command.js) and this control uses it rather than '
@@ -386,7 +440,7 @@ test('a copy that fails says so — success is silent, failure is loud', async (
   clipboard.written.length = 0;
   clipboard.fail = 'clipboard write permission denied';
   const { root } = await draw({ argv: ['mycontext', 'doctor'], id: 'doctor' });
-  await click(findOne(root, 'button.copy'));
+  await click(findButton(root, COPY));
   // The platform's own words, unedited — the treatment doctor.js settled on,
   // because neither string table can carry a "Copy failed" the mockup's own
   // handler swaps in through an unkeyed ternary.
@@ -399,12 +453,12 @@ test('a blocked copy is refused at the button, and Execute is still offered', as
     argv: ['mycontext', 'add', 'rule', 'the $(echo X) way'], id: 'add', copyBlocked: true,
     values: { category: 'rule', title: 'the $(echo X) way' },
   });
-  assert.equal(findOne(root, 'button.copy').disabled, true,
+  assert.equal(findButton(root, COPY).disabled, true,
     'a blocked command must not be one click from a clipboard — pal.block says why in the same breath');
   // And Execute is NOT blocked by the same measurement, which is the whole
   // asymmetry: a paste reaches a SHELL, where $(…) substitutes; an execution
   // reaches execFile with an argv array, where it is an ordinary literal.
-  assert.equal(findOne(root, 'button.exec').disabled, false);
+  assert.equal(findButton(root, EXEC).disabled, false);
 });
 
 /* -------------------------------------------------------------------------- *
@@ -413,8 +467,8 @@ test('a blocked copy is refused at the button, and Execute is still offered', as
 
 test('an entry with NO catalogue id gets Copy alone — nothing outside the catalogue runs', async () => {
   const { root } = await draw({ argv: ['mycontext', 'whatever'], id: null });
-  assert.deepEqual(childKinds(root).filter((k) => k.startsWith('button')), ['button.copy']);
-  assert.equal(findMaybe(root, 'button.exec'), null,
+  assert.deepEqual(buttonLabels(root), [COPY]);
+  assert.equal(findButtonMaybe(root, EXEC), null,
     'the client sends a catalogue id and never a command (§3.1); a composition the catalogue '
     + 'cannot name has nothing the server would rebuild');
 });
@@ -427,7 +481,7 @@ test('Execute opens a confirm and runs NOTHING — the first click POSTs nothing
   const { root, calls } = await draw(
     { argv: ['mycontext', 'doctor'], id: 'doctor' }, { confirm: DOCTOR_CONFIRM },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
 
   const confirm = findOne(root, 'div.confirm');
   assert.equal(confirm.hidden, false, 'the confirm must be rendered, not merely built');
@@ -446,7 +500,7 @@ test('the confirm SHOWS THE SERVER\'S argv, not the string the client composed',
   const { root } = await draw(
     { argv: ['mycontext', 'doctor', '--stale'], id: 'doctor' }, { confirm: DOCTOR_CONFIRM },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   const shown = textOf(findOne(root, 'div.confirm'));
   assert.match(shown, /mycontext doctor/);
   assert.ok(!shown.includes('--stale'), 'the confirm must show what the SERVER resolved');
@@ -456,7 +510,7 @@ test('the confirm carries the residual VERBATIM, in the words §6.3 chose', asyn
   const { root } = await draw(
     { argv: ['mycontext', 'doctor'], id: 'doctor' }, { confirm: DOCTOR_CONFIRM },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   const shown = textOf(findOne(root, 'div.confirm'));
 
   // The LITERAL sentence, not "a residual field was rendered". §6.3 makes these
@@ -476,7 +530,7 @@ test('the confirm announces what it is, and can be reached and left from the key
   const { root } = await draw(
     { argv: ['mycontext', 'doctor'], id: 'doctor' }, { confirm: DOCTOR_CONFIRM },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   const confirm = findOne(root, 'div.confirm');
 
   assert.equal(confirm.attributes['role'], 'group');
@@ -496,7 +550,7 @@ test('cancelling runs nothing and spends nothing', async () => {
     { argv: ['mycontext', 'pin', 'RULE-x'], id: 'pin', values: { id: 'RULE-x' } },
     { confirm: PIN_CONFIRM, items: { 'RULE-x': RULE_X } },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   await click(findOne(root, 'button.cancel'));
 
   assert.equal(findOne(root, 'div.confirm').hidden, true);
@@ -513,7 +567,7 @@ test('a BOUNDARY command shows a field-by-field diff, naming the field and both 
     { argv: ['mycontext', 'pin', 'RULE-x'], id: 'pin', values: { id: 'RULE-x' } },
     { confirm: PIN_CONFIRM, items: { 'RULE-x': RULE_X } },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   const confirm = findOne(root, 'div.confirm');
 
   assert.ok(renderedKinds(confirm).includes('table.diff'),
@@ -539,7 +593,7 @@ test('the diff\'s BEFORE comes from the corpus, not from the command', async () 
   // narrows `calls` to `never[]` for the rest of the function and typecheck
   // then refuses the assertion that matters.
   assert.equal(calls.length, 0, 'nothing is read until Execute is clicked');
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
 
   assert.deepEqual(calls.map((c) => c.path).filter((p) => p.startsWith('/api/item/')),
     ['/api/item/RULE-x'],
@@ -552,7 +606,7 @@ test('an item the corpus does not have leaves the BEFORE column empty rather tha
     { argv: ['mycontext', 'pin', 'RULE-gone'], id: 'pin', values: { id: 'RULE-gone' } },
     { confirm: { ...PIN_CONFIRM, argv: ['pin', 'RULE-gone'] }, items: {} },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   const diff = findOne(root, 'table.diff');
   assert.match(textOf(diff), /always/, 'the field is still named');
   assert.ok(renderedKinds(diff).includes('ins'), 'and so is what would be written');
@@ -565,7 +619,7 @@ test('a command BELOW the boundary gets the plain confirm and NO diff', async ()
   const { root, calls } = await draw(
     { argv: ['mycontext', 'doctor'], id: 'doctor' }, { confirm: DOCTOR_CONFIRM },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   const confirm = findOne(root, 'div.confirm');
 
   assert.equal(findMaybe(confirm, 'table.diff'), null,
@@ -589,7 +643,7 @@ test('a boundary command whose fields CANNOT be named does not run — §3.2, in
       items: { 'RULE-x': RULE_X },
     },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
 
   assert.equal(findOne(root, 'div.confirm').hidden, true, 'no weaker confirm is offered');
   assert.deepEqual(posts(calls), [], 'and nothing runs');
@@ -606,7 +660,7 @@ test('answering the confirm POSTs the id, the values and the nonce — and never
   const { root, calls } = await draw(
     { argv: ['mycontext', 'doctor'], id: 'doctor' }, { confirm: DOCTOR_CONFIRM },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   await click(findOne(root, 'button.go'));
 
   assert.equal(posts(calls).length, 1);
@@ -623,7 +677,7 @@ test('the result is SHOWN — a clean run reports its exit code', async () => {
     { argv: ['mycontext', 'doctor'], id: 'doctor' },
     { confirm: DOCTOR_CONFIRM, outcome: { id: 'doctor', argv: ['doctor'], exitCode: 0, durationMs: 9, stdout: 'ok', stderr: '' } },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   await click(findOne(root, 'button.go'));
 
   const result = findOne(root, 'div.execresult');
@@ -645,7 +699,7 @@ test('a NON-ZERO exit is reported with its stderr — a refusal is a state to le
       },
     },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   await click(findOne(root, 'button.go'));
 
   const result = findOne(root, 'div.execresult');
@@ -668,7 +722,7 @@ test('a run that never returned is not reported as a success', async () => {
       },
     },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   await click(findOne(root, 'button.go'));
 
   const shown = textOf(findOne(root, 'div.execresult'));
@@ -688,7 +742,7 @@ test('the audit note is surfaced — a log that cannot record how a run ended sa
       },
     },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   await click(findOne(root, 'button.go'));
   assert.match(textOf(findOne(root, 'div.execresult')), /could not be written/,
     'an execute row with no execute-done beside it MEANS a run that never returned; a swallowed '
@@ -699,7 +753,7 @@ test('a confirm the server refuses is shown, and nothing runs', async () => {
   const { root, calls } = await draw(
     { argv: ['mycontext', 'nope'], id: 'nope' }, { confirm: null },
   );
-  await click(findOne(root, 'button.exec'));
+  await click(findButton(root, EXEC));
   assert.match(textOf(root), /is in the catalogue/, 'the server\'s refusal, in its own words');
   assert.deepEqual(posts(calls), []);
 });

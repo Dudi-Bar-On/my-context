@@ -124,6 +124,7 @@
  * drop the half that still reads.
  */
 import { composeCommand } from '/lib/command.js';
+import { commandActions } from '/lib/command-actions.js';
 import { el, errorNote, mono, num, spaced } from '/screens/parts.js';
 
 /**
@@ -259,10 +260,25 @@ export function barWidth(progress) {
  * catalogue is where a flag set gets verified against the real parser, and a
  * command composed outside it has had no such check.
  */
-export function doneCommand(procedure) {
+export function doneArgv(procedure) {
   if (procedure === null || typeof procedure !== 'object') return null;
   if (procedure.stage !== 'active') return null;
-  return composeCommand(['mycontext', 'procedure', 'done', procedure.id]);
+  return ['mycontext', 'procedure', 'done', procedure.id];
+}
+
+/**
+ * The same settlement as the string a reader sees, and the one that refuses.
+ *
+ * Split from `doneArgv` because the Copy-and-Execute control takes an ARGV — a
+ * string cannot be executed, and a screen carrying both as independent values
+ * is exactly the drift the confirm exists to prevent. The refusal on an
+ * unquotable id lives HERE, in `composeCommand`, which is where it always lived:
+ * `doneArgv` answers the stage question and the composer answers the quoting
+ * one, and neither has been given the other's job.
+ */
+export function doneCommand(procedure) {
+  const argv = doneArgv(procedure);
+  return argv === null ? null : composeCommand(argv);
 }
 
 /**
@@ -378,32 +394,46 @@ function statesCard(ctx) {
 }
 
 /**
- * `<div class="cmd"><code>…</code><button>Copy</button></div>`.
+ * `<div class="cmd"><code>…</code></div>` followed by the ONE Copy-and-Execute
+ * control — which here is Copy alone, so this line is still composed and never
+ * run. That is what keeps the user's own Bash deny rules matching the command
+ * strings they were written against (§7).
  *
- * Composed, never run — the button hands the string to the clipboard and
- * stops, which is what keeps the user's own Bash deny rules matching the
- * command strings they were written against (§7).
+ * The hand-rolled Copy button that used to live here is gone. It was one of
+ * nine across `screens/`, and adding Execute nine times would have been nine
+ * chances to get the confirm wrong — the confirm being the security boundary.
+ * `lib/command-actions.js` is the one spelling, and the "Copied"/"Copy failed"
+ * labels this button owed the mockup are its problem now.
  *
- * A copy that FAILS says so and a copy that succeeds says nothing, which is
- * the right way round for a button whose one job is to have put something on a
- * clipboard. It is also the only way round available: the mockup's own
- * `[data-copy]` handler swaps its label through an unkeyed ternary in script,
- * so neither string table can carry "Copied", and inventing the word here
- * would fail `strings-parity`. The same call `doctor.js` and `work.js` made.
+ * The control is a SIBLING of `.cmd` rather than a child, and a fragment rather
+ * than a wrapping `<div>`: `.cmdactions button` carries its own background
+ * precisely so the control does not depend on which container it lands in, and
+ * a classless container is the other half of the defect that left the
+ * Composer's read button rendering light text on the user agent's near-white
+ * button face.
  */
-function commandRow(ctx, command) {
+function commandRow(ctx, argv) {
+  const block = document.createDocumentFragment();
   const box = el('div', 'cmd');
-  const code = el('code', null, command);
-  const copy = el('button');
-  copy.type = 'button';
-  copy.append(...ctx.t('btn.copy'));
-  copy.onclick = () => {
-    navigator.clipboard.writeText(command).catch((error) => {
-      box.after(errorNote(error && error.message ? error.message : String(error)));
-    });
-  };
-  box.append(code, copy);
-  return box;
+  // Composed HERE, so an id this UI cannot quote throws before anything is
+  // appended and the caller's catch draws the refusal where the block would
+  // have been — the behaviour this screen has always had.
+  box.append(el('code', null, composeCommand(argv)));
+  // **`id: null` — Copy alone, and it is the answer twice over.**
+  //
+  // `PALETTE` declares no `procedure` entry at all, which this file already
+  // records above `doneArgv`: the catalogue is where a flag set is verified
+  // against the real argument parser, and this argv has had no such check. The
+  // client sends an id and the server rebuilds argv from the catalogue, so an
+  // id the catalogue does not have has nothing to rebuild — and an unverified
+  // argv is the last thing that should be handed an Execute button.
+  //
+  // The second reason is `pr.w3`, *"active → done stays yours"*: the composed
+  // line carries no `--yes` because the confirmation prompt IS the human's
+  // decision. Weighed against composing `--yes` and offering Execute, which
+  // would answer that prompt on their behalf in the same edit.
+  block.append(box, commandActions({ argv, id: null, values: {}, ctx }));
+  return block;
 }
 
 /**
@@ -506,15 +536,16 @@ function procedureCard(ctx, summary, detail) {
   note.append(...ctx.t('pr.md', { done: num(progress.done), steps: num(progress.total) }));
   card.append(spaced(note));
 
-  let command = null;
   try {
-    command = doneCommand(summary);
+    const argv = doneArgv(summary);
+    // Built inside the try: `commandRow` composes, so an unquotable id throws
+    // before a single node reaches the card and the refusal lands below.
+    if (argv !== null) card.append(commandRow(ctx, argv));
   } catch (error) {
     // An id this UI cannot quote is a broken response, not a stage: say so
     // where the block would have been rather than composing something weaker.
     card.append(errorNote(error.message));
   }
-  if (command !== null) card.append(commandRow(ctx, command));
   return card;
 }
 

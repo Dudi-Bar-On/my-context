@@ -1,4 +1,10 @@
 import { readFileSync } from 'node:fs';
+// TYPE-only, and it stays that way. This module is on every hook's startup
+// path and imports nothing at runtime but `node:fs`; an erased import costs
+// the hook nothing, while a value import from `core/` would pull the
+// selector's whole dependency graph into a process that only wanted to parse
+// stdin.
+import type { PinnedSpill } from '../core/select.ts';
 
 export interface HookInput {
   session_id?: string;
@@ -396,6 +402,48 @@ export function hookParseErrorLine(parseError: string | null): string {
     'a compaction restore will not fire, the JIT (per-tool-call) tier will inject nothing, ' +
     'and PreCompact will write no snapshot. The hook still failed open — nothing was ' +
     'blocked and nothing else changed.\n'
+  );
+}
+
+/**
+ * The one line SessionStart writes when a PINNED item did not fit.
+ *
+ * **`always: true` MEANS ALWAYS**, so a pinned tier that delivers part of
+ * itself has broken a promise, and a broken promise that says nothing reads
+ * exactly like a kept one. Measured on this project's own corpus
+ * (`REQ-a-pinned-item-is-delivered-or-the-user-is-told-it-was-not`): 23 pinned
+ * items against a 16,000 budget, 16 delivered, SEVEN silently absent — among
+ * them the instruction to use my_context for everything the assistant needs to
+ * remember. The corpus spilled the rules that would have said it was not
+ * following the rules, and reported success.
+ *
+ * **The IDS, not a count.** "7 spilled" tells a reader that something is wrong;
+ * "these seven" tells them what. Every id is named however long the list — a
+ * truncated list would recreate the silence for whatever fell off the end, and
+ * this line is written at most once per session start.
+ *
+ * **Both numbers, because the next question is "by how much".** `cost` is what
+ * the whole tier would take, `budget` is what it is allowed, and the difference
+ * is spelled out rather than left as arithmetic the reader does at a glance and
+ * gets wrong. It stops there: this line REPORTS, it does not raise anything.
+ * Auto-raising a budget was offered to the owner and declined — a corpus that
+ * grows its own injection cost with nobody deciding is how a context window
+ * fills quietly — and the surface where a person chooses is the UI's job, not
+ * this line's.
+ *
+ * **Stderr, and one line.** Claude Code surfaces a hook's stderr to the USER,
+ * who is the only reader who can act on it; the model gets nothing, because
+ * telling a model "you are missing seven rules" spends the very budget that is
+ * short on a sentence it cannot act on. `noWorkspaceLine` is the precedent for
+ * both the channel and the tone.
+ */
+export function pinnedSpillLine(spill: PinnedSpill): string {
+  return (
+    `my_context: ${spill.ids.length} PINNED item(s) did not fit and were NOT injected, so ` +
+    '`always: true` was not honoured for them. The pinned tier costs ' +
+    `~${spill.cost} estimated tokens against a budget of ${spill.budget}, over by ` +
+    `${spill.cost - spill.budget}. Not delivered: ${spill.ids.join(', ')}
+`
   );
 }
 

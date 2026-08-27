@@ -450,8 +450,26 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // The table needs a scope the reader has TYPED — there is no route parameter
   // and no endpoint that supplies one, which is this screen's loudest open
   // question. Nothing renders below the controls until someone types.
+  // `div.cmd`, `code` and `button` joined `p.cmdnote` on 2026-08-27, for the
+  // SAME already-accepted reason and not a new one: nothing below Capture's
+  // inputs renders until a category and a title are typed. `capture.js` builds
+  // its command block only when `captureCommand` returns an argv, and
+  // `capture-screen.test.ts` PINS that refusal — 'the screen honours the throw
+  // by offering no copyable command at all'. Drawing the block anyway would
+  // offer a Copy for a command that does not exist.
+  //
+  // The first two only became visible as gaps when `[hidden]` started working:
+  // `.cmd{display:flex}` is an author rule and beat the UA's
+  // `[hidden]{display:none}`, so `cmd.hidden = true` set the attribute and
+  // changed nothing, and an empty command box sat on screen. Fixing that made
+  // the app HONEST and the ledger LONGER, which is the right direction.
+  //
+  // `plan:walk seq:55` closes all four: drive Capture into its composed state
+  // the way `button-contrast.spec.ts` drives the Composer. A walk that never
+  // reaches a state cannot judge it.
   capture: [
-    'b', 'p.cmdnote', 'span.m.v', 'table', 'tbody', 'td.m', 'td.small', 'tr',
+    'b', 'button', 'code', 'div.cmd', 'p.cmdnote', 'span.m.v', 'table', 'tbody',
+    'td.m', 'td.small', 'tr',
   ],
   // This corpus holds no `procedure` item at all, so the whole live half — one
   // card per procedure, its progress bar and its composed `procedure done` —

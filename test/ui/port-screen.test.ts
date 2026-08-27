@@ -141,6 +141,7 @@ interface PortModule {
   rungView: (format: { id?: string; built?: boolean }) => RungView;
   bucketView: (name: string) => ChipSpec | null;
   auditChips: (history: { carries?: unknown; withheld?: unknown } | undefined) => KindChip[];
+  exportArgv: (body: unknown) => string[];
   exportCommand: (body: unknown) => string;
   render: (root: unknown, ctx: unknown) => Promise<void>;
 }
@@ -154,8 +155,8 @@ async function portModule(): Promise<PortModule> {
     rewritten += 1;
     return `${head}${pathToFileURL(path.join(PUBLIC, spec)).href}'`;
   });
-  assert.equal(rewritten, 2,
-    'expected port.js to import two browser modules (/lib/command.js, /screens/parts.js); the '
+  assert.equal(rewritten, 3,
+    'expected port.js to import three browser modules (/lib/command.js, /screens/parts.js); the '
     + `rewrite matched ${rewritten}. A specifier this pattern cannot see is a module Node would `
     + 'resolve from the drive root, and the import below would fail for a reason that reads like '
     + 'a missing file.');
@@ -384,6 +385,68 @@ test('exportCommand refuses rather than assembling a line of its own', async () 
 });
 
 /* -------------------------------------------------------------------------- *
+ * The one control, and why this screen's half of it is Copy alone.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **`exportArgv` is the argv and `exportCommand` is what it composes to.** The
+ * Copy-and-Execute control takes an argv, not a string, and a screen keeping a
+ * second string beside the argv is the drift the confirm exists to prevent — a
+ * `<code>` showing one command while the confirm named another.
+ */
+test('exportCommand is exactly what exportArgv composes to, refusals included', async () => {
+  const { exportArgv, exportCommand } = await portModule();
+  const body = served();
+  assert.deepEqual(exportArgv(body), body.command.argv);
+  const command = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'command.js')).href) as {
+    composeCommand: (argv: string[]) => string;
+  };
+  assert.equal(command.composeCommand(exportArgv(body)), exportCommand(body));
+  for (const bad of [undefined, {}, { command: {} }, { command: { argv: [] } }]) {
+    assert.throws(() => exportArgv(bad), /command\.argv/,
+      `a body with no usable argv yielded an argv anyway: ${JSON.stringify(bad)}`);
+  }
+});
+
+/**
+ * **`mycontext export` is not in the command catalogue, so this line gets Copy
+ * and no Execute — the correct outcome, not a gap.**
+ *
+ * The client sends a catalogue id and never a command (spec §3.1), so a line
+ * the catalogue cannot name has nothing for the server to rebuild.
+ *
+ * There is a second reason here that holds even if the catalogue gains an entry
+ * one day: **the line this screen offers is deliberately one argument short.**
+ * `--out` arrives with no destination because the CLI refuses to default one,
+ * and an Execute button on an incomplete command could only ever refuse — or,
+ * worse, run with a destination nobody chose.
+ */
+test('the export line names no catalogue id, because the catalogue has no export', async () => {
+  const defs = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'palette-defs.js')).href) as {
+    PALETTE: { name: string }[];
+  };
+  assert.equal(defs.PALETTE.find((def) => def.name === 'export'), undefined,
+    'the catalogue gained an `export` entry — somebody must now decide whether a line that is '
+    + 'deliberately missing its destination may be offered an Execute button');
+  assert.ok(/commandActions\(\{[\s\S]{0,200}?id: null/.test(portCode),
+    'the screen no longer passes a null id; a command outside the catalogue must not offer '
+    + 'Execute');
+});
+
+/**
+ * **One control, not a tenth copy button.** The confirm is the security
+ * boundary and nine hand-rolled spellings of it would be nine chances to get it
+ * wrong. A source scan, because the adoption is exactly the ABSENCE of the old
+ * code.
+ */
+test('the screen adopts the shared control and keeps no copy button of its own', () => {
+  assert.ok(portCode.includes("from '/lib/command-actions.js'"),
+    'the screen does not import the shared Copy-and-Execute control');
+  assert.ok(!/clipboard/.test(portCode),
+    'the screen still talks to the clipboard itself — Copy lives in lib/command-actions.js now');
+});
+
+/* -------------------------------------------------------------------------- *
  * The screen against the two string tables and against the mockup.
  * -------------------------------------------------------------------------- */
 
@@ -409,10 +472,13 @@ test('every string key the port screen names is declared in both tables, with it
   const used = keysNamed();
 
   // A scanner that finds nothing reads exactly like a clean file.
-  assert.ok(new Set(used).size >= 21,
+  assert.ok(new Set(used).size >= 20,
     `the scan found ${new Set(used).size} distinct key(s) in port.js; the screen names the `
-    + 'eighteen `port.` keys plus `th.bucket`, `th.example` and `btn.copy`. A collapse means the '
+    + 'eighteen `port.` keys plus `th.bucket` and `th.example`. A collapse means the '
     + 'pattern stopped matching, not that the screen stopped naming keys.');
+  assert.ok(!used.includes('btn.copy'),
+    'the screen words its own Copy button again; Copy is lib/command-actions.js\' word now, and '
+    + 'two screens wording one button is how they come to disagree about it');
 
   // The grammar has ONE parser and this is it. Eight files used to carry a
   // private scanner instead, all of them predating emphasis, and every one

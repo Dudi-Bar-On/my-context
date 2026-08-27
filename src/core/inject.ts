@@ -8,7 +8,7 @@ import {
 } from './rebuild.ts';
 import { renderSelection, SUBAGENT_PREAMBLE } from './render.ts';
 import { agentRevisionNotice, pendingRevisions } from './revision.ts';
-import { select } from './select.ts';
+import { select, type PinnedSpill } from './select.ts';
 import { appendSeen, readSeen, restoredFor } from './seen-file.ts';
 import { HOOK_OPEN_PROFILE, isBusyError, Store } from './store.ts';
 import { clearWindowState } from './window-state.ts';
@@ -181,8 +181,44 @@ function windowClearedNote(sentence: string): string {
 }
 
 /**
+ * One injection: the text, and the facts about it that are NOT in the text.
+ *
+ * There is exactly one such fact so far, and it is here rather than in the
+ * block because its reader is different. `pinnedSpill` is for the USER — they
+ * are the only one who can raise a budget — and it reaches them on the hook's
+ * stderr (`hooks/io.ts` · `pinnedSpillLine`). Putting it in the injected block
+ * instead would spend the very budget that is short, on a sentence the model
+ * cannot act on.
+ *
+ * It is returned rather than written from here because `buildInjection` is
+ * shared verbatim by three callers — SessionStart, SubagentStart and the
+ * `load_context` MCP tool — and only one of them has a stderr a person watches.
+ * A `process.stderr.write` in this function would put the line into an MCP
+ * server's log, where nobody sees it, and into every subagent dispatch, where
+ * it would repeat per agent. The caller that has the channel decides.
+ */
+export interface Injection {
+  /** Exactly what `buildInjection` returns: the block, or '' . */
+  text: string;
+  /** `Selection.pinnedSpill`, verbatim — see `core/select.ts`. */
+  pinnedSpill: PinnedSpill | null;
+}
+
+/**
  * Build the text injected into a session. Never throws: a knowledge base that
  * breaks a session is worse than one that says nothing. Failure returns ''.
+ *
+ * The thin half of `buildInjectionResult`, kept because most callers want only
+ * the text and a `.text` at every call site would be noise. **One
+ * implementation, not two** — the selection behind an injection must have
+ * exactly one answer, which is the whole argument on `InjectionEvent`.
+ */
+export function buildInjection(cwd: string, options: InjectionOptions = {}): string {
+  return buildInjectionResult(cwd, options).text;
+}
+
+/**
+ * Build the injection, and hand back the delivery facts beside it.
  *
  * **The database is not on the injection-critical path** (design §4.3 / B):
  * the corpus is parsed straight from Markdown, `select` is pure over `Item[]`
@@ -190,7 +226,7 @@ function windowClearedNote(sentence: string): string {
  * seen file. The index refresh below is best-effort and disclosed when
  * dropped — a held write lock costs the refresh, never the injection.
  */
-export function buildInjection(cwd: string, options: InjectionOptions = {}): string {
+export function buildInjectionResult(cwd: string, options: InjectionOptions = {}): Injection {
   const manual = options.event === 'manual';
   // The SubagentStart event. Read `InjectionEvent`'s docstring first: it names
   // EVERY place this flag reaches, so a reader who finds one of them here knows
@@ -219,7 +255,10 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
     // a my_context workspace; silence alone was the nine-day defect.
     const globalRoot = hasGlobalCorpus(ws.globalRoot) ? ws.globalRoot : null;
     const stateRoot = ws.projectRoot ?? globalRoot;
-    if (stateRoot === null) return '';
+    // No workspace at all: no text, and no spill to disclose — nothing was
+    // selected, so nothing was dropped. The caller's `noWorkspaceLine` is the
+    // disclosure for this case and it is a different sentence.
+    if (stateRoot === null) return { text: '', pinnedSpill: null };
 
     // 1. THE CORPUS, FROM MARKDOWN, PARSED ONCE. No database on the
     // injection-critical path: `select` is pure over Item[] (select.ts,
@@ -792,6 +831,26 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
             id: s.id, tier: s.tier, reason: s.reason,
           })),
         }),
+        // The pinned tier's own disclosure, beside `injected` and `spilled`.
+        //
+        // **Copied field by field, never spread.** `Selection.pinnedSpill` and
+        // `PinnedSpillRef` are two shapes on purpose — the first is in-memory
+        // and free to move, the second is a durable on-disk contract (see
+        // `PinnedSpillRef`) — and this explicit copy is the seam that makes a
+        // divergence between them fail to compile HERE rather than quietly
+        // change what a recorded line means.
+        //
+        // `ids` is copied into a new array rather than aliased: this record is
+        // handed to `recordAudit` and serialized, and sharing the selection's
+        // array would let any later reader of `selection` mutate a value that
+        // has already been written down.
+        ...(selection.pinnedSpill === null ? {} : {
+          pinnedSpill: {
+            ids: [...selection.pinnedSpill.ids],
+            cost: selection.pinnedSpill.cost,
+            budget: selection.pinnedSpill.budget,
+          },
+        }),
         ...(noteParts.length === 0 ? {} : { note: noteParts.join('; ') }),
       });
     }
@@ -819,13 +878,20 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
       })));
     }
 
-    return output;
+    // `selection.pinnedSpill` verbatim, never re-derived: it is the figure the
+    // budget was measured against at THIS instant, and the audit record above
+    // was written from the same object.
+    return { text: output, pinnedSpill: selection.pinnedSpill };
   } catch {
     // Fail open: a knowledge base that breaks a session is worse than one
     // that says nothing. The one failure that used to earn a disclosure here
     // — a locked index — can no longer reach this catch: the critical path
     // above opens no database, and the refresh guards its own open. This
     // catch-all is INV-hooks-fail-open's last resort.
-    return '';
+    //
+    // No spill is claimed here either, and that is not a shrug: a selection that
+    // never completed has no measurement, and reporting one would be inventing
+    // it. `null` reads as "nothing recorded", which is exactly what happened.
+    return { text: '', pinnedSpill: null };
   }
 }

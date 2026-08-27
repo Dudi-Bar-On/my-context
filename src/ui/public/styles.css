@@ -784,6 +784,21 @@ body>svg[aria-hidden="true"]{display:none}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
 @media (max-width:1000px){.two{grid-template-columns:1fr}}
 
+/* `[hidden]` NEEDS THIS, and its absence was silent. The user agent's
+   `[hidden]{display:none}` is a UA rule, so ANY author `display` beats it —
+   `.cmd` sets `display:flex`, so `cmd.hidden = true` in `capture.js` set the
+   attribute and changed nothing. The empty command box and its empty `<code>`
+   stayed on screen for every capture nobody had typed yet.
+
+   Found 2026-08-27 while measuring why `screen-parity` reported only `button`
+   missing from capture and not `div.cmd` and `code`: the two that should have
+   been hidden were visible, and the one genuinely absent was the button.
+   `.cmdnote` hides correctly only because it sets no `display` of its own —
+   which is luck, not design.
+
+   A NEW selector, not an edit to `.cmd`: `styles-parity` compares the listed
+   rule bodies byte for byte in both directions. */
+.cmd[hidden]{display:none}
 .cmd{display:flex;align-items:center;gap:var(--sp-2);background:var(--sink);
   border:1px solid var(--edge-3);border-radius:var(--r-md);
   padding-block:7px;padding-inline:9px;margin-block-start:var(--sp-2)}

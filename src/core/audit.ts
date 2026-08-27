@@ -437,6 +437,42 @@ export interface SpilledRef extends InjectedRef {
 }
 
 /**
+ * The PINNED tier's undelivered items and the two numbers that size them —
+ * `select`'s own `PinnedSpill`, flattened, exactly as `SpilledRef` flattens
+ * `Spill`.
+ *
+ * **Re-declared here rather than imported from `core/select.ts`, and that is
+ * the same choice `SpilledRef` makes.** An `AuditRecord` is a DURABLE on-disk
+ * contract — records written today are read back by every future build — while
+ * `Selection` is an in-memory shape that changes whenever the selector does.
+ * Importing would tie the log's format to a type that is free to move, so a
+ * refactor of the selector would silently redefine what old lines mean. The two
+ * are copied field-by-field at the single call site (`core/inject.ts`), which is
+ * what makes a divergence a compile error rather than a quiet reinterpretation.
+ *
+ * **Why the numbers are recorded rather than re-derived, and it is
+ * `AuditRecord.tokens`' argument at its sharpest**: the corpus MOVES. An item
+ * edited, pinned, unpinned or retired after this injection costs differently or
+ * does not exist, so a `cost` recomputed over today's items is wrong for
+ * precisely the corpus being maintained most actively. This is the figure the
+ * budget was actually measured against, frozen at the moment it was measured.
+ *
+ * The ids also appear in `spilled` at `tier: 'pinned'`, and that is deliberate
+ * duplication, not redundancy: `spilled` is the per-item list the audit
+ * projection reads (`audit_item.role = 'spilled'`), while this is the tier-level
+ * fact — *how much was asked for, how much was allowed* — which no per-item row
+ * can carry. Reading it out of the reasons would mean parsing English.
+ */
+export interface PinnedSpillRef {
+  /** The undelivered ids, in the selector's own priority order. */
+  ids: string[];
+  /** Estimated tokens the whole pinned candidate set cost, admitted and spilled. */
+  cost: number;
+  /** The `budgets.pinned` in force for this injection. */
+  budget: number;
+}
+
+/**
  * Which check of the web UI's request gate refused (owner ruling B4, plan §0.6).
  *
  * A closed vocabulary, and deliberately NOT the gate's developer-facing
@@ -530,6 +566,26 @@ export interface AuditRecord {
   tokens?: number;
   /** Injections: what the budget excluded, with the reason `select` gave. */
   spilled?: SpilledRef[];
+  /**
+   * Injections: what the PINNED tier failed to deliver, and by how much.
+   *
+   * Beside `injected` and beside `spilled` — the log's answer to *what did this
+   * session not get* has to be readable without re-deriving it from a corpus
+   * that has since moved, and without parsing a `SpilledRef.reason` apart. See
+   * `PinnedSpillRef`.
+   *
+   * **ABSENT means nothing pinned was dropped**, and never an empty-shaped
+   * claim: a record written before this field existed and a record for a tier
+   * that fitted perfectly are both silent here, and both are correctly read as
+   * "no undelivered pinned item is recorded". `STD-absent-vs-zero` — a reader
+   * that turns an absence into `{ ids: [], cost: 0 }` would be asserting a
+   * measurement nobody took.
+   *
+   * **Pinned only.** The other three tiers spill by design; this field is for
+   * the one tier whose semantics is *always*, where a partial delivery reads as
+   * a kept promise.
+   */
+  pinnedSpill?: PinnedSpillRef;
   /** PreToolUse: the repo-relative path that triggered the event. */
   path?: string;
   /**

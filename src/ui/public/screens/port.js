@@ -92,6 +92,7 @@
  * taking the constant from `layout.ts` in the first place. Reported.
  */
 import { composeCommand } from '/lib/command.js';
+import { commandActions } from '/lib/command-actions.js';
 import { el, errorNote, spaced } from '/screens/parts.js';
 
 /**
@@ -276,13 +277,23 @@ export function auditChips(history) {
  * `revisionCommand` makes: an argv this screen did not receive is not an argv
  * it may guess at, and the card shows the refusal where its command would be.
  */
-export function exportCommand(body) {
+export function exportArgv(body) {
   const argv = body?.command?.argv;
   if (!Array.isArray(argv) || argv.length === 0) {
     throw new Error('port: /api/port sent no command.argv — this screen composes the export line '
       + 'the server supplied and does not assemble one of its own');
   }
-  return composeCommand(argv);
+  return argv;
+}
+
+/**
+ * The same line as the string a reader sees. Split from `exportArgv` because
+ * the Copy-and-Execute control takes an ARGV — a string cannot be executed, and
+ * a screen holding both as independent values is exactly the drift the confirm
+ * exists to prevent. One source, two renderings of it.
+ */
+export function exportCommand(body) {
+  return composeCommand(exportArgv(body));
 }
 
 /**
@@ -402,28 +413,40 @@ function bucketRow(ctx, name) {
 
 /** `<div class="cmd"><code>…</code><button>Copy</button></div>`.
  *
- * A copy that fails says so in the platform's own words, and a copy that
- * succeeds says nothing — the treatment `doctor.js` settled on and `work.js`
- * repeats, for the reason it records: the mockup's own `[data-copy]` handler
- * swaps the label through an unkeyed ternary in script, so neither string
- * table can carry "Copied", and inventing the word here would fail
- * `strings-parity` in the direction that names it. */
-function commandRow(ctx, command) {
+ * The hand-rolled Copy button that used to live here is gone: it was one of
+ * nine across `screens/`, and adding Execute nine times would have been nine
+ * chances to get the confirm wrong. `lib/command-actions.js` is the one
+ * spelling, and the "Copied"/"Copy failed" labels this button owed the mockup
+ * are its problem now.
+ *
+ * The control is a SIBLING of `.cmd` rather than a child: `.cmdactions button`
+ * carries its own background precisely so the control does not depend on which
+ * container it lands in, and the only global button rule sets colour and no
+ * background — which is how the Composer's read button came to render as light
+ * text on the user agent's near-white button face. A fragment rather than a
+ * wrapping `<div>`, because a classless container is the other half of that
+ * same defect. */
+function commandRow(ctx, argv) {
+  const block = document.createDocumentFragment();
   const box = el('div', 'cmd');
-  const code = el('code', null, command);
-  const copy = el('button');
-  copy.type = 'button';
-  copy.append(...ctx.t('btn.copy'));
-  copy.onclick = () => {
-    // Composed, never run. This hands the string to the clipboard and stops;
-    // the user's own shell is the only thing that ever executes it, which is
-    // what keeps their Bash deny rules matching command strings (§7).
-    navigator.clipboard.writeText(command).catch((error) => {
-      box.after(errorNote(error && error.message ? error.message : String(error)));
-    });
-  };
-  box.append(code, copy);
-  return box;
+  box.append(el('code', null, composeCommand(argv)));
+  // **`id: null` — Copy alone, and here that is the answer twice over.**
+  //
+  // `mycontext export` is not in the command catalogue, and the client sends a
+  // catalogue id and never a command (§3.1), so there is nothing for the server
+  // to rebuild. That alone settles it.
+  //
+  // The second reason survives the catalogue gaining an entry: **this line is
+  // deliberately one argument short**. `--out` arrives with no destination
+  // because the CLI refuses to default one — *"an artefact written into
+  // whatever directory the command happened to be run from is the one
+  // destination nobody chose"* — and an Execute button on it could only refuse,
+  // or run somewhere the reader did not pick. Weighed against offering Execute
+  // and letting the server's refusal explain itself, which puts the reader one
+  // click from a dialog whose whole content is that the button should not have
+  // been there.
+  block.append(box, commandActions({ argv, id: null, values: {}, ctx }));
+  return block;
 }
 
 export async function render(root, ctx) {
@@ -509,7 +532,7 @@ export async function render(root, ctx) {
   // not the screen. `work.js` makes the same call about a revision it cannot
   // settle.
   try {
-    collide.append(commandRow(ctx, exportCommand(body)));
+    collide.append(commandRow(ctx, exportArgv(body)));
   } catch (error) {
     collide.append(errorNote(error.message));
   }

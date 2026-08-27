@@ -141,10 +141,61 @@ export interface IndexSummary {
   carried: CarriedSummary | null;
 }
 
+/**
+ * What the PINNED tier could not deliver, and what it would take to deliver it.
+ *
+ * **Only the pinned tier has one, and that is the whole of the field.** `jit`,
+ * `restored` and `index` spill BY DESIGN — a JIT budget is a per-tool-call
+ * bound, an index line is a title rather than a promise — and their spilling is
+ * already drawn. Pinned is the tier whose entire semantics is *always*, so a
+ * partial delivery is the only one that reads as a kept promise while being a
+ * broken one. Widening this to the other three would make it a routine line,
+ * and a routine line is how the one tier that matters stops being heard.
+ *
+ * **Every field here is one `Selection.spilled` cannot answer.** The ids are in
+ * `spilled` already, mixed with three tiers whose spills are ordinary; the two
+ * numbers are nowhere at all. `Spill.reason` carries a running total in
+ * English, so a surface that wanted "what does this tier cost" would have to
+ * parse a sentence apart — a second implementation of this file's arithmetic,
+ * breaking the day someone improves the wording. Produced here, once, where the
+ * candidates and their costs are already in hand.
+ *
+ * `null` on `Selection` means *nothing pinned was dropped*, which covers both a
+ * tier that fitted and a tier that never ran (`tiersRun`). Those are different
+ * facts, and this field deliberately does not distinguish them: the disclosure
+ * is about undelivered items, and neither case has any.
+ */
+export interface PinnedSpill {
+  /**
+   * The pinned items that did not fit, in `fitToBudget`'s own priority order —
+   * hard severity first, then project layer, then id. The order IS information:
+   * the first name is the most important thing this session did not get. Sorted
+   * by id it would read as a list; left as the selector ranked it, it reads as
+   * a loss.
+   */
+  ids: string[];
+  /**
+   * The estimated tokens the WHOLE pinned candidate set costs — admitted plus
+   * spilled — not the part that was admitted.
+   *
+   * It is the honest answer to "what does honouring `always` cost here", which
+   * is the number a person raising the budget needs. `Selection.tokens` is the
+   * other number and stays what it is: what was actually charged.
+   */
+  cost: number;
+  /** `config.budgets.pinned` — the figure `cost` was measured against. */
+  budget: number;
+}
+
 export interface Selection {
   full: SelectionEntry[];
   index: IndexSummary;
   spilled: Spill[];
+  /**
+   * The pinned tier's undelivered items, or `null` when it delivered every one
+   * it was asked for (including when it was asked for none). See `PinnedSpill`.
+   */
+  pinnedSpill: PinnedSpill | null;
   /** The focus disclosure, or null when no focus is active. */
   focus: FocusReport | null;
   /**
@@ -858,8 +909,24 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   // figure the admissions were decided against — never re-derived afterwards.
   let tokens = 0;
 
+  // What the pinned tier was ASKED for, priced. `null` while the tier has not
+  // run — which is not the same as 0, and `pinnedSpillOf` below relies on the
+  // difference: a tool event never runs this tier, and a tier that did not run
+  // has no cost rather than a cost of nothing (`STD-absent-vs-zero`).
+  let pinnedCost: number | null = null;
+
   if (tiers.includes('pinned')) {
-    const result = fitToBudget(fresh.filter((i) => i.always), config.budgets.pinned, 'pinned');
+    const candidates = fresh.filter((i) => i.always);
+    // Priced over the CANDIDATES, before the budget sees them, so the figure is
+    // what honouring `always` would cost rather than what was affordable. Each
+    // item is costed twice on this path (here and inside `fitToBudget`), which
+    // is one extra `renderItemBlock` per pinned item on the injection-critical
+    // path; measured against threading a second return value out of
+    // `fitToBudget` — which every other tier would then carry for a disclosure
+    // only this one has — the duplicate arithmetic is the smaller cost and the
+    // one that leaves `fitToBudget` a single-purpose function.
+    pinnedCost = candidates.reduce((sum, i) => sum + itemCost(i), 0);
+    const result = fitToBudget(candidates, config.budgets.pinned, 'pinned');
     entries.push(...result.entries);
     spilled.push(...result.spilled);
     tokens += result.used;
@@ -902,20 +969,44 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   const chosenIds = new Set(entries.map((e) => e.item.id));
   const trueSpills = (records: Spill[]): Spill[] => records.filter((s) => !chosenIds.has(s.id));
 
+  /**
+   * The pinned disclosure, built from the FINAL spill list rather than from the
+   * pinned tier's own — and that ordering is the correctness of it, not a
+   * detail. On a compaction the `restored` tier runs AFTER pinned with its own
+   * budget, so an item that spilled from pinned can still reach the session;
+   * `trueSpills` has already dropped its record by the time this runs. Naming
+   * an item that arrived would be a false alarm on the one channel this whole
+   * feature needs to stay credible.
+   *
+   * **Fires on any spill, not only on a total one.** Seven of twenty-three is a
+   * partial `always`, and a partial `always` is precisely the failure that reads
+   * as success. A threshold here would be the defect wearing the fix's name.
+   */
+  const pinnedSpillOf = (final: Spill[]): PinnedSpill | null => {
+    if (pinnedCost === null) return null;
+    const ids = final.filter((s) => s.tier === 'pinned').map((s) => s.id);
+    if (ids.length === 0) return null;
+    return { ids, cost: pinnedCost, budget: config.budgets.pinned };
+  };
+
   // The bounded index — and its own budget accounting inside buildIndex — is
   // a per-session cost, not a per-tool-call cost (`tiersRun`).
   if (!tiers.includes('index')) {
+    const finalSpilled = trueSpills(spilled);
     return {
-      full: entries, index: emptyIndex(), spilled: trueSpills(spilled), focus: focusReport,
+      full: entries, index: emptyIndex(), spilled: finalSpilled,
+      pinnedSpill: pinnedSpillOf(finalSpilled), focus: focusReport,
       tokens,
     };
   }
   const { summary: index, spilled: indexSpilled, used: indexUsed } =
     buildIndex(eligible, merged, config, chosenIds, ctx.carried ?? null);
+  const finalSpilled = trueSpills([...spilled, ...indexSpilled]);
   return {
     full: entries,
     index,
-    spilled: trueSpills([...spilled, ...indexSpilled]),
+    spilled: finalSpilled,
+    pinnedSpill: pinnedSpillOf(finalSpilled),
     focus: focusReport,
     tokens: tokens + indexUsed,
   };

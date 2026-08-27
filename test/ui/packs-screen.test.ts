@@ -123,8 +123,9 @@ async function packsModule(): Promise<PacksModule> {
     rewritten += 1;
     return `${head}${pathToFileURL(path.join(PUBLIC, spec)).href}'`;
   });
-  assert.equal(rewritten, 2,
-    `expected packs.js to import two browser modules (/lib/command.js, /screens/parts.js); the `
+  assert.equal(rewritten, 3,
+    `expected packs.js to import three browser modules (/lib/command.js, `
+    + `/lib/command-actions.js, /screens/parts.js); the `
     + `rewrite matched ${rewritten}. A specifier this pattern cannot see is a module Node would `
     + 'resolve from the drive root, and the import below would fail for a reason that reads like '
     + 'a missing file.');
@@ -406,6 +407,54 @@ test('importCommand goes through the one quoting implementation', async () => {
   assert.ok(packsCode.includes('composeCommand(IMPORT_ARGV)'),
     'the command is assembled by something other than lib/command.js — the ONE place quoting '
     + 'lives');
+});
+
+/* -------------------------------------------------------------------------- *
+ * The one control, and why this screen's half of it is Copy alone.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **`mycontext init` is not in the command catalogue, so this line gets Copy
+ * and no Execute — and that is the correct outcome, not a gap.**
+ *
+ * The client sends a catalogue ID and never a command (spec §3.1); the server
+ * rebuilds argv from the same catalogue the browser composed from. A line the
+ * catalogue cannot name has nothing to rebuild, so `commandActions` draws Copy
+ * alone for a null id. Passing a nearby id to get an Execute button would put a
+ * DIFFERENT command behind a confirm that looked right, which is the whole
+ * hazard this screen-by-screen adoption exists to avoid.
+ *
+ * `init` is also the one command in this product that is run BEFORE there is a
+ * workspace for a UI to be served from, so there was never anything for the
+ * catalogue to carry.
+ */
+test('the import line names no catalogue id, because the catalogue has no init', async () => {
+  const { IMPORT_ARGV } = await packsModule();
+  const defs = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'palette-defs.js')).href) as {
+    PALETTE: { name: string }[];
+  };
+  assert.equal(IMPORT_ARGV[1], 'init');
+  assert.equal(defs.PALETTE.find((def) => def.name === 'init'), undefined,
+    'the catalogue gained an `init` entry — this screen must now pass that id rather than null, '
+    + 'and the reasoning in its commandRow docstring has moved');
+  assert.ok(/commandActions\(\{[\s\S]{0,200}?id: null/.test(packsCode),
+    'the screen no longer passes a null id; a command outside the catalogue must not offer '
+    + 'Execute');
+});
+
+/**
+ * **One control, not a tenth copy button.** The confirm is the security
+ * boundary and nine hand-rolled spellings of it would be nine chances to get it
+ * wrong. A source scan, because the adoption is exactly the ABSENCE of the old
+ * code.
+ */
+test('the screen adopts the shared control and keeps no copy button of its own', () => {
+  assert.ok(packsCode.includes("from '/lib/command-actions.js'"),
+    'the screen does not import the shared Copy-and-Execute control');
+  assert.ok(!/clipboard/.test(packsCode),
+    'the screen still talks to the clipboard itself — Copy lives in lib/command-actions.js now');
+  assert.ok(!/ctx\.t\('btn\.copy'/.test(packsCode),
+    'the screen still words its own Copy button');
 });
 
 /* -------------------------------------------------------------------------- *

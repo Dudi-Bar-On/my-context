@@ -332,7 +332,17 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
   const root = el('div', 'cmdactions');
   const composed = composeCommand(argv);
 
-  const copy = el('button', 'copy');
+  // **CLASSLESS, and that is the design of record's own shape.** Nothing in
+  // `styles.css` selects `.copy` or `.exec` — grepped, zero occurrences — so the
+  // appearance comes entirely from the ANCESTOR rule `.cmdactions button`, which
+  // this element is inside. The classes carried no appearance and existed only
+  // as test selectors, and `e2e/screen-parity.spec.ts` compares KINDS
+  // (`tag.class1.class2`) against the mockup, where the control's buttons are
+  // bare `<button>` — so `button.copy` deleted the kind `button` from doctor,
+  // work and capture. Weighed against keeping the classes and widening the
+  // ledger: the ledger is for a departure worth defending, and a selector the
+  // stylesheet never uses is not one. Tests select by the button's TEXT instead.
+  const copy = el('button');
   copy.type = 'button';
   copy.append(...ctx.t('btn.copy'));
   // The refusal is the button's own state, not a dialog after the fact: a
@@ -348,7 +358,9 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
     return root;
   }
 
-  const exec = el('button', 'exec');
+  // Classless for the same reason as Copy above, and safe for the same reason:
+  // `.cmdactions button` is the ancestor rule that gives it its background.
+  const exec = el('button');
   exec.type = 'button';
   exec.append(...ctx.t('exec.btn'));
 

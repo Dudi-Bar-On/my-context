@@ -1,11 +1,13 @@
 import path from 'node:path';
 import { handoverBlock, readHandover } from '../core/handover.ts';
-import { buildInjection } from '../core/inject.ts';
+import { buildInjectionResult, type Injection } from '../core/inject.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { SEEN_FILE_SUFFIX } from '../core/seen-file.ts';
 import { findProjectRoot, hasGlobalCorpus, resolveWorkspace } from '../core/workspace.ts';
-import { hookParseErrorLine, noWorkspaceLine, parseHookInput, readStdin } from './io.ts';
+import {
+  hookParseErrorLine, noWorkspaceLine, parseHookInput, pinnedSpillLine, readStdin,
+} from './io.ts';
 
 export interface SessionStartOptions {
   /** startup | clear | resume | compact | fork */
@@ -32,7 +34,27 @@ export interface SessionStartOptions {
 export function buildSessionStartOutput(
   cwd: string, options: SessionStartOptions = {},
 ): string {
-  return buildInjection(cwd, {
+  return buildSessionStartResult(cwd, options).text;
+}
+
+/**
+ * The same injection, with the delivery facts that are NOT in the text.
+ *
+ * `Injection.pinnedSpill` is the one so far, and the hook — not
+ * `core/inject.ts` — is what writes it out. That function is shared verbatim
+ * with SubagentStart and the `load_context` MCP tool, and neither of those has
+ * a stderr a person is watching: the same `process.stderr.write` there would
+ * repeat per subagent dispatch and would land in an MCP server's log, where
+ * nobody would ever read it. The caller that owns the channel decides.
+ *
+ * Kept beside `buildSessionStartOutput` rather than replacing it: most callers
+ * (and most of this project's tests) want the text, and a `.text` at every call
+ * site would be noise for a field only the binary below reads.
+ */
+export function buildSessionStartResult(
+  cwd: string, options: SessionStartOptions = {},
+): Injection {
+  return buildInjectionResult(cwd, {
     event: 'session-start',
     source: options.source,
     sessionId: options.sessionId,
@@ -204,11 +226,12 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     if (findProjectRoot(cwd) === null && !hasGlobalCorpus()) {
       process.stderr.write(noWorkspaceLine(cwd));
     }
-    const corpus = buildSessionStartOutput(cwd, {
+    const injection = buildSessionStartResult(cwd, {
       source: input.source,
       sessionId: input.session_id,
       parseError,
     });
+    const corpus = injection.text;
     // AFTER the corpus block, and appended here rather than inside
     // `buildInjection`: the corpus is what governs the project and comes first,
     // the handover is what one session left another. It is appended at the HOOK
@@ -219,6 +242,22 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     const handover = handoverAppendix(cwd, input.source);
     const text = handover === '' ? corpus : `${corpus}${corpus === '' ? '' : '\n'}${handover}`;
     if (text) process.stdout.write(text);
+    // **AFTER the injection reaches stdout, and the order is deliberate.** This
+    // line is an account OF that delivery; nothing about composing or writing it
+    // may come between the session and the context it is starting with. It is
+    // inside the same fail-open `try`, so a stderr that cannot be written costs
+    // the disclosure and never the injection.
+    //
+    // **Written here rather than inside `buildInjection`** — see
+    // `buildSessionStartResult`: the shared builder has three callers and only
+    // this one has a channel the user reads.
+    //
+    // A tier that fitted writes nothing at all. A line that appears every
+    // session is a line that stops being read, which would cost exactly the
+    // sessions this exists for.
+    if (injection.pinnedSpill !== null) {
+      process.stderr.write(pinnedSpillLine(injection.pinnedSpill));
+    }
     sweepStaleState(cwd);
   } catch {
     /* fail open */

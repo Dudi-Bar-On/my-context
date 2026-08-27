@@ -121,6 +121,7 @@
  * facts, and an empty table would report the good one.
  */
 import { composeCommand } from '/lib/command.js';
+import { commandActions } from '/lib/command-actions.js';
 // `fieldView` and `MONO_FIELDS` moved to the shared decision layer on
 // 2026-08-26 so Configure and the Execute confirm can reach them too —
 // plan:walk seq:46. Re-exported below, because this screen's own tests and
@@ -155,7 +156,7 @@ const PROMOTE_REVISION = PALETTE.find((def) => def.name === 'review promote-revi
  * a coin toss the reader never sees. A missing `itemId` is refused by
  * `commandFor` itself, for the reason it refuses any required argument.
  */
-export function revisionCommand(rev) {
+export function revisionPlan(rev) {
   if (PROMOTE_REVISION === undefined) {
     throw new Error('work: the command catalogue declares no "review promote-revision"');
   }
@@ -163,8 +164,25 @@ export function revisionCommand(rev) {
     throw new Error('work: a revision with no revisionId composes no settlement — the pasted '
       + 'line must name the revision that was read, not the one the log offers first');
   }
-  return composeCommand(commandFor(PROMOTE_REVISION,
-    { id: rev.itemId, revision: rev.revisionId, yes: true }));
+  const values = { id: rev.itemId, revision: rev.revisionId, yes: true };
+  // The argv is the CATALOGUE'S composition of these values, and the confirm
+  // will show the SERVER'S composition of the same id and the same values
+  // through the same `commandFor`. That is one computation rendered twice
+  // rather than two that happen to agree — which is the only form in which
+  // "the line you read is the line that runs" is a fact rather than a hope.
+  return { id: PROMOTE_REVISION.name, values, argv: commandFor(PROMOTE_REVISION, values) };
+}
+
+/**
+ * The same settlement as the string a reader sees.
+ *
+ * Split from `revisionPlan` because the Copy-and-Execute control takes an ARGV
+ * and an id — a string cannot be executed — and a screen carrying a string
+ * beside the argv as an independent value is exactly the drift the confirm
+ * exists to prevent.
+ */
+export function revisionCommand(rev) {
+  return composeCommand(revisionPlan(rev).argv);
 }
 
 /**
@@ -268,32 +286,38 @@ function diffTable(ctx) {
 }
 
 /**
- * `<div class="cmd"><code>…</code><button>Copy</button></div>`.
+ * `<div class="cmd"><code>…</code></div>` followed by the ONE Copy-and-Execute
+ * control.
  *
- * A copy that fails says so, in the platform's own words — the treatment
- * `doctor.js` settled on, for the reason it records: the mockup's own
- * `[data-copy]` handler swaps the label to "Copied"/"Copy failed" through an
- * unkeyed ternary in script, so neither string table can carry those two words
- * and inventing them here would fail the parity check. Success is therefore
- * silent and failure is loud, which is the right way round for a button whose
- * one job is to have put something on a clipboard.
+ * **The hand-rolled Copy button is gone**, and with it the "Copied"/"Copy
+ * failed" pair this file recorded owing the mockup: it was one of nine copy
+ * buttons across `screens/`, and adding Execute nine times would have been nine
+ * chances to get the confirm wrong — the confirm being the security boundary.
+ *
+ * **`review promote-revision` IS in the catalogue, so this screen passes its
+ * real id and the control offers Execute.** It is on the approval boundary, so
+ * §3.2 gives it the stronger confirm; `COMMAND_EFFECTS` does not yet know what
+ * a revision promotion changes field by field, so today that confirm declines
+ * rather than weakening — *"a command whose effect cannot be shown that way
+ * does not get a weaker confirm; it does not run"*. Passing a null id to hide
+ * the button instead was weighed and refused: it would make this line look like
+ * `procedure done`, which is outside the catalogue for a completely different
+ * reason, and it would hide the one place the product says why it declines.
+ *
+ * The control is a SIBLING of `.cmd` and the pair is a fragment, not a wrapping
+ * `<div>`: `.cmdactions button` carries its own background so the control does
+ * not depend on which container it lands in, and a classless container is the
+ * other half of the defect that left the Composer's read button rendering as
+ * light text on the user agent's near-white button face.
  */
-function commandRow(ctx, command) {
+function commandRow(ctx, plan) {
+  const block = document.createDocumentFragment();
   const box = el('div', 'cmd');
-  const code = el('code', null, command);
-  const copy = el('button');
-  copy.type = 'button';
-  copy.append(...ctx.t('btn.copy'));
-  copy.onclick = () => {
-    // Composed, never run: this hands the string to the clipboard and stops.
-    // The user's own shell is the only thing that ever executes it, which is
-    // what keeps their Bash deny rules matching command strings (§7).
-    navigator.clipboard.writeText(command).catch((error) => {
-      box.after(errorNote(error && error.message ? error.message : String(error)));
-    });
-  };
-  box.append(code, copy);
-  return box;
+  box.append(el('code', null, composeCommand(plan.argv)));
+  block.append(box, commandActions({
+    argv: plan.argv, id: plan.id, values: plan.values, ctx,
+  }));
+  return block;
 }
 
 /**
@@ -371,14 +395,14 @@ function revisionCard(ctx, rev) {
   // A revision that cannot be settled still shows its diff — reading it is the
   // point — with the refusal standing where the command would have been.
   // Losing the whole card to one missing field would drop its reviewable half.
-  let command;
+  let plan;
   try {
-    command = revisionCommand(rev);
+    plan = revisionPlan(rev);
   } catch (error) {
     card.append(errorNote(error.message));
     return card;
   }
-  card.append(commandRow(ctx, command), commandState(ctx), landingHelp(ctx));
+  card.append(commandRow(ctx, plan), commandState(ctx), landingHelp(ctx));
   return card;
 }
 

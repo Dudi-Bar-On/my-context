@@ -84,6 +84,7 @@ interface ProcModule {
   INJECTION_CHIP: { full: Chip; index: Chip; none: Chip };
   injectionChip: (verdict: unknown) => Chip;
   barWidth: (progress: unknown) => string;
+  doneArgv: (procedure: unknown) => string[] | null;
   doneCommand: (procedure: unknown) => string | null;
   disclosureMessages: (groups: unknown[]) => Disclosure[];
   render: (root: unknown, ctx: unknown) => Promise<void>;
@@ -98,8 +99,8 @@ async function procModule(): Promise<ProcModule> {
     rewritten += 1;
     return `${head}${pathToFileURL(path.join(PUBLIC, spec)).href}'`;
   });
-  assert.equal(rewritten, 2,
-    `expected proc.js to import two browser modules (the command composer and the shared DOM `
+  assert.equal(rewritten, 3,
+    `expected proc.js to import three browser modules (the command composer and the shared DOM `
     + `parts); the rewrite matched ${rewritten}. A specifier this pattern cannot see is a module `
     + 'Node would resolve from the drive root, and the import below would fail for a reason that '
     + 'reads like a missing file.');
@@ -338,6 +339,72 @@ test('doneCommand quotes through the one composer, and refuses an id it cannot q
 });
 
 /* -------------------------------------------------------------------------- *
+ * The one control, and why this screen's half of it is Copy alone.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **`doneArgv` is the argv and `doneCommand` is what it composes to.** The
+ * Copy-and-Execute control takes an argv; a string cannot be executed, and a
+ * screen holding both as independent values is the drift the confirm exists to
+ * prevent — a `<code>` showing one command while the confirm named another.
+ */
+test('doneCommand is exactly what doneArgv composes to, at every stage', async () => {
+  const { doneArgv, doneCommand } = await procModule();
+  const command = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'command.js')).href) as {
+    composeCommand: (argv: string[]) => string;
+  };
+  assert.deepEqual(doneArgv({ stage: 'active', id: 'PROC-a' }),
+    ['mycontext', 'procedure', 'done', 'PROC-a']);
+  assert.equal(command.composeCommand(doneArgv({ stage: 'active', id: 'PROC-a' })!),
+    doneCommand({ stage: 'active', id: 'PROC-a' }));
+  for (const stage of ['proposed', 'ready', 'done', 'abandoned']) {
+    assert.equal(doneArgv({ stage, id: 'PROC-a' }), null, stage);
+  }
+  assert.equal(doneArgv(null), null);
+});
+
+/**
+ * **`mycontext procedure` is not in the command catalogue at all, so the
+ * settlement line gets Copy and no Execute — and that is the correct outcome.**
+ *
+ * The screen already recorded the fact and its consequence: *"the command
+ * catalogue declares no `procedure` entry at all … the argv is written here,
+ * once, and reported: the catalogue is where a flag set gets verified against
+ * the real parser, and a command composed outside it has had no such check."*
+ * An unverified argv is exactly what must not be handed an Execute button — the
+ * client sends an id and the server rebuilds from the catalogue, so an id the
+ * catalogue does not have has nothing to rebuild.
+ *
+ * There is a second reason, and it is this screen's own: `pr.w3` — *"active →
+ * done stays yours"* — is why the composed line carries no `--yes`. The
+ * confirmation prompt IS the human's decision, and it lives in their shell.
+ */
+test('the settlement line names no catalogue id, because the catalogue has no procedure', async () => {
+  const defs = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'palette-defs.js')).href) as {
+    PALETTE: { name: string }[];
+  };
+  assert.equal(defs.PALETTE.find((def) => def.name.startsWith('procedure')), undefined,
+    'the catalogue gained a `procedure` entry — this screen must now decide whether pr.w3 '
+    + 'survives an Execute button beside a line that deliberately carries no --yes');
+  assert.ok(/commandActions\(\{[\s\S]{0,200}?id: null/.test(procSource),
+    'the screen no longer passes a null id; a command outside the catalogue must not offer '
+    + 'Execute');
+});
+
+/**
+ * **One control, not a tenth copy button.** The confirm is the security
+ * boundary and nine hand-rolled spellings of it would be nine chances to get it
+ * wrong. A source scan, because the adoption is exactly the ABSENCE of the old
+ * code.
+ */
+test('the screen adopts the shared control and keeps no copy button of its own', () => {
+  assert.ok(procSource.includes("from '/lib/command-actions.js'"),
+    'the screen does not import the shared Copy-and-Execute control');
+  assert.ok(!/navigator\.clipboard/.test(procSource),
+    'the screen still talks to the clipboard itself — Copy lives in lib/command-actions.js now');
+});
+
+/* -------------------------------------------------------------------------- *
  * disclosureMessages — nothing is dropped silently.
  * -------------------------------------------------------------------------- */
 
@@ -433,9 +500,12 @@ test('every string key the Procedures screen names is declared in both tables, w
   const used = keysNamed();
 
   // A scanner that finds nothing reads exactly like a clean file.
-  assert.ok(used.length >= 22,
-    `the scan found ${used.length} key(s) in proc.js; the screen names twenty-two. A collapse `
+  assert.ok(used.length >= 21,
+    `the scan found ${used.length} key(s) in proc.js; the screen names twenty-one. A collapse `
     + 'means the patterns stopped matching, not that the screen stopped naming keys.');
+  assert.ok(!used.some((u) => u.key === 'btn.copy'),
+    'the screen words its own Copy button again; Copy is lib/command-actions.js\' word now, and '
+    + 'two screens wording one button is how they come to disagree about it');
 
   // The grammar has ONE parser and this is it. Eight files used to carry a
   // private scanner instead, all of them predating emphasis, and every one

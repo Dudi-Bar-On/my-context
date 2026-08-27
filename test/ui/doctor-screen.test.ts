@@ -71,10 +71,13 @@ interface Row { code: string; item: string | null; message: string }
  * is an assertion in its own right: a module that drifts from it fails here
  * rather than in a browser nobody is watching.
  */
+interface Repair { id: string | null; values: Record<string, unknown>; argv: string[] }
+
 interface DoctorModule {
   messageRuns: (message: unknown) => Run[];
   cardRows: (groups: Map<string, Finding[]>, level: string) => Row[];
-  cardCommands: (rows: Row[]) => string[];
+  repairFor: (code: string, item: string | null) => Repair | null;
+  cardCommands: (rows: Row[]) => Repair[];
   render: (root: unknown, ctx: unknown) => Promise<void>;
 }
 
@@ -87,8 +90,9 @@ async function doctorModule(): Promise<DoctorModule> {
     rewritten += 1;
     return `${head}${pathToFileURL(path.join(PUBLIC, spec)).href}'`;
   });
-  assert.equal(rewritten, 2,
-    'expected doctor.js to import two browser modules (/lib/viewmodel.js, /screens/parts.js); '
+  assert.equal(rewritten, 5,
+    'expected doctor.js to import five browser modules (/lib/viewmodel.js, /lib/command.js, '
+    + '/lib/palette-defs.js, /lib/command-actions.js, /screens/parts.js); '
     + `the rewrite matched ${rewritten}. A specifier this pattern cannot see is a module Node `
     + 'would resolve from the drive root, and the import below would fail for a reason that '
     + 'reads like a missing file.');
@@ -97,6 +101,30 @@ async function doctorModule(): Promise<DoctorModule> {
     + 'be the one the browser runs');
   const encoded = Buffer.from(text, 'utf8').toString('base64');
   return (await import(`data:text/javascript;charset=utf-8;base64,${encoded}`)) as DoctorModule;
+}
+
+interface CommandModule { composeCommand: (argv: string[]) => string }
+interface ViewModelModule { repairCommandFor: (code: string, item: string | null) => string | null }
+interface DefsModule {
+  PALETTE: { name: string }[];
+  commandFor: (def: unknown, values: Record<string, unknown>) => string[];
+}
+
+const browserModule = async <T>(...segments: string[]): Promise<T> =>
+  (await import(pathToFileURL(path.join(PUBLIC, ...segments)).href)) as T;
+
+/**
+ * The repairs as the LINES a reader sees, composed through the one composer.
+ *
+ * `cardCommands` answers catalogue entries now rather than strings — the
+ * Copy-and-Execute control takes an argv and an id, and a screen that kept a
+ * second string beside the argv would be the exact drift the confirm exists to
+ * prevent. The assertions below are unchanged: the same bytes, derived from the
+ * thing that is actually offered.
+ */
+async function lines(repairs: Repair[]): Promise<string[]> {
+  const { composeCommand } = await browserModule<CommandModule>('lib', 'command.js');
+  return repairs.map((repair) => composeCommand(repair.argv));
 }
 
 /** `<section data-p="doctor">…</section>`, the design of record for this screen. */
@@ -268,7 +296,9 @@ test('cardCommands composes the design of record\'s own line, byte for byte', as
   const code = /<code>([^<]+)<\/code>/.exec(mockupSection());
   assert.ok(code, 'the doctor section draws no <code> command');
   assert.deepEqual(
-    cardCommands([{ code: 'source_drift', item: 'RULE-never-log-customer-email', message: '' }]),
+    (await lines(cardCommands([
+      { code: 'source_drift', item: 'RULE-never-log-customer-email', message: '' },
+    ]))),
     [code![1]],
   );
 });
@@ -281,19 +311,19 @@ test('cardCommands quotes through the one quoting implementation', async () => {
   // concatenated would produce `mycontext refresh RULE with spaces`, which the
   // CLI reads as three arguments.
   assert.deepEqual(
-    cardCommands([{ code: 'source_drift', item: 'RULE with spaces', message: '' }]),
+    await lines(cardCommands([{ code: 'source_drift', item: 'RULE with spaces', message: '' }])),
     ['mycontext refresh "RULE with spaces"'],
   );
 });
 
 test('cardCommands offers one row per DISTINCT command, in first-ask order', async () => {
   const { cardCommands } = await doctorModule();
-  assert.deepEqual(cardCommands([
+  assert.deepEqual(await lines(cardCommands([
     { code: 'source_drift', item: 'RULE-a', message: '' },
     { code: 'index_stale', item: null, message: '' },
     { code: 'source_drift', item: 'RULE-a', message: '' },
     { code: 'corpus_size_fallback_ceiling', item: null, message: '' },
-  ]), ['mycontext refresh RULE-a', 'mycontext rebuild', 'mycontext decay']);
+  ])), ['mycontext refresh RULE-a', 'mycontext rebuild', 'mycontext decay']);
 });
 
 /**
@@ -327,6 +357,122 @@ test('cardCommands composes nothing for the codes whose messages name no command
   assert.ok(!/mycontext\s+\S*scope/.test(section),
     'the design of record now composes a scope command — the ruling above has moved and this '
     + 'screen must follow it');
+});
+
+/* -------------------------------------------------------------------------- *
+ * The repair as a CATALOGUE ENTRY — what Execute is handed.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **The screen's own repair table is held to `viewmodel.js`' one, code by code.**
+ *
+ * `repairCommandFor` decided which findings earn a line and composed it as a
+ * STRING. A string cannot be executed: the client sends an id and a value bag,
+ * never a command, so the screen now carries the same decision in the shape the
+ * control takes. Two tables would drift, and the drift would be silent in the
+ * direction that matters — a `<code>` showing one command while the confirm ran
+ * another. So this holds the new one to the old one by its own bytes, and
+ * `viewmodel.js` remains where the decision was established and argued.
+ */
+test("every repair the screen composes is byte-identical to viewmodel's own line", async () => {
+  const { repairFor } = await doctorModule();
+  const { repairCommandFor } = await browserModule<ViewModelModule>('lib', 'viewmodel.js');
+  const { composeCommand } = await browserModule<CommandModule>('lib', 'command.js');
+
+  const codes = [
+    'index_stale', 'audit_log_size', 'corpus_size_fallback_ceiling', 'source_drift',
+    'dead_scope', 'orphan_relation', 'source_missing', 'index_missing',
+    'some_check_added_next_year',
+  ];
+  let composed = 0;
+  for (const code of codes) {
+    for (const item of ['RULE-never-log-customer-email', 'RULE with spaces', null]) {
+      const repair = repairFor(code, item);
+      const expected = repairCommandFor(code, item);
+      if (expected === null) {
+        assert.equal(repair, null,
+          `${code}/${String(item)}: the screen offers a line viewmodel.js composes none for`);
+        continue;
+      }
+      assert.notEqual(repair, null,
+        `${code}/${String(item)}: viewmodel.js composes a line and the screen offers none`);
+      assert.equal(composeCommand(repair!.argv), expected, `${code}/${String(item)}`);
+      composed += 1;
+    }
+  }
+  assert.ok(composed >= 5,
+    `only ${composed} repair(s) were compared; the loop stopped seeing the ones that exist`);
+});
+
+/**
+ * **The id is the catalogue entry the command IS, and `null` where there is
+ * none.** This is the assertion the task exists for: batching six screens is
+ * how a WRONG id ships behind a confirm that looks right, because the confirm
+ * renders the SERVER's rebuild of the id and a plausible-but-wrong id renders a
+ * plausible-but-wrong command.
+ *
+ * `audit --files` is deliberately `null`: `PALETTE` has no `audit` entry, so
+ * there is nothing for the server to rebuild and `commandActions` draws Copy
+ * alone. That is the correct outcome and not a gap — nothing composed outside
+ * the catalogue runs (spec §3.1).
+ */
+test('a repair names the catalogue entry it IS, and null where the catalogue has none', async () => {
+  const { repairFor } = await doctorModule();
+  const { PALETTE } = await browserModule<DefsModule>('lib', 'palette-defs.js');
+  const known = new Set(PALETTE.map((def) => def.name));
+
+  assert.equal(repairFor('index_stale', null)?.id, 'rebuild');
+  assert.equal(repairFor('corpus_size_fallback_ceiling', null)?.id, 'decay');
+  assert.equal(repairFor('source_drift', 'RULE-a')?.id, 'refresh');
+  assert.deepEqual(repairFor('source_drift', 'RULE-a')?.values, { id: 'RULE-a' });
+  assert.equal(repairFor('audit_log_size', null)?.id, null,
+    'mycontext audit is not in the catalogue; naming an id it does not have would make the '
+    + 'confirm render a DIFFERENT command from the one the code above it shows');
+
+  for (const code of ['index_stale', 'corpus_size_fallback_ceiling', 'source_drift']) {
+    const id = repairFor(code, 'RULE-a')!.id;
+    assert.ok(known.has(id!), `${code} names "${String(id)}", which the catalogue does not have`);
+  }
+});
+
+/**
+ * **The argv a reader is shown is the argv the SERVER will rebuild.**
+ *
+ * `src/ui/execute-catalogue.ts` resolves `(id, values)` through the same
+ * `commandFor` this screen composes with, so composing here through the
+ * catalogue entry rather than through a literal makes the two the same
+ * computation rather than two that happen to agree today. The leading
+ * `mycontext` is the human's and the server drops it — that asymmetry is
+ * checked here so it cannot be discovered in a confirm.
+ */
+test('a catalogued repair composes through the catalogue, so the confirm cannot show another command',
+  async () => {
+    const { repairFor } = await doctorModule();
+    const { PALETTE, commandFor } = await browserModule<DefsModule>('lib', 'palette-defs.js');
+    for (const [code, item] of [
+      ['index_stale', null], ['corpus_size_fallback_ceiling', null], ['source_drift', 'RULE-a'],
+    ] as [string, string | null][]) {
+      const repair = repairFor(code, item)!;
+      const def = PALETTE.find((entry) => entry.name === repair.id);
+      assert.ok(def, `${code} names an id the catalogue does not carry`);
+      assert.deepEqual(repair.argv, commandFor(def, repair.values), code);
+      assert.equal(repair.argv[0], 'mycontext',
+        'Copy hands a shell what a HUMAN types, and that includes the program name');
+    }
+  });
+
+/**
+ * **One control, not a tenth copy button.** The confirm is the security
+ * boundary, and nine spellings of it would be nine chances to get it wrong.
+ * A source scan, because the adoption is exactly the ABSENCE of the old code.
+ */
+test('the screen adopts the shared control and keeps no copy button of its own', () => {
+  assert.ok(doctorSource.includes("from '/lib/command-actions.js'"),
+    'the screen does not import the shared Copy-and-Execute control');
+  assert.ok(!/clipboard/.test(doctorSource),
+    'the screen still talks to the clipboard itself — Copy lives in lib/command-actions.js now');
+  assert.ok(!/ctx\.t\('btn\.copy'/.test(doctorSource),
+    'the screen still words its own Copy button');
 });
 
 /* -------------------------------------------------------------------------- *

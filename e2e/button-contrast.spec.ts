@@ -51,6 +51,25 @@ import type { Page } from '@playwright/test';
  * starts drawing buttons later should make somebody READ this list and decide,
  * rather than being swept in by a loop and passing or failing without a reader.
  */
+/**
+ * Screens whose controls do not exist until something is typed or chosen, so a
+ * WALK measures nothing on them. Named, never silently tolerated.
+ *
+ * `capture` builds nothing below its inputs until a category and a title are
+ * entered — measured 2026-08-27: doctor 2 controls, proc 2, packs 1, port 1,
+ * work 1, **capture 0**. `palette` was in the same position and got
+ * `composeOnPalette`; Capture wants the equivalent typing step, and until it has
+ * one this entry is what stops the gate claiming coverage it does not have.
+ */
+const EXPECTED_EMPTY = new Set(['capture', 'decay']);
+
+// `decay` draws NO BUTTONS AT ALL — measured, not assumed: `screens/decay.js`
+// contains zero `el('button')`, `createElement('button')` or `.icon`
+// occurrences. It is a reading surface. That is a different reason from
+// `capture`'s, and the two are listed together only because the guard needs one
+// list; if `decay` ever gains a control this entry becomes wrong and should be
+// removed rather than kept as cover.
+
 const SCREENS = [
   'palette', 'doctor', 'packs', 'port', 'proc', 'work', 'capture',
   'config', 'coverage', 'ask', 'watch', 'decay',
@@ -81,15 +100,32 @@ interface ButtonReport {
  * a transparent button shows whatever is behind it, and only the browser knows
  * what that resolved to.
  */
-const COLLECT = `(() => {
-  const parse = (value) => {
-    const m = /rgba?\\(([^)]+)\\)/.exec(value);
+/**
+ * **SCOPED, and the scope is the whole point.**
+ *
+ * This queried `document` until 2026-08-27, which made the anti-vacuity guard
+ * below satisfy itself: the rail and the header carry more than twenty buttons
+ * on every screen, so `seen > 20` was true even for a screen that drew NOTHING.
+ * A guard that a page's furniture can satisfy cannot detect the failure it was
+ * written for — and it was written for exactly that failure, having already been
+ * caught passing over a control that was never built.
+ *
+ * Third instance of one shape in one day: a query correct about what it measured
+ * and silent about what it missed. Here it was in the test written to catch it.
+ */
+// A REAL function, not a string. `page.evaluate` passes an argument only to a
+// function — given a string it evaluates it as an expression and drops the arg,
+// which is how the first attempt at scoping this silently measured nothing.
+const COLLECT = (rootSelector: string | null) => {
+  interface Rgb { r: number; g: number; b: number; a: number }
+  const parse = (value: string): Rgb | null => {
+    const m = /rgba?\(([^)]+)\)/.exec(value);
     if (m === null) return null;
     const parts = m[1].split(',').map((n) => Number.parseFloat(n.trim()));
     return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 };
   };
-  const luminance = ({ r, g, b }) => {
-    const chan = (c) => {
+  const luminance = ({ r, g, b }: Rgb): number => {
+    const chan = (c: number): number => {
       const s = c / 255;
       return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
     };
@@ -97,18 +133,20 @@ const COLLECT = `(() => {
   };
   // The background a reader actually sees. A transparent button shows its
   // nearest painted ancestor, so walking up is not a nicety — a button with
-  // \`background: transparent\` inside a dark card is fine, and reading its own
+  // `background: transparent` inside a dark card is fine, and reading its own
   // computed value would call it white.
-  const effectiveBackground = (el) => {
-    for (let node = el; node !== null; node = node.parentElement) {
+  const effectiveBackground = (el: Element): Rgb => {
+    for (let node: Element | null = el; node !== null; node = node.parentElement) {
       const bg = parse(getComputedStyle(node).backgroundColor);
       if (bg !== null && bg.a > 0.99) return bg;
     }
     const body = parse(getComputedStyle(document.body).backgroundColor);
     return body ?? { r: 255, g: 255, b: 255, a: 1 };
   };
-  const out = [];
-  for (const el of document.querySelectorAll('button')) {
+  const out: Omit<ButtonReport, 'screen'>[] = [];
+  const root = rootSelector === null ? document : document.querySelector(rootSelector);
+  if (root === null) return null;
+  for (const el of root.querySelectorAll('button')) {
     const rect = el.getBoundingClientRect();
     // A button with no box is not drawn: a hidden pane, a screen not on top.
     // Judging one would report a colour nobody can see.
@@ -131,7 +169,7 @@ const COLLECT = `(() => {
     });
   }
   return out;
-})()`;
+};
 
 async function buttonsOn(
   page: Page, screen: string, options: { alreadyThere?: boolean } = {},
@@ -160,8 +198,11 @@ async function buttonsOn(
   // `LESSON-every-bound-on-waiting-must-fail-as-itself-or-a-slow` names.
   expect(settled, `${screen}: still growing after 25 samples over 10s — NOT measured. `
     + 'Run this spec alone before believing anything it says.').toBe(true);
-  const found = (await page.evaluate(COLLECT)) as Omit<ButtonReport, 'screen'>[];
-  return found.map((b) => ({ ...b, screen }));
+  const found = (await page.evaluate(COLLECT, `[data-p="${screen}"]`)) as Omit<ButtonReport, 'screen'>[] | null;
+  // `null` means the section itself is not in the DOM — a different failure from
+  // "drew no buttons", and one the caller must not read as an empty list.
+  expect(found, `${screen}: no [data-p] section in the document at all`).not.toBeNull();
+  return found!.map((b) => ({ ...b, screen }));
 }
 
 /**
@@ -217,6 +258,7 @@ test('every button drawn on a command-composing screen can be read', async ({ ap
   test.setTimeout(180_000);
   const { page } = app;
   const failures: string[] = [];
+  const perScreen = new Map<string, number>();
   let seen = 0;
 
   // The composed state FIRST, because it is the one the owner reported and the
@@ -237,6 +279,7 @@ test('every button drawn on a command-composing screen can be read', async ({ ap
   for (const screen of SCREENS) {
     for (const b of await buttonsOn(page, screen)) {
       seen += 1;
+      perScreen.set(screen, (perScreen.get(screen) ?? 0) + 1);
       const bar = b.disabled ? MIN_RATIO_DISABLED : MIN_RATIO;
       if (b.ratio < bar) {
         failures.push(
@@ -246,10 +289,24 @@ test('every button drawn on a command-composing screen can be read', async ({ ap
     }
   }
 
-  // Anti-vacuity, and it is not decoration: if the navigation silently stopped
-  // working, every screen would report zero buttons and this test would pass by
-  // looking at nothing — the exact failure its own subject is an instance of.
-  expect(seen, 'no buttons were measured at all; the walk found nothing to judge').toBeGreaterThan(20);
+  // **Anti-vacuity, PER SCREEN, because the total was satisfying itself.**
+  //
+  // This asserted `seen > 20` over an unscoped `document` query, so the rail and
+  // header alone made it true — for every screen, including one that drew
+  // nothing. Now the collector is scoped to `[data-p="<screen>"]` and each
+  // screen is required to have drawn at least one button of its own.
+  //
+  // `EXPECTED_EMPTY` is the honest exception: Capture builds no controls until a
+  // category and a title are typed, so a walk measures nothing there. That is a
+  // KNOWN limit, named — and named rather than tolerated, because the same shape
+  // silently hid the owner's invisible button from the first version of this
+  // gate. Removing a screen from that list without giving it a state-driving
+  // step puts the hole straight back.
+  const drewNothing = SCREENS.filter((s) => (perScreen.get(s) ?? 0) === 0 && !EXPECTED_EMPTY.has(s));
+  expect(drewNothing, 'these screens drew no buttons of their own, so nothing on them was judged. '
+    + 'Either the walk did not reach them, or their controls need a state to exist in — see '
+    + '`composeOnPalette` for what that step looks like.').toEqual([]);
+  expect(seen, 'no buttons were measured at all; the walk found nothing to judge').toBeGreaterThan(5);
 
   expect(failures, 'a button cannot be read against what is behind it. The usual cause is a '
     + 'CLASSLESS <button> outside a container that styles buttons: the only global rule is '
@@ -278,7 +335,7 @@ test('the measurement can see a broken button — proved, not asserted', async (
     host.append(b);
     document.body.append(host);
   });
-  const found = (await page.evaluate(COLLECT)) as Omit<ButtonReport, 'screen'>[];
+  const found = (await page.evaluate(COLLECT, null)) as Omit<ButtonReport, 'screen'>[];
   const probe = found.find((b) => b.label === 'Run');
   expect(probe, 'the collector did not see an injected button at all').toBeDefined();
   expect(probe!.ratio, 'light text on the UA button face must measure as unreadable')

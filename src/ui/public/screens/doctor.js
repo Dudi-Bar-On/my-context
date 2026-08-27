@@ -75,8 +75,70 @@
  * ruling: empty renders the real markup with zero rows. A refusal is the other
  * case, and is drawn INSTEAD of the data, in the endpoint's own words.
  */
-import { groupFindings, repairCommandFor } from '/lib/viewmodel.js';
+import { groupFindings } from '/lib/viewmodel.js';
+import { composeCommand } from '/lib/command.js';
+import { PALETTE, commandFor } from '/lib/palette-defs.js';
+import { commandActions } from '/lib/command-actions.js';
 import { el, errorNote, linkId, mono, screenHead, spaced } from '/screens/parts.js';
+
+/**
+ * The catalogue, by name. A Map rather than a repeated `PALETTE.find`, because
+ * three of this screen's four repairs are looked up and a linear scan per
+ * finding is a scan per row of a table that can be long.
+ */
+const CATALOGUE = new Map(PALETTE.map((def) => [def.name, def]));
+
+/**
+ * A repair that IS a catalogue entry: the id the server will rebuild from, the
+ * values it will rebuild with, and the argv composed by the CATALOGUE'S OWN
+ * `commandFor` — the same function `src/ui/execute-catalogue.ts` resolves with.
+ *
+ * Composing here through the entry rather than through a literal argv is what
+ * makes the line a reader sees and the line the server runs one computation
+ * instead of two that happen to agree today. Weighed against writing the three
+ * argvs out, which is shorter and reads fine — and is exactly how a screen ends
+ * up showing `mycontext refresh X` above a confirm that names something else.
+ */
+function catalogued(id, values) {
+  const def = CATALOGUE.get(id);
+  if (def === undefined) {
+    // Not a refusal a reader can act on — the catalogue shipped without an
+    // entry this screen names — so it is a bug, and it fails loudly rather
+    // than degrading into a Copy-only control that looks deliberate.
+    throw new Error(`doctor: the command catalogue declares no "${id}"`);
+  }
+  return { id, values, argv: commandFor(def, values) };
+}
+
+/**
+ * **The repair a finding code earns, as the thing the control takes.**
+ *
+ * `lib/viewmodel.js`' `repairCommandFor` is where this decision was established
+ * and argued — which codes earn a line, and why most do not: a message that
+ * asks for a file edit is not a line anyone can paste. It answers a STRING, and
+ * a string cannot be executed. The client sends an id and a value bag and never
+ * a command (spec §3.1), so the same decision is carried here in that shape,
+ * and `test/ui/doctor-screen.test.ts` holds the two equal code by code — a
+ * screen that quietly grew its own table would still draw a `.cmd` and still
+ * look right.
+ *
+ * **`audit --files` names NO id, deliberately.** `PALETTE` carries no `audit`
+ * entry, so there is nothing for the server to rebuild; `commandActions` draws
+ * Copy alone for a null id, and that is the correct outcome rather than a gap
+ * to work around. Naming a nearby id instead would put a different command
+ * behind a confirm that looked right.
+ */
+export function repairFor(code, item) {
+  if (code === 'index_stale') return catalogued('rebuild', {});
+  if (code === 'audit_log_size') {
+    return { id: null, values: {}, argv: ['mycontext', 'audit', '--files'] };
+  }
+  if (code === 'corpus_size_fallback_ceiling') return catalogued('decay', {});
+  if (code === 'source_drift' && typeof item === 'string' && item !== '') {
+    return catalogued('refresh', { id: item });
+  }
+  return null;
+}
 
 /**
  * The mockup's three cards, in its order, each with the heading it draws.
@@ -142,12 +204,20 @@ export function cardRows(groups, level) {
  * a `.cmd` and still look right.
  */
 export function cardCommands(rows) {
-  const commands = [];
+  const repairs = [];
+  const seen = new Set();
   for (const row of rows) {
-    const repair = repairCommandFor(row.code, row.item);
-    if (repair !== null && !commands.includes(repair)) commands.push(repair);
+    const repair = repairFor(row.code, row.item);
+    if (repair === null) continue;
+    // Deduped by the composed LINE rather than by the id: two `source_drift`
+    // rows about different items are two different repairs under one id, and
+    // deduping by id would drop the second item's refresh silently.
+    const line = composeCommand(repair.argv);
+    if (seen.has(line)) continue;
+    seen.add(line);
+    repairs.push(repair);
   }
-  return commands;
+  return repairs;
 }
 
 /** A literal the checker delimited: `"a glob"` or `` `a command` ``. */
@@ -204,36 +274,39 @@ function messageCell(message) {
 }
 
 /**
- * `<div class="cmd"><code>…</code><button>Copy</button></div>` — the mockup's
- * compose-and-copy row.
+ * `<div class="cmd"><code>…</code></div>` — the mockup's command row — followed
+ * by the ONE Copy-and-Execute control.
  *
- * **A copy that fails says so, and says it in the platform's own words.** The
- * mockup's handler swaps the button's label to "Copied"/"Copy failed" through
- * a `HEB ? … : …` ternary in script — unkeyed, so neither string table can
- * carry it and the parity check cannot see it, which is precisely the defect
- * the mockup records having fixed elsewhere in itself. Inventing the two keys
- * here would fail that parity check; staying silent on failure would drop a
- * failure silently. So the success path is silent and the failure path renders
- * the DOMException's own message, the treatment `errorNote` already gives an
- * endpoint refusal. Recorded as an open question: this button owes the mockup
- * two keys.
+ * **The hand-rolled Copy button is gone, and that is the point of the task
+ * rather than a tidy-up.** It was one of nine across `screens/`, each with its
+ * own error handling and its own words; adding Execute nine times would have
+ * been nine chances to get the confirm wrong, and the confirm is the security
+ * boundary. `lib/command-actions.js` is the one spelling, and the two keys this
+ * button used to owe the mockup are its problem now, not this screen's.
+ *
+ * **The control is a SIBLING of `.cmd`, not a child of it, and that is the
+ * defect the owner reported on 2026-08-27 rather than a layout preference.**
+ * `styles.css`'s only global button rule is `button{font:inherit;color:inherit}`
+ * — colour and NO background — so a button's readability comes from an ancestor
+ * rule. `.cmd button` is why the old Copy looked right; `.cmdactions button`
+ * carries its own background precisely so the shared control does not depend on
+ * which of six containers it lands in. Nesting it inside `.cmd` would work
+ * today and would quietly reintroduce that dependency, and `.cmd` is a
+ * one-line flex row that the confirm's table and residual do not fit in.
+ *
+ * A fragment, because the mockup's `.cmd` is one element and the control is
+ * another: wrapping them in a new `<div>` would invent a class the design of
+ * record does not draw, or a classless one — and a classless container is
+ * exactly what made the Composer's read button invisible.
  */
-function commandRow(ctx, command) {
+function commandRow(ctx, repair) {
+  const block = document.createDocumentFragment();
   const box = el('div', 'cmd');
-  const code = el('code', null, command);
-  const copy = el('button');
-  copy.type = 'button';
-  copy.append(...ctx.t('btn.copy'));
-  copy.onclick = () => {
-    // Composed, never run: this hands the string to the clipboard and stops.
-    // The user's own shell is the only thing that ever executes it, which is
-    // what keeps their Bash permission rules matching command strings (§7).
-    navigator.clipboard.writeText(command).catch((error) => {
-      box.after(errorNote(error && error.message ? error.message : String(error)));
-    });
-  };
-  box.append(code, copy);
-  return box;
+  box.append(el('code', null, composeCommand(repair.argv)));
+  block.append(box, commandActions({
+    argv: repair.argv, id: repair.id, values: repair.values, ctx,
+  }));
+  return block;
 }
 
 export async function render(root, ctx) {
@@ -302,7 +375,7 @@ export async function render(root, ctx) {
       pane.append(spaced(zero));
     }
 
-    for (const command of cardCommands(rows)) pane.append(commandRow(ctx, command));
+    for (const repair of cardCommands(rows)) pane.append(commandRow(ctx, repair));
     root.append(pane);
   }
 }

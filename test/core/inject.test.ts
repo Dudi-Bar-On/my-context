@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -218,4 +218,77 @@ test('a fresh workspace with NO index file still injects (first-run, C for free)
   rmSync(`${ws.dbPath}-shm`, { force: true });
   const output = buildInjection(cwd, { event: 'session-start', sessionId: 'sess-fresh' });
   assert.match(output, /CONST-pinned/);
+});
+
+// --- the pinned spill on the audit row --------------------------------------
+
+/** Set one budget on a sandbox's config, leaving every other key as `init` wrote it. */
+function setBudget(cwd: string, key: string, value: number): void {
+  const file = path.join(cwd, '.my_context', 'config.json');
+  const config = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  config.budgets = { ...(config.budgets as Record<string, number> ?? {}), [key]: value };
+  writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+/**
+ * **The log has to answer "what did this session NOT get" on its own.**
+ *
+ * Re-deriving it later is not an option and that is the whole reason this is a
+ * recorded field: the corpus MOVES. An item edited, pinned, unpinned or retired
+ * after the injection re-costs differently or does not exist, so a figure
+ * recomputed over today's items is wrong for exactly the corpus being
+ * maintained most actively — the same argument `AuditRecord.tokens` carries.
+ *
+ * The per-item `spilled` rows already name the ids. What they cannot answer
+ * without a reader parsing an English reason apart is the pair of numbers, and
+ * a screen that parsed them would be a second implementation of `select`'s
+ * decision — the defect this project has paid for most often.
+ */
+test('a partial pinned delivery is recorded on the injection row, with the numbers', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  pin(cwd, 'CONST-alpha', 'Alpha');
+  pin(cwd, 'CONST-beta', 'Beta');
+  pin(cwd, 'CONST-gamma', 'Gamma');
+  // Small enough that not all three fit, large enough that one does: the
+  // PARTIAL case, which is the one that reads as success.
+  // Each fixture item costs ~13 estimated tokens, so 20 admits one and spills two.
+  setBudget(cwd, 'pinned', 20);
+
+  const text = buildInjection(cwd, { event: 'session-start', sessionId: 'sess-spill' });
+  const ws = resolveWorkspace(cwd);
+  const record = readAudit(ws.projectRoot!).filter((r) => r.op === 'session-start').at(-1);
+
+  assert.ok(record, 'an injection that spilled must leave a record');
+  const delivered = (record.injected ?? []).filter((i) => i.tier === 'pinned').map((i) => i.id);
+  assert.ok(delivered.length > 0 && delivered.length < 3,
+    `fixture must be partial, delivered ${delivered.length} of 3`);
+  assert.match(text, new RegExp(delivered[0]));
+
+  assert.ok(record.pinnedSpill, 'the row must carry the pinned spill');
+  assert.equal(record.pinnedSpill.budget, 20);
+  assert.ok(record.pinnedSpill.cost > 20,
+    'the recorded cost is the whole tier, so it must exceed the budget it spilled against');
+  assert.deepEqual(
+    [...record.pinnedSpill.ids].sort(),
+    ['CONST-alpha', 'CONST-beta', 'CONST-gamma'].filter((id) => !delivered.includes(id)),
+  );
+  // Beside `injected` and beside `spilled`, not instead of either: the per-item
+  // rows keep feeding the audit projection's `role = 'spilled'`.
+  assert.deepEqual(
+    (record.spilled ?? []).filter((s) => s.tier === 'pinned').map((s) => s.id).sort(),
+    [...record.pinnedSpill.ids].sort(),
+  );
+});
+
+test('an injection whose pinned tier fitted records no pinned spill', (t) => {
+  const cwd = sandbox();
+  t.after(() => removeTree(cwd));
+  pin(cwd, 'CONST-alpha', 'Alpha');
+  buildInjection(cwd, { event: 'session-start', sessionId: 'sess-fits' });
+  const ws = resolveWorkspace(cwd);
+  const record = readAudit(ws.projectRoot!).filter((r) => r.op === 'session-start').at(-1);
+  assert.ok(record);
+  assert.equal(record.pinnedSpill, undefined,
+    'absent means "nothing spilled", and it must never be an empty-shaped claim');
 });

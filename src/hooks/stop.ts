@@ -1,14 +1,19 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { handoverThresholdPercent, type HandoverConfig } from '../core/config.ts';
+import { handoverThresholdPercent, type Config, type HandoverConfig } from '../core/config.ts';
 import {
   occupancyStandDownLine, readOccupancy, type UnmeasurableWhy,
 } from '../core/context-occupancy.ts';
 import { sanitizeSessionId } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
-import { resolveWorkspace } from '../core/workspace.ts';
-import { runObservationHook, type Observation, type ObservationSpec } from './observe.ts';
-import type { HookInput } from './io.ts';
+import {
+  upkeepStandDownLine, upkeepUiServer, type Upkeep, type UpkeepDeps,
+} from '../core/ui-server-upkeep.ts';
+import { findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
+import { observeAndRecord, type Observation, type ObservationSpec } from './observe.ts';
+import {
+  hookParseErrorLine, parseHookInput, readStdin, type HookInput,
+} from './io.ts';
 
 /**
  * The end of an assistant turn — the only boundary in the audit log that is not
@@ -212,8 +217,25 @@ function writeLatch(root: string, sessionId: string, latch: AskLatch): boolean {
  * configured.
  */
 function handoverConfig(root: string): HandoverConfig | null {
+  return workspaceConfig(root)?.handover ?? null;
+}
+
+/**
+ * The whole resolved configuration for this workspace, or `null` for every
+ * reason there is not one — the read `handoverConfig` above has always done,
+ * named separately because the UI-server upkeep needs a different key out of
+ * the same file.
+ *
+ * **It is read TWICE per turn and that is deliberate.** `runStopHook` below
+ * needs `ui` before `observeAndRecord` runs, and `handoverAsk` needs `handover`
+ * from inside it; sharing one read would mean threading a `Config` through
+ * `ObservationSpec.observe`, which is `observe.ts`'s shape and belongs to the
+ * nine other hooks as much as to this one. Two reads of one small JSON file is
+ * the cheaper of the two costs, and it is paid on a hook that already reads it.
+ */
+function workspaceConfig(root: string): Config | null {
   try {
-    return resolveWorkspace(path.dirname(root)).config.handover;
+    return resolveWorkspace(path.dirname(root)).config;
   } catch {
     return null;
   }
@@ -318,7 +340,39 @@ function handoverAsk(input: HookInput, root: string): { percent: number; text: s
   return { percent: occupancy.percent, text: askText(handover.path, occupancy.percent) };
 }
 
-export function observeStop(input: HookInput, root: string): Observation | null {
+/**
+ * What the UI-server upkeep contributes to the audit row, and it is `''` on all
+ * but a handful of turns.
+ *
+ * **Only when something HAPPENED.** `off`, `disabled`, `too-soon` and `alive`
+ * add nothing at all: `Stop` fires on every assistant turn, so a clause that
+ * appends on every one of them would put a per-minute liveness report in the
+ * one log line that says where an exchange ended — and `observe.ts`'s header
+ * has already ruled that a record-only hook which records everything is a hook
+ * that makes the log unreadable. What is left is the two events a human would
+ * want to find later: a server being put back, and the mechanism giving up.
+ *
+ * It goes in the NOTE and never in `context`. `Stop`'s envelope was opened for
+ * exactly one purpose under
+ * `DEC-stop-speaks-once-and-only-to-raise-the-handover`, and a second feature
+ * writing into it would be that ruling widened by a commit nobody reviewed as
+ * one. The log is where "what was done" belongs anyway; the model has no action
+ * to take about a server it did not start.
+ */
+export function upkeepNote(upkeep: Upkeep | null): string {
+  if (upkeep === null) return '';
+  if (upkeep.did === 'spawned') {
+    return `; no UI server was answering, so one was started on port ${upkeep.port}`;
+  }
+  if (upkeep.did === 'stood-down') {
+    return `; the UI server upkeep stood down after ${upkeep.failures} failed spawns`;
+  }
+  return '';
+}
+
+export function observeStop(
+  input: HookInput, root: string, upkeep: Upkeep | null = null,
+): Observation | null {
   // `stop_hook_active` is the platform's re-entrancy guard: true when this turn
   // is continuing BECAUSE a stop hook asked it to. Nothing here ever asks — the
   // handover ask below is `additionalContext`, which the platform describes as
@@ -327,7 +381,8 @@ export function observeStop(input: HookInput, root: string): Observation | null 
   const active = input.stop_hook_active === true;
   const base =
     `stop_hook_active=${active ? 'true' : 'false'}; the assistant turn ended` +
-    (active ? ', continuing because another stop hook asked it to' : '');
+    (active ? ', continuing because another stop hook asked it to' : '') +
+    upkeepNote(upkeep);
 
   const ask = handoverAsk(input, root);
 
@@ -343,10 +398,113 @@ export function observeStop(input: HookInput, root: string): Observation | null 
       };
 }
 
-export const STOP: ObservationSpec = {
-  hook: 'Stop',
-  op: 'stop',
-  observe: observeStop,
-};
+/**
+ * The spec, with an upkeep result already in hand.
+ *
+ * **The upkeep is asynchronous and `ObservationSpec.observe` is not**, which is
+ * the whole reason this builder exists. A probe is a TCP connect; a note is
+ * written synchronously by `observeAndRecord`. Three ways out were available
+ * and two were worse: making `observe` async changes the shape all ten
+ * observation hooks share, for one of them; and letting the upkeep run
+ * unawaited would put its outcome in NO row, since the process is already
+ * exiting by the time it settles. Binding the answer into the spec keeps
+ * `observe.ts` untouched, keeps the row at one per turn, and keeps the upkeep's
+ * result in the row it belongs to.
+ *
+ * `null` is what every other caller passes, which is why `STOP` below is still
+ * the same object it always was to every test that imports it.
+ */
+export function stopSpec(upkeep: Upkeep | null): ObservationSpec {
+  return {
+    hook: 'Stop',
+    op: 'stop',
+    observe: (input, root) => observeStop(input, root, upkeep),
+  };
+}
 
-if (isMainEntry(import.meta.filename, process.argv[1])) runObservationHook(STOP);
+export const STOP: ObservationSpec = stopSpec(null);
+
+/**
+ * Run the UI-server upkeep for this turn, or decline — which is the answer in
+ * every workspace that has not opted in.
+ *
+ * Three declines, and each is its own kind of nothing:
+ *
+ *  1. **A subagent.** Spec §7: parent sessions only, the restriction
+ *     `PostCompact` already keeps. A fan-out of ten subagents finishing at once
+ *     is ten hooks reaching for one port inside one second, and the floors in
+ *     `ui-server-upkeep.ts` are a file on disk rather than a lock — they bound a
+ *     sequence of turns, not a stampede. `agent_id` is the only subagent
+ *     discriminator on the payload (`io.ts` measured it).
+ *  2. **No workspace**, so there is nowhere for the clocks to live and no
+ *     config to have opted in.
+ *  3. **A config that will not parse.** A user who mistyped a comma has turned
+ *     this feature off, not broken their session.
+ *
+ * `deps` and `now` are injected for tests and passed by nothing in production —
+ * `ui-server-upkeep.ts` argues both where they are declared.
+ *
+ * Never throws (`INV-hooks-fail-open`). The stand-down disclosure is written
+ * here rather than returned because `upkeepUiServer` reports `stood-down` on
+ * exactly one call, which makes writing it on that call the same "say it once"
+ * the occupancy stand-down achieves with a latch.
+ */
+export async function stopUpkeep(
+  input: HookInput, deps: UpkeepDeps = {}, now: number = Date.now(),
+): Promise<Upkeep | null> {
+  try {
+    if (input.agent_id !== undefined) return null;
+    const root = findProjectRoot(input.cwd ?? process.cwd());
+    if (root === null) return null;
+    const config = workspaceConfig(root);
+    if (config === null) return null;
+
+    const upkeep = await upkeepUiServer(root, config, now, deps);
+    if (upkeep.did === 'stood-down') {
+      process.stderr.write(upkeepStandDownLine(upkeep.failures, root));
+    }
+    return upkeep;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The whole binary: the upkeep, then the observation.
+ *
+ * **`runObservationHook`'s body, with one `await` in front of it**, and the
+ * duplication is the point rather than an oversight. That helper exists because
+ * the ten observation hooks make the SAME decisions about the reader, the timer
+ * and the envelope — its header says so — and this hook now makes a different
+ * one: it has an asynchronous step that must complete before the row is
+ * written. The six older binaries are each unfolded for the same class of
+ * reason. What is NOT duplicated is the part that matters: the parse
+ * disclosure, the recording and the envelope all still run through
+ * `observeAndRecord`, so there is still exactly one implementation of them.
+ *
+ * The upkeep runs FIRST because its outcome has to reach the note, and the
+ * whole of it — a state read, a small file read and one loopback connect — is
+ * bounded well inside the 3-second timeout the platform genuinely waits on
+ * here. `probeUiServer` carries its own 250ms cap, and the spawn is detached
+ * and unref'd so it cannot hold this process open.
+ *
+ * `process.cwd()` is the fallback for `input.cwd` in both halves, so the upkeep
+ * and the audit row cannot resolve to two different workspaces.
+ */
+export async function runStopHook(): Promise<void> {
+  try {
+    const { input, parseError } = parseHookInput(readStdin());
+    if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
+    const upkeep = await stopUpkeep(input);
+    const { stdout } = observeAndRecord(stopSpec(upkeep), input, process.cwd());
+    // Guarded rather than written unconditionally: this is `''` on all but at
+    // most one turn of a session, and an unconditional `write('')` on a closed
+    // or absent stdout is a throw on a path whose whole job is not to have one.
+    if (stdout !== '') process.stdout.write(stdout);
+  } catch {
+    /* fail open */
+  }
+  process.exitCode = 0;
+}
+
+if (isMainEntry(import.meta.filename, process.argv[1])) void runStopHook();

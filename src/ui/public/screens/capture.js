@@ -62,8 +62,8 @@
  * and quoting is one implementation with a checker over its own bytes
  * (`src/ui/public/lib/command.js` · `Command-string composition for every composed write in the UI — the ONE` · ~1).
  * A second spelling of a quoting rule is how a shell command nobody verified
- * reaches a clipboard, so `captureCommand` below is three lines and none of
- * them contains a quotation mark.
+ * reaches a clipboard, so `captureArgv` and `captureCommand` below are one line
+ * each and neither contains a quotation mark.
  *
  * `commandFor` throws rather than composing a half-built command
  * (`src/ui/public/lib/palette-defs.js` · ``if (arg.required) throw new Error(`${def.name}: ${arg.name} is required`);`` · ~200),
@@ -128,6 +128,7 @@
  * has no bold run to build. `preview.carried` loses a `<b>` pair the same way.
  */
 import { composeCommand } from '/lib/command.js';
+import { commandActions } from '/lib/command-actions.js';
 import { PALETTE, commandFor } from '/lib/palette-defs.js';
 import { el, errorNote, screenHead, spaced } from '/screens/parts.js';
 
@@ -213,8 +214,21 @@ export function severityOptions() {
  * weaker command — an `add` missing its category is not a shorter `add`, it is
  * a different one.
  */
+export function captureArgv(values) {
+  return commandFor(ADD, values);
+}
+
+/**
+ * The same capture as the string a reader sees.
+ *
+ * Split from `captureArgv` because the shared Copy control is built around an
+ * ARGV rather than around a string. Both entry points refuse a half-built
+ * capture, because the refusal is `commandFor`'s and neither of these has been
+ * given a chance to soften it: an `add` missing its category is not a shorter
+ * `add`, it is a different one.
+ */
 export function captureCommand(values) {
-  return composeCommand(commandFor(ADD, values));
+  return composeCommand(captureArgv(values));
 }
 
 /**
@@ -329,26 +343,56 @@ export async function render(root, ctx) {
   nosim.append(...ctx.t('cap.nosim'));
   const cmd = el('div', 'cmd');
   const code = el('code');
-  const copy = el('button');
-  copy.type = 'button';
-  copy.append(...ctx.t('btn.copy'));
-  cmd.append(code, copy);
+  cmd.append(code);
   const warn = el('p', 'cmdnote');
   warn.append(...ctx.t('cap.warn'));
   card.append(head, table, spaced(nosim), cmd, warn);
 
-  // A copy that fails says so in the platform's own words; a copy that works
-  // says nothing. `work.js` settled that treatment and records the reason: the
-  // mockup swaps the label through an unkeyed ternary in its own script, so
-  // neither string table can carry "Copied" and inventing it here would fail
-  // the parity check (`src/ui/public/screens/work.js` · `silent and failure is loud, which is the right way round for a button whose` · ~326).
-  copy.addEventListener('click', () => {
-    // Composed, never run. The user's own shell is the only thing that ever
-    // executes this, which is what keeps their Bash deny rules able to see it.
-    navigator.clipboard.writeText(code.textContent).catch((error) => {
-      cmd.after(errorNote(error && error.message ? error.message : String(error)));
-    });
-  });
+  /**
+   * The shared Copy control, rebuilt on every recomposition.
+   *
+   * `commandActions` is built AROUND one command — it closes over the argv it
+   * was given — and this screen's command changes on every keystroke. A control
+   * left in place while the `<code>` above it changed would put a capture from
+   * two keystrokes ago on the clipboard, which is worse than the hand-rolled
+   * button it replaces rather than better. So it is removed and rebuilt, which
+   * is also why it is held in a variable rather than appended once at build
+   * time.
+   */
+  let actions = null;
+
+  /**
+   * **`id: null` — Copy alone, and Capture is the ONE screen where that is a
+   * decision rather than a consequence of the catalogue.**
+   *
+   * `add` is in the catalogue, so the rule the other five screens follow would
+   * have this one pass `'add'` and gain Execute. What stands in the way is
+   * `cap.warn` — *"This is a write. Run it in your own shell."* — which is a
+   * sentence of the DESIGN OF RECORD, drawn in the mockup's own capture
+   * section, and which is false the moment a button beside it runs the command.
+   * `palette.js` dropped its borrowed copy of that sentence for exactly this
+   * reason and recorded in the same edit that the key stays for Capture,
+   * "which still composes and copies only".
+   *
+   * The two cannot both stand, and choosing between them changes what the
+   * design of record draws — the owner's call, not this task's. Reported rather
+   * than taken.
+   *
+   * **And waiting costs nothing today.** `add` is on the approval boundary and
+   * `COMMAND_EFFECTS` does not know what it writes, so §3.2 refuses it a weaker
+   * confirm: an Execute button here would mint a nonce and then decline. The
+   * trade on offer is a true sentence for a control that cannot do what it
+   * offers. `test/ui/capture-screen.test.ts` pins both halves, so the day
+   * `COMMAND_EFFECTS` learns `add` this decision is re-taken rather than
+   * inherited.
+   */
+  const drawActions = (argv) => {
+    if (actions !== null) actions.remove();
+    actions = argv === null ? null : commandActions({ argv, id: null, values: {}, ctx });
+    // `after`, so the control lands between the command and `cap.warn` — the
+    // order the mockup draws, with the sentence still last.
+    if (actions !== null) cmd.after(actions);
+  };
 
   // --- what the two halves do when something changes ----------------------
 
@@ -380,20 +424,22 @@ export async function render(root, ctx) {
     ]) {
       control.setAttribute('aria-invalid', String(value === undefined));
     }
-    let command = null;
+    let argv = null;
     try {
-      command = captureCommand(values);
+      argv = captureArgv(values);
     } catch {
       // `commandFor`'s refusal, honoured: a capture missing its category or
       // its title has no command yet, and half of one must not be copyable.
-      command = null;
+      argv = null;
     }
     // Hidden rather than emptied, for `palette.js`'s reason about the same
     // shape: an empty `<p>` still carries its own block margin, and a
-    // paragraph-shaped hole reads as a sentence that failed to load.
-    code.textContent = command === null ? '' : command;
-    cmd.hidden = command === null;
-    warn.hidden = command === null;
+    // paragraph-shaped hole reads as a sentence that failed to load. The
+    // control is REMOVED rather than hidden, because it is rebuilt anyway.
+    code.textContent = argv === null ? '' : composeCommand(argv);
+    cmd.hidden = argv === null;
+    warn.hidden = argv === null;
+    drawActions(argv);
   }
 
   // Every answer carries the number of the request that asked for it. Two
