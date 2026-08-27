@@ -358,3 +358,132 @@ test('the ask surface answers over HTTP behind the token gate, and reports a sta
       'a 503 that does not name the command that ends the state leaves the user nowhere');
   } finally { await h?.stop(); done(); }
 });
+
+// --- The stream's opening backlog (plan:walk seq:52) ------------------------
+//
+// The owner's report: *"the audit stream is blank without records"*, over a
+// corpus holding 2,076. Two causes, and this file owns the first — a live tail
+// starting at the current EOFs emits only what is appended AFTER the connect,
+// so a screen with no other source draws nothing and the reader reads that as
+// "no records". `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+// forbids exactly that reading.
+//
+// **Both directions are tested, and the negative one is the load-bearing
+// half.** `server-e2e.test.ts` holds the contract that a tail replays nothing;
+// the backlog is opt-in precisely so that contract survives, and the test below
+// asserts the opening frame is byte-identical for a caller that does not ask.
+
+test('the stream replays a bounded backlog on request, oldest first, and says what it held back', async () => {
+  const { dir, corpus, done } = project();
+  const abort = new AbortController();
+  let h: UiHarness | null = null;
+  try {
+    for (const id of ['a', 'b', 'c', 'd', 'e']) {
+      recordAudit(corpus, {
+        kind: 'mutation', op: 'create', origin: 'human', itemId: `RULE-${id}`, fields: ['body'],
+      });
+    }
+    h = await startUiChild(dir);
+    const token = await redeemNonce(h.port, h.nonce);
+    // NO `mycontext audit` above, deliberately: with no projection at all the
+    // query surface answers 200 with an empty record list, so the stream is the
+    // ONLY thing that can put this corpus's own history on a screen. That is
+    // the owner's corpus in miniature.
+    const stream = await fetch(`http://127.0.0.1:${h.port}/api/watch/stream?poll=50&backlog=3`, {
+      headers: { [TOKEN_HEADER]: token },
+      signal: AbortSignal.any([abort.signal, AbortSignal.timeout(15_000)]),
+    });
+    assert.equal(stream.status, 200);
+    const frames = sseFrames(stream.body!);
+    const hello = await nextFrame(frames, 'the stream');
+    assert.equal(hello.event, 'hello');
+    const opening = hello.data as {
+      pollMs: number;
+      backlog: { records: { itemId?: string }[]; cap: number; complete: boolean; scanBytes: number };
+    };
+    assert.equal(opening.pollMs, 50);
+    // Oldest first, and the NEWEST three — a bounded surface that showed the
+    // oldest three under a sentence promising the newest is the failure
+    // `boundedList`'s own slice comment names.
+    assert.deepEqual(opening.backlog.records.map((r) => r.itemId), ['RULE-c', 'RULE-d', 'RULE-e']);
+    assert.equal(opening.backlog.cap, 3);
+    // `REQ-every-list-and-table-declares-what-leaves-it-and-when-and`: five
+    // records, three drawn, and the response says so rather than leaving the
+    // screen unable to tell a bound from a whole log.
+    assert.equal(opening.backlog.complete, false);
+    assert.ok(opening.backlog.scanBytes > 0, 'the scan window is disclosed, never implied');
+
+    // And history does not arrive twice: a record appended now is the only
+    // thing the live half carries.
+    recordAudit(corpus, { kind: 'focus', op: 'focus-set', sessionId: 'live', note: 'src/**' });
+    let live: { op?: string } | null = null;
+    for await (const frame of frames) {
+      if (frame.event !== 'record') continue;
+      live = frame.data as { op?: string };
+      break;
+    }
+    assert.equal(live?.op, 'focus-set',
+      'the first live frame was not the record appended after connect — the backlog leaked into '
+      + 'the live half, and an audit view showing an entry twice is what the offsets prevent');
+  } finally { abort.abort(); await h?.stop(); done(); }
+});
+
+test('a log shorter than the bound answers COMPLETE, so an empty feed can name which empty it is', async () => {
+  const { dir, corpus, done } = project();
+  const abort = new AbortController();
+  let h: UiHarness | null = null;
+  try {
+    recordAudit(corpus, { kind: 'focus', op: 'focus-set', sessionId: 's1', note: 'src/**' });
+    h = await startUiChild(dir);
+    const token = await redeemNonce(h.port, h.nonce);
+    const stream = await fetch(`http://127.0.0.1:${h.port}/api/watch/stream?poll=50&backlog=20`, {
+      headers: { [TOKEN_HEADER]: token },
+      signal: AbortSignal.any([abort.signal, AbortSignal.timeout(15_000)]),
+    });
+    const frames = sseFrames(stream.body!);
+    const hello = await nextFrame(frames, 'the stream');
+    const opening = hello.data as { backlog: { records: unknown[]; complete: boolean } };
+    // The server's own `access` records land in this log too, so the count is
+    // not pinned — `complete` is the claim under test, and it is the one that
+    // turns a blank feed into a measured statement about the log.
+    assert.equal(opening.backlog.complete, true);
+    assert.ok(opening.backlog.records.length >= 1, 'the one recorded focus change was not replayed');
+  } finally { abort.abort(); await h?.stop(); done(); }
+});
+
+test('a stream that asks for no backlog gets the frame it always got — the opt-in, held', async () => {
+  const { dir, corpus, done } = project();
+  const abort = new AbortController();
+  let h: UiHarness | null = null;
+  try {
+    recordAudit(corpus, {
+      kind: 'mutation', op: 'create', origin: 'human', itemId: 'RULE-old', fields: ['body'],
+    });
+    h = await startUiChild(dir);
+    const token = await redeemNonce(h.port, h.nonce);
+    const stream = await fetch(streamUrl(h.port), {
+      headers: { [TOKEN_HEADER]: token },
+      signal: AbortSignal.any([abort.signal, AbortSignal.timeout(15_000)]),
+    });
+    const frames = sseFrames(stream.body!);
+    const hello = await nextFrame(frames, 'the stream');
+    // Byte-identical to what shipped: no `backlog` key at all. A stream
+    // carrying no backlog says nothing about one, and `server-e2e.test.ts`
+    // reads this frame with a pinned pattern.
+    assert.deepEqual(hello.data, { pollMs: 50 });
+  } finally { abort.abort(); await h?.stop(); done(); }
+});
+
+test('the stream refuses a backlog it cannot bound, naming the range', async () => {
+  const { dir, done } = project();
+  let h: UiHarness | null = null;
+  try {
+    h = await startUiChild(dir);
+    const token = await redeemNonce(h.port, h.nonce);
+    const bad = await fetch(`http://127.0.0.1:${h.port}/api/watch/stream?backlog=99999`, {
+      headers: { [TOKEN_HEADER]: token },
+    });
+    assert.equal(bad.status, 400);
+    assert.match((await bad.json() as { error: string }).error, /backlog/);
+  } finally { await h?.stop(); done(); }
+});

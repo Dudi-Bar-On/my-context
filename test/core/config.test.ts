@@ -860,16 +860,39 @@ test('ui present and false disables; present and true enables', () => {
 });
 
 /**
- * ENABLED means `mycontext ui` is PERMITTED — nothing listens, spawns or
- * changes until a user runs the command. The resolved section is asserted to
- * be exactly one boolean for that reason: a port, a host or a handle here
- * would be this key deciding something about a running process, which it does
- * not. It is also the shape the sibling command that writes this key has to
- * round-trip.
+ * **This assertion's premise was overturned on 2026-08-27, deliberately, and the
+ * old reasoning is kept because it is the better half of the new one.**
+ *
+ * It used to read: *"a port, a host or a handle here would be this key deciding
+ * something about a running process, which it does not."* That was true, and it
+ * was the reason `ui.enabled` sat validated and enforced by nothing for weeks —
+ * the section described a permission nobody consulted.
+ *
+ * `REQ-the-ui-server-is-running-whenever-the-owner-looks-or-it-says` makes it
+ * false on purpose. `ui.port` is exactly the port the old comment ruled out, and
+ * it is here because a HOOK cannot use port 0: an ephemeral port is a URL nobody
+ * can bookmark, and the whole point is a server that is there when its owner
+ * looks.
+ *
+ * **The distinction survives, one level down, and it is what keeps the section
+ * honest.** `enabled` says WHETHER and `port` says WHERE. Neither opens a socket
+ * — resolving this section still listens to nothing and spawns nothing. What
+ * changed is that something now READS them: `mycontext ui` refuses when
+ * `enabled` is false, and the upkeep hook stays entirely off until `port` is
+ * set. Absent means off, which is why a plugin that spawns a background server
+ * because somebody installed it is not what shipped.
+ *
+ * `port` must be a PRESENT key with the value `null`, not an absent one. Under
+ * `node:assert/strict` an absent field reads `undefined`, and "the user has not
+ * chosen a port" would then be indistinguishable from "this build does not know
+ * about ports" — `STD-absent-vs-zero` on the field that decides whether a
+ * process starts.
  */
-test('the resolved ui section is one boolean — permission, not process', () => {
-  assert.deepEqual(Object.keys(resolveConfig({ ui: { enabled: true } }).ui), ['enabled']);
+test('the resolved ui section is permission AND place, and place arrived 2026-08-27', () => {
+  assert.deepEqual(Object.keys(resolveConfig({ ui: { enabled: true } }).ui), ['enabled', 'port']);
   assert.equal(typeof resolveConfig({}).ui.enabled, 'boolean');
+  assert.equal(resolveConfig({}).ui.port, null,
+    'an unset port is null and PRESENT — absent would read as a build that knows nothing of ports');
 });
 
 /** The point of adding the key to `TOP_LEVEL_KEYS` rather than relying on

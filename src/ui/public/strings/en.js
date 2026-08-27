@@ -218,6 +218,15 @@ export const strings = {
   'watch.streamWaiting': 'connected — waiting for the next record',
   'watch.streamFault': 'the stream refused to continue: {error}',
   'watch.resync': 'the log rotated or moved — continuing from now; the history list below was refetched',
+  // The four sentences the blank feed cost (plan:walk seq:52). A live tail that
+  // is empty is UNMEASURED — "nothing since you opened this", never "no
+  // records" — and the owner read a blank Watch screen as the second over a
+  // corpus holding 2,076. `watch.emptyLog` is the MEASURED empty and says so in
+  // those words; `watch.streamWaiting` above is still the unmeasured one.
+  'watch.historyLine': 'already in the log when you opened this',
+  'watch.backlogSome': 'The {shown} most recent records that were already in the log, replayed below the line. Earlier ones are in the log and are not on this stream.',
+  'watch.backlogAll': 'All {shown} records that were already in the log, replayed below the line. Nothing was held back.',
+  'watch.emptyLog': 'this corpus has no audit log at all — it was read to its beginning and holds nothing. A measured zero, not a filter and not a refusal.',
   'watch.delivered': '{delivered} delivered',
   'watch.spilled': '{spilled} spilled',
   'watch.tokens': '{tokens} estimated tokens, computed at injection time',

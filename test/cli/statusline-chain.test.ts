@@ -36,7 +36,7 @@ const { readTee } = await import('../../src/core/statusline-tee.ts');
 const { GLOBAL_DIR } = await import('../../src/core/workspace.ts');
 const { DELEGATE_TIMEOUT_MS, runDelegate } =
   await import('../../src/cli/commands/statusline.ts');
-const { delegateFor, looksLikeOurBridge, parseCommandString } =
+const { INSTALLED, commandLooksLikeOurBridge, delegateFor, looksLikeOurBridge, parseCommandString } =
   await import('../../src/cli/commands/statusline-install.ts');
 
 const CLI = fileURLToPath(new URL('../../src/cli/index.ts', import.meta.url));
@@ -123,6 +123,93 @@ function settingsWith(dir: string, command: string | null): string {
   writeFileSync(file, JSON.stringify(body, null, 2), 'utf8');
   return file;
 }
+
+/* -------------------------------------------------------------------- *
+ * 0. The command that gets installed must actually START.               *
+ * -------------------------------------------------------------------- */
+
+/**
+ * **The failure this pins, measured 2026-08-27: `mycontext` is not on PATH.**
+ *
+ * `package.json` declares `bin: { mycontext: ./src/cli/index.ts }`, so that
+ * name exists only after a global install or `npm link` — and this plugin is
+ * installed from a local-directory marketplace, which does neither. `command
+ * -v mycontext` finds nothing on the owner's machine.
+ *
+ * The consequence is worse than a status line that says the wrong thing.
+ * Claude Code would run the command, it would not resolve, and the bridge
+ * would never start: no tee AND no delegate. Installing in order to preserve
+ * the user's status line would have destroyed it instead, silently, because a
+ * status line that fails prints nothing at all.
+ *
+ * `hooks/hooks.json` never assumed a binary — every entry is
+ * `node --disable-warning=ExperimentalWarning "<root>/src/hooks/x.ts"`. The
+ * status line was the one surface that did.
+ */
+test('the installed command names an interpreter and a real absolute file, never a name on PATH', () => {
+  assert.equal(INSTALLED.refreshInterval, 60, 'the refresh cadence is unchanged');
+  assert.notEqual(
+    INSTALLED.command, 'mycontext statusline',
+    '`mycontext` is not on PATH for a local-directory plugin install: this command never starts',
+  );
+  const match = /^node --disable-warning=ExperimentalWarning "(.+)" statusline$/.exec(
+    INSTALLED.command,
+  );
+  assert.ok(match !== null, `unexpected shape: ${INSTALLED.command}`);
+  const entry = match![1]!;
+  assert.ok(path.isAbsolute(entry), `the entry path must be absolute, got ${entry}`);
+  assert.ok(
+    existsSync(entry),
+    `the installed command names a file that does not exist: ${entry} — an install that writes `
+    + 'this has configured a status line that cannot start',
+  );
+  assert.match(entry, /src\/cli\/index\.ts$/, 'POSIX separators: safe in cmd.exe AND in sh');
+});
+
+/**
+ * And the decisive one: RUN it, the way Claude Code does.
+ *
+ * Claude Code hands a `statusLine` command to a shell, so this test does too —
+ * `shell: true` here is a faithful reproduction of the caller, not a licence
+ * taken by the product. Nothing in `src/` ever passes a shell string anywhere;
+ * `runDelegate` takes an argv array precisely so that it cannot.
+ *
+ * Without this test the previous version of this file was fully green while
+ * the command it installed could not start on the owner's machine.
+ */
+test('the installed command STARTS and prints a line when a shell runs it, as Claude Code will', () => {
+  const dir = project();
+  try {
+    const result = spawnSync(INSTALLED.command, {
+      shell: true,
+      cwd: dir,
+      input: JSON.stringify(payload('sess-installed', dir)),
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, `the installed command did not run: ${result.stderr}`);
+    assert.match(
+      result.stdout, /Opus 4\.5 \| ctx 23\.5% \(47\.0k\/200\.0k\)/,
+      'the bridge did not start — nothing was teed and no delegate would ever have run',
+    );
+    const tee = readTee(path.join(dir, '.my_context'), 'sess-installed');
+    assert.equal((tee?.payload as { session_id?: string } | undefined)?.session_id, 'sess-installed');
+  } finally {
+    removeTree(dir);
+  }
+});
+
+test('install discloses that the installed command hard-codes THIS checkout\'s location', () => {
+  const dir = project();
+  try {
+    const file = settingsWith(dir, null);
+    const { code, out } = run(['statusline', 'install', '--settings', file], dir);
+    assert.equal(code, 0, out);
+    assert.match(out, /move|moved|moves/i, 'the path is absolute; say what breaks it');
+    assert.match(out, /uninstall/, 'and say the way back');
+  } finally {
+    removeTree(dir);
+  }
+});
 
 /* -------------------------------------------------------------------- *
  * 1. The previous command is recorded, and is what gets delegated to.   *
@@ -456,6 +543,66 @@ test('looksLikeOurBridge recognises the bridge under the spellings it can be wri
   assert.equal(looksLikeOurBridge(['mycontext', 'status']), false);
   assert.equal(looksLikeOurBridge(['starship', 'prompt']), false);
   assert.equal(looksLikeOurBridge(['node', 'gsd-statusline.js']), false);
+});
+
+/**
+ * **Both directions, and the second one is the trap.**
+ *
+ * Detection runs on the command STRING, and the string this command now writes
+ * contains spaces and quotes. If detection went through `parseCommandString`,
+ * every shape that parser refuses would become invisible to it — and an
+ * undetected bridge is one that gets chained to itself, once per assistant
+ * message. So detection has its own lenient split, which may only ever REFUSE.
+ */
+test('bridge detection reads the command string directly, and knows both spellings', () => {
+  assert.equal(
+    commandLooksLikeOurBridge('mycontext statusline'), true,
+    'the OLD spelling must stay recognisable, or a bridge installed before this fix is invisible',
+  );
+  assert.equal(
+    commandLooksLikeOurBridge(INSTALLED.command), true,
+    'the NEW spelling is quoted and spaced; detection must not depend on parsing it',
+  );
+  assert.equal(commandLooksLikeOurBridge('"mycontext" statusline'), true);
+  assert.equal(commandLooksLikeOurBridge('node "gsd-statusline.js"'), false);
+  assert.equal(commandLooksLikeOurBridge('starship prompt'), false);
+});
+
+/**
+ * A bridge installed by an EARLIER build carries `mycontext statusline`, which
+ * is no longer the string this command writes. It is still ours, and the whole
+ * question is which set it lands in: recognised (a no-op that explains itself)
+ * or unrecognised (chained to, forever).
+ *
+ * `uninstall` is asserted in the same test because it is the other half of the
+ * same predicate: a value it does not recognise as ours it REFUSES to touch,
+ * so a user who installed before this fix could not get his file cleaned up.
+ */
+test('a bridge under the OLD spelling is ours: install no-ops and explains, uninstall still works', () => {
+  const dir = project();
+  try {
+    const file = settingsWith(dir, 'mycontext statusline');
+    const before = readFileSync(file, 'utf8');
+
+    const { code, out } = run(['statusline', 'install', '--settings', file, '--yes'], dir);
+    assert.equal(code, 0, out);
+    assert.match(out, /already/i, 'an older install of this same bridge is not a foreign setting');
+    assert.match(
+      out, /PATH/,
+      'and it must say WHY that spelling never starts, or the user reads "already installed" as '
+      + '"working"',
+    );
+    assert.equal(readFileSync(file, 'utf8'), before, 'nothing may be written over our own entry');
+    assert.equal(existsSync(SAVED_COPY), false, 'our own value must never be saved as "previous"');
+
+    const removed = run(['statusline', 'uninstall', '--settings', file, '--yes'], dir);
+    assert.equal(removed.code, 0, removed.out);
+    const after = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    assert.equal('statusLine' in after, false, 'uninstall refused to clean up its own old entry');
+    assert.equal(after.model, 'opus', 'an unrelated key was lost');
+  } finally {
+    removeTree(dir);
+  }
 });
 
 test('installing over a bridge spelled another way is REFUSED — it would delegate to itself forever', () => {

@@ -1,4 +1,4 @@
-import { statSync } from 'node:fs';
+import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { auditLogPath, auditSegments, parseAudit, type AuditRecord } from './audit.ts';
 import { readCompleteLines } from './audit-db.ts';
 
@@ -39,6 +39,97 @@ export interface TailResult {
   resync: boolean;
 }
 
+// --- The bounded backlog (plan:walk seq:52) ---------------------------------
+//
+// **Why this exists.** A live tail that is empty is UNMEASURED — it means
+// "nothing has been appended since you opened this", never "this corpus has no
+// records" — and the owner read an empty Watch feed as the second over a corpus
+// holding 2,076 records. `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+// is the standard that reading breaks, and neither half of it can be satisfied
+// from a stream that starts at EOF: there is nothing to draw, and nothing that
+// knows whether the emptiness was measured.
+//
+// **Why it is an OPTION and not the new default.** Two callers construct an
+// `AuditTail` and both depend on the current behaviour. `streamHandler`
+// (`ui/watch-model.ts`) promises "what has landed since you connected", and
+// `test/ui/server-e2e.test.ts` holds that promise as a contract — *"the records
+// already in the log when it connected must NOT [arrive], because `AuditTail`
+// starts at the current EOFs precisely so an audit view never shows an entry
+// twice"*. Changing the constructor would start replaying history to every one
+// of them, silently, which is the same defect pointed the other way. So a
+// caller ASKS, and a caller that does not ask gets byte-for-byte what it got
+// before.
+//
+// **Why it is BOUNDED and why the bound is declared.** 2,076 records into a
+// live view is not a fix. `REQ-every-list-and-table-declares-what-leaves-it-and-when-and`
+// is hard: a surface that truncates and says nothing cannot be told apart from
+// one that is showing everything. `complete` is what says the difference, and
+// it is only ever `true` when the scan actually reached the beginning of the
+// log — so "all 7 records" is a MEASUREMENT and never an assumption.
+//
+// **Why the boundary is a record count and not a cursor — and how "show
+// earlier" lands on it later.** `REQ-a-bounded-list-gives-the-reader-a-way-to-reach-what-it-held`
+// was filed today and is not built here. What this returns is shaped so it does
+// not have to be undone: the caller receives records in log order with the
+// OLDEST it was given first, and that record's own `at` is the boundary. The
+// query surface already takes `until` (`/api/ask/audit`, `parseWhen`), so
+// "show earlier" is that timestamp handed to an endpoint that exists, not a
+// second cursor vocabulary invented here. A byte offset would have been the
+// cheaper cursor and is deliberately not exposed: it is meaningless across the
+// rotation this file already resyncs on.
+
+/** What a caller asks of a tail beyond "follow the log". */
+export interface TailOptions {
+  /**
+   * How many records ALREADY in the log to replay when the tail opens. `0` —
+   * the default — is the pure live tail every existing caller gets.
+   */
+  backlog?: number;
+  /**
+   * The bytes the backwards scan may read. Defaults to `BACKLOG_SCAN_BYTES`;
+   * a caller sets it only to test the exhausted-bound branch.
+   */
+  scanBytes?: number;
+}
+
+/** What was already in the log when a tail opened, and what that answer cost. */
+export interface TailBacklog {
+  /** OLDEST FIRST, at most `cap` — log order, so a screen can append in one direction. */
+  records: AuditRecord[];
+  /** What was asked for. Disclosed so a reader is never guessing at the bound. */
+  cap: number;
+  /**
+   * **The whole of the declaration.** `true` means the scan reached the
+   * beginning of the log: `records` is then the WHOLE log and nothing was held
+   * back — including the empty-log case, where it is what turns a blank feed
+   * into a measured zero. `false` means records exist that are not here, and a
+   * surface drawing this must say so.
+   */
+  complete: boolean;
+  /** The scan bound in bytes, disclosed the way `/api/watch/spills` discloses `recordWindow`. */
+  scanBytes: number;
+}
+
+/**
+ * How far back the opening scan will read, per tail.
+ *
+ * Measured on this repository's own log on 2026-08-27: 672,876 bytes over 2,076
+ * records is ~324 bytes each, so this window holds ~800 records — forty times
+ * the list bound the UI asks for. `complete` is therefore decided by how long
+ * the log actually is in every corpus small enough for the answer to matter,
+ * and the bound only bites where the honest answer is "there is more" anyway.
+ *
+ * Weighed against reading each segment whole to report an EXACT total the way
+ * `boundedList` does: a segment rotates at 8 MB (`core/audit.ts` ·
+ * `export const AUDIT_MAX_BYTES = 8 * 1024 * 1024;`), so an exact total costs a
+ * full pass over every segment on every stream open, on the one route that is
+ * held open indefinitely and must never take a lock or a long read. The
+ * project's own precedent for the trade is `SPILL_RECORD_WINDOW` and
+ * `RATIO_ROLE_WINDOW`: bound the read, and DISCLOSE the window rather than
+ * claim a total nobody measured.
+ */
+export const BACKLOG_SCAN_BYTES = 256 * 1024;
+
 function sizeOf(file: string): number {
   try {
     return statSync(file).size;
@@ -47,13 +138,123 @@ function sizeOf(file: string): number {
   }
 }
 
+/**
+ * The COMPLETE lines of `file` in `[from, end)`, as text.
+ *
+ * Two cuts, and each one is a different partial record. The tail cut is
+ * `readCompleteLines`' own rule: `end` is an EOF captured while a writer may
+ * have been mid-append, so anything after the last newline is a torn record and
+ * is left alone. The HEAD cut is this function's own: a slice that does not
+ * start at byte 0 begins in the middle of whatever record spans that offset, so
+ * everything up to the first newline is dropped. Reading it would hand
+ * `parseAudit` a fragment and turn a bounded scan into a refusal.
+ *
+ * Line NUMBERS in anything `parseAudit` then throws are relative to the slice
+ * rather than to the file. Stated rather than corrected: the message names the
+ * file and the reason, which is what a reader acts on, and re-deriving absolute
+ * line numbers would mean counting newlines from 0 — the whole cost the bound
+ * exists to avoid.
+ */
+function readTailSlice(file: string, from: number, end: number): string {
+  if (end <= from) return '';
+  let fd: number;
+  try {
+    fd = openSync(file, 'r');
+  } catch {
+    return ''; // rotated away under us; `poll()` reports the divergence
+  }
+  try {
+    const buf = Buffer.alloc(end - from);
+    const read = readSync(fd, buf, 0, buf.length, from);
+    let slice = buf.subarray(0, read);
+    if (from > 0) {
+      const first = slice.indexOf(0x0a);
+      if (first === -1) return '';
+      slice = slice.subarray(first + 1);
+    }
+    const last = slice.lastIndexOf(0x0a);
+    if (last === -1) return '';
+    return slice.subarray(0, last + 1).toString('utf8');
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export class AuditTail {
   #root: string;
   #offsets = new Map<string, number>();
+  #backlogCap: number;
+  #scanBytes: number;
+  #backlog: TailBacklog | null = null;
 
-  constructor(root: string) {
+  constructor(root: string, options: TailOptions = {}) {
     this.#root = root;
+    this.#backlogCap = options.backlog ?? 0;
+    this.#scanBytes = options.scanBytes ?? BACKLOG_SCAN_BYTES;
     for (const file of auditSegments(root)) this.#offsets.set(file, sizeOf(file));
+  }
+
+  /**
+   * What was already in the log when this tail opened — the records BEFORE the
+   * offsets the constructor captured, so nothing here can also arrive on
+   * `poll()`. The boundary between history and live is exactly those offsets,
+   * which is what lets a screen draw the two apart.
+   *
+   * **Computed on first call, not in the constructor, and memoized.** It reads
+   * files and `parseAudit` REFUSES a damaged complete line — the audit read
+   * contract, which this file's header already binds `poll()` to. A constructor
+   * that throws would take the stream down before its response head was
+   * written, turning a disclosed `fault` event into a bare 500; deferring it
+   * lets the route disclose it on-stream exactly as it discloses a damaged line
+   * found later. It is safe to defer because the boundary is the offsets, and
+   * those were captured at construction.
+   */
+  backlog(): TailBacklog {
+    if (this.#backlog === null) this.#backlog = this.#readBacklog();
+    return this.#backlog;
+  }
+
+  #readBacklog(): TailBacklog {
+    const cap = this.#backlogCap;
+    const scanBytes = this.#scanBytes;
+    // A tail that was never asked to look did not measure an empty log.
+    // `complete: false` here is load-bearing: `true` would let a screen draw
+    // "all 0 records" over a corpus with thousands in it.
+    if (cap <= 0) return { records: [], cap, complete: false, scanBytes };
+
+    // The constructor's OWN segment list, not a fresh `auditSegments()` call:
+    // these are the files whose EOFs are the boundary, and a segment that
+    // appeared since then belongs to `poll()`'s divergence check, not here.
+    const files = [...this.#offsets.keys()];
+    let budget = scanBytes;
+    let reachedStart = true;
+    const collected: AuditRecord[] = [];
+    for (let i = files.length - 1; i >= 0; i -= 1) {
+      // `> cap`, not `>= cap`: stopping AT the cap would leave "is there more?"
+      // unanswered, and that question is the declaration. One record past the
+      // cap is proof of a remainder and costs one segment read.
+      if (collected.length > cap || budget <= 0) {
+        reachedStart = false;
+        break;
+      }
+      const file = files[i]!;
+      const end = this.#offsets.get(file) ?? 0;
+      if (end <= 0) continue; // empty, or gone since construction
+      const from = Math.max(0, end - budget);
+      budget -= end - from;
+      const text = readTailSlice(file, from, end);
+      if (text !== '') collected.unshift(...parseAudit(text, file));
+      if (from > 0) {
+        reachedStart = false; // the bound cut this segment short
+        break;
+      }
+    }
+    return {
+      records: collected.slice(Math.max(0, collected.length - cap)),
+      cap,
+      complete: reachedStart && collected.length <= cap,
+      scanBytes,
+    };
   }
 
   #resetToEof(files: string[]): void {

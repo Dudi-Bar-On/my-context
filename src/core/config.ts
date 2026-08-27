@@ -205,11 +205,24 @@ export function agentEditsFor(config: Config, type: string): AgentEdits {
 }
 
 /**
- * Whether `mycontext ui` is PERMITTED to run — and nothing else. Resolving
- * this key opens no port, spawns no process and changes no behaviour anywhere
- * in the product; the web server starts when a user types the command and at
- * no other moment. `enabled` gates permission, not process, and a config that
- * says `true` describes a machine on which nothing is listening.
+ * Whether `mycontext ui` is PERMITTED to run, and — since 2026-08-27 — WHERE a
+ * hook may put it back up.
+ *
+ * **What this comment used to say, and why it no longer says it.** It read
+ * "Resolving this key opens no port, spawns no process and changes no
+ * behaviour anywhere in the product; the web server starts when a user types
+ * the command and at no other moment." That was true and is now false in both
+ * halves, so it is replaced rather than left standing beside a contradiction.
+ * `enabled` had been validated here, refused when malformed, rendered on the
+ * Configure screen and consulted by NOTHING that decides anything; the spec
+ * that changed it cites this very sentence as the evidence
+ * (`2026-08-27-the-ui-server-outlives-the-session-design.md` §2). Its first
+ * enforcement site is `cmdUi` (`src/cli/commands/ui.ts`), which refuses to
+ * serve when this says `false`, before it binds.
+ *
+ * Resolving the key still starts nothing by itself — a `Config` is a value,
+ * and reading one has never had an effect. What changed is that two things now
+ * READ it, and one of them spawns a process.
  *
  * An OBJECT rather than the bare boolean `"ui": false`, and the reason is the
  * shape of what comes next rather than what is here today. A boolean has one
@@ -223,9 +236,52 @@ export function agentEditsFor(config: Config, type: string): AgentEdits {
  * the object now means the growth is additive and no already-written file is
  * ever wrong. It also matches the two other structured keys — `budgets` and
  * `categories` are objects, and for the same reason.
+ *
+ * **That growth arrived on 2026-08-27, and it was a port.** `port` below is the
+ * "first UI setting that is not a yes/no" the paragraph above predicted, added
+ * with no contract break and no already-written `config.json` made wrong —
+ * which is the whole return on having chosen an object when one boolean was
+ * all anybody needed.
  */
 export interface UiConfig {
   enabled: boolean;
+
+  /**
+   * The port a HOOK may put this server back up on, and `null` — absent — means
+   * the whole upkeep mechanism is OFF. Spec §6.
+   *
+   * ── WHY THE KEY EXISTS AT ALL ─────────────────────────────────────────
+   *
+   * **A hook cannot use port 0.** `mycontext ui`'s default port is 0, meaning
+   * "ask the operating system for a free one", which is right for a person who
+   * is about to be handed the URL and wrong for everything else: an ephemeral
+   * port is a URL nobody can bookmark, and the point of the upkeep feature is a
+   * server that is there when the owner LOOKS. So the mechanism needs a number
+   * that is the same tomorrow, and there is none this product could pick.
+   *
+   * ── WHY ABSENT IS OFF, WHICH IS A SAFETY CALL AND NOT A DEFAULT ───────
+   *
+   * This runs the opposite way to `enabled` beside it, and the asymmetry is the
+   * same one `handover` documents: `enabled` grants a permission and costs a
+   * user nothing, while the only thing that reads THIS key spawns a background
+   * server. A plugin that starts one on every machine it is installed on,
+   * because somebody installed it, is not acceptable. Setting `ui.port` is how
+   * a user turns the mechanism on, per workspace, as a positive act — and
+   * `enabled: false` then turns it off again WITHOUT unsetting the port, which
+   * is what a disable switch beside an address is for.
+   *
+   * `null` rather than a `DEFAULT_UI` without the field, because the two states
+   * must be distinguishable by reading the resolved value: `?? 0` on a missing
+   * field is the ephemeral port this key exists to replace, arrived at by
+   * accident.
+   *
+   * ── WHAT IT DOES NOT DECIDE ───────────────────────────────────────────
+   *
+   * Not the port `mycontext ui` binds when a person runs it with `--port`. The
+   * flag wins when given; this is the fallback, and it is what a hook — which
+   * has no command line to read — uses instead.
+   */
+  port: number | null;
 }
 
 /**
@@ -238,8 +294,13 @@ export interface UiConfig {
  * user wrote the key and said no". Only the second is a refusal, and only the
  * second is something a `mycontext ui` command may report back as the user's
  * own choice.
+ *
+ * `port` is the other direction in the same object, and deliberately so: `null`
+ * is OFF, because the reader of that field spawns a process. The two live
+ * together because they are two halves of one question — `enabled` says
+ * whether, `port` says where — and neither is derivable from the other.
  */
-export const DEFAULT_UI: UiConfig = { enabled: true };
+export const DEFAULT_UI: UiConfig = { enabled: true, port: null };
 
 /**
  * Which handover document this project keeps, and how much of it a session may
@@ -878,8 +939,14 @@ export const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs'
  * the moment a `port` default appeared while the value check below still only
  * knew about `enabled` — a setting accepted and dropped, the exact failure
  * this list exists to stop. Extend this list and `requireUi` together.
+ *
+ * **That example stopped being hypothetical on 2026-08-27**, when `port`
+ * arrived with exactly the `DEFAULT_UI` entry the paragraph above describes.
+ * It was added HERE and in `requireUi` in the same change, which is the whole
+ * of what keeps `{"ui": {"port": "abc"}}` refused rather than accepted and
+ * dropped. The pairing is not a convention; it is the check.
  */
-const UI_KEYS = ['enabled'];
+const UI_KEYS = ['enabled', 'port'];
 
 /**
  * The `ui` section: whether `mycontext ui` may run at all.
@@ -935,6 +1002,39 @@ function requireUi(raw: unknown): UiConfig {
       );
     }
     ui.enabled = raw.enabled;
+  }
+
+  // **`0` is refused with the out-of-range values rather than read as "any free
+  // port", and that is the one decision in this check.** The CLI's `--port`
+  // flag accepts 0 and means exactly that, so the two surfaces disagree on
+  // purpose: a person passing `--port 0` is standing at the terminal and is
+  // about to be handed the URL, while the only reader of THIS key is a hook,
+  // which has nowhere to hand one. A config naming 0 would read as configured
+  // and produce a liveness record pointing at a port that was never bound —
+  // configured in form, silently useless in fact.
+  //
+  // Refused BY NAME rather than clamped or skipped, for `requireUi`'s standing
+  // reason: the failure direction is one-way. A `port` accepted and dropped
+  // leaves a user who asked for a server that is always there with one that is
+  // never there, and no symptom anywhere except its absence.
+  //
+  // `null` is refused with the rest, and it is the near-miss worth naming: the
+  // RESOLVED value of an absent key is `null`, so a user round-tripping what
+  // they saw would write it. There is one spelling of "off" and it is removing
+  // the key — the same argument that refuses `"ui": false` as sugar above.
+  if (raw.port !== undefined) {
+    if (
+      typeof raw.port !== 'number' || !Number.isInteger(raw.port)
+      || raw.port < 1 || raw.port > 65535
+    ) {
+      throw new Error(
+        `my_context: ui.port is ${JSON.stringify(raw.port) ?? String(raw.port)}. Expected a ` +
+        `whole number from 1 to 65535, or no "port" key at all to leave the background ` +
+        `server off. Nothing was loaded — 0 is refused with the rest because it means ` +
+        `"any free port", and a port nobody chose is a URL nobody can bookmark.`,
+      );
+    }
+    ui.port = raw.port;
   }
   return ui;
 }

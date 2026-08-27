@@ -355,7 +355,15 @@ test('install without --yes prints both settings and WRITES NOTHING', () => {
     const { code, out } = run(['statusline', 'install', '--settings', file], dir);
     assert.equal(code, 0);
     assert.match(out, /bash my-line\.sh/, 'the existing setting must be shown');
-    assert.match(out, /mycontext statusline/, 'the replacement must be shown');
+    // Against INSTALLED.command itself, not against a substring that also
+    // appears in the surrounding prose: the installed value stopped being
+    // `mycontext statusline` on 2026-08-27 (that name is not on PATH), and a
+    // /mycontext statusline/ match would have gone on passing by finding the
+    // sentence about `uninstall` instead of the replacement it is checking.
+    assert.ok(
+      out.includes(JSON.stringify(INSTALLED)),
+      `the replacement must be shown verbatim; got:\n${out}`,
+    );
     assert.match(out, /--yes/, 'the refusal must say how to consent');
     assert.equal(readFileSync(file, 'utf8'), before, 'the settings file was written');
     assert.equal(existsSync(path.join(GLOBAL_DIR, 'statusline-replaced.json')), false);

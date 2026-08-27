@@ -84,3 +84,119 @@ test('an empty workspace (no .audit yet) polls quietly until the first record', 
     assert.deepEqual(tail.poll().records.map((r) => r.op), ['create']);
   } finally { removeTree(dir); }
 });
+
+// --- The bounded backlog (plan:walk seq:52) ---------------------------------
+//
+// The owner's report was *"the audit stream is blank without records"*, over a
+// corpus holding 2,076 of them. A live tail that starts at the current EOFs is
+// UNMEASURED when it is empty — it means "nothing since you opened this", not
+// "no records" — and `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+// is the standard that reading broke.
+//
+// The backlog is therefore OPT-IN and every test above still asserts the
+// default: `AuditTail` is constructed by the stream route AND by
+// `test/ui/server-e2e.test.ts`'s "not what was already there" contract, so a
+// changed default would silently start replaying history to a caller that
+// asked for a tail. What the option adds is a bound, a boundary, and a claim
+// about what it held back.
+
+test('the backlog is opt-in: a default tail measures nothing and replays nothing', () => {
+  const dir = root();
+  try {
+    recordAudit(dir, { kind: 'mutation', op: 'create', origin: 'human', itemId: 'RULE-a', fields: ['body'] });
+    const tail = new AuditTail(dir);
+    const opening = tail.backlog();
+    assert.deepEqual(opening.records, []);
+    assert.equal(opening.cap, 0);
+    // NOT `true`. A tail that was never asked to look did not measure an empty
+    // log, and saying `complete` here would let a screen draw "all 0 records"
+    // over a corpus with 2,076 in it — the defect, restated one layer down.
+    assert.equal(opening.complete, false);
+  } finally { removeTree(dir); }
+});
+
+test('a backlog replays the last N records, oldest first, and declares that it held more back', () => {
+  const dir = root();
+  try {
+    for (const id of ['a', 'b', 'c', 'd', 'e']) {
+      recordAudit(dir, { kind: 'mutation', op: 'create', origin: 'human', itemId: `RULE-${id}`, fields: ['body'] });
+    }
+    const tail = new AuditTail(dir, { backlog: 3 });
+    const opening = tail.backlog();
+    assert.deepEqual(opening.records.map((r) => r.itemId), ['RULE-c', 'RULE-d', 'RULE-e']);
+    assert.equal(opening.cap, 3);
+    // The whole of requirement 2: a surface that truncates and says nothing
+    // cannot be told apart from one showing everything.
+    assert.equal(opening.complete, false);
+  } finally { removeTree(dir); }
+});
+
+test('a log shorter than the cap is COMPLETE — nothing was held back and it says so', () => {
+  const dir = root();
+  try {
+    recordAudit(dir, { kind: 'mutation', op: 'create', origin: 'human', itemId: 'RULE-a', fields: ['body'] });
+    recordAudit(dir, { kind: 'mutation', op: 'update', origin: 'human', itemId: 'RULE-a', fields: ['title'] });
+    const opening = new AuditTail(dir, { backlog: 20 }).backlog();
+    assert.deepEqual(opening.records.map((r) => r.op), ['create', 'update']);
+    assert.equal(opening.complete, true);
+  } finally { removeTree(dir); }
+});
+
+test('an empty log is a MEASURED zero: no records, and complete says the scan reached the start', () => {
+  const dir = root();
+  try {
+    const opening = new AuditTail(dir, { backlog: 20 }).backlog();
+    assert.deepEqual(opening.records, []);
+    // This is the fact the screen needs to say "this corpus has no audit log at
+    // all" rather than "nothing since you opened this". Without it the two
+    // empties are one blank.
+    assert.equal(opening.complete, true);
+  } finally { removeTree(dir); }
+});
+
+test('the backlog is not re-emitted by poll: history and live never overlap', () => {
+  const dir = root();
+  try {
+    recordAudit(dir, { kind: 'mutation', op: 'create', origin: 'human', itemId: 'RULE-a', fields: ['body'] });
+    const tail = new AuditTail(dir, { backlog: 20 });
+    assert.deepEqual(tail.backlog().records.map((r) => r.op), ['create']);
+    assert.deepEqual(tail.poll(), { records: [], resync: false });
+    recordAudit(dir, { kind: 'mutation', op: 'update', origin: 'human', itemId: 'RULE-a', fields: ['title'] });
+    assert.deepEqual(tail.poll().records.map((r) => r.op), ['update']);
+  } finally { removeTree(dir); }
+});
+
+test('the backlog reads across a rotated segment, oldest first', () => {
+  const dir = root();
+  try {
+    recordAudit(dir, { kind: 'mutation', op: 'create', origin: 'human', itemId: 'RULE-a', fields: ['body'] });
+    renameSync(auditLogPath(dir), path.join(auditDir(dir), 'audit.20260816T000000000Z-1.jsonl'));
+    recordAudit(dir, { kind: 'mutation', op: 'update', origin: 'human', itemId: 'RULE-a', fields: ['title'] });
+    const opening = new AuditTail(dir, { backlog: 20 }).backlog();
+    assert.deepEqual(opening.records.map((r) => r.op), ['create', 'update']);
+    assert.equal(opening.complete, true);
+  } finally { removeTree(dir); }
+});
+
+test('a damaged line inside the backlog window refuses, exactly as poll does', () => {
+  const dir = root();
+  try {
+    recordAudit(dir, { kind: 'hook', op: 'deny', sessionId: 's1', hook: 'PreToolUse' });
+    appendFileSync(auditLogPath(dir), 'not json\n');
+    const tail = new AuditTail(dir, { backlog: 20 });
+    assert.throws(() => tail.backlog(), /cannot be trusted/);
+  } finally { removeTree(dir); }
+});
+
+test('the backlog bounds the bytes it will scan, and an exhausted bound is never called complete', () => {
+  const dir = root();
+  try {
+    // One record is ~200 bytes; a 1-byte scan window cannot reach the start of
+    // any log that has one, which is the condition `complete` exists to
+    // distinguish from "the log really is that short".
+    recordAudit(dir, { kind: 'mutation', op: 'create', origin: 'human', itemId: 'RULE-a', fields: ['body'] });
+    const opening = new AuditTail(dir, { backlog: 20, scanBytes: 1 }).backlog();
+    assert.equal(opening.complete, false);
+    assert.equal(opening.scanBytes, 1);
+  } finally { removeTree(dir); }
+});

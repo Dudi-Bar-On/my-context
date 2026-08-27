@@ -22,10 +22,15 @@
  *     its sentences and hides three, cycling them on click — a demo
  *     affordance for a page with no stream behind it. Here the state is the
  *     stream's: `watch.shown` while records are listed, `watch.streamWaiting`
- *     once connected with nothing yet, `watch.resync` after a rotation, and
- *     `watch.streamFault` when the stream refuses to continue. The region is
- *     `aria-live="polite"` and carries no `title`, exactly as the mockup
- *     says: a tooltip on a live region is read out with the live text.
+ *     once connected with nothing yet, `watch.emptyLog` when the log itself was
+ *     read to its beginning and holds nothing, `watch.resync` after a rotation,
+ *     and `watch.streamFault` when the stream refuses to continue. **The
+ *     difference between the second and the third is the owner's whole report**
+ *     — "nothing since you opened this" and "this corpus has no audit log" were
+ *     one blank screen, and `sayShown` below is where they became two
+ *     sentences. The region is `aria-live="polite"` and carries no `title`,
+ *     exactly as the mockup says: a tooltip on a live region is read out with
+ *     the live text.
  *
  * ── WHERE EACH PART COMES FROM ────────────────────────────────────────────
  *
@@ -42,7 +47,12 @@
  *   - **The live feed** is `GET /api/watch/stream` through `ctx.stream()`,
  *     added to the shell by this task. It reads the JSONL directly and so is
  *     the ONLY part of this screen that still answers when the projection is
- *     stale.
+ *     stale — which, since `plan:walk seq:52`, is why it also carries a
+ *     BOUNDED REPLAY of what was already in the log. Both other sources on this
+ *     screen read the projection, so a corpus whose projection was never built
+ *     or has fallen behind its log had nothing left to draw the feed from, and
+ *     an empty live tail was read as "this corpus has no records". See
+ *     `STREAM_BACKLOG` below, and `applyStreamBacklog`.
  *   - **The budget** the token bar is drawn against is the sum of the resolved
  *     tier budgets from `GET /api/config`; see `watch.voidn`'s note below.
  *
@@ -80,7 +90,7 @@
  * through CSSOM here, and only with logical properties.
  */
 import { dedupeKey, describeRecord, describeStreamEvent } from '/lib/viewmodel.js';
-import { el, errorNote, linkId, mono, num, screenHead, spaced } from '/screens/parts.js';
+import { BOUND_CAP_LIST, el, errorNote, linkId, mono, num, screenHead, spaced } from '/screens/parts.js';
 
 /** The mockup's pulse: 120 columns of ten seconds each, in a 900x34 box. */
 const PULSE_W = 900;
@@ -93,6 +103,28 @@ const PULSE_GUTTER = 1.4;
 /** How much history the screen opens with, and the most it will hold. */
 const BACKLOG = 50;
 const FEED_CAP = 200;
+
+/**
+ * How much history the STREAM replays on connect — `plan:walk seq:52`, the
+ * owner's *"the audit stream is blank without records"*.
+ *
+ * **This is a second backlog and it is not redundant with `BACKLOG` above.**
+ * That one is `/api/ask/audit`, which reads the PROJECTION; this one is the
+ * JSONL, read by `AuditTail`. They are the same records whenever the projection
+ * is current — `remember()` dedupes the overlap on the record's whole
+ * serialized self — and they diverge in exactly the two states that produced
+ * the report: a projection that was never built answers 200 with no records at
+ * all, and a projection that is behind its log answers 503. In both the query
+ * surface has nothing to give and the JSONL has 2,076 records.
+ *
+ * **The number is `BOUND_CAP_LIST` and is not a new one.** Five other bounded
+ * surfaces in this app already cap at it, and a sixth bound invented here would
+ * be a sixth thing for the product to mean by "some". The whole log is NOT
+ * replayed: 2,076 records into a live view is the same defect pointed the other
+ * way, which is why the stream declares what it held back rather than dropping
+ * it silently.
+ */
+const STREAM_BACKLOG = BOUND_CAP_LIST;
 
 /**
  * The chip a record kind wears, transcribed from the mockup's own `renderAudit`
@@ -321,6 +353,24 @@ export async function render(root, ctx) {
   table.append(head, body);
   plate.append(table);
 
+  // --- What the replay held back -------------------------------------------
+  //
+  // `REQ-every-list-and-table-declares-what-leaves-it-and-when-and`. Placed
+  // where `boundedList` places its own bound line — under the table, where the
+  // reader reaches the end of the list — and built as the same `p.small`,
+  // because a second spelling of "there is more" is how a product comes to have
+  // two. It carries NO "show earlier" control: `REQ-a-bounded-list-gives-the-reader-a-way-to-reach-what-it-held`
+  // was filed today and is not this task. What is here so that it does not have
+  // to be undone is the BOUNDARY — the oldest replayed record's own `at`, which
+  // `/api/ask/audit` already accepts as `until`. "Show earlier" is that
+  // parameter, not a rewrite.
+  //
+  // Hidden until the stream's opening frame answers: a bound line drawn over a
+  // list nothing has measured would be the defect one layer up.
+  const feedBound = el('p', 'small');
+  feedBound.id = 'wbound';
+  feedBound.hidden = true;
+
   const feedFault = errorNote('');
   feedFault.hidden = true;
 
@@ -332,19 +382,41 @@ export async function render(root, ctx) {
   // --- The token-void note --------------------------------------------------
   const voidNote = el('p', 'small');
 
-  card.append(pulse, pulseFault, pulseNote, filters, plate, feedFault, alive, voidNote);
+  card.append(pulse, pulseFault, pulseNote, filters, plate, feedBound, feedFault, alive, voidNote);
 
   // ── STATE ────────────────────────────────────────────────────────────────
   /** Newest first, which is the order the mockup's own table reads in. */
   const records = [];
   /** Full serialized identity, so the stream and the backlog overlap once. */
   const seen = new Set();
+  /**
+   * The records that ARRIVED WHILE THE READER WATCHED, by identity.
+   *
+   * Requirement 3 of the fix: a backlog that cannot be told from the live feed
+   * only relocates the confusion the blank feed caused. Held as a set of the
+   * record objects themselves rather than as a flag on each record, because a
+   * record is a server object this screen renders and must not annotate — a
+   * field added here would travel into `dedupeKey`, which keys on the record's
+   * whole serialized self, and the same record arriving twice would stop
+   * deduping.
+   */
+  const live = new Set();
   /** The kinds the filter row offers, in the order they were learned. */
   const kinds = [];
   let selected = 'all';
   let budget = null;
   /** Once the stream has refused, nothing else will arrive and nothing reconnects. */
   let faulted = false;
+  /** True once the stream's opening frame has been read — see `sayShown`. */
+  let connected = false;
+  /**
+   * Whether the LOG itself is empty, or `null` while nobody has measured.
+   *
+   * The three values are three different sentences and the whole of what
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` asks for
+   * here. Only a backlog that reached the beginning of the log may set `true`.
+   */
+  let logEmpty = null;
 
   const visible = () => (selected === 'all' ? records : records.filter((r) => r.kind === selected));
 
@@ -352,9 +424,40 @@ export async function render(root, ctx) {
     alive.replaceChildren(...ctx.t(key, subs));
   }
 
+  /**
+   * **WHICH empty this is, said out loud** — the half of the owner's report
+   * that a backlog alone does not fix.
+   *
+   * An empty feed used to mean one thing on screen and three things in fact.
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` is broken
+   * by any of them rendering as the others:
+   *
+   *   - the log was READ TO ITS BEGINNING and holds nothing — a MEASURED zero,
+   *     and the only state entitled to say "this corpus has no audit log";
+   *   - the stream answered and could not measure the log — "nothing since you
+   *     connected", which is what `watch.streamWaiting` has always said and is
+   *     an UNMEASURED emptiness;
+   *   - nothing has been measured at all yet, because no read has resolved, or
+   *     a filter is hiding rows that exist. `watch.shown` is exactly true here:
+   *     it counts what is ON SCREEN, which is what the key says, and the
+   *     pressed filter button beside it names the narrowing.
+   */
   function sayShown() {
     if (faulted) return;
-    say('watch.shown', { records: visible().length });
+    const shown = visible().length;
+    if (shown > 0) {
+      say('watch.shown', { records: shown });
+      return;
+    }
+    if (logEmpty === true) {
+      say('watch.emptyLog');
+      return;
+    }
+    if (connected && logEmpty === null) {
+      say('watch.streamWaiting');
+      return;
+    }
+    say('watch.shown', { records: shown });
   }
 
   /**
@@ -367,9 +470,17 @@ export async function render(root, ctx) {
     const key = dedupeKey(record);
     if (seen.has(key)) return false;
     seen.add(key);
-    if (newest) records.unshift(record);
-    else records.push(record);
-    while (records.length > FEED_CAP) records.pop();
+    if (newest) {
+      records.unshift(record);
+      live.add(record);
+    } else {
+      records.push(record);
+    }
+    // The dropped record leaves `live` with it. `seen` deliberately keeps its
+    // key — that is what stops a re-arriving record from being drawn twice —
+    // but `live` is asked "is this ON SCREEN and new", and a set that only ever
+    // grew would answer for records the feed no longer holds.
+    while (records.length > FEED_CAP) live.delete(records.pop());
     return true;
   }
 
@@ -547,10 +658,58 @@ export async function render(root, ctx) {
     return row;
   }
 
+  /**
+   * **The line between what you are watching and what was already there.**
+   *
+   * A backlog that a reader cannot tell from the live feed does not fix the
+   * defect — it moves it: the screen stops being blank and starts being
+   * ambiguous about which of its rows just happened. So the two halves are
+   * separated by a rule across the whole feed, and the rule is LABELLED.
+   *
+   * **It reuses `tr.regime`, and that reuse is a decision rather than a
+   * shortcut.** The stylesheet owns exactly one full-width feed boundary and
+   * describes it in those terms — *"A focus change is not a row. It is a regime
+   * boundary"* — with `.rw` and `.ln` as its parts. Two alternatives were
+   * weighed and both cost a new CSS rule, which this task may not add: marking
+   * each live row with the shell's `.live` dot fails because `.live` sizes
+   * itself with `inline-size`/`block-size`, which do nothing on an inline
+   * element inside a `<td>` and would need a flex wrapper rule; and a class of
+   * its own needs a rule by definition. What the reuse costs is that two
+   * different boundaries wear one hue — mitigated by the sentence, which is
+   * keyed and translated, and by there being at most ONE of these on a feed.
+   *
+   * No glyph, unlike `regimeRow`: its `◇` is the regime mark, and borrowing it
+   * would make the two boundaries identical at a glance instead of merely
+   * similar.
+   */
+  function historyBoundary() {
+    const row = el('tr', 'regime');
+    const cell = el('td');
+    cell.colSpan = 3;
+    const wrap = el('div', 'rw');
+    const text = el('span');
+    text.append(...ctx.t('watch.historyLine'));
+    wrap.append(text, el('span', 'ln'));
+    cell.append(wrap);
+    row.append(cell);
+    return row;
+  }
+
   function renderRows() {
     const rows = visible();
     const built = document.createDocumentFragment();
-    for (const record of rows) built.append(rowFor(record));
+    // Drawn only when there is something on BOTH sides of it. A rule under
+    // nothing, or over nothing, separates nothing and is one more mark for a
+    // reader to account for.
+    let pending = rows.some((record) => live.has(record))
+      && rows.some((record) => !live.has(record));
+    for (const record of rows) {
+      if (pending && !live.has(record)) {
+        built.append(historyBoundary());
+        pending = false;
+      }
+      built.append(rowFor(record));
+    }
     body.replaceChildren(built);
     return rows.length;
   }
@@ -717,6 +876,46 @@ export async function render(root, ctx) {
     renderRows();
   }
 
+  // ── THE STREAM'S OWN BACKLOG ─────────────────────────────────────────────
+  //
+  // What was already in the JSONL when the stream opened, carried on the
+  // `hello` frame. This is the half of the fix that answers the owner directly:
+  // the query surface above reads the PROJECTION and has nothing to give when
+  // the projection was never built (200, no records) or is behind its log (503)
+  // — and both of those were true of the corpus he was looking at.
+  //
+  // Applied as HISTORY (`remember(record, false)`), never as live: these
+  // records predate the connection, and calling them live would put a boundary
+  // in the wrong place and a lie in the live region.
+  function applyStreamBacklog(opening) {
+    const replayed = Array.isArray(opening.records) ? opening.records : [];
+    // Oldest first off the wire and newest-first on screen, so it is walked
+    // backwards rather than reversed into a second array — `applyBacklog`'s
+    // own rule, kept identical so the two backlogs cannot disagree about order.
+    for (let i = replayed.length - 1; i >= 0; i -= 1) {
+      remember(replayed[i], false);
+      learnKinds([replayed[i].kind]);
+    }
+    // `complete` is a MEASUREMENT — the tail's scan reached the beginning of
+    // the log — so an empty complete backlog is the one thing entitled to say
+    // this corpus has no audit log. Anything less leaves `logEmpty` null and
+    // the live region says the unmeasured sentence instead.
+    logEmpty = opening.complete === true && replayed.length === 0;
+    if (replayed.length === 0) {
+      // Nothing to bound. The empty state is one sentence in the live region,
+      // not two saying the same thing in different words.
+      feedBound.replaceChildren();
+      feedBound.hidden = true;
+    } else {
+      feedBound.replaceChildren(...ctx.t(
+        opening.complete === true ? 'watch.backlogAll' : 'watch.backlogSome',
+        { shown: num(replayed.length) },
+      ));
+      feedBound.hidden = false;
+    }
+    renderRows();
+  }
+
   /** The resync obligation's refetch, and only that: the first load is below. */
   async function reloadBacklog() {
     try {
@@ -760,7 +959,7 @@ export async function render(root, ctx) {
   sayShown();
 
   // ── THE LIVE STREAM ──────────────────────────────────────────────────────
-  const stop = ctx.stream('/api/watch/stream', (event, data) => {
+  const stop = ctx.stream(`/api/watch/stream?backlog=${STREAM_BACKLOG}`, (event, data) => {
     const described = describeStreamEvent(event, data);
     if (described.kind === 'record') {
       if (described.record === null) return;
@@ -772,10 +971,19 @@ export async function render(root, ctx) {
       return;
     }
     if (described.kind === 'hello') {
-      // "connected — waiting for the next record", but only when there is
-      // nothing to look at: over a filled table the count is the more useful
-      // of the two true sentences.
-      if (visible().length === 0) say(described.stringKey);
+      connected = true;
+      // **Read off `data`, not off `described`.** `describeStreamEvent` names
+      // this frame and its poll interval and nothing else, and it lives in
+      // `lib/viewmodel.js` — the module whose own rule is that a frame it
+      // cannot name must not reach the feed. The backlog is not a frame: it is
+      // a field on a frame that module already names, so it is read here, where
+      // the screen that asked for it can apply it.
+      const opening = data !== null && typeof data === 'object' ? data.backlog : undefined;
+      if (opening !== undefined && opening !== null) applyStreamBacklog(opening);
+      // `sayShown` owns the choice between "N records shown", "connected —
+      // waiting for the next record" and "this corpus has no audit log at all".
+      // It used to be made here, and it could only see two of the three.
+      sayShown();
       return;
     }
     if (described.gap) {

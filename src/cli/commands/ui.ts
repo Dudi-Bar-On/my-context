@@ -177,17 +177,38 @@ function idleMinutesText(idleMs: number): string {
 }
 
 /**
- * `--port`, or `0` meaning "ask the operating system for a free one".
+ * `--port`, or `0` meaning "ask the operating system for a free one", or
+ * `null` meaning THE FLAG WAS NOT GIVEN.
+ *
+ * ── WHY "NOT GIVEN" IS NOW A THIRD ANSWER ─────────────────────────────────
+ *
+ * It used to return `0` for an absent flag, because 0 and "absent" had the
+ * same meaning: bind wherever. They stopped meaning the same thing on
+ * 2026-08-27, when `ui.port` arrived as the fallback (`UiConfig.port`,
+ * config.ts) — an absent flag now means "use the config", while an explicit
+ * `--port 0` still means "ask the operating system", and the config must not
+ * override a number a person typed.
+ *
+ * That distinction only survives if it is carried out of here. Collapsing it
+ * to 0 and writing `port || config.ui.port` at the call site is the bug this
+ * shape exists to prevent: `0 || 58888` is `58888`, so a person who typed
+ * `--port 0` would silently get the configured port instead. `resolvePort`
+ * answers `null` for absent and the call site uses `??`, which is the one
+ * operator that treats 0 as the answer it is.
+ *
+ * It is the same distinction `flag()` cannot express and this file's header
+ * refuses to accept — "not given" and "given with nothing after it" are
+ * different — one level up.
  *
  * Throws rather than returning a sentinel: every caller of this file's parsing
  * is `cmdUi`, whose `catch` turns it into one line and exit 1, which is the
  * contract every other command in this CLI keeps (`CommandFn` "never throws").
  */
-function resolvePort(args: string[]): number {
+function resolvePort(args: string[]): number | null {
   const found = flagOccurrences(args, 'port');
   if (found.length > 1) throw repeatedFlagError('port', found.map((o) => o.value));
   const occurrence = found[0];
-  if (occurrence === undefined) return 0;
+  if (occurrence === undefined) return null;
   if (occurrence.value === null || occurrence.value === '') {
     throw new Error(
       'my_context: --port needs a value — a whole number from 0 to 65535, where 0 asks the ' +
@@ -226,6 +247,42 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     return 1;
   }
 
+  // **`ui.enabled`'s FIRST enforcement site, and it is here rather than
+  // anywhere else because here is where the permission is spent.**
+  //
+  // The key shipped validated, refused when malformed, rendered on the
+  // Configure screen — and consulted by nothing that decided anything, which
+  // `src/core/config.ts` said about itself until this landed
+  // (spec `2026-08-27-the-ui-server-outlives-the-session-design.md` §2). A
+  // permission nothing checks is not a permission; it is a field.
+  //
+  // **Before the flags, and deliberately so.** It sits with the workspace check
+  // above rather than after `refuseUnknownFlag` for that check's own reason: a
+  // user who switched the UI off gets the same answer whatever else is on the
+  // command line, and reporting a mistyped flag first would make them fix the
+  // typo to be told no. It is also before the projection sync below, so a
+  // forbidden command writes nothing at all.
+  //
+  // `=== false` and never `!ws.config.ui.enabled`: absent resolves to
+  // `DEFAULT_UI` — enabled — and the falsy spelling would read a config this
+  // build failed to resolve as a user who said no.
+  //
+  // The wording is the pre-tool-use deny hook's own register
+  // (`src/hooks/pre-tool-use.ts` · "Configuration changes to
+  // `.my_context/config.json` are the user's to make"), and the repetition is
+  // the point: the product should say the same thing everywhere it declines to
+  // touch a config. The last sentence is the load-bearing one — a refusal that
+  // did not say nothing here writes the file invites the reader to look for the
+  // command that flips the key, and there is none.
+  if (ws.config.ui.enabled === false) {
+    out(
+      'my_context: ui.enabled is false in .my_context/config.json, so the web UI is off. ' +
+      'Set it to true, or remove the key, to serve. Configuration is a file and is yours ' +
+      'to edit; nothing here writes it.',
+    );
+    return 1;
+  }
+
   // Refused before anything is bound or spawned — see `unknownFlag`
   // (format.ts). `mycontext ui --no-opn` would otherwise launch a browser the
   // user had just asked it not to.
@@ -235,7 +292,27 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
   let noOpen: boolean;
   let idleMs: number;
   try {
-    port = resolvePort(args);
+    // **The precedence, in one line: flag, then config, then ephemeral.**
+    //
+    // `??` and never `||`, because `--port 0` is a legal thing to type and
+    // means "ask the operating system" — under `||` it would fall through to
+    // the configured port, which is a person typing a flag and getting
+    // something else. `resolvePort` answers `null` for an absent flag for
+    // exactly this reason; its header argues it at length.
+    //
+    // The config is the FALLBACK rather than the winner because the two
+    // callers want opposite things. A person at a terminal is about to be
+    // handed a URL, so an ephemeral port costs them nothing and the flag they
+    // just typed must win. A hook has no command line and nobody to hand a URL
+    // to, so `ui.port` is the only address it can use — and `0` there is
+    // refused by the loader for that reason (`requireUi`, config.ts).
+    //
+    // `ws.config`, not a fresh read: `resolveWorkspace` already resolved it,
+    // and it already threw — before this command was dispatched at all — if
+    // the file could not be understood. That is why a broken `config.json`
+    // still surfaces as a config error naming the offending key rather than as
+    // a UI that would not start.
+    port = resolvePort(args) ?? ws.config.ui.port ?? 0;
     idleMs = resolveIdleMs(args);
     noOpen = hasFlag(args, 'no-open');
   } catch (err) {

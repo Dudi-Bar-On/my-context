@@ -39,10 +39,14 @@ cannot answer *is a server running*, and it was never meant to. A second
 `mycontext ui --port 58888` today surfaces a raw bind error.
 
 **`ui.enabled` is a switch with no enforcement site.**
-`src/core/config.ts` · `const DEFAULT_UI: UiConfig = { enabled: true };` · ~242 is
+`src/core/config.ts` · `const DEFAULT_UI: UiConfig = {` · ~242 was
 validated, refused when malformed, rendered on the Configure screen, and consulted by
-nothing that decides anything — the file says so itself. The owner's *"not disabled"*
-already exists in the product. This requirement gives it its first meaning.
+nothing that decided anything. That stopped being true on 2026-08-27, when `mycontext ui`
+began refusing on it and `ui.port` joined it — and the citation is now cut at the opening
+brace, because a fragment a new member breaks is a fragment that will break again.
+
+The owner's *"not disabled"* already existed in the product; this requirement is what gave
+it its first meaning.
 
 ## 3. A liveness record, and why it is only a hint
 

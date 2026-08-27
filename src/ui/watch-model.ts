@@ -5,6 +5,7 @@ import {
   ProjectionAbsentError, ProjectionStaleError, type SummaryRow,
 } from '../core/audit-db.ts';
 import { AuditTail } from '../core/audit-tail.ts';
+import type { TailBacklog } from '../core/audit-tail.ts';
 import { classifyContext, readTee, type ContextSample } from '../core/statusline-tee.ts';
 import type { Workspace } from '../core/workspace.ts';
 import { badRequest, repeatedParams, unknownParams } from './read-model.ts';
@@ -52,6 +53,18 @@ import { SECURITY_HEADERS } from './security.ts';
 // landed since you connected", with `resync` disclosing any discontinuity.
 
 export const STREAM_POLL_MS = 1000;
+
+/**
+ * The most history one stream will replay on open.
+ *
+ * The screen asks for `BOUND_CAP_LIST` — twenty, the list bound every other
+ * bounded surface in this app already uses — and this is the ceiling above it,
+ * not the number anyone should send. It is where a replay stops being an
+ * opening context and becomes a scan of the log down a socket that is then held
+ * open indefinitely; `/api/ask/audit` is the surface for a query, and it takes
+ * `limit` up to 2000 because it answers and closes.
+ */
+const MAX_STREAM_BACKLOG = 500;
 
 /**
  * Pure: `buckets` intervals of `bucketMs` ending at `now`, oldest first, each
@@ -656,13 +669,39 @@ function sseSend(res: ServerResponse, event: string, data: unknown): void {
  * is precisely why the event goes out: the screen refetches its backlog
  * through the query surface, which reads the projection and is immune to the
  * rename. A consumer that ignored the event would silently show a hole.
+ *
+ * **`backlog` is what the owner's "the audit stream is blank without records"
+ * bought** (plan:walk seq:52). It is OPT-IN and defaults to `0`, so a caller
+ * that asks for a tail still gets a tail — and gets the `hello` frame it always
+ * got, because the `backlog` key appears ONLY when one was requested. Two
+ * reasons, and the second outlives the first: a stream carrying no backlog
+ * should say nothing about one, and `test/ui/server-e2e.test.ts` holds "not
+ * what was already there" as a contract with a pinned read of this frame.
+ *
+ * **Why the backlog rides the `hello` frame rather than an event of its own.**
+ * A `backlog` event would be a frame `lib/viewmodel.js`'s `describeStreamEvent`
+ * cannot name, and by that module's own design an unnameable frame "must not
+ * reach the feed as though it were audited history" — it would be dropped on
+ * arrival. `hello` is already the stream's opening statement, already precedes
+ * every `record` frame (which is exactly the ordering the screen's history/live
+ * boundary depends on), and already carries the one other fact about how this
+ * stream will behave. One frame, one boundary, no ordering left to get wrong.
  */
 function streamHandler(ctx: ApiContext, res: ServerResponse): void {
-  const bad = unknownParams(ctx.url, ['poll']) ?? repeatedParams(ctx.url);
+  const bad = unknownParams(ctx.url, ['poll', 'backlog']) ?? repeatedParams(ctx.url);
   const poll = intParam(ctx.url, 'poll', 50, 10_000, STREAM_POLL_MS);
-  if (bad !== null || poll === null) {
+  const backlog = intParam(ctx.url, 'backlog', 0, MAX_STREAM_BACKLOG, 0);
+  if (bad !== null || poll === null || backlog === null) {
     res.writeHead(400, { ...SECURITY_HEADERS, 'content-type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ error: bad ?? 'poll must be an integer between 50 and 10000' }));
+    res.end(JSON.stringify({
+      error: bad
+        ?? (poll === null
+          ? 'poll must be an integer between 50 and 10000'
+          : `backlog must be an integer between 0 and ${MAX_STREAM_BACKLOG}. It refuses rather `
+            + 'than clamping, for the reason every other bound on this surface does: a replay '
+            + 'quietly shortened to fit a ceiling is drawn under a sentence claiming the reader '
+            + 'asked for that many.'),
+    }));
     return;
   }
   const root = ctx.ws.projectRoot;
@@ -679,8 +718,26 @@ function streamHandler(ctx: ApiContext, res: ServerResponse): void {
     'content-type': 'text/event-stream; charset=utf-8',
     // NO CORS headers, deliberately — their absence is the defence (spec §2).
   });
-  const tail = new AuditTail(root);
-  sseSend(res, 'hello', { pollMs: poll });
+  // Constructed FIRST, because its captured EOFs are the boundary the backlog
+  // is read backwards from and the live half is read forwards from. Nothing can
+  // fall between the two, and nothing can appear in both.
+  const tail = new AuditTail(root, { backlog });
+  let opening: TailBacklog | null = null;
+  if (backlog > 0) {
+    try {
+      opening = tail.backlog();
+    } catch (err) {
+      // A damaged audit line, found in the opening scan rather than in a poll.
+      // Disclosed the same way and for the same reason: the log cannot be
+      // trusted, the read contract refuses rather than skips, and the screen
+      // renders the fault. Head is already written, so this cannot be a 503 —
+      // which is why the tail defers this read out of its constructor.
+      sseSend(res, 'fault', { error: err instanceof Error ? err.message : String(err) });
+      res.end();
+      return;
+    }
+  }
+  sseSend(res, 'hello', opening === null ? { pollMs: poll } : { pollMs: poll, backlog: opening });
 
   // Unref'd: this timer must never be what keeps the process alive. The idle
   // monitor exits the server WITH this stream open (an open stream is not

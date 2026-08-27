@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { normalizePosix } from '../../core/paths.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { refuseUnknownFlag } from './format.ts';
 import { flag, hasFlag, type Emit } from './registry.ts';
@@ -37,6 +38,22 @@ import { flag, hasFlag, type Emit } from './registry.ts';
 // silently reformats a document a human maintains has not reversed anything.
 
 /**
+ * The absolute path to THIS checkout's CLI entry, resolved from this module
+ * rather than looked up — the same construction, and for the same reason, as
+ * `src/ui/execute.ts` · `CLI_ENTRY`: what is on PATH is whatever the user last
+ * installed, which may be a different version, a different checkout, or not
+ * this project at all.
+ *
+ * POSIX separators (`INV-posix-normalized-paths`), which here is not only house
+ * style: the command string is handed to a SHELL by Claude Code, and a
+ * backslash inside double quotes is literal in `cmd.exe` but an escape
+ * character in `sh`. Forward slashes are literal in both, and Node accepts them
+ * as path separators on Windows.
+ */
+const OUR_CLI_ENTRY_NATIVE = fileURLToPath(new URL('../index.ts', import.meta.url));
+const OUR_CLI_ENTRY = normalizePosix(OUR_CLI_ENTRY_NATIVE);
+
+/**
  * The value installed, exactly (spec §4b).
  *
  * `refreshInterval` is per §4b's Compatibility note: Claude Code re-runs the
@@ -45,15 +62,77 @@ import { flag, hasFlag, type Emit } from './registry.ts';
  *
  * Exported so the test asserts against THIS value rather than a second copy of
  * it — a pasted literal is free to drift from the thing it is checking.
+ *
+ * ── WHY THIS IS NOT `mycontext statusline` (fixed 2026-08-27) ─────────────
+ *
+ * It was, and it never started. `package.json` declares
+ * `bin: { mycontext: ./src/cli/index.ts }`, so that name exists on PATH only
+ * after a global install or `npm link`; this plugin installs from a
+ * local-directory marketplace, which does neither. Measured on the owner's
+ * machine: `command -v mycontext` finds nothing, and `cmd.exe` answers
+ * `'mycontext' is not recognized as an internal or external command`.
+ *
+ * That failure is worse than a wrong status line. Claude Code would run the
+ * command, it would not resolve, and the bridge would never start — so the tee
+ * never happens AND the delegate never runs. An install performed to PRESERVE
+ * the user's status line would have destroyed it instead, silently, because a
+ * status line that fails prints nothing.
+ *
+ * **Bare `node`, not `process.execPath`, and that is measured rather than
+ * preferred.** Every entry in `hooks/hooks.json` invokes bare `node` and every
+ * hook works on this machine, so `node` is demonstrably on the PATH Claude Code
+ * spawns with — `hooks.json` is the precedent, and it is the surface that never
+ * assumed a binary of ours. `process.execPath` would additionally freeze one
+ * interpreter's location into a settings file and break the day it is upgraded
+ * or moved.
+ *
+ * **An absolute path is CORRECT here, not a compromise.** This is written to
+ * `~/.claude/settings.json` — USER settings, not a project's — where
+ * `${CLAUDE_PROJECT_DIR}` means nothing. A per-machine settings file is exactly
+ * where a per-machine absolute path belongs. What it costs is stated at install
+ * time (`RELOCATION_NOTE`), because it is the user's machine and the tradeoff
+ * is his to see.
  */
 export const INSTALLED = {
   type: 'command',
-  command: 'mycontext statusline',
+  command: `node --disable-warning=ExperimentalWarning "${OUR_CLI_ENTRY}" statusline`,
   refreshInterval: 60,
-} as const;
+};
 
-/** The command string `INSTALLED` runs — the identity an entry is ours by. */
-const OUR_COMMAND = INSTALLED.command;
+/**
+ * Every command string this project has ever installed as its status line.
+ *
+ * `INSTALLED.command` is first; the rest are SPELLINGS THIS COMMAND USED TO
+ * WRITE, and they are kept for exactly one reason: a bridge installed by an
+ * earlier build must still be recognised as OURS. Unrecognised, it would be
+ * treated as somebody else's status line — chained to, which makes the bridge
+ * delegate to the bridge once per assistant message — and `uninstall` would
+ * refuse to clean it up, because refusing to overwrite a foreign setting is
+ * what `uninstall` is for.
+ *
+ * Nothing is ever removed from this list. It only grows.
+ */
+const OUR_COMMANDS: readonly string[] = [
+  INSTALLED.command,
+  // Pre-2026-08-27. Never started: `mycontext` is not on PATH for a
+  // local-directory plugin install. See `INSTALLED` above.
+  'mycontext statusline',
+];
+
+/**
+ * The cost of the absolute path in `INSTALLED.command`, said where the preview
+ * speaks rather than in a document nobody opens.
+ *
+ * It is a real limitation and it is stated in the same breath as the value it
+ * belongs to (`STD-guarantee-claims-carry-their-condition-in-the-same-sentence`):
+ * the entry names THIS directory, and a settings file outlives a checkout.
+ */
+const RELOCATION_NOTE =
+  'That command names this checkout by absolute path, which is what a per-machine settings ' +
+  'file is for — but it stops working if this repository is moved, renamed or deleted, and a ' +
+  'status line that cannot start prints nothing at all rather than an error. If you move it, ' +
+  'run `mycontext statusline uninstall --yes` from the OLD location first (or from the new one, ' +
+  'which restores the same saved copy) and install again.';
 
 const FLAGS = ['yes', 'settings'];
 const VALUE_FLAGS = ['settings'];
@@ -132,10 +211,24 @@ function readBackup(ws: Workspace): Backup | null {
   }
 }
 
-/** Whether a `statusLine` value is the bridge this command installs. */
+/**
+ * Whether a `statusLine` value is a bridge THIS COMMAND WROTE.
+ *
+ * By IDENTITY against `OUR_COMMANDS`, never by parsing. The string this command
+ * writes now contains spaces and quotes, and a predicate that had to parse it
+ * would inherit every refusal `parseCommandString` makes — a value we composed
+ * ourselves, unrecognised because our own parser is conservative about strings
+ * from elsewhere. We know exactly what we write; comparing to it is the whole
+ * check.
+ *
+ * Narrow on purpose. `uninstall` refuses on the negative of this, so widening
+ * it is widening what this command will overwrite. Bridges we did NOT write —
+ * another checkout's — are a different question, answered by
+ * `commandLooksLikeOurBridge`, and answered with a refusal rather than a write.
+ */
 function isOurs(value: unknown): boolean {
-  return typeof value === 'object' && value !== null
-    && (value as { command?: unknown }).command === OUR_COMMAND;
+  const command = commandStringOf(value);
+  return command !== null && OUR_COMMANDS.includes(command);
 }
 
 // --- Chaining, not replacing (2026-08-27) -----------------------------------
@@ -349,9 +442,6 @@ export function parseCommandString(command: string): ParsedCommand {
   return { ok: true, argv };
 }
 
-/** The entry file this project's own CLI is. See `looksLikeOurBridge`. */
-const OUR_CLI_ENTRY = fileURLToPath(new URL('../index.ts', import.meta.url));
-
 function stem(token: string): string {
   return path.basename(token).replace(/\.[^.]+$/, '').toLowerCase();
 }
@@ -378,10 +468,32 @@ export function looksLikeOurBridge(argv: string[]): boolean {
   return argv.some((token) => {
     if (stem(token) === 'mycontext') return true;
     const posix = token.replace(/\\/g, '/').toLowerCase();
-    if (posix === OUR_CLI_ENTRY.replace(/\\/g, '/').toLowerCase()) return true;
+    if (posix === OUR_CLI_ENTRY.toLowerCase()) return true;
     // Any checkout's entry file, not just this one's: see above.
     return /(^|\/)src\/cli\/index\.(ts|js|mjs|cjs)$/.test(posix);
   });
+}
+
+/**
+ * The same question asked of a command STRING, which is the form it is always
+ * really asked in.
+ *
+ * The split is deliberately LENIENT — whitespace, then quotes trimmed off the
+ * ends — and it is nothing like `parseCommandString`. It may only ever cause a
+ * REFUSAL, never an execution, so over-inclusiveness is the safe direction and
+ * a shape this project will not run is still a shape it must be able to
+ * recognise. Routing detection through the strict parser instead would be a
+ * defect with a specific consequence: every string that parser refuses becomes
+ * invisible to detection, and an undetected bridge is one that gets chained to
+ * itself once per assistant message. The string this command writes today has
+ * quotes and spaces in it, so that is not hypothetical.
+ */
+export function commandLooksLikeOurBridge(command: string): boolean {
+  const tokens = command
+    .split(/\s+/)
+    .map((token) => token.replace(/^["']+/, '').replace(/["']+$/, ''))
+    .filter((token) => token !== '');
+  return looksLikeOurBridge(tokens);
 }
 
 /** The `command` string of a `statusLine` value, when it has one. */
@@ -413,6 +525,10 @@ export function delegateFor(ws: Workspace): Delegate | null {
   if (saved === null) return null;
   const command = commandStringOf(saved.previous);
   if (command === null) return null;
+  // Asked of the STRING first, and of the argv again below. Two checks because
+  // a saved copy can predate either of them, and because an infinite
+  // delegation is not a thing to be one check away from.
+  if (commandLooksLikeOurBridge(command)) return null;
   const parsed = parseCommandString(command);
   if (!parsed.ok) return null;
   if (looksLikeOurBridge(parsed.argv)) return null;
@@ -513,6 +629,25 @@ export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): 
       'left exactly as it is, so `mycontext statusline uninstall --yes` still restores the ' +
       'value you had before the first install.',
     );
+    // Ours, but a spelling this build no longer writes — and the one it
+    // replaced does not START (see `INSTALLED`). "Already installed" read on
+    // its own would tell that user everything is fine while his status line is
+    // dead, which is the failure this whole fix is about, restated as a
+    // reassuring message.
+    if (commandStringOf(current) !== INSTALLED.command) {
+      out('');
+      out(
+        'That entry is this bridge, in the form an earlier version installed. It names ' +
+        '`mycontext` on PATH — a name this plugin does not put there when it is installed from ' +
+        'a local directory, so Claude Code cannot run it and the bridge never starts: no ' +
+        'sample, and no delegation to whatever it replaced. To replace it with a form that ' +
+        'does start, run\n' +
+        `  mycontext statusline uninstall --settings ${file} --yes\n` +
+        '  mycontext statusline install   --settings ' + file + ' --yes\n' +
+        'in that order. The uninstall restores what you had before, and the install chains to ' +
+        'it again.',
+      );
+    }
     return 0;
   }
 
@@ -525,7 +660,9 @@ export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): 
   // only record of what came before THAT install.
   const currentCommand = commandStringOf(current);
   const currentParsed = currentCommand === null ? null : parseCommandString(currentCommand);
-  if (currentParsed !== null && currentParsed.ok && looksLikeOurBridge(currentParsed.argv)) {
+  // Detection reads the STRING, never the parse: a bridge written in a form
+  // this project will not RUN is still a bridge, and must not be chained to.
+  if (currentCommand !== null && commandLooksLikeOurBridge(currentCommand)) {
     out(`Settings file:      ${file}`);
     out(`Current statusLine: ${describe(current)}`);
     out('');
@@ -582,6 +719,8 @@ export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): 
 
   if (!hasFlag(args, 'yes')) {
     out('');
+    out(RELOCATION_NOTE);
+    out('');
     if (unchainable !== null) {
       out(unchainable);
       out('');
@@ -610,6 +749,8 @@ export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): 
   writeFileSync(backupPath(ws), `${JSON.stringify(backup, null, 2)}\n`, 'utf8');
   writeText(file, installedText);
 
+  out('');
+  out(RELOCATION_NOTE);
   out('');
   if (unchainable !== null) {
     out(unchainable);
