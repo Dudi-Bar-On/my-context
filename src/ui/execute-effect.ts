@@ -246,6 +246,54 @@ export function effectBetween(
   return out;
 }
 
+/**
+ * What the scratch copy needs, which is less than the corpus contains.
+ *
+ * **Reported by the owner 2026-08-27, from a live confirm:**
+ *
+ *     the corpus could not be copied: Error: EDOM, The process cannot access
+ *     the file because another process has locked a portion of the file
+ *
+ * `.index.db` is a SQLite database, and the running UI server holds it open.
+ * On Windows that is a mandatory lock, so `cpSync` cannot read it and the whole
+ * confirm was refused — a boundary command became un-runnable for as long as a
+ * server was up, which is always. It did not appear in testing because a copy
+ * only fails while the lock is actually held.
+ *
+ * Skipping it is not a workaround. `INV-markdown-is-the-source-of-truth` says
+ * the index is DISPOSABLE — "delete the index, it rebuilds" is the documented
+ * recovery — so the markdown alone is the corpus, and the child rebuilds what
+ * it needs in its own copy. The sidecars go with it: a `-wal` or `-shm` without
+ * its database is worse than neither.
+ *
+ * `.audit` goes too, for a different reason. It is an append-only log that this
+ * run's writes are discarded with, so copying it is pure cost — and on a corpus
+ * with thousands of rows it is the largest thing here. The real execution's
+ * audit rows are written by `execute.ts` against the REAL log and are unaffected.
+ */
+export function worthCopying(source: string): boolean {
+  const name = path.basename(source);
+  if (name === '.audit') return false;
+  return !name.startsWith('.index.db');
+}
+
+/**
+ * The copy, as a seam.
+ *
+ * Not for convenience: `worthCopying` can be tested directly, and a test that
+ * only does that PASSES when somebody deletes `filter: worthCopying` from the
+ * call below — the filter would be correct and unused, and the owner's EDOM
+ * would come straight back. This seam is what lets a test assert the filter is
+ * WIRED, which is the property that actually failed.
+ */
+export type CopyTree = (
+  from: string,
+  to: string,
+  options: { recursive: true; filter: (source: string) => boolean },
+) => void;
+
+const copyTree: CopyTree = (from, to, options) => { cpSync(from, to, options); };
+
 /** The seam, so the timeout and failure paths are testable without a real child. */
 export type RunChild = (
   file: string,
@@ -322,13 +370,14 @@ export function deriveEffect(
   cliEntry: string,
   argv: readonly string[],
   run: RunChild = spawnChild,
+  copy: CopyTree = copyTree,
 ): ItemEffect[] {
   let scratch: string | null = null;
   try {
     scratch = mkdtempSync(path.join(tmpdir(), 'myctx-effect-'));
-    const copy = path.join(scratch, DIR_NAME);
+    const scratchCorpus = path.join(scratch, DIR_NAME);
     try {
-      cpSync(corpusDir, copy, { recursive: true });
+      copy(corpusDir, scratchCorpus, { recursive: true, filter: worthCopying });
     } catch (error) {
       throw new EffectRefusal(`the corpus could not be copied: ${String(error)}`);
     }
@@ -337,14 +386,44 @@ export function deriveEffect(
     // finds its workspace by walking up from `cwd`, so a scratch directory
     // sitting under a corpus would send it to the real one.
     const resolved = findProjectRoot(scratch);
-    if (resolved === null || path.resolve(resolved) !== path.resolve(copy)) {
+    if (resolved === null || path.resolve(resolved) !== path.resolve(scratchCorpus)) {
       throw new EffectRefusal(
         `the scratch corpus resolves to ${String(resolved)} rather than to itself, so a dry `
         + 'run could reach a corpus that is not a copy',
       );
     }
 
-    const before = snapshot(copy);
+    // **A repository-relative path cannot survive the copy, and a wrong answer
+    // here is worse than no answer.**
+    //
+    // Reported by the owner 2026-08-27 from two live confirms. The child runs
+    // with `cwd` inside the scratch, and `resolveWorkspace` derives BOTH the
+    // corpus and every relative path from that one `cwd` — they are the same
+    // lever. So `add --file docs/x.md` looked for `docs/x.md` under the scratch,
+    // did not find it, and refused; and a path that WAS inside the real
+    // repository was reported "outside this repository", naming a temp
+    // directory as the repository. The command would have succeeded.
+    //
+    // That is a FALSE refusal, which is the one thing §3.2 must not produce: it
+    // says "this cannot run" about a command that runs. Refusing here instead,
+    // in words that name the real limit, keeps the confirm honest until the
+    // corpus location and the path root can be set independently — which is a
+    // change to `resolveWorkspace`, not to this file, and is the owner's call.
+    //
+    // `add --file` is the only catalogue command this reaches: it is the sole
+    // path-bearing argument on a boundary command (`search --path` is below the
+    // boundary and never dry-runs).
+    const pathBearing = argv.indexOf('--file');
+    if (pathBearing !== -1) {
+      throw new EffectRefusal(
+        'this command reads a file from your repository, and the effect is derived against a '
+        + 'COPY of the corpus that does not contain your repository’s files — so the answer '
+        + 'here would be wrong rather than merely missing. Copy the command and run it in your '
+        + 'own shell, where the path means what you typed.',
+      );
+    }
+
+    const before = snapshot(scratchCorpus);
     try {
       run(process.execPath, [cliEntry, ...argv], {
         cwd: scratch,
@@ -357,7 +436,7 @@ export function deriveEffect(
       // one.
       throw new EffectRefusal(String(error instanceof Error ? error.message : error));
     }
-    return effectBetween(before, snapshot(copy));
+    return effectBetween(before, snapshot(scratchCorpus));
   } finally {
     if (scratch !== null) rmSync(scratch, { recursive: true, force: true });
   }
