@@ -53,6 +53,35 @@ export default defineConfig({
   testMatch: '*.spec.ts',
 
   fullyParallel: true,
+  /**
+   * **Capped, because the default was buying nothing and costing determinism.**
+   *
+   * Playwright defaults to half the logical cores — ten on the owner's
+   * twenty-core machine — and this suite runs HEADED by the 2026-08-22 ruling
+   * below. Ten headed Chrome instances is already heavy, and since
+   * `plan:execute seq:5b` every boundary confirm additionally spawns a node
+   * process that copies the whole corpus (618 items in the demo fixture) to a
+   * temporary directory.
+   *
+   * **Measured 2026-08-28, same code, same machine, minutes apart:**
+   *
+   *   - default (10 workers): FIVE failures — `screen-parity`, `app-layout`,
+   *     `button-contrast` and two `execute` specs. Every one of them passed in
+   *     isolation afterwards, on both browser projects.
+   *   - `--workers=4`: 186 passed, 0 failed.
+   *   - Wall clock: 2.7 min against 2.9 min. Essentially identical.
+   *
+   * So the machine was already saturated at four, and workers five through ten
+   * added timing noise and no speed. Seven different specs had failed this way
+   * across the day, each passing alone, and the cause was read as flakiness —
+   * twice by me, in writing — before anyone varied the parallelism.
+   *
+   * A percentage rather than `4`, so a smaller machine scales down with it.
+   * This sits beside `retries: 0` for the same reason: a suite that only passes
+   * because it was allowed a second attempt has told you something and buried
+   * it. Contention is a real defect in a test run, not weather.
+   */
+  workers: '20%',
   // A `.only` left in a spec silently reduces the suite to one test and exits
   // 0 — the same class of failure as an unquoted test glob, and refused here
   // for the same reason.
