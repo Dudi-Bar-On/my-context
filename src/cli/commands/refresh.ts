@@ -5,7 +5,7 @@ import { globalLayerRefusal } from '../../core/persist.ts';
 import {
   isSnapshot, largestFullTextBudget, readSnapshot, snapshotBudgetLine, snapshotCost,
 } from '../../core/reference.ts';
-import type { Workspace } from '../../core/workspace.ts';
+import { repositoryRoot, type Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import { refuseUnknownFlag } from './format.ts';
 import { confirmAction } from './review.ts';
@@ -97,12 +97,27 @@ function cmdRefresh(ws: Workspace, args: string[], out: Emit, cwd: string): numb
       return 1;
     }
 
-    const repoRoot = path.dirname(ctx.root);
     // Resolved against the REPOSITORY ROOT, not the caller's cwd: the stored
     // `source_file` is repo-root-relative (that is what `readSnapshot` records
     // and what `doctor` resolves), so refreshing from a subdirectory must find
     // the same file `doctor` checks. `--file` on `add` resolves against cwd
     // instead, because there the path is one the user just typed.
+    //
+    // **`repositoryRoot(cwd)` and not `path.dirname(ctx.root)`, since
+    // 2026-08-28.** The two are the same value whenever the corpus was FOUND by
+    // walking up from where you are — every normal run. They diverge under
+    // `CORPUS_DIR_ENV`, which the UI's confirm sets to dry-run a command against
+    // a COPY of the corpus: then `ctx.root` is the copy, its parent is a
+    // temporary directory, and this line went looking for the repository's files
+    // there. Found by the Task 7 implementer driving Doctor's own repair from
+    // the browser, which is the second site of a defect fixed at the first
+    // (`src/cli/index.ts`) two hours earlier and missed here — the same missed
+    // second instance this file's own history keeps recording.
+    //
+    // The intent above is unchanged: still the repository root, never cwd. What
+    // changed is which question answers "the repository root" when the corpus
+    // has been pointed somewhere else.
+    const repoRoot = repositoryRoot(cwd) ?? path.dirname(ctx.root);
     const snapshot = readSnapshot(repoRoot, repoRoot, item.sourceFile as string);
 
     if (snapshot.checksum === item.sourceChecksum) {

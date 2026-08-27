@@ -195,6 +195,38 @@ test('a repository-relative path means what the user typed, not what the copy co
     'and it records where it came from, which is the whole point of a --file capture');
 });
 
+test('a STORED repository-relative path resolves too — refresh, the second site', () => {
+  // Found by the Task 7 implementer on 2026-08-28, driving Doctor's own repair
+  // from a browser. It is the SECOND site of the defect fixed at the first
+  // (`src/cli/index.ts`, `add --file`) two hours earlier and missed here.
+  //
+  // The two are not the same path in the code and they are the same bug:
+  // `add --file` bounds a path the USER typed, `refresh` bounds one the ITEM
+  // stored. Both are repository-relative, both were resolved against
+  // `path.dirname(root)`, and both therefore looked inside the scratch copy the
+  // moment the corpus was redirected. Fixing one and not the other is what a
+  // grep for a single spelling gets you.
+  const dir = project();
+  const corpus = path.join(dir, '.my_context');
+  writeFileSync(path.join(dir, 'snapshotted.md'), '# one' + "\\n" + "\\n" + 'first' + "\\n");
+  execFileSync(process.execPath,
+    [CLI, 'add', 'note', 'a snapshot', '--file', 'snapshotted.md', '--yes'],
+    { cwd: dir, stdio: 'ignore' });
+
+  // Move the file on, so refresh has something to report.
+  writeFileSync(path.join(dir, 'snapshotted.md'), '# one' + "\\n" + "\\n" + 'second' + "\\n");
+
+  const effect = deriveEffect(corpus, dir, CLI, ['refresh', 'NOTE-a-snapshot', '--yes']);
+
+  assert.equal(effect.length, 1,
+    'refresh must FIND the stored source file. Resolved against the copy it cannot, and the '
+    + 'confirm then refuses a command that would have worked — a false refusal, which is the '
+    + 'one thing §3.2 must never produce.');
+  assert.equal(effect[0]?.kind, 'changed');
+  assert.ok(effect[0]?.fields.some((f) => f.field === 'body'),
+    'and it reports the new body, which is the whole point of a refresh');
+});
+
 test('the corpus still cannot be reached, even though cwd is now the real repository', () => {
   // The safety property survives the fix, and this is where it could have been
   // lost: `cwd` at the real repository would resolve to the REAL corpus by the
