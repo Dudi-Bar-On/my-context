@@ -188,24 +188,35 @@ async function buttonsOn(
   // held steady across two polls and the screen was declared settled with
   // zero of its buttons drawn. `drewNothing = ["doctor"]` is what caught it.
   //
-  // `EXPECTED_EMPTY` screens genuinely draw no button, ever — waiting for one
-  // there would just burn the full cap every run. They keep the old
-  // stability-poll proxy, which is the right tool for a screen with no exact
-  // signal to wait for.
+  // EXISTENCE and STABILITY answer different questions, and this gate needs
+  // BOTH because it measures EVERY button on the screen, not the presence of
+  // one. Existence alone stops as soon as the FIRST button appears — a screen
+  // that draws one button synchronously and the rest after a second fetch
+  // would settle on the first and be measured half-drawn, the same defect one
+  // step further along. Stability alone is the original bug: a count that
+  // never moves because nothing has arrived yet. Only "a button exists AND
+  // the count has stopped moving" answers "is everything this screen is going
+  // to draw actually drawn".
+  //
+  // `EXPECTED_EMPTY` screens genuinely draw no button, ever — requiring one
+  // there would just burn the full cap every run. They keep the original
+  // stability-only proxy, which is the right (and only) tool for a screen
+  // with no button to wait for.
   let previous = -1;
   let settled = false;
   const waitForNoButtonProxy = EXPECTED_EMPTY.has(screen);
   for (let attempt = 0; attempt < 25; attempt += 1) {
-    if (waitForNoButtonProxy) {
-      const now = await page.evaluate(
-        (s) => document.querySelectorAll(`[data-p="${s}"] *`).length, screen);
-      if (now > 0 && now === previous) { settled = true; break; }
-      previous = now;
-    } else {
-      const hasButton = await page.evaluate(
-        (s) => document.querySelector(`[data-p="${s}"] button`) !== null, screen);
-      if (hasButton) { settled = true; break; }
-    }
+    // One evaluate, not two: both readings must come from the SAME DOM
+    // snapshot, or a button that appears between two separate round-trips
+    // could pair a stale count with a fresh hasButton and settle on a
+    // combination that was never simultaneously true.
+    const { count, hasButton } = await page.evaluate((s) => ({
+      count: document.querySelectorAll(`[data-p="${s}"] *`).length,
+      hasButton: document.querySelector(`[data-p="${s}"] button`) !== null,
+    }), screen);
+    const stable = count > 0 && count === previous;
+    if (waitForNoButtonProxy ? stable : (hasButton && stable)) { settled = true; break; }
+    previous = count;
     await page.waitForTimeout(400);
   }
   // The cap fails as ITSELF. Falling through would judge a half-drawn screen
