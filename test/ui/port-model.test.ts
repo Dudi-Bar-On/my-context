@@ -113,11 +113,12 @@ test('history: carries and withheld PARTITION the audit vocabulary, so no kind c
     assert.equal(new Set([...history.carries, ...history.withheld]).size, AUDIT_KINDS.length);
     assert.equal(history.withheld.includes('mutation'), false);
 
-    // The mockup's prose names three withheld kinds; this build has five. The
+    // The mockup's prose names three withheld kinds; this build has six. The
     // gap is the reason `withheld` is served at all, so it is asserted rather
-    // than left as a comment.
-    assert.equal(history.withheld.length, 5);
-    for (const kind of ['injection', 'hook', 'focus', 'access', 'progress']) {
+    // than left as a comment — and it widened again on 2026-08-27, which is
+    // the gap doing what it is for.
+    assert.equal(history.withheld.length, 6);
+    for (const kind of ['injection', 'hook', 'focus', 'access', 'progress', 'execution']) {
       assert.ok(history.withheld.includes(kind as (typeof AUDIT_KINDS)[number]), kind);
     }
     assert.equal(history.importedDir, 'imported/');

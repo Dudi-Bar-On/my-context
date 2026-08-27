@@ -43,7 +43,7 @@ import { apiCapture, type CaptureBody } from '../../src/ui/capture-model.ts';
  *                                    does not govern.
  *
  * `invariant`, `rule`, `constraint` and `adr` are all members of BOTH profiles
- * (`core/categories.ts` · `  minimal: [` · ~155), so this fixture does not
+ * (`core/categories.ts` · `  minimal: [` · ~335), so this fixture does not
  * depend on which one `init` picks.
  */
 function workspace(): { dir: string; done: () => void } {

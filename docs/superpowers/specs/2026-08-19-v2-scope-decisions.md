@@ -151,7 +151,7 @@ stay exactly as they are, committed, with their CI parity test.
 
 **Why `procedure` exists beside `runbook` rather than instead of it.** `runbook` already ships —
 normative, prefix `RUN`, *"The steps for a named operation, in the order they must be taken"*
-(`src/core/categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~40) — and
+(`src/core/categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~198) — and
 it is the **repeatable** one: the steps taken every time the
 named operation comes up. `procedure` is the **one-shot** one — a migration, a fix, a one-time
 correction — performed once and then finished, and it is `procedure` that carries the lifecycle
@@ -894,7 +894,7 @@ This closes the last of §2.3. **Representation was already settled**: an ordere
 
 > **CORRECTED 2026-08-19, by implementation survey.** This paragraph originally ended "no
 > data-model change", and that was **false**. `validateBody` refuses any line matching
-> `/^#{1,6}\s/` inside a body (`src/core/validate.ts` · `export function validateBody(body: string): void {` · ~234), so a `## Steps` section
+> `/^#{1,6}\s/` inside a body (`src/core/validate.ts` · `export function validateBody(body: string): void {` · ~320), so a `## Steps` section
 > cannot live in `body` at all — it must be a first-class `Item` field, exactly as `observations`
 > is. The parallel to `## Observations` holds; the inference drawn from it did not. See §6i.
 
@@ -1024,8 +1024,8 @@ categories are **enabled**, and their `prefix` and `scopePolicy`.
 
 **Why a refusal and not a warning — this is the security half.** The original parenthetical, "the
 category configuration (which is what `profile` selects)", was wrong. `profile` selects only which
-categories are *enabled* (`config.ts` · `const enabledByProfile = new Set(PROFILES[profile]);` · ~657, read at `config.ts` · `enabled: enabledByProfile.has(def.name),` · ~677); the `categories` block **also** carries `tier` and
-`agentEdits`, and a `tier` override drags `agentEdits` with it (`config.ts` · `} else if (override.tier !== undefined) {` · ~788). A pack
+categories are *enabled* (`config.ts` · `const enabledByProfile = new Set(PROFILES[profile]);` · ~1126, read at `config.ts` · `enabled: enabledByProfile.has(def.name),` · ~1146); the `categories` block **also** carries `tier` and
+`agentEdits`, and a `tier` override drags `agentEdits` with it (`config.ts` · `} else if (override.tier !== undefined) {` · ~1278). A pack
 shipping `"rule": {"tier": "rationale"}` would land every future agent-authored `rule` **active**
 instead of draft *and* stop every existing `rule` being injected at all — **strictly more power than
 the `--trust` flag this section refuses, delivered through the surface this section called safe.** A
@@ -1035,7 +1035,7 @@ the `--trust` flag this section refuses, delivered through the surface this sect
 merge" was written for a whole-workspace R6 export, where it is correct and **applies there still**.
 This section inherited it from a case it does not fit: a pack config with `budgets` and
 `watchedDocs` stripped — which this section *requires* — would **reset both to product defaults** on
-import (`config.ts` · `if (raw === undefined) return { ...DEFAULT_BUDGETS };` · ~537 and `config.ts` · `if (raw === undefined) return [...DEFAULT_WATCHED_DOCS];` · ~583), doing precisely what the next paragraph forbids, through the mechanism
+import (`config.ts` · `if (raw === undefined) return { ...DEFAULT_BUDGETS };` · ~1005 and `config.ts` · `if (raw === undefined) return [...DEFAULT_WATCHED_DOCS];` · ~1051), doing precisely what the next paragraph forbids, through the mechanism
 chosen to prevent it. A field-wise merge leaves the importer's `budgets` and `watchedDocs` untouched
 by an import.
 
@@ -1129,7 +1129,7 @@ not the engine.
 
 ### 1. `## Steps` cannot live in the body — CORRECTED in §6g above
 
-`validateBody` refuses any heading line (`src/core/validate.ts` · `export function validateBody(body: string): void {` · ~234), so steps must be a
+`validateBody` refuses any heading line (`src/core/validate.ts` · `export function validateBody(body: string): void {` · ~320), so steps must be a
 first-class `Item` field. That touches parse, render, `computeItemChecksum`, `itemContentHash`,
 `renderItemBlock` (which is budget-correctness, so getting it wrong mis-sizes injection), the MCP
 schema and ingest. `splitSections` is already generic and SQLite needs no DDL — `data` is a JSON
@@ -1224,9 +1224,9 @@ slash command supplies the current id automatically because the hook knows it. T
 ### ✅ Session enumeration is already shipped — §6c and §6d are cheaper than assumed
 
 Three implementations already exist: `sessions(db, limit)` over the projection's generated
-`session_id` column (`audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~794), `sessionsWithoutDb` from raw JSONL (`commands/audit.ts` · `function sessionsWithoutDb(list: AuditRecord[]): SummaryRow[] {` · ~492), and
-`recentSessions` (`ledger.ts` · `recentSessions(limit: number): string[] {` · ~487). **`mycontext audit --sessions` already prints the list today.**
-"What that session had" is equally derivable — `itemsUsedIn` (`ledger.ts` · `itemsUsedIn(sessionIds: string[]): string[] {` · ~538).
+`session_id` column (`audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~794), `sessionsWithoutDb` from raw JSONL (`commands/audit.ts` · `function sessionsWithoutDb(list: AuditRecord[]): SummaryRow[] {` · ~497), and
+`recentSessions` (`ledger.ts` · `recentSessions(limit: number): string[] {` · ~500). **`mycontext audit --sessions` already prints the list today.**
+"What that session had" is equally derivable — `itemsUsedIn` (`ledger.ts` · `itemsUsedIn(sessionIds: string[]): string[] {` · ~570).
 
 So cross-session continuity needs a *selector and a carry*, not a new store.
 
@@ -1235,7 +1235,7 @@ So cross-session continuity needs a *selector and a carry*, not a new store.
 The only in-process timer in the hook layer is `post-tool-use.ts` · `const timer = setTimeout(() => process.exit(0), 2000);` · ~132,
 with `unref()` on the line below it. SessionStart, PreToolUse and PreCompact
 each carry an explicit comment saying they deliberately have none — `readStdin`'s
-`readFileSync(0, 'utf8')` (`io.ts` · `return readFileSync(0, 'utf8');` · ~69) blocks the thread outright, so no timer can preempt it. The only real
+`readFileSync(0, 'utf8')` (`io.ts` · `return readFileSync(0, 'utf8');` · ~216) blocks the thread outright, so no timer can preempt it. The only real
 bound is `"timeout": 10` declared in `hooks.json`, which is **Claude Code killing the process**, not
 mycontext failing open.
 
@@ -1246,8 +1246,8 @@ mycontext does. The plan must say so explicitly rather than implying the invaria
 
 ### ⚠️ Seen files accumulate, and the unit is context windows
 
-`pruneSnapshots` (`ledger.ts` · `export function pruneSnapshots(` · ~770) is age-based — 30 days by mtime — and when this was written its **only production
-caller was `cmdRebuild`** (`cli/index.ts` · `function cmdRebuild(ws: Workspace, out: Emit): number {` · ~1001), with no hook pruning and no `clearSeen` anywhere.
+`pruneSnapshots` (`ledger.ts` · `export function pruneSnapshots(` · ~802) is age-based — 30 days by mtime — and when this was written its **only production
+caller was `cmdRebuild`** (`cli/index.ts` · `function cmdRebuild(ws: Workspace, out: Emit): number {` · ~1003), with no hook pruning and no `clearSeen` anywhere.
 **Both halves have since closed.** A hook prunes: `SessionStart` sweeps `state/` once per session, after the write to stdout (`hooks/session-start.ts` · `function sweepStaleState(cwd: string): void {` · ~64) — its docblock carries this finding's own measurement, "15 files one day and 47 the next". And `clearSeen` exists (`core/seen-file.ts` · `export function clearSeen(root: string, sessionId: string): ClearSeenReport {` · ~290), so pruning is no longer age-only.
 There is still no `SessionEnd` hook, and a project whose sessions never start still never prunes.
 
@@ -1261,7 +1261,7 @@ preserves `session_id` **is recorded nowhere and is unprobed**.
 
 ### Implementation note that will bite if missed
 
-`parseAudit` (`core/audit.ts` · `export function parseAudit(raw: string, file: string): AuditRecord[] {` · ~606) **refuses unregistered ops**. Any new hook op must be added to
+`parseAudit` (`core/audit.ts` · `export function parseAudit(raw: string, file: string): AuditRecord[] {` · ~759) **refuses unregistered ops**. Any new hook op must be added to
 `HOOK_OPS` / `INJECTION_OPS` *and* `KIND_OF`, or the audit log rejects its own records — a failure
 that would look like the hook silently not running.
 
@@ -1285,7 +1285,7 @@ That is convenient in one direction and fatal in the other:
 
 `origin: 'import'` does not exist either — `Origin` is closed (`src/core/types.ts` · `export type Origin = 'human' | 'agent' | 'ingest';` · ~4) and enforced by
 two separate `ORIGINS` lists when this was written — **three since**: the pack history reader added
-a `Record<Origin, true>` of its own (`pack/history.ts` · `const ORIGINS: Record<Origin, true> = { human: true, agent: true, ingest: true };` · ~217) rather than export either array, and says so in
+a `Record<Origin, true>` of its own (`pack/history.ts` · `const ORIGINS: Record<Origin, true> = { human: true, agent: true, ingest: true };` · ~251) rather than export either array, and says so in
 its docblock. The closure is unchanged; only the count of places enforcing it moved.
 
 **Not ruled on.** Three routes, and the owner picked the trust split so the owner should pick among
@@ -1330,9 +1330,9 @@ leaks and is not.
 ### ✅ The audit discriminator exists, exactly as §5 assumed
 
 `AuditKind` was `'mutation' | 'injection' | 'hook' | 'focus'` when this was written; **`'access'`
-joined it 2026-08-20 and `'progress'` 2026-08-21** (`src/core/audit.ts` · `export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus' | 'access' | 'progress';` · ~136). It is stored per
-record, derived from one total `KIND_OF` table (`src/core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~247), validated on read (`src/core/audit.ts` · `!AUDIT_KINDS.includes(row.kind as AuditKind)` · ~472), with
-`filterAudit(…, {kind})` (`src/core/audit.ts` · `export function filterAudit(records: AuditRecord[], filter: AuditFilter): AuditRecord[] {` · ~671) already the shared filter. `MUTATION_OPS` (`src/core/audit.ts` · `export const MUTATION_OPS = [` · ~143) still matches §5's
+joined it 2026-08-20 and `'progress'` 2026-08-21** (`src/core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~339). It is stored per
+record, derived from one total `KIND_OF` table (`src/core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~344), validated on read (`src/core/audit.ts` · `!AUDIT_KINDS.includes(row.kind as AuditKind)` · ~625), with
+`filterAudit(…, {kind})` (`src/core/audit.ts` · `export function filterAudit(records: AuditRecord[], filter: AuditFilter): AuditRecord[] {` · ~824) already the shared filter. `MUTATION_OPS` (`src/core/audit.ts` · `export const MUTATION_OPS = [` · ~165) still matches §5's
 ten names exactly. **§5's filtering decision rests on something real** — and the widening is what it
 was built for: two kinds arrived without §5's `kind` filter needing a line.
 
@@ -1377,8 +1377,8 @@ recorded here.
 `--trust` flag because *"a boundary a flag can override is not a boundary."*
 
 **The parenthetical is wrong.** `profile` selects only which categories are *enabled*
-(`config.ts` · `const enabledByProfile = new Set(PROFILES[profile]);` · ~657, read at `config.ts` · `enabled: enabledByProfile.has(def.name),` · ~677). The `categories` block **also** carries `tier`, `agentEdits`, `scopePolicy`
-and `prefix` — and a `tier` override drags `agentEdits` with it (`config.ts` · `} else if (override.tier !== undefined) {` · ~788).
+(`config.ts` · `const enabledByProfile = new Set(PROFILES[profile]);` · ~1126, read at `config.ts` · `enabled: enabledByProfile.has(def.name),` · ~1146). The `categories` block **also** carries `tier`, `agentEdits`, `scopePolicy`
+and `prefix` — and a `tier` override drags `agentEdits` with it (`config.ts` · `} else if (override.tier !== undefined) {` · ~1278).
 
 So a pack shipping `"rule": {"tier": "rationale"}` does two things at once, and `resolveConfig`
 accepts both without complaint because every value is valid:
@@ -1393,7 +1393,7 @@ corpus.
 
 **Second half of the same finding:** §6 says config **replaces**, it does not merge. A pack config
 with `budgets` and `watchedDocs` stripped — which §6h *requires* — resets both to product defaults
-on import (`config.ts` · `if (raw === undefined) return { ...DEFAULT_BUDGETS };` · ~537 and `config.ts` · `if (raw === undefined) return [...DEFAULT_WATCHED_DOCS];` · ~583). §6h's own words: *"a pack that silently changed how much context
+on import (`config.ts` · `if (raw === undefined) return { ...DEFAULT_BUDGETS };` · ~1005 and `config.ts` · `if (raw === undefined) return [...DEFAULT_WATCHED_DOCS];` · ~1051). §6h's own words: *"a pack that silently changed how much context
 mycontext spends would be doing something the user did not ask a template to do."* Exactly that,
 through the mechanism chosen to prevent it.
 
@@ -1483,7 +1483,7 @@ both fit as `extra` fields or tags rather than `Status` members.
 
 Independently confirms the controller's finding. `runbook` ships normative, enabled, in the
 `standard` profile, described as *"The steps for a named operation, in the order they must be
-taken"* (`categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~40). The scan adds the decisive point: **the owner was naming the
+taken"* (`categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~198). The scan adds the decisive point: **the owner was naming the
 existing category** — R11b says *"runbook (or to call it with different name)"*.
 
 So the live question was never "what do we call the new thing" but **"does `runbook` become the
@@ -1534,7 +1534,7 @@ active-at-`init`.
 
 **This is the largest of the twelve.** `runbook` already ships — normative, prefix `RUN`, enabled in
 the `standard` profile, *"The steps for a named operation, in the order they must be taken"*
-(`categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~40). R11b's own words were *"runbook (or to call it with different name)"*: the
+(`categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~198). R11b's own words were *"runbook (or to call it with different name)"*: the
 owner was naming the existing category, not proposing a new one.
 
 So `runbook` gains the lifecycle — states, steps, the injection rule — and its description is
@@ -1708,7 +1708,7 @@ here. Two reverse a ruling in §6m.
 
 **§6m.4's flat refusal is withdrawn.** It was jointly unsatisfiable with the code: `resolveConfig`
 **requires** `tier` and `description` for a category name the build does not know
-(`src/core/config.ts` · `if (!override.tier || !override.description) {` · ~705), so §6h and §6m.12's premise that pack-defined categories work could
+(`src/core/config.ts` · `if (!override.tier || !override.description) {` · ~1175), so §6h and §6m.12's premise that pack-defined categories work could
 never hold.
 
 **The rule:** a pack may declare `tier` for a category the workspace has never heard of — where it
@@ -1822,7 +1822,7 @@ should absorb the one-shot lifecycle and no new category be created. That is not
 
 | Category | Meaning | Status |
 |---|---|---|
-| **`runbook`** | An ordered set of instructions that is **repeatable** — performed whenever the named operation comes up. | **Ships today, unchanged.** `src/core/categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~40, normative, prefix `RUN`, *"The steps for a named operation, in the order they must be taken."* No lifecycle and no states. `steps` landed as an `Item` field rather than a `procedure` one — `parseItem` is handed a file and never a `Config`, so it cannot know the type until it has read it — and nothing refuses steps on a `runbook`; `procedure` is the category the product documents, seeds and commands around them (`src/core/types.ts` · `steps: Step[];` · ~81). |
+| **`runbook`** | An ordered set of instructions that is **repeatable** — performed whenever the named operation comes up. | **Ships today, unchanged.** `src/core/categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~198, normative, prefix `RUN`, *"The steps for a named operation, in the order they must be taken."* No lifecycle and no states. `steps` landed as an `Item` field rather than a `procedure` one — `parseItem` is handed a file and never a `Config`, so it cannot know the type until it has read it — and nothing refuses steps on a `runbook`; `procedure` is the category the product documents, seeds and commands around them (`src/core/types.ts` · `steps: Step[];` · ~81). |
 | **`procedure`** | An ordered set of instructions performed **once** and then done — a migration, a fix, a one-time correction. | **New.** Normative, prefix `PROC`. Carries the lifecycle, the steps, and the injected-only-while-active rule. |
 
 **Everything §6m and §6n decided about the one-shot lifecycle now attaches to `procedure`, not to
@@ -1915,7 +1915,7 @@ owns before now, and this is the decision to start.
 
 > **Scope correction, against the code — the precedent is narrower than "first", and the difference
 > is the hard part.** `mycontext init` already writes `config.json`, creating it as
-> `{ profile: 'standard', categories: {}, budgets: {} }` (`src/cli/index.ts` · `const INIT_CONFIG = { profile: 'standard', categories: {}, budgets: {} } as const;` · ~131). What R14.1
+> `{ profile: 'standard', categories: {}, budgets: {} }` (`src/cli/index.ts` · `const INIT_CONFIG = { profile: 'standard', categories: {}, budgets: {} } as const;` · ~133). What R14.1
 > opens is the first path that **modifies an existing** one — a read-modify-write over a file the
 > user may have hand-edited, which is a different problem from writing a fresh one and carries
 > questions creating never faced: key order, formatting, and what happens to keys this build does
@@ -1936,8 +1936,8 @@ owns before now, and this is the decision to start.
 that list threw before anything was loaded — `src/core/config.ts` · `const unknownTop = Object.keys(input).filter((key) => !TOP_LEVEL_KEYS.includes(key));` · ~483 <!-- historical-citation: quotes the whole-file refusal R14.2 replaces; it is now a `skippedKeys` collection --> — with the message
 *"Nothing was loaded — a setting that cannot be acted on is refused rather than ignored."*
 
-**Shipped 2026-08-20, exactly as ruled.** `'ui'` is on the list (`src/core/config.ts` · `export const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'] as const;` · ~452), and an unrecognised
-top-level key is collected and disclosed rather than refused (`src/core/config.ts` · `const skippedKeys = Object.keys(input)` · ~646). The paragraphs
+**Shipped 2026-08-20, exactly as ruled.** `'ui'` is on the list (`src/core/config.ts` · `export const TOP_LEVEL_KEYS = [` · ~799), and an unrecognised
+top-level key is collected and disclosed rather than refused (`src/core/config.ts` · `const skippedKeys = Object.keys(input)` · ~1114). The paragraphs
 below are the reasoning that got it there and are left as they were argued.
 
 **So a config carrying `ui` disables the WHOLE plugin on any build predating the key.** Not the UI —
@@ -1950,7 +1950,7 @@ older install, loses everything rather than losing the UI.
 block still refuses outright.** A mistyped `categories` or `budgets` key is a setting the user
 believes is in force and is not, which is the failure `TOP_LEVEL_KEYS` was added to close in the
 first place — `"budget"` for `"budgets"` loaded, every limit stayed at its default, and *"the only
-symptom was items quietly missing from sessions"* (`src/core/config.ts` · `the only symptom was items quietly missing from sessions.` · ~445). That stays exactly
+symptom was items quietly missing from sessions"* (`src/core/config.ts` · `the only symptom was items quietly missing from sessions.` · ~783). That stays exactly
 as it is. Only the outermost layer, where an unknown key means *a capability this build has never
 heard of* rather than *a typo*, becomes forward-compatible.
 

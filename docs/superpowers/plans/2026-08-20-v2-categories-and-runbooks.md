@@ -108,16 +108,16 @@ Every row names the **class** of error, not only the instance.
 
 | Was | Is | Class | Where it lands |
 |---|---|---|---|
-| **This plan's own first version**, written against §6m.1: no `procedure` category is created, `runbook` absorbs the one-shot lifecycle, and its description, seed, both topic sources and both READMEs are rewritten to say it is performed once (the withdrawn Task 10) | **§6o reverses §6m.1. Both categories exist.** `runbook` ships **unchanged** — normative, prefix `RUN`, *"The steps for a named operation, in the order they must be taken"* (`categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~40) — and is the **repeatable** one. `procedure` is **new**: normative, prefix `PROC`, performed once and then done, and it carries the lifecycle, the steps and the injected-only-while-active rule. Everything §6m and §6n decided about the lifecycle now attaches to `procedure` | **A plan is written against a decision, not against a document, and a reversed decision invalidates the plan's conclusions even where every citation still resolves.** §6o's own reasoning is the general form: §6m.1 read *"runbook (or to call it with different name)"* as naming an existing category when it was proposing a new one. When a ruling turns on what somebody meant, re-read the words before building 2,600 lines on the reading | Everywhere. Tasks 2 and 10 structurally; every task by rename |
+| **This plan's own first version**, written against §6m.1: no `procedure` category is created, `runbook` absorbs the one-shot lifecycle, and its description, seed, both topic sources and both READMEs are rewritten to say it is performed once (the withdrawn Task 10) | **§6o reverses §6m.1. Both categories exist.** `runbook` ships **unchanged** — normative, prefix `RUN`, *"The steps for a named operation, in the order they must be taken"* (`categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~198) — and is the **repeatable** one. `procedure` is **new**: normative, prefix `PROC`, performed once and then done, and it carries the lifecycle, the steps and the injected-only-while-active rule. Everything §6m and §6n decided about the lifecycle now attaches to `procedure` | **A plan is written against a decision, not against a document, and a reversed decision invalidates the plan's conclusions even where every citation still resolves.** §6o's own reasoning is the general form: §6m.1 read *"runbook (or to call it with different name)"* as naming an existing category when it was proposing a new one. When a ruling turns on what somebody meant, re-read the words before building 2,600 lines on the reading | Everywhere. Tasks 2 and 10 structurally; every task by rename |
 | Survey §7.3 row 12: add `24: { en: 'twenty-four', … }` to `CATEGORY_WORDS` | **Correct after all, and the double reversal is why.** The catalogue goes 21 → **24**, and `counts.test.ts` · `const CATEGORY_WORDS: Record<number, { en: string; he: string }> = {` · ~289 stopped at 23 when this row was written — **Task 2 step 7 has executed and it spells 24 now** | A correction written against a ruling that is later reversed is wrong twice, and the second time it is invisible because it reads as settled. Re-derive every count from the current decision — never from the survey, and never from this plan's own earlier arithmetic | Task 2 |
 | Survey §7.3 rows 9/11: `21` → `24` in the catalogue tests | **`21` → `24`, as the survey said**, in both places (`core/categories.test.ts` · `test('there are 21 categories', () => {` · ~5 and `core/categories.test.ts` · `  assert.equal(PROFILES.standard.length, 21);` · ~70) <!-- historical-citation: §0 quotes the pre-24 catalogue assertions Task 2 step 1 replaces --> | as above | Task 2 |
 | Survey §7.2: the new categories add **6** generated command files | **6** — `add-todo.md`, `list-todo.md`, `add-note.md`, `list-note.md`, `add-procedure.md`, `list-procedure.md` | as above | Task 2 |
 | **This plan's own first version:** the shipped `runbook` seed's `1. `/`2. `/`3. ` body must change shape, and the committed assertion pinning it is work | **Withdrawn.** `runbook` keeps its seed, so that assertion stays green and there is nothing to do to it. What Task 10 does to the seed instead is additive and does not touch the numbered lines: one sentence saying which of the two categories this is | A withdrawn claim takes its citation with it. A citation left behind still resolves, which is exactly why it survives a re-read: the checker is happy and the sentence beside it is false | Task 10 |
-| §6m's controller ruling on F6 lists *"a `validateBody` carve-out"* among the work | **No behavioural carve-out is needed.** Steps never enter `body`, so `validateBody` (`validate.ts` · `export function validateBody(body: string): void {` · ~234) is correct exactly as written. What *is* needed is that its message names the new route, because a user pasting a whole procedure is refused with a message that today offers only observations | A cost estimate written before the shape was fixed can over-state as well as under-state. Verify each named site against the code before scheduling it | Task 5 |
-| Survey §3.3 and §6i.4: a third `FieldPolicy` member *"or a write path outside `updateItem`"* | **Neither.** §6m.3 moved progress out of the item entirely, so `steps` is **create-only** — the `observations` precedent (`mutate.ts` · `export interface UpdateInput {` · ~455 declares no `observations` either) — and `UPDATE_FIELD_POLICY` is not consulted at all | An implementation choice left open by one section is often closed by a later one. Read the superseding section before costing the open choice | Tasks 5, 7, 8 |
+| §6m's controller ruling on F6 lists *"a `validateBody` carve-out"* among the work | **No behavioural carve-out is needed.** Steps never enter `body`, so `validateBody` (`validate.ts` · `export function validateBody(body: string): void {` · ~320) is correct exactly as written. What *is* needed is that its message names the new route, because a user pasting a whole procedure is refused with a message that today offers only observations | A cost estimate written before the shape was fixed can over-state as well as under-state. Verify each named site against the code before scheduling it | Task 5 |
+| Survey §3.3 and §6i.4: a third `FieldPolicy` member *"or a write path outside `updateItem`"* | **Neither.** §6m.3 moved progress out of the item entirely, so `steps` is **create-only** — the `observations` precedent (`mutate.ts` · `export interface UpdateInput {` · ~494 declares no `observations` either) — and `UPDATE_FIELD_POLICY` is not consulted at all | An implementation choice left open by one section is often closed by a later one. Read the superseding section before costing the open choice | Tasks 5, 7, 8 |
 | §6m.6 records *"extend the `text` predicate to observations and `extra`"* as work still to take | **Already implemented.** `core/search.ts` · `function searchableText(item: Item): string {` · ~60 already reads title, body, every observation's text and context, and every `extra` value | A spec's "taken instead" list can be overtaken by a commit between the ruling and the plan. Re-check "still to do" against the tree | Task 3 — it is why `search --type todo --text …` needs no change |
 | §6g: progress lives in *"session state or the audit log"* | **The audit log, and it cannot be session state.** No CLI surface has a trustworthy session id — `core/focus.ts` · `// has a trustworthy session id: the CLI runs in a terminal and is handed none,` · ~25 records the codebase hitting this before and conceding it by retreating to workspace scope. `mycontext procedure step` is a CLI command, so a session-keyed progress file would be written under a key nothing reads | An either/or in a spec is a decision delegated to the plan, and one of the two options may be closed by a constraint recorded elsewhere in the same document | Tasks 8, 9 |
-| Nobody named it | **`mycontext add --note` already means an observation category spelled `note`** (`cli/index.ts` · `const NOTE_CATEGORY = 'note';` · ~511), and this plan adds an *item* category with the same spelling. They are different namespaces and the parser cannot confuse them; a reader can | A new name is checked against every vocabulary in the product, not only the one it joins | Tasks 2, 3 |
+| Nobody named it | **`mycontext add --note` already means an observation category spelled `note`** (`cli/index.ts` · `const NOTE_CATEGORY = 'note';` · ~513), and this plan adds an *item* category with the same spelling. They are different namespaces and the parser cannot confuse them; a reader can | A new name is checked against every vocabulary in the product, not only the one it joins | Tasks 2, 3 |
 
 **Where this plan could not verify something, it says so rather than asserting it.** Three such
 places, each carried into the task that owns it: whether `/clear` preserves `session_id` (unprobed —
@@ -151,16 +151,16 @@ a fragment and is re-checked by execution instead — the second table.
 
 | Fact | Where verified |
 |---|---|
-| A category is six fields and nothing else — no injection knob, no lifecycle field, no body-section field | `categories.ts` · `export interface CategoryDef {` · ~3 |
-| The catalogue is a literal map of `def(...)` calls | `categories.ts` · `export const CATEGORIES: Record<string, CategoryDef> = {` · ~19 |
-| `runbook` already ships — normative, prefix `RUN`, enabled — and this plan does not change one character of it (§6o) | `categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~40 |
-| The normative block ends at `known_issue` and the rationale block begins at `adr`, so a new normative entry has one correct position: beside `runbook` | `categories.ts` · `  known_issue:   def('known_issue', 'KNOWN', 'normative', true,` · ~75 |
-| `standard` is **derived** from `defaultEnabled`, so a new entry joins it for free | `categories.ts` · `  standard: Object.values(CATEGORIES)` · ~159 |
-| `minimal` is a hand-written list of eight names; a new category joins it only by being typed in | `categories.ts` · `  minimal: [` · ~155 |
+| A category is six fields and nothing else — no injection knob, no lifecycle field, no body-section field | `categories.ts` · `export interface CategoryDef {` · ~125 |
+| The catalogue is a literal map of `def(...)` calls | `categories.ts` · `export const CATEGORIES: Record<string, CategoryDef> = {` · ~152 |
+| `runbook` already ships — normative, prefix `RUN`, enabled — and this plan does not change one character of it (§6o) | `categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~198 |
+| The normative block ends at `known_issue` and the rationale block begins at `adr`, so a new normative entry has one correct position: beside `runbook` | `categories.ts` · `  known_issue:   def('known_issue', 'KNOWN', 'normative', true,` · ~233 |
+| `standard` is **derived** from `defaultEnabled`, so a new entry joins it for free | `categories.ts` · `  standard: Object.values(CATEGORIES)` · ~339 |
+| `minimal` is a hand-written list of eight names; a new category joins it only by being typed in | `categories.ts` · `  minimal: [` · ~335 |
 | Nothing may ship disabled by default, and that is asserted | `core/categories.test.ts` · `test('the catalogue ships no category disabled by default', () => {` · ~37 |
-| The tier decides the edit-policy default | `config.ts` · `export function defaultAgentEdits(tier: Tier): AgentEdits {` · ~111 |
-| A user may add or retier a category through `config.json`; the accepted keys are pinned, and `extraFields` is **one of the seven** — it joined the list on 2026-08-20, and the comment above the list says why | `config.ts` · `const CATEGORY_KEYS = [` · ~267 |
-| The resolved shape the rest of the code reads | `config.ts` · `export interface ResolvedCategory {` · ~85 |
+| The tier decides the edit-policy default | `config.ts` · `export function defaultAgentEdits(tier: Tier): AgentEdits {` · ~147 |
+| A user may add or retier a category through `config.json`; the accepted keys are pinned, and `extraFields` is **one of the seven** — it joined the list on 2026-08-20, and the comment above the list says why | `config.ts` · `const CATEGORY_KEYS = [` · ~399 |
+| The resolved shape the rest of the code reads | `config.ts` · `export interface ResolvedCategory {` · ~96 |
 
 ### The tier, and why `todo` and `note` are nearly free
 
@@ -172,28 +172,28 @@ a fragment and is re-checked by execution instead — the second table.
 | The split is a **category** lookup, never a per-item one | `select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~204 |
 | `status === 'active'` is a hard precondition for any injection at all, index line included | `select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198 |
 | An agent-authored normative item is forced to `draft`, with no parameter and no override | `trust.ts` · `export function trustedStatus(origin: Origin, tier: Tier, requested: Status): Status {` · ~267 |
-| One of its two call sites — `cli/commands/inbox-promote.ts` has the other | `mutate.ts` · `  const status: Status = trustedStatus(origin, category.tier, input.status ?? 'active');` · ~313 |
+| One of its two call sites — `cli/commands/inbox-promote.ts` has the other | `mutate.ts` · `  const status: Status = trustedStatus(origin, category.tier, input.status ?? 'active');` · ~352 |
 
 ### The status vocabulary the lifecycle maps onto
 
 | Fact | Where verified |
 |---|---|
 | Five members, and this plan adds none | `types.ts` · `export type Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated';` · ~2 |
-| Second copy | `validate.ts` · `export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];` · ~22 |
+| Second copy | `validate.ts` · `export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];` · ~23 |
 | Third copy | `mcp/tools.ts` · `const STATUSES = ['active', 'draft', 'superseded', 'deprecated', 'validated'];` · ~34 |
 | `deprecated` is counted in `retired`, so a finished procedure stays in a session-visible number | `select.ts` · `const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);` · ~397 |
 | `validated` would be **wrong** for `done` — it still governs | `trust.ts` · `export function governsNormatively(ctx: MutationContext, item: Item): boolean {` · ~331 |
 | The review queue is `status === 'draft' && layer === 'project'`, one definition for four surfaces | `select.ts` · `export function reviewQueue(items: Item[], type: string \| null = null): Item[] {` · ~433 |
-| A non-human caller cannot change the status of a normative item — §2.2's "human-only" already ships | `mutate.ts` · `    update.status !== undefined && update.status !== item.status &&` · ~623 |
+| A non-human caller cannot change the status of a normative item — §2.2's "human-only" already ships | `mutate.ts` · `    update.status !== undefined && update.status !== item.status &&` · ~709 |
 | `always` is a guarded field, so setting it is human-only too | `trust.ts` · `export const GUARDED_FIELDS = {` · ~369 |
-| `edit --status superseded` is refused on purpose; `supersede --by` is the route | `cli/commands/edit.ts` · `      if (status === 'superseded') {` · ~474 |
+| `edit --status superseded` is refused on purpose; `supersede --by` is the route | `cli/commands/edit.ts` · `      if (status === 'superseded') {` · ~634 |
 
 ### The file format, and why `## Steps` is a format change
 
 | Fact | Where verified |
 |---|---|
-| `validateBody` refuses **any** body line starting with a Markdown heading | `validate.ts` · `export function validateBody(body: string): void {` · ~234 |
-| …with the comment that changing the format is a much larger decision than the guard | `validate.ts` · `const HEADING_LINE = /^#{1,6}\s/;` · ~217 |
+| `validateBody` refuses **any** body line starting with a Markdown heading | `validate.ts` · `export function validateBody(body: string): void {` · ~320 |
+| …with the comment that changing the format is a much larger decision than the guard | `validate.ts` · `const HEADING_LINE = /^#{1,6}\s/;` · ~303 |
 | `splitSections` is already generic — it collects **every** `##` section into a map | `item.ts` · `function splitSections(body: string): { prose: string; sections: Map<string, string[]> } {` · ~150 |
 | …but only two were read when this row was written — **`steps` is the third since Task 5 executed** — so any *other* section is still parsed and then destroyed on the next `persist()` | `item.ts` · `    observations: parseObservations(sections.get('observations') ?? []),` · ~348 |
 | The line grammar a step regex sits beside | `item.ts` · `const OBSERVATION = /^-\s+\[([a-z0-9_-]+)\]\s+(.*)$/i;` · ~7 |
@@ -206,8 +206,8 @@ a fragment and is re-checked by execution instead — the second table.
 | Budgeting is derived from that exact text, so emitting steps makes `itemCost` correct with no second change | `select.ts` · `function itemCost(item: Item): number {` · ~194 |
 | `Item` today | `types.ts` · `export interface Item {` · ~56 |
 | **No DDL change**: an item is stored as JSON in a `TEXT` column and `rebuild` re-parses from Markdown | `store.ts` · `  data        TEXT NOT NULL` · ~29 |
-| `observations` is create-only — the precedent `steps` follows | `mutate.ts` · `export interface UpdateInput {` · ~455 |
-| Where a create input declares its fields | `mutate.ts` · `export interface CreateInput {` · ~45 |
+| `observations` is create-only — the precedent `steps` follows | `mutate.ts` · `export interface UpdateInput {` · ~494 |
+| Where a create input declares its fields | `mutate.ts` · `export interface CreateInput {` · ~46 |
 | Revisions carry four fields, and `steps` must be explicitly none of them | `revision-log.ts` · `export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;` · ~291 |
 | The compile-time table this plan must leave alone | `trust.ts` · `const UPDATE_FIELD_POLICY = {` · ~453 |
 
@@ -215,14 +215,14 @@ a fragment and is re-checked by execution instead — the second table.
 
 | Fact | Where verified |
 |---|---|
-| **Six** audit kinds today — `access` joined 2026-08-20, `progress` 2026-08-21, for `ui-refused` | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access' \| 'progress';` · ~136 |
-| The runtime list the CLI and MCP `--kind` enums derive from | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~242 |
-| One total table, so no caller can classify an op twice | `core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~247 |
-| `mutation` means "changed an item" | `core/audit.ts` · `export const MUTATION_OPS = [` · ~143 |
-| The precedent for a kind that touches no item: *"It is genuinely a fourth thing, so it is a fourth kind."* | `core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~190 |
-| The record shape a progress record fits into unchanged (`itemId`, `origin`, `note`) | `core/audit.ts` · `export interface AuditRecord {` · ~326 |
-| The reader refuses an unregistered kind, so a new kind must be registered in all three places at once | `core/audit.ts` · `      if (typeof row.kind !== 'string' \|\| !AUDIT_KINDS.includes(row.kind as AuditKind)) {` · ~472 |
-| The closed op vocabulary the new ops join | `core/audit.ts` · `export const AUDIT_OPS: AuditOp[] = [` · ~238 |
+| **Six** audit kinds today — `access` joined 2026-08-20, `progress` 2026-08-21, for `ui-refused` | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~339 |
+| The runtime list the CLI and MCP `--kind` enums derive from | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~339 |
+| One total table, so no caller can classify an op twice | `core/audit.ts` · `const KIND_OF: Record<AuditOp, AuditKind> = {` · ~344 |
+| `mutation` means "changed an item" | `core/audit.ts` · `export const MUTATION_OPS = [` · ~165 |
+| The precedent for a kind that touches no item: *"It is genuinely a fourth thing, so it is a fourth kind."* | `core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~254 |
+| The record shape a progress record fits into unchanged (`itemId`, `origin`, `note`) | `core/audit.ts` · `export interface AuditRecord {` · ~428 |
+| The reader refuses an unregistered kind, so a new kind must be registered in all three places at once | `core/audit.ts` · `      if (typeof row.kind !== 'string' \|\| !AUDIT_KINDS.includes(row.kind as AuditKind)) {` · ~625 |
+| The closed op vocabulary the new ops join | `core/audit.ts` · `export const AUDIT_OPS: AuditOp[] = [` · ~329 |
 | `RELATION_TYPES` is closed and `derived_from` is in it | `vocabulary.ts` · `  'derived_from', 'constrains', 'supersedes', 'blocks',` · ~43 |
 | `search --type <category>` already filters by category exactly | `core/search.ts` · `export interface ItemFilters {` · ~25 |
 | …and the text predicate already reads observations and `extra` | `core/search.ts` · `function searchableText(item: Item): string {` · ~60 |
@@ -233,10 +233,10 @@ a fragment and is re-checked by execution instead — the second table.
 |---|---|
 | Slash commands are generated from the resolved config and committed | `plugin/commands.ts` · `export function generateCommands(config: Config): CommandFile[] {` · ~1239 |
 | A category is named in code exactly twice today, both times for singled-out behaviour, not enumeration | `plugin/commands.ts` · `const SNAPSHOT_CATEGORY = 'reference';` · ~138 |
-| …and | `cli/commands/lesson.ts` · `    if (lesson && lesson.type !== 'lesson') {` · ~75 |
+| …and | `cli/commands/lesson.ts` · `    if (lesson && lesson.type !== 'lesson') {` · ~83 |
 | Hebrew descriptions are pinned to the catalogue by set equality | `categories-he.test.ts` · `'HE_CATEGORY_DESCRIPTIONS (src/help/he.ts) no longer covers the catalogue exactly — a ' +` · ~133 |
 | …their source | `help/he.ts` · `export const HE_CATEGORY_DESCRIPTIONS: Record<string, string> = {` · ~24 |
-| Worked specimens are pinned: no category may fall back to the placeholder seed | `help/index.ts` · `const SEEDS: Record<string, Seed> = {` · ~581 |
+| Worked specimens are pinned: no category may fall back to the placeholder seed | `help/index.ts` · `const SEEDS: Record<string, Seed> = {` · ~810 |
 | The topic file needs one ≥150-character entry per enabled category, each naming a nearest neighbour | `categories-topic.test.ts` · `test('every enabled category has an entry saying what it is for', () => {` · ~55 |
 | The skill's tier bullets are asserted to be exactly the enabled set, in both directions | `skills/mycontext/SKILL.md` · ``- **Rationale** (`adr`, `decision`, `lesson`, `tradeoff`, `assumption`,`` · ~25 |
 | …under a character ceiling raised six times, each with a recorded reason | `plugin-assets.test.ts` · `  assert.ok(text.length <= 5325,` · ~765 <!-- historical-citation: enumeration survey quotes the pre-raise ceiling Task 2 step 6 replaces --> |
@@ -754,11 +754,11 @@ Expected: FAIL — 21 ≠ 24, and the pinned table has three rows the catalogue 
 - [ ] **Step 2: Add the three entries**
 
 Two edits in `src/core/categories.ts`
-(`categories.ts` · `export const CATEGORIES: Record<string, CategoryDef> = {` · ~19), and they are
+(`categories.ts` · `export const CATEGORIES: Record<string, CategoryDef> = {` · ~152), and they are
 in different blocks of the same literal.
 
 **(a) `procedure`, in the normative block, immediately after the `runbook:` entry**
-(`categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~40) — **adjacent on
+(`categories.ts` · `runbook:       def('runbook', 'RUN', 'normative', true,` · ~198) — **adjacent on
 purpose**, so the next person editing either one sees the other:
 
 ```ts
@@ -805,7 +805,7 @@ purpose**, so the next person editing either one sees the other:
 
 **`runbook`'s own entry is not edited in this step, or in any step of this task.** §6o.
 
-And beside `PROFILES.minimal` (`categories.ts` · `  minimal: [` · ~155) add a comment recording the
+And beside `PROFILES.minimal` (`categories.ts` · `  minimal: [` · ~335) add a comment recording the
 decision rather than leaving it to be re-derived — **one comment covering all three**, because a
 comment naming two of the three new names invites the third to be added later without an argument:
 
@@ -840,7 +840,7 @@ name, and a translated category name would not match anything the reader can typ
 
 - [ ] **Step 4: Three worked seeds**
 
-`src/help/index.ts` (`help/index.ts` · `const SEEDS: Record<string, Seed> = {` · ~581). Real
+`src/help/index.ts` (`help/index.ts` · `const SEEDS: Record<string, Seed> = {` · ~810). Real
 specimens, not filler — the no-placeholder assertion in `test/help/help.test.ts` fails on the
 generic body, and both READMEs print these:
 
@@ -1147,7 +1147,7 @@ already; that is the point of including it.)
 - Empty: `"my_context: no todo items."` plus the tier line, and exit 0. An empty inbox is not an
   error.
 - `emitLoadErrors(errors, out)` at the end, exit 0 on an unrelated load error, following
-  `cli/commands/lesson.ts` · `    if (lesson && lesson.type !== 'lesson') {` · ~75's sibling
+  `cli/commands/lesson.ts` · `    if (lesson && lesson.type !== 'lesson') {` · ~83's sibling
   reasoning: this command did what it was asked.
 
 Register it, and add `import './todo.ts';` wherever `src/cli/index.ts` imports the other command
@@ -1210,7 +1210,7 @@ is the second-spelling defect this document names four times. "Inbox" is §1.2's
 **Exactly what it does, in order:**
 
 1. Resolve `<id>`. If it does not exist, or its `type` is neither `todo` nor `note`, refuse by name
-   — the shape `cli/commands/lesson.ts` · `    if (lesson && lesson.type !== 'lesson') {` · ~75
+   — the shape `cli/commands/lesson.ts` · `    if (lesson && lesson.type !== 'lesson') {` · ~83
    already uses.
 2. Refuse `--to todo` and `--to note`: a promotion that stays in the inbox is not one.
 3. Create the target with `createItem`, carrying:
@@ -1347,7 +1347,7 @@ Follow `src/cli/commands/supersede.ts` for the confirmation/`--yes` shape and
   told about.
 - **The success message states the target's real status and the reason.** For a `draft` outcome say
   it landed a draft because a non-human origin authored the content, and name
-  `mycontext review promote <id>`. `core/mutate.ts` · `  const status: Status = trustedStatus(origin, category.tier, input.status ?? 'active');` · ~313
+  `mycontext review promote <id>`. `core/mutate.ts` · `  const status: Status = trustedStatus(origin, category.tier, input.status ?? 'active');` · ~352
   already appends the standard explanation to `createItem`'s own message; print that message rather
   than composing a second one.
 
@@ -1390,8 +1390,8 @@ git commit -m "feat(cli): mycontext inbox-promote — a todo or note becomes a r
   - `export function validateStepText(text: string, where: string): void` in `src/core/validate.ts`
   - Tasks 6, 7, 9 and 10 consume all three.
 
-**Why this is a file-format change and not a parser reuse.** `validate.ts` · `export function validateBody(body: string): void {` · ~234 refuses any body line starting with a
-Markdown heading, with the comment at `validate.ts` · `const HEADING_LINE = /^#{1,6}\s/;` · ~217
+**Why this is a file-format change and not a parser reuse.** `validate.ts` · `export function validateBody(body: string): void {` · ~320 refuses any body line starting with a
+Markdown heading, with the comment at `validate.ts` · `const HEADING_LINE = /^#{1,6}\s/;` · ~303
 saying that changing the file format is a much larger decision than the guard. So `## Steps` cannot
 live in `body` at all. And an unrecognised section is not merely unread: `splitSections` collects it
 (`item.ts` · `function splitSections(body: string): { prose: string; sections: Map<string, string[]> } {` · ~150)
@@ -1426,12 +1426,12 @@ committed corpus and asserts every recorded checksum still matches, and
 `rebuild.ts` · `      const expected = computeItemChecksum(item);` · ~157 turns any disagreement into
 a `checksum mismatch` LoadError. An unconditional key would therefore (i) fail the suite immediately,
 and (ii) if shipped, redden every user's `doctor` at once and destroy the one signal
-`cli/commands/repair.ts` · `    .filter((i) => i.checksum !== '' && computeItemChecksum(i) !== i.checksum)` · ~32
+`cli/commands/repair.ts` · `    .filter((i) => i.checksum !== '' && computeItemChecksum(i) !== i.checksum)` · ~38
 exists to preserve — the stale checksum that is the only remaining evidence a file was altered.
 Conditional inclusion makes a stepless item hash exactly as it does today, by construction.
 
 `itemContentHash` is different and takes `steps` **unconditionally**: it is never persisted (it is
-recomputed on both sides of every `createItem` dedupe — `mutate.ts` · `    if (itemContentHash(item) === hash) return { duplicate: item, base, nextN: n };` · ~178), so
+recomputed on both sides of every `createItem` dedupe — `mutate.ts` · `    if (itemContentHash(item) === hash) return { duplicate: item, base, nextN: n };` · ~179), so
 there is nothing to go stale. Omitting it would make two procedures differing only in their steps
 dedupe onto each other.
 
@@ -1579,7 +1579,7 @@ it is create-only.
 
 **Adding a required field to `Item` is a compile error at every construction site, and that is the
 point.** Roughly 19 hand-rolled `function item(over: Partial<Item> = {}): Item` factories under
-`test/`, plus `src/help/index.ts` · `  const item: Item = {` · ~889. Add `steps: []` to each; `tsc`
+`test/`, plus `src/help/index.ts` · `  const item: Item = {` · ~1110. Add `steps: []` to each; `tsc`
 enumerates them, so nothing has to be remembered.
 
 - [ ] **Step 4: Parse and render**
@@ -1676,7 +1676,7 @@ with a comment saying why the two hashes differ: this one is never persisted.
 
 - [ ] **Step 6: `validateStepText`, and `validateBody`'s message**
 
-`src/core/validate.ts`, beside `validate.ts` · `export function validateObservationText(text: string, where: string): void {` · ~342:
+`src/core/validate.ts`, beside `validate.ts` · `export function validateObservationText(text: string, where: string): void {` · ~428:
 
 ```ts
 export function validateStepText(text: string, where: string): void { … }
@@ -1883,7 +1883,7 @@ test('an ingest candidate carrying "steps" is refused by name, not accepted and 
 
 - [ ] **Step 2: `CreateInput.steps`**
 
-`src/core/mutate.ts` · `export interface CreateInput {` · ~45 gains `steps?: string[];`. Normalise it
+`src/core/mutate.ts` · `export interface CreateInput {` · ~46 gains `steps?: string[];`. Normalise it
 beside the existing observation normalisation into `{ text, checked: false }`, calling
 `validateStepText` on each with a `where` naming the index (`steps[2]`), and pass the normalised
 array to both `contentHash` and the item. **`UpdateInput` is not touched** — that is what keeps
@@ -1907,7 +1907,7 @@ afterwards through any command**, so correcting one means editing the Markdown a
 category here is the capture-time half of §6o's mitigation: `--step` is where an author who reached
 for the wrong category finds out, if they are going to find out at all.
 
-**Also update the `NOTE_CATEGORY` doc comment** (`cli/index.ts` · `const NOTE_CATEGORY = 'note';` · ~511):
+**Also update the `NOTE_CATEGORY` doc comment** (`cli/index.ts` · `const NOTE_CATEGORY = 'note';` · ~513):
 after Task 2 there is an *item* category spelled `note`, and this constant is an *observation*
 category spelled `note`. The parser cannot confuse them; a reader can. One sentence naming both
 namespaces closes it (§0).
@@ -1973,11 +1973,11 @@ git commit -m "feat(capture): steps on add, create_item, and an explicit refusal
     computed and never stored
   - Task 9 is the only consumer.
 
-**Why a fifth kind and not a `MUTATION_OPS` member.** `core/audit.ts` · `export const MUTATION_OPS = [` · ~143 says `mutation` means "changed an item", and every op there
+**Why a fifth kind and not a `MUTATION_OPS` member.** `core/audit.ts` · `export const MUTATION_OPS = [` · ~165 says `mutation` means "changed an item", and every op there
 carries an `itemId` **because it moved that item's columns**. A step tick moves nothing: the item's
 bytes, its `checksum` and its rendered injection are all identical before and after. Filing it under
 `mutation` would make `mycontext audit --kind mutation --item PROC-x` a question with a wrong answer.
-`core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~190 is the
+`core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~254 is the
 precedent and states the rule: *"It is genuinely a fourth thing, so it is a fourth kind."* This is
 the sixth — `access` took the fifth on 2026-08-20.
 
@@ -1995,7 +1995,7 @@ this finished" has an answer. `step-reset` is written by `procedure activate` (T
 replay anchor. `step-undone` exists because the log is append-only: without it the only way to
 correct a mis-tick is a reset, which discards the whole run.
 
-**One consequence that must be written down, not discovered.** `core/audit.ts` · `      if (typeof row.kind !== 'string' || !AUDIT_KINDS.includes(row.kind as AuditKind)) {` · ~472
+**One consequence that must be written down, not discovered.** `core/audit.ts` · `      if (typeof row.kind !== 'string' || !AUDIT_KINDS.includes(row.kind as AuditKind)) {` · ~625
 refuses an unregistered kind and takes the whole segment with it. So **a log containing `progress`
 records cannot be read by v1.0.2**, in this workspace or an imported one. That is §6l F11's finding
 arriving for real. This plan does not make such a log readable — quarantine-on-import belongs to the
@@ -2112,13 +2112,13 @@ Run: `node --test test/core/progress.test.ts` → FAIL: no `src/core/progress.ts
 `src/core/audit.ts`, five edits that must land together or `parseAudit` rejects what `recordAudit`
 writes:
 
-1. `AuditKind` gains `'progress'` as a SIXTH kind — `access` landed 2026-08-20 (`core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access' \| 'progress';` · ~136),
+1. `AuditKind` gains `'progress'` as a SIXTH kind — `access` landed 2026-08-20 (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~339),
    with a doc paragraph in the register the `focus` paragraph above it uses: what it means, and why
    it is not a `mutation`.
 2. `export const PROGRESS_OPS = ['step-done', 'step-undone', 'step-reset'] as const;` and its type,
    beside `FOCUS_OPS`.
 3. `AuditOp` gains `ProgressOp`.
-4. `AUDIT_OPS` gains `...PROGRESS_OPS` (`core/audit.ts` · `export const AUDIT_OPS: AuditOp[] = [` · ~238).
+4. `AUDIT_OPS` gains `...PROGRESS_OPS` (`core/audit.ts` · `export const AUDIT_OPS: AuditOp[] = [` · ~329).
 5. `AUDIT_KINDS` gains `'progress'`, and `KIND_OF` gains the three rows.
 
 `AuditRecord` does **not** change: a progress record uses `itemId` for the procedure, `origin` for who
@@ -2180,7 +2180,7 @@ export function procedureProgress(records: AuditRecord[], itemId: string): Set<n
 }
 ```
 
-`readAudit` (`core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~597)
+`readAudit` (`core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~750)
 returns every record across **every segment, oldest first**, so a `step-reset` that has since rotated
 out of the live log is still found — no segment-window special case is needed and none should be
 added.
@@ -2237,7 +2237,7 @@ line — "injected in full" is a property of the `always` flag and its tier memb
 status. A command that set only the status would ship a procedure that is merely eligible: indexed, not
 delivered, and silently not doing the one thing this lifecycle exists for. Both fields are guarded
 (`trust.ts` · `export const GUARDED_FIELDS = {` · ~369 for `always`;
-`mutate.ts` · `    update.status !== undefined && update.status !== item.status &&` · ~623 for
+`mutate.ts` · `    update.status !== undefined && update.status !== item.status &&` · ~709 for
 `status`), so a non-human caller can reach neither — §2.2's human-only gate is **already implemented
 and this task adds no new gate**.
 
@@ -2723,10 +2723,10 @@ Three edits in `src/help/index.ts`, and the first two are what let a `procedure`
 all:
 
 1. `Seed` gains `steps?: string[]`, and `exampleItemOf` threads it through: the `Item` literal at
-   `help/index.ts` · `  const item: Item = {` · ~889 gained `steps: []` in Task 5, and it becomes
+   `help/index.ts` · `  const item: Item = {` · ~1110 gained `steps: []` in Task 5, and it becomes
    `seed.steps?.map((text) => ({ text, checked: false })) ?? []`.
 2. **`exampleItemShort` must render steps**
-   (`help/index.ts` · `export function exampleItemShort(type: string, config: Config): string {` · ~833),
+   (`help/index.ts` · `export function exampleItemShort(type: string, config: Config): string {` · ~1062),
    or the READMEs' `procedure` specimen shows a procedure with no steps — a specimen teaching the
    opposite of the category. Emit the `- [ ] ` lines after the body, and add to the function's doc
    comment why steps earn their place on the same terms `source_file` and the `extra` fields do:

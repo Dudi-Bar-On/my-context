@@ -1272,7 +1272,7 @@ function boundedDigits(
  *
  * **The `limit + 1` truncation probe, which is this codebase's settled
  * spelling and not a new one.** `corpusSelect`
- * (`ui/ask-model.ts` · `export function corpusSelect(f: CorpusFilter): { sql: string; params: (string | number)[] } {` · ~96)
+ * (`ui/ask-model.ts` · `export function corpusSelect(f: CorpusFilter): { sql: string; params: (string | number)[] } {` · ~111)
  * binds `limit + 1` and slices back, and `coverageFiles` above walks to
  * `limit + 1` for the same reason: `files.length >= limit` cannot tell an
  * answer holding EXACTLY the page from one holding more, so it reports a

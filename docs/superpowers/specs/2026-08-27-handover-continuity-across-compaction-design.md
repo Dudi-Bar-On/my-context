@@ -65,7 +65,9 @@ hook that knows something records it, and the hook that can speak says it.
 ### 3.1 Which file
 
 A new top-level config key, `handover`, registered beside `ui` in
-`src/core/config.ts` · `export const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'] as const;` · ~708.
+`src/core/config.ts` · `export const TOP_LEVEL_KEYS = [` · ~799. The list is cited by its
+opening rather than in full, because a citation a NEW MEMBER breaks is a citation
+that will break again — and this key is the member that broke it.
 
 ```json
 { "handover": { "path": "reports/V2-HANDOVER.md", "marker": "⏭", "budgetTokens": 1200 } }

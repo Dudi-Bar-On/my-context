@@ -1746,7 +1746,7 @@ test('/api/coverage answers the pre-paging bytes when no parameter is given', ()
  * **A page, and what it left out — the three states, told apart.**
  *
  * `limit + 1` is the probe `corpusSelect` settled on
- * (`ui/ask-model.ts` · `export function corpusSelect(f: CorpusFilter): { sql: string; params: (string | number)[] } {` · ~96),
+ * (`ui/ask-model.ts` · `export function corpusSelect(f: CorpusFilter): { sql: string; params: (string | number)[] } {` · ~111),
  * asserted at both sides of a bound of 2 for the reason `coverageFiles` is:
  * `files.length >= limit` cannot tell an answer holding EXACTLY the page from
  * one holding more, so it reports a complete answer as a partial one.

@@ -148,7 +148,7 @@ const MOCKUP = readFileSync(path.join(REPO, 'docs', 'design', 'web-ui-mockup.htm
  * `<section data-p="learn">`'s INNER html — the opening tag excluded, because
  * `e2e/screen-parity.spec.ts` compares `root.querySelectorAll('*')` and the
  * section itself is the root on both sides
- * (`e2e/screen-parity.spec.ts` · `for (const el of root.querySelectorAll<HTMLElement>('*'))` · ~62).
+ * (`e2e/screen-parity.spec.ts` · `for (const el of root.querySelectorAll<HTMLElement>('*'))` · ~61).
  */
 function learnSection(): string {
   const open = MOCKUP.indexOf('<section data-p="learn"');
@@ -206,7 +206,7 @@ function textOf(node: FakeNode): string {
 
 /**
  * The four `/api/help/:topic` bodies, in the shapes `apiHelp` documents and
- * builds (`src/ui/read-model.ts` · `export function apiHelp(` · ~1531).
+ * builds (`src/ui/read-model.ts` · `export function apiHelp(` · ~1750).
  * `markdown` is present and non-trivial on every one because the screen fetches
  * it and draws none of it — a claim worth being able to break.
  */

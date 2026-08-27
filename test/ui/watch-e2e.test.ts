@@ -8,13 +8,13 @@
  * **The middle test is THE §2 test**, and it is the reason this file exists:
  * plan 1 built the `kind: 'stream'` slot and the dispatch that deliberately
  * does not touch the idle monitor for it
- * (`src/ui/server.ts` · `NOT idle.touch(): an open stream is not activity` · ~406),
+ * (`src/ui/server.ts` · `NOT idle.touch(): an open stream is not activity` · ~530),
  * but shipped no stream route, so the promise was never EXECUTED. It is now.
  *
  * **How that test is built, and why it is not a third wall-clock race.**
  *
  * `test/ui/server.test.ts` already asserts the same rule in-process
- * (`test/ui/server.test.ts` · `an open stream is not activity; a json request is` · ~85),
+ * (`test/ui/server.test.ts` · `an open stream is not activity; a json request is` · ~130),
  * and it does it by MEASURING: a stream must not push the exit past
  * `IDLE + 500ms`, a control request must push it past `IDLE + 800ms`. Two
  * deadlines on a loaded machine, which is exactly why it is one of this
@@ -54,7 +54,7 @@
  * machine produce a slower run rather than a wrong verdict.
  *
  * The first test overlaps `server-e2e.test.ts`'s stream test
- * (`test/ui/server-e2e.test.ts` · `the audit stream delivers what lands after you connect` · ~684)
+ * (`test/ui/server-e2e.test.ts` · `the audit stream delivers what lands after you connect` · ~790)
  * only in its premise. That one proves a record appended after connect arrives
  * and one appended before it does not; this one proves the record's SHAPE
  * survives the wire — `spilled`, its `reason` and `tokens` — which is the half

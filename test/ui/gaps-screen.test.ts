@@ -11,7 +11,7 @@
  * structurally unable to answer: **is a listed gap missing because the CODE
  * cannot draw it, or because the CORPUS gave it nothing to draw?**
  *
- * The gate runs over `.demo-corpus` (`e2e/app.ts` · `the simulated corpus is missing at` · ~110),
+ * The gate runs over `.demo-corpus` (`e2e/app.ts` · `the simulated corpus is missing at` · ~113),
  * and that corpus contains `.my_context` and NO REPOSITORY FILES. So
  * `/api/coverage` answers `files: []`, `buildTree` builds an empty root, and
  * `coverageGapRows` names no directory — which is exactly why `td`, `td.m`,

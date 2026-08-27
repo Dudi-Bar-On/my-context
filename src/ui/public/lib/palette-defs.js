@@ -119,7 +119,19 @@ export const PALETTE = [
     ],
   },
   {
-    name: 'lesson-discard', kind: 'write', base: ['mycontext', 'lesson-discard'],
+    // BELOW the boundary, and it is worth saying why, because the first reading
+    // is the wrong one. `lesson-discard` PERMANENTLY rejects a staged rule and
+    // takes no `--yes`, which reads as something that should need ceremony —
+    // but the boundary is about what GOVERNS this project, and a staged
+    // candidate governs nothing yet. `review discard`, which looks like the
+    // same act, is derived as gated because a draft in that queue can be
+    // promoted into something that does.
+    //
+    // So destructive and boundary-crossing are two different axes, and this is
+    // the entry that separates them: it is the first, not the second. The
+    // stronger confirm shows a field-by-field diff of what changes, and there
+    // are no fields here to show.
+    name: 'lesson-discard', kind: 'write', base: ['mycontext', 'lesson-discard'], boundary: false,
     args: [{ name: 'id', input: 'text', required: true }, { name: 'key', input: 'text', required: true }],
     flags: [],
   },
@@ -150,29 +162,41 @@ export const PALETTE = [
   // rebuild rewrites .index.db on disk — a write for composition purposes
   // even though it is not in the deny recipe (it rebuilds a derived file the
   // README tells users they may delete freely).
-  { name: 'rebuild', kind: 'write', base: ['mycontext', 'rebuild'], args: [], flags: [] },
+  //
+  // `boundary: false` and the derivation agrees: the index is DERIVED from the
+  // Markdown, so rebuilding it changes nothing that governs anything. It is
+  // the one `kind: 'write'` entry below the boundary, and it is spelled out
+  // rather than omitted so that an omission keeps meaning "not classified".
+  { name: 'rebuild', kind: 'write', base: ['mycontext', 'rebuild'], boundary: false, args: [], flags: [] },
 
   // --- reads: executed by the UI -----------------------------------------
-  { name: 'status', kind: 'read', base: ['mycontext', 'status'], args: [], flags: [], screen: '#/status' },
-  { name: 'doctor', kind: 'read', base: ['mycontext', 'doctor'], args: [], flags: [], screen: '#/doctor' },
-  { name: 'decay', kind: 'read', base: ['mycontext', 'decay'], args: [], flags: [], screen: '#/decay' },
-  { name: 'review revisions', kind: 'read', base: ['mycontext', 'review', 'revisions'], args: [], flags: [], screen: '#/work' },
+  //
+  // Every one carries `boundary: false` EXPLICITLY rather than by omission.
+  // The server resolves an unflagged entry as ON the boundary, so leaving
+  // these blank would give `doctor` the field-by-field diff meant for a
+  // command that changes what governs the project — too much ceremony, which
+  // is the safe direction to fail in but is still wrong. Spelling it out is
+  // what keeps an omission meaning "nobody has classified this yet".
+  { name: 'status', kind: 'read', base: ['mycontext', 'status'], boundary: false, args: [], flags: [], screen: '#/status' },
+  { name: 'doctor', kind: 'read', base: ['mycontext', 'doctor'], boundary: false, args: [], flags: [], screen: '#/doctor' },
+  { name: 'decay', kind: 'read', base: ['mycontext', 'decay'], boundary: false, args: [], flags: [], screen: '#/decay' },
+  { name: 'review revisions', kind: 'read', base: ['mycontext', 'review', 'revisions'], boundary: false, args: [], flags: [], screen: '#/work' },
   {
-    name: 'help', kind: 'read', base: ['mycontext', 'help'],
+    name: 'help', kind: 'read', base: ['mycontext', 'help'], boundary: false,
     args: [{ name: 'topic', source: 'topics' }], flags: [], screen: '#/learn',
   },
   {
-    name: 'list', kind: 'read', base: ['mycontext', 'list'],
+    name: 'list', kind: 'read', base: ['mycontext', 'list'], boundary: false,
     args: [{ name: 'category', source: 'categories' }], flags: [],
     endpoint: () => '/api/items',
   },
   {
-    name: 'show', kind: 'read', base: ['mycontext', 'show'],
+    name: 'show', kind: 'read', base: ['mycontext', 'show'], boundary: false,
     args: [{ name: 'id', source: 'items', required: true }], flags: [],
     endpoint: (values) => `/api/item/${encodeURIComponent(values.id)}`,
   },
   {
-    name: 'search', kind: 'read', base: ['mycontext', 'search'],
+    name: 'search', kind: 'read', base: ['mycontext', 'search'], boundary: false,
     args: [],
     flags: [
       { name: 'text', input: 'text' }, { name: 'type', source: 'categories' },

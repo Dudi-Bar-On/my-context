@@ -4,7 +4,7 @@
  * **This screen describes an act; it never performs one.** Export writes files
  * and import writes items, so the two modules that would answer this screen
  * most directly are the two this server may not load: `pack/import.ts` binds
- * the mutation surface (`import.ts` · `  createItem, updateItem,` · ~64) and
+ * the mutation surface (`import.ts` · `  createItem, updateItem,` · ~63) and
  * `pack/imported-audit.ts` and `pack/dir-writer.ts` bind `writeFileSync`. What
  * is served instead is a DESCRIPTION of what an export would carry, plus the
  * argv of a command the reader pastes into their own shell — the settlement
@@ -42,7 +42,7 @@ import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 
 /**
  * The three chips the table draws, and the whole vocabulary of them
- * (`en.js` · `'port.yes': 'travels',` · ~387, `port.filtered` and `port.no`
+ * (`en.js` · `'port.yes': 'travels',` · ~414, `port.filtered` and `port.no`
  * beside it). A row is never assigned one directly: see `verdictOf`.
  */
 export type PortVerdict = 'travels' | 'filtered' | 'rebuilt';
@@ -60,8 +60,8 @@ export interface PortRow {
  * `built` is the load-bearing field and the reason this list has three
  * entries rather than two. The mockup draws three rungs and `en.js` ships
  * prose for all three, but the middle one does not exist in this release:
- * `ArtefactFormat` is a two-member union (`reader.ts` · `export type ArtefactFormat = 'dir' | 'zip';` · ~67)
- * and `--format` refuses anything else (`export.ts` · `const FORMATS: readonly ArtefactFormat[] = ['dir', 'zip'];` · ~78).
+ * `ArtefactFormat` is a two-member union (`reader.ts` · `export type ArtefactFormat = 'dir' | 'zip';` · ~66)
+ * and `--format` refuses anything else (`export.ts` · `const FORMATS: readonly ArtefactFormat[] = ['dir', 'zip'];` · ~83).
  * Serving two rungs to a screen that draws three would make the third row
  * fall back to whatever the page invented for it; serving three with a
  * `built` flag is the same fact with nothing dropped.
@@ -113,7 +113,7 @@ export interface PortBody {
  * `buildBundle` produces one file per selected item plus the three root files
  * and has no directory walk, so it knows what it assembled and cannot know
  * what the rest of `.my_context/` holds. The CLI carries the same fact in its
- * own words and its own list (`export.ts` · `const NOT_TRAVELLING = [` · ~96),
+ * own words and its own list (`export.ts` · `const NOT_TRAVELLING = [` · ~101),
  * which is not exported — that module registers a command at import time, so
  * a read surface cannot borrow the list without loading the CLI. Two copies of
  * one fact is a defect; it is disclosed below rather than papered over, and
@@ -135,7 +135,7 @@ const verdictOf = (row: { becomes: string | null; filtered: boolean }): PortVerd
 
 /**
  * The audit kinds that travel — one, and it is `exportableHistory`'s own
- * filter (`history.ts` · `  return filterAudit(readAudit(root), { kind: 'mutation' })` · ~413).
+ * filter (`history.ts` · `  return filterAudit(readAudit(root), { kind: 'mutation' })` · ~447).
  *
  * The annotation is the pin: the day `AuditKind` stops having a `mutation`
  * member this file fails to compile, rather than serving a kind the filter no

@@ -224,7 +224,7 @@ test('a `ready` procedure discloses that it reaches nothing — the mockup says 
     try {
       const created = createItem({ root: ws.projectRoot!, store, config: ws.config }, {
         // `steps` on `CreateInput` is TEXT, never `Step[]`
-        // (`core/mutate.ts` · `  steps?: string[];` · ~96): a step is created
+        // (`core/mutate.ts` · `  steps?: string[];` · ~97): a step is created
         // unticked, because a tick is a progress record and not a field.
         type: 'procedure', title: 'Drain the queue', body: 'Proposed by an agent.',
         origin: 'agent', steps: ['Stop the writers'],

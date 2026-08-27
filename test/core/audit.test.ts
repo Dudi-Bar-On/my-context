@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   AUDIT_KINDS, AUDIT_MAX_BYTES, AUDIT_OPS, AUDIT_PROTOCOL, AUDIT_PROTOCOLS_READ, auditDir,
-  auditLogPath, auditSegments, auditSize, filterAudit, kindOf, ledgerRows, MUTATION_OPS,
-  PROGRESS_OPS, readAudit, recordAudit,
+  auditLogPath, auditSegments, auditSize, EXECUTION_OPS, filterAudit, kindOf, ledgerRows,
+  MUTATION_OPS, PROGRESS_OPS, readAudit, recordAudit,
   type AuditRecord,
 } from '../../src/core/audit.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -170,7 +170,13 @@ test('a v1 log still reads after the bump — every kind v1 knew', () => {
 
   const records = readAudit(b.root);
   assert.equal(records.length, 5);
-  assert.deepEqual(records.map((r) => r.kind), AUDIT_KINDS.filter((k) => k !== 'progress'));
+  // v1 knew five kinds. `progress` and `execution` arrived after it, so the
+  // fixture cannot supply them and the expectation says which two and why
+  // rather than shrinking to a count.
+  assert.deepEqual(
+    records.map((r) => r.kind),
+    AUDIT_KINDS.filter((k) => k !== 'progress' && k !== 'execution'),
+  );
   // Read, not rewritten: the lines on disk still declare @1.
   assert.match(readFileSync(auditLogPath(b.root), 'utf8'), /my_context\/audit@1/);
   b.dispose();
@@ -328,8 +334,11 @@ test('every progress op is classified progress, and none is a mutation', () => {
  * from `AUDIT_KINDS` is refused by `specFor`'s validator on every line, and the
  * order is what the CLI's and MCP's enum listings show a reader.
  */
-test('progress joins the register as the sixth kind, and moves no kind before it', () => {
-  assert.deepEqual(AUDIT_KINDS, ['mutation', 'injection', 'hook', 'focus', 'access', 'progress']);
+test('the kind register is APPEND-ONLY — progress sixth, execution seventh, nothing moved', () => {
+  assert.deepEqual(
+    AUDIT_KINDS,
+    ['mutation', 'injection', 'hook', 'focus', 'access', 'progress', 'execution'],
+  );
   assert.equal(new Set(AUDIT_KINDS).size, AUDIT_KINDS.length);
   assert.equal(new Set(AUDIT_OPS.map(kindOf)).size, AUDIT_KINDS.length,
     'every registered kind is reachable from some op');
@@ -368,17 +377,30 @@ test('no pre-existing op changed kind', () => {
   // the position their family puts them: `post-compact` ends the PostCompact
   // round's hook ops, and the ten behind it are the observation events
   // (hooks plan seq:21 and seq:2b), appended as one block in the order the
-  // manifest registers them. Every one of them is a `hook` — they inject
+  // manifest registers them. Every one of THOSE is a `hook` — they inject
   // nothing — which is the half of this test that matters: a new op that
   // arrived as an `injection` would make `mycontext audit --kind injection`
   // over-report what models were shown.
+  //
+  // `execute` (2026-08-27) is the one addition that is NOT a hook, and it is
+  // excluded by name rather than by relaxing the loop: it is the web UI
+  // running a catalogue command, which is neither an injection nor a hook
+  // firing, and folding it into either family would make that family's
+  // filter over-report exactly the way the paragraph above describes.
   assert.deepEqual(
     AUDIT_OPS.filter((op) => !(op in before)),
     ['post-compact',
       'file-changed', 'instructions-loaded', 'config-change', 'permission-denied',
-      'subagent-stop', 'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion'],
+      'subagent-stop', 'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion',
+      'execute', 'execute-done'],
   );
-  for (const op of AUDIT_OPS.filter((o) => !(o in before))) {
+  // The execution PAIR, and it is a pair because the log cannot be amended:
+  // `execute` is appended before the process starts and `execute-done` after it
+  // returns. An `execute` row with no `execute-done` beside it is a run that
+  // never came back — the same attempted/complete shape `pre-compact` and
+  // `subagent-start` already use, for the same reason.
+  for (const op of EXECUTION_OPS) assert.equal(kindOf(op), 'execution');
+  for (const op of AUDIT_OPS.filter((o) => !(o in before) && !EXECUTION_OPS.includes(o as never))) {
     assert.equal(kindOf(op), 'hook', `${op} joined a family that claims something it did not do`);
   }
 });

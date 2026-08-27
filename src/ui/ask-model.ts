@@ -21,7 +21,7 @@ import { readProjection } from './watch-model.ts';
 // **The parameters are the security half of this module, and the reason
 // `Store.raw` grew a second argument.** `mycontext query` accepts SQL a human
 // typed and guards it with `assertSelectOnly`
-// (`cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~114),
+// (`cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~173),
 // whose own docblock records that a denylist over a full SQL grammar cannot be
 // complete and that it is nevertheless the ONLY barrier in front of
 // `VACUUM INTO` — the one statement that writes a full copy of the database to
@@ -260,8 +260,8 @@ export function apiAskCorpus(ws: Workspace, url: URL): JsonResult {
  * `GET /api/ask/audit` — the audit query builder's server half.
  *
  * Every filter is validated against the one declaration of its vocabulary
- * (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~242 and
- * `core/audit.ts` · `export const AUDIT_OPS: AuditOp[] = [` · ~238) rather than
+ * (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~339 and
+ * `core/audit.ts` · `export const AUDIT_OPS: AuditOp[] = [` · ~329) rather than
  * respelled here, and `since`/`until` go through `parseWhen` — the same parser
  * `mycontext audit` uses, so the UI and the CLI cannot come to disagree about
  * what `7d` means.
@@ -439,7 +439,7 @@ interface ItemChanges { count: number; lastOp: string | null; last: string | nul
  * `label`, `count` and `last` carry `SummaryRow`'s own names on purpose: the
  * other three reports return `{ label, count, last }`, the Ask screen already
  * maps exactly those three into its At · Item · Role columns
- * (`src/ui/public/screens/ask.js` · `export function summaryRows(report, role, rows) {` · ~323),
+ * (`src/ui/public/screens/ask.js` · `export function summaryRows(report, role, rows) {` · ~334),
  * and a fourth report that renamed them would need a fourth mapper to show
  * anything at all. This row is that shape plus the columns a progress view
  * needs, so it fits the screen as it stands and a screen that wants the extra

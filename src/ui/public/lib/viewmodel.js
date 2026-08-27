@@ -24,10 +24,16 @@
 // this function is that contract applied to rendering, and the test pins both
 // directions.
 //
-// There are SIX kinds (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~242),
+// There are SEVEN kinds (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~242),
 // and `injected`/`spilled`/`tokens` belong to exactly one of them. The other
-// five come back with an empty spill list and a `null` token count — not
+// six come back with an empty spill list and a `null` token count — not
 // "not-recorded", which is a claim about a field that kind never carries.
+//
+// `command` is `execution`'s own field and is carried the same way `hook` and
+// `fields` are: present when the record has one, `null` otherwise. Without it
+// an execution row reaches the watch screen with no id, no argv and no exit
+// code — a row saying something ran and refusing to say what, which is the
+// one thing an audit surface may not do.
 import { composeCommand } from './command.js';
 
 export function describeRecord(record) {

@@ -93,7 +93,7 @@ export type CategoryUpdates = Readonly<Record<string, UpdatableName>>;
  * `status` and the rest — because this table already said it.
  *
  * **The two tiers differ in exactly two entries, and the difference is read off
- * the code that enforces it** (`cli/commands/edit.ts` · `      if (patch.always === true) {` · ~525),
+ * the code that enforces it** (`cli/commands/edit.ts` · `      if (patch.always === true) {` · ~694),
  * not off the comment table above it. On a rationale-tier item `--always true`
  * and `--severity hard` are refused through `inertFieldError`; `--always=false`
  * and `--severity soft` are accepted, because they assert nothing about the

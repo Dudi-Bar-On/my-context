@@ -229,7 +229,7 @@ The shell-substitution half of 2.4 is a v2.0 design defect, not a shipped one.
 **[M] The shipped half is real, and needs no `quoteArg` at all.** Demonstrated end to end in a
 throwaway workspace on `1.0.1`:
 
-1. `validateExplicitId` has exactly one call site — `mutate.ts` · `if (input.id !== undefined) validateExplicitId(input.id,` · ~280, the explicit-mint path.
+1. `validateExplicitId` has exactly one call site — `mutate.ts` · `if (input.id !== undefined) validateExplicitId(input.id,` · ~316, the explicit-mint path.
    `item.ts` takes the id straight off the file — `item.ts` · `const id = requireString(fm, rawBlock, 'id');` · ~326 — with no such guard.
 2. A file written directly into `.my_context/items/decision/` with `id: DEC-$(echo PWNED)` and
    **no `checksum:` field at all** loads with no error and appears in `mycontext list`. The

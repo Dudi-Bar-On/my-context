@@ -1075,7 +1075,7 @@ test('the config.json mode really does reach the throw, and nothing says so', as
  * deterministically by holding the index write lock from the test process.
  * That cannot slow this hook by a millisecond: Task 10's design decision 3
  * made the subagent event skip the best-effort index refresh entirely
- * (`core/inject.ts` · `**THE SUBAGENT EVENT SKIPS THIS ENTIRELY**` · ~533), so
+ * (`core/inject.ts` · `**THE SUBAGENT EVENT SKIPS THIS ENTIRELY**` · ~566), so
  * nothing between the two records opens a database and a held lock is
  * invisible to it. The contended-open worst case the plan cites in its case
  * for `timeout: 5` (`core/store.ts` · `Worst case ~1.06s: two attempts` · ~122)
@@ -1085,7 +1085,7 @@ test('the config.json mode really does reach the throw, and nothing says so', as
  * sentinel this test plants in `config.json`: the preload replaces
  * `JSON.parse` with one that blocks the thread forever the first time it is
  * handed text containing that sentinel. The parse it stops at is
- * `resolveWorkspace`'s (`core/workspace.ts` · `raw = JSON.parse(readFileSync(configPath, 'utf8'));` · ~34),
+ * `resolveWorkspace`'s (`core/workspace.ts` · `raw = JSON.parse(readFileSync(configPath, 'utf8'));` · ~54),
  * which is the first thing `buildInjection` does — so when the child stops it
  * is provably past the attempt record and provably short of the selection.
  * The child then says so in a file, and only then does the test kill it.

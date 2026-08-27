@@ -49,7 +49,7 @@ the PreToolUse JIT path, whose docblock still calls itself "Single indexed SQLit
 (`src/hooks/pre-tool-use.ts` · `Single indexed SQLite read, no rebuild, no LLM, no network` · ~122).
 So a hook that would never modify an item still contended for the one write lock in the file.
 **That is closed:** the JIT hook opens `Store.openReadOnlyChecked`
-(`src/hooks/pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~175) and takes
+(`src/hooks/pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~202) and takes
 no write lock at all. Measured on this machine against the real `store.ts` (§2.1, P4):
 `Store.open` under a 30 s held write transaction stalls **16,881 ms then throws `database is
 locked`** — E4's 16.9 s figure reproduced to three digits, and it is entirely
@@ -75,22 +75,22 @@ failure for a write that matters. Under contention that open could exceed the 10
 `buildRestoreSnapshot` never reached `writeSnapshot` — the one write whose loss E4's own framing
 calls unacceptable. **That is closed:** the `Ledger` open is gone and the one database touch left
 is a best-effort read-only one
-(`src/hooks/pre-compact.ts` · `store = Store.openReadOnly(ws.dbPath);` · ~53). Note what the
+(`src/hooks/pre-compact.ts` · `store = Store.openReadOnly(ws.dbPath);` · ~123). Note what the
 snapshot write itself is: an atomic temp-file-then-rename to `state/<session>.restore.json`
-(`src/core/ledger.ts` · `export function writeSnapshot(root: string, sessionId: string, itemIds: string[]): string {` · ~716).
+(`src/core/ledger.ts` · `export function writeSnapshot(root: string, sessionId: string, itemIds: string[]): string {` · ~748).
 **SQLite is not needed to write the snapshot; it is only consulted to decide its contents**
-(`store.ids()` to filter known ids — `src/hooks/pre-compact.ts` · `const ids = store.ids();` · ~54;
+(`store.ids()` to filter known ids — `src/hooks/pre-compact.ts` · `const ids = store.ids();` · ~124;
 the injected set was `ledger.seen()` and is now the per-session seen file,
-`src/hooks/pre-compact.ts` · `const seenState = readSeen(ws.projectRoot, sessionId);` · ~36).
+`src/hooks/pre-compact.ts` · `const seenState = readSeen(ws.projectRoot, sessionId);` · ~106).
 The durability problem was entirely self-inflicted.
 
 **0.4 SessionStart was the biggest writer of all.** `buildInjection` ran a full `rebuild` —
 delete-and-reinsert of the whole corpus inside one write transaction
-(`src/core/inject.ts` · `const refreshErrors = rebuild(store, roots, ws.config, byLayer).errors;` · ~586,
+(`src/core/inject.ts` · `const refreshErrors = rebuild(store, roots, ws.config, byLayer).errors;` · ~593,
 `src/core/rebuild.ts` · `store.transaction(() => {` · ~452) — on every session start and *before*
 the injection was built, then read back what it had just written with `store.all()` to feed
 `select`; the selection now reads the parsed corpus directly
-(`src/core/inject.ts` · `const items: Item[] = [...(byLayer.global ?? []), ...(byLayer.project ?? [])];` · ~272).
+(`src/core/inject.ts` · `const items: Item[] = [...(byLayer.global ?? []), ...(byLayer.project ?? [])];` · ~249).
 So the highest-traffic injection path was also the process most likely to be *holding* the write
 lock that kills a concurrent hook. And `rebuild` discarded the very items it loaded: `loadLayer`
 parses every Markdown file into `Item[]` (`src/core/rebuild.ts` · `export function loadLayer(` · ~103),
@@ -106,14 +106,14 @@ already-parsed corpus as `preloaded`
 `src/core/audit.ts` · ``opens no database: the caller (`mycontext audit`` · ~532 <!-- historical-citation: §0 surveys the pre-1.0.0 comment; §4.2's fix rewrote it to name `topUpLedger` -->
 — and no such command existed anywhere in `src/` (verified by grep over `src/cli` and
 `src/mcp`); `ledgerRows`
-(`src/core/audit.ts` · `export function ledgerRows(records: AuditRecord[]): ReplayRow[] {` · ~753)
+(`src/core/audit.ts` · `export function ledgerRows(records: AuditRecord[]): ReplayRow[] {` · ~906)
 had no production caller. That comment had to be corrected or the surface built, and **§4.2 built
 it**: the command exists
-(`src/cli/commands/audit.ts` · `if (args[0] === 'replay-ledger') {` · ~297), the write is owned by
+(`src/cli/commands/audit.ts` · `if (args[0] === 'replay-ledger') {` · ~302), the write is owned by
 `topUpLedger`
 (`src/core/ledger-replay.ts` · `export function topUpLedger(root: string, ledger: Ledger): { applied: number; diverged: boolean } {` · ~15),
 and the docblock now says so
-(`src/core/audit.ts` · `audit log and this one opens no database: the write is owned by` · ~744).
+(`src/core/audit.ts` · `audit log and this one opens no database: the write is owned by` · ~897).
 
 ---
 
@@ -223,19 +223,19 @@ Three assets are lying in place, and the recommendation is mostly connecting the
 
 1. **The audit log was already the first write on every injection path.** `recordAudit` (JSONL
    append, never throws,
-   `src/core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~567)
+   `src/core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~720)
    ran *before* the ledger write on both SessionStart and JIT, and it still goes first — what it
    now precedes is the per-session seen-file append, the ledger write having left the hook path
    altogether
-   (`src/core/inject.ts` · `// 5. THE SEEN-FILE APPEND (was: the ledger write)` · ~792;
-   `src/hooks/pre-tool-use.ts` · `// The dedupe record: an append to the per-session seen file` · ~298).
+   (`src/core/inject.ts` · `// 5. THE SEEN-FILE APPEND (was: the ledger write)` · ~799;
+   `src/hooks/pre-tool-use.ts` · `// The dedupe record: an append to the per-session seen file` · ~325).
    The ledger was already documented as "a derived cache, rebuildable from here" with `ledgerRows`
    as the replayer
-   (`src/core/audit.ts` · `ledger STAYS, as a derived cache, and is rebuildable from here.` · ~696).
+   (`src/core/audit.ts` · `ledger STAYS, as a derived cache, and is rebuildable from here.` · ~849).
    The hooks' SQLite *writes* were already redundant records of facts the JSONL holds — with one
    field doing load-bearing work: the restored tier's identity marker survives only because
    `InjectedRef.at` carries the snapshot's `capturedAt` into the audit record
-   (`src/core/inject.ts` · `? { at: snapshotCapturedAt }` · ~656); the redundancy claim rests on
+   (`src/core/inject.ts` · `? { at: snapshotCapturedAt }` · ~663); the redundancy claim rests on
    that field, and §4.2 preserved it.
 2. **`select` is pure over `Item[]`**
    (`src/core/select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~833,
@@ -243,7 +243,7 @@ Three assets are lying in place, and the recommendation is mostly connecting the
    (`src/core/rebuild.ts` · `export function loadLayer(` · ~103). The complete
    injection decision can be computed with zero database access — M1 says what that costs.
 3. **The snapshot write is already durable by construction** (atomic rename,
-   `src/core/ledger.ts` · `retryOnTransientFsError(() => renameSync(tmp, target), SNAPSHOT_RENAME_ATTEMPTS);` · ~731)
+   `src/core/ledger.ts` · `retryOnTransientFsError(() => renameSync(tmp, target), SNAPSHOT_RENAME_ATTEMPTS);` · ~763)
    — §4.4 is where the review cut that word down to what it can carry —
    and a snapshot containing ids the corpus no longer has is
    harmless: the restore path re-selects through `select`, and an id matching no live item
@@ -251,7 +251,7 @@ Three assets are lying in place, and the recommendation is mostly connecting the
    (`src/core/select.ts` · `fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id)),` · ~872).
    Over-capture is the safe direction, which `readSnapshotMeta` already exploits for a missing
    `capturedAt`
-   (`src/core/ledger.ts` · `// A missing/non-string capturedAt degrades to "now": nothing recorded` · ~824).
+   (`src/core/ledger.ts` · `// A missing/non-string capturedAt degrades to "now": nothing recorded` · ~856).
 
 ---
 
@@ -289,10 +289,10 @@ identical 30 s hold returns in 0.2 ms.
 - **What blocked it then:** the hook paths *could not* open read-only while they still wrote the
   ledger and, on SessionStart, the index itself. Option B was the enabler, not a separate remedy,
   and it landed: the ledger write is gone from both hooks
-  (`src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({` · ~303,
-  `src/core/inject.ts` · `appendSeen(stateRoot, seenKey, selection.full.map((e) => ({` · ~806),
+  (`src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({` · ~330,
+  `src/core/inject.ts` · `appendSeen(stateRoot, seenKey, selection.full.map((e) => ({` · ~813),
   and the index write moved behind the render as a best-effort refresh
-  (`src/core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~578).
+  (`src/core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~585).
 - **Verdict: adopt — this is the core of the answer — with B required to make it possible and
   C required behind it** for the fast-failing cases it cannot serve.
 
@@ -305,14 +305,14 @@ write is that reason.
 
 - **Ledger rows.** The durable record already exists before the ledger write happens (§2.3.1).
   What the ledger uniquely served on the *hot path* was `seen(sessionId)`
-  (`src/core/ledger.ts` · `seen(sessionId: string): string[] {` · ~378) — the once-per-session
+  (`src/core/ledger.ts` · `seen(sessionId: string): string[] {` · ~391) — the once-per-session
   dedupe read, now served from the file
-  (`src/hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~183).
+  (`src/hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~210).
   Replace the hot write with an append to a **per-session seen file** —
   `state/<key>.seen.jsonl`, one
-  `{id, tier, at}\n` line per delivery, `<key>` being `sanitizeSessionId` (`src/core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~667)
+  `{id, tier, at}\n` line per delivery, `<key>` being `sanitizeSessionId` (`src/core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~699)
   applied to E2's dedupe key — `session_id::agent_id`, then on branch `e2-subagent-injection` and
-  since merged (`src/hooks/io.ts` · `export function ledgerKey(input: HookInput): string | null {` · ~61).
+  since merged (`src/hooks/io.ts` · `export function ledgerKey(input: HookInput): string | null {` · ~208).
   Appending is the audit log's own machinery
   (`appendJsonlLine`/`healTornTail`, `src/core/jsonl-log.ts` · `export function appendJsonlLine(` · ~192) at its measured 0.55 ms,
   wrapped in the same transient-EPERM retry (`src/core/seen-file.ts` · `export function appendSeen(` · ~96);
@@ -322,10 +322,10 @@ write is that reason.
   `ledgerRows`, using the same position-tracking pattern `audit-db.ts` already ships
   (`src/core/audit-db.ts` · `CREATE TABLE IF NOT EXISTS audit_source (` · ~97). This also builds
   the `replay-ledger` surface §0.5 found missing — it exists now
-  (`src/cli/commands/audit.ts` · `if (args[0] === 'replay-ledger') {` · ~297), reached by
+  (`src/cli/commands/audit.ts` · `if (args[0] === 'replay-ledger') {` · ~302), reached by
   `status`, `decay` and `audit replay-ledger` rather than by `rebuild` or the mutation paths.
   `decay` and `usage` keep their indexed
-  aggregates (`src/core/ledger.ts` · `usage(itemId: string): Usage {` · ~399) — they never ran on the hot path.
+  aggregates (`src/core/ledger.ts` · `usage(itemId: string): Usage {` · ~412) — they never ran on the hot path.
 - **The honest cost, stated rather than implied:** a dedupe read served by a projection that is
   behind its log **will re-inject** — and with the per-session file that window narrows to "the
   file could not be appended or read", since session-scoped dedupe no longer consults the
@@ -496,20 +496,20 @@ resolveWorkspace
 ### 4.2 The write path (dedupe and history)
 
 - **Delivery record:** unchanged — `recordAudit` first, JSONL, never throws
-  (`src/core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~567).
+  (`src/core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~720).
   This was already the durable truth.
 - **Session dedupe:** the hook appends delivered `{id, tier, at}` lines to
   `state/<sanitized-ledger-key>.seen.jsonl` and reads the same file for `seen` — replacing
   `Ledger.recordMany`/`Ledger.seen` on the hot path. Torn-tail handling and the atomicity
   argument are `jsonl-log.ts`'s, verbatim (`src/core/jsonl-log.ts` · `export function healTornTail(file: string): void {` · ~157). The restored tier's
   identity-marker semantics (`injected_at = capturedAt`, equality-compared —
-  `src/core/ledger.ts` · `recordRestored(sessionId: string, itemIds: string[], at: string = new Date().toISOString()): void {` · ~365,
-  `src/core/inject.ts` · `? { at: snapshotCapturedAt }` · ~656) carried over unchanged: the marker
+  `src/core/ledger.ts` · `recordRestored(sessionId: string, itemIds: string[], at: string = new Date().toISOString()): void {` · ~378,
+  `src/core/inject.ts` · `? { at: snapshotCapturedAt }` · ~663) carried over unchanged: the marker
   is data in the line, and last-line-wins per `(id, tier)` on read reproduces
   `recordRestored`'s refresh
   (`src/core/seen-file.ts` · `export function restoredFor(state: SeenState, capturedAt: string): Set<string> {` · ~149).
 - **The ledger table** becomes what `audit.ts` already says it is — a derived projection
-  (`src/core/audit.ts` · `ledger STAYS, as a derived cache, and is rebuildable from here.` · ~696)
+  (`src/core/audit.ts` · `ledger STAYS, as a derived cache, and is rebuildable from here.` · ~849)
   — and gains the missing replayer: a top-up step (audit-log position tracking per
   `src/core/audit-db.ts` · `CREATE TABLE IF NOT EXISTS audit_source (` · ~97) run before an
   aggregate is read. Shipped as `topUpLedger`, called by `status`, `decay` and `audit
@@ -520,15 +520,15 @@ resolveWorkspace
   `pruneSnapshots` removed only `*.restore.json` and `*.tmp-*`, so `*.seen.jsonl` files — one per
   session, one per subagent under E2 — would have accumulated forever; the pruning pattern gained
   the third arm this asked for, with the same 30-day retention
-  (`src/core/ledger.ts` · `entry.name.endsWith('.seen.jsonl')` · ~786; `SNAPSHOT_MAX_AGE_MS`,
-  `src/core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;` · ~748).
+  (`src/core/ledger.ts` · `entry.name.endsWith('.seen.jsonl')` · ~818; `SNAPSHOT_MAX_AGE_MS`,
+  `src/core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;` · ~780).
   And `sanitizeSessionId` folded every character outside `[A-Za-z0-9._-]` to `_`, so E2's composed
   key `a::b` shared a filename with a hypothetical session `a__b` — an equivalence class the
   raw-string SQL key did not have. **That narrowing was not accepted: it was closed.** A
   non-canonical id now carries a sha256 digest of its raw spelling beside the folded base, which
   makes the mapping injective for exactly that shape
-  (`src/core/ledger.ts` · `injective (modulo a 48-bit digest collision) for every shape the folding` · ~661,
-  `src/core/ledger.ts` · `const digest = createHash('sha256').update(sessionId, 'utf8').digest('hex').slice(0, 12);` · ~670),
+  (`src/core/ledger.ts` · `injective (modulo a 48-bit digest collision) for every shape the folding` · ~693,
+  `src/core/ledger.ts` · `const digest = createHash('sha256').update(sessionId, 'utf8').digest('hex').slice(0, 12);` · ~702),
   and each shape is pinned by a decision test in `seen-file.test.ts`.
 - **Accepted degradation, named:** if the seen file cannot be read, the hook injects without
   dedupe — a *re*-injection, disclosed in the audit note, never a miss. If it cannot be
@@ -539,7 +539,7 @@ resolveWorkspace
   the hook exits leaves a seen entry for an undelivered item. That window was not new —
   `ledger.recordMany` had the identical one, at the same point in the same function, and the
   seen-file append inherited its position
-  (`src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({` · ~303) —
+  (`src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({` · ~330) —
   and the file append narrows it by being faster; "re-injection is the worst *new* case" is exact.
 
 ### 4.3 SessionStart specifically
@@ -601,14 +601,14 @@ and it conflated two properties that must be stated separately:
   uncleared antivirus risk (§6, risk 4) lands: a scanner or backup sweep holding `state/` files
   open at the moment PreCompact fires reproduces the probe's condition on a user's machine.
   **The fix below landed:** the rename is retried through the same guard
-  (`src/core/ledger.ts` · `retryOnTransientFsError(() => renameSync(tmp, target), SNAPSHOT_RENAME_ATTEMPTS);` · ~731),
+  (`src/core/ledger.ts` · `retryOnTransientFsError(() => renameSync(tmp, target), SNAPSHOT_RENAME_ATTEMPTS);` · ~763),
   `writeSnapshot` throws rather than swallowing
-  (`src/core/ledger.ts` · ``see `SNAPSHOT_RENAME_ATTEMPTS` — and THROWS if it still fails, so the`` · ~707),
+  (`src/core/ledger.ts` · ``see `SNAPSHOT_RENAME_ATTEMPTS` — and THROWS if it still fails, so the`` · ~739),
   and the caller discloses the loss twice, in an audit record and on stderr
-  (`src/hooks/pre-compact.ts` · `SNAPSHOT WRITE FAILED` · ~90).
+  (`src/hooks/pre-compact.ts` · `SNAPSHOT WRITE FAILED` · ~160).
 - **Durability across power loss — absent, and now said.** `writeSnapshot` is `writeFileSync`
   + `renameSync` with no fsync of file or directory
-  (`src/core/ledger.ts` · `**NOT power-loss durable**: nothing here fsyncs the file or the` · ~709),
+  (`src/core/ledger.ts` · `**NOT power-loss durable**: nothing here fsyncs the file or the` · ~741),
   so across a power cut the rename may land with unflushed data or not land at all. The practical
   exposure is small — a power loss also kills the session the snapshot serves — but "small"
   is a judgement the document owes the reader, not a gap it hides behind the word "durable".
@@ -620,7 +620,7 @@ snapshot write must retry the rename through `retryOnTransientFsError`
 record, carrying the failure in its note — `recordAudit` moves out of the success-only path so
 that `INV-nothing-is-dropped-silently` holds on the one write §1 declares must not be lost. The
 shipped retry budget is 15 attempts rather than the default 5, sized against a scanner's hold
-(`src/core/ledger.ts` · `export const SNAPSHOT_RENAME_ATTEMPTS = 15;` · ~697).
+(`src/core/ledger.ts` · `export const SNAPSHOT_RENAME_ATTEMPTS = 15;` · ~729).
 With that in place, §4.4's guarantee reads correctly as: **atomic against concurrent readers
 (measured), retried against transient Windows sharing violations, disclosed on failure, and
 not durable across power loss** — each clause carrying its condition.
@@ -687,7 +687,7 @@ conditions the chosen options carry, which is what conditions are for.
    checksum verification and body parsing on the fallback path; NOT Option F, which P3
    closed) is pinned to ~5–10k items, and `doctor` warns as a corpus approaches it — shipped at
    the low edge of that band
-   (`src/doctor/checks.ts` · `export const FALLBACK_CEILING_WARN_ITEMS = 5000;` · ~725).
+   (`src/doctor/checks.ts` · `export const FALLBACK_CEILING_WARN_ITEMS = 5000;` · ~726).
 4. **Antivirus interference is documented-elsewhere, not cleared — and it can no longer be
    parked as documentation-only, because §4.4 is where it lands.** Defender's real-time
    protection is off on the measurement machine, so no probe could exhibit or refute the

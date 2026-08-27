@@ -79,7 +79,7 @@
  * The reachable graph from `src/ui/server.ts` DOES contain `src/core/mutate.ts`
  * today. It arrives by `read-model.ts` → `help/index.ts` → `mcp/tools.ts`:
  * `help/index.ts` builds the `tools` help topic from the MCP registry
- * (`help/index.ts` · `import { createRegistry } from '../mcp/tools.ts';` · ~11)
+ * (`help/index.ts` · `import { createRegistry } from '../mcp/tools.ts';` · ~15)
  * and `mcp/tools.ts` binds three writers
  * (`mcp/tools.ts` · `createItem, supersedeItem, updateItem,` · ~12).
  * That does NOT violate the ban, which is scoped to `src/ui/` bindings by the
@@ -93,7 +93,7 @@
  * of co-located writers, is that `src/cli/index.ts` is never reachable. Loading
  * it is not a co-location accident: it registers the entire mutating command
  * surface by side effect, as `help/index.ts` says in its own words —
- * (`help/index.ts` · `import src/cli/index.ts: loading it is what registers the commands.` · ~152).
+ * (`help/index.ts` · `import src/cli/index.ts: loading it is what registers the commands.` · ~378).
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -160,6 +160,31 @@ const BANNED_NAMES = new Set(Object.values(WRITERS).flat());
  * proved in `test/ui/server-e2e.test.ts`.
  */
 const RULED_WRITES = [
+  // Owner ruling, 2026-08-26, and it is the one entry here that is a WRITE PATH
+  // rather than a write beside one. `POST /api/execute` runs a catalogue
+  // command, and spec 3.4 makes the record the thing that authorises it: the
+  // `execute` row is appended BEFORE the process starts and a failure to write
+  // it aborts with 500, so A RUN THAT CANNOT BE RECORDED DOES NOT HAPPEN.
+  // `execute-done` is appended after it returns, carrying the exit code.
+  //
+  // This test is NARROWED here, not widened, and the difference is the whole
+  // of it: what has stopped being true is "the UI never writes", which the
+  // owner reversed deliberately with the residual in front of him twice. What
+  // still holds, and still fails, is "a READ path never writes" — every read
+  // module is untouched, and `execute.ts` is named one symbol at a time.
+  //
+  // Three properties bound it, each checkable rather than promised:
+  //
+  //   - the route composes NOTHING. `execute-catalogue.ts` rebuilds argv from
+  //     the same catalogue the browser composed from and refuses anything not
+  //     in that entry's declared shape, so no caller text becomes a command;
+  //   - it runs behind a single-use nonce bound to the exact id and argv a
+  //     confirm dialog rendered, so a page that never showed a confirm cannot
+  //     mint one;
+  //   - the write is APPEND-ONLY. A first draft amended the row in place with a
+  //     whole-file rewrite and would have silently destroyed any row a hook
+  //     appended in between; the attempted/complete pair replaced it.
+  'src/ui/execute.ts binds recordAudit (defined in src/core/audit.ts)',
   'src/ui/security.ts binds recordAudit (defined in src/core/audit.ts)',
   // Owner ruling, 2026-08-23. `startUiServer` records `sha256(token)` for the
   // token it mints, so the NEXT process still recognises a tab that was open
@@ -193,7 +218,7 @@ const RULED_WRITES = [
  * side effect. `help/index.ts` says so in its own words — the registry "is
  * populated by side effect when `src/cli/index.ts` loads — it imports
  * `cli/commands/index.ts` AND registers the seven built-ins itself"
- * (`help/index.ts` · `AND registers the seven built-ins itself` · ~141) — and
+ * (`help/index.ts` · `AND registers the seven built-ins itself` · ~367) — and
  * `cli/commands/index.ts` is sixteen bare `import './x.ts';` statements.
  * So merely reaching it puts every writing command in the process. That is a
  * property of LOADING the module, which is exactly what an import walk can see,
@@ -671,16 +696,59 @@ test('no star form anywhere in the reachable graph', () => {
     + 'reading source with a regex a sound way to answer anything.');
 });
 
+/**
+ * The one dynamic import in the graph, named with the module it loads and the
+ * reason the walk cannot be made to follow it.
+ *
+ * `src/ui/execute-catalogue.ts` loads the BROWSER's command catalogue so that
+ * the server rebuilds argv from the same file the browser composed from — one
+ * catalogue, because two would drift and the drift would be silent in the worst
+ * direction: the browser showing one command in a confirm dialog while the
+ * server ran another. A static import cannot typecheck (`allowJs` is off, so a
+ * resolved `.js` module is an implicit `any` under `strict`), and a top-level
+ * `await import` is additionally what keeps `resolveCommand` SYNCHRONOUS — an
+ * `await` between "resolve the argv" and "redeem the nonce against that argv"
+ * would open a seam in the one ordering the execute route's security rests on.
+ *
+ * **What sits outside this file's assertions is not unexamined.** The target is
+ * a `.js` browser module this walk would never have entered anyway — it follows
+ * `.ts` — and `test/ui/palette-lib.test.ts` holds it over its own bytes to
+ * exactly the property that matters here: no network name, no dynamic
+ * evaluation, no navigation and no import of any kind. The guarantee moved to a
+ * test that can read that file; it did not evaporate.
+ *
+ * Verified in BOTH directions below, so a stale entry fails as itself.
+ */
+const DYNAMIC_EDGES: Record<string, string> = {
+  'src/ui/execute-catalogue.ts': 'src/ui/public/lib/palette-defs.js',
+};
+
 test('no dynamic escape hatch anywhere in the reachable graph', () => {
   const g = buildGraph(ENTRY);
   const dynamic: string[] = [];
+  const exempted = new Set<string>();
   for (const [file, { masked }] of g.files) {
     for (const m of masked.matchAll(/\brequire\s*\(/g)) dynamic.push(`${rel(file)}:${lineOf(masked, m.index)} require()`);
-    for (const m of masked.matchAll(/[^.\w$]import\s*\(/g)) dynamic.push(`${rel(file)}:${lineOf(masked, m.index)} dynamic import()`);
+    for (const m of masked.matchAll(/[^.\w$]import\s*\(/g)) {
+      if (Object.hasOwn(DYNAMIC_EDGES, rel(file))) { exempted.add(rel(file)); continue; }
+      dynamic.push(`${rel(file)}:${lineOf(masked, m.index)} dynamic import()`);
+    }
   }
   assert.deepEqual(dynamic, [],
     'the static walk cannot see through these. A `require(` or a dynamic `import(` is an edge '
-    + 'with no statement to read, so the module it loads is outside every assertion in this file.');
+    + 'with no statement to read, so the module it loads is outside every assertion in this file. '
+    + 'If it is deliberate, name it in DYNAMIC_EDGES with the module it loads and the test that '
+    + 'holds that module instead — do not delete the assertion.');
+
+  // The exemption is not an allow-list. An entry whose file no longer has a
+  // dynamic import is an exemption for something that stopped happening, and it
+  // would silently cover the next one somebody adds to that file.
+  assert.deepEqual([...exempted].sort(), Object.keys(DYNAMIC_EDGES).sort(),
+    'a DYNAMIC_EDGES entry names a file with no dynamic import left in it');
+  for (const [file, target] of Object.entries(DYNAMIC_EDGES)) {
+    assert.ok(existsSync(path.join(REPO, target)),
+      `${file}'s dynamic edge names ${target}, which is not on disk`);
+  }
 });
 
 test('every relative specifier in the source is an edge the walk followed', () => {

@@ -209,8 +209,8 @@ of 2026-08-20 turned up.
 | Was | Is | Class | Where |
 |---|---|---|---|
 | `/api/watch/volume` sources from `Ledger.history()` — `injectionVolume(events: InjectionEvent[], …)`, injections only, in hourly buckets | **It sources from the audit projection.** The mockup is the UI specification and its activity pulse is coloured **by record kind** over buckets "already indexed by `idx_audit_at`" (`watch.pulsen`) — four kinds, which the ledger does not have. The `audit` table carries both facts on ONE row, each with its own index, so there is no join to make: `at` (`core/audit-db.ts` · `(rec ->> '$.at')` · ~64) and `kind` (`core/audit-db.ts` · `(rec ->> '$.kind')` · ~65). The endpoint is now `?minutes=` / `?bucket=` and returns a per-kind breakdown | A view's data source is chosen by what the view has to draw, not by which reader happened to be written first | Tasks 6, 10, 11; open questions 1-2 |
-| `Ledger.history()` is a defensible source for a time series | **It cannot be one, and its own docstring now says so.** The ledger's primary key is `(session_id, item_id, tier)` with `injected_at` merely a value, so a repeat injection inside one session collides into the row already there and any series drawn from it undercounts by exactly those repeats (`core/ledger.ts` · `from it undercounts by exactly the repeats the key swallowed. Which stamp` · ~452). It has no kind column at all, so it could not colour a single column of the pulse either | A read returning one row per key is a set of MARKERS, not a stream of events; counting markers over time answers a different question and says nothing about the difference | Task 6 |
-| `withStores<T>(ws, fn: (store: Store, ledger: Ledger) => T): T` — "opens `Store` before `Ledger`, closes both" — quoted verbatim and relied on | **Both handles open READ-ONLY and checked, and the ledger is `Ledger \| null`.** `Store.openReadOnlyChecked` and the `Ledger.openReadOnlyChecked` shipped in `1cb968a` (`core/ledger.ts` · `static openReadOnlyChecked(dbPath: string): Ledger {` · ~222). The null is the **never-injected corpus** — an empty state told from damage by CLASS, `LedgerUninitializedError` (`core/ledger.ts` · `export class LedgerUninitializedError extends Error {}` · ~91), never by message. The owner ruled it renders as the mockup's **zero-data view** | A signature quoted from another document is re-read at execution time; a nullable value destructured without a check is the silent drop, one type away | Task 6 Steps 1 and 4 |
+| `Ledger.history()` is a defensible source for a time series | **It cannot be one, and its own docstring now says so.** The ledger's primary key is `(session_id, item_id, tier)` with `injected_at` merely a value, so a repeat injection inside one session collides into the row already there and any series drawn from it undercounts by exactly those repeats (`core/ledger.ts` · `from it undercounts by exactly the repeats the key swallowed. Which stamp` · ~465). It has no kind column at all, so it could not colour a single column of the pulse either | A read returning one row per key is a set of MARKERS, not a stream of events; counting markers over time answers a different question and says nothing about the difference | Task 6 |
+| `withStores<T>(ws, fn: (store: Store, ledger: Ledger) => T): T` — "opens `Store` before `Ledger`, closes both" — quoted verbatim and relied on | **Both handles open READ-ONLY and checked, and the ledger is `Ledger \| null`.** `Store.openReadOnlyChecked` and the `Ledger.openReadOnlyChecked` shipped in `1cb968a` (`core/ledger.ts` · `static openReadOnlyChecked(dbPath: string): Ledger {` · ~235). The null is the **never-injected corpus** — an empty state told from damage by CLASS, `LedgerUninitializedError` (`core/ledger.ts` · `export class LedgerUninitializedError extends Error {}` · ~104), never by message. The owner ruled it renders as the mockup's **zero-data view** | A signature quoted from another document is re-read at execution time; a nullable value destructured without a check is the silent drop, one type away | Task 6 Steps 1 and 4 |
 | `'ask.projection.caughtUp'` declares its slot as a plain `{state}` | **`{mv:state}`.** It substitutes a `ProjectionState` literal — `fresh` / `behind` / `diverged` — which this product never translates, so in the Hebrew sentence it is an untranslated Latin run inside RTL prose: the case `{mv:…}` exists for. Swept 2026-08-20 against every other slot Task 9 declares; the rest substitute a count, a percentage, an age or an error sentence, and stay plain | The monospace-slot rule is applied to what a slot SUBSTITUTES, not to which keys were noticed during the pass that introduced it | Task 9 |
 | Roughly fifty call sites consume `t()` as a **string** — `.textContent = t(…)` and template concatenation — "only harmless for keys carrying no monospace run" | **`t()` returns an array of NODES**, because the mockup's `{m:…}` / `{mv:name}` slots are monospace, bidi-isolated elements and a string cannot carry one. Both of those consumption forms **flatten** the isolated run back to text, which is precisely the regression the marker exists to prevent. Every site now appends nodes; the screens' local `el()` helper takes either a string or a node list, so the change is one helper plus the handful of sites that concatenated. Attribute values (`aria-label`, `title`) are the exception and take plan 1's flattening companion, **described here and deliberately not named** | A dependency's contract change is applied at every call site in one pass, not only at the ones carrying a marker today — "harmless for these keys" is a property of this week's wording, not of the code | Tasks 11, 12; open question 7 |
 
@@ -276,20 +276,20 @@ go stale. `npm run verify:citations` resolves every fragment here.
 
 | Fact | Where verified |
 |---|---|
-| `AuditRecord { protocol; at; kind; op; origin?; itemId?; fields?; sessionId?; hook?; injected?; tokens?; spilled?; path?; note? }` | `core/audit.ts` · `export interface AuditRecord {` · ~326 |
-| `tokens?: number` — absent means "not recorded", never zero | `core/audit.ts` · `tokens?: number;` · ~372 |
-| `InjectedRef { id; tier; at? }` | `core/audit.ts` · `export interface InjectedRef {` · ~266 |
-| `SpilledRef extends InjectedRef { reason: string }` | `core/audit.ts` · `export interface SpilledRef extends InjectedRef {` · ~284 |
-| `AuditKind` — **four** members when this row was written, **six** since `access` (2026-08-20) and `progress` (2026-08-21) joined | `core/audit.ts` · `export type AuditKind = 'mutation' \| 'injection' \| 'hook' \| 'focus' \| 'access' \| 'progress';` · ~136 |
-| `AUDIT_KINDS` exported | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~242 |
-| `FOCUS_OPS = ['focus-set', 'focus-clear']` | `core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~190 |
-| `recordAudit(root, input)` — appends, never throws | `core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~567 |
-| `readAudit(root)` | `core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~597 |
-| `filterAudit(records, filter)` | `core/audit.ts` · `export function filterAudit(records: AuditRecord[], filter: AuditFilter): AuditRecord[] {` · ~671 |
-| `AuditFilter { since?; until?; itemId?; sessionId?; kind?; op?; origin?; limit? }` | `core/audit.ts` · `export interface AuditFilter {` · ~642 |
-| `parseWhen(raw, flagName)` | `core/audit.ts` · `export function parseWhen(raw: string, flagName: string): string {` · ~623 |
-| `auditSegments(root)` — every segment oldest first, live `audit.jsonl` last | `core/audit.ts` · `export function auditSegments(root: string): string[] {` · ~448 |
-| Audit log lives under `<projectRoot>/.audit/` | `core/audit.ts` · `export function auditDir(root: string): string {` · ~401 |
+| `AuditRecord { protocol; at; kind; op; origin?; itemId?; fields?; sessionId?; hook?; injected?; tokens?; spilled?; path?; note? }` | `core/audit.ts` · `export interface AuditRecord {` · ~428 |
+| `tokens?: number` — absent means "not recorded", never zero | `core/audit.ts` · `tokens?: number;` · ~481 |
+| `InjectedRef { id; tier; at? }` | `core/audit.ts` · `export interface InjectedRef {` · ~368 |
+| `SpilledRef extends InjectedRef { reason: string }` | `core/audit.ts` · `export interface SpilledRef extends InjectedRef {` · ~386 |
+| `AuditKind` — **four** members when this row was written, **six** since `access` (2026-08-20) and `progress` (2026-08-21) joined | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~339 |
+| `AUDIT_KINDS` exported | `core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~339 |
+| `FOCUS_OPS = ['focus-set', 'focus-clear']` | `core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~254 |
+| `recordAudit(root, input)` — appends, never throws | `core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~720 |
+| `readAudit(root)` | `core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~750 |
+| `filterAudit(records, filter)` | `core/audit.ts` · `export function filterAudit(records: AuditRecord[], filter: AuditFilter): AuditRecord[] {` · ~824 |
+| `AuditFilter { since?; until?; itemId?; sessionId?; kind?; op?; origin?; limit? }` | `core/audit.ts` · `export interface AuditFilter {` · ~795 |
+| `parseWhen(raw, flagName)` | `core/audit.ts` · `export function parseWhen(raw: string, flagName: string): string {` · ~776 |
+| `auditSegments(root)` — every segment oldest first, live `audit.jsonl` last | `core/audit.ts` · `export function auditSegments(root: string): string[] {` · ~601 |
+| Audit log lives under `<projectRoot>/.audit/` | `core/audit.ts` · `export function auditDir(root: string): string {` · ~554 |
 | `openProjection(root)` — discards and recreates on corruption or version mismatch | `core/audit-db.ts` · `export function openProjection(root: string): DatabaseSync {` · ~293 |
 | `syncProjection(root, db)` — returns the state it FOUND; catches up incrementally; rebuilds only on divergence | `core/audit-db.ts` · `export function syncProjection(root: string, db: DatabaseSync): ProjectionState {` · ~232 |
 | `projectionState(root, db)` — pure comparison; a shrunken or vanished segment is `diverged` | `core/audit-db.ts` · `export function projectionState(root: string, db: DatabaseSync): ProjectionState {` · ~145 |
@@ -302,15 +302,15 @@ go stale. `npm run verify:citations` resolves every fragment here.
 | **`readCompleteLines(file, offset)` — `export`ed**, carrying the name Task 1 gave it | `core/audit-db.ts` · `export function readCompleteLines(file: string, offset: number): { text: string; consumed: number } {` · ~184 |
 | **It has a second consumer outside `audit-db.ts`** | `core/ledger-replay.ts` · `import { readCompleteLines } from './audit-db.ts';` · ~2 |
 | `ensureLogDir(dir)` — creates the dir and writes `*` into its `.gitignore` | `core/jsonl-log.ts` · `export function ensureLogDir(dir: string): string {` · ~93 |
-| `LedgerTier = 'pinned' \| 'jit' \| 'restored'` | `core/ledger.ts` · `export type LedgerTier = 'pinned' \| 'jit' \| 'restored';` · ~10 |
+| `LedgerTier = 'pinned' \| 'jit' \| 'restored'` | `core/ledger.ts` · `export type LedgerTier = 'pinned' \| 'jit' \| 'restored';` · ~11 |
 | `Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated'` | `core/types.ts` · `export type Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated';` · ~2 |
 | `Layer = 'project' \| 'global'` | `core/types.ts` · `export type Layer = 'project' \| 'global';` · ~5 |
 | `Origin = 'human' \| 'agent' \| 'ingest'` | `core/types.ts` · `export type Origin = 'human' \| 'agent' \| 'ingest';` · ~4 |
 | `store.raw(sql)` — **no bind-parameter support today**, which Task 7 adds | `core/store.ts` · `raw(sql: string): Record<string, unknown>[] {` · ~460 <!-- historical-citation: §7 surveys the pre-change signature; Task 7 gives `raw` its `params` argument --> |
 | `Store.openReadOnly(dbPath)` — and see §2: `readOnly: true` does **not** stop `VACUUM INTO` | `core/store.ts` · `static openReadOnly(dbPath: string): Store {` · ~382 |
-| `assertSelectOnly(sql)` — the barrier the connection does not provide | `cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~114 |
-| `updated_at` is INDEX WRITE TIME, not a Markdown timestamp | `cli/commands/query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query rebuilds the` · ~47 |
-| `readStdin()` — synchronous `readFileSync(0)`, `''` when no stdin | `hooks/io.ts` · `export function readStdin(): string {` · ~67 |
+| `assertSelectOnly(sql)` — the barrier the connection does not provide | `cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~173 |
+| `updated_at` is INDEX WRITE TIME, not a Markdown timestamp | `cli/commands/query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query rebuilds the` · ~52 |
+| `readStdin()` — synchronous `readFileSync(0)`, `''` when no stdin | `hooks/io.ts` · `export function readStdin(): string {` · ~214 |
 | `registerCommand(def)` | `cli/commands/registry.ts` · `export function registerCommand(def: CommandDef): void {` · ~46 |
 | `CommandFn = (ws, args, out, cwd) => number` — synchronous | `cli/commands/registry.ts` · `export type CommandFn = (ws: Workspace, args: string[], out: Emit, cwd: string) => number;` · ~6 |
 | `Workspace { projectRoot; globalRoot; dbPath; config }` | `core/workspace.ts` · `export interface Workspace {` · ~9 |
@@ -377,13 +377,13 @@ Spec §4b requires these claims be marked external and re-checked against the bu
 
 1. **The stream carries new records only; history is a query.** On connect the stream emits a `hello` event and then `record` events as lines land. The screen loads its backlog through `GET /api/ask/audit` after opening the stream. A record landing in the overlap window can appear in both; the client dedupes by full-record serialized identity (`dedupeKey`, Task 10) — records carry no id, and inventing one server-side would be a second truth.
 2. **Divergence resyncs; it never replays.** When a segment shrinks or vanishes under the tail (rotation is the common cause), `AuditTail` resets its offsets to the current EOFs and reports `resync: true`; the stream forwards a `resync` event and the screen refetches its backlog. Re-emitting from byte 0 would show every record around a rotation twice — in an audit view.
-3. **A missing `tokens` field renders as "not recorded", never as zero.** Enforced in the one place records become view rows (`describeRecord`, Task 10, tested), and worded in the strings (`watch.tokensNotRecorded`). Zero is a real measurement; absence is a state. This is the field's own contract (`core/audit.ts` · `COMPUTED AT INJECTION TIME.` · ~351) applied to reading.
+3. **A missing `tokens` field renders as "not recorded", never as zero.** Enforced in the one place records become view rows (`describeRecord`, Task 10, tested), and worded in the strings (`watch.tokensNotRecorded`). Zero is a real measurement; absence is a state. This is the field's own contract (`core/audit.ts` · `COMPUTED AT INJECTION TIME.` · ~460) applied to reading.
 4. **Every audit answer syncs first, then answers, and says what it found.** `apiAskAudit`, `apiAskSummary`, `apiWatchSpills` and the `mycontext statusline` printed line all call `syncProjection` before reading and return/render the state it found (`fresh`/`behind`/`diverged`). If sync throws, the answer is a refusal (HTTP 503; `myctx unavailable` on the printed line) — never a quiet partial (spec §5's staleness constraint, met by the mechanism `syncProjection` actually has: incremental catch-up, rebuild only on divergence).
 5. **The bridge installer asks by two-step, not by prompt.** `CommandFn` is synchronous and the CLI has no interactive prompt; the project's consent token is `--yes` (README §7: legibility, "an explicit, greppable token in the transcript"). So `mycontext statusline install` **prints the existing `statusLine` setting and the exact replacement and exits without writing**; only `… install --yes` writes. The replaced value is saved to `<globalRoot>/statusline-replaced.json` and `mycontext statusline uninstall --yes` restores it — replacement is reversible, not merely announced.
 6. **The tee stores the payload whole.** `{ receivedAt, payload }`, payload verbatim — shredding fields at write time is how a growing external schema gets silently dropped (INV-nothing-is-dropped-silently); classification happens at read time (`classifyContext`). `receivedAt` is stamped by the command and is what "as of" ages are computed from; `refreshInterval: 60` in the installed setting keeps it fresh while a session idles (spec §4b, Compatibility).
 7. **`session_id` becomes a filename by refusal, not by mangling.** `sanitizeSessionId` accepts `[A-Za-z0-9._-]` (≤128 chars, no leading dot) and otherwise the tee is skipped with the reason returned — mangling could collide two sessions into one file, which would show one session's context as another's, the exact failure keying-by-session exists to prevent.
 8. **The context percentage is computed input-only from `current_usage`'s three fields** (`input_tokens + cache_creation_input_tokens + cache_read_input_tokens`, over `context_window_size`) — spec §4b constraint 3, and verified above to be the same arithmetic Claude Code's own `total_input_tokens` performs. The gate for "not yet known" is `current_usage === null`; a payload with no `context_window` object at all is "unknown". Three distinct states, three distinct renderings, none of them zero.
-9. **Ask's corpus queries never rebuild the index** — Plan 1's design decision 1 carried: the server reads what the hooks read. The `updated_at` trap (`query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query rebuilds the` · ~47) is therefore *worse* here than in the CLI (the CLI rebuilds first; the UI does not), and the Ask screen says so in its own caveat string (`ask.updatedAtTrap`) rather than in a doc nobody reads.
+9. **Ask's corpus queries never rebuild the index** — Plan 1's design decision 1 carried: the server reads what the hooks read. The `updated_at` trap (`query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query rebuilds the` · ~52) is therefore *worse* here than in the CLI (the CLI rebuilds first; the UI does not), and the Ask screen says so in its own caveat string (`ask.updatedAtTrap`) rather than in a doc nobody reads.
 10. **One SQL builder, and the screen shows none of it.** `filterSelect` is still extracted from `queryProjection` (Task 1) and `corpusSelect` (Task 7) still both builds and runs — that is the no-second-spelling rule, and it is what makes the mockup's `ask.sub` claim ("bound as parameters, composed on the server") true rather than aspirational. The endpoints still **return** `sql` and `params`: they are the seam a test pins and a maintainer reads. **The Ask screen does not render them.** The mockup's Ask has no SQL pane (`ask.whyq` — "Why there is no SQL box"; `ask.sub` — "No query text crosses the wire"), and the spec's own retired-phrases block already declares "with the generated SQL shown so it teaches" retired. The `LIMIT` is still one more than the cap — the truncation probe — and the screen still discloses truncation, in words (`ask.truncated`), which is what it was always for.
 11. **The stream accepts a `poll` parameter (50–10000 ms, default 1000)** so the E2E suite runs in tens of milliseconds; any other unknown parameter is still refused with 400.
 12. **`Store.raw` gains bind parameters** (`raw(sql, params?)`, Task 7) rather than this plan inlining values into SQL strings. Inlining is the injection-shaped alternative; extending the read path is two lines.
@@ -1709,7 +1709,7 @@ git commit -m "feat(cli): statusline install/uninstall — print the existing se
 > `(session_id, item_id, tier)` keeps `injected_at` as a mere value, so a repeat injection inside
 > one session collides into the row already there and a series drawn from it undercounts by exactly
 > those repeats — `Ledger.history()`'s own docstring says so
-> (`core/ledger.ts` · `from it undercounts by exactly the repeats the key swallowed. Which stamp` · ~452).
+> (`core/ledger.ts` · `from it undercounts by exactly the repeats the key swallowed. Which stamp` · ~465).
 > The audit projection carries both facts on the SAME row, each indexed, so **no join is required**:
 > `at` (`core/audit-db.ts` · `(rec ->> '$.at')` · ~64) under `idx_audit_at`, and `kind`
 > (`core/audit-db.ts` · `(rec ->> '$.kind')` · ~65) under `idx_audit_kind`. Both are VIRTUAL
@@ -1758,7 +1758,7 @@ The screen this plan exists for. Spills are its centre: a `spilled` entry is the
 - Test: `test/ui/watch-model.test.ts`
 
 **Interfaces:**
-- Consumes: `AuditTail` (Task 2), `readTee`/`classifyContext` (Task 3), `openProjection`/`syncProjection`/`queryProjection`/`topItems` (`audit-db.ts`), `AUDIT_KINDS`/`AuditKind` (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~242 — the pulse's six colours, taken from the one declaration rather than respelled), `registerRoute`/`ApiContext`/`JsonResult` (Plan 1 Task 8 — `kind: 'stream'` gets its first caller here), and Plan 1 read-model's refusal helpers (Step 1 establishes their export). **No ledger read remains in this task** — ruling A2 moved `/api/watch/volume` off `Ledger.history`.
+- Consumes: `AuditTail` (Task 2), `readTee`/`classifyContext` (Task 3), `openProjection`/`syncProjection`/`queryProjection`/`topItems` (`audit-db.ts`), `AUDIT_KINDS`/`AuditKind` (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~339 — the pulse's six colours, taken from the one declaration rather than respelled), `registerRoute`/`ApiContext`/`JsonResult` (Plan 1 Task 8 — `kind: 'stream'` gets its first caller here), and Plan 1 read-model's refusal helpers (Step 1 establishes their export). **No ledger read remains in this task** — ruling A2 moved `/api/watch/volume` off `Ledger.history`.
 - Produces:
   - `registerWatchRoutes(): void` — registers `GET /api/watch/volume`, `GET /api/watch/context`, `GET /api/watch/spills` (all `kind: 'json'`) and `GET /api/watch/stream` (`kind: 'stream'` — **the route the idle rule was built for**: the dispatch loop never `touch()`es it, Plan 1 Task 13).
   - `recordVolume(rows: { at: string; kind: string }[], bucketMs: number, buckets: number, now: number): { start: string; total: number; byKind: Record<AuditKind, number> }[]` — pure. Every one of `AUDIT_KINDS` appears on every bucket, at zero where nothing happened: an absent key would leave the pulse unable to tell "no records of that kind" from "that kind is unknown here", which is design decision 3's absence-is-not-zero rule read in the other direction.
@@ -1783,9 +1783,9 @@ If any prints `undefined`, add `export` to it in `src/ui/read-model.ts` (a one-w
 withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger | null) => T): T
 ```
 
-**Both handles are opened READ-ONLY and checked, and both are closed** — `Store.openReadOnlyChecked` and `Ledger.openReadOnlyChecked` (`core/ledger.ts` · `static openReadOnlyChecked(dbPath: string): Ledger {` · ~222), the second shipped in `1cb968a`. It is no longer "Store before Ledger for the corruption self-heal": a read-only open cannot create a database and never triggers a self-heal, so that ordering constraint is gone; the Store is still opened first only because its `schema_version` check is what proves the file is a my_context index at all.
+**Both handles are opened READ-ONLY and checked, and both are closed** — `Store.openReadOnlyChecked` and `Ledger.openReadOnlyChecked` (`core/ledger.ts` · `static openReadOnlyChecked(dbPath: string): Ledger {` · ~235), the second shipped in `1cb968a`. It is no longer "Store before Ledger for the corruption self-heal": a read-only open cannot create a database and never triggers a self-heal, so that ordering constraint is gone; the Store is still opened first only because its `schema_version` check is what proves the file is a my_context index at all.
 
-**The ledger argument is NULLABLE, and the null is a STATE rather than a failure.** A corpus no hook has ever injected into has no `ledger`/`ledger_source` tables, because those are created by `Ledger.open`, which is a write a read-only caller never performs. That one state is marked by **class** — `LedgerUninitializedError` (`core/ledger.ts` · `export class LedgerUninitializedError extends Error {}` · ~91) — so it is never told from damage by a message; only that class is swallowed, and a corrupt file, a truncated one or half a ledger all propagate.
+**The ledger argument is NULLABLE, and the null is a STATE rather than a failure.** A corpus no hook has ever injected into has no `ledger`/`ledger_source` tables, because those are created by `Ledger.open`, which is a write a read-only caller never performs. That one state is marked by **class** — `LedgerUninitializedError` (`core/ledger.ts` · `export class LedgerUninitializedError extends Error {}` · ~104) — so it is never told from damage by a message; only that class is swallowed, and a corrupt file, a truncated one or half a ledger all propagate.
 
 **The owner ruled how the null renders (2026-08-20): as the mockup's zero-data view** — what the `∅` header toggle shows, whose pattern is the `.empty` block: a bold headline naming the state, one small sentence saying it is the normal state of a new workspace rather than a wall of warnings, and the command that ends it. `cov.e1` / `cov.e2` is the worked example. **Never an empty chart, and never an error.** Any handler that destructures the ledger without checking for `null` is the silent drop, one type away.
 
@@ -2310,17 +2310,17 @@ git commit -m "feat(ui): watch model — spills, volume, context join, and the a
 > 3. **`registerAskRoutes()` is wired into `registerReadRoutes()` in THIS task, not Task 8.**
 >    `test/ui/no-writes.test.ts` walks the import graph from `server.ts` and fails on a `src/ui/`
 >    module nothing reaches
->    (`test/ui/no-writes.test.ts` · `+ 'module unreachable from the entry point and not named above is either dead code or a '` · ~595),
+>    (`test/ui/no-writes.test.ts` · `+ 'module unreachable from the entry point and not named above is either dead code or a '` · ~624),
 >    so an unregistered `ask-model.ts` reddens the suite the moment the file exists. Task 8's Step 1
 >    is therefore already done for the Ask half.
 > 4. **The three routes are added to `server-e2e.test.ts`'s `READ_ROUTES` sweep**, because that file
 >    compares the list against the route table and fails on a registered route nobody probed
->    (`test/ui/server-e2e.test.ts` · `'these routes are registered and never exercised by the no-write sweep, so nothing proves '` · ~548).
+>    (`test/ui/server-e2e.test.ts` · `'these routes are registered and never exercised by the no-write sweep, so nothing proves '` · ~654).
 >    Those probes are what prove the read-only door change on the wire: the fixture has never built a
 >    projection, and after the sweep it still has not.
 >
 > **The bind parameters are a SECURITY surface and nothing here widens `assertSelectOnly`**
-> (`cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~114). That
+> (`cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~173). That
 > guard belongs to `mycontext query`, where a human types the statement; it is a necessarily
 > incomplete denylist and it is the only barrier in front of `VACUUM INTO`, which a `readOnly: true`
 > connection does not refuse. This module accepts **no SQL from anyone**: it assembles the statement
@@ -2337,7 +2337,7 @@ git commit -m "feat(ui): watch model — spills, volume, context join, and the a
 **Interfaces:**
 - Consumes: `Store.openReadOnly` (`store.ts` · `static openReadOnly(dbPath: string): Store {` · ~382), `openProjection`/`syncProjection`/`queryProjection`/`filterSelect`/`summaryByOp`/`topItems`/`sessions` (`audit-db.ts` + Task 1), `parseWhen`/`AUDIT_KINDS`/`AUDIT_OPS` (`audit.ts`), `unknownParams`/`badRequest` (Task 6 Step 1), `registerRoute`.
 - Produces:
-  - `Store.raw(sql: string, params?: (string | number)[])` — the existing method with bind parameters; both existing callers are untouched by the default: `query.ts` · `const fetched = store.raw(withRowCap(sql, limit + 1));` · ~314 and `store.ts`'s own `openReadOnlyChecked` (`store.ts` · `const rows = store.raw('SELECT version FROM schema_version LIMIT 1') as` · ~405), which arrived with the read-only JIT open after this plan was written.
+  - `Store.raw(sql: string, params?: (string | number)[])` — the existing method with bind parameters; both existing callers are untouched by the default: `query.ts` · `const fetched = store.raw(withRowCap(sql, limit + 1));` · ~373 and `store.ts`'s own `openReadOnlyChecked` (`store.ts` · `const rows = store.raw('SELECT version FROM schema_version LIMIT 1') as` · ~405), which arrived with the read-only JIT open after this plan was written.
   - `corpusSelect(f: CorpusFilter): { sql: string; params: (string | number)[] }` — pure; `interface CorpusFilter { type?: string; status?: Status; layer?: Layer; always?: boolean; scoped?: boolean; titleContains?: string; limit: number }`. The SQL ends `LIMIT ?` bound to `limit + 1` — the truncation probe, disclosed on screen (design decision 10).
   - `apiAskCorpus(ws, url): JsonResult` — `GET /api/ask/corpus?type=&status=&layer=&always=&scoped=&title=&limit=` → `{ rows, sql, params, truncated }`. **Never rebuilds** (design decision 9); reads through `Store.openReadOnly`.
   - `apiAskAudit(ws, url): JsonResult` — `GET /api/ask/audit?since=&until=&kind=&op=&origin=&item=&session=&limit=` → `{ records, sql, params, projection: { stateBeforeSync, syncedAt } }`; sync failure → 503 (the staleness rule).
@@ -2732,7 +2732,7 @@ git commit -m "feat(ui): ask model — corpus and audit query builders that show
 >
 > 1. **Step 1 is already done, by Tasks 6 and 7.** `registerWatchRoutes()` and `registerAskRoutes()`
 >    are called from inside `registerReadRoutes()`'s once-only guarded body
->    (`src/ui/server.ts` · `registerWatchRoutes();` · ~178). They could not wait for this task:
+>    (`src/ui/server.ts` · `registerWatchRoutes();` · ~191). They could not wait for this task:
 >    `test/ui/no-writes.test.ts` walks the import graph from `server.ts` and fails on any `src/ui/`
 >    module nothing reaches, so an unregistered `watch-model.ts` or `ask-model.ts` reddens the suite
 >    the moment the file exists. Concrete probes for all seven of those routes are likewise already
@@ -2778,7 +2778,7 @@ git commit -m "feat(ui): ask model — corpus and audit query builders that show
 >    The one time-based element left is the bound on *did it exit at all*, set at ten idle windows:
 >    that is the direction load cannot break, unlike the `IDLE + 500ms` upper bound that makes the
 >    in-process version one of this branch's two documented load flakes
->    (`test/ui/server.test.ts` · `an open stream is not activity; a json request is` · ~85).
+>    (`test/ui/server.test.ts` · `an open stream is not activity; a json request is` · ~130).
 >
 > 7. **Two smaller things.** The sample's 200ms "give the child a beat to prime the tail" sleep is
 >    unnecessary, and is a race in miniature: the handler constructs its `AuditTail` — which captures

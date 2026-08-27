@@ -57,6 +57,8 @@ import { VERSION } from '../core/version.ts';
 import { resolveWorkspace, type Workspace } from '../core/workspace.ts';
 import { registerAskRoutes } from './ask-model.ts';
 import { registerCaptureRoutes } from './capture-model.ts';
+import { CLI_ENTRY, registerExecuteRoutes } from './execute.ts';
+import { ExecutionNonceStore } from './execute-nonce.ts';
 import { registerPacksRoutes } from './packs-model.ts';
 import { registerPortRoutes } from './port-model.ts';
 import { registerProcedureRoutes } from './proc-model.ts';
@@ -344,6 +346,27 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
   const nonceTtl = options.nonceTtlMs;
 
   registerReadRoutes();
+
+  /**
+   * The execution nonce store, created HERE and closed over by the two execute
+   * routes — per server, never module-global.
+   *
+   * It is not registered inside `registerReadRoutes` with the others, and the
+   * difference is the whole reason this block is here rather than there: those
+   * routes are stateless, so registering them once for the process is correct.
+   * This one authorises a run, and two servers in one test process must not
+   * authorise each other's — the node suite starts several. So each server
+   * brings its own store, and `registerExecuteRoutes` binds the endpoint to it
+   * (registering the routes themselves only the first time, because the route
+   * table is process-global and refuses a duplicate).
+   *
+   * `CLI_ENTRY` is the CLI this server SHIPS WITH, resolved from
+   * `import.meta.url` rather than found on PATH. It is a path handed to a child
+   * process, never an import: `no-writes.test.ts` bans `src/cli/index.ts` from
+   * this process's import graph, and running it in a child is what keeps that
+   * ban true while still letting every command in the catalogue run (§6.1).
+   */
+  registerExecuteRoutes(new ExecutionNonceStore(), CLI_ENTRY);
 
   /** Set once the socket is bound; the gate compares the submitted Host against it. */
   let boundPort = 0;

@@ -73,8 +73,8 @@ direct consequences of it, and each one produces a screen that is confidently wr
 
 ### 2.1 `/api/select` never passes `focus` **[V]**
 
-The hooks pass it — `pre-tool-use.ts` · `focus: focusState.focus },` · ~205 and
-`inject.ts` · `focus: focusState.focus,` · ~468 — and
+The hooks pass it — `pre-tool-use.ts` · `focus: focusState.focus },` · ~232 and
+`inject.ts` · `focus: focusState.focus,` · ~472 — and
 `select.ts` · `const eligible = isFocusActive(focus)` · ~844 narrows
 the eligible set by `focusHides` **before every tier and before budgeting**:
 
@@ -118,7 +118,7 @@ Three failures follow:
   whenever a human last ran a CLI command in another terminal.
 - **Wrong key.** The seen file is keyed `session_id::agent_id`; the audit record carries the
   bare `session_id`. So a replayed ledger **unions a subagent's deliveries into the parent's
-  seen set** — the exact bug `io.ts` · `subagent's deliveries as if the parent had seen them, silently dropping the` · ~50 documents having already been paid for once.
+  seen set** — the exact bug `io.ts` · `subagent's deliveries as if the parent had seen them, silently dropping the` · ~197 documents having already been paid for once.
 - **Undetectable by the proposed test.** Plan 1's parity test seeds `ledger.record(...)` and
   asserts against `ledger.seen(...)` — a closed loop over the same wrong source.
 
@@ -143,7 +143,7 @@ corruption self-heal `rmSync`s the database and its sidecars, and its own commen
 *"discards not just the disposable `items` cache but also whatever `ledger` rows the file
 held."* `/api/ask/audit` additionally calls `syncProjection`, creating `.audit.db` on a GET.
 The hook the UI claims to mirror uses `openReadOnlyChecked`
-(`pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~175).
+(`pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~202).
 
 The honest restatement: **the UI is not read-only, it is mutator-free.**
 
@@ -159,7 +159,7 @@ single-quoted →  shell delivers:  Retry on $(echo SUBSTITUTED) failures
 
 Item titles are free text through `create_item`. Ids parsed from disk **were** taken verbatim —
 `validateExplicitId` has exactly one call site
-(`core/mutate.ts` · `if (input.id !== undefined) validateExplicitId(input.id, '"id"');` · ~280),
+(`core/mutate.ts` · `if (input.id !== undefined) validateExplicitId(input.id, '"id"');` · ~316),
 on the explicit-mint path only, and the read boundary had no guard at all. **That half has since
 been closed**: `parseItem` now runs the same grammar over an id arriving from disk
 (`item.ts` · `validateLoadedId(id, filePath);` · ~327), and `validateLoadedId`'s docblock records
@@ -332,9 +332,9 @@ of `removeTree`.** That helper exists because a spawned child pins its own cwd o
 which is exactly what the UI's E2E harness does.
 
 **`sanitizeSessionId` now has two incompatible implementations.** **[V]**
-`ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~667 mangles with
+`ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~699 mangles with
 a sha256 digest and **never returns null**; plan 3's new one has since shipped —
-`statusline-tee.ts` · `export function sanitizeSessionId(id: string): string | null {` · ~36 —
+`statusline-tee.ts` · `export function sanitizeSessionId(id: string): string | null {` · ~41 —
 and **returns null on refusal**. Same name, same repo, opposite failure mode —
 and the UI joins the tee file, the seen file and audit records on that identifier.
 

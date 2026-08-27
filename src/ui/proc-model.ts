@@ -19,7 +19,7 @@
  *   |---------------------|----------------------------------------------------------|
  *   | which steps are done| `core/progress.ts` · `export function procedureProgress(records: AuditRecord[], itemId: string): Set<number> {` · ~88 |
  *   | records not read    | `core/progress.ts` · `export function unreadableProgress(records: AuditRecord[], itemId: string): number {` · ~102 |
- *   | the records         | `core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~620 |
+ *   | the records         | `core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~750 |
  *   | done vs abandoned   | `core/select.ts` · `export const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);` · ~397 |
  *   | is it injected      | `cli/commands/injection.ts` · `export function injection(` · ~84 |
  *
@@ -150,7 +150,7 @@ export type DisclosureCode = (typeof DISCLOSURE_CODES)[number];
 /**
  * The limit that belongs beside every number these routes serve, VERBATIM from
  * the command that already prints it
- * (`cli/commands/procedure.ts` · `const WORKSPACE_SCOPE =` · ~185).
+ * (`cli/commands/procedure.ts` · `const WORKSPACE_SCOPE =` · ~154).
  *
  * Verbatim rather than reworded: two phrasings of one limit is two limits as
  * far as a reader can tell, and the browser cannot compose this sentence
@@ -167,7 +167,7 @@ const WORKSPACE_SCOPE: Disclosure = {
 
 /**
  * What a `ready` procedure does today, which is nothing — VERBATIM from
- * (`cli/commands/procedure.ts` · `  \`a ready procedure is not injected and not named in the index — the model does not learn it \`` · ~200).
+ * (`cli/commands/procedure.ts` · `  \`a ready procedure is not injected and not named in the index — the model does not learn it \`` · ~169).
  *
  * **THE MOCKUP'S TABLE SAYS OTHERWISE AND IT IS THE MOCKUP THAT IS WRONG.**
  * `pr.idx` is *"index line only"* against the `ready` row, and the shipped
@@ -254,7 +254,7 @@ export interface CategoryState {
   declared: boolean;
   /**
    * Whether it is switched on. `procedure` is in the `standard` profile and
-   * NOT in `minimal` (`core/categories.ts` · `  procedure:     def('procedure', 'PROC', 'normative', true,` · ~58
+   * NOT in `minimal` (`core/categories.ts` · `  procedure:     def('procedure', 'PROC', 'normative', true,` · ~216
    * and the `minimal` list beside it), so an empty list has two completely
    * different meanings and a screen must be able to tell them apart.
    */
@@ -291,7 +291,7 @@ ProcedureSummary {
  * because a terminal has one column to print into; a client has a table and
  * the `stages` array to group with, and a server that pre-grouped would be
  * deciding a layout the mockup has not drawn. The sort is the CLI's own
- * (`cli/commands/procedure.ts` · `    .sort((a, b) => a.id.localeCompare(b.id));` · ~207),
+ * (`cli/commands/procedure.ts` · `    .sort((a, b) => a.id.localeCompare(b.id));` · ~176),
  * so the two surfaces list the same corpus in the same order.
  *
  * **No cap, and that is a decision rather than an omission.** `/api/items`
@@ -394,7 +394,7 @@ export function apiProcedures(ws: Workspace, url: URL): JsonResult {
  * **The boundary paragraph is deliberately NOT re-spelled here.** §6o requires
  * that "a runbook is repeatable, so it has no lifecycle" be statable in FOUR
  * places — `help categories`, two `examples` specimens, and the CLI's own
- * refusal (`cli/commands/procedure.ts` · `function categoryRefusal(item: Item): string {` · ~115).
+ * refusal (`cli/commands/procedure.ts` · `function categoryRefusal(item: Item): string {` · ~84).
  * A fifth wording of one idea is the defect `pr.aband` names in its own words
  * (*"a fifth spelling of one idea is the defect this project has paid for four
  * times"*), so this refusal states the category fact and points at the routes

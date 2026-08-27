@@ -58,7 +58,7 @@ const SESSION_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
  *
  * Imported rather than declared here, because the carry disclosure injected
  * into a session falls back to exactly this prefix when the session has no name
- * (`core/continuity.ts` · `export const SESSION_SHORT_ID = 8;` · ~48). Two
+ * (`core/continuity.ts` · `export const SESSION_SHORT_ID = 8;` · ~50). Two
  * spellings of one number would print two different handles for one session,
  * and the column below is where a user reads the handle they then type back.
  */
@@ -309,13 +309,15 @@ function resolveSession(
  * oversight.** Naming is a user action on session *metadata*: it changes no
  * item, it changes nothing about what governs this project, and it puts no
  * text in front of a model. `AuditKind` (`core/audit.ts` ·
- * `export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus' | 'access' | 'progress';` · ~136)
- * is a closed union — `access` joined it on 2026-08-20 and `progress` on
- * 2026-08-21 — and none of its members describes this. Adding a seventh kind
- * for a label is a larger decision than the feature, taken by whoever needs the
- * record, not smuggled in beside it. Until then the name store itself is the
+ * `export const AUDIT_KINDS: AuditKind[] = [` · ~242)
+ * is a closed union — `access` joined it on 2026-08-20, `progress` on
+ * 2026-08-21 and `execution` on 2026-08-27 — and none of its members
+ * describes this. Adding a kind for a label is a larger decision than the
+ * feature, taken by whoever needs the record, not smuggled in beside it.
+ * `execution` is what that looks like when somebody does need one: a design,
+ * an owner ruling, and a reader of the log who would otherwise be wrong. Until then the name store itself is the
  * record: every entry carries the instant it was stamped
- * (`core/session-names.ts` · `at: string;` · ~50).
+ * (`core/session-names.ts` · `at: string;` · ~49).
  *
  * Everything the name itself has to satisfy — non-empty, at most
  * `SESSION_NAME_MAX`, no control characters, and not already held by another

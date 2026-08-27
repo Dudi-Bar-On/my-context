@@ -10,7 +10,7 @@ import type { CarriedSummary, Selection, Spill } from './select.ts';
  * Nothing here is recomputed and no reason is re-worded, and that is the
  * requirement rather than a tidiness preference: `/api/select` serves that same
  * object to the browser unchanged —
- * `ui/read-model.ts` · `export function apiSelect(ws: Workspace, url: URL): JsonResult {` · ~336 —
+ * `ui/read-model.ts` · `export function apiSelect(ws: Workspace, url: URL): JsonResult {` · ~367 —
  * so a renderer with its own vocabulary would be a second spelling of a
  * sentence a second surface renders from the same field. Two surfaces that
  * agree today is the defect this project has paid for most often; the fix is
@@ -37,7 +37,7 @@ import type { CarriedSummary, Selection, Spill } from './select.ts';
  *
  * **The label is not invented here either.** It is the session's name when a
  * person gave it one and its short prefix when they did not, decided by
- * `core/continuity.ts` · `function labelFor(root: string, sessionId: string): string {` · ~226
+ * `core/continuity.ts` · `function labelFor(root: string, sessionId: string): string {` · ~201
  * and passed through unchanged.
  *
  * Like the focus and spill notes it is scaffolding rather than an item: outside

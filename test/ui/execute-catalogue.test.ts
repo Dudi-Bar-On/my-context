@@ -1,0 +1,163 @@
+/**
+ * The server's half of "the client sends an ID, never a command" (spec §3.1,
+ * plan Task 1).
+ *
+ * WHAT THIS PROVES: `src/ui/execute-catalogue.ts` rebuilds an argv from the
+ * SAME catalogue file the browser composed from, refuses anything that is not
+ * in that catalogue's declared shape, and reports which confirm the command
+ * gets. Nothing here runs a command — the module under test imports nothing
+ * that could.
+ *
+ * ── TWO PLACES THE PLAN'S SKETCH IS WRONG ABOUT THE CATALOGUE ─────────────
+ *
+ * 1. The plan asserts `resolveCommand('doctor', {}).boundary === false` and
+ *    its Task 2 comment calls `doctor` *"flagged false explicitly"*. It is
+ *    not. `palette-defs.js` carries `boundary: true` on fourteen entries and
+ *    carries the key AT ALL on no other — there is no `boundary: false`
+ *    anywhere in the file. Under the fail-safe the plan itself mandates ("an
+ *    entry with no `boundary` flag resolves as ON the boundary"), `doctor`
+ *    therefore resolves as `true`. The fail-safe is the property with security
+ *    value, so it is what is asserted here and the plan's number is what
+ *    gives. Making `doctor` resolve `false` means writing `boundary: false`
+ *    into the read entries of `palette-defs.js` — a real, separate change to a
+ *    file this task may not touch.
+ *
+ * 2. The plan's implementation sketch opens with a STATIC import of
+ *    `./public/lib/palette-defs.js`. That cannot typecheck: `allowJs` is off
+ *    and `tsconfig.json`'s `include` is `.ts` only, so a resolved `.js` module
+ *    is an implicit `any` under `strict` (TS7016). `palette-lib.test.ts` and
+ *    `strings-parity.test.ts` both met this already and both wrote down the
+ *    answer. The module under test uses a URL specifier for the same reason.
+ *
+ * Every deceptive character below is written as a backslash-u escape and never
+ * as a literal: `check:text-files` gates NUL bytes in the repository, and a
+ * literal U+202E in a test file would reorder the source of the very test that
+ * exists to refuse it.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  CommandRefusal, boundaryOf, catalogueEntries, catalogueIds, resolveCommand,
+} from '../../src/ui/execute-catalogue.ts';
+
+test('every catalogue entry is resolvable by id — no entry is unreachable', () => {
+  const ids = catalogueIds();
+  assert.ok(ids.length > 0);
+  assert.ok(ids.includes('add'));
+  assert.ok(ids.includes('doctor'));
+  // The id spelling is the catalogue's `name`, subcommand spaces and all. The
+  // server must key on exactly what the browser sent, so this is pinned rather
+  // than left to whichever side normalises first.
+  assert.ok(ids.includes('review promote-revision'));
+  assert.equal(new Set(ids).size, ids.length, 'two entries sharing a name would make one unreachable');
+});
+
+test('an id the catalogue does not have is REFUSED, and the reason names the id', () => {
+  assert.throws(() => resolveCommand('rm', {}), /rm/);
+  // Reached through a Map, so this is a miss rather than `Object.prototype`.
+  assert.throws(() => resolveCommand('__proto__', {}), /__proto__/);
+  assert.throws(() => resolveCommand('', {}), /./);
+  // A refusal is a thing a caller may be shown; a bug is not. The route turns
+  // this class into a 400, so the class itself is part of the contract.
+  assert.throws(() => resolveCommand('rm', {}), CommandRefusal);
+});
+
+test('the argv is rebuilt from the catalogue, not from anything the caller sent', () => {
+  const resolved = resolveCommand('pin', { id: 'RULE-something', yes: true });
+  assert.deepEqual(resolved.argv, ['pin', 'RULE-something', '--yes']);
+  assert.equal(resolved.id, 'pin');
+});
+
+test('the leading `mycontext` is NOT in the argv — the server runs the CLI it ships with', () => {
+  assert.equal(resolveCommand('doctor', {}).argv[0], 'doctor');
+  // A subcommand entry keeps BOTH words: only the program name is dropped.
+  assert.deepEqual(resolveCommand('review discard', { id: 'D-1' }).argv, ['review', 'discard', 'D-1']);
+});
+
+test('a missing required argument is refused, never composed half-built', () => {
+  assert.throws(() => resolveCommand('pin', {}), /required/);
+  // `supersede`'s `--by` is a required FLAG, not an arg — the refusal has to
+  // cover both halves of the shape, not just the positionals.
+  assert.throws(() => resolveCommand('supersede', { id: 'A' }), /required/);
+});
+
+test('a value not in a declared option set is refused BY VALUE', () => {
+  assert.throws(() => resolveCommand('edit', { id: 'A', severity: 'medium' }), /medium/);
+  assert.throws(() => resolveCommand('edit', { id: 'A', status: 'retired' }), /retired/);
+  // The declared members still pass, or the check above would be proving only
+  // that everything is refused.
+  assert.ok(resolveCommand('edit', { id: 'A', status: 'draft' }).argv.includes('--status'));
+});
+
+test('a value that is not a string is refused — no coercion, ever', () => {
+  for (const bad of [42, true, null, {}, ['a'], undefined]) {
+    assert.throws(() => resolveCommand('pin', { id: bad }), /id/, String(bad));
+  }
+});
+
+test('a switch takes a real boolean — the STRING "true" is refused, not coerced', () => {
+  // `commandFor` pushes `--yes` only for `=== true` and silently skips anything
+  // else, so a coerced switch would compose a command WITHOUT the flag the
+  // confirm dialog just showed. That is the drift this whole module exists to
+  // make impossible.
+  assert.throws(() => resolveCommand('pin', { id: 'A', yes: 'true' }), /yes/);
+  assert.deepEqual(resolveCommand('pin', { id: 'A', yes: false }).argv, ['pin', 'A']);
+});
+
+test('a value carrying a NUL, a newline or a bidi override is refused', () => {
+  // NUL, newline, carriage return, RIGHT-TO-LEFT OVERRIDE, RIGHT-TO-LEFT
+  // ISOLATE, ZERO WIDTH SPACE, DELETE. Each renders as something other than
+  // what would run, which is the whole objection.
+  const deceptive = ['a\u0000b', 'a\u000Ab', 'a\u000Db', 'a\u202Eb', 'a\u2067b', 'a\u200Bb', 'a\u007Fb'];
+  for (const bad of deceptive) {
+    assert.throws(() => resolveCommand('pin', { id: bad }), CommandRefusal, JSON.stringify(bad));
+  }
+  // Not over-broad: an ordinary id, and a non-ASCII letter (HEBREW ALEF),
+  // still resolve. A refusal that ate every id with a real name in it would be
+  // a different bug wearing this test's badge.
+  assert.deepEqual(resolveCommand('pin', { id: 'RULE-a-b' }).argv, ['pin', 'RULE-a-b']);
+  assert.deepEqual(resolveCommand('pin', { id: 'RULE-\u05D0' }).argv, ['pin', 'RULE-\u05D0']);
+});
+
+test('a key the entry does not declare is refused rather than dropped', () => {
+  assert.throws(() => resolveCommand('doctor', { sneaky: 'x' }), /sneaky/);
+  // A key another entry declares is still not a key THIS one takes.
+  assert.throws(() => resolveCommand('pin', { id: 'A', severity: 'hard' }), /severity/);
+});
+
+test('a joined switch stays joined — `--always=false` is not `--always false`', () => {
+  const resolved = resolveCommand('edit', { id: 'A', always: 'false' });
+  assert.ok(resolved.argv.includes('--always=false'));
+  assert.ok(!resolved.argv.includes('--always'));
+});
+
+test('the reads are below the boundary and the writes are on it, and both are EXPLICIT', () => {
+  assert.equal(resolveCommand('add', { category: 'rule', title: 't' }).boundary, true);
+  assert.equal(resolveCommand('edit', { id: 'A' }).boundary, true);
+  for (const id of ['doctor', 'status', 'decay', 'review revisions', 'rebuild']) {
+    assert.equal(resolveCommand(id, {}).boundary, false, `${id} is a read or a derived rebuild`);
+  }
+});
+
+test('an entry that declares no boundary is TREATED AS ON IT', () => {
+  // The fail-safe, asserted against a synthetic entry rather than a real one —
+  // because every real entry now declares the key, which is the point. This is
+  // the property that makes "a command added later automatically gets the
+  // stronger confirm" true (spec §6.1) with nobody having to remember.
+  assert.equal(boundaryOf({}), true);
+  assert.equal(boundaryOf({ boundary: undefined }), true);
+  assert.equal(boundaryOf({ boundary: true }), true);
+  assert.equal(boundaryOf({ boundary: false }), false);
+});
+
+test('EVERY catalogue entry declares the key, so an omission still means "unclassified"', () => {
+  // Before 2026-08-27 there was no `boundary: false` anywhere in the file, so
+  // the fail-safe gave `doctor` the field-by-field diff meant for a command that
+  // changes what governs the project. The default only carries information while
+  // omissions are rare; this is what keeps them rare.
+  const unflagged = catalogueEntries().filter((def) => def.boundary === undefined).map((d) => d.name);
+  assert.deepEqual(unflagged, [],
+    'a catalogue entry declares no boundary. It will get the STRONGER confirm, which is the '
+    + 'safe direction — but say which it is, with the reason, rather than leaving the next '
+    + 'reader to infer it from a missing key.');
+});

@@ -11,7 +11,7 @@
  *
  * That half is testable at all because it takes its `doc` as an argument, the
  * same arrangement `lib/i18n.js`'s `t()` uses and for the same reason
- * (`src/ui/public/lib/i18n.js` · ``exists so `node --test` can pass a two-method stand-in; the browser`` · ~37).
+ * (`src/ui/public/lib/i18n.js` · ``exists so `node --test` can pass a two-method stand-in; the browser`` · ~112).
  * Two factory methods are the entire DOM surface `markdownNodes` touches, so
  * two methods are all this file supplies.
  *

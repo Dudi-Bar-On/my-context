@@ -463,7 +463,7 @@ export class Store {
    * **The parameters are where every caller-supplied VALUE belongs, and the
    * SQL text is not.** `mycontext query` hands this method a statement a human
    * typed and guards it with `assertSelectOnly`
-   * (`cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~114) —
+   * (`cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~173) —
    * a prefix-and-keyword check over a denylist that its own docblock records as
    * necessarily incomplete, and which is nonetheless the ONLY barrier standing
    * in front of `VACUUM INTO`, the one statement a `readOnly: true` connection
@@ -475,7 +475,7 @@ export class Store {
    * the two booleans they have already reduced to `0` or `1`.
    *
    * The default `[]` keeps both callers that arrived before the parameters
-   * working unchanged: `cli/commands/query.ts` · `const fetched = store.raw(withRowCap(sql, limit + 1));` · ~314
+   * working unchanged: `cli/commands/query.ts` · `const fetched = store.raw(withRowCap(sql, limit + 1));` · ~373
    * and this class's own `openReadOnlyChecked`.
    */
   raw(sql: string, params: (string | number)[] = []): Record<string, unknown>[] {

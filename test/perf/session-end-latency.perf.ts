@@ -21,14 +21,14 @@
  * ms p95. A ceiling anywhere near that would not be bounding this project's
  * work: the dominant term is `rmSync` over the window's files on NTFS, and a
  * single delete stalling behind an antivirus or an indexer is a documented
- * property of this platform (`core/ledger.ts` · `SNAPSHOT_RENAME_ATTEMPTS` · ~697
+ * property of this platform (`core/ledger.ts` · `SNAPSHOT_RENAME_ATTEMPTS` · ~729
  * exists for the same class of stall on rename). A 50 ms ceiling was tried
  * first and went red at 134 and 140 ms on a loaded box with the median
  * unchanged at ~10 ms — one stalled iteration out of twenty, in the code's
  * cheapest path.
  *
  * So 250 ms certifies what `perfCeiling`'s own doc says a widened ceiling
- * certifies (`test/helpers/perf.ts` · `it certifies the absence of order-of-magnitude regressions` · ~44):
+ * certifies (`test/helpers/perf.ts` · `it certifies the absence of order-of-magnitude regressions` · ~42):
  * no accidental corpus parse, no per-call process spawn, no lock stall — all of
  * which land far above it — while absorbing filesystem noise that is not this
  * project's to fix. It is also ~6× the worst single-iteration stall observed

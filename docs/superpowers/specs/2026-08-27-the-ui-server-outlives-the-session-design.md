@@ -39,7 +39,7 @@ cannot answer *is a server running*, and it was never meant to. A second
 `mycontext ui --port 58888` today surfaces a raw bind error.
 
 **`ui.enabled` is a switch with no enforcement site.**
-`src/core/config.ts` · `const DEFAULT_UI: UiConfig = { enabled: true };` · ~234 is
+`src/core/config.ts` · `const DEFAULT_UI: UiConfig = { enabled: true };` · ~242 is
 validated, refused when malformed, rendered on the Configure screen, and consulted by
 nothing that decides anything — the file says so itself. The owner's *"not disabled"*
 already exists in the product. This requirement gives it its first meaning.

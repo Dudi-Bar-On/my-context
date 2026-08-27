@@ -24,7 +24,7 @@ import { SECURITY_HEADERS } from './security.ts';
 // ledger has no kind at all, and its `(session_id, item_id, tier)` key
 // collides repeat injections inside a session, so a series drawn from it
 // undercounts by exactly those repeats — `Ledger.history()`'s own docblock
-// says so (`core/ledger.ts` · `from it undercounts by exactly the repeats the key swallowed. Which stamp` · ~452).
+// says so (`core/ledger.ts` · `from it undercounts by exactly the repeats the key swallowed. Which stamp` · ~465).
 //
 // **NOTHING HERE WRITES, AND THAT COST THE PLAN'S OWN SHAPE.** The plan routed
 // all three JSON endpoints through `openProjection` + `syncProjection`. Both
@@ -62,12 +62,12 @@ export const STREAM_POLL_MS = 1000;
  * out where nothing happened would leave a reader unable to tell "no records
  * of that kind" from "this build does not know that kind" — design decision
  * 3's absence-is-not-zero rule, read in the other direction. There are SIX
- * (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~242), taken
+ * (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~339), taken
  * from the one declaration rather than respelled here.
  *
  * **What colour any of this is drawn in is NOT decided here and must not be.**
- * The six kinds do not map cleanly onto the approved visual direction's four
- * meaning-hues; that is an open owner decision. This function ships the data,
+ * The seven kinds do not map cleanly onto the approved visual direction's four
+ * meaning-hues; that is an open owner decision, and each new kind widens it. This function ships the data,
  * the buckets and the counts, and names no colour.
  */
 export function recordVolume(

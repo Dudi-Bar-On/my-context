@@ -101,11 +101,36 @@ test('a joined switch stays joined — `--always=false` is not `--always false`'
   assert.ok(!resolved.argv.includes('--always'));
 });
 
-test('every entry reports a boundary, and an entry that declares none is TREATED AS ON IT', () => {
+test('the reads are below the boundary and the writes are on it, and both are EXPLICIT', () => {
   assert.equal(resolveCommand('add', { category: 'rule', title: 't' }).boundary, true);
-  assert.equal(resolveCommand('doctor', {}).boundary, false);
+  for (const id of ['doctor', 'status', 'decay', 'review revisions', 'rebuild']) {
+    assert.equal(resolveCommand(id, {}).boundary, false);
+  }
+});
+
+test('an entry that declares no boundary is TREATED AS ON IT', () => {
+  // Against a SYNTHETIC entry, because every real one now declares the key.
+  assert.equal(boundaryOf({}), true);
+  assert.equal(boundaryOf({ boundary: false }), false);
+});
+
+test('EVERY catalogue entry declares the key, so an omission still means "unclassified"', () => {
+  assert.deepEqual(catalogueEntries().filter((d) => d.boundary === undefined), []);
 });
 ```
+
+**THE CATALOGUE HAD TO CHANGE, and this is what the first draft of this plan got
+wrong.** Measured 2026-08-27: fourteen entries carried `boundary: true` and ten
+carried the key at all on no other — **there was no `boundary: false` anywhere in
+`palette-defs.js`**. Under the fail-safe every entry therefore resolved as ON the
+boundary, `doctor` included, and the assertion this plan first wrote
+(`doctor` → `false`) was unsatisfiable by its own sketch.
+
+The fix is not to weaken the fail-safe. It is that **a default only carries
+information while omissions are rare**, so every entry was given the key
+explicitly: the ten reads plus `rebuild` and `lesson-discard` now carry
+`boundary: false` with the reason beside them, and an omission goes back to
+meaning "nobody has classified this yet".
 
 The NUL / newline / bidi test is not decoration: `pack import --name` shipped accepting a U+202E override and an embedded newline, measured, and the same class reaches here through any free-text argument.
 
@@ -195,64 +220,43 @@ git commit -m "ui: the server rebuilds argv from the catalogue the browser compo
 
 ---
 
-### Task 2: The boundary is derived, and the catalogue is held to it
+### Task 2: The boundary is derived, and the catalogue is held to it — ALREADY BUILT
 
 **Files:**
-- Modify: `test/helpers/approval-boundary.ts` (read only; change only if it exports nothing usable)
-- Create: `test/ui/execute-boundary-parity.test.ts`
+- Read: `test/ui/palette-lib.test.ts` (~357), `test/helpers/approval-boundary.ts`
+- Test: nothing new
 
-**Interfaces:**
-- Consumes: `approvalBoundary()` and `gatedCommands()` from `test/helpers/approval-boundary.ts`; `PALETTE` from the catalogue.
-- Produces: nothing at runtime. This is a GATE.
+**Status: DONE, and it was done before this plan was written.** Recorded here
+rather than deleted, because the finding matters more than the task.
 
-**Why a gate and not a runtime derivation.** `approvalBoundary()` derives the set by running the real parser with probe flags — correct, and far too expensive to do inside a request. So the catalogue's `boundary` flag is what the server reads, and this test is what stops it being a stale list: the derivation runs in CI and fails the moment the flags disagree with the parser. Combined with Task 1's fail-safe default, a command added later gets the stronger confirm whether or not anyone remembers to flag it, and this test then says so out loud.
+`test/ui/palette-lib.test.ts` already derives the classification from the REAL
+argument parser and fails when the catalogue disagrees with it, in both
+directions and for `--yes` as well as for `boundary`. It caught the one change
+this plan's Task 1 made to the catalogue, immediately and by name:
 
-- [ ] **Step 1: Write the failing test**
-
-```ts
-test('every catalogue entry the parser calls gated is flagged boundary in the catalogue', () => {
-  const gated = gatedCommands();
-  const wrong = PALETTE.filter((def) => gated.has(def.name) && def.boundary !== true);
-  assert.deepEqual(wrong.map((d) => d.name), [],
-    'these commands change what governs the project and would get the WEAK confirm');
-});
-
-test('no entry claims the boundary the parser says it is below — that is only ceremony, and it is still worth knowing', () => {
-  const gated = gatedCommands();
-  const extra = PALETTE.filter((def) => def.boundary === true && !gated.has(def.name));
-  assert.deepEqual(extra.map((d) => d.name), [],
-    'harmless — a stronger confirm than needed — but it means the catalogue and the parser disagree');
-});
-
-test('a NEW command with no boundary flag resolves as ON the boundary', () => {
-  // The fail-safe, asserted rather than trusted: this is the property that makes
-  // "a command added later automatically gets the stronger confirm" true.
-  assert.equal(resolveCommand('doctor', {}).boundary, false);   // flagged false explicitly
-  assert.equal(boundaryOf({ name: 'x', args: [], flags: [] }), true);
-});
+```
+lesson-discard: boundary=true but the parser says false
 ```
 
-Read `test/helpers/approval-boundary.ts` first: `gatedCommands()` returns command STRINGS, some with subcommands (`review promote-revision`), while the catalogue keys on `name`. Reconcile in the test, not by renaming either side, and say in a comment which spelling each uses.
+**And it was RIGHT and the change was wrong.** `lesson-discard` permanently
+rejects a staged rule, which reads as something that should need ceremony — but
+the boundary is about what GOVERNS this project, and a staged candidate governs
+nothing yet. `review discard`, which looks like the same act, IS derived as gated
+because a draft in that queue can be promoted into something that does.
 
-- [ ] **Step 2: Run it to make sure it fails or passes for a reason you have read**
+So **destructive and boundary-crossing are two different axes**, `lesson-discard`
+is the entry that separates them, and the derivation knew that when a hand-marked
+flag did not. That is the whole argument for deriving, arriving unprompted.
 
-Run: `node --test test/ui/execute-boundary-parity.test.ts`
-Expected: it may pass immediately. **That is not enough.** Flip one `boundary: true` to `false` in the catalogue, watch this test fail, and put it back. A gate is worth nothing until you have watched it fail — a pinned rule that has earned itself three times here.
+What was missing and is now added, in `test/ui/execute-catalogue.test.ts`: an
+assertion that **every entry declares the key**. The gate above compares flags
+against the parser; it says nothing about an entry that carries no flag, and the
+fail-safe only carries information while omissions are rare.
 
-- [ ] **Step 3: Fix any disagreement it finds**
-
-If the derivation names a command the catalogue does not flag, flag it. Do NOT weaken the test.
-
-- [ ] **Step 4: Run it green**
-
-Run: `node --test test/ui/execute-boundary-parity.test.ts`
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add test/ui/execute-boundary-parity.test.ts src/ui/public/lib/palette-defs.js
-git commit -m "ui: the parser decides which confirm a command gets, and a gate holds the catalogue to it"
-```
+Two disagreements between catalogue and parser stand, both flagged `boundary:
+true` and both correct: `lesson-accept` and `lesson-discard`'s neighbour cases
+are documented in `approval-boundary.ts`'s own `UNGATED` map, which exists
+because a command with no `--yes` gives the probe nothing to find.
 
 ---
 
@@ -720,9 +724,15 @@ git commit -m "e2e: the confirm is rendered, read and only then run, in a real b
 - Modify: `test/ui/no-writes.test.ts`, `README.md`, `docs/README.he.md`
 - Test: the whole suite
 
-- [ ] **Step 1: Narrow `no-writes.test.ts` to the READ modules**
+- [x] **Step 1: Narrow `no-writes.test.ts`** — DONE 2026-08-27, and not the way this step first proposed.
 
-It currently holds the whole `src/ui/` import graph read-only. `execute.ts` is a write path by design, so the test is narrowed to `read-model*.ts` and their graph — **narrowed, never deleted**, so a write sneaking into a read path still fails. Its comment must say which modules are now out of scope and why, or the next reader will read the narrowing as the rule going away.
+The step said to narrow the test to `read-model*.ts` and their graph. **That is wider than the change needs and it would have thrown away three working guards.** Wiring the route made exactly three assertions go red, and each wanted a different, smaller answer:
+
+1. **the write-symbol ban** — `RULED_WRITES` gains ONE entry, `src/ui/execute.ts binds recordAudit`, with the ruling and the three properties that bound it. What stopped being true is *"the UI never writes"*; what still holds, and still fails, is *"a READ path never writes"* — every read module is untouched and the new write is named one symbol at a time.
+2. **the dynamic-import ban** — a `DYNAMIC_EDGES` entry naming the module loaded and the test that holds THAT module instead (`palette-lib.test.ts`, over its bytes). Verified in both directions, so an entry whose file no longer has a dynamic import fails as itself rather than quietly covering the next one.
+3. **the over-blanking guard** — no change to the test at all. A doc comment in `execute-catalogue.ts` quoted an import in the `from '…'` form, which reads as a statement the masker swallowed. **The comment moved; the guard stays exact.**
+
+The lesson is worth more than the diff: *narrowing a gate is not one move. Read what each assertion is actually protecting before deciding which of them your change is allowed to cost you.*
 
 - [ ] **Step 2: Write §7 of both READMEs**
 

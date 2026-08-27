@@ -256,7 +256,7 @@ export function renderItemBlock(item: Item): string {
  * taking the index from 470 to 499 against a budget of 1200.
  *
  * **Exported so the carry disclosure can QUOTE it rather than retype it**
- * (`core/render.ts` · `function renderCarried(` · ~74). That line tells the
+ * (`core/render.ts` · `function renderCarried(` · ~47). That line tells the
  * reader which marker to look for; a second literal there would be a second
  * spelling of one string, and the failure mode is the quiet one — a renamed
  * marker with a disclosure still pointing at the old word, both green.

@@ -53,20 +53,20 @@ function configPath(ws: Workspace): string | null {
  * `resolveConfig`'s `Config`, reshaped for JSON.
  *
  * Two things are not a straight `JSON.stringify` of it. The categories map is
- * null-prototype (`config.ts` · `  const categories: Record<string, ResolvedCategory> = Object.create(null);` · ~671)
+ * null-prototype (`config.ts` · `  const categories: Record<string, ResolvedCategory> = Object.create(null);` · ~1140)
  * and unordered, so it becomes an array sorted by name — a list the editor can
  * render in a stable order rather than in whatever order the catalogue and the
  * user's overrides happened to compose.
  *
  * And `skippedNotice` is carried, which is a DUTY rather than a nicety.
- * `skippedKeys` (`config.ts` · `  skippedKeys: string[];` · ~233) says in its
+ * `skippedKeys` (`config.ts` · `  skippedKeys: string[];` · ~352) says in its
  * own words that "a surface that shows config to a human and does not print
  * this notice has re-created the silent drop this field exists to end". The
  * browser cannot compose that sentence — `skippedKeyNotice` is a Node module —
  * so the server sends it, verbatim and worded once.
  *
  * `ui` is included because the loader reads five top-level keys, `ui` among
- * them (`config.ts` · `const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'];` · ~452).
+ * them (`config.ts` · `export const TOP_LEVEL_KEYS = [` · ~799).
  * A "resolved config" view that showed four of the five would be a screen
  * quietly disagreeing with the loader about what a config is.
  */
@@ -95,7 +95,7 @@ function serializable(config: Config): unknown {
  *
  * `AGENT_EDITS` and `SCOPE_POLICIES` are passed through in DECLARATION ORDER,
  * which is user-facing rather than incidental
- * (`config.ts` · ` * Declaration order is the order the refusal lists them in — \`enumError\`` · ~96):
+ * (`config.ts` · ` * Declaration order is the order the refusal lists them in — \`enumError\`` · ~124):
  * the CLI's refusals list them in this order, so a picker that reordered them
  * would teach a different vocabulary from the one the refusal prints.
  */
@@ -163,9 +163,9 @@ export function apiConfigGet(ws: Workspace, url: URL): JsonResult {
  * Design decision 9 was written around three: an invalid `budgets` value, a
  * non-string `watchedDocs` entry, and an unknown top-level key. Two of them are
  * refusals now. `requireBudgets` refuses by name
- * (`config.ts` · `function requireBudgets(raw: unknown): Budgets {` · ~536) and
+ * (`config.ts` · `function requireBudgets(raw: unknown): Budgets {` · ~1004) and
  * `requireWatchedDocs` refuses rather than filtering
- * (`config.ts` · `function requireWatchedDocs(raw: unknown): string[] {` · ~582),
+ * (`config.ts` · `function requireWatchedDocs(raw: unknown): string[] {` · ~1050),
  * so both reach this module as a `resolveConfig` throw and leave through
  * `ok: false` with the loader's own wording. Reporting them here as findings
  * would describe leniency the product no longer has.
@@ -238,7 +238,7 @@ export function apiConfigCheck(ws: Workspace, url: URL, body: unknown): JsonResu
  * in this function estimates anything, and nothing in it re-implements a rule.
  *
  * The select context comes from the QUERY STRING, through the one parser
- * `/api/select` uses (`read-model.ts` · `export function parseSelectQuery(` · ~224):
+ * `/api/select` uses (`read-model.ts` · `export function parseSelectQuery(` · ~231):
  * the same grammar, cold labelled by the same rule, `seen` and `focus` read the
  * same way. So "what starts spilling" is answered for the session the user has
  * selected, by the selector that will actually run. The candidate rides in the
@@ -306,8 +306,8 @@ export function apiConfigPreview(ws: Workspace, url: URL, body: unknown): JsonRe
     }
 
     // 2 + 3. The policy diffs, per category, through the ONE lookup each
-    //    (`config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~165
-    //    and `config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~143).
+    //    (`config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~201
+    //    and `config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~179).
     //    The union of both configs' category names, because a candidate may
     //    DECLARE a category the current config has never had, and a category
     //    appearing from nowhere is a change a preview must not omit.

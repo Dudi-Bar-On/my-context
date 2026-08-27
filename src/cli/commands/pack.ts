@@ -61,7 +61,7 @@ import { confirmAction, readLineSync } from './review.ts';
  * ## Why gate 5 does not go through `confirmAction` as it stands
  *
  * `confirmAction` returns true on `--yes`
- * (`cli/commands/review.ts` · `  if (hasFlag(args, 'yes')) return true;` · ~501),
+ * (`cli/commands/review.ts` · `  if (hasFlag(args, 'yes')) return true;` · ~804),
  * which is exactly right for gate 4 and exactly wrong for gate 5. §6n.7 asks
  * for an approval that is explicit and SEPARATE from choosing the pack, and
  * `--yes` is consent to the import the user described — not to replacing a
@@ -129,7 +129,7 @@ function say(out: Emit, text: string, prefix = ''): void {
  *
  * It cannot fail to parse here: `resolveWorkspace` reads and parses the same
  * file before any command is dispatched, and throws on a bad one
- * (`core/workspace.ts` · `      raw = JSON.parse(readFileSync(configPath, 'utf8'));` · ~34).
+ * (`core/workspace.ts` · `      raw = JSON.parse(readFileSync(configPath, 'utf8'));` · ~54).
  */
 function rawWorkspaceConfig(root: string): unknown {
   const file = path.join(root, WORKSPACE_CONFIG);
@@ -360,9 +360,9 @@ interface NameRefusal {
  * ## Why the value arrives here having passed neither
  *
  * A manifest's name is refused twice before a plan exists: `parseManifest` puts
- * it through `refusePackName` (`pack/manifest.ts` · `export function refusePackName(v: unknown): string | null {` · ~230),
+ * it through `refusePackName` (`pack/manifest.ts` · `export function refusePackName(v: unknown): string | null {` · ~314),
  * and `planImport` puts it through the Unicode screen
- * (`pack/import.ts` · `    ...screenPackMeta(manifest.name ?? '', manifest.version ?? ''),` · ~318).
+ * (`pack/import.ts` · `    ...screenPackMeta(manifest.name ?? '', manifest.version ?? ''),` · ~320).
  * `--name` REPLACES that value after both have run, and the replacement is what
  * every surface prints from then on — the collision report's first line, the
  * confirmation question, the outcome sentence, `.audit/imported/<slug>/import.json`

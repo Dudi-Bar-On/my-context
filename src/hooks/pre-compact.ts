@@ -1,10 +1,85 @@
 import { recordAudit } from '../core/audit.ts';
+import { readOccupancy } from '../core/context-occupancy.ts';
 import { scanTranscriptIds, writeSnapshot } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { readSeen, seenIds } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from './io.ts';
+
+/**
+ * What this compaction fired at, as a `note` fragment (spec §4.4).
+ *
+ * **This is a measurement, not an argument.** The owner asked for the handover
+ * to be raised at 98% occupancy. The standing concern is that Claude Code's own
+ * automatic compaction fires BELOW 98 on current builds, in which case 98 is a
+ * threshold nothing ever reaches — the compaction happens first. Rather than
+ * arguing the number, every `pre-compact` row now says what triggered the
+ * compaction and how full the window was when it did; after a handful of
+ * automatic compactions the log holds the number the platform actually
+ * compacts at, and the threshold stops being anybody's guess.
+ *
+ * **The two numbers are FIELDS, and the note carries only what a field cannot.**
+ * `trigger` and `occupancyPercent` are declared on `AuditRecord`, so the
+ * question this exists to answer — *what percentage does the platform actually
+ * compact at* — is a query rather than a regex over prose. What stays in the
+ * note is the pair of integers the percentage was computed from, and, when
+ * there is no percentage, WHICH of the three reasons that is. Neither belongs
+ * in a numeric field, and putting the percentage in both places would be a
+ * value living in two places at once, which is worse than either.
+ */
+function measurement(root: string, input: HookInput, sessionId: string): {
+  trigger: string;
+  occupancyPercent: number | null;
+  note: string;
+} {
+  // `'<absent>'` is `post-compact.ts`'s spelling for "the payload did not say",
+  // reused verbatim rather than re-invented: a second spelling for one absence
+  // is a second thing for a reader of the log to learn. Absent rather than
+  // defaulted to one of the two values the schema declares, for that hook's
+  // reason — inventing `auto` for a payload that carried neither would put a
+  // claim in the log that no payload supports.
+  const trigger = typeof input.trigger === 'string' && input.trigger !== ''
+    ? input.trigger
+    : '<absent>';
+
+  // Never throws (`context-occupancy.ts`), so no `try` is added around it: a
+  // `try` that cannot fire would claim otherwise and would hide a genuine new
+  // throw behind a shrug. One small file read, no transcript scan — and
+  // PreCompact runs once per compaction, so even that bound is generous.
+  const occupancy = readOccupancy(root, sessionId);
+
+  // `null`, spelled out, never `0` and never an omitted key. `STD-absent-vs-
+  // zero` governs hardest here because the wrong reading is the plausible one:
+  // a `0` claims the window was EMPTY when the platform compacted, which is
+  // the opposite of "nobody measured" and would poison the very number this
+  // line exists to establish. Omitting the key instead is just as bad — a
+  // reader could not tell it from a row written before this was recorded.
+  //
+  // The reason is named rather than collapsed, because the three are three
+  // different fixes. What is deliberately NOT done is write
+  // `occupancyStandDownLine` to stderr: that line asks the user to install the
+  // status-line bridge, and a compaction is the one moment where an
+  // unsolicited paragraph of ours competes with Claude Code's own compaction
+  // notice for a user who did not ask for either. The row carries it for
+  // whoever goes looking, which is what this record is for.
+  // The two integers travel beside the percentage rather than instead of it:
+  // the field is what a query reads, and these are what makes a later question
+  // at finer precision still answerable from a row already written.
+  return occupancy.state === 'known'
+    ? {
+        trigger,
+        occupancyPercent: occupancy.percent,
+        note: `occupancy ${occupancy.usedTokens}/${occupancy.windowSize} tokens; `,
+      }
+    : {
+        trigger,
+        // `null`, never 0 and never omitted. `STD-absent-vs-zero`, on the field
+        // where the reassuring wrong reading is "the window was empty".
+        occupancyPercent: null,
+        note: `occupancy unmeasurable (${occupancy.why}); `,
+      };
+}
 
 /**
  * The union of two independent signals, because each misses what the other
@@ -28,6 +103,12 @@ export function buildRestoreSnapshot(
     if (!sessionId) return null;
     const ws = resolveWorkspace(input.cwd ?? fallbackCwd);
     if (!ws.projectRoot) return null;
+
+    // Read once, before any of the work below can fail, and reused by BOTH
+    // rows this function can write: a compaction whose snapshot was lost is
+    // exactly the one whose occupancy someone will want afterwards, so the
+    // measurement must not be a casualty of the failure it sits beside.
+    const measured = measurement(ws.projectRoot, input, sessionId);
 
     // seen set ← the per-session file (parent-keyed: PreCompact is a
     // parent-only event by measurement — E2). Unreadable → empty set,
@@ -86,7 +167,9 @@ export function buildRestoreSnapshot(
         sessionId,
         hook: 'PreCompact',
         injected: [],
-        note:
+        trigger: measured.trigger,
+        occupancyPercent: measured.occupancyPercent,
+        note: measured.note +
           `SNAPSHOT WRITE FAILED (${reason}). ${itemIds.length} captured id(s) ` +
           `(${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
           `transcript) were NOT persisted — this session's restore state will not survive ` +
@@ -122,7 +205,9 @@ export function buildRestoreSnapshot(
       sessionId,
       hook: 'PreCompact',
       injected: itemIds.map((id) => ({ id, tier: 'snapshot' })),
-      note:
+      trigger: measured.trigger,
+      occupancyPercent: measured.occupancyPercent,
+      note: measured.note +
         `${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
         `transcript, ${itemIds.length} captured` +
         (knownSkipReason === null

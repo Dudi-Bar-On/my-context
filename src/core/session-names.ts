@@ -31,7 +31,7 @@ import { retryOnTransientFsError } from './rebuild.ts';
 // id is an identifier of one person's machine and one afternoon's work; a name
 // file that reached git would travel with the corpus into every checkout. The
 // `.gitignore` is written beside the store on every write for the reason
-// `core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~720
+// `core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~752
 // writes it beside a snapshot: `state/` may not have one yet, because nothing
 // guarantees a snapshot has ever been written in this workspace.
 //

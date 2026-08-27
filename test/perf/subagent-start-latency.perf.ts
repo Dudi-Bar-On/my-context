@@ -14,7 +14,7 @@
  * this file does.
  *
  * **The 500 ms ceiling is SessionStart's, deliberately unchanged**
- * (`test/perf/session-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~72,
+ * (`test/perf/session-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~212,
  * via `test/helpers/perf.ts` · `export function perfCeiling(` · ~55), because
  * this event does the same selection over the same corpus: the pinned tier in
  * full plus the index, read from Markdown. It is not the JIT hook's 50 ms
@@ -40,7 +40,7 @@
  * helpers exist to avoid. It is a measurement, taken once, written down.
  *
  * **A fresh `agent_id` per iteration, and that is load-bearing.** The dedupe
- * key is `session_id::agent_id` (`hooks/io.ts` · `export function ledgerKey(` · ~61),
+ * key is `session_id::agent_id` (`hooks/io.ts` · `export function ledgerKey(` · ~208),
  * so a fixed agent would write one seen file on the first call and then
  * measure nineteen deduped near-empty deliveries — a number that would pass
  * while asserting nothing, the same trap the compact case in
@@ -52,7 +52,7 @@
  *
  * **What this event does NOT do, so nobody reads the number as covering it:**
  * the subagent event skips the best-effort index refresh entirely
- * (`core/inject.ts` · `**THE SUBAGENT EVENT SKIPS THIS ENTIRELY**` · ~533), so
+ * (`core/inject.ts` · `**THE SUBAGENT EVENT SKIPS THIS ENTIRELY**` · ~566), so
  * it opens no database and the contended-open worst case
  * (`core/store.ts` · `Worst case ~1.06s: two attempts` · ~122) is not on this
  * path at all. A held index write lock cannot slow this hook down.

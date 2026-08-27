@@ -77,7 +77,7 @@ const PUBLIC = path.join(REPO, 'src', 'ui', 'public');
 
 /**
  * The document root, resolved the way the server resolves it
- * (`src/ui/server.ts` · `registerRoute('GET', '/api/help/:topic', {` · ~157 is
+ * (`src/ui/server.ts` · `registerRoute('GET', '/api/help/:topic', {` · ~169 is
  * the API half; the static half serves this directory). Only root-absolute
  * specifiers are intercepted — every `node:` and relative import in this file
  * still goes through `nextResolve`.
@@ -174,7 +174,7 @@ const MOCKUP = readFileSync(path.join(REPO, 'docs', 'design', 'web-ui-mockup.htm
  * `<section data-p="tut">`'s INNER html — the opening tag excluded, because
  * `e2e/screen-parity.spec.ts` compares `root.querySelectorAll('*')` and the
  * section itself is the root on both sides
- * (`e2e/screen-parity.spec.ts` · `for (const el of root.querySelectorAll<HTMLElement>('*'))` · ~62).
+ * (`e2e/screen-parity.spec.ts` · `for (const el of root.querySelectorAll<HTMLElement>('*'))` · ~61).
  */
 function tutSection(): string {
   const open = MOCKUP.indexOf('<section data-p="tut"');

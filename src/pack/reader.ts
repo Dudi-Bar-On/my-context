@@ -42,7 +42,7 @@
  * symbolic links.
  *
  * **Directories are not screened, files are.** The allow-list lives on the
- * file path (`layout.ts` · ` * ## Why the allow-list lives on the PATH` · ~26)
+ * file path (`layout.ts` · ` * ## Why the allow-list lives on the PATH` · ~20)
  * and re-expressing it for directory names here would be a second copy of the
  * shape, free to disagree with the first. A directory nobody expected costs
  * one wasted `readdirSync` and is then refused at the first file inside it; a

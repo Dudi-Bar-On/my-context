@@ -87,10 +87,35 @@ is the property that matters.
 
 ### 3.4 Every execution is audited
 
-One audit record per run: the id, the resolved argv, the exit code, and when.
+Every run is recorded with the id, the resolved argv, the exit code, and when.
 The audit log is item-shaped today, so this needs its own record kind — the same
 gap `DEC-should-the-web-ui-be-allowed-to-write-config-json` named. **A run that
 cannot be recorded does not happen.**
+
+**AMENDED 2026-08-27: it is TWO rows, not one, and the reason is the log's own
+shape.** This section first said "one audit record per run", and the first
+implementation obeyed it by appending the row before the run and then AMENDING it
+with the exit code afterwards. Amending meant reading the whole audit log and
+writing it back — and the log is append-only and unlocked, written by every hook,
+with `PreToolUse` firing on every file operation. **A row appended between that
+read and that write is silently destroyed.** Losing another writer's record in
+the log that IS this feature's accountability story (§6.2) is worse than any
+tidiness the single row bought.
+
+So it is the attempted/complete pair this project already uses elsewhere and
+already documents in `core/audit.ts`: *"a `pre-compact` row with no
+`post-compact` row beside it is a compaction that threw after the snapshot was
+taken — the same attempted/complete shape `subagent-start` uses, and the same
+reason."*
+
+  - `execute` is appended BEFORE the process starts, always with
+    `exitCode: null`. A failure to write it aborts with 500 and nothing runs,
+    which is how the sentence above stays true.
+  - `execute-done` is appended after it returns, with the real code and duration.
+
+**An `execute` row with no `execute-done` beside it is a run that never came
+back** — a fact the single-row design could not express at all, and one worth
+having on a surface that runs commands.
 
 ### 3.5 Reads stay on the read path
 

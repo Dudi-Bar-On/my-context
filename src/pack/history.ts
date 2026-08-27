@@ -5,11 +5,18 @@
  *
  * ## What travels, and what does not
  *
- * The local log records six kinds (`core/audit.ts` ·
- * `export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus' | 'access' | 'progress';`).
- * Exactly one of them describes the CORPUS; the other five describe a
+ * The local log records seven kinds (`core/audit.ts` ·
+ * `export const AUDIT_KINDS: AuditKind[] = [` · ~242).
+ * Exactly one of them describes the CORPUS; the other six describe a
  * MACHINE — which sessions saw what, which hook fired, which local file path
- * triggered it, what one terminal's focus was narrowed to. None of that is
+ * triggered it, what one terminal's focus was narrowed to, what the web UI
+ * ran.
+ *
+ * The citation above points at the LIST rather than at the union it is
+ * derived from, deliberately: the union was a single line until `execution`
+ * joined on 2026-08-27 and reflowed it, which broke this citation and one in
+ * `cli/commands/session.ts` at the same time. A fragment that a new member
+ * can break is a fragment that will break again. None of that is
  * knowledge about the domain and none of it is the receiver's business, so
  * the filter here is positive: `kind === 'mutation'`, and everything else is
  * absent because it was never selected rather than because someone remembered

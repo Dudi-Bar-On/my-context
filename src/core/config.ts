@@ -1,3 +1,11 @@
+// The only built-in this module needs, and it is needed for exactly one thing:
+// `requireHandover` asks BOTH `path.win32` and `path.posix` whether a
+// configured handover path is absolute. Bare `path.isAbsolute` answers for the
+// host OS alone, and a `config.json` does not stay on one host — it is written
+// on one machine, read on another, and travels inside packs — so the host's
+// answer would accept `/etc/passwd` when read on Windows and `C:\...` when
+// read on Linux. Asking both makes the refusal the same everywhere.
+import path from 'node:path';
 import {
   CATEGORIES, PROFILES,
   type CategoryUpdates, type ProfileName, type UpdatableName, type UpdateStore,
@@ -233,12 +241,95 @@ export interface UiConfig {
  */
 export const DEFAULT_UI: UiConfig = { enabled: true };
 
+/**
+ * Which handover document this project keeps, and how much of it a session may
+ * be handed after a compaction. Spec §3.1.
+ *
+ * **This key runs the opposite way to `ui` directly above it, and the
+ * asymmetry is the whole point.** `ui` is opt-OUT because resolving it grants a
+ * permission and touches nothing; resolving THIS one means the product starts
+ * READING A FILE IN SOMEBODY'S REPOSITORY, and no default may take that
+ * decision on a user's behalf. So there is no `DEFAULT_HANDOVER` object beside
+ * `DEFAULT_UI`: absent is `null` on `Config`, and `null` means the entire
+ * feature is off and silent. A plugin does not read a repository's contents
+ * because it was installed.
+ *
+ * The two defaults below exist because `marker` and `budgetTokens` are
+ * refinements of a decision the user already took by writing `path`. `path`
+ * has no default for the same reason the key has none: there is no file this
+ * product could pick.
+ */
+export interface HandoverConfig {
+  /**
+   * Repo-relative, and ONE file.
+   *
+   * Not a glob, and that is a decision rather than an omission: a glob that
+   * matches two handovers has to pick one, and picking is the act that would
+   * need a rule nobody has written. "Newest wins" makes a stale file win after
+   * a `touch`; "first alphabetically" is arbitrary; "deliver both" is the
+   * unbounded read this key exists to bound. Naming the file leaves the choice
+   * with the person who knows which document it is.
+   *
+   * Absolute paths and `..` segments are refused: this names a document in
+   * THIS project, and a config that can address anything on the machine turns
+   * an installed plugin into a file reader pointed wherever a `config.json`
+   * says — including one that arrived in a pack.
+   */
+  path: string;
+  /**
+   * The heading prefix that marks the section written FOR the next session, so
+   * the delivered block can be that section rather than the head of a document
+   * that may be a thousand lines of history.
+   */
+  marker: string;
+  /**
+   * How much of the document may be delivered, in `estimateTokens` units
+   * (characters / 4) like every other budget in this file. What does not fit
+   * is NAMED in the delivered block and never dropped in silence
+   * (INV-nothing-is-dropped-silently).
+   */
+  budgetTokens: number;
+}
+
+/**
+ * U+23ED BLACK RIGHT-POINTING DOUBLE TRIANGLE WITH VERTICAL BAR — the "skip to
+ * next" glyph, which is what a handover section is.
+ *
+ * Written as an escape and NEVER as the literal character: `npm run
+ * check:text-files` gates non-ASCII in source, and it has already caught one
+ * file today. The escape is also the only spelling that survives a terminal,
+ * a diff and a patch unchanged.
+ *
+ * It is a DEFAULT rather than a constant because the convention is this
+ * project's own — `### <marker> DO THIS FIRST, AFTER THE COMPACTION` — and a
+ * project that marks its handover differently should not have to rename its
+ * headings to be read.
+ */
+export const DEFAULT_HANDOVER_MARKER = '\u23ED';
+
+/**
+ * Enough for a section that says what was being done, what was decided and
+ * what comes first — and small enough that it cannot be a meaningful share of
+ * the window it is delivered into. Delivering a handover whole into the
+ * context it exists to protect would be the joke telling itself.
+ */
+export const DEFAULT_HANDOVER_BUDGET_TOKENS = 1200;
+
 export interface Config {
   profile: ProfileName;
   categories: Record<string, ResolvedCategory>;
   budgets: Budgets;
   watchedDocs: string[];
   ui: UiConfig;
+  /**
+   * `null` — the `handover` key absent — means the whole feature is OFF, and
+   * that is the type rather than a comment for a reason: `HandoverConfig` with
+   * an `enabled` boolean, or a `DEFAULT_HANDOVER` beside `DEFAULT_UI`, would
+   * both give the "off" state a `path` field that some caller eventually
+   * reads. There is nothing to read. Absent is absent (STD-absent-vs-zero),
+   * and a consumer that wants to act has to narrow the `null` away first.
+   */
+  handover: HandoverConfig | null;
   /**
    * The top-level keys this build did not understand, in the order the file
    * wrote them — R14.2's half of INV-nothing-is-dropped-silently. Empty for
@@ -705,7 +796,7 @@ export function extraFieldNames(config: Config): string[] {
  * unchanged, and the one call site that asks `.includes` of an arbitrary string
  * widens it back at the call rather than weakening the type for every reader.
  */
-export const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'] as const;
+export const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui', 'handover'] as const;
 
 /**
  * Every key the `ui` section may carry — the `CATEGORY_KEYS` shape again, and
@@ -776,6 +867,127 @@ function requireUi(raw: unknown): UiConfig {
     ui.enabled = raw.enabled;
   }
   return ui;
+}
+
+/**
+ * Every key the `handover` section may carry — the `UI_KEYS` shape again, and
+ * kept as its own list for the same reason: the three values need three
+ * different checks (a path, a non-empty string, a positive integer), so
+ * deriving the accepted set from anything would accept a key whose value
+ * nothing validates. Extend this list and `requireHandover` together.
+ *
+ * NOT derived from a defaults object, and here that is not merely a
+ * preference: `path` has no default, so there is no object to derive from
+ * without inventing a file name to hold its place.
+ */
+const HANDOVER_KEYS = ['path', 'marker', 'budgetTokens'];
+
+/**
+ * The `handover` section: which document a session is handed after a
+ * compaction, and how much of it. Spec §3.1.
+ *
+ * **Absent resolves to `null`, which is off** — the opposite direction to
+ * `requireUi` directly above, and the asymmetry is argued on `HandoverConfig`.
+ * The short of it: `ui` grants a permission and a default `yes` costs a user
+ * nothing, while this key makes the product read a file in the user's
+ * repository, and no default may take that decision for them.
+ *
+ * Everything a user DID write is refused rather than skipped, and by the
+ * offending sub-key's NAME, exactly as `requireUi` does. The boundary is the
+ * same one `resolveConfig` documents: R14.2 makes an unknown TOP-LEVEL key
+ * survivable because it may have come from a newer build, but `handover` is a
+ * known block, and `"pathh"`, `"markr"` or `"budgetTokns"` have no reading in
+ * which the user meant something this build could honour. The failure
+ * direction is one-way here too: a sub-key accepted and dropped leaves a user
+ * who configured a handover with a handover that was never delivered, and the
+ * only symptom is a session that quietly knows nothing.
+ */
+function requireHandover(raw: unknown): HandoverConfig | null {
+  if (raw === undefined) return null;
+  if (!isObject(raw)) {
+    throw new Error(
+      `my_context: "handover" is ${JSON.stringify(raw)}, not an object. Expected ` +
+      `{"handover": {"path": "reports/V2-HANDOVER.md"}}, or no "handover" key at all to ` +
+      `leave the mechanism off. Nothing was loaded — a setting that cannot be acted on ` +
+      `is refused rather than ignored.`,
+    );
+  }
+  const unknown = Object.keys(raw).filter((key) => !HANDOVER_KEYS.includes(key));
+  if (unknown.length > 0) {
+    throw new Error(
+      `my_context: handover declares ${unknown.map((k) => JSON.stringify(k)).join(', ')}, ` +
+      `which ${unknown.length === 1 ? 'is not a key' : 'are not keys'} this config ` +
+      `understands. handover accepts: ${HANDOVER_KEYS.join(', ')}. Nothing was loaded — ` +
+      `accepting the key and keeping the default would mean the handover you configured ` +
+      `is not the one delivered, and the only symptom is a session that knows less than ` +
+      `you think it does.`,
+    );
+  }
+
+  // REQUIRED, and it is the only sub-key that is. There is no file this
+  // product could pick on a user's behalf, so a `handover` block without a
+  // `path` is a block with nothing in it — which is why `{"handover": {}}` is
+  // refused here where `{"ui": {}}` is accepted: an empty `ui` section is a
+  // user who has still not said no, and an empty `handover` section is a user
+  // who has not said which document.
+  const file = raw.path;
+  if (typeof file !== 'string' || file.trim() === '') {
+    throw new Error(
+      `my_context: handover.path is ${JSON.stringify(file)}. Expected a non-empty ` +
+      `repo-relative path to ONE file, e.g. "reports/V2-HANDOVER.md". Nothing was ` +
+      `loaded — handover.path is the whole of what this key names, and there is no ` +
+      `document this product could choose for you.`,
+    );
+  }
+  // Absolute in EITHER platform's grammar, and any `..` segment in either
+  // separator. Two things are being kept out and they are different sizes: a
+  // `..` escape is usually a mistake, while an absolute path is a
+  // `config.json` — possibly one that arrived in a pack from a stranger —
+  // pointing an installed plugin at any file on the machine.
+  //
+  // Not a glob either, and that refusal is structural rather than checked
+  // here: a glob that matches two handovers has to pick one, and picking is
+  // the act that would need a rule nobody has written. A `*` simply resolves
+  // to no such file at read time and is reported as missing.
+  if (
+    path.win32.isAbsolute(file) || path.posix.isAbsolute(file)
+    || file.split(/[\\/]/).includes('..')
+  ) {
+    throw new Error(
+      `my_context: handover.path is ${JSON.stringify(file)}. Expected a path INSIDE ` +
+      `this project — no drive letter, no leading separator, no "..". Nothing was ` +
+      `loaded — a config that can name any file on the machine turns an installed ` +
+      `plugin into a reader pointed wherever a config.json says, including one that ` +
+      `arrived in a pack.`,
+    );
+  }
+
+  const marker = raw.marker === undefined ? DEFAULT_HANDOVER_MARKER : raw.marker;
+  if (typeof marker !== 'string' || marker === '') {
+    throw new Error(
+      `my_context: handover.marker is ${JSON.stringify(raw.marker)}. Expected a ` +
+      `non-empty string, e.g. the default ${JSON.stringify(DEFAULT_HANDOVER_MARKER)}. ` +
+      `Nothing was loaded — an empty marker matches the start of every heading, so the ` +
+      `first heading in the file would be delivered as the section written for the next ` +
+      `session.`,
+    );
+  }
+
+  const budget = raw.budgetTokens === undefined ? DEFAULT_HANDOVER_BUDGET_TOKENS : raw.budgetTokens;
+  // `0` is refused with the negatives rather than read as "deliver nothing":
+  // that reading is already spelled by leaving the whole key out, and
+  // accepting it here would mean a configured handover that delivers an empty
+  // block — a promise kept in form and broken in fact.
+  if (typeof budget !== 'number' || !Number.isInteger(budget) || budget <= 0) {
+    throw new Error(
+      `my_context: handover.budgetTokens is ${JSON.stringify(raw.budgetTokens)}. Expected ` +
+      `a whole number greater than 0, in estimateTokens units (characters / 4); the ` +
+      `default is ${DEFAULT_HANDOVER_BUDGET_TOKENS}. Nothing was loaded — to deliver no ` +
+      `handover at all, remove the "handover" key.`,
+    );
+  }
+
+  return { path: file, marker, budgetTokens: budget };
 }
 
 const BUDGET_KEYS = Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[];
@@ -1135,6 +1347,9 @@ export function resolveConfig(raw: unknown): Config {
     budgets: requireBudgets(input.budgets),
     watchedDocs: requireWatchedDocs(input.watchedDocs),
     ui: requireUi(input.ui),
+    // `null` when the key is absent, which is the feature switched off. See
+    // `requireHandover` for why this key defaults the other way to `ui`.
+    handover: requireHandover(input.handover),
     skippedKeys,
   };
 }

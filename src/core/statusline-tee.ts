@@ -63,7 +63,7 @@ export function teePath(root: string, sessionId: string): string | null {
  * process.
  *
  * Deliberately NOT the 30 days that
- * `core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS` · ~748 gives
+ * `core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS` · ~780 gives
  * `state/`: that retention protects snapshots and seen-files, which are DATA a
  * later run may still need. A tee temp file is a discarded write that no
  * reader has ever opened — `readTee` only ever opens `<session>.json` — so
@@ -76,7 +76,7 @@ export const TEE_TMP_MAX_AGE_MS = 60 * 60 * 1000;
  * optionally `-<counter>`.
  *
  * Anchored at the END rather than matching `.tmp-` anywhere in the name, which
- * is what `core/ledger.ts` · `|| entry.name.includes('.tmp-'))) continue;` · ~787
+ * is what `core/ledger.ts` · `|| entry.name.includes('.tmp-'))) continue;` · ~819
  * can afford on `state/` and this cannot: `sanitizeSessionId` accepts `.` and
  * `-`, so `run.tmp-3` is a legal session id whose real sample is named
  * `run.tmp-3.json`. A substring predicate would sweep a live session's sample

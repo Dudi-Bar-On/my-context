@@ -25,9 +25,9 @@ import { TOP_LEVEL_KEYS } from '../../src/core/config.ts';
 
 const SRC = path.resolve(import.meta.dirname, '../../src');
 
-test('TOP_LEVEL_KEYS is exported, and is the five keys a config file may carry', () => {
+test('TOP_LEVEL_KEYS is exported, and is the six keys a config file may carry', () => {
   assert.deepEqual(
-    [...TOP_LEVEL_KEYS], ['profile', 'categories', 'budgets', 'watchedDocs', 'ui'],
+    [...TOP_LEVEL_KEYS], ['profile', 'categories', 'budgets', 'watchedDocs', 'ui', 'handover'],
     'the ONE list moved. Every surface that draws the config domain reads this.',
   );
 });

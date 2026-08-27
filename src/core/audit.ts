@@ -132,8 +132,30 @@ export const AUDIT_PROTOCOLS_READ = ['my_context/audit@1', AUDIT_PROTOCOL] as co
  * there would make `mycontext audit --kind mutation --item PROC-x` a question
  * with a wrong answer, and the other four kinds each claim something a tick did
  * not do. It is genuinely a sixth thing, so it is a sixth kind.
+ *
+ * **`execution` is the seventh, and it arrives by the sixth's argument applied
+ * to something that changes MORE rather than less** (plan
+ * `2026-08-27-execute-a-composed-command.md` Task 4, spec §3.4). A run of a
+ * command the web UI composed may create an item, retire ten, rebuild the index
+ * or touch nothing at all; the log cannot know which until the process exits,
+ * and every mutation the run performs records itself under its own op anyway.
+ *
+ * **Why not `mutation`, specifically.** This log is ITEM-SHAPED. `mutation`
+ * carries `itemId` and `fields`, and every op in `MUTATION_OPS` carries an
+ * `itemId` BECAUSE it moved that item's columns. A run is not about one item and
+ * may be about none. Folding it in would make every existing reader of that kind
+ * wrong about what it is reading — `mycontext audit --kind mutation` would start
+ * returning rows with no item and no fields, and `ui/port-model.ts`, which
+ * carries `mutation` OUT of the workspace on an export and withholds every other
+ * kind, would begin exporting a record of what ran on one machine. That is the
+ * gap `DEC-should-the-web-ui-be-allowed-to-write-config-json` named when it
+ * declined the write: a surface reading one kind as if it were another. The
+ * other five kinds each claim something a run did not do — it put no corpus text
+ * in front of a model, it ran in no hook, it refused no request, it ticked no
+ * step. It is genuinely a seventh thing, so it is a seventh kind.
  */
-export type AuditKind = 'mutation' | 'injection' | 'hook' | 'focus' | 'access' | 'progress';
+export type AuditKind =
+  'mutation' | 'injection' | 'hook' | 'focus' | 'access' | 'progress' | 'execution';
 
 /**
  * Every operation that changes an item. One record per act, not per write:
@@ -179,7 +201,7 @@ export type InjectionOp = (typeof INJECTION_OPS)[number];
  * and a deletion with no record is `INV-nothing-is-dropped-silently` failing
  * at the one place it cannot be noticed later. It is also the ONLY channel that
  * event has: Claude Code echoes a `SessionEnd` hook's output to the user only
- * when the hook FAILS (`hooks/session-end.ts` · `NOTHING A SUCCESSFUL SessionEnd HOOK WRITES IS EVER SHOWN` · ~48),
+ * when the hook FAILS (`hooks/session-end.ts` · `NOTHING A SUCCESSFUL SessionEnd HOOK WRITES IS EVER SHOWN` · ~42),
  * so a hook that exits 0 — which `INV-hooks-fail-open` requires — is mute
  * everywhere else.
  *
@@ -187,11 +209,13 @@ export type InjectionOp = (typeof INJECTION_OPS)[number];
  * the restore snapshot; nothing said whether the compaction it was written for
  * then COMPLETED. A `pre-compact` row with no `post-compact` row beside it is a
  * compaction that threw after the snapshot was taken — the same
- * attempted/complete shape `subagent-start` uses, and the same reason. It is
- * also the only row that can carry `trigger`, because
+ * attempted/complete shape `subagent-start` uses, and the same reason. It and
+ * `pre-compact` are the two rows that can carry `trigger`, because
  * `SessionStart(source: 'compact')` — the proxy this project inferred a
  * compaction from before `PostCompact` was registered — cannot tell a
- * user-typed `/compact` from one the context window forced.
+ * user-typed `/compact` from one the context window forced. `pre-compact`
+ * joined it on 2026-08-27, when the question stopped being "did a compaction
+ * happen" and became "how full was the window when it did".
  *
  * **The ten OBSERVATION ops close the gap the hook survey found** (hooks plan
  * seq 21 and 2b). `file-changed`, `instructions-loaded`, `config-change`,
@@ -275,14 +299,86 @@ export type AccessOp = (typeof ACCESS_OPS)[number];
 export const PROGRESS_OPS = ['step-done', 'step-undone', 'step-reset'] as const;
 export type ProgressOp = (typeof PROGRESS_OPS)[number];
 
-export type AuditOp = MutationOp | InjectionOp | HookOp | FocusOp | AccessOp | ProgressOp;
+/**
+ * A command from the UI's catalogue was RUN (plan
+ * `2026-08-27-execute-a-composed-command.md` Task 4, spec §3.4).
+ *
+ * **One op, not one per command.** Which command ran is `command.id`, a value a
+ * reader can filter on and a value that grows every time the catalogue does; an
+ * op per catalogue entry would put the catalogue inside a closed vocabulary that
+ * `parseAudit` refuses a whole SEGMENT over, so adding a command to the palette
+ * would make yesterday's log unreadable. The op answers *did anything run*; the
+ * record answers *what*.
+ *
+ * **TWO ops, because a run is a two-phase fact and this log cannot be amended.**
+ * `execute` is written BEFORE the run; `execute-done` is appended after it. That
+ * is the same attempted/complete shape `pre-compact`/`post-compact` and
+ * `subagent-start` use, and it is here for the same reason: the log is
+ * append-only, so a fact that is only known later is written as a second row
+ * rather than by going back and changing the first.
+ *
+ * **An `execute` row with no `execute-done` beside it is a run that never
+ * returned.** That is the fact the pair exists to make visible, and it is a fact
+ * the old single-row design could not express at all — a lone row still reading
+ * `exitCode: null` was indistinguishable from a run whose completion write had
+ * merely failed. The pair separates them: the first row says a run was
+ * authorised and started, the second says how it ended.
+ *
+ * **What was weighed against it, and why it lost: amending the first row in
+ * place.** That is what `ui/execute.ts` used to do — `readFileSync` the whole
+ * log, mutate one line in memory, `writeFileSync` it back — bought for the
+ * tidiness of one row per run. It is not available here. Every hook appends to
+ * this log from its own process and none of them takes a lock
+ * (`core/jsonl-log.ts` · `appendJsonlLine` is a bare `appendFileSync`), so a row
+ * appended by ANY other writer between that read and that write is destroyed
+ * outright: the rewrite truncates the file to content that predates it. That was
+ * measured, not feared — a second process appending continuously across the
+ * rewrite lost between 1 and 21 rows per run. Destroying another writer's record,
+ * in the log that IS the accountability story for the one feature that runs
+ * commands, is worse than any number of rows a reader has to join. Do not
+ * reintroduce the rewrite as a simplification.
+ *
+ * **The pair is correlated by `at` plus `command.id`.** Both rows are stamped
+ * with the SAME instant deliberately — `recordAudit` takes an `at` for exactly
+ * this case — so a reader joins them by equality rather than by guessing which
+ * `execute` a later `execute-done` belongs to, an ambiguity that is real the
+ * moment one command is run twice inside one millisecond. Nothing is lost by
+ * sharing the stamp: `durationMs` is measured around the run itself, so the end
+ * of the run is `at` plus `durationMs` and was never `execute-done`'s own clock
+ * reading. No run id was invented — that would be a new concept for a question
+ * two existing fields already answer, and `subagent-start`'s pair has none
+ * either.
+ *
+ * **There is no `execute-refused` op beside them.** A run refused before it
+ * started is a refusal by the request gate, and that is already `ui-refused`
+ * under `access` — a second spelling of the same event would split one question
+ * across two ops. A run that started and FAILED is still a run: it is recorded
+ * here, with the process's non-zero `exitCode`.
+ *
+ * They are inside the break `@2` already declares. `AUDIT_PROTOCOL`'s note above
+ * rules that `@2` covers *the whole v2.0 vocabulary widening*; this adds a kind,
+ * a field and two ops to that widening, and all of them are refused by an older
+ * reader through the same validator that already refuses `progress`. A second
+ * bump would spend a downgrade break that has not been paid back yet.
+ */
+export const EXECUTION_OPS = ['execute', 'execute-done'] as const;
+export type ExecutionOp = (typeof EXECUTION_OPS)[number];
+
+export type AuditOp =
+  MutationOp | InjectionOp | HookOp | FocusOp | AccessOp | ProgressOp | ExecutionOp;
 
 export const AUDIT_OPS: AuditOp[] = [
   ...MUTATION_OPS, ...INJECTION_OPS, ...HOOK_OPS, ...FOCUS_OPS, ...ACCESS_OPS, ...PROGRESS_OPS,
+  ...EXECUTION_OPS,
 ];
 
+/**
+ * Appended, never inserted. The order is what the CLI's `--kind` error and the
+ * MCP tool's enum show a reader, and what `ui/port-model.ts` counts against; a
+ * new kind slotted into the middle would silently renumber a list users read.
+ */
 export const AUDIT_KINDS: AuditKind[] = [
-  'mutation', 'injection', 'hook', 'focus', 'access', 'progress',
+  'mutation', 'injection', 'hook', 'focus', 'access', 'progress', 'execution',
 ];
 
 /** Which kind an op belongs to. One table, so no caller can classify one twice. */
@@ -302,6 +398,9 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   'file-changed': 'hook', 'instructions-loaded': 'hook', 'config-change': 'hook',
   'permission-denied': 'hook', 'subagent-stop': 'hook', stop: 'hook', setup: 'hook',
   'task-created': 'hook', 'task-completed': 'hook', 'prompt-expansion': 'hook',
+  // Both halves of one run, and both `execution`: a reader filtering
+  // `--kind execution` wants the run, not half of it.
+  execute: 'execution', 'execute-done': 'execution',
 };
 
 export function kindOf(op: AuditOp): AuditKind {
@@ -446,6 +545,89 @@ export interface AuditRecord {
    * none of them.
    */
   refusal?: RefusalDetail;
+  /**
+   * `execution` records only: which catalogue command ran, what it ran AS, how
+   * it ended, and how long it took (spec §3.4).
+   *
+   * **This is SCOPE, not content — the same rule `injected` follows, and for a
+   * sharper reason.** `argv` is *what ran*. No stdout, no stderr, no output of
+   * any kind is recorded here, by this field or beside it. The audit log is a
+   * file on disk that travels between machines — that is the whole premise of
+   * `at` being UTC — and a run's output is unbounded text this module never
+   * chose: `mycontext show` prints an item's body, `doctor` prints file paths,
+   * `ask` prints whatever a corpus contains. Recording it would put a second,
+   * unchecksummed copy of corpus text in a log, which is the shape this project
+   * has ruled out everywhere else, and it would do it to text a person may have
+   * written expecting it to stay in one workspace. Even `argv` is only safe
+   * because it is rebuilt by `resolveCommand` from the catalogue rather than
+   * taken from a caller — an argument can still carry a title or an id a person
+   * would not send anywhere, so nothing wider than the argv is kept.
+   *
+   * **TWO rows carry this field, and they say different things.** `execute` is
+   * written BEFORE the run and ALWAYS carries `exitCode: null` and
+   * `durationMs: 0` — at that instant nothing has exited and nothing has been
+   * measured, and writing it first is what makes "a run that cannot be recorded
+   * does not happen" an ordering rather than a wish. `execute-done` is appended
+   * AFTER the run and carries the real exit code and the measured duration.
+   * **An `execute` row with no `execute-done` beside it is a run that never
+   * returned.** The two are joined by `at` plus `command.id`, which are equal
+   * across the pair; `EXECUTION_OPS` above has the whole argument, including why
+   * the first row is never amended in place.
+   *
+   * **`exitCode: null` is NOT `0`, and this is the field where getting that
+   * wrong is dangerous.** `null` means the run did not finish under this
+   * process's observation — it was killed on the run timeout, or (on an
+   * `execute` row) the row was written before the process exited.
+   * `0` is a positive claim that the command succeeded. `STD-absent-vs-zero`
+   * governs hardest here because the wrong reading is the reassuring one: a
+   * reader that defaults a missing exit code to 0 reports "it worked" for a run
+   * nobody watched end. So the field is written explicitly as `null` rather than
+   * omitted — `JSON.stringify` drops `undefined`, and an absent key would be
+   * indistinguishable from a record written before this field existed.
+   *
+   * `durationMs` is measured, not derived from `at`: `at` is stamped when the
+   * row is written, which is BEFORE the run, so an end-minus-start over the log
+   * would time the wrong interval.
+   */
+  command?: {
+    /** The catalogue id the client named. Never a command line the client sent. */
+    id: string;
+    /** As `resolveCommand` rebuilt it, without the leading `mycontext`. */
+    argv: string[];
+    /** The process's exit code, or `null` for a run that did not finish. Never 0 for that. */
+    exitCode: number | null;
+    /** Wall-clock milliseconds around the run itself. */
+    durationMs: number;
+  };
+  /**
+   * `pre-compact` and `post-compact`: WHY the compaction fired.
+   *
+   * `'manual'` or `'auto'` as the platform sends them, or the literal
+   * `'<absent>'` when the payload did not say — one spelling across both hooks,
+   * because a compaction is one event written down twice and a reader joining
+   * the pair must not have to learn two vocabularies for the same fact.
+   */
+  trigger?: string;
+  /**
+   * `pre-compact`: how full the context window was when the compaction fired,
+   * as a percentage, or `null` when it could not be measured.
+   *
+   * **This field exists to settle an argument with a measurement.** The owner
+   * asked for a handover to be written at 98% (2026-08-27), and the concern
+   * raised against it is that Claude Code's own automatic compaction fires
+   * BELOW that — so the threshold might never be reached. Rather than pick a
+   * number, every compaction records the one the platform actually chose, and
+   * `trigger` says whether the platform chose it or a person did. After a
+   * handful of automatic compactions the corpus knows the answer.
+   *
+   * **Written explicitly as `null`, never omitted and never 0**, for the same
+   * reason `command.exitCode` is: `JSON.stringify` drops `undefined`, so an
+   * absent key is indistinguishable from a row written before this field
+   * existed — and the reassuring wrong reading here is "the window was empty".
+   * The reason it could not be measured goes in `note`, because a reader who
+   * wants the number does not want three sentinel numbers to learn.
+   */
+  occupancyPercent?: number | null;
 }
 
 /** What a caller supplies; `protocol` and `at` are stamped here. */

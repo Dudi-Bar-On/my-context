@@ -5,7 +5,7 @@
  * The screen is `<section data-p="capture">`
  * (`docs/design/web-ui-mockup.html` · `  <section data-p="capture" hidden>` · ~1969),
  * and it states its own justification in one sentence
- * (`src/ui/public/strings/en.js` · `What it contributes over the CLI is the overlap check — the items already governing this scope.` · ~324).
+ * (`src/ui/public/strings/en.js` · `What it contributes over the CLI is the overlap check — the items already governing this scope.` · ~351).
  * That sentence is the whole contract of this file. Everything else the screen
  * draws — the heading, the note, the composed command, the warning — is
  * already owned somewhere else, and this module deliberately serves none of it.
@@ -40,7 +40,7 @@
  * mockup's own words
  * (`src/ui/public/strings/en.js` · `These are the items whose scope matches` · ~328),
  * and the spec of record repeats it as an instruction
- * (`docs/superpowers/specs/2026-08-16-web-ui-design.md` · `Build the scope match; do not build a similarity score.` · ~1030).
+ * (`docs/superpowers/specs/2026-08-16-web-ui-design.md` · `Build the scope match; do not build a similarity score.` · ~1033).
  * A similarity metric DOES exist in `src/ui/` now — `overlapScore`, behind
  * `POST /api/overlap` — and its own comment already says it must not reach a
  * screen until the owner rules
@@ -67,7 +67,7 @@
  * the items it exists to surface, and a missed overlap is this screen's whole
  * failure mode. Unscoped items are in, for the reason `search --path` gives for
  * including them
- * (`src/cli/commands/search.ts` · `governs a file and therefore returns the UNSCOPED items too, because an item with no` · ~55):
+ * (`src/cli/commands/search.ts` · `governs a file and therefore returns the UNSCOPED items too, because an item with no` · ~60):
  * an item with no scope is unrestricted, so it governs this scope too — unless
  * the category's `scopePolicy` is `inert`, which `matchesScope` refuses on
  * every path and `injection()` reports as the `scope` gate.
@@ -75,7 +75,7 @@
  * ── AND "GOVERNING" IS `injection()`, NOT "MATCHES" ───────────────────────
  *
  * The card's heading is `Already governing {mv:scope}`
- * (`src/ui/public/strings/en.js` · `'cap.already': 'Already governing {mv:scope}',` · ~325),
+ * (`src/ui/public/strings/en.js` · `'cap.already': 'Already governing {mv:scope}',` · ~352),
  * and "a draft governs nothing" is a sentence this product prints in a dozen
  * places. So the scope match is a FILTER and not the answer: an item is listed
  * only when `injection()` also says it is injected. That is the same verdict
@@ -98,7 +98,7 @@ import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
  * `<td class="m">INV-prices-are-integer-cents</td>` and
  * `<td class="small">invariant, normative</td>`. So: an id, a category and a
  * tier — and the spec of record names the same three
- * (`docs/superpowers/specs/2026-08-16-web-ui-design.md` · `listing those items with their category and tier,` · ~1022).
+ * (`docs/superpowers/specs/2026-08-16-web-ui-design.md` · `listing those items with their category and tier,` · ~1025).
  *
  * **`title` is absent on purpose, and that absence is the point of the rule
  * this task cites.** `/api/session/:session/injected` serves a joined title no

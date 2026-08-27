@@ -65,9 +65,9 @@
  * assigned to these kinds, and invent none.** The mockup's own audit row gives
  * `mutation` the critical hue and `access` the warning hue and everything else
  * the ok hue; its own regime rule gives `focus` gold. That is four hues over
- * six kinds, and `injection`, `hook` and `progress` therefore share one — a
- * real loss, stated here rather than papered over with two colours nobody
- * ruled. A column whose total exceeds what its own breakdown accounts for —
+ * seven kinds, and `injection`, `hook`, `progress` and `execution` therefore
+ * share one — a real loss, and it widened on 2026-08-27 rather than being
+ * papered over with a colour nobody ruled. A column whose total exceeds what its own breakdown accounts for —
  * which is how a kind this build does not know arrives — keeps the unaccounted
  * remainder at full height in `--faint`, so the pulse stays honest about how
  * much happened while saying nothing it cannot account for.
@@ -594,7 +594,7 @@ export async function render(root, ctx) {
    * exists because the first one vanishes exactly when it is least affordable:
    * a projection that is stale, diverged or damaged makes `/api/watch/volume`
    * a 503, and the filter row would otherwise be left offering `All` alone
-   * while the live stream filled the table with six kinds of record.
+   * while the live stream filled the table with seven kinds of record.
    *
    * **No browser-reachable endpoint serves `AUDIT_KINDS` unconditionally**, and
    * that is a genuine gap between the mockup's instruction and this app's
