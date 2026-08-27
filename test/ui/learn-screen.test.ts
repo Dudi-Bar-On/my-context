@@ -370,38 +370,41 @@ test('the screen GETs one help endpoint per topic, and touches no other part of 
  * kind the app invents is recorded there in prose and nowhere in code. Here it
  * fails, and the failure names it.
  */
-test('English draws the italic run; Hebrew does not yet, and that is recorded', async () => {
+test('both languages draw the italic run — the Hebrew emphasis has landed', async () => {
   const drawn = kindsOf(learnSection());
   assert.deepEqual(drawn, [
     'div.card.pane', 'div.phd', 'h2', 'i', 'p.psub', 'span', 'span.m', 'span.verdict',
     'table', 'tbody', 'td.m', 'td.small', 'tr',
   ], 'the mockup section changed shape — re-measure before touching the screen');
 
-  // **The two languages differ HERE, deliberately, and this is the record of
-  // it.** `i` is `ln.sub`'s italicised "this". The grammar gained `{b:}` and
-  // `{i:}` on 2026-08-25 and English was populated from the mockup's own
-  // markup, where every `<b>` and `<i>` says exactly where emphasis goes.
+  // **The two languages differed HERE for two days, and this assertion was the
+  // record of the debt. It is now the record of the debt being PAID.** `i` is
+  // `ln.sub`'s italicised "this". The grammar gained `{b:}` and `{i:}` on
+  // 2026-08-25 and English was populated from the mockup's own markup, where
+  // every `<b>` and `<i>` says exactly where emphasis goes.
   //
   // Hebrew was NOT, and not by oversight: the mockup's `const HE` table is
   // plain strings with no markup in any of them, so there is no source for
   // where a Hebrew sentence puts its stress, and placing it by pattern-matching
-  // the language would be guessing. Owner ruling the same day
+  // the language would be guessing. Owner ruling
   // (DEC-hebrew-gets-the-same-emphasis-english-does): Hebrew GETS the emphasis,
-  // from the owner, and until then this asymmetry is UNFINISHED WORK rather
-  // than a settled difference.
+  // from the owner. He released the 57 placements on 2026-08-27 and they were
+  // written into `he.js` the same day, `ln.sub` among them.
   //
-  // So this assertion is the debt. The day `ln.sub` carries `{i:}` in he.js it
-  // fails, and the fix is to make both branches expect `drawn`.
+  // So BOTH branches expect the mockup's full list now, italic included. If the
+  // Hebrew branch loses `i` again, an emphasis run has been dropped from the
+  // Hebrew table — that is a regression, not a pending translation.
   const { root: enRoot } = await renderLearn('en');
   assert.deepEqual(renderedKinds(enRoot), drawn,
     'the English render no longer draws exactly the mockup\'s kinds, italic included');
   const { root: heRoot } = await renderLearn('he');
-  assert.deepEqual(renderedKinds(heRoot), drawn.filter((kind) => kind !== 'i'),
-    'the Hebrew render changed. If it now draws `i`, the Hebrew emphasis has landed and BOTH '
-    + 'branches of this test should expect the mockup\'s full list.');
+  assert.deepEqual(renderedKinds(heRoot), drawn,
+    'the Hebrew render no longer draws the italic run. `ln.sub` carries `{i:}` in he.js as of '
+    + '2026-08-27; losing it is a dropped emphasis run, not unfinished work.');
 
-  // And the italic really is in `ln.sub`, and really is uncarryable: the
-  // English table's own value has no marker in it at all.
+  // And the italic really is in `ln.sub`, in BOTH tables: it is carried in the
+  // string values, never in the screen, so neither language can drift from the
+  // mockup's own decision about where the stress falls.
   const sub = learnSection().slice(learnSection().indexOf('<p class="psub"'));
   assert.match(sub.slice(0, sub.indexOf('</p>')), /<i>this<\/i>/);
   const en = (await table('en')).strings;
@@ -409,9 +412,9 @@ test('English draws the italic run; Hebrew does not yet, and that is recorded', 
     'ln.sub lost its italic marker — the English emphasis is carried in the string table now, '
     + 'and the mockup is the source for where it goes');
   const he = (await table('he')).strings;
-  assert.doesNotMatch(he['ln.sub']!, /\{(i|b):/,
-    'the HEBREW ln.sub gained an emphasis marker. That is the owner ruling arriving, not a '
-    + 'defect — update the Hebrew branch above to expect the mockup\'s full list of kinds.');
+  assert.match(he['ln.sub']!, /\{i:/,
+    'the HEBREW ln.sub lost its emphasis marker. It was placed on 2026-08-27 on `הזה`, the '
+    + 'demonstrative that carries the same argument English puts on "this".');
 });
 
 // ── 5. Machine text is MARKED, which is the whole of this task ─────────────
