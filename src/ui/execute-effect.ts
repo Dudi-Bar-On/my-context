@@ -41,15 +41,27 @@
  * This module RUNS A REAL WRITE COMMAND. The whole design rests on it running
  * against a copy, so "the copy is what it reached" cannot be a hope.
  *
- * `findProjectRoot` takes no environment override — it walks UP from `cwd`
- * until it finds a `.my_context` directory. So the only lever is `cwd`, and the
- * failure mode is a scratch directory nested somewhere a corpus sits above:
- * the child would walk past the copy and write the real thing.
+ * The child runs with `cwd` at the REAL repository, because that is what makes
+ * `--file docs/x.md` mean what the user typed. So `cwd` alone would send it to
+ * the real corpus, and what sends it to the copy instead is `CORPUS_DIR_ENV`,
+ * set for that child and nothing else.
  *
- * So the scratch root is checked with `findProjectRoot` ITSELF — the same
- * function, in this process, before the child starts — and anything other than
- * the copy is a refusal. That checks the RESOLUTION rather than the path shape,
- * so it stays true if the resolution rule ever changes.
+ * **That was not always possible, and the first version of this module was
+ * wrong because of it.** `findProjectRoot` used to walk up from `cwd` with no
+ * override, so one lever set both the corpus AND the path root. This module
+ * moved `cwd` into the copy, and the child then resolved the user's paths
+ * against a temp directory: `add --file` was refused as unreadable, and a file
+ * inside the repository was reported "outside this repository", naming the
+ * scratch as the repository. Both were FALSE refusals, reported by the owner
+ * from live confirms, and §3.2 must never produce one.
+ *
+ * The resolution is still CHECKED rather than trusted, and checked the way the
+ * child will ask it: `findProjectRoot(repoRoot, scratchCorpus)` is the same
+ * function with the same inputs the child gets, evaluated here before anything
+ * is spawned. Anything other than the copy is a refusal. Passing the override as
+ * an argument rather than setting it on this process is deliberate — mutating
+ * the environment to find out where a child would land would change the answer
+ * for everything else running here.
  *
  * ── FAILURE IS A REFUSAL, NEVER AN EMPTY DIFF ───────────────────────────────
  *
@@ -71,7 +83,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseItem } from '../core/item.ts';
 import type { Item } from '../core/types.ts';
-import { DIR_NAME, findProjectRoot } from '../core/workspace.ts';
+import { CORPUS_DIR_ENV, DIR_NAME, findProjectRoot } from '../core/workspace.ts';
 
 /**
  * How long a dry run may take before it is killed.
@@ -298,7 +310,7 @@ const copyTree: CopyTree = (from, to, options) => { cpSync(from, to, options); }
 export type RunChild = (
   file: string,
   args: readonly string[],
-  options: { cwd: string; timeout: number },
+  options: { cwd: string; timeout: number; env: NodeJS.ProcessEnv },
 ) => void;
 
 /**
@@ -323,6 +335,7 @@ const spawnChild: RunChild = (file, args, options) => {
     execFileSync(file, [...args], {
       cwd: options.cwd,
       timeout: options.timeout,
+      env: options.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (error) {
@@ -363,10 +376,18 @@ function withoutRuntimeNoise(text: string): string {
  * leading `mycontext`, matching what `resolveCommand` returns and what the
  * audit rows record.
  *
+ * `repoRoot` is PASSED, not derived here, and that is the point: the real run
+ * uses `ctx.repoRoot` (`execute.ts`, and `read-model.ts` builds it as
+ * `path.dirname(root)`). Computing the same thing here independently would make
+ * the confirm agree with the run by COINCIDENCE, and a confirm that shows the
+ * effect of a command run somewhere else is the defect this whole route exists
+ * to prevent. One value, handed to both.
+ *
  * Throws `EffectRefusal` for anything that leaves the answer unknown.
  */
 export function deriveEffect(
   corpusDir: string,
+  repoRoot: string,
   cliEntry: string,
   argv: readonly string[],
   run: RunChild = spawnChild,
@@ -385,7 +406,13 @@ export function deriveEffect(
     // **The safety check, made with the resolution rule itself.** The child
     // finds its workspace by walking up from `cwd`, so a scratch directory
     // sitting under a corpus would send it to the real one.
-    const resolved = findProjectRoot(scratch);
+    // **Asked of the environment the CHILD will get, not of this process.**
+    // The child runs with `cwd` at the REAL repository root — that is what makes
+    // `--file docs/x.md` mean what the user typed — so `cwd` alone would resolve
+    // to the real corpus. The override is what sends it to the copy, and this
+    // asks `findProjectRoot` the same question the child will ask, with the same
+    // answer, before anything is spawned.
+    const resolved = findProjectRoot(repoRoot, scratchCorpus);
     if (resolved === null || path.resolve(resolved) !== path.resolve(scratchCorpus)) {
       throw new EffectRefusal(
         `the scratch corpus resolves to ${String(resolved)} rather than to itself, so a dry `
@@ -393,41 +420,15 @@ export function deriveEffect(
       );
     }
 
-    // **A repository-relative path cannot survive the copy, and a wrong answer
-    // here is worse than no answer.**
-    //
-    // Reported by the owner 2026-08-27 from two live confirms. The child runs
-    // with `cwd` inside the scratch, and `resolveWorkspace` derives BOTH the
-    // corpus and every relative path from that one `cwd` — they are the same
-    // lever. So `add --file docs/x.md` looked for `docs/x.md` under the scratch,
-    // did not find it, and refused; and a path that WAS inside the real
-    // repository was reported "outside this repository", naming a temp
-    // directory as the repository. The command would have succeeded.
-    //
-    // That is a FALSE refusal, which is the one thing §3.2 must not produce: it
-    // says "this cannot run" about a command that runs. Refusing here instead,
-    // in words that name the real limit, keeps the confirm honest until the
-    // corpus location and the path root can be set independently — which is a
-    // change to `resolveWorkspace`, not to this file, and is the owner's call.
-    //
-    // `add --file` is the only catalogue command this reaches: it is the sole
-    // path-bearing argument on a boundary command (`search --path` is below the
-    // boundary and never dry-runs).
-    const pathBearing = argv.indexOf('--file');
-    if (pathBearing !== -1) {
-      throw new EffectRefusal(
-        'this command reads a file from your repository, and the effect is derived against a '
-        + 'COPY of the corpus that does not contain your repository’s files — so the answer '
-        + 'here would be wrong rather than merely missing. Copy the command and run it in your '
-        + 'own shell, where the path means what you typed.',
-      );
-    }
-
     const before = snapshot(scratchCorpus);
     try {
       run(process.execPath, [cliEntry, ...argv], {
-        cwd: scratch,
+        // The REAL repository, so every repository-relative path the user typed
+        // means what they typed. The corpus is redirected by the variable below
+        // and by nothing else.
+        cwd: repoRoot,
         timeout: EFFECT_TIMEOUT_MS,
+        env: { ...process.env, [CORPUS_DIR_ENV]: scratchCorpus },
       });
     } catch (error) {
       // A non-zero exit is a real answer about the command rather than about

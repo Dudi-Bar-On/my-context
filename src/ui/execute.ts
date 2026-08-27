@@ -510,7 +510,10 @@ function handleConfirm(ctx: ApiContext): JsonResult {
     if (resolved.boundary) {
       const root = ctx.ws.projectRoot;
       if (root === null) return { status: 500, body: { error: 'mycontext ui: no workspace here' } };
-      effect = deriveEffect(root, active.cliEntry, resolved.argv);
+      // `ctx.repoRoot` is the SAME value handed to `runCommand` below for the real
+      // run, so the effect shown is the effect of the command as it will actually
+      // be run — not of the same argv run somewhere else.
+      effect = deriveEffect(root, ctx.repoRoot, active.cliEntry, resolved.argv);
     }
 
     return {

@@ -17,7 +17,7 @@ import { openRebuiltStore } from '../core/open-store.ts';
 import type { LoadError } from '../core/rebuild.ts';
 import type { Store } from '../core/store.ts';
 import {
-  DIR_NAME, GLOBAL_DIR, findProjectRoot, resolveWorkspace, type Workspace,
+  DIR_NAME, GLOBAL_DIR, findProjectRoot, repositoryRoot, resolveWorkspace, type Workspace,
 } from '../core/workspace.ts';
 import {
   HELP_TOPICS, docLocale, exampleItem, exampleItemShort, helpTopic, updatableSurface,
@@ -533,7 +533,13 @@ const ADD_FLAGS = [...ADD_VALUE_FLAGS, 'yes'];
 function addSnapshot(
   ws: Workspace, root: string, cwd: string, target: string, input: CreateInput, out: Emit,
 ): void {
-  const snapshot = readSnapshot(path.dirname(root), cwd, target);
+  // `repositoryRoot(cwd)` and NOT `path.dirname(root)`: this bounds a path the
+  // USER typed, so it must be the repository they are standing in. The two are
+  // the same value unless `CORPUS_DIR_ENV` has pointed the corpus elsewhere, and
+  // then the corpus's parent is a directory the user has never heard of — which
+  // is exactly how a file inside the repository came to be refused as outside
+  // it, naming a temp directory as the repository, on 2026-08-27.
+  const snapshot = readSnapshot(repositoryRoot(cwd) ?? path.dirname(root), cwd, target);
   input.body = snapshot.body;
   input.sourceFile = snapshot.sourceFile;
   input.sourceChecksum = snapshot.checksum;

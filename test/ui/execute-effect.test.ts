@@ -101,6 +101,7 @@ test('the filter is WIRED to the copy, not merely correct beside it', () => {
   const dir = project();
   deriveEffect(
     path.join(dir, '.my_context'),
+    dir,
     CLI,
     ['status'],
     () => {},                                   // no child: the copy is the subject
@@ -125,7 +126,8 @@ test('a scratch that does not resolve to itself is refused rather than run', () 
   // check is made with that same function; here the corpus does not exist at
   // all, so the copy fails and nothing is run.
   assert.throws(
-    () => deriveEffect(path.join(tmpdir(), 'myctx-does-not-exist-at-all'), CLI, ['status']),
+    () => deriveEffect(path.join(tmpdir(), 'myctx-does-not-exist-at-all'),
+      path.join(tmpdir(), 'myctx-does-not-exist-at-all'), CLI, ['status']),
     EffectRefusal,
     'a corpus that cannot be copied must refuse, never proceed against whatever cwd resolves to',
   );
@@ -139,7 +141,7 @@ test('a command that cannot complete is a refusal carrying the CLI’s own sente
   // with nothing after it, identical whether the argument was wrong or the
   // corpus was broken.
   assert.throws(
-    () => deriveEffect(path.join(dir, '.my_context'), CLI,
+    () => deriveEffect(path.join(dir, '.my_context'), dir, CLI,
       ['refresh', 'RULE-a-rule-to-change', '--yes']),
     (error: unknown) => {
       assert.ok(error instanceof EffectRefusal);
@@ -155,7 +157,7 @@ test('the real corpus is untouched — the command runs against the copy and now
   const corpus = path.join(dir, '.my_context');
   const before = readdirSync(path.join(corpus, 'items', 'rule')).sort();
 
-  const effect = deriveEffect(corpus, CLI,
+  const effect = deriveEffect(corpus, dir, CLI,
     ['add', 'note', 'a note the dry run creates', '--body', 'b', '--yes']);
 
   assert.equal(effect.length, 1, 'the command creates exactly one item');
@@ -166,6 +168,47 @@ test('the real corpus is untouched — the command runs against the copy and now
     readdirSync(path.join(corpus, 'items')).includes('note'), false,
     'and it must not have created the note here — that is the whole point of the copy',
   );
+});
+
+test('a repository-relative path means what the user typed, not what the copy contains', () => {
+  // The owner reported this twice from live confirms on 2026-08-27:
+  //
+  //   add --file my-context/README.md
+  //     -> "could not be read ... resolved relative to the directory you ran
+  //         the command in"
+  //   a reference capture
+  //     -> "is outside this repository (a temp directory, named as the repo)"
+  //
+  // Both were FALSE refusals naming a temp directory as the repository. The
+  // cause was that one `cwd` set both the corpus and the path root, so moving
+  // `cwd` into the copy moved the user's paths with it. The child now runs at
+  // the REAL repository with CORPUS_DIR_ENV pointing at the copy.
+  const dir = project();
+  writeFileSync(path.join(dir, 'a-file-in-the-repo.md'), '# captured\n\nbody\n');
+
+  const effect = deriveEffect(path.join(dir, '.my_context'), dir, CLI,
+    ['add', 'note', 'from a repo file', '--file', 'a-file-in-the-repo.md', '--yes']);
+
+  assert.equal(effect.length, 1, 'the capture must succeed: the file is right where the user said');
+  assert.equal(effect[0]?.kind, 'created');
+  assert.ok(effect[0]?.fields.some((f) => f.field === 'sourceFile'),
+    'and it records where it came from, which is the whole point of a --file capture');
+});
+
+test('the corpus still cannot be reached, even though cwd is now the real repository', () => {
+  // The safety property survives the fix, and this is where it could have been
+  // lost: `cwd` at the real repository would resolve to the REAL corpus by the
+  // upward walk. Only CORPUS_DIR_ENV sends the child to the copy, so the check
+  // that it does is the check that this module is still safe.
+  const dir = project();
+  const corpus = path.join(dir, '.my_context');
+  const rules = () => readdirSync(path.join(corpus, 'items', 'rule')).sort();
+  const before = rules();
+
+  deriveEffect(corpus, dir, CLI, ['add', 'rule', 'written only to the copy', '--body', 'b', '--yes']);
+
+  assert.deepEqual(rules(), before,
+    'the child ran at the real repository root and must STILL have written only to the copy');
 });
 
 /* -------------------------------------------------------------------------- *
@@ -227,5 +270,5 @@ test('a directory that is not a corpus is refused, not treated as an empty one',
   scratches.push(dir);
   mkdirSync(path.join(dir, 'items'), { recursive: true });
   writeFileSync(path.join(dir, 'items', 'stray.md'), 'not an item at all\n');
-  assert.throws(() => deriveEffect(dir, CLI, ['status']), EffectRefusal);
+  assert.throws(() => deriveEffect(dir, path.dirname(dir), CLI, ['status']), EffectRefusal);
 });
