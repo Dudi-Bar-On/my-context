@@ -409,8 +409,21 @@ export function hookParseErrorLine(parseError: string | null): string {
  * model's context instead of the knowledge inside it. A union rather than a
  * `string` parameter makes that a compile error instead of a hook whose
  * injection arrives as punctuation.
+ *
+ * **`Stop` joined on 2026-08-27, and joining this union is the smaller half of
+ * what that took.** Build 2.1.239 has declared a `hookSpecificOutput` variant
+ * with `additionalContext` for `Stop` all along — `hooks/observe.ts` quotes the
+ * platform's own description of it, *"non-error feedback delivered to the
+ * model; the conversation continues so the model can act on it"* — and this
+ * project still left it empty, because an event that CAN speak on every
+ * assistant turn is a product decision and not a capability question
+ * (`hooks/stop.ts`'s header records the whole of it). What changed is the
+ * ruling, not the declaration: the owner's occupancy requirement is
+ * `DEC-stop-speaks-once-and-only-to-raise-the-handover`, and it is narrow. This
+ * union says `Stop` MAY be stamped on an envelope; it does not say anything may
+ * be put in one, and `observe.ts` is where that stays narrow.
  */
-export type HookEventName = 'PreToolUse' | 'PostToolUse' | 'SubagentStart';
+export type HookEventName = 'PreToolUse' | 'PostToolUse' | 'SubagentStart' | 'Stop';
 
 /**
  * The one `additionalContext` envelope builder.

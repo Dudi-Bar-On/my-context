@@ -1040,6 +1040,21 @@ function renderNav() {
 }
 
 async function route() {
+  // **The pane belongs to the screen that opened it.** `installItemPane`
+  // delegates from the document and `pane-open` is a class on `.app`, which
+  // outlives every screen — so without this the pane opened on Coverage is
+  // still there on Simulate, squeezing the body to three columns for an item
+  // the user has navigated away from. Twelve of the twenty-two screens emit no
+  // `[data-id]` at all and could only ever INHERIT it. Measured 2026-08-27:
+  // `closePane` appeared three times in this file (its declaration, the ✕
+  // handler, Escape) and not once in `route()`; the owner reported the result
+  // as "there are many screens that it should not appear but currently it
+  // does". CLOSED and not hidden, and here at the TOP rather than beside the
+  // section build: `closePane()` drops the class, sets `hidden` and forgets
+  // the id in one call, so no part of the previous screen's pane survives into
+  // the next one — and it runs even if the dynamic import below throws.
+  // `test/ui/pane-route.test.ts` is this line.
+  closePane();
   // Decision 5: the landing screen is the injection preview, at
   // event=session-start on the most recent session, rendering with no
   // input. NOT 'status' — that screen is built by Task 19 and deferred to

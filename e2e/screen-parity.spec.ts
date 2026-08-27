@@ -555,15 +555,35 @@ test('every screen draws every KIND of element its mockup section draws', async 
       // Two consecutive equal counts, sampled 400ms apart, is the signal: a
       // screen still fetching changes between samples. Capped so a genuinely
       // empty screen fails on the assertion below rather than hanging here.
+      //
+      // **The cap needs a failure of its own, and this is why.** Until
+      // 2026-08-27 exhausting these 25 attempts fell straight through to the
+      // comparison below, so a screen that was merely SLOW was compared
+      // half-drawn and reported as *"the mockup draws these and the app does
+      // not"* — a wall-clock failure wearing an assertion's clothes, which is
+      // the exact thing this test's own header calls the worst kind of red.
+      // Measured: inside the full suite this test ran 55.8s and failed that
+      // way; alone it ran 32.5s and passed, five times out of five.
+      //
+      // So `settled` is tracked and asserted separately. A slow screen now says
+      // it was slow. Nothing about the comparison is relaxed — an unsettled
+      // screen produces no ledger verdict at all, which is the only honest
+      // answer when the measurement never finished.
       let previous = -1;
+      let settled = false;
       for (let attempt = 0; attempt < 25; attempt++) {
         const now = await page.evaluate(
           (s) => document.querySelectorAll(`[data-p="${s}"] *`).length, screen);
-        if (now > 0 && now === previous) break;
+        if (now > 0 && now === previous) { settled = true; break; }
         previous = now;
         await page.waitForTimeout(400);
       }
       expect(previous, `${screen}: never rendered anything`).toBeGreaterThan(0);
+      expect(settled,
+        `${screen}: still growing after 25 samples over 10s — it was NOT compared, because a `
+        + 'half-drawn screen would be reported as missing what the mockup draws and read exactly '
+        + 'like a regression. This is a LOAD failure: run this spec alone before believing '
+        + 'anything about the ledger.').toBe(true);
       const appKinds = (await page.evaluate(COLLECT_KINDS, `[data-p="${screen}"]`)) ?? [];
 
       const missing = mockKinds!.filter((k) => !appKinds.includes(k));

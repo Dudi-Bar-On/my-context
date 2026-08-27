@@ -307,7 +307,28 @@ bdi{unicode-bidi:isolate}
    own report for what that leaves stacked instead of side-by-side. */
 .app{display:grid;grid-template-rows:46px 1fr 26px 30px;grid-template-columns:214px 1fr;
   block-size:100vh;grid-template-areas:"top top" "rail body" "prov prov" "strip strip"}
-.app.pane-open{grid-template-columns:214px 1fr 330px;
+/* ─── The item pane's width — the ONE custom property in this file the mockup
+   does not declare, and the only reason it is not in the TOKENS block above:
+   all three `:root` blocks in this file are byte-identical copies pinned by
+   test/ui/styles-parity.test.ts, so a token added to any of them fails that
+   test as drift from the design of record. Kept here, beside the single rule
+   that reads it, rather than in a fourth token block up at the top of the file,
+   far from its only use.
+
+   330px is what shipped (mockup ~398) and stays the default; the drag handle
+   and arrow keys of the following task write this property and nothing else. */
+:root{ --pane-w:330px }
+
+/* The clamp is in the TEMPLATE, not in the handler that will later write the
+   property, and that is the point of doing this ahead of the handle: a width
+   written by ANYTHING — a stale stored value from an older build, a future
+   feature, a plain bug — cannot squeeze the body out of the window, and the
+   guarantee does not depend on whichever code happens to be writing it today.
+   Clamping in the writer instead was cheaper to read but protects only that
+   writer's own writes; the next writer would inherit nothing.
+   280px floor: below it the pane is narrower than the prose it exists to show.
+   70vw ceiling: above it the body — the thing the pane annotates — is gone. */
+.app.pane-open{grid-template-columns:214px 1fr clamp(280px, var(--pane-w), 70vw);
   grid-template-areas:"top top top" "rail body pane" "prov prov prov" "strip strip strip"}
 
 /* The header's own layout — grid-area is inert without .app above, but

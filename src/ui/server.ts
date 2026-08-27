@@ -73,6 +73,9 @@ import { registerWorkRoutes } from './read-model-work.ts';
 import { matchRoute, registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import { loadSessionDigests, recordSessionDigest } from '../core/ui-sessions.ts';
 import {
+  clearUiServerRecord, uiServerRecordPath, writeUiServerRecord,
+} from '../core/ui-server-record.ts';
+import {
   cookieValue, mintToken, NonceStore, recordRefusal, SECURITY_HEADERS, TOKEN_COOKIE,
   TOKEN_HEADER, tokenDigest, validateApiRequest,
 } from './security.ts';
@@ -97,10 +100,20 @@ export interface UiServerOptions {
   /** Test-only override for handoff nonce ttl; production callers omit it. */
   nonceTtlMs?: number;
   /**
-   * Told when the session store could not be read or written, with a sentence
-   * naming the file and what it costs. Not an error: the server serves either
-   * way. Omitting this handler discards the notice, which is a caller's choice
-   * to make and not a default this module takes on its behalf.
+   * Told when a file in the GLOBAL directory could not be read or written,
+   * with a sentence naming the file and what it costs. Not an error: the server
+   * serves either way. Omitting this handler discards the notice, which is a
+   * caller's choice to make and not a default this module takes on its behalf.
+   *
+   * **Two files reach it, not one**: `ui-sessions.json` (the digests of issued
+   * tokens) and, since 2026-08-27, `ui-server.json` (the liveness record). The
+   * name kept its original spelling on purpose — `src/cli/commands/ui.ts` is
+   * the only caller that supplies this handler, and renaming the key would
+   * have meant editing that file to say the same thing to the same printer.
+   * What the two failures have in common is what this channel is actually for:
+   * both are machine state beside the corpus, both cost something LATER and
+   * somewhere else, and neither is a reason to refuse to serve now. Each
+   * message names its own file, so a reader is never left guessing which.
    */
   onSessionStoreIssue?: (message: string) => void;
 }
@@ -385,6 +398,35 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     });
   });
 
+  /**
+   * **The record comes back on EVERY exit route, and there is one place it
+   * does.**
+   *
+   * There are two routes out — the idle monitor's `server.close()` and the
+   * `close()` this function hands back — and both of them go through the
+   * server's own `close` event, because `server.close(cb)` registers `cb` as a
+   * `close` listener and nothing else here ends the process cleanly. So this
+   * one listener is exactly one removal per route, and it is the reading of
+   * "no route can forget" that survives a THIRD route being added later: a
+   * `clearUiServerRecord()` line copied into each callback is two lines that
+   * can drift, and the drift is invisible — a stale record does not look
+   * broken, it looks like a server somewhere else.
+   *
+   * It is registered here, before either close path exists, so it runs FIRST:
+   * `once` fires in registration order, and both routes register theirs at
+   * `close()` time. That ordering is load-bearing — `onExit` is what tells the
+   * caller the server is gone, and a caller told that while the record still
+   * named a live port would be told something untrue for as long as the two
+   * listeners are apart.
+   *
+   * No `try` around it: `clearUiServerRecord` is documented never to throw, and
+   * an absent record is success rather than failure there. A catch here would
+   * be a branch no test can reach, and it would sit on the one path where a
+   * thrown exception has nowhere to go — an event listener, on a process that
+   * is already shutting down.
+   */
+  server.once('close', () => { clearUiServerRecord(); });
+
   const idle = new IdleMonitor(options.idleMs ?? IDLE_MS, () => {
     // On idle the server closes; open sockets (a stream, in plan 3) are
     // destroyed so close() completes and the page's next fetch fails, which
@@ -559,10 +601,75 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     sendJson(res, await match.handler.handle(ctx));
   }
 
+  /**
+   * **Where this server is listening, written down for whoever looks next.**
+   *
+   * The sibling of `recordSessionDigest` above: the second write this server
+   * performs, outside every request path, and outside every corpus. Spec §3.
+   *
+   * `port` is a PARAMETER rather than a read of `boundPort`, and that is the
+   * whole point of this function existing at all. The port that must be
+   * recorded is the one the socket is bound to, read back from
+   * `server.address()`; `options.port` defaults to `0`, which asks the OS to
+   * choose, so a record made from the request would say `0` on nearly every
+   * real start. Nothing downstream could catch it: `0` parses, the record looks
+   * whole, and every probe built on it would connect to nothing and conclude a
+   * server had died. Naming the argument `port` and calling it with `boundPort`
+   * is the smallest arrangement in which the wrong value is not in scope.
+   *
+   * **The failure is caught and disclosed, never thrown.** `writeUiServerRecord`
+   * throws deliberately — it returns `void`, so swallowing a failure inside it
+   * would be the silent drop this project refuses, and its author left the
+   * decision to the caller. This is that decision: a server that cannot write a
+   * hint about itself is still a server, and the person waiting for the page has
+   * lost nothing yet. What they have lost is later and elsewhere — the upkeep
+   * hook will find no record and will not put this server back — which is
+   * exactly the shape `onSessionStoreIssue` already carries for
+   * `ui-sessions.json`, printed by `mycontext ui` as a line the owner sees.
+   * That existing channel is used rather than a new `onServerRecordIssue`,
+   * because the only caller that supplies a handler is the CLI, a second
+   * callback would have to be wired there to say the same sentence to the same
+   * printer, and until it was, the notice would go nowhere — a disclosure
+   * channel with no listener is the silent drop wearing a name.
+   *
+   * It is also caught because of WHERE it runs: inside `listen`'s callback,
+   * which is not the promise executor. A throw here is not a rejection anything
+   * can catch — it is an uncaught exception that takes the process down with a
+   * stack naming `node:net` — so `close()` would never be called, the record
+   * would never be cleared, and the failure to write a record would present as
+   * a crashed server.
+   */
+  function recordListeningAt(port: number): void {
+    try {
+      writeUiServerRecord({
+        version: 1,
+        pid: process.pid,
+        host,
+        port,
+        // The origin a browser would be sent to, and the same one the gate
+        // judges submitted `Host` headers against.
+        url: `http://${host}:${port}/`,
+        startedAt: Date.now(),
+        // The REPOSITORY root, not `.my_context` inside it: a hook reads this
+        // to decide where to re-spawn `mycontext ui`, and that is a cwd.
+        workspace: repoRoot,
+      });
+    } catch (err) {
+      options.onSessionStoreIssue?.(
+        `could not write ${uiServerRecordPath()} `
+        + `(${err instanceof Error ? err.message : String(err)}). The server still runs and this `
+        + 'page still works; what is lost is that nothing else can find this server — it will not '
+        + 'be probed, and it will not be restarted after it exits.',
+      );
+    }
+  }
+
   return new Promise<RunningUiServer>((resolve, reject) => {
     server.once('error', reject);
     server.listen(options.port ?? 0, host, () => {
       boundPort = (server.address() as AddressInfo).port;
+      // After the read-back, never before it. See `recordListeningAt`.
+      recordListeningAt(boundPort);
       idle.touch();
       idle.start();
       resolve({

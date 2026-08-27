@@ -395,7 +395,27 @@ body.sim-rt .gloss,body.sim-rt .gloss.float{background-image:none;box-shadow:non
 /* ═══ shell ═══ */
 .app{display:grid;grid-template-rows:46px 1fr 26px 30px;grid-template-columns:214px 1fr;
   block-size:100vh;grid-template-areas:"top top" "rail body" "prov prov" "strip strip"}
-.app.pane-open{grid-template-columns:214px 1fr 330px;
+/* The item pane's width, 2026-08-27. DRAFTED BY CLAUDE, AWAITING THE OWNER —
+   the pen ruling of 2026-08-25 is that Claude drafts and the owner approves,
+   so this is a proposal in place rather than a change taken.
+
+   It renders IDENTICALLY: `--pane-w` is 330px and the clamp resolves to 330px,
+   so nothing about this drawing moves. What changes is that the number stops
+   being a constant. The owner asked on 2026-08-27 for the pane to be draggable
+   and floatable because item bodies are long, so from `plan:pane` onward the
+   width is user-controlled and remembered — and a design of record cannot
+   mirror a value the user owns.
+
+   Why the mockup moves rather than the gate: `.app.pane-open` is in
+   `SCREEN_SELECTORS`, which `styles-parity` compares BYTE-IDENTICALLY in both
+   directions. The 2026-08-26 ruling dropped the app→mockup direction from
+   `strings-parity` and from nine per-screen CLASS checks; it did not touch this
+   comparison, and reading it as covered would have been the ruling stretched to
+   somewhere it was never taken. So the choice was: move the drawing, or take
+   this selector off the byte-identical list. Moving the drawing keeps the gate
+   whole and keeps 1:1 true. */
+:root{ --pane-w:330px }
+.app.pane-open{grid-template-columns:214px 1fr clamp(280px, var(--pane-w), 70vw);
   grid-template-areas:"top top top" "rail body pane" "prov prov prov" "strip strip strip"}
 
 /* The header, ruled 2026-08-22 (spec §3 primitive 8): the live `.top` bar

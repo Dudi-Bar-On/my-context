@@ -140,6 +140,26 @@ const WRITERS: Record<string, string[]> = {
   // the failure mode this table exists to make loud, and a new module quietly
   // widening the surface would otherwise have shipped green.
   'src/core/ui-sessions.ts': ['recordSessionDigest'],
+  // Reached from 2026-08-27, when `startUiServer` began recording WHERE it is
+  // listening so a hook can tell a live server from a crashed one's leftovers.
+  // Named here BEFORE it was ruled in, the same way `recordSessionDigest` was
+  // and for the same reason — and this time the naming was the whole finding.
+  //
+  // **The agent that added the write reported that this test STAYED GREEN**, and
+  // was right to report it rather than add itself to `RULED_WRITES`. The ban
+  // detects only writers this table already knows: `isWriter` consults it, so an
+  // unnamed writing module resolves correctly, is placed correctly, and is then
+  // judged a non-writer. `RULED_WRITES` is the second half of the check; this is
+  // the first, and a hole here is silent by construction.
+  //
+  // That is `RULE-prove-your-measurement-can-see-every-kind-of-member` landing on
+  // this file rather than on something it was measuring. Filed as
+  // `plan:rulings` — the membership of this table should be DERIVED from what
+  // the modules actually call, so an unnamed writer cannot hide again.
+  //
+  // `uiServerRecordPath` is bound by `src/ui/server.ts` too and is deliberately
+  // NOT here: it builds a path for a disclosure message and writes nothing.
+  'src/core/ui-server-record.ts': ['writeUiServerRecord', 'clearUiServerRecord'],
 };
 
 const isWriter = (module: string, symbol: string): boolean =>
@@ -186,6 +206,32 @@ const RULED_WRITES = [
   //     appended in between; the attempted/complete pair replaced it.
   'src/ui/execute.ts binds recordAudit (defined in src/core/audit.ts)',
   'src/ui/security.ts binds recordAudit (defined in src/core/audit.ts)',
+  // Owner requirement, 2026-08-27:
+  // `REQ-the-ui-server-is-running-whenever-the-owner-looks-or-it-says`. The
+  // server writes down WHERE it is listening — `~/.my-context/ui-server.json`,
+  // pid, host, bound port, url — so a hook can tell a live server from a
+  // crashed one's leftovers and put it back up. Before it there was no liveness
+  // record of ANY kind: no pidfile, no lockfile, no port probe, and a second
+  // `mycontext ui --port 58888` surfaced a raw bind error.
+  //
+  // Three properties bound it, each checkable:
+  //
+  //   - it runs in `listen`'s callback, AFTER the socket binds and outside every
+  //     request path, so no request can reach it — the same shape as
+  //     `recordSessionDigest` below and unlike `recordAudit` above, which is on
+  //     the refusal path and needs `server-e2e.test.ts` to bound WHEN;
+  //   - what it writes is MACHINE state, not corpus state, and it lands in the
+  //     global directory rather than a repository — a pid committed to git means
+  //     something else on the next machine;
+  //   - it is a HINT and is never believed. `core/ui-server-probe.ts` proves
+  //     liveness on the port and deletes a record that fails, so the worst a
+  //     wrong record can do is cost one probe.
+  //
+  // `clearUiServerRecord` is named beside it because removal is the other half:
+  // a record left behind by an exit is exactly the stale claim the probe exists
+  // to catch, and leaving the removal unruled would have made the tidy path the
+  // undeclared one.
+  'src/ui/server.ts binds clearUiServerRecord (defined in src/core/ui-server-record.ts)',
   // Owner ruling, 2026-08-23. `startUiServer` records `sha256(token)` for the
   // token it mints, so the NEXT process still recognises a tab that was open
   // across a restart. Before it, a restarted server locked out every open tab
@@ -208,6 +254,7 @@ const RULED_WRITES = [
   //     assertion is the one that would otherwise have caught this, and it
   //     still means what it says.
   'src/ui/server.ts binds recordSessionDigest (defined in src/core/ui-sessions.ts)',
+  'src/ui/server.ts binds writeUiServerRecord (defined in src/core/ui-server-record.ts)',
 ];
 
 /**

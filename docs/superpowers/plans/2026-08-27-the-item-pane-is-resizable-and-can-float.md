@@ -131,10 +131,27 @@ happens to be writing it today.
 - [ ] **Step 4: Run the tests and make sure they pass**
 
 Run: `node --test test/ui/pane-width.test.ts test/ui/styles-parity.test.ts`
-Expected: PASS. `styles-parity` compares the blocks the app carries against the
-mockup's; the selector is unchanged and only its value moved, so it stays green.
-**If it goes red, read it before touching it** — it will be telling you the block
-no longer matches, which is a real answer.
+
+> **THIS STEP PREDICTED WRONG, and the correction is worth more than the fix.**
+> It said `styles-parity` stays green because "only the value moved". There is no
+> such category in that gate. `.app.pane-open` is in `SCREEN_SELECTORS`, which is
+> compared **byte-identically in both directions**, so any change to the value
+> fails — invented or not. The 2026-08-26 ruling dropped the app→mockup direction
+> from `strings-parity` and from nine per-screen CLASS checks; it did **not**
+> touch this file's rule-body comparison, and reading it as covered would have
+> been that ruling stretched somewhere it was never taken.
+>
+> Two answers were possible: move the mockup, or take `.app.pane-open` off the
+> byte-identical list because its width is now app-owned state. **The mockup
+> moved** (drafted 2026-08-27, awaiting the owner under the pen ruling), because
+> it keeps the gate whole and keeps 1:1 true — and it renders identically, since
+> `--pane-w` is 330px and the clamp resolves to 330px.
+>
+> Taking the selector off the list remains the argument to make if the owner
+> declines: a design of record genuinely cannot mirror a value the user owns and
+> remembers. It is not the cheaper answer, only the other one.
+
+Expected after the mockup moves: PASS, 215 assertions.
 
 - [ ] **Step 5: Commit**
 

@@ -5390,6 +5390,48 @@ program is a different string and is **not** denied — and none of them touch t
 `.my_context/` redirect route above. The rules raise the cost of an accidental promotion;
 they do not make one impossible.
 
+### The web UI can run what it composes
+
+`mycontext ui` composes commands on several of its screens. Since 2026-08-27 the server can
+also **run** them: `POST /api/execute` is live, and every command in the catalogue is
+executable — the reads, the writes, and the ones that change what governs this project.
+
+> [!NOTE]
+> **The screens do not offer the button yet.** The endpoint is built and reachable; the
+> Copy-and-Execute control that puts it in front of you is still being built. This section
+> is here now rather than later because a live execution endpoint on your loopback address
+> is worth knowing about before a button appears, not after.
+
+Each run is behind a confirm.
+
+Which confirm a command gets is **derived from the real argument parser**, not kept as a
+list somebody maintains:
+
+- **Below the approval boundary** — `doctor`, `status`, `decay`, `search`, `rebuild` — a
+  plain confirm naming the command and its resolved arguments.
+- **On or above it** — `add`, `edit`, `pin`, `supersede`, `review promote` and the rest — a
+  field-by-field diff, before and after, naming every field the command will change.
+
+A command added later that nobody has classified gets the **stronger** confirm. A stale
+classification therefore costs ceremony, never a silent write.
+
+Three properties bound it, and each is checkable rather than promised. The browser sends a
+catalogue **id** and values, never a command line — the server rebuilds the arguments from
+its own catalogue and runs them with no shell, so no text anyone types becomes a command.
+The confirm mints a **single-use token bound to exactly the command it displayed**, so a
+page that never showed you a confirm cannot run anything. And every run is written to the
+audit log **before** the process starts: a run that cannot be recorded does not happen.
+
+> [!WARNING]
+> **This runs on your machine, now. The UI can tell it came from your browser — not that
+> you asked.** The loopback gate proves that a request came from a browser on this
+> computer. It cannot prove that a person asked for it, and nothing in this design changes
+> that. Only run what you recognise.
+>
+> **There is no switch that turns execution off.** The audit record is the accountability
+> story and the confirm is the gate. If you do not want a local page to be able to reach
+> this at all, do not run `mycontext ui`.
+
 ### Never hand-edit an item file
 
 > [!WARNING]

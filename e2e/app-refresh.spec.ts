@@ -153,6 +153,21 @@ test('a dead token is dropped in memory, so the next call can use the cookie', a
   await page.evaluate(() => { sessionStorage.setItem('myctx-token', 'deadbeefdeadbeefdeadbeefdeadbeef'); });
   await page.reload();
 
+  // **Wait for the shell to EXIST before reading it.** `page.reload()` resolves on
+  // `load`; `main()` is async and assigns `window.myctx` some way into its own
+  // boot, and on this path that boot includes a request that gets REFUSED and
+  // recovered from. So the evaluate below can land before the property exists and
+  // fail with `Cannot read properties of undefined (reading 'api')` — a message
+  // about nothing this test asserts. Measured 2026-08-27: it passed 5/5 alone and
+  // failed once inside the full suite, which is exactly the shape `expectRendered`
+  // above already warns about in its own words — *retries are 0 here by deliberate
+  // policy, so a racy test is not a nuisance, it is a lie.*
+  //
+  // `expectRendered` is NOT the barrier to use here: it waits for the rail and for
+  // counts to arrive, which is a different fact and one a locked-out page may never
+  // reach. The barrier is the exact property the next line reads.
+  await page.waitForFunction(() => 'myctx' in window, undefined, { timeout: 15_000 });
+
   // **Through `ctx.api`, not through a bare `fetch`.** Written the other way
   // first, this test passed against an app.js with the fix deliberately removed
   // — because a raw fetch never touches the module-level `token` and so proves

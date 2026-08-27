@@ -2,7 +2,10 @@ import path from 'node:path';
 import { recordAudit, type AuditRecord, type HookOp } from '../core/audit.ts';
 import { relPosix } from '../core/paths.ts';
 import { findProjectRoot } from '../core/workspace.ts';
-import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from './io.ts';
+import {
+  hookContext, hookParseErrorLine, parseHookInput, readStdin,
+  type HookEventName, type HookInput,
+} from './io.ts';
 
 /**
  * The ten OBSERVATION hooks: one shared runtime, ten thin declarations.
@@ -58,6 +61,25 @@ export interface Observation {
    * `FileChanged`, `InstructionsLoaded` and `ConfigChange` have to say.
    */
   path?: string;
+  /**
+   * Text to deliver to the MODEL, through the event's `additionalContext`
+   * envelope. Absent on nine of the ten, and that is not an accident of the
+   * current feature set — it is the standing state of this module.
+   *
+   * **Setting this makes an observation hook ACT**, and the whole header above
+   * is about not doing that. One spec sets it — `stop.ts`, at the occupancy
+   * threshold, under the owner ruling recorded there — and a second would need
+   * its own ruling before it needed any code. `SPEAKS` below is the gate: an
+   * event that is not in it cannot deliver this field, and adding an event to
+   * it is a visible, reviewable line rather than a builder quietly returning
+   * one more property.
+   *
+   * Never capped like `note` is. `note` is a log line a human reads in a
+   * terminal; this is context a model reads, and truncating an instruction
+   * mid-sentence to fit a log's width would be a cap borrowed from the wrong
+   * surface. The builder that sets it owns its length.
+   */
+  context?: string;
 }
 
 export interface ObservationSpec {
@@ -116,7 +138,60 @@ export function repoRelative(root: string, abs: string): string | null {
 }
 
 /**
+ * **Which observation events are allowed to speak to the model, and as what.**
+ *
+ * Six of the ten have an output envelope declared by the platform (see
+ * `runObservationHook` below) and exactly ONE of them is in this map. That is
+ * the narrowness of `DEC-stop-speaks-once-and-only-to-raise-the-handover`
+ * expressed as code rather than as a comment: `Observation.context` on any
+ * other spec reaches an event this map does not name, so no envelope is built
+ * and nothing is written. There is no path by which a new builder can start
+ * talking to the model without a line being added here.
+ *
+ * A `Partial<Record<…>>` rather than a cast from `ObservationHook` to
+ * `HookEventName`: the two unions overlap without either containing the other —
+ * `TaskCreated` is an observation event with no envelope at all, `PreToolUse`
+ * has an envelope and is not an observation event — and a cast would compile
+ * for both of those while producing an envelope Claude Code silently never
+ * delivers, which is the exact failure `io.ts`'s union was introduced to make
+ * impossible.
+ */
+const SPEAKS: Partial<Record<ObservationHook, HookEventName>> = { Stop: 'Stop' };
+
+/**
+ * What one firing amounted to on BOTH channels: the note that was recorded, and
+ * the bytes the process should put on stdout.
+ *
+ * `stdout` is a string rather than a side effect because this is the only part
+ * of an observation that a test can see without a spawn, and because the two
+ * callers want it at different moments — `runObservationHook` writes it, and
+ * `test/hooks/stop-handover-ask.test.ts` reads it across several turns of one
+ * session, which no binary run could do.
+ */
+export interface ObservationOutcome {
+  /** The note recorded, capped — `null` when nothing was recorded at all. */
+  note: string | null;
+  /** The `additionalContext` envelope, or `''` — the normal answer. */
+  stdout: string;
+}
+
+/**
  * Runs one observation. Returns the note recorded, or `null` when nothing was.
+ * Never throws (`INV-hooks-fail-open`).
+ *
+ * The note half of `observeAndRecord`, kept at its original name and shape
+ * because it is what the nine record-only hooks and their tests are about, and
+ * because the perf harness times it. A caller that needs the model-facing half
+ * asks for the whole outcome.
+ */
+export function recordObservation(
+  spec: ObservationSpec, input: HookInput, fallbackCwd: string,
+): string | null {
+  return observeAndRecord(spec, input, fallbackCwd).note;
+}
+
+/**
+ * Runs one observation and reports both of its channels.
  * Never throws (`INV-hooks-fail-open`).
  *
  * The three gates, in order, and each is a different kind of "nothing to do":
@@ -143,17 +218,32 @@ export function repoRelative(root: string, abs: string): string | null {
  * The audit write's own failure is discarded, as on every hook path — there is
  * no one to tell, and `core/audit.ts` documents that trade where it is made.
  */
-export function recordObservation(
+export function observeAndRecord(
   spec: ObservationSpec, input: HookInput, fallbackCwd: string,
-): string | null {
+): ObservationOutcome {
+  // Declared outside the `try` and returned by the `catch` too. The one spec
+  // that fills it has ALREADY latched its ask by the time it returns — the
+  // latch is what stops the loop, so it must be taken before the ask, not
+  // after — which makes this turn the only turn the ask can be delivered on.
+  // Losing it to an audit-log failure would trade the feature for a log line.
+  let stdout = '';
   try {
-    if (Object.keys(input as Record<string, unknown>).length === 0) return null;
+    if (Object.keys(input as Record<string, unknown>).length === 0) return { note: null, stdout };
 
     const root = findProjectRoot(input.cwd ?? fallbackCwd);
-    if (!root) return null;
+    if (!root) return { note: null, stdout };
 
     const observed = spec.observe(input, root);
-    if (observed === null) return null;
+    if (observed === null) return { note: null, stdout };
+
+    // `SPEAKS` and not `spec.hook` directly: see the map. An event it does not
+    // name produces no envelope, and no observation builder outside `stop.ts`
+    // sets `context` at all, so nothing is dropped by this gate today — it is
+    // here to make the day one does a code change here rather than a surprise.
+    const speaksAs = SPEAKS[spec.hook];
+    if (observed.context !== undefined && speaksAs !== undefined) {
+      stdout = hookContext(speaksAs, observed.context);
+    }
 
     const note = capped(observed.note, NOTE_MAX);
     recordAudit(root, {
@@ -164,11 +254,11 @@ export function recordObservation(
       ...(observed.path === undefined ? {} : { path: observed.path }),
       note,
     });
-    return note;
+    return { note, stdout };
   } catch {
     // INV-hooks-fail-open. A knowledge base that breaks a session is worse than
     // one that says nothing.
-    return null;
+    return { note: null, stdout };
   }
 }
 
@@ -185,8 +275,8 @@ export function recordObservation(
  * where that would be wrong is `Stop`, which the platform DOES wait on before
  * ending the turn, and its timeout is declared accordingly.
  *
- * **Nothing is ever written to stdout, and for six of the ten there is an
- * envelope going unused.** Build 2.1.239 declares a `hookSpecificOutput`
+ * **Nine of the ten still write nothing to stdout, and for five of those there
+ * is an envelope going unused.** Build 2.1.239 declares a `hookSpecificOutput`
  * variant with `additionalContext` for `Stop`, `SubagentStop`, `Setup` and
  * `UserPromptExpansion`, a `retry` for `PermissionDenied` and a `watchPaths`
  * for `FileChanged`. Filling any of them is an act, not an observation —
@@ -195,12 +285,24 @@ export function recordObservation(
  * turn — and what these ten do instead is written down. `TaskCreated`,
  * `TaskCompleted`, `InstructionsLoaded` and `ConfigChange` have no output
  * variant at all, so for them a byte on stdout would be a byte nobody reads.
+ *
+ * **`Stop` is the tenth, since 2026-08-27, and it is the exception this comment
+ * used to be able to say did not exist.** It speaks for exactly one purpose —
+ * raising the handover once at the configured occupancy — under the owner
+ * ruling `DEC-stop-speaks-once-and-only-to-raise-the-handover`, recorded at
+ * length in `stop.ts`'s header. The other five envelopes are still unfilled and
+ * still unruled, `SPEAKS` above is what keeps that true, and the capture nudge
+ * is still on `PostToolUse` where `hooks seq:21` left it.
  */
 export function runObservationHook(spec: ObservationSpec): void {
   try {
     const { input, parseError } = parseHookInput(readStdin());
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
-    recordObservation(spec, input, process.cwd());
+    const { stdout } = observeAndRecord(spec, input, process.cwd());
+    // Guarded rather than written unconditionally: for nine of the ten this is
+    // always `''`, and an unconditional `write('')` on a closed or absent
+    // stdout is a throw on a path whose whole job is not to have one.
+    if (stdout !== '') process.stdout.write(stdout);
   } catch {
     /* fail open */
   }

@@ -289,6 +289,42 @@ export interface HandoverConfig {
    * (INV-nothing-is-dropped-silently).
    */
   budgetTokens: number;
+  /**
+   * How full the context window has to be before `Stop` asks the model to bring
+   * the handover up to date — spec §4.3, and the ONE thing this project's
+   * otherwise-empty `Stop` envelope is now permitted to say.
+   *
+   * A percentage rather than a token count, and it is not a preference: the
+   * only figure anybody has is a percentage. `context_window_size` lives in
+   * Claude Code's status-line payload and nowhere else this product can reach,
+   * so a token budget here would have to be compared against a window size this
+   * config cannot know, and a budget of "180000" means something different on
+   * every model.
+   *
+   * **Fractional values are accepted deliberately.** The whole point of
+   * `PreCompact` recording the occupancy it fired at (spec §4.4) is that the
+   * number the platform actually compacts at is a MEASUREMENT, and a
+   * measurement is not obliged to be a whole number. Refusing 92.5 would make
+   * the config unable to express the very reading the log was built to produce.
+   *
+   * **Optional here, where `marker` and `budgetTokens` above are resolved
+   * eagerly, and the asymmetry is deliberate.** Those two are refinements of
+   * the block that gets DELIVERED, so a resolved config carrying them is a
+   * complete description of what a session will receive. This one is a question
+   * that is still open: §4.4 records the standing concern that 98 may be a
+   * threshold Claude Code's own auto-compaction never lets anything reach, and
+   * `PreCompact` is at this moment logging the number that will settle it.
+   * Absent therefore means *the user has not chosen a threshold*, which is a
+   * different fact from *the user chose 98*, and one a later reader of a config
+   * — or of the corpus row that quotes it — will want back.
+   *
+   * The safety an eager default would otherwise buy is bought by the type
+   * instead: `number | undefined` cannot be compared with `<` under
+   * `strictNullChecks`, so a consumer that forgets the default does not
+   * silently end up with a threshold every turn crosses — it does not compile.
+   * `handoverThresholdPercent` below is the single place the default is applied.
+   */
+  thresholdPercent?: number;
 }
 
 /**
@@ -314,6 +350,40 @@ export const DEFAULT_HANDOVER_MARKER = '\u23ED';
  * context it exists to protect would be the joke telling itself.
  */
 export const DEFAULT_HANDOVER_BUDGET_TOKENS = 1200;
+
+/**
+ * 98, because the owner named 98 (requirement of 2026-08-27).
+ *
+ * **It ships with a standing concern attached, and the concern is not settled
+ * by this constant.** Claude Code's own automatic compaction fires BELOW 98 on
+ * current builds, in which case 98 is a threshold nothing ever reaches — the
+ * compaction happens first and the handover is never asked for. The design's
+ * answer (spec §4.4) is to measure rather than argue: every `pre-compact` row
+ * now records the occupancy and the trigger it fired at, so after a handful of
+ * automatic compactions the corpus holds the real number and this default can
+ * be changed against evidence instead of against an opinion.
+ *
+ * Until then it is the number that was asked for, which is the right thing for
+ * a default to be.
+ */
+export const DEFAULT_HANDOVER_THRESHOLD_PERCENT = 98;
+
+/**
+ * The threshold this handover is actually held to — the ONE place
+ * `DEFAULT_HANDOVER_THRESHOLD_PERCENT` is applied.
+ *
+ * A function rather than a value on the resolved config, for the reason argued
+ * on `HandoverConfig.thresholdPercent`: the config records what the user chose,
+ * and an unchosen threshold stays unchosen there. This is the other half of
+ * that split, and it exists so that "unchosen" has exactly one reading rather
+ * than one per consumer — the failure `hookContext` names one surface over, *a
+ * second copy is a second chance to be silently wrong*, and here the silently
+ * wrong copy would be a `?? 0` that asks for a handover on the first turn of
+ * every session.
+ */
+export function handoverThresholdPercent(handover: HandoverConfig): number {
+  return handover.thresholdPercent ?? DEFAULT_HANDOVER_THRESHOLD_PERCENT;
+}
 
 export interface Config {
   profile: ProfileName;
@@ -871,16 +941,18 @@ function requireUi(raw: unknown): UiConfig {
 
 /**
  * Every key the `handover` section may carry — the `UI_KEYS` shape again, and
- * kept as its own list for the same reason: the three values need three
- * different checks (a path, a non-empty string, a positive integer), so
- * deriving the accepted set from anything would accept a key whose value
- * nothing validates. Extend this list and `requireHandover` together.
+ * kept as its own list for the same reason: the four values need four
+ * different checks (a path, a non-empty string, a positive integer, a
+ * percentage), so deriving the accepted set from anything would accept a key
+ * whose value nothing validates. Extend this list and `requireHandover`
+ * together — `thresholdPercent` was added to both on 2026-08-27 and the pairing
+ * is the only thing that keeps a new key from being accepted unchecked.
  *
  * NOT derived from a defaults object, and here that is not merely a
  * preference: `path` has no default, so there is no object to derive from
  * without inventing a file name to hold its place.
  */
-const HANDOVER_KEYS = ['path', 'marker', 'budgetTokens'];
+const HANDOVER_KEYS = ['path', 'marker', 'budgetTokens', 'thresholdPercent'];
 
 /**
  * The `handover` section: which document a session is handed after a
@@ -987,7 +1059,48 @@ function requireHandover(raw: unknown): HandoverConfig | null {
     );
   }
 
-  return { path: file, marker, budgetTokens: budget };
+  // Validated when present and left ABSENT when it is not — the one sub-key
+  // that is not given its default here, argued on
+  // `HandoverConfig.thresholdPercent` and applied by
+  // `handoverThresholdPercent`. What is NOT relaxed by that is the refusal: a
+  // `thresholdPercent` the user did write is checked exactly as hard as the
+  // other three, because a threshold nothing can cross is a configured feature
+  // that never runs, which is the silence this whole spec exists to answer.
+  //
+  // `1..100`, and both ends are refused rather than clamped. A `0` — or a
+  // negative — is a threshold every turn of every session crosses, which turns
+  // a once-per-crossing ask into an ask on the FIRST turn of every session,
+  // about a window that is empty; and anything above 100 is a threshold the
+  // arithmetic can never reach, so the mechanism would be silently off while
+  // reading as configured. Clamping either would honour a config the user did
+  // not write, which is `requireHandover`'s standing rule: a setting that
+  // cannot be acted on is refused rather than reinterpreted.
+  //
+  // `Number.isFinite` and not `Number.isInteger`, unlike `budgetTokens` above:
+  // the argument is on `HandoverConfig.thresholdPercent` — the number this is
+  // eventually meant to be set from is a measurement, and `NaN`/`Infinity` are
+  // excluded by the finiteness check rather than by rounding.
+  let threshold: number | undefined;
+  if (raw.thresholdPercent !== undefined) {
+    const chosen = raw.thresholdPercent;
+    if (typeof chosen !== 'number' || !Number.isFinite(chosen) || chosen < 1 || chosen > 100) {
+      throw new Error(
+        `my_context: handover.thresholdPercent is ${JSON.stringify(raw.thresholdPercent)}. ` +
+        `Expected how full the context window must be before the handover is asked for, as a ` +
+        `percentage between 1 and 100; the default is ${DEFAULT_HANDOVER_THRESHOLD_PERCENT}. ` +
+        `Nothing was loaded — a threshold outside that range is either crossed on every turn ` +
+        `or on none, and both of those read as a working configuration.`,
+      );
+    }
+    threshold = chosen;
+  }
+
+  return {
+    path: file,
+    marker,
+    budgetTokens: budget,
+    ...(threshold === undefined ? {} : { thresholdPercent: threshold }),
+  };
 }
 
 const BUDGET_KEYS = Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[];
