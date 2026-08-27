@@ -180,16 +180,32 @@ async function buttonsOn(
   if (options.alreadyThere !== true) {
     await page.evaluate((name) => { location.hash = `#/${name}`; }, screen);
   }
-  // Settle the same way `screen-parity.spec.ts` does, and for the same reason:
-  // a screen draws its heading synchronously and its controls after a fetch, so
-  // "has any element" is true almost immediately and is the wrong signal.
+  // Wait for the thing the next line actually reads, not a proxy of it. The
+  // next line reads BUTTONS — so settling on "two equal element counts 400ms
+  // apart" is satisfied by a screen whose count never changes because its
+  // controls have not arrived yet, which is exactly what happened to Doctor:
+  // its command block is built after a fetch resolves, so a pre-fetch count
+  // held steady across two polls and the screen was declared settled with
+  // zero of its buttons drawn. `drewNothing = ["doctor"]` is what caught it.
+  //
+  // `EXPECTED_EMPTY` screens genuinely draw no button, ever — waiting for one
+  // there would just burn the full cap every run. They keep the old
+  // stability-poll proxy, which is the right tool for a screen with no exact
+  // signal to wait for.
   let previous = -1;
   let settled = false;
+  const waitForNoButtonProxy = EXPECTED_EMPTY.has(screen);
   for (let attempt = 0; attempt < 25; attempt += 1) {
-    const now = await page.evaluate(
-      (s) => document.querySelectorAll(`[data-p="${s}"] *`).length, screen);
-    if (now > 0 && now === previous) { settled = true; break; }
-    previous = now;
+    if (waitForNoButtonProxy) {
+      const now = await page.evaluate(
+        (s) => document.querySelectorAll(`[data-p="${s}"] *`).length, screen);
+      if (now > 0 && now === previous) { settled = true; break; }
+      previous = now;
+    } else {
+      const hasButton = await page.evaluate(
+        (s) => document.querySelector(`[data-p="${s}"] button`) !== null, screen);
+      if (hasButton) { settled = true; break; }
+    }
     await page.waitForTimeout(400);
   }
   // The cap fails as ITSELF. Falling through would judge a half-drawn screen
