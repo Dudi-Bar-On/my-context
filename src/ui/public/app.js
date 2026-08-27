@@ -46,6 +46,15 @@
 //                                    (aria-label, title, an <option> label).
 //                                    Reaching for this to fill an element is
 //                                    the bug; ctx.t() is what fills one.
+//        ctx.lang                   'en' or 'he' — this page's OWN table.lang,
+//                                    for the rare case a screen has to tell the
+//                                    SERVER which language it is rendering in
+//                                    rather than render a translated string
+//                                    itself. `lib/command-actions.js` is the
+//                                    first: the execute confirm's residual
+//                                    (§6.3) is a security sentence kept OUT of
+//                                    the string tables on purpose (Task 8b), so
+//                                    it travels as a query parameter instead.
 //        ctx.session()              the current session id, or 'cold'.
 //        ctx.onSessionChange(fn)    fn(sessionId) on every future change.
 //        ctx.navigate(hash)         sets location.hash (triggers the router).
@@ -1259,6 +1268,11 @@ async function main() {
     // form is a SEPARATE call, so reaching for it is a visible decision.
     t: (key, subs) => translate(table.strings, key, subs),
     tFlat: (key, subs) => flat(table.strings, key, subs),
+    // `table.lang` is 'en' or 'he' — set once in main() by the import of
+    // `/strings/${lang}.js` above, and it does not change without a reload
+    // (the language toggle reloads by design). Exposed for `command-actions.js`
+    // to carry to the confirm route; see the screen-contract note above.
+    lang: table.lang,
     session: currentSession,
     onSessionChange: (fn) => sessionListeners.push(fn),
     navigate: (hash) => { location.hash = hash; },

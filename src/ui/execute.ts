@@ -103,21 +103,65 @@ export const CLI_ENTRY = fileURLToPath(new URL('../cli/index.ts', import.meta.ur
 export const RUN_TIMEOUT_MS = 60_000;
 
 /**
- * The residual, in the words spec §6.3 chose (plan Task 5, Task 6, Task 8).
+ * The two languages the UI ships strings for — `src/ui/public/strings/{en,he}.js`.
+ * Not derived from that directory: this is a compile-time union, and the test
+ * that keeps it honest (`EXECUTION_RESIDUAL declares exactly the languages the
+ * UI ships strings for`, `test/ui/execute-route.test.ts`) reads the directory
+ * itself and fails if this union and that listing ever disagree.
+ */
+export type ExecutionLanguage = 'en' | 'he';
+
+/**
+ * The residual, in the words spec §6.3 chose (plan Task 5, Task 6, Task 8) —
+ * ONE SENTENCE PER LANGUAGE as of Task 8b, and the reason it is a per-language
+ * RECORD rather than a second, translated constant is worth stating plainly.
  *
  * The gate proves a request came from a browser on this machine. It never
  * proves a person asked. §6.3 requires that to be written where a reader MEETS
  * it — in the confirm dialog itself — and not only where a reader could look it
  * up, which is this project's own standard about an unstated limit being how a
- * partial claim gets read as a complete one.
+ * partial claim gets read as a complete one. Before Task 8b that left the
+ * sentence English in the Hebrew UI, because duplicating it into
+ * `strings/he.js` was the obvious fix and the wrong one: a security sentence
+ * with two spellings is a security sentence that gets reworded on one side
+ * only, which is exactly what keeping it OUT of the string tables prevents.
  *
- * Spelled ONCE, here, and served by the confirm rather than typed into the page:
- * a sentence duplicated into the browser is a sentence that gets reworded on one
- * side only.
+ * So the language travels to where the sentence already lives, not the other
+ * way around — `CONFIRM_LANG_ARG` on the confirm GET, read by `residualFor`
+ * below. `EXECUTION_RESIDUAL` stays spelled ONCE, here, now with one entry per
+ * language instead of one entry: still served by the confirm rather than typed
+ * into the page, still never reaching `strings/en.js` or `strings/he.js`.
+ *
+ * The Hebrew is a TRANSLATION, not a transcription — there is no mockup line to
+ * copy, because §6.3 never reached the mockup. It keeps the English's three
+ * independent claims, one sentence each (runs now / proves origin, not intent
+ * / only run what you recognise), which is the shape the equality test below
+ * checks: not byte equality, which no translation can have, but that neither
+ * language quietly drops or merges a claim the other still makes.
  */
-export const EXECUTION_RESIDUAL =
-  'This runs on your machine, now. The UI can tell it came from your browser — '
-  + 'not that you asked. Only run what you recognise here.';
+export const EXECUTION_RESIDUAL: Record<ExecutionLanguage, string> = {
+  en:
+    'This runs on your machine, now. The UI can tell it came from your browser — '
+    + 'not that you asked. Only run what you recognise here.',
+  he:
+    'זה רץ על המחשב שלכם, עכשיו. הממשק יכול לדעת שהבקשה הגיעה מהדפדפן שלכם — '
+    + 'לא שביקשתם את זה. הריצו רק את מה שאתם מזהים כאן.',
+};
+
+/**
+ * The residual for the language the confirm was asked to answer in.
+ *
+ * An unknown or absent language answers in ENGLISH rather than throwing or
+ * omitting the field: the confirm is a security surface, and it degrades to a
+ * sentence the reader may not read, never to no sentence at all. A reader who
+ * cannot read the warning still gets the button; a reader who never saw it
+ * does not know there was one to miss.
+ */
+export function residualFor(lang: string | null): string {
+  return lang !== null && Object.hasOwn(EXECUTION_RESIDUAL, lang)
+    ? EXECUTION_RESIDUAL[lang as ExecutionLanguage]
+    : EXECUTION_RESIDUAL.en;
+}
 
 /** How much of a run's output is handed back to the page. */
 const MAX_REPORTED_OUTPUT = 64 * 1024;
@@ -145,6 +189,19 @@ const MAX_CHILD_OUTPUT = 8 * 1024 * 1024;
  * cheaper than two spellings of a field.
  */
 const CONFIRM_ID_ARG = 'id_arg';
+
+/**
+ * The query parameter that carries the reader's LANGUAGE, Task 8b.
+ *
+ * No catalogue entry declares an argument named `lang`, so this needed no
+ * `CONFIRM_ID_ARG`-style rename to stay clear of a real one — but it still has
+ * to be kept OUT of `values`, the same way `id` itself is: a caller reading the
+ * catalogue's own fields would see `lang` arrive as an undeclared value and
+ * refuse the confirm for a parameter that names no argument of the command at
+ * all. `command-actions.js` mirrors this exact string, because a browser
+ * module cannot import a `.ts` constant; the two are one decision, not two.
+ */
+const CONFIRM_LANG_ARG = 'lang';
 
 /** What a run reports back. No output is recorded; this is what the PAGE sees. */
 export interface RunOutcome {
@@ -345,7 +402,12 @@ function valuesFromQuery(url: URL, id: string): Record<string, unknown> {
   const values = Object.create(null) as Record<string, unknown>;
   const seen = new Set<string>();
   for (const [key, raw] of url.searchParams) {
-    if (key === 'id') continue;
+    // `lang` names the READER, not an argument of the command — excluded the
+    // same way `id` itself is, and for the same reason: a caller-supplied key
+    // this function does not recognise as a rename becomes a VALUE, and a
+    // command that never declared a `lang` argument would refuse the confirm
+    // for one it was never asked to carry.
+    if (key === 'id' || key === CONFIRM_LANG_ARG) continue;
     const name = key === CONFIRM_ID_ARG ? 'id' : key;
     if (seen.has(name)) {
       throw new CommandRefusal(`${id}: "${name.slice(0, 60)}" was given more than once`);
@@ -528,7 +590,12 @@ function handleConfirm(ctx: ApiContext): JsonResult {
         effect,
         // Bound to the argv above, so the POST cannot spend it on anything else.
         nonce: active.nonces.mint(resolved.id, resolved.argv),
-        residual: EXECUTION_RESIDUAL,
+        // The reader's own language, read off the query string the browser
+        // built from its own `table.lang` — never guessed from `Accept-Language`
+        // or any other header, because the confirm has to answer in the SAME
+        // language the rest of the page it is rendered into is already in. An
+        // unknown or missing one answers in English; see `residualFor`.
+        residual: residualFor(ctx.url.searchParams.get(CONFIRM_LANG_ARG)),
       },
     };
   } catch (error) {

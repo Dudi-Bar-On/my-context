@@ -68,6 +68,20 @@ import { el, errorNote } from '../screens/parts.js';
 export const CONFIRM_ID_ARG = 'id_arg';
 
 /**
+ * The query parameter that carries the reader's LANGUAGE — Task 8b.
+ *
+ * `src/ui/execute.ts` mints one `EXECUTION_RESIDUAL` sentence per language and
+ * the confirm GET answers with whichever one this parameter names, because the
+ * language has to reach the SERVER rather than the sentence reaching the
+ * browser: a security sentence duplicated into `strings/he.js` would be a
+ * security sentence that gets reworded on one side only. `CONFIRM_LANG_ARG`
+ * mirrors `src/ui/execute.ts`'s own constant by name rather than by import —
+ * a browser module cannot import a `.ts` file — so the two are one decision,
+ * not two.
+ */
+const CONFIRM_LANG_ARG = 'lang';
+
+/**
  * **The transcribed COMMAND_EFFECTS table is gone, and that is the point of
  * plan:execute seq:5b.**
  *
@@ -94,10 +108,20 @@ export const CONFIRM_ID_ARG = 'id_arg';
  * The confirm's URL. The values go on the query string in the shape
  * `src/ui/execute.ts` reads them back — which is the SAME `resolveCommand` the
  * POST goes through, so there is exactly one place an argv is built either way.
+ *
+ * `lang` rides the same query string, deliberately not folded into `values`:
+ * it names the READER, not an argument of the command, and `valuesFromQuery`
+ * on the server excludes it from the catalogue's fields for exactly that
+ * reason — a command with no declared `lang` argument must not see one arrive
+ * and refuse the confirm over it. Omitted when `lang` is not a known table
+ * (`undefined`, or anything that is not the string the page's own `ctx.lang`
+ * holds), so a caller that has none gets the server's English default rather
+ * than a query string naming a language nobody asked for.
  */
-function confirmPath(id, values) {
+function confirmPath(id, values, lang) {
   const query = new URLSearchParams();
   query.set('id', id);
+  if (typeof lang === 'string' && lang !== '') query.set(CONFIRM_LANG_ARG, lang);
   for (const [name, value] of Object.entries(values)) {
     if (value === undefined || value === '') continue;
     query.set(name === 'id' ? CONFIRM_ID_ARG : name, String(value));
@@ -327,7 +351,7 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
     // confirm — so a page that never rendered one cannot spend one.
     let answer;
     try {
-      answer = await ctx.api(confirmPath(id, values));
+      answer = await ctx.api(confirmPath(id, values, ctx.lang));
     } catch (error) {
       say(errorNote(message(error)));
       return;
@@ -354,11 +378,17 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
     const items = viewsFromEffect(effect);
 
     confirm.replaceChildren();
-    // The residual, as the server sent it, in the words §6.3 chose. NOT a
-    // string-table key: `src/ui/execute.ts` spells it once and a sentence
-    // duplicated into the browser is a sentence that gets reworded on one side
-    // only. The cost is that it stays English in the Hebrew UI — the same
-    // asymmetry `work.js` records for its `stale` chip, and reported with it.
+    // The residual, as the server sent it, in the words §6.3 chose — and, as
+    // of Task 8b, in the READER'S language: this control asked for it with
+    // `?lang=` set to `ctx.lang`, and `src/ui/execute.ts` answered with the
+    // matching sentence from its per-language `EXECUTION_RESIDUAL`. Still NOT
+    // a string-table key: the sentence is spelled once per language on the
+    // server, never duplicated into `strings/en.js` or `strings/he.js`, because
+    // a security sentence with two spellings is one that gets reworded on one
+    // side only. Unlike `work.js`'s `stale` chip — the precedent for staying
+    // English, which this sentence no longer follows — a reader who cannot
+    // read this one still gets the button, so the asymmetry that was
+    // acceptable there was not acceptable here.
     confirm.append(el('p', 'residual', String(answer.residual ?? '')));
 
     const commandBox = el('div', 'cmd');

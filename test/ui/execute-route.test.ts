@@ -26,7 +26,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
@@ -208,10 +208,30 @@ test('the confirm GET returns the resolved argv, the boundary and a nonce', asyn
   });
 });
 
-test('the confirm carries the residual sentence VERBATIM — §6.3 spells it, not this route', async () => {
+/**
+ * The four residual tests below MOVED from a single
+ * `'the confirm carries the residual sentence VERBATIM — §6.3 spells it, not
+ * this route'`, pinned to `EXECUTION_RESIDUAL` back when that was one string.
+ * Task 8b made it one sentence per language (`Record<ExecutionLanguage,
+ * string>`, both in `src/ui/execute.ts`), because the sentence has to reach a
+ * Hebrew reader in Hebrew and duplicating it into `strings/he.js` would give a
+ * security sentence two spellings that go stale independently. The single old
+ * test could not survive that change AS ONE TEST — it pinned "the confirm
+ * answers with THE sentence", and there is no longer one sentence, there is
+ * one per language — so it splits into: the un-asked-for default (still
+ * pinned verbatim, so English callers see no behavioural change), an explicit
+ * `lang=he` (pinned verbatim in Hebrew, so the new path is not merely "some
+ * text came back"), an unknown language degrading to English rather than
+ * failing (the requirement that a security surface never degrades to NO
+ * sentence), and the equality check that keeps the two spellings in lockstep
+ * (`EXECUTION_RESIDUAL declares exactly the languages …` below). Nothing here
+ * is loosened: every one of these is still a byte-for-byte match against the
+ * server's own constant.
+ */
+test('the confirm with no lang carries the ENGLISH residual VERBATIM — §6.3 spells it, not this route', async () => {
   await withServer(async (h) => {
     const body = await confirm(h, '/api/execute/confirm?id=doctor');
-    assert.equal(body.residual, EXECUTION_RESIDUAL);
+    assert.equal(body.residual, EXECUTION_RESIDUAL.en);
     // Asserted as literal text as well as against the constant: a constant
     // compared only to itself would let the sentence be reworded silently, and
     // §6.3 is the one place in this design where the WORDS are the deliverable.
@@ -223,6 +243,84 @@ test('the confirm carries the residual sentence VERBATIM — §6.3 spells it, no
     assert.equal(body.boundary, false, 'doctor is a read; spec §3.2 puts it below the line');
   });
 });
+
+test('?lang=he carries the HEBREW residual VERBATIM', async () => {
+  await withServer(async (h) => {
+    const body = await confirm(h, '/api/execute/confirm?id=doctor&lang=he');
+    assert.equal(body.residual, EXECUTION_RESIDUAL.he);
+    assert.equal(
+      body.residual,
+      'זה רץ על המחשב שלכם, עכשיו. הממשק יכול לדעת שהבקשה הגיעה מהדפדפן שלכם — '
+      + 'לא שביקשתם את זה. הריצו רק את מה שאתם מזהים כאן.',
+    );
+  });
+});
+
+test('an unknown language answers with English rather than failing — a security surface degrades to a sentence, never to none', async () => {
+  await withServer(async (h) => {
+    const body = await confirm(h, '/api/execute/confirm?id=doctor&lang=fr');
+    assert.equal(body.residual, EXECUTION_RESIDUAL.en);
+  });
+});
+
+test('?lang is excluded from the resolved command\'s values — doctor takes no argument named lang', async () => {
+  await withServer(async (h) => {
+    // Before Task 8b's exclusion in valuesFromQuery, `lang` would have arrived
+    // as an undeclared value for every command and refused the confirm for a
+    // parameter that names no argument of the command at all — a regression
+    // this test exists to catch by name.
+    const body = await confirm(h, '/api/execute/confirm?id=doctor&lang=he');
+    assert.deepEqual(body.argv, ['doctor']);
+  });
+});
+
+test(
+  'EXECUTION_RESIDUAL declares exactly the languages the UI ships strings for, '
+  + 'and every one states the same three claims',
+  () => {
+    // What the UI ships strings for is read from the filesystem rather than
+    // hard-coded here a second time: a THIRD language folder appearing under
+    // `strings/` with no matching key in EXECUTION_RESIDUAL is precisely the
+    // failure this test exists to catch, and hard-coding the expected set
+    // would make the test agree with the bug instead of catching it.
+    const stringsDir = path.join(import.meta.dirname, '..', '..', 'src', 'ui', 'public', 'strings');
+    const shipped = readdirSync(stringsDir)
+      .filter((name) => name.endsWith('.js'))
+      .map((name) => name.slice(0, -'.js'.length))
+      .sort();
+    assert.deepEqual(
+      Object.keys(EXECUTION_RESIDUAL).sort(),
+      shipped,
+      'a language the UI ships strings for but EXECUTION_RESIDUAL does not cover would silently '
+      + 'degrade every reader of that language to English (by design — see residualFor — but that '
+      + 'degrade is meant to be an unknown READER, not a known and unaudited GAP); a language '
+      + 'EXECUTION_RESIDUAL declares but strings/ does not ship would be dead weight nothing can '
+      + 'ever select. Either direction of drift fails here.',
+    );
+
+    // Equality between the two sentences cannot be BYTE equality — they are
+    // translations of the same three claims, not two copies of the same
+    // bytes, and demanding identical bytes would just be a longer way to
+    // demand one language. What has to hold instead is the SHAPE: the
+    // residual states three independent claims (it runs on this machine, now;
+    // the gate proves origin and never intent; only run what you recognise),
+    // one sentence each, and a translation that quietly drops or merges a
+    // claim is the drift that matters — a reader in that language would be
+    // handed a WEAKER warning with no way to notice. Counting sentence
+    // boundaries catches exactly that drift without requiring any English or
+    // Hebrew fluency this test.ts file cannot assert it has.
+    const sentenceCount = (text: string): number => (text.match(/[.!?]+(?=\s|$)/gu) ?? []).length;
+    for (const [lang, text] of Object.entries(EXECUTION_RESIDUAL)) {
+      assert.equal(
+        sentenceCount(text),
+        3,
+        `${lang}'s residual states ${sentenceCount(text)} sentence(s), not the three claims every `
+        + 'other language states (runs now / proves origin, not intent / only run what you '
+        + 'recognise) — edit it back to three, or edit every OTHER language to match on purpose',
+      );
+    }
+  },
+);
 
 test('a confirm for an id the catalogue does not have is 400 and mints nothing', async () => {
   await withServer(async (h) => {

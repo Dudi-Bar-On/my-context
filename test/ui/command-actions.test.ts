@@ -325,6 +325,14 @@ interface Wiring {
   items?: Record<string, Record<string, unknown>>;
   /** What `POST /api/execute` answers. */
   outcome?: Record<string, unknown>;
+  /**
+   * The page's OWN language — `window.myctx.lang` in the real shell, `table.lang`
+   * closed over there. Left undefined reproduces a page that never set it; the
+   * control must still work (and still ask the confirm for something), which is
+   * exactly the "unknown/absent" half of Task 8b's requirement — the SERVER'S
+   * job to degrade, not this control's.
+   */
+  lang?: string;
 }
 
 /**
@@ -341,6 +349,7 @@ async function wire(wiring: Wiring): Promise<{ ctx: unknown; calls: Call[] }> {
   const ctx = {
     t: (key: string, subs: Record<string, string | number> = {}) => i18n.t(en, key, subs, doc),
     tFlat: (key: string, subs: Record<string, string | number> = {}) => i18n.tFlat(en, key, subs),
+    lang: wiring.lang,
     api: async (route: string): Promise<unknown> => {
       calls.push({ method: 'GET', path: route });
       if (route.startsWith('/api/execute/confirm')) {
@@ -368,16 +377,25 @@ async function wire(wiring: Wiring): Promise<{ ctx: unknown; calls: Call[] }> {
 
 const posts = (calls: Call[]): Call[] => calls.filter((c) => c.method === 'POST');
 
+/**
+ * `EXECUTION_RESIDUAL` became one sentence PER LANGUAGE in Task 8b — see the
+ * import comment there — so every fixture confirm below names `.en` rather
+ * than the bare constant it used to be. This file's own render never chooses
+ * a language; it renders whatever `answer.residual` the wired-up `ctx.api`
+ * hands back, which is what makes the language-carrying tests further down
+ * meaningful: they wire a DIFFERENT `.residual` and check it comes out.
+ */
+
 /** The confirm body the server sends for a read — below the boundary. */
 const DOCTOR_CONFIRM = {
   id: 'doctor', argv: ['doctor'], boundary: false,
-  nonce: '0'.repeat(32), residual: EXECUTION_RESIDUAL,
+  nonce: '0'.repeat(32), residual: EXECUTION_RESIDUAL.en,
 };
 
 /** The confirm body the server sends for `pin` — on the boundary. */
 const PIN_CONFIRM = {
   id: 'pin', argv: ['pin', 'RULE-x'], boundary: true,
-  nonce: 'a'.repeat(32), residual: EXECUTION_RESIDUAL,
+  nonce: 'a'.repeat(32), residual: EXECUTION_RESIDUAL.en,
   // **The effect is the SERVER'S now**, derived by running the command against
   // a throwaway copy of the corpus (`src/ui/execute-effect.ts`). The browser
   // used to compute this from a transcribed table plus its own read of
@@ -522,6 +540,19 @@ test('the confirm SHOWS THE SERVER\'S argv, not the string the client composed',
   assert.ok(!shown.includes('--stale'), 'the confirm must show what the SERVER resolved');
 });
 
+/**
+ * MOVED from `'the confirm carries the residual VERBATIM, in the words §6.3
+ * chose'`, which pinned `EXECUTION_RESIDUAL` back when that was one string
+ * shared by every reader. Task 8b made it one sentence per language, spelled
+ * once in `src/ui/execute.ts` and never duplicated into a string table — so
+ * this control still renders `answer.residual` exactly as the server sent it
+ * (that half of the old test is unchanged below, still pinned to `.en` byte
+ * for byte), and the language it ASKS for is a new, separate property, tested
+ * just after this one rather than folded into it: this test is "the control
+ * renders what it is given" and the next is "the control asks in the reader's
+ * own language", and conflating them would make a failure in either look like
+ * a failure in both.
+ */
 test('the confirm carries the residual VERBATIM, in the words §6.3 chose', async () => {
   const { root } = await draw(
     { argv: ['mycontext', 'doctor'], id: 'doctor' }, { confirm: DOCTOR_CONFIRM },
@@ -538,8 +569,53 @@ test('the confirm carries the residual VERBATIM, in the words §6.3 chose', asyn
   assert.match(shown, /Only run what you recognise here\./);
   // And byte for byte against the server's own constant, so a reword on one
   // side alone fails here rather than shipping two residuals.
-  assert.ok(shown.includes(EXECUTION_RESIDUAL),
-    'the residual is spelled once, on the server, and rendered as it arrived');
+  assert.ok(shown.includes(EXECUTION_RESIDUAL.en),
+    'the residual is spelled once per language, on the server, and rendered as it arrived');
+});
+
+test('a Hebrew residual is rendered VERBATIM too — this control does not retranslate what the server sent', async () => {
+  const { root } = await draw(
+    { argv: ['mycontext', 'doctor'], id: 'doctor' },
+    { confirm: { ...DOCTOR_CONFIRM, residual: EXECUTION_RESIDUAL.he }, lang: 'he' },
+  );
+  await click(findButton(root, EXEC));
+  const shown = textOf(findOne(root, 'div.confirm'));
+  assert.ok(shown.includes(EXECUTION_RESIDUAL.he),
+    'the control has no opinion about language — it prints `answer.residual` exactly, whichever '
+    + 'sentence the server chose to send');
+});
+
+/**
+ * **The language reaches the SERVER; the sentence never reaches the browser.**
+ * This is the client half of Task 8b's requirement — the confirm GET must
+ * carry the reader's language so the server can answer with the matching
+ * residual, and this control is the only place in the browser that knows to
+ * ask. Nothing here checks what the SERVER does with `lang=he` — that is
+ * `test/ui/execute-route.test.ts`'s job, over real HTTP; this only checks that
+ * the request this control sends carries it.
+ */
+test('the confirm request carries the reader\'s language as ?lang=', async () => {
+  const { root, calls } = await draw(
+    { argv: ['mycontext', 'doctor'], id: 'doctor' }, { confirm: DOCTOR_CONFIRM, lang: 'he' },
+  );
+  await click(findButton(root, EXEC));
+  const confirmCall = calls.find((c) => c.path.startsWith('/api/execute/confirm'));
+  assert.ok(confirmCall !== undefined, 'the click must have asked the confirm route something');
+  assert.match(confirmCall!.path, /[?&]lang=he(&|$)/,
+    'the language reaches the SERVER — this is the query string it reads it off of '
+    + '(CONFIRM_LANG_ARG, mirrored by name in src/ui/execute.ts and this file)');
+});
+
+test('the confirm request omits ?lang= when the page has none — never sends the literal string "undefined"', async () => {
+  const { root, calls } = await draw(
+    { argv: ['mycontext', 'doctor'], id: 'doctor' }, { confirm: DOCTOR_CONFIRM },
+  );
+  await click(findButton(root, EXEC));
+  const confirmCall = calls.find((c) => c.path.startsWith('/api/execute/confirm'));
+  assert.ok(confirmCall !== undefined, 'the click must have asked the confirm route something');
+  assert.ok(!confirmCall!.path.includes('lang='),
+    'a page with no language must not send one the server would have to guess belongs to a '
+    + 'real, unsupported locale rather than to "nobody said"');
 });
 
 test('the confirm announces what it is, and can be reached and left from the keyboard', async () => {
@@ -672,7 +748,7 @@ test('a BOUNDARY command that changes nothing SAYS so — a blank is not an answ
     {
       confirm: {
         id: 'repair', argv: ['repair'], boundary: true,
-        nonce: 'c'.repeat(32), residual: EXECUTION_RESIDUAL,
+        nonce: 'c'.repeat(32), residual: EXECUTION_RESIDUAL.en,
         effect: [],
       },
     },
