@@ -158,7 +158,7 @@ git commit -m "config: a handover key, absent by default, refused by name when w
     | { state: 'off' }
     | { state: 'missing'; path: string }
     | { state: 'read'; path: string; text: string; deliveredLines: number; totalLines: number; source: 'marker' | 'head' };
-  export function readHandover(projectRoot: string, config: HandoverConfig | null): HandoverRead;
+  export function readHandover(repoRoot: string, config: HandoverConfig | null): HandoverRead;
   export function handoverBlock(read: HandoverRead): string;
   ```
 
@@ -269,9 +269,9 @@ export type HandoverRead =
 
 const HEADING = /^(#{1,6})\s+(.*)$/;
 
-export function readHandover(projectRoot: string, config: HandoverConfig | null): HandoverRead {
+export function readHandover(repoRoot: string, config: HandoverConfig | null): HandoverRead {
   if (config === null) return { state: 'off' };
-  const abs = path.resolve(projectRoot, config.path);
+  const abs = path.resolve(repoRoot, config.path);
   let raw: string;
   try {
     if (!statSync(abs).isFile()) return { state: 'missing', path: config.path };
@@ -361,6 +361,23 @@ git commit -m "core: read a bounded handover block, and say what it left behind"
 
 ### Task 3: `SessionStart` delivers it
 
+> **CORRECTION, 2026-08-27, before it shipped.** This plan's snippets originally
+> wrote `readHandover(ws.projectRoot, …)`. **`Workspace.projectRoot` is the
+> `.my_context` DIRECTORY, not the repository root**, and `handover.path` is
+> validated as repo-relative — so it resolved `reports/V2-HANDOVER.md` inside
+> `.my_context/`, where it never exists. Every configured handover would have
+> recorded `missing`, which is the value meaning *a handover was configured and
+> is not there* — a wrong root turning into a lie that reads exactly like the
+> truth. The correct spelling is `path.dirname(ws.projectRoot)`, which five other
+> call sites already use, and `readHandover`'s parameter is now named `repoRoot`
+> with the trap written on it so the snippet cannot re-teach it.
+>
+> It was caught by an agent reading the workspace TYPE rather than this plan's
+> snippet. That is worth more than the fix: a plan is a proposal, and the code it
+> proposes against is the authority.
+
+
+
 **Files:**
 - Modify: `src/hooks/session-start.ts`
 - Test: `test/hooks/session-start-handover.test.ts`
@@ -417,7 +434,9 @@ const HANDOVER_SOURCES = new Set(['startup', 'clear', 'compact', 'fork']);
 // `resume` is the only source that KEEPS the window it had, so it is the only
 // one with nothing to be told. Every other source arrives empty.
 if (ws.projectRoot !== null && HANDOVER_SOURCES.has(input.source ?? '')) {
-  const read = readHandover(ws.projectRoot, ws.config.handover);
+  // `path.dirname`, NOT `ws.projectRoot`. See the warning below — this snippet
+  // shipped the wrong one and it fails silently in the direction that lies.
+  const read = readHandover(path.dirname(ws.projectRoot), ws.config.handover);
   if (read.state === 'missing') {
     // The silence IS the defect. stderr reaches the user, never the model.
     process.stderr.write(

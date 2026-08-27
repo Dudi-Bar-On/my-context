@@ -63,10 +63,26 @@ export type HandoverRead =
  */
 const HEADING = /^(#{1,6})\s+(.*)$/;
 
-export function readHandover(projectRoot: string, config: HandoverConfig | null): HandoverRead {
+/**
+ * `repoRoot` is the REPOSITORY root, not `Workspace.projectRoot`.
+ *
+ * Named the long way because the short way is a trap that fails SILENTLY in the
+ * one direction that lies. `ws.projectRoot` is the `.my_context` DIRECTORY, and
+ * `handover.path` is validated as repo-relative — so passing it straight through
+ * resolves `reports/V2-HANDOVER.md` inside `.my_context/`, where it never
+ * exists, and every configured handover in the world reports itself `missing`.
+ * `missing` is the value that means "a handover was configured and is not
+ * there", a broken agreement worth disclosing on stderr. A wrong root makes that
+ * a lie that reads exactly like the truth.
+ *
+ * Callers hold `path.dirname(ws.projectRoot)`, the spelling five other sites in
+ * this codebase already use. Caught in review on 2026-08-27, before it shipped,
+ * by an agent reading the workspace type rather than the plan's snippet.
+ */
+export function readHandover(repoRoot: string, config: HandoverConfig | null): HandoverRead {
   if (config === null) return { state: 'off' };
 
-  const abs = path.resolve(projectRoot, config.path);
+  const abs = path.resolve(repoRoot, config.path);
   let raw: string;
   try {
     // `isFile()` rather than `existsSync`: a DIRECTORY at the configured path is

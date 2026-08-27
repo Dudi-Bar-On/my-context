@@ -3,6 +3,12 @@ import path from 'node:path';
 import {
   appendJsonlLine, parseJsonlLog, readJsonlFile, type JsonlRow,
 } from './jsonl-log.ts';
+// Type-only, and erased at run time: this module gains no dependency and no
+// import cost from it. The state union is IMPORTED rather than respelled so
+// that "off | missing | read" has exactly one definition — `HandoverRead` is
+// what produces the value, and a second copy here would be a vocabulary free
+// to drift from the one the reader is actually handed.
+import type { HandoverRead } from './handover.ts';
 import type { Origin } from './types.ts';
 
 // --- The run-time audit log -------------------------------------------------
@@ -628,6 +634,56 @@ export interface AuditRecord {
    * wants the number does not want three sentinel numbers to learn.
    */
   occupancyPercent?: number | null;
+  /**
+   * `post-compact`: WHICH handover document the compaction resolved, what
+   * state it was found in, and how many lines it held. Spec §2, plan Task 4.
+   *
+   * **Why three FIELDS rather than a sentence in `note`.** The question these
+   * exist to answer is *did the handover this project configured actually
+   * survive to the compaction that needed it* — asked across every row in the
+   * log, by a person who wants a count and not a reading. `note` is prose, and
+   * the same argument `pre-compact.ts` made today for `trigger` and
+   * `occupancyPercent` applies unchanged: a fact worth querying does not go
+   * behind a regex over English. The note keeps only what no field can carry —
+   * the reason the config could not be read at all.
+   *
+   * **Why not `path` above.** That field means "the repo-relative path that
+   * TRIGGERED the event", which a handover did not do: the compaction was not
+   * caused by it, and the hook merely looked for it afterwards. Reusing it
+   * would put two unrelated meanings in one column, so a reader filtering
+   * `path` would get PreToolUse's tool-call paths and this hook's configured
+   * handovers mixed together with nothing to tell them apart.
+   *
+   * **`handoverState` is not derivable from the other two, and that is the
+   * point of the task.** It is tempting to read the state off the absences —
+   * no `handoverPath` means off, a path with no lines means missing — and that
+   * is exactly the inference `STD-absent-vs-zero` forbids: an absent key also
+   * means "written before this field existed", so every historical row would
+   * silently become `off`. And the two values it would confuse are the two
+   * that matter most: `off` is "nobody configured a handover", `missing` is
+   * "a handover was configured and is not there", which is a BROKEN AGREEMENT
+   * and the whole reason this feature was written. They are recorded
+   * explicitly so that no reader has to reconstruct the difference.
+   *
+   * All three are ABSENT, never defaulted, when the workspace's `config.json`
+   * could not be read or resolved: nobody looked, and `off` is a claim that
+   * somebody looked and found no `handover` key. The reason goes in `note`.
+   *
+   * `handoverLines` is the file's TOTAL line count, not what any session was
+   * handed — this hook resolves and cannot deliver, so a delivered count here
+   * would describe a delivery that did not happen. Absent when there was no
+   * file to count; never 0, which would be a measurement of an empty file.
+   *
+   * They are inside the break `@2` already declares, with `trigger`,
+   * `occupancyPercent` and `command`: an older reader refuses the whole
+   * vocabulary widening through the same validator, and a second protocol bump
+   * would spend a downgrade break that has not been paid back yet.
+   */
+  handoverState?: HandoverRead['state'];
+  /** The path AS CONFIGURED, repo-relative. Absent for `off`, and for an unread config. */
+  handoverPath?: string;
+  /** Total lines in the file, present only for `read`. */
+  handoverLines?: number;
 }
 
 /** What a caller supplies; `protocol` and `at` are stamped here. */

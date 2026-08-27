@@ -1,8 +1,10 @@
+import path from 'node:path';
+import { handoverBlock, readHandover } from '../core/handover.ts';
 import { buildInjection } from '../core/inject.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { SEEN_FILE_SUFFIX } from '../core/seen-file.ts';
-import { findProjectRoot, hasGlobalCorpus } from '../core/workspace.ts';
+import { findProjectRoot, hasGlobalCorpus, resolveWorkspace } from '../core/workspace.ts';
 import { hookParseErrorLine, noWorkspaceLine, parseHookInput, readStdin } from './io.ts';
 
 export interface SessionStartOptions {
@@ -36,6 +38,81 @@ export function buildSessionStartOutput(
     sessionId: options.sessionId,
     parseError: options.parseError,
   });
+}
+
+/**
+ * The four `SessionStart` sources that arrive with an EMPTY context window.
+ *
+ * **`resume` is the one that is missing, and that is the whole of the rule.**
+ * It is the only source that KEEPS the window it already had: a resumed session
+ * still holds everything it was told, so handing it the handover again spends
+ * the window the handover exists to protect, on text it already has. Every
+ * other source — a fresh `startup`, a `/clear`, a `compact`, a `fork` — begins
+ * with nothing, and "what the last session left for this one" is exactly what
+ * nothing is missing.
+ *
+ * A Set of the four rather than `source !== 'resume'`, because the two differ on
+ * a source this list has never heard of: an unknown or absent `source` gets
+ * nothing here, which is the safe direction (the corpus block still arrives) and
+ * the honest one — the platform added `fork` to this vocabulary once already
+ * (see `HookInput.source`), and a mechanism that silently opts a brand-new
+ * source in is claiming to know what that source means.
+ */
+const HANDOVER_SOURCES = new Set(['startup', 'clear', 'compact', 'fork']);
+
+/**
+ * The handover text to append to the injection, and `''` when there is none.
+ *
+ * **The three outcomes land on three different places, and the differences are
+ * the point.** `read` goes to the caller, which appends it to stdout — the one
+ * hook stream Claude Code puts into the model's context verbatim. `missing`
+ * goes to stderr, which reaches the USER and never the model: a configured
+ * handover that is not there is a broken agreement, and the silence is the
+ * defect the whole feature exists to answer (`noWorkspaceLine` is the precedent
+ * and the tone). `off` goes nowhere at all, because nothing was promised.
+ *
+ * **RAW TEXT, never an envelope.** `hooks/io.ts` deliberately excludes
+ * `SessionStart` from `HookEventName`, so there is no envelope to build here;
+ * wrapping this stream would deliver the JSON itself into the window instead of
+ * the handover inside it.
+ *
+ * `resolveWorkspace` rather than the `findProjectRoot` above, because the
+ * `handover` key lives in the config and only `resolveWorkspace` reads one — and
+ * it is inside its own `try` because it THROWS on a `config.json` that is not
+ * valid JSON. That must never cost the injection that is already built and
+ * about to be written: a broken config is a reason to deliver no handover, not
+ * a reason to deliver nothing (`INV-hooks-fail-open`).
+ */
+function handoverAppendix(cwd: string, source: string | undefined): string {
+  if (!HANDOVER_SOURCES.has(source ?? '')) return '';
+  try {
+    const ws = resolveWorkspace(cwd);
+    // No workspace, no config, so no handover could have been configured and
+    // none can be missing. A session outside a corpus stays exactly as silent
+    // as it is today.
+    if (ws.projectRoot === null) return '';
+    // `path.dirname`, and it is NOT cosmetic: `Workspace.projectRoot` is the
+    // `.my_context` DIRECTORY, while `handover.path` is documented and validated
+    // as repo-relative. Passing `projectRoot` straight through resolves
+    // `reports/H.md` inside `.my_context/`, where a real handover never is — so
+    // every configured handover in the world would report itself missing, and
+    // the disclosure would be indistinguishable from a genuinely broken
+    // agreement. `path.dirname(ws.projectRoot)` is the spelling five other call
+    // sites already use for the repository root.
+    const read = readHandover(path.dirname(ws.projectRoot), ws.config.handover);
+    if (read.state === 'missing') {
+      // The line is built by `handoverBlock` rather than written out here, so
+      // that the missing case cannot be forgotten at the one call site that
+      // would otherwise have to remember it — `core/handover.ts` says so where
+      // it renders it.
+      process.stderr.write(handoverBlock(read));
+      return '';
+    }
+    return read.state === 'read' ? handoverBlock(read) : '';
+  } catch {
+    /* Never a reason to fail — or to shorten — a session start. */
+    return '';
+  }
 }
 
 /**
@@ -127,11 +204,20 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     if (findProjectRoot(cwd) === null && !hasGlobalCorpus()) {
       process.stderr.write(noWorkspaceLine(cwd));
     }
-    const text = buildSessionStartOutput(cwd, {
+    const corpus = buildSessionStartOutput(cwd, {
       source: input.source,
       sessionId: input.session_id,
       parseError,
     });
+    // AFTER the corpus block, and appended here rather than inside
+    // `buildInjection`: the corpus is what governs the project and comes first,
+    // the handover is what one session left another. It is appended at the HOOK
+    // rather than in `core/inject.ts` because `buildInjection` is shared
+    // verbatim with the `load_context` MCP tool and SubagentStart — neither of
+    // which is crossing a compaction boundary, and neither of which should
+    // start delivering a handover because this hook needed one.
+    const handover = handoverAppendix(cwd, input.source);
+    const text = handover === '' ? corpus : `${corpus}${corpus === '' ? '' : '\n'}${handover}`;
     if (text) process.stdout.write(text);
     sweepStaleState(cwd);
   } catch {

@@ -1,4 +1,8 @@
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { recordAudit } from '../core/audit.ts';
+import { resolveConfig } from '../core/config.ts';
+import { readHandover, type HandoverRead } from '../core/handover.ts';
 import { readSnapshotMeta, scanTextIds } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { readSeen, restoredFor } from '../core/seen-file.ts';
@@ -50,6 +54,18 @@ import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from '.
  * context, exactly as the `SessionStart(compact)` producer does, so — like
  * `PreCompact` — this is a parent-only event and the snapshot it reads stays
  * parent-keyed.
+ *
+ * **THE HANDOVER IS RESOLVED HERE AND DELIVERED SOMEWHERE ELSE** (spec §2).
+ * This hook can read a file and it cannot speak, so it does the reading: which
+ * handover the project configured, whether it is actually there, and how big
+ * it is, recorded on the row below. `SessionStart(source: 'compact')` delivers
+ * the bounded block, because its stdout is the one hook output the model
+ * receives. That division is not a workaround — it is the paragraph above,
+ * applied: the hook that knows something records it, and the hook that can
+ * speak says it. Nothing about the handover is written to stdout here, and
+ * nothing about it is written to stderr either: on this event both are folded
+ * into a message shown to the USER after every compaction, and a banner about
+ * a file they maintain is not what they asked the compaction for.
  */
 
 /**
@@ -67,6 +83,83 @@ export interface PostCompactOutcome {
   /** How many the restore tier re-delivered for THIS compaction. */
   restored: number;
   note: string;
+}
+
+/**
+ * The handover this project configured, resolved for the row below.
+ *
+ * **`config.json` is read HERE rather than through `resolveWorkspace`**, for
+ * the reason `recordPostCompact` gives for using `findProjectRoot`: that
+ * function throws on a `config.json` that is not valid JSON, and a workspace
+ * with a broken config is still a workspace whose compaction must be recorded.
+ * So the two failures are caught and REPORTED as "nobody looked" rather than
+ * being allowed to take the whole row down — or, worse, to be answered `off`,
+ * which is the positive claim that somebody looked and found no `handover`
+ * key.
+ *
+ * **`path.dirname(root)`, and this line is a trap with no symptom.**
+ * `findProjectRoot` returns the `.my_context` DIRECTORY, not the repository
+ * root, and `handover.path` is validated as repo-relative. Passing `root`
+ * straight through resolves `reports/H.md` to
+ * `<repo>/.my_context/reports/H.md`, which never exists — so EVERY configured
+ * handover on every machine would record `missing`, the one value that means
+ * "a handover was configured and is not there". The wrong answer is
+ * indistinguishable from the true one, which is why it is spelled out here and
+ * pinned by a test that puts a real file at the repo-relative path. Five other
+ * call sites in this codebase take the same `path.dirname` step.
+ */
+function resolveHandover(root: string): { read: HandoverRead | null; why: string | null } {
+  const file = path.join(root, 'config.json');
+  let raw: unknown = {};
+  try {
+    if (existsSync(file)) raw = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (err) {
+    return { read: null, why: `config.json is not readable JSON (${reason(err)})` };
+  }
+  try {
+    return { read: readHandover(path.dirname(root), resolveConfig(raw).handover), why: null };
+  } catch (err) {
+    // `resolveConfig` refuses a config it does not understand rather than
+    // loading half of it, and its refusals are paragraphs written for the
+    // person who has to fix the file. They are printed in full by every
+    // surface that loads a config; here the note carries the first sentence of
+    // it, enough to say WHICH file and WHAT about it, because an audit note is
+    // scope and a reader scanning rows for a lost handover does not want the
+    // remedial paragraph in every one of them.
+    return { read: null, why: `config.json was refused (${reason(err)})` };
+  }
+}
+
+function reason(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.length > 160 ? `${message.slice(0, 160)}...` : message;
+}
+
+/**
+ * The three fields, written explicitly per state and never inferred from an
+ * absence.
+ *
+ * The full argument for them living on `AuditRecord` — rather than in `note`,
+ * and rather than reusing `path` — is on the fields themselves in
+ * `core/audit.ts`. What matters at this call site is the shape: `off` carries
+ * NO path (there is no file to name, and naming one would invent it), `missing`
+ * carries the path and no count (nothing was read, and 0 would be a
+ * measurement), and a config nobody could read carries nothing at all, so that
+ * absence keeps meaning "not recorded".
+ */
+function handoverFields(read: HandoverRead | null): {
+  handoverState?: HandoverRead['state'];
+  handoverPath?: string;
+  handoverLines?: number;
+} {
+  if (read === null) return {};
+  if (read.state === 'off') return { handoverState: 'off' };
+  if (read.state === 'missing') return { handoverState: 'missing', handoverPath: read.path };
+  // `totalLines`, not `deliveredLines`: this hook resolves and cannot deliver,
+  // so the count it records is the document's own. What any one session was
+  // actually handed is `SessionStart`'s fact, declared in the block that
+  // session received.
+  return { handoverState: 'read', handoverPath: read.path, handoverLines: read.totalLines };
 }
 
 /**
@@ -94,6 +187,13 @@ export interface PostCompactOutcome {
  * restore carried is the obvious next move and it is a behaviour change to the
  * dedupe state, which is the owner's call and not this hook's. The measurement
  * comes first, in the log, where it can be read before anything is decided.
+ *
+ * The handover resolved beside them is under the same discipline and one step
+ * further from action: it is recorded, it is not returned on the outcome, and
+ * it is not written anywhere a person or a model can see it. `SessionStart`
+ * delivers it. What this row adds is the ability to ask, later, whether the
+ * handover a project promised was actually there at the compaction that
+ * needed it.
  *
  * **`findProjectRoot`, not `resolveWorkspace`**, for the reason
  * `session-start.ts` gives at its sweep: the latter throws on a `config.json`
@@ -149,10 +249,17 @@ export function recordPostCompact(
     if (snapshot !== null && seenState !== null && seenState.error !== null) {
       parts.push('the seen file could not be read, so the re-delivered count is a floor');
     }
+    // Only the case no FIELD can carry reaches the note. `off`, `missing` and
+    // `read` are `handoverState`, and repeating any of them in prose here would
+    // be one value living in two places — the trade `pre-compact.ts` names and
+    // refuses on its own occupancy row.
+    const handover = resolveHandover(root);
+    if (handover.why !== null) parts.push(`handover unknown (${handover.why})`);
     const note = parts.join('; ');
 
     recordAudit(root, {
-      kind: 'hook', op: 'post-compact', sessionId, hook: 'PostCompact', note,
+      kind: 'hook', op: 'post-compact', sessionId, hook: 'PostCompact',
+      ...handoverFields(handover.read), note,
     });
 
     return { trigger, captured, survived, restored, note };
