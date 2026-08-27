@@ -31,38 +31,25 @@
  * retry bound, and why a fixed port was not the answer.
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
 import { connect } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startOnSafePort } from './unsafe-ports.ts';
+import '../helpers/pin-sessions-dir.ts';
 
 const SERVER = fileURLToPath(new URL('../../src/ui/server.ts', import.meta.url));
 
 /**
  * **No harness-started server may touch the developer's real session store.**
  *
- * Every `startUiServer` records the digest of the token it mints, into
- * `~/.my-context/ui-sessions.json` by default. That store is CAPPED at eight,
- * so an unpinned suite run would not merely add noise — it would evict the
- * digests of the tabs the developer actually has open, and lock them out. The
- * suite would have caused the exact defect it was written to prevent.
+ * Done by importing `../helpers/pin-sessions-dir.ts`, which carries the full
+ * argument and the measurement.
  *
- * `pin-rendering.ts` already covers the node suite, but it is loaded by that
- * suite's `--import` and NOT by Playwright's workers, and the browser suite
- * spawns real servers through this very module. Pinning here covers both, and
- * covers any future runner nobody remembers to configure — the property is
- * "a harness-started server writes somewhere disposable", and this is the one
- * file every harness-started server goes through.
- *
- * An existing value is honoured, because a test that needs two servers to share
- * one store — `session-continuity.test.ts` — sets it deliberately.
+ * This file used to hold the pin itself, claiming to be "the one file every
+ * harness-started server goes through". That was false for a server started IN
+ * PROCESS, and the three files that do so wrote the developer's real store on
+ * 2026-08-27. The pin moved to a module all of them can import; what remains
+ * here is the import, because the servers this file spawns still need it.
  */
-if ((process.env['MYCONTEXT_UI_SESSIONS_DIR'] ?? '') === '') {
-  process.env['MYCONTEXT_UI_SESSIONS_DIR']
-    = mkdtempSync(path.join(tmpdir(), 'myctx-harness-sessions-'));
-}
 
 /** How long a server may take to print its readiness line before the test gives up. */
 const READY_TIMEOUT_MS = 30_000;

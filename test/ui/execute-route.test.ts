@@ -35,6 +35,8 @@ import { auditLogPath, readAudit, recordAudit, type AuditRecord } from '../../sr
 import { TOKEN_HEADER } from '../../src/ui/security.ts';
 import { startUiServer, type RunningUiServer } from '../../src/ui/server.ts';
 import { ExecutionNonceStore } from '../../src/ui/execute-nonce.ts';
+// Pins the session store out of the real `~/.my-context`; see the module.
+import '../helpers/pin-sessions-dir.ts';
 import {
   CLI_ENTRY, EXECUTION_RESIDUAL, RUN_TIMEOUT_MS, execFileRunner, registerExecuteRoutes,
   type CommandRunner, type RunOutcome,

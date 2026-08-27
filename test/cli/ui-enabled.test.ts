@@ -43,6 +43,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCli } from '../../src/cli/index.ts';
 import { removeTree } from '../helpers/tmp.ts';
+// Spawns real UI servers, which mint tokens; pins the store out of the
+// developer's real `~/.my-context`. See the module.
+import '../helpers/pin-sessions-dir.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/index.ts', import.meta.url));
 

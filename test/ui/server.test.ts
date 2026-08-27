@@ -31,6 +31,8 @@ import { runCli } from '../../src/cli/index.ts';
 import { registerRoute } from '../../src/ui/routes.ts';
 import { TOKEN_HEADER } from '../../src/ui/security.ts';
 import { startUiServer, type RunningUiServer } from '../../src/ui/server.ts';
+// Pins the session store out of the real `~/.my-context`; see the module.
+import '../helpers/pin-sessions-dir.ts';
 
 function project(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-ui-srv-'));

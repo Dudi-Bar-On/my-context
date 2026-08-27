@@ -29,6 +29,8 @@ import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { openBrowser } from '../../src/ui/open.ts';
 import { removeTree } from '../helpers/tmp.ts';
+// Pins the session store out of the real `~/.my-context`; see the module.
+import '../helpers/pin-sessions-dir.ts';
 
 /** The exact shape `RunningUiServer.urlWithNonce` produces. */
 const URL_OK = 'http://127.0.0.1:54321/#0123456789abcdef0123456789abcdef';

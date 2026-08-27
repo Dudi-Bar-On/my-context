@@ -229,14 +229,33 @@ export function diffTrees(
  * `test/core/real-home-guard.test.ts` writes all three in ONE test to prove the
  * forgiveness did not widen into a hole.
  *
- * **The residual, stated rather than hidden.** A test that unpinned
- * `MYCONTEXT_UI_SESSIONS_DIR` and wrote the real store is no longer caught
- * here. That is the cost of remedy (1) over remedy (2) — comparing CONTENT
- * identity for these files rather than presence — and it is affordable because
- * the pin lives in the preload every test file loads
- * (`test/helpers/pin-rendering.ts`) and because what such a test would destroy
- * is a list of token DIGESTS the developer's browser can re-obtain, not a
- * corpus. An item or a config is neither.
+ * **The residual, stated rather than hidden — and corrected 2026-08-27.** A
+ * test that unpinned `MYCONTEXT_UI_SESSIONS_DIR` and wrote the real store is
+ * not caught here. That is the cost of remedy (1) over remedy (2) — comparing
+ * CONTENT identity for these files rather than presence — and the exemption
+ * above still stands on its own argument, because a guard that fires on the
+ * developer's own running `mycontext ui` is a guard that gets switched off.
+ *
+ * What does NOT stand is the reason this residual was called affordable. It
+ * rested on two claims, and 2026-08-27 falsified both.
+ *
+ * The first was that "the pin lives in the preload every test file loads". It
+ * lives in the preload every file loads UNDER `npm test`. A bare
+ * `node --test <file>` — how a test is run while it is being written — loads
+ * no preload at all, and three UI files reached the real store that way:
+ * `server.test.ts` (6 digests), `open.test.ts` (1), `execute-route.test.ts`
+ * (8, which fills the eight-slot store by itself).
+ *
+ * The second was that such a test destroys "a list of token DIGESTS the
+ * developer's browser can re-obtain". The browser cannot re-obtain them. A tab
+ * whose digest is evicted has no route back except a nonce minted at a
+ * terminal and pasted into its address bar. On 2026-08-27 an evicted tab spent
+ * 134 minutes heartbeating `/api/ping` into a 401 with nothing on screen
+ * saying why. Cheaper than a corpus, but not cheap, and not self-healing.
+ *
+ * The remedy is not to widen this list. It is that the pin now lives in one
+ * module every minting test imports (`test/helpers/pin-sessions-dir.ts`) and
+ * that `test/ui/sessions-pin.test.ts` fails when a new one does not.
  */
 export const PRODUCT_OWNED_ENTRIES: ReadonlySet<string> = Object.freeze(new Set([
   'ui-sessions.json',
