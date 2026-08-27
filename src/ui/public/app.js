@@ -67,6 +67,11 @@
 import { extractNonce, exchangeNonce } from '/lib/bootstrap.js';
 import { startHeartbeat } from '/lib/heartbeat.js';
 import { applyLanguage, pickLanguage, t as translate, tFlat as flat } from '/lib/i18n.js';
+// The pane's WIDTH — a preference, remembered per browser. Its own module for
+// spec §6's reason: the rule (what a drag means, which stored values are
+// widths, what a keystroke does) is testable without a browser, and only the
+// wiring below is not.
+import { installPaneResize } from '/lib/pane-resize.js';
 // The ONE markdown renderer. The Docs screen owns it because Docs was the
 // first screen that needed one; the item pane is the second, and a second
 // implementation of "turn corpus text into nodes safely" is the last thing
@@ -251,7 +256,38 @@ function paneEls() {
     body: document.getElementById('panebody'),
     spark: document.getElementById('panespark'),
     spn: document.getElementById('panespn'),
+    float: document.getElementById('panefloat'),
   };
+}
+
+/**
+ * **Floating is a MODE, and the width is a PREFERENCE. That is the whole
+ * design and it is what decides where each of them lives.**
+ *
+ * Somebody who has hit a 4,000-word rule wants the screen for a moment and
+ * wants their layout back afterwards — so this is a class on `.app` and
+ * NOTHING is written down. A float that survived a reload, or a route change,
+ * would greet the next reader with a page-covering panel they never asked for.
+ * The width, by contrast, is somebody reading item after item who wants the
+ * pane wider and wants it to STAY: `lib/pane-resize.js` stores that one.
+ *
+ * `classList.add`/`remove` rather than `toggle(name, on)`, because that is the
+ * pair every other class change in this file uses and the two behave
+ * identically here.
+ */
+function setPaneFloat(on) {
+  const app = document.getElementById('app');
+  if (app === null) return;
+  if (on) app.classList.add('pane-float');
+  else app.classList.remove('pane-float');
+  // The button reports its own state, so the control announces "pressed" while
+  // the pane is floating rather than silently changing what it does.
+  paneEls().float?.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
+/** Floating right now? Read off `.app`, which is the one place the mode lives. */
+function paneIsFloating() {
+  return document.getElementById('app')?.classList.contains('pane-float') === true;
 }
 
 /**
@@ -345,6 +381,13 @@ function closePane() {
   if (aside === null) return;
   aside.hidden = true;
   document.getElementById('app')?.classList.remove('pane-open');
+  // The float goes with it, and this line is why `route()` needs only the one
+  // `closePane()` call to discard the mode as well as the pane. Left behind, a
+  // `pane-float` on a closed pane is a two-column grid still wearing a fixed
+  // panel's rules — and the button would still claim to be pressed. The
+  // remembered WIDTH is deliberately NOT cleared here: navigation discards a
+  // mode and keeps a preference (`test/ui/pane-route.test.ts`).
+  setPaneFloat(false);
   paneId = null;
 }
 
@@ -468,6 +511,12 @@ function installItemPane() {
   document.addEventListener('click', (event) => {
     const close = event.target.closest?.('#paneclose');
     if (close !== null && close !== undefined) { closePane(); return; }
+    // Checked BEFORE `[data-id]`, like the close button and for the same
+    // reason: both live inside the pane, and the pane is drawn on screens whose
+    // rows are themselves `[data-id]` — a float click that fell through to the
+    // link branch would re-open a pane instead of expanding it.
+    const float = event.target.closest?.('#panefloat');
+    if (float !== null && float !== undefined) { setPaneFloat(!paneIsFloating()); return; }
     const link = event.target.closest?.('[data-id]');
     if (link === null || link === undefined) return;
     const id = link.dataset.id;
@@ -477,7 +526,14 @@ function installItemPane() {
   // Escape closes it, the same gesture the popovers already answer to
   // (`e2e/keyboard.spec.ts` asserts that contract for those).
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closePane();
+    if (event.key !== 'Escape') return;
+    // **Escape steps back ONE level.** One un-floats, a second closes. The
+    // alternative — one Escape dismissing both at once — is the gesture a
+    // MODAL would answer to, and this is deliberately not a modal: the rail
+    // and the body stay usable behind the floating pane, so leaving the
+    // expanded view is a separate act from leaving the item.
+    if (paneIsFloating()) { setPaneFloat(false); return; }
+    closePane();
   });
 }
 
@@ -1222,6 +1278,14 @@ async function main() {
   // `loadSessions()` would be a pane that does not open on exactly the pages
   // where a reader most wants to inspect an item — the degraded ones.
   installItemPane();
+  // The remembered WIDTH, applied before the first screen paints so the pane
+  // never opens at 330px and jumps. Installed here beside `installItemPane()`
+  // and for the same reason: it must survive a boot that fails, and the width
+  // the reader chose is theirs on the degraded pages too. The module defaults
+  // to `localStorage` and swallows every way it can refuse — reading the
+  // property itself throws in a sandboxed frame — so this cannot be what takes
+  // the boot down.
+  installPaneResize(document.getElementById('app'));
 
   // `loadSessions()` reads `/api/sessions`, and every refusal this server can
   // make lands here as a rejection. Awaited BARE, it took the entire boot with

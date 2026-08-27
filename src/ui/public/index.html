@@ -140,9 +140,49 @@
        projection answers `weeks: null` and the pane SAYS the history is not
        measured instead of drawing twelve grey bars. -->
 
+  <!-- THE DRAG HANDLE — the pane's inline-start edge, and the reason it comes
+       BEFORE the pane rather than inside it: it sits on the boundary between
+       the body and the pane, and DOM order is tab order, so a keyboard user
+       reaches the edge on the way into the panel it controls rather than after
+       having read past it.
+
+       `role="separator"` with `tabindex="0"` is the ARIA pattern for a window
+       splitter — a focusable separator with a value. The static half is
+       authored here rather than written by `lib/pane-resize.js`: what this
+       element IS is a fact about the document. `aria-valuenow` is the half the
+       module owns, because it is the half that changes.
+
+       It is `display:none` until `.app.pane-open` (styles.css), which keeps it
+       out of the layout AND out of the tab order while there is no pane — and
+       `grid-area:pane` against the two-column template would otherwise name no
+       area at all and let the handle be auto-placed into some other cell. -->
+  <div class="panegrip" id="panegrip" role="separator" aria-orientation="vertical"
+       aria-controls="pane" tabindex="0" aria-label="Resize the item pane"
+       data-t-aria="aria.panegrip"></div>
+
   <aside class="pane" id="pane" hidden aria-label="Item detail" data-t-aria="aria.pane">
     <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
       <h3 class="m" id="paneid">—</h3>
+      <!-- THE FLOAT BUTTON — the owner's own words, 2026-08-27: "add a button
+           on it's top right corner to make it floating popup in order to have a
+           bigger window to look at it because it may include a long text
+           boddy".
+
+           BEFORE `#paneclose`, not after it: ✕ is the destructive control and
+           it keeps the corner every reader already aims at. A new button
+           appended past it would move the one control nobody wants to press by
+           accident.
+
+           `class="icon"` is load-bearing, not decoration. `styles.css`'s only
+           global button rule is `button{font:inherit;color:inherit}` — it sets
+           colour and NO background — so a classless button takes the app's
+           light text and the user agent's near-white button face and is
+           invisible. That is the defect the owner reported on 2026-08-27 in
+           the Composer; `.icon` is what gives this one `background:var(--sink)`,
+           and `e2e/pane-size.spec.ts` measures the contrast rather than
+           trusting the class. -->
+      <button class="icon" id="panefloat" aria-pressed="false"
+              aria-label="Expand the item pane" data-t-aria="aria.panefloat">⤢</button>
       <button class="icon" id="paneclose" aria-label="Close" data-t-aria="aria.paneclose">✕</button>
     </div>
     <p class="small" id="panetitle"></p>

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,10 +48,11 @@ test('the fake home actually took effect — otherwise every install test below 
 const SAVED_COPY = path.join(GLOBAL_DIR, 'statusline-replaced.json');
 
 /**
- * There is exactly ONE saved copy per machine — that is the design, and it is
- * why the delegate is read from it rather than from a second store — so every
- * test in this file shares it. A test that asserts "nothing was saved" would
- * otherwise be reading the PREVIOUS test's backup, which is how a green
+ * The saved copies for one machine live in one FILE, keyed by the settings
+ * path each belongs to (2026-08-27) — that is still one artefact, and it is
+ * still why the delegate is read from it rather than from a second store — so
+ * every test in this file shares it. A test that asserts "nothing was saved"
+ * would otherwise be reading the PREVIOUS test's backup, which is how a green
  * assertion comes to mean nothing at all.
  */
 function project(): string {
@@ -65,6 +66,29 @@ function run(args: string[], cwd: string): { code: number; out: string } {
   const lines: string[] = [];
   const code = runCli(args, cwd, (s) => lines.push(s));
   return { code, out: lines.join('\n') };
+}
+
+/**
+ * The saved copy for one settings file.
+ *
+ * Keyed by `path.resolve(settingsPath)` since 2026-08-27, so that two Claude
+ * Code profiles are two entries rather than one collision — see the section on
+ * the keying in `test/cli/statusline.test.ts` for the defect that forced it.
+ */
+function savedFor(file: string): { previous: { command: string } } {
+  // See the same guard in `test/cli/statusline.test.ts`: an uninstall that
+  // removes the whole store rather than its own entry is reported as the
+  // destroyed backup it is, not as an ENOENT inside a helper.
+  assert.ok(
+    existsSync(SAVED_COPY),
+    `the saved-copy file is gone (${SAVED_COPY}). Every profile's saved copy went with it — an `
+    + 'uninstall must remove its OWN entry, and the file only when the last entry goes.',
+  );
+  const map = JSON.parse(readFileSync(SAVED_COPY, 'utf8')) as
+    Record<string, { previous: { command: string } }>;
+  const entry = map[path.resolve(file)];
+  assert.ok(entry !== undefined, `no saved copy for ${file}; keys are ${JSON.stringify(Object.keys(map))}`);
+  return entry;
 }
 
 function payload(sessionId: string, projectDir: string): Record<string, unknown> {
@@ -277,8 +301,7 @@ test('the delegate is read from the ONE saved copy uninstall restores from — n
     const file = settingsWith(dir, command);
     assert.equal(run(['statusline', 'install', '--settings', file, '--yes'], dir).code, 0);
 
-    const backup = JSON.parse(readFileSync(SAVED_COPY, 'utf8')) as { previous: { command: string } };
-    assert.equal(backup.previous.command, command);
+    assert.equal(savedFor(file).previous.command, command);
 
     const ws = { projectRoot: null, globalRoot: GLOBAL_DIR, dbPath: ':memory:', config: {} };
     assert.deepEqual(
@@ -476,10 +499,9 @@ test('install says at install time that it cannot chain an unparseable command, 
 
     const applied = run(['statusline', 'install', '--settings', file, '--yes'], dir);
     assert.equal(applied.code, 0, applied.out);
-    const backup = JSON.parse(
-      readFileSync(SAVED_COPY, 'utf8'),
-    ) as { previous: { command: string } };
-    assert.equal(backup.previous.command, "bash -c 'echo hi'", 'the saved copy must survive verbatim');
+    assert.equal(
+      savedFor(file).previous.command, "bash -c 'echo hi'", 'the saved copy must survive verbatim',
+    );
 
     const result = bridge(dir, 'sess-unparseable');
     assert.equal(result.status, 0, result.stderr);
@@ -630,11 +652,125 @@ test('a second install over our own entry stays a no-op, and the delegate stays 
     assert.equal(second.code, 0, second.out);
     assert.match(second.out, /already installed/i);
 
-    const backup = JSON.parse(
-      readFileSync(SAVED_COPY, 'utf8'),
-    ) as { previous: { command: string } };
-    assert.equal(backup.previous.command, command, 'the second install ate the real previous value');
+    assert.equal(
+      savedFor(file).previous.command, command, 'the second install ate the real previous value',
+    );
     assert.match(bridge(dir, 'sess-twice').stdout, /THEIRS/);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/* -------------------------------------------------------------------- *
+ * Two profiles: which saved copy the bridge delegates to.               *
+ * -------------------------------------------------------------------- */
+
+/**
+ * **The question the keying created, and it has to be answered somewhere.**
+ *
+ * With one saved copy there was one possible delegate. Keyed by settings path,
+ * there can be several — and the bridge is NOT told which settings file
+ * started it: Claude Code hands it a payload, not a provenance. So the choice
+ * is made on the only evidence available, in this order:
+ *
+ *   1. the entry for the settings file Claude Code itself reads
+ *      (`CLAUDE_CONFIG_DIR`, else `~/.claude`) — if the bridge is running at
+ *      all, that is overwhelmingly the file that started it;
+ *   2. otherwise the single entry, when there is exactly one — which is every
+ *      ordinary machine, and every test that installs into a temp file;
+ *   3. otherwise the most recent install, which is the best available guess
+ *      and is disclosed nowhere else, because there is nowhere else to put it.
+ *
+ * The alternative — recording the settings path in the installed COMMAND so
+ * the bridge could be told — was weighed and rejected: it puts a second copy
+ * of that path into a file the user maintains, where it can disagree with the
+ * saved copy's own `settingsPath`, and a disagreement there gives the user
+ * someone else's status line. One answer to one question stays the rule.
+ */
+test('with two profiles saved, the delegate is the one for the settings file Claude Code reads', () => {
+  const dir = project();
+  try {
+    const mine = delegateScript(dir, 'mine.mjs', ECHOES_STDIN);
+    const theirs = delegateScript(dir, 'theirs.mjs', ECHOES_STDIN);
+
+    const cfg = path.join(dir, 'cfg');
+    mkdirSync(cfg, { recursive: true });
+    const defaultFile = path.join(cfg, 'settings.json');
+    writeFileSync(
+      defaultFile, JSON.stringify({ statusLine: { type: 'command', command: mine } }, null, 2), 'utf8',
+    );
+    const otherFile = settingsWith(dir, theirs);
+
+    // The DEFAULT profile is installed FIRST, on purpose: that makes "the
+    // profile Claude Code reads" and "the most recent install" different
+    // entries, so the assertion below distinguishes rule 1 from rule 3 instead
+    // of being satisfied by either.
+    assert.equal(run(['statusline', 'install', '--settings', defaultFile, '--yes'], dir).code, 0);
+    assert.equal(run(['statusline', 'install', '--settings', otherFile, '--yes'], dir).code, 0);
+
+    const ws = { projectRoot: null, globalRoot: GLOBAL_DIR, dbPath: ':memory:', config: {} };
+    const before = process.env.CLAUDE_CONFIG_DIR;
+    try {
+      process.env.CLAUDE_CONFIG_DIR = cfg;
+      assert.deepEqual(
+        delegateFor(ws as never)?.argv, ['node', path.join(dir, 'mine.mjs')],
+        'the bridge delegated to another profile\'s displaced command',
+      );
+    } finally {
+      if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = before;
+    }
+
+    // …and with `CLAUDE_CONFIG_DIR` pointing somewhere with no entry at all,
+    // rule 1 cannot fire and rule 3 must: the LAST install wins, which here is
+    // the other profile's. Rule 2 is covered by every other test in this file,
+    // all of which have exactly one entry.
+    const before2 = process.env.CLAUDE_CONFIG_DIR;
+    try {
+      process.env.CLAUDE_CONFIG_DIR = path.join(dir, 'nowhere');
+      assert.deepEqual(
+        delegateFor(ws as never)?.argv, ['node', path.join(dir, 'theirs.mjs')],
+        'with no entry for the file Claude Code reads, the most recent install is the delegate',
+      );
+    } finally {
+      if (before2 === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = before2;
+    }
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * And end to end: installing the bridge in front of a SECOND profile must not
+ * cost the first one its delegate. This is the same property
+ * `test/cli/statusline.test.ts` asserts about restoring, asserted about the
+ * thing the user actually sees once per assistant message.
+ */
+test('a second profile\'s install does not take the first profile\'s delegate away', () => {
+  const dir = project();
+  try {
+    const theirs = delegateScript(dir, 'theirs.mjs', ECHOES_STDIN);
+    const file = settingsWith(dir, theirs);
+    assert.equal(run(['statusline', 'install', '--settings', file, '--yes'], dir).code, 0);
+
+    const otherProfile = path.join(dir, 'profile-b.json');
+    writeFileSync(
+      otherProfile,
+      JSON.stringify({ statusLine: { type: 'command', command: 'starship prompt' } }, null, 2),
+      'utf8',
+    );
+    const second = run(['statusline', 'install', '--settings', otherProfile, '--yes'], dir);
+    assert.equal(second.code, 0, second.out);
+
+    assert.equal(savedFor(file).previous.command, theirs, 'the first profile\'s saved copy is gone');
+
+    const removed = run(['statusline', 'uninstall', '--settings', otherProfile, '--yes'], dir);
+    assert.equal(removed.code, 0, removed.out);
+    assert.match(
+      bridge(dir, 'sess-two-profiles').stdout, /THEIRS session=sess-two-profiles/,
+      'installing and uninstalling a second profile cost the first one its delegate',
+    );
   } finally {
     removeTree(dir);
   }

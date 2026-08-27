@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,10 +54,58 @@ test('the fake home actually took effect — otherwise every install test below 
  * Task 4: the bridge command.                                          *
  * -------------------------------------------------------------------- */
 
+/** The one artefact every saved copy is keyed into. */
+const SAVED_COPY = path.join(GLOBAL_DIR, 'statusline-replaced.json');
+
+/**
+ * The saved copies live in ONE file for the whole machine — keyed by settings
+ * path since 2026-08-27, but still one file — so every test in this run shares
+ * it, and several tests below leave an entry behind on purpose (an `uninstall`
+ * that refuses, or one run without `--yes`, does not spend the saved copy).
+ * Clearing it here is what makes an assertion about the map's KEYS an assertion
+ * about the test that wrote them, rather than about whatever ran before it.
+ * `test/cli/statusline-chain.test.ts` does the same thing for the same reason.
+ */
 function project(): string {
+  rmSync(SAVED_COPY, { force: true });
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-sl-'));
   runCli(['init'], dir, () => {});
   return dir;
+}
+
+/** One saved copy, as stored: `{ "<resolved settings path>": { …entry… } }`. */
+interface SavedEntry {
+  replacedAt: string;
+  settingsPath: string;
+  previous: unknown;
+  previousText: string | null;
+  installedText: string;
+}
+
+function savedMap(): Record<string, SavedEntry> {
+  // Named rather than left to ENOENT: the mutant this catches — an `uninstall`
+  // that removes the whole store instead of its own entry — makes the file
+  // VANISH, and a raw `readFileSync` failure reports that as an I/O error deep
+  // in a helper rather than as the destroyed backup it is.
+  assert.ok(
+    existsSync(SAVED_COPY),
+    `the saved-copy file is gone (${SAVED_COPY}). Every profile's saved copy went with it — an `
+    + 'uninstall must remove its OWN entry, and the file only when the last entry goes.',
+  );
+  return JSON.parse(readFileSync(SAVED_COPY, 'utf8')) as Record<string, SavedEntry>;
+}
+
+/**
+ * The entry for one settings file, asserted to EXIST.
+ *
+ * Read through `path.resolve` rather than through the raw string the test
+ * passed to `--settings`: the key is the resolved path, which is the whole
+ * point of the keying — two spellings of one file must not become two entries.
+ */
+function savedEntry(file: string): SavedEntry {
+  const entry = savedMap()[path.resolve(file)];
+  assert.ok(entry !== undefined, `no saved copy for ${file}; keys are ${JSON.stringify(Object.keys(savedMap()))}`);
+  return entry;
 }
 
 function run(args: string[], cwd: string): { code: number; out: string } {
@@ -337,8 +385,8 @@ test('claudeSettingsPath honours CLAUDE_CONFIG_DIR and falls back to ~/.claude',
   assert.ok(claudeSettingsPath({}).endsWith(path.join('.claude', 'settings.json')));
 });
 
-function settingsFixture(dir: string, body: unknown): string {
-  const file = path.join(dir, 'settings.json');
+function settingsFixture(dir: string, body: unknown, name = 'settings.json'): string {
+  const file = path.join(dir, name);
   // No trailing newline, two-space indent: one particular shape of a file the
   // user wrote, so the round-trip test below has something to be identical to.
   writeFileSync(file, JSON.stringify(body, null, 2), 'utf8');
@@ -366,7 +414,7 @@ test('install without --yes prints both settings and WRITES NOTHING', () => {
     );
     assert.match(out, /--yes/, 'the refusal must say how to consent');
     assert.equal(readFileSync(file, 'utf8'), before, 'the settings file was written');
-    assert.equal(existsSync(path.join(GLOBAL_DIR, 'statusline-replaced.json')), false);
+    assert.equal(existsSync(SAVED_COPY), false);
   } finally {
     removeTree(dir);
   }
@@ -383,9 +431,11 @@ test('install --yes writes the setting, preserves every other key, and saves the
     assert.equal(after.model, 'opus', 'an unrelated key was lost');
 
     const ws = resolveWorkspace(dir);
-    const backup = JSON.parse(
-      readFileSync(path.join(ws.globalRoot, 'statusline-replaced.json'), 'utf8'),
-    ) as { previous: unknown; settingsPath: string };
+    assert.equal(
+      path.join(ws.globalRoot, 'statusline-replaced.json'), SAVED_COPY,
+      'the saved copy is still one file under globalRoot; only its INTERIOR is keyed now',
+    );
+    const backup = savedEntry(file);
     assert.deepEqual(backup.previous, FOREIGN);
     assert.equal(backup.settingsPath, file);
 
@@ -439,10 +489,7 @@ test('install --yes on a settings file with NO statusLine records previous: null
     const before = readFileSync(file, 'utf8');
     assert.equal(run(['statusline', 'install', '--settings', file, '--yes'], dir).code, 0);
 
-    const backup = JSON.parse(
-      readFileSync(path.join(GLOBAL_DIR, 'statusline-replaced.json'), 'utf8'),
-    ) as { previous: unknown };
-    assert.equal(backup.previous, null);
+    assert.equal(savedEntry(file).previous, null);
 
     assert.equal(run(['statusline', 'uninstall', '--settings', file, '--yes'], dir).code, 0);
     const restored = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
@@ -523,10 +570,9 @@ test('installing twice does not overwrite the saved previous value with our own'
     assert.equal(second.code, 0, second.out);
     assert.match(second.out, /already installed/i);
 
-    const backup = JSON.parse(
-      readFileSync(path.join(GLOBAL_DIR, 'statusline-replaced.json'), 'utf8'),
-    ) as { previous: unknown };
-    assert.deepEqual(backup.previous, FOREIGN, 'the second install ate the real previous value');
+    assert.deepEqual(
+      savedEntry(file).previous, FOREIGN, 'the second install ate the real previous value',
+    );
 
     assert.equal(run(['statusline', 'uninstall', '--settings', file, '--yes'], dir).code, 0);
     const restored = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
@@ -613,6 +659,288 @@ test('--settings with no value is refused rather than resolved to the real one',
     const { code, out } = run(['statusline', 'install', '--settings'], dir);
     assert.equal(code, 1, out);
     assert.match(out, /--settings/);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/* -------------------------------------------------------------------- *
+ * The saved copy is keyed by the settings file it belongs to.           *
+ * -------------------------------------------------------------------- */
+
+/**
+ * **The defect this section exists for (fixed 2026-08-27).**
+ *
+ * The saved copy used to be ONE object for the whole machine, so a second
+ * install — into a second Claude Code profile, or into a temp file from a
+ * test — would have overwritten the first install's only record of what it
+ * replaced. `install` therefore carried a guard that REFUSED outright when a
+ * live saved copy named a different settings file.
+ *
+ * The guard's reasoning was right and the design under it was wrong, in two
+ * ways that both showed up as real failures. `--settings <path>` was not
+ * isolated: the command consulted global state about a settings file nobody
+ * asked it about, so anyone with two profiles was told to uninstall the other
+ * one first. And `test/cli/f2-registry.test.ts` — which probes
+ * `statusline install --settings <temp>` and does NOT redirect HOME — went red
+ * or green according to whether the bridge happened to be installed in the
+ * developer's own `~/.claude/settings.json`.
+ *
+ * Keying the saved copy by `path.resolve(settingsPath)` removes both: two
+ * installs are two entries, and neither can reach the other's.
+ */
+const OTHER_FOREIGN = { type: 'command', command: 'starship prompt' };
+
+test('two settings files install independently, and uninstalling one leaves the other restorable', () => {
+  const dir = project();
+  try {
+    const a = settingsFixture(dir, { statusLine: FOREIGN, model: 'opus' }, 'profile-a.json');
+    const b = settingsFixture(dir, { statusLine: OTHER_FOREIGN, model: 'sonnet' }, 'profile-b.json');
+    const beforeA = readFileSync(a, 'utf8');
+    const beforeB = readFileSync(b, 'utf8');
+
+    const first = run(['statusline', 'install', '--settings', a, '--yes'], dir);
+    assert.equal(first.code, 0, first.out);
+    // The install the old single-file design REFUSED. Exit 0 here is the whole
+    // fix: a second settings file is a second entry, not a collision.
+    const second = run(['statusline', 'install', '--settings', b, '--yes'], dir);
+    assert.equal(
+      second.code, 0,
+      `installing into a second settings file was refused — the saved copy is not keyed:\n${second.out}`,
+    );
+
+    assert.deepEqual(
+      Object.keys(savedMap()).sort(), [path.resolve(a), path.resolve(b)].sort(),
+      'both installs must be recorded, each under its own settings path',
+    );
+    assert.deepEqual(savedEntry(a).previous, FOREIGN);
+    assert.deepEqual(
+      savedEntry(b).previous, OTHER_FOREIGN, 'the second install ate the first\'s entry',
+    );
+
+    const removedA = run(['statusline', 'uninstall', '--settings', a, '--yes'], dir);
+    assert.equal(removedA.code, 0, removedA.out);
+    assert.equal(readFileSync(a, 'utf8'), beforeA, 'A did not come back byte for byte');
+    assert.deepEqual(
+      Object.keys(savedMap()), [path.resolve(b)],
+      'uninstalling A removed more than its own entry — B has nothing left to restore',
+    );
+    assert.deepEqual(
+      (JSON.parse(readFileSync(b, 'utf8')) as Record<string, unknown>).statusLine, INSTALLED,
+      'uninstalling A wrote into B\'s settings file',
+    );
+
+    const removedB = run(['statusline', 'uninstall', '--settings', b, '--yes'], dir);
+    assert.equal(removedB.code, 0, removedB.out);
+    assert.equal(readFileSync(b, 'utf8'), beforeB, 'B did not come back byte for byte');
+    assert.equal(
+      existsSync(SAVED_COPY), false,
+      'the last entry was spent; leaving an empty map behind is not the inverse of creating one',
+    );
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * With no `--settings` and one entry, uninstall still finds it — that is the
+ * spelling the owner actually runs, and the keying must not have cost it.
+ */
+test('uninstall with no --settings falls back to the one settings file that has a saved copy', () => {
+  const dir = project();
+  try {
+    const file = settingsFixture(dir, { statusLine: FOREIGN, model: 'opus' });
+    const before = readFileSync(file, 'utf8');
+    assert.equal(run(['statusline', 'install', '--settings', file, '--yes'], dir).code, 0);
+
+    const { code, out } = run(['statusline', 'uninstall', '--yes'], dir);
+    assert.equal(code, 0, out);
+    assert.equal(readFileSync(file, 'utf8'), before);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * …and with SEVERAL, it refuses and says what is installed where.
+ *
+ * This is the answer the old design could not give: with one saved copy there
+ * was only ever one file to guess at. Guessing between two profiles would
+ * restore one profile's value into the other's file, which is a swap rather
+ * than an undo — so the ambiguity goes back to the person who can resolve it.
+ */
+test('uninstall with no --settings and several profiles saved names them all rather than guessing', () => {
+  const dir = project();
+  try {
+    const a = settingsFixture(dir, { statusLine: FOREIGN }, 'profile-a.json');
+    const b = settingsFixture(dir, { statusLine: OTHER_FOREIGN }, 'profile-b.json');
+    assert.equal(run(['statusline', 'install', '--settings', a, '--yes'], dir).code, 0);
+    assert.equal(run(['statusline', 'install', '--settings', b, '--yes'], dir).code, 0);
+    const installedA = readFileSync(a, 'utf8');
+    const installedB = readFileSync(b, 'utf8');
+
+    const { code, out } = run(['statusline', 'uninstall', '--yes'], dir);
+    assert.equal(code, 1, out);
+    assert.ok(out.includes(a), `the refusal must name every settings file it could mean; got:\n${out}`);
+    assert.ok(out.includes(b), `the refusal must name every settings file it could mean; got:\n${out}`);
+    assert.match(out, /--settings/, 'and it must say how to disambiguate');
+    assert.equal(readFileSync(a, 'utf8'), installedA, 'a refusal wrote to A anyway');
+    assert.equal(readFileSync(b, 'utf8'), installedB, 'a refusal wrote to B anyway');
+    assert.equal(Object.keys(savedMap()).length, 2, 'a refusal spent a saved copy');
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/* -------------------------------------------------------------------- *
+ * Migration from the legacy single-object shape.                        *
+ * -------------------------------------------------------------------- */
+
+/**
+ * The legacy file, in the exact shape every build before 2026-08-27 wrote:
+ * one object, `settingsPath` at the top level, and no key above it.
+ *
+ * `previousText` is deliberately nothing this command would ever produce —
+ * tab indentation, our key in the middle, no trailing newline — because that
+ * is the whole value of saving the FILE rather than the key, and a migration
+ * that canonicalized it would be indistinguishable from one that worked.
+ */
+function legacyFixture(dir: string): { file: string; previousText: string; legacy: SavedEntry } {
+  const file = path.join(dir, 'legacy-settings.json');
+  const previousText = '{\n\t"model": "opus",\n\t"statusLine": {\n\t\t"type": "command",\n'
+    + '\t\t"command": "bash my-line.sh"\n\t},\n\t"verbose": true\n}';
+  const installedText = `${JSON.stringify(
+    { ...(JSON.parse(previousText) as Record<string, unknown>), statusLine: INSTALLED }, null, 2,
+  )}\n`;
+  writeFileSync(file, installedText, 'utf8');
+  const legacy: SavedEntry = {
+    replacedAt: '2026-08-01T09:15:00.000Z',
+    settingsPath: file,
+    previous: FOREIGN,
+    previousText,
+    installedText,
+  };
+  mkdirSync(GLOBAL_DIR, { recursive: true });
+  writeFileSync(SAVED_COPY, `${JSON.stringify(legacy, null, 2)}\n`, 'utf8');
+  return { file, previousText, legacy };
+}
+
+/**
+ * **The one thing in this change that must not go wrong.**
+ *
+ * A saved copy in the legacy shape exists on the owner's machine right now and
+ * holds his real previous status line. `readSaved` therefore accepts BOTH
+ * shapes, reading the legacy object as an entry keyed by its own
+ * `settingsPath` — so an uninstall works off it with no migration having
+ * happened at all, which is exactly the case where a user upgrades and
+ * immediately uninstalls.
+ */
+test('a legacy single-object saved copy still restores, byte for byte, with no migration first', () => {
+  const dir = project();
+  try {
+    const { file, previousText } = legacyFixture(dir);
+    const { code, out } = run(['statusline', 'uninstall', '--settings', file, '--yes'], dir);
+    assert.equal(code, 0, out);
+    assert.equal(
+      readFileSync(file, 'utf8'), previousText,
+      'a status line saved by an earlier build did not come back byte for byte',
+    );
+    assert.equal(existsSync(SAVED_COPY), false, 'the legacy entry was spent; the file goes with it');
+  } finally {
+    removeTree(dir);
+  }
+});
+
+test('the first write migrates the legacy shape into the map, and the legacy entry survives unchanged', () => {
+  const dir = project();
+  try {
+    const { file, previousText, legacy } = legacyFixture(dir);
+    const other = settingsFixture(dir, { statusLine: OTHER_FOREIGN }, 'other.json');
+
+    // A write for a DIFFERENT settings file: the migration must carry the
+    // legacy entry across rather than replace the file with its own.
+    const installed = run(['statusline', 'install', '--settings', other, '--yes'], dir);
+    assert.equal(installed.code, 0, installed.out);
+
+    assert.deepEqual(
+      Object.keys(savedMap()).sort(), [path.resolve(file), path.resolve(other)].sort(),
+      'the migration dropped the legacy entry, or failed to key it by its own settings path',
+    );
+    assert.deepEqual(
+      savedEntry(file), legacy,
+      'the legacy entry did not survive the migration field for field',
+    );
+
+    // And it still restores afterwards — the assertion the migration is for.
+    const removed = run(['statusline', 'uninstall', '--settings', file, '--yes'], dir);
+    assert.equal(removed.code, 0, removed.out);
+    assert.equal(
+      readFileSync(file, 'utf8'), previousText,
+      'the owner\'s real previous status line did not survive the migration byte for byte',
+    );
+    assert.deepEqual(
+      Object.keys(savedMap()), [path.resolve(other)], 'the other profile lost its entry',
+    );
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/* -------------------------------------------------------------------- *
+ * Degradation: an unreadable saved copy must behave exactly as before.  *
+ * -------------------------------------------------------------------- */
+
+/**
+ * The behaviour being PRESERVED, read off the pre-change code rather than
+ * chosen: an unparseable saved copy reads as "nothing saved", so `uninstall`
+ * removes our key rather than restoring anything, says so, and leaves the
+ * unreadable file alone — it is not this command's to delete, and inventing a
+ * previous value is the one thing it must never do.
+ */
+test('an unreadable saved copy still degrades to removing the key, and is never rewritten', () => {
+  const dir = project();
+  try {
+    const file = settingsFixture(dir, { statusLine: FOREIGN, model: 'opus' });
+    assert.equal(run(['statusline', 'install', '--settings', file, '--yes'], dir).code, 0);
+
+    const garbage = '{ not json at all';
+    writeFileSync(SAVED_COPY, garbage, 'utf8');
+
+    const { code, out } = run(['statusline', 'uninstall', '--settings', file, '--yes'], dir);
+    assert.equal(code, 0, out);
+    assert.match(out, /No saved copy/i, 'the degradation must be disclosed, not silent');
+    const after = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    assert.equal('statusLine' in after, false, 'our key was left behind');
+    assert.equal(after.model, 'opus', 'an unrelated key was lost');
+    assert.equal(
+      readFileSync(SAVED_COPY, 'utf8'), garbage,
+      'an unreadable saved copy was rewritten or deleted rather than left for its owner',
+    );
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * The map's own version of that degradation: one entry that is not a backup
+ * must cost only itself. A shape check that refused the WHOLE file over one
+ * bad value would take a healthy profile's saved copy down with a corrupted
+ * one — precisely the coupling the keying was introduced to remove.
+ */
+test('a malformed entry beside a well-formed one costs only itself', () => {
+  const dir = project();
+  try {
+    const file = settingsFixture(dir, { statusLine: FOREIGN, model: 'opus' });
+    const before = readFileSync(file, 'utf8');
+    assert.equal(run(['statusline', 'install', '--settings', file, '--yes'], dir).code, 0);
+
+    const map = savedMap() as Record<string, unknown>;
+    map[path.resolve(path.join(dir, 'gone.json'))] = 42;
+    writeFileSync(SAVED_COPY, `${JSON.stringify(map, null, 2)}\n`, 'utf8');
+
+    const { code, out } = run(['statusline', 'uninstall', '--settings', file, '--yes'], dir);
+    assert.equal(code, 0, out);
+    assert.equal(readFileSync(file, 'utf8'), before, 'the healthy entry stopped restoring');
   } finally {
     removeTree(dir);
   }

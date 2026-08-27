@@ -167,7 +167,53 @@ function backupPath(ws: Workspace): string {
 }
 
 /**
- * What `install` saved, so `uninstall` can put it back.
+ * The key one saved copy is filed under: the settings file it belongs to.
+ *
+ * ── WHY THE SAVED COPY IS KEYED AT ALL (fixed 2026-08-27) ─────────────────
+ *
+ * It used to be ONE object for the whole machine, and that had two costs that
+ * were both real rather than theoretical:
+ *
+ *   - `--settings <path>` was not isolated. The command consulted global state
+ *     about a settings file nobody had asked it about, so a user with two
+ *     Claude Code profiles could not install into the second without taking
+ *     the bridge out of the first.
+ *   - A TEST's outcome depended on the developer's machine.
+ *     `test/cli/f2-registry.test.ts` spawns `install --settings <temp>` and
+ *     does not redirect HOME, so it went red exactly when the bridge happened
+ *     to be installed in the developer's own `~/.claude/settings.json` — a
+ *     failure with nothing to do with what that test asserts.
+ *
+ * Keyed, two installs are two entries and neither can reach the other's.
+ *
+ * **A map in ONE file, rather than one file per settings path.** Weighed
+ * against it: a directory of backup files is more entries to reason about, to
+ * clean up and to name (a settings path is not a filename), and it gives no
+ * single place to answer "what is installed where" — which `uninstall` now
+ * needs when it is run with no `--settings` and more than one profile exists.
+ * One artefact, keyed inside, keeps both.
+ *
+ * **The key is a NATIVE resolved path, not a POSIX-normalized one**, which is
+ * the one place this file departs from `INV-posix-normalized-paths`. That
+ * invariant is about paths reaching the database or a glob comparison; this
+ * key is only ever compared to `path.resolve(...)` of the same command's own
+ * `--settings` argument, and normalizing on the way in while comparing against
+ * a native path on the way out is how a key silently stops matching. The
+ * entry's `settingsPath` field is native for the same reason and always was.
+ *
+ * **The residual, stated rather than papered over:** on Windows two spellings
+ * of one path that differ only in case are two keys. Lower-casing would fix it
+ * there and break it on Linux, where those are genuinely two files; the old
+ * code compared `path.resolve` strings and had exactly the same residual.
+ */
+function backupKey(settingsPath: string): string {
+  return path.resolve(settingsPath);
+}
+
+/**
+ * What `install` saved for ONE settings file, so `uninstall` can put it back.
+ * Filed under `backupKey(settingsPath)`; `settingsPath` is kept in the entry
+ * as well as in the key, and is the field that decides — see `readSaved`.
  *
  * `previous` is the `statusLine` VALUE that was replaced (`null` when the key
  * was absent) and is what the spec names. `previousText` and `installedText`
@@ -190,25 +236,101 @@ interface Backup {
   installedText: string;
 }
 
-function readBackup(ws: Workspace): Backup | null {
-  try {
-    const parsed = JSON.parse(readFileSync(backupPath(ws), 'utf8')) as Partial<Backup>;
-    if (typeof parsed.settingsPath !== 'string' || typeof parsed.installedText !== 'string') {
-      return null;
-    }
-    return {
-      replacedAt: typeof parsed.replacedAt === 'string' ? parsed.replacedAt : '',
-      settingsPath: parsed.settingsPath,
-      previous: parsed.previous ?? null,
-      previousText: typeof parsed.previousText === 'string' ? parsed.previousText : null,
-      installedText: parsed.installedText,
-    };
-  } catch {
-    // No backup, or one this build cannot read. Both mean "nothing saved" —
-    // and `uninstall` then removes our key rather than restoring anything,
-    // which is the right degradation: it never invents a previous value.
+/** Every saved copy on this machine, filed under `backupKey(settingsPath)`. */
+type SavedCopies = Record<string, Backup>;
+
+/**
+ * One value read as a `Backup`, or `null` when it is not one.
+ *
+ * `settingsPath` and `installedText` are the two fields nothing works without:
+ * the first says which file the copy belongs to and the second is how the undo
+ * knows it is safe. The rest degrade to their absent forms rather than
+ * rejecting the entry, exactly as they did before the keying — an entry
+ * written by a build that had one fewer field is still an entry.
+ */
+function asBackup(value: unknown): Backup | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const parsed = value as Partial<Backup>;
+  if (typeof parsed.settingsPath !== 'string' || typeof parsed.installedText !== 'string') {
     return null;
   }
+  return {
+    replacedAt: typeof parsed.replacedAt === 'string' ? parsed.replacedAt : '',
+    settingsPath: parsed.settingsPath,
+    previous: parsed.previous ?? null,
+    previousText: typeof parsed.previousText === 'string' ? parsed.previousText : null,
+    installedText: parsed.installedText,
+  };
+}
+
+/**
+ * Every saved copy, from EITHER shape the file has ever held.
+ *
+ * ── THE MIGRATION, AND WHY IT IS READ-SIDE ONLY ───────────────────────────
+ *
+ * A file in the LEGACY shape — one bare `Backup` object, no key above it —
+ * exists on real machines right now and holds a real previous status line.
+ * Losing it is the one unrecoverable outcome of this change, so it is read
+ * rather than converted: the legacy object becomes an entry keyed by its own
+ * `settingsPath`, which makes an `uninstall` immediately after an upgrade work
+ * with no migration having run at all. The first WRITE then persists the map,
+ * carrying the legacy entry across field for field.
+ *
+ * **The two shapes are told apart by `asBackup` on the top level**, and that
+ * discrimination is sound rather than lucky: a map's keys are absolute
+ * settings paths, so a map can never itself carry a string `settingsPath` and
+ * a string `installedText` at its top level. A legacy object always does —
+ * `asBackup` requires exactly the two fields nothing works without.
+ *
+ * **Keys are re-derived from each entry's own `settingsPath`, not trusted as
+ * stored.** A key and the entry under it are two spellings of one fact, and
+ * the day they disagree — a hand edit, a file copied between machines — the
+ * entry itself is the one that decides what gets restored where. Deriving
+ * makes the disagreement impossible instead of arbitrating it later.
+ *
+ * Unreadable, not an object, or an entry that is not a backup all degrade the
+ * way the single-object version degraded: to "nothing saved" for whatever
+ * cannot be read, and `uninstall` then removes our key rather than restoring
+ * anything, inventing no previous value. What the keying adds is that the
+ * degradation is now per entry — one corrupted profile does not cost a healthy
+ * one its saved copy.
+ */
+function readSaved(ws: Workspace): SavedCopies {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(backupPath(ws), 'utf8'));
+  } catch {
+    return {};
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+
+  const legacy = asBackup(parsed);
+  if (legacy !== null) return { [backupKey(legacy.settingsPath)]: legacy };
+
+  const saved: SavedCopies = {};
+  for (const value of Object.values(parsed as Record<string, unknown>)) {
+    const entry = asBackup(value);
+    if (entry !== null) saved[backupKey(entry.settingsPath)] = entry;
+  }
+  return saved;
+}
+
+/**
+ * The map back to disk — or the file removed, when the last entry has gone.
+ *
+ * An empty map and no file mean the same thing, so only one of them may be
+ * written. Leaving `{}` behind would make "is anything installed" two
+ * questions instead of one, and would mean an uninstall no longer undoes the
+ * install that created the file — the same reasoning that has `uninstall`
+ * remove a settings file its install created.
+ */
+function writeSaved(ws: Workspace, saved: SavedCopies): void {
+  if (Object.keys(saved).length === 0) {
+    rmSync(backupPath(ws), { force: true });
+    return;
+  }
+  mkdirSync(ws.globalRoot, { recursive: true });
+  writeFileSync(backupPath(ws), `${JSON.stringify(saved, null, 2)}\n`, 'utf8');
 }
 
 /**
@@ -238,11 +360,14 @@ function isOurs(value: unknown): boolean {
 // payload (that is the whole reason this command exists), then runs the command
 // this install displaced with the SAME stdin and prints its stdout as the line.
 //
-// Everything the delegation needs comes off the ONE saved copy `uninstall`
-// restores from. There is deliberately no second store: a "which command do we
-// chain to" file beside a "which command do we restore" file is two answers to
-// one question, and the day they disagree the user gets someone else's status
-// line back.
+// Everything the delegation needs comes off the SAME saved copy `uninstall`
+// restores from — the entry for that settings file, since the keying of
+// 2026-08-27 (see `backupKey`). There is deliberately no second store: a
+// "which command do we chain to" file beside a "which command do we restore"
+// file is two answers to one question, and the day they disagree the user gets
+// someone else's status line back. Keying the one store did not weaken that;
+// see `delegateEntry` for the question it did raise and how it is answered
+// without adding a store.
 //
 // The saved value is a COMMAND STRING out of a settings file, and the bridge
 // runs argv arrays with no shell. Everything below is about that gap, and it is
@@ -520,8 +645,45 @@ export interface Delegate {
  * that is not a command entry, a string this command will not parse, and the
  * bridge itself all arrive here as `null`.
  */
+/**
+ * WHICH saved copy the running bridge should chain to.
+ *
+ * The question the keying created, and it has to be answered somewhere: the
+ * bridge is not told which settings file started it — Claude Code hands it a
+ * payload, not a provenance — so the choice is made on the only evidence
+ * available, in this order.
+ *
+ *   1. The entry for the settings file Claude Code itself reads. If the bridge
+ *      is running at all, that is overwhelmingly the file that started it.
+ *   2. Otherwise the single entry, when there is exactly one. That is every
+ *      ordinary machine, and every test that installs into a temp file.
+ *   3. Otherwise the most recent install, ties broken by insertion order — the
+ *      best available guess, and it is only reachable on a machine with two
+ *      profiles neither of which is the one Claude Code is reading.
+ *
+ * **The alternative was weighed and rejected: putting the settings path into
+ * the installed COMMAND**, so the bridge could be told rather than infer. That
+ * writes a second copy of that path into a file the user maintains, where it
+ * can drift from the saved copy's own `settingsPath` — and the day they
+ * disagree the user gets someone else's status line back. One answer to one
+ * question is the rule this whole feature is built on (see the chaining note
+ * above); a guess that costs at most a courtesy line is cheaper than a second
+ * store that can lie.
+ */
+function delegateEntry(ws: Workspace): Backup | null {
+  const saved = readSaved(ws);
+  const entries = Object.values(saved);
+  if (entries.length === 0) return null;
+  const claudeReads = saved[backupKey(claudeSettingsPath(process.env))];
+  if (claudeReads !== undefined) return claudeReads;
+  if (entries.length === 1) return entries[0] as Backup;
+  // `>=` rather than `>`: two installs can land in the same millisecond, and
+  // then insertion order — which is install order — is the tie-break.
+  return entries.reduce((best, entry) => (entry.replacedAt >= best.replacedAt ? entry : best));
+}
+
 export function delegateFor(ws: Workspace): Delegate | null {
-  const saved = readBackup(ws);
+  const saved = delegateEntry(ws);
   if (saved === null) return null;
   const command = commandStringOf(saved.previous);
   if (command === null) return null;
@@ -584,22 +746,6 @@ function serialize(value: Record<string, unknown>): string {
 
 function describe(value: unknown): string {
   return value === undefined ? '(none)' : JSON.stringify(value);
-}
-
-/**
- * Whether a saved backup still describes the file it names.
- *
- * A backup whose settings file no longer carries our entry — the user removed
- * it by hand, or the file is gone — is spent, and standing on it would refuse
- * an install for the sake of a value nothing can be restored into.
- */
-function backupIsLive(saved: Backup): boolean {
-  try {
-    const parsed = JSON.parse(readFileSync(saved.settingsPath, 'utf8')) as Record<string, unknown>;
-    return isOurs(parsed.statusLine);
-  } catch {
-    return false;
-  }
 }
 
 export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): number {
@@ -675,20 +821,24 @@ export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): 
     return 1;
   }
 
-  // One saved copy exists, and it belongs to a different settings file that
-  // still carries our entry. Installing here would overwrite it, and that
-  // file's real previous value would be gone for good.
-  const saved = readBackup(ws);
-  if (saved !== null && path.resolve(saved.settingsPath) !== file && backupIsLive(saved)) {
-    out(
-      `my_context: the bridge is already installed in ${saved.settingsPath}, and the setting it ` +
-      `replaced is saved in one place only. Installing into ${file} as well would overwrite that ` +
-      `saved copy, leaving the first install with nothing to restore. Run\n` +
-      `  mycontext statusline uninstall --settings ${saved.settingsPath} --yes\n` +
-      `first. Nothing was written.`,
-    );
-    return 1;
-  }
+  // ── WHERE A GUARD USED TO BE, AND WHY IT NO LONGER HAS TO BE ────────────
+  //
+  // An install into a SECOND settings file was refused here, and the reasoning
+  // was sound for the design it stood on: one saved copy per machine meant the
+  // second install would overwrite the first's only record of what it replaced,
+  // leaving that install with nothing to restore. Refusing was the only way to
+  // keep the promise `uninstall` makes.
+  //
+  // The keying is what retires it, and this is the reasoning it preserves: a
+  // saved copy is now filed under `backupKey(settingsPath)` (see there), so a
+  // second install writes a second ENTRY and cannot reach the first one's.
+  // Nothing about "the first install must keep something to restore" has been
+  // given up — it is enforced by the store's shape instead of by a refusal,
+  // which is why `--settings` is finally isolated: this command no longer
+  // consults global state about a settings file it was not asked about.
+  //
+  // `test/cli/statusline.test.ts` holds the property directly ("two settings
+  // files install independently…"), and it is what has to stay true.
 
   out(`Settings file:      ${file}`);
   out(`Current statusLine: ${describe(current)}`);
@@ -734,19 +884,23 @@ export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): 
   }
 
   const installedText = serialize({ ...settings.value, statusLine: INSTALLED });
-  const backup: Backup = {
+  // Read-modify-write of the WHOLE map, not an append: every other entry has
+  // to come back out unchanged, and that includes an entry read out of the
+  // legacy single-object shape — this is the write that migrates it.
+  const saved = readSaved(ws);
+  saved[backupKey(file)] = {
     replacedAt: new Date().toISOString(),
     settingsPath: file,
     previous: current ?? null,
     previousText: settings.text,
     installedText,
   };
-  mkdirSync(ws.globalRoot, { recursive: true });
   // The backup lands BEFORE the settings file. In the other order a crash
   // between the two writes leaves the user's setting replaced and no record of
   // what it was; in this one it leaves a saved copy of a file that was never
-  // changed, which the liveness check above reads as spent.
-  writeFileSync(backupPath(ws), `${JSON.stringify(backup, null, 2)}\n`, 'utf8');
+  // changed, and `uninstall` on that file finds no statusLine of ours and says
+  // there is nothing to restore.
+  writeSaved(ws, saved);
   writeText(file, installedText);
 
   out('');
@@ -773,6 +927,40 @@ export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): 
   return 0;
 }
 
+/**
+ * Which settings file `uninstall` means when it was not told.
+ *
+ * `null` is a REFUSAL that has already been printed, not "use the default".
+ *
+ * The first two rules are what the single-object version did, restated for a
+ * store that can hold several: prefer the file Claude Code actually reads,
+ * otherwise the one saved copy there is. The third rule is new because the
+ * ambiguity is new — with one saved copy there was never more than one file to
+ * mean. Picking one of several would restore one profile's value into
+ * whichever file was guessed at, and that is the same swap the keyed lookup
+ * exists to prevent, performed one level up. So it is handed back to the
+ * person who can resolve it, with the list they need to resolve it — which is
+ * the disclosure a MAP in one file buys and a directory of backup files would
+ * not have.
+ */
+function defaultUninstallTarget(saved: SavedCopies, out: Emit): string | null {
+  const claudeReads = backupKey(claudeSettingsPath(process.env));
+  if (saved[claudeReads] !== undefined) return claudeReads;
+  const keys = Object.keys(saved);
+  // No saved copy at all still resolves to Claude Code's own settings file:
+  // there may be an entry of ours in it that nothing saved a copy for, and
+  // removing that key is exactly what the no-saved-copy path below is for.
+  if (keys.length <= 1) return keys[0] ?? claudeReads;
+  out(
+    'my_context: the bridge is installed in more than one settings file, and this command was ' +
+    'not told which one to take it out of:\n' +
+    keys.map((key) => `  ${key}`).join('\n') + '\n' +
+    'Re-run with --settings naming one of them. Restoring one file\'s saved copy into another ' +
+    'is not an undo, it is a swap, so nothing was written.',
+  );
+  return null;
+}
+
 export function cmdStatuslineUninstall(ws: Workspace, args: string[], out: Emit): number {
   if (refuseUnknownFlag(args, FLAGS, VALUE_FLAGS, USAGE, out)) return 1;
   const given = flag(args, 'settings');
@@ -781,11 +969,14 @@ export function cmdStatuslineUninstall(ws: Workspace, args: string[], out: Emit)
     return 1;
   }
 
-  const anySaved = readBackup(ws);
-  const file = path.resolve(given ?? anySaved?.settingsPath ?? claudeSettingsPath(process.env));
+  const allSaved = readSaved(ws);
+  const file = given !== null ? path.resolve(given) : defaultUninstallTarget(allSaved, out);
+  if (file === null) return 1;
   // A saved copy is only usable for the file it was taken from. Restoring one
-  // file's previous value into another is not an undo, it is a swap.
-  const saved = anySaved !== null && path.resolve(anySaved.settingsPath) === file ? anySaved : null;
+  // file's previous value into another is not an undo, it is a swap — which is
+  // now a lookup rather than a comparison, because the store is keyed by the
+  // very thing that had to be compared.
+  const saved = allSaved[backupKey(file)] ?? null;
 
   const settings = readSettings(file, out);
   if (!settings.ok) return 1;
@@ -858,9 +1049,16 @@ export function cmdStatuslineUninstall(ws: Workspace, args: string[], out: Emit)
     writeText(file, serialize(next));
   }
 
-  // The saved copy has been spent. Leaving it would let a later uninstall
-  // write a stale value over whatever the file holds by then.
-  if (saved !== null) rmSync(backupPath(ws), { force: true });
+  // THIS FILE'S saved copy has been spent, and only this file's. Leaving it
+  // would let a later uninstall write a stale value over whatever the file
+  // holds by then; removing the whole store instead would destroy another
+  // profile's saved copy, which is the failure the keying exists to make
+  // impossible — `writeSaved` drops the file only once the last entry goes.
+  if (saved !== null) {
+    const remaining = { ...allSaved };
+    delete remaining[backupKey(file)];
+    writeSaved(ws, remaining);
+  }
 
   out('');
   out(

@@ -331,6 +331,70 @@ bdi{unicode-bidi:isolate}
 .app.pane-open{grid-template-columns:214px 1fr clamp(280px, var(--pane-w), 70vw);
   grid-template-areas:"top top top" "rail body pane" "prov prov prov" "strip strip strip"}
 
+/* ─── The drag handle and the float — plan §2's two answers to one complaint.
+   The owner offered both and they are not alternatives: DRAG is a preference
+   (a working width, and it persists), FLOAT is a mode (one long body, and it
+   does not).
+
+   **Every selector below is NEW.** `.app`, `.app.pane-open` and `.icon` are
+   compared BYTE-IDENTICALLY against the mockup in both directions by
+   test/ui/styles-parity.test.ts, so a property added to any of them is a
+   design-of-record change and the owner's call — not something a task adds on
+   the way past. Adding selectors is free; editing a listed one is not. */
+
+/* The handle is display:none until there is a pane to resize, and that buys
+   two things rather than one. LAYOUT: `grid-area:pane` names no area at all in
+   `.app`'s two-column template, so a permanently displayed handle would be
+   auto-placed into some other cell and drawn where there is no edge. TAB
+   ORDER: a separator controlling a pane that is not open is a keyboard stop on
+   the way to nothing, and `display:none` removes it from the sequence without
+   anything having to remember to. */
+.panegrip{display:none}
+.app.pane-open .panegrip{display:block;grid-area:pane;justify-self:start;align-self:stretch;
+  inline-size:6px;margin-inline-start:-3px;z-index:6;cursor:col-resize;position:relative;
+  background:transparent;border-radius:var(--r-sm);
+  /* Without this a touch drag scrolls the page instead of moving the edge —
+     the browser claims the gesture and the pointer events stop arriving. */
+  touch-action:none}
+/* **The grip is DRAWN, not merely present.** The 6px strip itself stays
+   transparent — a painted strip would read as a second border beside the
+   pane's own — so this short bar is what says the edge can be moved. Looked at
+   in the browser on 2026-08-27 without it: a `col-resize` cursor over an
+   invisible strip is an affordance nobody discovers, and the owner asked for
+   this feature because he could not read a long body, not because he enjoys
+   hunting for handles. */
+.app.pane-open .panegrip::after{content:"";position:absolute;inset-inline-start:2px;
+  inset-block-start:50%;margin-block-start:-13px;inline-size:2px;block-size:26px;
+  border-radius:1px;background:var(--edge-3)}
+/* **Scoped to `.app.pane-open` on purpose, and it is not decoration.** The base
+   rule above is `.app.pane-open .panegrip` — specificity 0,3,0 — so a bare
+   `.panegrip:hover` (0,2,0) LOSES to it and the hover state silently never
+   draws. Found by looking: the zoomed screenshot at rest and the one under the
+   pointer were the same picture. The outline rule below is exempt because
+   nothing else in this file sets `outline` on this element, so it has nothing
+   to lose to. */
+.app.pane-open .panegrip:hover,
+.app.pane-open .panegrip:focus-visible{background:var(--edge-3)}
+.app.pane-open .panegrip:hover::after,
+.app.pane-open .panegrip:focus-visible::after{background:var(--ink)}
+/* Floating takes the pane out of the grid, so there is no column edge left to
+   drag. Left visible it would be a handle sitting on a boundary that no longer
+   exists, moving a width nothing is reading. */
+.app.pane-open.pane-float .panegrip{display:none}
+/* **The app's one focus rule is `:where(button,a,input,select,summary):
+   focus-visible` (~637) and a `div[role=separator]` matches none of the five.**
+   A control that can be focused and shows nothing is a control a keyboard user
+   cannot find, so this draws the same gold ring every other focusable control
+   in the product draws — the 6px strip is thin, so the ring is offset out of
+   it, and the two rules above light the strip and its grip as well. */
+.panegrip:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+/* While it floats the grid returns to TWO columns. Not cosmetic: leave the
+   third track in place and the body keeps a 330px hole where the pane used to
+   be — and giving the body its width back is the entire point of floating. */
+.app.pane-open.pane-float{grid-template-columns:214px 1fr;
+  grid-template-areas:"top top" "rail body" "prov prov" "strip strip"}
+
 /* The header's own layout — grid-area is inert without .app above, but
    display:flex/gap/padding-inline apply regardless, which is what turns
    index.html's logo + picker buttons into a real row instead of a stack. */
@@ -923,6 +987,29 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
    fix rather than repeating the mistake. */
 #pane{grid-area:pane;overflow-y:auto;padding:var(--sp-3)}
 #pane[hidden]{display:none}
+/* **The floating pane — an EXPANDED PANE, NOT A MODAL, and that is a decision
+   rather than an omission.** No backdrop, no focus trap, no `<dialog
+   showModal>`: the rail and the body stay visible and usable behind it, and
+   Escape steps back one level (app.js) instead of dismissing everything. A
+   modal would take the whole screen hostage to solve a reading-width problem.
+
+   `inline-size:min(920px, …)` rather than the full window, because the defect
+   being fixed is a column narrower than a phone and the cure for it is not a
+   line of prose the width of a desktop. 920px is a long measure but a readable
+   one; the `calc` keeps the rail and a strip of body in view at any window
+   narrow enough for the two to disagree.
+
+   The block insets are the shell's own rows, not round numbers: 46px header +
+   6px, and 26px provenance + 30px strip + 6px. A fixed panel that covered the
+   footer strip would hide the one row that says whether the server is alive.
+
+   Nothing here animates, so there is no `prefers-reduced-motion` branch to
+   write; if a transition is ever added to this rule it goes behind the media
+   query in the same commit. */
+.pane-float #pane{position:fixed;inset-block:52px 62px;inset-inline:auto var(--sp-3);
+  inline-size:min(920px, calc(100vw - 260px));z-index:40;
+  border:1px solid var(--rule);border-radius:var(--r-md);
+  box-shadow:0 12px 32px rgb(0 0 0/.45)}
 #pane h3{margin:0 0 var(--sp-1);font-size:var(--fs-2)}
 #pane dl{display:grid;grid-template-columns:auto 1fr;gap:3px var(--sp-2);
   font-size:var(--fs-0);margin:var(--sp-2) 0}

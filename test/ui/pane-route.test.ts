@@ -123,7 +123,11 @@ interface FakeElement {
     remove: (name: string) => void;
     contains: (name: string) => boolean;
   };
-  style: { declarations: Record<string, string>; setProperty: (n: string, v: string) => void };
+  style: {
+    declarations: Record<string, string>;
+    setProperty: (n: string, v: string) => void;
+    getPropertyValue: (n: string) => string;
+  };
   append: (...nodes: (FakeElement | string)[]) => void;
   replaceChildren: (...nodes: (FakeElement | string)[]) => void;
   remove: () => void;
@@ -135,8 +139,19 @@ interface FakeElement {
   closest: (selector: string) => FakeElement | null;
 }
 
-/** What a delegated listener is handed. `app.js` reads `target` and `key`. */
-interface FakeEvent { target: FakeElement; key?: string }
+/**
+ * What a listener is handed. `app.js` reads `target` and `key`; the two
+ * pointer fields are what `lib/pane-resize.js` reads off a drag, added with the
+ * width assertion at the foot of this file. `preventDefault` is deliberately
+ * absent — both modules call it as `event.preventDefault?.()`, so its absence
+ * is exercised here rather than papered over.
+ */
+interface FakeEvent {
+  target: FakeElement;
+  key?: string;
+  clientX?: number;
+  pointerId?: number;
+}
 
 function element(tag: string): FakeElement {
   const declarations: Record<string, string> = {};
@@ -170,6 +185,10 @@ function element(tag: string): FakeElement {
     style: {
       declarations,
       setProperty: (name: string, value: string): void => { declarations[name] = value; },
+      // Added with the two assertions at the foot of this file: the remembered
+      // WIDTH is an inline custom property on `.app`, so reading it back is how
+      // "a preference survives a route change" is stated at all.
+      getPropertyValue: (name: string): string => declarations[name] ?? '',
     },
     append: (...nodes: (FakeElement | string)[]): void => {
       for (const child of nodes) {
@@ -361,6 +380,10 @@ interface Harness {
   goTo: (hash: string) => Promise<void>;
   /** Click a `button.linkid[data-id]` on the current screen, as a screen draws one. */
   openItem: (id: string) => Promise<void>;
+  /** Click one of the shell's own controls, through the document delegation. */
+  click: (id: string) => Promise<void>;
+  /** A whole pointer gesture on `#panegrip`. Negative `dx` is inline-start. */
+  drag: (dx: number) => void;
   app: () => FakeElement;
   pane: () => FakeElement;
   paneId: () => string;
@@ -551,6 +574,25 @@ async function boot(): Promise<Harness> {
         fire('click', { target: slug });
         for (let turn = 0; turn < 20; turn += 1) await tick();
       },
+      click: async (id: string): Promise<void> => {
+        fire('click', { target: byId(id) });
+        for (let turn = 0; turn < 5; turn += 1) await tick();
+      },
+      drag: (dx: number): void => {
+        // Straight at the handle's OWN listeners, because that is where
+        // `lib/pane-resize.js` binds them — the whole point of
+        // `setPointerCapture` is that these never go near the document.
+        const handle = byId('panegrip');
+        const at = 900;
+        const send = (type: string, clientX: number): void => {
+          for (const listener of handle.listeners[type] ?? []) {
+            listener({ target: handle, pointerId: 7, clientX });
+          }
+        };
+        send('pointerdown', at);
+        send('pointermove', at + dx);
+        send('pointerup', at + dx);
+      },
       app: (): FakeElement => byId('app'),
       pane: (): FakeElement => byId('pane'),
       paneId: (): string => byId('paneid').textContent,
@@ -644,36 +686,53 @@ test('opening it, leaving, and coming back leaves it CLOSED', async () => {
   assert.equal(ui.pane().hidden, true);
 });
 
-/* ══ NOT WRITTEN YET, AND NAMED RATHER THAN FAKED ══════════════════════════
+/* ══ THE PAIR — A MODE IS DISCARDED, A PREFERENCE IS KEPT ══════════════════
  *
- * Task 4 of `docs/superpowers/plans/2026-08-27-the-item-pane-is-resizable-and-
- * can-float.md` carries two more assertions, and they are the pair the plan
- * calls "what makes this task coherent with Task 2 and Task 3": the same
- * navigation that discards a MODE keeps a PREFERENCE.
+ * Parked here on 2026-08-27 as a NAMED GAP, and filled in on the same day by
+ * Tasks 2 and 3 (`lib/pane-resize.js`, `#panegrip`, `#panefloat` and the
+ * `pane-float` class). The note that stood here is worth keeping in one line
+ * because it was right: writing these before the feature existed would have
+ * given one vacuous green and one red for the wrong reason —
+ * `assert.ok(!contains('pane-float'))` passes against a build that has never
+ * heard of floating.
  *
- *   1. `the float mode does not survive navigation either` — after Task 3
- *      (`plan:pane seq:3`), which builds `#panefloat` and the `pane-float`
- *      class on `.app`. Then: open, click `#panefloat`, navigate, and assert
- *      the class is gone.
- *
- *   2. `the remembered WIDTH does survive it — a preference is not a mode` —
- *      after Task 2 (`plan:pane seq:2`), which builds `lib/pane-resize.js`,
- *      the `--pane-w` custom property and the `mycontext.pane.w` store. Then:
- *      drag the handle, navigate away, come back, and assert the width is
- *      still the dragged one.
- *
- * **Neither exists today**, and writing them now would be worse than leaving
- * them out. `assert.ok(!app().classList.contains('pane-float'))` passes
- * against a build that has never heard of floating; `assert.equal(width,
- * '450px')` fails against one that cannot be dragged. A vacuous green and a
- * red for the wrong reason are the two failure shapes this project spends the
- * most time paying for, and a named gap is neither.
- *
- * **They belong in THIS file and not in those two**, which is why they are
- * parked here rather than left to whoever writes `pane-float.test.ts`:
- * `pane-resize.test.ts` is about a handle and `pane-float.test.ts` is about a
- * button, and neither of them navigates. Navigation is the only place where
- * the difference between a preference and a mode is observable at all — so
- * this is the file that has to state it, and the task that adds the feature is
- * the task that adds the assertion, here.
+ * **They belong in THIS file and not in those two.** `pane-resize.test.ts` is
+ * about a handle and `pane-float.test.ts` is about a button, and neither of
+ * them navigates. Navigation is the only place where the difference between a
+ * preference and a mode is observable at all, so this is the file that has to
+ * state it.
  */
+
+test('the float mode does not survive navigation either', async () => {
+  const ui = await boot();
+  await ui.goTo('#/coverage');
+  await ui.openItem('RULE-x');
+  await ui.click('panefloat');
+  assert.ok(ui.app().classList.contains('pane-float'), 'precondition: the pane is floating');
+
+  await ui.goTo('#/simulate');
+  assert.ok(!ui.app().classList.contains('pane-float'),
+    'a float that outlived the screen that opened it is a fixed, page-covering panel about an '
+    + 'item the reader has navigated away from — the reported defect, wearing its worst face');
+  assert.ok(!ui.app().classList.contains('pane-open'));
+  assert.equal(ui.pane().hidden, true);
+});
+
+test('the remembered WIDTH does survive it — a preference is not a mode', async () => {
+  const ui = await boot();
+  await ui.goTo('#/coverage');
+  await ui.openItem('RULE-x');
+  ui.drag(-120);
+  assert.equal(ui.app().style.getPropertyValue('--pane-w'), '450px',
+    'precondition: the handle actually moved the property');
+
+  await ui.goTo('#/simulate');
+  await ui.goTo('#/coverage');
+  await ui.openItem('RULE-x');
+
+  // THE POINT OF THE PAIR. The same navigation that threw the float away keeps
+  // this, because somebody reading item after item chose a working width once
+  // and must not be asked again on every screen. `closePane()` clears the MODE
+  // and deliberately does not touch `--pane-w`.
+  assert.equal(ui.app().style.getPropertyValue('--pane-w'), '450px');
+});

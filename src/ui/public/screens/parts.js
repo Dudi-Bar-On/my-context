@@ -231,6 +231,77 @@ export function errorNote(message) {
 // sentence is available in every state — including the state where nothing was
 // truncated, which is why `list.allOf` exists. A list that shows everything and
 // says nothing cannot be told apart from one that truncated.
+//
+// --- The way THROUGH the bound -----------------------------------------------
+//
+// `REQ-a-bounded-list-gives-the-reader-a-way-to-reach-what-it-held`, from the
+// owner on 2026-08-27: *"I could not find a button or a different control that
+// let the user get the next or the previous batch of records"*. Declaring the
+// bound is necessary and it is not sufficient.
+//
+// **This is a control, not a paging layer**, and the paragraph above is why it
+// can be. All five surfaces already hold their WHOLE array, so a page is a
+// re-render over data legitimately in hand — the requirement's sharpest
+// condition, *no surface may answer "next" by re-reading the whole corpus and
+// slicing*, is satisfied by construction here and nothing below introduces a
+// fetch. `/api/coverage` is the surface that genuinely pages, over a walk no
+// client could hold, and it is not touched: what is borrowed from it is how it
+// READS, not how it works — its `omitted` counts what a page left out on BOTH
+// sides, and `list.omittedBoth` says the same thing in the same shape so the
+// two do not end up as two different ideas.
+//
+// **"Previous" is a direction in the LIST, never in the page index.** Three of
+// the five take the LAST N because their logs are append-only, so their page 0
+// is the END of the array and their page index counts BACKWARDS through time.
+// One vocabulary for the reader — lower row numbers are "previous" in both
+// modes — and the index is what flips. Reverse it and the review queue answers
+// "previous" with the wrong end of its own log, under a sentence naming the
+// right one: a sample presented as a summary, which is the defect the slice
+// comment in `paint` already exists to prevent.
+//
+// **`displayOnly` survives every page, and that is the subtle one.** The clause
+// exists because "showing 20 of 47" would otherwise read as "you were given 20"
+// on the one screen whose promise is *exactly what Claude gets*. "Rows 21-40 of
+// 47" reads that way at least as readily — a page number is what a reader has
+// learned means *the rest is elsewhere*. Moving through a DISPLAY cap is not
+// moving through what was delivered, so the clause is appended on every capped
+// state rather than only on the first.
+
+/**
+ * Which slice of `items` a page holds — the one DECISION in this file.
+ *
+ * `end` is exclusive, `before`/`after` count what the page leaves out on each
+ * side, and `page` comes back CLAMPED so a caller cannot land on a page nobody
+ * could be on. An empty list is one page of nothing rather than zero pages:
+ * `STD-a-measured-zero-is-drawn` governs the empty end, and `pages: 0` would
+ * make every step below refuse for a reason no reader could see.
+ *
+ * `take === 'last'` counts its pages from the END, so its SHORT page sits at
+ * the old end of the log rather than the new one. Getting that inverted would
+ * drop the newest rows off the opening page of the review queue.
+ */
+export function pageWindow(total, cap, page, take) {
+  const pages = Math.max(1, Math.ceil(total / cap));
+  const at = Math.min(pages - 1, Math.max(0, page));
+  const end = take === 'last' ? total - at * cap : Math.min(total, at * cap + cap);
+  const start = take === 'last' ? Math.max(0, end - cap) : at * cap;
+  return { start, end, page: at, pages, before: start, after: total - end };
+}
+
+/**
+ * The page a step lands on, or `null` when the step is not available.
+ *
+ * `direction` is `'next'` (towards HIGHER row numbers) or `'prev'` (towards
+ * lower ones), in both `take` modes. `null` is what disables a control, so the
+ * refusal and the disabling are one decision rather than two that can drift.
+ */
+export function pageStep(page, pages, take, direction) {
+  const towardsEnd = direction === 'next' ? 1 : -1;
+  // The flip, and the whole of the `take: 'last'` correction.
+  const step = take === 'last' ? -towardsEnd : towardsEnd;
+  const landing = page + step;
+  return landing < 0 || landing >= pages ? null : landing;
+}
 
 /** Card lists sit in a scene the design of record sizes; tables and card stacks scroll. */
 export const BOUND_CAP_LIST = 20;
@@ -256,28 +327,83 @@ function orderKeyFor(spec) {
   return spec.order === 'recent' ? 'list.recentOf' : 'list.admittedOf';
 }
 
+/**
+ * The same distinction, said with row numbers — for a page past the first,
+ * where "the first N" and "the N most recent" have both stopped being true.
+ * Two keys rather than one because the ORDER is the owner's own ruling and a
+ * page that dropped it would leave a reader guessing which end is which.
+ */
+function rowsKeyFor(spec) {
+  return spec.order === 'recent' ? 'list.rowsRecent' : 'list.rowsAdmitted';
+}
+
 export function boundedList(ctx, host, items, draw, spec) {
   const cap = spec.cap;
   const total = items.length;
   const bound = el('div', 'bound');
   const line = el('p', 'small');
+  // **The line IS the announcement.** It already says where the reader is and
+  // it is rewritten wholesale on every move, so making it live announces the
+  // move in the same words the sighted reader gets. Weighed against a separate
+  // visually-hidden region, which would say everything twice and would need a
+  // `.visually-hidden` rule in `styles.css` — a file this change may not open,
+  // and a second sentence to keep in step with this one forever.
+  line.setAttribute('aria-live', 'polite');
   const button = el('button');
   button.type = 'button';
-  bound.append(line, button);
 
   let expanded = false;
+  let page = 0;
+
+  // **A list holding back nothing draws NO control**, and "no control" means
+  // absent rather than `hidden` or `disabled` — *an inert control is the same
+  // lie as a blank screen*. `items` is fixed for the life of this call, so
+  // whether the cap bites is decidable once, here, and the two buttons are
+  // never built when it does not.
+  const paged = total > cap;
+  const stepper = (name, key) => {
+    const b = el('button');
+    b.type = 'button';
+    // A real `<button type="button">`: Enter and Space come free, it is in the
+    // tab order, and it needs no key handler of its own. `type` is set because
+    // every one of these lists can sit inside a form, where the default is
+    // `submit`. No class — `.bound button` styles it from its ancestor, which
+    // is the rule `e2e/button-contrast.spec.ts` exists to keep true, and a new
+    // class here would need a stylesheet this change may not open.
+    b.dataset.step = name;
+    b.append(...ctx.t(key));
+    return b;
+  };
+  const prev = paged ? stepper('prev', 'list.prevRows') : null;
+  const next = paged ? stepper('next', 'list.nextRows') : null;
+  // Reading order: where you are, then the two steps, then "show all". The
+  // steps sit before the escape hatch because they are the answer to the
+  // question the line just raised.
+  bound.append(line);
+  if (paged) bound.append(prev, next);
+  bound.append(button);
+
+  /** The `displayOnly` clause, or nothing — appended to EVERY capped state. */
+  const promise = () => (spec.displayOnly === true
+    ? [document.createTextNode(' '), sentence(ctx, 'list.displayOnly', { total: num(total) })]
+    : []);
 
   const paint = () => {
-    const shown = expanded ? total : Math.min(cap, total);
-    // **WHICH `shown` SURVIVE IS THE CLAIM THE SENTENCE MAKES**, so the slice
-    // has to match it. A record surface whose rows arrive OLDEST FIRST — which
-    // is how the design of record draws the injected table, ascending by its
-    // own When column — keeps its most recent rows at the END. Slicing the head
+    // **WHICH ROWS SURVIVE IS THE CLAIM THE SENTENCE MAKES**, so the slice has
+    // to match it. A record surface whose rows arrive OLDEST FIRST — which is
+    // how the design of record draws the injected table, ascending by its own
+    // When column — keeps its most recent rows at the END. Slicing the head
     // there would show the oldest N under a sentence promising the newest N,
     // which is the exact failure this requirement exists to prevent: a sample
     // presented as a summary. The survivors are then drawn in their ORIGINAL
     // order, so the table's direction is unchanged and only its membership is.
-    const kept = spec.take === 'last' ? items.slice(total - shown) : items.slice(0, shown);
+    //
+    // `pageWindow` is that same rule generalised to a page past the first, and
+    // it is a pure function precisely so the rule can be asserted rather than
+    // described (`test/ui/bounded-list.test.ts`).
+    const at = pageWindow(total, cap, page, spec.take);
+    page = at.page;
+    const kept = expanded ? items : items.slice(at.start, at.end);
     host.replaceChildren(...kept.map((item, i) => draw(item, i)));
 
     if (total <= cap) {
@@ -291,24 +417,74 @@ export function boundedList(ctx, host, items, draw, spec) {
     if (expanded) {
       line.replaceChildren(sentence(ctx, 'list.allOf', { total: num(total) }));
       button.replaceChildren(...ctx.t('list.showFewer'));
+      // Withdrawn rather than left disabled: a step control beside a list
+      // showing everything says there is somewhere else to be, and there is
+      // not. `hidden` and not removal, because the state reverses.
+      prev.hidden = true;
+      next.hidden = true;
       return;
     }
+    prev.hidden = false;
+    next.hidden = false;
+    // `null` from `pageStep` is "this step does not exist", and it is the same
+    // decision as "this control is inert" — one source, so the button and the
+    // handler cannot come to disagree about where the list ends.
+    prev.disabled = pageStep(page, at.pages, spec.take, 'prev') === null;
+    next.disabled = pageStep(page, at.pages, spec.take, 'next') === null;
+
     // **Each sentence is its own `<span>`**, because that is how the design of
     // record carries a keyed sentence inside a paragraph that holds more than
     // one — `data-t` has to sit ON an element, and `applyLang` replaces that
     // element's children wholesale. Appending the nodes bare into the `<p>`
     // would render identically and diverge structurally, which is exactly the
     // kind of difference `screen-parity` exists to catch.
+    if (page === 0) {
+      // The opening page keeps the sentence it has always had. "Showing the
+      // first 20 of 47" and "showing the 50 most recent of 120" are ALREADY
+      // positions, and they carry the ORDER ruling in words the row-numbered
+      // sentence has to shorten — so they are not replaced for the sake of a
+      // uniform shape the reader gains nothing from.
+      line.replaceChildren(
+        sentence(ctx, orderKeyFor(spec), { shown: num(at.end - at.start), total: num(total) }),
+        ...promise(),
+      );
+      button.replaceChildren(...ctx.t('list.showAll', { total: num(total) }));
+      return;
+    }
+    // Off the opening page, "the first 20" and "the 50 most recent" would both
+    // be FALSE, so the sentence becomes row numbers plus what the page left
+    // out on both sides — `/api/coverage`'s own reading of a page.
     line.replaceChildren(
-      sentence(ctx, orderKeyFor(spec), { shown: num(shown), total: num(total) }),
-      ...(spec.displayOnly === true
-        ? [document.createTextNode(' '), sentence(ctx, 'list.displayOnly', { total: num(total) })]
-        : []),
+      sentence(ctx, rowsKeyFor(spec),
+        { from: num(at.start + 1), to: num(at.end), total: num(total) }),
+      document.createTextNode(' '),
+      sentence(ctx, 'list.omittedBoth', { before: num(at.before), after: num(at.after) }),
+      ...promise(),
     );
     button.replaceChildren(...ctx.t('list.showAll', { total: num(total) }));
   };
 
   button.addEventListener('click', () => { expanded = !expanded; paint(); });
+  if (paged) {
+    for (const [control, direction, sibling] of [[prev, 'prev', next], [next, 'next', prev]]) {
+      control.addEventListener('click', () => {
+        const landing = pageStep(page, pageWindow(total, cap, page, spec.take).pages,
+          spec.take, direction);
+        if (landing === null) return;
+        page = landing;
+        paint();
+        // **A control that has just gone inert hands its focus on.** `disabled`
+        // was chosen over `aria-disabled` because a disabled button is honestly
+        // out of the tab order and needs no handler that quietly does nothing —
+        // which is the inert control the requirement names. What it costs is
+        // focus: a keyboard reader pressing Enter until the last page would
+        // lose it to the document and have to tab back from the top. The
+        // sibling is always live here, because a step that landed proves the
+        // one back the way it came exists.
+        if (control.disabled) sibling.focus();
+      });
+    }
+  }
   paint();
   return bound;
 }

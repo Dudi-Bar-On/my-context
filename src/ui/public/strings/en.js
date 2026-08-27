@@ -273,6 +273,36 @@ export const strings = {
   'list.displayOnly': 'A display limit. All {total} were in the injection — none were dropped.',
   'list.showAll': 'Show all {total}',
   'list.showFewer': 'Show fewer',
+  // The way THROUGH the bound
+  // (`REQ-a-bounded-list-gives-the-reader-a-way-to-reach-what-it-held`, owner,
+  // 2026-08-27). Declaring the bound was never sufficient: a list saying "20
+  // of 2,076" with no way to the other 2,056 has told the truth and left the
+  // reader stuck.
+  //
+  // **These say WHERE YOU ARE, which is the requirement's own distinction** —
+  // *"20 of 2,076" is a fact; "rows 21-40 of 2,076" is a position*. They
+  // replace `admittedOf`/`recentOf` only once the reader has MOVED: those two
+  // are already positions ("the first 20", "the 50 most recent") and they
+  // carry the ORDER ruling in full, so the opening page keeps them and only a
+  // page that has left the end needs row numbers instead.
+  //
+  // **`omittedBoth` is `/api/coverage`'s reading, deliberately not a second
+  // one.** That endpoint already pages and its `omitted` "counts every
+  // matching path this answer does not carry — the ones `offset` skipped as
+  // well as the ones past `limit`" (`ui/read-model.ts`). Reporting only what
+  // is AHEAD would leave the two surfaces meaning different things by the same
+  // word. Weighed against the extra sentence's cost on the preview, where a
+  // paged line already carries `displayOnly` after it: three short sentences
+  // on a state the reader chose to enter, against two surfaces that disagree.
+  'list.rowsAdmitted': 'Rows {from}–{to} of {total}, in the order the selector admitted them.',
+  'list.rowsRecent': 'Rows {from}–{to} of {total}, oldest first — the newest are last.',
+  'list.omittedBoth': '{before} before this page, {after} after it.',
+  // ONE vocabulary for both `take` modes, and the row numbers beside them are
+  // what fix the direction: on an append-only log the oldest rows carry the
+  // LOW numbers, so "Previous" is older and the sentence says so without a
+  // second pair of words for the same two buttons.
+  'list.prevRows': 'Previous',
+  'list.nextRows': 'Next',
   // The three empty states these two screens can be in. `zeroLines` and
   // `noSession` are DIFFERENT FACTS — a session that received nothing, and no
   // session being looked at — and `noSession` names the distinction out loud
@@ -515,6 +545,13 @@ export const strings = {
   'ln.w': 'the queue, revisions, supersede',
   'aria.pane': 'Item detail',
   'aria.paneclose': 'Close',
+  // Added 2026-08-27 for `plan:pane`. The mockup declares neither, and that is
+  // legal now: the 2026-08-26 ruling dropped the app->mockup direction from
+  // `strings-parity`, so a key the design of record never drew no longer fails
+  // in the invented direction. The GAP direction still fails, so the mockup can
+  // still catch what the app is missing.
+  'aria.panegrip': 'Resize the item pane',
+  'aria.panefloat': 'Expand the item pane',
   // Chrome — the item detail pane, the status strip, the exit banner
   'pane.type': 'type',
   'pane.status': 'status',
