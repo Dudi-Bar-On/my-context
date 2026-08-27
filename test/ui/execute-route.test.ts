@@ -46,9 +46,25 @@ import {
  * Harness.
  * -------------------------------------------------------------------------- */
 
+/**
+ * The id the confirm tests pin against, and it must NAME A REAL ITEM.
+ *
+ * Before seq:5b the confirm derived nothing, so `pin ${FIXTURE_ITEM}` against an empty
+ * workspace answered 200 with a nonce: the route never asked whether the
+ * command could succeed. The confirm now DERIVES the effect by running the
+ * command against a throwaway copy, so a command that cannot succeed has no
+ * effect to show and §3.2 refuses it a confirm. An id naming nothing is
+ * therefore a 400 — the new contract, not a regression.
+ */
+const FIXTURE_ITEM = 'RULE-a-fixture-rule';
+
 function project(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-exec-'));
   assert.equal(runCli(['init'], dir, () => {}), 0);
+  assert.equal(
+    runCli(['add', 'rule', 'a fixture rule', '--body', 'a body', '--yes'], dir, () => {}),
+    0,
+  );
   return dir;
 }
 
@@ -185,8 +201,8 @@ function rebind(run: CommandRunner): ExecutionNonceStore {
 
 test('the confirm GET returns the resolved argv, the boundary and a nonce', async () => {
   await withServer(async (h) => {
-    const body = await confirm(h, '/api/execute/confirm?id=pin&id_arg=RULE-x&yes=true');
-    assert.deepEqual(body.argv, ['pin', 'RULE-x', '--yes']);
+    const body = await confirm(h, `/api/execute/confirm?id=pin&id_arg=${FIXTURE_ITEM}&yes=true`);
+    assert.deepEqual(body.argv, ['pin', FIXTURE_ITEM, '--yes']);
     assert.equal(body.boundary, true);
     assert.match(body.nonce, /^[0-9a-f]{32}$/);
   });
@@ -248,9 +264,9 @@ test('the string a person read and the argv that runs are the same thing', async
     const nonces = rebind(stub.run);
     assert.ok(nonces instanceof ExecutionNonceStore);
 
-    const shown = await confirm(h, '/api/execute/confirm?id=edit&id_arg=RULE-x&always=false&yes=true');
+    const shown = await confirm(h, `/api/execute/confirm?id=edit&id_arg=${FIXTURE_ITEM}&always=false&yes=true`);
     const body = await post(h, {
-      id: 'edit', values: { id: 'RULE-x', always: 'false', yes: true }, nonce: shown.nonce,
+      id: 'edit', values: { id: FIXTURE_ITEM, always: 'false', yes: true }, nonce: shown.nonce,
     });
     assert.deepEqual(body.argv, shown.argv);
     assert.equal(stub.calls.length, 1);
@@ -296,7 +312,7 @@ test('a nonce minted for one ARGV does not authorise a different one', async () 
     rebind(stub.run);
     // Same id, different argument: the binding is over the argv the SERVER
     // built, so `pin A` cannot spend a nonce minted for `pin B`.
-    const shown = await confirm(h, '/api/execute/confirm?id=pin&id_arg=RULE-a&yes=true');
+    const shown = await confirm(h, `/api/execute/confirm?id=pin&id_arg=${FIXTURE_ITEM}&yes=true`);
     const res = await postRaw(h, {
       id: 'pin', values: { id: 'RULE-b', yes: true }, nonce: shown.nonce,
     });
@@ -586,11 +602,21 @@ test('a run that CANNOT be recorded does not happen', async () => {
 
 test('a non-zero exit is REPORTED, not swallowed — a refusal is a state to leave', async () => {
   await withServer(async (h) => {
-    const target = '/api/execute/confirm?id=supersede&id_arg=NOPE&by=ALSO-NOPE&yes=true';
+    // **A command OFF the boundary, and that is now the only way to reach this.**
+    // This test used to run `supersede NOPE --by ALSO-NOPE`, chosen because it
+    // was certain to fail. Since seq:5b the confirm DERIVES the effect of a
+    // boundary command by running it against a copy, so a command certain to
+    // fail is refused a confirm and never reaches the run at all — a real
+    // narrowing, and the right one under §3.2.
+    //
+    // The property here is about the RUN, not about the confirm: a non-zero
+    // exit must be reported rather than swallowed. `show` is `boundary: false`,
+    // so it skips derivation entirely, and `show NOPE` exits 1. Measured.
+    const target = '/api/execute/confirm?id=show&id_arg=NOPE';
     const shown = await confirm(h, target);
     const body = await post(h, {
-      id: 'supersede',
-      values: { id: 'NOPE', by: 'ALSO-NOPE', yes: true },
+      id: 'show',
+      values: { id: 'NOPE' },
       nonce: shown.nonce,
     });
     assert.notEqual(body.exitCode, 0);

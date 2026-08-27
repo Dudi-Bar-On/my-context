@@ -305,38 +305,48 @@ test('revisionPlan names the catalogue entry the settlement IS, and composes thr
 });
 
 /**
- * **RECORDED, not decorative: the Execute this screen now offers cannot run
- * yet, and the reason is one line away in `lib/command-actions.js`.**
+ * **THE WAIT IS OVER — 2026-08-27, and this paragraph is the update it asked
+ * for.**
  *
- * `review promote-revision` is ON the approval boundary, so spec §3.2 gives it
- * the stronger confirm — a field-by-field diff of what changes. `COMMAND_EFFECTS`
- * is the map that says what a command changes, and it carries the five named
- * entry points onto `edit` and nothing else. §3.2's own words: *"A command
- * whose effect cannot be shown that way does not get a weaker confirm — it does
- * not run."* So the button is drawn, the nonce is minted, and the reader is told
- * the effect cannot be shown.
+ * What stood here recorded that the Execute this screen offers could not run:
+ * `review promote-revision` is ON the approval boundary, spec §3.2 gives it the
+ * stronger confirm, and the browser's `COMMAND_EFFECTS` map knew only the five
+ * named entry points onto `edit`. So the button was drawn, a nonce was minted,
+ * and the reader was told the effect could not be shown. That was the DESIGNED
+ * outcome of a short map, and the paragraph asked to be read the day somebody
+ * taught the map what a revision promotion changes.
  *
- * That is the DESIGNED outcome and not a defect of this screen — the failure
- * mode of a short map is "a command you must still paste into your own shell",
- * which is where this line was before. It is pinned here so that the day
- * somebody teaches `COMMAND_EFFECTS` what a revision promotion changes, this
- * test fails and a person reads this paragraph rather than discovering the
- * change in a confirm.
+ * Nobody taught the map. `plan:execute seq:5b` DELETED it. A browser cannot
+ * derive what a command writes — that is the command's body, not its argument
+ * shape — so every entry in that map was a transcription, and it could never
+ * have covered this command anyway: promoting a revision changes whichever
+ * fields that revision carries, which is a property of the corpus and not of
+ * the argv. The server now derives the effect by running the command against a
+ * throwaway copy (`src/ui/execute-effect.ts`), which answers exactly that kind
+ * of question.
+ *
+ * So this screen needs no change: it already passes a real catalogue id
+ * (`plan.id`), which is what the four `id: null` screens do not, and its
+ * Execute now reaches the stronger confirm rather than a refusal. What is
+ * pinned below is the new mechanism, so that a browser-side table reintroduced
+ * as a "fast path" fails here and a person reads this paragraph first.
  */
-test('the settlement is on the boundary and its effect is not yet renderable — recorded', async () => {
+test('the settlement is on the boundary and its effect is derived by the server — recorded', async () => {
   const defs = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'palette-defs.js')).href) as {
     PALETTE: { name: string; boundary?: boolean }[];
   };
   const actions = await import(
     pathToFileURL(path.join(PUBLIC, 'lib', 'command-actions.js')).href
-  ) as { COMMAND_EFFECTS: Map<string, unknown> };
+  ) as Record<string, unknown>;
 
   const def = defs.PALETTE.find((entry) => entry.name === 'review promote-revision');
-  assert.equal(def?.boundary, true);
-  assert.equal(actions.COMMAND_EFFECTS.has('review promote-revision'), false,
-    'COMMAND_EFFECTS now knows what a revision promotion changes, so Execute on this screen runs '
-    + 'behind the stronger confirm instead of refusing. That is the outcome this line was '
-    + 'waiting for — read the paragraph above, then update it.');
+  assert.equal(def?.boundary, true,
+    'a revision promotion changes what governs this project, so it stays on the boundary and '
+    + 'keeps the stronger confirm');
+  assert.equal(actions['COMMAND_EFFECTS'], undefined,
+    'the browser must hold no table of what commands write. It could only ever describe an '
+    + 'effect derivable from the ARGUMENTS, and this command changes whichever fields its '
+    + 'revision carries — so a table here would be wrong for exactly this screen.');
 });
 
 /**

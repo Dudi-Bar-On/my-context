@@ -367,7 +367,9 @@ export const strings = {
   'exec.changes': 'מה משתנה — בתוקף, ואחר כך המוצע',
   'exec.exit': 'קוד יציאה {code}',
   'exec.noexit': 'הפקודה לא הסתיימה תחת מעקב',
-  'exec.noeffect': '{b:הפקודה הזו אינה מוצעת כאן.} {mv:command} משנה את מה שמושל בפרויקט הזה, והאישור הזה עדיין אינו יודע לנקוב בשמות השדות שישתנו — ולכן היא אינה רצה. העתיקו אותה והריצו במעטפת שלכם.',
+  'exec.item.created': '{b:{mv:id}} — נוצר',
+  'exec.item.changed': '{b:{mv:id}} — שונה',
+  'exec.item.removed': '{b:{mv:id}} — הוסר',
   // Configure
   'cfg.h': 'הגדרות',
   'cfg.v': 'ה"מסוף לא יכול" החזק ביותר',

@@ -459,13 +459,33 @@ test('Capture keeps cap.warn and offers Copy alone — the decision, pinned in b
     };
     const actions = await import(
       pathToFileURL(path.join(PUBLIC, 'lib', 'command-actions.js')).href
-    ) as { COMMAND_EFFECTS: Map<string, unknown> };
+    ) as Record<string, unknown>;
 
-    // The half that makes the choice cost nothing today.
+    // **THE TRIGGER THIS TEST WAS WRITTEN FOR HAS FIRED — 2026-08-27.**
+    //
+    // It used to read: "COMMAND_EFFECTS now knows what `add` writes, so an
+    // Execute button here would actually run. That is the day this decision has
+    // to be re-taken — with cap.warn." The condition arrived by a route the
+    // sentence did not anticipate. There is no longer a browser table to learn
+    // `add`: `plan:execute seq:5b` deleted it and the SERVER now derives every
+    // boundary command's effect by running it against a copy. Measured the same
+    // day, `add` derives cleanly — one created item, every field named.
+    //
+    // So the cost that made waiting free is gone, and the owner ruled on
+    // 2026-08-27: cap.warn is dropped and Capture gains Execute
+    // (DEC-cap-warn-is-dropped-and-capture-gains-execute-the-other). That is
+    // `plan:execute seq:6c`, and it is deliberately NOT folded into 5b, because
+    // it edits the MOCKUP — cap.warn is design of record, drawn in the mockup's
+    // own capture section — and a design-of-record edit riding along inside an
+    // unrelated change is how a drawn decision gets lost.
+    //
+    // What is pinned below is therefore the state until 6c lands, and the
+    // reason it is allowed to still be this state. When 6c lands, both halves
+    // invert together.
     assert.equal(defs.PALETTE.find((def) => def.name === 'add')?.boundary, true);
-    assert.equal(actions.COMMAND_EFFECTS.has('add'), false,
-      'COMMAND_EFFECTS now knows what `add` writes, so an Execute button here would actually '
-      + 'run. That is the day this decision has to be re-taken — with cap.warn.');
+    assert.equal(actions['COMMAND_EFFECTS'], undefined,
+      'the browser table is gone (seq:5b), so the reason this screen could safely wait — that '
+      + 'an Execute button here could only refuse — no longer holds. seq:6c is owed.');
 
     // The half that is the decision itself.
     assert.ok(/commandActions\(\{[\s\S]{0,200}?id: null/.test(CODE),

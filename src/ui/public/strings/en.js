@@ -415,7 +415,9 @@ export const strings = {
   'exec.changes': 'What changes — in force, then proposed',
   'exec.exit': 'exit {code}',
   'exec.noexit': 'the command did not exit under observation',
-  'exec.noeffect': '{b:This one is not offered here.} {mv:command} changes what governs this project, and this confirm cannot yet name the fields it would change — so it does not run. Copy it and run it in your own shell.',
+  'exec.item.created': '{b:{mv:id}} — created',
+  'exec.item.changed': '{b:{mv:id}} — changed',
+  'exec.item.removed': '{b:{mv:id}} — removed',
   // Configure
   'cfg.h': 'Configure',
   'cfg.v': 'the strongest "a terminal cannot do this"',

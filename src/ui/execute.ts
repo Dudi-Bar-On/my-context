@@ -57,6 +57,7 @@ import { fileURLToPath } from 'node:url';
 // "simplification" would look tidier and destroy other writers' rows.
 import { recordAudit } from '../core/audit.ts';
 import { CommandRefusal, catalogueEntries, resolveCommand } from './execute-catalogue.ts';
+import { EffectRefusal, deriveEffect, type ItemEffect } from './execute-effect.ts';
 // A VALUE import, deliberately, even though the class is only named in type
 // positions below. `verbatimModuleSyntax` erases an `import type` whole, and an
 // erased edge is not an edge: `test/ui/no-writes.test.ts` walks the runtime
@@ -498,12 +499,30 @@ function handleConfirm(ctx: ApiContext): JsonResult {
   const id = ctx.url.searchParams.get('id') ?? '';
   try {
     const resolved = resolveCommand(id, valuesFromQuery(ctx.url, id));
+
+    // **The effect is derived BEFORE the nonce is minted**, so a confirm that
+    // cannot be shown mints nothing. Minting first and then refusing would
+    // leave a live nonce behind every refusal — spendable by anything that
+    // could read the response — for a command the product just declined to
+    // show. §3.2 says such a command does not run; a minted nonce is the one
+    // artefact that could make that untrue.
+    let effect: ItemEffect[] = [];
+    if (resolved.boundary) {
+      const root = ctx.ws.projectRoot;
+      if (root === null) return { status: 500, body: { error: 'mycontext ui: no workspace here' } };
+      effect = deriveEffect(root, active.cliEntry, resolved.argv);
+    }
+
     return {
       status: 200,
       body: {
         id: resolved.id,
         argv: resolved.argv,
         boundary: resolved.boundary,
+        // Every item the command touches, each with the fields it changes.
+        // Empty means "it was run against a copy and changed no item" — never
+        // "we could not tell", which is an `EffectRefusal` and a 400 above.
+        effect,
         // Bound to the argv above, so the POST cannot spend it on anything else.
         nonce: active.nonces.mint(resolved.id, resolved.argv),
         residual: EXECUTION_RESIDUAL,
@@ -511,6 +530,10 @@ function handleConfirm(ctx: ApiContext): JsonResult {
     };
   } catch (error) {
     if (error instanceof CommandRefusal) return refusal(error);
+    // §3.2: a command whose effect cannot be shown does not get a weaker
+    // confirm — it does not run. The reader is given the reason, which is the
+    // CLI's own sentence when the dry run reached it.
+    if (error instanceof EffectRefusal) return refusal(error);
     throw error;   // a bug, and the dispatch loop answers 500 for those
   }
 }

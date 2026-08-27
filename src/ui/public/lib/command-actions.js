@@ -68,100 +68,27 @@ import { el, errorNote } from '../screens/parts.js';
 export const CONFIRM_ID_ARG = 'id_arg';
 
 /**
- * The item fields whose stored value is a LIST, so that a typed comma string
- * and a stored array can be compared in the same column.
+ * **The transcribed COMMAND_EFFECTS table is gone, and that is the point of
+ * plan:execute seq:5b.**
  *
- * Without this the confirm would print `- src/billing/**` beside
- * `+ src/billing/**,test/**` and leave the reader to notice that one has a
- * space after the comma and the other does not. The two columns of a diff are
- * only useful while they are in the same spelling.
+ * It lived here because a browser cannot derive what a command writes — that
+ * is the command's body, not its argument shape, and there is no build step
+ * to import it through. So it declared the effect of five commands (pin,
+ * unpin, harden, soften, edit) and every other boundary command was REFUSED a
+ * confirm and therefore refused a run: add, supersede, refresh, repair,
+ * lesson-accept and the four review verbs.
+ *
+ * The derivation moved to the server (`src/ui/execute-effect.ts`), which runs
+ * the real command against a throwaway copy of the corpus and reports what
+ * actually changed. That covers all nine, and it covers the two no table could
+ * have expressed: `repair` re-stamps however many items are stale, and
+ * `supersede` touches TWO items, recording the relation on both sides.
+ *
+ * Not kept as a fast path beside the derivation. Two spellings of what a
+ * command writes is exactly the drift `palette-defs.js` records this repository
+ * paying for four times, and the one that would go stale is the one guarding
+ * the confirm.
  */
-const LIST_FIELDS = new Set(['scope', 'tags']);
-
-/**
- * A stored value as the lines a diff column shows.
- *
- * Deliberately NOT a second `valueLines`: `src/core/revision-diff.ts` owns that
- * one, it is server TypeScript with no browser build step behind it, and its
- * vocabulary is the four REVISION fields. This is the same idea over the item
- * fields a command sets, and it differs in one place on purpose — `extra` is
- * rendered `key=value`, which is the spelling the CLI's own `--extra` takes,
- * because this table's other column is a command argument and not a stored map.
- *
- * An empty value returns NO lines rather than one empty line, so the cell draws
- * the em dash this design already uses for "no value here" instead of a blank
- * that reads as a rendering failure.
- */
-function lines(value) {
-  if (value === undefined || value === null) return null;
-  if (typeof value === 'boolean') return [String(value)];
-  if (Array.isArray(value)) {
-    return value.length === 0 ? [] : [[...value].map(String).sort().join(', ')];
-  }
-  if (typeof value === 'object') {
-    const keys = Object.keys(value).sort();
-    return keys.map((key) => `${key}=${String(value[key])}`);
-  }
-  const text = String(value);
-  return text === '' ? [] : text.split('\n');
-}
-
-/** A typed argument as the lines the AFTER column shows, in the item's spelling. */
-function afterLines(field, raw) {
-  if (LIST_FIELDS.has(field)) {
-    const parts = String(raw).split(',').map((part) => part.trim()).filter((part) => part !== '');
-    return parts.length === 0 ? [] : [parts.sort().join(', ')];
-  }
-  return lines(raw) ?? [];
-}
-
-/**
- * **Which fields a command changes, and to what.** The table §3.2 needs and the
- * browser cannot derive.
- *
- * `test/ui/palette-lib.test.ts` derives the approval BOUNDARY from the real
- * argument parser, so nobody has to keep a list of which commands are gated.
- * There is no equivalent probe for *what a command writes* — that is the
- * command's body, not its argument shape — and a browser module has no build
- * step, so `NAMED_ENTRY_POINTS` in `src/cli/commands/edit.ts` cannot be
- * imported here. It is therefore transcribed, and
- * `test/ui/command-actions.test.ts` imports the CLI's own table and fails this
- * one when the two disagree, entry by entry and by name. That is the same
- * discipline `palette-defs.js`' header states for the catalogue: every claim
- * the list makes is derived somewhere else and compared against it.
- *
- * **A boundary command that is NOT in this map does not run**, and that is spec
- * §3.2 in its own words: *"A command whose effect cannot be shown that way does
- * not get a weaker confirm — it does not run."* Weighed against showing the
- * plain confirm instead, which is what a reader would prefer in the moment and
- * is exactly wrong: the plain confirm is the one for a command that changes
- * nothing that governs this project, and handing it to `add` or `supersede`
- * would make the stronger confirm's absence invisible. The failure mode of this
- * map being short is "a command you must still paste into your own shell",
- * which is where every one of them was yesterday.
- *
- * A Map rather than an object literal: the key is a catalogue id, which is
- * caller-supplied text, and `EFFECTS['__proto__']` on an object literal is not
- * a miss.
- */
-export const COMMAND_EFFECTS = new Map([
-  // The four named entry points onto `edit`, each of which IS one flag
-  // (`src/cli/commands/edit.ts` · `NAMED_ENTRY_POINTS`). Held to that table by
-  // the test, so a fifth added there fails here rather than silently getting no
-  // confirm it can render.
-  ['pin', () => [{ field: 'always', after: ['true'] }]],
-  ['unpin', () => [{ field: 'always', after: ['false'] }]],
-  ['harden', () => [{ field: 'severity', after: ['hard'] }]],
-  ['soften', () => [{ field: 'severity', after: ['soft'] }]],
-  // `edit` names its own fields: every argument it was given except the id it
-  // is about and the `--yes` that answers its gate. Derived from the values
-  // rather than from a list, so a flag the catalogue gains is covered the day
-  // it is offered.
-  ['edit', (values) => Object.keys(values)
-    .filter((name) => name !== 'id' && name !== 'yes')
-    .filter((name) => values[name] !== undefined && values[name] !== '')
-    .map((name) => ({ field: name, after: afterLines(name, values[name]) }))],
-]);
 
 /**
  * The confirm's URL. The values go on the query string in the shape
@@ -199,42 +126,36 @@ function diffFor(before, after) {
 }
 
 /**
- * The fields a boundary command changes, or `null` when this control cannot say.
+ * The server's effect, in the view shape `fieldView` reads.
  *
- * **The BEFORE is read from the corpus**, never derived from the command: the
- * whole point of the column is that it says what is in force, and a value the
- * command implied would make the confirm agree with itself rather than with the
- * item. An item the read cannot reach yields `noCurrent`, which `fieldView`
- * already carries and the table already draws — a fabricated "false" there
- * would be a claim about an item this browser could not open.
+ * **The BEFORE is still what is in force in the corpus, and this file no longer
+ * establishes that.** The server dry-runs the command against a throwaway copy
+ * and reports both columns, so "before" is read from the corpus the command
+ * will actually touch — one read, at the moment that matters, rather than this
+ * browser taking a second one that could disagree with it.
+ *
+ * What is left here is a mapping and nothing more. It invents no value: a
+ * `before` the server did not send stays absent, because a fabricated "false"
+ * would be a claim about an item nobody looked at.
  */
-async function changedFields(ctx, id, values) {
-  const effect = COMMAND_EFFECTS.get(id);
-  if (effect === undefined) return null;
-  const changes = effect(values);
-
-  let item = null;
-  const itemId = values['id'];
-  if (typeof itemId === 'string' && itemId !== '') {
-    try {
-      const body = await ctx.api(`/api/item/${encodeURIComponent(itemId)}`);
-      item = body?.item ?? null;
-    } catch {
-      // A 404 is a real answer here — the id names nothing yet — and it is the
-      // `noCurrent` case rather than a failure of the confirm. The refusal a
-      // reader needs is the one the RUN gives, in the server's own words.
-      item = null;
-    }
-  }
-
-  return changes.map((change) => ({
-    field: change.field,
-    // `changed` is the revision queue's "moved since staging", which has no
-    // meaning for a command composed a moment ago. Passed false rather than
-    // omitted so the shape is the served one and `fieldView` needs no branch.
-    changed: false,
-    noCurrent: item === null,
-    diff: diffFor(item === null ? null : lines(item[change.field]), change.after),
+function viewsFromEffect(effect) {
+  return effect.map((item) => ({
+    id: item.id,
+    kind: item.kind,
+    views: item.fields.map((change) => ({
+      field: change.field,
+      // `changed` is the revision queue's "moved since staging", which has no
+      // meaning for a command composed a moment ago. Passed false rather than
+      // omitted so the shape is the served one and `fieldView` needs no branch.
+      changed: false,
+      // The server says so by sending `before: null`, which it does only for an
+      // item that did not exist. The browser no longer GUESSES this from a 404
+      // on its own read: that read could fail for reasons that have nothing to
+      // do with the item existing, and "I could not fetch it" was being drawn
+      // as "there is nothing there".
+      noCurrent: change.before === null,
+      diff: diffFor(change.before, change.after ?? []),
+    })),
   }));
 }
 
@@ -416,15 +337,21 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
     // derived from the same measurement, and consulting the client's would be a
     // second classification with its own way of going stale — on the one
     // decision that chooses how much a person is shown.
-    const views = answer.boundary === true ? await changedFields(ctx, id, values) : [];
-    if (views === null) {
-      // §3.2: a command whose effect cannot be shown does not get a weaker
-      // confirm — it does not run. The nonce just minted goes unspent and
-      // expires; refusing before the GET would mean asking the CLIENT's
-      // boundary flag, which is the thing the line above declines to trust.
-      say(...ctx.t('exec.noeffect', { command: id }));
-      return;
-    }
+    // **The effect is the SERVER's, derived by running the command against a
+    // throwaway copy of the corpus** (`src/ui/execute-effect.ts`). The browser
+    // no longer carries a table of what each command writes: it could not
+    // derive one — that is the command's body, not its argument shape — so it
+    // transcribed five commands and refused the other nine.
+    //
+    // §3.2 is now enforced on the server and one step earlier. A command whose
+    // effect cannot be derived is refused by the confirm GET itself, WITHOUT
+    // minting a nonce, and the `catch` above draws the reason — which is the
+    // CLI's own sentence about why it would not run. So there is no longer a
+    // "views === null" branch here: reaching this line means the effect is
+    // known, and an empty one means the command changes no item rather than
+    // that nobody could tell.
+    const effect = answer.boundary === true ? (answer.effect ?? []) : [];
+    const items = viewsFromEffect(effect);
 
     confirm.replaceChildren();
     // The residual, as the server sent it, in the words §6.3 chose. NOT a
@@ -438,7 +365,18 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
     commandBox.append(el('code', null, composeCommand(['mycontext', ...(answer.argv ?? [])])));
     confirm.append(commandBox);
 
-    if (views.length > 0) confirm.append(diffTable(ctx, views.map(fieldView)));
+    // One table per item the command touches, each headed by the item it is
+    // about. `supersede` reaches TWO items — it retires one and records the
+    // relation on both — and a single flat table of field rows would say which
+    // fields change without saying which item each belongs to. That is the
+    // absent-versus-zero standard applied to the confirm: a row naming a field
+    // and not its item is a true statement that reads as a complete one.
+    for (const item of items) {
+      const heading = el('p', 'effect-item');
+      heading.append(...ctx.t(`exec.item.${item.kind}`, { id: item.id }));
+      confirm.append(heading);
+      confirm.append(diffTable(ctx, item.views.map(fieldView)));
+    }
 
     const go = el('button', 'go');
     go.type = 'button';

@@ -55,7 +55,6 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { EXECUTION_RESIDUAL } from '../../src/ui/execute.ts';
-import { NAMED_ENTRY_POINTS } from '../../src/cli/commands/edit.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
 const PUBLIC = path.join(REPO, 'src', 'ui', 'public');
@@ -301,7 +300,6 @@ interface ActionsModule {
     argv: string[]; id: string | null; values?: Record<string, unknown>;
     ctx: unknown; copyBlocked?: boolean;
   }) => FakeElement;
-  COMMAND_EFFECTS: Map<string, (values: Record<string, unknown>) => { field: string; after: string[] }[]>;
   CONFIRM_ID_ARG: string;
 }
 
@@ -313,6 +311,16 @@ interface Call { method: 'GET' | 'POST'; path: string; body?: unknown }
 interface Wiring {
   /** What `GET /api/execute/confirm` answers. `null` makes it throw. */
   confirm?: Record<string, unknown> | null;
+  /**
+   * The sentence the confirm route refuses with, when it refuses.
+   *
+   * Since seq:5b the SERVER derives a boundary command's effect by running it
+   * against a copy, and a command whose effect cannot be derived is refused
+   * there — before a nonce is minted. So the client's §3.2 behaviour is now
+   * "the confirm GET failed and I showed why", which needs a real message
+   * rather than the catalogue's not-found one.
+   */
+  confirmError?: string;
   /** What `GET /api/item/:id` answers, by id. A missing id throws, as the route 404s. */
   items?: Record<string, Record<string, unknown>>;
   /** What `POST /api/execute` answers. */
@@ -336,6 +344,7 @@ async function wire(wiring: Wiring): Promise<{ ctx: unknown; calls: Call[] }> {
     api: async (route: string): Promise<unknown> => {
       calls.push({ method: 'GET', path: route });
       if (route.startsWith('/api/execute/confirm')) {
+        if (wiring.confirmError !== undefined) throw new Error(wiring.confirmError);
         if (wiring.confirm === null || wiring.confirm === undefined) {
           throw new Error('no command named "nope" is in the catalogue');
         }
@@ -369,6 +378,13 @@ const DOCTOR_CONFIRM = {
 const PIN_CONFIRM = {
   id: 'pin', argv: ['pin', 'RULE-x'], boundary: true,
   nonce: 'a'.repeat(32), residual: EXECUTION_RESIDUAL,
+  // **The effect is the SERVER'S now**, derived by running the command against
+  // a throwaway copy of the corpus (`src/ui/execute-effect.ts`). The browser
+  // used to compute this from a transcribed table plus its own read of
+  // `/api/item/:id`; it does neither, so the shape below is what it renders.
+  effect: [
+    { id: 'RULE-x', kind: 'changed', fields: [{ field: 'always', before: ['false'], after: ['true'] }] },
+  ],
 };
 
 /** One real item, as `GET /api/item/:id` serves it: `always` is a BOOLEAN there. */
@@ -595,16 +611,40 @@ test('the diff\'s BEFORE comes from the corpus, not from the command', async () 
   assert.equal(calls.length, 0, 'nothing is read until Execute is clicked');
   await click(findButton(root, EXEC));
 
-  assert.deepEqual(calls.map((c) => c.path).filter((p) => p.startsWith('/api/item/')),
-    ['/api/item/RULE-x'],
-    '"before" is what is in force in the corpus. Deriving it from the command instead would '
-    + 'make the confirm agree with itself rather than with the item');
+  // **The property is unchanged and the mechanism moved.** "Before" is still
+  // what is in force in the corpus — but it is now read by the SERVER, which
+  // dry-runs the command against a copy and reports both columns. So the
+  // browser must make NO item read of its own: a second read would be a second
+  // answer about the same item, and the two can disagree.
+  assert.deepEqual(calls.map((c) => c.path).filter((path) => path.startsWith('/api/item/')),
+    [],
+    'the browser no longer reads the item: "before" arrives with the confirm, derived from '
+    + 'the corpus the command will actually touch');
+  const diff = findOne(root, 'table.diff');
+  assert.match(textOf(diff), /false/,
+    'and it is RENDERED — the server said "before: [false]" and that is what the column shows');
 });
 
 test('an item the corpus does not have leaves the BEFORE column empty rather than inventing one', async () => {
   const { root } = await draw(
     { argv: ['mycontext', 'pin', 'RULE-gone'], id: 'pin', values: { id: 'RULE-gone' } },
-    { confirm: { ...PIN_CONFIRM, argv: ['pin', 'RULE-gone'] }, items: {} },
+    {
+      // `before: null` is the server saying the item does not exist — a fact it
+      // establishes by running the command, not a guess the browser makes from
+      // a failed read of its own. That distinction is the point of this test:
+      // "I could not fetch it" and "there is nothing there" are different, and
+      // only the second may empty the column.
+      confirm: {
+        ...PIN_CONFIRM,
+        argv: ['pin', 'RULE-gone'],
+        effect: [{
+          id: 'RULE-gone',
+          kind: 'created',
+          fields: [{ field: 'always', before: null, after: ['true'] }],
+        }],
+      },
+      items: {},
+    },
   );
   await click(findButton(root, EXEC));
   const diff = findOne(root, 'table.diff');
@@ -630,26 +670,26 @@ test('a command BELOW the boundary gets the plain confirm and NO diff', async ()
     'no item is read for a command that changes no item');
 });
 
-test('a boundary command whose fields CANNOT be named does not run — §3.2, in those words', async () => {
-  // `add` creates an item; `supersede` retires one through a path this control
-  // cannot state field by field. Spec §3.2: "A command whose effect cannot be
-  // shown that way does not get a weaker confirm — it does not run."
+test('a boundary command whose effect CANNOT be derived does not run — §3.2, in those words', async () => {
+  // Spec §3.2: "A command whose effect cannot be shown that way does not get a
+  // weaker confirm — it does not run."
+  //
+  // **Where that is enforced changed with seq:5b, and it moved EARLIER.** It
+  // used to be here: the browser looked the command up in a transcribed table,
+  // found nothing, and declined — after the GET had already minted a nonce. The
+  // server now derives the effect by running the command against a copy, and
+  // refuses the confirm itself when it cannot, WITHOUT minting. So the client's
+  // job is no longer to decide; it is to show the reason and run nothing.
   const { root, calls } = await draw(
-    { argv: ['mycontext', 'supersede', 'RULE-x', '--by', 'RULE-y'], id: 'supersede',
-      values: { id: 'RULE-x', by: 'RULE-y' } },
-    {
-      confirm: { id: 'supersede', argv: ['supersede', 'RULE-x', '--by', 'RULE-y'], boundary: true,
-        nonce: 'b'.repeat(32), residual: EXECUTION_RESIDUAL },
-      items: { 'RULE-x': RULE_X },
-    },
+    { argv: ['mycontext', 'refresh', 'RULE-x'], id: 'refresh', values: { id: 'RULE-x' } },
+    { confirmError: 'my_context: RULE-x is not a file snapshot and cannot be refreshed.' },
   );
   await click(findButton(root, EXEC));
 
   assert.equal(findOne(root, 'div.confirm').hidden, true, 'no weaker confirm is offered');
   assert.deepEqual(posts(calls), [], 'and nothing runs');
-  assert.match(textOf(root), /supersede/,
-    'the refusal names the command, so a reader knows which one is unclassified rather than '
-    + 'believing the button is broken');
+  assert.match(textOf(root), /cannot be refreshed/,
+    "the reader is given the CLI's own sentence about why, not a generic refusal composed here");
 });
 
 /* -------------------------------------------------------------------------- *
@@ -762,39 +802,42 @@ test('a confirm the server refuses is shown, and nothing runs', async () => {
  * The claims this module makes about the CLI, held against the CLI.
  * -------------------------------------------------------------------------- */
 
-test('the four named entry points\' declared effects agree with the CLI\'s own table', async () => {
-  const { COMMAND_EFFECTS } = await browserModule<ActionsModule>('lib', 'command-actions.js');
+test('the browser declares no command effects at all — the derivation belongs to the server', async () => {
+  // **RETIRED, WITH THE REASONING INVERTED — plan:execute seq:5b.**
+  //
+  // Two tests stood here. They held a browser-side `COMMAND_EFFECTS` table
+  // honest against the CLI's own `NAMED_ENTRY_POINTS`, entry by entry, because
+  // the browser could not import that table — there is no build step — so it
+  // was transcribed, and a transcription needs a gate.
+  //
+  // The table is gone. It could only ever describe an effect derivable from a
+  // command's ARGUMENTS, which is why it covered five commands and left nine
+  // refused, and why it could never have covered `repair` (re-stamps however
+  // many items are stale) or `supersede` (touches two items, recording the
+  // relation on both sides). `src/ui/execute-effect.ts` now derives the effect
+  // by running the command against a throwaway copy of the corpus.
+  //
+  // So the property those tests protected — "the browser's idea of what a
+  // command writes agrees with the CLI's" — is not weakened here. It is
+  // VACUOUS: the browser no longer has an idea. What replaces it is the
+  // condition that keeps it vacuous, because a fast-path table reintroduced
+  // beside the derivation would be a second spelling again, and the one that
+  // went stale would be the one guarding the confirm.
+  const mod = await browserModule<Record<string, unknown>>('lib', 'command-actions.js');
+  assert.equal(mod['COMMAND_EFFECTS'], undefined,
+    'the browser must not carry a table of what each command writes: it cannot derive one, so '
+    + 'any such table is a transcription, and this one guarded the confirm');
 
-  // `NAMED_ENTRY_POINTS` is the CLI's statement that `pin` IS
-  // `edit <id> --always=true`. The browser cannot import it — there is no build
-  // step — so it is transcribed, and this is what holds the transcription
-  // honest. A fifth entry point added there with no effect declared here fails
-  // right here, by name.
-  for (const entry of NAMED_ENTRY_POINTS) {
-    const effect = COMMAND_EFFECTS.get(entry.name);
-    assert.ok(effect !== undefined,
-      `${entry.name} is a named entry point onto edit and this control declares no effect for `
-      + 'it, so its confirm would have no fields to name and it would not run');
-    const [field, value] = entry.sets.replace(/^--/, '').split('=');
-    assert.deepEqual(effect({}), [{ field, after: [value] }],
-      `${entry.name} sets ${entry.sets}; the confirm must say exactly that and nothing else`);
-  }
-});
-
-test('`edit`\'s effect names every field its own arguments name, and no others', async () => {
-  const { COMMAND_EFFECTS } = await browserModule<ActionsModule>('lib', 'command-actions.js');
-  const effect = COMMAND_EFFECTS.get('edit');
-  assert.ok(effect !== undefined);
-
-  assert.deepEqual(effect({ id: 'RULE-x', title: 'New title', severity: 'hard' }),
-    [{ field: 'title', after: ['New title'] }, { field: 'severity', after: ['hard'] }],
-    'the id is not a field that changes, and a flag nobody filled changes nothing');
-  assert.deepEqual(effect({ id: 'RULE-x', yes: true }), [],
-    '--yes answers the gate; it is not a field');
-  // A list-valued field is normalised to the corpus\'s own spelling so that the
-  // before and after columns are comparable rather than merely adjacent.
-  assert.deepEqual(effect({ id: 'RULE-x', tags: 'money,billing' }),
-    [{ field: 'tags', after: ['billing, money'] }]);
+  // A DECLARATION, not a mention. The comment that replaced the table names it,
+  // deliberately, so the next reader learns what was removed and why — and a
+  // scan for the bare word would be defeated by that comment. This file's own
+  // header already records the lesson: "a scanner defeated by a file that names
+  // what the scanner looks for is the mistake `faint-usage.test.ts` records
+  // making on its own first run."
+  assert.doesNotMatch(SOURCE, /(?:const|let|var)\s+COMMAND_EFFECTS\b/,
+    'and no second spelling of it is DECLARED in the source, under that name');
+  assert.doesNotMatch(SOURCE, /new Map\(\[/,
+    'nor under another: a table of commands built here at all is the shape that went stale');
 });
 
 /* -------------------------------------------------------------------------- *
