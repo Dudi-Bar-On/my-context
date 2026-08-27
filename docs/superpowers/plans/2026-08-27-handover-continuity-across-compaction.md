@@ -515,12 +515,24 @@ git commit -m "hooks: post-compact records which handover it resolved, and stays
 - Consumes: `readTee`, `classifyContext`, `teePath` from `src/core/statusline-tee.ts`.
 - Produces:
   ```ts
+  export type UnmeasurableWhy = 'no-bridge' | 'no-sample' | 'unknown-shape';
   export type Occupancy =
-    | { state: 'unmeasurable'; why: 'no-bridge' | 'no-sample' | 'unknown-shape' }
+    | { state: 'unmeasurable'; why: UnmeasurableWhy }
     | { state: 'known'; percent: number; usedTokens: number; windowSize: number };
   export function readOccupancy(root: string, sessionId: string): Occupancy;
-  export function occupancyStandDownLine(why: Occupancy extends { why: infer W } ? W : never): string;
+  export function occupancyStandDownLine(why: UnmeasurableWhy): string;
   ```
+
+  The `unmeasurable` arm carries NO `percent` field at all, so a caller cannot
+  write `occupancy.percent ?? 0`. `STD-absent-vs-zero` enforced by the type
+  rather than by a comment.
+
+  **`classifyContext` has a FOURTH state the sketch below swallows.**
+  `not-yet-known` is returned when `current_usage` is `null`, which is exactly
+  what Claude Code sends between a compaction and the next API call. Mapping it
+  to `unknown-shape` would report "Claude Code's schema has moved" at the moment
+  a handover mechanism is most likely to be reading, over a payload that is
+  perfectly well formed and simply has nothing yet. It maps to `no-sample`.
 
 - [ ] **Step 1: Write the failing test**
 
