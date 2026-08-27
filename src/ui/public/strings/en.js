@@ -392,7 +392,6 @@ export const strings = {
   'cap.o1': 'invariant, normative',
   'cap.o2': 'standard, normative',
   'cap.nosim': 'These are the items whose {b:scope matches}. No similarity or ranking is shown, because no similarity metric exists in this product — and inventing one here is how a mockup starts lying.',
-  'cap.warn': 'This is a write. Run it in your own shell.',
   // Composer
   'pal.h': 'Composer',
   'pal.v': 'real pickers and a live glob tester',

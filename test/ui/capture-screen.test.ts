@@ -430,70 +430,63 @@ test('captureCommand is exactly what captureArgv composes to, refusals included'
 });
 
 /**
- * **THE ONE SCREEN THAT KEEPS COPY ALONE FOR A COMMAND THE CATALOGUE DOES
- * HAVE, and the decision is written down here so it cannot be quietly
- * reversed.**
+ * **THE DECISION THIS BLOCK RESERVED HAS BEEN TAKEN — 2026-08-27 — AND BOTH
+ * HALVES ARE INVERTED HERE RATHER THAN DELETED.**
  *
- * `add` IS in the catalogue, so on the rule every other screen follows this one
- * would pass `id: 'add'` and gain an Execute button. It does not, because of
- * what stands beside the command: `cap.warn` — *"This is a write. Run it in
- * your own shell."* — is a sentence of the DESIGN OF RECORD, drawn in the
- * mockup's own capture section, and it is false the moment a button beside it
- * runs the command. `palette.js` dropped its borrowed copy of that sentence for
- * exactly this reason on 2026-08-27 and recorded, in the same edit, that *"the
- * key stays in both tables for Capture, which still composes and copies only"*.
+ * What stood here recorded that Capture was the one screen keeping Copy alone
+ * for a command the catalogue DOES have. `add` is in the catalogue, so every
+ * other screen's rule would have it pass `id: 'add'` and gain Execute. What
+ * stopped it was `cap.warn` — *"This is a write. Run it in your own shell."* —
+ * a sentence of the DESIGN OF RECORD, drawn in the mockup's capture section and
+ * false the moment a button beside it runs the command. Choosing between them
+ * changed what the mockup draws, so it was the owner's call, and it was
+ * reported rather than taken.
  *
- * So the two cannot both stand, and choosing between them is a change to what
- * the design of record draws — an owner's call, not this task's. Reported
- * rather than taken.
+ * Two things then happened. `plan:execute seq:5b` deleted the browser's
+ * `COMMAND_EFFECTS` table and moved the derivation to the server, so the reason
+ * waiting was free — that an Execute button here could only mint a nonce and
+ * decline — stopped being true. And the owner ruled
+ * (`DEC-cap-warn-is-dropped-and-capture-gains-execute-the-other`): drop the
+ * sentence, offer Execute.
  *
- * **Nothing is lost by waiting.** `add` is on the approval boundary and
- * `COMMAND_EFFECTS` does not know what it writes, so §3.2 refuses it a weaker
- * confirm: an Execute button here would mint a nonce and then decline. Capture
- * would trade a true sentence for a control that cannot do what it offers.
+ * So the sentence is gone from the screen, from BOTH string tables, from the
+ * mockup, and from both stylesheets along with `p.cmdnote` — which had exactly
+ * one author on either side — and `p.cmdnote` has left `KNOWN_GAPS.capture` in
+ * `screen-parity.spec.ts`, shortening that ledger.
+ *
+ * The test below is what keeps the reversal loud in the other direction: a
+ * `cap.warn` restored beside a running button, or an `id` quietly dropped back
+ * to `null`, fails here with the reason attached.
  */
-test('Capture keeps cap.warn and offers Copy alone — the decision, pinned in both halves',
+test('Capture offers Execute and draws no shell warning — the decision, pinned in both halves',
   async () => {
     const defs = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'palette-defs.js')).href) as {
       PALETTE: { name: string; boundary?: boolean }[];
     };
-    const actions = await import(
-      pathToFileURL(path.join(PUBLIC, 'lib', 'command-actions.js')).href
-    ) as Record<string, unknown>;
+    const en = await import(pathToFileURL(path.join(PUBLIC, 'strings', 'en.js')).href) as {
+      strings: Record<string, string>;
+    };
+    const he = await import(pathToFileURL(path.join(PUBLIC, 'strings', 'he.js')).href) as {
+      strings: Record<string, string>;
+    };
 
-    // **THE TRIGGER THIS TEST WAS WRITTEN FOR HAS FIRED — 2026-08-27.**
-    //
-    // It used to read: "COMMAND_EFFECTS now knows what `add` writes, so an
-    // Execute button here would actually run. That is the day this decision has
-    // to be re-taken — with cap.warn." The condition arrived by a route the
-    // sentence did not anticipate. There is no longer a browser table to learn
-    // `add`: `plan:execute seq:5b` deleted it and the SERVER now derives every
-    // boundary command's effect by running it against a copy. Measured the same
-    // day, `add` derives cleanly — one created item, every field named.
-    //
-    // So the cost that made waiting free is gone, and the owner ruled on
-    // 2026-08-27: cap.warn is dropped and Capture gains Execute
-    // (DEC-cap-warn-is-dropped-and-capture-gains-execute-the-other). That is
-    // `plan:execute seq:6c`, and it is deliberately NOT folded into 5b, because
-    // it edits the MOCKUP — cap.warn is design of record, drawn in the mockup's
-    // own capture section — and a design-of-record edit riding along inside an
-    // unrelated change is how a drawn decision gets lost.
-    //
-    // What is pinned below is therefore the state until 6c lands, and the
-    // reason it is allowed to still be this state. When 6c lands, both halves
-    // invert together.
-    assert.equal(defs.PALETTE.find((def) => def.name === 'add')?.boundary, true);
-    assert.equal(actions['COMMAND_EFFECTS'], undefined,
-      'the browser table is gone (seq:5b), so the reason this screen could safely wait — that '
-      + 'an Execute button here could only refuse — no longer holds. seq:6c is owed.');
+    // The half that says the control can now do what it offers.
+    assert.equal(defs.PALETTE.find((def) => def.name === 'add')?.boundary, true,
+      'add still changes what governs this project, so it keeps the STRONGER confirm — Execute '
+      + 'here is not a downgrade of the gate, it is the gate being reachable');
+    assert.ok(CODE.includes("id: 'add'"),
+      'Capture must pass the catalogue id: without one, commandActions appends Copy and returns '
+      + 'before Execute is ever constructed, which is the state seq:6c existed to end');
 
     // The half that is the decision itself.
-    assert.ok(/commandActions\(\{[\s\S]{0,200}?id: null/.test(CODE),
-      'Capture now passes a catalogue id and offers Execute; cap.warn — "This is a write. Run it '
-      + 'in your own shell." — must not still be drawn beside a button that runs it');
-    assert.ok(CODE.includes("ctx.t('cap.warn')"),
-      'cap.warn is no longer drawn, and this screen still offers Copy alone; a sentence of the '
-      + 'design of record has been dropped without gaining the control that made it false');
+    assert.ok(!CODE.includes("cap.warn"),
+      '"This is a write. Run it in your own shell." must not be drawn beside a button that runs '
+      + 'it — that is the whole reason this screen waited');
+    assert.equal(en.strings['cap.warn'], undefined,
+      'and the key is retired, not merely unused: a string left in the table is a sentence the '
+      + 'next screen can pick up without re-taking this decision');
+    assert.equal(he.strings['cap.warn'], undefined,
+      'in BOTH tables — a key surviving in one is how the two come to disagree');
   });
 
 /**
@@ -535,8 +528,12 @@ test('every string key the Capture screen names is declared in both tables, with
   const used = keysNamed();
 
   // A scanner that finds nothing reads exactly like a clean file.
-  assert.ok(used.length >= 6,
-    `the scan found ${used.length} key(s) in capture.js; the screen names six. A collapse means `
+  // FIVE since seq:6c, not six: `cap.warn` was removed with the sentence it
+  // carried, so the screen genuinely names one fewer. The floor moves with the
+  // screen rather than being loosened to a range — a floor that drifts down on
+  // its own stops being a guard against the scan collapsing.
+  assert.ok(used.length >= 5,
+    `the scan found ${used.length} key(s) in capture.js; the screen names five. A collapse means `
     + 'the patterns stopped matching, not that the screen stopped naming keys.');
   assert.ok(!used.some((u) => u.key === 'btn.copy'),
     'the screen words its own Copy button again; Copy is lib/command-actions.js\' word now, and '
@@ -568,8 +565,13 @@ test('the two cap. keys this screen cannot place are exactly cap.o1 and cap.o2',
   const en = await table('en');
   const declared = Object.keys(en).filter((key) => key.startsWith('cap.')).sort();
   const named = new Set(keysNamed().map((u) => u.key));
-  assert.equal(declared.length, 8,
-    `the English table declares ${declared.length} cap. key(s); it has been 8 since this screen `
+  // SEVEN since 2026-08-27. It was 8 from the day this screen was written
+  // until `plan:execute seq:6c` retired `cap.warn`: Capture offers Execute, so
+  // "run it in your own shell" is false and the key is gone from BOTH tables
+  // rather than left declared and unused, which is how a retired sentence gets
+  // picked up again by the next screen.
+  assert.equal(declared.length, 7,
+    `the English table declares ${declared.length} cap. key(s); it has been 7 since seq:6c `
     + 'was written. A new one is a new sentence on this screen and needs placing.');
   // The other direction of the same fact. `strings-parity` proves the two
   // tables agree with the mockup's `data-t` set; it cannot prove the screen
@@ -621,8 +623,11 @@ test('the screen invents exactly one class the mockup\'s capture section does no
 
   const written: string[] = [];
   for (const m of CODE.matchAll(/\bel\('[a-z0-9]+',\s*'([^']*)'/g)) written.push(m[1]!);
-  assert.ok(written.length >= 8,
-    `the capture.js scan found ${written.length} class string(s); the screen writes at least eight`);
+  // SEVEN since seq:6c: `cmdnote` went with `cap.warn`, and it had exactly one
+  // author in this file and one rule in each stylesheet, so nothing else lost a
+  // class when it left.
+  assert.ok(written.length >= 7,
+    `the capture.js scan found ${written.length} class string(s); the screen writes at least seven`);
 
   // The ONE deliberate invention, named here so a second one cannot arrive
   // quietly. `.globin` is the Composer's glob input, and a scope pattern is the

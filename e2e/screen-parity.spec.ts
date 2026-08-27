@@ -464,11 +464,20 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // changed nothing, and an empty command box sat on screen. Fixing that made
   // the app HONEST and the ledger LONGER, which is the right direction.
   //
-  // `plan:walk seq:55` closes all four: drive Capture into its composed state
+  // `p.cmdnote` LEFT this list on 2026-08-27 and was not replaced: it is not a
+  // gap that got closed, it is an element that no longer exists on either side.
+  // `plan:execute seq:6c` gave Capture Execute, which made "This is a write.
+  // Run it in your own shell." false, so the sentence went from the mockup, both
+  // string tables, both stylesheets and the screen. A ledger that shrinks
+  // because a departure was RESOLVED is the direction this list is supposed to
+  // move; one that shrinks because somebody stopped checking is not, which is
+  // why the reason is written here rather than left to a diff.
+  //
+  // `plan:walk seq:55` closes the remaining three: drive Capture into its composed state
   // the way `button-contrast.spec.ts` drives the Composer. A walk that never
   // reaches a state cannot judge it.
   capture: [
-    'b', 'button', 'code', 'div.cmd', 'p.cmdnote', 'span.m.v', 'table', 'tbody',
+    'b', 'button', 'code', 'div.cmd', 'span.m.v', 'table', 'tbody',
     'td.m', 'td.small', 'tr',
   ],
   // This corpus holds no `procedure` item at all, so the whole live half — one

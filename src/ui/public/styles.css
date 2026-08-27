@@ -793,8 +793,11 @@ body>svg[aria-hidden="true"]{display:none}
    Found 2026-08-27 while measuring why `screen-parity` reported only `button`
    missing from capture and not `div.cmd` and `code`: the two that should have
    been hidden were visible, and the one genuinely absent was the button.
-   `.cmdnote` hides correctly only because it sets no `display` of its own —
-   which is luck, not design.
+   The warning paragraph beside it hid correctly only because it set no
+   `display` of its own — which was luck, not design. It is gone since
+   `plan:execute seq:6c`: Capture offers Execute now, so "run it in your own
+   shell" stopped being true and the sentence, its class and this rule went
+   with it.
 
    A NEW selector, not an edit to `.cmd`: `styles-parity` compares the listed
    rule bodies byte for byte in both directions. */
@@ -807,7 +810,6 @@ body>svg[aria-hidden="true"]{display:none}
   padding-block:3px;padding-inline:var(--sp-2);font-size:var(--fs-0);cursor:pointer;flex:none}
 .cmd button:hover{border-color:var(--gold);color:var(--gold)}
 .cmdstate{display:flex;gap:6px;align-items:center;font-size:var(--fs-0);margin-block-start:5px}
-.cmdnote{font-size:var(--fs-0);color:var(--warn);margin-block-start:5px}
 
 /* ── Execute: the one Copy-and-Execute control, and the confirm ────────────
    `lib/command-actions.js`, spec §3.2/§3.3/§6.1/§6.3. New selectors only —

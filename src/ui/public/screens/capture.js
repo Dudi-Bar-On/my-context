@@ -344,9 +344,7 @@ export async function render(root, ctx) {
   const cmd = el('div', 'cmd');
   const code = el('code');
   cmd.append(code);
-  const warn = el('p', 'cmdnote');
-  warn.append(...ctx.t('cap.warn'));
-  card.append(head, table, spaced(nosim), cmd, warn);
+  card.append(head, table, spaced(nosim), cmd);
 
   /**
    * The shared Copy control, rebuilt on every recomposition.
@@ -362,35 +360,37 @@ export async function render(root, ctx) {
   let actions = null;
 
   /**
-   * **`id: null` — Copy alone, and Capture is the ONE screen where that is a
-   * decision rather than a consequence of the catalogue.**
+   * **Capture composes `add`, and it now OFFERS to run it — the decision, taken.**
    *
-   * `add` is in the catalogue, so the rule the other five screens follow would
-   * have this one pass `'add'` and gain Execute. What stands in the way is
-   * `cap.warn` — *"This is a write. Run it in your own shell."* — which is a
-   * sentence of the DESIGN OF RECORD, drawn in the mockup's own capture
-   * section, and which is false the moment a button beside it runs the command.
-   * `palette.js` dropped its borrowed copy of that sentence for exactly this
-   * reason and recorded in the same edit that the key stays for Capture,
-   * "which still composes and copies only".
+   * This screen was the one place `id: null` was a choice rather than a
+   * consequence of the catalogue. `add` has always been in the catalogue; what
+   * stood in the way was `cap.warn` — *"This is a write. Run it in your own
+   * shell."* — a sentence of the DESIGN OF RECORD, drawn in the mockup's own
+   * capture section, which is false the moment a button beside it runs the
+   * command. Both could not stand, and choosing between them changed what the
+   * mockup draws, so it was the owner's call and was reported rather than taken.
    *
-   * The two cannot both stand, and choosing between them changes what the
-   * design of record draws — the owner's call, not this task's. Reported rather
-   * than taken.
+   * **Ruled 2026-08-27** (`DEC-cap-warn-is-dropped-and-capture-gains-execute-the-other`):
+   * drop the sentence, offer Execute. So `cap.warn` is gone from this screen,
+   * from both string tables, from the mockup and from the two stylesheets —
+   * `p.cmdnote` had exactly one author on either side — and it leaves
+   * `KNOWN_GAPS.capture` in `screen-parity.spec.ts`, which makes that ledger
+   * SHORTER.
    *
-   * **And waiting costs nothing today.** `add` is on the approval boundary and
-   * `COMMAND_EFFECTS` does not know what it writes, so §3.2 refuses it a weaker
-   * confirm: an Execute button here would mint a nonce and then decline. The
-   * trade on offer is a true sentence for a control that cannot do what it
-   * offers. `test/ui/capture-screen.test.ts` pins both halves, so the day
-   * `COMMAND_EFFECTS` learns `add` this decision is re-taken rather than
-   * inherited.
+   * **What made waiting free until now is also gone.** `add` is on the approval
+   * boundary, and the browser's old `COMMAND_EFFECTS` table could not say what
+   * it writes, so an Execute button here would have minted a nonce and then
+   * declined — a true sentence traded for a control that could not act.
+   * `plan:execute seq:5b` moved the derivation to the server, which runs the
+   * command against a throwaway copy. Measured that day: `add` derives in about
+   * 1.3 s as one created item with every field named, with and without
+   * `--yes` alike, so this screen's existing values need nothing added to them.
    */
-  const drawActions = (argv) => {
+  const drawActions = (argv, values) => {
     if (actions !== null) actions.remove();
-    actions = argv === null ? null : commandActions({ argv, id: null, values: {}, ctx });
-    // `after`, so the control lands between the command and `cap.warn` — the
-    // order the mockup draws, with the sentence still last.
+    actions = argv === null ? null : commandActions({ argv, id: 'add', values, ctx });
+    // `after`, so the control lands directly below the command it acts on —
+    // the order the mockup draws, now with nothing after it.
     if (actions !== null) cmd.after(actions);
   };
 
@@ -438,8 +438,7 @@ export async function render(root, ctx) {
     // control is REMOVED rather than hidden, because it is rebuilt anyway.
     code.textContent = argv === null ? '' : composeCommand(argv);
     cmd.hidden = argv === null;
-    warn.hidden = argv === null;
-    drawActions(argv);
+    drawActions(argv, values);
   }
 
   // Every answer carries the number of the request that asked for it. Two

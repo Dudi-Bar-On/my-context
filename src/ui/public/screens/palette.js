@@ -614,8 +614,11 @@ export async function render(root, ctx) {
       // so that boundary-crossing commands execute behind the STRONGER confirm
       // rather than being refused, and a sentence telling the reader the
       // opposite of what the control beside it does is worse than no sentence.
-      // The key stays in both tables for Capture, which still composes and
-      // copies only. Reported for the mockup.
+      // The key was kept in both tables for Capture, which composed and copied
+      // only. That ended on 2026-08-27: `plan:execute seq:6c` gave Capture
+      // Execute too, so the sentence is false on the last screen that drew it
+      // and `cap.warn` is gone from both tables, from the mockup and from both
+      // stylesheets along with `p.cmdnote`, its only element.
       return;
     }
 
