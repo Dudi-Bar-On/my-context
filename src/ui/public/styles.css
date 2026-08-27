@@ -730,6 +730,46 @@ body>svg[aria-hidden="true"]{display:none}
 .cmdstate{display:flex;gap:6px;align-items:center;font-size:var(--fs-0);margin-block-start:5px}
 .cmdnote{font-size:var(--fs-0);color:var(--warn);margin-block-start:5px}
 
+/* ── Execute: the one Copy-and-Execute control, and the confirm ────────────
+   `lib/command-actions.js`, spec §3.2/§3.3/§6.1/§6.3. New selectors only —
+   `styles-parity` holds every selector in its SCREEN_SELECTORS list
+   byte-identical against the mockup, and the design of record has no Execute
+   yet, so nothing here edits a listed rule.
+
+   **THE DEFECT THIS BLOCK EXISTS NOT TO REPEAT, stated for the next person
+   adding a button anywhere in this codebase:** the only global button rule is
+   `button{font:inherit;color:inherit}` (~636). It takes the app's LIGHT `color`
+   and sets NO background, so a classless `<button>` outside a container that
+   styles buttons renders as light text on the UA's default button face — near
+   white on Windows Chrome, and unreadable. `.cmd button` (~727) is why Copy
+   looks right; the Composer's own read-action `run` button was appended to a
+   classless `<div>` and was invisible, reported by the owner on 2026-08-27.
+   A shared control that seven screens drop into seven different containers
+   cannot inherit its background from wherever it lands, so `.cmdactions button`
+   sets its own. The global rule is the mockup's and is NOT changed here: it is
+   a design-of-record change and `styles-parity` compares that rule body byte
+   for byte. */
+.cmdactions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);
+  margin-block-start:var(--sp-2)}
+.cmdactions button{border:1px solid var(--edge-3);background:var(--panel);color:var(--ink);
+  border-radius:var(--r-md);padding-block:3px;padding-inline:var(--sp-2);
+  font-size:var(--fs-0);cursor:pointer;flex:none}
+.cmdactions button:hover:enabled{border-color:var(--gold);color:var(--gold)}
+.cmdactions button:disabled{opacity:.5;cursor:not-allowed}
+/* The confirm takes its own full row under the two buttons rather than sitting
+   beside them: it carries a residual sentence and, on the boundary, a table. */
+.confirm{flex-basis:100%;border:1px solid var(--gold);border-radius:var(--r-md);
+  background:var(--panel);padding-block:var(--sp-2);padding-inline:var(--sp-3)}
+/* The residual is the one sentence §6.3 requires a reader to MEET rather than
+   look up, so it is drawn in the warning colour and above everything else. */
+.residual{font-size:var(--fs-0);color:var(--warn);margin:0 0 var(--sp-2)}
+table.diff{margin-block:var(--sp-2)}
+.diff caption{text-align:start;font-size:var(--fs-0);color:var(--dim);
+  padding-block-end:var(--sp-1)}
+.execresult{flex-basis:100%;font-size:var(--fs-0)}
+.exitcode{font-family:var(--mono);color:var(--ok)}
+.exitcode.bad{color:var(--crit)}
+
 /* budget bar */
 .bar{block-size:9px;border-radius:5px;background:var(--sink);overflow:hidden;display:flex;
   border:1px solid var(--edge)}

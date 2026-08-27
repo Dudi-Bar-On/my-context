@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Workspace } from '../../core/workspace.ts';
 import { refuseUnknownFlag } from './format.ts';
 import { flag, hasFlag, type Emit } from './registry.ts';
@@ -137,6 +138,287 @@ function isOurs(value: unknown): boolean {
     && (value as { command?: unknown }).command === OUR_COMMAND;
 }
 
+// --- Chaining, not replacing (2026-08-27) -----------------------------------
+//
+// The install replaced a `statusLine` and the user lost the one he had — on his
+// machine another plugin's script. So the bridge now DELEGATES: it tees the
+// payload (that is the whole reason this command exists), then runs the command
+// this install displaced with the SAME stdin and prints its stdout as the line.
+//
+// Everything the delegation needs comes off the ONE saved copy `uninstall`
+// restores from. There is deliberately no second store: a "which command do we
+// chain to" file beside a "which command do we restore" file is two answers to
+// one question, and the day they disagree the user gets someone else's status
+// line back.
+//
+// The saved value is a COMMAND STRING out of a settings file, and the bridge
+// runs argv arrays with no shell. Everything below is about that gap, and it is
+// closed by REFUSING rather than by guessing — see `parseCommandString`.
+
+export type ParsedCommand =
+  | { ok: true; argv: string[] }
+  | { ok: false; reason: string };
+
+/**
+ * Characters whose meaning is a SHELL'S, not a filename's, in a BARE run.
+ *
+ * `'` groups differently in `cmd.exe` and `sh` and so is never accepted, `` ` ``
+ * and `$` substitute, `|&;` chain, `<>` redirect, `()` and `{}` group, `*?[]`
+ * glob, `%` is cmd.exe's variable syntax and `!` is history expansion. Any of
+ * them means the run was written for an interpreter this command does not have
+ * and will not emulate, so it is not argv and must not be pretended into one.
+ *
+ * `"` is absent from this set and handled separately — see `QUOTED_RUN_ONLY`.
+ * A bare run may not CONTAIN one either (`a"b` is a joint, not a token), which
+ * the tokenizer enforces by position rather than by this test.
+ */
+const SHELL_METACHARACTER = /['`$|&;<>(){}[\]*?!%\r\n]/;
+
+/**
+ * What may never appear inside a double-quoted run.
+ *
+ * The claim this rests on, and it is checkable rather than a feel for what
+ * shells do: **a double-quoted run is literal in POSIX `sh` and in `cmd.exe`
+ * alike, provided its interior holds none of these and no backslash sits
+ * immediately before `$`, a backtick, `"`, `\` or the end of the run.**
+ * `sh` still expands `$` and `` ` `` inside double quotes and still honours a
+ * backslash before one of those four; `cmd.exe` still expands `%VAR%` inside
+ * them. Strip those cases out and every remaining character — spaces, `*`,
+ * `|`, `;`, `~`, `(` — is exactly itself in both, which is the whole reason
+ * quoting exists.
+ *
+ * `%` is in this set although the rule as first written did not name it,
+ * because leaving it out would have made the claim above FALSE on Windows —
+ * the platform this feature was written for. Refusing more than the rule
+ * requires is always available; claiming a literal reading that a real shell
+ * disagrees with is not.
+ */
+const QUOTED_RUN_ONLY = /[$`%\r\n]/;
+
+/**
+ * A backslash that reads as an ESCAPE rather than as a path separator: one
+ * before whitespace, a quote, another backslash, or the end of the run.
+ *
+ * This is where a literal reading is chosen over refusal, and it is chosen for
+ * a reason. On win32 `\` is the path separator, so refusing it outright would
+ * refuse `node C:\Users\me\.claude\gsd-statusline.js` — the exact command that
+ * prompted this feature. A backslash before an ordinary character is therefore
+ * taken literally, which is what every Windows shell does with it and what
+ * `execFile` needs. The shapes above are the ones where a POSIX shell would
+ * have CHANGED the run — joining two words, dropping the character, ending a
+ * quote early — and a literal reading there would run something the user never
+ * wrote, so those refuse.
+ *
+ * Applied to a quoted run's interior as well as to a bare one: it is ONE rule,
+ * not two, which is what lets the quoted case be a widening of the literal set
+ * rather than the beginning of an interpreter.
+ *
+ * **The residual, and it is real, and it now covers quoted runs too.** On a
+ * POSIX machine `a\b` most likely was an escape, and we pass `a\b` where bash
+ * would have passed `ab`; inside quotes, `"a\b"` is literal in `sh` and we
+ * agree, but `"a\b"` in a string a Windows tool wrote is a path and we agree
+ * there too — the two readings coincide, and where they would not, the escape
+ * shapes above refuse. What makes the whole literal reading acceptable is not
+ * that it is always right: it is that `install` PRINTS the argv it would
+ * delegate to, so the reading is SHOWN to the person who wrote the string and
+ * consented to with `--yes`, never inferred behind them. That preview is the
+ * safeguard this rule rests on; remove it and the widening is no longer
+ * justified.
+ */
+const BACKSLASH_AS_ESCAPE = /\\(?=[\s"'\\]|$)/;
+
+/**
+ * A settings-file command string, as argv — or a refusal saying why not.
+ *
+ * **Why this refuses rather than tries harder.** The alternative to a parser
+ * is `shell: true`, and that is not a shortcut, it is a different program: it
+ * would take a string out of a JSON file the user (or another installer)
+ * writes and hand it to `cmd.exe`/`sh` with everything that implies, on a code
+ * path that runs on every assistant message. The alternative to REFUSING is a
+ * fuller parser — quote handling, escapes, word splitting — which is exactly
+ * "guess at shell semantics", and the guess is wrong on the machine whose
+ * shell we guessed wrong about. A refusal costs the user the chaining and
+ * SAYS SO at install time; a wrong guess runs a command nobody wrote.
+ */
+export function parseCommandString(command: string): ParsedCommand {
+  if (command.trim() === '') return { ok: false, reason: 'it is empty' };
+
+  const argv: string[] = [];
+  let i = 0;
+  while (i < command.length) {
+    const char = command[i] as string;
+    if (char === ' ' || char === '\t') {
+      i++;
+      continue;
+    }
+
+    if (char === '"') {
+      // A QUOTED RUN. Whitespace inside it does not split — that is the entire
+      // reason quoting exists, and refusing it was costing the common case: a
+      // hand-written or tool-generated `settings.json` quotes paths whether or
+      // not they need it.
+      const end = command.indexOf('"', i + 1);
+      if (end === -1) {
+        return { ok: false, reason: 'it opens a double quote that is never closed' };
+      }
+      const inner = command.slice(i + 1, end);
+      const meta = QUOTED_RUN_ONLY.exec(inner);
+      if (meta !== null) {
+        return {
+          ok: false,
+          reason:
+            `a quoted part of it contains ${JSON.stringify(meta[0])}, which a shell still ` +
+            'interprets INSIDE double quotes',
+        };
+      }
+      if (BACKSLASH_AS_ESCAPE.test(inner)) {
+        return {
+          ok: false,
+          reason:
+            'a quoted part of it ends in a backslash, or holds one before a quote — which ' +
+            'reads as an escape, and then the run this parser found is not the run the shell ' +
+            'would have found',
+        };
+      }
+      const next = command[end + 1];
+      // A quoted run must BE a whole argument. `--opt="a b"` and `"a b"c`
+      // concatenate in a shell, and concatenation is interpretation: the rule
+      // widened here is "a fully-quoted run is literal", and this is where
+      // that rule stops.
+      if (next !== undefined && next !== ' ' && next !== '\t') {
+        return {
+          ok: false,
+          reason:
+            'a quoted part of it is joined to more text, which only a shell knows how to ' +
+            'concatenate — quote the whole argument or none of it',
+        };
+      }
+      argv.push(inner);
+      i = end + 1;
+      continue;
+    }
+
+    // A BARE RUN: up to the next whitespace, and nothing a shell would touch.
+    let end = i;
+    while (end < command.length && command[end] !== ' ' && command[end] !== '\t') end++;
+    const token = command.slice(i, end);
+    const meta = SHELL_METACHARACTER.exec(token);
+    if (meta !== null) {
+      return {
+        ok: false,
+        reason:
+          `it contains ${JSON.stringify(meta[0])}, which only a shell can interpret — this ` +
+          'command runs argv arrays, never a shell string',
+      };
+    }
+    if (token.includes('"')) {
+      return {
+        ok: false,
+        reason:
+          'it opens a double quote in the middle of a word, which only a shell knows how to ' +
+          'join — quote the whole argument or none of it',
+      };
+    }
+    if (BACKSLASH_AS_ESCAPE.test(token)) {
+      return {
+        ok: false,
+        reason:
+          'it contains a backslash that reads as an escape rather than as a path separator, ' +
+          'and the two mean different things to different shells',
+      };
+    }
+    // Checked at the START of a run only: `~` and `#` are expansion and comment
+    // there, and `C:\PROGRA~1\…` — a real Windows short path — has a tilde in
+    // the middle of one. Not checked inside quotes at all, where both are
+    // literal in `sh` and in `cmd.exe`.
+    if (token.startsWith('~')) {
+      return { ok: false, reason: 'it begins a word with "~", which is a shell expansion' };
+    }
+    if (token.startsWith('#')) {
+      return { ok: false, reason: 'it contains a "#" comment' };
+    }
+    argv.push(token);
+    i = end;
+  }
+
+  // Reachable from `""` alone, which trims to non-empty and tokenizes to one
+  // empty argument — a command name that names nothing.
+  if (argv.length === 0 || argv[0] === '') {
+    return { ok: false, reason: 'it names no command to run' };
+  }
+  return { ok: true, argv };
+}
+
+/** The entry file this project's own CLI is. See `looksLikeOurBridge`. */
+const OUR_CLI_ENTRY = fileURLToPath(new URL('../index.ts', import.meta.url));
+
+function stem(token: string): string {
+  return path.basename(token).replace(/\.[^.]+$/, '').toLowerCase();
+}
+
+/**
+ * Whether an argv is THIS bridge, under any spelling it can be written in.
+ *
+ * `isOurs` answers a narrower question — "is this the exact object we wrote" —
+ * and it has to stay narrow, because it is what `uninstall` refuses on. This
+ * one exists for the failure `isOurs` cannot see: a `statusLine` reading
+ * `node …/src/cli/index.ts statusline` is the bridge, is not the string we
+ * install, and chaining to it would make the bridge delegate to the bridge on
+ * every assistant message until something runs out. So `install` refuses it,
+ * and `delegateFor` refuses it a second time at run time — the saved copy may
+ * predate this check, and an infinite delegation is not a thing to be one
+ * check away from.
+ *
+ * Deliberately a SHAPE match rather than only a path comparison: the user may
+ * have `mycontext` on PATH from a different checkout, and that checkout's
+ * bridge would loop just as happily as this one's.
+ */
+export function looksLikeOurBridge(argv: string[]): boolean {
+  if (!argv.includes('statusline')) return false;
+  return argv.some((token) => {
+    if (stem(token) === 'mycontext') return true;
+    const posix = token.replace(/\\/g, '/').toLowerCase();
+    if (posix === OUR_CLI_ENTRY.replace(/\\/g, '/').toLowerCase()) return true;
+    // Any checkout's entry file, not just this one's: see above.
+    return /(^|\/)src\/cli\/index\.(ts|js|mjs|cjs)$/.test(posix);
+  });
+}
+
+/** The `command` string of a `statusLine` value, when it has one. */
+function commandStringOf(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const command = (value as { command?: unknown }).command;
+  return typeof command === 'string' ? command : null;
+}
+
+/** What the bridge will run after teeing, and the string it came from. */
+export interface Delegate {
+  argv: string[];
+  /** The settings-file string this argv was parsed out of, for disclosure. */
+  command: string;
+}
+
+/**
+ * The command `install` displaced, ready to run — or `null` when there is
+ * nothing safe to run.
+ *
+ * `null` covers every "do not chain" case in one answer, because the caller's
+ * response to all of them is identical and correct: print our own line. No
+ * backup, a backup for a settings file with no `statusLine` in it, a value
+ * that is not a command entry, a string this command will not parse, and the
+ * bridge itself all arrive here as `null`.
+ */
+export function delegateFor(ws: Workspace): Delegate | null {
+  const saved = readBackup(ws);
+  if (saved === null) return null;
+  const command = commandStringOf(saved.previous);
+  if (command === null) return null;
+  const parsed = parseCommandString(command);
+  if (!parsed.ok) return null;
+  if (looksLikeOurBridge(parsed.argv)) return null;
+  return { argv: parsed.argv, command };
+}
+
 type ReadResult =
   | { ok: true; text: string | null; value: Record<string, unknown> }
   | { ok: false };
@@ -234,6 +516,28 @@ export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): 
     return 0;
   }
 
+  // Ours under a DIFFERENT spelling — `node …/src/cli/index.ts statusline`, or
+  // a `mycontext` from another checkout. `isOurs` above cannot see it, and
+  // chaining to it would make the bridge delegate to a bridge that delegates
+  // to a bridge, once per assistant message. Refused rather than installed
+  // without chaining: the user asked for the bridge and already has it, and
+  // silently replacing one spelling of it with another would also destroy the
+  // only record of what came before THAT install.
+  const currentCommand = commandStringOf(current);
+  const currentParsed = currentCommand === null ? null : parseCommandString(currentCommand);
+  if (currentParsed !== null && currentParsed.ok && looksLikeOurBridge(currentParsed.argv)) {
+    out(`Settings file:      ${file}`);
+    out(`Current statusLine: ${describe(current)}`);
+    out('');
+    out(
+      'my_context: that statusLine is already this bridge, written another way. Installing over ' +
+      'it would chain the bridge to ITSELF — every assistant message would run a status line ' +
+      'that runs a status line. Nothing was written. Remove or rewrite that entry yourself if ' +
+      'you meant to change how the bridge is invoked.',
+    );
+    return 1;
+  }
+
   // One saved copy exists, and it belongs to a different settings file that
   // still carries our entry. Installing here would overwrite it, and that
   // file's real previous value would be gone for good.
@@ -252,9 +556,36 @@ export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): 
   out(`Settings file:      ${file}`);
   out(`Current statusLine: ${describe(current)}`);
   out(`Would install:      ${JSON.stringify(INSTALLED)}`);
+  // The chaining is DISCLOSED as argv, not as the string it came from. The
+  // string is what the user wrote; the argv is what will actually be executed,
+  // and the two can differ — a backslash read literally is the case that
+  // prompted this line. Showing the string only would be showing the input to
+  // a decision instead of the decision.
+  out(
+    `Would delegate to:  ${
+      currentParsed === null ? '(nothing — there is no status line to chain to)'
+      : currentParsed.ok ? JSON.stringify(currentParsed.argv)
+      : `(nothing — ${currentParsed.reason})`
+    }`,
+  );
+
+  // Said BEFORE consent, and said again on the way out below: this is the one
+  // place where the install still costs the user the status line he had.
+  const unchainable = currentParsed !== null && !currentParsed.ok
+    ? 'That statusLine cannot be chained: ' + currentParsed.reason + '. This command runs a ' +
+      'command as an argv array with no shell, so a string that needs one is not something it ' +
+      'will run — guessing at what your shell would have done with it is how an installer ends ' +
+      'up executing something nobody wrote. Installing anyway will REPLACE that status line ' +
+      'rather than delegate to it; it is still saved, and `mycontext statusline uninstall --yes` ' +
+      'still puts it back.'
+    : null;
 
   if (!hasFlag(args, 'yes')) {
     out('');
+    if (unchainable !== null) {
+      out(unchainable);
+      out('');
+    }
     out(
       'Nothing was written. Re-run with --yes to replace the setting shown above. The replaced ' +
       'value is saved — the whole file, not just the key — and `mycontext statusline uninstall ' +
@@ -280,12 +611,24 @@ export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): 
   writeText(file, installedText);
 
   out('');
+  if (unchainable !== null) {
+    out(unchainable);
+    out('');
+  }
   out(
     'Installed. Claude Code will run `mycontext statusline` on every assistant message; the web ' +
     'UI can now show the real context number for a session — as of its last response, and only ' +
     'while this bridge stays installed. `mycontext statusline uninstall --yes` restores the ' +
     'setting shown above.',
   );
+  if (currentParsed !== null && currentParsed.ok) {
+    out(
+      'Your previous status line is not gone: the bridge tees the sample first and then runs ' +
+      `${JSON.stringify(currentParsed.argv)} with the same input, and prints ITS output as the ` +
+      'line. If that command stops working the bridge falls back to its own line rather than ' +
+      'leaving you without one.',
+    );
+  }
   return 0;
 }
 

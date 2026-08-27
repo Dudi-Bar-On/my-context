@@ -363,6 +363,20 @@ export const strings = {
   'pal.glob': 'Glob tester',
   'pal.pattern': 'Scope pattern',
   'pal.globn': 'Every file in the repository, with the matches {b:lit as you type}. A count on its own — "{matches} files" — is a count you cannot inspect, and a count you cannot inspect is a count you cannot trust: the empty result and the nearly-empty result look identical until you can see which files. Matching goes through the same {m:globToRegExp} cache the selector uses, over {m:listRepoFiles}.',
+  // Execute — the one Copy-and-Execute control (lib/command-actions.js).
+  //
+  // The RESIDUAL is deliberately not a key here. `src/ui/execute.ts` spells it
+  // once and the confirm renders what the server sent, because a sentence
+  // duplicated into the browser is a sentence that gets reworded on one side
+  // only — and this is the one sentence a security boundary is made of.
+  'exec.btn': 'Execute',
+  'exec.h': 'Run this command?',
+  'exec.go': 'Run it',
+  'exec.cancel': 'Cancel',
+  'exec.changes': 'What changes — in force, then proposed',
+  'exec.exit': 'exit {code}',
+  'exec.noexit': 'the command did not exit under observation',
+  'exec.noeffect': '{b:This one is not offered here.} {mv:command} changes what governs this project, and this confirm cannot yet name the fields it would change — so it does not run. Copy it and run it in your own shell.',
   // Configure
   'cfg.h': 'Configure',
   'cfg.v': 'the strongest "a terminal cannot do this"',

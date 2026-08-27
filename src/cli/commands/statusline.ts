@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { filterSelect, openProjection, syncProjection } from '../../core/audit-db.ts';
 import { isMainEntry } from '../../core/paths.ts';
@@ -6,7 +7,7 @@ import { resolveWorkspace, type Workspace } from '../../core/workspace.ts';
 import { readStdin } from '../../hooks/io.ts';
 import { refuseUnknownFlag } from './format.ts';
 import { registerCommand, type Emit } from './registry.ts';
-import { cmdStatuslineInstall, cmdStatuslineUninstall } from './statusline-install.ts';
+import { cmdStatuslineInstall, cmdStatuslineUninstall, delegateFor } from './statusline-install.ts';
 
 // --- The status line bridge (spec §4b) --------------------------------------
 //
@@ -177,6 +178,110 @@ export function statusLineText(
   return parts.join(' | ');
 }
 
+// --- Delegating to the status line this bridge displaced --------------------
+//
+// `install` chains rather than replaces (statusline-install.ts): the command it
+// displaced is saved, and after the tee this file runs it with the SAME payload
+// on stdin and prints its stdout as the line. The user keeps the status line he
+// had; mycontext still gets its sample.
+//
+// The two rules the code below is shaped by:
+//
+//   1. THE TEE IS FIRST AND UNCONDITIONAL. It is the reason this command
+//      exists; the delegation is a courtesy to somebody else's plugin. Nothing
+//      the delegate does — hanging, dying, being missing — can cost us the
+//      sample, because the sample is already on disk before it is asked.
+//   2. A FAILED DELEGATE IS NOT A FAILED STATUS LINE. Every ending falls back
+//      to our own line and exit 0, for the same reason the rest of this file
+//      diagnoses in the line rather than throwing: a status line that crashes
+//      is a status line the user removes, and then the measurement stops for
+//      good.
+
+/**
+ * How long the displaced command may take before it is killed and we print our
+ * own line instead: a second and a half.
+ *
+ * The register is `src/ui/execute.ts` · `RUN_TIMEOUT_MS`, and the number is the
+ * opposite one because the trade is the opposite. There, a minute: a person is
+ * watching a `rebuild` they asked for, and a bound that killed real work would
+ * teach them to re-run it, which is worse than waiting. Here nobody is waiting
+ * on purpose — Claude Code runs this per assistant message, and again on
+ * `INSTALLED.refreshInterval` — and the work being killed is one line of text
+ * that is already stale by the time it is late. What the bound costs when it
+ * expires is one refresh of somebody else's line; what having no bound costs is
+ * a status line that hangs on every message, which is the failure this whole
+ * command must not be.
+ *
+ * Weighed against something tighter, 200 ms say: the delegate this was written
+ * for is `node gsd-statusline.js`, and a Node interpreter alone takes well over
+ * 100 ms to start on a cold, busy machine. A bound that tight would kill a
+ * perfectly good status line most of the time and look like a bug in theirs.
+ */
+export const DELEGATE_TIMEOUT_MS = 1_500;
+
+/**
+ * How much the delegate may print before we stop reading: 1 MiB.
+ *
+ * It is producing a status LINE. A megabyte is four orders of magnitude above
+ * anything that could be one, and the bound exists only so a delegate that
+ * decides to stream cannot grow this process's memory on a per-message path.
+ */
+const MAX_DELEGATE_OUTPUT = 1024 * 1024;
+
+/**
+ * Runs the displaced command and returns the line it printed, or `null`.
+ *
+ * `null` for EVERY way this can fail to produce a line — missing binary,
+ * non-zero exit, timeout, signal, empty or blank output — because the caller's
+ * answer to all of them is the same and is the only safe one: print our own
+ * line. A partial line from a command that then exited 3 is not trusted
+ * either; a status line assembled from a failed run is worse than one that
+ * says something true about mycontext.
+ *
+ * `spawnSync`, with an argv ARRAY and no `shell` option of any kind — the rule
+ * `src/ui/execute.ts` · `execFileRunner` states: there is no string here that a
+ * command could be appended to, so quoting and metacharacters are not problems
+ * to get right, they are problems that do not arise. The string the argv came
+ * from was parsed by `parseCommandString`, which REFUSES anything a shell would
+ * have had to interpret.
+ *
+ * Synchronous because `CommandFn` is: this command is one blocking read of
+ * stdin and one line out, and an async seam here would be a change to every
+ * caller for no behaviour.
+ */
+export function runDelegate(
+  argv: string[],
+  input: string,
+  timeoutMs: number = DELEGATE_TIMEOUT_MS,
+): string | null {
+  const file = argv[0];
+  if (file === undefined) return null;
+  try {
+    const result = spawnSync(file, argv.slice(1), {
+      input,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+      maxBuffer: MAX_DELEGATE_OUTPUT,
+      // No console window flashes up on win32 once per assistant message.
+      windowsHide: true,
+    });
+    // `error` is set for a child that never ran (ENOENT) and, on some
+    // platforms, for one killed by the timeout; `status` is null for a killed
+    // child and non-zero for a refusal. All of them are "no line".
+    if (result.error !== undefined || result.status !== 0) return null;
+    const text = typeof result.stdout === 'string' ? result.stdout : '';
+    if (text.trim() === '') return null;
+    // One trailing newline removed, and only one: `Emit` supplies the line
+    // ending, and a delegate that prints a multi-line status line keeps it.
+    return text.replace(/\r?\n$/, '');
+  } catch {
+    // `spawnSync` throws only for a malformed invocation, which would be this
+    // command's own bug — but a throw here would blank the user's status line
+    // and there is a correct thing to do instead, which is our own line.
+    return null;
+  }
+}
+
 const USAGE =
   'usage: mycontext statusline                    (reads Claude Code\'s payload on stdin)\n' +
   '       mycontext statusline install   [--settings <path>] [--yes]\n' +
@@ -293,6 +398,9 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
   let teeNote: string | null = null;
 
   if (projectRoot !== null) {
+    // FIRST, and before the delegate is so much as looked up. Rule 1 above:
+    // the sample is what this command is for, and it is not allowed to depend
+    // on another plugin's script behaving.
     const tee = writeTee(projectRoot, payload);
     if (!tee.written) teeNote = `tee not written (${tee.reason ?? 'no reason given'})`;
 
@@ -311,7 +419,28 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
     }
   }
 
-  out(statusLineText(sample, model, myctx, myctxNote, teeNote));
+  // Computed before the delegate runs, not after: this is the fallback, and a
+  // fallback assembled only once something has already gone wrong is a code
+  // path that first runs on the user's machine.
+  const ownLine = statusLineText(sample, model, myctx, myctxNote, teeNote);
+
+  // The courtesy, last. `delegateFor` answers `null` for every reason not to
+  // chain — no saved copy, nothing displaced, a command string this project
+  // will not parse into argv, or the bridge itself — so there is one branch
+  // here rather than five.
+  const delegate = delegateFor(ws);
+  if (delegate !== null) {
+    // `raw`, the bytes Claude Code sent, rather than a re-serialization of the
+    // parsed payload: the delegate is entitled to the same input we got,
+    // including any field this build does not know about.
+    const theirs = runDelegate(delegate.argv, raw);
+    if (theirs !== null) {
+      out(theirs);
+      return 0;
+    }
+  }
+
+  out(ownLine);
   return 0;
 }
 

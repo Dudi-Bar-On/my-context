@@ -52,7 +52,7 @@
  *      BOTH tabs: the filter row must be able to ask the unfiltered question —
  *      it is this screen's landing state — and a derived vocabulary can be
  *      empty, which would leave a select with nothing in it at all.
- *   4. **`renderQ` cycles three sample states on click.** Run runs the query;
+ *   4. **`renderQ` cycles three sample states on click.** The three selects run
  *      the three states are reached by the data, and all three are drawn.
  *
  * ── FIVE THINGS THE DESIGN ASKS FOR THAT NO ENDPOINT SERVES ───────────────
@@ -433,10 +433,24 @@ export async function render(root, ctx) {
   const isNotOption = option(IS_NOT, IS_NOT);
   opSelect.append(option(IS, IS), isNotOption);
   const valueSelect = document.createElement('select');
-  const runButton = styled(el('button', 'icon'), { 'inline-size': 'auto' });
-  runButton.type = 'button';
-  runButton.append(...ctx.t('ask.run'));
-  row.append(fieldLabel, fieldSelect, opSelect, valueSelect, runButton);
+  // **NO RUN BUTTON, and that is an owner ruling rather than an omission.**
+  //
+  // The mockup draws one here. It was built, and it was INDISTINGUISHABLE
+  // FROM BROKEN: the three selects below each call `runFilter()` on change
+  // and Run called the same function, so by the time it could be clicked the
+  // answer was already on screen and clicking changed nothing visible. The
+  // owner reported it in those words on 2026-08-27 — *"the run is unusable
+  // because you calculate at least the sql whenever it changes so run does
+  // nothing"* — and ruled it out rather than giving it an acknowledgement.
+  //
+  // A live screen does not need a trigger, and a control that re-runs a query
+  // nobody changed is one a reader has to be TOLD is working. See
+  // DEC-the-ask-screen-is-live-so-it-draws-no-run-button.
+  //
+  // `ask.run` STAYS in both string tables: the composer uses it for its own
+  // read action, and `strings-parity` holds every sentence the mockup declares
+  // to exist in the tables regardless of which screen draws it.
+  row.append(fieldLabel, fieldSelect, opSelect, valueSelect);
   card.append(row);
 
   // A property of the CORPUS query and of nothing else, so it hangs on that
@@ -776,7 +790,6 @@ export async function render(root, ctx) {
   fieldSelect.onchange = () => { paintValues(); void runFilter(); };
   opSelect.onchange = () => { void runFilter(); };
   valueSelect.onchange = () => { void runFilter(); };
-  runButton.onclick = () => { void runFilter(); };
 
   // The two vocabulary reads that are not the answer. Their refusals are NOT
   // drawn: this screen reports the refusal of the query it ran, and a second

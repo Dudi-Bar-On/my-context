@@ -119,6 +119,12 @@
  * gives it one; on that the two agree.
  */
 import { composeCommand } from '/lib/command.js';
+// The ONE Copy-and-Execute control (plan Task 6). This screen is the first of
+// seven to adopt it, and it no longer builds a copy button of its own: nine
+// hand-rolled copy sites were measured across `screens/` on 2026-08-27, and
+// adding Execute to each of them would have been nine chances to get the
+// confirm wrong — the confirm being the security boundary (§6.3).
+import { commandActions } from '/lib/command-actions.js';
 import { PALETTE, commandFor } from '/lib/palette-defs.js';
 import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
 
@@ -588,31 +594,44 @@ export async function render(root, ctx) {
 
     const command = composeCommand(argv);
     const cmd = el('div', 'cmd');
-    const code = el('code', null, command);
-    const copy = el('button');
-    copy.type = 'button';
-    copy.append(...ctx.t('btn.copy'));
-    // The refusal is the button's own state, not a dialog after the fact: a
-    // blocked command must not be one click from a clipboard, and `pal.block`
-    // above says why in the same breath.
-    copy.disabled = blocked;
-    copy.addEventListener('click', () => navigator.clipboard.writeText(command));
-    cmd.append(code, copy);
+    cmd.append(el('code', null, command));
     cmdBox.append(cmd);
 
+    // **Copy and Execute, from the one control.** The copy refusal travels with
+    // it as `copyBlocked` rather than as a disabled button this screen builds:
+    // the measurement (`copyBlocked(argv)`, above) is the Composer's, and the
+    // rendering of it is every screen's. Execute is deliberately NOT blocked by
+    // the same measurement — a paste reaches a SHELL, where `$(…)` substitutes,
+    // while an execution reaches `execFile` with an argv array, where it is an
+    // ordinary literal.
+    cmdBox.append(commandActions({ argv, id: def.name, values, ctx, copyBlocked: blocked }));
+
     if (def.kind === 'write') {
-      // The note the owner asked for, in the mockup's own words on the one
-      // other screen that composes a write (`cap.warn`, under Capture's
-      // composed `mycontext add`). There is no `pal.` key for it, and this is
-      // the same sentence about the same rule.
-      const note = el('p', 'cmdnote');
-      note.append(...ctx.t('cap.warn'));
-      cmdBox.append(note);
+      // **`cap.warn` is no longer drawn here, and that is §6.1 rather than an
+      // omission.** It says *"This is a write. Run it in your own shell."* —
+      // which was true of every write this UI composed until 2026-08-26, and is
+      // now false beside a button that runs it. The owner's ruling widened §3.2
+      // so that boundary-crossing commands execute behind the STRONGER confirm
+      // rather than being refused, and a sentence telling the reader the
+      // opposite of what the control beside it does is worse than no sentence.
+      // The key stays in both tables for Capture, which still composes and
+      // copies only. Reported for the mockup.
       return;
     }
 
     const target = readTarget(def, values);
     if (target === null) return;
+    // **The read action is a THIRD sibling of Copy and Execute, and it is drawn
+    // in the same container for a reason the owner reported on 2026-08-27:**
+    // this button was appended to `cmdBox`, which is a classless `<div>`, and
+    // the only global button rule is `button{font:inherit;color:inherit}` — it
+    // takes the app's LIGHT colour and sets NO background, so the button fell
+    // back to the UA's own near-white button face and rendered as light text on
+    // white. It was invisible, and only for READS, because `run` exists only
+    // where `readTarget` is non-null. `.cmdactions` carries its own background,
+    // which is also what makes the shared control safe to drop into seven
+    // different containers.
+    const runRow = el('div', 'cmdactions');
     const run = el('button');
     run.type = 'button';
     run.append(...ctx.t('ask.run'));
@@ -657,7 +676,8 @@ export async function render(root, ctx) {
         results.append(capped);
       }
     });
-    cmdBox.append(run, results);
+    runRow.append(run);
+    cmdBox.append(runRow, results);
   }
 
   function build() {

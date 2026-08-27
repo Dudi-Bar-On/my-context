@@ -666,6 +666,26 @@ git commit -m "ui: one Copy-and-Execute control, adopted by the seven screens th
 
 ---
 
+### Task 7: EVERY executable screen, driven from the UI
+
+> **WIDENED BY THE OWNER, 2026-08-27:** *"after completing execute implementation, i
+> want you to add a playwright test that go over every executable screen you handled
+> and test it from the ui."* So this is not one screen's confirm — it is the composer
+> plus the six of Task 6b, each driven the way a person drives it.
+>
+> **Why it has to be the UI.** `execute-route.test.ts` already proves the server: the
+> ordering, the nonce, the refusals, the audit pair. What no server test can prove is
+> that **the string a person READ is the argv that RAN** — that is the screen, the
+> confirm and the endpoint agreeing, and it only exists in a browser.
+>
+> **THE HAZARD, because it will otherwise land somewhere else as a failure belonging
+> to nobody.** These tests RUN COMMANDS. The e2e suite drives one shared
+> `.demo-corpus`, `e2e/app.ts` refuses to start without it, and workers run in
+> parallel — so a spec that executes `add` or `pin` mutates the fixture underneath
+> every other spec. That is the exact shape that cost two red runs on 2026-08-26 and
+> one unexplained one on 2026-08-27. A spec that executes a WRITE gets its own
+> workspace, or the suite restores around it. Decide which, and say why in the file.
+
 ### Task 7: The confirm in a real browser
 
 **Files:**
