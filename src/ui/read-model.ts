@@ -447,6 +447,180 @@ export function apiSimulate(ws: Workspace, url: URL): JsonResult {
   });
 }
 
+/**
+ * The three `fitToBudget`-based tiers `apiSimulateSweep` can sweep. `index`
+ * is out of scope: it admits index LINES (`IndexSummary.normative`), not
+ * items, so `itemCost` and the eviction model below do not apply to it — the
+ * same gap `apiSimulate`'s own docstring already names ("per-line index
+ * costs are exposed by no endpoint in this plan — recorded as a gap, not
+ * designed").
+ */
+const SWEEP_TIERS = ['pinned', 'restored', 'jit'] as const;
+type SweepTier = (typeof SWEEP_TIERS)[number];
+
+/**
+ * A defensive bound on how many candidates one sweep will price.
+ * `plan:walk seq:7` asks for "a bound on the rung count" — this is the input
+ * half of it. The threshold set below is O(candidates²) (see
+ * `apiSimulateSweep`'s own docstring), so bounding the candidate count bounds
+ * the total number of `select()` calls one request can cost, whatever size a
+ * tier's real corpus produces. Sixty candidates is well past anything a real
+ * tier here has ever produced; a corpus that exceeds it is truncated and
+ * says so (`INV-nothing-is-dropped-silently`) rather than either refused or
+ * silently cut.
+ */
+const SWEEP_MAX_CANDIDATES = 60;
+
+/**
+ * A second, independent bound — on the RESPONSE rather than the input. Even a
+ * bounded candidate list sweeps O(candidates²) threshold budgets, and this
+ * stops the loop from emitting more rungs than any real ladder here has ever
+ * needed, whatever the threshold set turns out to contain.
+ */
+const SWEEP_RUNG_CAP = 400;
+
+interface SweepRung {
+  /** The budget this rung is admitted at, in `estimateTokens` units. */
+  threshold: number;
+  /** How many items this tier actually admits at `threshold`. */
+  count: number;
+  /**
+   * The ids admitted at the PREVIOUS kept rung and not admitted here — empty
+   * on the first rung, since there is no previous one to have lost anything.
+   * Non-empty is `sim.snap`'s "red rung": *"more budget, fewer items"*.
+   */
+  evicted: string[];
+}
+
+/**
+ * `GET /api/simulate/sweep` — the admission staircase and threshold ladder's
+ * server half (`#stair`, `#ladder`; `sim.stair`, `sim.stairn`, `sim.thresh`,
+ * `sim.snap`), and `plan:walk seq:7`'s endpoint.
+ *
+ * **One request, one `store.all()`, then the real selector re-run at every
+ * cumulative candidate cost against that one array** — never a projection,
+ * and never a second implementation of `fitToBudget`, which is not exported
+ * from `core/select.ts` and could not be called from here even by mistake
+ * (`INV-select-is-pure`). The budgets it tests are the mockup's own
+ * `sweep()` (`docs/design/web-ui-mockup.html`, function `sweep`, ~4056),
+ * ported rather than re-derived: for every candidate `i` in the selector's
+ * own priority order, every running suffix total starting at `i`. That set
+ * is a superset of every budget at which `fitToBudget`'s admitted COUNT can
+ * change for this candidate list — first-fit is not monotone in membership
+ * (`sim.evict`), so a bare prefix-sum sweep in priority order would silently
+ * skip the low-budget rungs where one small, low-priority item is briefly
+ * admitted alone and then evicted the moment a bigger, higher-priority item
+ * can afford to enter. The mockup's own demo thresholds (4,520 → 5 items,
+ * 5,820 → 3 items) are this exact function's output against its demo data,
+ * which is the reason it is ported rather than re-derived from the prose
+ * alone.
+ *
+ * The candidate LIST itself is learned the same way, rather than by
+ * reimplementing `byPriority`: `fitToBudget` prices and considers every
+ * candidate on every call regardless of budget, so a budget of 0 spills every
+ * one of them, in the exact order it would have tried to admit them at any
+ * budget (`itemCost`'s minimum is 1, from the block separator alone, so
+ * nothing is ever admitted for free at budget 0).
+ *
+ * Each threshold is priced with a REAL `select()` call — the same function
+ * `/api/select` answers with — so nothing between two rungs is invented; it
+ * is measured, and then not repeated: two adjacent thresholds that price to
+ * the same admitted COUNT collapse into one rung, exactly as the mockup's own
+ * ladder-building does (`renderStair`'s `if(last&&last.n===p.n) continue`).
+ */
+export function apiSimulateSweep(ws: Workspace, url: URL): JsonResult {
+  const parsed = parseSelectQuery(ws, url, ['tier']);
+  if ('error' in parsed) return badRequest(parsed.error);
+  const { ctx } = parsed.parsed;
+
+  const tierRaw = url.searchParams.get('tier');
+  if (tierRaw === null || !(SWEEP_TIERS as readonly string[]).includes(tierRaw)) {
+    return badRequest(
+      `tier must be one of ${SWEEP_TIERS.join(', ')} (got ${JSON.stringify(tierRaw)}). index ` +
+      'admits LINES, not items, and no endpoint in this plan exposes per-line index costs.',
+    );
+  }
+  const tier = tierRaw as SweepTier;
+
+  const runs = tiersRun(ctx);
+  if (!runs.includes(tier)) {
+    // Absent, not empty — the same distinction `countFor` in `simulate.js`
+    // already draws for the fits table. A tier this event never reaches has
+    // no candidates to sweep, and an empty rung list says exactly that.
+    return {
+      status: 200,
+      body: { tier, tiersRun: runs, candidateCount: 0, truncated: false, rungs: [] },
+    };
+  }
+
+  return withStores(ws, (store) => {
+    // The ONE `store.all()` this request makes. Every `select()` call below
+    // reads this same array; nothing here re-queries the store.
+    const items = store.all();
+    const byId = new Map(items.map((i) => [i.id, i]));
+
+    const zeroBudgets: Budgets = { ...ws.config.budgets, [tier]: 0 };
+    const zeroConfig: Config = { ...ws.config, budgets: zeroBudgets };
+    const zeroSelection = select(items, ctx, zeroConfig);
+    const candidateIds = zeroSelection.spilled
+      .filter((s) => s.tier === tier)
+      .map((s) => s.id);
+
+    const truncatedInput = candidateIds.length > SWEEP_MAX_CANDIDATES;
+    const boundedIds = truncatedInput ? candidateIds.slice(0, SWEEP_MAX_CANDIDATES) : candidateIds;
+    const candidates = boundedIds.map((id) => {
+      const item = byId.get(id);
+      if (item === undefined) {
+        // Structurally impossible: `id` came from `zeroSelection.spilled`,
+        // which `select` built from this same `items` array. Thrown rather
+        // than skipped for the reason `apiSimulate`'s own `costs` throws.
+        throw new Error(
+          `mycontext ui: /api/simulate/sweep priced a candidate naming ${id}, which is not in ` +
+          'the item set the selection was computed from. The two disagree; nothing is guessed.',
+        );
+      }
+      return { id, cost: itemCost(item) };
+    });
+
+    // Every cumulative candidate cost — the mockup's own `sweep()`, ported.
+    const pts = new Set<number>([0]);
+    for (let i = 0; i < candidates.length; i++) {
+      let acc = 0;
+      for (let j = i; j < candidates.length; j++) {
+        acc += candidates[j].cost;
+        pts.add(acc);
+      }
+    }
+    const thresholds = [...pts].sort((a, b) => a - b);
+
+    const rungs: SweepRung[] = [];
+    let last: { count: number; ids: Set<string> } | null = null;
+    let truncatedOutput = false;
+    for (const budget of thresholds) {
+      if (rungs.length >= SWEEP_RUNG_CAP) { truncatedOutput = true; break; }
+      const budgets: Budgets = { ...ws.config.budgets, [tier]: budget };
+      const config: Config = { ...ws.config, budgets };
+      const selection = select(items, ctx, config);
+      const admittedIds = new Set(
+        selection.full.filter((e) => e.tier === tier).map((e) => e.item.id),
+      );
+      const count = admittedIds.size;
+      if (last !== null && last.count === count) continue;
+      const evicted = last === null ? [] : [...last.ids].filter((id) => !admittedIds.has(id));
+      rungs.push({ threshold: budget, count, evicted });
+      last = { count, ids: admittedIds };
+    }
+
+    return {
+      status: 200,
+      body: {
+        tier, tiersRun: runs, candidateCount: candidates.length,
+        truncated: truncatedInput || truncatedOutput, rungs,
+      },
+    };
+  });
+}
+
 // --- The session selector, and what a context window actually received ------
 
 /**

@@ -194,7 +194,7 @@ export const strings = {
   'sim.stair': 'Admission staircase — items admitted, per budget',
   'aria.tierBudget': 'Tier budget in tokens',
   'aria.tierpick': 'Tier',
-  'sim.stairn': 'The sweep is {b:exact, not sampled} — the selector is re-run at every cumulative candidate cost, so nothing is invented between two rungs. The per-item costs it needs are {m:itemCost}, which is private in {m:select.ts} today: one export, and this chart is live.',
+  'sim.stairn': 'The sweep is {b:exact, not sampled} — the selector is re-run at every cumulative candidate cost, so nothing is invented between two rungs. The per-item costs it needs are {m:itemCost}, exported from {m:select.ts} for exactly this chart.',
   'sim.thresh': 'Thresholds',
   'sim.snap': 'Every value between two rungs behaves identically, so the slider snaps to rungs — dragging lands on meaning rather than on {offrung}. A red rung is an {b:eviction}: more budget, fewer items.',
   'sim.tier': 'Tier',

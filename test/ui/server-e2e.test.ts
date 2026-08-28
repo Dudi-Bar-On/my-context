@@ -497,6 +497,11 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   '/api/select?event=tool&path=src/index.ts&cold=1',
   '/api/render?event=session-start&cold=1',
   '/api/simulate?event=session-start&cold=1&pinned=100',
+  // `plan:walk seq:7`'s sweep. `tier=pinned` runs at `session-start`, so this
+  // probe walks the real threshold loop; `tier=jit` does not run there, so
+  // the second probe exercises the absent-tier 200 rather than a 400.
+  '/api/simulate/sweep?event=session-start&cold=1&tier=pinned',
+  '/api/simulate/sweep?event=session-start&cold=1&tier=jit',
   '/api/sessions',
   '/api/status',
   '/api/doctor',

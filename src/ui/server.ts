@@ -81,7 +81,7 @@ import { readGitInfo } from './git-info.ts';
 import { IDLE_MS, IdleMonitor } from './idle.ts';
 import {
   apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem, apiItems,
-  apiRender, apiSelect, apiSessions, apiSimulate, apiStatus,
+  apiRender, apiSelect, apiSessions, apiSimulate, apiSimulateSweep, apiStatus,
 } from './read-model.ts';
 import { registerConfigRoutes } from './read-model-config.ts';
 import { registerWorkRoutes } from './read-model-work.ts';
@@ -212,6 +212,7 @@ export function registerReadRoutes(): void {
   registerRoute('GET', '/api/select', json(apiSelect));
   registerRoute('GET', '/api/render', json(apiRender));
   registerRoute('GET', '/api/simulate', json(apiSimulate));
+  registerRoute('GET', '/api/simulate/sweep', json(apiSimulateSweep));
   registerRoute('GET', '/api/sessions', json(apiSessions));
   registerRoute('GET', '/api/status', json(apiStatus));
   registerRoute('GET', '/api/doctor', json(apiDoctor));

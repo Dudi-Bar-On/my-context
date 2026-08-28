@@ -263,18 +263,45 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'span.covn', 'span.nm', 'table', 'tbody', 'td', 'th', 'thead', 'tr',
   ],
   gaps: ['button.icon', 'span.m', 'span.v', 'td', 'td.m', 'td.small'],
-  // The spill-ratio card landed, closing seven. The staircase, the ladder and
-  // the readout did not, and the file says why at length: both graphics need a
-  // SWEEP no endpoint answers, and the readout's words are unkeyed literals in
-  // the mockup's own script. Held open by plan:ui1 seq:17c.
+  // The spill-ratio card landed, closing seven. `plan:walk seq:7` then landed
+  // the sweep endpoint and, with it, the staircase and the ladder — nine more
+  // close below. `div.readout` and its own `div.small` are the one thing that
+  // task deliberately left refused, for a SEPARATE reason unrelated to the
+  // sweep: the readout's words are unkeyed literals in the mockup's own
+  // script, under no `data-t`, so `strings-parity` fails a key the design of
+  // record does not declare. `b`, `span.chip.warn` and the ratio's own six
+  // entries below are untouched by that task and stay for the reasons already
+  // recorded against them.
   simulate: [
-    'b', 'circle', 'div', 'div.at', 'div.card.pane.sim', 'div.ev',
-    'div.ladder.plate', 'div.readout', 'div.small', 'line', 'path',
-    'span.chip.warn', 'span.v', 'svg', 'text',
-    // Reported for the first time on 2026-08-23, when COLLECT_KINDS stopped
-    // reading `el.className` on SVG elements. These were always missing; the
-    // gate simply could not name them.
-    'line.axis', 'line.defline', 'line.nowline', 'path.step', 'svg.chart', 'text.mono',
+    'b', 'circle', 'div.ev', 'div.readout', 'div.small',
+    'span.chip.warn', 'text',
+    // **Structural, not missing.** `renderStair` (mockup ~4066-4095) never
+    // draws a BARE `<svg>`, `<line>` or `<path>` — every one it builds
+    // carries a class (`chart`; `axis`, `defline` or `nowline`; `step`),
+    // checked exhaustively against the script rather than assumed. A correct
+    // build copies that rather than inventing a classless instance the
+    // design of record does not draw, so these three can never legitimately
+    // close AS BARE TAGS — `svg.chart`, `line.axis`/`line.defline`/
+    // `line.nowline` and `path.step` below are the real completion of what
+    // these three were standing in for, from back when COLLECT_KINDS could
+    // not read a class off an SVG element at all. Left listed rather than
+    // deleted: DATA_DEPENDENT suppresses the staleness check for this
+    // screen, so leaving them costs nothing, and deleting them on an
+    // assumption this task could not run a browser to confirm risks the
+    // OTHER direction — a real gap reported as unexpected.
+    'svg', 'line', 'path',
+    // `circle` and bare `text` are the eviction mark and its label
+    // (`renderStair`, mockup ~4086-4090) — the one part of the sweep that
+    // needs more than "this tier has a candidate": it needs the swept
+    // candidate set to contain a genuine eviction (`sim.evict`: "a larger
+    // budget admits a large item early, which can then crowd out two small
+    // ones"). `.demo-corpus`'s `jit` tier is engineered to spill at its
+    // small configured budget, but whether the SWEEP specifically crosses an
+    // eviction rung for its actual item sizes is not something this task
+    // could confirm without the browser run it was told not to start.
+    // Recorded in this task's report as the one open item a browser check
+    // should settle.
+    //
     // The spill-ratio bars, which the code DOES draw — measured and
     // photographed against a synced corpus. They read /api/watch/ratio, which
     // 503s the moment the audit projection falls behind, and the suite stales

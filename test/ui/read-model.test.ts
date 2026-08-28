@@ -67,9 +67,9 @@ import { commandList, helpTopic, HELP_TOPICS } from '../../src/help/index.ts';
 import { stageIn } from '../helpers/revisions.ts';
 import {
   apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem, apiItems, apiRender,
-  apiSelect, apiSessions, apiSimulate, apiStatus, coverageFiles, COVERAGE_FILE_LIMIT,
-  DECAY_WINDOW_DEFAULT, GRAPH_NODE_CAP, parseSelectQuery, SESSIONS_LIMIT, UI_HELP_TOPICS,
-  withStores,
+  apiSelect, apiSessions, apiSimulate, apiSimulateSweep, apiStatus, coverageFiles,
+  COVERAGE_FILE_LIMIT, DECAY_WINDOW_DEFAULT, GRAPH_NODE_CAP, parseSelectQuery, SESSIONS_LIMIT,
+  UI_HELP_TOPICS, withStores,
   type CoverageBody, type DecayBody, type DoctorBody, type GraphBody, type HelpBody,
   type InjectedBody, type ItemBody, type ItemsBody, type SessionsBody, type StatusBody,
 } from '../../src/ui/read-model.ts';
@@ -511,6 +511,155 @@ test('tiersRun is select()\'s own dispatch, not a copy of it', () => {
   // per-tool-call cost.
   assert.deepEqual(tiersRun({ event: 'tool' }), []);
   assert.deepEqual(tiersRun({ event: 'tool', path: '' }), []);
+});
+
+// --- 3b · the sweep (`plan:walk seq:7`) -------------------------------------
+
+test('/api/simulate/sweep refuses an unknown or missing tier', () => {
+  const f = fixture();
+  try {
+    for (const qs of [
+      'event=session-start&cold=1',
+      'event=session-start&cold=1&tier=index',
+      'event=session-start&cold=1&tier=nope',
+    ]) {
+      const result = apiSimulateSweep(f.ws, url('simulate/sweep', qs));
+      assert.equal(result.status, 400, qs);
+    }
+  } finally { f.done(); }
+});
+
+test('/api/simulate/sweep answers absent-not-empty for a tier this event never reaches', () => {
+  const f = fixture();
+  try {
+    // `jit` never runs on `session-start` — see `tiersRun`.
+    const result = apiSimulateSweep(f.ws, url('simulate/sweep', 'event=session-start&cold=1&tier=jit'));
+    assert.equal(result.status, 200);
+    const body = result.body as {
+      tier: string; tiersRun: string[]; candidateCount: number; truncated: boolean; rungs: unknown[];
+    };
+    assert.deepEqual(body.rungs, []);
+    assert.equal(body.candidateCount, 0);
+    assert.equal(body.truncated, false);
+    assert.ok(!body.tiersRun.includes('jit'));
+  } finally { f.done(); }
+});
+
+test('/api/simulate/sweep prices the one pinned candidate the fixture has', () => {
+  const f = fixture();
+  try {
+    const result = apiSimulateSweep(f.ws, url('simulate/sweep', 'event=session-start&cold=1&tier=pinned'));
+    assert.equal(result.status, 200);
+    const body = result.body as {
+      tier: string; tiersRun: string[]; candidateCount: number; truncated: boolean;
+      rungs: { threshold: number; count: number; evicted: string[] }[];
+    };
+    assert.equal(body.tier, 'pinned');
+    assert.ok(body.tiersRun.includes('pinned'));
+    assert.equal(body.candidateCount, 1, 'the fixture pins exactly RULE-pin-me');
+    assert.equal(body.truncated, false);
+    // One candidate produces two rungs: budget 0 (nothing fits — always
+    // kept, since there is no previous rung to compare it to) and the
+    // candidate's own cost (it admits, and nowhere lower). Nothing is ever
+    // evicted with only one candidate in play.
+    assert.equal(body.rungs.length, 2);
+    assert.deepEqual(body.rungs[0], { threshold: 0, count: 0, evicted: [] });
+    assert.equal(body.rungs[1].count, 1);
+    assert.deepEqual(body.rungs[1].evicted, []);
+    assert.ok(body.rungs[1].threshold > 0);
+
+    // The rung's own threshold really is the admission point: the selector,
+    // re-run directly, agrees it admits nothing one token below it and
+    // everything at or above it — proving the endpoint calls the real
+    // selector rather than inventing the number.
+    const below = select(
+      f.items, { event: 'session-start' },
+      { ...f.ws.config, budgets: { ...f.ws.config.budgets, pinned: body.rungs[1].threshold - 1 } },
+    );
+    assert.equal(below.full.filter((e) => e.tier === 'pinned').length, 0);
+    const at = select(
+      f.items, { event: 'session-start' },
+      { ...f.ws.config, budgets: { ...f.ws.config.budgets, pinned: body.rungs[1].threshold } },
+    );
+    assert.equal(at.full.filter((e) => e.tier === 'pinned').length, 1);
+  } finally { f.done(); }
+});
+
+/**
+ * A dedicated corpus for the property no single-candidate fixture can show:
+ * *"more budget, fewer items"* (`sim.evict`). Three pinned items, ids sorting
+ * `aaa` < `bbb` < `ccc` (`byPriority`'s tie-break, `core/select.ts`), so the
+ * selector always tries them in that order — big first. At a budget that
+ * fits the two small items together but not the big one, both admit. Raise
+ * the budget to the big item's own cost and it evicts BOTH — the exact
+ * reversal the mockup's own demo thresholds show (4,520 → 5 items, 5,820 → 3
+ * items).
+ */
+function evictionFixture(): Fixture {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-ui-rm-sweep-'));
+  const run = (args: string[]): void => {
+    assert.equal(runCli(args, dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
+  };
+  run(['init']);
+  run(['add', 'rule', 'AAA big pinned item', '--body', 'Big body text. '.repeat(400), '--yes']);
+  run(['edit', 'RULE-aaa-big-pinned-item', '--always=true', '--yes']);
+  run(['add', 'rule', 'BBB medium pinned item', '--body', 'Medium body text. '.repeat(15), '--yes']);
+  run(['edit', 'RULE-bbb-medium-pinned-item', '--always=true', '--yes']);
+  run(['add', 'rule', 'CCC small pinned item', '--body', 'Tiny body.', '--yes']);
+  run(['edit', 'RULE-ccc-small-pinned-item', '--always=true', '--yes']);
+  const ws = resolveWorkspace(dir);
+  const store = Store.openReadOnlyChecked(ws.dbPath);
+  const items = store.all();
+  store.close();
+  return { dir, ws, items, done: () => removeTree(dir) };
+}
+
+test('/api/simulate/sweep finds the eviction rung and names the evicted ids', () => {
+  const f = evictionFixture();
+  try {
+    const result = apiSimulateSweep(f.ws, url('simulate/sweep', 'event=session-start&cold=1&tier=pinned'));
+    assert.equal(result.status, 200);
+    const body = result.body as {
+      candidateCount: number; truncated: boolean;
+      rungs: { threshold: number; count: number; evicted: string[] }[];
+    };
+    assert.equal(body.candidateCount, 3);
+    assert.equal(body.truncated, false);
+
+    // Thresholds strictly increase — the ladder is sorted, never re-sorted by
+    // the client.
+    for (let i = 1; i < body.rungs.length; i++) {
+      assert.ok(body.rungs[i].threshold > body.rungs[i - 1].threshold, 'thresholds are sorted');
+    }
+
+    const fall = body.rungs.find((r, i) => i > 0 && r.count < body.rungs[i - 1].count);
+    assert.ok(fall, `expected a rung where the count falls; got ${JSON.stringify(body.rungs)}`);
+    assert.ok(fall!.evicted.length >= 1, 'the falling rung names what it evicted');
+    assert.ok(
+      fall!.evicted.includes('RULE-bbb-medium-pinned-item')
+        || fall!.evicted.includes('RULE-ccc-small-pinned-item'),
+      'the big item evicts the small ones it crowds out',
+    );
+
+    // Every rung's count is independently confirmed against a direct
+    // `select()` call at that exact threshold — the sweep never invents a
+    // count between two of its own probes.
+    for (const rung of body.rungs) {
+      const check = select(
+        f.items, { event: 'session-start' },
+        { ...f.ws.config, budgets: { ...f.ws.config.budgets, pinned: rung.threshold } },
+      );
+      assert.equal(
+        check.full.filter((e) => e.tier === 'pinned').length, rung.count,
+        `rung at ${rung.threshold} disagrees with a direct select() call`,
+      );
+    }
+
+    // The last rung admits all three, and nothing beyond it changes anything
+    // — the natural ceiling `sliderMaxFor`'s replacement reads.
+    const last = body.rungs[body.rungs.length - 1];
+    assert.equal(last.count, 3);
+  } finally { f.done(); }
 });
 
 // --- 4 · the three ledger outcomes ------------------------------------------

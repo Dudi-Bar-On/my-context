@@ -13,33 +13,31 @@
  * element KINDS the module can and cannot produce, which is the number
  * `e2e/screen-parity.spec.ts` holds a shrink-only ledger of.
  *
- * ── WHAT THIS TASK ADDED, AND WHAT IT DELIBERATELY DID NOT ────────────────
+ * ── WHAT HAS LANDED, AND WHAT IS STILL DELIBERATELY REFUSED ───────────────
  *
- * It added the mockup's THIRD card — the spill ratio (`#ratio`, `sim.ratio` /
- * `sim.ration`), the diverging bar whose long red half names which budget is
- * too small. `screens/simulate.js` refused it when it shipped, on the grounds
- * that its source — `audit_item.role` through `topItems` — *"is the audit
- * projection, which no route in this plan exposes"*. `GET /api/watch/ratio`
- * now exposes precisely that, and its own header says it was built for this
- * chart. A refusal whose reason expired is not a standing decision.
+ * `screens/simulate.js` now draws all four cards the mockup's `simulate`
+ * section shows. The spill ratio (`#ratio`, `sim.ratio` / `sim.ration`) landed
+ * first, once `GET /api/watch/ratio` exposed `audit_item.role` through
+ * `topItems` — the source it had been refused over. **`plan:walk seq:7` then
+ * landed the admission staircase and the threshold ladder** (`#stair`,
+ * `#ladder`; `sim.stair`, `sim.stairn`, `sim.thresh`, `sim.snap`), reading the
+ * one endpoint that unblocked them: `GET /api/simulate/sweep`, one server-side
+ * call that runs the real selector at every cumulative candidate cost and
+ * returns the whole rung list, so no N+1 round trip and no second
+ * implementation of `fitToBudget` were ever needed.
  *
- * It did NOT add the admission staircase, the threshold ladder or the readout
- * that sits between them, and the module's header gives both reasons at
- * length. The short forms, because a reader of this file will want them:
+ * It did NOT add the readout that sits between the staircase and the ladder,
+ * and the module's header gives the reason at length. The short form: its
+ * NUMBERS are all in the `/api/simulate` response this screen already reads,
+ * but its WORDS are English and Hebrew literals in the mockup's own script,
+ * under no `data-t`, so no key in either string table carries them, and
+ * `strings-parity` fails a key the design of record does not declare. That
+ * refusal is unrelated to the sweep and outlives it.
  *
- *   - The staircase and the ladder are a SWEEP, no endpoint answers a sweep,
- *     and the N+1 alternative is an unmade request-volume decision tracked as
- *     `TASK-the-admission-staircase-needs-a-sweep-response-or-a-ruling`
- *     (`plan:ui1 seq:17c`), which is OPEN. That task also rules that
- *     `sim.stairn` and `sim.snap` *"return with it"*.
- *   - The readout's NUMBERS are all in the `/api/simulate` response this screen
- *     already reads. Its WORDS are English and Hebrew literals in the mockup's
- *     script under no `data-t`, so no key in either string table carries them,
- *     and `strings-parity` fails a key the design of record does not declare.
- *
- * Both are asserted below rather than only asserted here in prose: the last
- * test pins the kinds the module does not build, so the day either lands, THIS
- * file is what goes red and says the ledger entry may come out.
+ * Asserted below rather than only asserted here in prose: the last test pins
+ * the kinds the module does and does not build, so the day `#readout` gets a
+ * `data-t`, THIS file is what goes red and says its two remaining entries may
+ * come out.
  *
  * ── HOW A BROWSER MODULE THAT IMPORTS `/screens/parts.js` IS IMPORTED ──────
  *
@@ -134,7 +132,23 @@ function element(tag: string): FakeElement {
   return node;
 }
 
-const doc = { createElement: element, createTextNode: textNode };
+/**
+ * `document.createElementNS` — the staircase's `sv(tag, attrs)` calls it, the
+ * same three-line factory `screens/graph.js` and `screens/decay.js` already
+ * carry. The stand-in does not distinguish namespaces (nothing here asks it
+ * to draw an HTML element and an SVG element of the same tag name), so it
+ * delegates straight to `element()`.
+ */
+const doc = {
+  createElement: element,
+  createElementNS: (_ns: string, tag: string): FakeElement => element(tag),
+  createTextNode: textNode,
+  // `drawStair`/`drawLadder` read `document.documentElement.dir` to decide
+  // whether to mirror — the same source `applyLanguage` (`app.js`) sets it
+  // from in a real page. Every render here is English, so `'ltr'` is the
+  // right constant rather than a stand-in for one.
+  documentElement: { dir: 'ltr' },
+};
 
 // ── The modules, loaded the way the browser loads them ──────────────────────
 
@@ -189,6 +203,26 @@ const RATIO_ROWS = [
   { id: 'KNOWN-a-tally-that-filled-its-window', delivered: null, spilled: 4 },
 ];
 
+/** `/api/simulate/sweep`'s body, exactly `apiSimulateSweep` serves. */
+function sweepBody(
+  tier: string, rungs: { threshold: number; count: number; evicted: string[] }[],
+): unknown {
+  return { tier, tiersRun: [tier], candidateCount: rungs.length, truncated: false, rungs };
+}
+
+/**
+ * A three-rung sweep with a genuine eviction (2 → 1) — the mockup's own demo
+ * shape, *"more budget, fewer items"* — and a LAST rung past the 12,000 floor
+ * and the 1,800 `jit` budget `simulateBody` fixes below, so the slider-bound
+ * test can tell "the sweep set the bound" from "the floor or the budget in
+ * force happened to be large enough anyway".
+ */
+const JIT_RUNGS = [
+  { threshold: 0, count: 0, evicted: [] },
+  { threshold: 600, count: 2, evicted: [] },
+  { threshold: 15_000, count: 1, evicted: ['RULE-crowded-out-by-the-big-one'] },
+];
+
 /**
  * **The rich corpus**: a walked file exists, so the `tool` event runs and the
  * `jit` row is real; `jit` spills, so the fits chip is `warn` and `sim.chipn`
@@ -200,6 +234,15 @@ const RATIO_ROWS = [
 const RICH = async (route: string): Promise<unknown> => {
   if (route === '/api/coverage') return { files: [{ path: 'src/index.ts' }] };
   if (route === '/api/watch/ratio') return { rows: RATIO_ROWS, roleWindow: 1000, truncated: true, projectionState: 'fresh' };
+  // The screen opens on `jit`, and only `jit` is ever asked for here — the
+  // other three tiers' sweeps are exercised by `read-model.test.ts` directly
+  // against the real endpoint, not re-fixtured a second time in this file.
+  if (route.startsWith('/api/simulate/sweep?')) {
+    if (!route.includes('tier=jit')) {
+      throw new Error(`this fixture only sweeps jit; asked for ${route}`);
+    }
+    return sweepBody('jit', JIT_RUNGS);
+  }
   if (route.startsWith('/api/simulate?')) {
     return route.includes('event=tool')
       ? simulateBody(['jit'], [{ tier: 'jit' }, { tier: 'jit' }], [{ tier: 'jit' }])
@@ -252,8 +295,21 @@ async function withDocument<T>(body: () => Promise<T>): Promise<T> {
 
 interface Drawn { root: FakeElement; routes: string[] }
 
-/** Renders into a stand-in `<section>`, recording every route the screen read. */
-async function draw(api: (route: string) => Promise<unknown>, lang = 'en'): Promise<Drawn> {
+/**
+ * Renders into a stand-in `<section>`, recording every route the screen read.
+ *
+ * `interact`, when given, runs AFTER the initial render has fully settled and
+ * BEFORE the stand-in `document` is torn down — the only place a test can
+ * fire `slider.oninput()` or a tier button's `onclick()` and have the DOM
+ * calls those handlers make (`el()`, `sv()`, `document.documentElement.dir`)
+ * land on a live stand-in rather than on `undefined`. Its own async work is
+ * drained the same one-macrotask-turn way the initial render's is, for the
+ * same reason.
+ */
+async function draw(
+  api: (route: string) => Promise<unknown>, lang = 'en',
+  interact?: (root: FakeElement) => void,
+): Promise<Drawn> {
   const { render } = await simulate();
   const { t, tFlat } = await i18n();
   const strings = (await table(lang)).strings;
@@ -268,15 +324,48 @@ async function draw(api: (route: string) => Promise<unknown>, lang = 'en'): Prom
     onSessionChange: () => {},
   };
   const root = element('section');
-  await withDocument(async () => { await render(root, ctx); });
+  await withDocument(async () => {
+    await render(root, ctx);
+    // `render()` fires `runSweep()` (and, before it, the ratio fetch) WITHOUT
+    // awaiting them — deliberately, so a slow or failed sweep never holds up
+    // the fits table `render()` itself already served. Both must still settle
+    // here, before `withDocument`'s `finally` tears the stand-in `document`
+    // down: a continuation that fired after teardown reads `document` as
+    // `undefined` and throws from inside a promise nothing here is holding,
+    // which surfaces as an unhandled rejection attributed to a LATER test
+    // rather than a failure of this one. One macrotask turn is enough — the
+    // fixtures below have no real I/O latency, so every `await ctx.api(...)`
+    // they touch resolves within a microtask of being called.
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    if (interact !== undefined) {
+      interact(root);
+      // `slider.oninput` debounces its own `run()` behind a real 150ms
+      // `setTimeout` (`pending = setTimeout(...)`), which a bare 0ms flush
+      // does not wait out — that timer firing AFTER `document` is torn down
+      // below is exactly the delayed-`ReferenceError` this margin exists to
+      // prevent. 200ms clears it with room to spare.
+      await new Promise((resolve) => { setTimeout(resolve, 200); });
+    }
+  });
   return { root, routes };
 }
 
 // ── Walking the result ──────────────────────────────────────────────────────
 
-/** `tag.class1.class2`, classes sorted — `screen-parity.spec.ts`'s own form. */
+/**
+ * `tag.class1.class2`, classes sorted — `screen-parity.spec.ts`'s own form,
+ * `getAttribute('class')` and all: an HTML element built by `el(tag, cls)`
+ * carries its class on `.className`, but `sv(tag, attrs)` sets `class` the
+ * same way every other SVG attribute is set — `setAttribute` — because a real
+ * SVG element's `.className` is an `SVGAnimatedString`, not a plain string,
+ * which is the exact defect `COLLECT_KINDS`'s own header measured and fixed
+ * in the real gate on 2026-08-23. This stand-in would reproduce that defect
+ * (reading every `<svg>`, `<path>`, `<line>`, `<circle>` and `<text>` here as
+ * bare and classless) if it read only `.className`.
+ */
 function kindOf(node: FakeNode): string {
-  const raw = node.className.trim();
+  const attrs = (node as Partial<FakeElement>).attributes;
+  const raw = (attrs?.['class'] ?? node.className).trim();
   return raw === '' ? node.tag : `${node.tag}.${raw.split(/\s+/).sort().join('.')}`;
 }
 
@@ -328,9 +417,16 @@ test('the spill-ratio card is the mockup\'s third card, mark for mark', async ()
 
   // `<div class="card pane"><h3 data-t="sim.ratio"><div class="plate" id="ratio">
   //  <p class="small" style="margin-block-start:8px" data-t="sim.ration">`
+  //
+  // TWO or "card pane", not three: `plan:walk seq:7` gave the staircase and
+  // ladder their own `<div class="card pane sim">` — a DIFFERENT kind
+  // (`div.card.pane.sim`, asserted in the ledger test below), because the
+  // mockup draws it with a third class the other two cards do not carry. The
+  // fits table and this ratio card are what is left in the bare `card pane`
+  // bucket, and this card is still the LAST of them.
   const cards = byKind(root, 'div.card.pane');
   const card = cards.at(-1)!;
-  assert.equal(cards.length, 3, 'the simulator no longer draws three cards');
+  assert.equal(cards.length, 2, 'the simulator no longer draws two bare "card pane" cards');
   assert.deepEqual(card.children.map(kindOf), ['h3', 'div.plate', 'p.small']);
   assert.equal(flatText(card.children[0]!), en['sim.ratio']);
   // `tFlat` and not a local `replace(/\{m:…\}/)`: that hand-rolled flattener
@@ -463,16 +559,115 @@ test('an empty projection draws an empty plate and no legend — absence is not 
   assert.deepEqual(plate.children, []);
 });
 
+// ── The sweep: the staircase, the ladder, snapping and the slider bound ─────
+
+/**
+ * `JIT_RUNGS`'s three thresholds, `sim.snap`'s promise made concrete:
+ * *"the slider snaps to rungs — dragging lands on meaning rather than on
+ * {offrung}"*. Dragging to 900 (nearer 600 than 15,000 or 0) must land
+ * exactly on 600, and dragging to 15,000 minus one token must land on 600
+ * too, not on 15,000 — the snap picks the CLOSEST rung, not the next one up.
+ */
+test('the slider snaps to the nearest rung on every drag tick', async () => {
+  const results: string[] = [];
+  await draw(RICH, 'en', (root) => {
+    const slider = byKind(root, 'input')[0] as unknown as { value: string; oninput: () => void };
+    assert.ok(slider !== undefined, 'no <input> was drawn');
+
+    slider.value = '900';
+    slider.oninput();
+    results.push(slider.value);
+
+    slider.value = '9000';
+    slider.oninput();
+    results.push(slider.value);
+
+    slider.value = '300';
+    slider.oninput();
+    results.push(slider.value);
+  });
+  assert.deepEqual(results, ['600', '15000', '0'], [
+    '900 is closer to 600 than to 0 or 15,000;',
+    '9000 is closer to 15,000 than to 600;',
+    '300 is equidistant from 0 and 600 and falls to the first candidate — ',
+    "Array.reduce's own tie rule, the same one the mockup's renderStair inherits.",
+  ].join(' '));
+});
+
+/**
+ * `sliderMaxFor`'s three terms, exercised through the one seam that assigns
+ * them (`applyBound`) rather than through the private function itself.
+ * `JIT_RUNGS`'s last rung (15,000) is larger than both the 12,000 floor and
+ * the 1,800 `jit` budget `simulateBody` fixes — deliberately, so this proves
+ * the SWEEP actually set the bound rather than one of the other two terms
+ * happening to be large enough on their own.
+ */
+test('the slider bound is the swept last rung once it exceeds the floor and the budget in force', async () => {
+  const { root } = await draw(RICH);
+  const slider = byKind(root, 'input')[0] as unknown as { max: string };
+  assert.equal(slider.max, '15000');
+});
+
+/**
+ * The ladder, row for row: three rungs in `JIT_RUNGS`, in ascending order,
+ * the middle one carrying no eviction and the last one carrying the mark
+ * `sim.snap` promises — *"A red rung is an eviction: more budget, fewer
+ * items."* `.at` marks whichever rung is at or below the budget being
+ * dragged; the screen opens on `budgets.jit` (1,800 from `simulateBody`),
+ * which sits between the second and third rung, so the SECOND rung — not the
+ * third — is the one currently in force.
+ */
+test('the ladder draws one row per rung, the eviction in red and the current one gold', async () => {
+  const { root } = await draw(RICH);
+  const rows = byKind(root, 'div.ladder.plate')[0]!.children;
+  assert.equal(rows.length, JIT_RUNGS.length);
+
+  assert.deepEqual(rows.map(kindOf), ['div', 'div.at', 'div.ev']);
+  assert.deepEqual(rows.map((r) => flatText(r)), ['00 items', '6002 items', '15,000▼ 1 items']);
+});
+
+/**
+ * The `index` tier never asks the server for a sweep at all — it is out of
+ * scope by construction (`apiSimulateSweep` refuses it; per-line costs, not
+ * per-item), and the screen draws its own absent state locally rather than
+ * sending a request the endpoint would 400 on.
+ */
+test('the index tier never requests a sweep, and draws the staircase absent', async () => {
+  const { root, routes } = await draw(async (route) => {
+    // The screen opens on `jit`, so ITS sweep is expected and legitimate —
+    // only a sweep naming `tier=index` is the defect this test exists to
+    // catch, and the fixture throws on exactly that one.
+    if (route.startsWith('/api/simulate/sweep') && route.includes('tier=index')) {
+      throw new Error(`the index tier must never request a sweep; asked for ${route}`);
+    }
+    return RICH(route);
+  }, 'en', (drawnRoot) => {
+    const tierPick = byKind(drawnRoot, 'div.segbar')[0]!;
+    const indexButton = tierPick.children.find((c) => flatText(c) === 'index') as
+      { onclick: () => void } | undefined;
+    assert.ok(indexButton !== undefined, 'no index button was drawn');
+    indexButton.onclick();
+  });
+
+  assert.deepEqual(routes.filter((r) => r.includes('tier=index')), []);
+  assert.deepEqual(byKind(root, 'div.ladder.plate')[0]!.children, []);
+});
+
 /**
  * **The ledger, as a set of literals, in both directions.**
  *
- * `e2e/screen-parity.spec.ts` records twenty-one element kinds absent from this
- * screen and fails BOTH ways: a gap it does not list is a regression, and an
- * entry that is no longer missing is a ledger that rotted. It measures a real
+ * `e2e/screen-parity.spec.ts` records element kinds absent from this screen
+ * and fails BOTH ways: a gap it does not list is a regression, and an entry
+ * that is no longer missing is a ledger that rotted. It measures a real
  * browser over `.demo-corpus`, which this file cannot do and does not pretend
  * to. What it CAN do is name, per kind, which of three things is true — and
- * that is the distinction `plan:port seq:98` exists to make and which the spec
- * says has not been done for most entries.
+ * that is the distinction `plan:port seq:98` exists to make.
+ *
+ * **`plan:walk seq:7` landed the staircase and the ladder**, so the twenty-one
+ * this file used to partition move almost entirely out of ABSENT: only the
+ * readout — refused for its own, separate reason, unchanged by this task — and
+ * `div.small`, which is that readout's own "next in at …" line and nothing
+ * else on this screen, are still ones the module cannot build at all.
  *
  * So the twenty-one are partitioned here, exhaustively, and the partition is
  * checked against two renders:
@@ -481,46 +676,86 @@ test('an empty projection draws an empty plate and no legend — absence is not 
  *   DATA   — the module builds them, and whether they APPEAR depends on the
  *            corpus. Both are drawn under `RICH` and neither under `LEAN`,
  *            which is the proof: no code changed between those two renders.
- *   ABSENT — the module cannot build them at all. The staircase, the ladder,
- *            the readout, and the two emphasis runs no string table can carry.
+ *            `RICH`'s `jit` sweep carries a genuine eviction, which is what
+ *            lets `div.ev` and the eviction mark's `circle`/bare `text` join
+ *            this bucket rather than CLOSED — a sweep with no eviction in it
+ *            would draw the staircase and the ladder and still owe those
+ *            three kinds nothing.
+ *   ABSENT — the module cannot build them at all: the readout, and the one
+ *            line that lives only inside it.
  *
  * The three lists must together be exactly the twenty-one, and each must hold
- * of both renders. When the sweep ruling lands, or a fourth run marker, or the
- * `#readout` gets a `data-t`, THIS is the assertion that goes red and says the
- * ledger entry may come out.
+ * of both renders. The day `#readout` gets a `data-t`, THIS is the assertion
+ * that goes red and says the last two entries may come out.
  */
-const CLOSED = ['h3'];
+const CLOSED = [
+  'h3',
+  // The staircase and ladder's own containers, built once per render whether
+  // or not any tier has a candidate to sweep: the two plain columns
+  // (`stairCol`, `ladderCol`), the card that holds them, and the ladder's own
+  // (always-present, sometimes-empty) plate.
+  'div', 'div.card.pane.sim', 'div.ladder.plate',
+  // `sim.snap`'s own `{offrung}` — the mockup's illustrative "6,050" — is
+  // supplied UNCONDITIONALLY (`render`'s own header explains why a static
+  // illustrative number is correct here rather than one derived from data),
+  // so this is the one `<span class="v">` that does not wait on `sim.chipn`'s
+  // live ratio. `span.v` therefore moved out of DATA the day the ladder's own
+  // note started rendering: a kind is CLOSED the moment ANY one of its
+  // callers draws it unconditionally, whatever the others still depend on.
+  'span.v',
+];
 
 const DATA = [
   // The diverging bars: present when `/api/watch/ratio` answers with rows,
   // absent when the projection is behind (503) or was never built (no rows).
   'div.div-l', 'div.div-r', 'div.div-row', 'i', 'span.div-n', 'span.div-name',
-  // The fits chip in its spilled state, and `sim.chipn`'s two `{v}` runs. The
-  // chip needs a tier that spills; the runs need the DRAGGED tier to have been
-  // reached by one of the two events, and `jit` is reached only by `tool`,
-  // which needs a walked file.
-  'span.chip.warn', 'span.v',
+  // The fits chip in its spilled state — `sim.chipn`'s own two `{v}` runs
+  // join `span.v` above now that it is CLOSED for an unrelated reason; this
+  // chip still needs a tier that spills, which needs the DRAGGED tier to have
+  // been reached by one of the two events, and `jit` is reached only by
+  // `tool`, which needs a walked file.
+  'span.chip.warn',
+  // The staircase itself: an SVG built from `GET /api/simulate/sweep`'s
+  // `rungs`, drawn only once a tier actually has candidates to sweep (`jit`
+  // needs the same walked file the fits table's `jit` row needs) — `LEAN`
+  // draws none of it, for the same underlying reason it draws no `jit` row.
+  // Bare `circle` and bare `text` specifically: the mockup's eviction mark is
+  // an UNCLASSED `<circle>` and its "eviction" label an UNCLASSED `<text>`
+  // (`renderStair`, mockup ~4087-4090) — every OTHER text run on this chart
+  // carries `.mono` — so both need `RICH`'s sweep to contain a genuine
+  // eviction, not merely a non-empty one.
+  'circle', 'text',
+  // The ladder's rows: `.ev` is a rung whose count fell from the one before
+  // it, and `.at` is the highest rung at or below the budget being dragged.
+  // `.at` needs only a non-empty sweep; `.ev`, like the eviction mark above,
+  // needs a genuine eviction in it.
+  'div.at', 'div.ev',
 ];
 
 const ABSENT = [
-  // The staircase: an SVG chart of a sweep no endpoint answers.
-  'circle', 'line', 'path', 'svg', 'text',
-  // Its card and the two columns inside it, the ladder, and the readout that
-  // sits between them — all of them wait on the same ruling.
-  'div', 'div.at', 'div.card.pane.sim', 'div.ev', 'div.ladder.plate',
-  'div.readout', 'div.small',
-  // **`b` came out on 2026-08-25.** It sat here because the run grammar had
-  // `{m:}`, `{mv:}` and `{name}` and no emphasis marker, so the six bold runs
-  // across `sim.sub`, `sim.stairn`, `sim.snap`, `sim.chipn`, `sim.evict` and
-  // `sim.ration` rendered flat and no string table could carry the difference.
-  // `{b:}` and `{i:}` landed and they render.
-  //
-  // **`i` was never here, and that stays a correction rather than an
-  // omission.** It reads as the same defect and is not one: the mockup's
-  // simulate section italicises nothing. Every `<i>` on this screen is a BAR —
-  // `.div-l i` and `.div-r i` are the two halves of the diverging chart — so
-  // `i` is a graphic this task built, and it sits under DATA above with the
-  // rest of that card.
+  // The readout between the staircase and the ladder — refused for the
+  // reason the module header gives at length, unchanged by this task: its
+  // WORDS are unkeyed English/Hebrew literals in the mockup's own script,
+  // under no `data-t`, so no key in either string table carries them.
+  'div.readout',
+  // The readout's own "next in at …" line, and nowhere else on this screen
+  // that class is drawn — it is absent for exactly the reason its parent is.
+  'div.small',
+  // **Bare `svg`, `line` and `path` — structurally, not by omission.** Every
+  // `<svg>`, `<line>` and `<path>` `renderStair` ever draws carries a class
+  // (`chart`; `axis`, `defline` or `nowline`; `step` — mockup ~3890-4095,
+  // checked exhaustively: there is no classless call to `sv('svg'|'line'|
+  // 'path', …)` anywhere in the mockup's script), and this module copies that
+  // rather than inventing a bare instance the design of record does not draw.
+  // So these three kinds can never legitimately appear as BARE tags from a
+  // correct build — closing `line.axis`/`line.defline`/`line.nowline`/
+  // `svg.chart`/`path.step` (which this task did) is the real completion of
+  // the gap the bare forms were standing in for. Recorded in this task's
+  // report rather than silently reclassified: `e2e/screen-parity.spec.ts`'s
+  // own `KNOWN_GAPS.simulate` still lists these three bare forms alongside
+  // the classed ones it added on 2026-08-23 for the SAME elements, which
+  // reads as the same stale-measurement artifact this comment describes.
+  'svg', 'line', 'path',
 ];
 
 test('the twenty-one ledger kinds partition into closed, data-dependent and absent', async () => {

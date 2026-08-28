@@ -8,64 +8,54 @@
  * *"Text may float on glass. Data may not."*). The mockup already marks it that
  * way and this file copies the marking rather than deciding it.
  *
- * **THE SPILL RATIO LANDED, and the card above it still has not.** The three
- * refusals this file opened with were one per card; one of them has expired and
- * says so below, and the other two are unchanged. Nothing weaker is drawn in
- * their place — *"Where a view cannot be drawn, stop and ask; do not draw a
- * weaker one"*:
+ * **THE STAIRCASE AND THE LADDER LANDED** (`#stair`, `#ladder`, with
+ * `sim.stair`, `sim.stairn`, `sim.thresh` and `sim.snap`), reading
+ * `GET /api/simulate/sweep` (`plan:walk seq:7`) — one server-side call that
+ * runs the real selector at every cumulative candidate cost and returns the
+ * rung list whole. No second implementation of `fitToBudget` lives here or
+ * ever will: `core/select.ts` does not export it, and this screen was never
+ * going to be the second place that rule got written.
  *
- *   - **The admission staircase and the threshold ladder** (`#stair`, `#ladder`,
- *     with `sim.stair`, `sim.stairn`, `sim.thresh` and `sim.snap`). Both are a
- *     SWEEP: the selector re-run at every cumulative candidate cost, *"exact,
- *     not sampled"*. No endpoint answers a sweep. It is reachable at N+1 round
- *     trips — one `/api/simulate` at budget 0 to learn the tier's candidate
- *     list and each candidate's `itemCost`, then one more per rung — and that
- *     is a request-volume decision with a caching design behind it, not a
- *     detail to settle on the way past. The alternative, re-running `fitToBudget`
- *     in the browser, is a second implementation of the selector and is refused.
- *     **Still asked, and still not guessed**, and the asking is now a live task
- *     rather than a comment: `TASK-the-admission-staircase-needs-a-sweep-response-or-a-ruling`
- *     (`plan:ui1 seq:17c`), which is OPEN and which says in its own words that
- *     `sim.snap` and `sim.stairn` *"return with it"*. So the two rungs of prose
- *     stay down with the charts: `sim.snap` promises a slider that snaps to
- *     rungs, and a slider that does not snap under a sentence saying it does is
- *     worse than the missing chart.
- *   - **The readout under the staircase** (`#readout`) is refused for a SECOND
- *     and independent reason, worth separating because it will outlive the
- *     first. Its numbers are not the problem — *"N in · M out · T tokens
- *     used"*, and the *"next in at …"* line beneath it, are all in the one
- *     `/api/simulate` response this screen already reads. Its WORDS are: the
- *     mockup builds that sentence out of English and Hebrew literals inside its
- *     own script, under no `data-t`, and therefore under no key in either
- *     string table. `test/ui/strings-parity.test.ts` fails on a key the design
- *     of record does not declare, so the sentence cannot be worded here at all
- *     — and spelling it out of the keys that DO exist would put a different
- *     sentence on screen under the mockup's name. That is the same refusal
- *     `sim.chipn`'s solidus records further down, one size larger. Recorded as
- *     an open question for the owner: the day `#readout` gets a `data-t`, it is
- *     ten lines.
+ * **The readout under the staircase** (`#readout`) is STILL refused, for a
+ * reason the sweep does not touch. Its numbers are not the problem —
+ * *"N in · M out · T tokens used"*, and the *"next in at …"* line beneath it,
+ * are both derivable from data this screen already has. Its WORDS are: the
+ * mockup builds that sentence out of English and Hebrew literals inside its
+ * own script, under no `data-t`, and therefore under no key in either string
+ * table. `test/ui/strings-parity.test.ts` fails on a key the design of record
+ * does not declare, so the sentence cannot be worded here at all — and
+ * spelling it out of keys that DO exist would put a different sentence on
+ * screen under the mockup's name. Recorded as an open question for the owner:
+ * the day `#readout` gets a `data-t`, it is ten lines, and none of them touch
+ * the sweep this task built.
  *
- * **What LANDED is the spill ratio** (`#ratio`, with `sim.ratio` and
- * `sim.ration`) — the diverging bar, delivered growing from the centre toward
- * the reading start and spilled toward the reading end, so *"a long red half
- * names which budget is too small"*. It was refused here on the grounds that
- * its source — the note's own words, *"`audit_item.role` through `topItems`"* —
- * *"is the audit projection, which no route in this plan exposes"*. That
- * sentence is out of date: `GET /api/watch/ratio` exposes exactly it, reading
- * `topItems` twice through the read-only door, and its own header says it was
- * built for this chart. A refusal whose reason has expired is not a standing
- * decision, so it came out.
+ * **The stale sentence is gone.** `sim.stairn` used to say `itemCost` was
+ * *"private in select.ts today: one export, and this chart is live"* — wrong
+ * on both counts by the time this screen could read the mockup: `itemCost` is
+ * `export`ed already (`core/select.ts`, with a docstring naming this
+ * simulator as the reason), and `src/ui/read-model.ts`'s `/api/simulate` has
+ * consumed it since Plan 1. Corrected in `en.js`, `he.js` and the mockup
+ * together, because a stale sentence in one of the three is a stale sentence
+ * a reader of any of the three would meet.
  *
- * The rest is what was always fully served: the tier picker, the budget slider,
- * and the four-row fits table the slider drives. Every number in it comes from
- * one `/api/simulate` response, so the table cannot disagree with itself.
+ * The rest is what was always fully served: the tier picker, the budget
+ * slider (which now SNAPS to a rung on every drag tick — `sim.snap` promises
+ * it in prose, and a slider that does not snap under a sentence saying it
+ * does is worse than the missing chart), the four-row fits table it drives,
+ * and the spill ratio bar. Every number in the fits table comes from one
+ * `/api/simulate` response, so the table cannot disagree with itself; every
+ * number in the staircase and ladder comes from one `/api/simulate/sweep`
+ * response, for the same reason one level up.
  *
  * **Two events, because four tiers do not live on one.** `tiersRun` is
  * `select.ts`'s own dispatch: `pinned`, `restored` and `index` are reached by
  * `compact`, and `jit` only by `tool`. So the screen holds two selections at
- * once and reads each tier's row off whichever one actually ran it. A tier that
- * neither event reached is drawn as absent, never as a zero — an empty count
- * would claim it ran and delivered nothing, which is a different fact.
+ * once and reads each tier's row off whichever one actually ran it. A tier
+ * that neither event reached is drawn as absent, never as a zero — an empty
+ * count would claim it ran and delivered nothing, which is a different fact.
+ * The sweep follows the same split: `EVENT_FOR[tier]` is the one event that
+ * event dispatch would ever route that tier through, so the sweep is never
+ * asked a question `select()` itself would refuse.
  */
 import { selectQuery } from '/lib/viewmodel.js';
 import { el, errorNote, mono, num, screenHead, spaced } from '/screens/parts.js';
@@ -77,7 +67,9 @@ const TIERS = ['pinned', 'jit', 'restored', 'index'];
  * Which event reaches which tier, read off `tiersRun` rather than restated:
  * `compact` runs pinned + restored + index, and `tool` is the only event with a
  * jit target. One request each, and the tier being dragged has its override
- * applied to whichever of the two runs it.
+ * applied to whichever of the two runs it. The sweep (`runSweep` below) reuses
+ * this exact map, so a sweep is never sent under an event that would not have
+ * reached the tier it is pricing.
  */
 const EVENT_FOR = { pinned: 'compact', restored: 'compact', index: 'compact', jit: 'tool' };
 
@@ -88,37 +80,89 @@ const EVENT_FOR = { pinned: 'compact', restored: 'compact', index: 'compact', ji
 const SLIDER = { min: '0', max: '12000', step: '50' };
 
 /**
- * The slider's upper bound: the mockup's number, or the budget in force if that
- * is larger.
+ * The slider's upper bound — the ONE function that decides it, and the ONE
+ * seam every caller (`applyBound` below) goes through to apply it. Three
+ * numbers are weighed, and the largest wins:
  *
- * **A bare `max=12000` did not merely fail to reach a bigger budget — it
- * misreported one.** `slider.value = String(budgets[tier])` below sets the
- * handle to the budget actually in force, and assigning a value above an
- * `input[type=range]`'s `max` SILENTLY CLAMPS it. So a `pinned` of 22,000 drew
- * a slider reading 12,000, with nothing anywhere saying the number had been
- * changed. The one screen whose job is to tell you what a budget does was
- * showing a budget nobody had set.
+ *   - `SLIDER.max` — the mockup's own 12,000, kept as a FLOOR so the control
+ *     still spans a useful range on a corpus whose budgets and candidates are
+ *     small (a real corpus that never approaches it, which is most of them,
+ *     should still get a slider worth dragging).
+ *   - the budget actually IN FORCE for this tier. Assigning `slider.value`
+ *     above `max` silently CLAMPS — `input[type=range]`'s own behaviour — so
+ *     this term is what keeps `e2e/simulate-slider.spec.ts` green: a slider
+ *     that cannot reach the budget in force is drawing a number nobody set,
+ *     whatever computes the rest of the bound.
+ *   - the LAST RUNG of this tier's sweep, when one has been fetched. This is
+ *     `plan:walk seq:7`'s own replacement for the old interim fix: once the
+ *     sweep exists, admitting every candidate is the point past which raising
+ *     the budget changes nothing, so it is the natural ceiling — not a round
+ *     number chosen to look generous.
  *
- * Found 2026-08-28, the day the owner raised `pinned` past the literal for the
- * first time — the value had never been exceeded before, so the clamp had never
- * fired and nothing pinned the bound in any test.
- *
- * Derived rather than raised to a bigger literal, because a literal is only
- * ever right until the next budget: `budgets.pinned` accepts any positive
- * integer (`src/core/budgets-write.ts`), so no constant can be the answer.
- * `REQ-configure-and-the-simulator-agree-on-the-budgets-whatever` is the rule —
- * agreeing on a value is not enough if one screen cannot display it.
- *
- * The mockup's 12,000 is kept as the FLOOR so the control still spans a useful
- * range on a corpus whose budgets are small, which is what that number was
- * chosen for. `plan:walk seq:7` replaces this outright: once the sweep exists,
- * the meaningful bound is the last rung, and the slider snaps to rungs rather
- * than to a round number.
+ * **This function is the seam a later task extends, not a formula to
+ * duplicate.** The owner's ruling mid-build: the slider's maximum is meant to
+ * become a separately-set control later — "changed by its own control, not by
+ * dragging the slider" — and this file must not foreclose that. Keeping the
+ * arithmetic in this one function, called only through `applyBound`, is what
+ * lets that land as an edit to the function body (a fourth term, a config
+ * read) instead of a hunt through every place `slider.max` is assigned.
+ * `rungs` is `null` before the sweep resolves and `[]` for a tier this event
+ * would never reach or a `tool` event with no path — both fold to "nothing
+ * swept yet", the same way `budgets === null` already folds to "nothing
+ * simulated yet".
  */
-function sliderMaxFor(budgets, tier) {
+function sliderMaxFor(budgets, tier, rungs) {
   const inForce = budgets === null ? 0 : Number(budgets[tier] ?? 0);
-  return String(Math.max(Number(SLIDER.max), Number.isFinite(inForce) ? inForce : 0));
+  const swept = rungs !== null && rungs.length > 0 ? rungs[rungs.length - 1].threshold : 0;
+  return String(Math.max(Number(SLIDER.max), Number.isFinite(inForce) ? inForce : 0, swept));
 }
+
+/* ── The admission staircase and threshold ladder — `sv(tag, attrs)` is the
+      mockup's own SVG factory, argument for argument (`screens/graph.js` and
+      `screens/decay.js` carry the same three lines; a fourth copy is still
+      cheaper than a shared module for three attributes and one loop). Styling
+      comes from the shared `svg.chart` rules in `styles.css` (`.axis`,
+      `.step`, `.nowline`, `.defline`, `text.mono`) — nothing here repeats them
+      inline. Only `direction:ltr` is set on the root, for the reason
+      `screens/decay.js`'s own header measured: an inherited `dir="rtl"` flips
+      `text-anchor:start/end` a SECOND time on top of the mirroring `X()` and
+      `anchor()` already do, which empties the label gutter rather than
+      filling it from the other side. ── */
+const NS = 'http://www.w3.org/2000/svg';
+function sv(tag, attrs) {
+  const node = document.createElementNS(NS, tag);
+  for (const key of Object.keys(attrs)) node.setAttribute(key, String(attrs[key]));
+  return node;
+}
+function svText(attrs, text) {
+  const node = sv('text', attrs);
+  node.textContent = text;
+  return node;
+}
+
+/** The mockup's own chart box and pads (`renderStair`, mockup ~4068). */
+const STAIR_W = 560;
+const STAIR_H = 200;
+const STAIR_PL = 32;
+const STAIR_PR = 14;
+const STAIR_PT = 12;
+const STAIR_PB = 26;
+/** How many x-axis ticks to draw, beyond the 0 the axis line already implies. */
+const STAIR_X_TICKS = 4;
+
+/* ── The unkeyed words — transcribed rather than declared, for the reason
+      `screens/decay.js`'s own AXIS_ZERO/AXIS_UNIT/NEVER/BADPIN are: an SVG
+      `<text>` or an `aria-label` attribute cannot hold an element, which is
+      where every `data-t` key in this product lives. The mockup writes each
+      of these as a `HEB ? … : …` ternary in its own script, under no key in
+      either table. Raised in this task's report, alongside the ones
+      `screens/decay.js` and `screens/graph.js` already carry. ── */
+const STAIR_LABEL_EN = 'Admission staircase: items admitted as a function of the tier budget';
+const STAIR_LABEL_HE = 'גרם מדרגות: כמות הפריטים המתקבלים כפונקציה של תקציב הרמה';
+const EVICTION_EN = 'eviction';
+const EVICTION_HE = 'פינוי';
+const LADDER_ITEMS_EN = ' items';
+const LADDER_ITEMS_HE = ' פריטים';
 
 export async function render(root, ctx) {
   root.replaceChildren();
@@ -128,9 +172,28 @@ export async function render(root, ctx) {
   let files = null;
   let chosenPath = null;
   let budgets = null;
+  /**
+   * This tier's sweep: `null` before the first fetch resolves (or after one
+   * fails — `drawStair`/`drawLadder` leave the plates as `runSweep`'s own
+   * catch left them rather than blanking a message underneath itself), `[]`
+   * for a tier this event never reaches, a `tool` event with no path, or the
+   * `index` tier (out of scope — see `runSweep`), and otherwise the rung list
+   * `GET /api/simulate/sweep` answered, oldest threshold first.
+   */
+  let rungs = null;
 
-  // --- The controls -------------------------------------------------------
-  const ctlCard = el('div', 'card pane');
+  // --- The admission staircase and threshold ladder ------------------------
+  // The mockup's `<div class="card pane sim">`: two columns, the staircase
+  // and its controls on the left, the ladder on the right — `.sim` is the
+  // grid rule already shipped in `styles.css` for exactly this card.
+  const simCard = el('div', 'card pane sim');
+
+  const stairCol = el('div');
+  const stairHead = el('h3');
+  stairHead.append(...ctx.t('sim.stair'));
+  const stairPlate = el('div', 'plate');
+  stairPlate.id = 'stair';
+
   const ctl = el('div', 'simctl');
   const tierName = el('span', 'm', tier);
   tierName.id = 'tierName';
@@ -151,8 +214,30 @@ export async function render(root, ctx) {
   tierPick.id = 'tierPick';
   tierPick.setAttribute('role', 'group');
   tierPick.setAttribute('aria-label', ctx.tFlat('aria.tierpick'));
-  ctlCard.append(ctl, tierPick);
-  root.append(ctlCard);
+
+  // `#readout` is deliberately NOT built — see the header's second refusal.
+  const stairNote = el('p', 'small');
+  stairNote.append(...ctx.t('sim.stairn'));
+  stairCol.append(stairHead, stairPlate, ctl, tierPick, spaced(stairNote));
+
+  const ladderCol = el('div');
+  const ladderHead = el('h3');
+  ladderHead.append(...ctx.t('sim.thresh'));
+  const ladderPlate = el('div', 'ladder plate');
+  ladderPlate.id = 'ladder';
+  // `{offrung}` is the mockup's own illustrative "6,050" — a number chosen to
+  // BE arbitrary, since the sentence's whole point is that landing on any
+  // specific off-rung value is what snapping prevents. It is not derived from
+  // this tier's real rungs: the note is built once, before the first sweep
+  // response exists to derive one from, and the claim it makes ("dragging
+  // lands on meaning rather than on ___") holds for every tier and every
+  // corpus alike, which a live number would not make any truer.
+  const snapNote = el('p', 'small');
+  snapNote.append(...ctx.t('sim.snap', { offrung: num(6050) }));
+  ladderCol.append(ladderHead, ladderPlate, spaced(snapNote));
+
+  simCard.append(stairCol, ladderCol);
+  root.append(simCard);
 
   // --- The fits table -----------------------------------------------------
   const tableCard = el('div', 'card pane');
@@ -198,6 +283,186 @@ export async function render(root, ctx) {
   ratioCard.append(ratioHead, ratioPlate, spaced(ratioNote));
   root.append(ratioCard);
 
+  /** The one place `slider.max` is ever assigned — see `sliderMaxFor`. */
+  function applyBound() {
+    slider.max = sliderMaxFor(budgets, tier, rungs);
+  }
+
+  /**
+   * The staircase itself: `rungs` turned into an SVG, geometry for geometry
+   * with the mockup's own `renderStair` (~4066), with one deliberate
+   * departure — the x axis scales to THIS tier's own data (the last rung, the
+   * budget in force and the budget being dragged, whichever is largest)
+   * rather than the mockup's fixed 12,000, because `plan:walk seq:7` replaces
+   * that literal outright and a fixed axis under a variable bound would just
+   * move the same lie to a different number.
+   */
+  function drawStair() {
+    stairPlate.replaceChildren();
+    if (rungs === null || rungs.length === 0) return;
+
+    const rtl = document.documentElement.dir === 'rtl';
+    const X = (u) => (rtl ? STAIR_W - u : u);
+    const anchor = (a) => (rtl ? (a === 'start' ? 'end' : a === 'end' ? 'start' : a) : a);
+
+    const cur = Number(slider.value);
+    const def = budgets === null ? 0 : Number(budgets[tier] ?? 0);
+    const maxB = Math.max(rungs[rungs.length - 1].threshold, cur, def, 1);
+    const maxN = Math.max(...rungs.map((r) => r.count), 1);
+    const bx = (b) => STAIR_PL + (b / maxB) * (STAIR_W - STAIR_PL - STAIR_PR);
+    const by = (n) => STAIR_H - STAIR_PB - (n / maxN) * (STAIR_H - STAIR_PT - STAIR_PB);
+
+    const kids = [];
+    kids.push(sv('line', {
+      class: 'axis', x1: X(STAIR_PL), y1: STAIR_H - STAIR_PB, x2: X(STAIR_W - STAIR_PR),
+      y2: STAIR_H - STAIR_PB,
+    }));
+    kids.push(sv('line', {
+      class: 'axis', x1: X(STAIR_PL), y1: STAIR_PT, x2: X(STAIR_PL), y2: STAIR_H - STAIR_PB,
+    }));
+    for (let n = 0; n <= maxN; n++) {
+      kids.push(svText(
+        { x: X(STAIR_PL - 6), y: by(n) + 3, 'text-anchor': anchor('end'), class: 'mono' },
+        String(n),
+      ));
+    }
+    for (let i = 0; i <= STAIR_X_TICKS; i++) {
+      const t = Math.round((maxB * i) / STAIR_X_TICKS);
+      kids.push(svText(
+        { x: X(bx(t)), y: STAIR_H - STAIR_PB + 13, 'text-anchor': 'middle', class: 'mono' },
+        num(t),
+      ));
+    }
+
+    let d = '';
+    let prev = null;
+    const evicts = [];
+    rungs.forEach((r, i) => {
+      const x = X(bx(r.threshold));
+      const y = by(r.count);
+      if (i === 0) { d = `M ${x} ${y}`; } else {
+        d += ` L ${x} ${by(prev.count)} L ${x} ${y}`;
+        if (r.count < prev.count) evicts.push(r);
+      }
+      prev = r;
+    });
+    kids.push(sv('path', { class: 'step', d }));
+    for (const e of evicts) {
+      kids.push(sv('circle', {
+        cx: X(bx(e.threshold)), cy: by(e.count), r: 4, fill: 'var(--critbg)',
+        stroke: 'var(--crit)', 'stroke-width': 1.6,
+      }));
+      kids.push(svText(
+        {
+          x: X(bx(e.threshold)) + (rtl ? -7 : 7), y: by(e.count) - 8,
+          'text-anchor': anchor('start'), fill: 'var(--crit)',
+        },
+        rtl ? EVICTION_HE : EVICTION_EN,
+      ));
+    }
+
+    const defx = X(bx(def));
+    kids.push(sv('line', { class: 'defline', x1: defx, y1: STAIR_PT, x2: defx, y2: STAIR_H - STAIR_PB }));
+    const nowx = X(bx(cur));
+    kids.push(sv('line', { class: 'nowline', x1: nowx, y1: STAIR_PT, x2: nowx, y2: STAIR_H - STAIR_PB }));
+    kids.push(svText(
+      {
+        x: nowx + (rtl ? -5 : 5), y: STAIR_PT + 9, 'text-anchor': anchor('start'),
+        fill: 'var(--gold)', class: 'mono',
+      },
+      num(cur),
+    ));
+
+    const svg = sv('svg', {
+      viewBox: `0 0 ${STAIR_W} ${STAIR_H}`,
+      class: 'chart',
+      role: 'img',
+      // An accessible name is an ATTRIBUTE and cannot hold an element — see
+      // the module header.
+      'aria-label': rtl ? STAIR_LABEL_HE : STAIR_LABEL_EN,
+    });
+    svg.style.setProperty('direction', 'ltr');
+    for (const kid of kids) svg.append(kid);
+    stairPlate.append(svg);
+  }
+
+  /**
+   * The threshold ladder: one row per rung, collapsed the way `rungs` already
+   * arrived collapsed (the endpoint drops a threshold whose admitted count did
+   * not change from the one before it, so every row here is meaningful). `.ev`
+   * is `sim.snap`'s red rung — *"more budget, fewer items"* — and `.at` is the
+   * highest rung at or below the budget currently being dragged, the mockup's
+   * own rule (`renderStair`'s `rungs[...].classList.add('at')` line, read as a
+   * fact about the LAST such rung rather than replayed as a mutation: the class
+   * is decided before the row is built, not patched onto it afterwards, so the
+   * three parts of this element's identity — tag, classes, content — are set
+   * in one call the way every other element in this file is).
+   */
+  function drawLadder() {
+    ladderPlate.replaceChildren();
+    if (rungs === null || rungs.length === 0) return;
+
+    const rtl = document.documentElement.dir === 'rtl';
+    const cur = Number(slider.value);
+    let atIndex = -1;
+    rungs.forEach((rung, i) => { if (rung.threshold <= cur) atIndex = i; });
+    rungs.forEach((rung, i) => {
+      const ev = rung.evicted.length > 0;
+      const classes = [ev ? 'ev' : null, i === atIndex ? 'at' : null].filter((c) => c !== null);
+      const row = el('div', classes.length === 0 ? null : classes.join(' '));
+      row.append(
+        mono(num(rung.threshold)),
+        el('span', null, (ev ? '▼ ' : '') + rung.count + (rtl ? LADDER_ITEMS_HE : LADDER_ITEMS_EN)),
+      );
+      ladderPlate.append(row);
+    });
+  }
+
+  /**
+   * `GET /api/simulate/sweep` for the CURRENT tier — one request, redrawing
+   * both the staircase and the ladder from the one response, exactly as
+   * `plan:walk seq:7` asks: *"Ship them together or not at all."*
+   *
+   * `index` is out of scope by construction — the endpoint refuses it (per-line
+   * costs, not per-item; `apiSimulate`'s own docstring names the same gap) —
+   * so this never asks the server a question it would 400 on; it draws the
+   * absent state locally instead, the same way a `tool` event with no path
+   * does for `jit`.
+   */
+  async function runSweep() {
+    if (tier === 'index') {
+      rungs = [];
+      applyBound();
+      drawStair();
+      drawLadder();
+      return;
+    }
+    const path = tier === 'jit' ? await ensurePath() : null;
+    if (EVENT_FOR[tier] === 'tool' && path === null) {
+      rungs = [];
+      applyBound();
+      drawStair();
+      drawLadder();
+      return;
+    }
+    const qs = selectQuery(
+      EVENT_FOR[tier], EVENT_FOR[tier] === 'tool' ? path : null, ctx.session(), { tier },
+    );
+    try {
+      const sweep = await ctx.api(`/api/simulate/sweep?${qs}`);
+      rungs = sweep.rungs;
+    } catch (error) {
+      rungs = null;
+      stairPlate.replaceChildren(errorNote(error.message));
+      ladderPlate.replaceChildren();
+      applyBound();
+      return;
+    }
+    applyBound();
+    drawStair();
+    drawLadder();
+  }
+
   function drawTierPick() {
     tierPick.replaceChildren();
     for (const name of TIERS) {
@@ -207,12 +472,21 @@ export async function render(root, ctx) {
       button.onclick = () => {
         tier = name;
         tierName.textContent = tier;
+        // The old sweep belongs to the old tier — cleared immediately so the
+        // stair and ladder never draw one tier's rungs under another's name
+        // while the new sweep is in flight.
+        rungs = null;
         // The bound first, then the value — the other order clamps, which is
-        // the defect this pair exists to prevent.
-        slider.max = sliderMaxFor(budgets, tier);
+        // the defect this pair exists to prevent. `applyBound` falls back to
+        // the budget-in-force/floor terms until `runSweep` resolves and
+        // refines it — never below what is about to be assigned.
+        applyBound();
         if (budgets !== null) slider.value = String(budgets[tier]);
+        drawStair();
+        drawLadder();
         drawTierPick();
         void run();
+        void runSweep();
       };
       tierPick.append(button);
     }
@@ -437,11 +711,24 @@ export async function render(root, ctx) {
   }
 
   slider.oninput = () => {
+    // Snap to a rung, on every tick — the mockup's own `renderStair`
+    // (~4149) does this synchronously, before anything is redrawn, so a
+    // slider that never touches a fetch still lands on meaning rather than on
+    // an arbitrary value between two of them.
+    if (rungs !== null && rungs.length > 0) {
+      const thresholds = rungs.map((r) => r.threshold);
+      const v = Number(slider.value);
+      slider.value = String(
+        thresholds.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a), thresholds[0]),
+      );
+    }
     budgetVal.textContent = num(Number(slider.value));
+    drawStair();
+    drawLadder();
     clearTimeout(pending);
     pending = setTimeout(() => { void run(); }, 150);
   };
-  ctx.onSessionChange(() => { void run(); });
+  ctx.onSessionChange(() => { void run(); void runSweep(); });
 
   drawTierPick();
   try {
@@ -453,15 +740,20 @@ export async function render(root, ctx) {
     budgets = both.compact.budgets;
     // The bound BEFORE the value. Assigning above `max` clamps silently, so the
     // other order draws a budget nobody set — see `sliderMaxFor`. This is the
-    // first of the two places budgets arrive; the tier buttons are the other,
-    // and both must raise it or the defect returns on whichever was missed.
-    slider.max = sliderMaxFor(budgets, tier);
+    // first of the three places `applyBound` runs; the tier buttons and
+    // `runSweep`'s own resolution are the other two, and all three go through
+    // the one function.
+    applyBound();
     slider.value = String(budgets[tier]);
     budgetVal.textContent = num(budgets[tier]);
     drawTable(both);
   } catch (error) {
     chipNote.replaceChildren(errorNote(error.message));
   }
+  // Independent of the table fetch above, and never awaited ahead of it: the
+  // sweep is its own request over its own endpoint, and a slow or failed sweep
+  // must not hold up the fits table this screen already served reliably.
+  void runSweep();
 
   /**
    * The spill ratio, once. It reads HISTORY — how often each item was delivered
