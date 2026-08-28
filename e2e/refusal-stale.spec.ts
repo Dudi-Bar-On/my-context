@@ -1,34 +1,54 @@
 /**
- * **Absent is not stale, stale is not zero — and the read surface's OWN single
- * write is what puts the served corpus into the stale state.**
+ * **Absent is not stale, stale is not zero — and a projection behind its log
+ * must be drawn as a refusal over the SERVED CORPUS, not only over a fixture.**
  *
  * The owner's ruling on
  * `TASK-point-the-e2e-suite-at-the-served-corpus-not-only-at-the` names four
  * shapes a browser test over real data has to hold, and this file is the
- * fourth: *"a 503 that renders as the stale state rather than as zeroes"*. The
- * same task names the trap that makes it reachable at all:
+ * fourth: *"a 503 that renders as the stale state rather than as zeroes"*.
  *
- *   *"the 401 is the read surface's one write, and it leaves the projection
- *   behind its log, so an authorised read after a refusal returns 503. Any
- *   sequence that refuses and then reads must expect that."*
+ * Verified 2026-08-26 and still true: **no absent-versus-stale assertion exists
+ * under the app fixture at all.** `e2e/screen-parity.spec.ts` narrates the
+ * hazard in a comment and asserts nothing about it. `e2e/watch-feed.spec.ts`
+ * does assert both states and asserts them well — but over a five-record corpus
+ * it builds itself. That leaves this file's subject: **the same refusal over
+ * the served corpus**, at the size and shape the other specs measure. A refusal
+ * drawn correctly over five records says nothing about a screen with 900-odd of
+ * them to lose.
  *
- * Verified 2026-08-26 and still true when this file was written: **no
- * absent-versus-stale assertion existed under the app fixture at all.**
- * `e2e/screen-parity.spec.ts` narrates the hazard in a comment and asserts
- * nothing about it. `e2e/watch-feed.spec.ts` does assert both states and
- * asserts them well — but over a five-record corpus it builds itself, with the
- * behind-ness produced by a synthetic `recordAudit` append. Two things are
- * therefore untested, and this file is those two:
+ * ── WHAT THIS FILE USED TO CLAIM, AND WHY IT NO LONGER DOES ────────────────
  *
- *  1. **That a REFUSAL produces the state.** Nothing appends here. The test
- *     makes one unauthenticated request — the thing a bookmark, a stale cookie
- *     or a second browser tab does — and the server's own refusal record is
- *     what moves the log past the projection. That is not a fixture
- *     manoeuvre; it is the product's documented behaviour, and every screen
- *     reading the projection is one refusal away from it.
- *  2. **That it holds over the SERVED CORPUS**, at the size and shape the
- *     other specs measure. A refusal drawn correctly over five records says
- *     nothing about a screen with 900-odd of them to lose.
+ * Until `plan:walk` seq:28 this file reached the stale state by making ONE
+ * UNAUTHENTICATED REQUEST, and its name said so. That worked because a refusal
+ * is itself an audit record — the read surface's only write — so a 401 moved
+ * the log one record past the projection and every authorised read after it
+ * answered 503. The task that wrote this file called that "the product's
+ * documented behaviour", and it was.
+ *
+ * **It was also a real hazard, and seq:28 abolished it.** `recordAudit` — the
+ * single place an audit record is appended — now projects what it appends
+ * (`src/core/audit-db.ts` · `export function keepProjectionCurrent(`), at a
+ * measured ~2.3 ms that is flat in the size of the log. **Ordinary work no
+ * longer leaves the audit projection behind its log**, and a 401 in particular
+ * no longer stales anything. Section 2 below is that guarantee, asserted where
+ * a reader would meet it: on the screen, not on the endpoint.
+ *
+ * ── HOW THE STATE IS REACHED NOW ───────────────────────────────────────────
+ *
+ * `behind`, `diverged`, `ProjectionStaleError` and the 503 are all still live
+ * and still correct. What changed is how often a corpus ARRIVES at them, not
+ * what a screen owes a reader when it does — and this file is about the second,
+ * so it re-points rather than retires.
+ *
+ * `test/helpers/unprojected-audit.ts` is the route, and its header lists the
+ * four ways a real corpus still takes it: a record written by a build older
+ * than seq:28, in a log that outlives the build that wrote it; a log or an
+ * `.audit/` directory copied in from another machine; an append whose upkeep
+ * returned `failed`; and every append after a divergence, which a write path
+ * may not repair. The helper writes the line exactly as `recordAudit` writes it
+ * — same protocol, same stamping rule for `at` — and then stops, which is
+ * precisely the state all four leave behind. **It is not a way of faking the
+ * state; it is the state, reached in one step instead of four.**
  *
  * ── WHY AN ISOLATED COPY AND NOT `.demo-corpus` ITSELF ─────────────────────
  *
@@ -36,7 +56,9 @@
  * by every other spec in the run. `e2e/simulate-slider.spec.ts` carries this
  * project's account of what a spec that writes shared state costs; the
  * disposable `mkdtemp` copy is `e2e/execute.spec.ts`'s answer to the same
- * hazard and this file follows it.
+ * hazard and this file follows it. Note that this is now the ONLY reason the
+ * copy exists — before seq:28 the shared corpus was one bookmark away from
+ * refusing on its own, which is the parallelism flake seq:28's report closes.
  *
  * **The copy filter is this file's own and is deliberately not `worthCopying`.**
  * That function drops all of `.audit`, which is exactly what is under test
@@ -52,9 +74,9 @@
  * ── WHAT THIS FILE MUST NOT ASSERT ─────────────────────────────────────────
  *
  * Not a record count, not a bucket total, not an id. The corpus grows. What is
- * asserted is the DIFFERENCE between two readings of the same screen taken
- * minutes apart in the same run, and the vocabulary the refusal is drawn in —
- * which is the server's own sentence and therefore cannot drift from it.
+ * asserted is the DIFFERENCE between readings of the same screen taken minutes
+ * apart in the same run, and the vocabulary the refusal is drawn in — which is
+ * the server's own sentence and therefore cannot drift from it.
  */
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -63,6 +85,7 @@ import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { removeTree } from '../test/helpers/tmp.ts';
+import { appendUnprojected } from '../test/helpers/unprojected-audit.ts';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
 import { CORPUS } from './app.ts';
 import { DIR_NAME } from '../src/core/workspace.ts';
@@ -83,13 +106,13 @@ function copyable(source: string): boolean {
  * A private copy of the served corpus, with its index and audit projection
  * REBUILT rather than copied.
  *
- * **The JSONL is truncated to its last complete line.** Another worker's
- * server may append a refusal record to `.demo-corpus`'s log at any moment —
- * `e2e/nocred-notice.spec.ts` opens a credential-less page over that very
- * corpus — so a copy taken mid-append can end in half a record. `mycontext
- * audit` would then refuse, and the refusal would look exactly like the state
- * under test while meaning something else entirely. Dropping a trailing
- * partial line costs one record and removes a whole class of confusing red.
+ * **The JSONL is truncated to its last complete line.** A copy taken while
+ * another process is mid-append can end in half a record — `e2e/execute.spec.ts`
+ * writes through the CLI over its own copy of this corpus, and the demo build
+ * itself appends — so `mycontext audit` would then refuse, and the refusal
+ * would look exactly like the state under test while meaning something else
+ * entirely. Dropping a trailing partial line costs one record and removes a
+ * whole class of confusing red.
  */
 function isolatedCorpus(): string {
   const root = mkdtempSync(path.join(tmpdir(), 'myctx-e2e-refusal-'));
@@ -116,6 +139,18 @@ const screenFaults = (page: Page) => page.locator('#pulse ~ .spill:visible');
 /** The literal state chip the pulse draws for a projection that was never built. */
 const absentChip = (page: Page) => page.locator('#pulse .chip');
 
+/**
+ * The drawn series itself.
+ *
+ * Named once because it is asserted in BOTH directions, and the pair is the
+ * property this file exists for: PRESENT while the projection is readable,
+ * ABSENT — not zeroed — while it refuses. `applyVolume` draws no chart at all
+ * on a refusal, because 120 zero columns would be a chart asserting that
+ * nothing happened over a log nothing was allowed to read
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`).
+ */
+const pulseChart = (page: Page) => page.locator('#pulse .bar, #pulse .col, #pulse svg');
+
 /** Open Watch and wait for the screen to have finished its reads. */
 async function showWatch(page: Page): Promise<void> {
   await page.evaluate(() => { location.hash = '#/watch'; });
@@ -125,8 +160,24 @@ async function showWatch(page: Page): Promise<void> {
   ).toBeAttached({ timeout: 20_000 });
 }
 
-test('one unauthenticated request puts the served corpus in refusal, and the app draws the refusal rather than zeroes', async ({ page }) => {
+/**
+ * Leave Watch and come back, which re-runs the screen's own render and its
+ * reads.
+ *
+ * Not a reload: a reload would also re-boot the shell, and what is under test
+ * is what a screen does when the corpus moves under a page that is already
+ * open — which is the situation a reader is actually in.
+ */
+async function redrawWatch(page: Page): Promise<void> {
+  await page.evaluate(() => { location.hash = '#/status'; });
+  await showWatch(page);
+}
+
+test('a projection behind its log puts the served corpus in refusal, and the app draws the refusal rather than zeroes', async ({ page }) => {
   const root = isolatedCorpus();
+  // What `recordAudit` and `appendUnprojected` both take: the workspace
+  // directory, not the repository root the server is started in.
+  const workspace = path.join(root, DIR_NAME);
   let harness: UiHarness | undefined;
   try {
     harness = await startUiChild(root);
@@ -139,29 +190,50 @@ test('one unauthenticated request puts the served corpus in refusal, and the app
 
     // ── 1 · THE HEALTHY READING ──────────────────────────────────────────
     //
-    // Taken first and asserted, because the second half of this test is a
+    // Taken first and asserted, because the last section of this test is a
     // DIFFERENCE and a difference from an unknown state is not a measurement.
     // A corpus whose projection was already behind would draw the refusal here
     // too, and the test would pass having proved nothing.
     await showWatch(page);
+    // **Waited for FIRST, and the two absences below depend on it having been.**
+    // `toHaveCount(0)` is satisfied by the instant before a read returns, so an
+    // absence asserted against a screen still fetching passes without measuring
+    // anything. The series appearing is the projection read having ANSWERED,
+    // which is what makes "and no refusal beside it" a fact rather than a race.
+    await expect(
+      pulseChart(page),
+      'the pulse drew no series at all over a readable projection, so the "no chart beside a '
+      + 'refusal" assertion at the end of this test would hold over a screen that never draws one '
+      + 'and would prove nothing',
+    ).not.toHaveCount(0, { timeout: 20_000 });
     await expect(
       screenFaults(page),
       'the Watch screen drew a refusal over a corpus whose projection was just built — the '
       + 'comparison below would then measure nothing, because both readings would be refusals',
-    ).toHaveCount(0, { timeout: 20_000 });
+    ).toHaveCount(0);
     await expect(
       absentChip(page),
       'the pulse drew its `absent` state chip over a projection that was just built. Absent means '
       + 'NEVER BUILT; this workspace ran `mycontext audit` before the server started',
     ).toHaveCount(0);
 
-    // ── 2 · ONE REFUSAL, WHICH IS THE READ SURFACE'S ONLY WRITE ──────────
+    // ── 2 · ONE REFUSAL, WHICH NO LONGER STALES ANYTHING ─────────────────
     //
-    // No `recordAudit`, no file touched by this test: an unauthenticated GET,
-    // which the gate answers 401 and records as an `access` row. The log is
-    // now one record past the projection, and `readProjection` refuses every
-    // read that goes through it — because syncing is a write and a read
-    // surface may not perform one.
+    // **This section used to BE the test, and it now asserts the opposite.**
+    // An unauthenticated GET is still the read surface's one write — the gate
+    // answers 401 and records an `access` row — but since `plan:walk` seq:28
+    // `recordAudit` projects what it appends, so the log and the projection
+    // move together and the next authorised read is answered rather than
+    // refused.
+    //
+    // Kept in a BROWSER test even though `test/ui/watch-e2e.test.ts` asserts
+    // the endpoint's `projectionState` directly, because the two see different
+    // things. The unit layer sees a field on a JSON body. This sees what the
+    // guarantee is worth to a reader: a screen that another tab's bookmark
+    // cannot put into refusal, still drawing its series. That is the
+    // parallelism flake seq:28's report closes —
+    // `e2e/nocred-notice.spec.ts` opens a credential-less page over the shared
+    // corpus and provoked it every run.
     //
     // **Made from NODE and not from the page.** A `fetch` inside the browser
     // is same-origin, so it carries the `mycontext_token` cookie the boot set
@@ -172,25 +244,53 @@ test('one unauthenticated request puts the served corpus in refusal, and the app
     const refused = (await fetch(`http://127.0.0.1:${h.port}/api/ping`)).status;
     expect(
       refused,
-      'the unauthenticated request was not refused, so no `access` record was written and the '
-      + 'corpus is not in the state the rest of this test is about',
+      'the unauthenticated request was not refused, so no `access` record was written and this '
+      + 'section measured nothing about what a refusal does to the projection',
     ).toBe(401);
 
-    // ── 3 · THE STALE READING ────────────────────────────────────────────
+    await redrawWatch(page);
+    // **The drawn series first, and the absence of a refusal second.** An
+    // absence asserted against a screen still doing its reads is satisfied by
+    // the moment before the read returns, so `toHaveCount(0)` on its own here
+    // would pass over a corpus in refusal. Waiting for the chart to appear
+    // waits for the projection read to have ANSWERED; only then does the
+    // absence of a refusal beside it mean anything.
+    await expect(
+      pulseChart(page),
+      'the pulse stopped drawing its series after a 401, which is the refusal arriving by another '
+      + 'route: a screen that draws nothing is a screen whose projection read did not answer',
+    ).not.toHaveCount(0, { timeout: 20_000 });
+    await expect(
+      screenFaults(page),
+      'an unauthenticated request left the served corpus in refusal. `recordAudit` is supposed to '
+      + 'project the refusal record it appends, so the projection should have moved with the log — '
+      + 'one bookmark, one stale cookie or one second tab must not be able to put every screen '
+      + 'reading this corpus into 503',
+    ).toHaveCount(0);
+
+    // ── 3 · A PROJECTION GENUINELY BEHIND ITS LOG ────────────────────────
     //
-    // Navigate away and back, which re-runs the screen's own render and its
-    // reads. Not a reload: a reload would also re-boot the shell, and what is
-    // under test is what a screen does when the corpus moves under a page that
-    // is already open — which is the situation a reader is actually in.
-    await page.evaluate(() => { location.hash = '#/status'; });
-    await showWatch(page);
+    // One record in the log the projection has not consumed, written exactly as
+    // the appender writes it and with no upkeep after it — see the header, and
+    // `test/helpers/unprojected-audit.ts` for the four ways a real corpus
+    // arrives here. `readProjection` refuses every read that goes through it,
+    // because syncing is a write and a read surface may not perform one.
+    //
+    // Written while the page is OPEN, deliberately: a corpus moving under a
+    // reader is the situation this screen exists to survive.
+    appendUnprojected(workspace, {
+      kind: 'focus', op: 'focus-set', origin: 'human', note: 'scope=src/**',
+    });
+
+    // ── 4 · THE STALE READING ────────────────────────────────────────────
+    await redrawWatch(page);
 
     const fault = screenFaults(page).first();
     await expect(
       fault,
-      'a single unauthenticated request left the projection behind its log, both projection reads '
-      + 'refused with 503, and the screen showed no refusal at all — a reader is left looking at '
-      + 'an empty chart that means "could not read" while it reads as "nothing happened"',
+      'the projection was left behind its log, both projection reads refused with 503, and the '
+      + 'screen showed no refusal at all — a reader is left looking at an empty chart that means '
+      + '"could not read" while it reads as "nothing happened"',
     ).toBeVisible({ timeout: 20_000 });
 
     // The SERVER'S OWN WORDS, so this cannot drift from the message: it names
@@ -212,12 +312,11 @@ test('one unauthenticated request puts the served corpus in refusal, and the app
       + 'and it is out of date — and only one of them is fixed by the command on screen',
     ).toHaveCount(0);
 
-    // **Nor as zeroes.** `applyVolume` draws no chart at all on a refusal, and
-    // that is the point: 120 zero columns would be a chart asserting that
-    // nothing happened over a log nothing was allowed to read.
-    // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`.
+    // **Nor as zeroes.** The same locator that had to be non-empty in sections
+    // 1 and 2 has to be empty here: 120 zero columns would be a chart asserting
+    // that nothing happened over a log nothing was allowed to read.
     await expect(
-      page.locator('#pulse .bar, #pulse .col, #pulse svg'),
+      pulseChart(page),
       'the pulse drew a chart beside a refusal that says its own numbers could not be read — an '
       + 'unmeasured thing must not be drawn as a measured zero',
     ).toHaveCount(0);

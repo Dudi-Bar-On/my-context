@@ -32,11 +32,33 @@
  * The task asked whether `watch.js`'s `pulseFault` region actually fires and is
  * visible on this path, or whether the owner simply saw an empty pulse beside
  * an empty feed. The second test below is that question, measured rather than
- * assumed: it builds a projection, appends one record to put it behind, and
- * asserts the region is VISIBLE and carries the server's own words including
- * the remedy. It passes — the refusal was never the missing half. What was
- * missing is everything the third read could have drawn while the other two
- * refused, which is what the backlog is.
+ * assumed: it builds a projection, puts one record in the log that the
+ * projection has not consumed, and asserts the region is VISIBLE and carries
+ * the server's own words including the remedy. It passes — the refusal was
+ * never the missing half. What was missing is everything the third read could
+ * have drawn while the other two refused, which is what the backlog is.
+ *
+ * ── HOW `behind` IS REACHED HERE, AND WHY IT MOVED ─────────────────────────
+ *
+ * This file used to reach `behind` with a plain `recordAudit` append after
+ * `mycontext audit`, and that worked because an append left the projection
+ * behind. `plan:walk` seq:28 ended that: `recordAudit` — the one place a record
+ * is appended — now projects what it appends
+ * (`src/core/audit-db.ts` · `export function keepProjectionCurrent(`), at a
+ * measured ~2.3 ms that is flat in the size of the log. **Ordinary work no
+ * longer leaves the audit projection behind its log**, which is the whole point
+ * of the change: before it, one unauthenticated request was enough to stale a
+ * shared projection, because a refusal is itself an audit record.
+ *
+ * **`behind` is still live, still correct, and still reachable**, which is why
+ * it is still tested here rather than deleted. It is reached now by
+ * `test/helpers/unprojected-audit.ts`, whose header lists the four routes a
+ * real corpus takes to it — a record from an older build, a log copied in from
+ * another machine, an append whose upkeep returned `failed`, and every append
+ * after a divergence. The helper writes the line exactly as `recordAudit`
+ * writes it and then stops, which is precisely the state all four leave behind.
+ * What changed is how OFTEN a corpus arrives here, not what the screen owes a
+ * reader when it does — and this file is about the second.
  */
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
@@ -47,6 +69,7 @@ import { removeTree } from '../test/helpers/tmp.ts';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
 import { runCli } from '../src/cli/index.ts';
 import { recordAudit } from '../src/core/audit.ts';
+import { appendUnprojected } from '../test/helpers/unprojected-audit.ts';
 import { DIR_NAME } from '../src/core/workspace.ts';
 
 /** How many records the fixture writes before the page ever opens. */
@@ -87,7 +110,16 @@ async function watching(
     if (options.thenAppend === true) {
       // The log moves PAST the projection. This is the corpus the owner had:
       // `readProjection` now refuses every read that goes through it.
-      recordAudit(corpus, {
+      //
+      // **Appended AROUND `recordAudit`, deliberately.** `recordAudit` projects
+      // what it appends since `plan:walk` seq:28, so it can no longer produce
+      // this state and a test that asked it to would be asserting nothing. The
+      // helper writes the same line the appender writes and performs no upkeep
+      // — the state left by an append whose upkeep returned `failed`, by a log
+      // carried in from another machine, or by every append following a
+      // divergence. See the file header and
+      // `test/helpers/unprojected-audit.ts`.
+      appendUnprojected(corpus, {
         kind: 'focus', op: 'focus-set', origin: 'human', note: 'scope=src/**',
       });
     }
