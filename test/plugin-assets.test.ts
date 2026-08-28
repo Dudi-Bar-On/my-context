@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { SERVER_INFO } from '../src/mcp/protocol.ts';
 import { TOOL_NAMES } from '../src/mcp/tools.ts';
@@ -183,6 +184,68 @@ test('the plugin name, the MCP server key, the CLI binary and SERVER_INFO are al
   assert.deepEqual(Object.keys(pkg.bin), ['mycontext'], 'the CLI binary');
   assert.equal(pkg.name, 'mycontext');
   assert.equal(SERVER_INFO.name, 'mycontext', 'the name the MCP server reports at initialize');
+});
+
+/**
+ * The KEY check above passes for a `bin.mycontext` pointing at a renamed,
+ * deleted or unrelated file — that is exactly the shape of
+ * KNOWN-every-command-the-product-tells-a-user-to-run-begins-with-a, where
+ * the entry existed and `mycontext` still would not run, because nothing
+ * resolves the VALUE. This does: resolves `bin.mycontext` the way `npm link`
+ * would (relative to `package.json`'s own directory), and requires it to
+ * land on `src/cli/index.ts` — the exact file every other CLI test in this
+ * suite imports as `runCli` — not merely on some file that happens to exist.
+ *
+ * No build step means the target is executed as source, so a shebang is
+ * doing double duty: on POSIX, `npm link`'s symlink is exec'd directly and
+ * the kernel reads this line to find the interpreter; on Windows there is no
+ * exec bit to read at all, so npm's shim generator (`cmd-shim`) reads this
+ * same line to decide the `.cmd`/`.ps1` shims it writes should invoke `node`
+ * against the target rather than trying to run a `.ts` file natively. One
+ * line, both platforms — which is why it is asserted literally rather than
+ * merely "present".
+ *
+ * The last step spawns the resolved file exactly as a bin shim would
+ * (`node <target> <args>`) and requires the real CLI's own `--help` banner —
+ * a stray file with the right name and a clean exit code would still pass
+ * every check above it, but not this one.
+ */
+test('bin.mycontext resolves to the real CLI entry point, and running it runs the CLI', () => {
+  const pkg = JSON.parse(read('package.json')) as { bin: Record<string, string> };
+  const binTarget = pkg.bin.mycontext;
+
+  assert.match(
+    binTarget, /^\.\//,
+    'bin.mycontext must be relative to package.json (a leading ./), not absolute or bare — ' +
+    'absolute only works on the machine that wrote it, and bare resolves differently once npm ' +
+    'turns this into a shim run from an arbitrary cwd',
+  );
+
+  const resolved = path.normalize(path.join(ROOT, binTarget));
+  const cliEntry = path.normalize(path.join(ROOT, 'src', 'cli', 'index.ts'));
+  assert.equal(
+    resolved, cliEntry,
+    'bin.mycontext no longer names src/cli/index.ts — `npm link` would install a `mycontext` ' +
+    'that does not run this project\'s CLI',
+  );
+  assert.ok(existsSync(resolved), `bin.mycontext names a file that does not exist: ${resolved}`);
+
+  const firstLine = readFileSync(resolved, 'utf8').split('\n')[0];
+  assert.equal(
+    firstLine, '#!/usr/bin/env node',
+    'cmd-shim reads this exact line to build the Windows .cmd/.ps1 shims, and POSIX execs the ' +
+    'linked file by reading the same line',
+  );
+
+  const result = spawnSync(
+    process.execPath, ['--disable-warning=ExperimentalWarning', resolved, '--help'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(result.status, 0, `the resolved file did not run cleanly: ${result.stderr}`);
+  assert.match(
+    result.stdout, /^usage: mycontext <command> \[args\]/,
+    'the resolved file exists and exits cleanly but does not behave like the CLI',
+  );
 });
 
 /**

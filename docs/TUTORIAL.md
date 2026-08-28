@@ -54,6 +54,18 @@ You want the four hooks — `SessionStart`, `PreToolUse`, `PreCompact`,
 reports commands and skills together as `Skills (67)` and prints no commands
 line at all.
 
+That installs the plugin — the slash commands, the hooks, the MCP server. It does not put
+`mycontext` on your PATH: that command is a separate npm package, in the same repository.
+From a clone of it:
+
+```bash
+npm install
+npm link          # provides the `mycontext` command
+```
+
+Without `npm link`, every `mycontext …` command on this page also works as
+`node /path/to/my-context/src/cli/index.ts …`.
+
 ---
 
 ## 1. Initialise
