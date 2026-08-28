@@ -31,11 +31,18 @@
  * That is the gap this file's task closed: `e2e/screen-parity.spec.ts`'
  * `KNOWN_GAPS` listed `span.m` for `learn`, because the screen drew its
  * cross-linked ids as `linkId()` buttons where the mockup draws a bare
- * `mono()` run. The remaining entry is `i` alone — the mockup italicises one
- * word inside `ln.sub` and `lib/i18n.js`'s run grammar has `{m:}`, `{mv:}`
- * and `{name}` and no emphasis marker, so no string table can carry it.
- * `assertions 4 and 6` below are what will fail the day either of those two
- * facts changes.
+ * `mono()` run. `i` outlived it by two days — the mockup italicises one word
+ * inside `ln.sub`, and `lib/i18n.js`'s run grammar had `{m:}`, `{mv:}` and
+ * `{name}` and no emphasis marker, so no string table could carry it. Both
+ * halves of that have since gone: the grammar gained `{b:}` and `{i:}` on
+ * 2026-08-25, English was populated from the mockup's own markup the same
+ * day, Hebrew followed on 2026-08-27 under
+ * `DEC-hebrew-gets-the-same-emphasis-english-does`, and `KNOWN_GAPS.learn` is
+ * now `[]`. **So assertion 4 below has changed sides.** It used to record the
+ * debt — English drawing the italic, Hebrew not — and it now records the debt
+ * being PAID: both languages are held to the mockup's full list, and a Hebrew
+ * render that loses `i` is a dropped emphasis run rather than a translation
+ * nobody has got to yet.
  *
  * ── HOW A BROWSER MODULE THAT IMPORTS `/screens/parts.js` IS IMPORTED ─────
  *
@@ -358,7 +365,7 @@ test('the screen GETs one help endpoint per topic, and touches no other part of 
   ]);
 });
 
-// ── 4. The kinds: everything the mockup draws except the italic run ────────
+// ── 4. The kinds: everything the mockup draws, the italic run included ─────
 
 /**
  * The parity measurement `e2e/screen-parity.spec.ts` makes in a browser, made

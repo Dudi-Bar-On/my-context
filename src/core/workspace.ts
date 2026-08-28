@@ -129,10 +129,22 @@ export function repositoryRoot(cwd: string): string | null {
   return found === null ? null : path.dirname(found);
 }
 
-export function resolveWorkspace(cwd: string): Workspace {
-  const projectRoot = findProjectRoot(cwd);
-  const configPath = projectRoot ? path.join(projectRoot, 'config.json') : null;
-
+/**
+ * `config.json` as it is on disk RIGHT NOW, validated — or a throw carrying the
+ * reason, which is `resolveConfig`'s own message for a file that parses and does
+ * not load, and this function's for one that does not parse.
+ *
+ * Extracted from `resolveWorkspace` so that `liveWorkspace` below re-reads the
+ * file through the SAME code, wording included. A second reader spelled
+ * separately is how `/api/config` and every other endpoint came to disagree
+ * about what a config is in the first place; one function is the fix for that,
+ * not a convenience.
+ *
+ * `null` — no workspace — resolves to pure defaults rather than throwing,
+ * because that is what an absent file already did here and off-workspace is a
+ * state the surfaces render rather than a failure.
+ */
+function loadConfig(configPath: string | null): Config {
   let raw: unknown = {};
   if (configPath && existsSync(configPath)) {
     try {
@@ -144,11 +156,119 @@ export function resolveWorkspace(cwd: string): Workspace {
       );
     }
   }
+  return resolveConfig(raw);
+}
+
+export function resolveWorkspace(cwd: string): Workspace {
+  const projectRoot = findProjectRoot(cwd);
+  const configPath = projectRoot ? path.join(projectRoot, 'config.json') : null;
 
   return {
     projectRoot,
     globalRoot: GLOBAL_DIR,
     dbPath: projectRoot ? path.join(projectRoot, '.index.db') : ':memory:',
-    config: resolveConfig(raw),
+    config: loadConfig(configPath),
+  };
+}
+
+/**
+ * One answer from `LiveWorkspace.now()`: the workspace, and whether its config
+ * is the file or the last one that loaded.
+ */
+export interface WorkspaceNow {
+  /** A fresh `Workspace` value. Never shared between two calls, deliberately — see `liveWorkspace`. */
+  ws: Workspace;
+  /**
+   * `null` when `ws.config` IS the file as it is on disk right now.
+   *
+   * Otherwise the loader's message for why the file no longer loads, and
+   * `ws.config` is the last config that did. This is the only way a caller can
+   * tell the two apart, and a caller that shows config to a person and does not
+   * say which one it is showing has re-created the disagreement this whole
+   * mechanism exists to end.
+   */
+  configError: string | null;
+}
+
+/**
+ * A workspace that RE-READS `config.json` on every ask.
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
+ *
+ * `resolveWorkspace` is a photograph. A long-lived process that calls it once
+ * and hands the same `Workspace` to every request is serving the config as it
+ * was when it started, for the life of the process — measured on 2026-08-28,
+ * with `/api/config` (which re-reads) answering `budgets.pinned: 9999` and
+ * `/api/simulate` (which does not) answering `6000`, forever, after one
+ * out-of-band edit. The endpoints disagreed, and every reader of `ws.config`
+ * that decides admission or tier — `matchesFocus`, `injection`, `carriesFor`,
+ * `select` — was deciding against the older of the two.
+ *
+ * The alternative already in the tree is worse rather than smaller: the UI's
+ * own budget write used to patch the boot snapshot in place after writing the
+ * file. That is correct for exactly ONE writer, and the mechanism it
+ * establishes is "every writer remembers" — so the editor, the terminal, a
+ * `git checkout` and every future writer leave the snapshot behind, in silence.
+ *
+ * ── WHAT IS RE-READ, AND WHAT IS NOT ────────────────────────────────────────
+ *
+ * The CONFIG, and only the config. `projectRoot`, `globalRoot` and `dbPath` are
+ * resolved once and fixed for the life of this source, because they answer
+ * "where is the corpus", and the corpus does not move under a running server —
+ * while a directory walk that momentarily failed (a rename, a network mount, a
+ * backup tool) would make a live server answer `no workspace here` for one
+ * request and then recover, which is a new failure mode bought for nothing.
+ * It also keeps the per-request cost to a small file read: measured at 60µs on
+ * this repository's own corpus against a 3.1ms `/api/simulate`, so the whole
+ * question of caching it is below the noise floor of a single request.
+ *
+ * ── THE FILE THAT NO LONGER LOADS ───────────────────────────────────────────
+ *
+ * `now()` NEVER THROWS, and that is a decision rather than a convenience.
+ *
+ * A corrupt `config.json` at START-UP still refuses the server, here, in the
+ * constructor below — a safe and obvious moment, and the behaviour this project
+ * already had. What must not happen is that the same corruption arriving
+ * mid-session takes every endpoint down at once: the ONE screen that can show a
+ * person the broken text and the message to fix it is `/api/config`, and a
+ * re-resolve that threw would take that screen out first. It is also reachable
+ * without anybody making a mistake — `writeBudgets` writes `config.json` with a
+ * plain `writeFileSync`, so a request landing inside that write reads a
+ * truncated file.
+ *
+ * So the last config that loaded keeps being served, and `configError` carries
+ * the reason so no caller has to guess which of the two it holds. That is
+ * strictly no worse than the frozen snapshot this replaces — it IS that
+ * snapshot, moved from being the rule to being the fallback — and it is worse
+ * than nothing only if it goes undisclosed, which is what `configError` is for.
+ */
+export interface LiveWorkspace {
+  now(): WorkspaceNow;
+}
+
+export function liveWorkspace(cwd: string): LiveWorkspace {
+  // Throws on a corrupt file, exactly as a direct `resolveWorkspace` did, and
+  // for the same reason: refusing to start is the moment a person can act on.
+  const base = resolveWorkspace(cwd);
+  const configPath = base.projectRoot === null
+    ? null
+    : path.join(base.projectRoot, 'config.json');
+  let lastGood: Config = base.config;
+
+  return {
+    now(): WorkspaceNow {
+      let configError: string | null = null;
+      try {
+        // Assigned only on success: a throw leaves `lastGood` exactly as it was.
+        lastGood = loadConfig(configPath);
+      } catch (err) {
+        configError = err instanceof Error ? err.message : String(err);
+      }
+      // A FRESH object every call, never `base` mutated in place. A caller that
+      // wrote into `ws.config` would be writing into a value that dies with the
+      // request — which is the point: there is no snapshot left to keep honest,
+      // so there is nothing for a writer to remember.
+      return { ws: { ...base, config: lastGood }, configError };
+    },
   };
 }

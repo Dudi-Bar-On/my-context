@@ -153,13 +153,6 @@ of the hook, quoted verbatim and re-derived from the running code by
 ```text
 ## my_context — these govern this project
 
-### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
-
-The managed Postgres plan allows 120 connections. Five API instances at 20 each
-leaves 20 for migrations, backups and the admin console. Raising the pool past 20
-does not buy throughput; it buys `remaining connection slots are reserved` during
-the next deploy.
-
 ### INV-prices-are-integer-cents · invariant · Prices are integer cents
 
 Every price crossing a module boundary is an integer number of cents.
@@ -168,12 +161,6 @@ total a customer approves at checkout must equal the sum of its line items exact
 
 _scope: src/billing/**_
 
-### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
-
-Cart to payment, payment to confirmation. A third step was measured against the
-two-step flow in April and abandonment rose by four points, so a new field belongs
-in one of the two existing steps or nowhere.
-
 ### RULE-never-log-customer-email · rule · Never log customer email
 
 Log the customer id instead. Access logs are shipped to a third-party aggregator
@@ -181,6 +168,19 @@ that our data-processing agreement does not cover, so an email address in a log
 line leaves the boundary the checkout flow promises the customer.
 
 _scope: src/**_
+
+### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
+
+The managed Postgres plan allows 120 connections. Five API instances at 20 each
+leaves 20 for migrations, backups and the admin console. Raising the pool past 20
+does not buy throughput; it buys `remaining connection slots are reserved` during
+the next deploy.
+
+### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
+
+Cart to payment, payment to confirmation. A third step was measured against the
+two-step flow in April and abandonment rose by four points, so a new field belongs
+in one of the two existing steps or nowhere.
 ```
 
 **Nobody typed anything.** No search was run, no tool was called, nobody pasted a rule and
@@ -190,9 +190,10 @@ the file.** `src/billing/**` matched `src/billing/prices.js`, and the
 [hook that runs before Claude reads or edits a file](#just-in-time--the-ones-that-apply-to-what-you-are-touching)
 selected on that path and injected before the tool ran. The other three arrived on the same
 call because nothing excluded them: two declare no scope at all, and the third is scoped
-`src/**`, which `src/billing/prices.js` is under. They arrive once each, hardest-first,
-inside [a budget](#the-budget-and-what-happens-when-it-does-not-fit) that names whatever did
-not fit — and this is the block for a session whose first event is the edit. A session that
+`src/**`, which `src/billing/prices.js` is under. They arrive once each — the two whose own
+globs name this file offered first, then the two that name no file at all, hardest-first
+within each — inside [a budget](#the-budget-and-what-happens-when-it-does-not-fit) that names
+whatever did not fit — and this is the block for a session whose first event is the edit. A session that
 started normally would have had the one `always: true` item
 [pinned](#pinned--the-handful-that-always-apply) at its start instead, and seen the other
 three here.
@@ -1433,13 +1434,6 @@ So the moment Claude opens `src/billing/prices.js`, this is what it receives fir
 ```text
 ## my_context — these govern this project
 
-### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
-
-The managed Postgres plan allows 120 connections. Five API instances at 20 each
-leaves 20 for migrations, backups and the admin console. Raising the pool past 20
-does not buy throughput; it buys `remaining connection slots are reserved` during
-the next deploy.
-
 ### INV-prices-are-integer-cents · invariant · Prices are integer cents
 
 Every price crossing a module boundary is an integer number of cents.
@@ -1448,12 +1442,6 @@ total a customer approves at checkout must equal the sum of its line items exact
 
 _scope: src/billing/**_
 
-### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
-
-Cart to payment, payment to confirmation. A third step was measured against the
-two-step flow in April and abandonment rose by four points, so a new field belongs
-in one of the two existing steps or nowhere.
-
 ### RULE-never-log-customer-email · rule · Never log customer email
 
 Log the customer id instead. Access logs are shipped to a third-party aggregator
@@ -1461,13 +1449,30 @@ that our data-processing agreement does not cover, so an email address in a log
 line leaves the boundary the checkout flow promises the customer.
 
 _scope: src/**_
+
+### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
+
+The managed Postgres plan allows 120 connections. Five API instances at 20 each
+leaves 20 for migrations, backups and the admin console. Raising the pool past 20
+does not buy throughput; it buys `remaining connection slots are reserved` during
+the next deploy.
+
+### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
+
+Cart to payment, payment to confirmation. A third step was measured against the
+two-step flow in April and abandonment rose by four points, so a new field belongs
+in one of the two existing steps or nowhere.
 ```
 
-Four items applied. Two of them named this file: the billing invariant scoped to
-`src/billing/**`, and a rule scoped to `src/**`. The other two declare no scope at all — the
-pool constraint and the checkout requirement — so nothing restricts them and they apply here
-like they apply anywhere. Notice that the pool constraint arrives even though it is also
-pinned: it is delivered by whichever tier reaches it first in a session, and only once.
+Four items applied, **and the two that named this file were offered first**: the billing
+invariant scoped to `src/billing/**`, and a rule scoped to `src/**`. The other two declare no
+scope at all — the pool constraint and the checkout requirement — so nothing restricts them
+and they apply here like they apply anywhere; they compete for whatever budget the first two
+leave, on exactly the terms they always did. Nothing is demoted, and nothing is ranked by a
+score: items whose own globs match the file are offered first, everything else fills what is
+left, and inside each of those two groups the order is unchanged — hardest first. Notice that
+the pool constraint arrives even though it is also pinned: it is delivered by whichever tier
+reaches it first in a session, and only once.
 
 Open `src/catalogue/search.js` instead and the billing invariant drops out, because its scope
 excludes that file. The other three still arrive.

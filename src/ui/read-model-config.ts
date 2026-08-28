@@ -111,16 +111,32 @@ const META = {
  * `GET /api/config` — the file, as it is on disk right now, and what it
  * resolves to.
  *
- * **Fresh on every call, deliberately.** `ws.config` is the snapshot taken when
- * the server booted, and the file is the user's to edit while it runs — that is
- * the entire premise of this screen. An editor seeded from the boot-time
- * snapshot would compose a settlement against text no longer in the file.
+ * **It reads the FILE, not `ws.config`, and that is still true for a different
+ * reason than it used to be.** This endpoint was once the only one that
+ * re-read: `ws.config` was the snapshot taken when the server booted, so an
+ * editor seeded from it would compose a settlement against text no longer in
+ * the file. `liveWorkspace` (core/workspace.ts) ended that — every endpoint now
+ * holds the config as this request read it — and what remains here is what
+ * `ws.config` still cannot carry: `raw`, the text the user is editing, and the
+ * two ways it can fail to become a `Config` at all.
  *
  * Neither failure is a 500: `parseError` and `resolveError` are FIELDS. A
  * config that does not parse, or does not load, is the state this screen exists
  * to help a user out of, and an endpoint that answered it with a server error
  * would take away the one view that can show them the text to fix. `raw` is
  * carried in both cases for exactly that reason.
+ *
+ * **`servingLastGood` is the disclosure that the fallback is not silent.** When
+ * the file stops loading mid-session, `liveWorkspace` keeps serving the last
+ * config that DID load rather than failing every request at once — the full
+ * argument is in that function, and the short of it is that an endpoint set
+ * that dies together would take this screen with it. That leaves a state a
+ * person has to be told about: the ribbon, the governing set and every tier
+ * decision on every other screen are being made against a config that is not
+ * the file in front of them. It is derived rather than plumbed — the two errors
+ * above are computed from a fresh read of the same file by the same loader, so
+ * either of them being non-null IS the condition, and a second channel
+ * reporting it could only disagree with this one.
  */
 export function apiConfigGet(ws: Workspace, url: URL): JsonResult {
   const bad = unknownParams(url, []);
@@ -153,7 +169,16 @@ export function apiConfigGet(ws: Workspace, url: URL): JsonResult {
   }
   return {
     status: 200,
-    body: { path: file, exists, raw, parseError, resolveError, resolved, meta: META },
+    body: {
+      path: file,
+      exists,
+      raw,
+      parseError,
+      resolveError,
+      resolved,
+      servingLastGood: parseError !== null || resolveError !== null,
+      meta: META,
+    },
   };
 }
 

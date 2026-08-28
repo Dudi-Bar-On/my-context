@@ -195,13 +195,6 @@ Claude — הפלט האמיתי של ה-hook, מצוטט מילה במילה ו
 ```text
 ## my_context — these govern this project
 
-### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
-
-The managed Postgres plan allows 120 connections. Five API instances at 20 each
-leaves 20 for migrations, backups and the admin console. Raising the pool past 20
-does not buy throughput; it buys `remaining connection slots are reserved` during
-the next deploy.
-
 ### INV-prices-are-integer-cents · invariant · Prices are integer cents
 
 Every price crossing a module boundary is an integer number of cents.
@@ -210,12 +203,6 @@ total a customer approves at checkout must equal the sum of its line items exact
 
 _scope: src/billing/**_
 
-### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
-
-Cart to payment, payment to confirmation. A third step was measured against the
-two-step flow in April and abandonment rose by four points, so a new field belongs
-in one of the two existing steps or nowhere.
-
 ### RULE-never-log-customer-email · rule · Never log customer email
 
 Log the customer id instead. Access logs are shipped to a third-party aggregator
@@ -223,6 +210,19 @@ that our data-processing agreement does not cover, so an email address in a log
 line leaves the boundary the checkout flow promises the customer.
 
 _scope: src/**_
+
+### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
+
+The managed Postgres plan allows 120 connections. Five API instances at 20 each
+leaves 20 for migrations, backups and the admin console. Raising the pool past 20
+does not buy throughput; it buys `remaining connection slots are reserved` during
+the next deploy.
+
+### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
+
+Cart to payment, payment to confirmation. A third step was measured against the
+two-step flow in April and abandonment rose by four points, so a new field belongs
+in one of the two existing steps or nowhere.
 ```
 
 <div dir="rtl">
@@ -234,7 +234,8 @@ _scope: src/**_
 וה-[hook שרץ לפני ש-Claude קורא או עורך קובץ](#בדיוק-בזמן--אלה-שחלים-על-מה-שאתה-נוגע-בו)
 בחר לפי הנתיב הזה והזריק לפני שהכלי רץ. שלושת האחרים הגיעו באותה קריאה כי שום דבר לא הוציא
 אותם: לשניים אין `scope` כלל, והשלישי מוגבל ל-<span dir="ltr">`src/**`</span>, ו-<span dir="ltr">`src/billing/prices.js`</span>
-נמצא תחתיו. הם מגיעים פעם אחת כל אחד, הקשיחים תחילה, בתוך
+נמצא תחתיו. הם מגיעים פעם אחת כל אחד — שניהם, אלה שה-globs שלהם עצמם נוקבים בקובץ הזה,
+מוצעים ראשונים, ואחריהם השניים שאינם נוקבים בשום קובץ, הקשיחים תחילה בתוך כל קבוצה — בתוך
 [תקציב](#התקציב-ומה-קורה-כשלא-נכנסים-בו) שנוקב במפורש בכל מה שלא נכנס — וזהו הפלט של סשן
 שהאירוע הראשון בו הוא העריכה. בסשן שהתחיל כרגיל, הפריט היחיד שהוא
 <span dir="ltr">`always: true`</span> היה [נעוץ](#נעוץ--המעטים-שתמיד-חלים) כבר בתחילתו,
@@ -1522,13 +1523,6 @@ total a customer approves at checkout must equal the sum of its line items exact
 ```text
 ## my_context — these govern this project
 
-### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
-
-The managed Postgres plan allows 120 connections. Five API instances at 20 each
-leaves 20 for migrations, backups and the admin console. Raising the pool past 20
-does not buy throughput; it buys `remaining connection slots are reserved` during
-the next deploy.
-
 ### INV-prices-are-integer-cents · invariant · Prices are integer cents
 
 Every price crossing a module boundary is an integer number of cents.
@@ -1537,12 +1531,6 @@ total a customer approves at checkout must equal the sum of its line items exact
 
 _scope: src/billing/**_
 
-### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
-
-Cart to payment, payment to confirmation. A third step was measured against the
-two-step flow in April and abandonment rose by four points, so a new field belongs
-in one of the two existing steps or nowhere.
-
 ### RULE-never-log-customer-email · rule · Never log customer email
 
 Log the customer id instead. Access logs are shipped to a third-party aggregator
@@ -1550,15 +1538,31 @@ that our data-processing agreement does not cover, so an email address in a log
 line leaves the boundary the checkout flow promises the customer.
 
 _scope: src/**_
+
+### CONST-postgres-pool-capped-at-20 · constraint · Postgres pool capped at 20
+
+The managed Postgres plan allows 120 connections. Five API instances at 20 each
+leaves 20 for migrations, backups and the admin console. Raising the pool past 20
+does not buy throughput; it buys `remaining connection slots are reserved` during
+the next deploy.
+
+### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
+
+Cart to payment, payment to confirmation. A third step was measured against the
+two-step flow in April and abandonment rose by four points, so a new field belongs
+in one of the two existing steps or nowhere.
 ```
 
 <div dir="rtl">
 
-ארבעה פריטים חלו. שניים מהם נוקבים בקובץ הזה: האינווריאנטה של החיוב, שה-scope שלה
-<span dir="ltr">`src/billing/**`</span>, וכלל שה-scope שלו <span dir="ltr">`src/**`</span>.
-לשניים האחרים — האילוץ על ה-pool והדרישה על התשלום — לא הוגדר `scope` כלל, ולכן דבר אינו
-מגביל אותם והם חלים כאן בדיוק כפי שהם חלים בכל מקום. שימו לב שהאילוץ על ה-pool מגיע אף
-שהוא גם נעוץ: הוא נמסר על ידי הדרג הראשון שמגיע אליו בסשן, ופעם אחת בלבד.
+ארבעה פריטים חלו, **ושניים מהם — אלה שנוקבים בקובץ הזה — הוצעו ראשונים**: האינווריאנטה של
+החיוב, שה-scope שלה <span dir="ltr">`src/billing/**`</span>, וכלל שה-scope שלו
+<span dir="ltr">`src/**`</span>. לשניים האחרים — האילוץ על ה-pool והדרישה על התשלום — לא
+הוגדר `scope` כלל, ולכן דבר אינו מגביל אותם והם חלים כאן בדיוק כפי שהם חלים בכל מקום; הם
+מתחרים על התקציב שנותר אחרי השניים הראשונים, בדיוק באותם תנאים שהיו להם תמיד. שום פריט אינו
+מודח ואין כאן ניקוד: פריטים שה-globs של עצמם תואמים לקובץ מוצעים ראשונים, וכל השאר ממלאים
+את מה שנשאר; בתוך כל אחת משתי הקבוצות הסדר לא השתנה — הקשיחים תחילה. שימו לב שהאילוץ על
+ה-pool מגיע אף שהוא גם נעוץ: הוא נמסר על ידי הדרג הראשון שמגיע אליו בסשן, ופעם אחת בלבד.
 
 פתחו במקום זאת את `src/catalogue/search.js` והאינווריאנטה של החיוב תיפול, כי ה-scope שלה
 אינו כולל את הקובץ הזה. שלושת האחרים עדיין יגיעו.

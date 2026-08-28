@@ -498,14 +498,37 @@ function byPriority(a: Item, b: Item): number {
   return compareStrings(a.id, b.id);
 }
 
+/**
+ * First-fit admission against one budget, over candidates supplied in BANDS.
+ *
+ * **Bands are a stable partition, never a sort.** Each band is sorted by
+ * `byPriority` exactly as a single candidate list always was, and the bands
+ * are then considered in the order the caller passed them — band 0 first, and
+ * every one of its members before any member of band 1. A caller with nothing
+ * to band passes `[candidates]`, which is byte-for-byte the previous
+ * behaviour: one band is indistinguishable from no bands.
+ *
+ * **One budget, one `used`, one implementation.** The bands share the running
+ * total, so a later band sees only what the earlier ones left and every spill
+ * reason is still measured against the tier's real configured budget rather
+ * than a remainder nobody set. Calling this once per band with a subtracted
+ * budget would admit the same items and then describe them with figures that
+ * appear nowhere in the config — and `preview.js`'s header is explicit that no
+ * second implementation of `fitToBudget` may exist to reconcile.
+ *
+ * The only caller that passes more than one band today is the JIT tier
+ * (`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`).
+ */
 function fitToBudget(
-  candidates: Item[], budget: number, tier: SelectionEntry['tier'],
+  bands: Item[][], budget: number, tier: SelectionEntry['tier'],
 ): { entries: SelectionEntry[]; spilled: Spill[]; used: number } {
   const entries: SelectionEntry[] = [];
   const spilled: Spill[] = [];
   let used = 0;
 
-  for (const item of [...candidates].sort(byPriority)) {
+  // `[...band]` per band, never a sort in place: `fitToBudget` and `buildIndex`
+  // sort copies and never the caller's array.
+  for (const item of bands.flatMap((band) => [...band].sort(byPriority))) {
     const cost = itemCost(item);
     // First-fit, not strict priority truncation: an over-budget item is skipped
     // (`continue`, not `break`) so a later, smaller, LOWER-priority item can still
@@ -1041,7 +1064,7 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     // only this one has — the duplicate arithmetic is the smaller cost and the
     // one that leaves `fitToBudget` a single-purpose function.
     pinnedCost = candidates.reduce((sum, i) => sum + itemCost(i), 0);
-    const result = fitToBudget(candidates, config.budgets.pinned, 'pinned');
+    const result = fitToBudget([candidates], config.budgets.pinned, 'pinned');
     entries.push(...result.entries);
     spilled.push(...result.spilled);
     tokens += result.used;
@@ -1092,7 +1115,7 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     // `pinnedCost`'s reason: the figure a person raising the budget needs is
     // what honouring `continuity` would cost, not what was affordable.
     continuityCost = candidates.reduce((sum, i) => sum + itemCost(i), 0);
-    const result = fitToBudget(candidates, config.budgets.continuity, 'continuity');
+    const result = fitToBudget([candidates], config.budgets.continuity, 'continuity');
     entries.push(...result.entries);
     spilled.push(...result.spilled);
     tokens += result.used;
@@ -1102,7 +1125,7 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     const restoreIds = new Set(ctx.restore ?? []);
     const alreadyChosen = new Set(entries.map((e) => e.item.id));
     const result = fitToBudget(
-      fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id)),
+      [fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id))],
       config.budgets.restored,
       'restored',
     );
@@ -1113,8 +1136,49 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
 
   const target = jitTarget(ctx);
   if (tiers.includes('jit')) {
+    // THE JIT TIER OFFERS PATH-SCOPED ITEMS FIRST, IN TWO BANDS
+    // (`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`).
+    //
+    // `matchesScope` answers one question — "does this item apply to this
+    // path" — and that answer is still exactly right. What it cannot say, and
+    // must not be made to say, is WHY: an item declaring `reports/**` on the
+    // path `reports/V2-HANDOVER.md` and an item declaring nothing at all both
+    // arrive here as `true`, and used to reach the budget indistinguishable.
+    // Measured on the real corpus (619 of 621 items unscoped): the one item
+    // scoped to that path SPILLED while 27 items about nothing in particular
+    // were delivered. The corpus asks people to record scope and then
+    // discarded the record at the one place it could matter.
+    //
+    // So the banding lives HERE, in the caller, and the predicate keeps its
+    // boolean. Band 1 is the items whose own globs match; band 2 is the items
+    // that match only by having no scope at all. Band 1 gets first refusal —
+    // which is what the person who wrote the glob was asking for — and band 2
+    // still competes for everything band 1 left, on the same first-fit terms.
+    // Nothing is demoted; the order of offers changed, not the rules.
+    //
+    // TWO DEGENERATIONS, both load-bearing and both covered by tests:
+    //
+    //  - **No scoped items** (every real corpus before it starts scoping, and
+    //    the property this whole ruling was decided on): band 1 is empty, so
+    //    the admitted set, its order, the spill records and their reason
+    //    strings are byte-identical to the single-band behaviour. The change
+    //    cannot regress a corpus that does not use scope.
+    //  - **`scopePolicy: 'inert'`**: an unscoped item matches NO path, so it
+    //    never reaches this filter and band 2 is empty by construction. The
+    //    policy is untouched and needs no rule of its own here.
+    //
+    // The cost, stated rather than discovered later: a corpus that BEGINS
+    // scoping will see its delivered set change on tool events, with unscoped
+    // items displaced by scoped ones. That is the intent, and it is still a
+    // real behaviour change — it belongs beside each row of the preview's
+    // spilled-items list, so a reader can see WHY an item lost.
+    const candidates = fresh.filter((i) => matchesScope(i, target, config));
     const result = fitToBudget(
-      fresh.filter((i) => matchesScope(i, target, config)), config.budgets.jit, 'jit',
+      [
+        candidates.filter((i) => i.scope.length > 0),
+        candidates.filter((i) => i.scope.length === 0),
+      ],
+      config.budgets.jit, 'jit',
     );
     entries.push(...result.entries);
     spilled.push(...result.spilled);

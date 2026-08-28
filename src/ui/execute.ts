@@ -832,25 +832,27 @@ async function handleExecute(ctx: ApiContext): Promise<JsonResult> {
         },
       };
     }
-    // **The SAME `ws.config` this request's `/api/simulate` sibling reads —
-    // patched in place, not re-read from disk.** `resolveWorkspace()` runs
-    // ONCE, at server start (`server.ts` · `const ws = resolveWorkspace
-    // (options.cwd);`), and every route past this one holds that SAME object
-    // for the life of the process — `/api/simulate`'s `{ ...ws.config.budgets
-    // }` (`read-model.ts`'s `apiSimulate`) included. `writeBudgets` above
-    // only touched the FILE; without this, `config.json` and the in-memory
-    // `Config` every other endpoint reads would disagree for the rest of the
-    // server's life, which is worse than the bug `REQ-configure-and-the
-    // -simulator-agree-on-the-budgets-whatever` was filed against — that one
-    // is fixed by a screen learning to ask; this one has no live-invalidation
-    // wiring that could reach it, because there is nothing on disk left to
-    // re-read that is any fresher than what is already in memory. Found
-    // proving `plan:live seq:3`'s own acceptance test against a real,
-    // second-tab Simulate — see that task's report.
-    for (const { field, after } of diff) {
-      const key = field.slice('budgets.'.length) as keyof Budgets;
-      ctx.ws.config.budgets[key] = after;
-    }
+    // **`writeBudgets` above is the whole of the write, and there is nothing
+    // in memory left to keep in step with it.**
+    //
+    // A loop stood here that also assigned `ctx.ws.config.budgets[key] =
+    // after`, because `resolveWorkspace()` ran once at server start and every
+    // route held that same `Config` for the life of the process — so writing
+    // only the FILE left `/api/simulate` drawing the old number until a
+    // restart. It was correct, and it was correct for exactly ONE writer: the
+    // mechanism it established was "every writer remembers", and the editor,
+    // the terminal and `git checkout` do not. That is the defect `plan:live
+    // seq:8` measured from the other side.
+    //
+    // `liveWorkspace` (core/workspace.ts) removed the snapshot instead. Every
+    // request now gets a `Workspace` whose `config` was read from
+    // `config.json` this request, so the next `/api/simulate` reads what
+    // `writeBudgets` just wrote by the same route an out-of-band edit reaches
+    // it — and `ctx.ws` here is a per-request value that dies with this
+    // response, so a patch into it would now do nothing at all rather than
+    // something invisible. Removed rather than kept: two mechanisms for one
+    // fact is how the fact drifts.
+    //
     // Audited like any other write (task `plan:budget seq:5`). `kind:
     // 'mutation'` because that is the closest of the seven existing kinds to
     // "a value changed" and adding an eighth was deliberately avoided — see

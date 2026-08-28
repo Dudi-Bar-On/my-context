@@ -69,7 +69,7 @@ import path from 'node:path';
 import type { RefusalCheck } from '../core/audit.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { VERSION } from '../core/version.ts';
-import { repositoryRoot, resolveWorkspace, type Workspace } from '../core/workspace.ts';
+import { liveWorkspace, repositoryRoot, type Workspace } from '../core/workspace.ts';
 import { registerAskRoutes } from './ask-model.ts';
 import { registerCaptureRoutes } from './capture-model.ts';
 import { CLI_ENTRY, registerExecuteRoutes } from './execute.ts';
@@ -361,7 +361,7 @@ function readBody(req: IncomingMessage): Promise<string> {
  * `err.message` and exits 1. A constructor that throws out of a function
  * declared to return a promise would skip that `.catch` entirely and print a
  * stack trace instead — measured, and the reason `--idle-ms abc` has a test.
- * `resolveWorkspace` throws on a corrupt `config.json` and reaches the same
+ * `liveWorkspace` throws on a corrupt `config.json` and reaches the same
  * `.catch` by the same route.
  */
 export async function startUiServer(options: UiServerOptions): Promise<RunningUiServer> {
@@ -371,11 +371,33 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     // the corpus to the network, and a warning is a property claim nobody reads.
     throw new Error(`mycontext ui: refusing to bind ${host} — the UI serves 127.0.0.1 only.`);
   }
-  const ws = resolveWorkspace(options.cwd);
-  if (ws.projectRoot === null) {
+  /**
+   * **The workspace is a SOURCE, not a value — `config.json` is re-read on
+   * every request.**
+   *
+   * `resolveWorkspace(options.cwd)` used to stand here, and its result was
+   * handed to every request for the life of the process. That made `ws.config`
+   * a photograph taken at start: an out-of-band edit to `config.json` reached
+   * `/api/config`, which re-reads, and reached nothing else — measured
+   * 2026-08-28 as `9999` on one endpoint and `6000` on the other, permanently.
+   * Every reader of `ws.config` deciding admission, tier or budget was deciding
+   * against the older of the two.
+   *
+   * `liveWorkspace` carries the whole argument, including why a file that stops
+   * loading MID-SESSION keeps the last config that did rather than taking every
+   * endpoint down at once, and why a corrupt file at START still refuses here.
+   *
+   * `boot` is this one answer, used for the start-time checks below and for
+   * nothing else. It is deliberately not named `ws`: a `ws` in this scope is
+   * exactly the frozen value this change removes, and the next person to reach
+   * for one should have to type `live.now()` instead.
+   */
+  const live = liveWorkspace(options.cwd);
+  const boot = live.now().ws;
+  if (boot.projectRoot === null) {
     throw new Error('mycontext ui: no workspace here. Run `mycontext init` first.');
   }
-  const corpusRoot = ws.projectRoot;   // narrowed here so the refusal recorder below has a string
+  const corpusRoot = boot.projectRoot; // narrowed here so the refusal recorder below has a string
   // **`repositoryRoot(cwd)`, not `path.dirname(corpusRoot)` — the THIRD site of
   // one defect, found by review 2026-08-28.**
   //
@@ -699,7 +721,10 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     if (req.method === 'POST') {
       try { body = JSON.parse(await readBody(req)); } catch { body = undefined; }
     }
-    const ctx: ApiContext = { ws, repoRoot, url, params: match.params, body };
+    // **`live.now()`, per request.** The one line that makes every endpoint
+    // read the same `config.json` the user is editing. `boot` above is not in
+    // scope here on purpose; see the comment where it is bound.
+    const ctx: ApiContext = { ws: live.now().ws, repoRoot, url, params: match.params, body };
 
     if (match.handler.kind === 'stream') {
       // NOT idle.touch(): an open stream is not activity (spec §2). Plan 3's
