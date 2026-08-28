@@ -118,7 +118,31 @@ cli(['init']);
 // ── Budgets small enough that ordinary content spills ──────────────────────
 const configPath = path.join(OUT, '.my_context', 'config.json');
 const config = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
-config['budgets'] = { pinned: 240, jit: 180, restored: 240, index: 90 };
+//
+// **`continuity` is the one budget NOT scaled down, and it is written out
+// rather than left to the default so the divergence is a decision on the page
+// instead of an omission.**
+//
+// The other four are a tenth of the product's, because the point is to make
+// ordinary content overrun them — a spill is a feature the mockup draws, and a
+// feature nobody can see is a feature nobody has checked. That argument does
+// not carry to this tier. The other four budget a candidate set the corpus
+// grows on its own; this one admits only items explicitly marked
+// `continuity: true`, so scaling it down would not produce a demonstrative
+// spill — it would spill the ENTIRE tier and leave the ribbon drawing exactly
+// the empty track that the two removed guards were written to excuse.
+//
+// `plan:live seq:10` proposed "a proportionate `budgets.continuity`" on the
+// reasoning that "the 2,000 default is wildly out of scale for that fixture
+// and would make the tier admit everything". That reasoning assumed the tier
+// would be demonstrated by MARKING one of the corpus's existing reference
+// items, which measure ~4,100 and ~17,900 estimated tokens. It is not: the
+// item authored below is a bounded pointer of a couple of hundred, which is
+// the shape `DEC-continuity-gets-its-own-budget-and-the-item-it-holds-must-be`
+// rules the tier must carry. Against that shape 2,000 is the product's own
+// figure doing the product's own job, and the fixture demonstrates the ruling
+// rather than a number invented for it.
+config['budgets'] = { pinned: 240, jit: 180, restored: 240, continuity: 2000, index: 90 };
 // **The same category configuration the real corpus runs**, so the demo
 // exercises the shape the product is actually used in. `task` is not in any
 // stock profile — it is a project-defined category — and a demo corpus without
@@ -347,6 +371,62 @@ if (pinnedCount !== pinned.length) {
 }
 
 console.log(`demo-corpus: ${pinnedCount} items pinned`);
+
+// ── ONE CONTINUITY ITEM, AUTHORED HERE AND NOT INHERITED ───────────────────
+//
+// The continuity tier ran over this corpus and admitted NOTHING for as long as
+// the tier has existed, and two shipped test guards were written to describe
+// that emptiness rather than to test the tier: `div.continuity.seg` in
+// `e2e/screen-parity.spec.ts`'s `KNOWN_GAPS.preview`, and the
+// `if (track.segs === 0) continue;` guard in `e2e/app-layout.spec.ts`'s
+// five-tier ribbon test. Both said so in their own comments, and both named
+// this script as the place the fix belonged.
+//
+// **It is authored here rather than left to the copy-in, and that is the whole
+// point.** The real corpus gained a `continuity: true` item on 2026-08-28, and
+// the block above copies `items/` in wholesale — so from that day the fixture
+// exercised the tier BY ACCIDENT, and would stop the day the owner retired or
+// renamed that item. A fixture whose coverage depends on what the live corpus
+// happens to hold today is the exact failure this corpus exists to end: the
+// suite would go quietly back to measuring nothing, with no test turning red
+// to say so. Two continuity items — the inherited one and this one — is the
+// correct outcome, not a duplicate: this one is the floor.
+//
+// **The SHAPE is the ruling's shape, not merely a flag set to true.**
+// `DEC-continuity-gets-its-own-budget-and-the-item-it-holds-must-be` rules
+// that what this tier carries is a POINTER PLUS A BOUNDED DIGEST — the item
+// names the document, says to read it, and states where the work stands —
+// never the document itself. `config.ts` records why, with the measurement: the
+// handover this tier was created for was 37,831 estimated tokens against a
+// 2,000 budget and had therefore never once been injected on any event. So a
+// fixture item that was a wall of `body()` filler would demonstrate the tier's
+// mechanics while modelling the very item shape the ruling forbids.
+//
+// `--continuity` is `edit`'s flag; `add` has no spelling for it, exactly as
+// with `--always` above. The id is read back for the same reason.
+const CONTINUITY_TITLE = 'Where the billing rework stands, and what to read first';
+cli([
+  'add', 'reference', CONTINUITY_TITLE,
+  '--body',
+  'The full account is `docs/architecture.md`. Read it before changing anything under '
+  + '`src/billing/**`.\n\n'
+  + 'This item is the POINTER and the state; the document is the argument, and it is too '
+  + 'large to inject.\n\n'
+  + '**Where the work stands**\n\n'
+  + '- the ledger is split and both halves reconcile\n'
+  + '- the tax table is still keyed by the old jurisdiction code\n'
+  + '- nothing has been decided about refunds\n\n'
+  + 'Next session starts at the tax table, not at the top.',
+  '--yes',
+]);
+const continuityItem = idsOf('reference').find((item) => item.title === CONTINUITY_TITLE);
+if (continuityItem === undefined) {
+  throw new Error('demo-corpus: the continuity item was added and cannot be found again — the '
+    + 'tier would run and admit nothing, which is the state this item exists to end');
+}
+cli(['edit', continuityItem.id, '--continuity=true', '--yes']);
+console.log(`demo-corpus: continuity item ${continuityItem.id}, so the fifth tier delivers`);
+
 console.log('demo-corpus: items built');
 
 // ── The audit history ──────────────────────────────────────────────────────

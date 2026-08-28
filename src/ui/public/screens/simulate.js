@@ -154,6 +154,138 @@ const STAIR_PT = 12;
 const STAIR_PB = 26;
 /** How many x-axis ticks to draw, beyond the 0 the axis line already implies. */
 const STAIR_X_TICKS = 4;
+/** Extra viewBox rows under the axis when there is an omission to disclose. */
+const STAIR_FOOT = 14;
+
+/* ── CHART DENSITY — thin the axis, annotate the notable, say what you dropped
+      ─────────────────────────────────────────────────────────────────────────
+      `axisTicks` and `placeLabels` are the mockup's own two helpers (mockup
+      ~3809, added with this change), transcribed the way `sv`/`svText` above
+      are. They are here rather than inline because they are DECISIONS, and
+      Spec §6 puts `screens/*.js` outside the tested surface: as pure functions
+      of numbers they are pinned by `test/ui/simulate-screen.test.ts` with no
+      `document` in the room, exactly as `screens/graph.js` pins `egoDrawing`
+      and `screens/decay.js` pins `combTicks`.
+
+      **WHY THEY EXIST, measured rather than supposed** (`plan:walk seq:62`).
+      This staircase drew a y tick per integer and the word `eviction` once per
+      eviction, unconditionally. The mockup's six hand-authored rungs never
+      showed it. Driven with Playwright at 1440x900 against three corpora, at
+      an IDENTICAL 1.6x scale in every one of them:
+
+          surface        rungs   y ticks   eviction labels   overlapping pairs
+          mockup             6         7                 1                   0
+          this repository   18        19               ~15                many
+          .demo-corpus     ~400        43               169               1881
+
+      Scale was measured first and eliminated: viewBox 560x200 renders 896x320
+      in both surfaces and the first text is 9.5px in both. The defect is
+      DENSITY and only density, which is why nothing below touches a font size.
+
+      **The rule is the design's own, not an invention.**
+      `reports/uiux/sketches/05-dataviz.html` — the sketch these views were
+      drawn from — states it three times in prose: its density rail merges
+      consecutive same-state runs so *"3,800 directories become a few hundred
+      rects"*; its recency comb annotates the ONE notable row with a callout
+      (*"pinned, yet cold — it spilled"*) and leaves the other nine as bare
+      markers; its ego graph caps at sixty *"with the overflow shown in the
+      column it was cut from"*. Thin, annotate the notable, disclose the rest.
+      The sketch's own staircase is the one graphic it never applied them to.
+
+      **GEOMETRY IS IN VIEWBOX UNITS AND THE ARITHMETIC IS PESSIMISTIC.**
+      `svg.chart{inline-size:100%}` scales the viewBox but NOT the text: a
+      560-unit chart rendered 896 wide still draws `--fs-chart` at 10 CSS px,
+      which is 6.25 viewBox units, not 10. A label therefore occupies FEWER
+      units the wider the chart is drawn, and the only scale at which an
+      estimate can be wrong in the dangerous direction is 1:1. Every width
+      below is figured at 1:1, so a real render always has more room than the
+      arithmetic assumed, never less. ── */
+
+/** Advance per character at `--fs-chart` (10px, ≈0.6em) at 1:1, in viewBox units. */
+const CHW = 6;
+/** The line box one chart label occupies at that size, and the air around it. */
+const LBH = 12;
+const LBPAD = 4;
+/** How close two axis tick labels may come before one of them has to go. */
+const TICKGAP = 20;
+/**
+ * How many annotations a chart may carry before they stop being CALLOUTS and
+ * become a labelling scheme. The sketch's recency comb annotates one row in ten
+ * and its prose is explicit that this is the point: a callout says *look at this
+ * one*, and a word beside every marker says nothing at all. Three is the most
+ * that still reads as the former, and three of them at the pessimistic 1:1 width
+ * take 144 of the staircase's 514 plotted units, so the cap binds before the
+ * geometry does rather than after.
+ */
+const CALLOUTS = 3;
+
+/**
+ * The tick VALUES for a count axis `0..max` spanning `span` viewBox units:
+ * every multiple of the smallest 1/2/5×10ⁿ step that keeps neighbours
+ * `TICKGAP` apart, plus `max` itself, which is the one value a reader of a
+ * count axis must be able to see.
+ *
+ * **At the mockup's six rungs the step is 1 and the answer is 0..6** — the
+ * unconditional loop this replaces, value for value, so the design's own case
+ * does not move a pixel. At eighteen it is `0 5 10 15 18`; at four hundred it
+ * is `0 50 … 350 402`.
+ */
+export function axisTicks(max, span) {
+  if (max <= 0) return [0];
+  const need = (max * TICKGAP) / span;
+  let i = 0;
+  let step = 1;
+  while (step < need) { i += 1; step = [1, 2, 5][i % 3] * 10 ** Math.floor(i / 3); }
+  const ticks = [];
+  for (let n = 0; n <= max; n += step) ticks.push(n);
+  if (ticks[ticks.length - 1] !== max) {
+    // The last multiple goes rather than the maximum, when the two would crowd.
+    if (((max - ticks[ticks.length - 1]) * span) / max < TICKGAP) ticks.pop();
+    ticks.push(max);
+  }
+  return ticks;
+}
+
+/**
+ * Which annotations survive, decided in UNMIRRORED coordinates and projected
+ * afterwards — the rule `screens/decay.js` states for `badpinOutward`, and for
+ * the same reason: `scale(-1,1)` would reverse the glyphs too.
+ *
+ * `marks` is `{x, y, text, rank}` — the point being annotated and how much it
+ * matters. They are offered the space in RANK order, so it goes to the most
+ * informative labels rather than to whichever came first along the axis, and
+ * one survives only if it is within `cap`, its box clears every box already
+ * kept, and it stays inside `[left, right]`. A label that would run off the
+ * reading end is turned around onto the other side of its own marker before it
+ * is given up.
+ *
+ * `omitted` is not optional. `INV-nothing-is-dropped-silently` applies to a
+ * chart exactly as it applies to a selection, and the caller draws the count.
+ */
+export function placeLabels(marks, left, right, off, cap) {
+  const kept = [];
+  const labels = [];
+  const ordered = [...marks].sort((a, b) => b.rank - a.rank || a.x - b.x);
+  for (const mark of ordered) {
+    if (labels.length >= cap) break;
+    const width = mark.text.length * CHW;
+    let x = mark.x + off;
+    let side = 'start';
+    if (x + width > right) {
+      x = mark.x - off;
+      side = 'end';
+      if (x - width < left) continue;
+    }
+    const x1 = side === 'start' ? x : x - width;
+    const x2 = side === 'start' ? x + width : x;
+    const clash = kept.some((b) => x1 < b.x2 + LBPAD && b.x1 < x2 + LBPAD
+      && mark.y - LBH < b.y + LBPAD && b.y - LBH < mark.y + LBPAD);
+    if (clash) continue;
+    kept.push({ x1, x2, y: mark.y });
+    labels.push({ x, y: mark.y, anchor: side, text: mark.text });
+  }
+  return { labels, omitted: marks.length - labels.length };
+}
 
 /* ── The unkeyed words — transcribed rather than declared, for the reason
       `screens/decay.js`'s own AXIS_ZERO/AXIS_UNIT/NEVER/BADPIN are: an SVG
@@ -166,6 +298,8 @@ const STAIR_LABEL_EN = 'Admission staircase: items admitted as a function of the
 const STAIR_LABEL_HE = 'גרם מדרגות: כמות הפריטים המתקבלים כפונקציה של תקציב הרמה';
 const EVICTION_EN = 'eviction';
 const EVICTION_HE = 'פינוי';
+const MORE_EN = ' more evictions';
+const MORE_HE = ' פינויים נוספים';
 const LADDER_ITEMS_EN = ' items';
 const LADDER_ITEMS_HE = ' פריטים';
 
@@ -325,7 +459,7 @@ export async function render(root, ctx) {
     kids.push(sv('line', {
       class: 'axis', x1: X(STAIR_PL), y1: STAIR_PT, x2: X(STAIR_PL), y2: STAIR_H - STAIR_PB,
     }));
-    for (let n = 0; n <= maxN; n++) {
+    for (const n of axisTicks(maxN, STAIR_H - STAIR_PT - STAIR_PB)) {
       kids.push(svText(
         { x: X(STAIR_PL - 6), y: by(n) + 3, 'text-anchor': anchor('end'), class: 'mono' },
         String(n),
@@ -347,22 +481,46 @@ export async function render(root, ctx) {
       const y = by(r.count);
       if (i === 0) { d = `M ${x} ${y}`; } else {
         d += ` L ${x} ${by(prev.count)} L ${x} ${y}`;
-        if (r.count < prev.count) evicts.push(r);
+        if (r.count < prev.count) {
+          evicts.push({ threshold: r.threshold, count: r.count, drop: prev.count - r.count });
+        }
       }
       prev = r;
     });
     kids.push(sv('path', { class: 'step', d }));
+    // The MARKER is the datum and every eviction keeps one. The WORD is an
+    // annotation, and one word per marker is what turned fifteen of them into
+    // `evictionevictioneviction` and a hundred and sixty-nine of them into one
+    // unbroken band: the biggest drops get it, in the space there actually is,
+    // and the count of the rest is drawn under the axis.
+    const word = rtl ? EVICTION_HE : EVICTION_EN;
+    const placed = placeLabels(
+      evicts.map((e) => ({ x: bx(e.threshold), y: by(e.count) - 8, text: word, rank: e.drop })),
+      STAIR_PL, STAIR_W - STAIR_PR, 7, CALLOUTS,
+    );
     for (const e of evicts) {
       kids.push(sv('circle', {
         cx: X(bx(e.threshold)), cy: by(e.count), r: 4, fill: 'var(--critbg)',
         stroke: 'var(--crit)', 'stroke-width': 1.6,
       }));
+    }
+    for (const label of placed.labels) {
+      kids.push(svText(
+        { x: X(label.x), y: label.y, 'text-anchor': anchor(label.anchor), fill: 'var(--crit)' },
+        label.text,
+      ));
+    }
+    // The foot exists only when there is something to disclose, so the six-rung
+    // design of record keeps the `0 0 560 200` viewBox it has always had. Same
+    // shape as `screens/decay.js`'s `+N older than the N sessions served`.
+    const foot = placed.omitted > 0 ? STAIR_FOOT : 0;
+    if (placed.omitted > 0) {
       kids.push(svText(
         {
-          x: X(bx(e.threshold)) + (rtl ? -7 : 7), y: by(e.count) - 8,
-          'text-anchor': anchor('start'), fill: 'var(--crit)',
+          x: X(STAIR_PL), y: STAIR_H + 10, 'text-anchor': anchor('start'),
+          fill: 'var(--crit)',
         },
-        rtl ? EVICTION_HE : EVICTION_EN,
+        `+${num(placed.omitted)}${rtl ? MORE_HE : MORE_EN}`,
       ));
     }
 
@@ -370,16 +528,25 @@ export async function render(root, ctx) {
     kids.push(sv('line', { class: 'defline', x1: defx, y1: STAIR_PT, x2: defx, y2: STAIR_H - STAIR_PB }));
     const nowx = X(bx(cur));
     kids.push(sv('line', { class: 'nowline', x1: nowx, y1: STAIR_PT, x2: nowx, y2: STAIR_H - STAIR_PB }));
+    // The budget being dragged is the axis's own last value whenever the slider
+    // sits at its bound — `sliderMaxFor` makes the swept last rung the maximum —
+    // and the label then ran off the reading end and printed itself a second
+    // time over the x tick of the same number. Photographed doing exactly that
+    // at 16,000. Same turnaround rule the eviction callouts use, chosen in
+    // UNMIRRORED coordinates and projected after.
+    const nowU = bx(cur);
+    const nowOut = nowU + 5 + num(cur).length * CHW <= STAIR_W - STAIR_PR;
     kids.push(svText(
       {
-        x: nowx + (rtl ? -5 : 5), y: STAIR_PT + 9, 'text-anchor': anchor('start'),
+        x: X(nowOut ? nowU + 5 : nowU - 5), y: STAIR_PT + 9,
+        'text-anchor': anchor(nowOut ? 'start' : 'end'),
         fill: 'var(--gold)', class: 'mono',
       },
       num(cur),
     ));
 
     const svg = sv('svg', {
-      viewBox: `0 0 ${STAIR_W} ${STAIR_H}`,
+      viewBox: `0 0 ${STAIR_W} ${STAIR_H + foot}`,
       class: 'chart',
       role: 'img',
       // An accessible name is an ATTRIBUTE and cannot hold an element — see

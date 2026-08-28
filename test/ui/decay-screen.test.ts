@@ -314,14 +314,24 @@ test('the badpin annotation turns inward rather than running off the chart', asy
 });
 
 test('an id label cannot reach the unrestricted overlay it would otherwise strike through', async () => {
-  // 11px monospace, advance ≈ 0.6em, anchored at PL - 8 and growing leftward.
-  // The `∀` overlay sits at x=4. This is the arithmetic behind ID_MAX, kept
-  // here so a later widening of the gutter or a change of face fails loudly
-  // rather than reintroducing a strikethrough on every unrestricted row.
+  // The id label is `class: 'mono'`, so its size is `--fs-chart-mono`'s 9.5px
+  // and its advance ≈ 0.6em ≈ 5.7 user units. Anchored at PL - 8 and growing
+  // leftward; the `∀` overlay sits at x=4. This is the arithmetic behind
+  // ID_MAX, kept here so a later widening of the gutter or a change of face
+  // fails loudly rather than reintroducing a strikethrough on every
+  // unrestricted row.
+  //
+  // **The advance follows the TOKEN, not a remembered pixel size.** It read
+  // 6.6 — derived from 11px — until 2026-08-28, when the chart faces were
+  // restored to their pre-repaint values behind dedicated tokens. That made
+  // this constant conservative rather than wrong, which is the quiet failure
+  // mode: the assertion kept passing with more headroom than it claimed to be
+  // measuring, and nothing said the number no longer described the thing it
+  // came from.
   const idMax = /const ID_MAX = (\d+);/.exec(decaySource);
   assert.ok(idMax, 'decay.js no longer truncates its id labels');
   const anchoredAt = 214 - 8;
-  const leftEdge = anchoredAt - Number(idMax[1]) * 6.6;
+  const leftEdge = anchoredAt - Number(idMax[1]) * 5.7;
   assert.ok(leftEdge > 12,
     `a ${idMax[1]}-character label starts at ${leftEdge.toFixed(1)} and the ∀ overlay occupies `
     + '4 to ~11 — every unrestricted row would render with a glyph struck through its id');

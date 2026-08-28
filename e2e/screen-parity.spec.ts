@@ -257,30 +257,17 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // Delivered and Why-not went back side by side in `.two`. Both sides now
   // draw zero, so there is no gap to record — which is the ledger working in
   // the direction nobody expects it to.
-  preview: [
-    'i', 'span.chip', 'span.prop',
-    // **The continuity track's admitted segment — a FIXTURE gap, not a build
-    // gap** (`plan:live seq:9`, 2026-08-28). `preview.js` draws `.seg` for
-    // every admitted item on every one of its five tracks; the code is one
-    // loop and does not special-case continuity. What it needs is an item to
-    // admit, and `.demo-corpus` has none: nothing in it carries
-    // `continuity: true`, because `scripts/demo-corpus.ts` marks continuity on
-    // no item and its two `reference` items measure ~4,100 and ~17,900
-    // estimated tokens against demo budgets of 90-240.
-    //
-    // So the tier runs, admits nothing, and draws its head and no segment —
-    // which is correct behaviour over this corpus and indistinguishable, to an
-    // element census, from a segment nobody built. That is exactly the
-    // ambiguity `DATA_DEPENDENT` names for this screen.
-    //
-    // Closing this is a FIXTURE change, not an app change: `plan:live seq:10`
-    // gives the demo corpus a bounded continuity item — which is also the
-    // shape `DEC-continuity-gets-its-own-budget-and-the-item-it-holds-must-be`
-    // rules a continuity item must have, so the fixture would demonstrate the
-    // ruling rather than merely satisfy a gate. Remove this entry then, and
-    // the `track.segs === 0` guard in `e2e/app-layout.spec.ts` with it.
-    'div.continuity.seg',
-  ],
+  // **`div.continuity.seg` came out on 2026-08-28, and it is the third entry
+  // closed by a FIXTURE rather than by code.** It was here because the
+  // continuity tier ran over `.demo-corpus`, admitted nothing, and drew its
+  // head and no segment — correct behaviour over that corpus and
+  // indistinguishable, to an element census, from a segment nobody built.
+  // `scripts/demo-corpus.ts` now AUTHORS a bounded continuity item in the shape
+  // `DEC-continuity-gets-its-own-budget-and-the-item-it-holds-must-be` rules,
+  // so the tier delivers and the segment draws. The matching
+  // `if (track.segs === 0) continue;` guard in `e2e/app-layout.spec.ts` came
+  // out in the same change, for the same reason.
+  preview: ['i', 'span.chip', 'span.prop'],
   coverage: [
     'button', 'button.linkid.m', 'div.mini', 'i', 'i.g', 'i.u', 'i.x',
     'span.covn', 'span.nm', 'table', 'tbody', 'td', 'th', 'thead', 'tr',
@@ -632,6 +619,43 @@ test('every screen draws every KIND of element its mockup section draws', async 
   const report: string[] = [];
   const stale: string[] = [];
 
+  /**
+   * **How many `/api` reads this page still has in flight.**
+   *
+   * The settle loop below asks whether the element count STOPPED CHANGING, and
+   * that is not the same question as whether the screen finished loading. Every
+   * screen builds its cards synchronously and fills them when its fetches
+   * resolve, so between `root.append(card)` and the response landing the count
+   * is stable — and two samples 400ms apart inside that window declare a
+   * half-drawn screen settled.
+   *
+   * **Measured 2026-08-28, and it is a false RED rather than a false green.**
+   * With `.demo-corpus` rebuilt to 679 items, `/api/simulate/sweep` — one
+   * server-side call that runs the whole selector once per rung — grew slow
+   * enough under four-worker contention to land after the loop had settled, and
+   * the Simulate screen was reported as missing `svg.chart`, `line.axis`,
+   * `path.step` and `text.mono`. Every one of those is built and correct; the
+   * screen was compared before it had drawn. It passed alone, on both projects,
+   * every time. That is exactly the wall-clock failure wearing an assertion's
+   * clothes that this test's own header calls the worst kind of red, arriving
+   * through the one hole the `settled` flag does not cover.
+   *
+   * So the loop now requires BOTH: nothing in flight, and the count stable.
+   * Nothing about the comparison is relaxed — this only stops it being taken
+   * against a screen whose answers had not arrived.
+   *
+   * **`/api/watch/stream` is excluded, because it never finishes.** It is the
+   * shell's one live connection, held open by design (`live-stream.spec.ts`:
+   * "the connection is opened once and shared"), so counting it would leave
+   * this permanently non-zero from the first visit to Watch onward and turn
+   * every later screen into a 10-second timeout.
+   */
+  let pending = 0;
+  const counts = (url: string): boolean => url.includes('/api/') && !url.includes('/api/watch/stream');
+  page.on('request', (r) => { if (counts(r.url())) pending += 1; });
+  page.on('requestfinished', (r) => { if (counts(r.url())) pending -= 1; });
+  page.on('requestfailed', (r) => { if (counts(r.url())) pending -= 1; });
+
   try {
     for (const screen of BUILT) {
       await mockupPage.evaluate((name) => {
@@ -677,16 +701,17 @@ test('every screen draws every KIND of element its mockup section draws', async 
       for (let attempt = 0; attempt < 25; attempt++) {
         const now = await page.evaluate(
           (s) => document.querySelectorAll(`[data-p="${s}"] *`).length, screen);
-        if (now > 0 && now === previous) { settled = true; break; }
+        if (now > 0 && now === previous && pending === 0) { settled = true; break; }
         previous = now;
         await page.waitForTimeout(400);
       }
       expect(previous, `${screen}: never rendered anything`).toBeGreaterThan(0);
       expect(settled,
-        `${screen}: still growing after 25 samples over 10s — it was NOT compared, because a `
-        + 'half-drawn screen would be reported as missing what the mockup draws and read exactly '
-        + 'like a regression. This is a LOAD failure: run this spec alone before believing '
-        + 'anything about the ledger.').toBe(true);
+        `${screen}: still growing, or still fetching (${pending} \`/api\` reads in flight), after `
+        + '25 samples over 10s — it was NOT compared, because a half-drawn screen would be '
+        + 'reported as missing what the mockup draws and read exactly like a regression. This is '
+        + 'a LOAD failure: run this spec alone before believing anything about the ledger.')
+        .toBe(true);
       const appKinds = (await page.evaluate(COLLECT_KINDS, `[data-p="${screen}"]`)) ?? [];
 
       const missing = mockKinds!.filter((k) => !appKinds.includes(k));

@@ -260,6 +260,24 @@ test('inventory: the element TREE of every screen against its mockup section',
     const results: ScreenResult[] = [];
     const unmeasurable: string[] = [];
 
+    /**
+     * `/api` reads still in flight, excluding the shell's one live stream,
+     * which never finishes. The settle loop below asks whether the element
+     * count stopped changing, and a screen that has appended its cards and is
+     * waiting for their data is stable while it is still half-drawn —
+     * `e2e/screen-parity.spec.ts` carries the measurement (2026-08-28,
+     * `/api/simulate/sweep` landing after the loop settled) and the same
+     * two-part condition. This file does not FAIL on a divergence, so the cost
+     * here is a wrong inventory rather than a false red; a wrong inventory is
+     * what the next decision is taken against.
+     */
+    let pending = 0;
+    const counts = (url: string): boolean =>
+      url.includes('/api/') && !url.includes('/api/watch/stream');
+    page.on('request', (r) => { if (counts(r.url())) pending += 1; });
+    page.on('requestfinished', (r) => { if (counts(r.url())) pending -= 1; });
+    page.on('requestfailed', (r) => { if (counts(r.url())) pending -= 1; });
+
     try {
       for (const screen of SCREENS) {
         // **Switch the mockup the way the mockup switches**, by clicking its
@@ -288,7 +306,7 @@ test('inventory: the element TREE of every screen against its mockup section',
         for (let attempt = 0; attempt < 25; attempt++) {
           const now = await page.evaluate(
             (s) => document.querySelectorAll(`[data-p="${s}"] *`).length, screen);
-          if (now > 0 && now === previous) break;
+          if (now > 0 && now === previous && pending === 0) break;
           previous = now;
           await page.waitForTimeout(400);
         }

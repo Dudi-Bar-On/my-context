@@ -152,8 +152,16 @@ const doc = {
 
 // ── The modules, loaded the way the browser loads them ──────────────────────
 
+interface LabelMark { x: number; y: number; text: string; rank: number }
+interface PlacedLabel { x: number; y: number; anchor: string; text: string }
+
 interface SimulateModule {
   render: (root: FakeElement, ctx: unknown) => Promise<void>;
+  /** The two density decisions, pinned with no `document` in the room. */
+  axisTicks: (max: number, span: number) => number[];
+  placeLabels: (
+    marks: LabelMark[], left: number, right: number, off: number, cap: number,
+  ) => { labels: PlacedLabel[]; omitted: number };
 }
 
 interface I18nModule {
@@ -625,6 +633,196 @@ test('the ladder draws one row per rung, the eviction in red and the current one
 
   assert.deepEqual(rows.map(kindOf), ['div', 'div.at', 'div.ev']);
   assert.deepEqual(rows.map((r) => flatText(r)), ['00 items', '6002 items', '15,000▼ 1 items']);
+});
+
+/* ── DENSITY — `plan:walk seq:62` ────────────────────────────────────────────
+   The staircase drew a y tick per integer and the word `eviction` once per
+   eviction, unconditionally. Measured in a browser at 1440x900 against three
+   corpora, at an identical 1.6x render scale in every one:
+
+       surface           rungs   y ticks   eviction words   overlapping pairs
+       the mockup            6         7                1                   0
+       this repository      18        19              ~15                many
+       .demo-corpus       ~400        43              169                1881
+
+   Scale was eliminated first and is not the defect. The two functions below
+   are the fix, and they are pure functions of numbers precisely so this file
+   can hold them to it — the same reason `screens/graph.js` exports
+   `egoDrawing` and `screens/decay.js` exports `combTicks`. The rendering
+   tests that follow then check that the staircase actually calls them, which
+   a unit test of the helpers alone would not.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * **The design of record's own case must not move**, and this is the assertion
+ * that says so: at the mockup's six rungs the step is 1 and the answer is
+ * `0..6`, which is the unconditional loop the change replaced, value for
+ * value. Everything past that is the thinning.
+ */
+test('the y axis thins to a nice step, and does not thin the mockup\'s own six', async () => {
+  const { axisTicks } = await simulate();
+  const span = 162; // STAIR_H - STAIR_PT - STAIR_PB
+
+  assert.deepEqual(axisTicks(6, span), [0, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(axisTicks(1, span), [0, 1]);
+  assert.deepEqual(axisTicks(8, span), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  // Eighteen — the shape the owner photographed. Nineteen ticks become five.
+  assert.deepEqual(axisTicks(18, span), [0, 5, 10, 15, 18]);
+  // Four hundred and two — `.demo-corpus`. The last multiple is dropped rather
+  // than printed two units from the maximum.
+  assert.deepEqual(axisTicks(402, span), [0, 50, 100, 150, 200, 250, 300, 350, 402]);
+  // A maximum that IS a multiple is not repeated.
+  assert.deepEqual(axisTicks(40, span), [0, 5, 10, 15, 20, 25, 30, 35, 40]);
+
+  // Whatever the count, no two ticks are closer than TICKGAP, the maximum is
+  // always drawn, and the axis never runs away with itself.
+  for (let max = 1; max <= 600; max += 1) {
+    const ticks = axisTicks(max, span);
+    assert.equal(ticks[0], 0, `axis for ${max} does not start at 0`);
+    assert.equal(ticks[ticks.length - 1], max, `axis for ${max} does not reach its maximum`);
+    assert.ok(ticks.length <= 10, `axis for ${max} drew ${ticks.length} ticks`);
+    for (let i = 1; i < ticks.length; i += 1) {
+      const gap = ((ticks[i]! - ticks[i - 1]!) * span) / max;
+      assert.ok(gap >= 20, `axis for ${max} put ${ticks[i - 1]} and ${ticks[i]} ${gap} apart`);
+    }
+  }
+});
+
+/**
+ * The annotation rule, in the two halves that matter: **no two labels may
+ * overlap** — which is the defect, stated as a property — and **nothing is
+ * dropped in silence**, so `omitted` accounts for every mark that did not get
+ * one. The `rank` ordering is what decides which survive, so the biggest drops
+ * keep their word rather than whichever came first along the axis.
+ */
+test('eviction labels are capped, collision-free, inside the plot, and counted', async () => {
+  const { placeLabels } = await simulate();
+  const [left, right, off, cap] = [32, 546, 7, 3];
+
+  // One mark is the mockup's own picture: it is labelled, and nothing is owed.
+  const one = placeLabels([{ x: 300, y: 90, text: 'eviction', rank: 1 }], left, right, off, cap);
+  assert.equal(one.omitted, 0);
+  assert.deepEqual(one.labels, [{ x: 307, y: 90, anchor: 'start', text: 'eviction' }]);
+
+  // A hundred and sixty-nine of them, all at one height — the `.demo-corpus`
+  // shape. Three words, a hundred and sixty-six accounted for, none touching.
+  const many = [];
+  for (let i = 0; i < 169; i += 1) many.push({ x: 40 + i * 3, y: 90, text: 'eviction', rank: i % 4 });
+  const dense = placeLabels(many, left, right, off, cap);
+  assert.equal(dense.labels.length, cap);
+  assert.equal(dense.omitted, 169 - cap);
+  for (let i = 0; i < dense.labels.length; i += 1) {
+    for (let j = i + 1; j < dense.labels.length; j += 1) {
+      const a = dense.labels[i]!;
+      const b = dense.labels[j]!;
+      const box = (l: PlacedLabel): [number, number] => (l.anchor === 'start'
+        ? [l.x, l.x + l.text.length * 6]
+        : [l.x - l.text.length * 6, l.x]);
+      const [a1, a2] = box(a);
+      const [b1, b2] = box(b);
+      assert.ok(a2 <= b1 || b2 <= a1 || Math.abs(a.y - b.y) >= 12,
+        `${JSON.stringify(a)} and ${JSON.stringify(b)} overlap`);
+    }
+  }
+
+  // The rank decides, not the axis order: the one drop worth naming keeps its
+  // word even though five nearer the origin were offered first.
+  const ranked = placeLabels(
+    [0, 1, 2, 3, 4, 5].map((i) => ({ x: 40 + i * 8, y: 90, text: 'eviction', rank: i === 5 ? 9 : 1 })),
+    left, right, off, 1,
+  );
+  assert.deepEqual(ranked.labels.map((l) => l.x), [40 + 5 * 8 + off]);
+
+  // A mark against the reading end turns its label around rather than running
+  // it off the chart — `screens/decay.js`'s `badpinOutward` rule.
+  const edge = placeLabels([{ x: 540, y: 90, text: 'eviction', rank: 1 }], left, right, off, cap);
+  assert.deepEqual(edge.labels, [{ x: 533, y: 90, anchor: 'end', text: 'eviction' }]);
+
+  // And one with room on neither side is given up rather than drawn wrong.
+  const boxed = placeLabels([{ x: 100, y: 90, text: 'eviction', rank: 1 }], 90, 110, off, cap);
+  assert.deepEqual(boxed.labels, []);
+  assert.equal(boxed.omitted, 1);
+});
+
+/** A sweep dense enough to need thinning, built the way a real one arrives. */
+function denseRungs(steps: number): { threshold: number; count: number; evicted: string[] }[] {
+  const rungs = [{ threshold: 0, count: 0, evicted: [] as string[] }];
+  let count = 0;
+  for (let i = 1; i <= steps; i += 1) {
+    const down = i % 3 === 0 && count > 1;
+    count = down ? count - 1 : count + 1;
+    rungs.push({
+      threshold: i * 280,
+      count,
+      evicted: down ? [`RULE-crowded-out-at-rung-${i}`] : [],
+    });
+  }
+  return rungs;
+}
+
+/**
+ * The staircase over a real-sized sweep, drawn: this is what a unit test of
+ * `axisTicks` and `placeLabels` on their own cannot say, and it is the half
+ * the browser suite has never covered — `e2e/*.spec.ts` drives `openMockup()`,
+ * whose staircase is six hand-authored sample points, so the app has never
+ * been photographed drawing a chart over a corpus with many rungs.
+ */
+test('a dense sweep draws a thinned axis, three callouts and the count of the rest', async () => {
+  const rungs = denseRungs(48);
+  const evictions = rungs.filter((r) => r.evicted.length > 0).length;
+  assert.ok(evictions >= 15, `the fixture must be dense; it has ${evictions} evictions`);
+
+  const { root } = await draw(async (route) => (route.startsWith('/api/simulate/sweep?')
+    ? sweepBody('jit', rungs)
+    : RICH(route)));
+
+  const svg = byKind(root, 'svg.chart')[0] as FakeElement | undefined;
+  assert.ok(svg !== undefined, 'no staircase was drawn');
+  // Every eviction keeps its MARKER — the marker is the datum. Only the word
+  // is rationed.
+  assert.equal(all(svg, (n) => n.tag === 'circle').length, evictions);
+
+  const words = all(svg, (n) => n.textContent === 'eviction');
+  assert.equal(words.length, 3, 'the callout cap is three');
+
+  const foot = all(svg, (n) => n.textContent.endsWith(' more evictions'));
+  assert.deepEqual(foot.map((n) => n.textContent), [`+${evictions - 3} more evictions`]);
+  // The disclosure gets a row of its own, so the plot's own geometry is
+  // untouched by having something to say.
+  assert.equal(svg.attributes['viewBox'], '0 0 560 214');
+
+  // The y axis: nine ticks at most for seventeen admitted, never eighteen.
+  // `text.mono` separates them from the eviction callouts, which carry no
+  // class, and `text-anchor` from the x axis's own (`middle`) and from the
+  // dragged budget's label (`start`).
+  const maxN = Math.max(...rungs.map((r) => r.count));
+  const yTicks = all(svg, (n) => kindOf(n) === 'text.mono'
+    && (n as Partial<FakeElement>).attributes?.['text-anchor'] === 'end');
+  assert.ok(yTicks.length <= 9, `the y axis drew ${yTicks.length} ticks for ${maxN} items`);
+  assert.equal(yTicks[yTicks.length - 1]!.textContent, String(maxN));
+});
+
+/**
+ * And the design of record's own picture, unmoved: three rungs, one eviction,
+ * the word beside it, no disclosure line, and the `0 0 560 200` viewBox this
+ * chart has always carried. A density rule that changed THIS would be a
+ * regression against `docs/design/web-ui-mockup.md`'s appearance rule.
+ */
+test('a sparse sweep is drawn exactly as it was before the density rule', async () => {
+  const { root } = await draw(RICH);
+  const svg = byKind(root, 'svg.chart')[0] as FakeElement | undefined;
+  assert.ok(svg !== undefined, 'no staircase was drawn');
+
+  assert.equal(svg.attributes['viewBox'], '0 0 560 200');
+  assert.equal(all(svg, (n) => n.textContent === 'eviction').length, 1);
+  assert.deepEqual(all(svg, (n) => n.textContent.endsWith(' more evictions')), []);
+  // `JIT_RUNGS` tops out at two admitted, so the axis is 0, 1, 2 — untouched.
+  assert.deepEqual(
+    all(svg, (n) => kindOf(n) === 'text.mono'
+      && (n as Partial<FakeElement>).attributes?.['text-anchor'] === 'end')
+      .map((n) => n.textContent),
+    ['0', '1', '2'],
+  );
 });
 
 /**

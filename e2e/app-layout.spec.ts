@@ -580,21 +580,20 @@ test('the budget ribbon draws all five tiers, in the design\'s order, and hatche
     }
     expect(track.head, `${track.tier}: a running track needs its head filler, or the `
       + 'unspent budget reads as spent').toBe(1);
-    // **A track that ran with NO CANDIDATES draws no lane, and that is not the
-    // defect this asserts.** The ghost lane is per-item — a `.gap` at each
-    // admitted item's width and a `.gh` at each spilled one's — so a tier whose
-    // eligible set is empty has nothing to draw a lane out of. `.demo-corpus`
-    // carries no `continuity: true` item (both its reference items are far
-    // larger than any budget it configures), so the continuity tier runs,
-    // admits nothing, spills nothing, and correctly draws only its head.
+    // **The `if (track.segs === 0) continue;` guard that stood here came out
+    // on 2026-08-28.** It existed because `.demo-corpus` carried no
+    // `continuity: true` item, so that one tier ran, admitted nothing, spilled
+    // nothing and correctly drew only its head — and a bare `gaps + ghosts > 0`
+    // read the fixture's own emptiness as a defect. `scripts/demo-corpus.ts`
+    // now authors a bounded continuity item, so every tier that runs over this
+    // corpus admits something and the guard is a gate that has stopped
+    // checking. A guard left standing after the path it excused can be
+    // exercised is worse than none: it silently forgives the case it was only
+    // ever meant to postpone.
     //
-    // The assertion this test exists for is unchanged and still binding: a tier
-    // that DID admit something must draw the lane, because a bar without one
-    // claims the budget was spent with nothing left over. Guarding on `segs`
-    // keeps that and stops the fixture's own emptiness reading as a bug.
-    // `plan:live seq:10` makes the fixture demonstrate the tier; when it lands,
-    // this guard stops being reached and should be removed rather than left.
-    if (track.segs === 0) continue;
+    // What it guarded is unchanged and still binding: a tier that admitted
+    // something must draw the lane, because a bar without one claims the
+    // budget was spent with nothing left over.
     expect(track.gaps + track.ghosts,
       `${track.tier}: a running track that admitted something must draw a ghost lane`)
       .toBeGreaterThan(0);
