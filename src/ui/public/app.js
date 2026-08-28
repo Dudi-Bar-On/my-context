@@ -110,6 +110,16 @@ import { installPaneResize } from '/lib/pane-resize.js';
 // `e2e/runs.spec.ts` points at when it asserts the page SHOWS a script tag
 // rather than running one.
 import { markdownNodes } from '/screens/docs.js';
+// The strip's context group. `contextStrip()` is the decision table for the
+// five states §4b names and the three project-knowledge answers beside them —
+// written, tested (`test/ui/viewmodel.test.ts`) and, until 2026-08-29, called
+// by nothing at all: the strip asserted `strip.ctx.noBridge` unconditionally
+// while the function that decides between no-bridge and four other answers
+// sat in the module beside it. `formatAge` ticks the "as of … ago" off
+// `receivedAt` at RENDER time, which is why that age is not a field on the
+// view — a number frozen at fetch time is the one thing that label must not
+// be.
+import { contextStrip, formatAge } from '/lib/viewmodel.js';
 // The rail's Coverage-gaps badge counts the SAME directories the gaps table
 // lists, through the same function. See `paintRailCounts` for why the count is
 // derived here rather than served as a number by `/api/status`.
@@ -1227,11 +1237,13 @@ async function loadSessions() {
 /**
  * **The provenance bar and the status strip — the app's two missing rows.**
  *
- * `.app` declares `grid-template-rows:46px 1fr 26px 30px` with areas
+ * `.app` declares `grid-template-rows:46px 1fr 26px 38px` with areas
  * `top / rail body / prov / strip`, so the grid reserved both rows from the day
- * the shell landed while nothing was ever built to sit in them. 26 + 30 = 56,
- * and that is exactly the band of bare `.app` the owner saw across the bottom
- * of every screen, showing the body's gradient through.
+ * the shell landed while nothing was ever built to sit in them. That strip row
+ * was 30px until 2026-08-29, and 26 + 30 = 56 is exactly the band of bare
+ * `.app` the owner saw across the bottom of every screen, showing the body's
+ * gradient through. styles.css's status-strip rule carries why it is 38 now,
+ * and what was measured before it moved.
  *
  * BUILT IN SCRIPT, NOT COPIED AS MARKUP, and that is deliberate. The mockup
  * writes these as static HTML carrying `data-t` attributes and scans for them.
@@ -1241,27 +1253,102 @@ async function loadSessions() {
  * never reach. Take the mockup's DESIGN, never its BEHAVIOUR: the classes, the
  * order and the states are the mockup's; how the text gets there is this app's.
  *
- * WHAT IS REAL, AND WHAT IS HONESTLY ABSENT. The git group is live off
- * `/api/meta`'s `git`, whose four `upstream` values map one-to-one onto the
- * mockup's states; the item count is live off `/api/status`. The context group
- * renders `strip.ctx.noBridge` — its own keyed state for "no status line
- * bridge is installed" — which is the true answer here, not a blank.
+ * ── FOUR OF FORTY-FOUR, AND WHAT CHANGED — 2026-08-29, plan:walk seq:29b+29 ─
  *
- * NOT BUILT, and named rather than dropped: "injections today" and the audit
- * append p95. Both need an audit aggregate this read surface does not expose,
- * and inventing a number for a bar whose whole job is provenance would be the
- * exact defect this bar exists to prevent. Their separators are omitted with
- * them, so the strip reads as a shorter TRUE bar rather than a complete one
- * with holes.
+ * Measured 2026-08-28, both surfaces driven in one browser: the mockup's strip
+ * carried 44 elements in 5 colours and this one carried 4 in 1. The owner's
+ * words were "many properties are currently missing and also the font should
+ * be bigger to be readable, also use colors to diffrentiate between
+ * properties", and separately "the status line is not constantly showing".
+ *
+ * **The strip is not intermittent and never was.** This function creates
+ * `footer.strip#strip` once and nothing anywhere removes it, hides it, or
+ * rebuilds `#app` around it; `.strip` is its own grid row and the three
+ * siblings above it are each their own scroll container, so none of them can
+ * push it past the viewport. What varied was CONTENT: the git group and the
+ * item count were filled by one-shot calls whose catch blocks left their span
+ * EMPTY ON PURPOSE — "the strip says nothing rather than guessing" — with no
+ * retry, so one transient failure blanked them permanently. A blank git group
+ * and a blank count beside one leftover sentence is exactly what "not
+ * constantly showing" looks like from outside.
+ *
+ * That is `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+ * clause 3 — "a blank is indistinguishable from a failure to load, and a
+ * reader who cannot tell those apart stops trusting the surface" — and the
+ * standard was ruled after this code was written, which is how a
+ * correct-looking catch block survived. **Every group can now say
+ * `strip.unread` and offer the call again**, and that named unmeasured state
+ * was built for the FOUR before the missing forty were added, so the finished
+ * strip does not inherit the same silence across forty-four segments.
+ *
+ * **What each segment needed, established per segment rather than assumed to
+ * share one blocker** — `plan:port seq:6` recorded two absences; there were
+ * forty, and they did not have a common cause:
+ *
+ *   git group          `/api/meta` — already live; now has an unread state.
+ *   item count         `/api/status` — already live; now has an unread state.
+ *   context group      `/api/watch/context`, REGISTERED AND SERVING since ui3
+ *                      tasks 4 and 5 landed. This is `plan:walk seq:29`: the
+ *                      strip told every reader "The status line bridge is not
+ *                      installed", INCLUDING the readers who had installed
+ *                      it, because `strip.ctx.noBridge` was appended with no
+ *                      check of any kind. It asks now — see `fillContext()`.
+ *   project-knowledge  the same endpoint's `mycontext` half: three answers,
+ *                      one of them an error, all keyed.
+ *   injections today   NO SOURCE ON THIS READ SURFACE. Derivable in principle
+ *   audit append p95   by asking `/api/watch/volume` for every minute since
+ *                      local midnight and summing `byKind.injection` — up to
+ *                      1,440 columns on every page boot, which that
+ *                      endpoint's own cap calls "where a request stops being
+ *                      a pulse and starts being a scan"; and its window ends
+ *                      at `now` rather than on a midnight boundary, so the
+ *                      total would be off by part of a minute. Wrong by a
+ *                      little, in a bar whose entire job is provenance, is
+ *                      wrong. The p95 has no runtime source at all — the
+ *                      mockup's 0.55 ms is a benchmark figure out of
+ *                      `core/audit-db.ts`'s header, not something this server
+ *                      measures. Both need a bounded aggregate on the read
+ *                      surface, and until one exists they are DRAWN AND NAMED
+ *                      AS UNMEASURED rather than dropped: `plan:port seq:6`'s
+ *                      "a shorter TRUE bar" was true and silent about what it
+ *                      was not saying, which clause 2 forbids.
+ *
+ * **Colour, and the word beside it.** Four provenance groups — repo, corpus,
+ * session, audit — each carrying one of the five meaning colours AND a label
+ * word. The word is not decoration: `reports/uiux/sketches/06-a11y.html`
+ * requires "a glyph AND a colour AND a name", because --gold and --ok measure
+ * 1.04:1 against each other and are the same state to a dichromat, identical
+ * grey on a monochrome printer, and one system tone under forced-colors.
+ * Colour is the fast channel; the word is the one that always survives.
+ *
+ * **The font is a DESIGN change and the mockup was edited FIRST**, per this
+ * project's order for every design-of-record change: both surfaces measured
+ * 13px, so the app was faithful and the design was what could not be read.
+ * `--fs-strip`/`--fs-strip-mono` are the strip's own ramp, beside `--fs-chart`
+ * and for the reason that ramp exists — a prose repaint must not be able to
+ * move a dense bar's size out from under it.
  */
 function renderChrome() {
   const app = document.getElementById('app');
   if (app === null) return;
 
-  // Present and empty: the bar is "one home for every qualification the
-  // screens owe", and when no screen owes one there is nothing to say. The
-  // row is reserved by the grid either way, so building it empty is what
-  // stops the background showing through; screens fill #provparts later.
+  // **THE 26px BAND THAT SAID NOTHING, 2026-08-29.** This used to be built
+  // present and EMPTY, on the reasoning that the bar is "one home for every
+  // qualification the screens owe" and that when no screen owes one there is
+  // nothing to say. Measured across eight screens on 2026-08-29: `#prov` was
+  // 26px x 1280px with one child, zero visible descendants and no text, on
+  // every one of them — while the design of record fills the same bar on every
+  // screen. The owner, looking at the product: "the upper row is empty."
+  //
+  // `e2e/app-layout.spec.ts`'s "no empty band" assertion passed over it for
+  // eight days, because it measures GEOMETRY: a 26px element with no text
+  // covers its span and leaves no gap. The test proved the row EXISTS; it never
+  // asked whether it SAYS anything, and its own docstring calls the defect "a
+  // band of nothing". That assertion is strengthened in the same commit.
+  //
+  // What fills it here is the SHELL's own qualification and not a screen's: how
+  // the audit projection stood when this page read it. `#provparts` is still
+  // the screens' to fill.
   if (document.getElementById('prov') === null) {
     const prov = document.createElement('div');
     prov.className = 'prov';
@@ -1270,7 +1357,10 @@ function renderChrome() {
     const parts = document.createElement('span');
     parts.className = 'provparts';
     parts.id = 'provparts';
-    prov.append(parts);
+    const proj = document.createElement('span');
+    proj.className = 'provproj';
+    proj.id = 'provproj';
+    prov.append(parts, proj);
     app.append(prov);
   }
 
@@ -1289,25 +1379,68 @@ function renderChrome() {
     return e;
   };
 
+  // One provenance group. The colour comes off `.sgrp-<name>` in the
+  // stylesheet and the word comes out of the string table; `data-k` records
+  // WHICH key was drawn, so `e2e/strip.spec.ts` can compare what this strip
+  // renders against what the design of record declares. Without it a browser
+  // test can only count anonymous spans, which is how forty missing segments
+  // went a month without being noticed.
+  const group = (name, labelKey) => {
+    const g = document.createElement('span');
+    g.className = 'sgrp sgrp-' + name;
+    const label = document.createElement('span');
+    label.className = 'slab';
+    label.dataset.k = labelKey;
+    label.append(...translate(table.strings, labelKey));
+    g.append(label);
+    strip.append(g);
+    return g;
+  };
+
+  const repo = group('repo', 'strip.grp.repo');
   const git = document.createElement('span');
   git.className = 'gitstate';
   git.id = 'gitstate';
-  strip.append(git, sep());
+  repo.append(git);
+  strip.append(sep());
 
+  const corpus = group('corpus', 'strip.grp.corpus');
   const count = document.createElement('span');
-  count.className = 'm';
+  count.className = 'corpusstate';
   count.id = 'stripitems';
-  const itemsLabel = document.createElement('span');
-  itemsLabel.append(...translate(table.strings, 'strip.items'));
-  strip.append(count, document.createTextNode(' '), itemsLabel, sep());
+  corpus.append(count);
+  strip.append(sep());
 
+  const session = group('session', 'strip.grp.session');
   const ctx = document.createElement('span');
   ctx.className = 'ctxstate';
   ctx.id = 'ctx';
-  const noBridge = document.createElement('span');
-  noBridge.append(...translate(table.strings, 'strip.ctx.noBridge'));
-  ctx.append(noBridge);
-  strip.append(ctx);
+  session.append(ctx);
+  strip.append(sep());
+
+  // ── THE AUDIT GROUP — two properties the reader is owed, and the one state
+  // both are permanently in. Built here rather than in `fillChrome()` because
+  // there is nothing to fetch: no endpoint on this read surface exposes an
+  // aggregate over the audit log (see the header). The LABELS are drawn
+  // either way — the property is what the reader is owed, and hiding the
+  // whole segment is how forty of forty-four came to be invisible — with an
+  // em dash where the figure goes and ONE chip naming the state for both.
+  const audit = group('audit', 'strip.grp.audit');
+  const auditState = document.createElement('span');
+  auditState.className = 'auditstate';
+  auditState.id = 'auditstate';
+  auditState.append(stateChip('strip.unmeasured', 'title.unmeasured'));
+  for (const key of ['strip.inj', 'strip.append']) {
+    const dash = document.createElement('span');
+    dash.className = 'm';
+    dash.textContent = '—';
+    const label = document.createElement('span');
+    label.className = 'sprop';
+    label.dataset.k = key;
+    label.append(...translate(table.strings, key));
+    auditState.append(dash, document.createTextNode(' '), label);
+  }
+  audit.append(auditState);
 
   // ── THE SHARED LIVE STREAM'S OWN FAULT — present but hidden, exactly as
   // `#prov` is built empty above, so the row's width does not jump the
@@ -1367,17 +1500,141 @@ function renderChrome() {
 }
 
 /**
- * Fill the strip from the two endpoints that can answer it.
+ * A neutral chip naming a state, carrying its own glyph.
+ *
+ * Neutral on purpose. An unmeasured fact is not a warning and may not borrow
+ * `--warn`'s voice — a reader who learns that "not read" looks like "differs
+ * from origin/main" stops being able to read either. `data-g` is the same
+ * channel `.chip.ok` and `.chip.warn` use, so the state stays legible with no
+ * colour at all: under forced-colors, on a monochrome printer, and to a reader
+ * who cannot tell green from amber.
+ */
+function stateChip(key, titleKey) {
+  const chip = document.createElement('span');
+  chip.className = 'chip unmeas';
+  chip.dataset.g = '◌';
+  chip.dataset.k = key;
+  chip.append(...translate(table.strings, key));
+  // The chip NAMES the state in two words, because a bar 30px tall has room
+  // for two words and the context sentence beside it is the one thing allowed
+  // to give way — written as a sentence, these two chips measured 400px of a
+  // 1280px strip between them and squeezed that sentence to nothing. WHY it is
+  // in that state is a title, the same treatment the git group's own
+  // explanation already gets. `tFlat` because an attribute cannot hold an
+  // element; see its own header.
+  chip.title = flat(table.strings, titleKey);
+  return chip;
+}
+
+/**
+ * **The unmeasured state for a segment whose call did not answer, and the
+ * control that asks again.**
+ *
+ * The two built segments used to leave their span EMPTY here, on the stated
+ * reasoning that "the strip says nothing rather than guessing" and "leave the
+ * count empty rather than show a wrong one". Both halves of that are right and
+ * the conclusion was wrong: a blank cannot tell a reader whether the fact is
+ * absent, whether the call failed, or whether the strip is still loading — and
+ * with no retry it never came back, which is what the owner saw as a status
+ * line that "is not constantly showing".
+ *
+ * Saying nothing and saying "not read" are different amounts of guessing.
+ * Only one of the two is a claim, and it is the blank.
+ */
+function unreadState(retry) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'icon';
+  btn.append(...translate(table.strings, 'btn.refresh'));
+  // Re-entrant by construction: `retry` calls the same filler again, which
+  // rebuilds this element and this button along with it.
+  btn.onclick = () => { retry(); };
+  return [stateChip('strip.unread', 'title.unread'), btn];
+}
+
+/** A token count the way §4b writes one — `47.0k` — and never a blank. */
+function tokenCount(n) {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
+  return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+}
+
+/**
+ * Fill the strip from the endpoints that can answer it.
  *
  * Separate from `renderChrome` because the shell must exist before the first
  * fetch resolves — a bar that appears late is a layout that jumps, and the
  * 56px row is reserved from first paint whether or not the data has landed.
+ *
+ * The two halves are separate functions because each is its own retry target:
+ * a failed `/api/meta` must not take the item count down with it, and asking
+ * again must ask for the one thing that failed.
  */
 async function fillChrome() {
   const git = document.getElementById('gitstate');
   const count = document.getElementById('stripitems');
   if (git === null || count === null) return;
+  await Promise.all([fillGit(git), fillItems(count), fillProvenance()]);
+}
 
+/**
+ * **How the audit projection stood when this page read it** — the shell's own
+ * provenance, in the bar built for provenance.
+ *
+ * `/api/watch/volume` at one minute and one bucket is one indexed row and one
+ * column; it is asked for its `projectionState`, not for its series. Three of
+ * the bar's four keyed answers are reachable from a read surface:
+ *
+ *   'fresh'    -> `prov.projFresh`  — already current
+ *   'absent'   -> `prov.projAbsent` — never built. `readProjection` calls this
+ *                 "the never-built empty state, and ONLY it", and it is the
+ *                 answer a fresh workspace always gives; it had no key until
+ *                 today, so the one thing the bar most often had to say was the
+ *                 one thing it could not.
+ *   a refusal  -> `prov.projFailed` — behind, diverged, truncated or corrupt.
+ *                 The endpoint's own message is the reason, carried verbatim.
+ *
+ * `prov.projCaughtUp` is NOT reachable and that is not an oversight: catching a
+ * projection up is a WRITE, a read surface may not perform one, and answering
+ * from a stale projection would present a partial history as a complete one.
+ * The state exists in the design of record for a surface that may sync. This
+ * one may not, so it never draws it rather than drawing it untruthfully.
+ */
+async function fillProvenance() {
+  const proj = document.getElementById('provproj');
+  if (proj === null) return;
+  proj.replaceChildren();
+  const label = document.createElement('span');
+  label.id = 'provprojlabel';
+  label.dataset.k = 'prov.projLabel';
+  label.append(...translate(table.strings, 'prov.projLabel'));
+  const state = document.createElement('span');
+  try {
+    const volume = await api('/api/watch/volume?minutes=1&bucket=60');
+    const key = volume.projectionState === 'absent' ? 'prov.projAbsent' : 'prov.projFresh';
+    state.dataset.k = key;
+    state.append(...translate(table.strings, key));
+  } catch (err) {
+    state.dataset.k = 'prov.projFailed';
+    state.append(...translate(table.strings, 'prov.projFailed',
+      { error: err instanceof Error ? err.message : String(err) }));
+  }
+  proj.append(label, document.createTextNode(' '), state);
+}
+
+async function fillGit(git) {
+  git.replaceChildren();
+  const keyed = (key, subs) => {
+    const el = document.createElement('span');
+    el.dataset.k = key;
+    el.append(...translate(table.strings, key, subs));
+    return el;
+  };
+  const chip = (key, subs, ok) => {
+    const el = keyed(key, subs);
+    el.className = ok ? 'chip ok' : 'chip warn';
+    el.dataset.g = ok ? '●' : '▲';
+    return el;
+  };
   try {
     const meta = await api('/api/meta');
     // First paint's half of the skew disclosure — see `showCodeSkew`. Before
@@ -1390,37 +1647,171 @@ async function fillChrome() {
     // it could not understand — and there `upstream: 'unknown'` is what should
     // render, never "on a branch".
     if (g === undefined || g === null) {
-      git.append(...translate(table.strings, 'strip.notARepo'));
+      git.append(keyed('strip.notARepo', {}));
     } else if (typeof g.branch === 'string') {
-      git.append(...translate(table.strings, 'strip.branch',
+      git.append(keyed('strip.branch',
         { branch: g.branch, commit: String(g.commit ?? '').slice(0, 7) }));
-      const chip = document.createElement('span');
       const key = g.upstream === 'in-sync' ? 'strip.inSync'
         : g.upstream === 'differs' ? 'strip.differs'
           : g.upstream === 'no-upstream' ? 'strip.noUpstream' : 'strip.unknownTip';
-      chip.className = g.upstream === 'in-sync' ? 'chip ok' : 'chip warn';
-      chip.dataset.g = g.upstream === 'in-sync' ? '●' : '▲';
-      chip.append(...translate(table.strings, key, { branch: g.branch }));
-      git.append(chip);
+      git.append(chip(key, { branch: g.branch }, g.upstream === 'in-sync'));
     } else if (g.detached === true) {
-      git.append(...translate(table.strings, 'strip.detached',
-        { commit: String(g.commit ?? '').slice(0, 7) }));
+      git.append(keyed('strip.detached', { commit: String(g.commit ?? '').slice(0, 7) }));
     } else {
-      const chip = document.createElement('span');
-      chip.className = 'chip warn';
-      chip.dataset.g = '▲';
-      chip.append(...translate(table.strings, 'strip.unknownTip'));
-      git.append(chip);
+      git.append(chip('strip.unknownTip', {}, false));
     }
   } catch {
-    // A failed read is not "not a git repository" — it is nothing known, and
-    // the strip says nothing rather than guessing.
+    // A failed read is not "not a git repository" — that half of the old
+    // reasoning stands, and `strip.notARepo` is still never drawn from here.
+    // What changed is that it is not a BLANK either. See `unreadState`.
+    git.append(...unreadState(() => { void fillGit(git); }));
   }
+}
 
+async function fillItems(count) {
+  count.replaceChildren();
+  const label = document.createElement('span');
+  label.dataset.k = 'strip.items';
+  label.append(...translate(table.strings, 'strip.items'));
+  const value = document.createElement('span');
+  value.className = 'm';
   try {
     const status = await api('/api/status');
-    count.textContent = String(status.items.total);
-  } catch { /* leave the count empty rather than show a wrong one */ }
+    // A measured zero is DRAWN and named — an empty corpus is a finding and
+    // the reader is entitled to it (clause 1 of the same standard).
+    value.textContent = String(status.items.total);
+    count.append(value, document.createTextNode(' '), label);
+  } catch {
+    value.textContent = '—';
+    count.append(value, document.createTextNode(' '), label,
+      ...unreadState(() => { void fillItems(count); }));
+  }
+}
+
+/**
+ * **The context group ASKS, instead of asserting.** `plan:walk seq:29`.
+ *
+ * `strip.ctx.noBridge` used to be appended unconditionally, with no check of
+ * any kind, so the strip told every reader "The status line bridge is not
+ * installed" — including every reader who had installed it. It was true when
+ * it was written: `plan:port seq:6` named its own unblocking condition, "ui3
+ * tasks 4 and 5 build the statusline, which is what would let the context
+ * group leave its noBridge state", both landed, and nothing came back. A
+ * provenance bar stating an unchecked fact is the precise defect that bar
+ * exists to prevent.
+ *
+ * **NO-BRIDGE AND NO-SAMPLE ARE NOT THE SAME STATE**, and `watch-model.ts`
+ * says so against itself: its one `null` covers "no bridge installed, or this
+ * session was never sampled". `contextStrip()` reports `no-bridge` for both
+ * because that is the only story the endpoint can tell, and nothing here
+ * widens it into a claim the data cannot carry. What this function must not
+ * do is invent a sixth state.
+ *
+ * **NO CREDENTIAL IS NOT A COLD SESSION.** `sessionValue` lands on `'cold'`
+ * both for a real empty ledger and for a `loadSessions()` that never got an
+ * answer; `noCredential` is the bit that tells them apart, and drawing "cold
+ * session — a hypothetical has no live context number" over a page that was
+ * refused would break clause 2 in the same sentence this task exists to fix.
+ * A page with no credential draws the unread state and the retry.
+ *
+ * Called after `loadSessions()` rather than from `fillChrome()`, because the
+ * session id is this endpoint's only parameter and `fillChrome()` runs before
+ * the session is known — deliberately, so the strip exists before the first
+ * data call.
+ */
+async function fillContext() {
+  const ctx = document.getElementById('ctx');
+  if (ctx === null) return;
+  ctx.replaceChildren();
+  const retry = () => { void fillContext(); };
+  if (noCredential) { ctx.append(...unreadState(retry)); return; }
+
+  const session = currentSession();
+  let body = null;
+  if (session !== 'cold') {
+    try {
+      body = await api('/api/watch/context?session=' + encodeURIComponent(session));
+    } catch {
+      ctx.append(...unreadState(retry));
+      return;
+    }
+  }
+
+  const view = contextStrip(body, session === 'cold');
+  const state = document.createElement('span');
+  if (view.state === 'known') {
+    state.dataset.k = 'strip.ctx.known';
+    state.append(...translate(table.strings, 'strip.ctx.known', {
+      pct: view.pct === null ? '—' : view.pct.toFixed(1),
+      used: tokenCount(view.used),
+      size: tokenCount(view.size),
+      // Computed from `receivedAt` HERE rather than carried on the view, so
+      // the label says how old the sample is now and not how old it was when
+      // the fetch happened to resolve.
+      age: view.receivedAt === null
+        ? '—'
+        : formatAge(Math.max(0, Date.now() - Date.parse(view.receivedAt))),
+    }));
+  } else {
+    const key = view.state === 'not-yet-known' ? 'strip.ctx.notYetKnown'
+      : view.state === 'unknown' ? 'strip.ctx.unknown'
+        : view.state === 'no-bridge' ? 'strip.ctx.noBridgeShort' : 'strip.ctx.cold';
+    state.dataset.k = key;
+    state.append(...translate(table.strings, key));
+    // THE NO-BRIDGE STATE IS THREE WORDS, AND THE SENTENCE IS ON DEMAND.
+    // Drawn at full length it was a third of the strip and STILL ellipsised —
+    // the most expensive segment in the bar, saying the least, with the
+    // context percentage crowded out entirely. Owner, 2026-08-29: "it includes
+    // a very long text that are not so important and other more important info
+    // could not be seen like the context size left filled percentage". Neither
+    // half is dropped: 05-dataviz.html's rule for anything bounded is bound it
+    // AND disclose what was bounded, and an ellipsis with no way to the rest is
+    // exactly the shape that rule refuses.
+    if (key === 'strip.ctx.noBridgeShort') {
+      state.title = flat(table.strings, 'strip.ctx.noBridge');
+    }
+  }
+  // The context group is the one item in the strip allowed to give way, so any
+  // of its states can end in an ellipsis on a narrow window. Each carries its
+  // own full text, so the truncation is bounded AND disclosed rather than being
+  // a dead end — the same rule the no-bridge state above follows for a
+  // different reason.
+  if (state.title === '') state.title = state.textContent;
+  ctx.append(state);
+
+  // The project-knowledge share is a SECOND question, asked only of `known` —
+  // the mockup's own rule, and the right one: "6.2k of it" has no antecedent
+  // beside a context figure that does not exist. Three answers, one of them an
+  // error, and the partial one exists because an injection recorded before
+  // `tokens` existed is unknown rather than zero.
+  if (view.state === 'known') {
+    const tail = document.createElement('span');
+    tail.className = 'small';
+    if (view.myctx === null) {
+      tail.dataset.k = 'strip.myctxUnavailable';
+      tail.append(...translate(table.strings, 'strip.myctxUnavailable', {
+        // The endpoint sets `mycontextError` on every branch that leaves
+        // `mycontext` null. The fallback is there so a shape it cannot
+        // currently produce still renders a reason rather than a colon with
+        // nothing after it.
+        error: view.myctxError ?? flat(table.strings, 'strip.unread'),
+      }));
+    } else if (view.myctx.unrecorded > 0) {
+      tail.dataset.k = 'strip.myctxPartial';
+      tail.append(...translate(table.strings, 'strip.myctxPartial', {
+        tokens: tokenCount(view.myctx.tokens),
+        injections: String(view.myctx.injections),
+        unrecorded: String(view.myctx.unrecorded),
+      }));
+    } else {
+      tail.dataset.k = 'strip.myctx';
+      tail.append(...translate(table.strings, 'strip.myctx', {
+        tokens: tokenCount(view.myctx.tokens),
+        injections: String(view.myctx.injections),
+      }));
+    }
+    ctx.append(tail);
+  }
 }
 
 // --- The rail's count badges ------------------------------------------------
@@ -1622,13 +2013,33 @@ async function route() {
   }
   for (const other of body.querySelectorAll('[data-p]')) other.hidden = other !== section;
 
-  // No string-table key exists yet for a transient loading state (checked:
-  // neither the mockup nor the string tables declare one) — inventing an
-  // untranslated string here would be exactly the defect this shell's i18n
-  // discipline exists to prevent, so the screen is simply cleared while the
-  // dynamic import resolves rather than shown a placeholder. Open question,
-  // this task's report.
+  // **AND IT SAYS SO WHILE IT IS EMPTY.** This used to clear the section and
+  // wait, on the reasoning that "no string-table key exists yet for a transient
+  // loading state ... inventing an untranslated string here would be exactly
+  // the defect this shell's i18n discipline exists to prevent". The i18n half
+  // of that was right; the conclusion was not. Clearing and waiting made
+  // `.body` — the `1fr` row, the tallest one on the page — a band of nothing
+  // for the length of a dynamic import: measured 2026-08-29 on `preview` at
+  // 1280x720, 610px tall, one child, `<section data-p="preview"></section>`,
+  // and not one visible glyph. `e2e/app-layout.spec.ts`'s geometry assertion
+  // passed over it for exactly the reason it passed over `#prov` — an empty
+  // element still covers its span — and its CONTENT assertion, added the same
+  // day, names it.
+  //
+  // The answer was to WRITE THE KEY rather than to keep the silence: both
+  // string tables carry `screen.unread` and `title.screenUnread` now, and this
+  // draws the same chip the strip draws for the same kind of fact
+  // (STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is, clause 3 —
+  // "a blank is indistinguishable from a failure to load"). Nothing has to
+  // remove it: every screen's `render()` opens with `root.replaceChildren()`,
+  // uniformly, which is the same property the `noCredential` note below already
+  // depends on.
   section.replaceChildren();
+  const unread = document.createElement('p');
+  unread.className = 'small';
+  unread.id = 'screenunread';
+  unread.append(stateChip('screen.unread', 'title.screenUnread'));
+  section.append(unread);
   const mod = await loader();
   await mod.render(section, window.myctx);
   // Arm live invalidation for THIS screen, now that it has something on
@@ -1839,6 +2250,12 @@ async function main() {
     // the reason reaches the page through them rather than being swallowed.
     // Re-throwing would restore exactly the defect this comment describes.
   }
+  // AFTER the session read and OUTSIDE the try, on both of its branches: the
+  // context group's endpoint takes the session id as its only parameter, and a
+  // session read that failed is a state that group DRAWS (`noCredential`)
+  // rather than a reason to leave it empty. `void`, like `fillChrome()` above
+  // — the strip may never hold up the router.
+  void fillContext();
 
   // **A nonce pasted into a LIVE page is redeemed, not routed.**
   //
@@ -1888,6 +2305,9 @@ function installNonceRedemption() {
         // succeeded and a session list that then refused must still reach
         // `route()`, or the page recovers its token and stays empty.
         try { await loadSessions(); } catch { /* screens draw their own */ }
+        // The context group was drawn with no credential and drew the unread
+        // state; a redemption is exactly the event that makes it answerable.
+        void fillContext();
       }
       await route();
     })();

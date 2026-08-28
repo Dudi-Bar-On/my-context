@@ -183,6 +183,19 @@ export const strings = {
   // screen: it says something arrived, not WHAT — the screen's own re-render,
   // once pressed, is what answers that. `btn.refresh` above is its control.
   'live.screenStale': 'New activity for this screen.',
+  // **THE SCREEN'S OWN UNREAD STATE**, drawn between the route and the first
+  // paint. `route()` clears the section and then awaits a dynamic import; for
+  // the length of that fetch the `body` row was a full-height band of nothing
+  // — 610px of it, measured on `preview` at 1280x720 on 2026-08-29 by
+  // `e2e/app-layout.spec.ts`'s "no silent band" assertion. `route()` said so
+  // itself and deferred the fix for want of a key: "no string-table key exists
+  // yet for a transient loading state ... Open question, this task's report."
+  // This is that key, and it is the SAME named state the strip already draws —
+  // STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is, clause 3: a
+  // blank cannot tell a reader whether the screen is empty, broken or still
+  // arriving, and one that cannot tell those apart stops trusting the surface.
+  'screen.unread': 'not read yet',
+  'title.screenUnread': 'This screen has not been read yet — its module and its figures are still arriving. Nothing is drawn because nothing has been measured, not because there is nothing to show; whatever the screen has to say replaces this the moment it lands.',
   'btn.copy': 'Copy',
   // Coverage gaps
   'gaps.h': 'Coverage gaps',
@@ -612,7 +625,22 @@ export const strings = {
   'pane.body': 'Body — as authored',
   'pane.well': "Corpus text sits in a well and inside {m:<bdi>}. The product's own words never do — that is how you tell them apart.",
   'aria.prov': 'Provenance',
-  'title.gitState': 'Click to cycle the six git states the spec requires',
+  // The four provenance-group labels. Colour says where a number came from
+  // and these say it a second time, because colour alone fails a dichromat,
+  // a monochrome printer and forced-colors (06-a11y.html).
+  'strip.grp.repo': 'repo',
+  'strip.grp.corpus': 'corpus',
+  'strip.grp.session': 'session',
+  'strip.grp.audit': 'audit',
+  // Two states no group could say before, and neither may be a blank —
+  // STD-a-measured-zero-is-drawn-and-named, clause 3. "not read" is a call
+  // that did not answer and is retryable; "not measured" is a figure this
+  // read surface exposes no aggregate for, and retrying cannot help.
+  'strip.unread': 'not read',
+  'strip.unmeasured': 'not measured',
+  'title.unread': 'The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again.',
+  'title.unmeasured': 'This read surface exposes no aggregate over the audit log, so the figure is unknown rather than zero. Refreshing cannot help; the endpoint has to exist first.',
+  'title.gitState': 'Click to cycle the seven git states the spec requires',
   'strip.branch': 'branch {mv:branch} @ {mv:commit}',
   'strip.detached': 'detached HEAD @ {mv:commit}',
   'strip.inSync': 'in sync with origin/{mv:branch}',
@@ -622,10 +650,21 @@ export const strings = {
   'strip.notARepo': 'not a git repository',
   'strip.items': 'items',
   'strip.inj': 'injections today',
-  'title.ctx': 'Click to cycle the five context states and the three project-knowledge answers',
+  'title.corpus': 'Click to cycle the item count and the state where it could not be read',
+  'title.audit': 'Click to cycle the audit figures between measured and not measured',
+  'title.ctx': 'Click to cycle the context states, the three project-knowledge answers and the unread state',
   'strip.ctx.known': 'context {pct}% ({used} of {size}) — as of last response, {age} ago',
   'strip.ctx.notYetKnown': 'context not yet known — no API call since the last compact',
   'strip.ctx.unknown': 'context unknown — this Claude Code build sends no {m:context_window}',
+  // The state, in three words, because this is a status strip: drawn at full
+  // length it was a third of the bar AND still ellipsised, so it cost the most
+  // and said the least, and the context percentage — the number this product
+  // is about — had no room at all. Owner, 2026-08-29: "it includes a very long
+  // text that are not so important and other more important info could not be
+  // seen like the context size left filled percentage". The sentence below is
+  // what the short state discloses on demand; neither is dropped, which is
+  // 05-dataviz.html's rule for a bounded thing — bound it, and disclose.
+  'strip.ctx.noBridgeShort': 'no status-line bridge',
   'strip.ctx.noBridge': 'showing only what mycontext injected — that is all this number is. The status line bridge is not installed; {m:mycontext statusline install} shows what installing would change, and asks.',
   'strip.ctx.cold': 'cold session — a hypothetical has no live context number',
   'strip.myctx': '{tokens} of it from project knowledge ({injections} injections)',
@@ -635,7 +674,19 @@ export const strings = {
   'strip.meas': 'measured',
   'strip.rt': 'simulate reduced-transparency',
   // The provenance bar — one home for the qualifications every screen owes
+  // The label was PAINTED, with its own `HEB ? … : …` ternary in the mockup's
+  // script and no key — the residue the 2026-08-21 reconciliation did not
+  // reach. Keyed here because the app has no such ternary: every string it
+  // draws comes through the table, so an unkeyed label is an English literal
+  // the א/A toggle can never reach.
+  'prov.projLabel': 'projection',
   'prov.projFresh': 'already current',
+  // The state `readProjection` reports as `absent` and names in its own words:
+  // "the never-built empty state, and ONLY it". It had no key, so the one
+  // answer a fresh workspace always gives was the one the bar could not say —
+  // and a bar that cannot say it renders blank, which is
+  // STD-a-measured-zero-is-drawn-and-named clause 3.
+  'prov.projAbsent': 'not built — nothing has been projected from the audit log yet',
   'prov.projCaughtUp': '{mv:state} and caught up before answering',
   'prov.projFailed': 'could not catch up — no partial answer is shown: {error}',
   'ex.msg': 'The server has exited. This page shows what it last knew.',

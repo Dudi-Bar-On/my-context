@@ -169,6 +169,67 @@ test('every row of the app shell is occupied — no empty band', async ({ app })
 });
 
 /**
+ * **A row that says nothing is an empty band too, whatever its height.**
+ *
+ * The assertion above measures GEOMETRY — it collects each child's rect, sorts
+ * them, and reports any vertical gap between them. That is exactly what it was
+ * written for, and it is blind to the case it was named after. An element
+ * present at its full reserved height with no text covers its span, leaves no
+ * gap between its siblings, and passes. Its own docstring calls the defect "a
+ * band of nothing", and a band of nothing is precisely what it was passing over.
+ *
+ * Measured 2026-08-29, across eight screens: `#prov` was 26px x 1280px with one
+ * child, ZERO visible descendants and no text, on every one of them, while the
+ * design of record fills the same bar on every screen. It had been that way
+ * since the shell landed. The owner, looking at the product: "the upper row is
+ * empty." Eight days, one green gate, and the gate was right about what it
+ * measured and silent about what it missed — the third such this day.
+ *
+ * So this measures CONTENT: every row of the shell must render text a reader
+ * can actually see. Swept over several screens, because a row filled on one
+ * screen and blank on the next is the same defect arriving later.
+ */
+test('every row of the app shell SAYS something — no silent band', async ({ app }) => {
+  const { page } = app;
+  const silent: string[] = [];
+  for (const screen of ['preview', 'watch', 'status', 'doctor']) {
+    await page.evaluate((s) => { location.hash = `#${s}`; }, screen);
+    // The rows are filled by their own calls; wait for the last one rather than
+    // for a timeout, so a slow machine does not read as a blank bar.
+    await expect(page.locator('#provproj [data-k]').first()).toBeAttached({ timeout: 10_000 });
+    const rows = await page.evaluate(() => {
+      const shell = document.querySelector<HTMLElement>('.app');
+      if (shell === null) return [{ id: 'no .app at all', text: '', height: 0 }];
+      return [...shell.children]
+        .map((c) => {
+          const r = c.getBoundingClientRect();
+          return {
+            id: (c as HTMLElement).id !== '' ? (c as HTMLElement).id : (c as HTMLElement).className,
+            height: Math.round(r.height),
+            // Only text a reader can see: an element the stylesheet has hidden
+            // contributes to textContent and to nothing else.
+            text: [...c.querySelectorAll('*')]
+              .filter((el) => el.getBoundingClientRect().width > 0)
+              .map((el) => (el.textContent ?? ''))
+              .join('')
+              .trim(),
+          };
+        })
+        // A row reserved at zero height is the geometry test's business, not
+        // this one's, and the item pane is legitimately absent until opened.
+        .filter((r) => r.height > 0 && r.id !== 'pane');
+    });
+    for (const row of rows) {
+      if (row.text === '') silent.push(`"${screen}": ${row.id} is ${row.height}px of nothing`);
+    }
+  }
+  expect(silent, 'a row of the shell reserves its height and renders no visible text. That is the '
+    + 'band of bare .app the geometry assertion above was written for, wearing an element: it '
+    + 'covers its span, so that test passes, and a reader still sees an empty strip across the '
+    + 'window.').toEqual([]);
+});
+
+/**
  * **Row labels start at the same place, because a ragged left edge reads as a
  * skew even when nothing is skewed.**
  *

@@ -307,6 +307,20 @@ const SCREEN_SELECTORS = [
   'svg.chart .node.superseded', 'svg.chart .node.more',
   'svg.chart .edge', 'svg.chart .edge.bearing', 'svg.chart .edge.ref',
   'svg.chart .edge.dangling', 'svg.chart text.nid', 'svg.chart text.rel',
+  // **The provenance bar and the status strip, added 2026-08-29 with the
+  // strip's four provenance groups (plan:walk seq:29b).** Both bars were
+  // carried from the mockup byte-for-byte when `renderChrome()` landed and
+  // NEITHER was ever held here — invisible to this file in both directions
+  // for the same structural reason `#pane` was, and the reason the strip's
+  // own task could claim that changing only the app "would make styles-parity
+  // fail" when in fact nothing would have noticed. It would now.
+  '.prov', '.prov b', '.provparts,.provproj', '.prov [hidden]',
+  '.strip', '.strip .sep', '.strip [hidden]',
+  '.gitstate,.ctxstate,.corpusstate,.auditstate', '.strip>*', '.ctxstate', '.ctxstate>span',
+  // The provenance grouping itself: a colour per source AND a label word.
+  '.sgrp', '.slab', '.sgrp-repo .slab', '.sgrp-corpus .slab',
+  '.sgrp-session .slab', '.sgrp-audit .slab', '.sgrp-session',
+  '.strip .m', '.chip.unmeas', '.chip.unmeas::before',
   '.idkind', '.idslug', 'h2', 'button',
   ':where(button,a,input,select,summary):focus-visible',
   '[dir="rtl"] .icon-open', '[class^="icon-"]',

@@ -312,6 +312,16 @@ export function egoDrawing(data, rtl = false) {
 function chart(ctx, drawing) {
   const svg = sv('svg', {
     viewBox: `0 0 ${drawing.width} ${drawing.height}`,
+    // `width`/`height` ARE THE CHART'S NATURAL SIZE, and they are load-bearing.
+    // `svg.chart` says `max-inline-size:100%` and no longer `inline-size:100%`,
+    // so the used width is this element's own INTRINSIC width — which is what
+    // these two presentation attributes supply. Without them an `<svg>` that
+    // carries only a viewBox has a ratio and no intrinsic size and the browser
+    // falls back to 300x150. The mockup's `chart()` factory writes the same two
+    // (mockup ~4193); `block-size:auto` in the stylesheet overrides the height
+    // one on purpose, so the ratio is recomputed on the narrow-card case.
+    width: drawing.width,
+    height: drawing.height,
     class: 'chart',
     role: 'img',
     // An accessible name is an ATTRIBUTE, so no element could survive here and

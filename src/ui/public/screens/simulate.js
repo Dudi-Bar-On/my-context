@@ -192,14 +192,18 @@ const STAIR_FOOT = 14;
       column it was cut from"*. Thin, annotate the notable, disclose the rest.
       The sketch's own staircase is the one graphic it never applied them to.
 
-      **GEOMETRY IS IN VIEWBOX UNITS AND THE ARITHMETIC IS PESSIMISTIC.**
-      `svg.chart{inline-size:100%}` scales the viewBox but NOT the text: a
-      560-unit chart rendered 896 wide still draws `--fs-chart` at 10 CSS px,
-      which is 6.25 viewBox units, not 10. A label therefore occupies FEWER
-      units the wider the chart is drawn, and the only scale at which an
-      estimate can be wrong in the dangerous direction is 1:1. Every width
-      below is figured at 1:1, so a real render always has more room than the
-      arithmetic assumed, never less. ── */
+      **GEOMETRY IS IN VIEWBOX UNITS, AND SINCE 2026-08-29 THOSE UNITS ARE
+      PIXELS.** `svg.chart{inline-size:100%}` used to scale the viewBox but NOT
+      the text: a 560-unit chart rendered 896 wide still drew `--fs-chart` at
+      10 CSS px, which is 6.25 viewBox units, not 10. A label therefore
+      occupied FEWER units the wider the chart was drawn, and the only scale at
+      which an estimate could be wrong in the dangerous direction was 1:1 —
+      which is why every width below was figured at that 1:1. The chart is now
+      BOUND at its own viewBox width (`svg.chart{max-inline-size:100%}` over a
+      `width` attribute, mockup ~1025/4193), so 1:1 is no longer the
+      pessimistic bound but the case that actually renders, and `CHW` is the
+      true advance rather than an upper one. Not one number below moved: the
+      arithmetic was already written for exactly this. ── */
 
 /** Advance per character at `--fs-chart` (10px, ≈0.6em) at 1:1, in viewBox units. */
 const CHW = 6;
@@ -547,6 +551,16 @@ export async function render(root, ctx) {
 
     const svg = sv('svg', {
       viewBox: `0 0 ${STAIR_W} ${STAIR_H + foot}`,
+      // `width`/`height` ARE THE CHART'S NATURAL SIZE, and they are load-bearing.
+      // `svg.chart` says `max-inline-size:100%` and no longer `inline-size:100%`,
+      // so the used width is this element's own INTRINSIC width — which is what
+      // these two presentation attributes supply. Without them an `<svg>` that
+      // carries only a viewBox has a ratio and no intrinsic size and the browser
+      // falls back to 300x150. The mockup's `chart()` factory writes the same two
+      // (mockup ~4193); `block-size:auto` in the stylesheet overrides the height
+      // one on purpose, so the ratio is recomputed on the narrow-card case.
+      width: STAIR_W,
+      height: STAIR_H + foot,
       class: 'chart',
       role: 'img',
       // An accessible name is an ATTRIBUTE and cannot hold an element — see

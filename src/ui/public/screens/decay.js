@@ -519,6 +519,16 @@ function drawCombChart(report, rows, unplaceable, served) {
 
   const svg = sv('svg', {
     viewBox: `0 0 ${W} ${height}`,
+    // `width`/`height` ARE THE CHART'S NATURAL SIZE, and they are load-bearing.
+    // `svg.chart` says `max-inline-size:100%` and no longer `inline-size:100%`,
+    // so the used width is this element's own INTRINSIC width — which is what
+    // these two presentation attributes supply. Without them an `<svg>` that
+    // carries only a viewBox has a ratio and no intrinsic size and the browser
+    // falls back to 300x150. The mockup's `chart()` factory writes the same two
+    // (mockup ~4193); `block-size:auto` in the stylesheet overrides the height
+    // one on purpose, so the ratio is recomputed on the narrow-card case.
+    width: W,
+    height,
     class: 'chart',
     role: 'img',
     // An accessible name is an ATTRIBUTE and cannot hold an element. The
@@ -546,7 +556,14 @@ function drawCombChart(report, rows, unplaceable, served) {
   // bidi-sensitive text out of an SVG a rule rather than a preference.
   svg.style.setProperty('direction', 'ltr');
   svg.style.setProperty('display', 'block');
-  svg.style.setProperty('inline-size', '100%');
+  // `max-inline-size`, NOT `inline-size` — the whole point of the 2026-08-29
+  // scale bound, and the one line of this restatement that had to move with it.
+  // This block re-declares `svg.chart{…}` on the element because the shell had
+  // no such rule when this file landed; the shell has it now, and an inline
+  // `inline-size:100%` here BEATS it, so leaving it would have pinned this one
+  // chart at the stretched 1.267x while the other two rendered 1:1. Measured
+  // doing exactly that before this line changed.
+  svg.style.setProperty('max-inline-size', '100%');
   svg.style.setProperty('block-size', 'auto');
   svg.style.setProperty('overflow', 'visible');
   svg.style.setProperty('font-family', 'var(--sans)');

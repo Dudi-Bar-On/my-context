@@ -170,6 +170,29 @@
      1.4, 1.5, 1.6, 2 and .8 are byte-identical across all three generations.
      Lines reading heavy was text growing around them. */
   --fs-chart:10px; --fs-chart-mono:9.5px; --fs-chart-nid:9px; --fs-chart-rel:8px;
+
+  /* STRIP TYPE — the status strip's own ramp, and NOT a step of the scale
+     above, for the same reason the chart ramp is not one.
+
+     Owner, 2026-08-28: "the font should be bigger to be readable". Measured
+     the same day, both surfaces driven in one browser: the strip rendered at
+     13px (--fs-0) HERE and at 13px in the app. The app was faithful and the
+     DESIGN was what could not be read, so this is a design change made in the
+     design of record first with src/ui/public/styles.css following — the
+     order every design-of-record change in this project takes, and the reason
+     changing only the app would have failed styles-parity in the direction
+     that means "the app invented something".
+
+     Its own token rather than a step of the prose scale, because the strip is
+     a dense provenance bar read at a glance and a paragraph is not. A future
+     prose repaint moves --fs-0 and this line stays put; without it the
+     strip's size is a number that can travel under it, which is exactly what
+     happened to the graphics when svg.chart text read the smallest prose step.
+
+     The mono step is STATED rather than left to `.m`'s .87em: a branch name,
+     a SHA and a token count are the runs a reader actually squints at, and
+     .87 of 15px would have put them straight back at 13. */
+  --fs-strip:14px; --fs-strip-mono:13px;
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
   --r-sm:3px; --r-md:5px; --r-lg:8px;
 }
@@ -419,7 +442,7 @@ button{font:inherit;color:inherit}
 body.sim-rt .gloss,body.sim-rt .gloss.float{background-image:none;box-shadow:none;border-color:var(--ink)}
 
 /* ═══ shell ═══ */
-.app{display:grid;grid-template-rows:46px 1fr 26px 30px;grid-template-columns:214px 1fr;
+.app{display:grid;grid-template-rows:46px 1fr 26px 38px;grid-template-columns:214px 1fr;
   block-size:100vh;grid-template-areas:"top top" "rail body" "prov prov" "strip strip"}
 /* The item pane's width, 2026-08-27. DRAFTED BY CLAUDE, APPROVED BY THE OWNER
    the same day — the pen ruling of 2026-08-25 is that Claude drafts and the
@@ -747,16 +770,51 @@ details.help[open]>summary{margin-block-end:6px}
    nothing else sets its `display`, and this bar is a flex container. */
 .prov [hidden]{display:none}
 
-/* status strip */
+/* status strip
+
+   THE ROW IS 38px, NOT 30px, SINCE 2026-08-29. Owner: "the status line occures
+   too low at the bottom, increase its height a little." Measured before
+   changing anything, because "too low" has two readings and only one of them
+   is a height: at 30px the strip's content was already vertically CENTRED —
+   the group label's ink box sat 7px from the top of the row and 7px from the
+   bottom, with `align-items:center` doing exactly its job — so this was not a
+   baseline or alignment fault, and raising the row alone would have been the
+   wrong answer if it had been. What the same measurement showed is that the
+   TALLEST element in the row was 31px inside a 30px row: the retry button and
+   the chips had zero clearance and one of them already spilled a pixel past
+   the bottom edge of the window. Centred content with no room around it is
+   what reads as jammed against the bottom.
+
+   38px gives the 28-31px controls ~4px of air on each side and comes out of
+   the 1fr body row, which is the only elastic one — the header and the
+   provenance bar are untouched, so every row of the shell is still occupied
+   and e2e/app-layout.spec.ts's no-empty-band assertion is unaffected.
+   Settled ONCE, after the strip's four provenance groups and their retry
+   controls were in place, rather than twice around the same question.
+
+   AND THE TEXT SITS UP, which is the other half and the one a taller row
+   would not have fixed. Owner: "the text is cut" ... "the text should be
+   moved up a little." `align-items:center` centres the LINE BOX, and a line
+   box is not symmetrical about its ink: a Latin face carries its descender
+   below the baseline, so geometric centring puts the visible text low and
+   leaves its descenders nearest the clipping edge. Measured at three viewport
+   heights: every run in the bar sat between 0.4px and 0.8px below optical
+   centre, and the two `overflow:hidden` boxes (the context sentence and the
+   audit property names) cleared their own ink by only 2.0px above and 2.3px
+   below — the thinnest margin in the strip and the first thing a font
+   fallback eats. `padding-block:0 2px` shrinks the content box from the
+   BOTTOM, so centred content rises 1px and the room left over lands under the
+   descenders where it is wanted. Re-measured after: 8.9px above the ink and
+   10.1px below it, at every size. */
 .strip{grid-area:strip;background:var(--panel);border-block-start:1px solid var(--rule);
   display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);
-  font-size:var(--fs-0);color:var(--dim)}
-.strip .sep{inline-size:1px;block-size:14px;background:var(--rule)}
+  padding-block:0 2px;font-size:var(--fs-strip);color:var(--dim)}
+.strip .sep{inline-size:1px;block-size:18px;background:var(--rule)}
 /* The git group shows one of six states; the rest are `hidden`. .chip sets
    `display`, and an author rule beats the UA sheet's [hidden] at equal
    specificity — the same trap .pop[hidden] and .pane[hidden] already dodge. */
 .strip [hidden]{display:none}
-.gitstate,.ctxstate{display:flex;align-items:center;gap:var(--sp-3)}
+.gitstate,.ctxstate,.corpusstate,.auditstate{display:flex;align-items:center;gap:var(--sp-3)}
 /* The no-bridge state is a whole SENTENCE in a bar sized for a phrase, and the
    known state is a long one. Exactly one item in the strip is allowed to give
    way, and it is that one: everything else is `flex:none`, so a squeeze cannot
@@ -766,7 +824,95 @@ details.help[open]>summary{margin-block-end:6px}
    off the end. */
 .strip>*{flex:0 0 auto}
 .ctxstate{flex:1 1 auto;min-inline-size:0}
+/* THE ONLY TWO CLIPPING BOXES IN THE BAR, and the one place a descender can
+   actually be cut: `overflow:hidden` is what makes the ellipsis work and it
+   clips VERTICALLY too, so the box has to be taller than the ink and not
+   merely as tall as it. At the inherited 1.55 the ink cleared by 2.0px above
+   and 2.3px below — positive, and thinner than any other clearance in the
+   strip, which is the margin a font fallback or a Hebrew glyph eats first.
+   1.9 takes it to about 4px on each side at --fs-strip. Measured, not
+   guessed, and re-measured after the size moved. */
+.ctxstate>span,.sprop{line-height:1.9}
 .ctxstate>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── PROVENANCE GROUPS — colour AND a word, never colour alone ────────────
+   Owner, 2026-08-28: "use colors to differentiate between properties". A bar
+   whose entire job is provenance, drawn in one colour, makes a reader parse a
+   sentence to learn what a glance should say.
+
+   FOUR groups, one per SOURCE the numbers come from — the working tree, the
+   corpus, this session's own context sample, and the audit log — each with a
+   colour taken from the five meaning colours (§2.5; no new hue is invented
+   here) AND a label word.
+
+   The word is not decoration. reports/uiux/sketches/06-a11y.html states the
+   rule this follows: "a glyph AND a colour AND a name in the accessible
+   string", because --gold and --ok "measure 1.04:1 against each other — as
+   pure colour they are the same state to a dichromat and identical grey on a
+   mono printer", and forced-colors flattens all four to one system tone.
+   Colour is the fast channel; the word is the one that always survives.
+
+   The label takes the shape every group label in this design takes — --fs-00,
+   700, uppercase, tracked, the same as `.grp>p` and `th` — so the value
+   beside it reads as a value and not as more label. */
+.sgrp{display:flex;align-items:center;gap:var(--sp-2)}
+.slab{font-size:var(--fs-00);font-weight:700;letter-spacing:.1em;text-transform:uppercase;flex:none}
+.sgrp-repo .slab{color:var(--carry)}
+.sgrp-corpus .slab{color:var(--gold)}
+.sgrp-session .slab{color:var(--ok)}
+.sgrp-audit .slab{color:var(--warn)}
+/* The context group is still the one item allowed to give way. It is now
+   wrapped in its provenance group, so the `flex:1 1 auto` that used to be
+   enough on .ctxstate has to sit on the group that IS the child of .strip —
+   declared after `.strip>*` so it wins at equal specificity, exactly as
+   .ctxstate does above. */
+/* It SHRINKS but does not GROW. `flex-grow:1` here made the session group
+   swallow every spare pixel in a wide window and open a blank gap in the
+   middle of the bar, with the audit group pushed off to the right edge as if
+   it belonged to something else. The groups read as one sequence; the slack
+   belongs at the end, where the live-stream fault and the refresh affordance
+   already sit. */
+.sgrp-session{flex:0 1 auto;min-inline-size:0}
+/* WHICH GROUP GIVES WAY, AND IN WHAT ORDER — measured at 1280px, not reasoned
+   about. Before this rule the audit group was `flex:none` at its full natural
+   width and the session group, the only shrinkable item left, was squeezed to
+   ZERO: the longest and most informative sentence in the bar disappeared
+   entirely while two figures that hold no numbers kept every pixel they asked
+   for. Both groups shrink now, in proportion to what they are asking for, so
+   the deficit lands on the wide one first and neither vanishes.
+
+   The em dash and the state chip are `flex:none` inside it, so a squeeze
+   takes width off the PROPERTY NAMES — which ellipsize and stay legible —
+   rather than clipping the one element that says what state the group is in.
+   Everything outside these two groups is still `flex:none`: a squeeze may
+   not wrap the git chip or shave a separator. */
+/* AND IT YIELDS FIRST. Both groups shrink, but not equally: a shrink factor
+   of 3 against the context group's 1 means the deficit lands on the audit
+   group — the one holding two figures this read surface has no source for —
+   before it lands on the live context measurement, which is the number this
+   product is about. Owner, 2026-08-29: "other more important info could not be
+   seen like the context size left filled percentage". Priority by information
+   density, not by declaration order. */
+/* With a FLOOR, because "yields first" is not "disappears": at 0 the two
+   properties are gone and the reader is back to not knowing they exist, which
+   is the four-of-forty-four defect wearing a flexbox. 170px is the group
+   label plus its state chip, measured — enough that the state is always
+   readable and only the property NAMES ellipsise. */
+.sgrp-audit{flex:0 3 auto;min-inline-size:170px}
+.auditstate{min-inline-size:0;overflow:hidden}
+.sprop{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-inline-size:0}
+.auditstate>.m,.auditstate>.chip{flex:none}
+/* Stated, so an identifier in the strip cannot shrink back under the prose
+   step `.m`'s .87em would hand it — see --fs-strip-mono. */
+.strip .m{font-size:var(--fs-strip-mono)}
+/* NOT MEASURED / NOT READ, drawn as a chip rather than left blank.
+   STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is: "a blank is
+   indistinguishable from a failure to load, and a reader who cannot tell
+   those apart stops trusting the surface". Neutral on purpose — an unmeasured
+   fact is not a warning and may not borrow --warn's voice — and it carries
+   its own glyph, so the state is still legible with no colour at all. */
+.chip.unmeas{color:var(--dim);border-color:var(--edge-3);background:var(--sink)}
+.chip.unmeas::before{content:"◌ "}
 
 .banner{position:fixed;inset:0;margin:auto;block-size:fit-content;
   inline-size:min(340px,calc(100vw - 2*var(--sp-4)));background:var(--critbg);
@@ -876,7 +1022,36 @@ details.help[open]>summary{margin-block-end:6px}
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* — SVG chart primitives — */
-svg.chart{display:block;inline-size:100%;block-size:auto;overflow:visible}
+/* **THE CHART IS BOUND AT ITS OWN VIEWBOX WIDTH, so one user unit is one CSS
+   pixel and --fs-chart means ten pixels wherever it is spent.**
+
+   `inline-size:100%` stood here until 2026-08-29 and stretched every fixed
+   viewBox into whatever width its card happened to give it — by a DIFFERENT
+   factor per screen. Measured in a browser at 1440x900, on the demo corpus:
+
+       staircase   viewBox 560x214    rendered 896x342     1.600
+       ego graph   viewBox 900x250    rendered 1140x317    1.267
+       recency comb viewBox 900x2008  rendered 1140x2544   1.267
+       activity pulse                 (see `.pulse svg` below)
+
+   The text does NOT scale with the viewBox — it is CSS px — so a nominal 10px
+   label drew at 12.7px on two screens and at 16px on a third, and the three
+   screens disagreed about the size of the same token. Shrinking the tokens
+   cannot fix that; it only changes what gets multiplied. Owner, 2026-08-28:
+   *"the decay and relation graphics should become smaller fonts and scale
+   down, this also implies to the budget simulator too."*
+
+   So the width comes from the element's own intrinsic size — `chart()` writes
+   `width`/`height` attributes equal to the viewBox — and this rule only stops
+   it overflowing a narrower card. `block-size:auto` then keeps the aspect
+   ratio when that cap does bind, which is the ordinary responsive-replaced
+   behaviour and the only case where the factor is not 1.
+
+   `.pulse svg` is deliberately left out of this: it sets its own
+   `inline-size`/`block-size` further down, it carries `preserveAspectRatio:
+   none` on purpose, and it draws no text at all — there is no type on it for a
+   scale factor to distort. */
+svg.chart{display:block;max-inline-size:100%;block-size:auto;overflow:visible}
 svg.chart text{font-family:var(--sans);font-size:var(--fs-chart);fill:var(--dim)}
 svg.chart text.mono{font-family:var(--mono);font-size:var(--fs-chart-mono)}
 svg.chart .axis{stroke:var(--rule);stroke-width:1}
@@ -2605,51 +2780,113 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
        before them are still painted, because they are not yet. Click to cycle. -->
   <div class="prov" id="prov" aria-label="Provenance" data-t-aria="aria.prov"><span
     class="provparts" id="provparts"></span><span class="provproj" id="provproj"><span
-    class="sep">·</span><span id="provprojlabel">projection </span><span
+    class="sep">·</span><span id="provprojlabel" data-t="prov.projLabel">projection</span><span
     data-t="prov.projFresh">already current</span><span
+    data-t="prov.projAbsent">not built — nothing has been projected from the audit log yet</span><span
     data-t="prov.projCaughtUp"><span class="m v" data-v="state">behind</span> and caught up before answering</span><span
     data-t="prov.projFailed">could not catch up — no partial answer is shown: <span class="v" data-v="error">the audit log could not be read</span></span></span></div>
 
+  <!-- ══ status strip ══
+       FOUR PROVENANCE GROUPS, 2026-08-29 (plan:walk seq:29b). The owner asked
+       for "the status bar at the bottom of the screen as it demonstrated in
+       the mockup, many properties are currently missing and also the font
+       should be bigger to be readable, also use colors to diffrentiate
+       between properties" — and the measurement that followed found this file
+       did not differentiate either: forty-four elements in one text colour,
+       with two chips carrying the only other two.
+
+       Colour now says WHERE A NUMBER CAME FROM — the working tree, the
+       corpus, this session's own context sample, the audit log — and a label
+       word says it a second time. The word is not decoration: 06-a11y.html's
+       rule is "a glyph AND a colour AND a name", because --gold and --ok
+       measure 1.04:1 against each other, are the same state to a dichromat
+       and identical grey on a mono printer, and forced-colors flattens all
+       four hues to one system tone. Colour is the fast channel; the word is
+       the channel that always survives.
+
+       The audit append p95 MOVED UP beside injections-today, which is the one
+       ordering change: both are read off the same log, and a bar grouped by
+       provenance cannot have one of its groups split in half by another.
+       Order within a group is untouched.
+
+       NOT MEASURED IS A STATE, AND SO IS NOT READ. Each of the first three
+       groups can now say "not read" — the endpoint did not answer — and the
+       audit group can say "not measured", because no aggregate over the audit
+       log is exposed by the read surface. None of the four may go blank:
+       STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is, clause 3
+       — "a blank is indistinguishable from a failure to load, and a reader
+       who cannot tell those apart stops trusting the surface". Before this,
+       the two live groups did exactly that, permanently and in silence. -->
   <footer class="strip">
-    <!-- Six states, not one: readGitInfo can report four upstream answers and two
-         head shapes, and a strip that can only say "in sync" makes a claim about
-         the repository the reader cannot check. Click to cycle, as #ctx does. -->
-    <span class="gitstate" id="gitstate" title="Click to cycle the six git states the spec requires"
-      data-t-title="title.gitState">
-      <span data-t="strip.branch">branch <span class="m v" data-v="branch">main</span> @ <span class="m v" data-v="commit">7f3a91c</span></span>
-      <span data-t="strip.detached">detached HEAD @ <span class="m v" data-v="commit">7f3a91c</span></span>
-      <span class="chip ok" data-g="●" data-t="strip.inSync">in sync with origin/<span class="m v" data-v="branch">main</span></span>
-      <span class="chip warn" data-g="▲" data-t="strip.differs">differs from origin/<span class="m v" data-v="branch">main</span></span>
-      <span class="chip warn" data-g="▲" data-t="strip.noUpstream">no upstream</span>
-      <span class="chip warn" data-g="▲" data-t="strip.unknownTip">the local tip could not be read</span>
-      <span class="chip warn" data-g="▲" data-t="strip.notARepo">not a git repository</span>
+    <!-- Seven states, not one: readGitInfo can report four upstream answers and
+         two head shapes, and /api/meta can fail to answer at all. A strip that
+         can only say "in sync" makes a claim about the repository the reader
+         cannot check. Click to cycle, as #ctx does. -->
+    <span class="sgrp sgrp-repo">
+      <span class="slab" data-t="strip.grp.repo">repo</span>
+      <span class="gitstate" id="gitstate" title="Click to cycle the seven git states the spec requires"
+        data-t-title="title.gitState">
+        <span data-t="strip.branch">branch <span class="m v" data-v="branch">main</span> @ <span class="m v" data-v="commit">7f3a91c</span></span>
+        <span data-t="strip.detached">detached HEAD @ <span class="m v" data-v="commit">7f3a91c</span></span>
+        <span class="chip ok" data-g="●" data-t="strip.inSync">in sync with origin/<span class="m v" data-v="branch">main</span></span>
+        <span class="chip warn" data-g="▲" data-t="strip.differs">differs from origin/<span class="m v" data-v="branch">main</span></span>
+        <span class="chip warn" data-g="▲" data-t="strip.noUpstream">no upstream</span>
+        <span class="chip warn" data-g="▲" data-t="strip.unknownTip">the local tip could not be read</span>
+        <span class="chip warn" data-g="▲" data-t="strip.notARepo">not a git repository</span>
+        <span class="chip unmeas" data-g="◌" data-t="strip.unread" title="The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again." data-t-title="title.unread">not read</span>
+      </span>
     </span>
     <span class="sep"></span>
-    <span class="m">43</span> <span data-t="strip.items">items</span>
-    <span class="sep"></span>
-    <span class="m">128</span> <span data-t="strip.inj">injections today</span>
-    <span class="sep"></span>
-    <!-- Five context states and three project-knowledge answers, all keyed. They
-         used to be three states BUILT IN SCRIPT behind a `HEB ? … : …` ternary,
-         which had two consequences: no key could name them, so neither string
-         table could carry them and the parity check could not see them; and
-         applyLang() never re-ran the painter, so the state showing at the moment
-         you pressed א/A stayed English until you clicked it. Keyed and
-         hidden-toggled exactly as the git group beside it is. -->
-    <span class="ctxstate" id="ctx" title="Click to cycle the five context states and the three project-knowledge answers"
-      data-t-title="title.ctx">
-      <span data-t="strip.ctx.known">context <span class="v" data-v="pct">23.5</span>% (<span class="v" data-v="used">47.0k</span> of <span class="v" data-v="size">200.0k</span>) — as of last response, <span class="v" data-v="age">2m</span> ago</span>
-      <span data-t="strip.ctx.notYetKnown">context not yet known — no API call since the last compact</span>
-      <span data-t="strip.ctx.unknown">context unknown — this Claude Code build sends no <span class="m">context_window</span></span>
-      <span data-t="strip.ctx.noBridge">showing only what mycontext injected — that is all this number is. The status line bridge is not installed; <span class="m">mycontext statusline install</span> shows what installing would change, and asks.</span>
-      <span data-t="strip.ctx.cold">cold session — a hypothetical has no live context number</span>
-      <span class="small" data-t="strip.myctx"><span class="v" data-v="tokens">6.2k</span> of it from project knowledge (<span class="v" data-v="injections">3</span> injections)</span>
-      <span class="small" data-t="strip.myctxPartial">≥<span class="v" data-v="tokens">6.2k</span> of it from project knowledge (<span class="v" data-v="injections">3</span> injections, <span class="v" data-v="unrecorded">1</span> not recorded)</span>
-      <span class="small" data-t="strip.myctxUnavailable">project-knowledge share unavailable: <span class="v" data-v="error">the audit log could not be read</span></span>
+    <!-- The count and the state where it could not be read. A blank number
+         beside the word "items" is the failure clause 3 names. -->
+    <span class="sgrp sgrp-corpus">
+      <span class="slab" data-t="strip.grp.corpus">corpus</span>
+      <span class="corpusstate" id="corpusstate" title="Click to cycle the item count and the state where it could not be read"
+        data-t-title="title.corpus">
+        <span class="m v" id="itemsval" data-v="items">43</span> <span data-t="strip.items">items</span>
+        <span class="chip unmeas" data-g="◌" data-t="strip.unread" title="The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again." data-t-title="title.unread">not read</span>
+      </span>
     </span>
     <span class="sep"></span>
-    <span class="m measured">0.55 ms</span> <span data-t="strip.append">audit append p95</span>
-    <span class="chip ok" data-g="●" data-t="strip.meas">measured</span>
+    <!-- Five context states, three project-knowledge answers and the unread
+         state, all keyed. They used to be three states BUILT IN SCRIPT behind
+         a `HEB ? … : …` ternary, which had two consequences: no key could name
+         them, so neither string table could carry them and the parity check
+         could not see them; and applyLang() never re-ran the painter, so the
+         state showing at the moment you pressed א/A stayed English until you
+         clicked it. Keyed and hidden-toggled exactly as the git group is. -->
+    <span class="sgrp sgrp-session">
+      <span class="slab" data-t="strip.grp.session">session</span>
+      <span class="ctxstate" id="ctx" title="Click to cycle the context states, the three project-knowledge answers and the unread state"
+        data-t-title="title.ctx">
+        <span data-t="strip.ctx.known">context <span class="v" data-v="pct">23.5</span>% (<span class="v" data-v="used">47.0k</span> of <span class="v" data-v="size">200.0k</span>) — as of last response, <span class="v" data-v="age">2m</span> ago</span>
+        <span data-t="strip.ctx.notYetKnown">context not yet known — no API call since the last compact</span>
+        <span data-t="strip.ctx.unknown">context unknown — this Claude Code build sends no <span class="m">context_window</span></span>
+        <span data-t="strip.ctx.noBridgeShort" data-t-title="strip.ctx.noBridge" title="showing only what mycontext injected — that is all this number is. The status line bridge is not installed; mycontext statusline install shows what installing would change, and asks.">no status-line bridge</span>
+        <span data-t="strip.ctx.cold">cold session — a hypothetical has no live context number</span>
+        <span class="small" data-t="strip.myctx"><span class="v" data-v="tokens">6.2k</span> of it from project knowledge (<span class="v" data-v="injections">3</span> injections)</span>
+        <span class="small" data-t="strip.myctxPartial">≥<span class="v" data-v="tokens">6.2k</span> of it from project knowledge (<span class="v" data-v="injections">3</span> injections, <span class="v" data-v="unrecorded">1</span> not recorded)</span>
+        <span class="small" data-t="strip.myctxUnavailable">project-knowledge share unavailable: <span class="v" data-v="error">the audit log could not be read</span></span>
+        <span class="chip unmeas" data-g="◌" data-t="strip.unread" title="The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again." data-t-title="title.unread">not read</span>
+      </span>
+    </span>
+    <span class="sep"></span>
+    <!-- Both audit figures, together, because they are read off the same log.
+         Neither has a source in the read surface today — no endpoint exposes
+         an aggregate over the audit log — so the design of record draws them
+         NAMED AS UNMEASURED rather than dropping them, which is the treatment
+         plan:port seq:6's "a shorter TRUE bar" got wrong in one direction:
+         true, and silent about what it was not saying. -->
+    <span class="sgrp sgrp-audit">
+      <span class="slab" data-t="strip.grp.audit">audit</span>
+      <span class="auditstate" id="auditstate" title="Click to cycle the audit figures between measured and not measured"
+        data-t-title="title.audit">
+        <span class="chip ok" data-g="●" data-t="strip.meas">measured</span>
+        <span class="chip unmeas" data-g="◌" data-t="strip.unmeasured" title="This read surface exposes no aggregate over the audit log, so the figure is unknown rather than zero. Refreshing cannot help; the endpoint has to exist first." data-t-title="title.unmeasured">not measured</span>
+        <span class="m v measured" id="injval" data-v="inj">128</span> <span class="sprop" data-t="strip.inj">injections today</span>
+        <span class="m v measured" id="p95val" data-v="p95">0.55 ms</span> <span class="sprop" data-t="strip.append">audit append p95</span>
+      </span>
+    </span>
     <span style="margin-inline-start:auto" class="small noprint">
       <label><input type="checkbox" id="sim-rt"> <span data-t="strip.rt">simulate reduced-transparency</span></label>
     </span>
@@ -3806,7 +4043,7 @@ $('#paneclose').addEventListener('click',()=>{
    three parts before it are still painted with their values built in script,
    which is why they still render English inside the Hebrew UI: they are the
    residue this pass did not reach, and they are recorded rather than hidden. */
-const PROJSTATES=['prov.projFresh','prov.projCaughtUp','prov.projFailed'];
+const PROJSTATES=['prov.projFresh','prov.projAbsent','prov.projCaughtUp','prov.projFailed'];
 let pji=0;
 function paintProv(){
   const p=$('#provparts'); p.replaceChildren();
@@ -3820,8 +4057,11 @@ function paintProv(){
     const val=document.createElement(warn?'b':'span'); val.textContent=v;
     p.append(label,val);
   });
-  $('#provprojlabel').textContent=(HEB?'הקרנה':'projection')+' ';
-  $$('#provproj [data-t]').forEach(el=>{ el.hidden = el.dataset.t!==PROJSTATES[pji]; });
+  $$('#provproj [data-t]').forEach(el=>{
+    /* The label is keyed now too, and it is not one of the states. */
+    if(el.id==='provprojlabel') return;
+    el.hidden = el.dataset.t!==PROJSTATES[pji];
+  });
 }
 paintProv();
 $('#provproj').style.cursor='pointer';
@@ -3841,8 +4081,9 @@ const CTXSTATES=[['strip.ctx.known','strip.myctx'],
                  ['strip.ctx.known','strip.myctxUnavailable'],
                  ['strip.ctx.notYetKnown'],
                  ['strip.ctx.unknown'],
-                 ['strip.ctx.noBridge'],
-                 ['strip.ctx.cold']];
+                 ['strip.ctx.noBridgeShort'],
+                 ['strip.ctx.cold'],
+                 ['strip.unread']];
 let ci=0;
 function paintCtx(){
   const on=new Set(CTXSTATES[ci]);
@@ -3861,7 +4102,8 @@ const GITSTATES=[['strip.branch','strip.inSync'],
                  ['strip.branch','strip.noUpstream'],
                  ['strip.branch','strip.unknownTip'],
                  ['strip.detached'],
-                 ['strip.notARepo']];
+                 ['strip.notARepo'],
+                 ['strip.unread']];
 let gsi=0;
 function paintGit(){
   const on=new Set(GITSTATES[gsi]);
@@ -3870,6 +4112,47 @@ function paintGit(){
 paintGit();
 $('#gitstate').style.cursor='pointer';
 $('#gitstate').addEventListener('click',()=>{gsi=(gsi+1)%GITSTATES.length;paintGit();});
+
+/* ── strip corpus and audit: measured, and not ──
+   Two groups that could not previously show the state they spend most of
+   their life in. The count is live off /api/status and the app leaves it
+   BLANK when that call fails; the two audit figures have no source in the
+   read surface at all. Both are now keyed states that cycle the way #ctx and
+   #gitstate do, so the design of record can be looked at in the state the
+   product is actually in, rather than only in the state it hopes for.
+
+   The VALUE spans are swapped rather than toggled, because the label beside
+   them ("items", "injections today", "audit append p95") stays on screen in
+   every state: the property is what the reader is owed, and hiding the whole
+   segment is what made forty of forty-four invisible in the first place. */
+function stripCycle(id, states){
+  let i = 0;
+  const paint = () => {
+    const st = states[i];
+    const on = new Set(st.on);
+    $$('#'+id+' [data-t]').forEach(el => { el.hidden = !on.has(el.dataset.t); });
+    /* `.measured` is gold and 700 — it marks a figure that was actually
+       taken, so an em dash may never wear it. */
+    const taken = new Set(st.measured || []);
+    for (const [valueId, text] of Object.entries(st.vals)) {
+      const el = $('#'+valueId);
+      el.textContent = text;
+      el.classList.toggle('measured', taken.has(valueId));
+    }
+  };
+  paint();
+  $('#'+id).style.cursor = 'pointer';
+  $('#'+id).addEventListener('click', () => { i = (i+1)%states.length; paint(); });
+}
+stripCycle('corpusstate', [
+  { on:['strip.items'], vals:{ itemsval:'43' } },
+  { on:['strip.items','strip.unread'], vals:{ itemsval:'—' } },
+]);
+stripCycle('auditstate', [
+  { on:['strip.inj','strip.append','strip.unmeasured'], vals:{ injval:'—', p95val:'—' } },
+  { on:['strip.inj','strip.append','strip.meas'], vals:{ injval:'128', p95val:'0.55 ms' },
+    measured:['injval','p95val'] },
+]);
 
 let beats=0;
 setInterval(()=>{ if(++beats===60) $('#exited').hidden=false; },900);
@@ -3898,8 +4181,16 @@ function sv(tag,attrs,kids){
   return e;
 }
 function svtext(attrs,txt){const e=sv('text',attrs);e.textContent=txt;return e;}
+/* `width`/`height` ARE THE CHART'S NATURAL SIZE, and they are load-bearing.
+   `svg.chart` no longer says `inline-size:100%` — it says `max-inline-size:100%`
+   — so the used width is this element's own intrinsic width, which is what these
+   two presentation attributes supply. Without them an <svg> with only a viewBox
+   has a ratio and no intrinsic size, and the browser falls back to 300x150.
+   They are ATTRIBUTES rather than CSSOM because they are the element's
+   dimensions and not a style: `block-size:auto` in the stylesheet overrides the
+   height one on purpose, so the ratio is recomputed when the cap binds. */
 function chart(W,H,kids,label){
-  const s=sv('svg',{viewBox:'0 0 '+W+' '+H,class:'chart',role:'img','aria-label':label});
+  const s=sv('svg',{viewBox:'0 0 '+W+' '+H,width:W,height:H,class:'chart',role:'img','aria-label':label});
   kids.forEach(k=>s.append(k));
   return s;
 }
@@ -3926,14 +4217,16 @@ function chart(W,H,kids,label){
    The two functions below are that, generalised, and the sketch's own
    staircase is the one graphic it never applied them to.
 
-   GEOMETRY IS IN VIEWBOX UNITS AND THE ARITHMETIC IS PESSIMISTIC ON PURPOSE.
-   `svg.chart{inline-size:100%}` scales the viewBox but NOT the text: a
-   560-unit chart rendered 896 wide still draws --fs-chart at 10 CSS px, which
-   is 6.25 viewBox units, not 10. A label therefore occupies FEWER units the
-   wider the chart is drawn, and the only scale at which an estimate can be
-   wrong in the dangerous direction is 1:1. Every width below is figured at
-   1:1, so a real render always has more room than the arithmetic assumed,
-   never less. ── */
+   GEOMETRY IS IN VIEWBOX UNITS AND SINCE 2026-08-29 THOSE UNITS ARE PIXELS.
+   `svg.chart{inline-size:100%}` used to scale the viewBox but NOT the text: a
+   560-unit chart rendered 896 wide still drew --fs-chart at 10 CSS px, which
+   is 6.25 viewBox units, not 10. A label therefore occupied FEWER units the
+   wider the chart was drawn, and the only scale at which an estimate could be
+   wrong in the dangerous direction was 1:1. Every width below was figured at
+   that 1:1 for exactly that reason — and the chart is now BOUND at its own
+   viewBox width, so 1:1 is no longer the pessimistic bound but the case that
+   actually renders, and CHW is the true advance rather than an upper one. The
+   arithmetic did not have to change; it was already written for this. ── */
 
 /** Advance per character at --fs-chart (10px, ≈0.6em) at 1:1, in viewBox units. */
 const CHW=6;

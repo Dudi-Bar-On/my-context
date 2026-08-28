@@ -181,6 +181,29 @@
      1.4, 1.5, 1.6, 2 and .8 are byte-identical across all three generations.
      Lines reading heavy was text growing around them. */
   --fs-chart:10px; --fs-chart-mono:9.5px; --fs-chart-nid:9px; --fs-chart-rel:8px;
+
+  /* STRIP TYPE — the status strip's own ramp, and NOT a step of the scale
+     above, for the same reason the chart ramp is not one.
+
+     Owner, 2026-08-28: "the font should be bigger to be readable". Measured
+     the same day, both surfaces driven in one browser: the strip rendered at
+     13px (--fs-0) HERE and at 13px in the app. The app was faithful and the
+     DESIGN was what could not be read, so this is a design change made in the
+     design of record first with src/ui/public/styles.css following — the
+     order every design-of-record change in this project takes, and the reason
+     changing only the app would have failed styles-parity in the direction
+     that means "the app invented something".
+
+     Its own token rather than a step of the prose scale, because the strip is
+     a dense provenance bar read at a glance and a paragraph is not. A future
+     prose repaint moves --fs-0 and this line stays put; without it the
+     strip's size is a number that can travel under it, which is exactly what
+     happened to the graphics when svg.chart text read the smallest prose step.
+
+     The mono step is STATED rather than left to `.m`'s .87em: a branch name,
+     a SHA and a token count are the runs a reader actually squints at, and
+     .87 of 15px would have put them straight back at 13. */
+  --fs-strip:14px; --fs-strip-mono:13px;
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
   --r-sm:3px; --r-md:5px; --r-lg:8px;
 }
@@ -331,7 +354,7 @@ bdi{unicode-bidi:isolate}
    report" rather than inventing the wrapper) — so this rule has nothing to
    grid until a shell task adds `<div class="app" id="app">`. See this task's
    own report for what that leaves stacked instead of side-by-side. */
-.app{display:grid;grid-template-rows:46px 1fr 26px 30px;grid-template-columns:214px 1fr;
+.app{display:grid;grid-template-rows:46px 1fr 26px 38px;grid-template-columns:214px 1fr;
   block-size:100vh;grid-template-areas:"top top" "rail body" "prov prov" "strip strip"}
 /* ─── The item pane's width — the ONE custom property in this file the mockup
    does not declare, and the only reason it is not in the TOKENS block above:
@@ -478,7 +501,8 @@ bdi{unicode-bidi:isolate}
 
    These two were never carried, and their absence is the 56px band of bare
    `.app` the owner saw across the bottom of every screen: `.app` declares
-   `grid-template-rows:46px 1fr 26px 30px` with areas `top / rail body / prov
+   `grid-template-rows:46px 1fr 26px 38px` (30px until 2026-08-29 — see the
+   status strip rule below) with areas `top / rail body / prov
    / strip`, so the grid reserved both rows whether or not anything was built
    to sit in them. 26 + 30 = 56. The grid was right; the markup was missing.
 
@@ -500,16 +524,51 @@ bdi{unicode-bidi:isolate}
    nothing else sets its `display`, and this bar is a flex container. */
 .prov [hidden]{display:none}
 
-/* status strip */
+/* status strip
+
+   THE ROW IS 38px, NOT 30px, SINCE 2026-08-29. Owner: "the status line occures
+   too low at the bottom, increase its height a little." Measured before
+   changing anything, because "too low" has two readings and only one of them
+   is a height: at 30px the strip's content was already vertically CENTRED —
+   the group label's ink box sat 7px from the top of the row and 7px from the
+   bottom, with `align-items:center` doing exactly its job — so this was not a
+   baseline or alignment fault, and raising the row alone would have been the
+   wrong answer if it had been. What the same measurement showed is that the
+   TALLEST element in the row was 31px inside a 30px row: the retry button and
+   the chips had zero clearance and one of them already spilled a pixel past
+   the bottom edge of the window. Centred content with no room around it is
+   what reads as jammed against the bottom.
+
+   38px gives the 28-31px controls ~4px of air on each side and comes out of
+   the 1fr body row, which is the only elastic one — the header and the
+   provenance bar are untouched, so every row of the shell is still occupied
+   and e2e/app-layout.spec.ts's no-empty-band assertion is unaffected.
+   Settled ONCE, after the strip's four provenance groups and their retry
+   controls were in place, rather than twice around the same question.
+
+   AND THE TEXT SITS UP, which is the other half and the one a taller row
+   would not have fixed. Owner: "the text is cut" ... "the text should be
+   moved up a little." `align-items:center` centres the LINE BOX, and a line
+   box is not symmetrical about its ink: a Latin face carries its descender
+   below the baseline, so geometric centring puts the visible text low and
+   leaves its descenders nearest the clipping edge. Measured at three viewport
+   heights: every run in the bar sat between 0.4px and 0.8px below optical
+   centre, and the two `overflow:hidden` boxes (the context sentence and the
+   audit property names) cleared their own ink by only 2.0px above and 2.3px
+   below — the thinnest margin in the strip and the first thing a font
+   fallback eats. `padding-block:0 2px` shrinks the content box from the
+   BOTTOM, so centred content rises 1px and the room left over lands under the
+   descenders where it is wanted. Re-measured after: 8.9px above the ink and
+   10.1px below it, at every size. */
 .strip{grid-area:strip;background:var(--panel);border-block-start:1px solid var(--rule);
   display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);
-  font-size:var(--fs-0);color:var(--dim)}
-.strip .sep{inline-size:1px;block-size:14px;background:var(--rule)}
+  padding-block:0 2px;font-size:var(--fs-strip);color:var(--dim)}
+.strip .sep{inline-size:1px;block-size:18px;background:var(--rule)}
 /* The git group shows one of six states; the rest are `hidden`. .chip sets
    `display`, and an author rule beats the UA sheet's [hidden] at equal
    specificity — the same trap .pop[hidden] and .pane[hidden] already dodge. */
 .strip [hidden]{display:none}
-.gitstate,.ctxstate{display:flex;align-items:center;gap:var(--sp-3)}
+.gitstate,.ctxstate,.corpusstate,.auditstate{display:flex;align-items:center;gap:var(--sp-3)}
 /* The no-bridge state is a whole SENTENCE in a bar sized for a phrase, and the
    known state is a long one. Exactly one item in the strip is allowed to give
    way, and it is that one: everything else is `flex:none`, so a squeeze cannot
@@ -519,7 +578,134 @@ bdi{unicode-bidi:isolate}
    off the end. */
 .strip>*{flex:0 0 auto}
 .ctxstate{flex:1 1 auto;min-inline-size:0}
+/* THE ONLY TWO CLIPPING BOXES IN THE BAR, and the one place a descender can
+   actually be cut: `overflow:hidden` is what makes the ellipsis work and it
+   clips VERTICALLY too, so the box has to be taller than the ink and not
+   merely as tall as it. At the inherited 1.55 the ink cleared by 2.0px above
+   and 2.3px below — positive, and thinner than any other clearance in the
+   strip, which is the margin a font fallback or a Hebrew glyph eats first.
+   1.9 takes it to about 4px on each side at --fs-strip. Measured, not
+   guessed, and re-measured after the size moved. */
+.ctxstate>span,.sprop{line-height:1.9}
 .ctxstate>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── PROVENANCE GROUPS — colour AND a word, never colour alone ────────────
+   Owner, 2026-08-28: "use colors to differentiate between properties". A bar
+   whose entire job is provenance, drawn in one colour, makes a reader parse a
+   sentence to learn what a glance should say.
+
+   FOUR groups, one per SOURCE the numbers come from — the working tree, the
+   corpus, this session's own context sample, and the audit log — each with a
+   colour taken from the five meaning colours (§2.5; no new hue is invented
+   here) AND a label word.
+
+   The word is not decoration. reports/uiux/sketches/06-a11y.html states the
+   rule this follows: "a glyph AND a colour AND a name in the accessible
+   string", because --gold and --ok "measure 1.04:1 against each other — as
+   pure colour they are the same state to a dichromat and identical grey on a
+   mono printer", and forced-colors flattens all four to one system tone.
+   Colour is the fast channel; the word is the one that always survives.
+
+   The label takes the shape every group label in this design takes — --fs-00,
+   700, uppercase, tracked, the same as `.grp>p` and `th` — so the value
+   beside it reads as a value and not as more label. */
+.sgrp{display:flex;align-items:center;gap:var(--sp-2)}
+.slab{font-size:var(--fs-00);font-weight:700;letter-spacing:.1em;text-transform:uppercase;flex:none}
+.sgrp-repo .slab{color:var(--carry)}
+.sgrp-corpus .slab{color:var(--gold)}
+.sgrp-session .slab{color:var(--ok)}
+.sgrp-audit .slab{color:var(--warn)}
+/* The context group is still the one item allowed to give way. It is now
+   wrapped in its provenance group, so the `flex:1 1 auto` that used to be
+   enough on .ctxstate has to sit on the group that IS the child of .strip —
+   declared after `.strip>*` so it wins at equal specificity, exactly as
+   .ctxstate does above. */
+/* It SHRINKS but does not GROW. `flex-grow:1` here made the session group
+   swallow every spare pixel in a wide window and open a blank gap in the
+   middle of the bar, with the audit group pushed off to the right edge as if
+   it belonged to something else. The groups read as one sequence; the slack
+   belongs at the end, where the live-stream fault and the refresh affordance
+   already sit. */
+.sgrp-session{flex:0 1 auto;min-inline-size:0}
+/* WHICH GROUP GIVES WAY, AND IN WHAT ORDER — measured at 1280px, not reasoned
+   about. Before this rule the audit group was `flex:none` at its full natural
+   width and the session group, the only shrinkable item left, was squeezed to
+   ZERO: the longest and most informative sentence in the bar disappeared
+   entirely while two figures that hold no numbers kept every pixel they asked
+   for. Both groups shrink now, in proportion to what they are asking for, so
+   the deficit lands on the wide one first and neither vanishes.
+
+   The em dash and the state chip are `flex:none` inside it, so a squeeze
+   takes width off the PROPERTY NAMES — which ellipsize and stay legible —
+   rather than clipping the one element that says what state the group is in.
+   Everything outside these two groups is still `flex:none`: a squeeze may
+   not wrap the git chip or shave a separator. */
+/* AND IT YIELDS FIRST. Both groups shrink, but not equally: a shrink factor
+   of 3 against the context group's 1 means the deficit lands on the audit
+   group — the one holding two figures this read surface has no source for —
+   before it lands on the live context measurement, which is the number this
+   product is about. Owner, 2026-08-29: "other more important info could not be
+   seen like the context size left filled percentage". Priority by information
+   density, not by declaration order. */
+/* With a FLOOR, because "yields first" is not "disappears": at 0 the two
+   properties are gone and the reader is back to not knowing they exist, which
+   is the four-of-forty-four defect wearing a flexbox. 170px is the group
+   label plus its state chip, measured — enough that the state is always
+   readable and only the property NAMES ellipsise. */
+.sgrp-audit{flex:0 3 auto;min-inline-size:170px}
+.auditstate{min-inline-size:0;overflow:hidden}
+.sprop{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-inline-size:0}
+.auditstate>.m,.auditstate>.chip{flex:none}
+/* Stated, so an identifier in the strip cannot shrink back under the prose
+   step `.m`'s .87em would hand it — see --fs-strip-mono. */
+.strip .m{font-size:var(--fs-strip-mono)}
+/* NOT MEASURED / NOT READ, drawn as a chip rather than left blank.
+   STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is: "a blank is
+   indistinguishable from a failure to load, and a reader who cannot tell
+   those apart stops trusting the surface". Neutral on purpose — an unmeasured
+   fact is not a warning and may not borrow --warn's voice — and it carries
+   its own glyph, so the state is still legible with no colour at all. */
+.chip.unmeas{color:var(--dim);border-color:var(--edge-3);background:var(--sink)}
+.chip.unmeas::before{content:"◌ "}
+
+/* ── THE TWO SHELL-LEVEL AFFORDANCES IN THE STRIP — one LINE each, and they
+   have to be told so. APP-ONLY: the design of record declares neither, which
+   is exactly how a control came to ship with no layout of its own.
+
+   `app.js` builds `#screenstale` as a plain <span> holding a message and a
+   `button.icon`, and `.icon` is `display:grid` — a BLOCK. A block child inside
+   a blockified flex item takes its own line, so the affordance STACKED:
+   measured at 49px of message-above-button in a 38px row, its top 5.8px above
+   the strip and its bottom 4.8px past the bottom edge of the window, which is
+   where the button was being cut off. Owner, 2026-08-29: "the refresh button
+   when occures is displayed cutted at the bottom ... on top of the refresh
+   button apears New activity for this screen."
+
+   This PREDATES the strip row moving from 30px to 38px and was not caused by
+   it: the same stack is 49px whatever the row is, and at 30px it overhung by
+   8px MORE. `e2e/strip.spec.ts` now measures every control in the strip
+   against the strip, which is the assertion that would have caught it. */
+#screenstale,#livestate{display:flex;align-items:center;gap:var(--sp-2)}
+/* AND THE LAYOUT RULE ABOVE MUST NOT DEFEAT `hidden`, which is what it did for
+   the first hours of its life. Both spans are BUILT hidden and unhidden only
+   when there is something to say — a stream fault, or a record for the screen
+   the reader is on. The user agent hides them with `[hidden]{display:none}`, an
+   ATTRIBUTE selector; `#screenstale` is an ID, so the rule above does not tie
+   that rule, it outranks it, and `.strip [hidden]` (a class plus an attribute)
+   cannot reach an id either. The result was an affordance nothing could hide:
+   "New activity for this screen." painted on every screen from boot, with a
+   Refresh button offering to reload a screen that had not gone stale — which
+   trains a reader to ignore the one control that tells them their data is old.
+   Measured 2026-08-29 by `e2e/live-refresh.spec.ts` and
+   `e2e/preview-compact-continuity.spec.ts`, six assertions, all six saying the
+   affordance was visible with nothing pending.
+
+   A SEPARATE selector at the specificity it has to beat, never an edit to the
+   rule above — the same trap and the same dodge as `.cmd[hidden]`,
+   `.banner[hidden]` and `#pane[hidden]`, and the clipped-button fix above is
+   untouched by it: an unhidden `#screenstale` is still `display:flex` and its
+   `button.icon` still sits on the message's own line. */
+#screenstale[hidden],#livestate[hidden]{display:none}
 
 
 .banner{position:fixed;inset:0;margin:auto;block-size:fit-content;
@@ -1044,13 +1230,13 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
    narrow enough for the two to disagree.
 
    The block insets are the shell's own rows, not round numbers: 46px header +
-   6px, and 26px provenance + 30px strip + 6px. A fixed panel that covered the
+   6px, and 26px provenance + 38px strip + 6px. A fixed panel that covered the
    footer strip would hide the one row that says whether the server is alive.
 
    Nothing here animates, so there is no `prefers-reduced-motion` branch to
    write; if a transition is ever added to this rule it goes behind the media
    query in the same commit. */
-.pane-float #pane{position:fixed;inset-block:52px 62px;inset-inline:auto var(--sp-3);
+.pane-float #pane{position:fixed;inset-block:52px 70px;inset-inline:auto var(--sp-3);
   inline-size:min(920px, calc(100vw - 260px));z-index:40;
   border:1px solid var(--rule);border-radius:var(--r-md);
   box-shadow:0 12px 32px rgb(0 0 0/.45)}
@@ -1289,7 +1475,36 @@ del{background:var(--critbg);color:var(--dim);text-decoration:line-through;borde
    dangling">` from `<path>` — filed, and not fixable from here. */
 
 /* — SVG chart primitives — */
-svg.chart{display:block;inline-size:100%;block-size:auto;overflow:visible}
+/* **THE CHART IS BOUND AT ITS OWN VIEWBOX WIDTH, so one user unit is one CSS
+   pixel and --fs-chart means ten pixels wherever it is spent.**
+
+   `inline-size:100%` stood here until 2026-08-29 and stretched every fixed
+   viewBox into whatever width its card happened to give it — by a DIFFERENT
+   factor per screen. Measured in a browser at 1440x900, on the demo corpus:
+
+       staircase   viewBox 560x214    rendered 896x342     1.600
+       ego graph   viewBox 900x250    rendered 1140x317    1.267
+       recency comb viewBox 900x2008  rendered 1140x2544   1.267
+       activity pulse                 (see `.pulse svg` below)
+
+   The text does NOT scale with the viewBox — it is CSS px — so a nominal 10px
+   label drew at 12.7px on two screens and at 16px on a third, and the three
+   screens disagreed about the size of the same token. Shrinking the tokens
+   cannot fix that; it only changes what gets multiplied. Owner, 2026-08-28:
+   *"the decay and relation graphics should become smaller fonts and scale
+   down, this also implies to the budget simulator too."*
+
+   So the width comes from the element's own intrinsic size — `chart()` writes
+   `width`/`height` attributes equal to the viewBox — and this rule only stops
+   it overflowing a narrower card. `block-size:auto` then keeps the aspect
+   ratio when that cap does bind, which is the ordinary responsive-replaced
+   behaviour and the only case where the factor is not 1.
+
+   `.pulse svg` is deliberately left out of this: it sets its own
+   `inline-size`/`block-size` further down, it carries `preserveAspectRatio:
+   none` on purpose, and it draws no text at all — there is no type on it for a
+   scale factor to distort. */
+svg.chart{display:block;max-inline-size:100%;block-size:auto;overflow:visible}
 
 /* **`.pulse svg` sits AFTER `svg.chart`, and moving it back is the defect.**
    Both selectors are specificity (0,1,1), so SOURCE ORDER decides, and a
