@@ -479,9 +479,9 @@ test('/api/simulate names the tiers this event actually reaches', () => {
   const f = fixture();
   try {
     const cases: [string, string[]][] = [
-      ['event=session-start&cold=1', ['pinned', 'index']],
-      ['event=manual&cold=1', ['pinned', 'index']],
-      ['event=compact&cold=1', ['pinned', 'restored', 'index']],
+      ['event=session-start&cold=1', ['pinned', 'continuity', 'index']],
+      ['event=manual&cold=1', ['pinned', 'continuity', 'index']],
+      ['event=compact&cold=1', ['pinned', 'continuity', 'restored', 'index']],
       ['event=tool&path=src/a.ts&cold=1', ['jit']],
     ];
     for (const [qs, expected] of cases) {
@@ -502,9 +502,12 @@ test('/api/simulate names the tiers this event actually reaches', () => {
 test('tiersRun is select()\'s own dispatch, not a copy of it', () => {
   // If `select` stops running a tier, this must stop naming it — which is why
   // `select` consumes `tiersRun` rather than restating the conditions.
-  assert.deepEqual(tiersRun({ event: 'session-start' }), ['pinned', 'index']);
-  assert.deepEqual(tiersRun({ event: 'compact' }), ['pinned', 'restored', 'index']);
-  assert.deepEqual(tiersRun({ event: 'manual' }), ['pinned', 'index']);
+  assert.deepEqual(tiersRun({ event: 'session-start' }), ['pinned', 'continuity', 'index']);
+  assert.deepEqual(tiersRun({ event: 'compact' }), ['pinned', 'continuity', 'restored', 'index']);
+  assert.deepEqual(tiersRun({ event: 'manual' }), ['pinned', 'continuity', 'index']);
+  // Never on a tool event: continuity is the opposite of narrow, and a tool
+  // event is narrow by construction — that is what the jit tier is for.
+  assert.ok(!tiersRun({ event: 'tool', path: 'src/a.ts' }).includes('continuity'));
   assert.deepEqual(tiersRun({ event: 'tool', path: 'src/a.ts' }), ['jit']);
   // A tool event with no usable path reaches NO tier: the jit tier has
   // nothing to match scopes against and the bounded index is not a

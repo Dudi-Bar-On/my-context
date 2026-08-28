@@ -155,13 +155,15 @@ export function openIcon() {
 /**
  * The mockup's `TIERCHIP` table, verbatim: which chip class and which glyph a
  * tier wears. The tier NAME is not a translated string anywhere in the mockup
- * — `pinned`, `jit`, `restored` and `index` are the config's own keys and the
- * selector's own words, drawn as literals in every chip the file paints.
+ * — `pinned`, `jit`, `restored`, `continuity` and `index` are the config's
+ * own keys and the selector's own words, drawn as literals in every chip the
+ * file paints.
  */
 const TIERCHIP = {
   pinned: ['chip gov', '◆'],
   jit: ['chip ok', '●'],
   restored: ['chip ok', '●'],
+  continuity: ['chip carry', '◈'],
   index: ['chip index', '◇'],
 };
 

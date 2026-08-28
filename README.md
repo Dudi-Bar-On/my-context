@@ -1837,7 +1837,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>77 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>38 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>39 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2091,7 +2091,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-38 commands. `mycontext help` prints the same list from the program itself, and
+39 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2164,6 +2164,7 @@ a success.
 | `mycontext search "<words>"` | find items by text, and by `--type`, `--tag`, `--path`, `--status`, `--relation`. The same filter `query_items` runs, and the same code: one predicate, two surfaces |
 | `mycontext show <id>` | one item in full, exactly as it is on disk |
 | `mycontext todo` | the inbox: everything captured as `todo`, in the id order every other listing uses. `--tag`, `--all`, `--limit`. Retired ones are hidden and counted, not dropped. This is not the review queue — nothing in it is waiting to govern |
+| `mycontext ready` | open tasks whose `needs` are all `done`, highest priority first — `--plan`, `--held`, `--limit`. It answers "what can I start now" for a project whose category declares `plan`, `seq` and `state`; a project with no such category is told that rather than shown an empty list. Readiness is **derived on every run** from `needs` and the states of what it names, so there is no `ready` state to go stale, and every open task it cannot clear is counted by reason and listed with `--held` |
 | `mycontext query "SELECT …"` | read-only SQL over the index — [the schema, and worked queries](#the-index-schema-and-how-to-query-it) |
 | `mycontext examples <category>` | a complete, correct example item of that type |
 | `mycontext help [topic]` | guidance: categories, scope, capture, workflow, cli, tools, slash |
@@ -2233,40 +2234,50 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 What may be changed on a `rule`, and by which command.
 
 Every `normative`-tier item:
-┌──────────┬───────────┬────────────────────────┬────────────────────────┬─────────────────────────┐
-│ name     │ stored as │ values                 │ how to change it       │ what it is              │
-├──────────┼───────────┼────────────────────────┼────────────────────────┼─────────────────────────┤
-│ title    │ field     │ free text              │ mycontext edit <id>    │ The one-line name.      │
-│          │           │                        │ --title "…"            │ Changing it does not    │
-│          │           │                        │                        │ change the id.          │
-│ body     │ field     │ free text              │ mycontext edit <id>    │ What the item actually  │
-│          │           │                        │ --body "…" | --file    │ says. On a governing    │
-│          │           │                        │ <path>                 │ item this is gated and  │
-│          │           │                        │                        │ previewed.              │
-│ scope    │ field     │ free text              │ mycontext edit <id>    │ The globs this governs. │
-│          │           │                        │ --scope "a/**,b/**"    │ Empty means everywhere, │
-│          │           │                        │                        │ unless the category     │
-│          │           │                        │                        │ sets scopePolicy        │
-│          │           │                        │                        │ required.               │
-│ tags     │ tag       │ free text              │ mycontext edit <id>    │ REPLACES the whole      │
-│          │           │                        │ --tags "a,b"           │ list. Read the current  │
-│          │           │                        │                        │ tags back first or the  │
-│          │           │                        │                        │ others are dropped.     │
-│ status   │ field     │ draft, active,         │ mycontext edit <id>    │ Whether it governs.     │
-│          │           │ validated, deprecated, │ --status <status>      │ Moving a normative item │
-│          │           │ superseded             │                        │ into active or          │
-│          │           │                        │                        │ validated is gated and  │
-│          │           │                        │                        │ previewed.              │
-│ severity │ field     │ hard, soft             │ mycontext harden <id>  │ Binding or advisory.    │
-│          │           │                        │ | mycontext soften     │ `edit --severity` is    │
-│          │           │                        │ <id>                   │ the same change under   │
-│          │           │                        │                        │ another name.           │
-│ always   │ field     │ true, false            │ mycontext pin <id> |   │ Injected at every       │
-│          │           │                        │ mycontext unpin <id>   │ session start. `edit    │
-│          │           │                        │                        │ --always=true` is the   │
-│          │           │                        │                        │ same change under       │
-│          │           │                        │                        │ another name.           │
-└──────────┴───────────┴────────────────────────┴────────────────────────┴─────────────────────────┘
+┌────────────┬───────────┬───────────────────────┬────────────────────────┬────────────────────────┐
+│ name       │ stored as │ values                │ how to change it       │ what it is             │
+├────────────┼───────────┼───────────────────────┼────────────────────────┼────────────────────────┤
+│ title      │ field     │ free text             │ mycontext edit <id>    │ The one-line name.     │
+│            │           │                       │ --title "…"            │ Changing it does not   │
+│            │           │                       │                        │ change the id.         │
+│ body       │ field     │ free text             │ mycontext edit <id>    │ What the item actually │
+│            │           │                       │ --body "…" | --file    │ says. On a governing   │
+│            │           │                       │ <path>                 │ item this is gated and │
+│            │           │                       │                        │ previewed.             │
+│ scope      │ field     │ free text             │ mycontext edit <id>    │ The globs this         │
+│            │           │                       │ --scope "a/**,b/**"    │ governs. Empty means   │
+│            │           │                       │                        │ everywhere, unless the │
+│            │           │                       │                        │ category sets          │
+│            │           │                       │                        │ scopePolicy required.  │
+│ tags       │ tag       │ free text             │ mycontext edit <id>    │ REPLACES the whole     │
+│            │           │                       │ --tags "a,b"           │ list. Read the current │
+│            │           │                       │                        │ tags back first or the │
+│            │           │                       │                        │ others are dropped.    │
+│ status     │ field     │ draft, active,        │ mycontext edit <id>    │ Whether it governs.    │
+│            │           │ validated,            │ --status <status>      │ Moving a normative     │
+│            │           │ deprecated,           │                        │ item into active or    │
+│            │           │ superseded            │                        │ validated is gated and │
+│            │           │                       │                        │ previewed.             │
+│ severity   │ field     │ hard, soft            │ mycontext harden <id>  │ Binding or advisory.   │
+│            │           │                       │ | mycontext soften     │ `edit --severity` is   │
+│            │           │                       │ <id>                   │ the same change under  │
+│            │           │                       │                        │ another name.          │
+│ always     │ field     │ true, false           │ mycontext pin <id> |   │ Injected at every      │
+│            │           │                       │ mycontext unpin <id>   │ session start. `edit   │
+│            │           │                       │                        │ --always=true` is the  │
+│            │           │                       │                        │ same change under      │
+│            │           │                       │                        │ another name.          │
+│ continuity │ field     │ true, false           │ mycontext edit <id>    │ Re-delivered on every  │
+│            │           │                       │ --continuity[=false]   │ session start and      │
+│            │           │                       │                        │ after every            │
+│            │           │                       │                        │ compaction, against    │
+│            │           │                       │                        │ its own budget. For    │
+│            │           │                       │                        │ what the NEXT session  │
+│            │           │                       │                        │ needs in order not to  │
+│            │           │                       │                        │ start over — a pointer │
+│            │           │                       │                        │ plus a bounded digest, │
+│            │           │                       │                        │ never a document.      │
+└────────────┴───────────┴───────────────────────┴────────────────────────┴────────────────────────┘
 
 And on a `rule` in particular:
 ┌───────────┬───────────┬──────────┬───────────────────────────────┬───────────────────────────────┐
@@ -3327,7 +3338,8 @@ machine's sessions only.
 ### Detail levels, and `--json`
 
 Every reporting command — `status`, `list`, `decay`, `review list`, `doctor`,
-`ingest-status` — takes `--full`, `--short` (the default) and `--summary`, and `--json`.
+`ingest-status`, `todo`, `ready` — takes `--full`, `--short` (the default) and `--summary`,
+and `--json`.
 `--short` and the default are column-aligned tables with headers. `--full` is **not** a
 wider table: it prints one stanza per item, every field on its own labelled line. Seven
 columns including a 63-character id and a 92-character title made a 280-column table on
@@ -3773,6 +3785,10 @@ the table. A type then adds only the names that are its own.
 - **`always`** — a field; `true`, `false`; `mycontext pin <id> | mycontext unpin <id>`
   Injected at every session start. `edit --always=true` is the same change
   under another name.
+- **`continuity`** — a field; `true`, `false`; `mycontext edit <id> --continuity[=false]`
+  Re-delivered on every session start and after every compaction, against its
+  own budget. For what the NEXT session needs in order not to start over — a
+  pointer plus a bounded digest, never a document.
 
 **Every `rationale`-tier item:**
 
@@ -3794,6 +3810,10 @@ the table. A type then adds only the names that are its own.
 - **`always`** — a field; `false`; `mycontext unpin <id>`
   Only false. `--always true` is REFUSED here — pinning governs on the
   normative tier only.
+- **`continuity`** — a field; `true`, `false`; `mycontext edit <id> --continuity[=false]`
+  Accepted on this tier, unlike severity and always: the continuity tier is not
+  a governance tier and never consults isNormative, so a reference can carry
+  it.
 
 **`open_question`** — the `normative` rules above, and 1 of its own:
 
@@ -4997,7 +5017,7 @@ under `inert`.
 ### `budgets` — how much context each tier may spend
 
 ```json
-{ "budgets": { "pinned": 6000, "jit": 6000, "restored": 8000, "index": 1200 } }
+{ "budgets": { "pinned": 6000, "jit": 6000, "restored": 8000, "continuity": 2000, "index": 1200 } }
 ```
 
 Those are the defaults, in estimated tokens (characters divided by four — there is no
@@ -5611,7 +5631,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 13 of the 38 CLI commands have none, each for a reason
+is **listed rather than discovered**. 14 of the 39 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
@@ -5643,6 +5663,12 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
   that only *previewed* an import and then printed the `mycontext pack import` for you to
   run is the shape `/mycontext:lesson-stage` already uses, and it is what this row is
   waiting for.
+- `ready` reports the tasks whose dependencies have landed, and a task is not a category this
+  plugin ships. The slash surface is generated from the **default** configuration, in which
+  no category declares the `plan`, `seq` and `state` fields this report reads, so a generated
+  `/mycontext:ready` would say "this project has no planned work" in every project that has
+  not declared such a category. It is waiting on the same thing `pack`'s row is: a slash
+  surface generated against the resolved config rather than the shipped catalogue.
 - `statusline` is Claude Code's own configuration rather than anything in this corpus. Run
   bare it reads a payload only Claude Code sends, on stdin, which a slash command has no way
   to produce; and `statusline install` edits `settings.json`, which is a decision about the
@@ -5855,7 +5881,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "13 of the 38 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "14 of the 39 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

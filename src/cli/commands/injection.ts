@@ -82,7 +82,7 @@ export interface InjectionVerdict {
  * with this one.
  */
 export function injection(
-  item: Pick<Item, 'type' | 'status' | 'always' | 'scope'>, config: Config,
+  item: Pick<Item, 'type' | 'status' | 'always' | 'continuity' | 'scope'>, config: Config,
 ): InjectionVerdict {
   const no = (gate: GateCode, phrase: string) => ({ phrase, injected: false, gate });
   const yes = (phrase: string) => ({ phrase, injected: true, gate: 'passed' as const });
@@ -99,6 +99,22 @@ export function injection(
     return no('eligible', Object.hasOwn(config.categories, item.type)
       ? `not injected (category "${item.type}" is disabled in this project)`
       : `not injected (category "${item.type}" is not in this project's config)`);
+  }
+  // **The continuity tier, answered BEFORE the governance tier and not after
+  // it.** `select`'s continuity tier draws from `eligible` and never consults
+  // `isNormative` (see its comment there): continuity answers "what does the
+  // next session need in order not to start over", which is orthogonal to what
+  // governs, and the item the tier exists for is a `reference` — rationale by
+  // catalogue. Asking the tier gate first is therefore not an optimisation but
+  // the correctness of this function: below it, a rationale item returns
+  // `RATIONALE_NOT_INJECTED`, and this preview would have told a reader that
+  // the one item carrying the project's continuity guarantee is not injected,
+  // on every screen that asks. The order here mirrors `select`'s.
+  if (item.continuity) {
+    return yes(
+      'CONTINUITY — injected in full at every session start and after every compaction, '
+      + 'against budgets.continuity, regardless of scope and of the governance tier',
+    );
   }
   // `isNormative`'s test, spelled out: `config.categories[type]?.tier ===
   // 'normative'`. `Object.hasOwn` guards the prototype-pollution hazard a

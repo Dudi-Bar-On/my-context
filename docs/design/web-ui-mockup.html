@@ -842,7 +842,7 @@ svg.chart .nowline{stroke:var(--gold);stroke-width:1.5}
 svg.chart .defline{stroke:var(--edge-3);stroke-width:1;stroke-dasharray:3 3}
 svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
 
-/* — the four-tier budget ribbon, with the ghost lane beneath — */
+/* — the five-tier budget ribbon, with the ghost lane beneath — */
 .ribbon{margin-block-end:14px}
 .rlabel{display:flex;gap:var(--sp-2);align-items:baseline;font-size:var(--fs-0);
   margin-block-end:4px;flex-wrap:wrap}
@@ -872,6 +872,7 @@ svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
 .seg.pinned{background:var(--gold)}
 .seg.jit{background:var(--ok)}
 .seg.restored{background:color-mix(in oklch,var(--ok) 50%,var(--gold))}
+.seg.continuity{background:var(--carry)}
 .seg.index{background:var(--edge-3)}
 .seg.head{background:transparent;flex:1;border:0}
 .ghosts{block-size:14px;display:flex;margin-block-start:3px;gap:2px}
@@ -1156,9 +1157,9 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
      block comment above). */
   symbol[id^="i-"]{fill:none;stroke:CanvasText}
 
-  /* the four-tier budget ribbon (§5, Task 11 Step 3): background-COLOUR is
+  /* the five-tier budget ribbon (§5, Task 11 Step 3): background-COLOUR is
      what forced-colors flattens to one system tone — measured, every
-     `.seg.pinned/.jit/.restored/.index` collapses to an identical
+     `.seg.pinned/.jit/.restored/.continuity/.index` collapses to an identical
      `rgb(255,255,255)` with no image. A border-STYLE survives where a
      background pattern does not (see the correction above), so each tier
      gets its own pattern on the block edges, not fighting the min 2px
@@ -1166,6 +1167,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
   .seg.pinned{border-block:3px solid CanvasText}
   .seg.jit{border-block:3px dashed CanvasText}
   .seg.restored{border-block:3px dotted CanvasText}
+  .seg.continuity{border-block:3px ridge CanvasText}
   .seg.index{border-block:3px double CanvasText}
 }
 </style>
@@ -1501,7 +1503,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <span class="m">mycontext show &lt;id&gt;</span>.</p>
 
     <div class="card pane">
-      <h3 data-t="preview.ribbon">Budget ribbon — four tiers, and what fell out of each</h3>
+      <h3 data-t="preview.ribbon">Budget ribbon — five tiers, and what fell out of each</h3>
       <div class="plate" id="ribbons"></div>
       <p class="small" data-t="preview.ribbonn">One segment per admitted item, sized by its real
         <span class="m">itemCost</span>. Beneath each track is the <b>ghost lane</b>: every spilled
@@ -1510,6 +1512,11 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         misrepresent the algorithm. A tier this event never reaches is drawn as <b>absent</b>,
         hatched and named; an empty track would claim it ran and delivered nothing, which is a
         different fact. Follows the event selector above rather than adding a second one.</p>
+      <p class="small" data-t="preview.contover"><b>Continuity overflow</b> — {n} continuity
+        item(s) did not fit <span class="m">budgets.continuity</span>: <span class="m v" data-v="ids">REF-v2-handover-read-before-discussing-the-web-ui</span>, costing <span class="m v" data-v="cost">37,831</span>
+        against a budget of <span class="m v" data-v="budget">2,000</span>. The continuity guarantee is NOT in force for this session.
+        It is said here, in the injected block itself and as a doctor finding, because a continuity
+        item dropped in silence is the exact defect this tier exists to end.</p>
     </div>
   </section>
 
@@ -1585,7 +1592,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
   <!-- ═══ 4. Budget simulator ═══ -->
   <section data-p="simulate" hidden>
     <div class="phd"><h2 data-t="sim.h">Budget simulator</h2>
-      <span class="verdict">✅ <span data-t="sim.v">all four tiers</span></span></div>
+      <span class="verdict">✅ <span data-t="sim.v">all five tiers</span></span></div>
     <p class="psub" data-t="sim.sub">Drag a budget and watch what fits. Raising a budget can
       <b>evict</b> an item — the selector is first-fit, not a stable ranking with a cut line.</p>
     <div class="card pane sim">
@@ -2092,6 +2099,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <tr><td class="m">pinned</td><td class="m">6000</td></tr>
           <tr><td class="m">jit</td><td class="m">6000 → <b>8000</b></td></tr>
           <tr><td class="m">restored</td><td class="m">8000</td></tr>
+          <tr><td class="m">continuity</td><td class="m">2000</td></tr>
           <tr><td class="m">index</td><td class="m">1200</td></tr>
         </tbody></table>
       </div>
@@ -2363,7 +2371,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <div class="small" style="line-height:2">
           <div>1 · <span data-t="dv.t1">What this is</span></div>
           <div>2 · <span data-t="dv.t2">Install</span></div>
-          <div>3 · <span data-t="dv.t3">The four tiers</span></div>
+          <div>3 · <span data-t="dv.t3">The five tiers</span></div>
           <div>4 · <span data-t="dv.t4">Scope</span></div>
           <div>7 · <span data-t="dv.t7">The trust boundary</span></div>
         </div>
@@ -2659,7 +2667,8 @@ const HE={_dir:'rtl',_lang:'he',
  'preview.sub':'מה שהשיחה האחרונה קיבלה בתחילתה. בחרו קובץ כדי לראות אירוע כלי במקום.',
  'preview.ev':'אירוע','preview.evl':'אירוע','preview.delivered':'נמסר','preview.why':'למה לא — השער הראשון שנכשל',
  'preview.cap':'{v:items=4} פריטים, {v:used=4,260} מתוך {v:budget=6,000} אסימונים',
- 'preview.ribbon':'סרט התקציב — ארבע רמות, ומה נשר מכל אחת',
+ 'preview.ribbon':'סרט התקציב — חמש רמות, ומה נשר מכל אחת',
+ 'preview.contover':'גלישת רציפות — {n} פריטי רציפות לא נכנסו ל‑{m:budgets.continuity}: {mv:ids}, בעלות {mv:cost} מול תקציב של {mv:budget}. הבטחת הרציפות אינה בתוקף בשיחה הזו. הדבר נאמר כאן, בבלוק המוזרק עצמו וכממצא של doctor, כי פריט רציפות שנשמט בשקט הוא בדיוק התקלה שהרמה הזו נועדה לסיים.',
  'preview.ribbonn':'מקטע אחד לכל פריט שהתקבל, ברוחב ה‑{m:itemCost} האמיתי שלו. מתחת לכל מסלול נמצאת נתיב הרפאים: כל פריט שנשפך, ברוחב שהיה תופס, במקום שבו הבורר שקל אותו. רפאים רחבים ואחריהם מילוי צר הם first-fit במלוא כנותו — ציור השפיכות כזנב היה מסלף את האלגוריתם. רמה שהאירוע הזה אינו מגיע אליה מצוירת כנעדרת, מקווקוות ומוסברת; מסלול ריק היה טוען שהיא רצה ולא מסרה דבר, וזו עובדה אחרת. עוקב אחרי בורר האירועים שלמעלה במקום להוסיף שני.',
  'preview.whyn':'השערים בסדר של {m:select()} עצמו — כשירות, רמה, מיקוד, היקף, נראו, תקציב — כי הסדר הוא ההסבר: רשימה של שש סיבות היא רעש, והסיבה הכובלת נושאת משמעות רק במקום שהיא תופסת. השלבים שמעליה עברו, השלב עצמו נושא את האבחנה, וכל מה שמתחתיו לא נבדק כלל ולא עבר. הרכבת התיקון דורשת קוד יציב ב‑{m:injection()}; היום חמש הסיבות נבדלות רק בניסוח האנגלי.',
  'help.more':'מה מכריע כאן','help.land':'איך תדעו שזה עבד',
@@ -2678,7 +2687,7 @@ const HE={_dir:'rtl',_lang:'he',
  'gaps.h':'פערי כיסוי','gaps.v':'מציין מה חסר','gaps.sub':'ספריות שאף פריט אינו מכסה, וקטגוריות ריקות.',
  'gaps.r1':'{v:files=3} קבצים, אף פריט אינו בהיקף כאן','gaps.r2':'מעבר למגבלת הקבצים','gaps.r3':'ריקה','gaps.cat':'קטגוריה {m:open_question}',
  'gaps.note':'"לא נבדק" הוא מצב שלישי, לעולם לא מקופל לתוך "פער".',
- 'sim.h':'סימולטור תקציב','sim.v':'כל ארבע הרמות','sim.sub':'גררו תקציב וראו מה נכנס. העלאת תקציב יכולה לפלוט פריט.',
+ 'sim.h':'סימולטור תקציב','sim.v':'כל חמש הרמות','sim.sub':'גררו תקציב וראו מה נכנס. העלאת תקציב יכולה לפלוט פריט.',
  'sim.tier':'רמה','sim.budget':'תקציב','sim.fits':'נכנס','sim.spills':'נשפך',
  'sim.evict':'{m:fitToBudget} הוא first-fit: תקציב גדול יותר מכניס פריט גדול מוקדם, שיכול לדחוק שניים קטנים.',
  'sim.stair':'גרם מדרגות הקבלה — כמה פריטים נכנסים, לפי תקציב',
@@ -2760,7 +2769,7 @@ const HE={_dir:'rtl',_lang:'he',
  'port.h':'ייצוא / ייבוא',
  'dv.h':'תיעוד','dv.v':'מקושר לקורפוס שלכם, מה שאתר תיעוד אינו יכול',
  'dv.sub':'ה‑README של המאגר, מוצג כאן וממוען לפי סדר הכותרת.','dv.toc':'תוכן',
- 'dv.t1':'מה זה','dv.t2':'התקנה','dv.t3':'ארבע הרמות','dv.t4':'היקף','dv.t7':'גבול האמון',
+ 'dv.t1':'מה זה','dv.t2':'התקנה','dv.t3':'חמש הרמות','dv.t4':'היקף','dv.t7':'גבול האמון',
  'dv.parity':'מתג EN/HE מנטרל את עצמו כשמבחן הזהות אדום.','dv.rendered':'§{v:ordinal=3} — {v:heading=ארבע הרמות}',
  'dv.mdnote':'מוצג במעבד תת‑קבוצה שנכתב ביד: שום מחרוזת HTML אינה נוצרת.',
  'tu.h':'מדריכים','tu.v':'כל אחד נושא שם של משימה, לא של תכונה',
@@ -3355,13 +3364,14 @@ function inline(s,refusals){
   if(last<s.length) out.push(document.createTextNode(s.slice(last)));
   return out;
 }
-const MD_EN=`### The four tiers
+const MD_EN=`### The five tiers
 
-Every item reaches a session through exactly one of four tiers.
+Every item reaches a session through exactly one of five tiers.
 
 - **pinned** — \`always: true\`, delivered in full, every session
 - **jit** — scope-matched on tool use
 - **restored** — re-applied after a compaction
+- **continuity** — \`continuity: true\`, re-delivered on every session start and after every compaction
 - **index** — id and title only
 
 See [scope](#4) for what restricts a jit item.
@@ -3371,13 +3381,14 @@ See [scope](#4) for what restricts a jit item.
 \`\`\`
 mycontext add constraint "…" --scope "src/**"
 \`\`\``;
-const MD_HE=`### ארבע הרמות
+const MD_HE=`### חמש הרמות
 
-כל פריט מגיע לשיחה דרך אחת מארבע רמות בדיוק.
+כל פריט מגיע לשיחה דרך אחת מחמש רמות בדיוק.
 
 - **pinned** — \`always: true\`, נמסר במלואו
 - **jit** — מותאם היקף בעת שימוש בכלי
 - **restored** — מוחל מחדש אחרי דחיסה
+- **continuity** — \`continuity: true\`, נמסר מחדש בכל פתיחת שיחה ואחרי כל דחיסה
 - **index** — מזהה וכותרת בלבד
 
 <script>alert(1)<\/script>`;
@@ -3583,9 +3594,9 @@ const num=n=>n.toLocaleString('en-US');
       tier table all read CANDIDATES, so they cannot disagree. Costs are
       itemCost() figures; order is the selector's own, and admission is
       FIRST-FIT within it — an over-budget item is skipped, not a cut line. ── */
-const TIER_BUDGET={pinned:6000,jit:6000,restored:8000,index:1200};
-const EVENT_TIERS={'session-start':['pinned','index'],'tool':['jit'],
-  'compact':['pinned','restored','index'],'manual':['pinned','index']};
+const TIER_BUDGET={pinned:6000,jit:6000,restored:8000,continuity:2000,index:1200};
+const EVENT_TIERS={'session-start':['pinned','continuity','index'],'tool':['jit'],
+  'compact':['pinned','continuity','restored','index'],'manual':['pinned','continuity','index']};
 const CANDIDATES={
   pinned:[['CONST-postgres-pool-capped-at-20',540],['CONST-zero-runtime-dependencies',980],
     ['INV-markdown-is-the-source-of-truth',2450],['INV-nothing-is-dropped-silently',1610],
@@ -3595,6 +3606,7 @@ const CANDIDATES={
     ['DEC-refunds-are-idempotent',1150],['STD-money-never-float',430]],
   restored:[['INV-prices-are-integer-cents',880],['RULE-never-log-customer-email',1240],
     ['CONST-zero-runtime-dependencies',980]],
+  continuity:[['REF-v2-handover-read-before-discussing-the-web-ui',1180]],
   index:[['19 normative index lines',1040],['6 more that did not fit',260]]
 };
 function fitFirstFit(cands,budget){
@@ -3988,15 +4000,15 @@ function renderPulse(){
   host.replaceChildren(s);
 }
 
-/* ── 3 · the four-tier budget ribbon, with the ghost lane ────────────────────
+/* ── 3 · the five-tier budget ribbon, with the ghost lane ────────────────────
    Deliberately CSS flex rather than SVG: a quantity bar must mirror, and flex
    with logical properties mirrors for free. ── */
 const TIERCHIP={pinned:['chip gov','◆'],jit:['chip ok','●'],
-  restored:['chip ok','●'],index:['chip','◇']};
+  restored:['chip ok','●'],continuity:['chip carry','◈'],index:['chip','◇']};
 function renderRibbons(){
   const host=$('#ribbons'); if(!host) return; host.replaceChildren();
   const ev=$('#evsel').value;
-  for(const tier of ['pinned','jit','restored','index']){
+  for(const tier of ['pinned','jit','restored','continuity','index']){
     const runs=EVENT_TIERS[ev].includes(tier), budget=TIER_BUDGET[tier];
     const r=el('div','ribbon'), lab=el('div','rlabel');
     const chip=el('span',TIERCHIP[tier][0],tier); chip.dataset.g=TIERCHIP[tier][1];
@@ -4136,7 +4148,7 @@ function renderStair(){
 }
 function renderTierPick(){
   const p=$('#tierPick'); if(!p) return; p.replaceChildren();
-  for(const t of ['pinned','jit','restored','index']){
+  for(const t of ['pinned','jit','restored','continuity','index']){
     const b=el('button',null,t);
     b.type='button'; b.setAttribute('aria-pressed',String(t===SIM_TIER));
     b.addEventListener('click',()=>{
@@ -4157,7 +4169,7 @@ $('#slider').addEventListener('input',()=>{
 /* ── 5 · tier fits-ratio chips — "2 of 6", and the colour flips at the boundary ── */
 function renderTiers(){
   const tb=$('#simtbl'); if(!tb) return; tb.replaceChildren();
-  for(const t of ['pinned','jit','restored','index']){
+  for(const t of ['pinned','jit','restored','continuity','index']){
     const dragging = t===SIM_TIER;
     const budget = dragging ? Number($('#slider').value) : TIER_BUDGET[t];
     const {fit,spill}=fitFirstFit(CANDIDATES[t],budget);

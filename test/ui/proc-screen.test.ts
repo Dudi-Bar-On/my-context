@@ -196,7 +196,7 @@ test('the ready row still claims "index line only", which the shipped selector d
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'PROC-a', type: 'procedure', title: 'A procedure', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'body', steps: [], observations: [], relations: [],

@@ -257,7 +257,30 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // Delivered and Why-not went back side by side in `.two`. Both sides now
   // draw zero, so there is no gap to record — which is the ledger working in
   // the direction nobody expects it to.
-  preview: ['i', 'span.chip', 'span.prop'],
+  preview: [
+    'i', 'span.chip', 'span.prop',
+    // **The continuity track's admitted segment — a FIXTURE gap, not a build
+    // gap** (`plan:live seq:9`, 2026-08-28). `preview.js` draws `.seg` for
+    // every admitted item on every one of its five tracks; the code is one
+    // loop and does not special-case continuity. What it needs is an item to
+    // admit, and `.demo-corpus` has none: nothing in it carries
+    // `continuity: true`, because `scripts/demo-corpus.ts` marks continuity on
+    // no item and its two `reference` items measure ~4,100 and ~17,900
+    // estimated tokens against demo budgets of 90-240.
+    //
+    // So the tier runs, admits nothing, and draws its head and no segment —
+    // which is correct behaviour over this corpus and indistinguishable, to an
+    // element census, from a segment nobody built. That is exactly the
+    // ambiguity `DATA_DEPENDENT` names for this screen.
+    //
+    // Closing this is a FIXTURE change, not an app change: `plan:live seq:10`
+    // gives the demo corpus a bounded continuity item — which is also the
+    // shape `DEC-continuity-gets-its-own-budget-and-the-item-it-holds-must-be`
+    // rules a continuity item must have, so the fixture would demonstrate the
+    // ruling rather than merely satisfy a gate. Remove this entry then, and
+    // the `track.segs === 0` guard in `e2e/app-layout.spec.ts` with it.
+    'div.continuity.seg',
+  ],
   coverage: [
     'button', 'button.linkid.m', 'div.mini', 'i', 'i.g', 'i.u', 'i.x',
     'span.covn', 'span.nm', 'table', 'tbody', 'td', 'th', 'thead', 'tr',

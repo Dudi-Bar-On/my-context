@@ -110,6 +110,7 @@ export const TIER_UPDATES: Record<Tier, CategoryUpdates> = {
     status: { store: 'field', values: ['draft', 'active', 'validated', 'deprecated', 'superseded'], command: 'mycontext edit <id> --status <status>', note: 'Whether it governs. Moving a normative item into active or validated is gated and previewed.' },
     severity: { store: 'field', values: ['hard', 'soft'], command: 'mycontext harden <id> | mycontext soften <id>', note: 'Binding or advisory. `edit --severity` is the same change under another name.' },
     always: { store: 'field', values: ['true', 'false'], command: 'mycontext pin <id> | mycontext unpin <id>', note: 'Injected at every session start. `edit --always=true` is the same change under another name.' },
+    continuity: { store: 'field', values: ['true', 'false'], command: 'mycontext edit <id> --continuity[=false]', note: 'Re-delivered on every session start and after every compaction, against its own budget. For what the NEXT session needs in order not to start over — a pointer plus a bounded digest, never a document.' },
   },
   rationale: {
     title: { store: 'field', command: 'mycontext edit <id> --title "…"', note: 'The one-line name. Changing it does not change the id.' },
@@ -119,6 +120,7 @@ export const TIER_UPDATES: Record<Tier, CategoryUpdates> = {
     status: { store: 'field', values: ['draft', 'active', 'validated', 'deprecated', 'superseded'], command: 'mycontext edit <id> --status <status>', note: 'Ungated on this tier: a rationale item governs nothing before or after.' },
     severity: { store: 'field', values: ['soft'], command: 'mycontext soften <id>', note: 'Only soft. `--severity hard` is REFUSED here — severity governs on the normative tier only.' },
     always: { store: 'field', values: ['false'], command: 'mycontext unpin <id>', note: 'Only false. `--always true` is REFUSED here — pinning governs on the normative tier only.' },
+    continuity: { store: 'field', values: ['true', 'false'], command: 'mycontext edit <id> --continuity[=false]', note: 'Accepted on this tier, unlike severity and always: the continuity tier is not a governance tier and never consults isNormative, so a reference can carry it.' },
   },
 };
 

@@ -9,7 +9,7 @@ const CONFIG = resolveConfig({});
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'CONST-a', type: 'constraint', title: 'A constraint', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'body', steps: [], observations: [], relations: [],
@@ -86,7 +86,7 @@ test('an item with no scope JIT-activates on every path — scope restricts, it 
  * recorded, so the session's first tool event already treats it as seen.
  */
 test('an unscoped pinned item is JIT-eligible, and the seen filter is what dedupes it', () => {
-  const items = [item({ id: 'CONST-pinned', always: true, scope: [] })];
+  const items = [item({ id: 'CONST-pinned', always: true, continuity: false, scope: [] })];
   const fresh = select(items, { event: 'tool', path: 'src/db/writer.ts' }, CONFIG);
   assert.deepEqual(fresh.full.map((e) => e.item.id), ['CONST-pinned']);
 
@@ -98,7 +98,7 @@ test('an unscoped pinned item is JIT-eligible, and the seen filter is what dedup
 
 test('a scoped item is still restricted to its globs — the inversion did not make scope inert', () => {
   const sel = select(
-    [item({ id: 'CONST-db', always: true, scope: ['src/db/**'] })],
+    [item({ id: 'CONST-db', always: true, continuity: false, scope: ['src/db/**'] })],
     { event: 'tool', path: 'docs/readme.md' },
     CONFIG,
   );

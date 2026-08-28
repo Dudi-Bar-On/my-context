@@ -50,11 +50,32 @@ export interface SelectContext {
    * has one, its short prefix when it does not (`core/continuity.ts`).
    */
   carried?: { sessionId: string; label: string; ids: string[] } | null;
+  /**
+   * Continuity ids already delivered INTO THE CURRENT CONTEXT WINDOW — the
+   * continuity tier's own dedupe, and deliberately NOT `seen`.
+   *
+   * **The distinction is the whole of the tier.** `seen` answers "has this
+   * session ever been shown this item", which is the right question for every
+   * other tier and the WRONG one here: a compaction REBUILDS the window, so
+   * what it "already holds" is gone, and an item deduped on `seen` across a
+   * compaction is a session that starts over with nothing — the exact failure
+   * this tier exists to prevent. So the caller answers a narrower question,
+   * keyed on the window rather than on the id: `continuityFor(seenState,
+   * window)` (`core/seen-file.ts`), where the window is the compaction
+   * snapshot's own `capturedAt` on a compact and a session-wide constant
+   * otherwise — the same identity-marker comparison `restoredFor` makes, for
+   * the same reason and through the same last-line-wins ledger.
+   *
+   * **It ARRIVES here rather than being read here**, exactly as `seen`,
+   * `restore` and `carried` do: `INV-select-is-pure` — this module opens
+   * no seen file.
+   */
+  continuityDelivered?: string[];
 }
 
 export interface SelectionEntry {
   item: Item;
-  tier: 'pinned' | 'jit' | 'restored';
+  tier: 'pinned' | 'jit' | 'restored' | 'continuity';
 }
 
 export interface Spill {
@@ -187,6 +208,36 @@ export interface PinnedSpill {
   budget: number;
 }
 
+/**
+ * What the CONTINUITY tier could not deliver, and what it would take to
+ * deliver it — `PinnedSpill`'s shape, for a tier whose spill is louder still.
+ *
+ * **There is no acceptable silent overflow on this tier.** The defect this
+ * whole feature exists to fix is precisely *a guarantee believed to be in force
+ * that silently was not*: the handover document cost 37,831 estimated tokens
+ * against a largest budget of 24,000, was delivered on no event, and nothing
+ * said so. A continuity tier that quietly drops its payload reproduces that
+ * defect with a longer fuse — so this disclosure is produced here, rendered as
+ * its own sentence in the injected block (`render.ts`), and reported as a
+ * `doctor` finding (`doctor/checks.ts`, `continuity_overflow`).
+ *
+ * The tier's content is meant to be a pointer plus a bounded digest, so this
+ * should never fire. "Should never happen" is not a behaviour, which is why it
+ * is built rather than assumed.
+ *
+ * `null` means *nothing continuity-marked was dropped* — covering both a tier
+ * that fitted and a tier that never ran (`tiersRun`), exactly as
+ * `PinnedSpill` does and for the same reason.
+ */
+export interface ContinuitySpill {
+  /** The continuity items that did not fit, in `fitToBudget`'s priority order. */
+  ids: string[];
+  /** What the WHOLE continuity candidate set costs — admitted plus spilled. */
+  cost: number;
+  /** `config.budgets.continuity` — the figure `cost` was measured against. */
+  budget: number;
+}
+
 export interface Selection {
   full: SelectionEntry[];
   index: IndexSummary;
@@ -196,6 +247,12 @@ export interface Selection {
    * it was asked for (including when it was asked for none). See `PinnedSpill`.
    */
   pinnedSpill: PinnedSpill | null;
+  /**
+   * The continuity tier's undelivered items, or `null` when it delivered
+   * every one it was asked for (including when it was asked for none, and when
+   * it never ran). See `ContinuitySpill`.
+   */
+  continuitySpill: ContinuitySpill | null;
   /** The focus disclosure, or null when no focus is active. */
   focus: FocusReport | null;
   /**
@@ -400,6 +457,12 @@ export function focusHides(item: Item, focus: Focus | null, config: Config): boo
   if (!isFocusActive(focus)) return false;
   if (item.severity === 'hard') return false;
   if (item.always) return false;
+  // A THIRD exemption, for the reason the other two exist and one of its own:
+  // focus narrows what a session is shown, and the continuity tier's whole
+  // promise is that the next session does not start over. A narrowing that
+  // silently suppressed it would be the defect the tier was built to end,
+  // wearing a feature's name. Disclosed, never assumed — `exemptContinuity`.
+  if (item.continuity) return false;
   return !matchesFocus(item, focus, config);
 }
 
@@ -784,6 +847,7 @@ function buildFocusReport(
   const visible: Item[] = [];
   const exemptHard: string[] = [];
   const exemptAlways: string[] = [];
+  const exemptContinuity: string[] = [];
   for (const item of universeItems) {
     if (focusHides(item, focus, config)) {
       hidden.push(item);
@@ -796,6 +860,7 @@ function buildFocusReport(
     // point of these lists is that the counts are trustworthy.
     if (item.severity === 'hard') exemptHard.push(item.id);
     else if (item.always) exemptAlways.push(item.id);
+    else if (item.continuity) exemptContinuity.push(item.id);
   }
 
   return {
@@ -805,6 +870,7 @@ function buildFocusReport(
     visible: visible.length,
     exemptHard: exemptHard.sort(compareStrings),
     exemptAlways: exemptAlways.sort(compareStrings),
+    exemptContinuity: exemptContinuity.sort(compareStrings),
     dangling: danglingEdges(visible, hidden),
   };
 }
@@ -896,22 +962,30 @@ export const GATE_LADDER: GateCode[] = (Object.keys(GATE_RUNG) as GateCode[])
  * plan 1, §0.3 row 3), so it needs this stated rather than inferred.
  *
  * It is exported instead of re-derived by the caller for the reason `itemCost`
- * is: a browser (or a server route) reconstructing "pinned runs on
- * session-start, compact and manual; restored only on compact; jit only on a
+ * is: a browser (or a server route) reconstructing "pinned and continuity run
+ * on session-start, compact and manual; restored only on compact; jit only on a
  * tool event with a path; the bounded index on everything but tool" has
  * re-implemented this file's dispatch, and the copy drifts the first time the
  * dispatch changes. `select` below consumes this function for its own
  * branching, so there is one statement of the rule and no second place to
  * update.
  *
- * The array is in `select`'s run order — pinned, restored, jit, index — which
- * is the order the budgets are spent in. A caller drawing fixed tracks reads
+ * The array is in `select`'s run order — pinned, continuity, restored, jit,
+ * index — which is the order the budgets are spent in. A caller drawing fixed tracks reads
  * it as a membership test; the order is a disclosure, not a layout.
  */
 export function tiersRun(ctx: SelectContext): Spill['tier'][] {
   const tiers: Spill['tier'][] = [];
   if (ctx.event === 'session-start' || ctx.event === 'compact' || ctx.event === 'manual') {
     tiers.push('pinned');
+    // The same three events as `pinned`, and NEVER `'tool'`. A tool event is
+    // narrow by construction — that is what the JIT tier is — and continuity is
+    // the opposite of narrow: it answers "what does the next session need in
+    // order not to start over", which no file path can scope. `'manual'` is a
+    // session start under another name (`inject.ts`: *"select treats 'manual'
+    // exactly as it treats a session start"*) and carries the tier for that
+    // reason and no other.
+    tiers.push('continuity');
   }
   if (ctx.event === 'compact') tiers.push('restored');
   if (jitTarget(ctx) !== '') tiers.push('jit');
@@ -953,6 +1027,8 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   // difference: a tool event never runs this tier, and a tier that did not run
   // has no cost rather than a cost of nothing (`STD-absent-vs-zero`).
   let pinnedCost: number | null = null;
+  /** The same, for the continuity tier — see `continuitySpillOf`. */
+  let continuityCost: number | null = null;
 
   if (tiers.includes('pinned')) {
     const candidates = fresh.filter((i) => i.always);
@@ -966,6 +1042,57 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     // one that leaves `fitToBudget` a single-purpose function.
     pinnedCost = candidates.reduce((sum, i) => sum + itemCost(i), 0);
     const result = fitToBudget(candidates, config.budgets.pinned, 'pinned');
+    entries.push(...result.entries);
+    spilled.push(...result.spilled);
+    tokens += result.used;
+  }
+
+  // THE CONTINUITY TIER. Second in the run order, after `pinned` and before
+  // everything else, because it is the tier that answers "what does the next
+  // session need in order not to start over" and it competes for nothing: it
+  // has its own budget (`DEC-continuity-gets-its-own-budget-and-the-item-it-
+  // holds-must-be`), so its position costs no other tier a token.
+  //
+  // THREE THINGS HERE ARE DIFFERENT FROM EVERY OTHER TIER, AND EACH IS THE
+  // POINT OF THE TIER:
+  //
+  //  1. **It draws from `eligible`, not from `injectable`.** Every other
+  //     full-text tier is gated on `isNormative` — the GOVERNANCE tier — and
+  //     that gate is right for them: they all answer "what governs this work".
+  //     Continuity answers a different question, and the decision that created
+  //     this tier rejected category as its axis in as many words, because
+  //     "categories carry a governance tier already and overloading them
+  //     couples two unrelated axes". The item this tier exists for is a
+  //     `reference`, which is rationale-tier by catalogue; gating here would
+  //     have shipped a tier that could never deliver the one item it was built
+  //     to deliver, and would have done it silently. See `Item.continuity`.
+  //
+  //  2. **It does not consult `fresh`.** `fresh` is `injectable` minus
+  //     `seen`, and `seen` answers "has this SESSION ever been shown this
+  //     item" — the right question everywhere else and the wrong one here. A
+  //     compaction REBUILDS the window: what it "already holds" is gone, and an
+  //     item deduped on `seen` across a compaction is a session that starts
+  //     over with nothing, which is the exact failure this tier prevents. The
+  //     dedupe is `ctx.continuityDelivered` instead, which its caller keys on
+  //     the window (`snapshot.capturedAt` on a compact) and never on id alone.
+  //
+  //  3. **Its overflow is LOUD** — `continuitySpill` below, a sentence of its
+  //     own in the injected block, and a `doctor` finding.
+  //
+  // `alreadyChosen` is consulted because `pinned` runs on the same three
+  // events: an item that is both `always` and `continuity` arrives once,
+  // through whichever tier reached it first, and is not rendered twice.
+  if (tiers.includes('continuity')) {
+    const delivered = new Set(ctx.continuityDelivered ?? []);
+    const alreadyChosen = new Set(entries.map((e) => e.item.id));
+    const candidates = eligible.filter(
+      (i) => i.continuity && !delivered.has(i.id) && !alreadyChosen.has(i.id),
+    );
+    // Priced over the CANDIDATES, before the budget sees them, for
+    // `pinnedCost`'s reason: the figure a person raising the budget needs is
+    // what honouring `continuity` would cost, not what was affordable.
+    continuityCost = candidates.reduce((sum, i) => sum + itemCost(i), 0);
+    const result = fitToBudget(candidates, config.budgets.continuity, 'continuity');
     entries.push(...result.entries);
     spilled.push(...result.spilled);
     tokens += result.used;
@@ -1028,13 +1155,32 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     return { ids, cost: pinnedCost, budget: config.budgets.pinned };
   };
 
+  /**
+   * The continuity disclosure, built from the FINAL spill list — `pinnedSpillOf`'s
+   * reasoning, verbatim: a later tier can retroactively falsify an earlier
+   * tier's spill, and naming an item that actually arrived would be a false
+   * alarm on the one channel this feature needs to stay credible.
+   *
+   * **Fires on any spill, not only a total one**, for `PinnedSpill`'s reason:
+   * a partial continuity delivery is precisely the failure that reads as
+   * success.
+   */
+  const continuitySpillOf = (final: Spill[]): ContinuitySpill | null => {
+    if (continuityCost === null) return null;
+    const ids = final.filter((sp) => sp.tier === 'continuity').map((sp) => sp.id);
+    if (ids.length === 0) return null;
+    return { ids, cost: continuityCost, budget: config.budgets.continuity };
+  };
+
   // The bounded index — and its own budget accounting inside buildIndex — is
   // a per-session cost, not a per-tool-call cost (`tiersRun`).
   if (!tiers.includes('index')) {
     const finalSpilled = trueSpills(spilled);
     return {
       full: entries, index: emptyIndex(), spilled: finalSpilled,
-      pinnedSpill: pinnedSpillOf(finalSpilled), focus: focusReport,
+      pinnedSpill: pinnedSpillOf(finalSpilled),
+      continuitySpill: continuitySpillOf(finalSpilled),
+      focus: focusReport,
       tokens,
     };
   }
@@ -1046,6 +1192,7 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     index,
     spilled: finalSpilled,
     pinnedSpill: pinnedSpillOf(finalSpilled),
+    continuitySpill: continuitySpillOf(finalSpilled),
     focus: focusReport,
     tokens: tokens + indexUsed,
   };

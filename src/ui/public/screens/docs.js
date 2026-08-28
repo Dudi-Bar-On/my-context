@@ -107,7 +107,7 @@
  * heading branch builds `h{min(level+1, 4)}` — `#` becomes `h2`, `##` becomes
  * `h3`, `###` becomes `h4`. `.md h1,.md h2,.md h3` therefore styles a tag that
  * cannot appear and leaves `h4` — which the mockup's own sample markdown
- * produces from `### The four tiers` — with no rule at all. Carried across
+ * produces from `### The five tiers` — with no rule at all. Carried across
  * unchanged, since `styles.css` is held byte-identical to the mockup and this
  * file may not touch either. Reported.
  *

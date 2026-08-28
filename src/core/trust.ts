@@ -358,7 +358,8 @@ export const GOVERNING_STATUS: Record<Status, boolean> = {
 /**
  * The fields that decide whether — and how forcefully — an item is injected:
  * `scope` (which files it attaches to), `always` (whether it is pinned at
- * every session start) and `severity`. Changing any of them on a governing
+ * every session start), `continuity` (whether it is re-delivered on every
+ * session start and after every compaction) and `severity`. Changing any of them on a governing
  * item is functionally identical to the `status` change `updateItem`
  * (mutate.ts) refuses — the item
  * stops reaching the session — but leaves it `active`, so it shows up in no
@@ -369,6 +370,7 @@ export const GOVERNING_STATUS: Record<Status, boolean> = {
 export const GUARDED_FIELDS = {
   scope: 'scope',
   always: 'always flag',
+  continuity: 'continuity flag',
   severity: 'severity',
 } as const;
 
@@ -408,6 +410,7 @@ export function guardedChange(item: Item, input: UpdateInput): keyof typeof GUAR
     return 'scope';
   }
   if (input.always !== undefined && input.always !== item.always) return 'always';
+  if (input.continuity !== undefined && input.continuity !== item.continuity) return 'continuity';
   if (input.severity !== undefined && input.severity !== item.severity) return 'severity';
   return null;
 }
@@ -457,6 +460,7 @@ export const UPDATE_FIELD_POLICY = {
   extra: 'content',
   scope: 'gated',
   always: 'gated',
+  continuity: 'gated',
   severity: 'gated',
   status: 'gated',
 } as const satisfies Record<Exclude<keyof UpdateInput, 'id' | 'origin'>, FieldPolicy>;
@@ -479,7 +483,7 @@ type _ContentIsStageable = Assert<ContentField extends RevisionField ? true : fa
 // call content: that would be a route around the gate rather than a proposal.
 type _StageableIsContent = Assert<RevisionField extends ContentField ? true : false>;
 // A field classified `gated` must be one an actual guard refuses. The guards
-// are `guardedChange` (scope/always/severity) and `updateItem`'s status rule;
+// are `guardedChange` (scope/always/continuity/severity) and `updateItem`'s status rule;
 // widening `GUARDED_FIELDS` is out of scope here, so this asserts agreement
 // rather than producing it.
 type _GatedIsGuarded =
@@ -541,6 +545,9 @@ const GATED_READERS: Record<GatedField, (item: Item, input: UpdateInput) => bool
     input.scope !== undefined && !sameScope(input.scope.map((g) => normalizePosix(g)), item.scope)
   ),
   always: (item, input) => input.always !== undefined && input.always !== item.always,
+  continuity: (item, input) => (
+    input.continuity !== undefined && input.continuity !== item.continuity
+  ),
   severity: (item, input) => input.severity !== undefined && input.severity !== item.severity,
   status: (item, input) => input.status !== undefined && input.status !== item.status,
 };

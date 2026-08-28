@@ -57,7 +57,7 @@ test('the quoted body survives validateBody and the render/parse round trip', ()
 
   const item: Item = {
     id: 'REF-x', type: 'reference', title: 'X', status: 'active', severity: 'soft',
-    always: false, scope: [], tags: [], origin: 'human',
+    always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: 'docs/x.md', sourceAnchor: null, sourceChecksum: snapshotChecksum(HOSTILE),
     validFrom: '2026-08-16', validUntil: null, checksum: '', extra: {},
     body, steps: [], observations: [], relations: [], layer: 'project', filePath: 'items/reference/REF-x.md',
@@ -156,7 +156,7 @@ test('a file exactly at the limit is accepted — the refusal is above it, not a
 });
 
 test('largestFullTextBudget ignores the index budget, which pays for one-liners', () => {
-  assert.equal(largestFullTextBudget({ pinned: 10, jit: 20, restored: 30, index: 9999 }), 30);
+  assert.equal(largestFullTextBudget({ pinned: 10, jit: 20, restored: 30, continuity: 5, index: 9999 }), 30);
 });
 
 test('the budget line refuses to claim a cost the rationale tier does not have', () => {

@@ -41,15 +41,18 @@
  * The rest is what was always fully served: the tier picker, the budget
  * slider (which now SNAPS to a rung on every drag tick — `sim.snap` promises
  * it in prose, and a slider that does not snap under a sentence saying it
- * does is worse than the missing chart), the four-row fits table it drives,
+ * does is worse than the missing chart), the five-row fits table it drives,
  * and the spill ratio bar. Every number in the fits table comes from one
  * `/api/simulate` response, so the table cannot disagree with itself; every
  * number in the staircase and ladder comes from one `/api/simulate/sweep`
  * response, for the same reason one level up.
  *
- * **Two events, because four tiers do not live on one.** `tiersRun` is
- * `select.ts`'s own dispatch: `pinned`, `restored` and `index` are reached by
- * `compact`, and `jit` only by `tool`. So the screen holds two selections at
+ * **Two events, because five tiers do not live on one.** `tiersRun` is
+ * `select.ts`'s own dispatch: `pinned`, `continuity`, `restored` and `index`
+ * are reached by `compact`, and `jit` only by `tool`. `compact` is read for
+ * the continuity row deliberately: it is the event where that tier's answer is
+ * least obvious, because the window was REBUILT and the tier must re-deliver
+ * even though the seen ledger already holds the item. So the screen holds two selections at
  * once and reads each tier's row off whichever one actually ran it. A tier
  * that neither event reached is drawn as absent, never as a zero — an empty
  * count would claim it ran and delivered nothing, which is a different fact.
@@ -60,8 +63,8 @@
 import { selectQuery } from '/lib/viewmodel.js';
 import { el, errorNote, mono, num, screenHead, spaced } from '/screens/parts.js';
 
-/** The mockup's four tracks, in its order. `select.ts`'s own tier names. */
-const TIERS = ['pinned', 'jit', 'restored', 'index'];
+/** The mockup's five tracks, in its order. `select.ts`'s own tier names. */
+const TIERS = ['pinned', 'jit', 'restored', 'continuity', 'index'];
 
 /**
  * Which event reaches which tier, read off `tiersRun` rather than restated:
@@ -71,7 +74,9 @@ const TIERS = ['pinned', 'jit', 'restored', 'index'];
  * this exact map, so a sweep is never sent under an event that would not have
  * reached the tier it is pricing.
  */
-const EVENT_FOR = { pinned: 'compact', restored: 'compact', index: 'compact', jit: 'tool' };
+const EVENT_FOR = {
+  pinned: 'compact', restored: 'compact', continuity: 'compact', index: 'compact', jit: 'tool',
+};
 
 /**
  * The mockup's own slider bounds: `min=0 max=12000 step=50`. `max` is a FLOOR

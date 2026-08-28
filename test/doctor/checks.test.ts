@@ -18,7 +18,7 @@ const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n`;
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'CONST-a', type: 'constraint', title: 'A', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: '', steps: [], observations: [], relations: [],

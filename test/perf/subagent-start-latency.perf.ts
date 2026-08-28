@@ -131,7 +131,7 @@ const CEILING_MS = perfCeiling(500);
 function constraintItem(i: number): Item {
   return {
     id: `CONST-${i}`, type: 'constraint', title: `Constraint number ${i}`, status: 'active',
-    severity: 'soft', always: i < PINNED, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: i < PINNED, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: '', extra: {},
     body: 'A body of roughly forty characters.', steps: [], observations: [], relations: [],

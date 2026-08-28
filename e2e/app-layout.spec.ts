@@ -558,13 +558,20 @@ const READ_RIBBONS = (): Track[] => {
  * ribbon that dropped its unreached tiers would pass a count check and lose
  * the whole distinction.
  */
-test('the budget ribbon draws all four tiers, in the design\'s order, and hatches the absent ones', async ({ app }) => {
+test('the budget ribbon draws all five tiers, in the design\'s order, and hatches the absent ones', async ({ app }) => {
   const { page } = app;
   await showPreview(page);
   const tracks = await page.evaluate(READ_RIBBONS);
+  // **Five since `plan:live seq:9`.** `continuity` sits between `restored` and
+  // `index` in the DRAWING order, which is deliberately not `select`'s RUN
+  // order (`pinned, continuity, restored, jit, index`). `preview.js`'s own
+  // header quotes `select.ts` on why the two differ: *"A caller drawing fixed
+  // tracks reads it as a membership test; the order is a disclosure, not a
+  // layout."* This assertion is the layout, so it follows `TIERS` in
+  // `preview.js` — not the run order, and the mismatch is not a bug in either.
   expect(tracks.map((t) => t.tier),
-    'the four tiers are fixed tracks in select()\'s own order — an absent tier is drawn, not dropped')
-    .toEqual(['pinned', 'jit', 'restored', 'index']);
+    'the five tiers are fixed tracks in the design\'s own order — an absent tier is drawn, not dropped')
+    .toEqual(['pinned', 'jit', 'restored', 'continuity', 'index']);
   for (const track of tracks) {
     expect(track.hint, `${track.tier}: every track carries its own .hint sentence`).not.toBe('');
     if (!track.runs) {
@@ -573,8 +580,23 @@ test('the budget ribbon draws all four tiers, in the design\'s order, and hatche
     }
     expect(track.head, `${track.tier}: a running track needs its head filler, or the `
       + 'unspent budget reads as spent').toBe(1);
+    // **A track that ran with NO CANDIDATES draws no lane, and that is not the
+    // defect this asserts.** The ghost lane is per-item — a `.gap` at each
+    // admitted item's width and a `.gh` at each spilled one's — so a tier whose
+    // eligible set is empty has nothing to draw a lane out of. `.demo-corpus`
+    // carries no `continuity: true` item (both its reference items are far
+    // larger than any budget it configures), so the continuity tier runs,
+    // admits nothing, spills nothing, and correctly draws only its head.
+    //
+    // The assertion this test exists for is unchanged and still binding: a tier
+    // that DID admit something must draw the lane, because a bar without one
+    // claims the budget was spent with nothing left over. Guarding on `segs`
+    // keeps that and stops the fixture's own emptiness reading as a bug.
+    // `plan:live seq:10` makes the fixture demonstrate the tier; when it lands,
+    // this guard stops being reached and should be removed rather than left.
+    if (track.segs === 0) continue;
     expect(track.gaps + track.ghosts,
-      `${track.tier}: a running track must draw a ghost lane, not an empty one`)
+      `${track.tier}: a running track that admitted something must draw a ghost lane`)
       .toBeGreaterThan(0);
   }
   expect(tracks.some((t) => t.runs),

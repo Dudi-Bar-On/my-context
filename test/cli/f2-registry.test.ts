@@ -246,6 +246,38 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [];
   },
 
+  // A category that plans work AND a task on it, so the command reaches its
+  // TABLE branch rather than the "no category in this project declares plan,
+  // seq and state" disclosure — two separate paths through `cmdReady`, and an
+  // empty setup would only ever exercise the one a real project never sees.
+  // The category has to be written into config directly because `task` is not
+  // a shipped one, and the item has to be written as a file because
+  // `mycontext add` cannot set an extra field.
+  ready: (cwd) => {
+    writeFileSync(
+      path.join(cwd, '.my_context', 'config.json'),
+      JSON.stringify({
+        categories: {
+          task: {
+            tier: 'rationale', prefix: 'TASK', description: 'A unit of planned work.',
+            extraFields: ['plan', 'seq', 'state', 'priority', 'needs'],
+          },
+        },
+      }, null, 2) + '\n',
+    );
+    mkdirSync(path.join(cwd, '.my_context', 'items', 'task'), { recursive: true });
+    writeFileSync(
+      path.join(cwd, '.my_context', 'items', 'task', 'TASK-f2.md'),
+      '---\nid: TASK-f2\ntype: task\ntitle: a ready task for the F2 guard\nstatus: active\n'
+      + 'severity: soft\nalways: false\nscope: []\ntags: []\norigin: human\n'
+      + 'plan: "f2"\nseq: "1"\nstate: "todo"\npriority: "1"\n---\n\n'
+      + '# a ready task for the F2 guard\n',
+      'utf8',
+    );
+    plantUnrelatedCorruptItem(cwd);
+    return [];
+  },
+
   // A real corpus and a real destination, not `--dry-run`: the dry run and
   // the write are two paths through `cmdExport`, and the one that could
   // plausibly want to fail on a bad corpus is the one that writes. The

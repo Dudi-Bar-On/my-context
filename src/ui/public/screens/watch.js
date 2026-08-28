@@ -814,7 +814,7 @@ export async function render(root, ctx) {
   // every tier that ran, and no field on the record says which tiers those
   // were. The total is therefore the only bound that is true of every
   // injection record. The mockup writes 6,000, which is one tier's default
-  // (`core/config.ts` · `export const DEFAULT_BUDGETS: Budgets = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };` · ~56)
+  // (`core/config.ts` · `  pinned: 6000, jit: 6000, restored: 8000, continuity: 2000, index: 1200,` · ~93)
   // and would over-fill every bar on a corpus that raised any budget. Raised in
   // this task's report: the honest denominator is per-EVENT, and the record
   // would have to carry which tiers ran for it to be drawn.

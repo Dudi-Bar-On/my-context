@@ -84,6 +84,10 @@ export const PALETTE = [
       // `--always[=false]`: a switch with an explicit false, so it must be
       // composed JOINED. Space-separated is a refusal, not a synonym.
       { name: 'always', options: ['true', 'false'], joined: true },
+      // `--continuity[=false]`, joined for `--always`'s reason and by the same
+      // parser: it is the second switch on this command and the two are read
+      // through one `boolFlag`.
+      { name: 'continuity', options: ['true', 'false'], joined: true },
       { name: 'status', options: ['active', 'draft', 'deprecated', 'validated'] },
       { name: 'extra', input: 'text' },
       yes,

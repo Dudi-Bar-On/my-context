@@ -44,7 +44,7 @@ const MOCKUP = path.join(REPO, 'docs', 'design', 'web-ui-mockup.html');
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'CONST-a', type: 'constraint', title: 'A constraint', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'body', steps: [], observations: [], relations: [],
@@ -173,7 +173,7 @@ test('the code and the sentence cannot disagree, over every item × config here'
   const items = [
     item(), item({ always: true }), item({ scope: ['src/**'] }), item({ status: 'draft' }),
     item({ status: 'deprecated' }), item({ id: 'DEC-a', type: 'decision' }),
-    item({ id: 'DEC-b', type: 'decision', always: true, scope: ['src/**'] }),
+    item({ id: 'DEC-b', type: 'decision', always: true, continuity: false, scope: ['src/**'] }),
     item({ id: 'X-a', type: 'nonesuch' }),
   ];
   const configs: [string, Config][] = [['global', BASE], ['inert', INERT], ['disabled', DISABLED]];

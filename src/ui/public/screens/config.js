@@ -135,7 +135,7 @@ const BUDGET_ID = 'config:budgets';
 export const SP_CATEGORY = 'lesson';
 
 /**
- * The Budgets table's four rows: `{ key, was, will }`, where `was` is `null`
+ * The Budgets table's five rows: `{ key, was, will }`, where `was` is `null`
  * when the file changes nothing and the built-in default is what runs.
  *
  * **The pair is the row** — `cfg.deltan`'s whole argument, in the mockup's own
@@ -151,7 +151,7 @@ export const SP_CATEGORY = 'lesson';
  * The key ORDER comes from the defaults object, never from a list written here:
  * `BUDGET_KEYS` is derived from `DEFAULT_BUDGETS` on the server too
  * (`src/core/config.ts` · `const BUDGET_KEYS = Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[];` · ~525),
- * so a fifth budget appears in this table the day it is added and no second
+ * so a sixth budget appears in this table the day it is added and no second
  * spelling of the tier list has to be found and edited.
  */
 export function budgetRows(budgets, defaults) {

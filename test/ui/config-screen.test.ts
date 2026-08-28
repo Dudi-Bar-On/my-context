@@ -146,16 +146,19 @@ function codeLines(): string {
 
 test('budgetRows draws a changed budget as a pair and an unchanged one as a number', async () => {
   const { budgetRows } = await screen();
-  const defaults = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };
+  const defaults = { pinned: 6000, jit: 6000, restored: 8000, continuity: 2000, index: 1200 };
 
   // `was` is the shipped default and is null when the file changes nothing:
   // "6000 → 8000" is a pair a reader can check, and "8000" on its own is the
   // whole truth when nothing moved. The mockup draws exactly this asymmetry —
   // one row of its four carries an arrow.
-  assert.deepEqual(budgetRows({ pinned: 6000, jit: 8000, restored: 8000, index: 900 }, defaults), [
+  assert.deepEqual(budgetRows(
+    { pinned: 6000, jit: 8000, restored: 8000, continuity: 2000, index: 900 }, defaults,
+  ), [
     { key: 'pinned', was: null, will: 6000 },
     { key: 'jit', was: 6000, will: 8000 },
     { key: 'restored', was: null, will: 8000 },
+    { key: 'continuity', was: null, will: 2000 },
     { key: 'index', was: 1200, will: 900 },
   ]);
 
@@ -169,13 +172,13 @@ test('budgetRows draws a changed budget as a pair and an unchanged one as a numb
 
   // The ORDER is the defaults object's, and `meta.defaultBudgets` is
   // `DEFAULT_BUDGETS` passed through — so the table's rows come out in the
-  // mockup's own order without this file, or that one, listing the four tiers.
+  // mockup's own order without this file, or that one, listing the five tiers.
   // Spread, because `Budgets` is an interface and an interface has no implicit
   // index signature; the spread's inferred type does, and the VALUES are the
   // real ones either way.
   const shipped: Record<string, number> = { ...DEFAULT_BUDGETS };
   assert.deepEqual(budgetRows(shipped, shipped).map((row) => row.key),
-    ['pinned', 'jit', 'restored', 'index']);
+    ['pinned', 'jit', 'restored', 'continuity', 'index']);
 });
 
 test('jsonBlock composes the paste text at the design of record\'s own indentation', async () => {

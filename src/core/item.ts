@@ -50,7 +50,7 @@ export function isValidObservationCategory(category: string): boolean {
 }
 
 const COMMON_KEYS = new Set([
-  'id', 'type', 'title', 'status', 'severity', 'always', 'scope', 'tags', 'origin',
+  'id', 'type', 'title', 'status', 'severity', 'always', 'continuity', 'scope', 'tags', 'origin',
   'source_file', 'source_anchor', 'source_checksum', 'valid_from', 'valid_until', 'checksum',
 ]);
 
@@ -333,6 +333,9 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
     status: (optString(fm, rawBlock, 'status') ?? 'active') as Status,
     severity: (optString(fm, rawBlock, 'severity') ?? 'soft') as Severity,
     always: fm.always === true,
+    // `=== true` and never a truthiness test, exactly as `always` above: an
+    // item that predates this field carries no key at all and must read false.
+    continuity: fm.continuity === true,
     scope: stringList(fm, 'scope'),
     tags: stringList(fm, 'tags'),
     origin: (optString(fm, rawBlock, 'origin') ?? 'human') as Origin,
@@ -366,6 +369,17 @@ export function computeItemChecksum(item: Item): string {
     severity: item.severity, always: item.always, scope: item.scope, tags: item.tags,
     origin: item.origin, extra: item.extra, body: item.body,
   };
+  // Added ONLY when true, for the reason `steps` below is conditional and
+  // stated again because the two conditions are load-bearing in the same way:
+  // this hash is RECORDED in every item's frontmatter, so an unconditional key
+  // would change it for every item in every corpus at once — reddening
+  // `doctor` everywhere and destroying the stale-checksum signal that is the
+  // only evidence a file was altered outside my_context. An item without
+  // `continuity: true` therefore hashes byte-identically to how it hashed
+  // before this field existed, by construction. Pinned by
+  // test/core/corpus-checksums.test.ts, which hashes this repository's own
+  // committed corpus.
+  if (item.continuity) shape.continuity = true;
   // Added ONLY when there are steps, and the reason is compatibility rather
   // than tidiness: this hash is RECORDED in every item's frontmatter, and an
   // unconditional key would change it for every item in every corpus at once
@@ -398,6 +412,12 @@ export function renderItem(item: Item): string {
     status: item.status,
     severity: item.severity,
     always: item.always,
+    // Emitted ONLY when true, so an item that predates the field round-trips
+    // byte-identically — `INV-markdown-is-the-source-of-truth`, whose whole
+    // promise is that `files → DB → files` is byte-identical. An
+    // unconditional `continuity: false` line would add a line to every item
+    // on the next write.
+    ...(item.continuity ? { continuity: true } : {}),
     scope: item.scope,
     tags: item.tags,
     origin: item.origin,

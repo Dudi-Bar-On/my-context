@@ -4,6 +4,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AUDIT_MAX_BYTES, AUDIT_REPORT_BYTES, auditDir, auditSize } from '../core/audit.ts';
 import { scopePolicyFor, type Config } from '../core/config.ts';
+import { isEligible, itemCost } from '../core/select.ts';
+import {
+  BLOCKED_STATE, buildTaskIndex, NEEDS_FIELD, readNeeds, workItems,
+} from '../core/needs.ts';
 import { matchesAnyGlob, relPosix } from '../core/paths.ts';
 import { isSnapshot, snapshotText } from '../core/reference.ts';
 import { RATIONALE_NOT_INJECTED } from '../core/render-item.ts';
@@ -654,6 +658,71 @@ export function checkScopePolicy(items: Item[], config: Config): Finding[] {
  * error `loadLayer` raises for the same file, so making this an error would
  * count one problem twice in the summary line.
  */
+/**
+ * **The continuity tier's overflow, reported where a person looks rather than
+ * only where a session reads.**
+ *
+ * R3 of the task that built the tier: overflow must be LOUD, in the injected
+ * block AND as a doctor finding. The reason is the defect the tier exists to
+ * end — `REF-v2-handover-read-before-discussing-the-web-ui` cost 37,831
+ * estimated tokens against a largest budget of 24,000, was delivered on no
+ * event, and nothing anywhere said so. A tier that quietly drops its payload
+ * reproduces that with a longer fuse, so this check exists even though the
+ * tier's content is meant to be a pointer plus a bounded digest and should
+ * never approach the budget: "should never happen" is not a behaviour.
+ *
+ * **A total is enough, and no event has to be simulated.** `fitToBudget`
+ * admits first-fit, so what it admits can never exceed the budget — therefore
+ * a candidate set whose TOTAL exceeds the budget must spill at least one item,
+ * whatever order it considers them in.
+ *
+ * The other finding is the other silence on this axis: an item that carries the
+ * marker and can never be delivered, because it is retired or its category is
+ * off. `warn` rather than `error` for `checkUnknownCategory`'s reason — nothing
+ * is lost and nothing is corrupt — but said, because "the continuity guarantee
+ * is switched off" is exactly the fact this feature exists to stop being
+ * invisible.
+ */
+export function checkContinuity(items: Item[], config: Config): Finding[] {
+  const findings: Finding[] = [];
+  const marked = items.filter((i) => i.continuity);
+  if (marked.length === 0) return findings;
+
+  for (const item of marked.filter((i) => !isEligible(i, config))) {
+    const enabled = config.categories[item.type]?.enabled === true;
+    findings.push({
+      level: 'warn', code: 'continuity_inert', item: item.id,
+      message:
+        `${item.id} carries continuity: true and cannot be delivered: its status is `
+        + `"${item.status}" and its category "${item.type}" is `
+        + `${enabled ? 'enabled' : 'disabled or unknown to this config'}. The continuity `
+        + 'tier admits active items in enabled categories only, so the guarantee this item '
+        + 'is supposed to carry is in force for no session. Set the status back to active, '
+        + 'enable the category, or clear the flag with `mycontext edit '
+        + `${item.id} --continuity=false\` so that nothing claims a guarantee nothing keeps.`,
+    });
+  }
+
+  const live = marked.filter((i) => isEligible(i, config));
+  if (live.length === 0) return findings;
+  const cost = live.reduce((sum, i) => sum + itemCost(i), 0);
+  const budget = config.budgets.continuity;
+  if (cost <= budget) return findings;
+
+  findings.push({
+    level: 'error', code: 'continuity_overflow',
+    message:
+      `the continuity tier costs ${cost} estimated tokens and budgets.continuity is `
+      + `${budget}, so at least one continuity item reaches no session: `
+      + `${live.map((i) => i.id).sort().join(', ')}. The project-continuity guarantee is NOT `
+      + 'in force. The tier is meant to carry a POINTER PLUS A BOUNDED DIGEST — the document '
+      + 'named, the current state summarised — and never the document itself, so the first '
+      + 'answer is to shorten it: raising budgets.continuity relocates the spill rather than '
+      + 'removing it, and a budget chosen against a document that keeps growing expires.',
+  });
+  return findings;
+}
+
 export function checkUnknownCategory(items: Item[], config: Config): Finding[] {
   const findings: Finding[] = [];
   for (const item of items) {
@@ -837,6 +906,139 @@ export function checkTagProjection(items: Item[], config: Config): Finding[] {
       message: `${said}${fix}`,
     };
   });
+}
+
+/**
+ * How to set `needs` on this item, in the spelling that actually works TODAY.
+ *
+ * Two spellings, because there are two states of the world and printing the
+ * wrong one costs a reader an attempt at a command that is refused by name.
+ * `--extra needs=…` reaches `unknownExtraFieldError` (core/trust.ts) and is
+ * refused unless the item's own category DECLARES the field, so the remedy is
+ * read off the resolved config rather than assumed — the same reason
+ * `cmdTodo` looks its tier up instead of asserting one.
+ */
+function needsRemedy(config: Config, item: Item): string {
+  const declared = Object.hasOwn(config.categories, item.type)
+    && config.categories[item.type].extraFields.includes(NEEDS_FIELD);
+  return declared
+    ? `Set it: \`mycontext edit ${item.id} --extra ${NEEDS_FIELD}="plan/seq, plan/seq"\`.`
+    : `"${NEEDS_FIELD}" is not yet declared by "${item.type}" in this project, so ` +
+      `\`--extra ${NEEDS_FIELD}=…\` is refused by name. Add "${NEEDS_FIELD}" to ` +
+      `categories.${item.type}.extraFields in .my_context/config.json — that list ADDS to what ` +
+      `the category already declares, so nothing it has now is lost — and the command above ` +
+      `starts working.`;
+}
+
+/**
+ * **`needs`: a blocker with no target, and a blocker that has already
+ * cleared.**
+ *
+ * This is the check that turns `needs` from documentation into a gate, and it
+ * exists because of one measured incident rather than a theory. `plan:walk
+ * seq:8` carried the sentence "Blocked on plan:walk seq:7". `seq:7` landed and
+ * went green. `seq:8` stayed at `state: blocked` until a human drawing a
+ * progress table noticed by hand — and two further tasks, `plan:port seq:6`
+ * and `plan:walk seq:14`, were freed by the same landing with nothing
+ * announcing either. Nothing could have noticed, because `state: blocked` was
+ * a flag with no target: five tasks said they were blocked and not one said by
+ * what.
+ *
+ * Four findings, and the split between them is the point:
+ *
+ *  - **`blocked_needs_met`** — `state: blocked`, every reference satisfied.
+ *    The `seq:8` case, and the one that pays for the field. `warn`.
+ *  - **`blocked_without_needs`** — `state: blocked`, nothing named. The state
+ *    that made `seq:8` invisible. `warn`.
+ *  - **`needs_malformed`** — an entry that is not `plan/seq`. `warn`, because
+ *    the author said something is holding this task and nothing can read it.
+ *  - **`needs_unresolved`** — well-shaped, and nothing answers to it. `info`,
+ *    deliberately and by ruling: plans are written before the tasks in them
+ *    are, so a forward reference is LEGITIMATE and stays legitimate. Refusing
+ *    one would make the field unusable exactly when it is most useful, and the
+ *    regex that produced `the/45` out of the middle of a sentence is the
+ *    evidence that a machine cannot tell a forward reference from a typo.
+ *
+ * None is an `error`, so none moves `doctor`'s exit code. A stale blocker is a
+ * planning fact about people, not a corrupt corpus, and failing someone's CI
+ * over the ordering of their work would be the "must not break someone's CI on
+ * the day they rename a directory" line drawn one column over.
+ *
+ * `STD-the-progress-table-has-one-format-and-this-is-it` already makes
+ * reconciling states a human obligation before counting, and names what it
+ * prevents: a table drawn over stale states is "precise about the wrong
+ * corpus, and precise in the flattering direction." A cleared-but-unmoved
+ * blocker is that same failure in the other column. This check is the part of
+ * that obligation a machine can carry.
+ */
+export function checkTaskNeeds(items: Item[], config: Config): Finding[] {
+  const findings: Finding[] = [];
+  const index = buildTaskIndex(items, config);
+
+  for (const item of workItems(items, config)) {
+    const reading = readNeeds(item, index);
+
+    if (reading.malformed.length > 0) {
+      findings.push({
+        level: 'warn', code: 'needs_malformed', item: item.id,
+        message:
+          `declares "${NEEDS_FIELD}" entries that are not \`plan/seq\` references — ` +
+          `${reading.malformed.map((m) => JSON.stringify(m)).join(', ')} — so nothing reads them ` +
+          `back and this task's dependency on whatever they meant is invisible to ` +
+          `\`mycontext ready\` and to this check. The field is a comma-separated list of ` +
+          `\`plan/seq\`, lowercase, e.g. "walk/7, port/6". Whether the reference EXISTS is not ` +
+          `checked and is not an error; only its shape is.`,
+      });
+    }
+
+    if (reading.unresolved.length > 0) {
+      findings.push({
+        level: 'info', code: 'needs_unresolved', item: item.id,
+        message:
+          `waits on ${reading.unresolved.join(', ')}, which no task in this corpus answers to. ` +
+          `That is NOT a defect on its own: plans are routinely written before the tasks in them ` +
+          `exist, and a forward reference is how a dependency gets recorded at the moment it is ` +
+          `known. It is reported because the other reading is a typo — a plan name that never ` +
+          `existed, or a sequence that moved — and only a person can tell the two apart. ` +
+          `Nothing is hidden by it: a task holding an unresolved reference is listed as held ` +
+          `rather than ready, with this reason.`,
+      });
+    }
+
+    if (reading.state !== BLOCKED_STATE) continue;
+
+    if (reading.satisfied.length + reading.pending.length + reading.unresolved.length === 0
+      && reading.malformed.length === 0) {
+      findings.push({
+        level: 'warn', code: 'blocked_without_needs', item: item.id,
+        message:
+          `is at state "${BLOCKED_STATE}" and names nothing in "${NEEDS_FIELD}", so it is a ` +
+          `blocker with no target: nothing can say what would free it, and nothing will notice ` +
+          `when that thing lands. This is the state that let a task sit blocked for days after ` +
+          `its blocker had shipped. If the blocker is another task, name it. If it is a person, ` +
+          `a decision or an answer rather than a task, this field cannot hold it — say so in the ` +
+          `body and leave the state honest. ${needsRemedy(config, item)}`,
+      });
+      continue;
+    }
+
+    if (reading.pending.length === 0 && reading.unresolved.length === 0
+      && reading.malformed.length === 0 && reading.satisfied.length > 0) {
+      findings.push({
+        level: 'warn', code: 'blocked_needs_met', item: item.id,
+        message:
+          `is at state "${BLOCKED_STATE}", and everything it waits on has landed: ` +
+          `${reading.satisfied.join(', ')} ${reading.satisfied.length === 1 ? 'is' : 'are'} done. ` +
+          `It should have moved and did not. Nothing here changes the state — a task's state is ` +
+          `the owner's to set — so confirm the ground is finished ground and then ` +
+          `\`mycontext edit ${item.id} --extra state=todo\`. Until it moves, every count of ` +
+          `blocked work overstates the trouble this project is in, which is the same defect as a ` +
+          `stale "todo" understating its progress.`,
+      });
+    }
+  }
+
+  return findings;
 }
 
 /**
@@ -1327,11 +1529,13 @@ export function runChecks(opts: {
     () => checkDeadScopes(opts.repoRoot, opts.items, opts.config),
     () => checkScopePolicy(opts.items, opts.config),
     () => checkUnknownCategory(opts.items, opts.config),
+    () => checkContinuity(opts.items, opts.config),
     () => checkPermissions(opts.root, accessSync, opts.repoRoot),
     () => checkSessionIdMismatch(opts.root),
     () => checkAuditSize(opts.root),
     () => checkCorpusSize(opts.items),
     () => checkTagProjection(opts.items, opts.config),
+    () => checkTaskNeeds(opts.items, opts.config),
     () => checkNestedCorpus(opts.root, opts.repoRoot),
     () => checkForeignStore(opts.repoRoot),
   ];

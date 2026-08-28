@@ -192,7 +192,7 @@ test('overlapScore is high for near-duplicates, low for unrelated text, and dete
   // to nothing that takes an `Item`, and it omitted `steps` entirely.
   const posix: Item = {
     id: 'RULE-p', type: 'rule', title: 'Always use POSIX paths', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'c', extra: {},
     body: 'Use POSIX paths in every module.', steps: [], observations: [], relations: [],

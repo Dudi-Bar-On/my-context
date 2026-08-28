@@ -1120,6 +1120,14 @@ export function filterAudit(records: AuditRecord[], filter: AuditFilter): AuditR
  *    rebuilt ledger claim deliveries the live one never made, and `seen` —
  *    which the selector consults on the hot path — would then suppress items
  *    that were never actually injected.
+ *  - `continuity` is excluded for a THIRD reason, and it is not the one above:
+ *    that tier really does deliver full text. Its `at` is a WINDOW identity
+ *    marker, like a restored row's, so replaying it needs `recordRestored`'s
+ *    refresh and not `record`'s insert-or-ignore — and `recordRestored` writes
+ *    the literal tier `'restored'`. The seen FILE is the authority for
+ *    continuity dedupe (`continuityFor`, seen-file.ts) and nothing asks the
+ *    ledger about it, so the row would answer no question while being able to
+ *    answer it wrongly. Stated here rather than left as an absence.
  */
 export interface ReplayRow {
   sessionId: string;

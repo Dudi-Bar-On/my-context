@@ -25,6 +25,7 @@ export interface ContentShape {
   steps: Step[];
   severity: Severity;
   always: boolean;
+  continuity: boolean;
   scope: string[];
   tags: string[];
   observations: Observation[];
@@ -60,7 +61,8 @@ function canonicalExtra(extra: Record<string, string>): Record<string, string> {
  * `sourceChecksum`), lifecycle dates (`validFrom`/`validUntil`), the
  * `checksum` itself, and the storage location (`layer`/`filePath`). None of
  * them change what the item *asserts*. `severity` and
- * `always` ARE included: they are normative content, not bookkeeping —
+ * `always` and `continuity` ARE included: they are normative content, not
+ * bookkeeping —
  * `computeItemChecksum` (item.ts) agrees, it hashes both too — so
  * re-capturing the same title as `severity: 'hard'` after `'soft'` must
  * not be silently swallowed as an unchanged duplicate.
@@ -104,6 +106,7 @@ export function canonicalContent(v: ContentShape): ContentShape {
     steps: v.steps.map(canonicalStep),
     severity: v.severity,
     always: v.always,
+    continuity: v.continuity,
     scope: [...v.scope].sort(),
     tags: [...v.tags].sort(),
     observations: v.observations.map(canonicalObservation),
@@ -147,6 +150,7 @@ export function contentHash(input: CreateInput): string {
     steps: normalizeSteps(input.steps ?? []),
     severity: input.severity ?? 'soft',
     always: input.always ?? false,
+    continuity: input.continuity ?? false,
     // Normalized here, not just at storage time: the hash and the stored
     // item must see the same value, or the same call made twice with
     // `scope: ['src\\db\\**']` on Windows would hash differently from what

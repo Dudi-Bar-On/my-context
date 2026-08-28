@@ -1114,6 +1114,7 @@ function exampleItemOf(type: string, config: Config): Item {
     status: 'active',
     severity: seed.severity ?? 'soft',
     always: seed.always ?? false,
+    continuity: false,
     scope: seed.scope ?? [],
     tags: seed.tags ?? [],
     origin: 'human',

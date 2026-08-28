@@ -67,7 +67,7 @@ item it refuses, and that refusal is correct. Print the human's route —
 instead of applying it: the item keeps governing its old text until a human
 promotes the change. The response says so in its first words. Read it, tell the
 user you staged something, and do not reason as if the new text is in force.
-Scope, `always`, severity and status stay refused either way; the refusal names
+Scope, `always`, `continuity`, severity and status stay refused either way; the refusal names
 `mycontext edit` (and `pin`/`harden`) as the human's route.
 
 ## The approval gate is not enforced against you

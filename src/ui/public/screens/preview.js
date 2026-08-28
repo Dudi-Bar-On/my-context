@@ -45,7 +45,7 @@
  *     and appears in no response, so no item can be shown failing at it. Not
  *     approximated — filed, and said in this file rather than left for a
  *     reader to notice from an empty rung.
- *   - **The four-tier budget ribbon with its ghost lane** (`#ribbons`, between
+ *   - **The five-tier budget ribbon with its ghost lane** (`#ribbons`, between
  *     `preview.ribbon` and `preview.ribbonn`) is LIVE for its budgets, its
  *     tier dispatch, its admitted segments and its spilled ghosts —
  *     `/api/simulate` serves `budgets`, `tiersRun` and `costs`, and
@@ -112,16 +112,16 @@ import {
 const EVENTS = ['session-start', 'tool', 'compact', 'manual'];
 
 /**
- * The four tracks of the budget ribbon, in the mockup's own drawing order.
+ * The five tracks of the budget ribbon, in the mockup's own drawing order.
  *
  * **Not `sim.tiersRun`, which is a MEMBERSHIP test here and not a layout.**
  * `select.ts` says so where it exports that field: *"A caller drawing fixed
  * tracks reads it as a membership test; the order is a disclosure, not a
- * layout."* Four fixed tracks is what makes an absent tier drawable at all —
+ * layout."* Five fixed tracks is what makes an absent tier drawable at all —
  * a track that vanished with its tier would say nothing, where a hatched one
  * says the event never reached it.
  */
-const TIERS = ['pinned', 'jit', 'restored', 'index'];
+const TIERS = ['pinned', 'jit', 'restored', 'continuity', 'index'];
 
 /**
  * `select()`'s six gates, in `GATE_LADDER`'s order, with the one-line
@@ -678,9 +678,9 @@ export async function render(root, ctx) {
   }
 
   /**
-   * **`Budget ribbon — four tiers, and what fell out of each`.**
+   * **`Budget ribbon — five tiers, and what fell out of each`.**
    *
-   * Four FIXED tracks, one per tier, whatever this event reached: a tier that
+   * Five FIXED tracks, one per tier, whatever this event reached: a tier that
    * never ran is hatched and named, and an empty track would claim it ran and
    * delivered nothing, which is a different fact — `select.ts`'s own words
    * where it exports `tiersRun`, and `preview.ribbonn`'s where it draws it.
@@ -702,6 +702,26 @@ export async function render(root, ctx) {
     const note = el('p', 'small');
     note.append(...ctx.t('preview.ribbonn'));
     card.append(heading, host, note);
+
+    // **The continuity tier's overflow, said out loud on the screen too.**
+    // `select` already reports it structurally (`Selection.continuitySpill`)
+    // and `render.ts` says it inside the injected block; this is the third
+    // place, and three is deliberate. The defect being fixed is a guarantee
+    // believed to be in force that silently was not, so the disclosure is put
+    // wherever somebody might be looking. Drawn ONLY when the tier actually
+    // overflowed — `null` is the ordinary case and draws nothing, because a
+    // warning that is always on screen is a warning nobody reads.
+    const overflow = selection.continuitySpill;
+    if (overflow) {
+      const loud = el('p', 'small');
+      loud.append(...ctx.t('preview.contover', {
+        n: String(overflow.ids.length),
+        ids: overflow.ids.join(', '),
+        cost: num(overflow.cost),
+        budget: num(overflow.budget),
+      }));
+      card.append(loud);
+    }
     out.append(card);
 
     const cost = new Map(sim.costs.map((entry) => [entry.id, entry.tokens]));

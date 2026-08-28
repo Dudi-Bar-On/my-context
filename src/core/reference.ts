@@ -273,13 +273,18 @@ export function readSnapshot(repoRoot: string, cwd: string, target: string): Sna
  *
  * `budgets.index` is deliberately excluded: it pays for one-line index
  * entries, not for a block of body text, so comparing a snapshot's size to it
- * would answer a question nobody asked. The three that remain — `pinned`,
- * `jit`, `restored` — are the ones `fitToBudget` (select.ts) charges an
- * item's rendered block against, so the largest of them is the ceiling above
- * which an item cannot be injected in full anywhere.
+ * would answer a question nobody asked. The four that remain — `pinned`,
+ * `jit`, `restored`, `continuity` — are the ones `fitToBudget`
+ * (select.ts) charges an item's rendered block against, so the largest of them
+ * is the ceiling above which an item cannot be injected in full anywhere.
+ *
+ * `continuity` is included because it charges a rendered block like the other
+ * three — and it is the SMALLEST of them by design, so it never moves this
+ * maximum on a default config. Excluding it would nonetheless be a lie the day
+ * somebody raised it, and this function's whole job is to be the ceiling.
  */
 export function largestFullTextBudget(budgets: Budgets): number {
-  return Math.max(budgets.pinned, budgets.jit, budgets.restored);
+  return Math.max(budgets.pinned, budgets.jit, budgets.restored, budgets.continuity);
 }
 
 /**

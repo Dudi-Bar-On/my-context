@@ -35,7 +35,7 @@ const CONFIG = resolveConfig({});
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'RULE-a', type: 'rule', title: 'A rule', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'body', steps: [], observations: [], relations: [],
@@ -523,6 +523,7 @@ title: ${title}
 status: active
 severity: soft
 always: false
+continuity: false,
 ---
 
 # ${title}

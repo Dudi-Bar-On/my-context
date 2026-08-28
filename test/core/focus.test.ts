@@ -30,7 +30,7 @@ function root(): string {
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'CONST-a', type: 'constraint', title: 'A constraint', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'body', steps: [], observations: [], relations: [],
@@ -288,7 +288,7 @@ test('every report line holds the 100-column budget at hostile id length', () =>
     hidden: [LONG, `${LONG}2`],
     visible: 4,
     exemptHard: [LONG],
-    exemptAlways: [],
+    exemptAlways: [], exemptContinuity: [],
     dangling: [{ from: LONG, type: 'depends_on', to: `${LONG}2`, hiddenEnd: 'to' }],
   };
   for (const line of focusReportLines(report)) {
@@ -304,7 +304,7 @@ test('the report caps its lists and discloses the remainder rather than truncati
   const many = Array.from({ length: 14 }, (_, i) => `RULE-${i}`);
   const text = focusReportLines({
     axes: { tags: ['a'], categories: [], scope: [] },
-    universe: 'corpus', hidden: many, visible: 1, exemptHard: [], exemptAlways: [], dangling: [],
+    universe: 'corpus', hidden: many, visible: 1, exemptHard: [], exemptAlways: [], exemptContinuity: [], dangling: [],
   }, 10).join('\n');
   assert.match(text, /… \+4 more \(--json lists every one\)/);
 });
@@ -312,7 +312,7 @@ test('the report caps its lists and discloses the remainder rather than truncati
 test('the report names which universe it counted', () => {
   const base = {
     axes: { tags: ['a'], categories: [], scope: [] },
-    hidden: ['RULE-a'], visible: 2, exemptHard: [], exemptAlways: [], dangling: [],
+    hidden: ['RULE-a'], visible: 2, exemptHard: [], exemptAlways: [], exemptContinuity: [], dangling: [],
   };
   assert.match(
     focusReportLines({ ...base, universe: 'corpus' }).join('\n'),
@@ -327,7 +327,7 @@ test('the report names which universe it counted', () => {
 test('a focus that hides nothing still says zero dangling rather than staying silent', () => {
   const text = focusReportLines({
     axes: { tags: ['a'], categories: [], scope: [] },
-    universe: 'corpus', hidden: [], visible: 9, exemptHard: [], exemptAlways: [], dangling: [],
+    universe: 'corpus', hidden: [], visible: 9, exemptHard: [], exemptAlways: [], exemptContinuity: [], dangling: [],
   }).join('\n');
   assert.match(text, /0 load-bearing relations dangling\./);
   assert.doesNotMatch(text, /hidden by focus — still in the corpus/);

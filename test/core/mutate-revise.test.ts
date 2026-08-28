@@ -43,7 +43,7 @@ test('updateItem only touches the fields it was given', () => {
   const s = sandbox();
   const created = createItem(s.ctx, {
     type: 'constraint', title: 'Pool cap', body: 'Body.',
-    scope: ['src/db/**'], tags: ['database'], severity: 'hard', always: true,
+    scope: ['src/db/**'], tags: ['database'], severity: 'hard', always: true, continuity: false,
   });
   updateItem(s.ctx, { id: created.id, body: 'Rewritten.' });
 
@@ -519,7 +519,7 @@ test('updateItem refuses to write a global-layer item', () => {
   const s = sandbox();
   s.ctx.store.upsert({
     id: 'CONST-global-thing', type: 'constraint', title: 'Global thing', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: 'x', extra: {},
     body: 'Original.', steps: [], observations: [], relations: [], layer: 'global',
@@ -538,7 +538,7 @@ test('supersedeItem refuses when the retired item is global', () => {
   const s = sandbox();
   s.ctx.store.upsert({
     id: 'CONST-global-old', type: 'constraint', title: 'Global old', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: 'x', extra: {},
     body: '', steps: [], observations: [], relations: [], layer: 'global',
@@ -558,7 +558,7 @@ test('supersedeItem refuses when the replacement item is global', () => {
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
   s.ctx.store.upsert({
     id: 'CONST-global-next', type: 'constraint', title: 'Global next', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: 'x', extra: {},
     body: '', steps: [], observations: [], relations: [], layer: 'global',
@@ -576,7 +576,7 @@ test('linkItems refuses to write a global-layer "from" item', () => {
   const s = sandbox();
   s.ctx.store.upsert({
     id: 'CONST-global-from', type: 'constraint', title: 'Global from', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: 'x', extra: {},
     body: '', steps: [], observations: [], relations: [], layer: 'global',
@@ -697,7 +697,7 @@ test('an item whose type is missing from config is treated as normative (fails c
   const s = sandbox();
   s.ctx.store.upsert({
     id: 'GHOST-orphan', type: 'removed_category', title: 'Orphaned item', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: 'x', extra: {},
     body: '', steps: [], observations: [], relations: [], layer: 'project',

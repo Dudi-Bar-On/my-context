@@ -74,12 +74,36 @@ const LIFTED_FROM: Record<string, string> = {
   soften: 'cli/commands/edit.ts',
 };
 
+/**
+ * Specs that were never lifted, because the command was written after this
+ * module existed and declared its flags here from the start.
+ *
+ * A separate record rather than a row in `LIFTED_FROM`, because the two make
+ * different claims and only one of them is checkable. `LIFTED_FROM` says "a
+ * copy used to live there and is gone", which the OLD_SPELLINGS test below
+ * verifies; a command born here has no old spelling to have removed, and
+ * listing it as lifted would be an unverifiable claim in the one table whose
+ * whole job is to be verifiable. It still has to be named somewhere, so a spec
+ * cannot arrive with nothing said about it — which is what the assertion below
+ * enforces across both records.
+ */
+const BORN_HERE: Record<string, string> = {
+  ready: 'cli/commands/ready.ts — written after the lift, so its spec has never lived '
+    + 'anywhere else.',
+};
+
 test('every lifted spec says which module it left, and no spec arrives unaccounted for', () => {
   assert.deepEqual(
-    Object.keys(COMMAND_FLAGS).sort(), Object.keys(LIFTED_FROM).sort(),
+    Object.keys(COMMAND_FLAGS).sort(),
+    [...Object.keys(LIFTED_FROM), ...Object.keys(BORN_HERE)].sort(),
     'COMMAND_FLAGS and the record of where each spec came from disagree. A spec added without ' +
-    'saying which module it left is a spec nobody can check the removal of.',
+    'saying which module it left — or that it was born here — is a spec nobody can check the ' +
+    'removal of.',
   );
+  // The two records are disjoint, or a name could be excused by whichever one
+  // the reader happened to look at.
+  const both = Object.keys(BORN_HERE).filter((n) => Object.hasOwn(LIFTED_FROM, n));
+  assert.deepEqual(both, [], 'a spec cannot both have been lifted and have been born here');
 });
 
 test('`values` is always a subset of `allowed` — a value flag nobody accepts cannot exist', () => {

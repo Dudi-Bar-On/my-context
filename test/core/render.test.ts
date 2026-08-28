@@ -7,7 +7,7 @@ import type { Item } from '../../src/core/types.ts';
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'CONST-a', type: 'constraint', title: 'Pool capped at 20', status: 'active',
-    severity: 'hard', always: true, scope: [], tags: [], origin: 'human',
+    severity: 'hard', always: true, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'RDS permits 25.', steps: [], observations: [], relations: [],
@@ -26,6 +26,7 @@ const EMPTY: Selection = {
   // Required-and-null, exactly as `focus` is: both are per-selection
   // disclosures that are absent by having nothing to say, not by having no key.
   pinnedSpill: null,
+  continuitySpill: null,
   focus: null,
   tokens: 0,
 };
@@ -163,7 +164,7 @@ const FOCUS_REPORT: FocusReport = {
   hidden: ['OPENQ-x', 'LESSON-a'],
   visible: 4,
   exemptHard: [],
-  exemptAlways: [],
+  exemptAlways: [], exemptContinuity: [],
   dangling: [{ from: 'OPENQ-x', type: 'blocks', to: 'REQ-y', hiddenEnd: 'from' }],
 };
 

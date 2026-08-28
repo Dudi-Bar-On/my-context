@@ -153,6 +153,41 @@ function renderSpill(selection: Selection): string {
   );
 }
 
+/**
+ * **The continuity tier's overflow, said out loud.**
+ *
+ * `renderSpill` above would already have listed these ids among the ordinary
+ * budget omissions, and that is exactly why this exists as well: the ordinary
+ * note is a routine line, and a routine line is how the one tier that promises
+ * *the next session does not start over* stops being heard. The defect this
+ * whole tier exists to fix is a guarantee believed to be in force that silently
+ * was not — the handover document cost 37,831 estimated tokens against a
+ * largest budget of 24,000, reached no session on any event, and nothing said
+ * so. So an overflow here is named, priced against its own budget, and told
+ * what to do about it, in the injected block the model actually reads.
+ *
+ * It should never fire: the tier carries a pointer plus a bounded digest, which
+ * is the other half of the ruling that created it. "Should never happen" is not
+ * a behaviour, which is why it is written rather than assumed.
+ *
+ * Scaffolding, not budget — like the focus and spill notes, it is outside every
+ * budget and outside `Selection.tokens`, because a disclosure that could itself
+ * be dropped for budget is not a disclosure.
+ */
+function renderContinuitySpill(selection: Selection): string {
+  const spill = selection.continuitySpill;
+  if (spill === null) return '';
+  return (
+    `**⚠ CONTINUITY NOT DELIVERED.** ${spill.ids.length} item(s) marked ` +
+    `\`continuity: true\` did not fit \`budgets.continuity\` (${spill.budget} estimated ` +
+    `tokens; the whole continuity set costs ${spill.cost}): ${spill.ids.join(', ')}. ` +
+    'The project-continuity guarantee is NOT in force for this session — read them with ' +
+    '`mycontext show <id>` before continuing, and either shorten them to a pointer plus a ' +
+    'bounded digest or raise `budgets.continuity`. This is said rather than absorbed: a ' +
+    'continuity item dropped in silence is the defect this tier exists to end.'
+  );
+}
+
 /** At most this many dangling edges are named inline; the rest are counted. */
 const NAMED_DANGLING = 3;
 
@@ -221,11 +256,18 @@ function renderFocus(report: FocusReport | null): string {
   const pinned = report.exemptAlways.length === 0 ? '' :
     ` ${report.exemptAlways.length} pinned item(s) do not match this focus and are ` +
     `injected anyway — focus never hides one either.`;
+  // A THIRD sentence, for the reason there is a second: the continuity
+  // exemption is kept because the NEXT session must not start over without the
+  // item, which is neither of the other two reasons. A reader owed "why is this
+  // here despite my focus" is owed the right why.
+  const continuity = report.exemptContinuity.length === 0 ? '' :
+    ` ${report.exemptContinuity.length} continuity item(s) do not match this focus and are ` +
+    `injected anyway — focus never hides one either.`;
 
   return (
     `_Focus is active (${describeFocus(report.axes)}). ${subject}, ${dangling}. ` +
     `Nothing is deleted: \`mycontext focus --show\` lists what is hidden, ` +
-    `\`mycontext focus --clear\` restores it.${exempt}${pinned}_`
+    `\`mycontext focus --clear\` restores it.${exempt}${pinned}${continuity}_`
   );
 }
 
@@ -299,6 +341,13 @@ export function renderSelection(selection: Selection): string {
     const body = selection.full.map((e) => renderItemBlock(e.item)).join('\n\n');
     blocks.push(`## my_context — these govern this project\n\n${body}`);
   }
+
+  // BEFORE the index and before both other notes, deliberately. The focus note
+  // is read first among the omissions because the omission is the reader's own;
+  // this one is read before everything, because it is the one omission that
+  // says the session may be missing the state it needs to continue at all.
+  const continuitySpill = renderContinuitySpill(selection);
+  if (continuitySpill) blocks.push(continuitySpill);
 
   const index = renderIndex(selection);
   if (index) blocks.push(index);

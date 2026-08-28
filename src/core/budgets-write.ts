@@ -40,9 +40,9 @@ import { DEFAULT_BUDGETS, resolveConfig, type Budgets } from './config.ts';
 export class BudgetRefusal extends Error {}
 
 /**
- * The four keys this module will ever read or write, in the order
+ * The five keys this module will ever read or write, in the order
  * `DEFAULT_BUDGETS` declares them — never a list respelled here, for
- * `config.ts`'s own reason: a fifth budget appears in this list the day it is
+ * `config.ts`'s own reason: a sixth budget appears in this list the day it is
  * added to `Budgets`, and no second spelling of the tier names has to be found
  * and kept in step.
  */

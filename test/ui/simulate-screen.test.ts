@@ -544,8 +544,9 @@ test('a refused projection draws the server\'s words INSTEAD of the bars, and le
   assert.equal(byKind(root, 'div.div-row').length, 0);
 
   // The fits table is served by a DIFFERENT endpoint reading a DIFFERENT store
-  // and is still perfectly true. A shared catch would have blanked it.
-  assert.equal(byKind(root, 'tbody')[0]!.children.length, 4);
+  // and is still perfectly true. A shared catch would have blanked it. One row
+  // per tier in `TIERS`, which is five since the continuity tier landed.
+  assert.equal(byKind(root, 'tbody')[0]!.children.length, 5);
 });
 
 test('an empty projection draws an empty plate and no legend — absence is not a refusal', async () => {

@@ -102,11 +102,36 @@ test('a custom category without a tier is rejected loudly', () => {
  * reason the floor is asserted here rather than trusted.
  */
 test('the default budgets are the raised ones, and clear what they were measured against', () => {
-  assert.deepEqual(DEFAULT_BUDGETS, { pinned: 6000, jit: 6000, restored: 8000, index: 1200 });
+  assert.deepEqual(DEFAULT_BUDGETS, {
+    pinned: 6000, jit: 6000, restored: 8000, continuity: 2000, index: 1200,
+  });
   assert.ok(DEFAULT_BUDGETS.jit >= 4478,
     'jit no longer covers this repository\'s own src/cli/** selection');
   assert.ok(DEFAULT_BUDGETS.index >= 504, 'index no longer names every governing item here');
+  // `continuity` is bounded from BOTH sides, unlike the other four, because
+  // both directions are failures the tier exists to prevent. Too small and the
+  // pointer plus digest it is supposed to carry cannot fit; too large and it
+  // quietly becomes the document dump the ruling refused, which is the
+  // 37,831-token handover arriving by another route.
+  assert.ok(DEFAULT_BUDGETS.continuity >= 1000,
+    'continuity can no longer hold a pointer plus a state digest');
+  assert.ok(DEFAULT_BUDGETS.continuity <= 4000,
+    'continuity is now large enough to swallow a document, the failure it prevents');
   assert.ok(DEFAULT_BUDGETS.pinned >= 1072, 'pinned no longer covers this repository\'s own');
+});
+
+test('a config written before continuity existed still loads, with the default in force', () => {
+  // `requireBudgets` refuses an unknown key BY NAME, so the fifth budget could
+  // only be added safely because its accepted key set is DERIVED from
+  // `DEFAULT_BUDGETS`. Both directions are asserted: the four-key config every
+  // existing installation has, and a config that names the new key explicitly.
+  const four = resolveConfig({ budgets: { pinned: 900, jit: 800, restored: 700, index: 600 } });
+  assert.equal(four.budgets.pinned, 900);
+  assert.equal(four.budgets.continuity, DEFAULT_BUDGETS.continuity);
+
+  const five = resolveConfig({ budgets: { continuity: 1234 } });
+  assert.equal(five.budgets.continuity, 1234);
+  assert.equal(five.budgets.pinned, DEFAULT_BUDGETS.pinned);
 });
 
 test('budgets merge partially', () => {
@@ -318,7 +343,7 @@ test('an invalid tier on a custom category throws', () => {
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'CONST-a', type: 'constraint', title: 'A constraint', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'body', steps: [], observations: [], relations: [],
@@ -636,7 +661,7 @@ test('every documented category key is still accepted together', () => {
 test('an unknown budget key is refused by name, with the valid set', () => {
   assert.throws(
     () => resolveConfig({ budgets: { pined: 9000 } }),
-    /"pined".*not a budget this config understands.*pinned, jit, restored, index/s,
+    /"pined".*not a budget this config understands.*pinned, jit, restored, continuity, index/s,
   );
 });
 

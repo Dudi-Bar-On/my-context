@@ -48,15 +48,15 @@ for (const bad of [0, -1, 1.5, NaN, Infinity, '0', '-1', '1.5', 'abc', '22000x',
  * -------------------------------------------------------------------------- */
 
 test('every declared budget key is accepted', () => {
-  const out = parseProposedBudgets({ pinned: 1, jit: 2, restored: 3, index: 4 });
-  assert.deepEqual(out, { pinned: 1, jit: 2, restored: 3, index: 4 });
+  const out = parseProposedBudgets({ pinned: 1, jit: 2, restored: 3, continuity: 5, index: 4 });
+  assert.deepEqual(out, { pinned: 1, jit: 2, restored: 3, continuity: 5, index: 4 });
 });
 
 test('an unknown key is refused rather than silently dropped', () => {
   assert.throws(() => parseProposedBudgets({ pined: 22_000 }), (err: Error) => {
     assert.ok(err instanceof BudgetRefusal);
     assert.match(err.message, /"pined" is not a budget this screen writes/);
-    assert.match(err.message, /pinned, jit, restored, index/);
+    assert.match(err.message, /pinned, jit, restored, continuity, index/);
     return true;
   });
 });

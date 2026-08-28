@@ -145,6 +145,13 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
    * against is this one.
    */
   query: { allowed: ['json', 'limit'], values: ['limit'] },
+  /**
+   * `--plan` narrows to one plan; `--held` adds the rows the report would
+   * otherwise only COUNT. There is no `--all`: "ready" is a derived answer
+   * about open work, and a flag that widened it to finished work would be
+   * asking a different question under the same name.
+   */
+  ready: { allowed: ['plan', 'limit', 'held', ...DETAIL_FLAGS], values: ['plan', 'limit'] },
   refresh: { allowed: ['yes'], values: [] },
   /** `repair` also hand-rolls its refusal; same spec, same reading. */
   repair: { allowed: ['yes'], values: [] },

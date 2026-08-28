@@ -9,7 +9,9 @@ import {
 import { renderSelection, SUBAGENT_PREAMBLE } from './render.ts';
 import { agentRevisionNotice, pendingRevisions } from './revision.ts';
 import { select, type PinnedSpill } from './select.ts';
-import { appendSeen, readSeen, restoredFor } from './seen-file.ts';
+import {
+  appendSeen, continuityFor, CONTINUITY_WINDOW_SESSION, readSeen, restoredFor,
+} from './seen-file.ts';
 import { HOOK_OPEN_PROFILE, isBusyError, Store } from './store.ts';
 import { clearWindowState } from './window-state.ts';
 import { hasGlobalCorpus, resolveWorkspace } from './workspace.ts';
@@ -446,6 +448,33 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
       }
     }
 
+    // 2b. CONTINUITY DEDUPE — the same ledger, the same identity-marker
+    // comparison, and a DIFFERENT window.
+    //
+    // The window a continuity delivery belongs to is the compaction snapshot's
+    // own `capturedAt` on a compaction, and a session-wide constant on every
+    // other event. That is the whole of R5 and the whole of the tier's
+    // correctness:
+    //
+    //  - **Within one window** the marker is unchanged, so an item already
+    //    delivered is not sent again — the owner's own point, answered by the
+    //    ledger that already exists rather than by a new mechanism.
+    //  - **After a compaction** the window was REBUILT and the marker is that
+    //    compaction's, which no earlier line carries, so continuity is
+    //    re-delivered even though the ledger has seen the id. Keying on the id
+    //    alone would fail in the worse direction: a session that starts over
+    //    with nothing, which is the exact failure this tier exists to prevent.
+    //
+    // A compaction with NO snapshot (PreCompact never ran) has no window
+    // identity to compare against. `null` here means "nothing was delivered
+    // into this window", so continuity is re-delivered — over-delivery, which
+    // is the direction this whole module takes everywhere else.
+    const continuityWindow = compacting ? snapshotCapturedAt : CONTINUITY_WINDOW_SESSION;
+    const continuityDelivered = seenState !== null && seenState.error === null
+      && continuityWindow !== null
+      ? [...continuityFor(seenState, continuityWindow)]
+      : [];
+
     // `select` treats 'manual' exactly as it treats a session start (pinned
     // tier plus the index), which is the whole point: one selection, one
     // renderer, one output. 'manual' is tested first: a manual load never
@@ -508,6 +537,7 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
         event: manual ? 'manual' : subagent ? 'session-start'
           : compacting ? 'compact' : 'session-start',
         restore,
+        continuityDelivered,
         focus: focusState.focus,
         carried,
       },
@@ -681,7 +711,7 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // this tier rather than a delivery one.** `core/audit.ts` ·
     // `const LEDGER_TIERS = new Set(['pinned', 'jit', 'restored']);` · ~751
     // filters it out of `ledgerRows` by construction and `core/seen-file.ts` ·
-    // `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~37
+    // `const TIERS = new Set<string>(['pinned', 'jit', 'restored', 'continuity']);` · ~52
     // refuses it in the seen file. A carried line is an index LINE — the model
     // saw an id and a title, not the item — and a replayed ledger that claimed
     // otherwise would suppress a future injection of text nobody ever
@@ -872,8 +902,16 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
       appendSeen(stateRoot, seenKey, selection.full.map((e) => ({
         id: e.item.id,
         tier: e.tier,
-        at: e.tier === 'restored' && snapshotCapturedAt !== null
-          ? snapshotCapturedAt
+        // Two tiers stamp an IDENTITY MARKER rather than a clock reading, and
+        // for the same reason: what they record is not "when" but "into which
+        // context window". `restored` carries the snapshot's `capturedAt`;
+        // `continuity` carries the window marker computed at step 2b — the
+        // same `capturedAt` on a compaction, and the session-wide constant
+        // otherwise. A continuity delivery into a compaction that left no
+        // snapshot falls back to `auditAt`, which no future window marker can
+        // equal, so it suppresses nothing later.
+        at: e.tier === 'restored' && snapshotCapturedAt !== null ? snapshotCapturedAt
+          : e.tier === 'continuity' ? continuityWindow ?? auditAt
           : auditAt,
       })));
     }

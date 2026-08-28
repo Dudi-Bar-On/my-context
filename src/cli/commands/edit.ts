@@ -62,16 +62,20 @@ import {
  * as well as the one it starts from.
  */
 
-/** The flags this command accepts, and the value-taking subset. `always` and
- * `yes` are switches (`--always=false` unpins — see `boolFlag`). */
+/** The flags this command accepts, and the value-taking subset. `always`,
+ * `continuity` and `yes` are switches (`--always=false` unpins — see
+ * `boolFlag`; `--continuity=false` takes an item off the continuity tier the
+ * same way). */
 const ALLOWED = [
-  'title', 'body', 'scope', 'tags', 'severity', 'always', 'status', 'extra', 'unlink', 'yes',
+  'title', 'body', 'scope', 'tags', 'severity', 'always', 'continuity', 'status', 'extra',
+  'unlink', 'yes',
 ];
 const VALUE_FLAGS = ['title', 'body', 'scope', 'tags', 'severity', 'status', 'extra'];
 
 const USAGE =
   `usage: mycontext edit <id> [--title "<text>"] [--body "<text>"] [--scope "a/**,b/**"]
                         [--tags "a,b"] [--severity hard|soft] [--always[=false]]
+                        [--continuity[=false]]
                         [--status active|draft|deprecated|validated]
                         [--extra key=value] [--unlink <relation> <target>] [--yes]`;
 
@@ -216,6 +220,10 @@ const FIELD_CLASS: Record<string, FieldClass> = {
   // most, which is the mistake `gateFor` was rewritten to stop making.
   relations: 'reach',
   scope: 'reach', always: 'reach',
+  // REACH, like `always` and `scope`: it decides whether the item reaches a
+  // session at all, and taking it off the continuity tier is exactly the
+  // silent narrowing `gateFor` exists to gate.
+  continuity: 'reach',
   severity: 'force', status: 'force',
 };
 
@@ -248,11 +256,14 @@ interface FieldChange {
  * hand-written model of `select`'s order — which is exactly the mistake
  * `injection`'s own doc comment records.
  */
-function afterShape(item: Item, patch: UpdateInput): Pick<Item, 'type' | 'status' | 'always' | 'scope'> {
+function afterShape(
+  item: Item, patch: UpdateInput,
+): Pick<Item, 'type' | 'status' | 'always' | 'continuity' | 'scope'> {
   return {
     type: item.type,
     status: patch.status ?? item.status,
     always: patch.always ?? item.always,
+    continuity: patch.continuity ?? item.continuity,
     // `normalizePosix` because `updateItem` normalizes on the way in: the
     // preview must show the globs that will be WRITTEN, not the ones typed.
     scope: patch.scope === undefined ? item.scope : patch.scope.map((g) => normalizePosix(g)),
@@ -318,6 +329,9 @@ function changesOf(item: Item, patch: UpdateInput, scopeLabel: (globs: string[])
   }
   if (patch.always !== undefined && patch.always !== item.always) {
     add('always', item.always ? 'yes' : 'no', patch.always ? 'yes' : 'no');
+  }
+  if (patch.continuity !== undefined && patch.continuity !== item.continuity) {
+    add('continuity', item.continuity ? 'yes' : 'no', patch.continuity ? 'yes' : 'no');
   }
   if (patch.severity !== undefined && patch.severity !== item.severity) {
     add('severity', item.severity, patch.severity);
@@ -488,7 +502,7 @@ function say(out: Emit, text: string, prefix = ''): void {
  */
 export const PREVIEW_LABELS = [
   'id', 'type', 'title', 'status', 'today', 'after', 'relations',
-  'scope', 'always', 'severity',
+  'scope', 'always', 'continuity', 'severity',
 ];
 
 function labelled(out: Emit, label: string, text: string): void {
@@ -562,6 +576,7 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     const severity = flag(args, 'severity');
     const status = flag(args, 'status');
     const always = boolFlag(args, 'always');
+    const continuity = boolFlag(args, 'continuity');
     const extraFields = extraFlag(args);
     // The declared flags, read with the same `flag` helper as everything else
     // so a repeat is refused in `repeatedFlagError`'s words rather than in a
@@ -607,6 +622,7 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     if (scope !== null) patch.scope = scope;
     if (tags !== null) patch.tags = tags;
     if (always !== null) patch.always = always;
+    if (continuity !== null) patch.continuity = continuity;
     if (severity !== null) {
       if (!(SEVERITIES as string[]).includes(severity)) {
         // `enumError` and `SEVERITIES` (mutate.ts): `create_item`,
@@ -755,6 +771,9 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     if (patch.severity !== undefined) vocabularies.push(['severity', patch.severity]);
     if (patch.status !== undefined) vocabularies.push(['status', patch.status]);
     if (patch.always !== undefined) vocabularies.push(['always', String(patch.always)]);
+    if (patch.continuity !== undefined) {
+      vocabularies.push(['continuity', String(patch.continuity)]);
+    }
     for (const [name, value] of vocabularies) {
       const decl = updatableFor(ws.config, item.type, name);
       if (decl === null) continue;
@@ -953,7 +972,7 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
 
 registerCommand({
   name: 'edit',
-  usage: 'edit <id> [--title|--body|--scope|--tags|--severity|--always|--status|--extra]',
+  usage: 'edit <id> [--title|--body|--scope|--tags|--severity|--always|--continuity|--status|--extra]',
   summary: 'change an item, with a gate that scales to what the change can do',
   run: cmdEdit,
 });

@@ -197,7 +197,7 @@ function cmdInboxPromote(ws: Workspace, args: string[], out: Emit): number {
     if (category?.enabled) {
       const status = predictedStatus(origin, category);
       const after = injection(
-        { type: to, status, always: false, scope: [] }, ws.config,
+        { type: to, status, always: false, continuity: false, scope: [] }, ws.config,
       );
       out('about to promote out of the inbox:');
       out(`  from        ${origin.id}`);

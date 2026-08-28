@@ -46,7 +46,7 @@ function config(updates: CategoryUpdates = STATE): Config {
 
 function task(id: string, tags: string[], extra: Record<string, string>): Item {
   return {
-    id, type: 'task', title: id, status: 'active', severity: 'soft', always: false,
+    id, type: 'task', title: id, status: 'active', severity: 'soft', always: false, continuity: false,
     scope: [], tags, origin: 'human', sourceFile: null, sourceAnchor: null,
     sourceChecksum: null, validFrom: null, validUntil: null, checksum: 'x', extra,
     body: '', steps: [], observations: [], relations: [], layer: 'project',

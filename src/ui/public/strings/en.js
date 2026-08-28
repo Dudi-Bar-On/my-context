@@ -148,8 +148,9 @@ export const strings = {
   'preview.why': 'Why not — the first gate that failed',
   'aria.gatepick': 'Item',
   'preview.whyn': "The gates in {m:select()}'s own order — eligible, tier, focus, scope, seen, budget — because the order is the explanation: a list of six reasons is noise, and the one that binds is only meaningful in the position it holds. Rungs above it passed, the rung itself carries the diagnosis, and everything below is not reached rather than passed. Composing the fix binds to a stable code on {m:injection()}, so each cause is named by that code and not only by English prose.",
-  'preview.ribbon': 'Budget ribbon — four tiers, and what fell out of each',
+  'preview.ribbon': 'Budget ribbon — five tiers, and what fell out of each',
   'preview.ribbonn': 'One segment per admitted item, sized by its real {m:itemCost}. Beneath each track is the {b:ghost lane}: every spilled item at the width it would have taken, in the position the selector considered it. A wide ghost followed by a narrow fill is first-fit being honest — drawing spills as a tail would misrepresent the algorithm. A tier this event never reaches is drawn as {b:absent}, hatched and named; an empty track would claim it ran and delivered nothing, which is a different fact. Follows the event selector above rather than adding a second one.',
+  'preview.contover': '{b:Continuity overflow} — {n} continuity item(s) did not fit {m:budgets.continuity}: {mv:ids}, costing {mv:cost} against a budget of {mv:budget}. The continuity guarantee is NOT in force for this session. It is said here, in the injected block itself and as a doctor finding, because a continuity item dropped in silence is the exact defect this tier exists to end.',
   // Scope coverage
   'cov.h': 'Scope coverage',
   'cov.v': 'the gaps are the point',
@@ -189,7 +190,7 @@ export const strings = {
   'gaps.note': '{b:Not examined} is a third state, never folded into "gap". A file the walk did not reach is not a file nothing governs.',
   // Budget simulator
   'sim.h': 'Budget simulator',
-  'sim.v': 'all four tiers',
+  'sim.v': 'all five tiers',
   'sim.sub': 'Drag a budget and watch what fits. Raising a budget can {b:evict} an item — the selector is first-fit, not a stable ranking with a cut line.',
   'sim.stair': 'Admission staircase — items admitted, per budget',
   'aria.tierBudget': 'Tier budget in tokens',
@@ -538,7 +539,7 @@ export const strings = {
   'dv.toc': 'Contents',
   'dv.t1': 'What this is',
   'dv.t2': 'Install',
-  'dv.t3': 'The four tiers',
+  'dv.t3': 'The five tiers',
   'dv.t4': 'Scope',
   'dv.t7': 'The trust boundary',
   'dv.parity': 'The EN/HE switch self-disables when the parity test is red — a mirror that has drifted is worse than none.',

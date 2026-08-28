@@ -39,7 +39,7 @@ const CONFIG = resolveConfig({});
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'RULE-a', type: 'rule', title: 'A rule', status: 'active',
-    severity: 'soft', always: true, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: true, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'body', steps: [], observations: [], relations: [],
@@ -64,7 +64,7 @@ function focus(over: Partial<Focus> = {}): Focus {
  * hidden builds its subject with this.
  */
 function ordinary(over: Partial<Item> = {}): Item {
-  return item({ always: false, ...over });
+  return item({ always: false, continuity: false, ...over });
 }
 
 const BILLING = item({ id: 'RULE-billing', tags: ['billing'] });
@@ -176,8 +176,8 @@ test('a severity:hard item is never hidden, and the exemption is reported', () =
  * at all.
  */
 test('an always:true item is never hidden by focus, whatever its severity', () => {
-  const pinnedSoft = item({ id: 'INSTR-pinned', severity: 'soft', always: true, tags: ['auth'] });
-  const ordinary = item({ id: 'RULE-auth', severity: 'soft', always: false, tags: ['auth'] });
+  const pinnedSoft = item({ id: 'INSTR-pinned', severity: 'soft', always: true, continuity: false, tags: ['auth'] });
+  const ordinary = item({ id: 'RULE-auth', severity: 'soft', always: false, continuity: false, tags: ['auth'] });
   const sel = select([BILLING, pinnedSoft, ordinary], {
     event: 'session-start', focus: focus({ tags: ['billing'] }),
   }, CONFIG);
@@ -196,9 +196,9 @@ test('an always:true item is never hidden by focus, whatever its severity', () =
  * later edit can drop wholesale while appearing to simplify.
  */
 test('the two exemptions are reported apart, and an item that is both is counted once', () => {
-  const pinnedSoft = item({ id: 'INSTR-pinned', severity: 'soft', always: true, tags: ['auth'] });
+  const pinnedSoft = item({ id: 'INSTR-pinned', severity: 'soft', always: true, continuity: false, tags: ['auth'] });
   const hardOnly = item({ id: 'INV-hard', type: 'invariant', severity: 'hard', tags: ['auth'] });
-  const both = item({ id: 'INV-both', type: 'invariant', severity: 'hard', always: true, tags: ['auth'] });
+  const both = item({ id: 'INV-both', type: 'invariant', severity: 'hard', always: true, continuity: false, tags: ['auth'] });
   const sel = select([BILLING, pinnedSoft, hardOnly, both], {
     event: 'session-start', focus: focus({ tags: ['billing'] }),
   }, CONFIG);
@@ -284,7 +284,7 @@ test('a tool event counts only the items that apply to the path it touched', () 
 
 test('the report counts the load-bearing relation focus left dangling', () => {
   const openq = item({
-    id: 'OPENQ-x', type: 'open_question', tags: ['design'], always: false,
+    id: 'OPENQ-x', type: 'open_question', tags: ['design'], always: false, continuity: false,
     relations: [{ type: 'blocks', target: 'REQ-y' }],
   });
   const req = item({ id: 'REQ-y', type: 'requirement', tags: ['billing'], always: false });
@@ -304,7 +304,7 @@ test('the report counts the load-bearing relation focus left dangling', () => {
 test('a referential relation into hidden knowledge is not reported as a cost', () => {
   const lesson = item({ id: 'LESSON-a', type: 'lesson', tags: ['auth'], always: false });
   const rule = item({
-    id: 'RULE-b', tags: ['billing'], always: false,
+    id: 'RULE-b', tags: ['billing'], always: false, continuity: false,
     relations: [{ type: 'derived_from', target: 'LESSON-a' }],
   });
   const sel = select([lesson, rule], {

@@ -64,6 +64,21 @@ export interface CreateInput {
   status?: Status;
   severity?: Severity;
   always?: boolean;
+  /**
+   * Continuity-tier membership, mirroring `always` — see `Item.continuity`.
+   * Defaults to false, so nothing captured without it joins the tier.
+   *
+   * **Unlike `always`, it is NOT refused on the rationale tier.** `always`
+   * asks for the PINNED tier, which selection admits only normative items to,
+   * so `always: true` on a `lesson` is a stored value that can never act —
+   * hence `inertFieldError`. The continuity tier is not a governance tier and
+   * does not consult `isNormative` at all (`select.ts`), by the same ruling
+   * that refused to make continuity a category: it answers "what does the next
+   * session need in order not to start over", which is orthogonal to what
+   * governs. The item this tier exists for is a `reference`, and a refusal
+   * here would have shipped a tier that could never deliver it.
+   */
+  continuity?: boolean;
   scope?: string[];
   tags?: string[];
   origin?: Origin;
@@ -357,6 +372,7 @@ export function createItem(
     status,
     severity: input.severity ?? 'soft',
     always: input.always ?? false,
+    continuity: input.continuity ?? false,
     scope: (input.scope ?? []).map((g) => normalizePosix(g)),
     tags,
     origin,
@@ -499,6 +515,8 @@ export interface UpdateInput {
   tags?: string[];
   severity?: Severity;
   always?: boolean;
+  /** Continuity-tier membership — see `Item.continuity` and `CreateInput.continuity`. */
+  continuity?: boolean;
   status?: Status;
   extra?: Record<string, string>;
   origin?: Origin;
@@ -846,6 +864,7 @@ export function updateItem(
   if (update.tags !== undefined) item.tags = update.tags;
   if (update.severity !== undefined) item.severity = update.severity;
   if (update.always !== undefined) item.always = update.always;
+  if (update.continuity !== undefined) item.continuity = update.continuity;
   if (update.status !== undefined) {
     item.status = update.status;
     // Whichever write path retires an item, `validUntil` must move with it —

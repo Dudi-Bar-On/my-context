@@ -22,6 +22,14 @@ export interface Budgets {
   pinned: number;
   jit: number;
   restored: number;
+  /**
+   * The continuity tier (`DEC-continuity-gets-its-own-budget-and-the-item-it-holds-must-be`):
+   * what the NEXT session needs in order not to start over, as opposed to what
+   * governs the work — which is what the other four answer between them. It
+   * competes with none of them, which is the whole reason it is a fifth key
+   * rather than a share of `pinned`.
+   */
+  continuity: number;
   index: number;
 }
 
@@ -54,6 +62,23 @@ export interface Budgets {
  * asserts each value against the total it has to clear, so the next such
  * growth fails there rather than turning into an omission note nobody reads.
  *
+ * `continuity` is 2,000 and is DELIBERATELY the smallest full-text budget
+ * here. The tier carries a POINTER PLUS A BOUNDED DIGEST — the item names the
+ * document, says to read it, and states the current state — never the document
+ * itself: the handover it was created for measured 37,831 estimated tokens on
+ * 2026-08-28, 2.4x the largest budget then in force, and had therefore never
+ * once been injected on any event. A budget large enough to swallow that
+ * document is a budget that expires the next time the document grows, which is
+ * the same failure arriving later and harder to see. 2,000 is big enough for a
+ * pointer and a digest and too small to quietly become a document dump, and
+ * overflow here is LOUD rather than absorbed — `Selection.continuitySpill`,
+ * a sentence in the injected block (`render.ts`), and a `doctor` finding.
+ *
+ * **It is a DEFAULT and not a config edit, deliberately.** `requireBudgets`
+ * derives its accepted key set from this object (`BUDGET_KEYS`), so a config
+ * written before this key existed keeps loading with the default in force, and
+ * a config that names `continuity` explicitly loads too.
+ *
  * **This is not free, and `decay` is the reason it is not.** Every token here
  * is a token of the session's context window spent before the user's first
  * message, and the tiers compose: a SessionStart pays `pinned` + `index`
@@ -64,7 +89,9 @@ export interface Budgets {
  * omission note; it is `mycontext decay`, which reports what has not been
  * injected and is the supported route to retiring it.
  */
-export const DEFAULT_BUDGETS: Budgets = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };
+export const DEFAULT_BUDGETS: Budgets = {
+  pinned: 6000, jit: 6000, restored: 8000, continuity: 2000, index: 1200,
+};
 
 /**
  * The extra sentence a retired profile name earns — the same `ARGUMENT_HINTS`

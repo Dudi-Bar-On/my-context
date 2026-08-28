@@ -225,7 +225,7 @@ says "establish by executing" instead of asserting it.
 | An index line's cost is the rendered line — including the carried marker since Task 17, which widened the parameter from id/type/title alone | `core/render-item.ts` · `export function renderIndexLine(` · ~281 |
 | The index heading the renderer emits | `core/render.ts` · `const lines: string[] = ['## my_context index'];` · ~90 |
 | The full-text block's heading — the existing provenance frame | `core/render.ts` · `## my_context — these govern this project` · ~291 |
-| Default budgets, index = 1200 | `core/config.ts` · `export const DEFAULT_BUDGETS: Budgets = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };` · ~67 |
+| Default budgets, index = 1200 | `core/config.ts` · `export const DEFAULT_BUDGETS: Budgets = { pinned: 6000, jit: 6000, restored: 8000, index: 1200 };` · ~67 <!-- historical-citation: quotes DEFAULT_BUDGETS as it was before the fifth budget, `continuity: 2000` (plan:live seq:9) --> |
 | `select` may import only pure modules | `.my_context/items/invariant/INV-select-is-pure.md` · `- [invariant] select imports only types and config` · ~29 |
 | An index miss's spill shape — the id, `tier: 'index'`, and a free-form `reason` string | `core/select.ts` · `tier: 'index' as const,` · ~589 |
 | …and an index-**only** spill is filtered **out** of the rendered spill note, so the model sees "+N more" and no reason | `core/render.ts` · `.filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));` · ~143 |
@@ -235,7 +235,7 @@ says "establish by executing" instead of asserting it.
 | Fact | Where verified |
 |---|---|
 | The seen file path, and that the key is sanitised | `core/seen-file.ts` · `export function seenFilePath(root: string, key: string): string {` · ~48 |
-| Accepted tiers are a closed set — `carried` is not one and must not become one | `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~38 |
+| Accepted tiers are a closed set — `carried` is not one and must not become one | `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~38 <!-- historical-citation: quotes the seen-file tier set before `continuity` joined it (plan:live seq:9); the instruction not to widen it stands for `carried`, which is still not a delivery --> |
 | The module's stated failure direction: unreadable means inject without dedupe and disclose | `core/seen-file.ts` · `unreadable seen file means "inject WITHOUT dedupe and disclose"` · ~19 |
 | An append retries per line, with a named worst case | `core/seen-file.ts` · `= 200 ms of backoff PER LINE` · ~81 |
 | Sanitisation is lossy for a composite key — a digest, not reversible | `core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~699 |
@@ -745,7 +745,7 @@ without a writer is not, which is why the test below writes one.
 
 **`LEDGER_TIERS` is not touched.** `core/audit.ts` · `const LEDGER_TIERS = new Set(['pinned', 'jit', 'restored']);` · ~904
 decides what a replayed ledger claims was delivered. `'carried'` (Task 17) must stay out of it and
-out of `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~38,
+out of `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~38, <!-- historical-citation: quotes the seen-file tier set before `continuity` joined it (plan:live seq:9); the instruction not to widen it stands for `carried`, which is still not a delivery -->
 or a rebuilt ledger claims deliveries that never happened.
 
 **The audit log's format version is NOT added here — §6n.5, and the dependency is recorded rather
@@ -2169,7 +2169,7 @@ is invented.
 `tier: 'carried'`. That works with no type change: `InjectedRef.tier` is `string`,
 `core/audit.ts` · `const LEDGER_TIERS = new Set(['pinned', 'jit', 'restored']);` · ~904 filters it
 out of `ledgerRows` by construction, and
-`core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~38 refuses it
+`core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~38 refuses it <!-- historical-citation: quotes the seen-file tier set before `continuity` joined it (plan:live seq:9); the instruction not to widen it stands for `carried`, which is still not a delivery -->
 in the seen file. **Do not widen either set.** A carried line is not a delivery of full text, and a
 replayed ledger that claimed it was would be claiming a delivery that never happened — the exact
 failure the `index` tier's own treatment was written to prevent.

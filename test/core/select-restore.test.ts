@@ -22,7 +22,7 @@ function bodyOf(tokens: number): string {
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'CONST-a', type: 'constraint', title: 'A constraint', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'body', steps: [], observations: [], relations: [],
@@ -138,7 +138,7 @@ test('an item too big for pinned but admitted by restored is not falsely reporte
   // Between the two budgets: over `pinned`, under `restored`, whatever they are.
   const big = bodyOf(Math.floor((DEFAULT_BUDGETS.pinned + DEFAULT_BUDGETS.restored) / 2));
   const sel = select(
-    [item({ id: 'CONST-big', always: true, severity: 'hard', body: big })],
+    [item({ id: 'CONST-big', always: true, continuity: false, severity: 'hard', body: big })],
     { event: 'compact', restore: ['CONST-big'] },
     CONFIG,
   );
@@ -152,7 +152,7 @@ test('an item too big for both pinned and restored is still reported as spilled'
   // Over both budgets, whatever they are.
   const big = bodyOf(Math.max(DEFAULT_BUDGETS.pinned, DEFAULT_BUDGETS.restored) + 100);
   const sel = select(
-    [item({ id: 'CONST-huge', always: true, severity: 'hard', body: big })],
+    [item({ id: 'CONST-huge', always: true, continuity: false, severity: 'hard', body: big })],
     { event: 'compact', restore: ['CONST-huge'] },
     CONFIG,
   );

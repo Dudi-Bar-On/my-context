@@ -9,7 +9,7 @@ const CONFIG = resolveConfig({});
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'CONST-a', type: 'constraint', title: 'A', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: '', steps: [], observations: [], relations: [],
@@ -39,8 +39,8 @@ test('project items are preferred when the pinned budget is tight', () => {
   const big = 'x'.repeat(4000);
   const cfg = resolveConfig({ budgets: { pinned: 1200 } });
   const sel = select([
-    item({ id: 'CONST-global', layer: 'global', always: true, body: big }),
-    item({ id: 'CONST-project', layer: 'project', always: true, body: big }),
+    item({ id: 'CONST-global', layer: 'global', always: true, continuity: false, body: big }),
+    item({ id: 'CONST-project', layer: 'project', always: true, continuity: false, body: big }),
   ], { event: 'session-start' }, cfg);
   assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-project']);
 });
@@ -84,8 +84,8 @@ test('a seen item does not consume budget and spill a fresh one', () => {
   const big = 'x'.repeat(4000); // ~1000 tokens each
   const cfg = resolveConfig({ budgets: { pinned: 1200 } });
   const sel = select([
-    item({ id: 'CONST-seen', always: true, severity: 'hard', body: big }),
-    item({ id: 'CONST-fresh', always: true, severity: 'soft', body: big }),
+    item({ id: 'CONST-seen', always: true, continuity: false, severity: 'hard', body: big }),
+    item({ id: 'CONST-fresh', always: true, continuity: false, severity: 'soft', body: big }),
   ], { event: 'session-start', seen: ['CONST-seen'] }, cfg);
 
   // CONST-seen sorts first on severity. If it were budgeted before being

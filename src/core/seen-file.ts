@@ -24,9 +24,23 @@ import { sanitizeSessionId, type LedgerTier } from './ledger.ts';
 
 export const SEEN_PROTOCOL = 'mycontext-seen/1';
 
+/**
+ * The tiers a seen line may carry: the three `core/ledger.ts` stores, plus
+ * `continuity`.
+ *
+ * **A union of its own rather than a fourth member of `LedgerTier`.** The
+ * SQLite ledger is a replayed projection with insert-or-ignore semantics
+ * (`Ledger.record`) and a single refresh path hard-coded to `'restored'`; a
+ * continuity line's `at` is an identity marker like a restored one's, so it
+ * would need the refresh and not the ignore. This file is the authority for
+ * continuity dedupe and the ledger is not asked, so the type says exactly that
+ * rather than implying the ledger stores a tier it does not.
+ */
+export type SeenTier = LedgerTier | 'continuity';
+
 export interface SeenLine {
   id: string;
-  tier: LedgerTier;
+  tier: SeenTier;
   at: string;
 }
 
@@ -35,7 +49,7 @@ export interface SeenState {
   error: string | null;
 }
 
-const TIERS = new Set<string>(['pinned', 'jit', 'restored']);
+const TIERS = new Set<string>(['pinned', 'jit', 'restored', 'continuity']);
 
 /**
  * The one spelling of the seen file's suffix. `clearSeen` sweeps `state/` for
@@ -125,7 +139,7 @@ export function readSeen(root: string, key: string): SeenState {
     const rows = readJsonlFile(specFor(seenFilePath(root, key)));
     return {
       lines: rows.map((r) => ({
-        id: r.id as string, tier: r.tier as LedgerTier, at: r.at as string,
+        id: r.id as string, tier: r.tier as SeenTier, at: r.at as string,
       })),
       error: null,
     };
@@ -147,13 +161,59 @@ export function seenIds(state: SeenState): string[] {
  * matching an older generation (see the long comment on recordRestored).
  */
 export function restoredFor(state: SeenState, capturedAt: string): Set<string> {
+  return deliveredFor(state, 'restored', capturedAt);
+}
+
+/**
+ * The identity-marker comparison itself, shared by `restoredFor` above and
+ * `continuityFor` below rather than written out twice. Last-line-wins per
+ * (id, tier), then equality on the marker: two spellings of one rule is how a
+ * rule drifts, and this one decides whether an item is re-delivered.
+ */
+function deliveredFor(state: SeenState, tier: SeenTier, marker: string): Set<string> {
   const last = new Map<string, string>();
   for (const line of state.lines) {
-    if (line.tier === 'restored') last.set(line.id, line.at);
+    if (line.tier === tier) last.set(line.id, line.at);
   }
   const out = new Set<string>();
-  for (const [id, at] of last) if (at === capturedAt) out.add(id);
+  for (const [id, at] of last) if (at === marker) out.add(id);
   return out;
+}
+
+/**
+ * The marker a continuity line carries on every event that is NOT a
+ * compaction — a constant, and a constant on purpose.
+ *
+ * A session start opens a context window and every later non-compact event in
+ * that session is inside the same window, so the marker that identifies it must
+ * be STABLE for the session's whole life. An instant would never match itself
+ * again and the tier would re-deliver on every event; the session's own id is
+ * already the seen FILE's name, so a constant inside that file says exactly as
+ * much as repeating the id would.
+ */
+export const CONTINUITY_WINDOW_SESSION = 'session';
+
+/**
+ * Continuity ids already delivered INTO ONE CONTEXT WINDOW, keyed on that
+ * window and never on id alone — the two cases that look identical and are not:
+ *
+ *  - **Within one window** — already delivered, so do not send it again. This
+ *    is what the ledger answers directly, and it is the owner's own point.
+ *  - **After a compaction** — the window was REBUILT, so whatever it "already
+ *    holds" is gone. The marker for a compaction is that compaction's own
+ *    snapshot `capturedAt`, which no earlier line can carry, so the item is
+ *    re-delivered even though this file has seen it. Getting this backwards
+ *    fails in the worse direction: a session that starts over with nothing,
+ *    which is the exact failure the continuity tier exists to prevent.
+ *
+ * Callers pass `CONTINUITY_WINDOW_SESSION` for a session start or a manual
+ * load, and `snapshot.capturedAt` for a compaction. A compaction with NO
+ * snapshot has no window identity at all; its caller passes no marker and
+ * re-delivers, which is the safe direction this whole module takes everywhere
+ * (see the header: an unreadable seen file means inject WITHOUT dedupe).
+ */
+export function continuityFor(state: SeenState, window: string): Set<string> {
+  return deliveredFor(state, 'continuity', window);
 }
 
 // --- Clearing a session's dedupe state --------------------------------------

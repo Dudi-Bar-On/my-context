@@ -56,7 +56,7 @@ import { scopePolicyFor } from '../core/config.ts';
 import { resolveCarry } from '../core/continuity.ts';
 import { computeDecay, type DecayReport } from '../core/decay.ts';
 import {
-  Ledger, LedgerUninitializedError,
+  Ledger, LedgerUninitializedError, readSnapshotMeta,
   type InjectionEvent, type SessionSummary, type Usage,
 } from '../core/ledger.ts';
 import { isLoadBearing, readFocus } from '../core/focus.ts';
@@ -66,7 +66,9 @@ import {
   itemCost, matchesScope, reviewQueue, select, tiersRun,
   type GateCode, type SelectContext, type SelectEvent, type Selection,
 } from '../core/select.ts';
-import { readSeen, seenIds, type SeenLine } from '../core/seen-file.ts';
+import {
+  continuityFor, CONTINUITY_WINDOW_SESSION, readSeen, seenIds, type SeenLine,
+} from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
 import { VERSION } from '../core/version.ts';
 import { listRepoFiles, runChecks, type Finding } from '../doctor/checks.ts';
@@ -300,6 +302,24 @@ export function parseSelectQuery(
     const state = readSeen(root, session);
     ctx.seen = state.error === null ? seenIds(state) : [];
     seenUnreadable = state.error;
+
+    // The continuity tier's own dedupe, read the way `inject.ts` reads it and
+    // NOT off `ctx.seen`: the whole point of the tier is that a compaction
+    // REBUILDS the window, so an id this session has already been shown must
+    // still be re-delivered afterwards. The window is the compaction
+    // snapshot's own `capturedAt` on `event=compact` and a session-wide
+    // constant otherwise; a compaction with no snapshot has no window identity
+    // and re-delivers, which is the same safe direction the hook takes.
+    //
+    // This endpoint's entire value is that it is the answer the hook gets, so
+    // an input the hook resolves and this one skipped would make the preview
+    // show a delivery the session will not receive — or hide one it will.
+    const window = event === 'compact'
+      ? readSnapshotMeta(root, session)?.capturedAt ?? null
+      : CONTINUITY_WINDOW_SESSION;
+    ctx.continuityDelivered = state.error === null && window !== null
+      ? [...continuityFor(state, window)]
+      : [];
   }
 
   // Focus is the fifth narrowing input, read the way the hook reads it.
@@ -380,7 +400,7 @@ export function apiRender(ws: Workspace, url: URL): JsonResult {
   };
 }
 
-const BUDGET_KEYS = ['pinned', 'jit', 'restored', 'index'] as const;
+const BUDGET_KEYS = ['pinned', 'jit', 'restored', 'continuity', 'index'] as const;
 
 /**
  * `GET /api/simulate` — the same selection under overridden budgets, priced.
@@ -392,7 +412,7 @@ const BUDGET_KEYS = ['pinned', 'jit', 'restored', 'index'] as const;
  * order the selector considered each item, tier by tier. A client that
  * re-sorts spills by size or id is drawing a different algorithm.
  *
- * `costs` sizes three of the four ribbon tracks. The fourth, `index`, admits
+ * `costs` sizes four of the five ribbon tracks. The fifth, `index`, admits
  * LINES rather than items (`selection.index.normative`), and per-line index
  * costs are exposed by no endpoint in this plan — recorded as a gap, not
  * designed.
@@ -448,14 +468,14 @@ export function apiSimulate(ws: Workspace, url: URL): JsonResult {
 }
 
 /**
- * The three `fitToBudget`-based tiers `apiSimulateSweep` can sweep. `index`
+ * The four `fitToBudget`-based tiers `apiSimulateSweep` can sweep. `index`
  * is out of scope: it admits index LINES (`IndexSummary.normative`), not
  * items, so `itemCost` and the eviction model below do not apply to it — the
  * same gap `apiSimulate`'s own docstring already names ("per-line index
  * costs are exposed by no endpoint in this plan — recorded as a gap, not
  * designed").
  */
-const SWEEP_TIERS = ['pinned', 'restored', 'jit'] as const;
+const SWEEP_TIERS = ['pinned', 'restored', 'jit', 'continuity'] as const;
 type SweepTier = (typeof SWEEP_TIERS)[number];
 
 /**

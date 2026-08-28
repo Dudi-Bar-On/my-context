@@ -34,6 +34,7 @@ function item(over: Partial<Item> = {}): Item {
     status: 'active',
     severity: 'soft',
     always: false,
+    continuity: false,
     scope: [],
     tags: [],
     origin: 'human',

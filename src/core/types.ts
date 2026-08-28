@@ -60,6 +60,25 @@ export interface Item {
   status: Status;
   severity: Severity;
   always: boolean;
+  /**
+   * Membership of the CONTINUITY tier — what the next session needs in order
+   * not to start over, as opposed to what governs the work.
+   *
+   * It mirrors `always` exactly and deliberately
+   * (`DEC-continuity-gets-its-own-budget-and-the-item-it-holds-must-be`): a
+   * boolean on the item that routes it to one tier, defaulting false,
+   * validated at capture, and visible on every surface that shows `always`.
+   * It is NOT a hardcoded id in `select` — a rule invisible from every screen
+   * — nor a category (categories already carry a governance tier, and
+   * overloading one axis with two is how both stop meaning anything) nor a tag
+   * (tags are projected and unvalidated).
+   *
+   * **Written to the frontmatter only when true**, unlike `always`, and
+   * absent from `computeItemChecksum` unless true, for the reason `steps`
+   * is conditional there: every item in every corpus predates this field, and
+   * an unconditional key would move every recorded checksum at once.
+   */
+  continuity: boolean;
   scope: string[];
   tags: string[];
   origin: Origin;

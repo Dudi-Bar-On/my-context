@@ -510,7 +510,7 @@ test('a global-layer item with the same id does not shadow a project-layer creat
   const s = sandbox();
   const globalItem: Item = {
     id: 'CONST-shared-title', type: 'constraint', title: 'Shared title', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2020-01-01', validUntil: null, checksum: 'deadbeefdeadbeef',
     extra: {}, body: 'Global body.', steps: [], observations: [], relations: [],
@@ -531,7 +531,7 @@ test('a global-layer item at the same source anchor does not block a project-lay
   const s = sandbox();
   const globalItem: Item = {
     id: 'REQ-global-anchor', type: 'requirement', title: 'Global anchor', status: 'active',
-    severity: 'soft', always: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
     sourceFile: 'docs/prd/auth.md', sourceAnchor: '## Password reset', sourceChecksum: null,
     validFrom: '2020-01-01', validUntil: null, checksum: 'deadbeefdeadbeef',
     extra: {}, body: 'Global body.', steps: [], observations: [], relations: [],

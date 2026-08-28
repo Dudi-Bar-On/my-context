@@ -26,6 +26,7 @@ function item(overrides: Partial<Item> = {}): Item {
     status: 'active',
     severity: 'soft',
     always: false,
+    continuity: false,
     scope: [],
     tags: [],
     origin: 'human',
@@ -214,6 +215,7 @@ test('pendingRevisionViews decorates an id that is in no item as missing', () =>
       origin: 'human',
       severity: 'hard',
       always: false,
+      continuity: false,
     }).id;
     stageRevision(box.ctx, id, { body: 'Avoid logging customer email addresses.' }, 'agent');
 
@@ -250,6 +252,7 @@ test('the delegation finds the item on the corpus-only context, not only through
       origin: 'human',
       severity: 'hard',
       always: false,
+      continuity: false,
     }).id;
     stageRevision(box.ctx, id, { body: 'Avoid logging customer email addresses.' }, 'agent');
 
@@ -275,6 +278,7 @@ test('pendingRevisionViews agrees with revision.ts pendingRevisions on a real st
       origin: 'human',
       severity: 'hard',
       always: false,
+      continuity: false,
     }).id;
     stageRevision(
       box.ctx, id, { body: 'Avoid logging customer email addresses unless necessary.' }, 'agent',

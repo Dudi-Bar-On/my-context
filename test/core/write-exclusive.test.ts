@@ -35,7 +35,7 @@ function root(): string {
 
 function item(id: string, body: string): Item {
   return {
-    id, type: 'lesson', title: 'A title', status: 'active', severity: 'soft', always: false,
+    id, type: 'lesson', title: 'A title', status: 'active', severity: 'soft', always: false, continuity: false,
     scope: [], tags: [], origin: 'human', sourceFile: null, sourceAnchor: null,
     sourceChecksum: null, validFrom: '2026-01-01', validUntil: null, checksum: '',
     extra: {}, body, steps: [], observations: [], relations: [],

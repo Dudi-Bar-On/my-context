@@ -14,6 +14,7 @@ import './lesson.ts';
 import './pack.ts';
 import './procedure.ts';
 import './query.ts';
+import './ready.ts';
 import './refresh.ts';
 import './repair.ts';
 import './review.ts';

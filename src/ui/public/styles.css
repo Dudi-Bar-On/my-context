@@ -953,6 +953,7 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
 .seg.pinned{background:var(--gold)}
 .seg.jit{background:var(--ok)}
 .seg.restored{background:color-mix(in oklch,var(--ok) 50%,var(--gold))}
+.seg.continuity{background:var(--carry)}
 .seg.index{background:var(--edge-3)}
 .seg.head{background:transparent;flex:1;border:0}
 .ghosts{block-size:14px;display:flex;margin-block-start:3px;gap:2px}

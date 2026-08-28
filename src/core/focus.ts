@@ -280,6 +280,18 @@ export interface FocusReport {
    * same silence one level along.
    */
   exemptAlways: string[];
+  /**
+   * `continuity: true` items that do NOT match the focus and are injected
+   * anyway.
+   *
+   * A THIRD list, for the reason there is a second: the three exemptions are
+   * kept for three different reasons and the sentence beside each says which.
+   * `severity: hard` means the item must not be VIOLATED; `always` means it
+   * must not fall OUT OF CONTEXT; `continuity` means the NEXT session must
+   * not start over without it. An item can carry any of the three without the
+   * others.
+   */
+  exemptContinuity: string[];
   /** Load-bearing relations with exactly one end hidden. The cost Q2 requires reporting. */
   dangling: DanglingEdge[];
 }
@@ -492,7 +504,7 @@ export function focusReportLines(report: FocusReport, limit = 10): string[] {
   }
 
   lines.push('');
-  // Its own block, for the reason the type records: two exemptions, two
+  // Its own block, for the reason the type records: three exemptions, three
   // reasons, and one merged count is a count nobody can act on. Listed like
   // `exemptHard` above it — capped, with the remainder disclosed rather than
   // truncated quietly.
@@ -504,6 +516,17 @@ export function focusReportLines(report: FocusReport, limit = 10): string[] {
     for (const id of report.exemptAlways.slice(0, limit)) lines.push(`  ${id}`);
     if (report.exemptAlways.length > limit) {
       lines.push(`  … +${report.exemptAlways.length - limit} more (--json lists every one)`);
+    }
+  }
+
+  if (report.exemptContinuity.length > 0) {
+    lines.push(
+      `${report.exemptContinuity.length} continuity item(s) do not match this focus and are ` +
+      'injected anyway — focus never hides one either:',
+    );
+    for (const id of report.exemptContinuity.slice(0, limit)) lines.push(`  ${id}`);
+    if (report.exemptContinuity.length > limit) {
+      lines.push(`  … +${report.exemptContinuity.length - limit} more (--json lists every one)`);
     }
   }
 

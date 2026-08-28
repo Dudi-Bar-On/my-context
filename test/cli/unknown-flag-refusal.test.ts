@@ -55,6 +55,11 @@ function run(args: string[], cwd: string): { code: number; out: string } {
  * switch, absent from `COMMANDS`); Wave 5 migrated it into the registry, so
  * the discovery half finds it like everything else.
  *
+ * `ready` is the eighth, added with the `needs` field, and it is here for the
+ * same reason `todo` is: it advertises the detail levels, so the discovery
+ * half found it and this list was updated deliberately. The README sentence
+ * quoted above enumerates the reporting commands and names it too.
+ *
  * `todo` is the seventh, added by categories Task 3, and it is here because
  * it advertises the detail levels and therefore has to honour the same
  * refusal — the discovery half found it, and this list was updated
@@ -84,11 +89,12 @@ const PREFIX: Record<string, string[]> = { search: ['--text', 'a'] };
 
 test('the reporting commands this guard covers are the ones the README names', () => {
   assert.deepEqual(
-    DISCOVERED, ['decay', 'doctor', 'ingest-status', 'list', 'search', 'status', 'todo'],
+    DISCOVERED,
+    ['decay', 'doctor', 'ingest-status', 'list', 'ready', 'search', 'status', 'todo'],
   );
   assert.deepEqual(
     REPORTING,
-    ['decay', 'doctor', 'ingest-status', 'list', 'review', 'search', 'status', 'todo'],
+    ['decay', 'doctor', 'ingest-status', 'list', 'ready', 'review', 'search', 'status', 'todo'],
   );
 });
 

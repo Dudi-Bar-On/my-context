@@ -22,8 +22,8 @@ import { readSessionNames } from './session-names.ts';
 //
 // The cost, named rather than left to be discovered: **an item the source
 // session only ever saw as an INDEX LINE is not carried.** The seen file
-// records deliveries (`pinned`, `jit`, `restored`), and an index line is not a
-// delivery — `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored']);` · ~38
+// records deliveries (`pinned`, `jit`, `restored`, `continuity`), and an index line is not a
+// delivery — `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored', 'continuity']);` · ~52
 // refuses one. So what is carried is what that session actually HAD in context,
 // which is the stronger evidence anyway.
 //
