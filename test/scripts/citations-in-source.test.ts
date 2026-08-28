@@ -386,3 +386,142 @@ test('a separator inside runtime code and prose raises no fault', () => {
     },
   );
 });
+
+// ---------------------------------------------------------------------------
+// THE BROWSER TREE AND THE BROWSER SUITE. Until 2026-08-29 the walk meant `.ts`
+// under `src`, `test` and `scripts`, so `src/ui/public/**` — thirty-five
+// hand-written ES modules — and the whole of `e2e/` were outside it. Both
+// directories are ones a UI change touches every time.
+//
+// Each pair below is FOUND-then-BROKEN for the same reason as every pair above:
+// a walk that reached neither would report zero broken and pass the green half
+// on its own emptiness.
+// ---------------------------------------------------------------------------
+
+test('a citation in a browser module under src/ui/public is FOUND and counted', () => {
+  run(
+    {
+      'src/ui/public/screens/probe.js': `/** why: \`target.ts\` · \`${PRESENT}\` · ~2 */\nexport const draw = () => {};\n`,
+    },
+    (p) => {
+      assert.match(sourceTally(p.out), /^1 citation\(s\) in 1 source file\(s\): 1 ok, /);
+      assert.equal(p.code, 0, p.out);
+    },
+  );
+});
+
+test('a broken citation in a browser module is REPORTED at its own file and line', () => {
+  run(
+    {
+      'src/ui/public/screens/probe.js': `export const draw = () => {};\n/** why: \`target.ts\` · \`${GONE}\` · ~2 */\n`,
+    },
+    (p) => {
+      assert.match(sourceTally(p.out), /1 broken$/);
+      assert.match(p.out, /BROKEN src\/ui\/public\/screens\/probe\.js:2/);
+    },
+  );
+});
+
+test('a citation in the e2e suite is FOUND — e2e is a source root', () => {
+  run(
+    { 'e2e/probe.spec.ts': `/** why: \`target.ts\` · \`${PRESENT}\` · ~2 */\n` },
+    (p) => {
+      assert.match(sourceTally(p.out), /^1 citation\(s\) in 1 source file\(s\): 1 ok, /);
+    },
+  );
+});
+
+test('a broken citation in the e2e suite is REPORTED — the pair for the line above', () => {
+  run({ 'e2e/probe.spec.ts': `/** why: \`target.ts\` · \`${GONE}\` · ~2 */\n` }, (p) => {
+    assert.match(sourceTally(p.out), /1 broken$/);
+    assert.match(p.out, /BROKEN e2e\/probe\.spec\.ts:1/);
+  });
+});
+
+test('a generated .d.ts is not walked — it is output, and it cites nothing', () => {
+  run(
+    {
+      'src/generated.d.ts': `/** why: \`target.ts\` · \`${GONE}\` · ~2 */\n`,
+      'src/citer.ts': `/** why: \`target.ts\` · \`${PRESENT}\` · ~2 */\n`,
+    },
+    (p) => {
+      assert.match(sourceTally(p.out), /^1 citation\(s\) in 1 source file\(s\): 1 ok, /);
+      assert.doesNotMatch(p.out, /generated\.d\.ts/);
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// `.html` AND `.css` AS CITED FILES. The web UI's design of record is one
+// mockup HTML file and one stylesheet, and the browser modules cite them the
+// way `src/` cites `select.ts`. `CITATION` could not name either extension, so
+// those citations matched nothing — and then their trailing `· ~1967` fell
+// through to the UNREAD check as a fault. Forty-five of them, on the day the
+// walk above first reached the browser tree: not one was drift, and every one
+// would have been reported as an author's mistake.
+//
+// So the pair here is sharper than FOUND-then-BROKEN. It is FOUND-AND-SILENT:
+// the citation is counted AND the fault count is zero, because either half
+// failing on its own is a way this regression comes back.
+// ---------------------------------------------------------------------------
+
+const MOCKUP = '<section data-p="capture" hidden>';
+const SHEET = '.prop{border:1px solid var(--warn)}';
+
+test('a citation to an .html file is READ, and raises no UNREAD fault', () => {
+  run(
+    {
+      'docs/design/mock.html': `<main>\n  ${MOCKUP}\n</main>\n`,
+      'src/ui/public/screens/probe.js': `/** why: (\`mock.html\` · \`${MOCKUP}\` · ~2) */\n`,
+    },
+    (p) => {
+      assert.match(sourceTally(p.out), /^1 citation\(s\) in 1 source file\(s\): 1 ok, /);
+      assert.match(p.out, /0 fault\(s\)/);
+      assert.equal(p.code, 0, p.out);
+    },
+  );
+});
+
+test('a citation to a .css file is READ, and raises no UNREAD fault', () => {
+  run(
+    {
+      'src/ui/public/styles.css': `:root{--warn:#f80}\n${SHEET}\n`,
+      'src/ui/public/screens/probe.js': `/** why: (\`styles.css\` · \`${SHEET}\` · ~2) */\n`,
+    },
+    (p) => {
+      assert.match(sourceTally(p.out), /^1 citation\(s\) in 1 source file\(s\): 1 ok, /);
+      assert.match(p.out, /0 fault\(s\)/);
+    },
+  );
+});
+
+test('an .html citation whose fragment is gone is BROKEN — reading it is not excusing it', () => {
+  run(
+    {
+      'docs/design/mock.html': `<main>\n  <section data-p="other">\n</main>\n`,
+      'src/ui/public/screens/probe.js': `/** why: (\`mock.html\` · \`${MOCKUP}\` · ~2) */\n`,
+    },
+    (p) => {
+      assert.match(sourceTally(p.out), /1 broken$/);
+      assert.match(p.out, /BROKEN src\/ui\/public\/screens\/probe\.js:1/);
+    },
+  );
+});
+
+test('.html and .css are cited, never walked — a citation written INSIDE one is not read', () => {
+  // The boundary the docblock claims, pinned. `web-ui-mockup.html` carries two
+  // citations today and both resolve; walking it would mean reading `<!-- -->`
+  // as a comment run, which the joiner does not do. If that changes, this test
+  // is the one that has to change with it.
+  run(
+    {
+      'docs/design/mock.html': `<main>\n  <!-- why: \`target.ts\` · \`${GONE}\` · ~2 -->\n</main>\n`,
+      'src/citer.ts': `/** why: \`target.ts\` · \`${PRESENT}\` · ~2 */\n`,
+    },
+    (p) => {
+      assert.match(sourceTally(p.out), /^1 citation\(s\) in 1 source file\(s\): 1 ok, /);
+      assert.doesNotMatch(p.out, /mock\.html:/);
+      assert.equal(p.code, 0, p.out);
+    },
+  );
+});

@@ -111,6 +111,75 @@
  * 241 — thirty-eight invisible, not broken — and raised seventy extra faults
  * against a style the whole tree uses on purpose.
  *
+ * **THE FOURTH TREE: the browser, which every UI change touches and no gate
+ * could see.**
+ *
+ * On 2026-08-29 the walk still meant `src`, `test`, `scripts` and `.ts`. Two
+ * whole surfaces fell outside it — `src/ui/public/**` (thirty-five hand-written
+ * ES modules: `app.js`, every screen, `lib/live-invalidation.js`) and `e2e/`
+ * (the thirty-four-file browser suite). A gate whose blind spot is every file a
+ * UI change touches passes most confidently where it checks least, and it was
+ * found the only way that ever gets found: a task edited two files inside it,
+ * noticed the gate had nothing to say, and resolved its citations by hand.
+ *
+ * Widening it is two lines (`SOURCE_ROOTS`, `isSourceFile`) and a third that is
+ * not optional. Run as those two alone, the widening reported 18 broken
+ * citations and 52 faults — and 45 of the 52 were not drift at all. They were
+ * citations to `web-ui-mockup.html` and `styles.css`, which `CITATION` could
+ * not name and `CITED_FILE_AT_END` therefore called nothing: the form's own gap
+ * (`plan:rulings seq:47`), which the browser tree hits hardest because the
+ * mockup IS its design of record. Teaching both regexes those two extensions
+ * (`CITED_EXT`) turns 40 invisible strings into read citations and drops the
+ * fault count from 56 to 17 across the whole run. Shipping the walk without it
+ * would have handed four other agents 45 findings that were this script's fault.
+ *
+ * Measured, before and after, on the same tree:
+ *
+ *     walk            files    citations   broken   faults
+ *     src/test/.ts      537         1420        5        4
+ *     + e2e + .js       614         1577       23       56   ← 45 are `.html`
+ *     + .html/.css      614         1617       23       17
+ *
+ * All 40 remaining failures are in source, all in files this change does not
+ * own, and every one is REPORTED and not gated — the same tier `src/` has sat
+ * in since 2026-08-23, for the same reason, which is written out at `gated`
+ * below. The alternative was a gate that went red on 40 pre-existing faults in
+ * four other people's files on the night they were editing them; a gate like
+ * that is a wall, and the first thing that happens to a wall is that someone
+ * routes around it. The teeth still arrive the same way: repair the 40, flip
+ * `--strict-source`.
+ *
+ * **AND THE TREE THIS DELIBERATELY DOES NOT WALK: `.my_context/items/`.**
+ *
+ * The standing request (`plan:walk seq:30`) is that this gate scan the corpus,
+ * on the reasoning that items are where the project keeps its reasoning and a
+ * stale citation there misleads for longer than one in a comment. The reasoning
+ * is right and the measurement says the gate is the wrong instrument for it:
+ *
+ *     658 item files
+ *       1 citation in this script's form
+ *     165 bare `file.ts:123` pointers   (145 in range, 4 past EOF, 9 unresolvable, 7 ambiguous)
+ *     340 backticked bare filenames     (298 resolve, 38 do not — mostly outer-repo reports)
+ *
+ * Pointed at the corpus today this walks 658 files and checks ONE claim. That
+ * is not coverage, it is the appearance of coverage, and this script's whole
+ * argument is that the appearance is worse than the absence.
+ *
+ * The corpus does not speak this form; it speaks `file:line`. Teaching this
+ * script `file:line` is the one option that must not be taken — a bare line
+ * number carries no fragment, so the check can only prove the line EXISTS, and
+ * it proved that for 161 of 165 pointers while proving nothing about what any
+ * of them say. Four detections out of 165, and a green gate over a form the
+ * task that requested this scan calls a trap in its own words: a plausible
+ * wrong number sends a reader somewhere real.
+ *
+ * So the corpus is normalised to this form, or it is not gated. That is a
+ * corpus-side change — 165 pointers across 63 items, plus the writer that has
+ * to stop emitting `file:line` — and it belongs to whoever owns
+ * `.my_context/items/`, not to this file. The rule this script settles by is
+ * unchanged and now stated: **it walks what it can resolve BY FRAGMENT.** A
+ * tree whose citations carry no fragment is out of scope until they do.
+ *
  * Zero dependencies, no build step, erasable syntax only — the same
  * constraints as `src/`.
  *
@@ -134,8 +203,12 @@ const DOC_ROOTS = ['docs/superpowers/specs', 'docs/superpowers/plans', 'docs/des
 /**
  * Source trees whose comment citations are checked. Walked on every run and
  * reported on every run; gated only under `--strict-source`.
+ *
+ * `e2e` joined them on 2026-08-29. It is the browser suite, thirty-four spec
+ * files, and it was outside every root this script knew. See `isSourceFile`
+ * for the other half of that blind spot and for what the two of them cost.
  */
-const SOURCE_ROOTS = ['src', 'test', 'scripts'];
+const SOURCE_ROOTS = ['src', 'test', 'scripts', 'e2e'];
 
 /**
  * **The gate's own specimens, which it must not report as defects.**
@@ -166,12 +239,36 @@ const SOURCE_EXEMPT = new Set([
 const SEARCH_ROOTS = ['src', 'test', 'scripts', 'docs', '.'];
 
 /**
+ * **The extensions a CITED file may carry, written once.**
+ *
+ * `CITATION` and `CITED_FILE_AT_END` must agree on this exactly. They are the
+ * two halves of one judgement — "is the thing left of this separator a cited
+ * file?" — and when they disagreed, the disagreement did not read as a bug. A
+ * `.html` citation was not matched by the first, so its trailing `· ~1967` fell
+ * to the second, which also did not recognise `.html` and therefore called it
+ * nothing at all. Forty-five citations to `web-ui-mockup.html` and `styles.css`
+ * were invisible on 2026-08-29 for that reason: never counted, never resolved,
+ * never reported. One list, referenced twice, is what makes that impossible.
+ *
+ * `.html` and `.css` are here because the design of record for the web UI is a
+ * single mockup HTML file and one stylesheet, and the browser modules cite them
+ * the way `src/` cites `select.ts` — by file, fragment and hint. Being unable
+ * to name them did not stop anyone citing them; it stopped the gate reading it.
+ *
+ * Note the asymmetry, which is deliberate: a file may be CITED in these
+ * formats without being WALKED for citations of its own. See `SOURCE_ROOTS`.
+ */
+const CITED_EXT = 'ts|js|mjs|cjs|md|json|html|css';
+
+/**
  * `` `file` · `fragment` · ~line ``, where the fragment may itself contain
  * backticks and is then written as a ``double-backtick span``. The `~line` is
  * optional: a citation may carry the fragment alone.
  */
-const CITATION =
-  /`([^`\n]+?\.(?:ts|js|mjs|cjs|md|json))`[ \t]*·[ \t]*(?:``(.+?)``|`((?:\\.|[^`\n\\])+?)`)(?:[ \t]*·[ \t]*~(\d+))?/g;
+const CITATION = new RegExp(
+  `\`([^\`\\n]+?\\.(?:${CITED_EXT}))\`[ \\t]*·[ \\t]*(?:\`\`(.+?)\`\`|\`((?:\\\\.|[^\`\\n\\\\])+?)\`)(?:[ \\t]*·[ \\t]*~(\\d+))?`,
+  'g',
+);
 
 /**
  * `<!-- historical-citation: why -->`, matched a line at a time because one
@@ -196,7 +293,7 @@ const SEPARATOR = '·';
  * not "a backtick", is what tells a citation apart from prose that happens to
  * punctuate with `·`.
  */
-const CITED_FILE_AT_END = /`[^`\n]+?\.(?:ts|js|mjs|cjs|md|json)`$/;
+const CITED_FILE_AT_END = new RegExp(`\`[^\`\\n]+?\\.(?:${CITED_EXT})\`$`);
 
 /** A `~460` line hint at the start of the text to the right of a separator. */
 const HINT_AT_START = /^~\d/;
@@ -277,8 +374,36 @@ function walk(dir: string, out: string[], accept: (name: string) => boolean): st
 }
 
 const isMarkdown = (name: string): boolean => name.endsWith('.md');
-const isTypeScript = (name: string): boolean =>
-  name.endsWith('.ts') && !name.endsWith('.d.ts');
+
+/**
+ * **A source file is not only a `.ts` file, and pretending otherwise hid 164
+ * citations.**
+ *
+ * This accepted `.ts` and nothing else, which put the entire browser tree —
+ * `src/ui/public/**`, thirty-five hand-written ES modules, every screen and
+ * `app.js` and `lib/live-invalidation.js` — outside a gate that walked the
+ * directory they live in. The irony was on the record before it was measured:
+ * `live-invalidation.js` exists BECAUSE a hand-kept list of what to refresh
+ * drifts, and its own citations were held to nothing.
+ *
+ * A `.js` module in this project is not build output and never can be — there
+ * is no build step (`CONST-node-24-no-build-step`), so every `.js` file here is
+ * a file a person wrote and a file a person cites from. `.d.ts` is excluded
+ * because it is generated and cites nothing.
+ *
+ * `.html` and `.css` are deliberately NOT walked, and this is not an oversight
+ * left for later. Measured the day this landed: the three such files in the
+ * tree carry two citations between them and both resolve. The one file with any
+ * content, `docs/design/web-ui-mockup.html`, sits under a GATED doc root, and
+ * the comment-run join that lets a citation wrap (see `Segment`) knows the
+ * slash-star and double-slash forms but not `<!-- -->`, so a wrapped citation
+ * there would be read as a fault it is not. Two green citations are not worth
+ * a walk that can only be
+ * wrong; when the mockup starts carrying real citation weight, add it with the
+ * HTML comment form and not before.
+ */
+const isSourceFile = (name: string): boolean =>
+  /\.(?:ts|js|mjs|cjs)$/.test(name) && !name.endsWith('.d.ts');
 
 /**
  * A citation names `select.ts`, not `src/core/select.ts`, because the short
@@ -642,7 +767,7 @@ function main(): number {
   const rel = (full: string): string => path.relative(REPO, full).split(path.sep).join('/');
 
   const found: string[] = [];
-  for (const root of SOURCE_ROOTS) walk(path.join(REPO, root), found, isTypeScript);
+  for (const root of SOURCE_ROOTS) walk(path.join(REPO, root), found, isSourceFile);
   const sources = found.filter((f) => !SOURCE_EXEMPT.has(rel(f))).sort();
   const sourceFiles = new Set(sources.map(rel));
 
@@ -712,8 +837,16 @@ function main(): number {
    * red gate they did not break and could not clear, and the first thing that
    * happens to such a gate is that someone stops running it. So the numbers go
    * on the screen now, where they can be counted and argued with, and the
-   * teeth arrive with the repair: fix the nine, flip this one expression to
+   * teeth arrive with the repair: fix them, flip this one expression to
    * `true`, delete this paragraph.
+   *
+   * Widening the walk to the browser tree and `e2e/` on 2026-08-29 raised that
+   * debt from 9 to 40, and did not change the argument by one word — the extra
+   * 31 are in four other agents' files, the same files those agents were
+   * editing that night. It DID change what the flip is worth: a
+   * `--strict-source` that covers `src/ui/public/**` is a gate over every file
+   * a UI change touches, which is the surface that has drifted hardest and
+   * silently. The debt is larger and so is the prize.
    *
    * `--strict-source` is not decoration — it is how the repair proves itself,
    * and it is the whole of the change needed to flip.
