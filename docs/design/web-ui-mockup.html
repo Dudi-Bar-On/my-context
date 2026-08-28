@@ -1913,10 +1913,28 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <div class="plate" id="stair"></div>
         <div class="simctl">
           <span class="m" id="tierName">jit</span>
-          <input type="range" id="slider" min="0" max="12000" step="50" value="6000"
+          <input type="range" id="slider" min="0" max="12000" step="1" value="6000"
             aria-label="Tier budget in tokens" data-t-aria="aria.tierBudget">
           <span class="m" id="budgetVal">6,000</span>
         </div>
+        <!-- The range maximum has its OWN control, ruled 2026-08-28: dragging is
+             exploration within a range, and changing the range is a decision about
+             what range is worth exploring. Configure's Budgets card, part for part
+             — a number, a button that commits it, a receipt underneath — so no
+             stylesheet rule is added for it. -->
+        <div class="cmdactions" id="rangectl">
+          <label class="small" for="rangeMax" data-t="sim.rangeh">Range maximum</label>
+          <input class="m" type="number" id="rangeMax" min="1" step="1" value="12000"
+            aria-label="simulate.rangeMax">
+          <button type="button" data-t="sim.rangebtn">Set range</button>
+          <div class="execresult" role="status" hidden></div>
+        </div>
+        <p class="small" style="margin-block-start:8px" data-t="sim.rangen">The slider explores a
+          range; this sets the range. It is the <b>simulator’s own bound</b> and not a budget —
+          nothing here writes <span class="m">config.json</span>. It can never fall below the budget
+          in force, which the slider must always be able to reach, and raising a budget past it —
+          here or on Configure — raises it. The injection preview draws its ribbon to the same
+          range.</p>
         <div class="segbar" id="tierPick" role="group" aria-label="Tier" data-t-aria="aria.tierpick"></div>
         <div class="readout" id="readout"></div>
         <p class="small" data-t="sim.stairn">The sweep is <b>exact, not sampled</b> — the selector is
@@ -1927,9 +1945,10 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <div>
         <h3 data-t="sim.thresh">Thresholds</h3>
         <div class="ladder plate" id="ladder"></div>
-        <p class="small" data-t="sim.snap">Every value between two rungs behaves identically, so the
-          slider snaps to rungs — dragging lands on meaning rather than on
-          <span class="v" data-v="offrung">6,050</span>. A red rung is an
+        <p class="small" data-t="sim.snap">The thumb moves in single tokens and lands where you put
+          it — the ladder marks the rung that actually governs. Every value between two rungs
+          behaves identically, so <span class="v" data-v="offrung">6,050</span> decides exactly what
+          the rung below it decides. A red rung is an
           <b>eviction</b>: more budget, fewer items.</p>
       </div>
     </div>
@@ -3093,7 +3112,9 @@ const HE={_dir:'rtl',_lang:'he',
  'sim.stair':'גרם מדרגות הקבלה — כמה פריטים נכנסים, לפי תקציב',
  'sim.stairn':'הסריקה {b:מדויקת ואינה נדגמת} — הבורר מורץ מחדש בכל עלות מצטברת של מועמד, ולכן דבר אינו מומצא בין שתי מדרגות. העלויות לפי פריט הן {m:itemCost}, שהיום פרטי ב‑{m:select.ts}: ייצוא אחד, והתרשים חי.',
  'sim.thresh':'ספים',
- 'sim.snap':'כל ערך בין שתי מדרגות מתנהג באופן זהה, ולכן המחוון נצמד למדרגות — הגרירה נוחתת על משמעות ולא על {v:offrung=6,050}. מדרגה אדומה היא {b:פינוי}: יותר תקציב, פחות פריטים.',
+ 'sim.rangeh':'מקסימום הטווח','sim.rangebtn':'קביעת טווח',
+ 'sim.rangen':'המחוון סורק טווח; כאן קובעים את הטווח עצמו. זהו {b:הגבול של הסימולטור בלבד} ולא תקציב — דבר כאן אינו כותב אל {m:config.json}. הוא לעולם לא יירד מתחת לתקציב שבתוקף, שהמחוון חייב תמיד להגיע אליו, והעלאת תקציב מעבר לו — כאן או במסך התצורה — מעלה אותו. תצוגת ההזרקה מציירת את סרט התקציב לפי אותו טווח.',
+ 'sim.snap':'הידית זזה באסימונים בודדים ונוחתת בדיוק במקום שאליו כיוונתם — הסולם מסמן את המדרגה שקובעת בפועל. כל ערך בין שתי מדרגות מתנהג באופן זהה, ולכן {v:offrung=6,050} מכריע בדיוק כפי שמכריעה המדרגה שמתחתיו. מדרגה אדומה היא {b:פינוי}: יותר תקציב, פחות פריטים.',
  'sim.chipn':'עמודת הנכנסים היא {b:יחס}, לא מניין: "{v:fits=2} מתוך {v:eligible=6}" אומר כמה ממה שהיה כשיר באמת הגיע, והשבב מתהפך בגבול. השורה של הרמה הנגררת עוקבת אחרי המחוון.',
  'sim.ratio':'נבחר, ואז לא נמסר',
  'sim.ration':'הנמסר גדל מהמרכז לכיוון תחילת הקריאה, הנשפך לכיוון סופה, ושניהם מנורמלים למניין הגדול בטבלה. חצי אדום ארוך נוקב {b:באיזה תקציב קטן מדי} — השאלה שהסימולטור הזה קיים כדי לענות עליה. שני המספרים מגיעים מ‑{m:audit_item.role} דרך {m:topItems} — כבר מיוצא, כבר מאונדקס, נקרא פעמיים.',
@@ -4881,10 +4902,10 @@ function renderTierPick(){
   }
 }
 $('#slider').addEventListener('input',()=>{
-  /* Snap to a rung. Every value between two rungs behaves identically, so a
-     slider that stops at 6,050 is a slider that stopped at nothing. */
-  const rungs=sweep(SIM_TIER).map(d=>d.b), v=Number($('#slider').value);
-  $('#slider').value=String(rungs.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a,rungs[0]));
+  /* NO SNAP. Every value between two rungs behaves identically, so the thumb is
+     free to land where the pointer put it and the ladder marks the rung that
+     actually governs — measured 2026-08-29, eighteen rungs clustered in the
+     leftmost tenth of the track made a snapping thumb impossible to aim. */
   renderStair(); renderTiers();
 });
 

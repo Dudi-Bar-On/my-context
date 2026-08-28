@@ -117,8 +117,8 @@
  */
 import { selectQuery } from '/lib/viewmodel.js';
 import {
-  BOUND_CAP_LIST, boundedList, el, errorNote, idFull, linkId, mono, num, screenHead, spaced,
-  tierChip,
+  BOUND_CAP_LIST, boundedList, el, errorNote, idFull, linkId, mono, num, screenHead,
+  simRangeFor, spaced, tierChip,
 } from '/screens/parts.js';
 
 /**
@@ -219,6 +219,27 @@ function sized(node, percent) {
  */
 function pct(tokens, budget) {
   return budget <= 0 ? 0 : (tokens / budget) * 100;
+}
+
+/**
+ * **What one track is drawn to: the tier's budget, or the range the reader set
+ * on the simulator when that is wider.**
+ *
+ * The budget is still the FACT — `used / budget` in the label, `headroom` in
+ * the hint, and both are computed from it and not from this. What this changes
+ * is the SCALE the segments are laid out against, so that a reader who has
+ * widened the simulator's range to 40,000 sees this ribbon drawn over 40,000
+ * too, and the tier they are considering raising has visible room to grow into
+ * rather than a track that is already full by construction.
+ *
+ * `Math.max`, never a replacement: a range NARROWER than the budget in force
+ * would draw a full track as an overflowing one, which is a different claim.
+ * With no range set this is the budget exactly, so the default drawing is byte
+ * for byte what it always was.
+ */
+function scaleFor(tier, budget) {
+  const range = simRangeFor(tier);
+  return range === null ? budget : Math.max(budget, range);
 }
 
 export async function render(root, ctx) {
@@ -862,6 +883,10 @@ export async function render(root, ctx) {
 
     for (const tier of TIERS) {
       const budget = sim.budgets[tier];
+      // Every width below is a percentage of `scale`; every FIGURE below is
+      // computed from `budget`. Keeping the two apart is what lets the ribbon be
+      // drawn over a raised range without any sentence on it becoming untrue.
+      const scale = scaleFor(tier, budget);
       const ribbon = el('div', 'ribbon');
       const label = el('div', 'rlabel');
       label.append(tierChip(tier));
@@ -894,12 +919,17 @@ export async function render(root, ctx) {
         : spilled.length;
       const inCount = isIndex ? selection.index.normative.length : fits.length;
 
+      // The range is named whenever it is not the budget, because a track drawn
+      // to a scale nobody is told about is the silent-ambiguity shape this
+      // project keeps paying for: two ribbons of different widths would
+      // otherwise mean the same spend.
       label.append(el('span', 'n',
-        `${num(used)} / ${num(budget)} · ${inCount} in · ${outCount} out`));
+        `${num(used)} / ${num(budget)}${scale === budget ? '' : ` · to ${num(scale)}`}`
+        + ` · ${inCount} in · ${outCount} out`));
 
       const track = el('div', 'track');
       for (const fit of fits) {
-        const segment = sized(el('div', `seg ${tier}`), pct(fit.tokens, budget));
+        const segment = sized(el('div', `seg ${tier}`), pct(fit.tokens, scale));
         // The mockup's own tooltip, and an unkeyed literal there as here.
         segment.title = `${fit.id} · ${num(fit.tokens)} tokens`;
         track.append(segment);
@@ -912,16 +942,26 @@ export async function render(root, ctx) {
       for (const fit of fits) {
         // An admitted candidate holds its position INVISIBLY, so a ghost sits
         // under the place in the track the selector considered it.
-        ghosts.append(sized(el('div', 'gap'), pct(fit.tokens, budget)));
+        ghosts.append(sized(el('div', 'gap'), pct(fit.tokens, scale)));
       }
       for (const spill of spilled) {
-        const ghost = sized(el('div', 'gh'), pct(spill.tokens, budget));
+        const ghost = sized(el('div', 'gh'), pct(spill.tokens, scale));
         ghost.title = `${spill.id} · ${num(spill.tokens)} tokens · budget exceeded`;
         ghosts.append(ghost);
       }
 
       const hint = el('div', 'hint');
       const headroom = budget - used;
+      // Said once, before the headroom sentence, so the track's empty tail is
+      // never read as headroom it is not: past the budget the tail is range, and
+      // range admits nothing until the budget is actually raised.
+      if (scale !== budget) {
+        hint.append(
+          el('b', null, `Drawn to the simulator's range, ${num(scale)}`),
+          ` — the budget in force is still ${num(budget)}, and the track past it is `
+          + 'range, not headroom. ',
+        );
+      }
       if (outCount === 0) {
         hint.append(`Everything selected fit. Headroom ${num(headroom)} tokens.`);
       } else if (isIndex) {

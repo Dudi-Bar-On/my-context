@@ -108,7 +108,10 @@
  */
 import { confirmPath, diffTable, viewsFromEffect } from '/lib/command-actions.js';
 import { fieldView } from '/lib/viewmodel.js';
-import { el, errorNote, mono, screenHead, spaced } from '/screens/parts.js';
+import {
+  el, errorNote, mono, raiseSimRange, screenHead, spaced,
+} from '/screens/parts.js';
+
 
 /**
  * The reserved catalogue-shaped id `src/ui/execute.ts` reads as "the budgets
@@ -327,6 +330,12 @@ function budgetSaveControl(ctx, inputs) {
         const key = String(change.field).replace(/^budgets\./, '');
         const input = inputs[key];
         if (input) input.value = String(change.after);
+        // **"Raising a budget past the limit raises the limit"**, performed from
+        // this side of it. `raiseSimRange` only ever raises, and does nothing at
+        // all where no range has been set — there the simulator's derived bound
+        // already carries the budget in force as one of its own terms, so there
+        // is nothing here that could be out of step.
+        raiseSimRange(key, Number(change.after));
       }
     });
 

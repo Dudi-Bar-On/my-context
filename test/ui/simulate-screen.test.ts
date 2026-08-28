@@ -178,6 +178,18 @@ const browserModule = async <T>(...segments: string[]): Promise<T> =>
   (await import(pathToFileURL(path.join(PUBLIC, ...segments)).href)) as T;
 
 const simulate = (): Promise<SimulateModule> => browserModule<SimulateModule>('screens', 'simulate.js');
+/**
+ * `screens/parts.js` holds the range store the simulator, Configure and the
+ * injection preview all read (`simRangeFor`/`setSimRange`). It is a module-level
+ * singleton — which is exactly what it is in a browser, where one page holds
+ * one range per tier for as long as it is open — so a test that sets a range
+ * must put it back, or the next test in this file measures the previous one's
+ * leftovers. `setSimRange(tier, null)` is the unset: `simRangeFor` answers
+ * `null` for anything that is not a positive integer, so the derived default
+ * comes back.
+ */
+const parts = (): Promise<{ setSimRange: (tier: string, max: number | null) => void }> =>
+  browserModule<{ setSimRange: (tier: string, max: number | null) => void }>('screens', 'parts.js');
 const i18n = (): Promise<I18nModule> => browserModule<I18nModule>('lib', 'i18n.js');
 const table = (lang: string): Promise<{ strings: Record<string, string> }> =>
   browserModule<{ strings: Record<string, string> }>('strings', `${lang}.js`);
@@ -571,36 +583,110 @@ test('an empty projection draws an empty plate and no legend — absence is not 
 // ── The sweep: the staircase, the ladder, snapping and the slider bound ─────
 
 /**
- * `JIT_RUNGS`'s three thresholds, `sim.snap`'s promise made concrete:
- * *"the slider snaps to rungs — dragging lands on meaning rather than on
- * {offrung}"*. Dragging to 900 (nearer 600 than 15,000 or 0) must land
- * exactly on 600, and dragging to 15,000 minus one token must land on 600
- * too, not on 15,000 — the snap picks the CLOSEST rung, not the next one up.
+ * **THE SNAP IS GONE, AND THIS IS THE ASSERTION THAT SAYS SO.**
+ *
+ * Until 2026-08-29 this test pinned the opposite property — 900 landed on 600,
+ * 9,000 landed on 15,000, `sim.snap`'s promise made concrete. The owner
+ * instructed otherwise (*"the slide resolution is coarse and actually
+ * unusable"*, and *"when moving it it then changes it's position"*), and
+ * `DEC-the-mockup-governs-presentation-never-behaviour-and-a` is why that is an
+ * instruction rather than a contradiction to weigh: snapping is BEHAVIOUR and
+ * the mockup has no standing over it.
+ *
+ * So the thumb keeps every value it is given, including three that are not
+ * rungs at all. The rung that GOVERNS is not lost — it is reported, and the
+ * ladder test below is what pins the report.
  */
-test('the slider snaps to the nearest rung on every drag tick', async () => {
+test('the thumb keeps the value it was given — no drag tick rewrites it', async () => {
   const results: string[] = [];
   await draw(RICH, 'en', (root) => {
     const slider = byKind(root, 'input')[0] as unknown as { value: string; oninput: () => void };
     assert.ok(slider !== undefined, 'no <input> was drawn');
 
-    slider.value = '900';
-    slider.oninput();
-    results.push(slider.value);
-
-    slider.value = '9000';
-    slider.oninput();
-    results.push(slider.value);
-
-    slider.value = '300';
-    slider.oninput();
-    results.push(slider.value);
+    for (const typed of ['900', '9000', '300']) {
+      slider.value = typed;
+      slider.oninput();
+      results.push(slider.value);
+    }
   });
-  assert.deepEqual(results, ['600', '15000', '0'], [
-    '900 is closer to 600 than to 0 or 15,000;',
-    '9000 is closer to 15,000 than to 600;',
-    '300 is equidistant from 0 and 600 and falls to the first candidate — ',
-    "Array.reduce's own tie rule, the same one the mockup's renderStair inherits.",
+  assert.deepEqual(results, ['900', '9000', '300'], [
+    'a drag tick may not move the thumb away from where the pointer put it.',
+    'Measured against the live corpus on 2026-08-29, eighteen rungs sat at or below 1,550',
+    'under a bound of 16,000, so a click at 40% of the track and a click at 95% of it',
+    'both landed on 1,550 — a control that cannot be aimed, which is what the owner',
+    'reported as unusable.',
   ].join(' '));
+});
+
+/**
+ * **`slider.step` is 1, not the mockup's 50** — the other half of the same
+ * instruction, and the half a free-moving thumb would still be coarse without.
+ */
+test('the slider steps in single tokens', async () => {
+  const { root } = await draw(RICH);
+  const slider = byKind(root, 'input')[0] as unknown as { step: string; min: string };
+  assert.equal(slider.step, '1');
+  assert.equal(slider.min, '0');
+});
+
+/* ── The range maximum: its own control ─────────────────────────────────────
+   `TASK-the-slider-s-range-has-its-own-control-and-raising-a-budget`, parts one
+   and two of the owner's five. The four steps are ONE test on purpose: the range
+   store (`screens/parts.js`) is a module-level singleton, exactly as it is in a
+   browser, so four tests would be four tests sharing one number and the third
+   would pass or fail on what the second happened to leave. A sequence in one
+   `draw` asserts each transition against the one before it and depends on
+   nothing outside itself.
+
+   `RICH`'s last rung is 15,000 and `simulateBody` fixes the `jit` budget at
+   1,800, which is what makes each step measure something a different term could
+   not have produced. ── */
+test('the range control: typed does nothing, the button commits, and it never clamps', async () => {
+  const seen: string[] = [];
+  let refusal = '';
+  await draw(RICH, 'en', (root) => {
+    const slider = byKind(root, 'input')[0] as unknown as { max: string };
+    const box = byKind(root, 'div.cmdactions')[0];
+    assert.ok(box !== undefined, 'the range control was not drawn');
+    const field = box.children[1] as unknown as { value: string };
+    const go = box.children[2] as unknown as { onclick: () => void };
+    const said = box.children[3]!;
+
+    // 1 — typing alone changes nothing. The accepted cost of the ruling, and a
+    //     property rather than an omission: this is what a BUTTON buys.
+    field.value = '40000';
+    seen.push(slider.max);
+
+    // 2 — the button commits, and a set range REPLACES the derived default
+    //     rather than joining a `Math.max` the 15,000 last rung would have won.
+    go.onclick();
+    seen.push(slider.max);
+
+    // 3 — a range BELOW the budget in force is refused by the bound, not obeyed.
+    //     `slider.value` above `max` clamps silently, and a slider that cannot
+    //     reach the budget in force draws a number nobody set — the property
+    //     `e2e/simulate-slider.spec.ts` pins and all four designs have kept.
+    field.value = '500';
+    go.onclick();
+    seen.push(slider.max);
+
+    // 4 — refused BY NAME and never clamped, which is why the field's
+    //     `min`/`step` attributes are a hint in the source and not a validator.
+    field.value = '-3';
+    go.onclick();
+    seen.push(slider.max);
+    refusal = flatText(said);
+  });
+  assert.deepEqual(seen, ['15000', '40000', '1800', '1800'], [
+    'the derived default before the button was pressed, then the set range,',
+    'then the budget in force holding a too-small range off the bound,',
+    'then a refusal that moved nothing.',
+  ].join(' '));
+  assert.match(refusal, /positive integer/);
+  assert.match(refusal, /-3/);
+  // Put it back. See `parts()` above: the store outlives this test the same way
+  // it outlives a navigation in the browser.
+  (await parts()).setSimRange('jit', null);
 });
 
 /**

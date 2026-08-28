@@ -38,10 +38,21 @@
  * together, because a stale sentence in one of the three is a stale sentence
  * a reader of any of the three would meet.
  *
+ * **THE SLIDER HAS A RANGE CONTROL, AND THE SNAP IS GONE** (2026-08-29,
+ * `TASK-the-slider-s-range-has-its-own-control-and-raising-a-budget`). Two
+ * changes, one defect: measured in a browser against this corpus, the thumb
+ * started pinned hard right — `value === max === 16000`, by construction,
+ * because the budget in force WAS the bound — and every click on the track
+ * landed on one of eighteen rungs clustered below 1,550. The screen whose
+ * subtitle reads *"Raising a budget can evict an item"* could not be dragged
+ * rightwards at all. The range maximum is now a Config-style number with a
+ * button that commits it (`sliderMaxFor`'s fourth term, and the store above
+ * it), and the thumb steps in single tokens and stays under the pointer
+ * (`slider.oninput`). `sim.snap`'s prose was corrected in both string tables
+ * and in the mockup to describe what ships.
+ *
  * The rest is what was always fully served: the tier picker, the budget
- * slider (which now SNAPS to a rung on every drag tick — `sim.snap` promises
- * it in prose, and a slider that does not snap under a sentence saying it
- * does is worse than the missing chart), the five-row fits table it drives,
+ * slider, the five-row fits table it drives,
  * and the spill ratio bar. Every number in the fits table comes from one
  * `/api/simulate` response, so the table cannot disagree with itself; every
  * number in the staircase and ladder comes from one `/api/simulate/sweep`
@@ -61,7 +72,9 @@
  * asked a question `select()` itself would refuse.
  */
 import { selectQuery } from '/lib/viewmodel.js';
-import { el, errorNote, mono, num, screenHead, spaced } from '/screens/parts.js';
+import {
+  el, errorNote, mono, num, screenHead, setSimRange, simRangeFor, spaced,
+} from '/screens/parts.js';
 
 /** The mockup's five tracks, in its order. `select.ts`'s own tier names. */
 const TIERS = ['pinned', 'jit', 'restored', 'continuity', 'index'];
@@ -79,10 +92,45 @@ const EVENT_FOR = {
 };
 
 /**
- * The mockup's own slider bounds: `min=0 max=12000 step=50`. `max` is a FLOOR
- * here, not the bound — see `sliderMaxFor`.
+ * The slider's bounds. `min` and `max` are the mockup's own (`max` is a FLOOR
+ * here, not the bound — see `sliderMaxFor`); `step` is NOT, and the difference
+ * is the point.
+ *
+ * **`step` was the mockup's `50` and is now `1`, by owner instruction**, 2026-
+ * 08-28: *"the slide resolution is coarse and actually unusable it should slide
+ * smoothly with much smaller steps."* `DEC-the-mockup-governs-presentation-
+ * never-behaviour-and-a` is why that is not a contradiction to weigh: how a
+ * control responds to a drag is BEHAVIOUR, and the mockup has no standing over
+ * it. The mockup's own attribute and its `sim.snap` prose were corrected to
+ * match what ships, because a design document asserting a behaviour the app
+ * does not have is worse than silent.
+ *
+ * **And the SNAP that used to sit on top of it is gone with it** — see
+ * `slider.oninput` for the whole argument. In one line: the thumb now lands
+ * where the pointer put it, and the rung that actually governs is REPORTED (the
+ * ladder's `.at` row, the staircase's own step path) rather than enforced by
+ * dragging the thumb away from the reader's finger.
  */
-const SLIDER = { min: '0', max: '12000', step: '50' };
+const SLIDER = { min: '0', max: '12000', step: '1' };
+
+/**
+ * The typed range maximum, validated — or `null`, which is a REFUSAL and never
+ * a clamp.
+ *
+ * Deliberately `requirePositiveIntegerBudget`'s own grammar
+ * (`src/core/budgets-write.ts`): a run of digits, parsed, and a positive
+ * integer or nothing. The owner asked for *"a control like in config"*, and a
+ * control that looks like Configure's while accepting what Configure refuses is
+ * a second spelling of the rule, which is the thing that ruling exists to
+ * avoid. The SERVER is not in this path at all — no budget is being written —
+ * so this is the whole validator rather than a hint in front of one.
+ */
+function parseRangeMax(raw) {
+  const text = String(raw).trim();
+  if (!/^\d+$/.test(text)) return null;
+  const n = Number(text);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
 
 /**
  * The slider's upper bound — the ONE function that decides it, and the ONE
@@ -104,22 +152,38 @@ const SLIDER = { min: '0', max: '12000', step: '50' };
  *     the budget changes nothing, so it is the natural ceiling — not a round
  *     number chosen to look generous.
  *
- * **This function is the seam a later task extends, not a formula to
- * duplicate.** The owner's ruling mid-build: the slider's maximum is meant to
- * become a separately-set control later — "changed by its own control, not by
- * dragging the slider" — and this file must not foreclose that. Keeping the
- * arithmetic in this one function, called only through `applyBound`, is what
- * lets that land as an edit to the function body (a fourth term, a config
- * read) instead of a hunt through every place `slider.max` is assigned.
+ * **THE FOURTH TERM LANDED, and it is the one this function was kept in one
+ * piece for.** The seam this docstring reserved — *"the slider's maximum is
+ * meant to become a separately-set control later"* — is now the range control
+ * below, and the edit is what was promised: a term in this body, not a hunt
+ * through every place `slider.max` is assigned.
+ *
+ * It does not join the `Math.max`. **A range the reader SET REPLACES the
+ * derived default**, because the three terms above are a guess at a useful
+ * range and an explicit number is not a guess — folding it into the same
+ * `max()` would mean the range could only ever be raised, and *"a maximum that
+ * can only be changed by dragging into it cannot be lowered at all"* is half
+ * the defect this task exists to fix. So a reader on a small corpus can set 800
+ * and get 800, below the 12,000 floor, and the staircase finally spreads over
+ * the rungs that exist.
+ *
+ * **One term survives the replacement: the budget in force.** A range below it
+ * would clamp `slider.value` and draw a number nobody set, which is the exact
+ * defect `e2e/simulate-slider.spec.ts` pins and the one property all four
+ * designs of this bound have had to keep.
+ *
  * `rungs` is `null` before the sweep resolves and `[]` for a tier this event
  * would never reach or a `tool` event with no path — both fold to "nothing
  * swept yet", the same way `budgets === null` already folds to "nothing
  * simulated yet".
  */
 function sliderMaxFor(budgets, tier, rungs) {
-  const inForce = budgets === null ? 0 : Number(budgets[tier] ?? 0);
+  const raw = budgets === null ? 0 : Number(budgets[tier] ?? 0);
+  const inForce = Number.isFinite(raw) ? raw : 0;
+  const set = simRangeFor(tier);
+  if (set !== null) return String(Math.max(set, inForce));
   const swept = rungs !== null && rungs.length > 0 ? rungs[rungs.length - 1].threshold : 0;
-  return String(Math.max(Number(SLIDER.max), Number.isFinite(inForce) ? inForce : 0, swept));
+  return String(Math.max(Number(SLIDER.max), inForce, swept));
 }
 
 /* ── The admission staircase and threshold ladder — `sv(tag, attrs)` is the
@@ -353,6 +417,57 @@ export async function render(root, ctx) {
   budgetVal.id = 'budgetVal';
   ctl.append(tierName, slider, budgetVal);
 
+  /* ── The range control — a Config-style number and a button that commits it ──
+
+     RULED by the owner 2026-08-28 after a sub-slider was weighed against it:
+     *"a control like in config"*, and *"upon setting it we should have a button
+     to update it the same we does in the config"*. So the shape is Configure's
+     Budgets card, part for part — `div.cmdactions` holding an
+     `input[type=number]` and a button, with a `div.execresult[role=status]`
+     underneath for the receipt — and not a second spelling of it. No rule in
+     `styles.css` is added: every class here already exists and is already held
+     to the mockup byte for byte by `test/ui/styles-parity.test.ts`.
+
+     **It is NOT Configure's write, and the difference is the whole design.**
+     Configure's button writes `config.json` behind a confirm and a single-use
+     nonce, because it changes what the product does. This one changes what this
+     screen can show, so it commits to the range store and nothing else: no
+     confirm, no nonce, no `POST`. What it shares is the SHAPE the owner asked
+     for — a field that does nothing until a button is pressed, and a receipt
+     saying what happened — because *"setting a range is an act with a receipt,
+     not a silent field"*.
+
+     The accepted cost, named in the ruling so nobody rediscovers it as a bug:
+     typing shows nothing until the button is pressed, on a screen whose subject
+     is watching a number move. The recorded alternative is the sub-slider. ── */
+  const rangeCtl = el('div', 'cmdactions');
+  rangeCtl.id = 'rangectl';
+  const rangeLabel = el('label', 'small');
+  rangeLabel.htmlFor = 'rangeMax';
+  rangeLabel.append(...ctx.t('sim.rangeh'));
+  const rangeMax = el('input', 'm');
+  rangeMax.id = 'rangeMax';
+  rangeMax.type = 'number';
+  // A UX hint only, exactly as the Budgets card says of its own pair: the
+  // refusal lives in `parseRangeMax`, and a browser that ignored both attributes
+  // would still be refused by name rather than clamped.
+  rangeMax.min = '1';
+  rangeMax.step = '1';
+  // The same raw, untranslated spelling Configure's budget inputs use
+  // (`budgets.jit`) — an identifier a test can select on in either language,
+  // not a sentence.
+  rangeMax.setAttribute('aria-label', 'simulate.rangeMax');
+  const rangeGo = el('button');
+  rangeGo.type = 'button';
+  rangeGo.append(...ctx.t('sim.rangebtn'));
+  const rangeSaid = el('div', 'execresult');
+  rangeSaid.hidden = true;
+  rangeSaid.setAttribute('role', 'status');
+  rangeCtl.append(rangeLabel, rangeMax, rangeGo, rangeSaid);
+
+  const rangeNote = el('p', 'small');
+  rangeNote.append(...ctx.t('sim.rangen'));
+
   const tierPick = el('div', 'segbar');
   tierPick.id = 'tierPick';
   tierPick.setAttribute('role', 'group');
@@ -361,7 +476,12 @@ export async function render(root, ctx) {
   // `#readout` is deliberately NOT built — see the header's second refusal.
   const stairNote = el('p', 'small');
   stairNote.append(...ctx.t('sim.stairn'));
-  stairCol.append(stairHead, stairPlate, ctl, tierPick, spaced(stairNote));
+  // The range control sits directly under the slider it bounds, and above the
+  // tier picker, because the range is per TIER and reading it any other way
+  // round invites the belief that one number bounds all five.
+  stairCol.append(
+    stairHead, stairPlate, ctl, rangeCtl, spaced(rangeNote), tierPick, spaced(stairNote),
+  );
 
   const ladderCol = el('div');
   const ladderHead = el('h3');
@@ -369,12 +489,12 @@ export async function render(root, ctx) {
   const ladderPlate = el('div', 'ladder plate');
   ladderPlate.id = 'ladder';
   // `{offrung}` is the mockup's own illustrative "6,050" — a number chosen to
-  // BE arbitrary, since the sentence's whole point is that landing on any
-  // specific off-rung value is what snapping prevents. It is not derived from
-  // this tier's real rungs: the note is built once, before the first sweep
-  // response exists to derive one from, and the claim it makes ("dragging
-  // lands on meaning rather than on ___") holds for every tier and every
-  // corpus alike, which a live number would not make any truer.
+  // BE arbitrary, and it survives the 2026-08-29 rewrite of this sentence with
+  // its job inverted: it used to name the value snapping PREVENTED you landing
+  // on, and now it names a value you may land on freely because the rung below
+  // it is what decides. It is still not derived from this tier's real rungs —
+  // the note is built once, before the first sweep response exists to derive
+  // one from, and the claim holds for every tier and every corpus alike.
   const snapNote = el('p', 'small');
   snapNote.append(...ctx.t('sim.snap', { offrung: num(6050) }));
   ladderCol.append(ladderHead, ladderPlate, spaced(snapNote));
@@ -426,9 +546,21 @@ export async function render(root, ctx) {
   ratioCard.append(ratioHead, ratioPlate, spaced(ratioNote));
   root.append(ratioCard);
 
-  /** The one place `slider.max` is ever assigned — see `sliderMaxFor`. */
+  /**
+   * The one place `slider.max` is ever assigned — see `sliderMaxFor`.
+   *
+   * The range FIELD follows it, and that is not decoration: the number in the
+   * box is what pressing the button would commit, so a box showing anything
+   * other than the bound actually in force is an offer to change nothing while
+   * looking like an offer to change something. It re-fills on every bound
+   * change — a tier switch, a sweep resolving, a budget written on Configure —
+   * except while the reader is typing in it, because overwriting a half-typed
+   * number under somebody's cursor is the one thing worse than showing a stale
+   * one.
+   */
   function applyBound() {
     slider.max = sliderMaxFor(budgets, tier, rungs);
+    if (document.activeElement !== rangeMax) rangeMax.value = slider.max;
   }
 
   /**
@@ -896,23 +1028,79 @@ export async function render(root, ctx) {
     }
   }
 
+  /* ── THE SNAP IS GONE, AND THIS IS THE ARGUMENT ─────────────────────────────
+
+     Until 2026-08-29 this handler rewrote `slider.value` to the nearest rung on
+     every tick. The owner's instruction: *"the slide resolution is coarse and
+     actually unusable it should slide smoothly with much smaller steps"*, and
+     separately *"the slider always displayed at the max value ... when moving it
+     it then changes it's position"*. The second complaint is the snap, not the
+     step: the thumb jumped away from the pointer.
+
+     **`sim.snap`'s prose is not a counter-argument and was never a
+     counter-party.** Snapping is BEHAVIOUR and
+     `DEC-the-mockup-governs-presentation-never-behaviour-and-a` gives the mockup
+     no standing over it. What the prose contains that IS worth weighing is an
+     engineering fact — *"every value between two rungs behaves identically"* —
+     and it is true of the selector.
+
+     **Both facts are true at once, so the fix reports rather than enforces.**
+     Measured against this repository's own corpus on 2026-08-29: eighteen
+     `jit` rungs, every one of them at or below 1,550, under a bound of 16,000.
+     A click at 40% of the track produced 1,550; a click at 95% produced 1,550
+     as well. The thumb had eighteen reachable positions in the leftmost tenth
+     of the track and none at all in the other nine — which is what "unusable"
+     names, and it is worse than coarse, it is a control that cannot be aimed.
+
+     So the thumb moves in single tokens and lands where the pointer put it, and
+     the governing rung is REPORTED in the two places that already report it:
+     the ladder marks it `.at` (the highest rung at or below this value) and the
+     staircase's step path is drawn from the rungs themselves, so the reader sees
+     the flat tread they are standing on. Nothing between two rungs is claimed to
+     be a different answer, because the ladder is saying which rung it is.
+
+     The three shapes the task listed were weighed. Snapping within a threshold
+     distance keeps a jump that is merely rarer, and still moves the thumb away
+     from the finger. Previewing the snap target during a drag adds a second
+     readout to explain a movement that would then still happen. Reporting the
+     rung removes the movement instead of annotating it, and costs nothing the
+     reader was getting. ── */
   slider.oninput = () => {
-    // Snap to a rung, on every tick — the mockup's own `renderStair`
-    // (~4149) does this synchronously, before anything is redrawn, so a
-    // slider that never touches a fetch still lands on meaning rather than on
-    // an arbitrary value between two of them.
-    if (rungs !== null && rungs.length > 0) {
-      const thresholds = rungs.map((r) => r.threshold);
-      const v = Number(slider.value);
-      slider.value = String(
-        thresholds.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a), thresholds[0]),
-      );
-    }
     budgetVal.textContent = num(Number(slider.value));
     drawStair();
     drawLadder();
     clearTimeout(pending);
     pending = setTimeout(() => { void run(); }, 150);
+  };
+
+  /**
+   * The range control's commit — the button, and the receipt it leaves.
+   *
+   * A refusal and a success both land in `#rangectl`'s own `.execresult`, in
+   * the reader's language, and neither touches the slider's VALUE: setting the
+   * range is a decision about what is worth exploring, and silently moving the
+   * budget under it would be the two-questions-one-control conflation this
+   * whole task exists to undo.
+   */
+  // `onclick`, not `addEventListener`, for the same reason `slider.oninput` is a
+  // property in this file: one handler, assigned once, at the only place that
+  // ever assigns it.
+  rangeGo.onclick = () => {
+    const wanted = parseRangeMax(rangeMax.value);
+    rangeSaid.hidden = false;
+    if (wanted === null) {
+      // Refused BY NAME and never clamped — `requirePositiveIntegerBudget`'s own
+      // discipline, applied to the one budget-shaped field the server never sees.
+      rangeSaid.replaceChildren(...ctx.t('sim.rangebad', { typed: rangeMax.value }));
+      return;
+    }
+    setSimRange(tier, wanted);
+    // The bound first, then everything drawn against it — the same order the
+    // tier buttons and the first paint take, for the same reason.
+    applyBound();
+    drawStair();
+    drawLadder();
+    rangeSaid.replaceChildren(...ctx.t('sim.rangeset', { tier: tier, max: num(Number(slider.max)) }));
   };
   ctx.onSessionChange(() => { void run(); void runSweep(); });
 

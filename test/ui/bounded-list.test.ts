@@ -547,3 +547,73 @@ test('the Hebrew table draws the same control with no key left in English', asyn
       `the Hebrew ${step} control is untranslated: ${JSON.stringify(label)}`);
   }
 });
+
+/* ══ THE SIMULATOR'S RANGE STORE ═════════════════════════════════════════
+   `TASK-the-slider-s-range-has-its-own-control-and-raising-a-budget` put one
+   number in this module because three screens have to agree about it: the
+   simulator sets it (`sliderMaxFor`'s fourth term), Configure raises it when a
+   budget write goes past it, and the injection preview draws its ribbon to it.
+
+   It is checked HERE, beside `boundedList`, for the reason this file exists at
+   all — `screens/parts.js` calls itself untested glue, and these three
+   functions are not glue: they are the arithmetic of a shared decision, and a
+   wrong answer from any of them is a wrong bound on a control or a ribbon drawn
+   to a scale nobody set. No document is needed for any of it. ══ */
+
+interface RangeStore {
+  simRangeFor: (tier: string) => number | null;
+  setSimRange: (tier: string, max: number | null) => void;
+  raiseSimRange: (tier: string, atLeast: number) => void;
+}
+
+/** The store, plus a clean slate: the module is a singleton, as it is in a page. */
+async function store(tier: string): Promise<RangeStore> {
+  const parts = (await import(PARTS)) as unknown as RangeStore;
+  parts.setSimRange(tier, null);
+  return parts;
+}
+
+test('an unset range is null, and null is not zero', async () => {
+  const { simRangeFor } = await store('range-a');
+  // `null` means "the simulator's derived default is in force", which is a
+  // different fact from "the range is nothing" — the same distinction
+  // `screens/simulate.js` draws between `rungs === null` and `rungs === []`.
+  assert.equal(simRangeFor('range-a'), null);
+});
+
+test('only a positive integer is a range — everything else reads as unset', async () => {
+  const parts = await store('range-b');
+  for (const bad of [0, -3, 1.5, Number.NaN, null]) {
+    parts.setSimRange('range-b', bad as number | null);
+    assert.equal(parts.simRangeFor('range-b'), null, `${String(bad)} was accepted as a range`);
+  }
+  parts.setSimRange('range-b', 40_000);
+  assert.equal(parts.simRangeFor('range-b'), 40_000);
+});
+
+test('raiseSimRange only ever raises, and never invents a range nobody set', async () => {
+  const parts = await store('range-c');
+
+  // Nothing set: nothing to raise. The simulator's derived bound already
+  // carries the budget in force as one of its own terms, so writing here would
+  // invent a decision the reader never made.
+  parts.raiseSimRange('range-c', 9_000);
+  assert.equal(parts.simRangeFor('range-c'), null);
+
+  parts.setSimRange('range-c', 10_000);
+
+  // A budget written on Configure ABOVE the range carries the range up with it:
+  // "raising a budget past the limit raises the limit", performed from the
+  // other screen. This is what keeps the two from ever disagreeing about what
+  // the slider can reach.
+  parts.raiseSimRange('range-c', 25_000);
+  assert.equal(parts.simRangeFor('range-c'), 25_000);
+
+  // A budget LOWERED leaves the range where the reader put it. Narrowing
+  // somebody's chosen range because a number moved underneath them is the
+  // "maximum that silently moves while you drag" the design refuses.
+  parts.raiseSimRange('range-c', 400);
+  assert.equal(parts.simRangeFor('range-c'), 25_000);
+
+  parts.setSimRange('range-c', null);
+});

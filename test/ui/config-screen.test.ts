@@ -333,3 +333,33 @@ test('the screen reaches the network only through ctx.api/ctx.post, and composes
   assert.ok(code.includes('navigator.clipboard.writeText'),
     'the Copy button no longer reaches the clipboard');
 });
+
+/**
+ * **A budget written here carries the simulator's range up with it** —
+ * `REQ-configure-and-the-simulator-agree-on-the-budgets-whatever`, extended by
+ * the owner on 2026-08-28 from the budget VALUE to the slider's RANGE: *"the
+ * config screen should be synchronized with the simulator"*.
+ *
+ * A source assertion rather than a rendered one, and deliberately: the write
+ * path this sits on ends in a single-use nonce and a real `POST /api/execute`,
+ * which this file's stand-in document cannot supply, and the behaviour of
+ * `raiseSimRange` itself is measured directly in `test/ui/bounded-list.test.ts`
+ * beside the store it lives in. What is left for this file to hold is the WIRE
+ * — that the loop applying `outcome.diff` to the fields applies it to the range
+ * too — and that is a fact about this file's text.
+ */
+test('a budget write raises the simulator range for every field it changed', () => {
+  const code = source();
+  assert.match(code, /raiseSimRange,?\s/,
+    "screens/config.js no longer imports raiseSimRange from '/screens/parts.js'. The range store "
+    + 'is one definition read by three screens; a second copy of it here would be the drift the '
+    + 'shared module exists to prevent.');
+  // Inside the `outcome.diff` loop and nowhere else: the diff is the server's
+  // own `BudgetFieldDiff[]`, so the range follows what the file NOW says rather
+  // than what was typed into a field.
+  const loop = /for \(const change of Array\.isArray\(outcome\?\.diff\)[^]*?\n {6}\}/.exec(code);
+  assert.ok(loop !== null, 'the outcome.diff loop is no longer recognisable');
+  assert.match(loop[0], /raiseSimRange\(key, Number\(change\.after\)\)/,
+    'a budget written here can now exceed a range set on the simulator without carrying it up, '
+    + 'which leaves the slider unable to reach the budget this screen just put in force');
+});

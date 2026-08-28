@@ -311,6 +311,92 @@ export function pageStep(page, pages, take, direction) {
   return landing < 0 || landing >= pages ? null : landing;
 }
 
+/* ── THE SIMULATOR'S RANGE MAXIMUM — one store, three screens ─────────────
+
+   `TASK-the-slider-s-range-has-its-own-control-and-raising-a-budget`, the
+   owner's five-part requirement of 2026-08-28. Parts 3 and 4 are what make this
+   a STORE rather than a variable inside `screens/simulate.js`: *"the config
+   screen should be synchronized with the simulator and also the ribbon budget in
+   the injection preview max values should be updated"*. Three screens have to
+   agree about one number, so it is written down ONCE and the three import it
+   — the same argument `lib/live-invalidation.js` makes about which kinds
+   invalidate which screen, and `lib/palette-defs.js` about the command
+   catalogue: a hand-kept second copy of a shared fact is a defect waiting to
+   happen.
+
+   **It lives HERE, in the module every screen already imports**, rather than in
+   `screens/simulate.js` with the other two importing that. A screen importing a
+   screen would make the injection preview load the simulator to draw a ribbon,
+   and it is also unloadable by `test/ui/config-screen.test.ts`, which rewrites
+   exactly the three specifiers this file is one of.
+
+   **A module-level object, and deliberately not `sessionStorage`.**
+   `test/ui/config-screen.test.ts` forbids `screens/config.js` naming
+   `sessionStorage` at all — a screen reaches for state through `ctx`, never
+   for the browser's own stores — and the reach for one would buy nothing here:
+   an ES module is a singleton per page, so this object already outlives every
+   `render()` and every navigation between the three screens, which is exactly
+   the lifetime the range wants. It does not survive a reload, and that is the
+   right answer too: a reload re-reads the budgets from disk, and a range
+   remembered across it would be a bound nobody on this page had set.
+
+   **Why the client at all, and not `config.json`.** The range maximum is not a
+   budget. A budget is what the selector is run at; the range is what a reader
+   has decided is worth exploring, and the two must not share a control — the
+   whole first half of the task's design section. Writing an exploration bound
+   into the file that governs injection would make every glance at the simulator
+   a change to the product's behaviour.
+
+   **Nothing here can clamp.** `simRangeFor` answers `null` for anything that is
+   not a positive integer, and `simulate.js`'s `sliderMaxFor` never lets a stored
+   range pull the bound below the budget in force. That is the one property that
+   has survived all four designs of this number, and it survives this one:
+   the slider can always reach the budget actually in force, and never displays a
+   value that was clamped. ── */
+
+/** `{ [tier]: positive integer }`, for the tiers a reader has set a range on. */
+const SIM_RANGE = {};
+
+/**
+ * The range maximum a reader has SET for `tier`, or `null` when they have not.
+ *
+ * `null` is a real answer and not a zero: no range set means the simulator's
+ * derived default is in force, which is a different fact from a range of
+ * nothing.
+ */
+export function simRangeFor(tier) {
+  const value = SIM_RANGE[tier];
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/** Set it. The one writer, called by the range control's own commit. */
+export function setSimRange(tier, max) {
+  SIM_RANGE[tier] = max;
+}
+
+/**
+ * **"Raising a budget past the limit raises the limit"** — the task's own
+ * title, performed from wherever the budget was raised.
+ *
+ * `screens/config.js` calls this for every field its budget write actually
+ * changed, so a budget written on Configure that exceeds the range a reader set
+ * on the simulator carries the range up with it. The two screens can then never
+ * disagree about what the slider is able to reach.
+ *
+ * It only ever RAISES. A budget lowered on Configure leaves the range where the
+ * reader put it — narrowing somebody's chosen range because a number moved
+ * underneath them is the "maximum that silently moves while you drag" the design
+ * section refuses. And with NO range set there is nothing to raise: the derived
+ * bound already carries the budget in force as one of its own terms, so writing
+ * one here would invent a decision the reader never made.
+ */
+export function raiseSimRange(tier, atLeast) {
+  const current = simRangeFor(tier);
+  if (current === null || current >= atLeast) return;
+  if (!Number.isInteger(atLeast) || atLeast <= 0) return;
+  setSimRange(tier, atLeast);
+}
+
 /** Card lists sit in a scene the design of record sizes; tables and card stacks scroll. */
 export const BOUND_CAP_LIST = 20;
 export const BOUND_CAP_TABLE = 50;
