@@ -263,3 +263,109 @@ test('a corrupt config.json at START still refuses to start — the safe moment 
     removeTree(cwd);
   }
 });
+
+/* -------------------------------------------------------------------------- *
+ * R4 (`plan:live seq:13`): the disclosure has to reach a screen that is not
+ * Configure.
+ *
+ * R2 above settled that a mid-session break keeps the last good config rather
+ * than failing every endpoint at once, and that `/api/config` says so. What it
+ * left is the reader who never opens Configure: Simulate draws a ribbon and
+ * Work draws a governing set from that last good config, and until now nothing
+ * on those screens could tell them the file had moved out from under it.
+ *
+ * `/api/meta` is where it lands because the shell fetches it on EVERY screen to
+ * fill the status strip — so a field there is a fact every screen already has
+ * in hand, not a second channel to keep in step with `/api/config`'s.
+ * -------------------------------------------------------------------------- */
+
+interface MetaBody { configError: string | null }
+
+const meta = async (h: Harness): Promise<MetaBody> => {
+  const answer = await get(h, '/api/meta');
+  assert.equal(answer.status, 200, JSON.stringify(answer.body));
+  return answer.body as MetaBody;
+};
+
+test('/api/meta carries configError: null while the file on disk is the governing config', async () => {
+  await withServer(async (h) => {
+    // PRESENT and null, never absent. "The config governing this page is the
+    // file in front of you" is the measured good state, and a strip cannot
+    // draw a fact that is missing from the payload
+    // (STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is).
+    const body = await meta(h);
+    assert.ok('configError' in body, 'the field is present in the good state too');
+    assert.equal(body.configError, null);
+
+    // Still null after an out-of-band edit that LOADS: the config moved, and
+    // that is not an error — this field is about the file failing to load, not
+    // about it changing.
+    editOutOfBand(h.cwd, { budgets: { pinned: 9999 } });
+    assert.equal((await meta(h)).configError, null);
+    assert.equal((await simulateBudgets(h)).pinned, 9999);
+  });
+});
+
+test('a mid-session config break reaches a screen that is not Configure', async () => {
+  await withServer(async (h) => {
+    editOutOfBand(h.cwd, { budgets: { pinned: 9999 } });
+    assert.equal((await meta(h)).configError, null);
+
+    writeFileSync(configFile(h.cwd), '{ this is not json', 'utf8');
+
+    // The ribbon still answers, and it answers from the LAST GOOD config —
+    // 9999, not the file, which no longer has a readable number in it.
+    assert.equal((await simulateBudgets(h)).pinned, 9999);
+
+    // …and the strip on that same screen can now say so, without the reader
+    // having to open Configure to find out.
+    const broken = await meta(h);
+    assert.notEqual(broken.configError, null,
+      'a screen other than Configure must be able to disclose the break');
+    assert.match(broken.configError ?? '', /is not valid JSON/);
+    assert.match(broken.configError ?? '', /config\.json/,
+      'the message names the file the reader has to go and fix');
+  });
+});
+
+test('a config.json that parses and does not LOAD reaches /api/meta the same way', async () => {
+  await withServer(async (h) => {
+    editOutOfBand(h.cwd, { budgets: { pinned: 'lots' } });
+
+    // The second of the two ways a file stops becoming a `Config`. Both arrive
+    // through `loadConfig`, so both arrive here — the field is the loader's own
+    // sentence, not a boolean that would flatten them into one word.
+    const broken = await meta(h);
+    assert.match(broken.configError ?? '', /budgets/);
+    assert.equal(((await get(h, '/api/config')).body as ConfigBody).servingLastGood, true,
+      'the two disclosures agree, because both are derived from the same loader');
+  });
+});
+
+test('repairing the file clears configError with no restart', async () => {
+  await withServer(async (h) => {
+    writeFileSync(configFile(h.cwd), '{ this is not json', 'utf8');
+    assert.notEqual((await meta(h)).configError, null);
+
+    editOutOfBand(h.cwd, { budgets: { pinned: 4242 } });
+
+    assert.equal((await meta(h)).configError, null,
+      'the disclosure is a state, not a latch — it goes away when the file loads again');
+    assert.equal((await simulateBudgets(h)).pinned, 4242);
+  });
+});
+
+test('configError and the config every other endpoint answered from cannot disagree', async () => {
+  await withServer(async (h) => {
+    writeFileSync(configFile(h.cwd), '{ this is not json', 'utf8');
+
+    // The property that makes this DERIVED rather than plumbed: `/api/meta`
+    // reporting a break and `/api/config` reporting `servingLastGood` are two
+    // readings of one loader, so there is no arrangement in which one says the
+    // file loads and the other says it does not.
+    assert.equal(
+      (await meta(h)).configError === null,
+      ((await get(h, '/api/config')).body as ConfigBody).servingLastGood === false,
+    );
+  });
+});

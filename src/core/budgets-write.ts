@@ -125,11 +125,25 @@ function configFile(corpusDir: string): string {
 /**
  * The file's raw JSON object and its resolved `Budgets`, read FRESH off disk.
  *
- * Never `ctx.ws.config` — that is a snapshot taken once, when the UI server
- * started (`src/ui/server.ts` · `const ws = resolveWorkspace(options.cwd);`),
- * and the whole premise of a Configure-screen write is that the file is the
- * user's to edit while the server runs. This mirrors
- * `read-model-config.ts`'s `apiConfigGet` exactly: absent file resolves to
+ * **Never `ctx.ws.config` — and NO LONGER because it is stale.** That sentence
+ * used to end "…that is a snapshot taken once, when the UI server started",
+ * and it was true when it was written. `plan:live seq:8` removed the snapshot:
+ * `liveWorkspace`
+ * (`src/core/workspace.ts` · `export function liveWorkspace(cwd: string): LiveWorkspace {` · ~249)
+ * re-reads `config.json` on every request, so the `ws.config` a handler holds
+ * IS the file as that request read it.
+ *
+ * Two reasons survive that change, and both are structural rather than
+ * temporal. **A `Workspace` is not in scope here and must not become one:**
+ * `currentBudgets` takes a corpus DIRECTORY, so this module is readable off any
+ * corpus — a CLI, a test box, a directory named by `CORPUS_DIR_ENV` — with no
+ * server anywhere, and its whole import surface is `node:fs`, `node:path` and
+ * `./config.ts`. **And a resolved `Config` could not answer this question
+ * anyway:** `writeBudgets` replaces exactly the `budgets` property on the RAW
+ * parsed object and writes every sibling key back as parsed, so `raw` is half
+ * of what this function returns and `ws.config` has no `raw` to give.
+ *
+ * This mirrors `read-model-config.ts`'s `apiConfigGet` exactly: absent file resolves to
  * defaults, and a file that does not parse or does not resolve is a
  * `BudgetRefusal` naming the loader's own sentence rather than a crash — the
  * config the user is looking at right now is the config this module reads.

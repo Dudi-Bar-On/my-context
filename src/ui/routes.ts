@@ -21,6 +21,28 @@ import type { CodeIdentity } from './code-identity.ts';
 
 export interface ApiContext {
   ws: Workspace;
+  /**
+   * `null` when `ws.config` above IS `config.json` as it stands on disk right
+   * now. Otherwise the loader's own message for why the file no longer loads,
+   * and `ws.config` is the last config that DID (`plan:live seq:13`).
+   *
+   * **Both fields come from ONE `live.now()` call, and that is the whole
+   * design.** `WorkspaceNow` returns the config and the reason together
+   * precisely so a caller cannot hold one without the other; splitting them
+   * across two reads here would re-create the disagreement `liveWorkspace`
+   * exists to end, one layer up. It is derived, never plumbed — the same
+   * discipline `servingLastGood` follows on `/api/config`, which computes the
+   * condition from the read it already performed rather than accepting it as a
+   * payload from somewhere else.
+   *
+   * It is on the CONTEXT rather than on the one route that discloses it
+   * because the fact is about every route: `/api/simulate`'s ribbon,
+   * `/api/capture`'s filter and `/api/packs`' `carries` are all judged against
+   * `ws.config`, so any of them may answer from the last good config. Today
+   * `/api/meta` is the only one that SAYS so, and a second surface that needs
+   * to say it inherits this answer rather than spelling a second one.
+   */
+  configError: string | null;
   /** The repository root — `path.dirname(ws.projectRoot)`, not the `.my_context` directory. */
   repoRoot: string;
   /**

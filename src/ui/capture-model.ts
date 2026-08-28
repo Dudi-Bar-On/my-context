@@ -205,15 +205,23 @@ const CAPTURE_PARAMS = ['scope'];
  * (The `/api/review-queue` gap is a defect in a file this task does not own
  * and is named in the report rather than fixed on the way past.)
  *
- * **The ITEMS are read fresh on every call; the CONFIG is not.** `store.all()`
- * reads the index as it stands, so an item captured while the server runs
- * appears on the next request — asserted, not assumed. `ws.config` is the
- * snapshot taken when the server booted, exactly as it is for `/api/items`,
- * `/api/search` and `/api/review-queue`, so a category disabled or retiered in
- * `config.json` mid-session does not move an item across this filter until the
- * server restarts. That is inherited rather than chosen here, and `/api/config`
- * is the one endpoint that deliberately re-reads. Recorded so a green test is
- * not read as proving more than it does.
+ * **The ITEMS and the CONFIG are both read fresh on every call.**
+ * `store.all()` reads the index as it stands, so an item captured while the
+ * server runs appears on the next request — asserted, not assumed. `ws.config`
+ * is read the same way: `liveWorkspace` re-resolves `config.json` per request
+ * and hands the result to every route, so a category disabled or retiered
+ * mid-session moves an item across this filter on the very NEXT request, with
+ * no restart. That is inherited rather than chosen here, exactly as it is for
+ * `/api/items`, `/api/search` and `/api/review-queue`.
+ *
+ * **This paragraph said the exact opposite until `plan:live seq:13`, and it
+ * was true when it was written** — `ws.config` was the boot snapshot, and this
+ * comment said so confidently, which is what made it worth deleting rather
+ * than leaving. The one case where `ws.config` is still not the file is a
+ * `config.json` that stops loading MID-SESSION: the last config that DID load
+ * keeps being served rather than every endpoint failing at once, and
+ * `configError` on `/api/meta` is the channel through which a screen — this
+ * one included — learns that is happening.
  */
 export function apiCapture(ws: Workspace, url: URL): JsonResult {
   const bad = unknownParams(url, CAPTURE_PARAMS) ?? repeatedParams(url);

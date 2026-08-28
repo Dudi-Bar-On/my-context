@@ -257,6 +257,31 @@ export function registerReadRoutes(): void {
         // its modules can see for themselves how far behind it is.
         startedAt: ctx.code.startedAt,
         staleCode: ctx.code.isStale(),
+        // **The config break, on the channel every screen already reads**
+        // (`plan:live seq:13`).
+        //
+        // `servingLastGood` on `/api/config` says the same thing and reaches
+        // only whoever opens Configure. Everyone else — Simulate's ribbon,
+        // Work's governing set, Capture's tier filter — is being shown numbers
+        // derived from a config that is NOT the file in front of them, with no
+        // hint that it is not. That is a smaller copy of the defect this whole
+        // plan existed to remove, so it rides `/api/meta`, which the shell
+        // fetches on every screen to fill the status strip.
+        //
+        // `string | null`, not a boolean, and not `servingLastGood` respelled:
+        // the loader's own sentence is the only thing that tells a reader WHICH
+        // break this is, and a strip that can only say "something is wrong"
+        // sends them to Configure to find out what — which is the trip this
+        // field exists to save them. `null` is the measured good state and is
+        // present either way, for the reason `git` is: "the config on disk is
+        // the config governing this page" is a finding a strip renders, not a
+        // field to omit (STD-a-measured-zero-is-drawn-and-named-…).
+        //
+        // DERIVED, exactly as `staleCode` above is: it comes from the same
+        // `live.now()` that produced `ctx.ws.config`, so this field and the
+        // config every other endpoint answered from cannot disagree. See
+        // `ApiContext.configError` in `routes.ts`.
+        configError: ctx.configError,
       },
     }),
   });
@@ -787,7 +812,18 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     // **`live.now()`, per request.** The one line that makes every endpoint
     // read the same `config.json` the user is editing. `boot` above is not in
     // scope here on purpose; see the comment where it is bound.
-    const ctx: ApiContext = { ws: live.now().ws, repoRoot, url, params: match.params, body, code };
+    //
+    // ONE call, destructured — never `live.now().ws` here and a second
+    // `live.now().configError` beside it. Two calls would read the file twice
+    // and could straddle a write, so a request could hold a config from one
+    // read and a verdict on it from the other. `WorkspaceNow` returns the pair
+    // for exactly that reason; keeping the pair intact is what makes
+    // `ctx.configError` a DERIVED fact about `ctx.ws.config` rather than a
+    // second channel that can disagree with it (`plan:live seq:13`).
+    const now = live.now();
+    const ctx: ApiContext = {
+      ws: now.ws, configError: now.configError, repoRoot, url, params: match.params, body, code,
+    };
 
     if (match.handler.kind === 'stream') {
       // NOT idle.touch(): an open stream is not activity (spec §2). Plan 3's

@@ -422,12 +422,18 @@ export function apiPacks(ws: Workspace, url: URL): JsonResult {
       packs: records.map((record) => packRow(record, status)),
       dropped: droppedFrom(root, records),
       landing: LANDING,
-      // `ws.config` and not a freshly resolved one: `carries` describes the
-      // rules an import would be judged by, and every other endpoint on this
-      // server judges against the same boot-time config. `/api/config` re-reads
-      // the file because editing it is that screen's entire premise; this one
-      // has no such premise, and two configs answering one page would be worse
-      // than one that is a moment old.
+      // `ws.config` and not a second read of the file spelled here: `carries`
+      // describes the rules an import would be judged by, and `ws.config` IS
+      // the file as THIS request read it. There is no boot-time config left to
+      // be behind — `liveWorkspace` re-resolves `config.json` once per request
+      // and hands that one answer to every route
+      // (`src/ui/server.ts` · `const now = live.now();` · ~823).
+      //
+      // The behaviour this line always wanted is unchanged and so is the
+      // reason for it: ONE config answers one page. What changed is how old
+      // that config is — a moment, not a boot. A re-read spelled here would be
+      // a second read microseconds after the request's own, and two configs
+      // answering one page is still worse than one that is a moment old.
       carries: carriesFor(ws.config),
       artefact: ARTEFACT,
     };
