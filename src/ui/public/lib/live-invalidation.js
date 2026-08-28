@@ -148,7 +148,18 @@ export const SCREEN_INVALIDATION = {
   ask: '*',
   work: ['mutation'],
   palette: ['mutation', 'hook'],
-  config: ['hook'],
+  // `mutation` was MISSING here until 2026-08-28, and the omission was correct
+  // when it was written: nothing could change a budget, so nothing this screen
+  // draws could be stale from a mutation. `plan:budget seq:5` landed hours later
+  // and audits a budget write as `kind: 'mutation'` — so the screen that PERFORMS
+  // the write was the one screen that would not notice it.
+  //
+  // The owner's requirement is that Configure and the simulator agree whatever
+  // the source of the change. They do not share a listener; they share this map,
+  // and `simulate` already declared `mutation`. One of the two noticing a budget
+  // change is worse than neither, because the two disagreeing is the state a
+  // reader cannot detect by looking at either.
+  config: ['hook', 'mutation'],
   docs: [],
   tut: [],
   capture: ['mutation', 'hook'],
