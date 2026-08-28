@@ -12,7 +12,10 @@ import {
   ProjectionAbsentError, ProjectionStaleError, queryProjection, sessions, summaryByOp,
   syncProjection, topItems,
 } from '../../src/core/audit-db.ts';
-import { auditDir, auditLogPath, recordAudit } from '../../src/core/audit.ts';
+import {
+  AUDIT_PROTOCOL, auditDir, auditLogPath, recordAudit,
+} from '../../src/core/audit.ts';
+import { appendJsonlLine } from '../../src/core/jsonl-log.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 /**
@@ -197,9 +200,18 @@ test('a projection BEHIND the log is disclosed, not caught up — the bytes prov
   const before = sha256(file);
   const mtimeBefore = statSync(file).mtimeMs;
 
-  recordAudit(root, {
+  // **Appended around `recordAudit`, on purpose.** `recordAudit` keeps the
+  // projection current now (`core/audit-db.ts` · `keepProjectionCurrent`), so
+  // it no longer manufactures this state — which is the point of that change
+  // and not a reason to stop testing this one. `behind` is still reachable and
+  // must still be refused: a record appended by a build older than that change,
+  // a log copied in from elsewhere, an append whose upkeep returned `failed`,
+  // or a projection left behind by a `diverged` this path may not repair. This
+  // writes the line the way all of those leave it — in the log, not in the
+  // projection.
+  appendJsonlLine(auditDir(root), auditLogPath(root), {
+    protocol: AUDIT_PROTOCOL, at: '2026-08-17T10:00:00.000Z',
     kind: 'mutation', op: 'update', origin: 'agent', itemId: 'RULE-b', fields: ['body'],
-    at: '2026-08-17T10:00:00.000Z',
   });
 
   const err = thrown(() => openProjectionReadOnlyChecked(root));

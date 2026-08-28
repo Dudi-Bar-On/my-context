@@ -305,7 +305,7 @@ test('THE §2 TEST: idle fires while a stream is connected, reading, and being r
   }
 });
 
-test('the ask surface answers over HTTP behind the token gate, and reports a stale projection', async () => {
+test('the ask surface answers over HTTP behind the token gate, and a refusal no longer stales it', async () => {
   const { dir, corpus, done } = project();
   let h: UiHarness | null = null;
   try {
@@ -341,21 +341,39 @@ test('the ask surface answers over HTTP behind the token gate, and reports a sta
     // one above rather than before it — the order is load-bearing, and the
     // plan's sample has it the other way round. A refusal WRITES (plan §0.6:
     // one audit record, on the refusal path only), so it grows the log the
-    // projection was built from and the read that follows it can no longer be
-    // `fresh`.
+    // projection was built from.
     const denied = await fetch(ask);
     assert.equal(denied.status, 401);
     assert.equal((await denied.text()).length, 0);   // ruling A4: a status line and nothing else
 
-    // Which is the read-only door's own rule, now proved on the wire and
-    // without a clock: stale is REPORTED, never repaired. 503 naming the
-    // state, and naming the command that ends it.
-    const stale = await fetch(ask, { headers: { [TOKEN_HEADER]: token } });
-    assert.equal(stale.status, 503);
-    const staleBody = await stale.json() as { error: string; projectionState: string };
-    assert.equal(staleBody.projectionState, 'behind');
-    assert.match(staleBody.error, /mycontext audit/,
-      'a 503 that does not name the command that ends the state leaves the user nowhere');
+    // **And the read that follows it is STILL `fresh`, which is what this test
+    // now exists to prove.** It used to assert the opposite, and the opposite
+    // was the defect in its sharpest form: ONE unauthenticated request put a
+    // corpus into refusal, because the read surface's single ruled write staled
+    // the projection its own next read answers from. The boundary is untouched
+    // — this surface still never syncs, because syncing is a write — and the
+    // record is instead projected by the thing that appended it
+    // (`core/audit-db.ts` · `export function keepProjectionCurrent(`), which
+    // was already a write and crosses nothing.
+    const after = await fetch(ask, { headers: { [TOKEN_HEADER]: token } });
+    assert.equal(after.status, 200,
+      'a 401 stale the projection its own next read answers from — the write path is not ' +
+      'keeping it current');
+    const afterBody = await after.json() as { records: unknown[]; projectionState: string };
+    assert.equal(afterBody.projectionState, 'fresh');
+    assert.equal(afterBody.records.length, 1, 'the pre-refusal history must still be there');
+
+    // The refusal is not merely invisible to the read — it is IN the
+    // projection, which is the difference between keeping it current and
+    // skipping the record. `access` is the kind a refusal carries.
+    const access = await fetch(
+      `http://127.0.0.1:${h.port}/api/ask/audit?kind=access`,
+      { headers: { [TOKEN_HEADER]: token } },
+    );
+    assert.equal(access.status, 200);
+    const accessBody = await access.json() as { records: { op: string }[] };
+    assert.deepEqual(accessBody.records.map((r) => r.op), ['ui-refused'],
+      'the refusal record reached the log but not the projection');
   } finally { await h?.stop(); done(); }
 });
 

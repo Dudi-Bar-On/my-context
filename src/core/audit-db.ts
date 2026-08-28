@@ -2,7 +2,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { closeSync, openSync, readSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import {
-  auditDir, auditSegments, parseAudit, type AuditFilter, type AuditRecord,
+  auditDir, auditLogPath, auditSegments, parseAudit,
+  type AuditFilter, type AuditRecord,
 } from './audit.ts';
 import { ensureLogDir } from './jsonl-log.ts';
 
@@ -233,7 +234,7 @@ export function syncProjection(root: string, db: DatabaseSync): ProjectionState 
   const state = projectionState(root, db);
   if (state === 'fresh') return state;
 
-  db.exec('BEGIN');
+  begin(db);
   try {
     if (state === 'diverged') {
       // Discard everything. Row order in `audit` IS log order (rowids are
@@ -244,35 +245,8 @@ export function syncProjection(root: string, db: DatabaseSync): ProjectionState 
       db.exec('DELETE FROM audit_item; DELETE FROM audit; DELETE FROM audit_source;');
     }
 
-    const known = state === 'diverged' ? new Map<string, SourceRow>() : sources(db);
-    const upsert = db.prepare(
-      `INSERT INTO audit_source (file, bytes, records) VALUES (?, ?, ?)
-       ON CONFLICT(file) DO UPDATE SET bytes = excluded.bytes, records = excluded.records`,
-    );
-
-    for (const file of auditSegments(root)) {
-      const row = known.get(file);
-      const offset = row?.bytes ?? 0;
-      const { text, consumed } = readCompleteLines(file, offset);
-      if (text === '') {
-        // Nothing new to consume, but the row may still be absent (a new,
-        // empty segment). Record it so the next sync sees a known file.
-        if (row === undefined) upsert.run(file, consumed, 0);
-        continue;
-      }
-      // `parseAudit` applies the same three read outcomes the JSONL always
-      // had: a damaged line that is not a torn tail THROWS, and the throw
-      // escapes this transaction so the projection stays where it was rather
-      // than silently absorbing a truncated history.
-      const records = parseAudit(text, file);
-      insertRecords(db, file, records);
-      upsert.run(file, consumed, (row?.records ?? 0) + records.length);
-    }
-
-    db.prepare(
-      `INSERT INTO audit_meta (key, value) VALUES ('version', ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    ).run(String(PROJECTION_VERSION));
+    advanceSources(root, db, state === 'diverged' ? new Map<string, SourceRow>() : sources(db));
+    stampVersion(db);
 
     db.exec('COMMIT');
   } catch (err) {
@@ -280,6 +254,419 @@ export function syncProjection(root: string, db: DatabaseSync): ProjectionState 
     throw err;
   }
   return state;
+}
+
+/**
+ * `BEGIN IMMEDIATE`, never bare `BEGIN`, for every transaction that projects
+ * the log.
+ *
+ * A bare `BEGIN` is DEFERRED: the write lock is taken at the first INSERT,
+ * which is AFTER `projectionState` and `sources` have already read the
+ * offsets. Two processes could therefore read the same `audit_source.bytes`,
+ * both consume the same bytes and both insert them — every record around the
+ * overlap appearing twice, in an audit log. That was survivable while the only
+ * writers were `mycontext audit` and `mycontext status`, which a person runs
+ * one at a time. It is not survivable now that `recordAudit` projects on every
+ * append: two hooks in two Claude sessions against one workspace is the
+ * ordinary case, not the exotic one.
+ *
+ * `IMMEDIATE` takes the write lock before the first read, so the read of the
+ * offsets and the write that advances them are one atomic step. The loser
+ * waits out `PRAGMA busy_timeout` and then sees the winner's offsets.
+ */
+function begin(db: DatabaseSync): void {
+  db.exec('BEGIN IMMEDIATE');
+}
+
+/** The version stamp `openProjectionReadOnlyChecked` reads back. */
+function stampVersion(db: DatabaseSync): void {
+  db.prepare(
+    `INSERT INTO audit_meta (key, value) VALUES ('version', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run(String(PROJECTION_VERSION));
+}
+
+/**
+ * The APPEND-ONLY half of a sync: consume every complete line past each
+ * segment's stored offset, insert it, and advance the offset. Returns how many
+ * records it projected.
+ *
+ * Extracted so that `syncProjection` and `keepProjectionCurrent` cannot drift:
+ * one of them is allowed to discard and rebuild first and the other is not,
+ * and that is the ONLY difference between them. A second spelling of the
+ * consumption loop is how the two would quietly stop agreeing about torn
+ * tails, about a new empty segment, or about what `parseAudit` throwing means.
+ *
+ * Must be called inside a transaction opened by `begin`.
+ */
+function advanceSources(root: string, db: DatabaseSync, known: Map<string, SourceRow>): number {
+  const upsert = db.prepare(
+    `INSERT INTO audit_source (file, bytes, records) VALUES (?, ?, ?)
+     ON CONFLICT(file) DO UPDATE SET bytes = excluded.bytes, records = excluded.records`,
+  );
+
+  let applied = 0;
+  for (const file of auditSegments(root)) {
+    const row = known.get(file);
+    const offset = row?.bytes ?? 0;
+    const { text, consumed } = readCompleteLines(file, offset);
+    if (text === '') {
+      // Nothing new to consume, but the row may still be absent (a new,
+      // empty segment). Record it so the next sync sees a known file.
+      if (row === undefined) upsert.run(file, consumed, 0);
+      continue;
+    }
+    // `parseAudit` applies the same three read outcomes the JSONL always
+    // had: a damaged line that is not a torn tail THROWS, and the throw
+    // escapes this transaction so the projection stays where it was rather
+    // than silently absorbing a truncated history.
+    const records = parseAudit(text, file);
+    insertRecords(db, file, records);
+    upsert.run(file, consumed, (row?.records ?? 0) + records.length);
+    applied += records.length;
+  }
+  return applied;
+}
+
+// --- Keeping the projection current on the write path -----------------------
+//
+// **The projection used to fall behind by design, and that was the defect.**
+// Every append left it one record further back and only `mycontext audit`
+// caught it up: measured on this repository 2026-08-22, fresh to behind twice
+// in forty minutes of ordinary work; measured on the demo corpus 2026-08-24,
+// the last forty records were all `access`, so READS staled it too. The read
+// surface is right to refuse a projection that cannot vouch for the log
+// (owner ruling C1), but it should not have had to.
+//
+// **The boundary is not moved to fix it.** A read surface still may not sync,
+// because syncing is a write. What changed is the other side: the path that
+// APPENDS a record now also projects it, and that path is already a write, so
+// there is no boundary to cross. `recordAudit` is the one place an audit
+// record is appended anywhere in this product, which is why this has one home
+// rather than fifteen.
+//
+// **Three properties, in the order they must hold:**
+//
+//  1. **The log append succeeds independently.** `recordAudit` decides
+//     `written` before this function is reached, outside the try that could
+//     report a projection problem as a lost record. The log is the authority;
+//     a projection problem may never cost a record.
+//  2. **A failed projection update never fails the command.** This function
+//     returns its failure and never throws, exactly as `recordAudit` does.
+//  3. **It is never silent.** A failure is carried on `AuditWriteResult` and
+//     spoken by `auditFailureNote`; and the state it leaves behind — log
+//     ahead, projection behind — is the one the read surface already reports
+//     honestly. That state is the correct outcome, not a swallowed error.
+//
+// **It NEVER rebuilds, and that is the load-bearing restriction.** A rebuild
+// on the hook path would put the cost of the whole log on one tool call. So
+// this consumes only the bytes past each segment's stored offset — the append
+// half of `syncProjection`, shared as `advanceSources` — and a `diverged`
+// projection is reported and left alone for `mycontext audit`, which is
+// entitled to discard and rebuild. `updated` therefore means "the projection
+// is current"; it does not mean "this function did work".
+//
+// **It NEVER creates one either.** A workspace with no `.audit/audit.db` has
+// never had a projection built, and that is a legitimate empty state which
+// `ProjectionAbsentError` and the Watch screen both name as itself. Conjuring
+// one here would silently make every workspace carry a database it never asked
+// for, and would pay for the whole log on the first append. `openProjection`
+// builds it, `mycontext audit` calls that, and until then there is nothing to
+// keep current.
+
+/**
+ * What one append did to the projection beside it.
+ *
+ * **Five, and the four non-`updated` ones are kept apart on purpose.** They are
+ * the same distinctions `openProjectionReadOnlyChecked` refuses to collapse on
+ * the read side, arriving here for the same reason: "there is no projection to
+ * keep current" and "the projection is damaged" are different facts about a
+ * user's audit trail, and only one of them is a fault. Reporting damage as an
+ * empty state is `INV-nothing-is-dropped-silently` broken in the direction that
+ * is hardest to notice — everything looks fine and the trail quietly stops
+ * being queryable.
+ */
+export type ProjectionUpkeepOutcome =
+  /** The projection is current with the log — including when there was nothing to do. */
+  | 'updated'
+  /** No projection file exists. An empty state; a write path does not conjure one. */
+  | 'unbuilt'
+  /** A schema version this build does not read. Declined — a write path never migrates. */
+  | 'foreign'
+  /** A segment shrank or vanished. Repairing that is a rebuild, which this path may not do. */
+  | 'diverged'
+  /** Damage, or any other error. The log is intact and holds the record; the projection is not. */
+  | 'failed';
+
+export interface ProjectionUpkeep {
+  outcome: ProjectionUpkeepOutcome;
+  /** Records projected. Zero for every outcome but `updated`, and zero is possible there. */
+  applied: number;
+  /** The failure, for `failed` only. Never swallowed — `auditFailureNote` speaks it. */
+  error?: string;
+}
+
+/** What `openProjectionForUpkeep` found. Damage is not one of these — it throws. */
+type UpkeepDoor =
+  | { kind: 'open'; db: DatabaseSync }
+  | { kind: 'unbuilt' }
+  | { kind: 'foreign' };
+
+/**
+ * One upkeep connection per projection, per process, held open — and the
+ * measurement that made it necessary rather than nice.
+ *
+ * Measured 2026-08-28 on this machine, 200 appends after 20 warm-ups, one
+ * injection record of ten items against a 1 MiB log and a current projection:
+ *
+ *     append alone                              p95 1.98 ms
+ *     append + upkeep, connection per append    p95 12.29 ms
+ *     append + upkeep, connection held          p95 3.58 ms
+ *
+ * The append is on the PreToolUse path, under a 50 ms p95 ceiling, on top of a
+ * JIT hit that already costs 11–22 ms. 10 ms per record is not affordable and
+ * 1.6 ms is. The 10 ms is not the insert — a held `BEGIN IMMEDIATE`/`COMMIT`
+ * measures 0.017 ms — it is opening and closing: 2.2 ms for a bare open/close
+ * with no writes, and the rest is the WAL checkpoint SQLite runs when the last
+ * connection to a database it has written closes. There is no pragma that buys
+ * that back; keeping the connection is what buys it back.
+ *
+ * **The lifetime is the PROCESS, which is what makes this safe rather than
+ * merely fast.** The busiest writer by far is a hook: it starts, appends one or
+ * two records, and exits, so it opens once and never checkpoints at all. The
+ * long-lived writer is the UI server, which appends a refusal or an execute
+ * record and keeps running — exactly the caller a held connection is for.
+ *
+ * **The handle is validated against the FILE on every use, not trusted.** A
+ * projection can be discarded and rebuilt underneath this process by
+ * `openProjection` in another one — `mycontext audit` is entitled to do that.
+ * A cached handle would then be writing into an unlinked inode and reporting
+ * `updated` for rows nothing will ever read, which is the silent failure this
+ * whole task exists to remove. So the cache is keyed by the file's IDENTITY,
+ * and a file that has been replaced is a cache miss.
+ */
+interface UpkeepHandle { db: DatabaseSync; identity: string }
+
+const upkeepHandles = new Map<string, UpkeepHandle>();
+
+/**
+ * The file as a value: `null` when there is nothing to keep current.
+ *
+ * `dev:ino` is the identity a replaced file cannot fake. `birthtimeMs` is
+ * carried beside it because Windows reports `ino` as `0` on some filesystems,
+ * where the pair alone would make every projection look like every other one.
+ * Neither is load-bearing on its own and a platform that supplies neither
+ * degrades to "the file still exists", which is the check this had before —
+ * not to a wrong answer.
+ */
+function fileIdentity(file: string): string | null {
+  try {
+    const st = statSync(file);
+    // A zero-length file is a valid EMPTY SQLite database that opens clean and
+    // reports no tables, and "never built" is a real state here — the same trap
+    // `openProjectionReadOnlyChecked` guards with `PRAGMA page_count`.
+    return st.size === 0 ? null : `${st.dev}:${st.ino}:${st.birthtimeMs}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Closes and forgets one cached handle. Safe to call for a file with none. */
+function dropUpkeepHandle(file: string): void {
+  const held = upkeepHandles.get(file);
+  if (held === undefined) return;
+  upkeepHandles.delete(file);
+  try { held.db.close(); } catch { /* nothing usable to close */ }
+}
+
+/**
+ * Releases every held upkeep connection.
+ *
+ * For a caller that is about to delete the files underneath them — which in
+ * this repository means `test/helpers/tmp.ts` and nothing else. On Windows a
+ * directory cannot be removed while a handle inside it is open, and a
+ * process-lifetime handle over a temp corpus would turn `removeTree`'s
+ * occasional, reported leak into a certain one on every run, burying the
+ * signal that helper exists to give.
+ *
+ * Production never calls this: a hook exits, and the UI server wants the
+ * connection for as long as it is serving. Calling it is not an error — the
+ * next append reopens.
+ */
+export function closeProjectionUpkeep(): void {
+  for (const file of [...upkeepHandles.keys()]) dropUpkeepHandle(file);
+}
+
+/**
+ * A writable handle onto an EXISTING projection, or the reason there is none.
+ *
+ * Deliberately not `openProjection`, whose whole contract is the opposite of
+ * what is wanted here: it creates the file when it is missing, runs the schema
+ * on every open, and on a version mismatch or any failure `rmSync`s the
+ * database and both sidecars and builds a new one. Every one of those is
+ * correct for `mycontext audit`, which owns the projection, and wrong for an
+ * append, which is only keeping one that already exists in step.
+ *
+ * So: nothing is created, nothing is repaired, and anything unexpected is
+ * declined rather than fixed. The `audit_meta` read is also the shape probe —
+ * a file that is not a database, or one missing the table, fails here.
+ * `busy_timeout` IS set, unlike the read-only door, because this connection
+ * takes the write lock and two hooks in two sessions against one workspace is
+ * the ordinary case.
+ *
+ * **Damage THROWS out of here rather than returning a state**, and that is the
+ * whole reason this returns a union instead of `DatabaseSync | null`. `null`
+ * for both meant a projection truncated to garbage was reported as one that had
+ * never been built — the collapse `ProjectionAbsentError` exists on the read
+ * side to prevent, arriving on the write side by the back door. Caught by
+ * `a projection that cannot be written costs no record, no command, and no
+ * silence`, which asked for the note and got an empty string.
+ */
+function openProjectionForUpkeep(root: string): UpkeepDoor {
+  const file = auditDbPath(root);
+  const identity = fileIdentity(file);
+  if (identity === null) {
+    // Gone, or truncated to nothing. Any handle onto what used to be there is
+    // now a handle onto nothing and must not be reused.
+    dropUpkeepHandle(file);
+    return { kind: 'unbuilt' };
+  }
+  const held = upkeepHandles.get(file);
+  if (held !== undefined) {
+    if (held.identity === identity) return { kind: 'open', db: held.db };
+    // Same path, different file: discarded and rebuilt by `openProjection` in
+    // another process. The old handle is writing into an inode nothing will
+    // ever read from.
+    dropUpkeepHandle(file);
+  }
+  const db = new DatabaseSync(file);
+  try {
+    db.exec('PRAGMA busy_timeout = 3000;');
+    // **`NORMAL`, not the default `FULL`, and this is the one place in the
+    // product where that trade is right.** In WAL mode `NORMAL` skips the fsync
+    // on every commit and keeps it for the checkpoint; measured on this machine
+    // it takes one record's transaction from 2.10 ms p95 to 0.33 ms, which on a
+    // path that runs on every tool call is most of what this upkeep costs.
+    //
+    // What it gives up is bounded and is exactly what this store can afford to
+    // give up: WAL + `NORMAL` cannot corrupt the database, it can only lose
+    // COMMITTED transactions in a power loss or an OS crash. Losing them here
+    // means the projection is behind the log — a state the log's authority
+    // makes harmless, that `projectionState` detects, that the read surfaces
+    // report rather than answer from, and that `mycontext audit` ends. The
+    // record itself is already durable: `appendJsonlLine` wrote it to the log
+    // before this function was reached.
+    //
+    // Set on THIS connection only. `openProjection` keeps the default, because
+    // `mycontext audit` is the caller that rebuilds and a rebuild it has to
+    // repeat is a different cost from a row it has to re-derive.
+    db.exec('PRAGMA synchronous = NORMAL;');
+    const version = db.prepare(
+      `SELECT value FROM audit_meta WHERE key = 'version'`,
+    ).get() as { value: string } | undefined;
+    // An ABSENT version is not a mismatch: `syncProjection` stamps it only on a
+    // sync that did work, so a correct projection over an empty log carries
+    // none. A version this build does not read is declined — a write path
+    // never migrates, and never discards the way `openProjection` may.
+    if (version !== undefined && version.value !== String(PROJECTION_VERSION)) {
+      db.close();
+      return { kind: 'foreign' };
+    }
+    upkeepHandles.set(file, { db, identity });
+    return { kind: 'open', db };
+  } catch (err) {
+    try { db.close(); } catch { /* nothing usable to close */ }
+    throw err;
+  }
+}
+
+/**
+ * Carries the projection across a rotation this process performed itself.
+ *
+ * Rotation renames the live log to a dated segment and starts a fresh one.
+ * To `projectionState` that is a segment that SHRANK and a consumed file that
+ * is no longer listed — a divergence, twice over — so without this every 8 MiB
+ * of log would diverge the projection by the writer's own hand and leave it
+ * there until someone ran `mycontext audit`. Nothing was lost and nothing
+ * moved: the same bytes are under a new name, so the stored offset is still
+ * exactly right for the renamed file and the rows already projected from it
+ * are still in log order (the rotated segment sorts before the live log).
+ *
+ * Only ever called with a rename THIS process completed. A rotation another
+ * process won is a divergence here and is reported as one — this function
+ * cannot tell which bytes went where, and guessing is how a projection ends up
+ * holding a history that never happened.
+ *
+ * `audit.src` is rewritten as well as `audit_source.file`. No query reads
+ * `src` today; it is the provenance of the row, and provenance naming a path
+ * that no longer exists is wrong in the one table whose job is to say where a
+ * record came from. The scan happens once per `AUDIT_MAX_BYTES` — roughly one
+ * append in 30,000 — and its cost is measured in
+ * `test/perf/audit-latency.perf.ts`.
+ */
+function followRotation(db: DatabaseSync, live: string, rotatedTo: string): void {
+  db.prepare('UPDATE audit_source SET file = ? WHERE file = ?').run(rotatedTo, live);
+  db.prepare('UPDATE audit SET src = ? WHERE src = ?').run(rotatedTo, live);
+}
+
+/**
+ * Brings the projection into step with the log after an append. Never throws.
+ *
+ * `rotatedTo` is the segment `recordAudit` renamed the live log to immediately
+ * before its append, or `null` when it did not rotate.
+ *
+ * The whole thing — the rotation follow-up, the state check and the
+ * consumption — runs inside ONE `BEGIN IMMEDIATE`, so the state this decides
+ * on is the state it acts on. Reading `projectionState` outside the write lock
+ * and acting on it inside is how two appending processes both consume the same
+ * bytes; see `begin`.
+ */
+export function keepProjectionCurrent(
+  root: string, rotatedTo: string | null = null,
+): ProjectionUpkeep {
+  try {
+    const door = openProjectionForUpkeep(root);
+    if (door.kind !== 'open') return { outcome: door.kind, applied: 0 };
+    const db = door.db;
+
+    try {
+      begin(db);
+      if (rotatedTo !== null) followRotation(db, auditLogPath(root), rotatedTo);
+      const state = projectionState(root, db);
+      if (state === 'diverged') {
+        db.exec('ROLLBACK');
+        // **And the handle goes with it.** There is nothing to keep current
+        // until a rebuild happens, the rebuild belongs to `mycontext audit` in
+        // another process, and on Windows the connection held here would pin
+        // the very file that rebuild has to discard — this path would be
+        // holding the door shut on its own remedy. Every append until then
+        // pays one open and one `stat`, which is the right price for a state
+        // that is supposed to end.
+        dropUpkeepHandle(auditDbPath(root));
+        return { outcome: 'diverged', applied: 0 };
+      }
+      const applied = state === 'behind' ? advanceSources(root, db, sources(db)) : 0;
+      if (applied > 0 || rotatedTo !== null) stampVersion(db);
+      db.exec('COMMIT');
+      return { outcome: 'updated', applied };
+    } catch (err) {
+      try { db.exec('ROLLBACK'); } catch { /* SQLite may have rolled back already */ }
+      throw err;
+    }
+  } catch (err) {
+    // The handle is DROPPED, not reused. Whatever went wrong, this connection
+    // has just failed a transaction against this file and there is no cheap way
+    // to establish that it is still good; the next append opens a fresh one and
+    // finds out honestly. Holding on to it would make one failure permanent for
+    // the life of the process — which for the UI server is the life of the
+    // session.
+    dropUpkeepHandle(auditDbPath(root));
+    return {
+      outcome: 'failed',
+      applied: 0,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 /**
@@ -305,6 +692,16 @@ export function openProjection(root: string): DatabaseSync {
    * below to open whatever is there and report its own failure honestly.
    */
   const discard = (): void => {
+    // **This process's own upkeep handle first.** `recordAudit` holds one
+    // write connection per projection for the life of the process (see
+    // `interface UpkeepHandle`), and on Windows an open handle pins the file:
+    // a `discard()` that runs while it is still open silently removes nothing
+    // and `fresh()` reopens the very database this was called to be rid of.
+    // That is the same trap the closed-before-the-throw comment below records,
+    // arriving from a different direction. A handle held by ANOTHER process is
+    // not reachable from here and never was — `discard()` tolerates a failed
+    // remove and says so.
+    dropUpkeepHandle(file);
     for (const target of [file, `${file}-wal`, `${file}-shm`]) {
       try {
         rmSync(target, { force: true, maxRetries: 20, retryDelay: 25 });

@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { auditLogPath, recordAudit } from '../../src/core/audit.ts';
 import { Ledger } from '../../src/core/ledger.ts';
-import { auditDbPath, openProjection, syncProjection } from '../../src/core/audit-db.ts';
+import {
+  auditDbPath, closeProjectionUpkeep, openProjection, syncProjection,
+} from '../../src/core/audit-db.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -369,6 +371,13 @@ test('a projection that cannot be synced falls back to the log AND says so', () 
     recordAudit(p.root, {
       kind: 'mutation', op: 'discard', origin: 'human', itemId: 'RULE-c',
     });
+    // This process is holding the write connection `recordAudit` keeps for the
+    // life of a process (`core/audit-db.ts` · `interface UpkeepHandle`), and on
+    // Windows an open handle pins the file — `rmSync` raises `EPERM` and the
+    // directory below is never created. Released rather than retried around,
+    // because what is being staged here is a corpus a person walked up to and
+    // broke, with nothing of ours running.
+    closeProjectionUpkeep();
     rmSync(auditDbPath(p.root), { force: true, maxRetries: 20, retryDelay: 25 });
     rmSync(`${auditDbPath(p.root)}-wal`, { force: true, maxRetries: 20, retryDelay: 25 });
     rmSync(`${auditDbPath(p.root)}-shm`, { force: true, maxRetries: 20, retryDelay: 25 });

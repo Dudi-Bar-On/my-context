@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
+import { appendUnprojected } from '../helpers/unprojected-audit.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { auditLogPath, recordAudit } from '../../src/core/audit.ts';
@@ -186,7 +187,14 @@ test('/api/watch/volume: a projection behind its log refuses rather than answeri
     buildProjection(dir);
     // A record the projection has not consumed. A read may not sync it in —
     // syncing is a write — so the only honest answer is to say so.
-    recordAudit(root, { kind: 'focus', op: 'focus-clear', sessionId: 's1' });
+    //
+    // Appended around `recordAudit`, which projects what it appends now
+    // (`core/audit-db.ts` · `export function keepProjectionCurrent(`) and so
+    // no longer leaves this state behind. The refusal below is unchanged: what
+    // has changed is how often a real corpus arrives at it, not what it owes a
+    // reader when it does. `test/helpers/unprojected-audit.ts` lists the ways
+    // that are left.
+    appendUnprojected(root, { kind: 'focus', op: 'focus-clear', sessionId: 's1' });
 
     const result = apiWatchVolume(ws, url('/api/watch/volume'));
     assert.equal(result.status, 503);

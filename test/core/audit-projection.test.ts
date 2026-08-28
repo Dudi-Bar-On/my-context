@@ -6,13 +6,14 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  AUDIT_MAX_BYTES, AUDIT_PROTOCOL, auditLogPath, filterAudit, readAudit, recordAudit,
-  type AuditFilter,
+  AUDIT_MAX_BYTES, AUDIT_PROTOCOL, auditDir, auditLogPath, filterAudit, readAudit,
+  recordAudit, type AuditFilter,
 } from '../../src/core/audit.ts';
 import {
   auditDbPath, openProjection, projectionState, queryProjection, sessions, syncProjection,
   topItems,
 } from '../../src/core/audit-db.ts';
+import { appendJsonlLine } from '../../src/core/jsonl-log.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { createItem } from '../../src/core/mutate.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -154,9 +155,17 @@ test('a log that has grown reads as behind, and syncing catches it up incrementa
     syncProjection(b.root, db);
     const before = queryProjection(db, {}).length;
 
-    recordAudit(b.root, {
+    // **Appended around `recordAudit`, on purpose.** `recordAudit` projects
+    // what it appends now, so it no longer leaves a log ahead of its
+    // projection — `test/core/audit-projection-current.test.ts` is where that
+    // is asserted. What is asserted HERE is the catch-up itself, which is
+    // still what answers for every other way the log gets ahead: a record
+    // written by an older build, a log copied in, an append whose upkeep
+    // failed, or one left behind after a divergence the write path may not
+    // repair. So the line is written the way all of those leave it.
+    appendJsonlLine(auditDir(b.root), auditLogPath(b.root), {
+      protocol: AUDIT_PROTOCOL, at: '2026-08-17T10:00:00.000Z',
       kind: 'mutation', op: 'create', origin: 'human', itemId: 'RULE-new',
-      at: '2026-08-17T10:00:00.000Z',
     });
     assert.equal(projectionState(b.root, db), 'behind');
     assert.equal(syncProjection(b.root, db), 'behind');
@@ -212,16 +221,33 @@ test('a rotation is survived: everything before and after it is still queryable 
     }) + '\n';
     while (statSync(file).size < AUDIT_MAX_BYTES) appendFileSync(file, filler.repeat(2000), 'utf8');
 
-    recordAudit(b.root, {
+    // This append rotates the log: `recordAudit` renames the full live file to
+    // a dated segment and starts a fresh one.
+    const write = recordAudit(b.root, {
       kind: 'mutation', op: 'create', origin: 'human', itemId: 'AFTER-a',
       at: '2026-08-16T10:00:00.000Z',
     });
 
-    // The live log was renamed out from under the projection, so this is a
-    // divergence and a full rebuild — which is correct and self-healing.
-    assert.equal(syncProjection(b.root, db), 'diverged');
+    // **The rotation no longer diverges the projection, and that is a change
+    // from what this test used to assert.** A rename is the one thing an
+    // append-only log does that a position-tracked projection cannot reconcile
+    // by appending: the same bytes reappear under a name it has never heard of
+    // and the live log it HAS heard of has shrunk to nothing. That read as
+    // `diverged`, and the answer was a full rebuild — correct, self-healing,
+    // and paid for by whoever next ran `mycontext audit`. But the process that
+    // renamed the file KNOWS both names, so it carries the offsets across
+    // rather than destroying the work and redoing it
+    // (`core/audit-db.ts` · `function followRotation(`). The projection stays
+    // current through its own writer's rotation; a rotation THIS process did
+    // not perform is still a divergence and is still reported as one.
+    assert.equal(write.projection?.outcome, 'updated');
+    assert.equal(projectionState(b.root, db), 'fresh');
+    assert.equal(syncProjection(b.root, db), 'fresh');
     const ids = queryProjection(db, { op: 'create' }).map((r) => r.itemId);
     assert.deepEqual(ids, ['BEFORE-a', 'AFTER-a']);
+    // Order across the rename is the property the rebuild used to guarantee,
+    // so it is asserted against the log rather than against the two ids alone.
+    assert.deepEqual(queryProjection(db, {}), filterAudit(readAudit(b.root), {}));
   } finally {
     db.close();
     b.dispose();

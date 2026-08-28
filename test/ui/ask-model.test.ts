@@ -4,6 +4,7 @@ import { mkdtempSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
+import { appendUnprojected } from '../helpers/unprojected-audit.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { Store } from '../../src/core/store.ts';
@@ -237,7 +238,13 @@ test('/api/ask/audit: a projection behind its log refuses rather than answering 
     buildProjection(dir);
     // A record the projection has not consumed. A read may not sync it in —
     // syncing is a write — so the only honest answer is to say so.
-    recordAudit(root, { kind: 'focus', op: 'focus-clear', sessionId: 's1' });
+    //
+    // Appended around `recordAudit`, which projects what it appends now
+    // (`core/audit-db.ts` · `export function keepProjectionCurrent(`) and so
+    // no longer leaves this state behind. The state itself is unchanged and so
+    // is the rule about it; `test/helpers/unprojected-audit.ts` lists the four
+    // ways a real corpus still reaches it.
+    appendUnprojected(root, { kind: 'focus', op: 'focus-clear', sessionId: 's1' });
 
     const result = apiAskAudit(ws, url('/api/ask/audit'));
     assert.equal(result.status, 503);
@@ -575,9 +582,13 @@ test('/api/ask/summary?report=tasks: a stale projection is refused, exactly as r
   try {
     const ws = resolveWorkspace(dir);
     buildProjection(dir);
-    // One record the projection has not consumed — on the read surface this is
-    // routinely an `access` record from a 401. Catching it up is a write.
-    recordAudit(root, { kind: 'focus', op: 'focus-clear', origin: 'agent' });
+    // One record the projection has not consumed. It USED to be routine on the
+    // read surface — a 401 writes an `access` record, so one unauthenticated
+    // request staled the projection the next read then refused to answer from.
+    // That is fixed at the writer, not here: the record is now projected as it
+    // is appended. The state is still reachable and still refused, so it is
+    // still tested, and `test/helpers/unprojected-audit.ts` says how.
+    appendUnprojected(root, { kind: 'focus', op: 'focus-clear', origin: 'agent' });
 
     const ops = apiAskSummary(ws, url('/api/ask/summary', 'report=ops'));
     const tasks = apiAskSummary(ws, url('/api/ask/summary', 'report=tasks'));

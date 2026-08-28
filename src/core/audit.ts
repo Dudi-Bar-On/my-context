@@ -3,6 +3,14 @@ import path from 'node:path';
 import {
   appendJsonlLine, parseJsonlLog, readJsonlFile, type JsonlRow,
 } from './jsonl-log.ts';
+// The projection, imported by the appender so that the ONE place a record is
+// appended is also the one place it is projected. That makes this module and
+// `audit-db.ts` import each other, which is safe and is deliberate rather than
+// overlooked: neither one calls the other at module evaluation — every use is
+// inside a function body — so the cycle resolves whichever module is entered
+// first. The alternative was a second appender wrapping this one, and a second
+// appender is exactly how a projection falls behind again.
+import { keepProjectionCurrent, type ProjectionUpkeep } from './audit-db.ts';
 // Type-only, and erased at run time: this module gains no dependency and no
 // import cost from it. The state union is IMPORTED rather than respelled so
 // that "off | missing | read" has exactly one definition — `HandoverRead` is
@@ -896,21 +904,34 @@ function specFor(file: string) {
  * Best-effort: a rotation that fails leaves the live log where it is and the
  * append proceeds. An oversized log is a growth problem; a lost record is an
  * audit problem, and only one of the two is worth failing a write over.
+ *
+ * **Returns the segment it renamed the log to, or `null`**, because the
+ * projection has to be told. A rename is the one thing an append-only log does
+ * that a position-tracked projection cannot reconcile by appending — the same
+ * bytes reappear under a name it has never heard of, and the live log it HAS
+ * heard of has shrunk to nothing. `keepProjectionCurrent` carries the offsets
+ * across the rename when it is handed the new name, and reports a divergence
+ * when it is not; `null` is therefore an answer this function must be honest
+ * about, and a rotation another process won returns `null` here because this
+ * one did not perform it.
  */
-function rotateIfFull(root: string, file: string): void {
+function rotateIfFull(root: string, file: string): string | null {
   let size: number;
   try {
     size = statSync(file).size;
   } catch {
-    return; // no log yet
+    return null; // no log yet
   }
-  if (size < AUDIT_MAX_BYTES) return;
+  if (size < AUDIT_MAX_BYTES) return null;
   const stamp = new Date().toISOString().replace(/[-:.]/g, '');
+  const rotated = path.join(auditDir(root), `audit.${stamp}-${process.pid}.jsonl`);
   try {
-    renameSync(file, path.join(auditDir(root), `audit.${stamp}-${process.pid}.jsonl`));
+    renameSync(file, rotated);
+    return rotated;
   } catch {
     // Another process may have rotated it out from under us, or the rename may
     // have been refused. Either way the append below is still correct.
+    return null;
   }
 }
 
@@ -919,19 +940,56 @@ export interface AuditWriteResult {
   written: boolean;
   /** The failure, when `written` is false. Never swallowed — callers disclose it. */
   error?: string;
+  /**
+   * What the same call did to the audit projection beside the log. Present
+   * whenever `written` is true, and absent when it is false — there is nothing
+   * to project when nothing was appended.
+   *
+   * Four outcomes and only one of them is a fault: `updated` (the projection
+   * is current), `unbuilt` (there is no projection to keep current, which is an
+   * empty state), `diverged` (a rebuild is owed, and a rebuild is
+   * `mycontext audit`'s to do), `failed` (a fault, spoken by
+   * `auditFailureNote`).
+   */
+  projection?: ProjectionUpkeep;
 }
 
 /**
  * The sentence a caller appends to its own message when the audit record could
- * not be written. Spelled once so no surface invents a softer wording for it.
+ * not be written, or when it was written and the projection beside it could
+ * not be updated. Spelled once so no surface invents a softer wording for it.
+ *
+ * The two are different failures and are worded as such. A record that never
+ * reached the LOG is missing from the history for good. A record that reached
+ * the log but not the PROJECTION costs nothing durable — the log is the
+ * authority and holds it — and leaves the projection behind, which the read
+ * surfaces already report honestly and `mycontext audit` ends. Reporting the
+ * second in the first's words would tell a user their audit trail has a hole
+ * in it when it does not.
+ *
+ * `unbuilt` and `diverged` are deliberately silent here. Neither is a fault:
+ * one is a workspace that has never built a projection, the other is a state
+ * the read surface names precisely and a rebuild resolves. The task that asked
+ * for this said so exactly — the correct outcome is that state, not an error
+ * pressed into every caller's output.
  */
 export function auditFailureNote(result: AuditWriteResult): string {
-  if (result.written) return '';
-  return (
-    ` NOTE: the operation succeeded but its audit record could NOT be written ` +
-    `(${result.error}). This operation is missing from \`mycontext audit\`. Fix the underlying ` +
-    `error before relying on the log being complete.`
-  );
+  if (!result.written) {
+    return (
+      ` NOTE: the operation succeeded but its audit record could NOT be written ` +
+      `(${result.error}). This operation is missing from \`mycontext audit\`. Fix the underlying ` +
+      `error before relying on the log being complete.`
+    );
+  }
+  if (result.projection?.outcome === 'failed') {
+    return (
+      ` NOTE: the audit record was written, but the audit PROJECTION could not be updated ` +
+      `(${result.projection.error}). No record was lost — the log is the authority and holds it ` +
+      `— but the projection is now behind the log, which read surfaces report rather than answer ` +
+      `from. \`mycontext audit\` catches it up.`
+    );
+  }
+  return '';
 }
 
 /**
@@ -956,9 +1014,16 @@ export function auditFailureNote(result: AuditWriteResult): string {
  *    failing open, stated here and in both READMEs rather than papered over.
  */
 export function recordAudit(root: string, input: AuditInput): AuditWriteResult {
+  let rotatedTo: string | null = null;
+  // **The log append gets its own try, and the projection is outside it.**
+  // Not tidiness: a projection error caught by THIS block would be returned as
+  // `written: false` for a record that is on disk, and a caller would tell a
+  // user their operation is missing from the audit log when it is not. The
+  // authority is settled here and reported below; the derived store is dealt
+  // with afterwards or not at all.
   try {
     const file = auditLogPath(root);
-    rotateIfFull(root, file);
+    rotatedTo = rotateIfFull(root, file);
     // `at` is written AFTER the spread, not before it: a caller that passes
     // `at: undefined` explicitly (which `exactOptionalPropertyTypes` does not
     // forbid) would otherwise spread that `undefined` over a good stamp and
@@ -972,10 +1037,15 @@ export function recordAudit(root: string, input: AuditInput): AuditWriteResult {
       at: input.at ?? new Date().toISOString(),
     };
     appendJsonlLine(auditDir(root), file, record);
-    return { written: true };
   } catch (err) {
     return { written: false, error: err instanceof Error ? err.message : String(err) };
   }
+  // The record is in the log. Everything from here is upkeep on a derived
+  // store: `keepProjectionCurrent` never throws, never rebuilds, and never
+  // creates a projection that does not exist, so the worst it can do is leave
+  // the projection exactly where the old behaviour left it after EVERY append
+  // — one record behind — and say so.
+  return { written: true, projection: keepProjectionCurrent(root, rotatedTo) };
 }
 
 /**

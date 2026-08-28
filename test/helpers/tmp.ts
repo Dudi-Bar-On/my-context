@@ -1,4 +1,5 @@
 import { rmSync } from 'node:fs';
+import { closeProjectionUpkeep } from '../../src/core/audit-db.ts';
 
 /**
  * Remove a temp directory tree, retrying briefly on the transient failures
@@ -43,6 +44,16 @@ import { rmSync } from 'node:fs';
  * site, not be a helper some files happen to use.
  */
 export function removeTree(dir: string): void {
+  // `recordAudit` holds one upkeep connection per audit projection for the life
+  // of the PROCESS — measured, and the alternative was 10 ms per record on the
+  // hook path (`core/audit-db.ts` · `interface UpkeepHandle`). In production
+  // that handle outlives nothing that matters: a hook exits, and the UI server
+  // wants it. In a test run, every temp corpus is deleted while this process
+  // keeps running, and on Windows a directory cannot be removed while a handle
+  // inside it is open — so without this line the occasional, reported leak
+  // above becomes a certain one on every run, and the signal it exists to give
+  // is buried. The next append reopens.
+  closeProjectionUpkeep();
   try {
     rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 25 });
   } catch (err) {
