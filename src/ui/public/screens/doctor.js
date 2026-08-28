@@ -71,11 +71,21 @@
  * three since the screen was written, and `screens/work.js` cites it as the
  * precedent for its own.
  *
+ * **AND SINCE 2026-08-29 IT SAYS SO RATHER THAN DRAWING BARE.** The paragraph
+ * above was correct about every byte it drew and silent about what it did not,
+ * which is the shape of half this day's findings. A row whose code composes
+ * nothing now carries `doc.norepair` — the strip's own `.chip.unmeas`, two words
+ * on screen and the reason in a `title` — and the screen opens with `doc.tally`,
+ * the count of findings beside the count that carry a repair. Neither is new
+ * data: `repairFor` already answers `null` at the one point where the fact is
+ * known. What is new is that the fact is said. `noRepairChip` and `repairTally`
+ * carry the owner report and the reasoning.
+ *
  * **A clean corpus draws three empty cards, not an empty screen.** Owner
  * ruling: empty renders the real markup with zero rows. A refusal is the other
  * case, and is drawn INSTEAD of the data, in the endpoint's own words.
  */
-import { groupFindings } from '/lib/viewmodel.js';
+import { groupFindings, repairTally } from '/lib/viewmodel.js';
 import { composeCommand } from '/lib/command.js';
 import { PALETTE, commandFor } from '/lib/palette-defs.js';
 import { commandActions } from '/lib/command-actions.js';
@@ -298,6 +308,57 @@ function messageCell(message) {
 }
 
 /**
+ * **`no automated repair` — the row saying what it has, instead of drawing
+ * bare.**
+ *
+ * Owner, 2026-08-28: *"doctor lost it's execute an fix controls ? why yo broke
+ * it ?"* Nothing had. That day cleared nine `source_file` links, which retired
+ * every `source_drift` — the code that had been supplying most of this screen's
+ * controls — and `plan:categories seq:21` added `blocked_without_needs`, whose
+ * remedy is a PERSON naming a blocker and which is correctly not automatable.
+ * The corpus got healthier and the toolbar went quiet, and **quiet is what
+ * broken looks like**. The reaction was the cost of the silence, not a
+ * misreading of it.
+ *
+ * `repairFor` already answers `null` at the one point where the fact is known,
+ * so the disclosure needs no new data and no new endpoint — only somewhere to
+ * be said.
+ *
+ * **The primitive is the strip's, not a fourth spelling of it.** `app.js`'s
+ * `stateChip` draws `strip.unread`, `strip.unmeasured` and `screen.unread` as
+ * `span.chip.unmeas` with `data-g="◌"` and the reason in a `title`
+ * (`src/ui/public/app.js` · `chip.className = 'chip unmeas';` · ~1514), under
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`. The same
+ * shape, the same glyph, the same split of two words on screen and the sentence
+ * in the title. That function is module-private to the shell and this screen
+ * imports nothing from `app.js`, so the element is rebuilt here rather than
+ * shared; what must not diverge is the VOCABULARY, and it does not.
+ *
+ * **Neutral, and that is a decision.** `.chip.unmeas` borrows no meaning hue —
+ * an absent repair is not a warning, and this screen already argues one section
+ * up that the level's own card heading is where severity is said. A `.chip.warn`
+ * here would give a `notice` row a warning's colour for the crime of being
+ * ordinary.
+ *
+ * **In the message cell, after the message, which is where the mockup puts a
+ * badge about a row.** `<span class="prop">PROPOSED</span>` sits exactly there
+ * on three of its own rows
+ * (`docs/design/web-ui-mockup.html` · `repo has none of them.</span> <span class="prop">PROPOSED</span>` · ~2217).
+ * A fourth `<td>` would change the table's shape for a fact that is about the
+ * finding rather than a column of its own.
+ */
+function noRepairChip(ctx) {
+  const chip = el('span', 'chip unmeas');
+  chip.dataset.g = '◌';
+  chip.append(...ctx.t('doc.norepair'));
+  // `tFlat` because an attribute cannot hold an element — the same reason
+  // `stateChip` flattens, and the flattening is lossless here: the key carries
+  // no isolated run.
+  chip.title = ctx.tFlat('title.noRepair');
+  return chip;
+}
+
+/**
  * `<div class="cmd"><code>…</code></div>` — the mockup's command row — followed
  * by the ONE Copy-and-Execute control.
  *
@@ -348,6 +409,36 @@ export async function render(root, ctx) {
     return;
   }
 
+  // **THE TALLY, and it is drawn at every count including zero.**
+  //
+  // "findings: 2 · with an automated repair: 0" is a different sentence from an
+  // empty toolbar, and it is the one a reader can act on. It sits ABOVE the
+  // cards rather than inside one because it is a fact about the whole run: the
+  // repairs are spread across three cards, and a number in one of them would be
+  // a fraction of the wrong denominator.
+  //
+  // AFTER the fetch, never before, and for the reason `errorNote` returns above:
+  // a doctor that could not run and a corpus with no findings are opposite
+  // facts, and a tally reading zero would report the good one over a refusal.
+  //
+  // The two slots are spelled out rather than spread from `tally`, because the
+  // scan in `test/ui/viewmodel.test.ts` that proves every `{slot}` a key
+  // declares is actually supplied reads the ARGUMENT LITERAL — a spread it
+  // cannot see is a substitution nothing checks, and `t()` throws on a missing
+  // one at render time rather than leaving braces on screen.
+  const tally = repairTally(data.findings);
+  const summary = el('p', 'small');
+  summary.append(...ctx.t('doc.tally', { findings: tally.findings, repairs: tally.repairs }));
+  // `.small` carries no margin and `.card` only a bottom one, so this would
+  // otherwise sit flush against the first card's top edge and read as part of
+  // it. Set through the CSSOM and never as an attribute — `style-src 'self'`
+  // carries no `'unsafe-inline'` — and with a LOGICAL property and the
+  // stylesheet's own spacing token, which is the treatment `screens/parts.js`'s
+  // `spaced` established for exactly this
+  // (`src/ui/public/screens/parts.js` · `e.style.setProperty('margin-block-start', '8px');` · ~55).
+  summary.style.setProperty('margin-block-end', 'var(--sp-3)');
+  root.append(summary);
+
   const groups = groupFindings(data.findings);
 
   for (const card of CARDS) {
@@ -371,7 +462,16 @@ export async function render(root, ctx) {
       const who = row.item === null ? el('td', 'small', '—') : el('td');
       if (row.item !== null) who.append(linkId(row.item, false));
 
-      tr.append(who, messageCell(row.message));
+      const message = messageCell(row.message);
+      // The row says what it HAS. `repairFor` is asked once per row here and
+      // again inside `cardCommands` below; that is two calls to a pure function
+      // over four `if`s, and it keeps the chip and the `.cmd` block reading the
+      // same decision rather than this loop passing a flag down to it.
+      if (repairFor(row.code, row.item) === null) {
+        message.append(document.createTextNode(' '), noRepairChip(ctx));
+      }
+
+      tr.append(who, message);
       tbody.append(tr);
     }
 

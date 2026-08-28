@@ -115,6 +115,12 @@ interface ViewModelModule {
    * `Finding.item` is optional and the absence is real.
    */
   repairCommandFor: (code: string, item: string | null) => string | null;
+  /**
+   * `plan:walk seq:61`: how many findings there are, and how many of them a
+   * command can repair — the two numbers `doc.tally` substitutes, under the
+   * slot names it declares.
+   */
+  repairTally: (findings: Finding[]) => { findings: number; repairs: number };
   /** Task 18: the coverage tree, the gap list, and the ego graph's columns. */
   buildTree: (files: { path: string; governs: string[] }[]) => TreeNode;
   coverageGaps: (tree: TreeNode) => string[];
@@ -1005,6 +1011,63 @@ test('repairCommandFor quotes its one argument, and refuses to compose without o
     'mycontext refresh "RULE with spaces" --yes');
   assert.equal(repairCommandFor('source_drift', null), null);
   assert.equal(repairCommandFor('source_drift', ''), null);
+});
+
+/**
+ * **`plan:walk seq:61` — the number that tells a healthy corpus from a broken
+ * screen.**
+ *
+ * Owner, 2026-08-28: *"doctor lost it's execute an fix controls ? why yo broke
+ * it ?"* Nothing had. That day cleared nine `source_file` links — which retired
+ * every `source_drift`, the code supplying most of the screen's controls — and
+ * `blocked_without_needs` landed, whose remedy is a person naming a blocker.
+ * The two facts a reader had to tell apart from an identical blank toolbar were
+ * "this corpus needs no command" and "this build lost its commands", and the
+ * only difference a screen can draw is a count.
+ *
+ * The three cases below are the three the report is made of, and the first is
+ * the one that reproduces the owner's corpus exactly: two findings, both real
+ * codes, neither repairable, and a tally that says so instead of nothing.
+ */
+test('repairTally counts the findings and the ones a command can repair', async () => {
+  const { repairTally } = await vm();
+
+  // The owner's own corpus on 2026-08-28, code for code.
+  assert.deepEqual(
+    repairTally([
+      { level: 'warn', code: 'blocked_without_needs', message: 'm', item: 'TASK-a' },
+      { level: 'info', code: 'nested_corpus', message: 'm' },
+    ]),
+    { findings: 2, repairs: 0 },
+    'a corpus whose findings are all repaired by a person must still be COUNTED — a zero here '
+    + 'is the sentence that distinguishes it from a screen that lost its controls',
+  );
+
+  assert.deepEqual(repairTally([]), { findings: 0, repairs: 0 });
+
+  // **Findings, not deduped command lines.** `cardCommands` dedupes by the
+  // composed line because two rows sharing a code share one `.cmd` block; that
+  // is a count of CONTROLS. This is the count of rows those controls answer
+  // for, which is what "of N findings" is a fraction of. Two `index_stale` rows
+  // compose one line and are two repairable findings.
+  assert.deepEqual(
+    repairTally([
+      { level: 'error', code: 'index_stale', message: 'm' },
+      { level: 'error', code: 'index_stale', message: 'm' },
+      { level: 'warn', code: 'dead_scope', message: 'm', item: 'INV-a' },
+    ]),
+    { findings: 3, repairs: 2 },
+  );
+
+  // `source_drift` with no item composes nothing (see the test above), so it is
+  // an UNREPAIRABLE finding and the tally must agree with the row that draws it.
+  assert.deepEqual(
+    repairTally([
+      { level: 'error', code: 'source_drift', message: 'm', item: 'RULE-a' },
+      { level: 'error', code: 'source_drift', message: 'm' },
+    ]),
+    { findings: 2, repairs: 1 },
+  );
 });
 
 

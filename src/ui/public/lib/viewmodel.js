@@ -635,6 +635,50 @@ export function repairCommandFor(code, item) {
   return null;
 }
 
+/**
+ * **How many findings there are, and how many of them a command can repair.**
+ *
+ * `null` above is the ORDINARY answer — most findings are repaired by editing a
+ * file, and the docstring says so — but until 2026-08-29 nothing on the screen
+ * counted them, so a corpus in which every finding was of that ordinary kind
+ * drew no repair control anywhere and said nothing about why. Owner, 2026-08-28:
+ * *"doctor lost it's execute an fix controls ? why yo broke it ?"* Nothing had
+ * broken. Nine `source_file` links had been cleared, which retired every
+ * `source_drift`, and `blocked_without_needs` had landed — a finding whose
+ * remedy is a PERSON naming a blocker, correctly not automatable. The corpus got
+ * healthier and the toolbar went quiet, and quiet is what broken looks like.
+ *
+ * A number is what makes the two states tell themselves apart. "2 findings, 0
+ * with an automated repair" is a sentence a reader can act on; an empty toolbar
+ * is a sentence about the reader's own build.
+ *
+ * **It counts FINDINGS, not composed lines, and the difference is deliberate.**
+ * `screens/doctor.js`' `cardCommands` dedupes by the composed line, because two
+ * rows sharing a code share one `.cmd` block — that is a count of CONTROLS. This
+ * is a count of the rows those controls answer for, which is the number the
+ * sentence beside it ("N findings") is a fraction of. Counting deduped lines
+ * here would produce "4 findings, 1 with an automated repair" over four
+ * `index_stale` rows that every one of them repairs.
+ *
+ * It reads `repairCommandFor` rather than a second table, so the tally and the
+ * per-row disclosure can never disagree about a code:
+ * `test/ui/doctor-screen.test.ts` already holds that function and the screen's
+ * own `repairFor` equal code by code.
+ *
+ * The keys are the SLOT NAMES `doc.tally` substitutes, so no third spelling of
+ * "findings" exists to drift. The call site still writes the two out as a literal
+ * rather than spreading this object — see its own comment: the scan that proves
+ * every declared slot is supplied reads the argument literal, and a spread is
+ * invisible to it.
+ */
+export function repairTally(findings) {
+  let repairs = 0;
+  for (const finding of findings) {
+    if (repairCommandFor(finding.code, finding.item ?? null) !== null) repairs += 1;
+  }
+  return { findings: findings.length, repairs };
+}
+
 // --- The write preview, lifted out of one screen ----------------------------
 //
 // **`fieldView` was declared by `plan:ui2 seq:11` as `writeBlock` and never

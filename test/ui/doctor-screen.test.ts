@@ -105,6 +105,9 @@ async function doctorModule(): Promise<DoctorModule> {
 
 interface CommandModule { composeCommand: (argv: string[]) => string }
 interface ViewModelModule { repairCommandFor: (code: string, item: string | null) => string | null }
+interface TallyModule {
+  repairTally: (findings: Finding[]) => { findings: number; repairs: number };
+}
 interface DefsModule {
   PALETTE: { name: string }[];
   commandFor: (def: unknown, values: Record<string, unknown>) => string[];
@@ -402,6 +405,101 @@ test("every repair the screen composes is byte-identical to viewmodel's own line
   }
   assert.ok(composed >= 5,
     `only ${composed} repair(s) were compared; the loop stopped seeing the ones that exist`);
+});
+
+/**
+ * **`plan:walk seq:61` — the row that has no repair and the tally that counts
+ * it must read the SAME decision, or the screen contradicts itself.**
+ *
+ * The chip is drawn from `repairFor` (the catalogue-entry shape the control
+ * takes) and the tally is counted by `repairCommandFor` (the composed line).
+ * The test above already holds those two byte-identical code by code, which is
+ * what makes it safe for two callers to ask different functions the same
+ * question — this pins the consequence: over one array of findings, the number
+ * of rows that would draw a chip plus the number the tally calls repairable is
+ * exactly the number of findings, with no row counted twice and none missed.
+ *
+ * Worth its own test rather than left as a corollary, because the failure it
+ * catches is the one the owner actually saw wearing a new hat: a screen saying
+ * "with an automated repair: 2" over three rows every one of which draws a chip
+ * saying it has none is a worse silence than the blank toolbar it replaced.
+ */
+test('the tally and the per-row disclosure read one decision, never two', async () => {
+  const { repairFor } = await doctorModule();
+  const { repairTally } = await browserModule<TallyModule>('lib', 'viewmodel.js');
+
+  // Two unrepairable (the owner's own corpus), one repairable, one repairable
+  // code whose MISSING item makes it unrepairable — the case where the two
+  // functions could most easily disagree, since only one of them takes an item.
+  const findings: Finding[] = [
+    { level: 'warn', code: 'blocked_without_needs', message: 'm', item: 'TASK-a' },
+    { level: 'info', code: 'nested_corpus', message: 'm' },
+    { level: 'error', code: 'index_stale', message: 'm' },
+    { level: 'error', code: 'source_drift', message: 'm' },
+  ];
+  const chips = findings.filter((f) => repairFor(f.code, f.item ?? null) === null).length;
+  const tally = repairTally(findings);
+  assert.deepEqual(tally, { findings: 4, repairs: 1 });
+  assert.equal(chips + tally.repairs, tally.findings,
+    'a finding is either drawn with a repair or drawn with the chip that says it has none; a '
+    + 'row counted by both or by neither is the screen disagreeing with its own summary');
+});
+
+/**
+ * **The disclosure exists, it is the STRIP'S primitive, and it is neutral.**
+ *
+ * A source scan, because what is under test here is DOM glue and spec §6 keeps
+ * that out of this file — but the alternative to scanning is not testing the
+ * decision at all, and the decision is the whole task. Three properties, each
+ * of which failing would reproduce a defect this project has already shipped:
+ *
+ *  - the chip is drawn only where `repairFor` answered `null` — a chip on every
+ *    row says nothing;
+ *  - it is `chip unmeas` with `data-g`, the same element `app.js`'s `stateChip`
+ *    builds for `strip.unread`, `strip.unmeasured` and `screen.unread`. A fourth
+ *    spelling of "nothing here, and here is why" would be worse than the silence
+ *    it replaces (STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is);
+ *  - it borrows no meaning hue. `.chip.warn` on a `notice` row would give it a
+ *    warning's colour for being ordinary, and this screen's own header argues at
+ *    length that severity is said by the card heading and nowhere else.
+ */
+test('a row with no repair draws the strip\'s own unmeasured chip, and only there', async () => {
+  assert.ok(/repairFor\(row\.code,\s*row\.item\)\s*===\s*null/.test(doctorSource),
+    'the screen no longer asks whether the row has a repair before disclosing that it has none');
+  assert.ok(/noRepairChip\(ctx\)/.test(doctorSource), 'nothing draws the disclosure');
+  assert.ok(/el\('span',\s*'chip unmeas'\)/.test(doctorSource),
+    'the disclosure is no longer the strip\'s `.chip.unmeas` primitive');
+  assert.ok(/dataset\.g\s*=\s*'◌'/.test(doctorSource),
+    'the chip lost the glyph that keeps the state legible with no colour at all');
+  for (const hue of ['chip warn', 'chip crit', 'chip ok', 'chip gov', 'chip carry']) {
+    assert.ok(!doctorSource.includes(hue),
+      `the disclosure now wears "${hue}" — an absent repair is not a severity, and this screen `
+      + 'says severity with the card heading');
+  }
+});
+
+/**
+ * **The tally is drawn after the fetch and before the cards, and at every count
+ * including zero.**
+ *
+ * Placement is the assertion. Drawn BEFORE the `await`, it would state "findings:
+ * 0" over a doctor that never ran — the exact read-clean-next-to-a-failure trap
+ * `errorNote` returns early to avoid. Drawn inside a card, it would be a
+ * fraction of the wrong denominator: the repairs are spread across three levels.
+ */
+test('the tally is a fact about the whole run, drawn only once the run answered', async () => {
+  const errorReturn = doctorSource.indexOf('root.append(errorNote(error.message));');
+  const tally = doctorSource.indexOf("ctx.t('doc.tally'");
+  const cards = doctorSource.indexOf('for (const card of CARDS)');
+  assert.ok(errorReturn !== -1 && tally !== -1 && cards !== -1,
+    'the scan lost one of its three anchors, so the ordering below is checking nothing');
+  assert.ok(errorReturn < tally,
+    'the tally is composed before the refusal branch returns — a doctor that could not run '
+    + 'would be reported as a corpus with nothing wrong');
+  assert.ok(tally < cards,
+    'the tally moved inside the card loop; it is a fact about all three levels at once');
+  assert.ok(!/tally\.findings\s*[=><]==?\s*0|if\s*\(\s*tally\./.test(doctorSource),
+    'the tally is now conditional — a measured zero is drawn and named, never suppressed');
 });
 
 /**

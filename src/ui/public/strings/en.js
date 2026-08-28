@@ -218,8 +218,13 @@ export const strings = {
   'aria.tierBudget': 'Tier budget in tokens',
   'aria.tierpick': 'Tier',
   'sim.stairn': 'The sweep is {b:exact, not sampled} — the selector is re-run at every cumulative candidate cost, so nothing is invented between two rungs. The per-item costs it needs are {m:itemCost}, exported from {m:select.ts} for exactly this chart.',
+  'sim.rangeh': 'Range maximum',
+  'sim.rangebtn': 'Set range',
+  'sim.rangen': 'The slider explores a range; this sets the range. It is the {b:simulator’s own bound} and not a budget — nothing here writes {m:config.json}. It can never fall below the budget in force, which the slider must always be able to reach, and raising a budget past it — here or on Configure — raises it. The injection preview draws its ribbon to the same range.',
+  'sim.rangeset': 'Range maximum for {mv:tier} is now {max}.',
+  'sim.rangebad': 'The range maximum must be a positive integer. Got {typed}. Nothing was changed.',
   'sim.thresh': 'Thresholds',
-  'sim.snap': 'Every value between two rungs behaves identically, so the slider snaps to rungs — dragging lands on meaning rather than on {offrung}. A red rung is an {b:eviction}: more budget, fewer items.',
+  'sim.snap': 'The thumb moves in single tokens and lands where you put it — the ladder marks the rung that actually governs. Every value between two rungs behaves identically, so {offrung} decides exactly what the rung below it decides. A red rung is an {b:eviction}: more budget, fewer items.',
   'sim.tier': 'Tier',
   'sim.budget': 'Budget',
   'sim.fits': 'Fits',
@@ -372,6 +377,28 @@ export const strings = {
   'doc.notice': 'notice',
   'doc.d4': 'a second cross-project knowledge store exists on this machine. {b:mycontext never reads or writes it} — reported so you learn it here rather than from a surprise.',
   'doc.d5': 'another plugin writes durable learnings here — the same kind as {m:lesson}, in a second spelling with no shared ids. It is a {b:watched} path, so edits nudge and a human decides.',
+  // **A finding with no composed command SAYS SO, and the screen counts them.**
+  //
+  // Owner, 2026-08-28, on a corpus whose two findings were `blocked_without_needs`
+  // and `nested_corpus`: "doctor lost it's execute an fix controls ? why yo broke
+  // it ?" Nothing had. Most findings are repaired by editing a file, so `null` is
+  // `repairCommandFor`'s ordinary answer — but a row that draws bare and a screen
+  // that has lost its controls look identical, and the reader guessed the second.
+  //
+  // Same vocabulary as the strip's three named states, deliberately, and the same
+  // `.chip.unmeas` primitive: `strip.unread` / `strip.unmeasured` / `screen.unread`
+  // name the state in a few words and put WHY in a `title`
+  // (STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is). A fourth
+  // spelling of "nothing here, and here is why" would be worse than the silence.
+  //
+  // `doc.tally` is phrased as a label rather than a sentence for the reason
+  // `rail.cntSome` gives: "1 findings" is wrong and "1 finding" needs a plural
+  // rule the run grammar has no marker for, so the count leads and the noun does
+  // not inflect. It is drawn at every count including zero — a measured zero is
+  // drawn and named.
+  'doc.norepair': 'no automated repair',
+  'title.noRepair': 'This finding is repaired by a person, not by a command: an edit to a file, or a decision only someone with the context can take. There is nothing for the screen to compose, so it offers nothing — and that is the state, not a missing control.',
+  'doc.tally': 'findings: {findings} · with an automated repair: {repairs}',
   // Decay
   'dec.h': 'Decay',
   'dec.v': 'a chart, not a table — of sessions',
