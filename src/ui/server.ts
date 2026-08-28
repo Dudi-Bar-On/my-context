@@ -20,19 +20,33 @@
  *      the status code: three of the gate's five refusing exits answer `403`,
  *      so a status cannot say which check refused, which is the reason `check`
  *      exists (plan §0.6 field rule 1).
+ *   2b. **`POST /api/nonce` is the same exemption, for a caller holding NO
+ *      credential at all** (owner ruling 2026-08-28,
+ *      `KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-that-locks-
+ *      out-the-next-one`). It mints a fresh handoff nonce from a server that is
+ *      already running, so `mycontext ui --nonce` never has to restart one to
+ *      recover a locked-out tab. Held to exactly the gate handoff is: loopback
+ *      Host, matching Origin, POST only — and every mint is audited via
+ *      `recordNonceMint` (`security.ts`), because a credential coming into
+ *      existence is a security event whether or not anything was refused. See
+ *      that function for why this route is strictly MORE powerful than
+ *      handoff, and why that residual was accepted anyway.
  *   3. **Every other `/api` path passes the full gate**, then `idle.touch()`
  *      for a matched non-stream route, then the handler. An open stream is not
  *      activity (spec §2), so plan 3's stream route inherits ephemerality
- *      without having to remember it.
+ *      without having to remember it. Neither 2 nor 2b touches idle either —
+ *      see the mint branch below for why.
  *
  * **A refusal is a status line and nothing else** (owner ruling A4, plan §0.6):
  * see `sendRefusal`, which has no parameter a body could be passed in.
  *
  * **A refusal is recorded** (owner ruling B4, plan §0.6): see `refuse`, which
- * calls `recordRefusal` — the one write this read-only surface performs, on the
- * refusal path only. `test/ui/server-e2e.test.ts` proves both halves: that a
- * full sweep of every registered read route changes not one byte of the corpus,
- * and that a refused request appends exactly one audit record and nothing else.
+ * calls `recordRefusal` — one of the two writes this read-only surface
+ * performs, on the refusal path only. `test/ui/server-e2e.test.ts` proves both
+ * halves: that a full sweep of every registered read route changes not one
+ * byte of the corpus, and that a refused request appends exactly one audit
+ * record and nothing else. **A mint is recorded too** (owner ruling
+ * 2026-08-28): see the `POST /api/nonce` branch below and `recordNonceMint`.
  *
  * **`ping` and `meta` are REGISTERED routes, not branches in the dispatch
  * loop** — a correction to the plan's sample code, which special-cased both
@@ -45,8 +59,9 @@
  * says that is what `registeredRoutes()` is for; the plan's own sample then
  * hand-maintained the list anyway.
  *
- * `/api/handoff` stays out of the table, because a registered route is a route
- * behind the gate and the handoff's whole job is to be the one that is not.
+ * `/api/handoff` and `/api/nonce` both stay out of the table, because a
+ * registered route is a route behind the gate and both of their whole jobs is
+ * to be routes that are not.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -76,8 +91,8 @@ import {
   clearUiServerRecord, uiServerRecordPath, writeUiServerRecord,
 } from '../core/ui-server-record.ts';
 import {
-  cookieValue, mintToken, NonceStore, recordRefusal, SECURITY_HEADERS, TOKEN_COOKIE,
-  TOKEN_HEADER, tokenDigest, validateApiRequest,
+  cookieValue, mintToken, NonceStore, recordNonceMint, recordRefusal, SECURITY_HEADERS,
+  TOKEN_COOKIE, TOKEN_HEADER, tokenDigest, validateApiRequest,
 } from './security.ts';
 import { serveStatic } from './static.ts';
 import { registerWatchRoutes } from './watch-model.ts';
@@ -86,6 +101,37 @@ import { registerWatchRoutes } from './watch-model.ts';
 export const OPENER_NONCE_TTL_MS = 10_000;
 /** Ten minutes: the nonce in a PRINTED url (--no-open / spawn fallback) — never on a command line. */
 export const PRINTED_NONCE_TTL_MS = 600_000;
+/**
+ * Thirty seconds: the nonce `POST /api/nonce` mints (owner ruling 2026-08-28).
+ *
+ * **Deliberately shorter than `PRINTED_NONCE_TTL_MS`, and the two windows are
+ * sized for different moments even though both end up as a URL a person
+ * pastes.** `PRINTED_NONCE_TTL_MS` covers a server that just started, which an
+ * operator may walk away from before coming back to read the terminal — that
+ * is the case `printedNonceTtl()` (`cli/commands/ui.ts`) was widened for on
+ * 2026-08-23, up to the whole idle window. This nonce covers the opposite
+ * moment: `mycontext ui --nonce` is typed by someone already AT the terminal,
+ * for a tab they are looking at RIGHT NOW, and the printed line is read and
+ * pasted in the same sitting or not at all — there is no "return later" case
+ * to size for.
+ *
+ * **Deliberately longer than `OPENER_NONCE_TTL_MS`.** That ten-second window
+ * is sized for a nonce that transits a process command line — an OS spawning a
+ * child, measured in milliseconds. This one transits a PERSON: read a line off
+ * a terminal, switch windows, paste it into an address bar. Ten seconds is
+ * comfortable for a machine and tight for a hand.
+ *
+ * **Why short matters more here than for either of those two.** This route is
+ * reachable at ANY point while the server is up, by any local process that can
+ * reach loopback (see `recordNonceMint` in `security.ts` for the residual that
+ * follows from that). A short TTL does not narrow WHO can call the route — it
+ * narrows how long a credential that already left the process over HTTP stays
+ * good for, which is the one thing left to bound once the route itself is
+ * accepted: a terminal window left visible on a shared screen, a scrollback
+ * buffer, a copied line sitting in clipboard history, are all a live
+ * credential for thirty seconds and inert paper after it.
+ */
+export const MINT_NONCE_TTL_MS = 30_000;
 
 export interface UiServerOptions {
   /** Workspace resolution root. */
@@ -583,6 +629,53 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
       res.setHeader('set-cookie',
         `${TOKEN_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict`);
       sendJson(res, { status: 200, body: { token } });
+      return;
+    }
+
+    // Rule 2b. Also NOT a registered route, and NOT the table: a route in it
+    // is a route BEHIND the gate, and this one's whole job — owner ruling
+    // 2026-08-28, KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-
+    // that-locks-out-the-next-one — is to serve a caller the full gate would
+    // refuse outright on `token-missing`.
+    if (url.pathname === '/api/nonce' && req.method === 'POST') {
+      // The SAME exemption as handoff, checked against the SAME `gate` value —
+      // not a second computation that could drift from the first. Host and
+      // Origin are still checked on every /api request, handoff and this
+      // route included: what is exempt is the token check alone.
+      if (!gate.ok && gate.check !== 'token-missing' && gate.check !== 'token-mismatch') {
+        refuse(req, url, gate, res);
+        return;
+      }
+      // The mint itself: the same store `urlWithNonce` mints from at startup
+      // and `/api/handoff` redeems from, so a nonce printed here is honoured
+      // exactly like one printed at startup — one shared store, one contract.
+      const nonce = nonces.mint(MINT_NONCE_TTL_MS);
+      // Audited BEFORE the response goes out, for the same reason `refuse`
+      // records before answering: a credential handed out and then lost from
+      // the log is the one order that leaves no trail at all. See
+      // `recordNonceMint` (security.ts) for the full argument — this route is
+      // strictly MORE powerful than handoff, and this write is what makes that
+      // discoverable afterwards rather than merely true.
+      recordNonceMint(corpusRoot, {
+        // Not re-read from the header: the gate already proved the submitted
+        // Host is exactly this, and `wantHost` inside `validateApiRequest` is
+        // the same string constructed the same way — recomputing it here would
+        // be a second spelling of a fact the gate already settled.
+        host: `127.0.0.1:${boundPort}`,
+        origin: headerFirst(req.headers.origin),
+      });
+      // NOT idle.touch(). A mint is proof a caller may ASK for a credential,
+      // not a use of the corpus — the same distinction that already keeps
+      // `/api/handoff` off the idle path one branch up, one layer below where
+      // spec §2 draws it for an open stream ("not activity"). The difference
+      // that makes this one worth spelling out rather than inheriting quietly:
+      // this route is reachable by ANY local process at ANY time (see
+      // `recordNonceMint`'s residual), so touching idle here would let such a
+      // process keep an otherwise-idle, otherwise-dead server up indefinitely
+      // just by polling it — turning the idle exit's whole purpose inside out
+      // for the one route that was built to work even when nobody is looking
+      // at a tab any more.
+      sendJson(res, { status: 200, body: { nonce } });
       return;
     }
 

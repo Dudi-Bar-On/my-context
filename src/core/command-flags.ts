@@ -155,7 +155,10 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
   status: { allowed: DETAIL_FLAGS, values: [] },
   supersede: { allowed: ['by', 'reason', 'yes'], values: ['by', 'reason'] },
   todo: { allowed: ['tag', 'limit', 'all', ...DETAIL_FLAGS], values: ['tag', 'limit'] },
-  ui: { allowed: ['port', 'no-open', 'idle-ms'], values: ['port', 'idle-ms'] },
+  // `nonce` is a bare flag (owner ruling 2026-08-28): it takes no value and is
+  // mutually exclusive with the other three, which `cmdUi` refuses rather
+  // than silently ignores — see `src/cli/commands/ui.ts`.
+  ui: { allowed: ['port', 'no-open', 'idle-ms', 'nonce'], values: ['port', 'idle-ms'] },
 
   /**
    * The four NAMED EDITORS — `pin`, `unpin`, `harden`, `soften`. Each is

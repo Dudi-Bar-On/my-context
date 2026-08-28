@@ -382,25 +382,34 @@ test('no pre-existing op changed kind', () => {
   // arrived as an `injection` would make `mycontext audit --kind injection`
   // over-report what models were shown.
   //
-  // `execute` (2026-08-27) is the one addition that is NOT a hook, and it is
-  // excluded by name rather than by relaxing the loop: it is the web UI
-  // running a catalogue command, which is neither an injection nor a hook
-  // firing, and folding it into either family would make that family's
+  // `execute` (2026-08-27) and `nonce-minted` (2026-08-28) are the two
+  // additions that are NOT hooks, and both are excluded by name rather than
+  // by relaxing the loop: `execute` is the web UI running a catalogue
+  // command, `nonce-minted` is `POST /api/nonce` handing out a credential
+  // (owner ruling 2026-08-28,
+  // `KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-that-locks-
+  // out-the-next-one`) — neither is an injection or a hook firing, and
+  // folding either into one of those families would make that family's
   // filter over-report exactly the way the paragraph above describes.
+  // `nonce-minted` sits BEFORE the execution pair in this list because
+  // `ACCESS_OPS` is spread before `EXECUTION_OPS` in `AUDIT_OPS`, and its two
+  // siblings in `ACCESS_OPS` — `ui-refused` — is already in `before`.
   assert.deepEqual(
     AUDIT_OPS.filter((op) => !(op in before)),
     ['post-compact',
       'file-changed', 'instructions-loaded', 'config-change', 'permission-denied',
       'subagent-stop', 'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion',
-      'execute', 'execute-done'],
+      'nonce-minted', 'execute', 'execute-done'],
   );
+  assert.equal(kindOf('nonce-minted'), 'access', 'a mint is the access kind\'s second op, not a hook');
   // The execution PAIR, and it is a pair because the log cannot be amended:
   // `execute` is appended before the process starts and `execute-done` after it
   // returns. An `execute` row with no `execute-done` beside it is a run that
   // never came back — the same attempted/complete shape `pre-compact` and
   // `subagent-start` already use, for the same reason.
   for (const op of EXECUTION_OPS) assert.equal(kindOf(op), 'execution');
-  for (const op of AUDIT_OPS.filter((o) => !(o in before) && !EXECUTION_OPS.includes(o as never))) {
+  for (const op of AUDIT_OPS.filter((o) =>
+    !(o in before) && !EXECUTION_OPS.includes(o as never) && o !== 'nonce-minted')) {
     assert.equal(kindOf(op), 'hook', `${op} joined a family that claims something it did not do`);
   }
 });

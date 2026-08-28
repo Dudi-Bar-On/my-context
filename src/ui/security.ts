@@ -1,25 +1,37 @@
 /**
  * The web UI's security boundary: the session token, the one-shot handoff
  * nonce store, the per-request gate every `/api` route passes through, and the
- * one write this read-only surface performs.
+ * two writes this module performs on the strength of that gate.
  *
  * Spec: `docs/superpowers/specs/2026-08-16-web-ui-design.md` §2 (the token, the
  * custom header, Host/Origin validation) and §3, *Opening the browser* (the
  * nonce). Nothing here decides what a route may do — §2's mutator-free rule is
  * enforced by the import-graph test, not by this file.
  *
- * **This module binds `recordAudit`, and it is the only module under `src/ui/`
- * that may** (owner ruling B4, 2026-08-20, plan
- * `2026-08-16-web-ui-1-server-and-reads.md` §0.6). The UI is a read-only
- * surface; `recordRefusal` below is the single exception, it fires on the
- * REFUSAL path only, and Task 14's static test asserts the set of write
- * bindings under `src/ui/` is *exactly* this one — so a second binding fails
- * the build and so does deleting this one.
+ * **This module binds `recordAudit`** (owner ruling B4, 2026-08-20, plan
+ * `2026-08-16-web-ui-1-server-and-reads.md` §0.6, widened by owner ruling
+ * 2026-08-28). It is no longer the only `src/ui/` module that does —
+ * `execute.ts` earned its own binding on 2026-08-26, for running a catalogue
+ * command — but it is still the one that carries the security GATE's own
+ * writes, and there are now two of them rather than one:
+ *
+ *   - `recordRefusal`, on the REFUSAL path only — a request the gate said no
+ *     to. This is the write Task 14's static test was written against, and the
+ *     comment on that function still states its own bound in full.
+ *   - `recordNonceMint`, on the MINT path `POST /api/nonce` added — a caller
+ *     holding no credential handed a fresh one. See that function for why a
+ *     credential coming into existence needed a second write rather than
+ *     riding along inside the first.
+ *
+ * Task 14's static test asserts the SET of write bindings under `src/ui/` is
+ * exactly the owner-ruled set — both of these plus `execute.ts`'s — so an
+ * unruled third binding anywhere in this directory fails the build and so
+ * does deleting a ruled one.
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
   recordAudit,
-  type AuditWriteResult, type RefusalCheck, type RefusalDetail,
+  type AuditWriteResult, type NonceMintDetail, type RefusalCheck, type RefusalDetail,
 } from '../core/audit.ts';
 
 /**
@@ -380,6 +392,67 @@ export function recordRefusal(root: string, refusal: RefusalDetail): AuditWriteR
       route: capRefusalValue(refusalRoute(refusal.route)),
       host: capRefusalValueOrNull(refusal.host),
       origin: capRefusalValueOrNull(refusal.origin),
+    },
+  });
+}
+
+/**
+ * **The SECOND write this module performs — a credential coming into
+ * existence, on `POST /api/nonce`** (owner ruling 2026-08-28,
+ * `KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-that-locks-
+ * out-the-next-one`).
+ *
+ * ── WHY THIS ROUTE EXISTS AT ALL ────────────────────────────────────────────
+ *
+ * A tab that loses its token has exactly one way back: a fresh nonce. Until
+ * this route, a nonce was printed only when a server STARTS, so recovering one
+ * locked-out tab meant restarting the server — which mints a new token digest,
+ * evicts the oldest of the eight `~/.my-context/ui-sessions.json` remembers,
+ * and can lock out a DIFFERENT tab. `mycontext ui --nonce`
+ * (`src/cli/commands/ui.ts`) closes the cycle by asking a server that is
+ * ALREADY RUNNING for a nonce instead, and this route is what it asks.
+ *
+ * ── WHY THIS IS STRICTLY MORE POWERFUL THAN `/api/handoff`, STATED HERE ─────
+ *
+ * `/api/handoff` EXCHANGES one credential (a nonce) for another (a token); a
+ * caller holding neither cannot reach it — the nonce it redeems always came
+ * from somewhere the gate already trusted (a process argv, a printed URL).
+ * This route MANUFACTURES the first credential from nothing but a passing
+ * Host/Origin check. The practical consequence: from the moment a server
+ * starts until the moment it exits, ANY local process that can reach
+ * `127.0.0.1` on this port may obtain a token at any time — not merely in the
+ * seconds after startup, when a nonce used to be printed and then gone. That
+ * is the residual the owner accepted in exchange for closing the lockout
+ * (`README.md` §7 and `docs/README.he.md` §7 carry the same sentence, beside
+ * the web UI's execute residual). Nothing below narrows that residual; this
+ * function is the accountability trail FOR it.
+ *
+ * ── WHY IT IS A SEPARATE WRITE FROM `recordRefusal`, NOT A FIFTH CHECK ──────
+ *
+ * `recordRefusal` is structurally bounded to describing a REFUSAL — its own
+ * comment states that bound and a static and a runtime test both hold it to
+ * it. A mint is not a refusal; it is the opposite outcome, on a route the gate
+ * does not even fully apply to (the token check is exempt, same as handoff).
+ * Folding it into `recordRefusal` would either break that structural bound or
+ * require inventing a `check`/`status` pair that lies about what happened.
+ * `NonceMintDetail` (`core/audit.ts`) is the honest shape instead: no `check`,
+ * no `status`, because this route has exactly one outcome and every record of
+ * it means the same thing.
+ *
+ * Same allow-list discipline as `recordRefusal`, and the same capping — built
+ * field by field, never spread, so a caller's extra property cannot ride
+ * along, and a caller-supplied Host/Origin longer than any real header is
+ * visibly truncated rather than let onto disk whole. **The nonce itself is
+ * never recorded, in any form** — it is the credential this route exists to
+ * mint, and an audit log is a file on disk.
+ */
+export function recordNonceMint(root: string, detail: NonceMintDetail): AuditWriteResult {
+  return recordAudit(root, {
+    kind: 'access',
+    op: 'nonce-minted',
+    nonceMint: {
+      host: capRefusalValue(detail.host),
+      origin: capRefusalValueOrNull(detail.origin),
     },
   });
 }

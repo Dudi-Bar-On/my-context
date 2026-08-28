@@ -263,15 +263,27 @@ export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;
 export type FocusOp = (typeof FOCUS_OPS)[number];
 
 /**
- * A request the web UI's gate REFUSED (owner ruling B4, 2026-08-20, plan §0.6).
+ * A request the web UI's gate REFUSED (owner ruling B4, 2026-08-20, plan §0.6)
+ * — or a caller was handed a fresh credential (owner ruling 2026-08-28,
+ * `KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-that-locks-
+ * out-the-next-one`).
  *
- * One op, because the gate has one outcome worth recording — it refused — and
- * WHICH check refused is `RefusalDetail.check`, a field a reader can filter on,
- * not four ops a reader has to know the names of. A request that PASSES the
- * gate is not recorded: the UI is a read-only surface and this is the one write
- * it performs, on the refusal path only.
+ * **Two ops, and the reason it grew from one is worth stating rather than
+ * quietly widening.** `ui-refused` was the gate's only recordable outcome for
+ * as long as the gate could only ever refuse or serve, and "a request that
+ * PASSES the gate is not recorded" was true because a served read changes
+ * nothing worth writing down. `POST /api/nonce` (`src/ui/server.ts`) breaks
+ * that symmetry: it is token-EXEMPT, same as `/api/handoff`, and its whole job
+ * is to hand a caller holding NO credential a fresh one. A credential coming
+ * into existence is a security event whether or not anything was refused, so
+ * it earns its own op rather than riding along inside a family whose name
+ * says the opposite of what happened. `nonce-minted` is still `access` and not
+ * `mutation` — no item moved — and still not `injection` or `hook`, for the
+ * reasons those two already state above. `RefusalDetail.check` stays the
+ * closed vocabulary for WHY the gate said no; `nonceMint` below is the
+ * sibling shape for what a caller was handed instead.
  */
-export const ACCESS_OPS = ['ui-refused'] as const;
+export const ACCESS_OPS = ['ui-refused', 'nonce-minted'] as const;
 export type AccessOp = (typeof ACCESS_OPS)[number];
 
 /**
@@ -396,7 +408,7 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   manual: 'injection',
   'pre-compact': 'hook', 'post-tool-use': 'hook', deny: 'hook',
   'focus-set': 'focus', 'focus-clear': 'focus',
-  'ui-refused': 'access',
+  'ui-refused': 'access', 'nonce-minted': 'access',
   'step-done': 'progress', 'step-undone': 'progress', 'step-reset': 'progress',
   'subagent-start': 'injection',
   'post-tool-use-failure': 'hook',
@@ -510,6 +522,26 @@ export interface RefusalDetail {
   origin: string | null;
 }
 
+/**
+ * What `POST /api/nonce` was handed, on the mint it always performs (owner
+ * ruling 2026-08-28). The sibling of `RefusalDetail`, at a smaller scale: this
+ * route has one outcome, not four, so there is no `check` and no `status` —
+ * every record means "a nonce was minted", and `host`/`origin` are kept for
+ * the same reason `RefusalDetail` keeps them, so a reader does not have to
+ * take on faith that the gate actually ran.
+ *
+ * Built and capped by `recordNonceMint` (`src/ui/security.ts`), the only
+ * thing that writes one. **The minted nonce is NOT here, in any form** — it
+ * is a credential and an audit log is a file on disk, the same rule
+ * `RefusalDetail` states for the token it sits beside.
+ */
+export interface NonceMintDetail {
+  /** As submitted. Always `127.0.0.1:<port>` — the gate refused anything else before this ran. */
+  host: string;
+  /** As submitted. `null` when the caller sent none — the ordinary case for a script, not a page. */
+  origin: string | null;
+}
+
 export interface AuditRecord {
   protocol: string;
   /** UTC ISO-8601, always. Items and logs travel between machines. */
@@ -607,6 +639,18 @@ export interface AuditRecord {
    * none of them.
    */
   refusal?: RefusalDetail;
+  /**
+   * `access` records only, `op: 'nonce-minted'`: a caller with no credential
+   * was handed a fresh one, and what it was handed on.
+   *
+   * Present exactly when `refusal` is not, and never both: one record either
+   * describes the gate saying no or describes a mint, and the two ops
+   * (`ui-refused` / `nonce-minted`) already say which. Same nesting reason as
+   * `refusal` — the HTTP `Origin` header lives here, never as a flat `origin`,
+   * so it cannot collide with `AuditRecord.origin` (who made a MUTATION,
+   * which a mint is not).
+   */
+  nonceMint?: NonceMintDetail;
   /**
    * `execution` records only: which catalogue command ran, what it ran AS, how
    * it ended, and how long it took (spec §3.4).

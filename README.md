@@ -5432,6 +5432,39 @@ audit log **before** the process starts: a run that cannot be recorded does not 
 > story and the confirm is the gate. If you do not want a local page to be able to reach
 > this at all, do not run `mycontext ui`.
 
+### A running server can mint you a fresh credential
+
+Since 2026-08-28 the server also answers `POST /api/nonce`, and `mycontext ui --nonce` is
+the command that calls it: mint a fresh one-shot handoff nonce from a server that is
+**already running**, instead of restarting one. It exists because the alternative was worse.
+A browser tab that loses its token has exactly one way back — a nonce — and a nonce used to
+be printed only when a server **starts**. Recovering one locked-out tab meant restarting the
+server, which mints a new token and evicts the oldest of the eight digests
+`ui-sessions.json` remembers; a restart that rescues one tab could lock out a different one.
+`--nonce` breaks that cycle and prints the same one-line URL the start path prints.
+
+This route is **token-exempt**, the same as `/api/handoff` above, and held to exactly the
+same gate: loopback `Host`, a matching `Origin` when one is sent, `POST` only. Where it
+differs is what it is exempt *from*. `/api/handoff` **exchanges** one credential for another
+— a nonce the caller already holds, for a token — so a caller holding neither cannot reach
+it. `POST /api/nonce` **manufactures** the first credential from nothing but a passing
+Host/Origin check.
+
+> [!WARNING]
+> **From the moment the server starts until it exits, any local process that can reach
+> `127.0.0.1` on its port may obtain a token at any time — not only in the seconds after
+> startup, when a nonce used to be printed and then gone.** That is the cost of closing the
+> lockout, accepted deliberately on 2026-08-28 rather than left undisclosed.
+> Every mint is written to the audit log regardless — `op: nonce-minted`, the submitted
+> `Host` and `Origin`, never the nonce itself — so a credential coming into existence always
+> leaves a trail, even though nothing was refused. The nonce handed out is one-shot and
+> lives thirty seconds; the exposure this residual names is the standing **ability to ask**
+> for one, not any single credential outliving its window.
+
+Nothing else about the boundary moves. A token obtained this way unlocks exactly the same
+read-only `/api` surface every other token does — and, since 2026-08-27, the execute route
+described above, on the same terms.
+
 ### Never hand-edit an item file
 
 > [!WARNING]

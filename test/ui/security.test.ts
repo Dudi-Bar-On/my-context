@@ -9,11 +9,12 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  mintToken, NonceStore, recordRefusal, REFUSAL_VALUE_MAX, TOKEN_HEADER, validateApiRequest,
+  mintToken, NonceStore, recordNonceMint, recordRefusal, REFUSAL_VALUE_MAX, TOKEN_HEADER,
+  validateApiRequest,
 } from '../../src/ui/security.ts';
 import {
   auditLogPath, readAudit,
-  type AuditRecord, type RefusalCheck, type RefusalDetail,
+  type AuditRecord, type NonceMintDetail, type RefusalCheck, type RefusalDetail,
 } from '../../src/core/audit.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -965,6 +966,120 @@ test('B4: an unwritable log returns the failure and never throws', () => {
       typeof result.error, 'string',
       'and the failure is reported in the result, not thrown out of the security gate',
     );
+  } finally {
+    b.dispose();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// `recordNonceMint` — OWNER RULING 2026-08-28
+// (`KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-that-locks-
+// out-the-next-one`).
+//
+// The SECOND write this module performs. Route-level proof — that `POST
+// /api/nonce` actually calls this on every mint, and only on a mint — lives in
+// `test/ui/nonce-route.test.ts`; what belongs here is the function's own
+// contract, read back off disk exactly as `recordRefusal`'s battery above
+// does.
+// ---------------------------------------------------------------------------
+
+test('a mint writes one access record, op nonce-minted, with exactly the fields it is handed', () => {
+  const b = box();
+  try {
+    const result = recordNonceMint(b.root, { host: HOST, origin: `http://${HOST}` });
+    assert.equal(result.written, true);
+    const record = soleAccessRecord(b.root);
+    assert.equal(record.kind, 'access', 'the same fifth kind ui-refused uses, not a sixth one');
+    assert.equal(record.op, 'nonce-minted');
+    assert.deepEqual(record.nonceMint, { host: HOST, origin: `http://${HOST}` });
+    assert.equal(record.refusal, undefined, 'a mint record carries no refusal — the two ops are disjoint');
+    assert.deepEqual(
+      Object.keys(record).sort(), ['at', 'kind', 'nonceMint', 'op', 'protocol'],
+      'no item, no session and no mutation origin — a mint touches none of them, same as a refusal',
+    );
+  } finally {
+    b.dispose();
+  }
+});
+
+/** An absent Origin — the ordinary case for a script-driven caller like the CLI's `--nonce`. */
+test('an absent Origin records null, not the empty string or an omitted key', () => {
+  const b = box();
+  try {
+    recordNonceMint(b.root, { host: HOST, origin: null });
+    const record = soleAccessRecord(b.root);
+    assert.equal((record.nonceMint as NonceMintDetail).origin, null);
+    assert.match(rawLog(b.root), /"origin":null/, 'a JSON null on disk, not an omitted key');
+  } finally {
+    b.dispose();
+  }
+});
+
+/** Same cap, same visible-truncation marker as `recordRefusal` — reused, not reinvented. */
+test('host and origin are capped, and a capped value is visibly truncated', () => {
+  const b = box();
+  try {
+    const long = 'z'.repeat(REFUSAL_VALUE_MAX * 3);
+    recordNonceMint(b.root, { host: `${long}.example:4111`, origin: `https://${long}.example` });
+    const mint = soleAccessRecord(b.root).nonceMint as NonceMintDetail;
+    for (const value of [mint.host, mint.origin!]) {
+      assert.equal(value.length, REFUSAL_VALUE_MAX + 1, 'capped at 256 chars plus the one-char marker');
+      assert.ok(value.endsWith('…'), 'a truncated value must be VISIBLY truncated');
+    }
+  } finally {
+    b.dispose();
+  }
+});
+
+/**
+ * The record is an ALLOW-LIST, not a pass-through — the same discipline
+ * `recordRefusal`'s own allow-list test proves, against the same class of
+ * caller: `server.ts` assembles this object from request headers it does not
+ * own, and a spread would carry through whatever else that caller put on it.
+ */
+test('a field the caller added beyond NonceMintDetail does not reach the disk', () => {
+  const b = box();
+  try {
+    const secret = cryptoRandomBytes(16).toString('hex');
+    const smuggled = {
+      host: HOST, origin: null,
+      // Not part of NonceMintDetail. Must not be written — a nonce above all.
+      nonce: secret, token: secret,
+    } as unknown as NonceMintDetail;
+    recordNonceMint(b.root, smuggled);
+    const raw = rawLog(b.root);
+    assert.equal(raw.includes(secret), false, 'built field by field; a spread would have written this');
+    assert.deepEqual(
+      Object.keys(soleAccessRecord(b.root).nonceMint as NonceMintDetail).sort(), ['host', 'origin'],
+      'exactly the two declared fields, and no third',
+    );
+  } finally {
+    b.dispose();
+  }
+});
+
+test('the mint record is on disk by the time recordNonceMint returns', () => {
+  const b = box();
+  try {
+    const result = recordNonceMint(b.root, { host: HOST, origin: null });
+    assert.equal(result.written, true);
+    assert.equal(
+      readFileSync(auditLogPath(b.root), 'utf8').trim().length > 0, true,
+      'readable with no await between the call and this line — recordAudit is a synchronous append',
+    );
+  } finally {
+    b.dispose();
+  }
+});
+
+test('recordNonceMint returns the failure and never throws when the log cannot be written', () => {
+  const b = box();
+  try {
+    const blocked = path.join(b.root, 'blocked');
+    writeFileSync(blocked, 'not a directory\n', 'utf8');
+    const result = recordNonceMint(blocked, { host: HOST, origin: null });
+    assert.equal(result.written, false);
+    assert.equal(typeof result.error, 'string', 'the failure is reported, not thrown out of the mint route');
   } finally {
     b.dispose();
   }

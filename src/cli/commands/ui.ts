@@ -39,6 +39,7 @@
  */
 import { openProjection, syncProjection } from '../../core/audit-db.ts';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
+import { probeUiServer } from '../../core/ui-server-probe.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { IDLE_MS, MAX_IDLE_MS } from '../../ui/idle.ts';
 import { openBrowser } from '../../ui/open.ts';
@@ -50,7 +51,7 @@ import {
   flagOccurrences, hasFlag, registerCommand, repeatedFlagError, type Emit,
 } from './registry.ts';
 
-const USAGE = 'usage: mycontext ui [--port N] [--no-open] [--idle-ms N]';
+const USAGE = 'usage: mycontext ui [--port N] [--no-open] [--idle-ms N] | mycontext ui --nonce';
 
 /** The flags this command accepts, and which of them take a following value. */
 /**
@@ -239,6 +240,90 @@ function fallbackLine(url: string, reason: string): string {
   return `mycontext ui: could not open a browser (${reason}). Visit ${url}`;
 }
 
+/**
+ * `--nonce`: ask a server that is ALREADY running for a credential, instead of
+ * binding a port of its own.
+ *
+ * Owner ruling 2026-08-28
+ * (`KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-that-locks-
+ * out-the-next-one`). The cycle this closes: a tab that loses its token has no
+ * route back except a nonce, and a nonce used to be printed only when a server
+ * STARTS — so recovering one locked-out tab meant restarting the server, which
+ * mints a new token digest, evicts the oldest of the eight
+ * `~/.my-context/ui-sessions.json` remembers, and can lock out a DIFFERENT
+ * tab. This asks the live server instead, and starts nothing.
+ *
+ * ── THREE STEPS, THREE HONEST WAYS TO SAY NO ───────────────────────────────
+ *
+ * `probeUiServer` (`core/ui-server-probe.ts`) is REUSED rather than
+ * re-implemented — its own module argues at length why a liveness record is a
+ * claim and not a measurement, and this command needs exactly the proof it
+ * already provides: the record parses, the pid is alive, and the port accepts
+ * a real TCP connection. A `no-record` or `dead` answer means there is no
+ * server to ask, and this command says so rather than trying anyway. An
+ * `alive` answer can still fail between the probe and this request — the
+ * server may exit in that window — and the fetch below is what reports that
+ * honestly instead of pretending the probe was the whole proof.
+ *
+ * ── WHY THIS PRINTS RATHER THAN RETURNS ────────────────────────────────────
+ *
+ * Same shape as every other exit from `cmdUi`: `out` is the only channel, and
+ * the SAME one-line format the start path prints —
+ * `mycontext ui: http://127.0.0.1:<port>/#<nonce>` — so a script or a person
+ * reading either output is reading one contract, not two.
+ */
+async function cmdUiNonce(out: Emit): Promise<void> {
+  const liveness = await probeUiServer();
+  if (liveness.state !== 'alive') {
+    out(
+      'mycontext ui: no server is running' +
+      (liveness.state === 'dead'
+        ? ` (the one last recorded here, on port ${liveness.port}, is gone)`
+        : '') +
+      '. `--nonce` asks a LIVE server for a credential and has none to ask — run `mycontext ui` ' +
+      'first, then `mycontext ui --nonce` to recover a locked-out tab.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${liveness.url}api/nonce`, { method: 'POST' });
+  } catch (err) {
+    out(
+      `mycontext ui: could not reach the server at ${liveness.url} ` +
+      `(${err instanceof Error ? err.message : String(err)}). It answered a liveness check a ` +
+      'moment ago and may have exited since. Try again, or run `mycontext ui` if it has.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (response.status !== 200) {
+    out(
+      `mycontext ui: the running server refused to mint a nonce (status ${response.status}). ` +
+      'This request is built by this command itself, so a refusal here is unexpected — please ' +
+      'report it.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  let nonce: unknown;
+  try {
+    nonce = (await response.json() as { nonce?: unknown }).nonce;
+  } catch {
+    nonce = undefined;
+  }
+  if (typeof nonce !== 'string' || nonce === '') {
+    out('mycontext ui: the server answered with no usable nonce. This is unexpected — please report it.');
+    process.exitCode = 1;
+    return;
+  }
+
+  out(`mycontext ui: http://127.0.0.1:${liveness.port}/#${nonce}`);
+}
+
 function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
   // Before the flags, as `status` does: "no workspace" is the answer whatever
   // else is on the command line, and it is the case `inventory.test.ts` runs.
@@ -287,6 +372,32 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
   // (format.ts). `mycontext ui --no-opn` would otherwise launch a browser the
   // user had just asked it not to.
   if (refuseUnknownFlag(args, UI_FLAGS, UI_VALUE_FLAGS, USAGE, out)) return 1;
+
+  // **`--nonce` is a different command wearing this one's name, and it exits
+  // here rather than falling through.** Every flag below it describes a
+  // server this mode does not start, so combining them would either be
+  // silently ignored (`INV-nothing-is-dropped-silently` forbids that) or
+  // require guessing which of two commands the caller meant.
+  if (hasFlag(args, 'nonce')) {
+    const inert = ['port', 'idle-ms', 'no-open'].filter((name) => flagOccurrences(args, name).length > 0);
+    if (inert.length > 0) {
+      out(
+        `my_context: --nonce asks the server that is ALREADY running for a credential — it binds ` +
+        `nothing itself, so --${inert[0]} has no server left to apply to. Run them separately: ` +
+        '`mycontext ui` to start one (with whatever flags it needs), then a separate ' +
+        '`mycontext ui --nonce` to recover a locked-out tab from it.',
+      );
+      return 1;
+    }
+    // `cmdUi` cannot `await`: `CommandFn` returns a number and the process,
+    // not the return value, is what carries the outcome — the same reason
+    // `startUiServer(...).then(...)` below is fired and not awaited. The
+    // in-flight `fetch` inside `cmdUiNonce` keeps the event loop alive on its
+    // own, so the process exits naturally once it settles; nothing here needs
+    // to hold it open.
+    void cmdUiNonce(out);
+    return 0;
+  }
 
   let port: number;
   let noOpen: boolean;
@@ -413,7 +524,7 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
 
 registerCommand({
   name: 'ui',
-  usage: 'ui [--port N] [--no-open] [--idle-ms N]',
+  usage: 'ui [--port N] [--no-open] [--idle-ms N] | ui --nonce',
   summary: 'read-only web UI on 127.0.0.1 — preview, coverage, reports',
   run: cmdUi,
 });
