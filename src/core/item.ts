@@ -171,6 +171,122 @@ function splitSections(body: string): { prose: string; sections: Map<string, str
   return { prose: prose.join('\n').trim(), sections };
 }
 
+/**
+ * The `## Section` names `renderItem` (below) knows how to write back. A
+ * section under any other name is not a field of an item at all: `parseItem`
+ * puts its lines in `sections`, nothing reads them, and the next `renderItem`
+ * writes the item back WITHOUT them.
+ */
+const WRITABLE_SECTIONS = new Set(['steps', 'observations', 'relations']);
+
+/** What a canonical rewrite of an item file would not write back — see `droppedBodyText`. */
+export interface BodyLoss {
+  /** The first line that would be dropped, for a message that names it. */
+  line: string;
+  /** How many lines would be dropped, blank ones inside a dropped section included. */
+  lines: number;
+  /** How many UTF-8 bytes those lines are. */
+  bytes: number;
+}
+
+/** A section's own trailing separator blank line is not content. */
+function withoutTrailingBlanks(lines: string[]): string[] {
+  let end = lines.length;
+  while (end > 0 && lines[end - 1].trim() === '') end -= 1;
+  return lines.slice(0, end);
+}
+
+/**
+ * **The text `renderItem(parseItem(fileText))` would silently delete.**
+ *
+ * `validateBody` (validate.ts) is the same rule at the WRITE boundary: it
+ * refuses a body a caller hands in that this format cannot hold. This is the
+ * rule at the READ boundary, for text that is already on disk — a file a human
+ * edited by hand, which no validator ever saw. The two must agree, and they do
+ * because neither restates the parser: `validateBody` refuses the shape
+ * `splitSections` eats, and this function IS `splitSections`' partition, read
+ * for what falls out of it.
+ *
+ * It exists because every write path re-renders the whole item, so any command
+ * that touches a hand-edited item performs the deletion and reports success —
+ * `mycontext repair` most of all, whose entire job is to write items back.
+ * Returns `null` when the rewrite is lossless, which is every item this tool
+ * itself wrote.
+ *
+ * What counts as dropped, and why each one:
+ *
+ *  - **a `## ` section that is not one of `WRITABLE_SECTIONS`** — heading and
+ *    body both. This is the case that cost this corpus two task bodies.
+ *  - **the EARLIER of two sections with the same name.** `splitSections` keeps
+ *    the last block under a repeated heading and `renderItem` writes one, so
+ *    the first block is deleted. (`## Steps` is refused outright by
+ *    `parseItem`; the other two are not, and this is where they show up.)
+ *  - **a second `# ` line in the prose.** `splitSections` drops every one of
+ *    them and `renderItem` re-emits exactly one, from `title:` — so the first
+ *    is not a loss and any further one is.
+ *  - **a line inside `## Observations`/`## Relations` that the section's own
+ *    grammar does not match.** `parseObservations`/`parseRelations` skip it,
+ *    which is the same deletion one line lower down.
+ *
+ * NOT counted: whitespace. `parseItem` trims the prose and `renderItem` writes
+ * one separator blank line per section, so blank lines at either edge move
+ * around on every canonical write and always have. A report that called that
+ * "text lost" would cry wolf on every item in every corpus.
+ */
+export function droppedBodyText(fileText: string): BodyLoss | null {
+  const normalized = fileText.replace(/\r\n?/g, '\n');
+  const match = DELIM.exec(normalized);
+  // Not an item file at all. `parseItem` refuses it with its own message; this
+  // function's answer is "no PARSED text is lost", which is true of a file that
+  // never parses.
+  if (match === null) return null;
+
+  const blocks: { name: string | null; heading: string; lines: string[] }[] =
+    [{ name: null, heading: '', lines: [] }];
+  for (const line of normalized.slice(match[0].length).split('\n')) {
+    const heading = SECTION_HEADING.exec(line);
+    if (heading) {
+      blocks.push({ name: heading[1].toLowerCase(), heading: line, lines: [] });
+      continue;
+    }
+    blocks[blocks.length - 1].lines.push(line);
+  }
+
+  // Which block wins for each name — `splitSections` keeps the LAST.
+  const kept = new Map<string, number>();
+  blocks.forEach((block, i) => { if (block.name !== null) kept.set(block.name, i); });
+
+  const dropped: string[] = [];
+  blocks.forEach((block, i) => {
+    if (block.name === null) {
+      let titleSeen = false;
+      for (const line of block.lines) {
+        if (!/^#\s+/.test(line)) continue;
+        if (!titleSeen) { titleSeen = true; continue; }
+        dropped.push(line);
+      }
+      return;
+    }
+    if (!WRITABLE_SECTIONS.has(block.name) || kept.get(block.name) !== i) {
+      dropped.push(block.heading, ...withoutTrailingBlanks(block.lines));
+      return;
+    }
+    if (block.name === 'steps') return;
+    const grammar = block.name === 'observations' ? OBSERVATION : RELATION;
+    for (const line of block.lines) {
+      if (line.trim() === '' || grammar.test(line.trim())) continue;
+      dropped.push(line);
+    }
+  });
+
+  if (dropped.length === 0) return null;
+  return {
+    line: dropped.find((l) => l.trim() !== '') ?? dropped[0],
+    lines: dropped.length,
+    bytes: Buffer.byteLength(dropped.join('\n'), 'utf8'),
+  };
+}
+
 function renderStep(s: Step): string {
   return `- [${s.checked ? 'x' : ' '}] ${s.text}`;
 }

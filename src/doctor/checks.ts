@@ -8,6 +8,7 @@ import { isEligible, itemCost } from '../core/select.ts';
 import {
   BLOCKED_STATE, buildTaskIndex, NEEDS_FIELD, readNeeds, workItems,
 } from '../core/needs.ts';
+import { droppedBodyText } from '../core/item.ts';
 import { matchesAnyGlob, relPosix } from '../core/paths.ts';
 import { isSnapshot, snapshotText } from '../core/reference.ts';
 import { RATIONALE_NOT_INJECTED } from '../core/render-item.ts';
@@ -1519,12 +1520,111 @@ export function checkCliOnPath(
  * the same reason they never see corpus load errors flow through `findings`
  * either — that is `doctor`'s own reporting surface, not `runChecks`'s.
  */
+/**
+ * A body's last non-blank line, ending in a way that reads as cut off.
+ *
+ * Measured on this repository's own corpus before it was written: 655 of 656
+ * non-empty bodies end with a full stop and the 656th with a `*`. Ending
+ * mid-sentence, or on a colon whose list is not there, is therefore not a
+ * style this corpus has — which is what makes it worth reporting at all, and
+ * also exactly how little it proves. See `checkBodyTruncation`.
+ */
+const UNFINISHED_TAIL = /(?::|[^.!?)\]"'*_|\u00bb\u201d\u2019\u2026])$/u;
+
+/**
+ * **Text an item's file holds that no future write will keep — and bodies that
+ * read as though that already happened.**
+ *
+ * Two findings, and the difference between them is the whole point.
+ *
+ * `body_truncation` is EXACT. `droppedBodyText` (core/item.ts) partitions the
+ * file the way `parseItem` does and reports what falls out: a `## ` section
+ * that is not a field of an item, the earlier of two same-named sections, a
+ * second `# ` line, a line inside `## Observations`/`## Relations` that the
+ * section's grammar does not match. Every one of those is deleted, silently,
+ * by the next command that writes the item — `renderItem` writes back what was
+ * parsed, and what was parsed is missing them. Nothing reported this before,
+ * which is how two task bodies in this corpus lost roughly two-thirds of
+ * themselves (3,918 -> 1,272 bytes and 5,507 -> 1,535) in a commit that
+ * hand-edited them and then ran `mycontext repair`. `repair` now refuses those
+ * items (cli/commands/repair.ts); this is where they are reported before
+ * anybody runs it.
+ *
+ * `body_ends_unfinished` is a HEURISTIC, and is `info` for that reason. Once a
+ * truncation has been written back, the file is internally consistent and its
+ * checksum agrees with the shortened content — the deleted text leaves no
+ * trace whatsoever. The only residue is prose that stops in the middle, so
+ * that is what this looks for, and the message says plainly that a truncation
+ * which happened to land after a full stop is invisible to it. A check that
+ * implied otherwise would be the same failure this whole pair exists to fix.
+ *
+ * PROJECT items only, exactly as `needsRestamp` (repair.ts) is: `item.filePath`
+ * is relative to its own layer's root, and `root` here is the project's.
+ *
+ * COST, measured rather than assumed: this is the only check that reads every
+ * item file, and it has to — the loss is a property of the FILE, and the
+ * parsed item in memory is precisely the thing with the text already missing.
+ * Reading this repository's own 661 item files takes 23-27ms, which `doctor`
+ * and `status` can afford; a corpus large enough for that to matter is one
+ * `checkCorpusSize` is already complaining about.
+ */
+export function checkBodyTruncation(root: string, items: Item[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const item of items) {
+    if (item.layer !== 'project') continue;
+
+    let text: string | null = null;
+    try {
+      text = readFileSync(path.join(root, ...item.filePath.split('/')), 'utf8');
+    } catch {
+      // Unreadable is `loadLayer`'s report to make, not this check's.
+      text = null;
+    }
+    const loss = text === null ? null : droppedBodyText(text);
+    if (loss !== null) {
+      findings.push({
+        level: 'error', code: 'body_truncation', item: item.id,
+        message:
+          `${item.filePath} holds ${loss.lines} line(s) (${loss.bytes} bytes) that are not part ` +
+          `of any field of an item, starting at ${JSON.stringify(loss.line)}. An item's body is ` +
+          `the prose BEFORE its first "## " section, so the next command that writes this item — ` +
+          `\`mycontext repair\`, or any \`mycontext edit\` — re-renders it WITHOUT that text and ` +
+          `reports success, and nothing recovers it afterwards. Write the heading as bold ` +
+          `("**Name**"), or move the content into "## Observations": both survive being read ` +
+          `back. \`mycontext repair\` holds this item back until one of those is done.`,
+      });
+      // One finding per item: the exact report already names the first dropped
+      // line, and adding a guess beside a measurement would only dilute it.
+      continue;
+    }
+
+    const body = item.body.trim();
+    if (body === '') continue;
+    const lines = body.split('\n').filter((l) => l.trim() !== '');
+    const last = lines[lines.length - 1]!.trimEnd();
+    if (!UNFINISHED_TAIL.test(last)) continue;
+    findings.push({
+      level: 'info', code: 'body_ends_unfinished', item: item.id,
+      message:
+        `this item's body ends ${JSON.stringify(last.slice(-60))} — mid-sentence, or on a colon ` +
+        `whose list is not there. That is what a body cut short at a "## " heading looks like ` +
+        `once the cut has been written back to disk. It is a heuristic and nothing more: a ` +
+        `performed truncation leaves no other trace (the file is self-consistent and its ` +
+        `checksum agrees with the shortened text), and one that happened to land after a full ` +
+        `stop leaves none at all. Compare the item against git history if the text reads ` +
+        `unfinished; otherwise ignore this.`,
+    });
+  }
+  return findings;
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
   const checks: (() => Finding[])[] = [
     () => checkIndexFreshness(opts.root, opts.dbPath),
     () => checkOrphanRelations(opts.items),
+    () => checkBodyTruncation(opts.root, opts.items),
     () => checkSourceDrift(opts.repoRoot, opts.items),
     () => checkDeadScopes(opts.repoRoot, opts.items, opts.config),
     () => checkScopePolicy(opts.items, opts.config),

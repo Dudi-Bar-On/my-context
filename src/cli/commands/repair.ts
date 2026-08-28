@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
-import { computeItemChecksum } from '../../core/item.ts';
+import { computeItemChecksum, droppedBodyText, type BodyLoss } from '../../core/item.ts';
 import { persist } from '../../core/persist.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
@@ -83,8 +85,97 @@ const HONESTY: string[] = [
   'assumed: frontmatter fields a hand-written file omitted come back spelled out with their',
   'defaults, and the "# heading" line is re-rendered from "title:" — so a hand-edit that changed',
   'one of the two without the other ends up with both reading what "title:" says, which is the',
-  'value my_context was already using. The body, observations and relations are unchanged.',
+  'value my_context was already using. Body, observations and relations are not taken on trust:',
+  'each file is compared against what my_context parsed out of it BEFORE anything is written,',
+  'and an item whose rewrite would delete text is held back and named rather than re-stamped.',
 ];
+
+/** A re-stamp candidate, and what re-stamping it would cost. */
+export interface RestampCandidate {
+  item: Item;
+  /** `null` when the rewrite is lossless, which is every item this tool wrote. */
+  loss: BodyLoss | null;
+}
+
+/**
+ * **What each candidate would LOSE, read off its file rather than assumed.**
+ *
+ * `repair` re-renders every item it touches from the parsed form, so for a
+ * hand-edited file it does not merely re-stamp a checksum — it performs
+ * whatever deletion the parser already made in memory, and then certifies the
+ * result. `mycontext edit --body` refuses that shape at the write boundary
+ * (`validateBody`, core/validate.ts) and says exactly what would be lost; this
+ * is the same rule for text that reached disk without passing through it. Both
+ * read the one parser: see `droppedBodyText` (core/item.ts).
+ *
+ * Measured cost: two task bodies in this repository's own corpus, 3,918 bytes
+ * down to 1,272 and 5,507 down to 1,535, in the commit where they were
+ * hand-edited and then repaired. Nothing reported it, and nothing could
+ * afterwards — once the file is re-stamped the checksum agrees with the
+ * shortened content, and the stale checksum that was the only evidence is
+ * gone.
+ *
+ * `root` is the PROJECT root, and `needsRestamp` has already dropped every
+ * non-project item, so `item.filePath` (which is relative to its own layer's
+ * root) can only be resolved against this one.
+ */
+export function inspectCandidates(root: string, items: Item[]): RestampCandidate[] {
+  return items.map((item) => {
+    let text: string;
+    try {
+      text = readFileSync(path.join(root, ...item.filePath.split('/')), 'utf8');
+    } catch {
+      // The item was loaded from this file moments ago, so this is a file that
+      // vanished or became unreadable since. There is nothing for this check to
+      // say about it; `persist` below fails loudly on it if it comes to that.
+      return { item, loss: null };
+    }
+    return { item, loss: droppedBodyText(text) };
+  });
+}
+
+/**
+ * The block printed for candidates whose re-stamp would delete text — before
+ * the confirmation, in the same position the honesty paragraph occupies,
+ * because it is the one thing on screen that changes what the answer should
+ * be.
+ *
+ * **They are held back rather than offered behind a `--force`.** A flag whose
+ * whole function is "delete the text anyway" is a one-word way to do the exact
+ * thing this command was found doing silently, and the route it would replace
+ * is better: edit the file so the text survives a re-read. That is a diff, in
+ * git, made deliberately — and it is what the two recovered items in this
+ * corpus actually got (their headings rewritten as `**bold**`, which the
+ * parser cannot reach). If the section really is unwanted, deleting it by hand
+ * is the same act with the same visibility.
+ */
+function reportWithheld(lossy: RestampCandidate[], out: Emit): void {
+  out(
+    `my_context: ${lossy.length} of them cannot be re-stamped without DELETING text, and are ` +
+    `held back.`,
+  );
+  out('');
+  out('An item\'s body is the prose BEFORE its first "## " section, and a re-stamp rewrites each');
+  out('file from what my_context parsed out of it. Every line from that heading on would be');
+  out('deleted by this command, reported as a success, and would then checksum clean — and the');
+  out('stale checksum is the last evidence the text was ever there.');
+  out('');
+  for (const line of table(
+    ['id', 'would drop', 'starting at'],
+    lossy.map((c) => [
+      c.item.id,
+      `${c.loss!.lines} line(s), ${c.loss!.bytes} bytes`,
+      JSON.stringify(c.loss!.line),
+    ]),
+    { indent: '  ' },
+  )) out(line);
+  out('');
+  out('Nothing is written for those. To settle one, edit its file so the text survives being read');
+  out('back — write the heading as bold ("**Name**"), or move the content into "## Observations",');
+  out('both of which this format holds — then run `mycontext repair` again. Deleting the section');
+  out('outright is the other answer, and it is a deliberate edit with a diff, which is why this');
+  out('command will not make it for you.');
+}
 
 function cmdRepair(ws: Workspace, args: string[], out: Emit): number {
   if (!ws.projectRoot) {
@@ -135,26 +226,55 @@ function cmdRepair(ws: Workspace, args: string[], out: Emit): number {
       { indent: '  ' },
     )) out(line);
     out('');
+
+    // Read BEFORE the honesty paragraph is printed, because that paragraph now
+    // makes a claim about these files rather than a general one about the
+    // command.
+    const inspected = inspectCandidates(ws.projectRoot, candidates);
+    const withheld = inspected.filter((c) => c.loss !== null);
+    const restamp = inspected.filter((c) => c.loss === null).map((c) => c.item);
+    if (withheld.length) { reportWithheld(withheld, out); out(''); }
+
     for (const line of HONESTY) out(line);
     if (globals.length) { out(''); reportGlobals(globals, out); }
     out('');
 
-    if (!confirmAction(args, out, `Re-stamp ${candidates.length} item(s)?`)) return 1;
+    if (restamp.length === 0) {
+      // Every candidate was held back. Exit 1 rather than 0: the command was
+      // asked to settle a reported mismatch and did not settle it, and
+      // `doctor` will go on reporting exactly these items until the files are
+      // edited. An exit 0 here would read as "handled".
+      out(
+        'my_context: nothing was re-stamped — every item above would have lost text. The files ' +
+        'are unchanged and `mycontext doctor` still reports them.',
+      );
+      emitLoadErrors(errors, out);
+      return 1;
+    }
+
+    if (!confirmAction(args, out, `Re-stamp ${restamp.length} item(s)?`)) return 1;
 
     // `persist` (core/persist.ts) is the one write path: it recomputes the checksum
     // from the item's content and writes the file atomically, then upserts the
     // same object into the index. No checksum is composed here, so this
     // command cannot produce a value `rebuild` would then disagree with.
-    for (const item of candidates) {
+    for (const item of restamp) {
       persist(ctx, item);
       out(`my_context: re-stamped ${item.id} (${item.filePath})`);
     }
     out('');
     out(
-      `my_context: re-stamped ${candidates.length} item(s). Their recorded checksums now match ` +
+      `my_context: re-stamped ${restamp.length} item(s). Their recorded checksums now match ` +
       `their current content. Nothing was recovered — if any of that content was already wrong, ` +
       `it is still wrong and now checksums clean.`,
     );
+    if (withheld.length) {
+      out(
+        `my_context: ${withheld.length} item(s) were held back and NOT re-stamped, listed above ` +
+        `with what they would have lost: ${withheld.map((c) => c.item.id).join(', ')}. ` +
+        `\`mycontext doctor\` still reports them, which is the point.`,
+      );
+    }
     // The load errors below come from the rebuild this command opened with,
     // i.e. from BEFORE the writes above. Repeating the "checksum mismatch"
     // lines for the very items just re-stamped would print a statement that
@@ -163,7 +283,7 @@ function cmdRepair(ws: Workspace, args: string[], out: Emit): number {
     // Only those exact lines are withheld, matched to the item that resolved
     // them; every other load error (an unparseable file elsewhere, an unknown
     // type on the same file) is still reported, and F2 still says exit 0.
-    const remaining = errors.filter((e) => !candidates.some(
+    const remaining = errors.filter((e) => !restamp.some(
       (i) => e.file === i.filePath && e.message.startsWith(`checksum mismatch for "${i.id}":`),
     ));
     if (remaining.length < errors.length) {
@@ -174,7 +294,10 @@ function cmdRepair(ws: Workspace, args: string[], out: Emit): number {
       );
     }
     emitLoadErrors(remaining, out);
-    return 0;
+    // A run that held anything back did not settle what it was asked to
+    // settle, whatever else it managed — same reading as the all-withheld
+    // branch above.
+    return withheld.length ? 1 : 0;
   } catch (err) {
     out(toCliMessage(err));
     return 1;
