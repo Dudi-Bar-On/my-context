@@ -1,9 +1,23 @@
 // src/ui/public/lib/live-invalidation.js — WHICH audit record kinds make
-// each screen's fetched data stale (`plan:live seq:2`). Declaration only:
-// nothing here re-renders anything, and nothing here decides what a screen
-// does on arrival — a refresh that keeps the reader's place, or one that
-// asks first, is `plan:live seq:3`'s question about ONE screen at a time,
-// not a rule this file could state for all twenty-one.
+// each screen's fetched data stale, AND what each screen does about it
+// (`plan:live seq:2` for the first property, `plan:live seq:3` for the
+// second). Declaration only: nothing here re-renders anything and nothing
+// here IS the re-render or the affordance — `app.js` reads both properties
+// off this one table and does the act; a screen's own `render()` never
+// imports this file.
+//
+// `refresh` is the property `DEC-a-refresh-keeps-the-reader-s-place-or-it
+// -asks` names: *"which of the two a screen does is a property the SCREEN
+// DECLARES, not one the shell guesses — the shell cannot know whether a
+// re-render will reorder rows under somebody."* `'auto'` means `app.js` may
+// call the screen's own `render()` again, in place, the moment its declared
+// kinds arrive; `'ask'` means it may not — it draws the shared affordance
+// instead (`app.js`'s `showLiveAffordance`) and waits to be pressed. This is
+// the SECOND property on each entry rather than a second map for the reason
+// the task instruction states directly: a screen's staleness and a screen's
+// safety are two facts about the SAME screen, read together by the SAME
+// caller, and two tables would be two places for one screen's row to drift
+// out of step with itself.
 //
 // ── WHY THIS IS DATA, KEPT SEPARATE FROM app.js AND EVERY screens/*.js ────
 //
@@ -129,25 +143,70 @@
 //
 // ── THE THREE "NOTHING" ROWS, WRITTEN DOWN RATHER THAN LEFT ABSENT ────────
 //
-// `docs`, `tut` and `port` carry `[]`, not a missing key. An empty array
-// reads identically to "not yet declared" only if nothing enforces the
+// `docs`, `tut` and `port` carry `kinds: []`, not a missing key. An empty
+// array reads identically to "not yet declared" only if nothing enforces the
 // difference; the gate below is that enforcement — a key holding `[]` passes
-// it, an absent key does not.
+// it, an absent key does not. Their `refresh` is `'auto'` only because a
+// value has to be SOMETHING and the gate below requires the real shape on
+// every row; with `kinds: []` nothing ever arrives to act on, so the value is
+// inert by construction, not a claim that re-rendering these three is safe.
+//
+// ── HOW `refresh` WAS DERIVED — read what the screen HOLDS, not only what
+//    it shows, because the risk `'auto'` cannot take is losing STATE a
+//    rebuild cannot recover: an id typed into a field, a slider mid-drag, an
+//    open confirm holding a single-use nonce, rows a filter narrowed, a row
+//    order a mutation could shuffle out from under an open item pane ─────
+//
+//   'auto'  injected  "One row per DELIVERY, in the file's own order.
+//           Nothing is sorted, grouped or collapsed" (`screens/injected.js`'s
+//           own header, verbatim) — the one screen in this product whose own
+//           documentation already states the exact property `'auto'`
+//           requires. A new delivery can only ever APPEND; no existing row's
+//           position or identity moves. This is this task's own acceptance
+//           screen for exactly that reason — see this task's report.
+//   'auto'  status    Renders no row at all — `items.total`,
+//           `reviewQueue.drafts`, `pendingRevisions.revisions`, three fixed
+//           counts (`screens/status.js`), never a list a mutation could
+//           reorder or a form a rebuild could clear.
+//   'auto'  docs, tut, port  `kinds: []` — never triggered; see above.
+//   'ask'   Every other screen — sixteen of them — for one of three reasons,
+//           and most for more than one: (1) an EDITABLE field or an open
+//           confirm a rebuild would wipe — `config`'s budget `<input>`s and
+//           its single-use write nonce, `capture`'s draft form, `palette`'s
+//           search text and picker selection; (2) CLIENT-ONLY interaction
+//           state no fetch carries — `simulate`'s slider position and tier
+//           pick, `proc`'s active run; (3) rows whose ORDER OR PRESENCE a
+//           mutation can change under an open pane — `preview`, `coverage`,
+//           `gaps`, `doctor`, `decay`, `graph`, `learn`, `work`, `packs`
+//           filter, group, sort or page their rows by a value a mutation
+//           moves, and `ask`'s own query filters plus its 200-row truncation
+//           (`ask.truncated`) are exactly the "re-page under the reader" the
+//           decision names. `watch` is listed for shape-completeness only —
+//           it never reaches `app.js`'s generic wiring at all; see the
+//           `EXCLUDED_FROM_GENERIC_LIVE_REFRESH` note in `app.js`.
 export const SCREEN_INVALIDATION = {
-  preview: ['mutation', 'focus'],
-  coverage: ['mutation'],
-  gaps: ['mutation'],
-  simulate: ['mutation', 'injection', 'focus'],
-  injected: ['injection'],
-  doctor: ['mutation'],
-  decay: ['mutation', 'injection'],
-  graph: ['mutation'],
-  status: ['mutation'],
-  learn: ['mutation'],
-  watch: '*',
-  ask: '*',
-  work: ['mutation'],
-  palette: ['mutation', 'hook'],
+  preview: { kinds: ['mutation', 'focus'], refresh: 'ask' },
+  coverage: { kinds: ['mutation'], refresh: 'ask' },
+  gaps: { kinds: ['mutation'], refresh: 'ask' },
+  simulate: { kinds: ['mutation', 'injection', 'focus'], refresh: 'ask' },
+  injected: { kinds: ['injection'], refresh: 'auto' },
+  doctor: { kinds: ['mutation'], refresh: 'ask' },
+  decay: { kinds: ['mutation', 'injection'], refresh: 'ask' },
+  graph: { kinds: ['mutation'], refresh: 'ask' },
+  status: { kinds: ['mutation'], refresh: 'auto' },
+  learn: { kinds: ['mutation'], refresh: 'ask' },
+  // Self-managed since before this task existed (`screens/watch.js`'s own
+  // `ctx.subscribeStream('*', …)`) — it already redraws its own rows
+  // incrementally off the shared stream. `app.js`'s generic wiring would be
+  // a SECOND subscriber doing a wholesale re-render on top of the screen's
+  // own fine-grained one, so it is excluded outright rather than given a
+  // `refresh` this file would never honour. `kinds: '*'` stays for the gate
+  // and for any future reader asking "what invalidates watch" — the honest
+  // answer is still everything, whether or not this table is what acts on it.
+  watch: { kinds: '*', refresh: 'auto' },
+  ask: { kinds: '*', refresh: 'ask' },
+  work: { kinds: ['mutation'], refresh: 'ask' },
+  palette: { kinds: ['mutation', 'hook'], refresh: 'ask' },
   // `mutation` was MISSING here until 2026-08-28, and the omission was correct
   // when it was written: nothing could change a budget, so nothing this screen
   // draws could be stale from a mutation. `plan:budget seq:5` landed hours later
@@ -158,14 +217,20 @@ export const SCREEN_INVALIDATION = {
   // the source of the change. They do not share a listener; they share this map,
   // and `simulate` already declared `mutation`. One of the two noticing a budget
   // change is worse than neither, because the two disagreeing is the state a
-  // reader cannot detect by looking at either.
-  config: ['hook', 'mutation'],
-  docs: [],
-  tut: [],
-  capture: ['mutation', 'hook'],
-  proc: ['mutation', 'progress'],
-  port: [],
-  packs: ['mutation'],
+  // reader cannot detect by looking at either. `refresh: 'ask'` — not `'auto'` —
+  // because this screen's budget cells are live `<input>`s and a save in
+  // progress holds a single-use nonce; REQ-configure-and-the-simulator-agree
+  // -on-the-budgets-whatever is met by both screens SURFACING the same
+  // staleness the same way, not by either silently overwriting what the
+  // reader is midway through typing. See this task's report for how this was
+  // verified end to end.
+  config: { kinds: ['hook', 'mutation'], refresh: 'ask' },
+  docs: { kinds: [], refresh: 'auto' },
+  tut: { kinds: [], refresh: 'auto' },
+  capture: { kinds: ['mutation', 'hook'], refresh: 'ask' },
+  proc: { kinds: ['mutation', 'progress'], refresh: 'ask' },
+  port: { kinds: [], refresh: 'auto' },
+  packs: { kinds: ['mutation'], refresh: 'ask' },
 };
 
 // ── THE DEBOUNCE, STATED RATHER THAN TUNED ─────────────────────────────────

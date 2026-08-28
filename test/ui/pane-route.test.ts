@@ -482,7 +482,18 @@ async function boot(): Promise<Harness> {
       if (target === '/api/coverage') return respond({ files: [] });
       // Never silently 200: an endpoint this harness forgot must look like a
       // refusal the shell handles, not like data it can believe.
-      return { ok: false, status: 404, json: async (): Promise<unknown> => ({}) } as unknown as Response;
+      //
+      // `plan:live seq:3`: `route()` now subscribes every routed screen to
+      // the shared live stream (`/api/watch/stream`) on its behalf, so this
+      // file's own navigation reaches this fallback for a real request for
+      // the first time. `refusalDetail()` (`app.js`) reads `response.text()`
+      // on ANY non-ok response, so the fallback needs one to actually BE "a
+      // refusal the shell handles", not a shape only `.json()` ever exercised.
+      return {
+        ok: false, status: 404,
+        json: async (): Promise<unknown> => ({}),
+        text: async (): Promise<string> => '',
+      } as unknown as Response;
     };
 
     /**

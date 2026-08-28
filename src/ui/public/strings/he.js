@@ -163,6 +163,7 @@ export const strings = {
   'cov.e1': 'עדיין דבר אינו חל על הפרויקט הזה.',
   'cov.e2': 'זהו המצב הרגיל של סביבה חדשה. משפט אחד, פעם אחת.',
   'btn.refresh': 'רענון',
+  'live.screenStale': 'יש פעילות חדשה במסך הזה.',
   'btn.copy': 'העתקה',
   // Coverage gaps
   'gaps.h': 'פערי כיסוי',

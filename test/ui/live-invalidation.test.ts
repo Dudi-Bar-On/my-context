@@ -7,6 +7,16 @@
  * is indistinguishable from "nobody thought about this screen" unless a
  * check like this one fails the moment a routed screen has no key at all.
  *
+ * **`plan:live seq:3` widened the shape, not the gate's job.** Each entry is
+ * now `{ kinds, refresh }` rather than a bare `kinds` value — `refresh` is
+ * `'auto'` or `'ask'`, the second property
+ * `DEC-a-refresh-keeps-the-reader-s-place-or-it-asks` names ("which of the
+ * two a screen does is a property the SCREEN DECLARES"). Every test below
+ * that used to read an entry directly now reads `.kinds`, and one new test
+ * covers `.refresh` the same way the entry-shape test already covered
+ * `.kinds` — a screen with `kinds` but no valid `refresh` is exactly as
+ * undeclared as one with neither.
+ *
  * **The screen list is read from `app.js`, not hand-copied.** A hand-copied
  * list would pass this file forever while `app.js` grew a twenty-second
  * screen — exactly the silent drift the task exists to refuse. The
@@ -43,13 +53,19 @@ const LIVE_INVALIDATION_FILE = path.join(PUBLIC, 'lib', 'live-invalidation.js');
  * is load-bearing on this machine: a bare Windows path fed to `new URL()`
  * is not a valid `file://` URL.
  */
+/** One screen's row: what invalidates it, and what it does about that. */
+interface ScreenInvalidation {
+  kinds: AuditKind[] | '*';
+  refresh: 'auto' | 'ask';
+}
+
 async function loadLiveInvalidation(): Promise<{
-  SCREEN_INVALIDATION: Record<string, AuditKind[] | '*'>;
+  SCREEN_INVALIDATION: Record<string, ScreenInvalidation>;
   LIVE_INVALIDATION_DEBOUNCE_MS: number;
 }> {
   const file = LIVE_INVALIDATION_FILE.replaceAll('\\', '/');
   return (await import(new URL(`file://${file}`).href)) as {
-    SCREEN_INVALIDATION: Record<string, AuditKind[] | '*'>;
+    SCREEN_INVALIDATION: Record<string, ScreenInvalidation>;
     LIVE_INVALIDATION_DEBOUNCE_MS: number;
   };
 }
@@ -87,7 +103,7 @@ function routedScreens(): string[] {
  * — not a paraphrase of it that could drift from what actually runs.
  */
 function missingDeclarations(
-  screens: string[], map: Record<string, AuditKind[] | '*'>,
+  screens: string[], map: Record<string, unknown>,
 ): string[] {
   return screens.filter((name) => !Object.hasOwn(map, name));
 }
@@ -134,11 +150,12 @@ test('SCREEN_INVALIDATION declares no screen app.js does not route', async () =>
   assert.deepEqual(orphaned, [], `${orphaned.join(', ')} — declared, but app.js routes no such screen`);
 });
 
-test('every entry is \'*\' or a de-duplicated array of real AuditKind values', async () => {
+test('every entry\'s kinds is \'*\' or a de-duplicated array of real AuditKind values', async () => {
   const { SCREEN_INVALIDATION } = await loadLiveInvalidation();
   const kinds = new Set<string>(AUDIT_KINDS);
   const bad: string[] = [];
-  for (const [screen, value] of Object.entries(SCREEN_INVALIDATION)) {
+  for (const [screen, entry] of Object.entries(SCREEN_INVALIDATION)) {
+    const value = entry.kinds;
     if (value === '*') continue;
     if (!Array.isArray(value)) { bad.push(`${screen}: not '*' or an array`); continue; }
     const seen = new Set<string>();
@@ -151,11 +168,28 @@ test('every entry is \'*\' or a de-duplicated array of real AuditKind values', a
   assert.deepEqual(bad, []);
 });
 
+/**
+ * The second property's own gate — the same shape as the kinds check above,
+ * because an entry with a `kinds` array and a typo'd `refresh` is exactly as
+ * undeclared, for the SCREEN-DECLARES-SAFETY half of the task, as a screen
+ * with no entry at all.
+ */
+test('every entry\'s refresh is \'auto\' or \'ask\' — no third value, no omission', async () => {
+  const { SCREEN_INVALIDATION } = await loadLiveInvalidation();
+  const bad: string[] = [];
+  for (const [screen, entry] of Object.entries(SCREEN_INVALIDATION)) {
+    if (entry.refresh !== 'auto' && entry.refresh !== 'ask') {
+      bad.push(`${screen}: refresh is ${JSON.stringify(entry.refresh)}, not 'auto' or 'ask'`);
+    }
+  }
+  assert.deepEqual(bad, []);
+});
+
 test('the three static-content screens declare "nothing" explicitly, not by omission', async () => {
   const { SCREEN_INVALIDATION } = await loadLiveInvalidation();
   for (const screen of ['docs', 'tut', 'port']) {
     assert.deepEqual(
-      SCREEN_INVALIDATION[screen], [],
+      SCREEN_INVALIDATION[screen]?.kinds, [],
       `${screen} should be the reasoned-about "nothing" case: [], not absent and not '*'`,
     );
   }
@@ -163,8 +197,25 @@ test('the three static-content screens declare "nothing" explicitly, not by omis
 
 test('watch and ask — the two screens whose subject IS the audit log — carry \'*\'', async () => {
   const { SCREEN_INVALIDATION } = await loadLiveInvalidation();
-  assert.equal(SCREEN_INVALIDATION.watch, '*');
-  assert.equal(SCREEN_INVALIDATION.ask, '*');
+  assert.equal(SCREEN_INVALIDATION.watch?.kinds, '*');
+  assert.equal(SCREEN_INVALIDATION.ask?.kinds, '*');
+});
+
+/**
+ * **`watch` is the one screen `app.js` deliberately never subscribes through
+ * this table** — it has managed the shared stream itself since `seq:1`.
+ * `refresh` still has to be a real value here (the test above requires it of
+ * every entry, `watch` included, for shape-completeness), but this is where
+ * that is written down as a DECISION rather than left for a reader of
+ * `app.js`'s `EXCLUDED_FROM_GENERIC_LIVE_REFRESH` to reconstruct alone.
+ */
+test('watch is excluded from the generic wiring in app.js, by name', () => {
+  const source = readFileSync(path.join(PUBLIC, 'app.js'), 'utf8');
+  assert.match(
+    source, /EXCLUDED_FROM_GENERIC_LIVE_REFRESH\s*=\s*new Set\(\[[^\]]*'watch'[^\]]*\]\)/,
+    'app.js no longer excludes watch from the generic live-refresh wiring — '
+    + 'if that changed on purpose, watch.js\'s own subscription needs removing too',
+  );
 });
 
 test('the debounce is a positive, finite, hardcoded number of milliseconds', async () => {

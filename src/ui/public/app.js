@@ -51,7 +51,15 @@
 //                                    itself outlives every screen and is
 //                                    torn down only with the page (never
 //                                    per-screen — plan:live seq:1). See
-//                                    "THE SHARED LIVE STREAM" below.
+//                                    "THE SHARED LIVE STREAM" below. A screen
+//                                    never calls this itself to learn when to
+//                                    refresh — `route()` does that FOR every
+//                                    screen, off `SCREEN_INVALIDATION`
+//                                    (`lib/live-invalidation.js`, plan:live
+//                                    seq:2/3 — see "LIVE INVALIDATION" below).
+//                                    The one exception is `watch`, which owns
+//                                    its own incremental redraw and calls this
+//                                    directly, same as always.
 //        ctx.t(key, subs)           Node[] — the ONLY renderer. Append it:
 //                                    `el.append(...ctx.t(key, vals))`. Never
 //                                    assign with textContent/innerHTML (owner
@@ -111,6 +119,10 @@ import { buildTree, coverageGaps } from '/lib/viewmodel.js';
 // on connect for as long as the stream has existed, and the shell opening the
 // ONE connection now is the same request, made once instead of once per visit.
 import { BOUND_CAP_LIST } from '/screens/parts.js';
+// WHICH kinds make each screen stale, and whether that screen may be
+// rebuilt in place or must ask first — see "LIVE INVALIDATION" below and
+// that file's own header for why both facts live in the one table.
+import { LIVE_INVALIDATION_DEBOUNCE_MS, SCREEN_INVALIDATION } from '/lib/live-invalidation.js';
 
 const SCREENS = {
   preview: () => import('/screens/preview.js'),
@@ -991,6 +1003,130 @@ function subscribeStream(kinds, onEvent) {
   return () => { liveSubscribers.delete(sub); };
 }
 
+/* ══ LIVE INVALIDATION — ACTING ON WHAT live-invalidation.js DECLARES ═══════
+ *
+ * `plan:live seq:3`. `seq:2` built `SCREEN_INVALIDATION` and left it inert on
+ * purpose ("nothing here re-renders anything" — that file's own header). This
+ * is the one place that changes: `route()` reads `SCREEN_INVALIDATION[name]`
+ * for the screen it just built and subscribes on the screen's behalf, so a
+ * screen module never imports live-invalidation.js and never re-renders
+ * itself off the stream — the same division `subscribeStream()` already
+ * draws between "the door" and "who walks through it".
+ *
+ * `watch` is excluded outright (`EXCLUDED_FROM_GENERIC_LIVE_REFRESH`): it has
+ * subscribed to the shared stream itself since `seq:1` and redraws its own
+ * rows incrementally. Wiring it again here would be a second, coarser
+ * subscriber undoing the first screen's own fine-grained one.
+ */
+const EXCLUDED_FROM_GENERIC_LIVE_REFRESH = new Set(['watch']);
+
+/** Torn down and re-armed on every `route()` — one screen's subscription at a time. */
+let liveScreenUnsub = null;
+/** The single in-flight debounce timer for the CURRENT screen's subscription. */
+let liveScreenTimer = null;
+/**
+ * The refresh the shown affordance would perform if pressed, or `null` while
+ * it is hidden. Read by the strip's one shared button (`renderChrome()`)
+ * rather than captured per-screen, because the button is built once for the
+ * life of the page and this is what changes on every route.
+ */
+let pendingScreenRefresh = null;
+
+/** Show the affordance; `onTake` is what pressing its control does. */
+function showLiveAffordance(onTake) {
+  pendingScreenRefresh = onTake;
+  const el = document.getElementById('screenstale');
+  const sep = document.getElementById('screenstalesep');
+  if (el === null) return;
+  el.hidden = false;
+  if (sep !== null) sep.hidden = false;
+}
+
+/** Hide it — pressed, or the reader navigated to a different screen. */
+function hideLiveAffordance() {
+  pendingScreenRefresh = null;
+  const el = document.getElementById('screenstale');
+  const sep = document.getElementById('screenstalesep');
+  if (el !== null) el.hidden = true;
+  if (sep !== null) sep.hidden = true;
+}
+
+/**
+ * Tear down whatever the PREVIOUS screen subscribed — called at the top of
+ * `route()`, beside `closePane()`, for the identical reason: a subscription
+ * opened by the screen that just left is not this one's to keep receiving,
+ * and a pending affordance from a screen no longer on-screen is a promise
+ * about content the reader cannot see any more.
+ */
+function teardownLiveScreen() {
+  if (liveScreenUnsub !== null) { liveScreenUnsub(); liveScreenUnsub = null; }
+  if (liveScreenTimer !== null) { clearTimeout(liveScreenTimer); liveScreenTimer = null; }
+  hideLiveAffordance();
+}
+
+/**
+ * Subscribe the screen `route()` just built. `mod` and `section` are what
+ * `render()` needs to be called again; `name` is the `SCREEN_INVALIDATION`
+ * key. A screen with no entry, or `watch`, gets no subscription at all —
+ * silence rather than a guess.
+ *
+ * **`event !== 'record'` is filtered out here, not upstream.** `hello` and
+ * `fault` reach every subscriber regardless of `kinds` (`dispatchLiveEvent`'s
+ * own rule, so a subscriber can always learn the stream itself died) — and
+ * this subscriber's `kinds` may be `'*'` (`ask`), so without this check a
+ * stream-level frame would be mistaken for "something this screen draws
+ * arrived" and debounce a refresh nothing invalidated.
+ *
+ * **Debounced by `LIVE_INVALIDATION_DEBOUNCE_MS`, restarted on every
+ * matching frame** — the same coalescing `live-invalidation.js`'s own header
+ * argues for (one act, several rows off the stream), applied here rather
+ * than left for every screen to reinvent.
+ */
+function setupLiveScreen(name, mod, section) {
+  const decl = SCREEN_INVALIDATION[name];
+  if (decl === undefined || EXCLUDED_FROM_GENERIC_LIVE_REFRESH.has(name)) return;
+
+  const act = () => {
+    hideLiveAffordance();
+    // **Every screen's `render()` opens with `root.replaceChildren()`**
+    // (`route()`'s own comment on this, above) — for however long the
+    // dynamic import already resolved and the fetch inside `render()` is
+    // in flight, `section` sits EMPTY. `#screen` is the scroll container
+    // (`.body{overflow-y:auto}`), and a browser clamps `scrollTop` to
+    // whatever `scrollHeight` allows AT THAT INSTANT — it does not
+    // remember the pre-clear value once content regrows. Measured: without
+    // this, `DEC-a-refresh-keeps-the-reader-s-place-or-it-asks`'s own
+    // acceptance test failed with the scroll silently reset to 0, even
+    // though nothing here ever calls `scrollTo` or touches `#screen`
+    // directly. Captured before the rebuild and reasserted after, so the
+    // FINAL state — the property the test actually measures — holds
+    // regardless of what the browser does mid-rebuild.
+    const scrollHost = document.getElementById('screen');
+    const savedScroll = scrollHost === null ? null : scrollHost.scrollTop;
+    void mod.render(section, window.myctx).then(() => {
+      if (scrollHost !== null && savedScroll !== null) scrollHost.scrollTop = savedScroll;
+    });
+  };
+
+  liveScreenUnsub = subscribeStream(decl.kinds, (event) => {
+    if (event !== 'record') return;
+    if (liveScreenTimer !== null) clearTimeout(liveScreenTimer);
+    liveScreenTimer = setTimeout(() => {
+      liveScreenTimer = null;
+      // **`act()` calls the screen's OWN `render()` directly — never
+      // `route()`.** `route()` opens with `closePane()`; calling it here
+      // would close the very pane this feature exists to keep open. Calling
+      // `mod.render(section, ctx)` in place is what `DEC-a-refresh-keeps
+      // -the-reader-s-place-or-it-asks`'s "just updates" half actually is:
+      // the pane lives outside `section` entirely (`#pane` is its own grid
+      // area) and `.body`'s scrollTop is untouched by rebuilding ONE
+      // `[data-p]` child's contents.
+      if (decl.refresh === 'auto') act();
+      else showLiveAffordance(act);
+    }, LIVE_INVALIDATION_DEBOUNCE_MS);
+  });
+}
+
 let stopHeartbeat = () => {};
 
 function currentSession() { return sessionValue; }
@@ -1116,12 +1252,48 @@ function renderChrome() {
   live.hidden = true;
   strip.append(liveSep, live);
 
+  // ── THE SCREEN-LIVE AFFORDANCE — one line and a control, never a
+  // permanent banner. Built here, in the footer strip, and NOT inside any
+  // `[data-p]` section: `.strip` is its own grid row, outside `.body`'s own
+  // scroll container (`.body{overflow-y:auto}`) and outside `#pane`'s grid
+  // area entirely, so showing or hiding it can never move `.body`'s
+  // scrollTop or touch the pane — the exact property
+  // `DEC-a-refresh-keeps-the-reader-s-place-or-it-asks`'s acceptance test
+  // measures. See "LIVE INVALIDATION" below for who shows and hides it.
+  const staleSep = document.createElement('span');
+  staleSep.className = 'sep';
+  staleSep.id = 'screenstalesep';
+  staleSep.hidden = true;
+  const stale = document.createElement('span');
+  stale.id = 'screenstale';
+  stale.hidden = true;
+  // `role=status`: the one line names WHAT ARRIVED, and a reader away from
+  // the strip when it appears is exactly who an `aria-live` region is for —
+  // the same treatment `budgetSaveControl`'s own result region gets in
+  // `config.js`.
+  stale.setAttribute('role', 'status');
+  const staleMsg = document.createElement('span');
+  staleMsg.append(...translate(table.strings, 'live.screenStale'));
+  const staleBtn = document.createElement('button');
+  staleBtn.type = 'button';
+  staleBtn.className = 'icon';
+  staleBtn.append(...translate(table.strings, 'btn.refresh'));
+  // Reads `pendingScreenRefresh` at CLICK time, never captured here: this
+  // button is built once, for the life of the page, and which screen it
+  // refreshes changes on every route.
+  staleBtn.onclick = () => { pendingScreenRefresh?.(); };
+  stale.append(staleMsg, staleBtn);
+  strip.append(staleSep, stale);
+
   // This function reruns on a live page — `installNonceRedemption()` calls it
   // a second time after a pasted nonce redeems in place — and `strip
   // .replaceChildren()` above would otherwise silently un-say a fault the
   // stream already reported. A fact the reader was already told must survive
   // the chrome being rebuilt around it.
   if (liveEnded !== null) showLiveFault(liveEnded);
+  // Same reasoning, for the affordance: a rebuild mid-wait must not silently
+  // take back a "something arrived" the reader has not yet acted on.
+  if (pendingScreenRefresh !== null) { staleSep.hidden = false; stale.hidden = false; }
 }
 
 /**
@@ -1326,6 +1498,11 @@ async function route() {
   // the next one — and it runs even if the dynamic import below throws.
   // `test/ui/pane-route.test.ts` is this line.
   closePane();
+  // The same argument, for the OTHER piece of state a screen leaves behind:
+  // a subscription opened on Coverage's behalf and an affordance saying
+  // Coverage has new rows both belong to a screen the reader just navigated
+  // away from. `teardownLiveScreen()` — see "LIVE INVALIDATION" above.
+  teardownLiveScreen();
   // Decision 5: the landing screen is the injection preview, at
   // event=session-start on the most recent session, rendering with no
   // input. NOT 'status' — that screen is built by Task 19 and deferred to
@@ -1380,6 +1557,11 @@ async function route() {
   section.replaceChildren();
   const mod = await loader();
   await mod.render(section, window.myctx);
+  // Arm live invalidation for THIS screen, now that it has something on
+  // screen to either rebuild or ask about. After render(), not before: a
+  // record arriving mid-render would race a subscription against a first
+  // paint that has not happened yet.
+  setupLiveScreen(name, mod, section);
 
   // **`KNOWN-the-bare-server-url-renders-the-whole-app-and-never-says-it`.**
   //

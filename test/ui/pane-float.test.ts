@@ -357,7 +357,19 @@ async function boot(): Promise<Harness> {
           items: { total: 3 },
         });
       }
-      return { ok: false, status: 404, json: async (): Promise<unknown> => ({}) } as unknown as Response;
+      // `plan:live seq:3`: `route()` now subscribes every routed screen to
+      // the shared live stream (`/api/watch/stream`) on its behalf, unless
+      // the screen is excluded — so THIS harness's own boot navigation
+      // (`#/coverage`) reaches this fallback for a real request for the
+      // first time. `refusalDetail()` (`app.js`) reads `response.text()` on
+      // ANY non-ok response, stream or not, so the fallback needs one to stay
+      // "a refusal the shell handles" per this function's own comment above,
+      // not a shape only `.json()` ever exercised until now.
+      return {
+        ok: false, status: 404,
+        json: async (): Promise<unknown> => ({}),
+        text: async (): Promise<string> => '',
+      } as unknown as Response;
     };
 
     const define = (name: string, value: unknown): void => {

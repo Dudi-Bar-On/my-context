@@ -167,6 +167,12 @@ export const strings = {
   'cov.e1': 'Nothing governs this project yet.',
   'cov.e2': 'That is the normal state of a new workspace, not a wall of warnings. One sentence, said once — not repeated per row.',
   'btn.refresh': 'Refresh',
+  // `plan:live seq:3` — the shared, footer-strip affordance a screen that
+  // declares `refresh: 'ask'` draws instead of silently rebuilding itself.
+  // One line, reused across every screen it appears on rather than named per
+  // screen: it says something arrived, not WHAT — the screen's own re-render,
+  // once pressed, is what answers that. `btn.refresh` above is its control.
+  'live.screenStale': 'New activity for this screen.',
   'btn.copy': 'Copy',
   // Coverage gaps
   'gaps.h': 'Coverage gaps',
