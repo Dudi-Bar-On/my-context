@@ -55,7 +55,17 @@ import { fileURLToPath } from 'node:url';
 // they did and why they are gone — and their absence is asserted by name in
 // `test/ui/execute-route.test.ts`, because a rewrite reintroduced as a
 // "simplification" would look tidier and destroy other writers' rows.
-import { recordAudit } from '../core/audit.ts';
+import { auditFailureNote, recordAudit } from '../core/audit.ts';
+// `writeBudgets` and nothing else that touches disk: this module still binds
+// no reader of `config.json` — `currentBudgets`/`diffBudgetsAgainstDisk` are
+// what the budgets branch below calls to DERIVE a confirm, and only
+// `writeBudgets` is ever called from the POST, after the nonce redeems. See
+// `BUDGETS_ID` below for the whole route.
+import {
+  BudgetRefusal, diffBudgetsAgainstDisk, parseProposedBudgets, writeBudgets,
+  type BudgetFieldDiff,
+} from '../core/budgets-write.ts';
+import type { Budgets } from '../core/config.ts';
 import { CommandRefusal, catalogueEntries, resolveCommand } from './execute-catalogue.ts';
 import { EffectRefusal, deriveEffect, type ItemEffect } from './execute-effect.ts';
 // A VALUE import, deliberately, even though the class is only named in type
@@ -202,6 +212,68 @@ const CONFIRM_ID_ARG = 'id_arg';
  * module cannot import a `.ts` constant; the two are one decision, not two.
  */
 const CONFIRM_LANG_ARG = 'lang';
+
+/**
+ * The reserved `id` a budgets confirm/write sends instead of a catalogue name.
+ *
+ * `DEC-the-ui-writes-budgets-and-the-simulator-always-meant-to`, task
+ * `plan:budget seq:5`. **This is not a catalogue entry, and it must never
+ * become one.** The task's own words: "no COMMAND edits a budget, and an agent
+ * still cannot — a person can, here, behind a confirm." A catalogue id is
+ * composed into an `argv` and can be scripted by anything that can name it; a
+ * budget write is reachable ONLY through this exact id arriving at this exact
+ * route, which is not the CLI's argument grammar and is not in
+ * `palette-defs.js`.
+ *
+ * A colon is deliberate — no catalogue entry's `name` contains one (they are
+ * the CLI's own verb/subcommand spellings, `pin`, `review promote-revision`),
+ * so this id can never collide with a real command and `resolveCommand` is
+ * never asked to resolve it. Kept here, beside `CONFIRM_LANG_ARG`, rather than
+ * in `core/budgets-write.ts`: that module writes bytes and knows nothing about
+ * routes; this is the one file that decides what an `id` on the wire MEANS.
+ */
+export const BUDGETS_ID = 'config:budgets';
+
+/**
+ * A query string, read as the plain `key=value` bag `parseProposedBudgets`
+ * validates — the budgets branch's own `valuesFromQuery`.
+ *
+ * Deliberately NOT `valuesFromQuery` above: that function consults the
+ * catalogue's `declaredFields(id)` for switch coercion, and `BUDGETS_ID` names
+ * no catalogue entry — calling it would silently resolve to an empty field map
+ * and treat every value as a bare string, which happens to be harmless today
+ * but ties this branch's correctness to a catalogue lookup it has no business
+ * making. `id` and `CONFIRM_LANG_ARG` are excluded for the same reason
+ * `valuesFromQuery` excludes them: they name the request, not a budget.
+ */
+function budgetValuesFromQuery(url: URL): Record<string, unknown> {
+  const values: Record<string, unknown> = Object.create(null);
+  const seen = new Set<string>();
+  for (const [key, raw] of url.searchParams) {
+    if (key === 'id' || key === CONFIRM_LANG_ARG) continue;
+    if (seen.has(key)) {
+      throw new BudgetRefusal(`"${key.slice(0, 60)}" was given more than once`);
+    }
+    seen.add(key);
+    values[key] = raw;
+  }
+  return values;
+}
+
+/**
+ * The binding array a budgets nonce is minted and redeemed against — the
+ * budgets branch's own `argv`.
+ *
+ * `ExecutionNonceStore.mint`/`redeem` bind on `sha256(JSON.stringify([id,
+ * argv]))` and neither cares what `argv` MEANS, only that the confirm and the
+ * write derive the identical array from the identical proposed values. Sorted
+ * by field so that key ORDER in the request body can never change the
+ * binding — `{pinned:1,jit:2}` and `{jit:2,pinned:1}` must authorise the same
+ * write.
+ */
+function budgetBinding(diff: readonly BudgetFieldDiff[]): string[] {
+  return diff.map((d) => `${d.field}=${d.after}`).sort();
+}
 
 /** What a run reports back. No output is recorded; this is what the PAGE sees. */
 export interface RunOutcome {
@@ -546,6 +618,74 @@ export function registerExecuteRoutes(
 }
 
 /**
+ * What a confirm — either branch — would show, computed and NOTHING minted.
+ *
+ * `argv` means two different things depending on `id`: for a catalogue
+ * command it is the real argv `execFile` will run; for `BUDGETS_ID` it is
+ * `budgetBinding`'s array, which names no process and exists only so the same
+ * nonce store can bind the same way on both branches (see `budgetBinding`).
+ * Neither `handleConfirm` nor `handleExecute` cares which — they read `id` and
+ * `argv` back out of whichever branch produced them and treat the pair
+ * identically from there on, which is what keeps the mint/redeem call sites
+ * singular (see each function's own header).
+ */
+interface ConfirmPlan {
+  id: string;
+  argv: string[];
+  boundary: boolean;
+  effect: ItemEffect[];
+}
+
+/**
+ * Resolve `id` into a `ConfirmPlan` — throws `CommandRefusal`, `EffectRefusal`
+ * or `BudgetRefusal` for anything that will not get a confirm at all (§3.2:
+ * a command, or a write, whose effect cannot be shown does not get a weaker
+ * confirm — it does not run).
+ */
+function planConfirm(ctx: ApiContext, active: Binding, id: string): ConfirmPlan {
+  if (id === BUDGETS_ID) {
+    const root = ctx.ws.projectRoot;
+    if (root === null) throw new BudgetRefusal('mycontext ui: no workspace here');
+    const proposed = parseProposedBudgets(budgetValuesFromQuery(ctx.url));
+    const diff = diffBudgetsAgainstDisk(root, proposed);
+    if (diff.length === 0) {
+      throw new BudgetRefusal(
+        'none of the proposed budget values differ from what config.json currently resolves '
+        + 'to. Nothing to confirm.',
+      );
+    }
+    return {
+      id: BUDGETS_ID,
+      argv: budgetBinding(diff),
+      boundary: true,
+      // The confirm's own field-by-field diff — real values, not a file-level
+      // "(this file) → (is rewritten)". `execute-effect.ts`'s `elsewhereInCorpus`
+      // can only name the FILE for a non-item write; a budget change is exactly
+      // the case the task calls out by name, and it has the values on hand
+      // because it read them to compute the diff, so it puts them in the same
+      // `effect` shape every other boundary confirm already renders through.
+      effect: [{
+        id: 'config.json',
+        kind: 'changed',
+        fields: diff.map((d) => ({ field: d.field, before: [String(d.before)], after: [String(d.after)] })),
+      }],
+    };
+  }
+
+  const resolved = resolveCommand(id, valuesFromQuery(ctx.url, id));
+  let effect: ItemEffect[] = [];
+  if (resolved.boundary) {
+    const root = ctx.ws.projectRoot;
+    if (root === null) throw new CommandRefusal('mycontext ui: no workspace here');
+    // `ctx.repoRoot` is the SAME value handed to `runCommand` below for the real
+    // run, so the effect shown is the effect of the command as it will actually
+    // be run — not of the same argv run somewhere else.
+    effect = deriveEffect(root, ctx.repoRoot, active.cliEntry, resolved.argv);
+  }
+  return { id: resolved.id, argv: resolved.argv, boundary: resolved.boundary, effect };
+}
+
+/**
  * What the dialog must show: the resolved argv, which confirm this command
  * gets, a freshly minted nonce, and the residual.
  *
@@ -554,42 +694,41 @@ export function registerExecuteRoutes(
  * nobody was shown is impossible — §3.3 in one sentence. It does not make a
  * malicious local page impossible; §6.3 says out loud that nothing in this
  * design does.
+ *
+ * The budgets branch (`id === BUDGETS_ID`, `plan:budget seq:5`) is folded into
+ * `planConfirm` rather than a second endpoint: `active.nonces.mint` is called
+ * from exactly one place in this file, this line, whichever branch produced
+ * the `id`/`argv` it is minted against.
  */
 function handleConfirm(ctx: ApiContext): JsonResult {
   const active = binding;
   if (active === null) return { status: 500, body: { error: 'mycontext ui: execute is not wired' } };
   const id = ctx.url.searchParams.get('id') ?? '';
   try {
-    const resolved = resolveCommand(id, valuesFromQuery(ctx.url, id));
-
     // **The effect is derived BEFORE the nonce is minted**, so a confirm that
     // cannot be shown mints nothing. Minting first and then refusing would
     // leave a live nonce behind every refusal — spendable by anything that
     // could read the response — for a command the product just declined to
     // show. §3.2 says such a command does not run; a minted nonce is the one
     // artefact that could make that untrue.
-    let effect: ItemEffect[] = [];
-    if (resolved.boundary) {
-      const root = ctx.ws.projectRoot;
-      if (root === null) return { status: 500, body: { error: 'mycontext ui: no workspace here' } };
-      // `ctx.repoRoot` is the SAME value handed to `runCommand` below for the real
-      // run, so the effect shown is the effect of the command as it will actually
-      // be run — not of the same argv run somewhere else.
-      effect = deriveEffect(root, ctx.repoRoot, active.cliEntry, resolved.argv);
-    }
+    const plan = planConfirm(ctx, active, id);
 
     return {
       status: 200,
       body: {
-        id: resolved.id,
-        argv: resolved.argv,
-        boundary: resolved.boundary,
+        id: plan.id,
+        // No CLI line for a budgets write — there is no command, and showing
+        // `plan.argv` here (the nonce's binding array, `pinned=22000` and the
+        // like) would draw a fake command line for the one write this product
+        // deliberately keeps out of the CLI's reach.
+        ...(plan.id === BUDGETS_ID ? {} : { argv: plan.argv }),
+        boundary: plan.boundary,
         // Every item the command touches, each with the fields it changes.
         // Empty means "it was run against a copy and changed no item" — never
         // "we could not tell", which is an `EffectRefusal` and a 400 above.
-        effect,
+        effect: plan.effect,
         // Bound to the argv above, so the POST cannot spend it on anything else.
-        nonce: active.nonces.mint(resolved.id, resolved.argv),
+        nonce: active.nonces.mint(plan.id, plan.argv),
         // The reader's own language, read off the query string the browser
         // built from its own `table.lang` — never guessed from `Accept-Language`
         // or any other header, because the confirm has to answer in the SAME
@@ -604,33 +743,67 @@ function handleConfirm(ctx: ApiContext): JsonResult {
     // confirm — it does not run. The reader is given the reason, which is the
     // CLI's own sentence when the dry run reached it.
     if (error instanceof EffectRefusal) return refusal(error);
+    // The budgets branch's own refusal: an unknown key, a value that is not a
+    // positive integer, an unreadable/unresolvable config.json, or a proposal
+    // that changes nothing. Same treatment as the other two: a 400 the reader
+    // may be shown verbatim, and no nonce is minted.
+    if (error instanceof BudgetRefusal) return refusal(error);
     throw error;   // a bug, and the dispatch loop answers 500 for those
   }
 }
 
-/** The six steps, in the order the header states. Nothing here may be reordered. */
+/**
+ * The six steps, in the order the header states, for a catalogue command —
+ * unchanged. Nothing here may be reordered.
+ *
+ * The budgets branch (`id === BUDGETS_ID`) is a DIFFERENT shape after step 3,
+ * and deliberately so: it writes one JSON key rather than starting a process,
+ * so there is nothing that can "never return" and no `exitCode` to report.
+ * What it keeps from the six steps is the part that IS the security story —
+ * shape, then resolve, then redeem against server-derived values, never the
+ * client's — and it is audited exactly once, AFTER the write succeeds, the
+ * same order `mutate.ts`'s own writers use (`auditMutation` records once the
+ * caller KNOWS the write happened, not before). There is no attempted/complete
+ * pair here because there is no gap between "authorised" and "done" for a
+ * synchronous file write to fall into.
+ */
 async function handleExecute(ctx: ApiContext): Promise<JsonResult> {
   const active = binding;
   if (active === null) return { status: 500, body: { error: 'mycontext ui: execute is not wired' } };
   const root = ctx.ws.projectRoot;
   if (root === null) return { status: 500, body: { error: 'mycontext ui: no workspace here' } };
 
-  // 1 and 2. The shape, then the catalogue. Both are refusals a caller may be
-  // shown, and both are 400: nothing about either is a server fault.
+  // 1 and 2. The shape, then either the catalogue or the budgets branch. Both
+  // are refusals a caller may be shown, and both are 400: nothing about either
+  // is a server fault.
   let body: ExecuteBody;
-  let resolved: { id: string; argv: string[]; boundary: boolean };
+  let resolvedId: string;
+  let argv: string[];
+  let proposedBudgets: Partial<Budgets> | null = null;
   try {
     body = readBody(ctx.body);
-    resolved = resolveCommand(body.id, body.values);
+    if (body.id === BUDGETS_ID) {
+      proposedBudgets = parseProposedBudgets(body.values);
+      const diff = diffBudgetsAgainstDisk(root, proposedBudgets);
+      resolvedId = BUDGETS_ID;
+      argv = budgetBinding(diff);
+    } else {
+      const resolved = resolveCommand(body.id, body.values);
+      resolvedId = resolved.id;
+      argv = resolved.argv;
+    }
   } catch (error) {
-    if (error instanceof CommandRefusal) return refusal(error);
+    if (error instanceof CommandRefusal || error instanceof BudgetRefusal) return refusal(error);
     throw error;
   }
 
-  // 3. AFTER the resolve, against the argv the SERVER built. Redeeming first
-  // would check the nonce against what the client said it wanted to run, which
-  // is the one thing the binding exists not to trust.
-  if (!active.nonces.redeem(body.nonce, resolved.id, resolved.argv)) {
+  // 3. AFTER the resolve, against the argv/binding the SERVER built. Redeeming
+  // first would check the nonce against what the client said it wanted to run
+  // (or write), which is the one thing the binding exists not to trust. If the
+  // file moved between the confirm and this request such that the budgets
+  // branch now derives a different binding array, this redeems false — the
+  // same 403 a stale catalogue nonce gets, not a special case.
+  if (!active.nonces.redeem(body.nonce, resolvedId, argv)) {
     return {
       status: 403,
       body: {
@@ -642,6 +815,50 @@ async function handleExecute(ctx: ApiContext): Promise<JsonResult> {
     };
   }
 
+  if (resolvedId === BUDGETS_ID) {
+    let diff: BudgetFieldDiff[];
+    try {
+      // `proposedBudgets` is never null on this branch: it is set in the same
+      // `if (body.id === BUDGETS_ID)` above that put `BUDGETS_ID` into
+      // `resolvedId`.
+      diff = writeBudgets(root, proposedBudgets!);
+    } catch (error) {
+      return {
+        status: 500,
+        body: {
+          error:
+            `mycontext ui: the write nonce redeemed but config.json could not be written `
+            + `(${error instanceof Error ? error.message : String(error)}). No budget was changed.`,
+        },
+      };
+    }
+    // Audited like any other write (task `plan:budget seq:5`). `kind:
+    // 'mutation'` because that is the closest of the seven existing kinds to
+    // "a value changed" and adding an eighth was deliberately avoided — see
+    // this task's report for why. No `itemId`: this is not an item, and
+    // leaving the field absent (rather than naming `config.json`, which is not
+    // an item id either) keeps every reader that joins `mutation` rows to real
+    // items — `src/ui/ask-model.ts`'s `WHERE a.kind = 'mutation' AND
+    // a.item_id IS NOT NULL` — correctly excluding this row rather than
+    // joining it to nothing. `fields` and `note` carry the real values, which
+    // is more than an ordinary item `update` row gets to say about itself.
+    const write = recordAudit(root, {
+      kind: 'mutation',
+      op: 'update',
+      origin: 'human',
+      fields: diff.map((d) => d.field),
+      note: diff.map((d) => `${d.field}: ${d.before} -> ${d.after}`).join('; '),
+    });
+    return {
+      status: 200,
+      body: {
+        id: BUDGETS_ID,
+        diff,
+        ...(write.written ? {} : { auditNote: auditFailureNote(write) }),
+      },
+    };
+  }
+
   // 4. The FIRST of the pair, before the run. `exitCode: null` because nothing
   // has exited yet; the `execute-done` row at step 6 carries the real code.
   const at = new Date().toISOString();
@@ -649,7 +866,7 @@ async function handleExecute(ctx: ApiContext): Promise<JsonResult> {
     at,
     kind: 'execution',
     op: 'execute',
-    command: { id: resolved.id, argv: resolved.argv, exitCode: null, durationMs: 0 },
+    command: { id: resolvedId, argv, exitCode: null, durationMs: 0 },
   });
   if (!write.written) {
     // Spec §3.4: a run that cannot be recorded does not happen. `recordAudit`
@@ -660,7 +877,7 @@ async function handleExecute(ctx: ApiContext): Promise<JsonResult> {
       status: 500,
       body: {
         error:
-          `mycontext ui: refusing to run ${resolved.id} — its audit record could not be `
+          `mycontext ui: refusing to run ${resolvedId} — its audit record could not be `
           + `written (${write.error}). A run that cannot be recorded does not happen.`,
       },
     };
@@ -670,7 +887,7 @@ async function handleExecute(ctx: ApiContext): Promise<JsonResult> {
   const started = Date.now();
   const outcome = await active.run(
     process.execPath,
-    [active.cliEntry, ...resolved.argv],
+    [active.cliEntry, ...argv],
     // The repository root, never anything above it: spec §5 excludes anything
     // that reaches outside the workspace, and there is no argument shape in the
     // catalogue that names a path outside it either.
@@ -682,14 +899,14 @@ async function handleExecute(ctx: ApiContext): Promise<JsonResult> {
   // it. Never an amendment of that row — `recordCompletion` has the whole
   // argument, and the rewrite it names must not come back.
   const auditNote = recordCompletion(
-    root, at, resolved.id, resolved.argv, outcome.exitCode, durationMs,
+    root, at, resolvedId, argv, outcome.exitCode, durationMs,
   );
 
   return {
     status: 200,
     body: {
-      id: resolved.id,
-      argv: resolved.argv,
+      id: resolvedId,
+      argv,
       exitCode: outcome.exitCode,
       durationMs,
       stdout: outcome.stdout,

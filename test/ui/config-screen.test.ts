@@ -59,11 +59,22 @@ import { DEFAULT_BUDGETS, SCOPE_POLICIES, resolveConfig } from '../../src/core/c
 
 const REPO = path.join(import.meta.dirname, '..', '..');
 const SCREENS = path.join(REPO, 'src', 'ui', 'public', 'screens');
+const LIB = path.join(REPO, 'src', 'ui', 'public', 'lib');
 const SCREEN = path.join(SCREENS, 'config.js');
 const MOCKUP = path.join(REPO, 'docs', 'design', 'web-ui-mockup.html');
 
 /** The one specifier Node cannot resolve, and the exact bytes to rewrite. */
 const PARTS = "'/screens/parts.js'";
+
+/**
+ * The two absolute specifiers the budgets Write control (task `plan:budget
+ * seq:5`) added, rewritten the SAME way `PARTS` is — Node cannot resolve an
+ * absolute `/lib/…` specifier any more than it can `/screens/…`, for the same
+ * reason (the browser resolves it against the origin; Node has no `lib/` at
+ * its filesystem root).
+ */
+const CMD_ACTIONS = "'/lib/command-actions.js'";
+const VIEWMODEL = "'/lib/viewmodel.js'";
 
 /** This task's published interface — hand-declared, so drift fails here. */
 interface ConfigScreen {
@@ -84,13 +95,19 @@ const source = (): string => readFileSync(SCREEN, 'utf8');
 const mockup = (): string => readFileSync(MOCKUP, 'utf8');
 
 async function screen(): Promise<ConfigScreen> {
-  const text = source();
-  assert.ok(text.includes(`from ${PARTS};`),
-    `screens/config.js no longer imports from ${PARTS}; the rewrite below would import an `
-    + 'unmodified module and fail on a specifier Node cannot resolve, so fix the rewrite rather '
-    + 'than deleting this assertion.');
-  const rewritten = text.replace(PARTS, JSON.stringify(pathToFileURL(path.join(SCREENS, 'parts.js')).href));
-  return (await import(`data:text/javascript,${encodeURIComponent(rewritten)}`)) as ConfigScreen;
+  let text = source();
+  for (const [specifier, real] of [
+    [PARTS, path.join(SCREENS, 'parts.js')],
+    [CMD_ACTIONS, path.join(LIB, 'command-actions.js')],
+    [VIEWMODEL, path.join(LIB, 'viewmodel.js')],
+  ] as const) {
+    assert.ok(text.includes(`from ${specifier};`),
+      `screens/config.js no longer imports from ${specifier}; the rewrite below would import an `
+      + 'unmodified module and fail on a specifier Node cannot resolve, so fix the rewrite rather '
+      + 'than deleting this assertion.');
+    text = text.replace(specifier, JSON.stringify(pathToFileURL(real).href));
+  }
+  return (await import(`data:text/javascript,${encodeURIComponent(text)}`)) as ConfigScreen;
 }
 
 /** `<section data-p="config">` … `</section>`, the design of record for this screen. */
@@ -253,28 +270,60 @@ test('the screen names every data-t key its mockup section declares', async () =
     'these keys are drawn by <section data-p="config"> and named nowhere in screens/config.js');
 });
 
-test('the screen reads one endpoint and binds nothing that writes, runs or fetches', async () => {
+/**
+ * REWRITTEN 2026-08-27 — task `plan:budget seq:5`,
+ * `DEC-the-ui-writes-budgets-and-the-simulator-always-meant-to`. The OLD name
+ * of this test, "binds nothing that writes, runs or fetches", is false of this
+ * file as of that ruling: the Budgets card now calls `ctx.post('/api/execute'`
+ * behind a confirm. **This test is NARROWED here, not widened** — the same
+ * distinction `test/ui/no-writes.test.ts` draws for `execute.ts` itself. What
+ * still holds, and still fails: no `fetch(`, no `innerHTML`, no `eval`, no
+ * storage — this screen reaches the network through the SAME two contract
+ * methods every other write-capable screen uses (`ctx.api`/`ctx.post`),
+ * never a hand-rolled request, and it composes NO CLI command — no `<code>`
+ * line, no `composeCommand` import, nothing `lib/command.js` would build —
+ * which is the one property `cfg.nocmd` still asserts on screen.
+ */
+test('the screen reaches the network only through ctx.api/ctx.post, and composes no CLI command', async () => {
   const code = codeLines();
 
-  // ONE endpoint, and it is a GET. `/api/config/check` and `/api/config/preview`
-  // exist, and the screen contract's fetcher cannot reach them (it takes a path
-  // and nothing else) — so a second path appearing here would mean either the
-  // contract grew a method or somebody hand-rolled a fetch.
+  // The confirm GET: the literal `/api/config` read, and the dynamic budgets
+  // confirm — `ctx.api(confirmPath(...))` can never match a `ctx.api('...'`
+  // regex, so it is asserted by substring instead, naming the exact call this
+  // file makes rather than a shape a rewrite could satisfy by accident.
   assert.deepEqual([...code.matchAll(/ctx\.api\('([^']+)'/g)].map((m) => m[1]), ['/api/config']);
+  assert.ok(code.includes('ctx.api(confirmPath('),
+    'the budgets confirm must go through confirmPath, the same query shape /api/execute/confirm reads');
+
+  // The ONE write: `ctx.post('/api/execute'`, and only that literal path — a
+  // second POST target appearing here would mean a second write nobody ruled
+  // in, which is exactly what `no-writes.test.ts`'s RULED_WRITES guards on the
+  // server side.
+  assert.deepEqual([...code.matchAll(/ctx\.post\('([^']+)'/g)].map((m) => m[1]), ['/api/execute']);
+
+  // No CLI command is composed here, ever — the property `cfg.nocmd` states on
+  // screen. `commandActions` and `command.js`'s `composeCommand` are what
+  // every OTHER boundary control on this UI uses to draw a `<code>` line; this
+  // screen imports neither, because a budget write has no argv to show.
+  for (const banned of ['commandActions', 'composeCommand', "from '/lib/command.js'"]) {
+    assert.equal(code.includes(banned), false, `screens/config.js names "${banned}" — it must not compose a command`);
+  }
 
   // The browser-side counterpart of `test/ui/no-writes.test.ts`, which holds the
-  // SERVER's import graph to the same rule. A UI write would void the user's
-  // Bash deny rules silently — the deny rules match command strings and an HTTP
-  // route is not a command string — and the deny hook's own words make
-  // `config.json` the user's to edit. The composed block therefore goes to the
-  // clipboard and stops there.
+  // SERVER's import graph to the same rule. A hand-rolled request would void
+  // the token this UI's own gate requires, and a markup sink would defeat the
+  // CSP this server ships with no `'unsafe-inline'`.
   const forbidden = [
     'innerHTML', 'outerHTML', 'insertAdjacentHTML', 'document.write',
-    'eval(', 'new Function', 'XMLHttpRequest', 'fetch(', 'sendBeacon',
+    'eval(', 'new Function', 'XMLHttpRequest', 'sendBeacon',
     'EventSource', 'import(', 'localStorage', 'sessionStorage', 'style="',
   ];
   assert.deepEqual(forbidden.filter((name) => code.includes(name)), [],
-    'screens/config.js binds a name that can write, run, fetch or inject markup');
+    'screens/config.js binds a name that can run, fetch or inject markup');
+  // A raw `fetch(` call would carry no token and bypass `ctx.api`/`ctx.post`
+  // entirely — `codeLines()` already stripped every comment line, so this
+  // matches only executable code, never prose that mentions the word.
+  assert.doesNotMatch(code, /\bfetch\(/, 'a raw fetch( call would carry no token and bypass ctx.api/ctx.post');
 
   // And the positive half: the copy path exists and is the clipboard, because
   // an assertion that only names absences passes on an empty file.

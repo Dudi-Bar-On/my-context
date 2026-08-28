@@ -2100,10 +2100,10 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
     <div class="card pane">
       <h3 data-t="cfg.apply">Apply this</h3>
-      <p class="small" data-t="cfg.nocmd">There is no command that edits a budget. Configuration is a
-        file, and the deny hook says so in those words: <i>"changes to
+      <p class="small" data-t="cfg.nocmd">No <span class="m">mycontext</span> command edits a
+        budget, and an agent still cannot — the deny hook says so in those words: <i>"changes to
         <span class="m">.my_context/config.json</span> are the user's to make — ask, do not edit."</i>
-        So this is the edit, not a command.</p>
+        A person can, here, behind a confirm that shows every value before it is written.</p>
       <pre class="m">  "budgets": {
     "pinned": 6000,
 -   "jit": 6000,
@@ -2736,7 +2736,7 @@ const HE={_dir:'rtl',_lang:'he',
  'cfg.budgets':'תקציבים','cfg.effect':'מה משתנה',
  'cfg.deltan':'כל שורה היא הזוג, לא הכיוון לבדו: הערך הישן מחוק בקו, החדש מודגש, והשורה נצבעת לפי הכיוון שאליו זזה. "מה זה היה קודם" הוא חצי מ"מה משתנה", ושבב {m:+1} לבדו שומר על הכיוון ומאבד את ההצמדה.',
  'cfg.spn':'צבע המסגרת והמניין הם רדיוס הפגיעה: כמה מהקורפוס מפסיק לעבוד אם הערך הזה משתנה. {m:inert} הוא השינוי ההרסני ביותר שההגדרות מציעות, ו‑{m:scopePolicyFor} הופך את השפעתו למחושבת במדויק ולא למשוערת — הפריטים נקובים בשם, ומה שמעבר לחתך נספר ולא מוסתר.',
- 'cfg.apply':'להחיל','cfg.nocmd':'אין פקודה שעורכת תקציב. ההגדרות הן קובץ — {m:.my_context/config.json} — וכך אומר הוו.',
+ 'cfg.apply':'להחיל','cfg.nocmd':'אף פקודת mycontext אינה עורכת תקציב, וסוכן עדיין לא יכול — כך אומר הוו על .my_context/config.json במילים האלה. אדם יכול, כאן, מאחורי אישור שמציג כל ערך לפני שהוא נכתב.',
  'cfg.h1':'ערכו את הקובץ בעצמכם. דבר כאן אינו כותב אותו.','cfg.h2':'הקבלה: המסך קורא את {m:config.json} מחדש בכל טעינה — או שדה {m:parseError} אם ה‑JSON נשבר.',
  'port.h':'ייצוא / ייבוא',
  'dv.h':'תיעוד','dv.v':'מקושר לקורפוס שלכם, מה שאתר תיעוד אינו יכול',

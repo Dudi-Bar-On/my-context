@@ -118,7 +118,7 @@ const CONFIRM_LANG_ARG = 'lang';
  * holds), so a caller that has none gets the server's English default rather
  * than a query string naming a language nobody asked for.
  */
-function confirmPath(id, values, lang) {
+export function confirmPath(id, values, lang) {
   const query = new URLSearchParams();
   query.set('id', id);
   if (typeof lang === 'string' && lang !== '') query.set(CONFIRM_LANG_ARG, lang);
@@ -162,7 +162,7 @@ function diffFor(before, after) {
  * `before` the server did not send stays absent, because a fabricated "false"
  * would be a claim about an item nobody looked at.
  */
-function viewsFromEffect(effect) {
+export function viewsFromEffect(effect) {
   return effect.map((item) => ({
     id: item.id,
     kind: item.kind,
@@ -215,7 +215,7 @@ function appendRuns(parent, runs) {
  * name, which is how a screen reader announces the one region of this confirm
  * that carries the security surface.
  */
-function diffTable(ctx, views) {
+export function diffTable(ctx, views) {
   const table = el('table', 'diff');
   const caption = el('caption');
   caption.append(...ctx.t('exec.changes'));

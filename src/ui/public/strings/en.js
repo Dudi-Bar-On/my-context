@@ -428,11 +428,31 @@ export const strings = {
   'aria.scopepolicy': 'scopePolicy',
   'cfg.spn': 'The border colour and the count {b:are} the blast radius: how much of the corpus stops working if this value changes. {m:inert} is the most destructive change the configuration offers, and {m:scopePolicyFor} makes its effect computable exactly rather than estimated — the items are named, and the ones past the cut are counted rather than hidden.',
   'cfg.apply': 'Apply this',
-  'cfg.nocmd': 'There is no command that edits a budget. Configuration is a file, and the deny hook says so in those words: {i:"changes to {m:.my_context/config.json} are the user\'s to make — ask, do not edit."} So this is the edit, not a command.',
+  // REWRITTEN 2026-08-27 — task `plan:budget seq:5`,
+  // `DEC-the-ui-writes-budgets-and-the-simulator-always-meant-to`. The old
+  // sentence ("There is no command that edits a budget… So this is the edit,
+  // not a command") became FALSE the day this screen gained the Write button
+  // below: it now IS a write, behind a confirm. What stays true, and what this
+  // rewrite says instead: no COMMAND edits a budget, and an agent still
+  // cannot reach one — the deny hook still refuses every OTHER key in this
+  // file, and still refuses an agent here. A person can, now, past the
+  // confirm.
+  'cfg.nocmd': 'No {m:mycontext} command edits a budget, and an agent still cannot — the deny hook says so in those words: {i:"changes to {m:.my_context/config.json} are the user\'s to make — ask, do not edit."} A person can, here, behind a confirm that shows every value before it is written.',
   'btn.copypatch': 'Copy the patch',
+  // The four Save/write strings the budgets form and its confirm draw. Not a
+  // second `exec.*` set: `exec.btn`/`exec.h`/`exec.go` all say "Execute" /
+  // "Run this command?" / "Run it", which is precisely false of a write that
+  // runs no command — see `cfg.nocmd` above. `exec.cancel` ("Cancel") and
+  // `exec.changes` ("What changes — in force, then proposed") ARE reused,
+  // deliberately: neither one names a command, and a third spelling of either
+  // is exactly the "two tables that can disagree" this UI keeps refusing.
+  'cfg.savebtn': 'Write budgets',
+  'cfg.saveh': 'Write these budgets?',
+  'cfg.saveg': 'Write it',
+  'cfg.saved': 'Written to {m:config.json}.',
   'cfg.watched': 'Watched documents',
   'cfg.watchednote': '{m:init} writes what this repository actually has, rather than shipping three paths from one workflow that match nothing here. The list {b:replaces} and never merges — a list you wrote must not silently gain globs you did not.',
-  'cfg.h1': '{b:Edit the file yourself.} Nothing here writes it, and the hook refuses an agent that tries.',
+  'cfg.h1': '{b:Budgets are written here}, past the confirm above. Every other key on this screen is yours to edit yourself, and the hook refuses an agent that tries.',
   'cfg.h2': '{b:The receipt:} this screen re-reads {m:config.json} from disk on every load, so returning to the tab shows the new value — or a {m:parseError} field if the JSON broke.',
   // Procedures
   'pr.h': 'Procedures',

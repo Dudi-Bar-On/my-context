@@ -160,6 +160,13 @@ const WRITERS: Record<string, string[]> = {
   // `uiServerRecordPath` is bound by `src/ui/server.ts` too and is deliberately
   // NOT here: it builds a path for a disclosure message and writes nothing.
   'src/core/ui-server-record.ts': ['writeUiServerRecord', 'clearUiServerRecord'],
+  // Owner ruling, 2026-08-27 — `DEC-the-ui-writes-budgets-and-the-simulator-always-meant-to`,
+  // reversing `DEC-should-the-web-ui-be-allowed-to-write-config-json` narrowly:
+  // "the UI writes BUDGETS… budgets ONLY." `writeBudgets` overwrites exactly the
+  // `budgets` key of `.my_context/config.json`, byte-for-byte, and touches no
+  // other file this ban would notice. See `RULED_WRITES` below for the three
+  // properties that bound it before it was named here.
+  'src/core/budgets-write.ts': ['writeBudgets'],
 };
 
 const isWriter = (module: string, symbol: string): boolean =>
@@ -205,6 +212,31 @@ const RULED_WRITES = [
   //     whole-file rewrite and would have silently destroyed any row a hook
   //     appended in between; the attempted/complete pair replaced it.
   'src/ui/execute.ts binds recordAudit (defined in src/core/audit.ts)',
+  // Owner ruling, 2026-08-27 (`DEC-the-ui-writes-budgets-and-the-simulator-always-meant-to`,
+  // task `plan:budget seq:5`). The Simulate screen has always let a person drag
+  // budgets until a setup fits; this is the missing step — APPLYING that
+  // answer rather than making the reader retype it into a file the deny hook
+  // (`pre-tool-use.ts`) still refuses an agent for touching.
+  //
+  // Three properties bound it, each checkable rather than promised:
+  //
+  //   - BUDGETS ONLY, structurally. `writeBudgets` (`src/core/budgets-write.ts`)
+  //     spreads the parsed `config.json` object and reassigns exactly the
+  //     `budgets` property; `categories`, `watchedDocs`, `profile`, `ui` and
+  //     `handover` are never read into a name the function can reassign, so
+  //     there is no line in it that could touch them;
+  //   - behind the SAME single-use nonce a boundary command gets, minted by
+  //     the SAME confirm GET and redeemed by the SAME `POST /api/execute` —
+  //     `src/ui/execute.ts`'s `BUDGETS_ID` branch, not a second route and not
+  //     a second place a nonce is minted;
+  //   - every value is a validated positive integer or the write is refused
+  //     BY NAME (`requirePositiveIntegerBudget`) — never silently clamped.
+  //
+  // Reachable only from a browser behind that confirm. No CLI command composes
+  // it — `palette-defs.js` carries no entry for it and `resolveCommand` never
+  // resolves `BUDGETS_ID` — so an agent scripting the CLI still cannot reach
+  // this write; only a person, in the browser, past the confirm, can.
+  'src/ui/execute.ts binds writeBudgets (defined in src/core/budgets-write.ts)',
   'src/ui/security.ts binds recordAudit (defined in src/core/audit.ts)',
   // Owner requirement, 2026-08-27:
   // `REQ-the-ui-server-is-running-whenever-the-owner-looks-or-it-says`. The

@@ -3,36 +3,52 @@
  * The screen whose verdict is the strongest claim in the product: `cfg.v`,
  * *"the strongest 'a terminal cannot do this'"*.
  *
- * ── IT READS. IT NEVER WRITES, AND IT NEVER OFFERS TO ──────────────────────
+ * ── IT READS EVERYTHING, AND IT WRITES EXACTLY ONE THING ───────────────────
  *
- * The endpoint set it draws from says this about itself
+ * REWRITTEN 2026-08-27 — task `plan:budget seq:5`,
+ * `DEC-the-ui-writes-budgets-and-the-simulator-always-meant-to`. This screen
+ * used to read only: the endpoint set it draws from still says so of itself
  * (`src/ui/read-model-config.ts` · `READS, VALIDATES and PREVIEWS; nothing writes, and nothing offers to.` · ~3),
- * and the reason is the deny hook's own sentence, which `cfg.nocmd` quotes on
- * screen: *"changes to `.my_context/config.json` are the user's to make — ask,
- * do not edit."* So the settlement this screen composes is the FILE TEXT, shown
- * before it is copied and pasted by the user into their own editor.
+ * and that sentence is still true of `/api/config`, `/api/config/check` and
+ * `/api/config/preview` — nothing about THOSE three routes changed. What
+ * changed is that the Budgets card (below) now also composes a confirm and a
+ * write through `src/ui/execute.ts`'s `BUDGETS_ID` branch — the SAME
+ * `GET /api/execute/confirm` / `POST /api/execute` pair every boundary
+ * command on every other screen uses, not a second door into the server.
  *
- * **And it is file text rather than a shell command, which is this screen's one
- * departure from every other composing surface in this UI.** Doctor and
- * Coverage compose an argv through `lib/command.js`; `cfg.nocmd` rules that out
- * here in the mockup's own words — *"There is no command that edits a
- * budget… So this is the edit, not a command."* `quoteArg` quotes a value for a
- * POSIX shell; a JSON block never reaches one. Importing it to look consistent
- * with the other screens would put shell quoting around text no shell will read.
+ * The owner's ruling is narrow, and this file enforces the narrowness by
+ * construction rather than by discipline: **the ONLY endpoint this screen can
+ * reach that writes anything is `BUDGETS_ID`, and `BUDGETS_ID` writes ONLY
+ * `config.json`'s `budgets` key.** `categories`, `watchedDocs`, `profile`,
+ * `ui` and `handover` are still the user's file to edit by hand — the deny
+ * hook (`pre-tool-use.ts`) still refuses an agent that tries, and `cfg.nocmd`
+ * still quotes it on screen, rewritten to say what stays true: *"No
+ * `mycontext` command edits a budget, and an agent still cannot… A person
+ * can, here, behind a confirm."*
+ *
+ * **And a budget write is behind the same field-by-field confirm a boundary
+ * CLI command gets, never a shell command.** Doctor and Coverage compose an
+ * argv through `lib/command.js` and hand it to `commandActions`, which draws
+ * a `<code>` line and a Copy button beside Execute; a budget write has no argv
+ * and no command line to show, so it does NOT go through `commandActions` —
+ * `budgetSaveControl` below is a second, narrower control, built from the same
+ * three pieces (`confirmPath`, `viewsFromEffect`, `diffTable`, all exported
+ * from `lib/command-actions.js` for exactly this reuse) minus the parts that
+ * are meaningless for a write that runs no process: no `<code>` line, no
+ * Copy, no exit code.
  *
  * ── WHAT IT CAN ASK, AND THE ONE THAT IT CANNOT ────────────────────────────
  *
- * `GET /api/config` only. `POST /api/config/check` and `POST /api/config/preview`
- * exist and are registered (`src/ui/read-model-config.ts` · `registerRoute('POST', '/api/config/check', {` · ~362),
- * but the screen contract's fetcher takes a path and nothing else
- * (`app.js` · `async function api(path) {` · ~153): no method, no body, and the
- * token it carries is closed over inside that module, so a raw `fetch` from here
- * would carry no credential and be refused by the gate — which would be the gate
- * working. The plan's Step 3 sketch for this screen is written against
- * `ctx.api(path, init)` with POST support, an app.js extension that plan-2 Task
- * 12 adds and that app.js does not have today. Every preview below that would
- * need a candidate config is therefore ABSENT rather than approximated, and this
- * task's report names each one.
+ * `GET /api/config` for the read model below; `GET /api/execute/confirm` and
+ * `POST /api/execute` for the Budgets card's Write control. `POST
+ * /api/config/check` and `POST /api/config/preview` exist and are registered
+ * (`src/ui/read-model-config.ts` · `registerRoute('POST', '/api/config/check', {` · ~362)
+ * and are STILL unreachable from here — `ctx.post` exists on the screen
+ * contract now (`app.js`'s `post(path, body)`, added for `execute`), but
+ * nothing below calls it with either of those two paths. Every preview that
+ * would need a CANDIDATE config (the delta plate, the segbar's blast panels)
+ * is therefore still ABSENT rather than approximated, and this task's report
+ * names it as unchanged.
  *
  * That absence is not new: the mockup binding for this task already records
  * three things it cannot produce as written
@@ -90,7 +106,20 @@
  * them is the stated untested surface (spec §6), and the split is what keeps
  * "which number is struck through" and "what exactly gets pasted" out of it.
  */
+import { confirmPath, diffTable, viewsFromEffect } from '/lib/command-actions.js';
+import { fieldView } from '/lib/viewmodel.js';
 import { el, errorNote, mono, screenHead, spaced } from '/screens/parts.js';
+
+/**
+ * The reserved catalogue-shaped id `src/ui/execute.ts` reads as "the budgets
+ * branch, not a catalogue command" — `BUDGETS_ID` there, respelled here
+ * because a browser module cannot import a `.ts` constant. The two are one
+ * decision, not two, the same relationship `CONFIRM_LANG_ARG` already has
+ * between that file and `lib/command-actions.js`. It is not, and must never
+ * become, a `palette-defs.js` entry: `test/ui/execute-budgets-route.test.ts`
+ * asserts the catalogue names nothing by this id.
+ */
+const BUDGET_ID = 'config:budgets';
 
 /**
  * The category whose `scopePolicy` the third card is about.
@@ -181,6 +210,133 @@ export function policyPositions(categories, policies, name) {
   };
 }
 
+/**
+ * **The Budgets card's Write control — a second, narrower control beside
+ * `commandActions`, not a reuse of it.**
+ *
+ * `commandActions` draws a `<code>` line (the argv) and a Copy button beside
+ * Execute, because every OTHER boundary control on this UI composes a CLI
+ * command. A budget write composes nothing of the kind — there is no argv, no
+ * shell line, nothing to copy — so drawing it here would show a fake command
+ * line for the one write this product deliberately keeps out of the CLI's
+ * reach (`cfg.nocmd`). What IS shared, imported rather than re-implemented,
+ * is the three pieces that do not depend on there being a command:
+ * `confirmPath` (the SAME query-string shape `GET /api/execute/confirm`
+ * reads, `id` plus values plus `?lang=`), `viewsFromEffect` (the server's
+ * `effect` reshaped for `fieldView`) and `diffTable` (the field/in-force/
+ * proposed table, headed by `exec.changes`, that every other confirm already
+ * draws through). One nonce is minted for this whole page, and it is minted
+ * where it always is — the confirm GET `execute.ts` answers — never here.
+ *
+ * `inputs` is `{ [budgetKey]: <input type=number>, … }`, read at the moment
+ * Write is clicked so the values sent are whatever the fields hold THEN, not
+ * whatever `budgetRows` computed when the screen loaded. On success every
+ * input the write actually changed is updated to the server's own `after`
+ * value, so the field a reader is looking at reflects what `config.json` now
+ * says without a full-screen reload.
+ */
+function budgetSaveControl(ctx, inputs) {
+  const root = el('div', 'cmdactions');
+  const save = el('button');
+  save.type = 'button';
+  save.append(...ctx.t('cfg.savebtn'));
+  root.append(save);
+
+  const confirmBox = el('div', 'confirm');
+  confirmBox.hidden = true;
+  confirmBox.setAttribute('role', 'group');
+  confirmBox.setAttribute('aria-label', ctx.tFlat('cfg.saveh'));
+  // Focusable but not in the tab order — `commandActions`' own reason: focus
+  // moves here when the confirm opens so its label and the residual are
+  // announced before either button is reached.
+  confirmBox.tabIndex = -1;
+
+  const result = el('div', 'execresult');
+  result.hidden = true;
+  result.setAttribute('role', 'status');
+
+  root.append(confirmBox, result);
+
+  const say = (...nodes) => { result.replaceChildren(...nodes); result.hidden = false; };
+  const dismiss = () => { confirmBox.replaceChildren(); confirmBox.hidden = true; };
+
+  save.addEventListener('click', async () => {
+    result.replaceChildren();
+    result.hidden = true;
+    dismiss();
+
+    const values = {};
+    for (const [key, input] of Object.entries(inputs)) values[key] = input.value;
+
+    // The nonce is minted HERE and nowhere else — by the GET that renders
+    // this confirm — the same property `commandActions` states and the same
+    // route that mints it: `src/ui/execute.ts`'s `handleConfirm`, whichever
+    // branch a caller's `id` selects.
+    let answer;
+    try {
+      answer = await ctx.api(confirmPath(BUDGET_ID, values, ctx.lang));
+    } catch (error) {
+      say(errorNote(error && error.message ? error.message : String(error)));
+      return;
+    }
+
+    const items = viewsFromEffect(answer.effect ?? []);
+    confirmBox.replaceChildren();
+    confirmBox.append(el('p', 'residual', String(answer.residual ?? '')));
+    // One table, no per-item heading: unlike a catalogue command, which may
+    // touch several items, a budget write is always exactly one thing —
+    // `config.json` — so naming it above the table would say nothing a reader
+    // does not already know from the screen they are on.
+    for (const item of items) confirmBox.append(diffTable(ctx, item.views.map(fieldView)));
+
+    const go = el('button', 'go');
+    go.type = 'button';
+    go.append(...ctx.t('cfg.saveg'));
+    const cancel = el('button', 'cancel');
+    cancel.type = 'button';
+    cancel.append(...ctx.t('exec.cancel'));
+    confirmBox.append(go, cancel);
+
+    cancel.addEventListener('click', dismiss);
+    confirmBox.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') dismiss();
+    });
+
+    go.addEventListener('click', async () => {
+      // One click, one write: the nonce is single-use.
+      go.disabled = true;
+      dismiss();
+      let outcome;
+      try {
+        outcome = await ctx.post('/api/execute', { id: BUDGET_ID, values, nonce: answer.nonce });
+      } catch (error) {
+        say(errorNote(error && error.message ? error.message : String(error)));
+        return;
+      }
+      say(el('span', null, ctx.tFlat('cfg.saved')));
+      if (typeof outcome?.auditNote === 'string' && outcome.auditNote !== '') {
+        result.append(errorNote(outcome.auditNote));
+      }
+      // Every field the write actually changed is set to its new value —
+      // `outcome.diff`, the SAME `BudgetFieldDiff[]` the confirm rendered, so
+      // the field a reader is looking at updates to what the file now says
+      // without a full-screen reload that would wipe the message just shown.
+      // `cfg.h2`'s receipt ("returning to the tab shows the new value") is
+      // still true on a fresh navigation, which re-fetches from disk regardless.
+      for (const change of Array.isArray(outcome?.diff) ? outcome.diff : []) {
+        const key = String(change.field).replace(/^budgets\./, '');
+        const input = inputs[key];
+        if (input) input.value = String(change.after);
+      }
+    });
+
+    confirmBox.hidden = false;
+    confirmBox.focus();
+  });
+
+  return root;
+}
+
 export async function render(root, ctx) {
   root.replaceChildren();
   screenHead(ctx, root, 'cfg.h', 'cfg.v', 'cfg.sub');
@@ -247,6 +403,13 @@ export async function render(root, ctx) {
   budgetHead.append(...ctx.t('cfg.budgets'));
   const budgetTable = el('table');
   const budgetBody = el('tbody');
+  // One `<input type="number">` per row, in the third column — the field this
+  // task adds. `min="1"` and `step="1"` are a UX hint only; the SERVER is the
+  // validator (`requirePositiveIntegerBudget`, `src/core/budgets-write.ts`),
+  // refusing by name rather than clamping, and a browser that skipped this
+  // attribute would still be refused correctly. Pre-filled with `row.will` —
+  // what the file resolves to right now — never `row.was`, the default.
+  const budgetInputs = {};
   for (const row of budgetRows(resolved.budgets, config.meta.defaultBudgets)) {
     const tr = el('tr');
     const value = el('td', 'm');
@@ -257,11 +420,20 @@ export async function render(root, ctx) {
       // of its pair: the default is context, the resolved value is what runs.
       value.append(`${row.was} → `, el('b', null, String(row.will)));
     }
-    tr.append(el('td', 'm', row.key), value);
+    const input = el('input', 'm');
+    input.type = 'number';
+    input.min = '1';
+    input.step = '1';
+    input.value = String(row.will);
+    input.setAttribute('aria-label', `budgets.${row.key}`);
+    budgetInputs[row.key] = input;
+    const editCell = el('td');
+    editCell.append(input);
+    tr.append(el('td', 'm', row.key), value, editCell);
     budgetBody.append(tr);
   }
   budgetTable.append(budgetBody);
-  budgetCard.append(budgetHead, budgetTable);
+  budgetCard.append(budgetHead, budgetTable, budgetSaveControl(ctx, budgetInputs));
 
   // ── Card 2: What changes ──────────────────────────────────────────────────
   // The plate is EMPTY, and that is the honest state rather than an omission.
