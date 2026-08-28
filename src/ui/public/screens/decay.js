@@ -143,7 +143,10 @@ const ROW = (H_MIN - PT - PB) / 10;
  * unrestricted overlay sits at x=4. At `svg.chart text.mono`'s 11px in a
  * monospace face (advance ≈ 0.6em ≈ 6.6 user units) a 32-character label is
  * ≈211 units wide and starts at ≈-5 — it runs THROUGH the overlay and off the
- * gutter. The mockup never sees this because its ten sample ids are 21-35
+ * gutter. (`--fs-chart-mono` is 9.5px since `plan:walk seq:62` restored the
+ * pre-repaint chart ramp, so the advance is ≈5.7 and every figure here is now
+ * CONSERVATIVE — the label is narrower than the arithmetic that chose 28
+ * assumed, and 28 clears the overlay by more than it used to, never less.) The mockup never sees this because its ten sample ids are 21-35
  * characters and only three of them are unrestricted; on this repository's own
  * corpus fifty of fifty-two rows are, so the collision is on every row.
  * Photographed before the change. Twenty-eight lands at ≈21 and clears the
@@ -461,11 +464,15 @@ function drawCombChart(report, rows, unplaceable, served) {
       { x: X(PL - 8), y: y + 3, 'text-anchor': anchor('end'), class: 'mono', fill: 'var(--ink)' },
       row.id.length > ID_MAX ? `${row.id.slice(0, ID_MAX - 1)}…` : row.id,
     );
-    // `svg.chart text.mono{font-family:var(--mono);font-size:11px}` (mockup
-    // ~805), restated through the CSSOM for as long as the shell's stylesheet
-    // has no `svg.chart` block at all.
+    // `svg.chart text.mono{font-family:var(--mono);font-size:var(--fs-chart-mono)}`
+    // (mockup ~816), restated through the CSSOM because this element carries
+    // its own inline style for the rest of the chart too (see the root block
+    // below). It names the TOKEN, never the literal: `plan:walk seq:62` found
+    // the chart-specific sizes inflated twice over, and an inline literal here
+    // would have survived the fix in the stylesheet and quietly kept one
+    // chart's ids at the old size.
     label.style.setProperty('font-family', 'var(--mono)');
-    label.style.setProperty('font-size', '11px');
+    label.style.setProperty('font-size', 'var(--fs-chart-mono)');
     kids.push(label);
     // `∀` is an OVERLAY, never a third bucket: *"a breadth view over cold ∪
     // warm"* (`dec.unres`), and `DecayReport.unrestricted`'s own docstring
@@ -543,7 +550,7 @@ function drawCombChart(report, rows, unplaceable, served) {
   svg.style.setProperty('block-size', 'auto');
   svg.style.setProperty('overflow', 'visible');
   svg.style.setProperty('font-family', 'var(--sans)');
-  svg.style.setProperty('font-size', 'var(--fs-00)');
+  svg.style.setProperty('font-size', 'var(--fs-chart)');
   svg.style.setProperty('fill', 'var(--dim)');
   for (const kid of kids) svg.append(kid);
   return svg;

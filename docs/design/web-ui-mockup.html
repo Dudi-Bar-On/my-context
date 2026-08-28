@@ -144,6 +144,32 @@
   --sheen-bottom:rgb(0 0 0/.18);
 
   --fs-00:12px; --fs-0:13px; --fs-1:14.5px; --fs-2:16px; --fs-3:18px; --fs-4:24px;
+
+  /* CHART TYPE — the graphics' own ramp, and deliberately NOT a step of the
+     scale above.
+
+     Every step above rose 2px in the 2026-08-21 repaint (--fs-00 10px to
+     12px, --fs-0 11px to 13px, and so on up). That is a defensible decision
+     about PROSE and it was never a decision about charts — but "svg.chart
+     text" read the smallest prose step, so every axis, node and tick label
+     took the rise anyway, and the chart-specific sizes below were raised a
+     second time by hand on top of it. Owner, 2026-08-28: "about the staircase
+     and all the other graphics, they must change the font and lines width
+     much smaller, look at the very first mockup documents and compare it."
+
+     The four values are the pre-repaint ones, read out of 86c31ea and
+     d263992: chart text 10px (the old --fs-00), mono 9.5px, node ids 9px,
+     relation labels 8px. They are TOKENS rather than the literals those two
+     commits carried, and that is the part that stops this recurring — density
+     is the point of a chart label, 8-10px is ordinary for an axis and
+     unreadable for a paragraph, and the two scales have to be able to move
+     without dragging each other. A future prose repaint changes the line
+     above and this line stays put.
+
+     Stroke widths are NOT in here, because they never moved: stroke-width 1,
+     1.4, 1.5, 1.6, 2 and .8 are byte-identical across all three generations.
+     Lines reading heavy was text growing around them. */
+  --fs-chart:10px; --fs-chart-mono:9.5px; --fs-chart-nid:9px; --fs-chart-rel:8px;
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
   --r-sm:3px; --r-md:5px; --r-lg:8px;
 }
@@ -851,8 +877,8 @@ details.help[open]>summary{margin-block-end:6px}
 
 /* — SVG chart primitives — */
 svg.chart{display:block;inline-size:100%;block-size:auto;overflow:visible}
-svg.chart text{font-family:var(--sans);font-size:var(--fs-00);fill:var(--dim)}
-svg.chart text.mono{font-family:var(--mono);font-size:11px}
+svg.chart text{font-family:var(--sans);font-size:var(--fs-chart);fill:var(--dim)}
+svg.chart text.mono{font-family:var(--mono);font-size:var(--fs-chart-mono)}
 svg.chart .axis{stroke:var(--rule);stroke-width:1}
 svg.chart .step{stroke:var(--ok);stroke-width:2;fill:none;stroke-linejoin:round}
 svg.chart .nowline{stroke:var(--gold);stroke-width:1.5}
@@ -935,7 +961,7 @@ svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
 /* — 90-day heatstrip: one cell per day. An empty cell is nothing happening; a
      hatched cell is a spill. Six quiet weeks are six weeks of empty cells. — */
 .heat{display:grid;grid-template-columns:minmax(96px,170px) 1fr;gap:5px var(--sp-3);
-  align-items:center;font-size:var(--fs-00)}
+  align-items:center;font-size:var(--fs-chart)}
 /* .hstrip, not .strip — the footer status bar already owns that name, and a
    second meaning for one class is how a layout silently comes apart. */
 .hstrip{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:1px;block-size:13px}
@@ -946,7 +972,7 @@ svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
 .hstrip i.sp{background:repeating-linear-gradient(45deg,var(--crit) 0 2px,transparent 2px 4px)}
 .hname{direction:ltr;unicode-bidi:isolate;font-family:var(--mono);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.heataxis{display:flex;justify-content:space-between;font-size:var(--fs-00);color:var(--dim)}
+.heataxis{display:flex;justify-content:space-between;font-size:var(--fs-chart);color:var(--dim)}
 
 /* — per-item delivery sparkline, for the detail pane — */
 .spark{display:flex;gap:2px;align-items:flex-end;block-size:26px;margin-block:5px;
@@ -1019,9 +1045,9 @@ svg.chart .edge{fill:none;stroke:var(--edge-3)}
 svg.chart .edge.bearing{stroke:var(--ink);stroke-width:1.4;opacity:.55}
 svg.chart .edge.ref{stroke:var(--faint);stroke-width:.8}
 svg.chart .edge.dangling{stroke:var(--crit);stroke-width:1.6;stroke-dasharray:4 3}
-svg.chart text.nid{font-family:var(--mono);font-size:10.5px;fill:var(--ink)}
-svg.chart text.rel{font-family:var(--mono);font-size:10px;fill:var(--dim)}
-.legend{display:flex;flex-wrap:wrap;gap:5px var(--sp-4);font-size:var(--fs-00);
+svg.chart text.nid{font-family:var(--mono);font-size:var(--fs-chart-nid);fill:var(--ink)}
+svg.chart text.rel{font-family:var(--mono);font-size:var(--fs-chart-rel);fill:var(--dim)}
+.legend{display:flex;flex-wrap:wrap;gap:5px var(--sp-4);font-size:var(--fs-chart);
   color:var(--dim);margin-block-start:var(--sp-2)}
 .legend i{display:inline-block;inline-size:11px;block-size:11px;border-radius:2px;
   vertical-align:-1px;margin-inline-end:5px}
