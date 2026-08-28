@@ -25,7 +25,10 @@
  */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  cpSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, symlinkSync, unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
@@ -120,11 +123,13 @@ test('the filter is WIRED to the copy, not merely correct beside it', () => {
  * The safety property, and the refusal that replaces a guess.
  * -------------------------------------------------------------------------- */
 
-test('a scratch that does not resolve to itself is refused rather than run', () => {
-  // `findProjectRoot` walks UP from cwd with no environment override, so a
-  // scratch nested under a corpus would send the child to the REAL one. The
-  // check is made with that same function; here the corpus does not exist at
-  // all, so the copy fails and nothing is run.
+test('a corpus that cannot be copied is refused rather than run', () => {
+  // **This was named for the pre-spawn resolution guard, and its own comment
+  // admitted it measured the copy instead.** Review 2026-08-28 established the
+  // guard could not fail at all: with a non-empty override `findProjectRoot`
+  // returns `path.resolve(override)` unconditionally, so it compared a value to
+  // itself. The guard is gone; this keeps only the claim it was actually making,
+  // under a name that says so.
   assert.throws(
     () => deriveEffect(path.join(tmpdir(), 'myctx-does-not-exist-at-all'),
       path.join(tmpdir(), 'myctx-does-not-exist-at-all'), CLI, ['status']),
@@ -132,6 +137,75 @@ test('a scratch that does not resolve to itself is refused rather than run', () 
     'a corpus that cannot be copied must refuse, never proceed against whatever cwd resolves to',
   );
 });
+
+/**
+ * **The Critical of 2026-08-28.**
+ *
+ * `cpSync` preserves symlinks by default. `rebuild.ts` records that item files
+ * may be symlinks, and `writeItem` `realpathSync`-resolves before renaming, so
+ * it writes THROUGH one. The scratch therefore held a link pointing back into
+ * the real corpus, and pressing Execute — the click that only OPENS the dialog —
+ * rewrote the real item before the reader saw anything. The confirm then drew a
+ * normal-looking diff, because it read back through the same link, and Cancel
+ * left the change in place. No audit row: the dry run's `.audit` is the
+ * scratch's, and is deleted with it.
+ *
+ * Reproduced exactly on this machine before the fix.
+ */
+test('a symlinked item does not leak the write out of the scratch', (t) => {
+  const dir = project();
+  const corpus = path.join(dir, '.my_context');
+  const real = path.join(corpus, 'items', 'rule', 'RULE-a-rule-to-change.md');
+  const store = path.join(dir, 'outside-the-corpus.md');
+  writeFileSync(store, readFileSync(real, 'utf8'));
+  unlinkSync(real);
+  try {
+    symlinkSync(store, real, 'file');
+  } catch {
+    // Windows without developer mode refuses symlink creation. SKIPPED and said
+    // so: a test that quietly passed here would report this guard as covered on
+    // a machine that never exercised it.
+    t.skip('this platform refuses symlink creation, so the case cannot be built');
+    return;
+  }
+
+  const before = readFileSync(store, 'utf8');
+  const effect = deriveEffect(corpus, dir, CLI, ['pin', 'RULE-a-rule-to-change', '--yes']);
+
+  assert.equal(effect.length, 1, 'the effect is still derived — the copy absorbed the write');
+  assert.equal(readFileSync(store, 'utf8'), before,
+    'the dry run wrote THROUGH the symlink into the real corpus. Not a missing feature: the '
+    + 'confirm dialog mutating what it was opened to describe, before anyone read it.');
+});
+
+test('a symlink surviving the copy is refused — the guard, not the fix', (t) => {
+  const dir = project();
+  const corpus = path.join(dir, '.my_context');
+  const real = path.join(corpus, 'items', 'rule', 'RULE-a-rule-to-change.md');
+  const store = path.join(dir, 'outside-2.md');
+  writeFileSync(store, readFileSync(real, 'utf8'));
+  unlinkSync(real);
+  try {
+    symlinkSync(store, real, 'file');
+  } catch {
+    t.skip('this platform refuses symlink creation, so the case cannot be built');
+    return;
+  }
+
+  // Copy WITHOUT `dereference`, which is exactly the defect that shipped, so
+  // the guard is proven rather than masked by the fix standing in front of it.
+  assert.throws(
+    () => deriveEffect(corpus, dir, CLI, ['pin', 'RULE-a-rule-to-change', '--yes'], undefined,
+      (from, to, options) => { cpSync(from, to, { recursive: true, filter: options.filter }); }),
+    (error) => {
+      assert.ok(error instanceof EffectRefusal);
+      assert.match(error.message, /symlink/i,
+        'the refusal must name what it found, or the next reader cannot act on it');
+      return true;
+    },
+  );
+});
+
 
 test('a command that cannot complete is a refusal carrying the CLI’s own sentence', () => {
   const dir = project();
@@ -303,4 +377,21 @@ test('a directory that is not a corpus is refused, not treated as an empty one',
   mkdirSync(path.join(dir, 'items'), { recursive: true });
   writeFileSync(path.join(dir, 'items', 'stray.md'), 'not an item at all\n');
   assert.throws(() => deriveEffect(dir, path.dirname(dir), CLI, ['status']), EffectRefusal);
+
+  // Review 2026-08-28 established the case above passed because `status` exits
+  // non-zero on an unparseable file, not because anything guarded the shape.
+  // This is the guard that DOES: a copy holding no item files is refused, so an
+  // empty effect can never mean "the copy did not happen" — which the confirm
+  // would render as "This changes nothing".
+  const empty = mkdtempSync(path.join(tmpdir(), 'myctx-empty-corpus-'));
+  scratches.push(empty);
+  mkdirSync(path.join(empty, 'items'), { recursive: true });
+  assert.throws(
+    () => deriveEffect(empty, path.dirname(empty), CLI, ['status']),
+    (error) => {
+      assert.ok(error instanceof EffectRefusal);
+      assert.match(error.message, /no item files/i);
+      return true;
+    },
+  );
 });
