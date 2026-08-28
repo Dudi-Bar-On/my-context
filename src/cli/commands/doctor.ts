@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
-import { runChecks, type Finding } from '../../doctor/checks.ts';
+import { checkCliOnPath, runChecks, type Finding } from '../../doctor/checks.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
@@ -26,6 +26,23 @@ export function summarize(findings: Finding[]): { errors: number; warnings: numb
 }
 
 const ORDER: Record<Finding['level'], number> = { error: 0, warn: 1, info: 2 };
+
+/**
+ * `checkCliOnPath`'s result (at most one `Finding`), printed as its own
+ * block in the two detail levels that show individual findings at all —
+ * never folded into the `records`/grouped-by-code loops above it, and never
+ * counted toward "N finding(s)" in the summary, for the reasons on
+ * `runChecks`'s own doc comment (checks.ts) and on `cliFindings` above.
+ * `--summary`/`--quiet` never call this — see `cliNote` on why that level
+ * stays silent for anything short of the error state.
+ */
+function emitCliPathFinding(cliFindings: Finding[], out: Emit): void {
+  if (!cliFindings.length) return;
+  const f = cliFindings[0]!;
+  out('');
+  out(`mycontext (the command, not a corpus finding): ${f.code}  [${f.level}]`);
+  for (const line of paragraph(f.message, '  ', outputWidth(), '    ')) out(line);
+}
 
 /**
  * The exit-code mapping, pinned as its own pure function so it can be
@@ -107,8 +124,35 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
     config: ws.config,
   });
 
+  // `checkCliOnPath` deliberately runs OUTSIDE `runChecks` — see the long
+  // comment on `runChecks` itself for why: it answers a question about this
+  // MACHINE, not this corpus, and folding it into `findings`/`counts` would
+  // make "this corpus is clean" depend on whether the box asking has this
+  // package linked. `mycontext doctor` is the one place it is reported at
+  // all; `checkCliOnPath` itself never throws (every failure mode inside it
+  // already becomes an `info` finding), but the same defensive stance
+  // `runChecks` takes with every OTHER check applies here too — a check
+  // failing must never crash the command reporting it.
+  let cliFindings: Finding[];
+  try {
+    cliFindings = checkCliOnPath();
+  } catch (err) {
+    cliFindings = [{
+      level: 'info', code: 'cli_lookup_failed',
+      message:
+        `the \`mycontext\`-on-PATH check itself failed unexpectedly: ` +
+        `${err instanceof Error ? err.message : String(err)}.`,
+    }];
+  }
+  // Only the WORST of the three states — PATH resolves to a different CLI —
+  // moves the exit code. "Not on PATH at all" and "found, but unverifiable"
+  // are both real facts worth reporting, but neither is a corpus defect, and
+  // `warn`/`info` never fail the build on their own anywhere else in this
+  // command either.
+  const cliError = cliFindings.find((f) => f.level === 'error');
+
   const counts = summarize(findings);
-  const failed = exitCode(counts, errors.length) === 1;
+  const failed = exitCode(counts, errors.length) === 1 || cliError !== undefined;
 
   // The summary line counts corpus LOAD errors alongside the findings, because
   // `exitCode` above counts them too. Before this, `counts.errors` alone was
@@ -120,9 +164,21 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
   const loadErrorNote = errors.length
     ? ` ${errors.length} of the error(s) are corpus load errors, listed below, not findings.`
     : '';
+  // Deliberately silent for the `warn` and `info` cli-path states, even here
+  // in the one-line summary every detail level shares: this is exactly the
+  // line width-tested by `every reporting command fits the layout budget at
+  // every detail level` (output.test.ts), and its fixture already sits near
+  // that budget before this note is even considered — nothing safely fits
+  // beside it there. `error` is the one state where staying silent would
+  // recreate the exact bug this file's own history already fixed once ("0
+  // error(s) … across 0 finding(s)" printed above a run that exits 1) — so
+  // it alone gets a clause, the same way `loadErrorNote` does.
+  const cliNote = cliError
+    ? ` mycontext resolves to a DIFFERENT CLI on PATH (${cliError.code}) — see \`mycontext doctor --full\`.`
+    : '';
   const summary =
     `my_context doctor: ${totalErrors} error(s), ${counts.warnings} warning(s), ` +
-    `${counts.infos} note(s) across ${findings.length} finding(s).${loadErrorNote}`;
+    `${counts.infos} note(s) across ${findings.length} finding(s).${loadErrorNote}${cliNote}`;
 
   if (json) {
     // `exitCode` is reported as data as well as returned, so a consumer that
@@ -145,6 +201,14 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
       exitCode: failed ? 1 : 0,
       findings,
       loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
+      // Carried under its own key rather than folded into `findings` — see
+      // the comment on `cliFindings` above for why: it is not a corpus
+      // finding, and `counts`/`findings` here are the FINDINGS tally, whole
+      // and untouched, exactly like every other field on this document.
+      // `null` (not `[]` or omitted) when the check found nothing to report,
+      // so a consumer can tell "checked, healthy" apart from a field that
+      // was never populated.
+      cliOnPath: cliFindings[0] ?? null,
     });
     return failed ? 1 : 0;
   }
@@ -178,6 +242,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
     if (findings.length) out('');
     out(summary);
     emitLoadErrors(errors, out);
+    emitCliPathFinding(cliFindings, out);
     return failed ? 1 : 0;
   }
 
@@ -212,6 +277,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
 
   out(summary);
   emitLoadErrors(errors, out);
+  emitCliPathFinding(cliFindings, out);
   return failed ? 1 : 0;
 }
 
