@@ -163,6 +163,7 @@ const FOCUS_REPORT: FocusReport = {
   hidden: ['OPENQ-x', 'LESSON-a'],
   visible: 4,
   exemptHard: [],
+  exemptAlways: [],
   dangling: [{ from: 'OPENQ-x', type: 'blocks', to: 'REQ-y', hiddenEnd: 'from' }],
 };
 

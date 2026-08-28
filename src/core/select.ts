@@ -362,12 +362,44 @@ export function matchesFocus(item: Item, focus: FocusAxes, config: Config): bool
 /**
  * Whether focus removes this item from injection.
  *
- * The `severity: hard` exemption lives here, in the predicate, rather than in
- * each caller — so no surface can narrow the corpus past it by forgetting.
+ * The exemptions live here, in the predicate, rather than in each caller — so
+ * no surface can narrow the corpus past them by forgetting.
+ *
+ * ── TWO EXEMPTIONS, AND THEY ARE NOT THE SAME EXEMPTION ─────────────────────
+ *
+ * `severity: hard` says an item MUST NOT BE VIOLATED. `always: true` says an
+ * item MUST NOT FALL OUT OF CONTEXT. They answer different questions and an
+ * item can carry either without the other, which is exactly how the second one
+ * came to be missing: the first was written, it read like "the important ones
+ * are safe", and nobody asked which sense of important.
+ *
+ * **Measured 2026-08-27.** A focus set on 2026-08-24 with `tags: plan:walk`
+ * hid SIX soft-severity pinned items for three days. Among them
+ * `INSTR-use-my-context-for-everything…` and
+ * `INSTR-query-and-display-the-task-item…` — the instruction to use the product
+ * for every fitting category was itself hidden by the product, and nothing said
+ * so. The absence was found by counting what should have been injected against
+ * what was, not by anything reporting it.
+ *
+ * That also contradicted a ruling the owner had already given: pinned items are
+ * first priority to stay in context, to the point that a budget which cannot
+ * fit them should prompt the user to raise it. A focus silently removing them
+ * broke that at the one moment it mattered.
+ *
+ * Owner ruling 2026-08-27,
+ * `DEC-a-focus-may-not-hide-a-pinned-item-focushides-exempts-always`: a focus
+ * is a lens for narrowing attention, not a mechanism for suppressing what was
+ * pinned precisely so it would never fall out.
+ *
+ * **Written as two statements rather than one `||`.** They are independent
+ * rules with independent reasons, and a single collapsed condition is one a
+ * later edit can drop wholesale while appearing to simplify. `test/core/`
+ * covers each separately for the same reason.
  */
 export function focusHides(item: Item, focus: Focus | null, config: Config): boolean {
   if (!isFocusActive(focus)) return false;
   if (item.severity === 'hard') return false;
+  if (item.always) return false;
   return !matchesFocus(item, focus, config);
 }
 
@@ -751,13 +783,19 @@ function buildFocusReport(
   const hidden: Item[] = [];
   const visible: Item[] = [];
   const exemptHard: string[] = [];
+  const exemptAlways: string[] = [];
   for (const item of universeItems) {
     if (focusHides(item, focus, config)) {
       hidden.push(item);
       continue;
     }
     visible.push(item);
-    if (item.severity === 'hard' && !matchesFocus(item, focus, config)) exemptHard.push(item.id);
+    if (matchesFocus(item, focus, config)) continue;
+    // Reported under ONE heading each, and `hard` wins when an item is both.
+    // Two lines naming the same id would read as two items kept, and the whole
+    // point of these lists is that the counts are trustworthy.
+    if (item.severity === 'hard') exemptHard.push(item.id);
+    else if (item.always) exemptAlways.push(item.id);
   }
 
   return {
@@ -766,6 +804,7 @@ function buildFocusReport(
     hidden: hidden.map((i) => i.id).sort(compareStrings),
     visible: visible.length,
     exemptHard: exemptHard.sort(compareStrings),
+    exemptAlways: exemptAlways.sort(compareStrings),
     dangling: danglingEdges(visible, hidden),
   };
 }

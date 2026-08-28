@@ -288,6 +288,7 @@ test('every report line holds the 100-column budget at hostile id length', () =>
     hidden: [LONG, `${LONG}2`],
     visible: 4,
     exemptHard: [LONG],
+    exemptAlways: [],
     dangling: [{ from: LONG, type: 'depends_on', to: `${LONG}2`, hiddenEnd: 'to' }],
   };
   for (const line of focusReportLines(report)) {
@@ -303,7 +304,7 @@ test('the report caps its lists and discloses the remainder rather than truncati
   const many = Array.from({ length: 14 }, (_, i) => `RULE-${i}`);
   const text = focusReportLines({
     axes: { tags: ['a'], categories: [], scope: [] },
-    universe: 'corpus', hidden: many, visible: 1, exemptHard: [], dangling: [],
+    universe: 'corpus', hidden: many, visible: 1, exemptHard: [], exemptAlways: [], dangling: [],
   }, 10).join('\n');
   assert.match(text, /… \+4 more \(--json lists every one\)/);
 });
@@ -311,7 +312,7 @@ test('the report caps its lists and discloses the remainder rather than truncati
 test('the report names which universe it counted', () => {
   const base = {
     axes: { tags: ['a'], categories: [], scope: [] },
-    hidden: ['RULE-a'], visible: 2, exemptHard: [], dangling: [],
+    hidden: ['RULE-a'], visible: 2, exemptHard: [], exemptAlways: [], dangling: [],
   };
   assert.match(
     focusReportLines({ ...base, universe: 'corpus' }).join('\n'),
@@ -326,7 +327,7 @@ test('the report names which universe it counted', () => {
 test('a focus that hides nothing still says zero dangling rather than staying silent', () => {
   const text = focusReportLines({
     axes: { tags: ['a'], categories: [], scope: [] },
-    universe: 'corpus', hidden: [], visible: 9, exemptHard: [], dangling: [],
+    universe: 'corpus', hidden: [], visible: 9, exemptHard: [], exemptAlways: [], dangling: [],
   }).join('\n');
   assert.match(text, /0 load-bearing relations dangling\./);
   assert.doesNotMatch(text, /hidden by focus — still in the corpus/);

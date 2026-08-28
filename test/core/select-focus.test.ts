@@ -17,6 +17,25 @@ import type { Item } from '../../src/core/types.ts';
 
 const CONFIG = resolveConfig({});
 
+/**
+ * **`always: true` is deliberate here and it is NOT the ordinary item.**
+ *
+ * These tests read `sel.full`, and only the pinned tier lands there on a
+ * session-start event — an `always: false` item of the same shape is an index
+ * line, so a fixture that dropped the flag would leave every assertion below
+ * comparing empty arrays and passing.
+ *
+ * The cost, which cost six tests on 2026-08-27 when `focusHides` stopped hiding
+ * pinned items per the owner's ruling: a file whose every fixture is pinned
+ * tests focus AS APPLIED TO PINNED ITEMS and reads as though it tested focus in
+ * general. The tests below that are about HIDING therefore say `always: false`
+ * explicitly and assert on `focus.hidden` and the index — which is where an
+ * ordinary item's narrowing is now visible, and where it always actually was.
+ *
+ * Measured on the real corpus the same day: 24 items are pinned and 584 are
+ * not, so the exemption protects four per cent and focus still narrows the
+ * rest. The rule is narrow; this fixture was not.
+ */
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'RULE-a', type: 'rule', title: 'A rule', status: 'active',
@@ -36,8 +55,21 @@ function focus(over: Partial<Focus> = {}): Focus {
   };
 }
 
+/**
+ * An item focus is ALLOWED to hide: normative, injectable, and not pinned.
+ *
+ * Since the owner's 2026-08-27 ruling, `always: true` exempts an item from
+ * focus entirely, so a fixture that is pinned cannot demonstrate hiding — it
+ * demonstrates the exemption. Every test below that asserts something was
+ * hidden builds its subject with this.
+ */
+function ordinary(over: Partial<Item> = {}): Item {
+  return item({ always: false, ...over });
+}
+
 const BILLING = item({ id: 'RULE-billing', tags: ['billing'] });
 const AUTH = item({ id: 'RULE-auth', tags: ['auth'] });
+const AUTH_ORDINARY = ordinary({ id: 'RULE-auth', tags: ['auth'] });
 
 test('with no focus the report is null — "focus is off" is its own answer', () => {
   const sel = select([BILLING, AUTH], { event: 'session-start' }, CONFIG);
@@ -53,7 +85,8 @@ test('an empty focus narrows nothing and still reports nothing', () => {
 
 test('a tag focus hides what does not carry the tag, and names it', () => {
   const sel = select(
-    [BILLING, AUTH], { event: 'session-start', focus: focus({ tags: ['billing'] }) }, CONFIG,
+    [BILLING, AUTH_ORDINARY],
+    { event: 'session-start', focus: focus({ tags: ['billing'] }) }, CONFIG,
   );
   assert.deepEqual(sel.full.map((e) => e.item.id), ['RULE-billing']);
   assert.deepEqual(sel.focus?.hidden, ['RULE-auth']);
@@ -78,7 +111,7 @@ test('axes are AND-ed, values within an axis are OR-ed', () => {
   const items = [
     item({ id: 'RULE-b', tags: ['billing'] }),
     item({ id: 'RULE-i', tags: ['invoicing'] }),
-    item({ id: 'CONST-b', type: 'constraint', tags: ['billing'] }),
+    ordinary({ id: 'CONST-b', type: 'constraint', tags: ['billing'] }),
   ];
   const sel = select(items, {
     event: 'session-start',
@@ -90,7 +123,7 @@ test('axes are AND-ed, values within an axis are OR-ed', () => {
 
 test('the scope axis takes a path, and an unscoped item stays visible on every path', () => {
   const scoped = item({ id: 'RULE-api', scope: ['src/api/**'] });
-  const elsewhere = item({ id: 'RULE-db', scope: ['src/db/**'] });
+  const elsewhere = ordinary({ id: 'RULE-db', scope: ['src/db/**'] });
   const unscoped = item({ id: 'RULE-any' });
   const sel = select([scoped, elsewhere, unscoped], {
     event: 'session-start', focus: focus({ scope: ['src/api/orders.ts'] }),
@@ -101,7 +134,7 @@ test('the scope axis takes a path, and an unscoped item stays visible on every p
 
 test('the scope axis also takes a glob, matched against the items own globs', () => {
   const scoped = item({ id: 'RULE-api', scope: ['src/api/orders.ts'] });
-  const elsewhere = item({ id: 'RULE-db', scope: ['src/db/writer.ts'] });
+  const elsewhere = ordinary({ id: 'RULE-db', scope: ['src/db/writer.ts'] });
   const sel = select([scoped, elsewhere], {
     event: 'session-start', focus: focus({ scope: ['src/api/**'] }),
   }, CONFIG);
@@ -115,13 +148,65 @@ test('the scope axis also takes a glob, matched against the items own globs', ()
  */
 test('a severity:hard item is never hidden, and the exemption is reported', () => {
   const hard = item({ id: 'INV-always', type: 'invariant', severity: 'hard', tags: ['auth'] });
-  const soft = item({ id: 'RULE-auth', tags: ['auth'] });
+  const soft = ordinary({ id: 'RULE-auth', tags: ['auth'] });
   const sel = select([BILLING, hard, soft], {
     event: 'session-start', focus: focus({ tags: ['billing'] }),
   }, CONFIG);
   assert.deepEqual(sel.full.map((e) => e.item.id).toSorted(), ['INV-always', 'RULE-billing']);
   assert.deepEqual(sel.focus?.hidden, ['RULE-auth']);
   assert.deepEqual(sel.focus?.exemptHard, ['INV-always']);
+});
+
+/**
+ * **A focus may not hide a pinned item, and this is the case that was broken.**
+ *
+ * `focusHides` exempted `severity: hard` and nothing else, so an item marked
+ * `always: true` with SOFT severity was hidden like any other. Measured
+ * 2026-08-27: a focus set three days earlier with `tags: plan:walk` had hidden
+ * six of them, including the instruction to use this product for every fitting
+ * category — hidden by this product, with nothing saying so.
+ *
+ * Asserted as the PROPERTY rather than the count. "Six were hidden" is true of
+ * one day's corpus; "no item marked always is absent under any focus" is true
+ * of every corpus, and is what the owner ruled
+ * (`DEC-a-focus-may-not-hide-a-pinned-item-focushides-exempts-always`).
+ *
+ * The soft, unpinned item beside it must still be hidden — without that half
+ * this test would pass just as happily against a build where focus did nothing
+ * at all.
+ */
+test('an always:true item is never hidden by focus, whatever its severity', () => {
+  const pinnedSoft = item({ id: 'INSTR-pinned', severity: 'soft', always: true, tags: ['auth'] });
+  const ordinary = item({ id: 'RULE-auth', severity: 'soft', always: false, tags: ['auth'] });
+  const sel = select([BILLING, pinnedSoft, ordinary], {
+    event: 'session-start', focus: focus({ tags: ['billing'] }),
+  }, CONFIG);
+
+  assert.deepEqual(sel.full.map((e) => e.item.id).toSorted(), ['INSTR-pinned', 'RULE-billing'],
+    'a pinned item that does not match the focus must still be injected: always means it does '
+    + 'not fall out of context, and a focus is a lens rather than a suppressor');
+  assert.deepEqual(sel.focus?.hidden, ['RULE-auth'],
+    'and the ordinary soft item beside it must still be hidden, or this proves nothing');
+});
+
+/**
+ * The two exemptions are INDEPENDENT, which is why they are two statements in
+ * `focusHides` and two lists in the report. An item can be hard without being
+ * pinned and pinned without being hard; a single collapsed condition is one a
+ * later edit can drop wholesale while appearing to simplify.
+ */
+test('the two exemptions are reported apart, and an item that is both is counted once', () => {
+  const pinnedSoft = item({ id: 'INSTR-pinned', severity: 'soft', always: true, tags: ['auth'] });
+  const hardOnly = item({ id: 'INV-hard', type: 'invariant', severity: 'hard', tags: ['auth'] });
+  const both = item({ id: 'INV-both', type: 'invariant', severity: 'hard', always: true, tags: ['auth'] });
+  const sel = select([BILLING, pinnedSoft, hardOnly, both], {
+    event: 'session-start', focus: focus({ tags: ['billing'] }),
+  }, CONFIG);
+
+  assert.deepEqual(sel.focus?.exemptHard, ['INV-both', 'INV-hard']);
+  assert.deepEqual(sel.focus?.exemptAlways, ['INSTR-pinned'],
+    'an item that is BOTH is named under hard alone. Two lines naming one id would read as two '
+    + 'items kept, and the point of these lists is that their counts are trustworthy');
 });
 
 test('a hard item that DOES match the focus is not reported as an exemption', () => {
@@ -169,7 +254,7 @@ test('focus does not change the draft or retired counts — they count another u
 // --- the two universes --------------------------------------------------------
 
 test('a session start counts the whole eligible corpus', () => {
-  const sel = select([BILLING, AUTH], {
+  const sel = select([BILLING, AUTH_ORDINARY], {
     event: 'session-start', focus: focus({ tags: ['billing'] }),
   }, CONFIG);
   assert.equal(sel.focus?.universe, 'corpus');

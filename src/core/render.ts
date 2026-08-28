@@ -212,11 +212,20 @@ function renderFocus(report: FocusReport | null): string {
   const exempt = report.exemptHard.length === 0 ? '' :
     ` ${report.exemptHard.length} severity:hard item(s) do not match this focus and are ` +
     `injected anyway — focus never hides one.`;
+  // A SECOND sentence rather than more ids in the first. The two exemptions are
+  // kept for different reasons — `severity: hard` must not be VIOLATED,
+  // `always` must not fall OUT OF CONTEXT — and a reader who asked for a narrow
+  // corpus is owed which reason applies to what. Merging them would also make
+  // the sentence above false, since it names a severity these items need not
+  // have.
+  const pinned = report.exemptAlways.length === 0 ? '' :
+    ` ${report.exemptAlways.length} pinned item(s) do not match this focus and are ` +
+    `injected anyway — focus never hides one either.`;
 
   return (
     `_Focus is active (${describeFocus(report.axes)}). ${subject}, ${dangling}. ` +
     `Nothing is deleted: \`mycontext focus --show\` lists what is hidden, ` +
-    `\`mycontext focus --clear\` restores it.${exempt}_`
+    `\`mycontext focus --clear\` restores it.${exempt}${pinned}_`
   );
 }
 

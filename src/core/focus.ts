@@ -263,6 +263,23 @@ export interface FocusReport {
    * got three extra items is owed the reason.
    */
   exemptHard: string[];
+  /**
+   * `always: true` items that do NOT match the focus and are injected anyway.
+   *
+   * A SECOND list rather than more ids in the first, because they are kept for
+   * a different reason and the sentence beside each says which. `severity:
+   * hard` means the item must not be VIOLATED; `always` means it must not fall
+   * OUT OF CONTEXT. An item can carry either without the other.
+   *
+   * Added 2026-08-27 with the exemption itself. Before that a focus hid pinned
+   * items outright — six of them for three days, including the instruction to
+   * use this product for every fitting category, hidden by this product — and
+   * the report above said nothing, because there was nothing to say: they were
+   * not kept, they were gone. Now they are kept, and a report that counted only
+   * the hard ones would undercount what the focus let through, which is the
+   * same silence one level along.
+   */
+  exemptAlways: string[];
   /** Load-bearing relations with exactly one end hidden. The cost Q2 requires reporting. */
   dangling: DanglingEdge[];
 }
@@ -475,6 +492,21 @@ export function focusReportLines(report: FocusReport, limit = 10): string[] {
   }
 
   lines.push('');
+  // Its own block, for the reason the type records: two exemptions, two
+  // reasons, and one merged count is a count nobody can act on. Listed like
+  // `exemptHard` above it — capped, with the remainder disclosed rather than
+  // truncated quietly.
+  if (report.exemptAlways.length > 0) {
+    lines.push(
+      `${report.exemptAlways.length} pinned item(s) do not match this focus and are ` +
+      'injected anyway — focus never hides one:',
+    );
+    for (const id of report.exemptAlways.slice(0, limit)) lines.push(`  ${id}`);
+    if (report.exemptAlways.length > limit) {
+      lines.push(`  … +${report.exemptAlways.length - limit} more (--json lists every one)`);
+    }
+  }
+
   if (report.dangling.length === 0) {
     lines.push('0 load-bearing relations dangling.');
   } else {
