@@ -44,15 +44,18 @@
  *     rotation the tail resets to the current EOFs, so what landed in the gap
  *     is NOT coming down the stream and only a projection read can fill it
  *     (`lib/viewmodel.js` · `The only way to fill that hole is to refetch the backlog through the query` · ~131).
- *   - **The live feed** is `GET /api/watch/stream` through `ctx.stream()`,
- *     added to the shell by this task. It reads the JSONL directly and so is
+ *   - **The live feed** is `GET /api/watch/stream`, through `ctx.subscribeStream()`
+ *     since `plan:live seq:1` — the shell opens that ONE connection and this
+ *     screen asks for every record kind (`'*'`), rather than opening a fetch
+ *     of its own the way it did when `ctx.stream()` first added it to the
+ *     shell (`plan:walk seq:11`). It reads the JSONL directly and so is
  *     the ONLY part of this screen that still answers when the projection is
  *     stale — which, since `plan:walk seq:52`, is why it also carries a
  *     BOUNDED REPLAY of what was already in the log. Both other sources on this
  *     screen read the projection, so a corpus whose projection was never built
  *     or has fallen behind its log had nothing left to draw the feed from, and
  *     an empty live tail was read as "this corpus has no records". See
- *     `STREAM_BACKLOG` below, and `applyStreamBacklog`.
+ *     `BOUND_CAP_LIST` below, and `applyStreamBacklog`.
  *   - **The budget** the token bar is drawn against is the sum of the resolved
  *     tier budgets from `GET /api/config`; see `watch.voidn`'s note below.
  *
@@ -90,7 +93,7 @@
  * through CSSOM here, and only with logical properties.
  */
 import { dedupeKey, describeRecord, describeStreamEvent } from '/lib/viewmodel.js';
-import { BOUND_CAP_LIST, el, errorNote, linkId, mono, num, screenHead, spaced } from '/screens/parts.js';
+import { el, errorNote, linkId, mono, num, screenHead, spaced } from '/screens/parts.js';
 
 /** The mockup's pulse: 120 columns of ten seconds each, in a 900x34 box. */
 const PULSE_W = 900;
@@ -117,14 +120,21 @@ const FEED_CAP = 200;
  * all, and a projection that is behind its log answers 503. In both the query
  * surface has nothing to give and the JSONL has 2,076 records.
  *
- * **The number is `BOUND_CAP_LIST` and is not a new one.** Five other bounded
+ * **The number is `BOUND_CAP_LIST` and is not a new one** — five other bounded
  * surfaces in this app already cap at it, and a sixth bound invented here would
  * be a sixth thing for the product to mean by "some". The whole log is NOT
  * replayed: 2,076 records into a live view is the same defect pointed the other
  * way, which is why the stream declares what it held back rather than dropping
  * it silently.
+ *
+ * **This screen no longer requests it.** `plan:live seq:1` lifted the
+ * connection into the shell: `app.js` opens `/api/watch/stream` at most once,
+ * ever, for every screen that ever subscribes, so the backlog size is a
+ * property of the ONE connection rather than of whichever screen happens to
+ * be the first to ask for it. `app.js`'s own `ensureLiveStream()` requests
+ * this exact same `BOUND_CAP_LIST` — the number did not change, only who
+ * asks for it.
  */
-const STREAM_BACKLOG = BOUND_CAP_LIST;
 
 /**
  * The chip a record kind wears, transcribed from the mockup's own `renderAudit`
@@ -157,12 +167,15 @@ const KIND_HUE_UNKNOWN = 'var(--faint)';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /**
- * The stream this module has open, if any.
+ * This module's own unsubscribe from the shared live stream, if any.
  *
- * Module-level because a screen module is imported once and `render()` runs
- * again on every return to `#/watch`. Without this, walking away and back
- * would leave the first stream reading forever and the second would double
- * every row that arrived.
+ * `plan:live seq:1` moved the CONNECTION itself into `app.js` — it is opened
+ * once, ever, and outlives this screen. What is still module-level, and still
+ * needed for the same reason it always was, is this SUBSCRIPTION: a screen
+ * module is imported once and `render()` runs again on every return to
+ * `#/watch`, so without unsubscribing the first visit's callback on the way
+ * out, a second visit would leave the first visit's closures listening
+ * forever and double every row that arrived.
  */
 let openStream = null;
 
@@ -299,9 +312,12 @@ function drawPulse(ctx, buckets) {
 }
 
 export async function render(root, ctx) {
-  // A second visit must not leave the first visit's stream reading. Stopping
-  // it here rather than only on the way out also covers a reload of the same
-  // route and a render that threw before it reached its own teardown.
+  // A second visit must not leave the first visit's subscription listening —
+  // the shared connection stays open regardless, but its callback would
+  // otherwise still be closures over a screen this render just discarded.
+  // Unsubscribing here rather than only on the way out also covers a reload
+  // of the same route and a render that threw before it reached its own
+  // teardown.
   if (openStream !== null) {
     openStream();
     openStream = null;
@@ -959,7 +975,17 @@ export async function render(root, ctx) {
   sayShown();
 
   // ── THE LIVE STREAM ──────────────────────────────────────────────────────
-  const stop = ctx.stream(`/api/watch/stream?backlog=${STREAM_BACKLOG}`, (event, data) => {
+  //
+  // `plan:live seq:1`: this screen no longer opens its own connection. It
+  // subscribes to the SHELL's one connection instead, asking for `'*'` — every
+  // record kind, known or not — because this is the one screen in the product
+  // that draws all seven of them (`KIND_HUE`/`KIND_CHIP` above already handle
+  // an unaccounted kind rather than dropping it, which is what makes `'*'`
+  // honest here rather than a guess at a closed list). `hello`, `resync` and
+  // `fault` reach every subscriber regardless of `kinds` — see `app.js`'s
+  // `dispatchLiveEvent` — so this screen still sees exactly the frames it
+  // always did; only who opened the fetch changed.
+  const stop = ctx.subscribeStream('*', (event, data) => {
     const described = describeStreamEvent(event, data);
     if (described.kind === 'record') {
       if (described.record === null) return;
@@ -1001,12 +1027,13 @@ export async function render(root, ctx) {
     }
     // 'unknown' — a frame this build cannot name never reaches the feed as
     // though it were audited history.
-  }, () => {
-    // An ENDED stream is not this screen's to report. The server exiting is a
-    // global state and the shell answers it globally, with `#exited` and the
-    // `mycontext ui` remedy; a second, quieter claim here would be a screen
-    // guessing at why. Nothing reconnects, ever (spec §2).
   });
+  // `subscribeStream` has no `onEnd` — an ended stream is not this screen's
+  // to report. It reaches this callback as `fault` (handled above, `faulted`
+  // set and said), and the connection dying at the network level is a global
+  // state the shell answers globally, with `#exited` and the `mycontext ui`
+  // remedy; a second, quieter claim here would be a screen guessing at why.
+  // Nothing reconnects, ever (spec §2).
 
   openStream = stop;
 

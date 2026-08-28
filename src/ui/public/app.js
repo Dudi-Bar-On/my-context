@@ -34,10 +34,24 @@
 //                                    empty POST, not `"undefined"`.
 //                                    Both are request() below, which is where
 //                                    the credential and the refusal live ONCE.
-//        ctx.stream(p, onEv, onEnd) GET, token-headered, SSE-parsed; returns a
-//                                    stop() that aborts it. onEnd(reason) fires
-//                                    exactly once. NEVER reconnects (§2).
-//                                    See stream() below.
+//        ctx.subscribeStream(kinds, onEv)
+//                                    The shell's ONE live connection
+//                                    (`/api/watch/stream`), fanned out by
+//                                    RECORD KIND — never by screen name.
+//                                    `kinds` is an array of `AuditKind`
+//                                    strings this screen wants `record`
+//                                    frames for, or `'*'` for every kind,
+//                                    known or not. `hello`/`resync`/`fault`
+//                                    are facts about the STREAM, not about
+//                                    one record's kind, so every subscriber
+//                                    hears those regardless of `kinds` —
+//                                    including a `fault` that happened
+//                                    before this screen subscribed at all.
+//                                    Returns unsubscribe(); the connection
+//                                    itself outlives every screen and is
+//                                    torn down only with the page (never
+//                                    per-screen — plan:live seq:1). See
+//                                    "THE SHARED LIVE STREAM" below.
 //        ctx.t(key, subs)           Node[] — the ONLY renderer. Append it:
 //                                    `el.append(...ctx.t(key, vals))`. Never
 //                                    assign with textContent/innerHTML (owner
@@ -92,6 +106,11 @@ import { markdownNodes } from '/screens/docs.js';
 // lists, through the same function. See `paintRailCounts` for why the count is
 // derived here rather than served as a number by `/api/status`.
 import { buildTree, coverageGaps } from '/lib/viewmodel.js';
+// The shared live stream's backlog size — see "THE SHARED LIVE STREAM" below.
+// Reused rather than respelled: `watch.js` requested exactly this many records
+// on connect for as long as the stream has existed, and the shell opening the
+// ONE connection now is the same request, made once instead of once per visit.
+import { BOUND_CAP_LIST } from '/screens/parts.js';
 
 const SCREENS = {
   preview: () => import('/screens/preview.js'),
@@ -810,6 +829,150 @@ function stream(path, onEvent, onEnd) {
   };
 }
 
+/* ══ THE SHARED LIVE STREAM ═══════════════════════════════════════════════
+ *
+ * `plan:live seq:1` — "the shell owns ONE stream, and screens subscribe to
+ * it". `watch.js` used to be the only caller of `stream()` above, opening and
+ * closing its OWN connection on every visit to `#/watch`. That does not scale
+ * to a product with twenty-two screens: the idle monitor deliberately does
+ * not count an open stream as activity (`ui/watch-model.ts`'s own comment on
+ * its poll timer — the timer is unref'd for exactly this reason), so a
+ * connection per screen would be N things the server is holding for a page
+ * that may be abandoned, and N chances for the token, the fault and the
+ * teardown to each be solved slightly differently — the same argument this
+ * file's own header makes about `hookContext` one layer down.
+ *
+ * So this module opens `/api/watch/stream` at most ONCE, ever, and every
+ * screen that wants any of it calls `subscribeStream()` below instead of
+ * `stream()` directly. `stream()` itself stays exactly what it was — the
+ * primitive, still used for exactly this one connection — and is no longer
+ * reachable from a screen at all (removed from the `window.myctx` contract):
+ * a door left open is a door someone eventually opens again per-screen.
+ */
+let liveStop = null;
+/**
+ * Every screen currently listening, in subscribe order. `kinds` is a `Set`
+ * of `AuditKind` strings this subscriber wants `record` frames for, or the
+ * literal `'*'` for every kind, known or not.
+ */
+const liveSubscribers = new Set();
+/**
+ * The stream's own `hello`, remembered so a screen that subscribes AFTER the
+ * connection already opened — a second visit to a live screen while the
+ * FIRST visit's connection is still the one running, now that it is never
+ * closed on navigation — sees the same opening frame a first subscriber
+ * would have. `hello` fires exactly once per connection (§2: no reconnect,
+ * ever), so without this a re-subscribed screen would sit believing nothing
+ * had connected at all.
+ */
+let liveHello = null;
+/**
+ * The stream's terminal `fault`, if it has already happened, carried as the
+ * server's own error text (`''` when a frame carried none). Replayed to a
+ * late subscriber for the reason `liveHello` is: the connection never
+ * reopens, so a screen mounting after the fault has exactly one chance to
+ * learn the stream is dead, and it must be told rather than left to assume
+ * silence means nothing is happening.
+ */
+let liveEnded = null;
+
+/**
+ * **Chrome-owned, said once, regardless of which screen (if any) is showing
+ * — the "shell's version" of the fault `watch.js` already draws.**
+ *
+ * The idle-timeout exit (§ this task's own item) leaves the server's process
+ * gone, which a broken `fetch()` already reports through `showExited()`
+ * inside `stream()` above — that path is unchanged and still fires. What
+ * THAT path cannot cover is a `fault` FRAME on an otherwise-live server (a
+ * damaged audit line, or a stale token caught only by the stream request):
+ * the response is 200 and the connection is real, so nothing about it looks
+ * like the server exiting, and until now the only account of it lived inside
+ * `watch.js`'s own `#alive` region — invisible on every one of the other
+ * twenty-one screens. `STD-a-measured-zero-is-drawn-and-named`: "nothing is
+ * happening" and "I stopped hearing" must not look alike, on ANY screen, not
+ * only the one screen that happened to draw the difference before.
+ *
+ * Reuses `watch.streamFault` rather than inventing a second sentence for the
+ * same fact — the shared connection carries the identical frame regardless
+ * of who is listening, so the words that were already true stay true here.
+ */
+function showLiveFault(error) {
+  const el = document.getElementById('livestate');
+  const sep = document.getElementById('livesep');
+  if (el === null) return;
+  const chip = document.createElement('span');
+  chip.className = 'chip warn';
+  chip.dataset.g = '▲';
+  chip.append(...translate(table.strings, 'watch.streamFault', { error }));
+  el.replaceChildren(chip);
+  el.hidden = false;
+  if (sep !== null) sep.hidden = false;
+}
+
+/**
+ * The one place every frame off the shared connection passes through: the
+ * shell's own bookkeeping (`liveHello`/`liveEnded`/`showLiveFault`) runs
+ * FIRST, unconditionally, because it must happen whether or not any screen
+ * is currently subscribed; the per-subscriber fan-out runs after.
+ *
+ * **`record` is filtered by kind; nothing else is.** A `record` frame is a
+ * claim about ONE kind and is fanned out only to a subscriber that asked for
+ * it — the whole of "a screen that wants nothing costs nothing". Every other
+ * frame is a claim about the STREAM itself and reaches every subscriber
+ * regardless of `kinds`: a subscriber that filtered `hello`/`fault` out along
+ * with the record kinds it does not care about would have no way left to
+ * learn the connection it depends on has ended.
+ */
+function dispatchLiveEvent(event, data) {
+  if (event === 'hello') liveHello = data;
+  if (event === 'fault') {
+    liveEnded = data !== null && typeof data === 'object' && typeof data.error === 'string'
+      ? data.error : '';
+    showLiveFault(liveEnded);
+  }
+  if (event === 'record') {
+    const kind = data !== null && typeof data === 'object' ? data.kind : undefined;
+    for (const sub of liveSubscribers) {
+      if (sub.kinds === '*' || (typeof kind === 'string' && sub.kinds.has(kind))) sub.onEvent(event, data);
+    }
+    return;
+  }
+  for (const sub of liveSubscribers) sub.onEvent(event, data);
+}
+
+/**
+ * Opens the ONE connection. Only the FIRST call ever does anything —
+ * `liveStop` stays non-null for the rest of the page's life, whether the
+ * stream is still running or has already faulted, because reopening after a
+ * fault would be exactly the reconnection §2 forbids, aimed at whichever
+ * screen subscribes next instead of the one that was there when it died.
+ */
+function ensureLiveStream() {
+  if (liveStop !== null) return;
+  liveStop = stream(`/api/watch/stream?backlog=${BOUND_CAP_LIST}`, dispatchLiveEvent, () => {
+    // An ended stream is not any one screen's to report — `dispatchLiveEvent`'s
+    // `fault` branch above is where the one true, shell-owned account of it is
+    // said, and it is said whether or not a screen is even listening.
+  });
+}
+
+/**
+ * The screen contract's live door — see the header block above for the full
+ * shape. Registers `onEvent` for the `kinds` this screen wants, opening the
+ * shared connection on the very first call this page ever makes and reusing
+ * it on every one after. A `hello` or `fault` that already happened is
+ * replayed to THIS subscriber immediately, in that order, so a screen that
+ * subscribes late is never left inferring the stream's state from silence.
+ */
+function subscribeStream(kinds, onEvent) {
+  const sub = { kinds: kinds === '*' ? '*' : new Set(kinds), onEvent };
+  liveSubscribers.add(sub);
+  ensureLiveStream();
+  if (liveHello !== null) onEvent('hello', liveHello);
+  if (liveEnded !== null) onEvent('fault', { error: liveEnded });
+  return () => { liveSubscribers.delete(sub); };
+}
+
 let stopHeartbeat = () => {};
 
 function currentSession() { return sessionValue; }
@@ -916,6 +1079,26 @@ function renderChrome() {
   noBridge.append(...translate(table.strings, 'strip.ctx.noBridge'));
   ctx.append(noBridge);
   strip.append(ctx);
+
+  // ── THE SHARED LIVE STREAM'S OWN FAULT — present but hidden, exactly as
+  // `#prov` is built empty above, so the row's width does not jump the
+  // instant a fault actually happens. `showLiveFault()` unhides both; see
+  // "THE SHARED LIVE STREAM" for why this lives at shell level at all.
+  const liveSep = document.createElement('span');
+  liveSep.className = 'sep';
+  liveSep.id = 'livesep';
+  liveSep.hidden = true;
+  const live = document.createElement('span');
+  live.id = 'livestate';
+  live.hidden = true;
+  strip.append(liveSep, live);
+
+  // This function reruns on a live page — `installNonceRedemption()` calls it
+  // a second time after a pasted nonce redeems in place — and `strip
+  // .replaceChildren()` above would otherwise silently un-say a fault the
+  // stream already reported. A fact the reader was already told must survive
+  // the chrome being rebuilt around it.
+  if (liveEnded !== null) showLiveFault(liveEnded);
 }
 
 /**
@@ -1261,9 +1444,10 @@ async function main() {
     // The same door with a body. Reaches the three POST routes no screen could
     // call before; it reads, validates and previews, and it writes nothing.
     post,
-    // The held-open door. Same token, same no-reconnect rule; the caller gets
-    // back the stop() that aborts it.
-    stream,
+    // The shell's ONE live connection, fanned out by record kind — never a
+    // door onto a fresh connection of its own. See "THE SHARED LIVE STREAM"
+    // and the header block above for the shape.
+    subscribeStream,
     // Nodes. Screens append: `el.append(...ctx.t(key, vals))`. The flattened
     // form is a SEPARATE call, so reaching for it is a visible decision.
     t: (key, subs) => translate(table.strings, key, subs),
