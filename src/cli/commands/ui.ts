@@ -39,7 +39,8 @@
  */
 import { openProjection, syncProjection } from '../../core/audit-db.ts';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
-import { probeUiServer } from '../../core/ui-server-probe.ts';
+import { probeUiServer, type Liveness } from '../../core/ui-server-probe.ts';
+import { uiServerRecordPath } from '../../core/ui-server-record.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { IDLE_MS, MAX_IDLE_MS } from '../../ui/idle.ts';
 import { openBrowser } from '../../ui/open.ts';
@@ -259,11 +260,45 @@ function fallbackLine(url: string, reason: string): string {
  * re-implemented — its own module argues at length why a liveness record is a
  * claim and not a measurement, and this command needs exactly the proof it
  * already provides: the record parses, the pid is alive, and the port accepts
- * a real TCP connection. A `no-record` or `dead` answer means there is no
- * server to ask, and this command says so rather than trying anyway. An
- * `alive` answer can still fail between the probe and this request — the
- * server may exit in that window — and the fetch below is what reports that
- * honestly instead of pretending the probe was the whole proof.
+ * a real TCP connection. An `alive` answer can still fail between the probe
+ * and this request — the server may exit in that window — and the fetch below
+ * is what reports that honestly instead of pretending the probe was the whole
+ * proof.
+ *
+ * ── "NO RECORD" IS NOT "NO SERVER", AND THIS SAID IT WAS ───────────────────
+ *
+ * Measured twice on 2026-08-28. A server was LISTENING on 127.0.0.1:58888,
+ * confirmed by `netstat`, and this command answered *"no server is running"* —
+ * because `ui-server.json` had lost a rename race at startup and was never
+ * written. The message asserted a fact nothing had checked: `no-record` means
+ * THE FILE WAS NOT THERE, and the only thing that follows from it is that this
+ * command has no address to aim at. `dead` is the other thing entirely — a
+ * record existed, its port was connected to, and nothing answered. That IS a
+ * measurement, and only that one earns the sentence "no server is running".
+ *
+ * So the two states are said differently below, and the `no-record` wording
+ * states what was actually established: there is no record, nothing was
+ * checked, and a server may well be listening right now.
+ *
+ * ── THE FALLBACK, AND WHY IT IS NOT A PORT SCAN ───────────────────────────
+ *
+ * When the record is missing there is exactly one other address this product
+ * already knows: `ui.port` in `.my_context/config.json`. It is not a guess —
+ * a person wrote it down, and `core/ui-server-upkeep.ts` reads the same key to
+ * decide where to put a server back. So `--nonce` tries that ONE address
+ * before it gives up, which is how the observed case recovers without a
+ * restart.
+ *
+ * **A port scan was considered and refused.** Sweeping the ephemeral range
+ * would find a server the config never named, and it would also knock on every
+ * unrelated thing listening on this machine's loopback with a POST — a command
+ * that probes ports is a different kind of thing from a command that reads a
+ * file a person wrote, and it is not one this product should become on the
+ * strength of a rename race. One configured address is the whole widening.
+ *
+ * It is also honest about what it found: recovering this way means the record
+ * is still missing, so the line before the URL says so rather than letting a
+ * working `--nonce` hide a broken upkeep (`INV-nothing-is-dropped-silently`).
  *
  * ── WHY THIS PRINTS RATHER THAN RETURNS ────────────────────────────────────
  *
@@ -272,43 +307,107 @@ function fallbackLine(url: string, reason: string): string {
  * `mycontext ui: http://127.0.0.1:<port>/#<nonce>` — so a script or a person
  * reading either output is reading one contract, not two.
  */
-async function cmdUiNonce(out: Emit): Promise<void> {
+async function cmdUiNonce(out: Emit, configuredPort: number | null): Promise<void> {
   const liveness = await probeUiServer();
-  if (liveness.state !== 'alive') {
-    out(
-      'mycontext ui: no server is running' +
-      (liveness.state === 'dead'
-        ? ` (the one last recorded here, on port ${liveness.port}, is gone)`
-        : '') +
-      '. `--nonce` asks a LIVE server for a credential and has none to ask — run `mycontext ui` ' +
-      'first, then `mycontext ui --nonce` to recover a locked-out tab.',
-    );
-    process.exitCode = 1;
+  if (liveness.state === 'alive') {
+    const minted = await mintNonceFrom(liveness.url);
+    if (minted.nonce === null) {
+      out(minted.kind === 'unreachable'
+        ? `mycontext ui: could not reach the server at ${liveness.url} — it ${minted.reason}. ` +
+          'It answered a liveness check a moment ago and may have exited since. Try again, or ' +
+          'run `mycontext ui` if it has.'
+        : `mycontext ui: the running server at ${liveness.url} ${minted.reason}. This request ` +
+          'is built by this command itself, so that is unexpected — please report it.');
+      process.exitCode = 1;
+      return;
+    }
+    out(`mycontext ui: http://127.0.0.1:${liveness.port}/#${minted.nonce}`);
     return;
   }
 
+  // The one other address, and only when it is one the probe has not already
+  // disproved: a `dead` verdict on the configured port is a connect that was
+  // just refused, and repeating it would spend a second on a settled question.
+  const fallbackPort = configuredPort !== null && configuredPort !== 0
+    && !(liveness.state === 'dead' && liveness.port === configuredPort)
+    ? configuredPort
+    : null;
+  let fallback: NonceMint | null = null;
+  if (fallbackPort !== null) {
+    fallback = await mintNonceFrom(`http://127.0.0.1:${fallbackPort}/`);
+    if (fallback.nonce !== null) {
+      out(`mycontext ui: ${recoveredWithoutRecordLine(liveness, fallbackPort)}`);
+      out(`mycontext ui: http://127.0.0.1:${fallbackPort}/#${fallback.nonce}`);
+      return;
+    }
+  }
+
+  out(noServerLine(liveness, fallbackPort, fallback));
+  process.exitCode = 1;
+}
+
+/** What `mintNonceFrom` found at one address. */
+interface NonceMint {
+  /** The credential, or `null` for every way of not getting one. */
+  nonce: string | null;
+  /**
+   * `unreachable` means NOTHING answered; the other two mean something did and
+   * would not, or could not, mint. The distinction is the whole reason this is
+   * a `kind` and not a boolean: only `unreachable` is evidence about whether a
+   * server is there, and the callers say different things about the rest.
+   */
+  kind: 'minted' | 'unreachable' | 'refused' | 'unusable';
+  /** A phrase completing "it …", so every caller composes one sentence. */
+  reason: string | null;
+}
+
+/**
+ * How long one address gets to answer.
+ *
+ * Minting is an in-memory operation on loopback and completes in single-digit
+ * milliseconds, so five seconds is a wide multiple rather than a guess. The
+ * bound exists because of WHERE the second call goes: the configured `ui.port`
+ * has not been proved to hold a mycontext server, and something that accepts a
+ * connection and then never answers would hang this command with no message at
+ * all — the silent failure this whole task is about, relocated one layer out.
+ * `probeUiServer` bounds its own connect for the same reason.
+ */
+const MINT_TIMEOUT_MS = 5_000;
+
+/**
+ * Ask ONE address for a nonce. Never throws.
+ *
+ * `url` ends in `/` — the liveness record's `url` field is written that way and
+ * the fallback builds it the same — so `${url}api/nonce` is the endpoint in
+ * both cases without a join.
+ */
+async function mintNonceFrom(url: string): Promise<NonceMint> {
   let response: Response;
   try {
-    response = await fetch(`${liveness.url}api/nonce`, { method: 'POST' });
+    response = await fetch(`${url}api/nonce`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(MINT_TIMEOUT_MS),
+    });
   } catch (err) {
-    out(
-      `mycontext ui: could not reach the server at ${liveness.url} ` +
-      `(${err instanceof Error ? err.message : String(err)}). It answered a liveness check a ` +
-      'moment ago and may have exited since. Try again, or run `mycontext ui` if it has.',
-    );
-    process.exitCode = 1;
-    return;
+    // A timeout is not the same story as a refused connection, and saying so
+    // costs one branch: "nothing is there" and "something is there and would
+    // not answer" send a reader to different places.
+    const timedOut = err instanceof Error && err.name === 'TimeoutError';
+    return {
+      nonce: null,
+      kind: 'unreachable',
+      reason: timedOut
+        ? `accepted the connection and did not answer within ${MINT_TIMEOUT_MS}ms`
+        : `did not answer (${err instanceof Error ? err.message : String(err)})`,
+    };
   }
   if (response.status !== 200) {
-    out(
-      `mycontext ui: the running server refused to mint a nonce (status ${response.status}). ` +
-      'This request is built by this command itself, so a refusal here is unexpected — please ' +
-      'report it.',
-    );
-    process.exitCode = 1;
-    return;
+    return {
+      nonce: null,
+      kind: 'refused',
+      reason: `answered status ${response.status} rather than a nonce`,
+    };
   }
-
   let nonce: unknown;
   try {
     nonce = (await response.json() as { nonce?: unknown }).nonce;
@@ -316,12 +415,66 @@ async function cmdUiNonce(out: Emit): Promise<void> {
     nonce = undefined;
   }
   if (typeof nonce !== 'string' || nonce === '') {
-    out('mycontext ui: the server answered with no usable nonce. This is unexpected — please report it.');
-    process.exitCode = 1;
-    return;
+    return { nonce: null, kind: 'unusable', reason: 'answered with no usable nonce' };
   }
+  return { nonce, kind: 'minted', reason: null };
+}
 
-  out(`mycontext ui: http://127.0.0.1:${liveness.port}/#${nonce}`);
+/**
+ * Said BEFORE the URL when the configured port answered and the record did not
+ * exist. The credential works; the record is still missing, and that costs the
+ * upkeep hook and the next `--nonce`. Printing the URL alone would be a working
+ * command quietly hiding a broken one.
+ */
+function recoveredWithoutRecordLine(liveness: Liveness, port: number): string {
+  const found = `a server answered on the configured ui.port ${port}, so here is a credential ` +
+    'from it. The record is still missing: nothing else can find this server, so the upkeep ' +
+    'hook will not put it back after it exits. Restarting `mycontext ui` is what rewrites it.';
+  return liveness.state === 'dead'
+    ? `the liveness record named port ${liveness.port} and was disproved, so it has been ` +
+      `removed — but ${found}`
+    : `no liveness record — ${uiServerRecordPath()} is absent or unreadable — but ${found}`;
+}
+
+/**
+ * The refusal, and the one sentence in this command that has to be exactly true.
+ *
+ * `dead` is a measurement and says so. `no-record` is an ABSENCE of one, and
+ * says that instead — the wording that was wrong twice on 2026-08-28, when a
+ * demonstrably listening server was declared gone on the strength of a missing
+ * file.
+ */
+function noServerLine(
+  liveness: Liveness, fallbackPort: number | null, fallback: NonceMint | null,
+): string {
+  // What the configured address added, if it was tried. Named rather than
+  // dropped: a reader must be able to tell "not tried" from "tried and silent".
+  const tried = fallbackPort !== null && fallback !== null
+    ? ` The configured ui.port ${fallbackPort} was tried too, and it ${fallback.reason}.`
+    : '';
+  if (liveness.state === 'dead') {
+    // `why` is not decoration. "the process is gone" and "the port answered
+    // nothing" are two different disproofs, and a reader chasing a server that
+    // is up but wedged needs to know which one was performed.
+    const disproof = liveness.why === 'pid'
+      ? 'the process that recorded it is gone'
+      : `nothing is listening on port ${liveness.port}`;
+    return 'mycontext ui: no server is running — a record named port ' +
+      `${liveness.port} and ${disproof}, so that record has been removed.${tried} \`--nonce\` ` +
+      'asks a LIVE server for a credential and has none to ask — run `mycontext ui` first, then ' +
+      '`mycontext ui --nonce` to recover a locked-out tab.';
+  }
+  const noAddress = `mycontext ui: no liveness record, which is not the same as no server. ` +
+    `${uiServerRecordPath()} is absent or unreadable, and it is the only address this command ` +
+    `is given — so nothing has been checked here, and a server may be listening right now.`;
+  if (tried !== '') {
+    return `${noAddress}${tried} Run \`mycontext ui\` first, then \`mycontext ui --nonce\` to ` +
+      'recover a locked-out tab.';
+  }
+  return `${noAddress} Run \`mycontext ui\` to start one — it writes the record afresh — or, if ` +
+    'a server IS already up, set `ui.port` in .my_context/config.json to the port it is on and ' +
+    'run `mycontext ui --nonce` again: that is the one address this command will try without a ' +
+    'record.';
 }
 
 function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
@@ -395,7 +548,13 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     // in-flight `fetch` inside `cmdUiNonce` keeps the event loop alive on its
     // own, so the process exits naturally once it settles; nothing here needs
     // to hold it open.
-    void cmdUiNonce(out);
+    //
+    // `ws.config.ui.port` is the ONE address `--nonce` may try when the
+    // liveness record is missing. It is read here rather than inside
+    // `cmdUiNonce` because `ws` is already resolved and `cmdUiNonce` should
+    // depend on an address, not on a workspace — the same reason `resolvePort`
+    // hands back a number instead of consulting the config itself.
+    void cmdUiNonce(out, ws.config.ui.port);
     return 0;
   }
 

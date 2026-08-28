@@ -820,9 +820,15 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
    * would be the silent drop this project refuses, and its author left the
    * decision to the caller. This is that decision: a server that cannot write a
    * hint about itself is still a server, and the person waiting for the page has
-   * lost nothing yet. What they have lost is later and elsewhere — the upkeep
-   * hook will find no record and will not put this server back — which is
-   * exactly the shape `onSessionStoreIssue` already carries for
+   * lost nothing yet. What they have lost is later and elsewhere, and the
+   * message says both halves of it: the upkeep hook will find no record and will
+   * not put this server back, and — the half added on 2026-08-29, because it is
+   * the worse one — `mycontext ui --nonce` reads this same file and nothing
+   * else, so THE RECOVERY PATH FOR A LOCKED-OUT TAB IS WHAT SILENTLY STOPS
+   * WORKING. That path exists precisely to avoid the restart that locks out the
+   * next tab, so a person discovers this failure at the moment they can least
+   * afford it. Naming it here is what makes it discoverable at start instead.
+   * That is exactly the shape `onSessionStoreIssue` already carries for
    * `ui-sessions.json`, printed by `mycontext ui` as a line the owner sees.
    * That existing channel is used rather than a new `onServerRecordIssue`,
    * because the only caller that supplies a handler is the CLI, a second
@@ -856,8 +862,11 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
       options.onSessionStoreIssue?.(
         `could not write ${uiServerRecordPath()} `
         + `(${err instanceof Error ? err.message : String(err)}). The server still runs and this `
-        + 'page still works; what is lost is that nothing else can find this server — it will not '
-        + 'be probed, and it will not be restarted after it exits.',
+        + 'page still works; what is lost is that nothing else can find this server. '
+        + '`mycontext ui --nonce` — the way to recover a tab that has lost its credential '
+        + 'WITHOUT restarting — reads that file and will report no record, and the upkeep hook '
+        + 'will neither probe this server nor put it back after it exits. Setting `ui.port` in '
+        + '.my_context/config.json gives `--nonce` an address to try when the record is missing.',
       );
     }
   }

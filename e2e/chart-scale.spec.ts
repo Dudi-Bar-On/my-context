@@ -55,7 +55,7 @@
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { test } from './app.ts';
-import { openMockup, showScreen } from './mockup.ts';
+import { openMockup } from './mockup.ts';
 
 /** The three screens the owner named. The pulse is deliberately not one — see below. */
 const CHART_SCREENS = ['simulate', 'decay', 'graph'] as const;
@@ -109,15 +109,44 @@ function chartText(page: Page): Promise<string[]> {
     [...document.querySelectorAll('svg.chart text')].map((t) => t.textContent ?? ''));
 }
 
+/**
+ * Open a screen from the rail and come back when its chart is DRAWN.
+ *
+ * **Polled rather than awaited once, and that is not belt-and-braces.** A
+ * screen's previous occupant leaves its own `svg.chart` in the document at zero
+ * width, so `toBeVisible()` on the last one can resolve against a chart that is
+ * on its way out while the new screen is still fetching. Measured failing
+ * exactly once under four parallel workers on the `chrome` project, and green
+ * alone — the signature of every spec on this directory's contention list. A
+ * poll on the MEASUREMENT rather than on an element is the fix: it cannot
+ * resolve until the thing this file asserts about exists.
+ */
+async function chartsOn(page: Page, screen: string): Promise<Measured[]> {
+  await page.evaluate((s) => {
+    const btn = document.querySelector<HTMLElement>(`.nav[data-s="${s}"]`);
+    if (btn === null) throw new Error(`no rail button for screen ${s}`);
+    btn.click();
+  }, screen);
+  let measured: Measured[] = [];
+  await expect
+    .poll(async () => {
+      measured = await charts(page);
+      return measured.length;
+    }, {
+      timeout: 20_000,
+      message:
+        `${screen} never drew a chart. Either the screen refused (its endpoint answers a ` +
+        'degraded corpus) or it broke — both are visible in the trace, and neither is ' +
+        'something this file may pass over: the whole assertion is a rendered width.',
+    })
+    .toBeGreaterThan(0);
+  return measured;
+}
+
 test('the app draws every chart at 1:1, never a factor of its own', async ({ app }) => {
   const seen: string[] = [];
   for (const screen of CHART_SCREENS) {
-    await app.page.evaluate((s) => {
-      document.querySelector<HTMLElement>(`.nav[data-s="${s}"]`)?.click();
-    }, screen);
-    await expect(app.page.locator('svg.chart').last()).toBeVisible({ timeout: 15_000 });
-    const measured = await charts(app.page);
-    expect(measured.length, `${screen} drew no chart to measure`).toBeGreaterThan(0);
+    const measured = await chartsOn(app.page, screen);
     for (const chart of measured) {
       seen.push(`${screen} ${chart.viewBox} -> ${chart.rendered} = ${chart.scale}`);
       // The chart never grows past its own viewBox. Below the design width the
@@ -150,9 +179,7 @@ test('the app draws every chart at 1:1, never a factor of its own', async ({ app
 test('the design of record draws its own charts at the same 1:1', async ({ page }) => {
   await openMockup(page);
   for (const screen of CHART_SCREENS) {
-    await showScreen(page, screen);
-    const measured = await charts(page);
-    expect(measured.length, `the mockup's ${screen} drew no chart`).toBeGreaterThan(0);
+    const measured = await chartsOn(page, screen);
     for (const chart of measured) {
       expect(
         chart.scale,
@@ -164,10 +191,7 @@ test('the design of record draws its own charts at the same 1:1', async ({ page 
 });
 
 test('the staircase still discloses the evictions it did not label', async ({ app }) => {
-  await app.page.evaluate(() => {
-    document.querySelector<HTMLElement>('.nav[data-s="simulate"]')?.click();
-  });
-  await expect(app.page.locator('svg.chart').last()).toBeVisible({ timeout: 15_000 });
+  await chartsOn(app.page, 'simulate');
   const text = await chartText(app.page);
   // `.demo-corpus` sweeps hundreds of rungs, so the callout cap binds and the
   // remainder MUST be said. This is `plan:walk seq:62`'s density fix, and it is
@@ -210,10 +234,7 @@ test('the ego graph keeps its 60-node cap and says what it refused', async ({ ap
       body: JSON.stringify({ focus, nodes, edges, omitted: 147 }),
     });
   });
-  await app.page.evaluate(() => {
-    document.querySelector<HTMLElement>('.nav[data-s="graph"]')?.click();
-  });
-  await expect(app.page.locator('svg.chart').last()).toBeVisible({ timeout: 15_000 });
+  const measured = await chartsOn(app.page, 'graph');
 
   // 60 nodes plus the "+N more" node that stands in the column it was cut from.
   await expect(app.page.locator('svg.chart rect.node')).toHaveCount(61);
@@ -221,7 +242,7 @@ test('the ego graph keeps its 60-node cap and says what it refused', async ({ ap
   expect(await chartText(app.page)).toContain('+147 more');
 
   // And the taller drawing is still 1:1 and still inside its plate.
-  for (const chart of await charts(app.page)) {
+  for (const chart of measured) {
     expect(chart.scale, `a 60-node ego graph is not 1:1: ${chart.rendered}`).toBe(1);
     expect(chart.plateScrollsX).toBe(false);
   }

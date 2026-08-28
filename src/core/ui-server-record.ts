@@ -49,6 +49,7 @@
  */
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { sleepMs } from './sleep.ts';
 import { GLOBAL_DIR } from './workspace.ts';
 
 /** The file, inside the resolved global root. */
@@ -87,6 +88,72 @@ export function uiServerRecordPath(globalRoot?: string): string {
 }
 
 /**
+ * The rename failures that are a MOMENT rather than a verdict.
+ *
+ * On Windows `renameSync` is `MoveFileEx`, which refuses with `EPERM`,
+ * `EACCES` or `EBUSY` while anything else holds the destination open in a
+ * conflicting share mode. `rebuild.ts` names the same three codes for the same
+ * reason; POSIX rename has no such failure mode, so nothing below ever fires
+ * there. Every other code — a parent that is a file, a read-only volume, a full
+ * disk — is a verdict, and is rethrown untouched on the first attempt.
+ */
+const TRANSIENT_RENAME_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+/**
+ * The pause before the ONE retry.
+ *
+ * Fifty milliseconds, and the number comes from the case this exists for: the
+ * record is written in the seconds after a restart, which is exactly when the
+ * PREVIOUS server's `close` listener is removing the same file and the old
+ * process still holds a handle on it. That window is a scheduler tick or two,
+ * not a second — `rebuild.ts` clears the same contention with 20ms on its first
+ * backoff — and fifty is that with room, still far below anything a person
+ * waiting for a page could perceive.
+ */
+const RENAME_RETRY_MS = 50;
+
+/**
+ * Rename, and on a TRANSIENT failure wait once and try exactly once more.
+ *
+ * ── WHY ONCE, AND NOT `retryOnTransientFsError`'S FIVE ─────────────────────
+ *
+ * `rebuild.ts` has a general five-attempt version of this, and it is the right
+ * policy there: it is writing the corpus, the caller is a command, and a failed
+ * item write loses authored knowledge. This write loses a HINT — the caller is
+ * a server's `listen` callback with a person waiting on the other side of it,
+ * and the product here is not the file but the DISCLOSURE that the file is
+ * missing. A loop that keeps trying is a loop that delays the sentence, and a
+ * long enough one would swallow it: measured on 2026-08-28, the failure that
+ * mattered was one transient `EPERM` during a restart, which one retry clears.
+ * So: retry once, then hand the failure to the caller to say out loud.
+ *
+ * It is also why this is not an import. `ui-server-record.ts` is read on the
+ * `Stop` hook path through `ui-server-probe.ts`, on a 3-second hook budget, and
+ * `rebuild.ts` pulls in the item parser, the config types and the path
+ * normaliser to reach ten lines of retry.
+ *
+ * Exported, and taking the operation as a parameter, for `rebuild.ts`'s own
+ * stated reason: a genuine Windows `EPERM` from a competing file handle cannot
+ * be manufactured reliably in a unit test on any platform, so the policy —
+ * retry a transient code, rethrow anything else, and give up after exactly one
+ * retry — is exercised directly with a fake operation.
+ */
+export function retryTransientRenameOnce<T>(rename: () => T): T {
+  try {
+    return rename();
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    // Not transient: this is the answer, not a moment. Rethrown unchanged so
+    // the caller's disclosure carries the real reason.
+    if (code === undefined || !TRANSIENT_RENAME_CODES.has(code)) throw err;
+  }
+  sleepMs(RENAME_RETRY_MS);
+  // The second attempt is the last one. Whatever it throws is thrown as-is —
+  // there is no third, and no path from here that reports success.
+  return rename();
+}
+
+/**
  * Write the record, atomically.
  *
  * Temp-plus-rename, the shape `ui-sessions.ts` and `rebuild.ts` both use: a
@@ -108,6 +175,13 @@ export function uiServerRecordPath(globalRoot?: string): string {
  * be a silent drop — the failure this project refuses. The caller decides:
  * `src/ui/server.ts` catches, because a server that cannot write its own record
  * must still serve.
+ *
+ * **The rename is retried once before it is allowed to fail**, and that is not
+ * defensive tidiness: on 2026-08-28 this write lost a race with the server it
+ * was replacing — the old process still held the file, `MoveFileEx` answered
+ * `EPERM`, and the record was absent for the rest of that server's life. See
+ * `retryTransientRenameOnce`, which also says why the bound is one and not the
+ * five its sibling in `rebuild.ts` allows.
  */
 export function writeUiServerRecord(record: UiServerRecord, globalRoot?: string): void {
   const target = uiServerRecordPath(globalRoot);
@@ -115,7 +189,7 @@ export function writeUiServerRecord(record: UiServerRecord, globalRoot?: string)
   try {
     mkdirSync(path.dirname(target), { recursive: true });
     writeFileSync(tmp, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
-    renameSync(tmp, target);
+    retryTransientRenameOnce(() => renameSync(tmp, target));
   } catch (err) {
     // Leave no orphan behind on the way out. Best-effort: the original failure
     // is the one worth reporting, and it is about to be.

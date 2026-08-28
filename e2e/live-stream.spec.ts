@@ -10,12 +10,25 @@
  * the one screen today with its own account of the same fact.
  *
  * `window.myctx.subscribeStream` is called directly through `page.evaluate`
- * for the first two questions: no second screen exists yet to subscribe from,
- * and RULE-a-ui-change-is-not-done-until-a-browser-test-drives-it asks for a
- * browser driving the real surface, not a second re-implementation of it in
- * Node. The third question drives the shell the way a reader actually would —
- * navigate to Watch, then navigate AWAY from it — because the whole point of
- * a shell-owned fault is that it must survive not being looked at.
+ * where a screen cannot supply the case: the kind-filtering question needs two
+ * subscribers wanting DIFFERENT kinds at the same moment, and no pair of
+ * screens is guaranteed to give that. RULE-a-ui-change-is-not-done-until-a
+ * -browser-test-drives-it asks for a browser driving the real surface, not a
+ * second re-implementation of it in Node. The other two questions drive the
+ * shell the way a reader actually would — navigate to Watch, then navigate
+ * AWAY from it — because the whole point of a shell-owned fault is that it
+ * must survive not being looked at.
+ *
+ * **`plan:live seq:11`, 2026-08-29.** The first test used to attach its
+ * `request` listener inside the test body and then count the requests that
+ * arrived after visiting Watch. That is a race, not a measurement: the shell
+ * opens its one connection during the INITIAL load, before the body ever runs
+ * (measured — see `shelled` below), so the count it read was "did my listener
+ * beat the load", and it failed 2 of 6 alone while the behaviour under test was
+ * working correctly. The counting now starts before `goto`, and the same fact
+ * is asserted a second way — on the identity of the opening frame a late
+ * subscriber is replayed — so neither reading depends on when a listener was
+ * attached.
  */
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
@@ -31,12 +44,40 @@ import { DIR_NAME } from '../src/core/workspace.ts';
 interface Fixture {
   page: Page;
   corpus: string;
+  streamRequests: string[];
 }
 
 /** A corpus, its projection built, and a server over it — the shell alone. */
 async function shelled(page: Page, body: (fixture: Fixture) => Promise<void>): Promise<void> {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-live-stream-'));
   const corpus = path.join(dir, DIR_NAME);
+  /**
+   * **Attached BEFORE `goto`, and that is the whole of `plan:live seq:11`.**
+   *
+   * The shell opens its one connection during the INITIAL load — the landing
+   * screen is `preview` (`app.js` · `location.hash.replace(/^#\//, '') || 'preview'`
+   * · ~1975), `preview` declares kinds in `SCREEN_INVALIDATION`, and `route()`
+   * subscribes on its behalf through `setupLiveScreen`, whose first
+   * `subscribeStream()` call is what runs `ensureLiveStream()`. Measured
+   * 2026-08-29 on both browser projects: the request for
+   * `/api/watch/stream?backlog=20` fires ~40ms after `page.goto()` resolves and
+   * ~40ms BEFORE the rail's first button becomes visible.
+   *
+   * A listener attached inside the test body — i.e. after `goto` AND after the
+   * `.nav` wait below — therefore races that request and usually loses. That is
+   * exactly what made this file fail 2 of 6 alone and pass 16/16 beside
+   * `app-refresh.spec.ts`: another spec running first changes the warm-up
+   * timing, the request lands after the attach, and the old assertion passed
+   * for a reason that had nothing to do with the property it names.
+   *
+   * Counting from here makes the count total-for-the-page rather than
+   * since-the-last-navigation, which is the only quantity "the shell opens the
+   * stream ONCE" was ever a claim about.
+   */
+  const streamRequests: string[] = [];
+  page.on('request', (req) => {
+    if (req.url().includes('/api/watch/stream')) streamRequests.push(req.url());
+  });
   let harness: UiHarness | undefined;
   try {
     expect(runCli(['init'], dir, () => {}), 'fixture command failed: init').toBe(0);
@@ -48,7 +89,7 @@ async function shelled(page: Page, body: (fixture: Fixture) => Promise<void>): P
       page.locator('.nav').first(),
       'the app never rendered a rail button — it probably has no token',
     ).toBeVisible({ timeout: 15_000 });
-    await body({ page, corpus });
+    await body({ page, corpus, streamRequests });
   } finally {
     if (harness !== undefined) await harness.stop();
     removeTree(dir);
@@ -56,40 +97,84 @@ async function shelled(page: Page, body: (fixture: Fixture) => Promise<void>): P
 }
 
 test('the shell opens the stream ONCE — a second subscriber reuses the same connection', async ({ page }) => {
-  await shelled(page, async ({ page: p }) => {
-    const streamRequests: string[] = [];
-    p.on('request', (req) => {
-      if (req.url().includes('/api/watch/stream')) streamRequests.push(req.url());
-    });
-
-    // The FIRST subscriber, exactly the way `watch.js` becomes one: visiting
-    // the screen that wants the feed. This is what opens the connection.
-    await p.evaluate(() => { location.hash = '#/watch'; });
+  await shelled(page, async ({ page: p, streamRequests }) => {
+    // ONE connection for the page, opened by whichever subscriber came first —
+    // here the landing screen, during the load `shelled` just did. `streamRequests`
+    // has been collecting since before `goto` (see its comment), so this is a
+    // count of every stream request the page has EVER made, not of the ones that
+    // happened to arrive after a listener won a race.
     await expect.poll(() => streamRequests.length, {
-      message: 'visiting Watch never opened the shared stream at all',
+      message: 'the shell never opened the shared stream at all',
       timeout: 15_000,
     }).toBeGreaterThan(0);
-    const openedAfterFirst = streamRequests.length;
-    expect(openedAfterFirst, 'more than one request opened for the FIRST subscriber alone').toBe(1);
+    expect(
+      streamRequests.length,
+      'the shell opened more than one connection before a single screen was even visited',
+    ).toBe(1);
 
-    // A SECOND subscriber, registered directly against the shell's own door —
-    // no second screen exists yet to prove this from, which is exactly why
-    // this task built the door rather than a second copy of `ctx.stream()`.
+    // A subscriber registered against the shell's own door, BEFORE Watch is
+    // visited, so it holds the `hello` of whatever connection is running now.
     await p.evaluate(() => {
       // @ts-expect-error — window.myctx is the plain-JS screen contract.
-      const unsub = window.myctx.subscribeStream(['mutation'], () => {});
+      window.__helloEarly = [];
       // @ts-expect-error — same reason.
-      window.__unsub2 = unsub;
+      window.myctx.subscribeStream(['mutation'], (event, data) => {
+        // @ts-expect-error — same reason.
+        if (event === 'hello') window.__helloEarly.push(data);
+      });
+    });
+    await expect.poll(
+      // @ts-expect-error — window.myctx is the plain-JS screen contract.
+      () => p.evaluate(() => window.__helloEarly.length),
+      { message: 'the shared stream never delivered its opening frame', timeout: 15_000 },
+    ).toBeGreaterThan(0);
+    expect(
+      streamRequests.length,
+      "a subscriber registered at the shell's own door opened a SECOND connection — "
+      + '`ensureLiveStream` is not the once-ever gate it claims to be',
+    ).toBe(1);
+
+    // A SECOND subscriber, the ordinary way a reader makes one: visit the screen
+    // that wants the feed. `watch.js` subscribes on mount — and must reuse the
+    // connection the landing screen already opened rather than open its own.
+    await p.evaluate(() => { location.hash = '#/watch'; });
+    await expect(p.locator('[data-p="watch"]')).toBeVisible({ timeout: 15_000 });
+
+    // A THIRD subscriber, registered directly against the door, because the
+    // count must not move for a subscriber that is not a screen either.
+    await p.evaluate(() => {
+      // @ts-expect-error — window.myctx is the plain-JS screen contract.
+      window.__helloLate = [];
+      // @ts-expect-error — same reason.
+      window.__unsub3 = window.myctx.subscribeStream(['mutation'], (event, data) => {
+        // @ts-expect-error — same reason.
+        if (event === 'hello') window.__helloLate.push(data);
+      });
     });
 
-    // Give the page a moment it does not need: if a second connection were
-    // opened it would show up as a second `request` event almost immediately,
-    // and this asserts NONE arrived rather than merely that none has yet.
+    // Give the page a moment it does not need: a second connection would show up
+    // as a second `request` event almost immediately, and this asserts NONE
+    // arrived rather than merely that none has yet.
     await p.waitForTimeout(500);
     expect(
       streamRequests.length,
       'a second subscriber opened a SECOND connection — the shared stream is not shared',
-    ).toBe(openedAfterFirst);
+    ).toBe(1);
+
+    // And the same fact stated as IDENTITY rather than as a count, which is
+    // what survives if the shell ever learns to reconnect: the late subscriber
+    // was replayed the very object the early one was handed. `hello` fires
+    // exactly once per connection (spec §2: no reconnect, ever), so a second
+    // connection would have overwritten `liveHello` with a frame of its own and
+    // these two would be different objects.
+    const sameHello = await p.evaluate(() =>
+      // @ts-expect-error — window.myctx is the plain-JS screen contract.
+      window.__helloLate.length === 1 && window.__helloLate[0] === window.__helloEarly[0]);
+    expect(
+      sameHello,
+      'a late subscriber was handed a DIFFERENT opening frame — it joined a second '
+      + 'connection rather than the one that was already running',
+    ).toBe(true);
   });
 });
 

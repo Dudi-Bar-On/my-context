@@ -181,8 +181,22 @@ test('a record that cannot be written costs the record, never the server', async
   try {
     assert.equal((await fetch(`http://127.0.0.1:${server.port}/`)).status, 200,
       'the server stopped serving because it could not write a hint about itself');
-    assert.ok(issues.some((message) => message.includes('ui-server.json')),
+    const disclosure = issues.find((message) => message.includes('ui-server.json'));
+    assert.ok(disclosure,
       `the failure was dropped instead of disclosed; what was said was ${JSON.stringify(issues)}`);
+    // **And it must name the CONSEQUENCE, not only the file.** The sibling
+    // disclosure for `ui-sessions.json` set that register — "a tab opened now
+    // will stop working when the server restarts" — and this one was measured
+    // to be the worse of the two on 2026-08-28: `mycontext ui --nonce` reads
+    // this file and nothing else, so a silent failure here disables the ONE
+    // recovery path for a locked-out tab, and the person finds out at the
+    // moment they need it. A message naming the file without naming that is a
+    // notice nobody can act on.
+    assert.match(disclosure, /--nonce/,
+      'the disclosure did not name the recovery path that stops working, which is the whole '
+      + `reason this failure is worth saying out loud: ${disclosure}`);
+    assert.match(disclosure, /still runs/,
+      `the disclosure must say the server is still serving, or it reads as a crash: ${disclosure}`);
     // …and closing a server that never wrote a record is still clean.
     await server.close();
   } finally { await server.close(); removeTree(cwd); removeTree(blocked); }
