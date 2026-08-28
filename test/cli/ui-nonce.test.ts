@@ -43,6 +43,28 @@ import '../helpers/pin-sessions-dir.ts';
 
 const CLI = fileURLToPath(new URL('../../src/cli/index.ts', import.meta.url));
 
+/**
+ * **This file gets its OWN global root, and it is not belt-and-braces.**
+ *
+ * `pin-sessions-dir.ts` keeps the suite out of the developer's home, but it
+ * pins ONE directory for the whole run: the preload sets the variable in the
+ * runner's parent process and every test file's child inherits that same value.
+ * `ui-server.json` names a MACHINE's server rather than a workspace's, so there
+ * is exactly one of it per root — and `node --test` runs test files in
+ * parallel. Every other file that starts a harness server therefore writes and
+ * removes the same record these cases are asserting about.
+ *
+ * That is tolerable for a file asserting a server IS there, and not for this
+ * one: the cases below turn on a record being ABSENT, and a neighbour's server
+ * writing one between `withoutRecord()` and the `--nonce` run would make this
+ * file report a defect that belongs to nobody. Re-pointing the variable here
+ * costs nothing — `uiServerRecordPath()` reads it per call, and both the
+ * harness spawn and `runNonce` pass `process.env` at spawn time — and it is
+ * still a temporary directory, so the real-home guard is unaffected.
+ */
+process.env['MYCONTEXT_UI_SESSIONS_DIR']
+  = mkdtempSync(path.join(tmpdir(), 'myctx-nonce-global-'));
+
 interface Run { out: string; code: number | null }
 
 /** One `mycontext ui --nonce ...` invocation, run to completion. */
