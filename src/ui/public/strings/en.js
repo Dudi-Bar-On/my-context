@@ -85,6 +85,7 @@ export const strings = {
   'sess.coldn': 'no seen set',
   'sess.coldhelp': "A different question, not a different view: what a brand-new session would get on this file. Never shown as the current session's preview.",
   'sess.parent': 'Previews are of the {b:parent thread}. A subagent has its own dedupe key and its deliveries are not folded in here.',
+  'sess.nocred': '{b:This page has no credential} — that is not the same as an empty corpus. The credential lives in the URL fragment, so a bookmark, a typed address, or a reload cannot recover it. Run {m:mycontext ui --nonce} and open the link it prints, fragment included.',
   'aria.focuspop': 'Focus',
   'focus.title': 'Focus',
   'focus.live': 'The focus that is set',

@@ -203,6 +203,24 @@ function forgetToken() {
 }
 let table = null;
 let sessionValue = 'cold';
+/**
+ * **"No credential" and "cold" are two different facts, and `sessionValue`
+ * alone cannot tell them apart.** `data.sessions.length === 0` is a real,
+ * authenticated answer — an empty ledger — and `sessionValue` lands on
+ * `'cold'` for it below, correctly. A `loadSessions()` that never GOT an
+ * answer — the 401 a bare URL draws, per `KNOWN-the-bare-server-url-...` —
+ * leaves `sessionValue` at this same initial `'cold'` too, because the
+ * assignment below never runs. One string, two causes, and this project's own
+ * `STD-a-measured-zero-is-drawn-and-named` is exactly the standard against
+ * confusing them.
+ *
+ * So this starts `true` — no read has succeeded yet — and only `loadSessions()`
+ * ever clears it, on the one branch that means a credential actually worked.
+ * `route()` reads it to decide whether the reader is owed the explanation
+ * `sess.nocred` carries; nothing else consults it, which is the whole of "not
+ * a parallel state machine" — one bit, set where `sessionValue` already is.
+ */
+let noCredential = true;
 const sessionListeners = [];
 
 // Takes NODES, because translate() returns nodes: a string cannot carry the
@@ -989,6 +1007,11 @@ function currentSession() { return sessionValue; }
  */
 async function loadSessions() {
   const data = await api('/api/sessions');
+  // Reached only past a real answer — `api()` throws before this line on a
+  // 401/403 or a dead connection, so getting here IS the credential working.
+  // See `noCredential`'s own header for why this can't just be `sessionValue
+  // === 'cold'` read backwards.
+  noCredential = false;
   sessionValue = data.sessions.length === 0 ? 'cold' : (data.default ?? 'cold');
   const label = document.getElementById('sesslbl');
   label.textContent = sessionValue === 'cold' ? flat(table.strings, 'sess.cold') : sessionValue;
@@ -1357,6 +1380,35 @@ async function route() {
   section.replaceChildren();
   const mod = await loader();
   await mod.render(section, window.myctx);
+
+  // **`KNOWN-the-bare-server-url-renders-the-whole-app-and-never-says-it`.**
+  //
+  // AFTER `render()`, never before: every screen's own `render()` opens with
+  // `root.replaceChildren()` (`preview.js` and the rest, uniformly), so
+  // anything appended first is simply erased. This runs on every route while
+  // `noCredential` holds, which is deliberate — the reader may click any rail
+  // button while locked out, and the statement has to follow them there, not
+  // wait for them to guess that `preview` is where it lives.
+  //
+  // What it is NOT: the `#exited` banner (`.banner`, a fixed overlay) or the
+  // `#sesspop` dialog neither of which is built in this shell (see the header
+  // comment on "what this task did not wire"). Both were considered and
+  // rejected — a banner and a modal are both call-outs ABOVE the content; this
+  // sits IN the one place a reader locked out of every screen is actually
+  // looking, which is the content itself, empty as it is.
+  //
+  // `sess.nocred`, not `sess.cold`: the label `#sesslbl` already draws stays
+  // exactly as `sess.cold` left it (a real, authenticated empty ledger reads
+  // "Cold session" and says nothing more, correctly). This is a SEPARATE
+  // string precisely so that sentence never grows a credential claim it would
+  // owe the OTHER 'cold' — an authenticated reader with zero sessions must
+  // never meet a paragraph telling them their credential is missing.
+  if (noCredential) {
+    const note = document.createElement('p');
+    note.className = 'small spill';
+    note.append(...translate(table.strings, 'sess.nocred'));
+    section.append(note);
+  }
 }
 
 /**

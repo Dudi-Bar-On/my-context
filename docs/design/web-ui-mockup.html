@@ -1325,6 +1325,24 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
   <main class="body" id="bodyroot">
 
+  <!-- **`KNOWN-the-bare-server-url-renders-the-whole-app-and-never-says-it`.**
+       A sibling of the 21 screen sections, not one of them — the app draws
+       this ONCE, after whichever screen the reader is on, for as long as it
+       has no credential (`app.js`'s `route()`). It is never a `.banner`
+       (fixed overlay, `#exited` below) and never a `#sesspop`/`#focuspop`
+       dialog: both sit ABOVE the content; this sits IN it, which is where a
+       reader locked out of every screen is actually looking. `hidden` here
+       only because this file has no live auth state to gate it with — the
+       shipped page's own gate is `noCredential`, read where `sessionValue`
+       already is. `sess.cold` (above, `#sesslbl`) is untouched on purpose: an
+       authenticated reader with a genuinely empty ledger must never meet a
+       sentence claiming their credential is missing. -->
+  <p class="small spill" data-t="sess.nocred" hidden><b>This page has no credential</b> — that
+    is not the same as an empty corpus. The credential lives in the URL fragment, so a
+    bookmark, a typed address, or a reload cannot recover it. Run
+    <span class="m">mycontext ui --nonce</span> and open the link it prints, fragment
+    included.</p>
+
   <!-- ═══ 1. Injection preview — the landing screen ═══ -->
   <section data-p="preview">
     <div class="phd"><h2 data-t="preview.h">Injection preview</h2>
@@ -2629,6 +2647,7 @@ const HE={_dir:'rtl',_lang:'he',
  'sess.title':'שיחה','sess.cold':'שיחה קרה','sess.coldn':'ללא קבוצת נראו',
  'sess.coldhelp':'שאלה אחרת, לא תצוגה אחרת: מה שיחה חדשה לגמרי הייתה מקבלת על הקובץ הזה.',
  'sess.parent':'התצוגות המקדימות הן של השרשור ההורה. לסוכן משנה יש מפתח משלו.',
+ 'sess.nocred':'לדף הזה אין הרשאה — וזה שונה מקורפוס ריק. ההרשאה חיה בקטע ה‑URL של הדף, ולכן סימנייה, כתובת שהוקלדה, או רענון אינם יכולים לשחזר אותה. הריצו {m:mycontext ui --nonce} ופתחו את הקישור שהיא מדפיסה, כולל ה‑fragment.',
  'focus.title':'מיקוד','focus.live':'המיקוד שמוגדר','focus.off':'ללא מיקוד','focus.offn':'ללא צמצום',
  'focus.help':'ללא מיקוד עונה על שאלה אחרת. ברירת המחדל היא תמיד מה ש‑Claude באמת מקבל.',
  'nav.inj':'הזרקה — מה מגיע','nav.ev':'ראיות — למה כן או לא','nav.ch':'שינוי — מורכב, לא מורץ','nav.read':'קריאה',
