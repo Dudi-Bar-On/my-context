@@ -275,6 +275,32 @@ const KNOWN_GAPS: Record<string, string[]> = {
   simulate: [
     'b', 'circle', 'div.ev', 'div.readout', 'div.small',
     'span.chip.warn', 'text',
+    // **`div.at` is BUILT and is unreachable in this fixture's opening
+    // state** — restored to the ledger 2026-08-28 after `plan:walk seq:7`
+    // removed it on the reasonable belief that shipping the ladder closed it.
+    // It did build it: `drawLadder` marks the last rung at or below the
+    // slider with `at`, exactly as the mockup's own `rungs[rungs.length-1]
+    // .classList.add('at')` does. What it cannot do is draw it HERE.
+    //
+    // Measured rather than reasoned: the screen opens on `let tier = 'jit'`,
+    // `EVENT_FOR.jit` is `'tool'`, and `runSweep`'s own guard is `if
+    // (EVENT_FOR[tier] === 'tool' && path === null) { ladderPlate
+    // .replaceChildren(); ... return; }`. `.demo-corpus` has no repository
+    // files for the path picker to offer, so `path` is null, the ladder is
+    // CLEARED, and no rung — `at` or otherwise — exists to measure. Driving
+    // the sweep endpoint directly confirms the split from the other side:
+    // `pinned` answers 189 rungs (and would mark `at` at index 19), while
+    // `jit` and `restored` answer zero.
+    //
+    // So this is not "the app does not draw it" and the entry must not be
+    // read as that. It is the DATA_DEPENDENT ceiling this screen is listed
+    // under: absent in the default state, present the moment a tier with
+    // rungs is selected. The honest close is a test that SELECTS such a tier
+    // and asserts the highlight — which is a behaviour assertion this file's
+    // element census cannot make. Filed as `plan:walk seq:59`, along with
+    // the question this measurement raised on its own: whether a screen
+    // should open on the one tier that can show nothing.
+    'div.at',
     // **Structural, not missing.** `renderStair` (mockup ~4066-4095) never
     // draws a BARE `<svg>`, `<line>` or `<path>` — every one it builds
     // carries a class (`chart`; `axis`, `defline` or `nowline`; `step`),
