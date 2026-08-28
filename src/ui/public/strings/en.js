@@ -148,6 +148,15 @@ export const strings = {
   'preview.why': 'Why not — the first gate that failed',
   'aria.gatepick': 'Item',
   'preview.whyn': "The gates in {m:select()}'s own order — eligible, tier, focus, scope, seen, budget — because the order is the explanation: a list of six reasons is noise, and the one that binds is only meaningful in the position it holds. Rungs above it passed, the rung itself carries the diagnosis, and everything below is not reached rather than passed. Composing the fix binds to a stable code on {m:injection()}, so each cause is named by that code and not only by English prose.",
+  // The picker's own disclosure. It holds ONE EXEMPLAR PER RUNG — the first
+  // item by id that fails there — so it is stable against exactly the changes
+  // a reader is trying to observe, which is what "cannot see changes to why
+  // not" was reporting. Said rather than replaced: the rung a reader is
+  // usually chasing is the budget, and every item that failed THAT now has a
+  // list of its own below.
+  'preview.spec': 'The strip holds one {b:specimen} per gate — the first item by id that fails there — so it holds still while your selection moves. Every item that really spilled is named under {b:Not delivered} below, in the order the selector considered it.',
+  'preview.spill': 'Not delivered — every item that spilled, and what it cost',
+  'preview.spilln': 'One row per item in {m:Selection.spilled}, {b:whole across every tier this event ran} — not the ribbon\'s per-tier split — in the selector\'s own candidate order, which is load-bearing: first-fit admits greedily, so the same three costs in a different order spill a different item. {b:band} appears where the tier offered its candidates in more than one: on a tool event band 1 is the items whose own globs name this path and band 2 is the items that match only by having no scope at all, so a scoped item displacing an unscoped one is visible rather than mysterious. An index line shows {b:—} instead of a cost: the index tier admits lines, and per-line costs are exposed by no endpoint, so the number is absent rather than invented.',
   'preview.ribbon': 'Budget ribbon — five tiers, and what fell out of each',
   'preview.ribbonn': 'One segment per admitted item, sized by its real {m:itemCost}. Beneath each track is the {b:ghost lane}: every spilled item at the width it would have taken, in the position the selector considered it. A wide ghost followed by a narrow fill is first-fit being honest — drawing spills as a tail would misrepresent the algorithm. A tier this event never reaches is drawn as {b:absent}, hatched and named; an empty track would claim it ran and delivered nothing, which is a different fact. Follows the event selector above rather than adding a second one.',
   'preview.contover': '{b:Continuity overflow} — {n} continuity item(s) did not fit {m:budgets.continuity}: {mv:ids}, costing {mv:cost} against a budget of {mv:budget}. The continuity guarantee is NOT in force for this session. It is said here, in the injected block itself and as a doctor finding, because a continuity item dropped in silence is the exact defect this tier exists to end.',
@@ -277,6 +286,14 @@ export const strings = {
   // is never read as a claim about what was injected.
   'list.allOf': 'Showing all {total}.',
   'list.admittedOf': 'Showing the first {shown} of {total}, in the order the selector admitted them.',
+  // The THIRD order, and it exists because the other two would each say
+  // something false about a list of items that did NOT arrive. `admittedOf`
+  // puts "admitted" under the one card whose subject is everything that was
+  // not; `recentOf` claims a time a computation never happened at. What is
+  // true of a spill is the position the selector CONSIDERED it in — first-fit
+  // is greedy, so that order decides which item spills — and that is the
+  // wording `ui/read-model.ts` already uses for the same field.
+  'list.consideredOf': 'Showing the first {shown} of {total}, in the order the selector considered them.',
   'list.recentOf': 'Showing the {shown} most recent of {total}.',
   'list.displayOnly': 'A display limit. All {total} were in the injection — none were dropped.',
   'list.showAll': 'Show all {total}',
@@ -303,6 +320,7 @@ export const strings = {
   // paged line already carries `displayOnly` after it: three short sentences
   // on a state the reader chose to enter, against two surfaces that disagree.
   'list.rowsAdmitted': 'Rows {from}–{to} of {total}, in the order the selector admitted them.',
+  'list.rowsConsidered': 'Rows {from}–{to} of {total}, in the order the selector considered them.',
   'list.rowsRecent': 'Rows {from}–{to} of {total}, oldest first — the newest are last.',
   'list.omittedBoth': '{before} before this page, {after} after it.',
   // ONE vocabulary for both `take` modes, and the row numbers beside them are

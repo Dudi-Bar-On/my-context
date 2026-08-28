@@ -1480,6 +1480,24 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
       <div class="card pane"><h3 data-t="preview.why">Why not — the first gate that failed</h3>
         <div class="segbar" id="gatepick" role="group" aria-label="Item" data-t-aria="aria.gatepick"></div>
+        <!-- THE PICKER SAYS WHAT IT IS HOLDING, and the sentence is the whole
+             of the fix rather than a caption. It offers ONE EXEMPLAR PER RUNG —
+             the first item by id that fails there — so it is stable against
+             precisely the changes a reader is trying to observe: change the
+             event, change a budget, change what actually arrived, and the same
+             specimen very often comes back. Reported by the owner as "can not
+             see changes to why not", and correctly: that stability is real and
+             it was never disclosed.
+
+             Disclosing it, rather than replacing the picker with the real
+             failing items, because the rung-6 case — the one a reader is
+             usually chasing — now has a whole list of its own below, named in
+             the selector's own order. A picker that offered 139 items would be
+             the "list of six reasons is noise" defect one axis along. -->
+        <p class="small" style="margin-block-start:8px" data-t="preview.spec">The strip holds one
+          <b>specimen</b> per gate — the first item by id that fails there — so it holds still
+          while your selection moves. Every item that really spilled is named under
+          <b>Not delivered</b> below, in the order the selector considered it.</p>
         <div class="gladder plate" id="gates"></div>
         <p class="small" style="margin-block-start:8px" data-t="preview.whyn">The gates in
           <span class="m">select()</span>'s own order — eligible, tier, focus, scope, seen, budget —
@@ -1544,6 +1562,82 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       session's own lines displaced to make room: <span class="m v" data-v="ids">RULE-round-half-even</span>.</p>
     <p class="small" style="margin-block:6px 0" data-t="index.carriedFetch">Fetch any of these with
       <span class="m">mycontext show &lt;id&gt;</span>.</p>
+
+    <!-- ═══ NOT DELIVERED — the spilled items, NAMED ═══════════════════════
+         Added 2026-08-28. Until then the only account this screen gave of what
+         did not arrive was the ribbon's GHOST LANE: widths without names. The
+         owner: "there is no place there for a list of items that did not
+         delivered". A reader who asks "why did this item not reach the agent"
+         got a bar.
+
+         A DESIGN CHANGE, not a parity gap, and it does not overturn
+         `preview.whyn` beside it. That note argues against listing six
+         REASONS — a closed vocabulary whose order carries the meaning — and it
+         is right. This lists ITEMS: the reader's own data, different every
+         run, and the count is the answer to "was my budget too small".
+
+         WHOLE, NOT PER-TIER. The ribbon splits spills five ways because a
+         ghost has to be sized against its own tier's budget; `Selection.spilled`
+         is one list across every tier that ran, and this card draws that list
+         unsplit with the tier on each row. Said out loud in `preview.spilln`,
+         because a spilled aggregate is the figure most easily lost between the
+         two readings.
+
+         THE ORDER IS THE SELECTOR'S OWN and it is load-bearing: first-fit
+         admits greedily, so `[4,9,4]` against a budget of 10 spills a different
+         item than `[9,1,5]` does, and the position is why. Sorting these rows
+         by size or by id would draw a different algorithm.
+
+         THE BAND is read, never re-derived. `DEC-the-jit-tier-offers-path-
+         scoped-items-first-in-two-bands` made the order of offers depend on
+         whether an item's own globs name the event path, and `Spill.band`
+         carries that position out of `fitToBudget` itself. A screen comparing
+         `item.scope.length` against the path would be a second implementation
+         of the selector's partition. It is drawn only where the candidates were
+         actually split — where nothing is scoped there is one band, and a
+         marker on every row would report a partition nobody made.
+
+         BOUNDED, like every other list in this product, and the bound line
+         says what is not shown: 139 spills is an ordinary session-start number
+         here. Its sentence is `list.consideredOf` rather than
+         `list.admittedOf` — these were not admitted, and reusing that wording
+         would put the one word this card exists to contradict under it. -->
+    <div class="card pane">
+      <h3 data-t="preview.spill">Not delivered — every item that spilled, and what it cost</h3>
+      <div class="rows" id="spilledRows" role="group" aria-label="Item" data-t-aria="aria.gatepick">
+        <button class="row" type="button" data-id="STD-money-never-float">
+          <span class="idfull m"><span class="idkind">STD</span><span class="idslug">-money-never-float</span></span>
+          <span class="chip gov" data-g="◆">pinned</span>
+          <span class="m">1,180</span>
+        </button>
+        <button class="row" type="button" data-id="REF-v2-handover-read-before-discussing-the-web-ui">
+          <span class="idfull m"><span class="idkind">REF</span><span class="idslug">-v2-handover-read-before-discussing-the-web-ui</span></span>
+          <span class="chip ok" data-g="●">jit</span>
+          <span class="m">band 2</span>
+          <span class="m">2,410</span>
+        </button>
+        <button class="row" type="button" data-id="PROC-rotate-the-signing-key">
+          <span class="idfull m"><span class="idkind">PROC</span><span class="idslug">-rotate-the-signing-key</span></span>
+          <span class="chip" data-g="◇">index</span>
+          <span class="m">—</span>
+        </button>
+      </div>
+      <div class="bound">
+        <p class="small"><span data-t="list.consideredOf">Showing the first <span class="v" data-v="shown">20</span> of <span class="v" data-v="total">139</span>, in the order the selector considered them.</span> <span data-t="list.allOf">Showing all <span class="v" data-v="total">3</span>.</span></p>
+        <button type="button" data-t="list.showAll">Show all <span class="v" data-v="total">139</span></button>
+        <button type="button" data-t="list.showFewer">Show fewer</button>
+      </div>
+      <p class="small" data-t="preview.spilln">One row per item in
+        <span class="m">Selection.spilled</span>, <b>whole across every tier this event ran</b> —
+        not the ribbon's per-tier split — in the selector's own candidate order, which is
+        load-bearing: first-fit admits greedily, so the same three costs in a different order
+        spill a different item. <b>band</b> appears where the tier offered its candidates in more
+        than one: on a tool event band 1 is the items whose own globs name this path and band 2 is
+        the items that match only by having no scope at all, so a scoped item displacing an
+        unscoped one is visible rather than mysterious. An index line shows <b>—</b> instead of a
+        cost: the index tier admits lines, and per-line costs are exposed by no endpoint, so the
+        number is absent rather than invented.</p>
+    </div>
 
     <div class="card pane">
       <h3 data-t="preview.ribbon">Budget ribbon — five tiers, and what fell out of each</h3>
@@ -2736,6 +2830,9 @@ const HE={_dir:'rtl',_lang:'he',
  'preview.ribbon':'סרט התקציב — חמש רמות, ומה נשר מכל אחת',
  'preview.contover':'{b:גלישת רציפות} — {n} פריטי רציפות לא נכנסו ל‑{m:budgets.continuity}: {mv:ids}, בעלות {mv:cost} מול תקציב של {mv:budget}. הבטחת הרציפות אינה בתוקף בשיחה הזו. הדבר נאמר כאן, בבלוק המוזרק עצמו וכממצא של doctor, כי פריט רציפות שנשמט בשקט הוא בדיוק התקלה שהרמה הזו נועדה לסיים.',
  'preview.ribbonn':'מקטע אחד לכל פריט שהתקבל, ברוחב ה‑{m:itemCost} האמיתי שלו. מתחת לכל מסלול נמצאת {b:נתיב הרפאים}: כל פריט שנשפך, ברוחב שהיה תופס, במקום שבו הבורר שקל אותו. רפאים רחבים ואחריהם מילוי צר הם first-fit במלוא כנותו — ציור השפיכות כזנב היה מסלף את האלגוריתם. רמה שהאירוע הזה אינו מגיע אליה מצוירת {b:כנעדרת}, מקווקוות ומוסברת; מסלול ריק היה טוען שהיא רצה ולא מסרה דבר, וזו עובדה אחרת. עוקב אחרי בורר האירועים שלמעלה במקום להוסיף שני.',
+ 'preview.spill':'לא נמסר — כל פריט שנשפך, וכמה הוא עלה',
+ 'preview.spec':'הרצועה מחזיקה {b:דגימה} אחת לכל שער — הפריט הראשון לפי מזהה שנכשל בו — ולכן היא עומדת במקומה בזמן שהבחירה שלכם משתנה. כל פריט שנשפך באמת מופיע בשמו תחת {b:לא נמסר} למטה, בסדר שבו הבורר שקל אותו.',
+ 'preview.spilln':'שורה אחת לכל פריט ב‑{m:Selection.spilled}, {b:בשלמותה על פני כל הרמות שהאירוע הזה הריץ} — לא הפיצול לפי רמה של הסרט — בסדר המועמדים של הבורר עצמו, וזה נושא משמעות: first-fit מקבל בחמדנות, ולכן אותן שלוש עלויות בסדר אחר שופכות פריט אחר. {b:band} מופיע היכן שהרמה הציעה את מועמדיה ביותר מרצועה אחת: באירוע כלי רצועה 1 היא הפריטים שהגלובים שלהם נוקבים בנתיב הזה ורצועה 2 היא הפריטים שמתאימים רק מפני שאין להם היקף כלל, כך שפריט בעל היקף שדוחק פריט חסר היקף נראה לעין ולא נותר מסתורי. שורת אינדקס מציגה {b:—} במקום עלות: רמת האינדקס מקבלת שורות, ועלות לשורה אינה נחשפת בשום נקודת קצה, ולכן המספר נעדר ולא מומצא.',
  'preview.whyn':'השערים בסדר של {m:select()} עצמו — כשירות, רמה, מיקוד, היקף, נראו, תקציב — כי {b:הסדר הוא ההסבר}: רשימה של שש סיבות היא רעש, והסיבה הכובלת נושאת משמעות רק במקום שהיא תופסת. השלבים שמעליה עברו, השלב עצמו נושא את האבחנה, וכל מה שמתחתיו {i:לא נבדק כלל} ולא עבר. הרכבת התיקון דורשת קוד יציב ב‑{m:injection()}; היום חמש הסיבות נבדלות רק בניסוח האנגלי.',
  'help.more':'מה מכריע כאן','help.land':'איך תדעו שזה עבד',
  'help.whyTree':'למה אלה אינם בעץ',
@@ -2885,6 +2982,7 @@ const HE={_dir:'rtl',_lang:'he',
  'sess.name':'{b:שמות הם רשות ו‑mycontext מחזיקה בהם.} שיחה שאיש לא נתן לה שם שומרת על המזהה והקידומת שלה — לא מומצא לה דבר, כי שם נגזר עלול להיות שגוי ומתן שם הוא בדיוק הרגע שבו יודעים למה השיחה שימשה. {m:mycontext session name} · {m:/mycontext-session} — בחירה ומתן שם עובדים גם בלי הממשק הזה.',
  'tier.carried':'הועבר',
  'list.admittedOf':'מוצגים {v:shown=20} הראשונים מתוך {v:total=47}, בסדר שבו הבורר קיבל אותם.',
+ 'list.consideredOf':'מוצגים {v:shown=20} הראשונים מתוך {v:total=139}, בסדר שבו הבורר שקל אותם.',
  'list.recentOf':'מוצגים {v:shown=50} העדכניים ביותר מתוך {v:total=214}.',
  'list.allOf':'מוצגים כל {v:total=4}.',
  'list.displayOnly':'מגבלת תצוגה. כל {v:total=47} נכללו בהזרקה — דבר לא הושמט.',

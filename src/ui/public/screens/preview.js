@@ -45,6 +45,22 @@
  *     and appears in no response, so no item can be shown failing at it. Not
  *     approximated — filed, and said in this file rather than left for a
  *     reader to notice from an empty rung.
+ *
+ *     **The picker holds ONE EXEMPLAR PER RUNG, and since 2026-08-28 it says
+ *     so** (`preview.spec`). `/api/items` is sorted by id, so "the first item
+ *     that fails this rung" is stable by construction — and stable against
+ *     precisely the changes a reader is trying to observe. The specimen is
+ *     kept and disclosed rather than replaced by a picker over every failing
+ *     item, which would be `preview.whyn`'s own objection one axis along; the
+ *     rung a reader is usually chasing is rung 6, and every item that failed
+ *     THAT is now named in the `Not delivered` card below.
+ *   - **The spilled-items list** (`#spilledRows`, `preview.spill` /
+ *     `preview.spilln`) is LIVE and whole: one row per `Selection.spilled`
+ *     entry, in that array's own order, with its tier, its band where the tier
+ *     banded, and its `sim.costs` price. It is the second half of
+ *     `DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`, which
+ *     changed which items arrive on a tool event and asked for the
+ *     displacement to be observable rather than mysterious.
  *   - **The five-tier budget ribbon with its ghost lane** (`#ribbons`, between
  *     `preview.ribbon` and `preview.ribbonn`) is LIVE for its budgets, its
  *     tier dispatch, its admitted segments and its spilled ghosts —
@@ -74,8 +90,9 @@
  *          `[4,9,4]` at 10 both yield two fills and one spill, and the spill
  *          sits last in one and second in the other. Recovering it needs
  *          either a spill ORDINAL or the spilled item's `severity`/`layer` on
- *          the wire; `Spill` carries `{id, tier, reason}` and `ItemSummary`
- *          carries neither, and reading the position back out of the reason
+ *          the wire; `Spill` carries `{id, tier, reason, band?}` — the band
+ *          orders the two GROUPS and not the items inside one — and
+ *          `ItemSummary` carries neither, and reading the position back out of the reason
  *          sentence is the second implementation of `select()`'s decision this
  *          project keeps paying for. So each admitted candidate holds its
  *          position as a `.gap` at its real width and each spilled one is a
@@ -435,9 +452,11 @@ export async function render(root, ctx) {
     out.append(two);
 
     drawCarry(selection.index);
-    // The ribbon comes last, and the order is an argument rather than a layout:
-    // Why not answers about what is NOT in the Delivered card beside it, and the
-    // ribbon then shows what the budgets did with everything that was left.
+    // Between the ladder and the ribbon, and that is the argument the whole
+    // screen is read in: Why not diagnoses ONE item, Not delivered NAMES every
+    // one of them, and the ribbon then shows what the budgets did with the
+    // widths. The ribbon still comes last.
+    drawSpilled(selection, sim);
     drawRibbons(selection, sim);
   }
 
@@ -542,6 +561,97 @@ export async function render(root, ctx) {
   }
 
   /**
+   * **`Not delivered` — every item that spilled, NAMED, with what it cost.**
+   *
+   * Until 2026-08-28 the only account this screen gave of what did not arrive
+   * was the ribbon's ghost lane: widths without names, and `selection.spilled`
+   * consulted solely to answer *"did this one item spill"* — a question the
+   * reader has to already suspect the answer to. The owner reported it as
+   * *"there is no place there for a list of items that did not delivered"*.
+   *
+   * **It does not overturn `preview.whyn` beside it.** That note argues against
+   * listing six REASONS — a closed vocabulary whose order carries the meaning —
+   * and it is right. This lists ITEMS: the reader's own data, different every
+   * run, and its count is the answer to *"was my budget too small"*.
+   *
+   * **WHOLE, not per-tier**, with the tier on each row. `Selection.spilled` is
+   * one list across every tier that ran; the ribbon splits it five ways only
+   * because a ghost has to be sized against its own tier's budget. Both
+   * readings are true and the aggregate is the one most easily lost between
+   * them, so `preview.spilln` says which this is in those words.
+   *
+   * **In `selection.spilled`'s own order, never sorted here.** That order is
+   * the one the selector considered each item in, tier by tier
+   * (`ui/read-model.ts` · `order the selector considered each item, tier by tier` · ~390),
+   * and it is load-bearing rather than incidental: first-fit admits greedily,
+   * so `[4,9,4]` against a budget of 10 spills a different item than `[9,1,5]`
+   * does. Re-sorting these rows by size or by id would draw a different
+   * algorithm.
+   *
+   * **The band is READ, not re-derived** — `Spill.band`, written inside
+   * `fitToBudget` where the position is known
+   * (`core/select.ts` · `const partitioned = bands.filter(` · ~575). Comparing
+   * `item.scope.length` against the event path here would be a second
+   * implementation of the selector's own partition, which is the two-spellings
+   * defect `GateCode` exists to prevent. It is ABSENT wherever the candidates
+   * were not actually split, and the row then carries no marker: a partition
+   * nobody made is not a fact to draw.
+   *
+   * **An index row shows a dash where a cost would be**, and the note says why.
+   * `sim.costs` prices every id in `full ∪ spilled` with `itemCost` — the
+   * FULL-TEXT cost — but the index tier admitted a LINE, and per-line index
+   * costs are exposed by no endpoint
+   * (`ui/read-model.ts` · `per-line index costs are exposed by no endpoint in this plan` · ~397).
+   * Drawing the full-text figure beside an index line would be a number this
+   * screen invented. The same gap the ghost lane already declines to size.
+   *
+   * **Bounded like every other list here**, through the one `boundedList` — 139
+   * spills is an ordinary session-start figure on a real corpus — and with the
+   * `considered` order, because these rows were not admitted. `displayOnly` is
+   * deliberately NOT passed: that clause says *"all N were in the injection"*,
+   * which is false of every row in this card.
+   */
+  function drawSpilled(selection, sim) {
+    const card = el('div', 'card pane');
+    const heading = el('h3');
+    heading.append(...ctx.t('preview.spill'));
+    const rows = el('div', 'rows');
+    rows.id = 'spilledRows';
+    rows.setAttribute('role', 'group');
+    rows.setAttribute('aria-label', ctx.tFlat('aria.gatepick'));
+    card.append(heading, rows);
+
+    const cost = new Map(sim.costs.map((entry) => [entry.id, entry.tokens]));
+    const bound = boundedList(ctx, rows, selection.spilled, (spill) => {
+      const row = el('button', 'row');
+      row.type = 'button';
+      // `data-id`, so the shell's own delegated handler opens the pane — the
+      // one path every id in this product takes. It is the whole point of
+      // naming the item: the reader asks "why did this not arrive", reads the
+      // tier and the cost, and opens the item without leaving the screen.
+      row.dataset.id = spill.id;
+      row.append(idFull(spill.id), tierChip(spill.tier));
+      // The band, where the selector actually banded. A `.m` run rather than a
+      // chip: the chips on this row already carry the tier, a second coloured
+      // token would compete with it, and `band 2` is product vocabulary from
+      // the ruling rather than prose.
+      if (spill.band !== undefined) row.append(mono(`band ${spill.band}`));
+      row.append(mono(spill.tier === 'index' ? '—' : num(cost.get(spill.id) ?? 0)));
+      // The reason as the tooltip, in the SERVER's own words — the same
+      // treatment the ghost lane gives it, and never parsed for the figures
+      // above.
+      row.title = spill.reason;
+      return row;
+    }, { cap: BOUND_CAP_LIST, order: 'considered' });
+    card.append(bound);
+
+    const note = el('p', 'small');
+    note.append(...ctx.t('preview.spilln'));
+    card.append(note);
+    out.append(card);
+  }
+
+  /**
    * **`Why not — the first gate that failed`**: the segmented item picker and
    * the six-rung ladder, in `select()`'s own order.
    *
@@ -579,11 +689,27 @@ export async function render(root, ctx) {
     pick.id = 'gatepick';
     pick.setAttribute('role', 'group');
     pick.setAttribute('aria-label', ctx.tFlat('aria.gatepick'));
+    // **THE PICKER SAYS WHAT IT IS HOLDING.** It offers one EXEMPLAR PER RUNG,
+    // and `/api/items` is sorted by id so "the first" is stable by
+    // construction — which is exactly the property the owner ran into: change
+    // the event, change a budget, change what actually arrived, and the same
+    // specimen very often comes back. *"Can not see changes to why not"* is
+    // that stability, correctly reported about a panel that never disclosed it.
+    //
+    // **Disclosed rather than replaced, and the reasoning is recorded rather
+    // than left in this choice.** Offering every failing item would rebuild
+    // `preview.whyn`'s own objection one axis along — a picker of 139 names is
+    // noise, and the ladder is a diagnosis of ONE item by construction. What
+    // was missing was not a bigger picker but a list, and rung 6 — the rung a
+    // reader is usually chasing — now has one below, named in the selector's
+    // own order. The other five rungs remain specimens and now say so.
+    const spec = el('p', 'small');
+    spec.append(...ctx.t('preview.spec'));
     const ladderHost = el('div', 'gladder plate');
     ladderHost.id = 'gates';
     const note = el('p', 'small');
     note.append(...ctx.t('preview.whyn'));
-    card.append(heading, pick, ladderHost, spaced(note));
+    card.append(heading, pick, spaced(spec), ladderHost, spaced(note));
     host.append(card);
 
     const hidden = new Set(selection.focus === null ? [] : selection.focus.hidden);

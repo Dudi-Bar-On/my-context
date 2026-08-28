@@ -82,6 +82,39 @@ export interface Spill {
   id: string;
   tier: SelectionEntry['tier'] | 'index';
   reason: string;
+  /**
+   * **Which BAND of its tier's candidates this item was offered in** — 1-based,
+   * in the order the caller handed the bands to `fitToBudget`, and written
+   * there rather than anywhere else.
+   *
+   * `DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands` made the
+   * order of offers depend on a fact the spill record did not carry: on a tool
+   * event band 1 is the items whose own globs match the path and band 2 is the
+   * items that match only by having no scope at all. A reader who watches a
+   * scoped item arrive and an unscoped one leave has no way to see why, and the
+   * ruling itself says the answer belongs on screen — *"band membership is a
+   * fact a screen can display beside each spilled item"*.
+   *
+   * **It is populated where the decision is taken.** The alternative — a screen
+   * comparing `item.scope.length` against the event path — is a second
+   * implementation of `matchesScope`'s banding, the two-spellings defect
+   * `GateCode` exists to prevent, and it would answer for an item the selector
+   * never even offered.
+   *
+   * **ABSENT unless the candidates were actually SPLIT**, which is `STD-absent-
+   * vs-zero` and also what keeps the ruling's own property true. Where nothing
+   * is scoped, band 1 is empty, every candidate is offered in one run, and the
+   * spill records stay byte-identical to the single-band selector's — the
+   * property the ruling was decided on, and the one
+   * `test/core/select-jit-bands.test.ts` holds a verbatim pre-banding capture
+   * against. A `band: 1` on every spill of every single-band tier would be a
+   * number reporting a partition nobody made.
+   *
+   * The NUMBER travels; the meaning of each band belongs to the caller that
+   * built them, and the screen names it there rather than here — `fitToBudget`
+   * admits against a budget and knows nothing about scope.
+   */
+  band?: number;
 }
 
 /**
@@ -518,6 +551,12 @@ function byPriority(a: Item, b: Item): number {
  *
  * The only caller that passes more than one band today is the JIT tier
  * (`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`).
+ *
+ * **A spill records the band it was offered in** — `Spill.band`, 1-based, and
+ * only when more than one band actually held candidates. It is written here
+ * because here is where the position is known: a surface re-deriving it from
+ * an item's scope and the event path would be a second implementation of the
+ * caller's partition, and would answer for items this function never saw.
  */
 function fitToBudget(
   bands: Item[][], budget: number, tier: SelectionEntry['tier'],
@@ -526,24 +565,39 @@ function fitToBudget(
   const spilled: Spill[] = [];
   let used = 0;
 
+  // **`Spill.band` is written only where a partition actually happened**, and
+  // "happened" is measured on the bands that HOLD something rather than on how
+  // many were passed. One populated band is one run of candidates however the
+  // caller spelled it, so an unscoped corpus — band 1 empty — still produces
+  // the single-band selector's records byte for byte, which is the property
+  // `DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands` was decided
+  // on. See `Spill.band`.
+  const partitioned = bands.filter((band) => band.length > 0).length > 1;
+
   // `[...band]` per band, never a sort in place: `fitToBudget` and `buildIndex`
-  // sort copies and never the caller's array.
-  for (const item of bands.flatMap((band) => [...band].sort(byPriority))) {
-    const cost = itemCost(item);
-    // First-fit, not strict priority truncation: an over-budget item is skipped
-    // (`continue`, not `break`) so a later, smaller, LOWER-priority item can still
-    // be admitted after a higher-priority one has spilled. Deliberate, for better
-    // budget utilisation — `spilled` is therefore NOT a strict priority prefix of
-    // the sorted candidates.
-    if (used + cost > budget) {
-      spilled.push({
-        id: item.id, tier,
-        reason: `budget exceeded (${used + cost} > ${budget} estimated tokens)`,
-      });
-      continue;
+  // sort copies and never the caller's array. Nested rather than flattened
+  // since the band INDEX is now part of what a spill records; the order of
+  // consideration is unchanged — every member of band 0, then every member of
+  // band 1, each band sorted by `byPriority` on its own.
+  for (const [index, band] of bands.entries()) {
+    for (const item of [...band].sort(byPriority)) {
+      const cost = itemCost(item);
+      // First-fit, not strict priority truncation: an over-budget item is skipped
+      // (`continue`, not `break`) so a later, smaller, LOWER-priority item can still
+      // be admitted after a higher-priority one has spilled. Deliberate, for better
+      // budget utilisation — `spilled` is therefore NOT a strict priority prefix of
+      // the sorted candidates.
+      if (used + cost > budget) {
+        spilled.push({
+          id: item.id, tier,
+          reason: `budget exceeded (${used + cost} > ${budget} estimated tokens)`,
+          ...(partitioned ? { band: index + 1 } : {}),
+        });
+        continue;
+      }
+      used += cost;
+      entries.push({ item, tier });
     }
-    used += cost;
-    entries.push({ item, tier });
   }
 
   // `used` is returned, not recomputed by the caller: it is the exact figure

@@ -201,11 +201,11 @@ export function errorNote(message) {
 // defects at once — it becomes unusable at scale, and it cannot be told apart
 // from a surface that is showing everything.
 //
-// **ONE implementation, five call sites**, because five surfaces sharing one
-// mechanism must share their wording or the product grows five ways to say
-// "there is more". The five are the delivered list and the carried blocks
-// (`preview.js`), the injected-now table (`injected.js`), the review queue
-// (`work.js`) and the pack stack (`packs.js`).
+// **ONE implementation, six call sites**, because six surfaces sharing one
+// mechanism must share their wording or the product grows six ways to say
+// "there is more". The six are the delivered list, the carried blocks and the
+// spilled list (`preview.js`), the injected-now table (`injected.js`), the
+// review queue (`work.js`) and the pack stack (`packs.js`).
 //
 // **The ORDER is a parameter, and it is the whole of the owner's ruling**
 // (`DEC-a-record-list-bounds-by-time-a-computed-list-bounds-by`):
@@ -220,6 +220,12 @@ export function errorNote(message) {
 //                real ordering is the one `select()` used: first-fit, tier by
 //                tier. Stamping a computation with a time it never happened at
 //                would be fabrication.
+//   'considered' — the same computation, read from the other side: the items
+//                that did NOT arrive, in the order the selector offered them.
+//                A third order rather than a reuse of `admitted`, because a
+//                spilled list is the one surface where the word "admitted"
+//                is false about every row it sits under. Added 2026-08-28
+//                with the preview's spilled-items list.
 //
 // **`displayOnly` is not decoration and not politeness.** On the preview the
 // cap is a DISPLAY cap over a list that was delivered WHOLE, so the sentence
@@ -324,9 +330,21 @@ function sentence(ctx, key, slots) {
   return span;
 }
 
-/** A record bounds by time; a computation bounds by admission order. */
+/**
+ * A record bounds by time; a computation bounds by admission order.
+ *
+ * **`'considered'` is the third, and it is not a synonym for `'admitted'`.**
+ * The preview's spilled list draws the items the selector did NOT admit, so
+ * "in the order the selector admitted them" would put the one word that card
+ * exists to contradict directly under it. What is true of a spill is the order
+ * the selector CONSIDERED it in — the same wording `ui/read-model.ts` uses of
+ * the same field — and that order is load-bearing rather than decorative:
+ * first-fit admits greedily, so `[4,9,4]` against a budget of 10 spills a
+ * different item than `[9,1,5]` does.
+ */
 function orderKeyFor(spec) {
-  return spec.order === 'recent' ? 'list.recentOf' : 'list.admittedOf';
+  if (spec.order === 'recent') return 'list.recentOf';
+  return spec.order === 'considered' ? 'list.consideredOf' : 'list.admittedOf';
 }
 
 /**
@@ -336,7 +354,8 @@ function orderKeyFor(spec) {
  * page that dropped it would leave a reader guessing which end is which.
  */
 function rowsKeyFor(spec) {
-  return spec.order === 'recent' ? 'list.rowsRecent' : 'list.rowsAdmitted';
+  if (spec.order === 'recent') return 'list.rowsRecent';
+  return spec.order === 'considered' ? 'list.rowsConsidered' : 'list.rowsAdmitted';
 }
 
 export function boundedList(ctx, host, items, draw, spec) {

@@ -146,7 +146,7 @@ function descendants(root: FakeNode): FakeNode[] {
 
 interface Spec {
   cap: number;
-  order?: 'recent' | 'admitted';
+  order?: 'recent' | 'admitted' | 'considered';
   take?: 'last';
   displayOnly?: boolean;
 }
@@ -323,6 +323,33 @@ test('a capped take-first list opens on its head with Previous refused', async (
   assert.ok(prev !== undefined && next !== undefined, 'a capped list draws both controls');
   assert.equal(prev.disabled, true, 'nothing sits before the first page');
   assert.equal(next.disabled, false);
+});
+
+/**
+ * The THIRD order, added 2026-08-28 with the preview's spilled-items list.
+ *
+ * It exists because both older sentences say something FALSE under a list of
+ * items that did not arrive: `admitted` puts the one word that card exists to
+ * contradict under every row of it, and `recent` claims a time a computation
+ * never happened at. What is true of a spill is the order the selector
+ * CONSIDERED it in, which is also load-bearing — first-fit admits greedily, so
+ * that order is what decides which item spills.
+ *
+ * Both states are asserted, opening page and paged, because `rowsKeyFor` is a
+ * second table and a third order added to one and not the other reads as an
+ * admitted list the moment the reader presses Next.
+ */
+test('a considered list says considered — on its opening page and on a later one', async () => {
+  const { bound, line } = await render(rows(47), { cap: 20, order: 'considered' });
+  assert.equal(
+    text(line), 'Showing the first 20 of 47, in the order the selector considered them.',
+    'these rows were not admitted — that is the whole subject of the card that draws them',
+  );
+  click(stepButton(bound, 'next')!);
+  assert.equal(
+    text(line), 'Rows 21–40 of 47, in the order the selector considered them. '
+    + '20 before this page, 7 after it.',
+  );
 });
 
 test('Next says WHERE the reader is, on both sides, the way /api/coverage reports a page', async () => {
