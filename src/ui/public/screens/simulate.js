@@ -81,8 +81,44 @@ const TIERS = ['pinned', 'jit', 'restored', 'index'];
  */
 const EVENT_FOR = { pinned: 'compact', restored: 'compact', index: 'compact', jit: 'tool' };
 
-/** The mockup's own slider bounds, verbatim: `min=0 max=12000 step=50`. */
+/**
+ * The mockup's own slider bounds: `min=0 max=12000 step=50`. `max` is a FLOOR
+ * here, not the bound — see `sliderMaxFor`.
+ */
 const SLIDER = { min: '0', max: '12000', step: '50' };
+
+/**
+ * The slider's upper bound: the mockup's number, or the budget in force if that
+ * is larger.
+ *
+ * **A bare `max=12000` did not merely fail to reach a bigger budget — it
+ * misreported one.** `slider.value = String(budgets[tier])` below sets the
+ * handle to the budget actually in force, and assigning a value above an
+ * `input[type=range]`'s `max` SILENTLY CLAMPS it. So a `pinned` of 22,000 drew
+ * a slider reading 12,000, with nothing anywhere saying the number had been
+ * changed. The one screen whose job is to tell you what a budget does was
+ * showing a budget nobody had set.
+ *
+ * Found 2026-08-28, the day the owner raised `pinned` past the literal for the
+ * first time — the value had never been exceeded before, so the clamp had never
+ * fired and nothing pinned the bound in any test.
+ *
+ * Derived rather than raised to a bigger literal, because a literal is only
+ * ever right until the next budget: `budgets.pinned` accepts any positive
+ * integer (`src/core/budgets-write.ts`), so no constant can be the answer.
+ * `REQ-configure-and-the-simulator-agree-on-the-budgets-whatever` is the rule —
+ * agreeing on a value is not enough if one screen cannot display it.
+ *
+ * The mockup's 12,000 is kept as the FLOOR so the control still spans a useful
+ * range on a corpus whose budgets are small, which is what that number was
+ * chosen for. `plan:walk seq:7` replaces this outright: once the sweep exists,
+ * the meaningful bound is the last rung, and the slider snaps to rungs rather
+ * than to a round number.
+ */
+function sliderMaxFor(budgets, tier) {
+  const inForce = budgets === null ? 0 : Number(budgets[tier] ?? 0);
+  return String(Math.max(Number(SLIDER.max), Number.isFinite(inForce) ? inForce : 0));
+}
 
 export async function render(root, ctx) {
   root.replaceChildren();
@@ -171,6 +207,9 @@ export async function render(root, ctx) {
       button.onclick = () => {
         tier = name;
         tierName.textContent = tier;
+        // The bound first, then the value — the other order clamps, which is
+        // the defect this pair exists to prevent.
+        slider.max = sliderMaxFor(budgets, tier);
         if (budgets !== null) slider.value = String(budgets[tier]);
         drawTierPick();
         void run();
@@ -412,6 +451,11 @@ export async function render(root, ctx) {
     // from and needs to be able to drag back to.
     const both = await fetchBoth(null);
     budgets = both.compact.budgets;
+    // The bound BEFORE the value. Assigning above `max` clamps silently, so the
+    // other order draws a budget nobody set — see `sliderMaxFor`. This is the
+    // first of the two places budgets arrive; the tier buttons are the other,
+    // and both must raise it or the defect returns on whichever was missed.
+    slider.max = sliderMaxFor(budgets, tier);
     slider.value = String(budgets[tier]);
     budgetVal.textContent = num(budgets[tier]);
     drawTable(both);
