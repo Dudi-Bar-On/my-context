@@ -425,10 +425,17 @@ export function effectBetween(
  * it needs in its own copy. The sidecars go with it: a `-wal` or `-shm` without
  * its database is worse than neither.
  *
- * `.audit` goes too, for a different reason. It is an append-only log that this
- * run's writes are discarded with, so copying it is pure cost — and on a corpus
- * with thousands of rows it is the largest thing here. The real execution's
- * audit rows are written by `execute.ts` against the REAL log and are unaffected.
+ * `.audit` goes too, and the reason first written here was WRONG. It said the
+ * log is "pure cost" because this run's writes are discarded — true of the log
+ * itself, and not true of the whole directory: `.audit/imported/<slug>/import.json`
+ * is pack-membership state that `readImportRecords` reads (`review.ts`). Nothing
+ * in today's catalogue reaches it, so no command derives a wrong effect from the
+ * omission — but a docstring is what the next entry will trust, and this one
+ * would have told them it was free.
+ *
+ * It stays excluded: the log dominates the directory, and a command that needs
+ * import records should be given them deliberately rather than inherit them
+ * from a reason that does not hold. Found by review 2026-08-28.
  */
 export function worthCopying(source: string): boolean {
   const name = path.basename(source);

@@ -54,7 +54,7 @@ import path from 'node:path';
 import type { RefusalCheck } from '../core/audit.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { VERSION } from '../core/version.ts';
-import { resolveWorkspace, type Workspace } from '../core/workspace.ts';
+import { repositoryRoot, resolveWorkspace, type Workspace } from '../core/workspace.ts';
 import { registerAskRoutes } from './ask-model.ts';
 import { registerCaptureRoutes } from './capture-model.ts';
 import { CLI_ENTRY, registerExecuteRoutes } from './execute.ts';
@@ -329,7 +329,23 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     throw new Error('mycontext ui: no workspace here. Run `mycontext init` first.');
   }
   const corpusRoot = ws.projectRoot;   // narrowed here so the refusal recorder below has a string
-  const repoRoot = path.dirname(corpusRoot);
+  // **`repositoryRoot(cwd)`, not `path.dirname(corpusRoot)` — the THIRD site of
+  // one defect, found by review 2026-08-28.**
+  //
+  // The first was `add --file`, the second `refresh`. Each derived "the
+  // repository" from where the CORPUS is, which is the same value right up until
+  // `CORPUS_DIR_ENV` points the corpus somewhere else — and then it is a
+  // directory the user has never seen. This one feeds `ctx.repoRoot`, which is
+  // the `cwd` of BOTH the dry run and the real execution, so a server started
+  // with that variable set would have had the confirm and the run agree on the
+  // same wrong answer. Agreement is not correctness, and this route's whole
+  // claim is that what you read is what runs.
+  //
+  // Nothing sets it on a server today. It is fixed because the previous two
+  // sites were also "nothing does that today" until something did, and because
+  // a defect whose three instances were found one at a time is a defect whose
+  // fourth instance is the one nobody looks for.
+  const repoRoot = repositoryRoot(options.cwd) ?? path.dirname(corpusRoot);
   const token = mintToken();
 
   /**
