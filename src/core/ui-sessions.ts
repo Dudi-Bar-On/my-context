@@ -80,14 +80,38 @@ const SESSIONS_FILE = 'ui-sessions.json';
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60_000;
 
 /**
- * Eight. A cap as well as a window, because the window alone is unbounded in
- * the case that actually happens: restarting the server twenty times in an
- * afternoon would otherwise accumulate twenty live digests. Eight covers the
- * handful of tabs a person genuinely has open across restarts; the ninth
- * restart retires the oldest, and the tab holding it is asked to re-open the
- * printed link.
+ * Sixty-four, raised from EIGHT on 2026-08-28 by owner ruling.
+ *
+ * **A cap as well as a window, and that part was right.** The window alone is
+ * unbounded in the case that actually happens — a script restarting in a loop
+ * would accumulate digests without limit — so a bound stays.
+ *
+ * **The value was wrong, and it was wrong in the exact scenario the old comment
+ * named.** It said: "restarting the server twenty times in an afternoon would
+ * otherwise accumulate twenty live digests. Eight covers the handful of tabs a
+ * person genuinely has open across restarts." It counted TABS and the store
+ * counts RESTARTS. One development afternoon restarts the server far more than
+ * eight times, and every restart spends a slot whether or not a tab exists to
+ * use it.
+ *
+ * Measured on 2026-08-28, at the third lockout of one day: the store held its
+ * full eight digests and **all eight were server restarts from that session.**
+ * Not one belonged to a tab. The owner's working tab had been evicted by the
+ * development loop, not by other tabs.
+ *
+ * **The cap was silently overriding `SESSION_TTL_MS`.** That constant promises
+ * a credential is good for thirty days across restarts — the whole reason this
+ * file exists — and `filter(ttl) → sort → slice(0, 8)` retired it after eight.
+ * A thirty-day promise settled by a count of eight is a promise made by one
+ * line and broken by the next.
+ *
+ * Sixty-four covers a heavy development day with room to spare and keeps the
+ * file at a few kilobytes: a digest is one sha256 hash, so this is not a size
+ * decision in any real sense and never was. The bound remains so a runaway loop
+ * cannot grow the file without limit; it is no longer the thing that decides
+ * how long a person stays signed in.
  */
-export const SESSION_MAX = 8;
+export const SESSION_MAX = 64;
 
 /** The current schema. A file declaring anything else is not read. */
 const VERSION = 1;

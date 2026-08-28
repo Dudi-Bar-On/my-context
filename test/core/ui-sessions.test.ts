@@ -97,6 +97,48 @@ test('a digest past the window is dropped on read', () => {
   });
 });
 
+/**
+ * **The property that actually broke, and it is about the two constants
+ * DISAGREEING rather than about either one.**
+ *
+ * `SESSION_TTL_MS` promises a credential is good for thirty days across
+ * restarts — the whole reason this file exists. `SESSION_MAX` bounds the count.
+ * Retention is `filter(ttl) -> sort -> slice(0, MAX)`, so the COUNT settles it,
+ * and at eight the count retired credentials the window said were valid for a
+ * month.
+ *
+ * That is not hypothetical arithmetic. Measured 2026-08-28, at the third lockout
+ * of a single day: the store held its full eight digests and every one was a
+ * server restart from that development session. Not one belonged to a tab. The
+ * owner's working tab had been evicted by the development loop.
+ *
+ * The old cap test below is still right and still passes — a cap must retire the
+ * oldest. What it could never catch is the cap being set so low that it decides
+ * how long a person stays signed in. This asserts the relationship: a credential
+ * issued at the start of a heavy day is still honoured at the end of it.
+ */
+test('a credential inside its window survives a development day of restarts', () => {
+  inStore(() => {
+    const now = 1_700_000_000_000;
+    // The tab. Issued once, and never re-issued — which is exactly the case:
+    // a browser holds its token and does not ask for another.
+    recordSessionDigest(digest(0), now);
+
+    // A day of restarts. Forty is heavier than the day that produced the
+    // report and still inside the cap; the point is that a REALISTIC number no
+    // longer decides the answer.
+    for (let i = 1; i <= 40; i += 1) recordSessionDigest(digest(i), now + i);
+
+    const kept = loadSessionDigests(now + 40).digests;
+    assert.ok(
+      kept.includes(digest(0)),
+      'the tab\'s credential was evicted by server restarts alone. SESSION_TTL_MS promises '
+      + 'thirty days; a count that retires it the same afternoon makes that promise a comment. '
+      + 'This is the defect behind three lockouts on 2026-08-28.',
+    );
+  });
+});
+
 test('the cap retires the oldest, so restarting all afternoon cannot accumulate', () => {
   inStore(() => {
     const now = 1_700_000_000_000;
