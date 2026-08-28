@@ -622,5 +622,8 @@ export const strings = {
   'prov.projFailed': 'could not catch up — no partial answer is shown: {error}',
   'ex.msg': 'The server has exited. This page shows what it last knew.',
   'ex.stale': 'Not connected. Refresh this page — if it stays that way this browser holds no credential for the server, and the link it printed is the way back.',
+  // Code skew. NO value slots, deliberately: `app.js` calls translate() on this
+  // key with no substitutions, and t() throws on one it cannot fill.
+  'ex.codeSkew': '{b:This page is newer than the server answering it.} Files under {m:src/ui/public/} are read from disk on every request, so a reload picks up new screens; the server’s own modules were loaded when it started and cannot change until it does. Restart it to catch up.',
   'ex.ok': 'OK',
 };

@@ -249,6 +249,17 @@ const SCREEN_SELECTORS = [
   // nothing new here at all. Added with the carry, per this file's standing
   // brief: "Extend that test with every block you add."
   '.md', '.md h1,.md h2,.md h3', '.md p', '.md ul', '.md pre',
+  // The nine `.md` rules the widened renderer needs, added 2026-08-28 with the
+  // branches that emit them (`plan:walk seq:37`, under DEC-markdown-is-served-
+  // from-a-manifest-rendered-by-one-renderer). Added with the carry, per this
+  // file's standing brief: "Extend that test with every block you add."
+  //
+  // `.md h4` is the odd one and worth the sentence: `###` has produced an `h4`
+  // since the renderer existed, `.md h1,.md h2,.md h3` styles an `h1` this
+  // renderer cannot emit, and nothing styled the tag it actually produces.
+  // `screens/docs.js` had already reported that in prose; this is it closed.
+  '.md h4', '.md ol', '.md li', '.md em', '.md blockquote',
+  '.md blockquote :last-child', '.md hr', '.md table', '.md th,.md td',
   '.globtree', '.globtree div', '.globtree div.hit', '.globin',
   'td.stale', '[dir="rtl"] td.stale',
   // Carried at the merge, after the first carry's measurement proved partial:

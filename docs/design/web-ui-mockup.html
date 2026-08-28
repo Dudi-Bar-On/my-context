@@ -684,6 +684,23 @@ details.help[open]>summary{margin-block-end:6px}
 .md ul{margin:0 0 var(--sp-2);padding-inline-start:18px}
 .md pre{background:var(--sink);border:1px solid var(--rule);border-radius:var(--r-md);
   padding:var(--sp-2);overflow-x:auto;margin:0 0 var(--sp-2)}
+/* Widened 2026-08-28 with the renderer that emits them, under DEC-markdown-is-
+   served-from-a-manifest-rendered-by-one-renderer. Every rule below styles a
+   shape the three corpora were MEASURED to contain: 80 block quotes and 76
+   ordered lists in the item corpus, 4 pipe tables in the four served help
+   topics, 168 tables and 614 rules in this repository's own documents. `h4`
+   is the one that existed already — `###` has always produced it and nothing
+   styled it. */
+.md h4{font-size:var(--fs-1);font-weight:700;margin:var(--sp-2) 0 var(--sp-1)}
+.md ol{margin:0 0 var(--sp-2);padding-inline-start:22px}
+.md li{margin-block-end:2px}
+.md em{font-style:italic;color:var(--ink)}
+.md blockquote{margin:0 0 var(--sp-2);padding-inline-start:var(--sp-2);
+  border-inline-start:2px solid var(--edge);color:var(--dim)}
+.md blockquote :last-child{margin-block-end:0}
+.md hr{block-size:0;border:0;border-block-start:1px solid var(--rule);margin:var(--sp-3) 0}
+.md table{margin:0 0 var(--sp-2)}
+.md th,.md td{padding-inline-end:var(--sp-2)}
 .well{background:var(--sink);border:1px solid var(--rule);border-radius:var(--r-md);
   padding:var(--sp-3);box-shadow:inset 0 1px 3px rgb(0 0 0/.4)}
 .welllabel{font-size:var(--fs-00);letter-spacing:.07em;text-transform:uppercase;
@@ -2522,6 +2539,18 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <span data-t="ex.msg">The server has exited. This page shows what it last knew.</span>
     <span data-t="ex.stale" hidden>Not connected. Refresh this page &mdash; if it stays that way
       this browser holds no credential for the server, and the link it printed is the way back.</span>
+    <!-- CODE SKEW, added 2026-08-28 for plan:live seq:12. A third sentence in this
+         same banner rather than a fourth banner: it shares the remedy (<code>mycontext
+         ui</code>) and the dismiss control below, and a page that is out of step with
+         its server is the same FAMILY of fact as a server that has exited &mdash; the
+         page is showing something the server is not standing behind.
+         Real, and reported by the owner: a feature that had shipped correctly an hour
+         earlier read as broken, because the tab held the new screen and the process
+         held the old selector. -->
+    <span data-t="ex.codeSkew" hidden><b>This page is newer than the server answering it.</b>
+      Files under <span class="m">src/ui/public/</span> are read from disk on every request, so a
+      reload picks up new screens; the server&rsquo;s own modules were loaded when it started and
+      cannot change until it does. Restart it to catch up.</span>
     <code>mycontext ui</code>
     <button class="icon" id="exrefresh" data-t="btn.refresh" hidden>Refresh</button>
     <button class="icon" id="exdismiss" data-t="ex.ok">OK</button>
@@ -3352,36 +3381,153 @@ $('#qrun').addEventListener('click',()=>{qi=(qi+1)%QSTATES.length;renderQ();});
 
 /* ── R1: a subset markdown renderer that never builds an HTML string ──────
    Blocks -> tokens -> createElement/textContent. Raw HTML, images and unknown
-   URL schemes are refused and shown AS refusals. */
+   URL schemes are refused and shown AS refusals.
+
+   THE SUBSET, WIDENED 2026-08-28 under DEC-markdown-is-served-from-a-manifest-
+   rendered-by-one-renderer. One renderer serves every place markdown is shown
+   — item bodies, help topics, and the document route that waits on it — so the
+   subset is drawn from what the three corpora CONTAIN, measured, not guessed:
+
+     block quote   80 blocks / 34.6% of every non-blank line in the item corpus
+     ordered list  76 blocks in the items, 132 in this repo's own documents
+     pipe table    12 in the items, 4 in the help topics, 168 in the documents
+     rule / h4+ / setext / *emphasis*  the rest of the measured gap list
+
+   It scans LINES, not `/\n{2,}/` blocks. Blank-line splitting cannot see a
+   blank line INSIDE a block quote — which is exactly what put a `>` in the
+   middle of the owner's sentence — nor a fence containing one, nor a list that
+   follows its lead sentence without a blank line between. */
 function renderMarkdown(src,host){
   host.replaceChildren();
   const refusals=[];
-  for(const block of src.split(/\n{2,}/)){
-    const b=block.trim(); if(!b) continue;
-    if(/^<[a-z!]/i.test(b)){ refusals.push('raw HTML'); host.append(refusal('raw HTML block refused',b)); continue; }
-    if(/^```/.test(b)){
-      const pre=document.createElement('pre');
-      pre.textContent=b.replace(/^```[a-z]*\n?/,'').replace(/```$/,'');
-      host.append(pre); continue;
-    }
-    if(/^#{1,3}\s/.test(b)){
-      const lvl=b.match(/^#+/)[0].length;
-      const h=document.createElement('h'+Math.min(lvl+1,4));
-      h.append(...inline(b.replace(/^#+\s*/,''),refusals)); host.append(h); continue;
-    }
-    if(/^[-*]\s/.test(b)){
-      const ul=document.createElement('ul');
-      b.split('\n').forEach(li=>{const l=document.createElement('li');
-        l.append(...inline(li.replace(/^[-*]\s*/,''),refusals)); ul.append(l);});
-      host.append(ul); continue;
-    }
-    const p=document.createElement('p'); p.append(...inline(b,refusals)); host.append(p);
-  }
+  host.append(...mdBlocks(String(src).replaceAll('\r\n','\n').split('\n'),refusals));
   if(refusals.length){
     const n=document.createElement('p'); n.className='small';
     n.append(document.createTextNode((HEB?'סורבו: ':'refused: ')+refusals.join(', ')));
     host.append(n);
   }
+}
+const MD_FENCE=/^\s*```/, MD_ATX=/^#{1,6}\s/, MD_QUOTE=/^\s*>/;
+const MD_HRULE=/^ {0,3}(-{3,}|\*{3,}|_{3,})\s*$/, MD_SETEXT=/^ {0,3}(={2,}|-{2,})\s*$/;
+const MD_BULLET=/^(\s*)[-*+][ \t]+/, MD_ORDERED=/^(\s*)\d+[.)][ \t]+/;
+const MD_HTML=/^<[a-z!]/i, MD_INDENT=/^(    |\t)/;
+/* Neither MD_INDENT nor MD_HTML: CommonMark lets neither interrupt a paragraph,
+   and a wrapped sentence beginning `<the answer>)` is prose, not an element. */
+function mdOpens(l){ return MD_FENCE.test(l)||MD_ATX.test(l)||MD_QUOTE.test(l)
+  ||MD_HRULE.test(l)||MD_BULLET.test(l)||MD_ORDERED.test(l); }
+/* A GFM delimiter row. Alignment is recognised and NOT carried: `style-src
+   'self'` forbids the inline text-align it needs and this sheet draws no
+   alignment class, so a table is start-aligned like every other one here. */
+function mdDelim(l){ return l.includes('|')&&l.includes('-')&&/^[\s|:-]+$/.test(l); }
+function mdCells(l){ let r=l.trim();
+  if(r.startsWith('|')) r=r.slice(1); if(r.endsWith('|')) r=r.slice(0,-1);
+  return r.split('|').map(c=>c.trim()); }
+function mdTable(lines,start,refusals){
+  const table=document.createElement('table');
+  const head=document.createElement('thead'), hr=document.createElement('tr');
+  mdCells(lines[start]).forEach(c=>{const th=document.createElement('th');
+    th.append(...inline(c,refusals)); hr.append(th);});
+  head.append(hr);
+  const body=document.createElement('tbody');
+  let i=start+2;
+  for(;i<lines.length&&lines[i].trim()!==''&&lines[i].includes('|');i++){
+    const tr=document.createElement('tr');
+    mdCells(lines[i]).forEach(c=>{const td=document.createElement('td');
+      td.append(...inline(c,refusals)); tr.append(td);});
+    body.append(tr);
+  }
+  table.append(head,body); return [table,i];
+}
+/* A blank line ends a list rather than opening a loose one: this sheet draws no
+   `.md li p` rule, and a changed marker after a blank line is how the corpus
+   writes a SECOND list. */
+function mdList(lines,start,refusals){
+  const open=l=>MD_BULLET.exec(l)??MD_ORDERED.exec(l);
+  const indent=open(lines[start])[1].length;
+  const list=document.createElement(MD_ORDERED.test(lines[start])?'ol':'ul');
+  let item=null,i=start;
+  while(i<lines.length&&lines[i].trim()!==''){
+    const m=open(lines[i]);
+    if(m===null||m[1].length<indent) break;
+    if(m[1].length>indent){
+      const [nested,next]=mdList(lines,i,refusals);
+      (item??list).append(nested); i=next; continue;
+    }
+    item=document.createElement('li');
+    item.append(...inline(lines[i].slice(m[0].length),refusals));
+    list.append(item); i++;
+    while(i<lines.length&&lines[i].trim()!==''&&open(lines[i])===null&&!mdOpens(lines[i])){
+      item.append(document.createTextNode(' '),...inline(lines[i].trim(),refusals)); i++;
+    }
+  }
+  return [list,i];
+}
+function mdBlocks(lines,refusals){
+  const out=[]; let i=0;
+  while(i<lines.length){
+    const line=lines[i];
+    if(line.trim()===''){ i++; continue; }
+    if(MD_FENCE.test(line)){                       /* to the CLOSING fence */
+      const inner=[]; i++;
+      for(;i<lines.length&&!MD_FENCE.test(lines[i]);i++) inner.push(lines[i]);
+      if(i<lines.length) i++;
+      const pre=document.createElement('pre');
+      pre.textContent=inner.length===0?'':inner.join('\n')+'\n';
+      out.push(pre); continue;
+    }
+    if(MD_INDENT.test(line)){                      /* before raw HTML: a
+       four-space transcript holding a `<tag>` is a quoted terminal */
+      const inner=[];
+      while(i<lines.length&&(MD_INDENT.test(lines[i])||lines[i].trim()==='')){
+        if(lines[i].trim()===''){
+          let a=i; while(a<lines.length&&lines[a].trim()==='') a++;
+          if(a>=lines.length||!MD_INDENT.test(lines[a])) break;
+          inner.push(''); i=a; continue;
+        }
+        inner.push(lines[i].replace(MD_INDENT,'')); i++;
+      }
+      const pre=document.createElement('pre'); pre.textContent=inner.join('\n')+'\n';
+      out.push(pre); continue;
+    }
+    if(MD_HTML.test(line)){
+      const inner=[];
+      for(;i<lines.length&&lines[i].trim()!=='';i++) inner.push(lines[i]);
+      refusals.push('raw HTML');
+      out.push(refusal('raw HTML block refused',inner.join('\n'))); continue;
+    }
+    if(MD_HRULE.test(line)){ out.push(document.createElement('hr')); i++; continue; }
+    if(MD_ATX.test(line)){
+      const lvl=line.match(/^#+/)[0].length;
+      const h=document.createElement('h'+Math.min(lvl+1,4));
+      h.append(...inline(line.replace(/^#+\s*/,''),refusals));
+      out.push(h); i++; continue;
+    }
+    if(MD_QUOTE.test(line)){                       /* recurses: a quote holding
+       a heading, a list or another quote renders as what it is */
+      const inner=[];
+      while(i<lines.length&&(MD_QUOTE.test(lines[i])
+        ||(inner.length>0&&lines[i].trim()!==''&&!mdOpens(lines[i])))){
+        inner.push(lines[i].replace(/^\s*>[ \t]?/,'')); i++;
+      }
+      const q=document.createElement('blockquote');
+      q.append(...mdBlocks(inner,refusals)); out.push(q); continue;
+    }
+    if(line.includes('|')&&i+1<lines.length&&mdDelim(lines[i+1])){
+      const [table,next]=mdTable(lines,i,refusals); out.push(table); i=next; continue;
+    }
+    if(MD_BULLET.test(line)||MD_ORDERED.test(line)){
+      const [list,next]=mdList(lines,i,refusals); out.push(list); i=next; continue;
+    }
+    if(i+1<lines.length&&MD_SETEXT.test(lines[i+1])){
+      const h=document.createElement(lines[i+1].trim().startsWith('=')?'h2':'h3');
+      h.append(...inline(line.trim(),refusals)); out.push(h); i+=2; continue;
+    }
+    const para=[];
+    for(;i<lines.length&&lines[i].trim()!==''&&!mdOpens(lines[i]);i++) para.push(lines[i]);
+    const p=document.createElement('p'); p.append(...inline(para.join('\n'),refusals));
+    out.push(p);
+  }
+  return out;
 }
 function refusal(label,text){
   const w=document.createElement('div');
@@ -3392,7 +3538,9 @@ function refusal(label,text){
 function inline(s,refusals){
   const out=[];
   // Code spans win first, so a payload inside backticks can never be re-parsed.
-  const re=/(`[^`]+`)|(\[[^\]]+\]\([^)]+\))|(\*\*[^*]+\*\*)/g;
+  // `*emphasis*` is last and its payload may not begin or end with a space —
+  // that rule is what keeps `src/* and lib/*` from opening a run.
+  const re=/(`[^`]+`)|(\[[^\]]+\]\([^)]+\))|(\*\*[^*]+\*\*)|(\*[^*\s](?:[^*]*[^*\s])?\*)/g;
   let last=0,m;
   while((m=re.exec(s))!==null){
     if(m.index>last) out.push(document.createTextNode(s.slice(last,m.index)));
@@ -3405,6 +3553,7 @@ function inline(s,refusals){
         x.className='refusal'; x.textContent=label+' (link refused)'; out.push(x); }
     }
     else if(m[3]){ const b=document.createElement('b'); b.textContent=m[3].slice(2,-2); out.push(b); }
+    else{ const e=document.createElement('em'); e.textContent=m[4].slice(1,-1); out.push(e); }
     last=re.lastIndex;
   }
   if(last<s.length) out.push(document.createTextNode(s.slice(last)));

@@ -134,8 +134,39 @@ test('the server-exited banner appears on its own schedule and can be dismissed'
       role: el.getAttribute('role'),
       text: el.innerText.trim(),
       height: el.getBoundingClientRect().height,
-      // The banner must tell you how to get the server back, not just that it left.
-      command: el.querySelector('code, .m')?.textContent ?? '',
+      /**
+       * The banner must tell you how to get the server back, not just that it
+       * left — and it must do so in something a reader can SEE.
+       *
+       * `#exited` is one element hosting three mutually exclusive alerts:
+       * `ex.msg` (the server has exited), `ex.stale` (not connected, added
+       * 2026-08-23) and `ex.codeSkew` (this page is newer than its server,
+       * `plan:live seq:12`). The shell swaps them with `replaceChildren`, so
+       * only one is ever live; the mockup declares all three and hides the
+       * inactive ones, exactly as it does for `#covempty`/`#covfull`. The
+       * `<code>mycontext ui</code>` is a SHARED direct child, not a child of
+       * any one sentence — all three alerts end in the same remedy — so
+       * scoping this read to the exited sentence's own subtree would find
+       * nothing at all.
+       *
+       * `querySelector('code, .m')` took the first match in DOCUMENT order and
+       * never asked whether it was rendered. That was a latent defect from the
+       * day it was written: it happened to be unambiguous only while nothing
+       * before the `<code>` carried a monospace run. `ex.codeSkew` put one
+       * there — the hidden `{m:src/ui/public/}` — and a display:none span
+       * started satisfying an assertion about what the banner shows a person.
+       * Filtering on rendered boxes is the fix, and it is what the assertion
+       * always meant.
+       *
+       * Collected as a list rather than a first hit, because "which one is
+       * first" is the question that broke: if a second monospace run ever
+       * becomes visible in this banner, the reader is being shown two
+       * competing things to type and this must say so rather than silently
+       * pick one.
+       */
+      commands: [...el.querySelectorAll<HTMLElement>('code, .m')]
+        .filter((c) => c.getClientRects().length > 0)
+        .map((c) => (c.textContent ?? '').trim()),
     };
   });
 
@@ -143,7 +174,11 @@ test('the server-exited banner appears on its own schedule and can be dismissed'
   expect(shown.role, 'an error state must be announced, not merely drawn').toBe('alert');
   expect(shown.height, 'and it must actually occupy the screen').toBeGreaterThan(0);
   expect(shown.text).toContain('The server has exited');
-  expect(shown.command, 'and name the command that starts it again').toBe('mycontext ui');
+  expect(
+    shown.commands,
+    'and name the command that starts it again — once, in the monospace run a reader '
+    + 'can actually see',
+  ).toEqual(['mycontext ui']);
 
   await page.click('#exdismiss');
   expect(

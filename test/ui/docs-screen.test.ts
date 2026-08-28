@@ -32,7 +32,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -147,14 +147,17 @@ test('each block form becomes the element the mockup renderer names', async () =
 /**
  * The heading shift is `h{min(level + 1, 4)}` — the mockup's own arithmetic —
  * and it is the reason `.md h1` in `styles.css` styles a tag this renderer can
- * never produce, while `h4` (what `###` becomes, and what the mockup's own
- * sample markdown produces) has no `.md` rule at all. Pinned here so the
- * mismatch is a measured fact in this task's report rather than a reading of
- * two files.
+ * never produce. The other half of that mismatch is closed: `h4`, which is what
+ * `###` has always become, now has a `.md h4` rule in the mockup and in
+ * `styles.css`, held byte-identical by `test/ui/styles-parity.test.ts`.
+ *
+ * The OPENER widened from `#{1,3}` to `#{1,6}` on 2026-08-28, so `####` is an
+ * `h4` rather than a paragraph printing its own hashes — 24 such blocks in 6 of
+ * this repository's documents, and zero in the item corpus.
  */
-test('heading levels shift by one, so ### is an h4 and no h1 is reachable', async () => {
-  const { nodes } = await md('# a\n\n## b\n\n### c');
-  assert.deepEqual(nodes.map((n) => n.tag), ['h2', 'h3', 'h4']);
+test('heading levels shift by one and cap at h4, so no h1 is reachable', async () => {
+  const { nodes } = await md('# a\n\n## b\n\n### c\n\n#### d\n\n###### e');
+  assert.deepEqual(nodes.map((n) => n.tag), ['h2', 'h3', 'h4', 'h4', 'h4']);
 });
 
 test('a fenced block is text, and both the fence and its language tag are stripped', async () => {
@@ -238,45 +241,158 @@ test('an image is refused, which is what dv.mdnote promises and the mockup scrip
 });
 
 /**
- * **What the subset does not understand.** Every one of these is real markdown
- * that the mockup's renderer has no branch for, so each falls through to the
- * paragraph branch with its own source intact. Nothing is dropped; nothing is
- * mangled into a shape it is not. The pipe tables matter most, because the
- * `scope` topic this screen actually serves contains two of them.
+ * **The widened subset, construct by construct** (`plan:walk seq:37`, under
+ * `DEC-markdown-is-served-from-a-manifest-rendered-by-one-renderer`). Every one
+ * of these used to fall through to a paragraph carrying its own source — the
+ * defect the owner reported as `>` characters landing mid-sentence — and every
+ * one is in because the CORPUS was measured to contain it, not because
+ * CommonMark names it. The counts are in `screens/docs.js`' own header.
  */
-test('input the subset does not understand falls through to a paragraph, verbatim', async () => {
-  const unhandled = [
-    '| Pattern | Matches |\n|---|---|\n| `src/**` | everything |', // a pipe table
-    '> a block quote',
-    '1. first\n2. second',                                          // an ordered list
-    '---',                                                          // a horizontal rule
-    'A setext heading\n================',
-    '#### four hashes is past the subset',
+test('each widened block form becomes the element the design of record now draws', async () => {
+  const cases: Array<[string, string]> = [
+    ['> a block quote', 'blockquote'],
+    ['1. first\n2. second', 'ol'],
+    ['---', 'hr'],
+    ['A setext heading\n================', 'h2'],
+    ['#### four hashes', 'h4'],
+    ['| a | b |\n|---|---|\n| 1 | 2 |', 'table'],
+    ['    an indented transcript', 'pre'],
   ];
-  for (const source of unhandled) {
+  for (const [source, tag] of cases) {
     const { nodes, refusals } = await md(source);
     assert.equal(nodes.length, 1, `expected one node for: ${JSON.stringify(source)}`);
-    assert.equal(nodes[0]!.tag, 'p', `expected a paragraph for: ${JSON.stringify(source)}`);
-    assert.deepEqual(refusals, [], 'an unhandled construct is not a refusal — dv.mdnote names three, and these are not them');
+    assert.equal(nodes[0]!.tag, tag, `expected <${tag}> for: ${JSON.stringify(source)}`);
+    assert.deepEqual(refusals, [], 'a construct the renderer now performs is not a refusal');
   }
+});
 
-  // The table's own text survives, pipes and all: a reader can still read it,
-  // which is the whole difference between a fallback and a loss.
-  const table = await md('| a | b |\n|---|---|\n| 1 | 2 |');
-  assert.equal(textOf(table.nodes[0]!), '| a | b |\n|---|---|\n| 1 | 2 |');
+/**
+ * **The owner's own screenshot, reproduced and fixed.** `walk/37` records what
+ * the running server drew: *"without the > fix"* and *"then restore. > >
+ * Measured"* — a `>` printed as prose, mid-sentence, because the blank `>`
+ * lines that separated the quote's paragraphs were spliced into the text when
+ * the block collapsed. 715 such bare `>` lines were counted in the item corpus.
+ */
+test('a block quote holding a blank line renders as a quote, not as prose with stray markers', async () => {
+  const { nodes } = await md([
+    '> A regression test is worth nothing until you have watched it fail',
+    '> without the fix.',
+    '>',
+    '> Measured on 2026-08-23, twice in one session.',
+  ].join('\n'));
+  assert.deepEqual(nodes.map((n) => n.tag), ['blockquote']);
+  assert.deepEqual(nodes[0]!.children.map((n) => n.tag), ['p', 'p'],
+    'the bare `>` separates two paragraphs INSIDE the quote — it is not text');
+  assert.equal(textOf(nodes[0]!).includes('>'), false, 'no marker reaches the screen as prose');
+});
 
-  // An indented bullet is trimmed first, so it IS a bullet. Stated rather than
-  // assumed: `block.trim()` runs before every test in the chain.
+/**
+ * A quote is rendered by recursion, which is the only reason its contents keep
+ * their own shapes. Measured in the item corpus: of 80 quotes, 39 hold a bullet
+ * list, 27 hold a heading and 10 hold an ordered list.
+ */
+test('a block quote recurses, so a heading or a list inside one is still a heading or a list', async () => {
+  const { nodes } = await md('> ## Ruled by the owner\n>\n> - one\n> - two\n>\n> > nested');
+  const quote = nodes[0]!;
+  assert.equal(quote.tag, 'blockquote');
+  assert.deepEqual(quote.children.map((n) => n.tag), ['h3', 'ul', 'blockquote']);
+  assert.deepEqual(quote.children[1]!.children.map(textOf), ['one', 'two']);
+  assert.equal(textOf(quote.children[2]!), 'nested');
+});
+
+/**
+ * **Line scanning, not `/\n{2,}/` splitting, and this is the change beneath
+ * every branch above.** A blank line inside a fence used to end the block and
+ * strand its closing fence; a list under a lead sentence used to be one
+ * paragraph printing its own `-` markers — 47 such blocks in the item corpus,
+ * 130 in this repository's documents.
+ */
+test('a blank line no longer ends a fence, and a list no longer needs a blank line above it', async () => {
+  const fenced = await md('```\nfirst\n\nsecond\n```');
+  assert.deepEqual(fenced.nodes.map((n) => n.tag), ['pre']);
+  assert.equal(textOf(fenced.nodes[0]!), 'first\n\nsecond\n');
+
+  const lead = await md('WHAT IT NEEDS, and the honest answers differ in size:\n- render it\n- strip it');
+  assert.deepEqual(lead.nodes.map((n) => n.tag), ['p', 'ul']);
+  assert.equal(textOf(lead.nodes[0]!), 'WHAT IT NEEDS, and the honest answers differ in size:');
+  assert.deepEqual(lead.nodes[1]!.children.map(textOf), ['render it', 'strip it']);
+});
+
+test('a deeper marker nests, and a blank line still ends the list', async () => {
+  const nested = await md('- one\n  - inner\n- two');
+  const list = nested.nodes[0]!;
+  assert.deepEqual(list.children.map((n) => n.tag), ['li', 'li']);
+  assert.deepEqual(list.children[0]!.children.map((n) => n.tag), ['#text', 'ul']);
+  assert.deepEqual(list.children[0]!.children[1]!.children.map(textOf), ['inner']);
+
+  // An indented bullet with nothing above it is still a list, not a code block.
   const indented = await md('  - a\n  - b');
   assert.equal(indented.nodes[0]!.tag, 'ul');
+});
 
-  // Single-asterisk emphasis is not in the subset either, and the served
-  // `scope` topic uses it: *everywhere* / *nowhere*. It reaches the screen as
-  // literal asterisks, which is the paragraph branch working as designed and
-  // still a thing the reader sees.
+/**
+ * A pipe table needs its DELIMITER row. A sentence containing a pipe is prose,
+ * and nothing else in the source says otherwise — the item corpus writes
+ * `--tag a|b` in running text often enough for that to matter.
+ */
+test('a pipe table is recognised by its delimiter row and by nothing else', async () => {
+  const { nodes } = await md('| Pattern | Matches |\n|---|:--:|\n| `src/**` | everything |');
+  const table = nodes[0]!;
+  assert.equal(table.tag, 'table');
+  assert.deepEqual(table.children.map((n) => n.tag), ['thead', 'tbody']);
+  assert.deepEqual(table.children[0]!.children[0]!.children.map((n) => n.tag), ['th', 'th']);
+  assert.deepEqual(table.children[0]!.children[0]!.children.map(textOf), ['Pattern', 'Matches']);
+  // Cells run the inline pass, so a code span in a cell is still a `.m` run.
+  assert.deepEqual(kindsOf([table]).includes('span.m'), true);
+  // Alignment (`:--:`) is recognised to find the row and NOT carried onto the
+  // cell: `style-src 'self'` forbids the inline text-align it would need.
+  assert.deepEqual(table.children[1]!.children[0]!.children[1]!.attrs, {});
+
+  const prose = await md('filter with --tag plan:walk | seq:37 and read the result');
+  assert.deepEqual(prose.nodes.map((n) => n.tag), ['p']);
+});
+
+/**
+ * Single-asterisk emphasis, which the served `scope` topic uses three times
+ * and this repository's own documents 7,371 times. The space rule on the
+ * payload is what keeps a GLOB from opening a run — measured, because `src/**`
+ * and `src/*` appear on nearly every page of this corpus.
+ */
+test('single-asterisk emphasis becomes an <em>, and a glob does not', async () => {
   const italic = await md('stops meaning *everywhere* and starts meaning *nowhere*');
-  assert.deepEqual(kindsOf(italic.nodes), ['p']);
-  assert.equal(textOf(italic.nodes[0]!), 'stops meaning *everywhere* and starts meaning *nowhere*');
+  assert.deepEqual(italic.nodes[0]!.children.map((n) => kind(n)),
+    ['#text', 'em', '#text', 'em']);
+  assert.equal(textOf(italic.nodes[0]!), 'stops meaning everywhere and starts meaning nowhere');
+
+  for (const glob of ['scope src/* and lib/* both', 'a scope of src/** matches everything']) {
+    const { nodes } = await md(glob);
+    assert.deepEqual(kindsOf(nodes), ['p'], `a glob opened an emphasis run: ${glob}`);
+    assert.equal(textOf(nodes[0]!), glob);
+  }
+});
+
+/**
+ * **What is still OUT, and every one of these is a measured decision.** Counted
+ * across all 706 markdown documents the one renderer serves — 644 item bodies,
+ * 4 help topics, 58 repository documents. `_underscore_` is the one worth the
+ * comment: it occurs ONCE, and `_` sits inside an identifier (`source_file`,
+ * `valid_from`, `state:todo`) on nearly every page, so a branch for it would
+ * corrupt real text to serve a single run.
+ */
+test('constructs the corpus does not use stay out, and fall through verbatim', async () => {
+  const unused = [
+    'an _underscore_ run',            // 1 occurrence in 706 documents
+    '- [ ] a task list checkbox',     // 2
+    'a ~~strikethrough~~ run',        // 1
+    'a [reference][link] run',        // 4
+    'a footnote[^1] marker',          // 5
+  ];
+  for (const source of unused) {
+    const { nodes, refusals } = await md(source);
+    assert.equal(textOf(nodes[0]!).includes(source.replace(/^- \[ \] /, '')), true,
+      `text was mangled rather than left alone: ${JSON.stringify(source)}`);
+    assert.deepEqual(refusals, [], 'a construct outside the subset is not a refusal');
+  }
 });
 
 /**
@@ -346,29 +462,91 @@ test('a non-string body is shown rather than swallowed', async () => {
  * `mycontext help scope` and diffing it against the file on 2026-08-23, equal
  * after trimming the CLI's trailing newline.
  *
- * This is the evidence behind this task's gap report. The mockup's `#mdout`
- * renders a sample containing a fenced block, a link and a `###` heading; the
- * served document contains none of those, so `pre`, `a` and `h4` are absent
- * from the shipped screen — and it contains nothing refusable, so
- * `span.refusal` is absent too. Those four are the ledger entries, and this
- * assertion is what will fail the day the served document changes and one of
- * them appears.
+ * This is the evidence behind this task's report, re-measured 2026-08-28 after
+ * the subset was widened. `pre`, `a` and `span.refusal` are still absent — the
+ * served document has no fence, no link and nothing refusable — and those three
+ * remain `e2e/screen-parity.spec.ts`' ledger entries for this screen. What
+ * CHANGED is the two pipe tables and the three emphasis runs: they used to be
+ * paragraphs full of pipes and asterisks, and this assertion is the record that
+ * they are no longer.
  */
 test('the served scope topic renders exactly these kinds, which is the gap report measured', async () => {
   const source = readFileSync(path.join(REPO, 'src', 'help', 'topics', 'scope.md'), 'utf8');
   const { nodes, refusals } = await md(source);
-  assert.deepEqual(kindsOf(nodes), ['b', 'h2', 'h3', 'li', 'p', 'span.m', 'ul']);
+  assert.deepEqual(kindsOf(nodes),
+    ['b', 'em', 'h2', 'h3', 'li', 'p', 'span.m', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul']);
   assert.deepEqual(refusals, [], 'the shipped scope topic carries no raw HTML, no image and no unsafe URL');
 
-  // Two pipe tables, both landing in the paragraph branch. This is the number
-  // in the report, counted rather than estimated.
-  const tables = nodes.filter((n) => n.tag === 'p' && textOf(n).startsWith('|'));
+  // Two pipe tables, and they are TABLES now. This is the number in the report,
+  // counted rather than estimated — it was 2 paragraphs starting with `|`.
+  const tables = nodes.filter((n) => n.tag === 'table');
   assert.equal(tables.length, 2);
+  assert.equal(nodes.some((n) => n.tag === 'p' && textOf(n).startsWith('|')), false,
+    'no table may still be reaching the screen as a paragraph of pipes');
+  assert.deepEqual(tables[0]!.children[0]!.children[0]!.children.map(textOf),
+    ['Pattern', 'Matches', 'Does not match']);
 
-  // One `#` and four `##`: the `.md` rules that DO apply on this screen.
+  // Three single-asterisk runs — *everywhere*, *nowhere* and one more — which
+  // used to reach the screen as literal asterisks.
+  const italics: string[] = [];
+  const walk = (list: FakeNode[]): void => {
+    for (const node of list) {
+      if (node.tag === 'em') italics.push(textOf(node));
+      walk(node.children);
+    }
+  };
+  walk(nodes);
+  assert.equal(italics.length, 3);
+
+  // One `#` and four `##`: the `.md` rules that DO apply on this screen. `h4`
+  // is still 0 here — the served document has no `###` — which is why it stays
+  // in `screen-parity`'s ledger for this screen even though `.md h4` now exists.
   assert.equal(nodes.filter((n) => n.tag === 'h2').length, 1);
   assert.equal(nodes.filter((n) => n.tag === 'h3').length, 4);
   assert.equal(nodes.filter((n) => n.tag === 'h4').length, 0);
+});
+
+/**
+ * **ONE renderer, and this is the assertion that says so.**
+ * `DEC-markdown-is-served-from-a-manifest-rendered-by-one-renderer` rules that
+ * every place markdown is or should be displayed uses one implementation —
+ * *"Two call sites are fine; two implementations are the defect."* There were
+ * two: `markdownNodes` here, and `bodyNodes` in `screens/preview.js`, whose own
+ * header said *"Not a markdown renderer"*.
+ *
+ * The check is structural rather than a reading: no module under `public/` may
+ * build a markdown block itself, and every module that shows markdown must
+ * import this one. `screens/docs.js` is excluded because it IS the renderer.
+ * A third call site added later passes only by importing it too.
+ */
+test('every place markdown is shown imports this renderer, and nothing builds a second one', async () => {
+  const PUBLIC = path.join(REPO, 'src', 'ui', 'public');
+  const modules = [
+    ...readdirSync(path.join(PUBLIC, 'screens')).map((f) => path.join('screens', f)),
+    ...readdirSync(path.join(PUBLIC, 'lib')).map((f) => path.join('lib', f)),
+    'app.js',
+  ].filter((f) => f.endsWith('.js') && f !== path.join('screens', 'docs.js'));
+
+  const importers: string[] = [];
+  for (const relative of modules) {
+    const source = readFileSync(path.join(PUBLIC, relative), 'utf8');
+    if (/import \{[^}]*markdownNodes[^}]*\} from '\/screens\/docs\.js'/.test(source)) {
+      importers.push(relative.replaceAll('\\', '/'));
+    }
+    // A second implementation announces itself the same way both of these did:
+    // a module that splits a body into blocks and builds `<p>`/`<li>` from it.
+    const splitsBlocks = /split\(\/\\n\{2,\}\//.test(source);
+    assert.equal(splitsBlocks, false,
+      `${relative} splits markdown into blocks itself — that is the second renderer this decision retired`);
+  }
+
+  // Two call sites today, and the decision says two are fine. `app.js` is the
+  // item detail pane; the Docs screen is the second and calls it in-module, so
+  // it is excluded from the scan above. The document route is the third, and it
+  // lands by adding its module to this list — not by writing a renderer.
+  assert.deepEqual(importers, ['app.js'],
+    'the set of modules importing the renderer changed — add the new one here on purpose, '
+    + 'so a screen that grew its own markdown handling cannot do it quietly');
 });
 
 /**

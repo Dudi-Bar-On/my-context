@@ -71,6 +71,7 @@ import { isMainEntry } from '../core/paths.ts';
 import { VERSION } from '../core/version.ts';
 import { liveWorkspace, repositoryRoot, type Workspace } from '../core/workspace.ts';
 import { registerAskRoutes } from './ask-model.ts';
+import { stampCodeIdentity } from './code-identity.ts';
 import { registerCaptureRoutes } from './capture-model.ts';
 import { CLI_ENTRY, registerExecuteRoutes } from './execute.ts';
 import { ExecutionNonceStore } from './execute-nonce.ts';
@@ -133,6 +134,26 @@ export const PRINTED_NONCE_TTL_MS = 600_000;
  */
 export const MINT_NONCE_TTL_MS = 30_000;
 
+/**
+ * **The start-time half of `plan:live seq:12`.**
+ *
+ * A sentence at start is cheaper than a banner and it catches the case before
+ * anybody is confused — but it CANNOT catch the reader who has had the tab open
+ * since the morning, which is the case that actually cost a bug report. So it
+ * is added AS WELL AS the banner, never instead of it, and it says the two
+ * halves out loud rather than only naming the remedy: a person who knows that
+ * assets are live and modules are not can predict the symptom instead of
+ * reporting it.
+ *
+ * Printed by `src/cli/commands/ui.ts`, which owns every line this command puts
+ * on a terminal; this module's own main entry still prints EXACTLY the one URL
+ * line its harness reads as a readiness signal.
+ */
+export const CODE_FREEZE_NOTICE =
+  'mycontext ui: this server will not pick up code changes without a restart — ' +
+  'the browser assets under src/ui/public/ are read live from disk on every request, ' +
+  "but the server's own modules are frozen at start.";
+
 export interface UiServerOptions {
   /** Workspace resolution root. */
   cwd: string;
@@ -145,6 +166,15 @@ export interface UiServerOptions {
   onExit?: (reason: 'idle' | 'closed') => void;
   /** Test-only override for handoff nonce ttl; production callers omit it. */
   nonceTtlMs?: number;
+  /**
+   * The directory whose contents decide whether this process is running stale
+   * code — `src/`, defaulted by `code-identity.ts` from where these modules
+   * were loaded. A caller supplies it only to point the measurement at a tree
+   * it can safely change under a running server, which is how
+   * `test/ui/code-skew.test.ts` drives the disclosure without editing the tree
+   * every other test in the suite is reading.
+   */
+  codeRoot?: string;
   /**
    * Told when a file in the GLOBAL directory could not be read or written,
    * with a sentence naming the file and what it costs. Not an error: the server
@@ -193,7 +223,20 @@ export function registerReadRoutes(): void {
   // The heartbeat target (Task 16's visibility-gated ping). It reads nothing:
   // being answered at all is the whole payload, and the `idle.touch()` the
   // dispatch does for it is the point.
-  registerRoute('GET', '/api/ping', { kind: 'json', handle: () => ({ status: 200, body: { ok: true } }) });
+  //
+  // **It carries one field now: `staleCode`** (`plan:live seq:12`). The
+  // heartbeat is the ONLY channel this shell polls — once a minute, whenever
+  // the tab is visible — and the case that actually cost a bug report was a tab
+  // that had been open since the morning. A disclosure that only rode
+  // `/api/meta`, which is fetched once at first paint, could not have reached
+  // that reader at all; one that rode a new endpoint would be a second channel
+  // to keep in step with this one. So the fact travels on the request that is
+  // already being made, and it stays a fact rather than a payload: `ctx.code`
+  // is the same value every other route sees.
+  registerRoute('GET', '/api/ping', {
+    kind: 'json',
+    handle: (ctx) => ({ status: 200, body: { ok: true, staleCode: ctx.code.isStale() } }),
+  });
   // `git` is `null` in a workspace with no `.git` — present either way, because
   // "no repository" is a fact the strip renders rather than a field to omit.
   registerRoute('GET', '/api/meta', {
@@ -205,6 +248,15 @@ export function registerReadRoutes(): void {
         projectRoot: ctx.ws.projectRoot,
         repoRoot: ctx.repoRoot,
         git: readGitInfo(ctx.repoRoot),
+        // `plan:live seq:12`, following `servingLastGood`'s precedent on
+        // `/api/config`: the fact is DERIVED where it is known — from the one
+        // `CodeIdentity` this server stamped — rather than plumbed in beside
+        // the answer as a second channel that could disagree with the
+        // heartbeat's. `startedAt` is here because the disclosure is only half
+        // a sentence without it: a reader who knows when this process loaded
+        // its modules can see for themselves how far behind it is.
+        startedAt: ctx.code.startedAt,
+        staleCode: ctx.code.isStale(),
       },
     }),
   });
@@ -394,6 +446,17 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
    */
   const live = liveWorkspace(options.cwd);
   const boot = live.now().ws;
+  /**
+   * **The other half of the same problem, one layer down** (`plan:live seq:12`).
+   *
+   * `live` above ends the freezing of CONFIG. It does nothing at all about
+   * CODE, which is still frozen the moment these modules load and stays frozen
+   * for the life of the process — while `serveStatic` hands the browser
+   * `src/ui/public/` live from disk on every request. Stamped HERE, next to
+   * `live`, because the two are read as a pair by whoever comes looking: one
+   * says the config is current, the other says whether the code still is.
+   */
+  const code = stampCodeIdentity(options.codeRoot);
   if (boot.projectRoot === null) {
     throw new Error('mycontext ui: no workspace here. Run `mycontext init` first.');
   }
@@ -724,7 +787,7 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     // **`live.now()`, per request.** The one line that makes every endpoint
     // read the same `config.json` the user is editing. `boot` above is not in
     // scope here on purpose; see the comment where it is bound.
-    const ctx: ApiContext = { ws: live.now().ws, repoRoot, url, params: match.params, body };
+    const ctx: ApiContext = { ws: live.now().ws, repoRoot, url, params: match.params, body, code };
 
     if (match.handler.kind === 'stream') {
       // NOT idle.touch(): an open stream is not activity (spec §2). Plan 3's

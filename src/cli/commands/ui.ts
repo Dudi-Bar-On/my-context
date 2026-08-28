@@ -44,7 +44,7 @@ import type { Workspace } from '../../core/workspace.ts';
 import { IDLE_MS, MAX_IDLE_MS } from '../../ui/idle.ts';
 import { openBrowser } from '../../ui/open.ts';
 import {
-  OPENER_NONCE_TTL_MS, PRINTED_NONCE_TTL_MS, startUiServer,
+  CODE_FREEZE_NOTICE, OPENER_NONCE_TTL_MS, PRINTED_NONCE_TTL_MS, startUiServer,
 } from '../../ui/server.ts';
 import { refuseUnknownFlag } from './format.ts';
 import {
@@ -491,6 +491,13 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     },
   })
     .then((running) => {
+      // **Said BEFORE the URL, and on every start** (`plan:live seq:12`). The
+      // reader who is about to edit a screen with this server running is the
+      // one who needs it, and they are looking at the terminal exactly now. It
+      // does not replace the shell's own banner — see `CODE_FREEZE_NOTICE` for
+      // why a start-time line cannot reach the tab that has been open since the
+      // morning, which is the case that was actually paid for.
+      out(CODE_FREEZE_NOTICE);
       if (noOpen) {
         // The same one line `src/ui/server.ts`'s own main entry prints, so the
         // two ways of starting this server are readable as the same thing.

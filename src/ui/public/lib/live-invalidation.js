@@ -62,6 +62,38 @@
 //             hook` · ~273), i.e. the SESSION focus `focus-set`/`focus-clear`
 //             write — not `/api/graph`'s unrelated `focus=<item id>` query
 //             parameter.
+//             **AND `injection` AND `hook`, added 2026-08-28 — the clause the
+//             two above could not supply, because they are about the CORPUS
+//             and this screen is about an EVENT.** Everything derived above
+//             asks what the three endpoints READ. It is right as far as it
+//             goes and it is silent on the one input that is not corpus at
+//             all: `/api/select` and `/api/simulate` resolve the SESSION's
+//             own seen file and restore snapshot per request
+//             (`ui/read-model.ts` · `const window = event === 'compact'` ·
+//             ~317), so this screen's answer moves when the SESSION moves and
+//             not one item has changed. A preview of an event is stale the
+//             instant that event actually happens, and the record proving it
+//             happened is exactly what was missing here. The four moments
+//             that move it, each against `core/audit.ts`'s `KIND_OF`:
+//             `session-start` and `compact-restore` are `injection`,
+//             `post-compact` and `session-end` are `hook` — four ops, two
+//             kinds, and neither kind was declared. Reported by the owner
+//             twice, minutes apart, and then clarified: `compact` picked in
+//             `#evsel`, a compaction fired, and NO region of the screen
+//             moved without a hand reload — *"i meant it did not update at
+//             all, at least it should be checked"* — ladder, ribbon,
+//             Delivered and Why not alike, because a row carrying the wrong
+//             kinds subscribes to a stream that never delivers.
+//             The continuity lane is where this stops being staleness and
+//             becomes a wrong statement: `plan:live seq:9` keys that tier's
+//             dedupe on the WINDOW rather than the id (`core/seen-file.ts` ·
+//             `export function continuityFor` · ~215), so its delivered /
+//             not-delivered state flips at these four moments and at nothing
+//             else. For the other four tiers a stale ribbon means the numbers
+//             moved; for this one the screen says the guarantee is in force
+//             when it is not, or the reverse.
+//             `e2e/preview-compact-continuity.spec.ts` drives a real
+//             compaction against a live preview and pins that flip.
 //   coverage  `/api/coverage` — governance by path, over the current items.
 //             `mutation` only; nothing here is session-scoped.
 //   gaps      Same `/api/coverage` answer as coverage, through
@@ -185,7 +217,20 @@
 //           it never reaches `app.js`'s generic wiring at all; see the
 //           `EXCLUDED_FROM_GENERIC_LIVE_REFRESH` note in `app.js`.
 export const SCREEN_INVALIDATION = {
-  preview: { kinds: ['mutation', 'focus'], refresh: 'ask' },
+  // `injection` and `hook` were MISSING here until 2026-08-28, and — unlike
+  // `config`'s own missing `mutation` below — this row was never right. It was
+  // derived from what the three endpoints READ, which is the corpus, and the
+  // screen's subject is an EVENT. See the `preview` paragraph in this file's
+  // derivation table for the four ops, the two kinds and the measurement.
+  //
+  // `refresh: 'ask'` is UNCHANGED and deliberately so — this is a declaration
+  // of staleness, not of safety, and the two are separate properties on the
+  // same row for exactly this reason. `DEC-a-refresh-keeps-the-reader-s-place
+  // -or-it-asks` settles it: the screen holds an event pick and a session pick,
+  // both reader state a silent rebuild would discard, so the owner gets the
+  // affordance and decides when to spend it. Widening the kinds without
+  // widening `refresh` is the whole shape of this fix.
+  preview: { kinds: ['mutation', 'focus', 'injection', 'hook'], refresh: 'ask' },
   coverage: { kinds: ['mutation'], refresh: 'ask' },
   gaps: { kinds: ['mutation'], refresh: 'ask' },
   simulate: { kinds: ['mutation', 'injection', 'focus'], refresh: 'ask' },

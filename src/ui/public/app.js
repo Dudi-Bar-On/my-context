@@ -283,6 +283,76 @@ function showDisconnected() {
   banner(msg, refresh);
 }
 
+/* ══ THE SERVER IS OLDER THAN ITS OWN ASSETS ════════════════════════════════
+ *
+ * `plan:live seq:12`. Measured 2026-08-28: a server that started at 13:58 was
+ * still answering `/api/select` from a `core/select.ts` that knew four tiers
+ * while this page had already fetched, live from disk, the `screens/preview.js`
+ * that drew five. The continuity lane rendered and nothing could ever fill it,
+ * and the owner reported a feature as broken that had shipped an hour earlier.
+ *
+ * **The page cannot work this out on its own, and must not try.** It can see
+ * what it was served; it cannot see what the server's modules were loaded from.
+ * A page that merely noticed its own assets changing would announce a RESTART
+ * as loudly as a skew. So the server answers — `staleCode`, derived from the
+ * one `CodeIdentity` it stamped at start (`src/ui/code-identity.ts`) — and this
+ * shell's whole job is to compare what it was told against what it is showing,
+ * and to stop being silent.
+ *
+ * **It rides the heartbeat, not the first paint.** `/api/meta` is read once,
+ * when the page loads; the reader who actually paid for this had a tab open
+ * since the morning. `/api/ping` is the only thing this shell polls — once a
+ * minute, while the tab is visible — so it is the only channel that can reach
+ * that reader, and `noteCodeSkew` is called from both.
+ *
+ * **Not latched.** `showCodeSkew` is idempotent and is called again on every
+ * ping that still reports a skew, so the banner comes back if
+ * `showDisconnected`'s recovery, which shares `#exited`, hid it. Dismissal is
+ * the reader's and is remembered: `ex.ok` on this banner means "I know, I will
+ * restart when I am ready", and a warning that reappears every sixty seconds
+ * after being answered is the one that teaches people to ignore banners.
+ */
+let codeSkewDismissed = false;
+
+/**
+ * The sentence this banner needs, and the ONE thing this lane could not build.
+ *
+ * `plan:live seq:12` owns the server, the wire and this shell; the string
+ * tables and the design of record are another agent's, and a UI sentence in
+ * this product is not invented at the point of use — it is added to
+ * `docs/design/web-ui-mockup.html` first and to BOTH `strings/en.js` and
+ * `strings/he.js` after. Until that lands there is nothing true to render, and
+ * `t()` throws on a missing key by design, so the guard below is the seam
+ * rather than a fallback: the moment the key exists this banner draws, with no
+ * further change here. The interim disclosure is `CODE_FREEZE_NOTICE`, printed
+ * by `mycontext ui` at start.
+ */
+const CODE_SKEW_KEY = 'ex.codeSkew';
+
+/** Any `/api` answer that carries `staleCode`. Anything else is ignored. */
+function noteCodeSkew(answer) {
+  if (answer !== null && typeof answer === 'object' && answer.staleCode === true) showCodeSkew();
+}
+
+function showCodeSkew() {
+  if (codeSkewDismissed) return;
+  if (table === null || !(CODE_SKEW_KEY in table.strings)) return;
+  const msg = document.createElement('span');
+  msg.append(...translate(table.strings, CODE_SKEW_KEY));
+  // A literal, exactly as `showExited()` writes it: the remedy is a command,
+  // and a command is not a translated string.
+  const cmd = document.createElement('code');
+  cmd.textContent = 'mycontext ui';
+  const ok = document.createElement('button');
+  ok.className = 'icon';
+  ok.append(...translate(table.strings, 'ex.ok'));
+  ok.onclick = () => {
+    codeSkewDismissed = true;
+    document.getElementById('exited').hidden = true;
+  };
+  banner(msg, cmd, ok);
+}
+
 /* ══ ITEM DETAIL PANE ═══════════════════════════════════════════════════════
  *
  * **Every `button.linkid` in this product was inert.** `parts.js`'s linkId()
@@ -1310,6 +1380,10 @@ async function fillChrome() {
 
   try {
     const meta = await api('/api/meta');
+    // First paint's half of the skew disclosure — see `showCodeSkew`. Before
+    // the git branch, because everything below this line can `return` early on
+    // a shape the strip cannot draw, and the skew is not the strip's fact.
+    noteCodeSkew(meta);
     const g = meta.git;
     // `branch` is checked BEFORE `detached`, because git-info.ts documents one
     // shape where both `branch === null` and `detached === false` hold — a HEAD
@@ -1703,7 +1777,12 @@ async function main() {
 
   // **THE RECOVERY PATH AND THE HEARTBEAT ARE INSTALLED BEFORE THE FIRST CALL
   // THAT CAN FAIL. That ordering is the whole fix; see below.**
-  stopHeartbeat = startHeartbeat(document, () => api('/api/ping').catch(() => {}), 60_000);
+  // The ping's answer was thrown away until `plan:live seq:12`; it now carries
+  // `staleCode`, and this is the only channel that reaches a tab which has been
+  // open since the morning. Still `.catch(() => {})`: a heartbeat that cannot
+  // reach the server is `showExited()`'s business, raised by `api()` itself.
+  stopHeartbeat = startHeartbeat(
+    document, () => api('/api/ping').then(noteCodeSkew).catch(() => {}), 60_000);
   installNonceRedemption();
   // Installed here for the same reason as the two above: it is a document
   // listener that must survive a boot which fails. A pane wired after

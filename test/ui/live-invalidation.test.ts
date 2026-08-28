@@ -38,7 +38,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { AUDIT_KINDS, type AuditKind } from '../../src/core/audit.ts';
+import { AUDIT_KINDS, kindOf, type AuditKind, type AuditOp } from '../../src/core/audit.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
 const PUBLIC = path.join(REPO, 'src', 'ui', 'public');
@@ -215,6 +215,52 @@ test('watch is excluded from the generic wiring in app.js, by name', () => {
     source, /EXCLUDED_FROM_GENERIC_LIVE_REFRESH\s*=\s*new Set\(\[[^\]]*'watch'[^\]]*\]\)/,
     'app.js no longer excludes watch from the generic live-refresh wiring — '
     + 'if that changed on purpose, watch.js\'s own subscription needs removing too',
+  );
+});
+
+/**
+ * **The four ops that move the Injection preview, held against `KIND_OF`
+ * rather than against two strings someone typed here.**
+ *
+ * This is deliberately NOT "preview now lists `injection` and `hook`". That
+ * assertion is the one the task's own bounds refuse: a row with the wrong
+ * kinds is well-formed, every gate above passes it, and restating the row's
+ * contents in a test restates the mistake as well as the fix. The BEHAVIOUR
+ * — a compaction reaches a live screen — is pinned in a browser, by
+ * `e2e/preview-compact-continuity.spec.ts`, which is where it can be pinned
+ * at all.
+ *
+ * What this adds is the half a browser cannot see: the derivation. The
+ * preview's staleness is not a property of any endpoint, it is a property of
+ * the four MOMENTS that rewrite the session state `/api/select` and
+ * `/api/simulate` resolve per request — the seen file and the restore
+ * snapshot. Those moments are named as OPS here, and their kinds are read
+ * from `kindOf` at run time, so the day someone re-maps `compact-restore`
+ * out of `injection` this fails with the op that moved rather than leaving
+ * the screen quietly deaf again. That is the failure mode this whole file
+ * exists for, one level up from "is the row well formed".
+ */
+test('preview declares a kind for every op that rewrites the session state it previews', async () => {
+  const { SCREEN_INVALIDATION } = await loadLiveInvalidation();
+  // Each op with WHAT it rewrites, because the reason is the derivation and a
+  // bare list would be four strings to keep current by hand.
+  const MOVES_THE_PREVIEW: [AuditOp, string][] = [
+    ['session-start', 'appends the seen lines the next preview dedupes against'],
+    ['compact-restore', 'appends continuity/restored seen lines keyed on the new window'],
+    ['post-compact', 'closes the compaction whose snapshot IS the continuity window'],
+    ['session-end', 'clears the session dedupe state the preview reads'],
+  ];
+  const declared = SCREEN_INVALIDATION['preview']?.kinds;
+  assert.ok(Array.isArray(declared), 'preview has no kinds array to check');
+  const missing = MOVES_THE_PREVIEW
+    .filter(([op]) => !declared.includes(kindOf(op)))
+    .map(([op, why]) => `${op} (kind ${kindOf(op)}) — ${why}`);
+  assert.deepEqual(
+    missing, [],
+    'the Injection preview does not subscribe to the records its own subject writes:\n  '
+    + missing.join('\n  ')
+    + '\nA preview of an event is stale the moment that event happens, and the record '
+    + 'proving it happened is the one this row omits.',
   );
 });
 

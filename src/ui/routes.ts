@@ -17,11 +17,24 @@
  */
 import type { ServerResponse } from 'node:http';
 import type { Workspace } from '../core/workspace.ts';
+import type { CodeIdentity } from './code-identity.ts';
 
 export interface ApiContext {
   ws: Workspace;
   /** The repository root — `path.dirname(ws.projectRoot)`, not the `.my_context` directory. */
   repoRoot: string;
+  /**
+   * What code this process is running, and whether the disk has moved on since
+   * (`plan:live seq:12`).
+   *
+   * Here rather than read from a module-level singleton by whichever handler
+   * wants it, for the reason `ws` is here: one value, built once per server,
+   * handed to every route, so two surfaces cannot answer the same question
+   * differently. `/api/ping` and `/api/meta` both disclose from THIS, and a
+   * third that appears later inherits the same answer rather than a second
+   * spelling of it. See `code-identity.ts`.
+   */
+  code: CodeIdentity;
   /** The parsed request URL, query string included. */
   url: URL;
   /** The `:name` segments this route matched, decoded. */

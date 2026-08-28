@@ -140,7 +140,13 @@ test('wrong token 403, missing header 401, bad Origin 403 — and no CORS header
     assert.equal(good.headers.get('access-control-allow-origin'), null);
     assert.equal(good.headers.get('access-control-allow-credentials'), null);
     assertSecurityHeaders(good, '/api/ping');
-    assert.deepEqual(await good.json(), { ok: true });
+    // By shape, not by value — see `test/ui/open.test.ts` for why `staleCode`
+    // is not pinned here: this test is about headers and refusals, and the
+    // field it gained is measured against a tree the suite does not own.
+    const body = await good.json() as { ok: boolean; staleCode: boolean };
+    assert.deepEqual(Object.keys(body).sort(), ['ok', 'staleCode']);
+    assert.equal(body.ok, true);
+    assert.equal(typeof body.staleCode, 'boolean');
   } finally { await h.stop(); removeTree(cwd); }
 });
 

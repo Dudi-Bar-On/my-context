@@ -435,7 +435,15 @@ test('ui --no-open prints a URL that a real request can reach, and opens no brow
     const { token } = await handoff.json() as { token: string };
     const ping = await fetch(`${origin}/api/ping`, { headers: { 'X-Mycontext-Token': token } });
     assert.equal(ping.status, 200);
-    assert.deepEqual(await ping.json(), { ok: true });
+    // `plan:live seq:12` gave the heartbeat a second field. Asserted by SHAPE
+    // rather than by value: `staleCode` is measured against the repository's
+    // own `src/` for a child started this way, so pinning it to `false` would
+    // make this test — which is about a printed URL being reachable — fail for
+    // an edit somebody else made while the suite ran.
+    const body = await ping.json() as { ok: boolean; staleCode: boolean };
+    assert.deepEqual(Object.keys(body).sort(), ['ok', 'staleCode']);
+    assert.equal(body.ok, true);
+    assert.equal(typeof body.staleCode, 'boolean');
   } finally {
     if (child !== null && child.exitCode === null && child.signalCode === null) {
       await new Promise<void>((done) => { child!.once('exit', () => done()); child!.kill(); });
