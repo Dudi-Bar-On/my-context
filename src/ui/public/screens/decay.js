@@ -90,20 +90,27 @@
  * and the window and the ledger's own session count are both on the chart's
  * data already, waiting for a key with two slots.
  *
- * ── THE STYLESHEET THIS SCREEN DOES NOT HAVE ──────────────────────────────
+ * ── THE STYLESHEET THIS SCREEN HAS, AND THE ONE LINE IT DOES NOT ──────────
  *
  * `styles.css` carries `.heat`, `.hstrip`, `.hname`, `.heataxis` and the whole
  * `.legend` family, so the heatstrip and the legend need nothing from this
- * file. It does **not** carry the mockup's SVG chart primitives
- * (`svg.chart{…}`, `svg.chart text{…}`, `svg.chart text.mono{…}`,
- * `svg.chart .axis{…}`, `svg.chart .never{…}` — mockup ~803-810), and an
- * unstyled `<svg>` is a 300x150 box of black text on a near-black plate. The
- * classes are still written, so the day the shell carries those rules they win
- * on cascade order; until then each mark also NAMES ITS OWN TOKEN, and the
- * chart's typography is set once on the root through the CSSOM. Setting it
- * through `el.style.setProperty` rather than a `style` attribute is not a
- * preference: the server sends `style-src 'self'` with no `'unsafe-inline'`,
- * which blocks the attribute and permits the CSSOM (see `screens/parts.js`).
+ * file. **Since 2026-08-23 it also carries the mockup's SVG chart primitives**
+ * — `svg.chart{…}` (~1507), `svg.chart text{…}` (~1521), `svg.chart
+ * text.mono{…}` (~1522), `svg.chart .axis{…}`, `svg.chart .never{…}` (mockup
+ * ~803-810) — so this file writes the CLASSES and nothing else, exactly as
+ * `graph.js`, `simulate.js` and `watch.js` do. It carried a CSSOM copy of
+ * those rules for six days after they landed, on a comment that said the shell
+ * had none; the copy outranked the sheet and defeated two fixes in one day
+ * before it was deleted (see `combChart`, and
+ * `TASK-decay-js-restates-the-chart-css-at-runtime-and-has-defeated`).
+ *
+ * What is still set through the CSSOM is set there for a reason and is checked
+ * by `scripts/check-cssom-restatement.ts`: a value the stylesheet cannot know
+ * (`direction:ltr` on the chart root, `margin-block-start:10px` on the note —
+ * both the mockup's own `style=` attributes). The CSSOM rather than the
+ * attribute is not a preference: the server sends `style-src 'self'` with no
+ * `'unsafe-inline'`, which blocks the attribute and permits the CSSOM (see
+ * `screens/parts.js`).
  *
  * **Nothing is invented and nothing is guessed.** Every number in the geometry
  * below is the mockup's own (`renderComb`, ~3779; `renderHeat`, ~3837), every
@@ -485,15 +492,14 @@ function drawCombChart(report, rows, unplaceable, served) {
       { x: X(PL - 8), y: y + 3, 'text-anchor': anchor('end'), class: 'mono', fill: 'var(--ink)' },
       row.id.length > ID_MAX ? `${row.id.slice(0, ID_MAX - 1)}…` : row.id,
     );
-    // `svg.chart text.mono{font-family:var(--mono);font-size:var(--fs-chart-mono)}`
-    // (mockup ~816), restated through the CSSOM because this element carries
-    // its own inline style for the rest of the chart too (see the root block
-    // below). It names the TOKEN, never the literal: `plan:walk seq:62` found
-    // the chart-specific sizes inflated twice over, and an inline literal here
-    // would have survived the fix in the stylesheet and quietly kept one
-    // chart's ids at the old size.
-    label.style.setProperty('font-family', 'var(--mono)');
-    label.style.setProperty('font-size', 'var(--fs-chart-mono)');
+    // `class: 'mono'` IS the typography, and there is deliberately no inline
+    // copy of it here. `svg.chart text.mono{font-family:var(--mono);
+    // font-size:var(--fs-chart-mono)}` has been in the shell's stylesheet
+    // since 2026-08-23 (`styles.css` ~1522) and it is the only thing that may
+    // set these two — an inline restatement, even one naming the same tokens,
+    // outranks the sheet and would survive the next fix made there. It nearly
+    // did: `plan:walk seq:62` moved `--fs-chart-mono` and this line held the
+    // old size until the screen itself was looked at.
     kids.push(label);
     // `∀` is an OVERLAY, never a third bucket: *"a breadth view over cold ∪
     // warm"* (`dec.unres`), and `DecayReport.unrestricted`'s own docstring
@@ -556,12 +562,36 @@ function drawCombChart(report, rows, unplaceable, served) {
     // mockup writes this sentence as a ternary and no key declares it.
     'aria-label': COMB_LABEL,
   });
-  // `svg.chart{…}` and `svg.chart text{…}` (mockup ~803-804) restated on the
-  // element, through the CSSOM, because the shell's stylesheet has neither and
-  // an unstyled chart is black text on a near-black plate. `fill` inherits, so
-  // every mark that does not name its own colour gets the axis grey.
-  // **`direction: ltr` on the chart root, and it is the load-bearing line in
-  // this block.** Measured in Hebrew on 2026-08-23, at 1568x779: without it
+  // ── ONE DECLARATION, AND IT IS THE ONE THE STYLESHEET DOES NOT CARRY ─────
+  //
+  // This used to restate `svg.chart{…}` and `svg.chart text{…}` (mockup
+  // ~803-804) on the element, on the stated ground that the shell's stylesheet
+  // *"has no `svg.chart` block at all"*. That ceased to be true on 2026-08-23
+  // and the restatement outlived its reason by six days, invisibly — a copy
+  // that merely duplicates the sheet looks like nothing until the sheet moves,
+  // and then it wins. It beat two separate fixes in one day: `plan:walk
+  // seq:62`'s chart typography (this chart alone would have kept the large
+  // type) and `plan:walk seq:47`'s scale bound (`svg.chart` went
+  // `inline-size:100%` → `max-inline-size:100%`, the inline copy did not, and
+  // the comb measured 1.267 while the staircase and the ego graph measured
+  // 1.000). Green gate, correct stylesheet, wrong page — `styles-parity`
+  // compares RULE BODIES and cannot see a third copy applied at runtime.
+  //
+  // So the nine writes are gone. `display`, `max-inline-size`,
+  // `block-size` and `overflow` are `styles.css` ~1507's, byte for byte;
+  // `font-family`, `font-size` and `fill` are ~1521's, and they were being set
+  // on the ROOT where they reach nothing — every mark this file draws is a
+  // `<text>`, which `svg.chart text` styles DIRECTLY, and a direct rule beats
+  // an inherited value. `graph.js`, `simulate.js` and `watch.js` set none of
+  // them and always rendered correctly; that is the proof nothing needed them.
+  // The classes (`.axis`, `.never`, `.mono`) were always written, so the sheet
+  // has had a grip on this chart the whole time. `scripts/check-cssom-
+  // restatement.ts` is the gate that keeps them gone.
+  //
+  // **`direction: ltr` stays, and it is the one line here that ever did any
+  // work.** No rule in `styles.css` gives an `svg.chart` a direction, and
+  // `simulate.js` ~718 sets exactly this and only this for the same reason.
+  // Measured in Hebrew on 2026-08-23, at 1568x779: without it
   // the `<svg>` inherits `direction: rtl` from `<html dir>`, and in an RTL
   // inline direction SVG resolves `text-anchor:start` to the RIGHT edge — so
   // `anchor()`'s start↔end flip, which the mockup's own `ANC()` performs,
@@ -576,20 +606,6 @@ function drawCombChart(report, rows, unplaceable, served) {
   // and tokens this chart is made of, and `gr.note` makes keeping
   // bidi-sensitive text out of an SVG a rule rather than a preference.
   svg.style.setProperty('direction', 'ltr');
-  svg.style.setProperty('display', 'block');
-  // `max-inline-size`, NOT `inline-size` — the whole point of the 2026-08-29
-  // scale bound, and the one line of this restatement that had to move with it.
-  // This block re-declares `svg.chart{…}` on the element because the shell had
-  // no such rule when this file landed; the shell has it now, and an inline
-  // `inline-size:100%` here BEATS it, so leaving it would have pinned this one
-  // chart at the stretched 1.267x while the other two rendered 1:1. Measured
-  // doing exactly that before this line changed.
-  svg.style.setProperty('max-inline-size', '100%');
-  svg.style.setProperty('block-size', 'auto');
-  svg.style.setProperty('overflow', 'visible');
-  svg.style.setProperty('font-family', 'var(--sans)');
-  svg.style.setProperty('font-size', 'var(--fs-chart)');
-  svg.style.setProperty('fill', 'var(--dim)');
   for (const kid of kids) svg.append(kid);
   return svg;
 }
