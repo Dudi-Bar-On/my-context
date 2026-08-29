@@ -996,7 +996,11 @@ export async function render(root, ctx) {
     for (const row of rows) {
       const line = el('div', 'div-row');
       const name = el('span', 'div-name', row.id);
-      // `.div-name` ellipsises, so the full id has to survive somewhere. A
+      // `.div-name` WRAPS as of 2026-08-30 - it no longer ellipsises, and this
+      // comment said it did for a day after the rule changed. The `title` stays,
+      // and so does the assertion pinning it: a wrapped id is still a long id in
+      // a narrow track, and the tooltip is what a reader reaches for when the
+      // wrap costs three lines. Only the stated REASON moved. A
       // `title` is an ATTRIBUTE sink and an item id is a literal, not a
       // translated string, so nothing goes through `tFlat` here.
       name.setAttribute('title', row.id);

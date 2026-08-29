@@ -482,7 +482,10 @@ test('a bar is the mockup\'s four cells, normalised over the largest count in th
   const first = rows[0]!;
   assert.deepEqual(first.children.map(kindOf), ['span.div-name', 'div.div-l', 'div.div-r', 'span.div-n']);
   assert.equal(first.children[0]!.textContent, 'STD-api-errors-use-problem-json');
-  // `.div-name` ellipsises, so the full id has to survive in the `title`.
+  // `.div-name` WRAPS as of 2026-08-30. This assertion is still right and its
+  // reason changed: the `title` is no longer the ONLY place the full id
+  // survives, it is the place a reader reaches for when a wrapped id spends
+  // three lines of a narrow track.
   assert.equal((first.children[0] as FakeElement).attributes['title'], 'STD-api-errors-use-problem-json');
   assert.equal(flatText(first.children[3]!), '3/41');
 
