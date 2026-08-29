@@ -77,6 +77,7 @@ import { CLI_ENTRY, registerExecuteRoutes } from './execute.ts';
 import { ExecutionNonceStore } from './execute-nonce.ts';
 import { registerPacksRoutes } from './packs-model.ts';
 import { registerPortRoutes } from './port-model.ts';
+import { registerPreviewHistoryRoutes } from './preview-history.ts';
 import { registerProcedureRoutes } from './proc-model.ts';
 import { readGitInfo } from './git-info.ts';
 import { IDLE_MS, IdleMonitor } from './idle.ts';
@@ -324,6 +325,11 @@ export function registerReadRoutes(): void {
   // writes nothing: the file is the user's to change, so the settlement leaves
   // as a command the browser composes, never as a route that edits it.
   registerConfigRoutes();
+  // The injection preview's When column: `audit_item.role` joined to
+  // `audit.at`, one query, its own route so that a projection which is behind
+  // costs the preview its timestamps and never its selection. Registered here
+  // for the same two reasons as the four above.
+  registerPreviewHistoryRoutes();
   // Plan 3's Watch read model, registered here for exactly the same two
   // reasons — and it adds the table's first `kind: 'stream'` route, which the
   // dispatch loop below deliberately does not `idle.touch()` for.

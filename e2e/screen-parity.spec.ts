@@ -656,12 +656,29 @@ test('every screen draws every KIND of element its mockup section draws', async 
    * "the connection is opened once and shared"), so counting it would leave
    * this permanently non-zero from the first visit to Watch onward and turn
    * every later screen into a 10-second timeout.
+   *
+   * **It counts REQUEST OBJECTS, not events, and that is not a refinement.**
+   * A bare `+1 / -1` over the two events assumes every completion this page
+   * reports was also STARTED under these listeners, and the landing screen
+   * breaks that assumption: `app` navigates and resolves as soon as the rail is
+   * visible, while `screens/preview.js`'s boot render is still awaiting
+   * `/api/select`, `/api/simulate`, `/api/items` and `/api/injection-history`.
+   * Those four start BEFORE the handlers below are attached and finish after, so
+   * the counter is decremented for requests it never incremented for and lands
+   * NEGATIVE — measured 2026-08-29 as `-1`, on the first screen in the list.
+   *
+   * `pending !== 0` is then never true again and every screen exhausts its 25
+   * samples: a permanent red carrying the word "still fetching" about a screen
+   * that finished ten seconds earlier. Clamping at zero would hide it and would
+   * also mask a real leak; a set of the requests this listener actually saw
+   * start is the counter the loop meant to have.
    */
-  let pending = 0;
+  const inFlight = new Set<import('@playwright/test').Request>();
   const counts = (url: string): boolean => url.includes('/api/') && !url.includes('/api/watch/stream');
-  page.on('request', (r) => { if (counts(r.url())) pending += 1; });
-  page.on('requestfinished', (r) => { if (counts(r.url())) pending -= 1; });
-  page.on('requestfailed', (r) => { if (counts(r.url())) pending -= 1; });
+  const done = (r: import('@playwright/test').Request): void => { inFlight.delete(r); };
+  page.on('request', (r) => { if (counts(r.url())) inFlight.add(r); });
+  page.on('requestfinished', done);
+  page.on('requestfailed', done);
 
   try {
     for (const screen of BUILT) {
@@ -708,13 +725,13 @@ test('every screen draws every KIND of element its mockup section draws', async 
       for (let attempt = 0; attempt < 25; attempt++) {
         const now = await page.evaluate(
           (s) => document.querySelectorAll(`[data-p="${s}"] *`).length, screen);
-        if (now > 0 && now === previous && pending === 0) { settled = true; break; }
+        if (now > 0 && now === previous && inFlight.size === 0) { settled = true; break; }
         previous = now;
         await page.waitForTimeout(400);
       }
       expect(previous, `${screen}: never rendered anything`).toBeGreaterThan(0);
       expect(settled,
-        `${screen}: still growing, or still fetching (${pending} \`/api\` reads in flight), after `
+        `${screen}: still growing, or still fetching (${inFlight.size} \`/api\` reads in flight), after `
         + '25 samples over 10s — it was NOT compared, because a half-drawn screen would be '
         + 'reported as missing what the mockup draws and read exactly like a regression. This is '
         + 'a LOAD failure: run this spec alone before believing anything about the ledger.')

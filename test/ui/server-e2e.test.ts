@@ -508,6 +508,11 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // the second probe exercises the absent-tier 200 rather than a 400.
   '/api/simulate/sweep?event=session-start&cold=1&tier=pinned',
   '/api/simulate/sweep?event=session-start&cold=1&tier=jit',
+  // The preview's When column. It opens the audit PROJECTION rather than the
+  // index — the one route on this list that does — so its presence here is what
+  // proves that door is read-only too, and not only the two `Store` doors the
+  // rest of the sweep exercises.
+  '/api/injection-history',
   '/api/sessions',
   '/api/status',
   '/api/doctor',

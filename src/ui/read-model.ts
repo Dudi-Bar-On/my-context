@@ -59,11 +59,12 @@ import {
   Ledger, LedgerUninitializedError, readSnapshotMeta,
   type InjectionEvent, type SessionSummary, type Usage,
 } from '../core/ledger.ts';
-import { isLoadBearing, readFocus } from '../core/focus.ts';
+import { isFocusActive, isLoadBearing, readFocus } from '../core/focus.ts';
 import { renderSelection } from '../core/render.ts';
 import { pendingRevisionCounts, pendingRevisionSummaries } from '../core/revision-log.ts';
 import {
-  itemCost, matchesScope, reviewQueue, select, tiersRun,
+  focusHides, isEligible, isNormative, itemCost, matchesScope, mergeLayers, reviewQueue,
+  select, tiersRun,
   type GateCode, type SelectContext, type SelectEvent, type Selection,
 } from '../core/select.ts';
 import {
@@ -400,6 +401,66 @@ export function apiRender(ws: Workspace, url: URL): JsonResult {
   };
 }
 
+/**
+ * **The ids the `seen` gate removed — rung 5, which rode on no response until
+ * 2026-08-29 and left a reader unable to account for the corpus.**
+ *
+ * ── THE DEFECT THIS CLOSES ────────────────────────────────────────────────
+ *
+ * `select` filters already-delivered items BEFORE budgeting
+ * (`RULE-filter-seen-before-budgeting`), which is the right order and is not in
+ * question. What was in question is that the removal was invisible: measured on
+ * this repository's own corpus, a warm `event=session-start` answered `full: 1,
+ * spilled: 0` where the cold question answered `full: 24, spilled: 1`, and the
+ * twenty-three items in between appeared in no field of any response. The
+ * preview therefore drew *Delivered 1 · Not delivered 0* — two measured zeros
+ * standing in for a fact nobody had measured, which is exactly what
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` forbids and
+ * why the owner read the panel as broken rather than as empty.
+ *
+ * ── IT IS `injectable ∩ seen`, AND THE PREFIX IS BORROWED, NOT RESPELLED ──
+ *
+ * `select` computes `fresh = injectable.filter((i) => !seen.has(i.id))`, so what
+ * the gate removes is precisely `injectable ∩ seen`. `injectable` is the same
+ * four steps `select` takes above that line — `mergeLayers`, `isEligible`,
+ * `focusHides`, `isNormative` — and every one of them is IMPORTED from
+ * `core/select.ts` rather than restated here, `isNormative` having been exported
+ * for this call. A read model that re-derived any of them would be the second
+ * implementation of a rule this module's own header forbids, and it would drift
+ * the first time a gate above rung 5 moved.
+ *
+ * ── WHAT IT DOES NOT CLAIM ────────────────────────────────────────────────
+ *
+ * That every id here would have been DELIVERED had the session not already held
+ * it. It would not: below rung 5 sit the per-tier candidate rules — `always` for
+ * pinned, `matchesScope` for jit, the restore list for restored — and an item
+ * can clear the seen gate and still be no tier's candidate. The claim is exactly
+ * the gate's own: **these items reached rung 5 and were removed there.** The
+ * screen says that in those words and no stronger ones.
+ *
+ * IDS rather than a count, deliberately. The count is `.length`, so nothing is
+ * lost; what ids buy is that the preview's gate ladder can finally BIND at
+ * rung 5 — it never could, because no response named an item that failed there —
+ * and that each filtered item is a row the reader can open. `FocusReport.hidden`
+ * already serves a whole id list for the rung one above this, so the shape is
+ * the house's and not a new one.
+ *
+ * Empty on `cold=1`, correctly and by construction: a brand-new session has been
+ * shown nothing, `ctx.seen` is unset, and the gate removes nothing.
+ */
+export function seenFilteredIds(items: Item[], ctx: SelectContext, config: Config): string[] {
+  const seen = new Set(ctx.seen ?? []);
+  if (seen.size === 0) return [];
+  const focus = ctx.focus ?? null;
+  const eligibleAll = mergeLayers(items).filter((i) => isEligible(i, config));
+  const eligible = isFocusActive(focus)
+    ? eligibleAll.filter((i) => !focusHides(i, focus, config))
+    : eligibleAll;
+  return eligible
+    .filter((i) => isNormative(i, config) && seen.has(i.id))
+    .map((i) => i.id);
+}
+
 const BUDGET_KEYS = ['pinned', 'jit', 'restored', 'continuity', 'index'] as const;
 
 /**
@@ -463,7 +524,25 @@ export function apiSimulate(ws: Workspace, url: URL): JsonResult {
     // Which tiers this event reached, from `select.ts`'s own dispatch. A tier
     // that never runs is drawn as absent-and-named; an empty track would
     // claim it ran and delivered nothing, which is a different fact.
-    return { status: 200, body: { selection, budgets, costs, tiersRun: tiersRun(ctx) } };
+    //
+    // **`seenFiltered` rides HERE and not on `/api/select`**, for design
+    // decision 7's reason and no other: that response is `select()`'s
+    // serialization and nothing else, and this is a figure ABOUT the selection
+    // rather than a member of it — the same standing `budgets`, `costs` and
+    // `tiersRun` already have. `ParsedSelect`'s own note says the same of
+    // `seenUnreadable`: "the field cannot ride on that response".
+    //
+    // It costs one pass over `items`, which this call already holds, and it is
+    // computed against the SAME `ctx` the selection was — so the count on
+    // screen and the selection beside it cannot be answers to two different
+    // questions.
+    return {
+      status: 200,
+      body: {
+        selection, budgets, costs, tiersRun: tiersRun(ctx),
+        seenFiltered: seenFilteredIds(items, ctx, config),
+      },
+    };
   });
 }
 

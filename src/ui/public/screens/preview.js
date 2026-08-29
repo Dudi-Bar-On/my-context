@@ -40,11 +40,17 @@
  *     from where each is decided, exactly as that field's own note directs:
  *     *"A full ladder is composed from those four sources — and from none of
  *     their sentences."* Rung 3 is `Selection.focus.hidden`, rung 6 is
- *     `Selection.spilled`. **Rung 5, `seen`, is the one that cannot be
- *     composed here**: the seen set is resolved server-side from the session
- *     and appears in no response, so no item can be shown failing at it. Not
- *     approximated — filed, and said in this file rather than left for a
- *     reader to notice from an empty rung.
+ *     `Selection.spilled`, and **rung 5, `seen`, is the fourth — since
+ *     2026-08-29, and it was the last hole in this ladder.** This block used to
+ *     read *"the one that cannot be composed here: the seen set is resolved
+ *     server-side from the session and appears in no response, so no item can
+ *     be shown failing at it"*. That was true and it was a defect, not a
+ *     limitation: an item removed at rung 5 appeared in NO field of any
+ *     response, so a reader saw *Delivered 1 · Not delivered 0* with the rest
+ *     of the corpus accounted for nowhere. `/api/simulate` now serves
+ *     `seenFiltered` — the ids `select`'s own `injectable ∩ seen` removed,
+ *     computed against the same context the selection was — the rung binds, and
+ *     the `Not delivered` card names every one of them.
  *
  *     **The picker holds ONE EXEMPLAR PER RUNG, and since 2026-08-28 it says
  *     so** (`preview.spec`). `/api/items` is sorted by id, so "the first item
@@ -196,6 +202,73 @@ const GATES = [
 /** `GATES`' index for a `GateCode`, or -1 for `passed` and anything unknown. */
 const RUNG = (code) => GATES.findIndex((gate) => gate.code === code);
 
+/**
+ * **An audit instant, drawn as a wall date AND a wall time.**
+ *
+ * `screens/ask.js`'s `clockOf` reduces an `at` to `09:26:05`, which is right
+ * for a table whose every row is from the last few minutes and wrong here: the
+ * whole point of the When on a preview row is that two rows can be WEEKS apart
+ * (see `preview.when`), and a bare clock would draw those two identically.
+ *
+ * `en-GB` is a FORMAT choice and not a language one — the 24-hour, day-first
+ * spelling in both UI languages, the same argument `parts.js`'s `num()` makes
+ * for `en-US` and `clockOf` makes for itself.
+ *
+ * A string that is not a parsable instant is drawn AS IT ARRIVED, which is what
+ * both existing spellings of this do: rendering an unparsed stamp through a
+ * formatter is how a value gets shifted by the machine's offset and then shown
+ * as though it had been measured.
+ */
+function stampOf(at) {
+  const when = new Date(String(at));
+  if (Number.isNaN(when.getTime())) return String(at);
+  return when.toLocaleString('en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    hour12: false,
+  });
+}
+
+/**
+ * `/api/injection-history`'s rows, indexed the two ways a preview row asks.
+ *
+ * **Two indexes and not one, because a row has two honest answers and they are
+ * not the same claim.** `byTriple` answers *"when did this item last do this AT
+ * THIS TIER"* — the question the row is actually about, since the row already
+ * names its tier, and the one the coordinator's measurement pins: an item in
+ * this corpus has spilled from `jit` and from `pinned` fourteen minutes apart,
+ * and a `jit` row showing the `pinned` instant would be reporting a different
+ * event. `byPair` answers *"and if this tier has no record at all, when did the
+ * item last do it anywhere"* — which is a weaker and still true statement, and
+ * strictly better than the `never` it replaces, PROVIDED the tier it came from
+ * is named. `whenRun` names it.
+ *
+ * The `MAX` is taken here as well as in SQL. The endpoint already groups by the
+ * triple so `byTriple` cannot see two rows for one key, but `byPair` folds
+ * across tiers and must pick the newest itself — and taking it in both places
+ * costs one comparison and removes a dependence on the server's `ORDER BY`,
+ * which is a claim this file cannot see.
+ */
+const historyKey = (role, id, tier) => (tier === null
+  ? `${role}\u0000${id}`
+  : `${role}\u0000${id}\u0000${tier}`);
+
+function historyIndex(rows) {
+  const byTriple = new Map();
+  const byPair = new Map();
+  for (const row of rows) {
+    // Keys are composed by `historyKey` and never spelled inline, so a lookup
+    // below cannot join the parts a different way from the index. It joins on
+    // NUL because a `:` or a `-` occurs in every id this project writes.
+    const triple = historyKey(row.role, row.id, row.tier);
+    const prior = byTriple.get(triple);
+    if (prior === undefined || row.at > prior) byTriple.set(triple, row.at);
+    const pair = historyKey(row.role, row.id, null);
+    const best = byPair.get(pair);
+    if (best === undefined || row.at > best.at) byPair.set(pair, { at: row.at, tier: row.tier });
+  }
+  return { byTriple, byPair, truncated: false, cap: 0 };
+}
+
 /** The mockup's `isz()` — a data width, through the CSSOM and logical. */
 function sized(node, percent) {
   node.style.setProperty('inline-size', `${percent}%`);
@@ -299,6 +372,86 @@ export async function render(root, ctx) {
   const pathSlot = el('span');
   bar.append(evLabel, evsel, pathSlot);
 
+  // --- The QUESTION: this session, or a brand-new one ---------------------
+  //
+  // **`/api/select` has always served both, and this screen only ever asked
+  // one.** The endpoint requires exactly one of `session=<id>` or `cold=1`
+  // (`ui/read-model.ts`, `parseSelectQuery`) and refuses a request carrying
+  // neither or both, precisely because they are two different questions. Until
+  // 2026-08-29 this file contained the string `cold` zero times: it always sent
+  // `session=<id>`, so the cold question — *what would a brand-new window get* —
+  // was reachable from `curl` and from nowhere in the product.
+  //
+  // Measured on this repository's own corpus, same event, same focus, only that
+  // parameter differing: `session=<id>` answered `full: 0, spilled: 0`, and
+  // `cold=1` answered `full: 23, spilled: 1`. A reader looking for the Not
+  // delivered list was being shown a structurally empty one.
+  //
+  // **THE DEFAULT DOES NOT MOVE, and that is a ruling rather than an
+  // oversight.** Warm is the honest answer to this screen's own promise —
+  // *exactly what Claude gets*, *what the most recent session was given at its
+  // start* — and substituting the cold answer to make the panel look busier
+  // would be answering a question nobody asked. Cold is offered, labelled, and
+  // never silently swapped in: a reader who cannot tell which of the two they
+  // are looking at is worse off than one who could only ever see the first.
+  //
+  // **The mockup's own home for this is the `#sesspop` dialog** (its
+  // `button.row[data-cold="1"]`, with `sess.cold` / `sess.coldn` /
+  // `sess.coldhelp` beside it), and that dialog is not built in this shell —
+  // `app.js`'s header lists `#sesspop` under "what this task did not wire", and
+  // `app.js` is not this task's file. So the control is built HERE, on the
+  // screen whose reading it changes, out of the design of record's own three
+  // strings rather than three invented ones. Presentation decision, recorded:
+  // when the shell's session dialog lands, this becomes its second door and the
+  // words are already shared.
+  let sessionMode = 'live';
+  const qbar = el('div', 'segbar');
+  qbar.id = 'qpick';
+  qbar.setAttribute('role', 'group');
+  qbar.setAttribute('aria-label', ctx.tFlat('sess.title'));
+  const qNote = el('p', 'small');
+  qNote.append(...ctx.t('preview.qnote'));
+
+  /**
+   * The session the query actually carries — `'cold'` is `selectQuery`'s own
+   * sentinel for `cold=1` and is not a session id
+   * (`lib/viewmodel.js` · `if (session === 'cold') qs.set('cold', '1');` · ~214).
+   *
+   * A shell with no sessions at all already answers `'cold'` from
+   * `ctx.session()`, so the two states collapse there — correctly: there is no
+   * warm question to ask, and `paintQ` draws one button rather than an inert
+   * second one.
+   */
+  const sessionFor = () => (sessionMode === 'cold' ? 'cold' : ctx.session());
+
+  function paintQ() {
+    qbar.replaceChildren();
+    const live = ctx.session();
+    const options = live === 'cold' ? ['cold'] : ['live', 'cold'];
+    for (const mode of options) {
+      const button = el('button');
+      button.type = 'button';
+      button.dataset.q = mode;
+      const head = el('span');
+      // The warm option is named by the session ITSELF — a value, drawn the way
+      // `#sesslbl` draws it, because that is what identifies the question. The
+      // cold option is prose and takes the design of record's string.
+      if (mode === 'live') head.append(el('b', 'v', live));
+      else head.append(...ctx.t('sess.cold'));
+      const sub = el('span', 'small');
+      sub.append(...ctx.t(mode === 'live' ? 'preview.qwarmn' : 'sess.coldn'));
+      button.append(head, ' ', sub);
+      button.setAttribute('aria-pressed', String(mode === sessionMode));
+      button.onclick = () => {
+        if (sessionMode === mode) return;
+        sessionMode = mode;
+        paintQ();
+        void show();
+      };
+      qbar.append(button);
+    }
+  }
+
   const help = el('details', 'help');
   const summary = el('summary');
   summary.append(...ctx.t('help.more'));
@@ -319,7 +472,7 @@ export async function render(root, ctx) {
   secondLine.append(...ctx.t('help.p2'));
   helpBox.append(firstLine, secondLine);
   help.append(summary, helpBox);
-  evCard.append(evH, bar, help);
+  evCard.append(evH, bar, qbar, spaced(qNote), help);
   root.append(evCard);
 
   // --- Delivered, the scene, and the carry --------------------------------
@@ -363,6 +516,168 @@ export async function render(root, ctx) {
     if (items !== null) return items;
     items = (await ctx.api('/api/items')).items;
     return items;
+  }
+
+  /**
+   * **When each item last really was delivered, and last really did spill** —
+   * `/api/injection-history`, fetched ONCE and cached like `/api/items`, for the
+   * same reason: it does not depend on the event, the path or the session. These
+   * are facts about the AUDIT LOG, and they do not move when the reader changes
+   * the question.
+   *
+   * **It is fetched AFTER the selection has been drawn, not beside it** — see
+   * the measurement in `show()`, where the ordering is argued and the browser
+   * failure it fixes is recorded.
+   *
+   * **It swallows its own failure, deliberately.** The audit projection is
+   * allowed to refuse: `behind`,
+   * `diverged` and `damaged` all answer 503 rather than data, because syncing is
+   * a write and a read surface may not perform one. That refusal must cost the
+   * reader the When column and a sentence saying why — never the selection. If
+   * these times rode on `/api/simulate`, a projection one record behind would
+   * refuse the landing screen outright, which is worse than the gap it was meant
+   * to close.
+   *
+   * Three outcomes, and all three are drawn:
+   *
+   *   - rows        — `history` holds the two indexes, and every row gets a When.
+   *   - `rows: null`— the projection was never built. `preview.whenabsent`, which
+   *                   says so and names the command that builds it. NOT "never
+   *                   delivered" on every row: that would be a claim about the
+   *                   corpus manufactured out of a missing file.
+   *   - a throw     — `preview.whenoff` carrying the SERVER's own sentence, which
+   *                   already names the state and what to run.
+   *
+   * `historyNote` is set for the second and third and is what the cards draw
+   * INSTEAD of `preview.when`; `history` stays null, so `whenRun` draws nothing
+   * on a row rather than a dash a reader would have to decode.
+   */
+  let history = null;
+  let historyNote = null;
+
+  async function ensureHistory() {
+    if (history !== null || historyNote !== null) return;
+    try {
+      const body = await ctx.api('/api/injection-history');
+      if (body.rows === null || body.rows === undefined) {
+        historyNote = { key: 'preview.whenabsent', slots: {} };
+        return;
+      }
+      history = historyIndex(body.rows);
+      history.truncated = body.truncated === true;
+      history.cap = body.cap ?? body.rows.length;
+    } catch (error) {
+      historyNote = { key: 'preview.whenoff', slots: { reason: error.message } };
+    }
+  }
+
+  /**
+   * The When on one row: the last time this item really did this, at the tier
+   * the row names, or under another tier with that tier named, or never.
+   *
+   * `null` when there are no times at all — the card carries `historyNote`
+   * instead, said once where a reader will read it rather than repeated on
+   * twenty rows.
+   *
+   * **`tier === null` asks the item-level question**, which is the only one the
+   * filtered-at-`seen` rows can ask: those items reached no tier, so there is no
+   * tier of theirs to match against.
+   */
+  function whenRun(role, id, tier) {
+    if (history === null) return null;
+    const run = el('span', 'small');
+    const key = role === 'injected' ? 'preview.lastinj' : 'preview.lastspill';
+    const exact = tier === null ? undefined : history.byTriple.get(historyKey(role, id, tier));
+    if (exact !== undefined) {
+      run.append(...ctx.t(key, { at: stampOf(exact), tier: String(tier) }));
+      return run;
+    }
+    // No record at this row's tier. The item's most recent record under ANY
+    // tier is a weaker statement and a true one, and it is drawn with that
+    // tier NAMED — never folded into the row's own tier, which would report an
+    // event at a tier where it did not happen.
+    const other = history.byPair.get(historyKey(role, id, null));
+    if (other !== undefined) {
+      run.append(...ctx.t(key, { at: stampOf(other.at), tier: other.tier }));
+      return run;
+    }
+    // **A measured absence, drawn and named.** An empty cell here reads as a
+    // rendering failure; "never delivered" is a fact the projection actually
+    // holds, and it is the more informative half of this column —
+    // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`.
+    run.append(...ctx.t(role === 'injected' ? 'preview.neverinj' : 'preview.neverspill'));
+    return run;
+  }
+
+  /**
+   * **What the current `draw()` still owes a When to**, in draw order.
+   *
+   * The selection is fetched and drawn first and the audit history a moment
+   * later (see `show()`), so the first paint has rows and no times. What it must
+   * NOT do is redraw when the times land: `out.replaceChildren()` followed by a
+   * second `draw()` swaps every node on the screen out from under whoever is
+   * reading it — measured 2026-08-29 as `e2e/served-shape.spec.ts` failing on
+   * one run in one, at `--workers=1`, because `evaluateAll` takes an
+   * instantaneous snapshot and the row it had located had been replaced. A real
+   * reader mid-click meets the same swap.
+   *
+   * So the second pass DECORATES instead: each row keeps the identity of the
+   * When it is owed, each card keeps an empty paragraph in the position its
+   * sentence will occupy, and `fillWhen` fills both in place. Nothing moves, and
+   * a card drawn on the first visit has the same node order as one drawn on the
+   * fifth.
+   */
+  let whenTargets = [];
+
+  /** Append the When to a row now, or register the row to be filled later. */
+  function whenSlot(row, role, id, tier) {
+    const run = whenRun(role, id, tier);
+    if (run !== null) row.append(run);
+    else whenTargets.push({ row, role, id, tier });
+  }
+
+  /**
+   * The When disclosure a card carries once: what the column IS, or why it is
+   * missing, plus the cut line where the answer was bounded.
+   *
+   * **Three states, not two.** Both `null` is NOT READ YET, and it leaves the
+   * paragraph EMPTY rather than absent: the rows carry no When either, so a
+   * sentence describing the column would be a claim about a column that is not
+   * on screen — and an absent paragraph would have to be inserted later, which
+   * is the node movement this whole arrangement exists to avoid.
+   */
+  function paintWhenNote(note) {
+    note.replaceChildren();
+    if (history === null && historyNote === null) return;
+    note.append(...(historyNote === null
+      ? ctx.t('preview.when')
+      : ctx.t(historyNote.key, historyNote.slots)));
+    // The cut sentence joins the SAME paragraph rather than adding a second
+    // one, for the reason above: what arrives late may fill a node, never
+    // create one beside it.
+    if (history !== null && history.truncated) {
+      note.append(' ', ...ctx.t('preview.whentrunc', { n: num(history.cap) }));
+    }
+  }
+
+  function whenNote(card) {
+    const note = el('p', 'small');
+    card.append(note);
+    paintWhenNote(note);
+    if (history === null && historyNote === null) whenTargets.push({ note });
+  }
+
+  /**
+   * The second pass, run once `/api/injection-history` has answered: every row
+   * gains its run and every card its sentence, in place.
+   */
+  function fillWhen() {
+    for (const target of whenTargets) {
+      if (target.note !== undefined) { paintWhenNote(target.note); continue; }
+      const run = whenRun(target.role, target.id, target.tier);
+      if (run !== null) target.row.append(run);
+    }
+    whenTargets = [];
   }
 
   function drawPathSlot(event) {
@@ -443,7 +758,7 @@ export async function render(root, ctx) {
       // repository into a refusal the reader would have to decode.
       if (event === 'tool' && chosenPath === null) { shown = null; out.replaceChildren(); return; }
 
-      const qs = selectQuery(event, event === 'tool' ? chosenPath : null, ctx.session());
+      const qs = selectQuery(event, event === 'tool' ? chosenPath : null, sessionFor());
       // Rule 2's exception — see above. The selection MOVED, so what is drawn
       // answers a question the reader has already left.
       if (qs !== shown) { shown = null; out.replaceChildren(); }
@@ -462,6 +777,52 @@ export async function render(root, ctx) {
       out.replaceChildren();
       shown = qs;
       draw(selection, sim, corpus);
+
+      // ── THE WHEN ARRIVES SECOND, AND IT DECORATES RATHER THAN REDRAWS ───
+      //
+      // **Not in the wave above.** `/api/injection-history` opens the AUDIT
+      // PROJECTION and the server reads it synchronously; the three requests
+      // above open the INDEX and carry this screen's actual subject. Sequencing
+      // the heavier, unrelated read after them means a reader gets the selection
+      // immediately and the history a moment later, rather than waiting on the
+      // log to be told what would be injected.
+      //
+      // **What this ordering is NOT.** It is not a fix for
+      // `500 {"error":"database is locked"}`, which this workspace's browser
+      // suite produces on its own: `e2e/app.ts` runs `mycontext audit` before
+      // every fixture and several workers do it at once over one corpus, so a
+      // server read can land on a sibling's write. Measured 2026-08-29 on
+      // `e2e/item-pane.spec.ts` under four workers — SIX runs of eight failed
+      // with this fetch removed from the screen entirely, three of eight with it
+      // present, and none at all at `--workers=1`. The contention predates this
+      // change and belongs to the harness; it is in the report, not papered over
+      // here.
+      //
+      // **NOT awaited, and that is the part that had to be measured.**
+      // `route()` awaits `render()`, and `renderScreen` QUEUES the next render
+      // behind it — so an `await` here keeps `render()` pending for the length of
+      // an audit read and pushes any queued re-render (a live invalidation, a
+      // second route to this screen) that much later. Measured: with the fetch
+      // awaited, `e2e/served-shape.spec.ts` failed four runs out of four at
+      // `--workers=1` and zero out of four with it removed — its `count()` takes
+      // an instantaneous reading and was landing in the window where the delayed
+      // re-render had cleared the section and not yet redrawn it. A real reader
+      // gets the same blank. So `render()` resolves the moment the selection is
+      // drawn, exactly as it did before the When existed, and the times catch up
+      // afterwards.
+      //
+      // **`fillWhen`, never a second `draw`.** Redrawing would clear `out` and
+      // rebuild it, swapping every node on screen out from under whoever is
+      // reading. So the rows and cards this pass drew keep their places and are
+      // filled in situ — nothing moves, and nothing a reader had located stops
+      // existing.
+      //
+      // `ensureHistory` never rejects, so there is nothing to catch; the
+      // generation guard is what stops a reader who moved the event meanwhile
+      // from having a stale screen decorated.
+      if (history === null && historyNote === null) {
+        void ensureHistory().then(() => { if (mine === generation) fillWhen(); });
+      }
     } catch (error) {
       if (mine !== generation) return;
       // The endpoint's own words, drawn INSTEAD of the data: an empty selection
@@ -473,6 +834,10 @@ export async function render(root, ctx) {
   }
 
   function draw(selection, sim, corpus) {
+    // Every row and card this pass will owe a When to is collected fresh: the
+    // previous pass's nodes are gone, and filling one of them would write into
+    // a screen nobody is looking at.
+    whenTargets = [];
     // `Delivered` — the three numbers `preview.cap` words. `used` is
     // `Selection.tokens`, the figure the budget decisions were actually made
     // against and which the selector computed rather than a client re-derived;
@@ -537,14 +902,24 @@ export async function render(root, ctx) {
       row.type = 'button';
       row.dataset.id = entry.item.id;
       row.append(idFull(entry.item.id), tierChip(entry.tier));
+      // **The When, and it is about the PAST rather than about this row's
+      // selection.** Nothing on this screen is being injected as the reader
+      // looks at it — `select()` was asked what a session start WOULD get. So
+      // the instant here is the last time this item really was delivered, read
+      // from `audit_item`, and two rows can carry times weeks apart without
+      // either being wrong. `preview.when`, below the list, says exactly that
+      // in the reader's own language; getting this wrong would put a stale
+      // reading on the one screen that promises *exactly what Claude gets*.
+      whenSlot(row, 'injected', entry.item.id, entry.tier);
       return row;
     }, { cap: BOUND_CAP_LIST, order: 'admitted', displayOnly: true });
     delivered.append(rows, deliveredBound);
+    whenNote(delivered);
 
     // Why not sits in the SECOND column, so `drawGates` is handed its host
     // rather than reaching for `out`.
     two.append(delivered);
-    drawGates(corpus, selection, two);
+    drawGates(corpus, selection, sim, two);
     out.append(two);
 
     drawCarry(selection.index);
@@ -733,6 +1108,12 @@ export async function render(root, ctx) {
       // the ruling rather than prose.
       if (spill.band !== undefined) row.append(mono(`band ${spill.band}`));
       row.append(mono(spill.tier === 'index' ? '—' : num(cost.get(spill.id) ?? 0)));
+      // The last time this item really DID spill, from this tier — not a
+      // property of the spill on this row, which has not happened. See
+      // `preview.when` and `whenRun`. A row with no prior record reads "never
+      // spilled before", which is more informative than a gap: it is spilling
+      // here for the first time.
+      whenSlot(row, 'spilled', spill.id, spill.tier);
       // The reason as the tooltip, in the SERVER's own words — the same
       // treatment the ghost lane gives it, and never parsed for the figures
       // above.
@@ -741,9 +1122,88 @@ export async function render(root, ctx) {
     }, { cap: BOUND_CAP_LIST, order: 'considered' });
     card.append(bound);
 
+    // ── WHICH EMPTINESS THIS IS, WHEN IT IS EMPTY ─────────────────────────
+    //
+    // `boundedList` closes an empty list with *Showing all 0*, which is true
+    // and is not the fact a reader needs. **"Nothing spilled" and "nothing
+    // reached the budget gate" are different facts**, and the second one used
+    // to be drawn as the first: on this repository's own corpus a warm session
+    // start answered `full: 0, spilled: 0` while 106 items had been removed one
+    // gate earlier, and the screen said *Delivered 0 · Not delivered 0* with the
+    // 106 accounted for nowhere at all. That is the exact shape
+    // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` forbids,
+    // and it is why the owner read this panel as broken rather than as empty.
+    //
+    // `full.length + spilled.length` is what actually REACHED the budget gate:
+    // every full-text candidate that got there was either admitted or spilled,
+    // by construction — `fitToBudget` returns exactly those two lists. The
+    // index tier is not counted, because it admits LINES and its own overflow
+    // is `index.truncated`, drawn on the ribbon.
+    const filtered = sim.seenFiltered ?? [];
+    if (selection.spilled.length === 0) {
+      const reached = selection.full.length + selection.spilled.length;
+      const empty = el('p', 'small');
+      if (reached > 0) empty.append(...ctx.t('preview.spillNone', { n: num(reached) }));
+      else if (filtered.length > 0) {
+        empty.append(...ctx.t('preview.spillUnreached', { n: num(filtered.length) }));
+      } else empty.append(...ctx.t('preview.spillNoCand'));
+      card.append(empty);
+    }
+
     const note = el('p', 'small');
     note.append(...ctx.t('preview.spilln'));
     card.append(note);
+    whenNote(card);
+
+    // ── RUNG 5: WHAT THE `seen` GATE REMOVED, NAMED ───────────────────────
+    //
+    // **The second half of this card, and the one that closes the accounting
+    // hole.** `Not delivered` used to mean "spilled at the budget", which is
+    // one of two ways an item fails to arrive; the other is that this session
+    // has already been given it, and until `/api/simulate` began serving
+    // `seenFiltered` (2026-08-29) that removal rode on no response and could
+    // not be drawn at all. This file's own header used to say so of rung 5:
+    // *"the field is not in any response, so no item can be shown failing at
+    // it"*.
+    //
+    // **It sits under the spills rather than in a card of its own**, because a
+    // reader asking "why did this not arrive" is looking at exactly one place,
+    // and two cards would split one question across them. The heading above
+    // stays what it is — every row here is also an item that was not delivered.
+    //
+    // **The sentence does NOT claim these would otherwise have arrived**, and
+    // that restraint is the point. Rung 5 runs before any tier picks its
+    // candidates, so an item can clear it and still be no tier's candidate:
+    // `always` for pinned, `matchesScope` for jit, the restore list for
+    // restored. `preview.seen` says what the gate removed and stops there. What
+    // a fresh window would actually get is the OTHER question, and the control
+    // at the top of the screen is how a reader asks it.
+    //
+    // A `seen` row has no tier — it reached none — so its When asks the
+    // item-level question, which `whenRun` takes as `tier === null`.
+    const seenLine = el('p', 'small');
+    seenLine.append(...(filtered.length === 0
+      ? ctx.t('preview.seen0')
+      : ctx.t('preview.seen', { n: num(filtered.length) })));
+    card.append(spaced(seenLine));
+    if (filtered.length > 0) {
+      const seenRows = el('div', 'rows');
+      seenRows.id = 'seenRows';
+      seenRows.setAttribute('role', 'group');
+      seenRows.setAttribute('aria-label', ctx.tFlat('aria.gatepick'));
+      const seenBound = boundedList(ctx, seenRows, filtered, (id) => {
+        const row = el('button', 'row');
+        row.type = 'button';
+        row.dataset.id = id;
+        row.append(idFull(id));
+        whenSlot(row, 'injected', id, null);
+        return row;
+      // `considered`, and never `displayOnly`: these items were considered at
+      // rung 5 in this order and NONE of them was in the injection, which is
+      // the one claim `displayOnly` would make.
+      }, { cap: BOUND_CAP_LIST, order: 'considered' });
+      card.append(seenRows, seenBound);
+    }
     out.append(card);
   }
 
@@ -766,18 +1226,24 @@ export async function render(root, ctx) {
    * order so an item hidden by focus AND unscoped under `inert` binds at rung
    * 3, which is where `select` would have stopped, and not at rung 4.
    *
-   * **Rung 5 has no source and therefore no candidate.** The `seen` set is
-   * resolved server-side out of the session and rides on no response, so this
-   * screen cannot name an item that was filtered as already-delivered. The
-   * rung is still DRAWN — a ladder with a rung missing would be the one shape
-   * this view exists to prevent — it simply never binds. Filed as its own task.
+   * **Rung 5 has a source since 2026-08-29, and the ladder is now whole.** It
+   * used to read: *"the seen set is resolved server-side out of the session and
+   * rides on no response, so this screen cannot name an item that was filtered
+   * as already-delivered … it simply never binds."* `/api/simulate`'s
+   * `seenFiltered` is that source — `select`'s own `injectable ∩ seen`,
+   * computed in the read model from the four imported predicates rather than
+   * respelled — so an item removed at the gate is placed on rung 5 for real,
+   * and the exemplar picker offers one. Rung 5 is also where the specimen most
+   * often binds on a WARM preview, which is why the rung's absence was invisible
+   * for so long: cold is the only question the screen used to ask, and cold
+   * removes nothing here.
    *
    * The picker holds one representative per rung, lowest first, and opens on
    * the DEEPEST one: the item that got furthest before failing is the one whose
    * ladder has something to show above the break, and it is the case the design
    * of record opens on too.
    */
-  function drawGates(corpus, selection, host) {
+  function drawGates(corpus, selection, sim, host) {
     const card = el('div', 'card pane');
     const heading = el('h3');
     heading.append(...ctx.t('preview.why'));
@@ -810,6 +1276,12 @@ export async function render(root, ctx) {
 
     const hidden = new Set(selection.focus === null ? [] : selection.focus.hidden);
     const spills = new Map(selection.spilled.map((spill) => [spill.id, spill]));
+    // **Rung 5, which had no source until 2026-08-29.** `/api/simulate` now
+    // serves the ids the `seen` gate removed, computed against the SAME context
+    // the selection was — so an item placed on this rung is one `select` really
+    // did drop there, not one this file guessed at from a session id it does
+    // not have.
+    const seenOut = new Set(sim.seenFiltered ?? []);
 
     /** The first rung this item fails, walked in ladder order. -1 if it fails none. */
     const rungOf = (item) => {
@@ -823,6 +1295,11 @@ export async function render(root, ctx) {
       // event's path does not reach is simply absent from the picker rather
       // than being placed on a rung nobody served.
       if (own === 3) return 3;
+      // Rung 5 before rung 6, which is `select`'s own order and the whole
+      // reason this ladder exists: `fresh` is computed BEFORE `fitToBudget`
+      // runs, so an item that is both already-delivered and unaffordable binds
+      // where the selector actually stopped.
+      if (seenOut.has(item.id)) return 4;
       return spills.has(item.id) ? 5 : -1;
     };
 
@@ -852,6 +1329,12 @@ export async function render(root, ctx) {
         }
         return parts;
       }
+      // Rung 5 has no server sentence to carry: the `seen` gate produces a set,
+      // not a phrase — `fresh = injectable.filter((i) => !seen.has(i.id))` — so
+      // the diagnosis is this screen's own keyed sentence rather than a
+      // paraphrase of a reason nobody wrote. It says what membership of that
+      // set MEANS and nothing more.
+      if (rung === 4) return [...ctx.t('preview.gseen')];
       // `Spill.reason` and `injection()`'s `phrase` ride untranslated, for the
       // reason the carry's drop reasons do: each is its own one spelling, and
       // there is no stable code under it to translate from.
@@ -1058,6 +1541,11 @@ export async function render(root, ctx) {
   }
 
   evsel.onchange = () => { void show(); };
-  dropSessionListener = ctx.onSessionChange(() => { void show(); });
+  // The question strip is repainted BEFORE the refetch, because the warm option
+  // is labelled with the session id itself: a shell that moved to another
+  // session and left this strip naming the old one would be captioning the new
+  // answer with the old question.
+  dropSessionListener = ctx.onSessionChange(() => { paintQ(); void show(); });
+  paintQ();
   await show();
 }

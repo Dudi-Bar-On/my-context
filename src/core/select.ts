@@ -342,7 +342,19 @@ export function isEligible(item: Item, config: Config): boolean {
   return Boolean(category?.enabled);
 }
 
-function isNormative(item: Item, config: Config): boolean {
+/**
+ * The GOVERNANCE tier gate — rung 2, and `select`'s own `injectable` filter.
+ *
+ * **Exported 2026-08-29 so that `ui/read-model.ts` can name what the `seen`
+ * gate removed without spelling this test a THIRD time.** It was already
+ * spelled twice — here, and inline inside `cli/commands/injection.ts` where the
+ * verdict has to answer rung 2 with its own sentence — and the preview needed
+ * `injectable` in order to report the rung-5 filter (`/api/simulate`'s
+ * `seenFiltered`). A fourth spelling in a browser-facing read model is exactly
+ * the drift `GateCode` exists to prevent, so the function travels instead of
+ * the predicate.
+ */
+export function isNormative(item: Item, config: Config): boolean {
   return config.categories[item.type]?.tier === 'normative';
 }
 

@@ -160,6 +160,26 @@ export const strings = {
   'preview.ribbon': 'Budget ribbon — five tiers, and what fell out of each',
   'preview.ribbonn': 'One segment per admitted item, sized by its real {m:itemCost}. Beneath each track is the {b:ghost lane}: every spilled item at the width it would have taken, in the position the selector considered it. A wide ghost followed by a narrow fill is first-fit being honest — drawing spills as a tail would misrepresent the algorithm. A tier this event never reaches is drawn as {b:absent}, hatched and named; an empty track would claim it ran and delivered nothing, which is a different fact. Follows the event selector above rather than adding a second one.',
   'preview.contover': '{b:Continuity overflow} — {n} continuity item(s) did not fit {m:budgets.continuity}: {mv:ids}, costing {mv:cost} against a budget of {mv:budget}. The continuity guarantee is NOT in force for this session. It is said here, in the injected block itself and as a doctor finding, because a continuity item dropped in silence is the exact defect this tier exists to end.',
+  // ── The warm/cold question, the `seen` gate, and the When column ───────
+  //
+  // Added 2026-08-29 with the fix for "Not delivered is not working". Three
+  // groups, and each closes a hole the screen had been drawing a zero over.
+  'preview.qwarmn': 'the seen set it has really been given',
+  'preview.qnote': '{b:Two questions, not two views.} The default is what the session above would be given now — seen set, focus and carry included, which is what {b:exactly what Claude gets} means. {b:Cold} answers what a brand-new window would get from the same corpus. Both are legitimate; neither is ever shown as the other, and the pressed control says which one you are reading.',
+  'preview.seen': '{b:Filtered before budgeting} — {n} item(s) reached the {m:seen} gate and were removed there, because this session has already been given them. Rung 5 runs before any tier picks its candidates, so this is what the gate removed and not what would otherwise have arrived.',
+  'preview.seen0': 'Nothing was removed at the {m:seen} gate: none of the injectable corpus has been delivered to this session yet. A cold preview always reads zero here, because a brand-new window has been shown nothing.',
+  'preview.spillNone': 'Everything that reached the budget gate fit — {n} candidate(s) went in and none spilled. That is a full budget, not an empty answer.',
+  'preview.spillUnreached': 'Nothing reached the budget gate. {n} item(s) were removed one gate earlier, at {m:seen}, as already delivered to this session — so no tier had a candidate left to offer it. This zero is {b:not} "nothing spilled".',
+  'preview.spillNoCand': 'Nothing reached the budget gate, and nothing was removed at {m:seen} either: no tier that ran on this event had a candidate to offer. This zero is {b:not} "nothing spilled".',
+  'preview.gseen': 'already delivered to this session, so it was filtered at the {m:seen} gate — before any budget was consulted',
+  'preview.when': '{b:The When on each row is the past, not this preview.} A preview is a simulation: nothing here is being injected as you read it. Each row carries the last time that item really was delivered, or really did spill, from {m:audit_item.role} joined to {m:audit.at} — matched on the tier the row itself names, and naming the tier when only another one has a record. Two rows can be weeks apart and both be right.',
+  'preview.whenoff': '{b:Delivery times unavailable} — {reason}',
+  'preview.whenabsent': '{b:Delivery times unavailable} — the audit projection has never been built in this workspace, so there is no record to read. {m:mycontext audit} builds it; a read surface may not, because building it is a write.',
+  'preview.whentrunc': 'The delivery-time answer was cut at {n} rows, so a row may read {b:never} where the log holds an older record than the cut.',
+  'preview.lastinj': 'last delivered {mv:at} · {mv:tier}',
+  'preview.neverinj': 'never delivered',
+  'preview.lastspill': 'last spilled {mv:at} · {mv:tier}',
+  'preview.neverspill': 'never spilled before',
   // Scope coverage
   'cov.h': 'Scope coverage',
   'cov.v': 'the gaps are the point',
