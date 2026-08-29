@@ -1087,7 +1087,14 @@ svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
    "before" width to animate from, the same reason [data-p] needed
    @starting-style above, except here the fix is keying/reusing nodes across
    a re-render, which is JS render-logic, not a transition/animation
-   declaration. Flagged rather than edited. */
+   declaration. Flagged rather than edited.
+
+   2026-08-30: the APP did that fix. screens/preview.js keys its segments by
+   item id and reuses the node, so the identical rule fires there and
+   e2e/preview-retime.spec.ts measures it on the page. This paragraph stays
+   because it is still true of renderRibbons() BELOW, which does still rebuild —
+   but it is no longer true of the product, and a reader arriving here should
+   not take "wired and inert" as a statement about the rule. */
 @media (prefers-reduced-motion:no-preference){
   .track .seg{transition:inline-size var(--dur-retime) var(--ease)}
 }

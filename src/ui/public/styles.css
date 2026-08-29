@@ -1152,13 +1152,15 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
 .track .seg{block-size:100%;border-inline-end:1px solid #00000066;
   min-inline-size:2px}
 /* Spec §5's retiming: change the event and a segment TRAVELS to its new
-   width rather than redrawing, because here the movement is the data. It is
-   wired and inert for the same reason the mockup records against its own
-   copy — `renderRibbons()` there, and `drawRibbons()` here, rebuild every
-   `.seg` from scratch on each event change, and a brand-new node has no
-   "before" width to animate from. Carried anyway, byte-identical: the day
-   either file keys its segments across a re-render, the declaration is
-   already in both. */
+   width rather than redrawing, because here the movement is the data. This
+   note used to say the declaration was "wired and inert" in BOTH files. That
+   became half false on 2026-08-30: `drawRibbons()` now keys its segments and
+   reuses the node, so the transition fires here and `e2e/preview-retime.spec.ts`
+   measures it on the page — a `transitionrun` on `inline-size`, and a width
+   sampled strictly between the old and the new. The mockup's `renderRibbons()`
+   still rebuilds, so its half of the note stands. Carried byte-identical, as
+   `styles-parity` requires; the day the mockup keys its segments too, this
+   paragraph loses its second clause as well. */
 @media (prefers-reduced-motion:no-preference){
   .track .seg{transition:inline-size var(--dur-retime) var(--ease)}
 }
