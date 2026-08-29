@@ -354,6 +354,70 @@ function sized(node, percent) {
 }
 
 /**
+ * **ONE ROW OF DIVS, RECONCILED BY KEY — the whole of the retiming fix.**
+ *
+ * A `.track` or a `.ghosts` lane is a flat, ordered row of sized divs. This
+ * brings such a row to `wanted` by touching only what actually changed: a key
+ * already on screen keeps ITS OWN DOM NODE and has its width written into it,
+ * a key that is new gets a node, and a key that has gone is removed.
+ *
+ * **Node identity is the point, not an optimisation.** `.track .seg` declares
+ * `transition:inline-size`, and a transition needs a previous computed value
+ * to start from — which is exactly what a rebuilt element does not have. That
+ * is why this exists rather than `replaceChildren()` and a loop.
+ *
+ * **It never moves a node it does not have to.** `insertBefore` is called only
+ * when the node found for a key is not already the one under the cursor, so an
+ * unchanged row does no DOM writes at all beyond its width. A move is a remove
+ * and an insert, and a `.seg` that leaves the document loses the width the
+ * transition would have animated from — so an implementation that re-appended
+ * every node in order would look like a fix and behave like the defect.
+ *
+ * `cache` is the caller's key → node map from the previous pass, and is
+ * rewritten in place to this pass's.
+ *
+ * Each `want` is `{key, cls, size}`. A `null` `size` leaves `inline-size`
+ * alone — `.seg.head` is `flex:1` and `.notrun` is `flex:1`, and writing a
+ * percentage onto either would be this file inventing a width the stylesheet
+ * already decides.
+ *
+ * **Tooltips are NOT carried through here, deliberately.** A `title` is text a
+ * person reads, and `test/ui/screen-literals.test.ts` walks the five syntactic
+ * positions text reaches the DOM from — `.title = TEXT` among them, an object
+ * property not. Passing the ribbon's two tooltips as `{title}` moved them out
+ * of everything that counts literals on this screen, which is the exact shape
+ * of the defect that check was written for. They are assigned at the call
+ * site, on the node this returns in `cache`.
+ */
+function keyedRow(host, wanted, cache) {
+  const next = new Map();
+  let cursor = host.firstChild;
+  for (const want of wanted) {
+    let node = cache.get(want.key);
+    if (node === undefined) {
+      node = el('div', want.cls);
+      host.insertBefore(node, cursor);
+    } else if (node === cursor) {
+      cursor = cursor.nextSibling;
+    } else {
+      host.insertBefore(node, cursor);
+    }
+    if (node.className !== want.cls) node.className = want.cls;
+    if (want.size !== null) sized(node, want.size);
+    next.set(want.key, node);
+  }
+  // Whatever the cursor is still pointing at is last pass's tail, and this
+  // pass did not ask for it.
+  while (cursor !== null) {
+    const dead = cursor;
+    cursor = cursor.nextSibling;
+    dead.remove();
+  }
+  cache.clear();
+  for (const [key, node] of next) cache.set(key, node);
+}
+
+/**
  * A cost as a percentage of its tier's budget — the one arithmetic the ribbon
  * does.
  *
@@ -995,10 +1059,89 @@ export async function render(root, ctx) {
    * be a lie rather than a stale-but-true reading. A refresh for the SAME
    * question — which is every `onSessionChange` on an unchanged selection —
    * keeps what is drawn until the replacement is in hand.
+   *
+   * **And it spares the budget ribbon, which is `clearOut` rather than
+   * `out.replaceChildren()` below.** The widths on that card are the FROM state
+   * of the one transition this UI declares, so clearing them is not a stale
+   * answer removed, it is the retiming cancelled — `ribbonCard` carries the
+   * whole argument. `blankOut` is the door for the states that are not an
+   * answer at all.
    */
   let generation = 0;
   /** The query string `out`'s current contents answer, or `null` if nothing does. */
   let shown = null;
+
+  /**
+   * **THE RIBBON CARD IS BUILT ONCE PER `render()`, AND IT IS THE ONLY THING IN
+   * `out` THAT SURVIVES A REDRAW.**
+   *
+   * `@media (prefers-reduced-motion:no-preference){.track .seg{transition:
+   * inline-size var(--dur-retime) var(--ease)}}` is the design of record's ONE
+   * deliberate motion exception — the movement IS the information: change
+   * `#evsel` and the tracks retime to the new event's spend rather than
+   * cutting to it. The declaration shipped correct and INERT, because
+   * `drawRibbons` rebuilt every `.seg` on every draw and a brand-new element
+   * has no previous width to animate FROM. The mockup flagged exactly this
+   * beside its own rule and left the fix here: *"keying/reusing nodes across a
+   * re-render, which is JS render-logic, not a transition declaration"*.
+   *
+   * So the card, its `#ribbons` host, its five `.ribbon`s and every `.seg`
+   * inside them are created ONCE and updated in place. Nothing below ever
+   * MOVES a `.seg`, either: a node taken out of the document and put back
+   * loses the computed width the transition would have started from, so a
+   * reconcile that re-appends in order would be the same defect wearing the
+   * fix's clothes. Nodes are only inserted, updated or removed.
+   *
+   * **AND THAT IS WHY THE PRE-CLEAR BELOW SPARES IT.** `show()`'s one
+   * surviving pre-clear drops the answer to a question the reader has left —
+   * right for rows, and precisely wrong for this card, because the widths on
+   * screen ARE the FROM state of the retiming the reader just asked for.
+   * Clearing them for the length of a fetch is the blanking shape this screen
+   * has already paid for twice (`out` cleared before the request; the strip's
+   * four fillers clearing before an await). The ribbon is swapped in place, in
+   * both directions. It is blanked only where there is no answer at all —
+   * a refused request, or a tool event with no path — and `blankOut` forgets
+   * the kept nodes in the same act, so the next draw builds a fresh card
+   * rather than reviving a detached one.
+   */
+  let ribbonCard = null;
+  /** The continuity-overflow paragraph, drawn only when the tier overflowed. */
+  let ribbonLoud = null;
+  /** tier → the persistent nodes of its one `.ribbon`, and its keyed caches. */
+  const ribbonTiers = new Map();
+
+  /** Empty `out` of everything EXCEPT the kept ribbon card. */
+  function clearOut() {
+    for (let child = out.firstChild; child !== null;) {
+      const next = child.nextSibling;
+      if (child !== ribbonCard) child.remove();
+      child = next;
+    }
+  }
+
+  /**
+   * Empty `out` outright, ribbon included, and forget the kept nodes — for the
+   * two states that are not an answer to this screen's question at all.
+   */
+  function blankOut(...replacement) {
+    out.replaceChildren(...replacement);
+    ribbonCard = null;
+    ribbonLoud = null;
+    ribbonTiers.clear();
+  }
+
+  /**
+   * Put a node into `out` ABOVE the kept ribbon card, so the card holds its
+   * place at the bottom without ever being moved — the ribbon still comes
+   * last, and a move would cancel the very transition this is all for.
+   */
+  function emit(...nodes) {
+    const anchor = ribbonCard !== null && ribbonCard.parentNode === out ? ribbonCard : null;
+    for (const node of nodes) {
+      if (anchor === null) out.append(node);
+      else out.insertBefore(node, anchor);
+    }
+  }
 
   async function show() {
     const mine = ++generation;
@@ -1014,12 +1157,12 @@ export async function render(root, ctx) {
       // No file to preview a tool event against. `/api/select` refuses
       // `event=tool` without a path, and asking anyway would turn an empty
       // repository into a refusal the reader would have to decode.
-      if (event === 'tool' && chosenPath === null) { shown = null; out.replaceChildren(); return; }
+      if (event === 'tool' && chosenPath === null) { shown = null; blankOut(); return; }
 
       const qs = selectQuery(event, event === 'tool' ? chosenPath : null, sessionFor());
       // Rule 2's exception — see above. The selection MOVED, so what is drawn
       // answers a question the reader has already left.
-      if (qs !== shown) { shown = null; out.replaceChildren(); }
+      if (qs !== shown) { shown = null; clearOut(); }
       // `/api/select` is `select()`'s serialization and nothing else (design
       // decision 7), so the SELECTION is read from there and never from the
       // simulator's copy of it. `/api/simulate` is asked only for the two things
@@ -1032,7 +1175,7 @@ export async function render(root, ctx) {
       if (mine !== generation) return;
       // Here, and nowhere earlier: the replacement is in hand, so the swap is
       // one act and the screen is never both empty and current.
-      out.replaceChildren();
+      clearOut();
       shown = qs;
       draw(selection, sim, corpus);
 
@@ -1087,7 +1230,7 @@ export async function render(root, ctx) {
       // and a refused request are two facts, and only one of them is about the
       // corpus.
       shown = null;
-      out.replaceChildren(errorNote(error.message));
+      blankOut(errorNote(error.message));
     }
   }
 
@@ -1178,7 +1321,7 @@ export async function render(root, ctx) {
     // rather than reaching for `out`.
     two.append(delivered);
     drawGates(corpus, selection, sim, two);
-    out.append(two);
+    emit(two);
 
     drawCarry(selection.index);
     // Between the ladder and the ribbon, and that is the argument the whole
@@ -1244,7 +1387,7 @@ export async function render(root, ctx) {
       lines: num(carried.shown),
       session: `${carried.sessionId} · ${carried.label}`,
     }));
-    out.append(spaced(line));
+    emit(spaced(line));
 
     // The same rule as the delivered list, by the owner's own instruction:
     // `IndexLine` is `{id, type, title, carried?}` and has no timestamp either.
@@ -1260,7 +1403,7 @@ export async function render(root, ctx) {
       block.append(linkId(indexLine.id), chip);
       return block;
     }, { cap: BOUND_CAP_LIST, order: 'admitted', displayOnly: true });
-    out.append(carriedHost, carriedBound);
+    emit(carriedHost, carriedBound);
 
     if (carried.dropped.length > 0) {
       const dropped = el('p', 'small');
@@ -1271,7 +1414,7 @@ export async function render(root, ctx) {
         // to translate from.
         ids: carried.dropped.map((d) => `${d.id} (${d.reason})`).join(', '),
       }));
-      out.append(dropped);
+      emit(dropped);
     }
     if (carried.displaced.length > 0) {
       const displaced = el('p', 'small');
@@ -1279,13 +1422,13 @@ export async function render(root, ctx) {
         displaced: num(carried.displaced.length),
         ids: carried.displaced.join(', '),
       }));
-      out.append(displaced);
+      emit(displaced);
     }
     // The fetch line appears only when there is something to fetch.
     if (carried.dropped.length > 0 || carried.displaced.length > 0) {
       const fetchLine = el('p', 'small');
       fetchLine.append(...ctx.t('index.carriedFetch'));
-      out.append(fetchLine);
+      emit(fetchLine);
     }
   }
 
@@ -1462,7 +1605,7 @@ export async function render(root, ctx) {
       }, { cap: BOUND_CAP_LIST, order: 'considered' });
       card.append(seenRows, seenBound);
     }
-    out.append(card);
+    emit(card);
   }
 
   /**
@@ -1764,14 +1907,38 @@ export async function render(root, ctx) {
    * the last sentence of `preview.ribbonn`.
    */
   function drawRibbons(selection, sim) {
-    const card = el('div', 'card pane');
-    const heading = el('h3');
-    heading.append(...ctx.t('preview.ribbon'));
-    const host = el('div', 'plate');
-    host.id = 'ribbons';
-    const note = el('p', 'small');
-    note.append(...ctx.t('preview.ribbonn'));
-    card.append(heading, host, note);
+    // ── THE CARD IS BUILT ONCE AND KEPT ───────────────────────────
+    //
+    // See `ribbonCard` above for why. Everything here after this block is an
+    // UPDATE of nodes that were already on screen, which is what lets
+    // `.track .seg`'s declared `transition:inline-size` actually fire.
+    if (ribbonCard === null) {
+      ribbonCard = el('div', 'card pane');
+      const heading = el('h3');
+      heading.append(...ctx.t('preview.ribbon'));
+      const host = el('div', 'plate');
+      host.id = 'ribbons';
+      const note = el('p', 'small');
+      note.append(...ctx.t('preview.ribbonn'));
+      ribbonCard.append(heading, host, note);
+      // Five FIXED tracks in `TIERS`' order, so a tier never moves either: the
+      // order is the mockup's and it does not depend on the event.
+      for (const tier of TIERS) {
+        const ribbon = el('div', 'ribbon');
+        const label = el('div', 'rlabel');
+        const track = el('div', 'track');
+        const ghosts = el('div', 'ghosts');
+        const hint = el('div', 'hint');
+        ribbon.append(label, track, ghosts, hint);
+        host.append(ribbon);
+        ribbonTiers.set(tier, {
+          ribbon, label, track, ghosts, hint, segs: new Map(), lane: new Map(),
+        });
+      }
+    }
+    // Last in `out`, and put there ONCE — `emit` inserts every other card
+    // above it, so it holds the bottom without ever being moved.
+    if (ribbonCard.parentNode !== out) out.append(ribbonCard);
 
     // **The continuity tier's overflow, said out loud on the screen too.**
     // `select` already reports it structurally (`Selection.continuitySpill`)
@@ -1783,16 +1950,17 @@ export async function render(root, ctx) {
     // warning that is always on screen is a warning nobody reads.
     const overflow = selection.continuitySpill;
     if (overflow) {
-      const loud = el('p', 'small');
-      loud.append(...ctx.t('preview.contover', {
+      if (ribbonLoud === null) ribbonLoud = el('p', 'small');
+      ribbonLoud.replaceChildren(...ctx.t('preview.contover', {
         n: String(overflow.ids.length),
         ids: overflow.ids.join(', '),
         cost: num(overflow.cost),
         budget: num(overflow.budget),
       }));
-      card.append(loud);
+      if (ribbonLoud.parentNode !== ribbonCard) ribbonCard.append(ribbonLoud);
+    } else if (ribbonLoud !== null) {
+      ribbonLoud.remove();
     }
-    out.append(card);
 
     const cost = new Map(sim.costs.map((entry) => [entry.id, entry.tokens]));
     let fullTokens = 0;
@@ -1805,14 +1973,15 @@ export async function render(root, ctx) {
     const indexTokens = Math.max(0, selection.tokens - fullTokens);
 
     for (const tier of TIERS) {
+      const parts = ribbonTiers.get(tier);
       const budget = sim.budgets[tier];
       // Every width below is a percentage of `scale`; every FIGURE below is
       // computed from `budget`. Keeping the two apart is what lets the ribbon be
       // drawn over a raised range without any sentence on it becoming untrue.
       const scale = scaleFor(tier, budget);
-      const ribbon = el('div', 'ribbon');
-      const label = el('div', 'rlabel');
-      label.append(tierChip(tier));
+      // The label and the hint are SENTENCES and nothing on them animates, so
+      // they are rewritten wholesale. Only the sized rows are reconciled.
+      parts.label.replaceChildren(tierChip(tier));
 
       if (!sim.tiersRun.includes(tier)) {
         // **KEYED SINCE 2026-08-29, and they are the reason `screen-literals`
@@ -1831,24 +2000,40 @@ export async function render(root, ctx) {
         // mockup's words rather than invented ones.
         const absentLabel = el('span');
         absentLabel.append(...ctx.t('preview.notrun'));
-        label.append(absentLabel);
-        const absent = el('div', 'track');
-        absent.append(el('div', 'notrun'));
-        const absentHint = el('div', 'hint');
-        absentHint.append(...ctx.t('preview.notrunn'));
-        ribbon.append(label, absent, absentHint);
-        host.append(ribbon);
+        parts.label.append(absentLabel);
+        keyedRow(parts.track, [{ key: 'notrun', cls: 'notrun', size: null }], parts.segs);
+        // An absent tier has no lane at all — an empty `.ghosts` would be a
+        // shape the mockup does not draw here, and `tree-parity` compares the
+        // shape. Removed rather than emptied, and re-inserted below when the
+        // tier runs again.
+        parts.ghosts.replaceChildren();
+        parts.ghosts.remove();
+        parts.lane.clear();
+        parts.hint.replaceChildren(...ctx.t('preview.notrunn'));
         continue;
       }
 
       // What the track draws, what the lane draws, and the two counts beside
       // the chip. The index tier is one aggregate segment and no ghosts — see
       // this file's header for exactly which figure is missing and why.
+      //
+      // **Every entry carries a `key` beside its `id`, and for the index tier
+      // they are different on purpose.** The key is what a segment is REUSED
+      // by across a draw, so it has to name the thing rather than describe it:
+      // the index aggregate's label counts lines and therefore changes with
+      // the event, and keying on that string would retire the one segment and
+      // build a new one every time — the defect again, one tier along.
       const isIndex = tier === 'index';
       const fits = isIndex
-        ? [{ id: `${selection.index.normative.length} normative index lines`, tokens: indexTokens }]
+        ? [{
+          key: 'index',
+          id: `${selection.index.normative.length} normative index lines`,
+          tokens: indexTokens,
+        }]
         : selection.full.filter((entry) => entry.tier === tier)
-          .map((entry) => ({ id: entry.item.id, tokens: cost.get(entry.item.id) ?? 0 }));
+          .map((entry) => ({
+            key: entry.item.id, id: entry.item.id, tokens: cost.get(entry.item.id) ?? 0,
+          }));
       const spilled = isIndex
         ? []
         : selection.spilled.filter((spill) => spill.tier === tier)
@@ -1863,62 +2048,77 @@ export async function render(root, ctx) {
       // to a scale nobody is told about is the silent-ambiguity shape this
       // project keeps paying for: two ribbons of different widths would
       // otherwise mean the same spend.
-      label.append(el('span', 'n',
+      parts.label.append(el('span', 'n',
         `${num(used)} / ${num(budget)}${scale === budget ? '' : ` · to ${num(scale)}`}`
         + ` · ${inCount} in · ${outCount} out`));
 
-      const track = el('div', 'track');
+      // ── THE TRACK, RECONCILED ────────────────────────────────
+      //
+      // The head is keyed like everything else and stays last: what the tier
+      // did not spend, drawn as the track's own remainder rather than as a
+      // fifth colour. It takes no width — `.seg.head` is `flex:1`.
+      const segments = fits.map((fit) => ({
+        key: fit.key, cls: `seg ${tier}`, size: pct(fit.tokens, scale),
+      }));
+      segments.push({ key: 'head', cls: 'seg head', size: null });
+      keyedRow(parts.track, segments, parts.segs);
+      // The mockup's own tooltip, and an unkeyed literal there as here.
       for (const fit of fits) {
-        const segment = sized(el('div', `seg ${tier}`), pct(fit.tokens, scale));
-        // The mockup's own tooltip, and an unkeyed literal there as here.
-        segment.title = `${fit.id} · ${num(fit.tokens)} tokens`;
-        track.append(segment);
+        parts.segs.get(fit.key).title = `${fit.id} · ${num(fit.tokens)} tokens`;
       }
-      // The head: what the tier did not spend, drawn as the track's own
-      // remainder rather than as a fifth colour.
-      track.append(el('div', 'seg head'));
 
-      const ghosts = el('div', 'ghosts');
-      for (const fit of fits) {
-        // An admitted candidate holds its position INVISIBLY, so a ghost sits
-        // under the place in the track the selector considered it.
-        ghosts.append(sized(el('div', 'gap'), pct(fit.tokens, scale)));
-      }
+      // ── THE GHOST LANE, RECONCILED THE SAME WAY ──────────────
+      //
+      // An admitted candidate holds its position INVISIBLY, so a ghost sits
+      // under the place in the track the selector considered it. `.gap` and
+      // `.gh` are one ordered row and are keyed as one, prefixed so an id that
+      // is both admitted here and spilled elsewhere cannot collide.
+      const lane = fits.map((fit) => ({
+        key: `gap:${fit.key}`, cls: 'gap', size: pct(fit.tokens, scale),
+      }));
       for (const spill of spilled) {
-        const ghost = sized(el('div', 'gh'), pct(spill.tokens, scale));
+        lane.push({ key: `gh:${spill.id}`, cls: 'gh', size: pct(spill.tokens, scale) });
+      }
+      keyedRow(parts.ghosts, lane, parts.lane);
+      for (const spill of spilled) {
+        const ghost = parts.lane.get(`gh:${spill.id}`);
         ghost.title = `${spill.id} · ${num(spill.tokens)} tokens · budget exceeded`;
-        ghosts.append(ghost);
+      }
+      // Back between the track and the hint if an earlier draw took it out for
+      // an absent tier. Guarded rather than unconditional: `insertBefore` on a
+      // child that is already in place is still a remove and an insert, and
+      // moving the lane would move every `.gap` inside it.
+      if (parts.ghosts.parentNode !== parts.ribbon) {
+        parts.ribbon.insertBefore(parts.ghosts, parts.hint);
       }
 
-      const hint = el('div', 'hint');
+      parts.hint.replaceChildren();
       const headroom = budget - used;
       // Said once, before the headroom sentence, so the track's empty tail is
       // never read as headroom it is not: past the budget the tail is range, and
       // range admits nothing until the budget is actually raised.
       if (scale !== budget) {
-        hint.append(
+        parts.hint.append(
           el('b', null, `Drawn to the simulator's range, ${num(scale)}`),
           ` — the budget in force is still ${num(budget)}, and the track past it is `
           + 'range, not headroom. ',
         );
       }
       if (outCount === 0) {
-        hint.append(`Everything selected fit. Headroom ${num(headroom)} tokens.`);
+        parts.hint.append(`Everything selected fit. Headroom ${num(headroom)} tokens.`);
       } else if (isIndex) {
         // The one figure no endpoint serves, said rather than drawn at a width
         // nobody computed.
-        hint.append(`Headroom ${num(headroom)}. ${outCount} index lines did not fit; `
+        parts.hint.append(`Headroom ${num(headroom)}. ${outCount} index lines did not fit; `
           + 'per-line index costs are exposed by no endpoint, so the ghost lane cannot size them.');
       } else {
         const smallest = Math.min(...spilled.map((spill) => spill.tokens));
-        hint.append(
+        parts.hint.append(
           `Headroom ${num(headroom)}. `,
           el('b', null, `the smallest thing that did not fit costs ${num(smallest)}`),
           ' — so the headroom is not usable by anything currently selected.',
         );
       }
-      ribbon.append(label, track, ghosts, hint);
-      host.append(ribbon);
     }
   }
 
