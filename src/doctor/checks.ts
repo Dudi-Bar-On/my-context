@@ -1568,6 +1568,87 @@ const UNFINISHED_TAIL = /(?::|[^.!?)\]"'*_|\u00bb\u201d\u2019\u2026])$/u;
  * and `status` can afford; a corpus large enough for that to matter is one
  * `checkCorpusSize` is already complaining about.
  */
+/**
+ * A `file.ts:123` pointer in an item body, with or without backticks around it
+ * and with or without a `-129` / `,95` tail. The file part is captured so it
+ * can be checked against the repository before anything is reported.
+ */
+const BARE_POINTER = /`?([A-Za-z0-9_.\-/@]+\.(?:ts|js|mjs|cjs|md|json|html|css)):\d+(?:[-,]\d+)*`?/g;
+
+/**
+ * **A line number is not a citation, and this is the only place that says so
+ * where the writing happens.**
+ *
+ * `scripts/verify-citations.ts` resolves citations BY FRAGMENT — a verbatim
+ * quotation of the cited text, which survives a refactor moving it and fails
+ * loudly when the text is rewritten. Its docblock records why it will never
+ * learn `file:line` instead: a bare line number carries no fragment, so the
+ * check can only prove the line EXISTS. Measured over this corpus on
+ * 2026-08-29 that proved the line existed for 161 of 165 pointers while
+ * proving nothing about what any of them said.
+ *
+ * That is why the gate does not walk `.my_context/`: **it walks what it can
+ * resolve by fragment**, and a tree whose citations carry no fragment is out of
+ * scope until they do. Normalising the corpus once would not keep it — agents
+ * and the owner write `file:line` constantly, and the count comes back. So the
+ * form is stated in the corpus (a `standard`, which is injected and therefore
+ * read before the writing) and counted here, which is where a claim that the
+ * writing changed can be checked instead of believed.
+ *
+ * **`info`, deliberately.** A bare pointer is not a defect in the project; it
+ * is a citation that cannot be checked. It costs nothing until someone follows
+ * it, so it is a note that stays visible and countable until the corpus is
+ * converted, rather than a warning that makes `doctor` look broken over
+ * prose.
+ *
+ * **One finding per ITEM, not per pointer**, and the file part must name a
+ * file this repository actually has. Both are for the same reason: the fault
+ * being reported is "this item's citations are unresolvable", which is one
+ * fact per item — and a pointer whose file does not exist here is far more
+ * often an EXAMPLE of the form (`file.ts:123`, written to describe it) than a
+ * citation of anything. Reporting the example as the fault it documents is how
+ * a check earns itself a permanent finding nobody can clear.
+ */
+export function checkCitationForm(repoRoot: string, items: Item[]): Finding[] {
+  const findings: Finding[] = [];
+  const known = new Set<string>();
+  for (const rel of listRepoFiles(repoRoot)) {
+    known.add(rel);
+    known.add(rel.slice(rel.lastIndexOf('/') + 1));
+  }
+  for (const item of items) {
+    if (item.layer !== 'project') continue;
+    const found: string[] = [];
+    BARE_POINTER.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = BARE_POINTER.exec(item.body)) !== null) {
+      const cited = m[1]!;
+      if (!known.has(cited) && !known.has(cited.slice(cited.lastIndexOf('/') + 1))) continue;
+      found.push(m[0].replace(/`/g, ''));
+    }
+    if (found.length === 0) continue;
+    const shown = found.slice(0, 3).join(', ');
+    findings.push({
+      level: 'info', code: 'citation_form', item: item.id,
+      message:
+        `${found.length} citation(s) point by line number and carry no fragment — ${shown}` +
+        `${found.length > 3 ? ', …' : ''}. A line number proves only that the line exists; it ` +
+        `cannot say whether the code it named is still there, and a plausible wrong number ` +
+        `sends a reader somewhere real. Write the form \`verify:citations\` resolves instead: ` +
+        `the cited file in backticks, then a middle dot, then a VERBATIM fragment of the cited ` +
+        `text in backticks, then optionally a middle dot and a ~line hint. (It is not spelled ` +
+        `out here: a real citation in this string would be read as one, and a mangled example ` +
+        `is exactly what the gate exists to catch. \`scripts/verify-citations.ts\` opens with ` +
+        `the form written properly.) The fragment is the identity and ` +
+        `the ~line is a convenience allowed to be stale. Anchor on a KEY or an identifier, ` +
+        `never on user-facing copy. Where the fragment itself contains backticks, use a ` +
+        `double-backtick span, or the span ends early and the rest of the citation is read as ` +
+        `prose. If the cited code is gone, say so — do not repoint to something plausible.`,
+    });
+  }
+  return findings;
+}
+
 export function checkBodyTruncation(root: string, items: Item[]): Finding[] {
   const findings: Finding[] = [];
   for (const item of items) {
@@ -1625,6 +1706,7 @@ export function runChecks(opts: {
     () => checkIndexFreshness(opts.root, opts.dbPath),
     () => checkOrphanRelations(opts.items),
     () => checkBodyTruncation(opts.root, opts.items),
+    () => checkCitationForm(opts.repoRoot, opts.items),
     () => checkSourceDrift(opts.repoRoot, opts.items),
     () => checkDeadScopes(opts.repoRoot, opts.items, opts.config),
     () => checkScopePolicy(opts.items, opts.config),
