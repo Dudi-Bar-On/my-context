@@ -228,6 +228,8 @@ interface PlannedPack {
   name: string;
   /** The path as the caller typed it, recorded verbatim in the import record. */
   source: string;
+  /** ...and resolved, which is the other half of the import's key. */
+  origin: string;
 }
 
 /**
@@ -250,7 +252,8 @@ interface PlannedPack {
  * printed by one line.
  */
 function planPack(cwd: string, source: string): PlannedPack {
-  const artefact = readArtefact(path.resolve(cwd, source));
+  const origin = path.resolve(cwd, source);
+  const artefact = readArtefact(origin);
   const plan = planImport(artefact, {
     existing: () => null,
     rawConfig: INIT_CONFIG,
@@ -265,7 +268,7 @@ function planPack(cwd: string, source: string): PlannedPack {
       'then `mycontext pack import <path> --name <text>`. Nothing was created.',
     );
   }
-  return { plan, name: plan.pack, source };
+  return { plan, name: plan.pack, source, origin };
 }
 
 /** What one `init --pack` did, in the shapes the printing below wants. */
@@ -310,7 +313,8 @@ function applyPack(cwd: string, planned: PlannedPack, out: Emit): AppliedPack {
     const report = reportOf(planned.plan, planned.name, null, false, [], errors);
     for (const line of renderCollisionReport(report)) out(line);
     const outcome = applyImport(ctx, planned.plan, {
-      name: planned.name, source: planned.source, now: Date.now(), overwriteApproved: false,
+      name: planned.name, source: planned.source, origin: planned.origin,
+      now: Date.now(), overwriteApproved: false,
     });
     return { name: planned.name, outcome, errors };
   } finally {

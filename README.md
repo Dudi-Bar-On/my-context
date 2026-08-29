@@ -2343,9 +2343,11 @@ clothes. The preview prints before the confirmation on every path, `--yes` inclu
 everything it will **not** promote is named with its reason — already settled, outside the
 project layer, a category you have not enabled, or no longer present. The membership list it
 reads is the one [`mycontext pack list`](#bringing-one-in--mycontext-pack-import) shows, and
-the preview names which import that is: a second pack imported under the same name replaces
-that record, so the list is the most recent import's, and anything an earlier one brought in
-stays in the queue to be promoted one at a time.
+the preview names which import that is — where it came from and when. Two packs that call
+themselves the same name are two records, kept apart, so `--pack <name>` can match both; when
+it does it promotes neither and names them, and `--source <path>` says which one you mean.
+Importing the *same* artefact again replaces its own record, which is what makes a re-import
+an update rather than a second entry for one pack.
 
 **Review what an agent proposed.** A second queue sits beside the draft queue, and it holds
 *changes* rather than items. When an agent revises the title, body, tags or `extra` of an item in a
@@ -3109,8 +3111,11 @@ until you promote it again, and the version it replaced is in the log:
 `mycontext audit --item <id>`.
 
 `--name <text>` files the pack under a name you choose rather than the one its manifest
-declares, so two packs that call themselves the same thing do not share one record. It is
-also **required** for a full export, which carries no name at all.
+declares, which is how two packs that call themselves the same thing get told apart **by
+name** in `mycontext pack list` rather than only by where each came from. It is not what
+keeps their records apart: an import is filed under its name *and* the artefact location this
+workspace read it from, so neither can land on the other's membership record whether or not
+you pass it. It is also **required** for a full export, which carries no name at all.
 
 **`mycontext init --pack <path>` founds a workspace from an artefact in one command.** It is
 the same implementation reached from the one command that runs *before* a workspace exists:
@@ -3596,7 +3601,7 @@ a workspace exists.
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--name <text>` | what to call the pack **here**: the directory its history is filed under, and the name `mycontext pack list` shows. It defaults to the name the pack's own manifest declares, and is **required** for a full export, which carries none. Two packs that call themselves the same thing need it, or the second one's record lands on the first one's | `pack import` |
+| `--name <text>` | what to call the pack **here**: the directory its history is filed under, and the name `mycontext pack list` shows. It defaults to the name the pack's own manifest declares, and is **required** for a full export, which carries none. Two packs that call themselves the same thing are kept apart without it — each import is filed under its name *and* where it was read from — so this is how you tell them apart by name rather than by source | `pack import` |
 | `--overwrite-changed` | the answer to the **second** confirmation — replace the items you had changed with the pack's versions. It is separate from `--yes` deliberately, and `--yes` does not imply it: consent to an import is not consent to replacing a rule you wrote. Each replaced item lands `draft` and its previous version stays in the audit log. On a pack with nothing in the `changed` bucket it is accepted and does nothing, so a script that imports the same pack repeatedly does not have to know in advance whether this run collides. On `mycontext init` it is **refused**, with a message naming `pack import`: a corpus that does not exist yet has nothing to overwrite, and a flag accepted where it can do nothing is the silent swallow every refusal here exists to stop | `pack import` |
 | `--pack <path>` | found this workspace from an artefact, in the same command that creates it. It is the only flag `mycontext init` accepts, and everything else — a positional, `--global`, `--yes`, `--overwrite-changed` — is still refused by name. It asks nothing and takes no `--name`, so a full export is refused there and pointed at `pack import` | `init` |
 | `--pack <name>` | on `review promote`, which pack's drafts `--all` promotes — a **name**, not a path: the one `mycontext pack list` shows, which is the name the pack was filed under here. A name no import record carries is refused and points at that command; `--pack` without `--all` is refused too, rather than accepted where nothing would read it | `review promote` |

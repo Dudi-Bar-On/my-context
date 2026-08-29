@@ -496,6 +496,10 @@ const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
       + 'design decision about the approval boundary, not a convenience, and this task does '
       + 'not take it.',
     pack: 'the other half of --all; it means nothing on its own and the CLI says so.',
+    source: 'the third part of the same bulk form, and it exists only when --pack is ambiguous: '
+      + 'two packs that call themselves one name are two membership records, and --source names '
+      + 'which of them to promote. It cannot be offered without --all and --pack, which are not '
+      + 'offered, and offering it alone would compose a flag the command refuses.',
   },
   edit: {
     unlink: '--unlink <relation> <target> takes TWO operands. This model is one value per flag, '

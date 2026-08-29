@@ -67,7 +67,9 @@ import type { Item } from '../core/types.ts';
 import { bucketise, type Buckets } from './collide.ts';
 import { mergePackConfig, refusePackConfig, type RawConfigJson } from './config-io.ts';
 import type { PackHistoryRecord, UnknownHistoryRow } from './history.ts';
-import { quarantine, writeImportRecord, writeImportedHistory } from './imported-audit.ts';
+import {
+  quarantine, writeImportRecord, writeImportedHistory, type PackKey,
+} from './imported-audit.ts';
 import {
   comparePaths, HISTORY_NAME, IMPORT_RECORD_PROTOCOL, type ArtefactKind,
 } from './layout.ts';
@@ -169,10 +171,21 @@ export interface ImportPlan {
 
 /** The approval, and the three facts a record needs that the plan does not hold. */
 export interface ImportOptions {
-  /** The pack's directory name under `.audit/imported/`, after slugging. */
+  /** What this workspace calls the pack: `--name`, or the manifest's own. */
   name: string;
   /** The path as the caller typed it, recorded verbatim in the import record. */
   source: string;
+  /**
+   * The same location RESOLVED, and the half of this import's key that the
+   * pack did not choose.
+   *
+   * A name is a stranger's text and two packs may share one, so the name alone
+   * never says which import a record belongs to; the caller has already
+   * resolved this path in order to read the artefact, and passing it here is
+   * what keeps a second `acme-security` from landing on the first one's
+   * membership record. See `packDir` (pack/imported-audit.ts).
+   */
+  origin: string;
   /** Milliseconds since the epoch, injected — never read from the clock here. */
   now: number;
   /**
@@ -451,7 +464,7 @@ function createInputFor(item: Item, kind: ArtefactKind): CreateInput {
  * would let pack content govern with no review at all.
  *
  * `extra` MERGES rather than replaces (`core/mutate.ts` ·
- * `  if (input.extra !== undefined) item.extra = { ...item.extra, ...input.extra };` · ~768),
+ * `  if (update.extra !== undefined) item.extra = { ...item.extra, ...update.extra };` · ~878),
  * so a key the local item carries and the pack does not survives the
  * overwrite. That is `updateItem`'s own semantics and this does not work
  * around them; the consequence is that such an item can still bucket `changed`
@@ -539,9 +552,14 @@ export function applyImport(
     overwritten.push(id);
   }
 
-  writeImportedHistory(ctx.root, options.name, plan.history.records);
+  // The ONE key this import is filed under, built once and handed to all three
+  // writers: a history filed under one directory and a record under another is
+  // a membership list that names items whose history is somewhere else.
+  const key: PackKey = { name: options.name, origin: options.origin, source: options.source };
+
+  writeImportedHistory(ctx.root, key, plan.history.records);
   const quarantined = quarantine(
-    ctx.root, options.name, plan.history.unknown, HISTORY_NAME, stamp,
+    ctx.root, key, plan.history.unknown, HISTORY_NAME, stamp,
   );
 
   writeImportRecord(ctx.root, {
@@ -550,6 +568,7 @@ export function applyImport(
     version: plan.version ?? '',
     kind: plan.kind,
     source: options.source,
+    origin: options.origin,
     importedAt: stamp,
     manifestFiles: plan.manifest.files,
     // The membership list, overwritten ids included: they are pack members

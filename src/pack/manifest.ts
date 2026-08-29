@@ -250,9 +250,14 @@ function revoice(lead: string, refusal: string, tail: string): string {
  * Refuses rather than trims or normalises, which is the same ruling Task 1
  * made for paths and for the same reason: these bytes go into the manifest, so
  * rewriting the value would change the file that was hashed. The name is also
- * compared later — `.audit/imported/<pack>/` is keyed by it and
- * `review promote --all --pack <name>` matches on it — so two spellings of one
- * visible name would be two packs.
+ * compared later — it is the directory an import's records are filed UNDER
+ * (`pack/imported-audit.ts` · `export function packDir(root: string, key: PackKey): string {` · ~176)
+ * and `review promote --all --pack <name>` matches on it — so two spellings of
+ * one visible name would be two packs. It is not the whole key and has not been
+ * since a second pack calling itself the first one's name overwrote its
+ * membership record; what it decides is what a person READS, which is why the
+ * rule below is about what can be one line of a report rather than about what
+ * can be a path.
  *
  * The order of the checks decides what the message SAYS: `'   '` breaks the
  * empty rule and the whitespace rule at once, and only one of them tells the

@@ -231,15 +231,41 @@ export function reportOf(
  * yet, and the fourth — the quarantine — is exactly as true there. `init`
  * prints its own "initialized" line before calling this, because that sentence
  * is about the workspace rather than about the pack.
+ *
+ * ## `sharedName`, and why the next step cannot be one fixed sentence
+ *
+ * The first sentence prints a command the user is meant to RUN. Two packs may
+ * now call themselves one name — they are two membership records, kept apart
+ * rather than one silently overwriting the other — and `review promote --all
+ * --pack <name>` refuses to guess between them. So on exactly that path the
+ * next step is `--pack <name> --source <path>`, and it is printed by knowing
+ * which case this is rather than by hedging: a next-step instruction the same
+ * build would refuse is worse than no instruction at all.
+ *
+ * `null` says the name resolves to this import alone, which is every import on
+ * `init --pack` by construction — the workspace was created a moment ago.
  */
-export function outcomeLines(out: Emit, name: string, outcome: ImportOutcome): void {
+export function outcomeLines(
+  out: Emit, name: string, outcome: ImportOutcome, sharedName: string | null = null,
+): void {
   const hang = '            ';
   say(out,
     `imported ${outcome.imported.length} item(s) from pack "${name}" as drafts. Nothing governs `
     + 'yet. Review them one at a time with `mycontext review`, or promote the whole pack with '
-    + `\`mycontext review promote --all --pack ${name}\`, which is one human act taken after the `
-    + 'corpus is visible rather than before.',
+    + `${sharedName === null ? `\`mycontext review promote --all --pack ${name}\`` : 'the command '
+      + 'below'}, which is one human act taken after the corpus is visible rather than before.`,
     'my_context: ');
+  if (sharedName !== null) {
+    say(out,
+      `another pack imported here calls itself ${JSON.stringify(name)} too, and each import kept `
+      + 'its own membership list — so `--pack` alone names both and promotes neither. This one is:',
+      hang);
+    // Emitted whole rather than through `say`: this line is meant to be COPIED,
+    // and `paragraph` would wrap it at the terminal width and hand the reader a
+    // command broken in half. The source is printed exactly as `pack list`
+    // prints it, because that is the string `--source` is matched against.
+    out(`${hang}mycontext review promote --all --pack ${name} --source ${sharedName}`);
+  }
 
   if (outcome.overwritten.length > 0) {
     const n = outcome.overwritten.length;
@@ -470,7 +496,12 @@ function cmdImport(
 
   const { ctx, errors } = openMutateContext(ws);
   try {
-    const artefact = readArtefact(path.resolve(cwd, source));
+    // Resolved ONCE and used twice: it is the path the artefact is read from,
+    // and it is the half of the import's key that the pack did not choose. Two
+    // resolutions of one typed path could not disagree today and would be two
+    // places to change the day this command learns to fetch a URL.
+    const origin = path.resolve(cwd, source);
+    const artefact = readArtefact(origin);
     const plan = planImport(artefact, {
       existing: (id) => ctx.store.get(id),
       rawConfig: rawWorkspaceConfig(root),
@@ -535,7 +566,7 @@ function cmdImport(
     }
 
     const outcome = applyImport(ctx, plan, {
-      name, source, now: Date.now(), overwriteApproved,
+      name, source, origin, now: Date.now(), overwriteApproved,
     });
 
     if (json) {
@@ -544,7 +575,12 @@ function cmdImport(
       ));
       return 0;
     }
-    outcomeLines(out, name, outcome);
+    // Read back rather than inferred: whether this name resolves to one record
+    // is a fact about what is on disk NOW, and this import has just changed it.
+    // The read is the same one `pack list` makes, so the next step this prints
+    // is the command the user would compose from the table it points them at.
+    const filed = readImportRecords(root).filter((r) => r.pack === name);
+    outcomeLines(out, name, outcome, filed.length > 1 ? source : null);
     emitLoadErrors(errors, out);
     return 0;
   } catch (err) {

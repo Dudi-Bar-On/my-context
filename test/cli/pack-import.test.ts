@@ -540,6 +540,24 @@ test('pack list names every pack imported here, with its version and item count'
   assert.deepEqual(document.packs[0].items.toSorted(), [LESSON_ID, STANDARD_ID].toSorted());
 });
 
+/**
+ * The plan's own test, and for a long time it could not be written as it is
+ * worded here.
+ *
+ * An import used to be filed under the pack's NAME alone, so a second pack
+ * calling itself `acme-security` wrote its `import.json` over the first one's:
+ * one row in `pack list`, one membership list, and the earlier one gone with
+ * nobody told. `--name` was the only thing that kept two apart, so this test
+ * had to pass `--name acme-security-b` and assert something narrower than what
+ * it says. An import is now keyed on the name AND the artefact location this
+ * workspace read it from, so the sentence and the assertions are the same
+ * thing again: neither import here passes `--name`.
+ *
+ * `--name` still exists and still keeps two packs apart BY NAME, which is a
+ * different job — it is what a receiver reaches for when it wants to tell them
+ * apart in a list rather than merely have both of them kept. Its own gates have
+ * their own tests below.
+ */
 test('two imports of packs with the same name are kept apart, and list shows both', () => {
   const cwd = project();
   const first = artefact({ items: newItems() });
@@ -547,21 +565,72 @@ test('two imports of packs with the same name are kept apart, and list shows bot
     items: [item({ id: 'STD-branch-names', title: 'Branch names', body: 'Name branches well.' })],
   });
 
-  assert.equal(run(['pack', 'import', first, '--yes'], cwd).code, 0);
-  // The same NAME, filed under a directory of its own: `--name` is what makes
-  // a second pack that calls itself `acme-security` its own record rather than
-  // an overwrite of the first one's.
-  assert.equal(run(['pack', 'import', second, '--yes', '--name', 'acme-security-b'], cwd).code, 0);
+  const one = run(['pack', 'import', first, '--yes'], cwd);
+  assert.equal(one.code, 0, one.out);
+  // The first import's next step is the plain form: this name names one record.
+  assert.match(flat(one.out), /review promote --all --pack acme-security`,/);
+
+  const two = run(['pack', 'import', second, '--yes'], cwd);
+  assert.equal(two.code, 0, two.out);
+  // The second one's is not, and it says why: `--pack` alone would now be
+  // refused, and a next step the same build refuses is worse than none.
+  assert.match(flat(two.out), /--pack acme-security --source /);
+  assert.match(flat(two.out), /calls itself "acme-security" too/);
+  // ...and the command it prints is on ONE line, because it is meant to be
+  // copied: a next step wrapped in half is a next step that does not run.
+  const copyable = two.out.split('\n').filter((l) => l.includes('review promote --all'));
+  assert.equal(copyable.length, 1, two.out);
+  assert.ok(
+    copyable[0].trimEnd().endsWith(second),
+    `the printed command does not end in the source it names: ${copyable[0]}`,
+  );
 
   const json = run(['pack', 'list', '--json'], cwd);
-  const document = JSON.parse(json.out) as { packs: { pack: string; source: string }[] };
-  assert.deepEqual(
-    document.packs.map((p) => p.pack).sort(),
-    ['acme-security', 'acme-security-b'],
-  );
-  // Two records, two sources: the second import did not land on top of the
-  // first one's record, which is the whole of "kept apart".
+  const document = JSON.parse(json.out) as {
+    packs: { pack: string; source: string; items: string[] }[];
+  };
+  assert.deepEqual(document.packs.map((p) => p.pack), [PACK_NAME, PACK_NAME]);
+  // Two records, two sources, two membership lists: the second import did not
+  // land on top of the first one's record, which is the whole of "kept apart".
   assert.equal(new Set(document.packs.map((p) => p.source)).size, 2);
+  // As a SET: two records under one name are ordered by the directory their
+  // origin names, which is a digest and therefore not import order. The row a
+  // reader tells them apart by is `imported`, which the table prints.
+  assert.deepEqual(
+    document.packs.map((p) => p.items.toSorted().join(' ')).toSorted(),
+    [[LESSON_ID, STANDARD_ID].toSorted().join(' '), 'STD-branch-names'].toSorted(),
+  );
+  // ...and the table a person reads shows both rows, not one.
+  const listed = run(['pack', 'list'], cwd);
+  assert.match(listed.out, /2 pack\(s\) imported here/);
+
+  // The SAME artefact again is the same import, not a third row: it updates
+  // the record it already has. Re-import must not become duplication.
+  assert.equal(run(['pack', 'import', second, '--yes'], cwd).code, 0);
+  const again = JSON.parse(run(['pack', 'list', '--json'], cwd).out) as { packs: unknown[] };
+  assert.equal(again.packs.length, 2, 're-importing one pack filed a second record for it');
+});
+
+test('a second pack of the same name leaves the first one\'s directory alone', () => {
+  const cwd = project();
+  assert.equal(run(['pack', 'import', artefact({ items: newItems() }), '--yes'], cwd).code, 0);
+  const dir = path.join(importedDir(rootOf(cwd)), 'acme-security');
+  const firstLeaf = readdirSync(dir).filter((e) => e !== '.gitignore');
+  assert.equal(firstLeaf.length, 1, 'one import, one directory under the name');
+
+  assert.equal(run(['pack', 'import', artefact({
+    items: [item({ id: 'STD-branch-names', title: 'Branch names', body: 'Name branches well.' })],
+  }), '--yes'], cwd).code, 0);
+
+  const both = readdirSync(dir).filter((e) => e !== '.gitignore');
+  assert.equal(both.length, 2, 'the second import did not take a directory of its own');
+  assert.ok(both.includes(firstLeaf[0]), 'the first import\'s directory was renamed or removed');
+  // The two histories are two files, so no reader has to tell one stranger's
+  // mutation log from another's inside a single one.
+  for (const leaf of both) {
+    const history = readFileSync(path.join(dir, leaf, HISTORY_NAME), 'utf8').trim().split('\n');
+    assert.equal(history.length, 2, `${leaf} holds a history that is not its own`);
+  }
 });
 
 /* -------------------------------------------------------------------------- *

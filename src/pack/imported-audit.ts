@@ -38,7 +38,7 @@
  * rewriting it into a shape this build recognises would be inventing content
  * on a stranger's behalf.
  *
- * ## A pack name is not a path
+ * ## A pack name is not a key, and it is not a path either
  *
  * The name arrives from a stranger and is turned into a directory, so the two
  * ways it could stop naming its own directory are refused rather than
@@ -48,7 +48,23 @@
  * `export function normalizeForSlug(title: string): string {` · ~20) does the
  * rest — it is the same normalisation ids get, so the mapping from a pack
  * name to a directory is one a reader of this product already knows.
+ *
+ * That is not enough on its own, and for two years of this module's life it
+ * was all there was. A name is text a THIRD PARTY chose, and nothing stops a
+ * second pack from choosing what the first one did: filed by name alone, the
+ * second import's `import.json` landed on top of the first's and took a
+ * membership list with it — the only record of which items that pack brought
+ * in, read by `pack list`, by `review promote --all --pack` and by the packs
+ * screen. Nobody was told, and there was nothing left to reconstruct it from.
+ *
+ * So an import is filed under a KEY with two halves (`PackKey`): the name,
+ * which is legible and is the parent directory, and the ORIGIN — the artefact
+ * location this workspace resolved — which is the leaf and is the half that
+ * decides identity. The receiver's own fact decides; the stranger's text only
+ * labels. A key derived from attacker-controlled text is this bug twice.
+ *
  */
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { auditDir } from '../core/audit.ts';
@@ -86,29 +102,134 @@ export function unknownDir(root: string): string {
 }
 
 /**
- * `<root>/.audit/imported/<slug>` — one pack's own directory.
+ * The two facts that identify ONE import, and the reason there have to be two.
+ *
+ * `name` is a string a STRANGER chose — it arrives in the artefact's manifest,
+ * or is retyped from it into `--name`, and nothing stops a second pack from
+ * calling itself what the first one did. `origin` is the receiver's own fact:
+ * the artefact location this workspace read, resolved. Only the pair says
+ * which import a record belongs to.
+ *
+ * `source` is the same location as the operator TYPED it, carried alongside
+ * rather than derived from `origin`, because it is what `pack list` prints and
+ * what the legacy directories below were filed with. See `packDirFor`.
+ */
+export interface PackKey {
+  name: string;
+  /** The resolved artefact location. Not printed; hashed into the directory. */
+  origin: string;
+  /** The path as the caller typed it, recorded verbatim in the record. */
+  source: string;
+}
+
+/**
+ * How many hex characters of the origin digest name a directory.
+ *
+ * 16 hex characters is 64 bits, which is not a collision resistance claim and
+ * is not doing one: this is a directory name for the artefact locations ONE
+ * workspace has imported from, a set with tens of members, and the whole
+ * digest would make a path nobody can read beside a slug that is already 60
+ * characters wide. The digest is over a path this workspace resolved, so there
+ * is no adversary choosing preimages for it — the name a stranger chose is the
+ * PARENT directory, and the parent cannot decide identity any more.
+ */
+const ORIGIN_KEY_CHARS = 16;
+
+/**
+ * `origin` reduced to a directory name — the second half of the key.
+ *
+ * SHA-256 rather than `normalizeForSlug`, because a path is not a title: two
+ * different absolute paths slug to one name constantly (`/a/pack` and
+ * `/a-pack`), and a slug of a path is exactly the collision this module is
+ * here to stop, moved one directory down.
+ */
+export function originKey(origin: string): string {
+  return createHash('sha256').update(origin, 'utf8').digest('hex').slice(0, ORIGIN_KEY_CHARS);
+}
+
+/**
+ * `<root>/.audit/imported/<slug>/<origin>` — one IMPORT's own directory.
+ *
+ * ## Why the name alone was not a key, and what it is now
+ *
+ * This used to be `<root>/.audit/imported/<slug>` and nothing else. The slug is
+ * made from the pack's OWN name, so two packs that call themselves the same
+ * thing named one directory: the second import's `import.json` landed on top of
+ * the first's, and the first pack's membership list — the only record of which
+ * items it brought in, and the list `review promote --all --pack` and the packs
+ * screen read — was gone with nobody told. Their two histories were appended to
+ * ONE `history.jsonl`, every row tagged with the one name they shared, so a
+ * reader could no longer tell whose mutation was whose either.
+ *
+ * The name is still the parent directory, because it is what a person reads.
+ * It no longer DECIDES anything: identity is the leaf, and the leaf is a digest
+ * of the location this workspace read the artefact from. So two packs sharing a
+ * name are two directories under one legible parent, and a re-import of the
+ * same pack from the same place is the same leaf — which is what makes a
+ * re-import an update rather than a second record.
  *
  * Throws rather than inventing a directory for a name that cannot have one.
  * Both cases are reachable from a stranger's `manifest.json`: `refusePackName`
  * (manifest.ts) accepts any non-empty printable string, so `"!!!"` and
  * `"unknown"` both arrive here as legitimate pack names.
  */
-export function packDir(root: string, name: string): string {
-  const slug = normalizeForSlug(name);
+export function packDir(root: string, key: PackKey): string {
+  const slug = normalizeForSlug(key.name);
   if (slug === '') {
-    refuse(`the pack name ${JSON.stringify(name)} contains no letter or digit, so it names no `
+    refuse(`the pack name ${JSON.stringify(key.name)} contains no letter or digit, so it names no `
       + 'directory. A pack\'s history is filed under a directory made from its name, and a name '
       + 'that slugs to nothing would file it under the empty string — which is the imported '
       + 'directory itself, where the next pack would land on top of it. Give the pack a name '
       + 'with a word in it.');
   }
   if (slug === UNKNOWN_PACK_DIR) {
-    refuse(`the pack name ${JSON.stringify(name)} slugs to ${JSON.stringify(UNKNOWN_PACK_DIR)}, `
+    refuse(`the pack name ${JSON.stringify(key.name)} slugs to ${JSON.stringify(UNKNOWN_PACK_DIR)}, `
       + 'which is the directory this build files history rows it could not validate under. Two '
       + 'writers in one directory is not something to resolve quietly — a reader could no longer '
       + 'tell this pack\'s records from the quarantine. Rename the pack.');
   }
-  return path.join(importedDir(root), slug);
+  return path.join(importedDir(root), slug, originKey(key.origin));
+}
+
+/**
+ * The directory this import's records ACTUALLY go in — `packDir`, unless a
+ * record written by an older build is already sitting at `<slug>/import.json`
+ * for this same artefact.
+ *
+ * ## The migration, stated
+ *
+ * A record filed before the key had two halves lives at `<slug>/import.json`,
+ * beside a `<slug>/history.jsonl`. Nothing here moves it, renames it or
+ * rewrites it. Rekeying history quietly would be this defect's own shape a
+ * second time — a record whose path says one thing and whose bytes were
+ * written under another rule — and it would do it to the only records that
+ * cannot be re-derived from anything.
+ *
+ * So legacy records stay exactly where they are and `readImportRecords` keeps
+ * listing them. A re-import of the SAME artefact ADOPTS the legacy directory
+ * and updates the record in place, which is what a re-import has always done;
+ * a DIFFERENT artefact under that name gets its own leaf and cannot touch it.
+ * "The same artefact" is decided on the one field the legacy record carries
+ * that says where it came from: `source`, matched verbatim, exactly as it is
+ * printed by `pack list`. A newer record carries `origin` too and is matched on
+ * that first, because it is the resolved location and does not depend on how
+ * the operator spelled the path.
+ *
+ * The consequence, and it is disclosed rather than hidden: a legacy pack
+ * re-imported from a DIFFERENTLY SPELLED path to the same file is filed under
+ * its own leaf, and `pack list` then shows two rows for what one person would
+ * call one pack. Two rows naming two sources is a state a reader can see and
+ * act on. One row that quietly replaced the other is not, and that is the whole
+ * defect.
+ */
+export function packDirFor(root: string, key: PackKey): string {
+  const legacy = path.join(importedDir(root), normalizeForSlug(key.name));
+  const held = readRecordAt(path.join(legacy, RECORD_FILE));
+  if (held !== null && (held.origin === key.origin
+    || (held.origin === undefined && held.source === key.source))) {
+    return legacy;
+  }
+  return packDir(root, key);
 }
 
 /**
@@ -180,14 +301,21 @@ export interface QuarantinedRow {
  * Creates one directory under `.audit/imported/`, and the imported directory
  * above it, each with its own `*` .gitignore.
  *
- * Both levels, not just the leaf: an empty pack directory — or the imported
+ * EVERY level, not just the leaf: an empty pack directory — or the imported
  * directory before any pack has landed in it — is still not offered to git.
  * `.audit/` already carries a .gitignore of its own and this deliberately does
  * not lean on it, because a .gitignore one level up is a fact about the
  * parent, and a directory that is moved or copied out takes its own with it.
+ *
+ * The name directory between them is walked for the same reason and not
+ * because it is new: `mkdirSync(…, { recursive: true })` inside `ensureLogDir`
+ * would create it silently and leave it the one level of this tree with no
+ * .gitignore of its own.
  */
 function ensure(root: string, dir: string): string {
-  ensureLogDir(importedDir(root));
+  const imported = ensureLogDir(importedDir(root));
+  const parent = path.dirname(dir);
+  if (parent !== imported && parent.startsWith(imported)) ensureLogDir(parent);
   return ensureLogDir(dir);
 }
 
@@ -200,11 +328,11 @@ function ensure(root: string, dir: string): string {
  * that repeats a record is a smaller problem than one that loses it.
  */
 export function writeImportedHistory(
-  root: string, name: string, records: readonly PackHistoryRecord[],
+  root: string, key: PackKey, records: readonly PackHistoryRecord[],
 ): void {
-  const dir = ensure(root, packDir(root, name));
+  const dir = ensure(root, packDirFor(root, key));
   const file = path.join(dir, HISTORY_FILE);
-  for (const r of records) appendJsonlLine(dir, file, imported(name, r));
+  for (const r of records) appendJsonlLine(dir, file, imported(key.name, r));
 }
 
 /**
@@ -215,7 +343,7 @@ export function writeImportedHistory(
  * and gets the wall clock, exactly as `recordAudit` does.
  */
 export function quarantine(
-  root: string, name: string, rows: readonly UnknownHistoryRow[], source: string,
+  root: string, key: PackKey, rows: readonly UnknownHistoryRow[], source: string,
   now: string = new Date().toISOString(),
 ): number {
   if (rows.length === 0) return 0;
@@ -228,7 +356,7 @@ export function quarantine(
     // this function made up about a file it never opened.
     const wrapped: QuarantinedRow = {
       protocol: IMPORTED_UNKNOWN_PROTOCOL,
-      pack: name,
+      pack: key.name,
       at: now,
       source,
       line: row.line,
@@ -274,9 +402,9 @@ function rowsOf(file: string, spec: JsonlLogSpec): JsonlRow[] {
   return parseJsonlLog(raw, spec);
 }
 
-/** One pack's imported history, in the order it was filed. */
-export function readImportedHistory(root: string, name: string): ImportedRecord[] {
-  const file = path.join(packDir(root, name), HISTORY_FILE);
+/** One import's history, in the order it was filed. */
+export function readImportedHistory(root: string, key: PackKey): ImportedRecord[] {
+  const file = path.join(packDirFor(root, key), HISTORY_FILE);
   return rowsOf(
     file, specFor(file, IMPORTED_PROTOCOL, 'imported history'),
   ) as unknown as ImportedRecord[];
@@ -302,7 +430,19 @@ export interface ImportRecord {
   pack: string;
   version: string;
   kind: ArtefactKind;
+  /** The path as the caller typed it. Printed by `pack list`; never parsed. */
   source: string;
+  /**
+   * The same location resolved — the half of this record's key that a stranger
+   * did not choose, and the directory this record sits in is its digest.
+   *
+   * `undefined` on a record written before the key had two halves. That is
+   * read as "an older build that never had the field", never as an empty
+   * origin: `packDirFor` falls back to matching `source` for exactly those,
+   * and rewriting them to add this would be rekeying history to make a lookup
+   * tidier.
+   */
+  origin?: string;
   importedAt: string;
   manifestFiles: number;
   /** Every id this import placed in the corpus, sorted with the comparator. */
@@ -312,22 +452,35 @@ export interface ImportRecord {
 }
 
 /**
- * Writes `<pack>/import.json` and returns its path.
+ * Writes this import's `import.json` and returns its path.
+ *
+ * The directory is `packDirFor`'s and not `packDir`'s, so a re-import of an
+ * artefact filed by an older build updates that record where it stands instead
+ * of leaving it behind as a second row nobody can account for.
  *
  * Two-space JSON with one trailing newline, every key always present, written
  * from one object literal so the key order is the format's and not the
  * caller's. `items` is sorted here rather than trusted from the caller, for
  * the same reason the manifest sorts its own file list: two runs of the same
  * import must produce the same bytes.
+ *
+ * `origin` is required BY THE PARAMETER TYPE for a record being written and
+ * optional on one being read, and the asymmetry is deliberate: this build has
+ * always got one, and a record it wrote without one would be a legacy record
+ * this build had just created.
  */
-export function writeImportRecord(root: string, record: ImportRecord): string {
-  const file = path.join(ensure(root, packDir(root, record.pack)), RECORD_FILE);
+export function writeImportRecord(
+  root: string, record: ImportRecord & { origin: string },
+): string {
+  const key: PackKey = { name: record.pack, origin: record.origin, source: record.source };
+  const file = path.join(ensure(root, packDirFor(root, key)), RECORD_FILE);
   const document = {
     protocol: IMPORT_RECORD_PROTOCOL,
     pack: record.pack,
     version: record.version,
     kind: record.kind,
     source: record.source,
+    origin: record.origin,
     importedAt: record.importedAt,
     manifestFiles: record.manifestFiles,
     items: [...record.items].toSorted(comparePaths),
@@ -339,7 +492,69 @@ export function writeImportRecord(root: string, record: ImportRecord): string {
 }
 
 /**
- * Every pack imported into this workspace, in directory-name order.
+ * One `import.json`, parsed — or `null` when there is no file there.
+ *
+ * The two ways a file that IS there can be unreadable both throw, and neither
+ * is softened to `null`: this file is written by this build, so bad JSON is
+ * damage or a hand edit, and an unexpected protocol is version skew. Either
+ * one answered as "no record here" would hide a pack whose items nothing would
+ * ever offer to promote — which is the same silence this module was rebuilt to
+ * end, wearing a different hat.
+ */
+function readRecordAt(file: string): ImportRecord | null {
+  let raw: string;
+  try {
+    raw = readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`my_context: the import record at ${file} is not valid JSON: `
+      + `${err instanceof Error ? err.message : String(err)}. It was written by this build, so `
+      + 'this is damage or a hand edit rather than something that arrived in a pack.');
+  }
+  const row = parsed as { protocol?: unknown };
+  if (row.protocol !== IMPORT_RECORD_PROTOCOL) {
+    throw new Error(`my_context: the import record at ${file} declares protocol `
+      + `${JSON.stringify(row.protocol)}, expected ${JSON.stringify(IMPORT_RECORD_PROTOCOL)} `
+      + '(it may have been written by a different version). It is refused rather than skipped: '
+      + 'a pack missing from this list is a pack whose items nothing would offer to promote.');
+  }
+  return parsed as ImportRecord;
+}
+
+/** The entries of `dir` that are directories, sorted. `[]` when it is absent. */
+function subdirectories(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .toSorted(comparePaths);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Every import filed in this workspace, in directory order — name first, then
+ * origin.
+ *
+ * ## Two shapes, because there are two shapes on disk
+ *
+ * A record this build writes is at `<slug>/<origin>/import.json`. A record an
+ * older build wrote is at `<slug>/import.json`, and it is read from exactly
+ * where it is — see `packDirFor` for why nothing moves it. Both are listed, in
+ * one order, and a name's legacy record comes before that name's keyed ones
+ * because it was there first.
+ *
+ * **Two records may now share a `pack`, and that is the point.** They are two
+ * packs that call themselves the same thing, and before this key existed they
+ * were one record with one of them silently gone. Every caller that resolves a
+ * pack BY NAME therefore has an ambiguity to answer, and `review promote --all
+ * --pack` answers it by refusing to guess rather than by taking the first.
  *
  * A directory with no `import.json` is skipped rather than reported: the
  * quarantine directory is one, and so is a pack directory left behind by an
@@ -351,40 +566,15 @@ export function writeImportRecord(root: string, record: ImportRecord): string {
  */
 export function readImportRecords(root: string): ImportRecord[] {
   const dir = importedDir(root);
-  let names: string[];
-  try {
-    names = readdirSync(dir);
-  } catch {
-    return [];
-  }
-
   const out: ImportRecord[] = [];
-  for (const name of names.toSorted(comparePaths)) {
+  for (const name of subdirectories(dir)) {
     if (name === UNKNOWN_PACK_DIR) continue;
-    const file = path.join(dir, name, RECORD_FILE);
-    let raw: string;
-    try {
-      raw = readFileSync(file, 'utf8');
-    } catch {
-      continue;
+    const legacy = readRecordAt(path.join(dir, name, RECORD_FILE));
+    if (legacy !== null) out.push(legacy);
+    for (const origin of subdirectories(path.join(dir, name))) {
+      const record = readRecordAt(path.join(dir, name, origin, RECORD_FILE));
+      if (record !== null) out.push(record);
     }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (err) {
-      throw new Error(`my_context: the import record at ${file} is not valid JSON: `
-        + `${err instanceof Error ? err.message : String(err)}. It was written by this build, so `
-        + 'this is damage or a hand edit rather than something that arrived in a pack.');
-    }
-    const row = parsed as { protocol?: unknown };
-    if (row.protocol !== IMPORT_RECORD_PROTOCOL) {
-      throw new Error(`my_context: the import record at ${file} declares protocol `
-        + `${JSON.stringify(row.protocol)}, expected ${JSON.stringify(IMPORT_RECORD_PROTOCOL)} `
-        + '(it may have been written by a different version). It is refused rather than skipped: '
-        + 'a pack missing from this list is a pack whose items nothing would offer to promote.');
-    }
-    out.push(parsed as ImportRecord);
   }
   return out;
 }
-

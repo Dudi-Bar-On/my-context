@@ -248,9 +248,14 @@ function plan(box: Sandbox, source: string) {
  * can overwrite by omission, and the tests that approve one say so at the
  * call, where a reader can see it.
  */
-function options(source: string, over: { overwriteApproved?: boolean } = {}) {
+function options(
+  source: string, over: { overwriteApproved?: boolean; origin?: string } = {},
+) {
   return {
-    name: PACK_NAME, source, now: FIXED_NOW, overwriteApproved: false, ...over,
+    // These tests build artefacts at absolute paths, so the source IS the
+    // resolved origin here. They stay two fields because the CLI resolves what
+    // a user typed, and only the resolved half is half of the import's key.
+    name: PACK_NAME, source, origin: source, now: FIXED_NOW, overwriteApproved: false, ...over,
   };
 }
 
@@ -652,14 +657,21 @@ test('planImport still writes nothing when the pack is full of changed items', (
 test('the membership list in the import record is exactly what was created, overwrites included', () => {
   const box = workspace();
   const first = artefact();
-  applyImport(box.ctx, plan(box, first), options(first));
+  // ONE origin across both applies, because this is one pack RE-EXPORTED with
+  // an item added — the case the record must update rather than duplicate.
+  // `artefact()` writes each build into its own temporary directory, which is
+  // two locations and would be two imports; a pack re-fetched over the file it
+  // replaced is one. Two packs that merely share a NAME are a different case
+  // and have their own test (`test/pack/imported-audit.test.ts`).
+  const origin = first;
+  applyImport(box.ctx, plan(box, first), options(first, { origin }));
   updateItem(box.ctx, { id: STANDARD_ID, body: 'my own wording', origin: 'human' });
 
   const source = artefact({
     items: [...packItems(), item({ id: 'RULE-pin-your-actions', title: 'Pin', body: 'Pin them.' })],
   });
   const outcome = applyImport(
-    box.ctx, plan(box, source), options(source, { overwriteApproved: true }),
+    box.ctx, plan(box, source), options(source, { overwriteApproved: true, origin }),
   );
 
   const [record] = readImportRecords(box.root);

@@ -487,21 +487,22 @@ test('the review queue definition is not widened — reviewQueue still means one
  * -------------------------------------------------------------------------- */
 
 /**
- * `writeImportRecord` files `<packDir>/import.json`, and `packDir` slugs the
- * pack's OWN name — so a second pack calling itself the same thing replaces
- * the first one's record, and that record is the membership list this command
- * reads. The behaviour is not something this command can repair after the
- * fact: the earlier list is gone by the time it runs. What it can do — and
- * what this pins — is refuse to be silent about it, by naming the record it is
- * about (its source and the instant it was imported) in the preview, and by
- * saying plainly that a re-import under one name replaces the list.
+ * An import is filed under a key with two halves — the name it is called here,
+ * and the artefact location this workspace read it from — so a second pack
+ * calling itself the same thing no longer lands on the first one's membership
+ * record. Both records exist, and this command is where that stops being free:
+ * `--pack <name>` can now match two of them.
  *
- * The items the FIRST pack brought in are still drafts in the queue afterwards.
- * That is the safe direction: a membership list that has narrowed leaves items
- * to be promoted one at a time, where one that had widened would promote items
- * a human never chose.
+ * It refuses rather than picking, and the refusal is the whole point. This is a
+ * BULK act on someone else's corpus; promoting the wrong pack's drafts because
+ * a lookup took whichever record sorted first is exactly the harm the draft
+ * gate exists to stop. The candidates are named by where they came from, which
+ * is what `pack list` prints, and `--source` is how a human says which one.
+ *
+ * Nothing is promoted by the refused call. That is checkable rather than
+ * asserted in prose: every one of the four ids is still a draft after it.
  */
-test('a second pack under the same name replaces the record, and the preview says so', () => {
+test('two packs under one name are both kept, and --pack refuses to guess between them', () => {
   const cwd = imported([item(), item({ id: RULE_B, title: 'Rotate tokens quarterly' })]);
   assert.equal(statusOf(cwd, RULE_B), 'draft');
 
@@ -512,19 +513,31 @@ test('a second pack under the same name replaces the record, and the preview say
   })]);
   assert.equal(run(['pack', 'import', second, '--yes'], cwd).code, 0);
 
-  const { code, out } = run(['review', 'promote', '--all', '--pack', PACK_NAME, '--yes'], cwd);
-  assert.equal(code, 0, out);
+  const ambiguous = run(['review', 'promote', '--all', '--pack', PACK_NAME, '--yes'], cwd);
+  assert.equal(ambiguous.code, 1, ambiguous.out);
+  assert.match(flat(ambiguous.out), /2 different packs imported here call themselves/);
+  // Both candidates are named by their source, and the flag that settles it is
+  // spelled out — a refusal with no route out of it is half a refusal.
+  assert.match(ambiguous.out, /--source/);
+  // The second import's own scratch directory names it uniquely; the refusal
+  // quotes the whole source, and a path is quoted with `JSON.stringify` here
+  // as every other value in these refusals is, so the separator spelling is
+  // the quoting's and not something to assert.
+  assert.match(flat(ambiguous.out), new RegExp(path.basename(path.dirname(second))));
+  for (const id of [RULE_A, RULE_B, STD_C]) {
+    assert.equal(statusOf(cwd, id), 'draft', `${id} was promoted by a refused command`);
+  }
 
-  const one = flat(out);
-  // The membership is the SECOND import's, and the preview names which import
-  // that is rather than leaving the user to infer it from a count.
-  assert.match(one, /about to promote 1 draft\(s\) imported from pack "acme-security"/);
-  assert.match(one, new RegExp(second.replaceAll('\\', '\\\\').replaceAll('.', '\\.')));
-  assert.match(one, /replaces that record|replaces this record/i);
+  // --source names one import, and only that one's members are promoted.
+  const { code, out } = run(
+    ['review', 'promote', '--all', '--pack', PACK_NAME, '--source', second, '--yes'], cwd,
+  );
+  assert.equal(code, 0, out);
+  assert.match(flat(out), /about to promote 1 draft\(s\) imported from pack "acme-security"/);
 
   assert.equal(statusOf(cwd, STD_C), 'active');
-  // The first pack's items are not promoted by a list that no longer holds
-  // them — they stay in the queue, which is where a human can still see them.
+  // The first pack's record is untouched and its items are still in the queue,
+  // which is where a human can still see them.
   assert.equal(statusOf(cwd, RULE_A), 'draft');
   assert.equal(statusOf(cwd, RULE_B), 'draft');
 });

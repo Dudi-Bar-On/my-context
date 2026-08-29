@@ -76,8 +76,8 @@ const REVIEW_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
   list: { allowed: [...DETAIL_FLAGS, 'type'], values: ['type'] },
   show: { allowed: [], values: [] },
   promote: {
-    allowed: ['scope', 'severity', 'always', 'yes', 'all', 'pack'],
-    values: ['scope', 'severity', 'pack'],
+    allowed: ['scope', 'severity', 'always', 'yes', 'all', 'pack', 'source'],
+    values: ['scope', 'severity', 'pack', 'source'],
   },
   discard: { allowed: ['yes'], values: [] },
   revisions: { allowed: [...DETAIL_FLAGS], values: [] },
@@ -88,8 +88,9 @@ const REVIEW_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
 const USAGE = `usage: mycontext review [list] [--type <category>] ${DETAIL_USAGE}
        mycontext review show <id>
        mycontext review promote <id> [--scope "a/**,b/**"] [--always] [--severity hard|soft] [--yes]
-       mycontext review promote --all --pack <name> [--yes]
-             (every draft that pack imported, in one confirmation — no per-item flags)
+       mycontext review promote --all --pack <name> [--source <path>] [--yes]
+             (every draft that pack imported, in one confirmation — no per-item flags;
+              --source picks between two imports that call themselves the same thing)
        mycontext review discard <id> [--yes]
        mycontext review revisions [<id>] ${DETAIL_USAGE}
        mycontext review promote-revision <id> [--revision REV-...] [--force] [--yes]
@@ -301,24 +302,20 @@ function typeBreakdown(items: readonly Item[]): string {
 }
 
 /**
- * The membership sentence, and the one thing this command cannot repair.
+ * The membership sentence, and what a re-import does to the list it names.
  *
- * `writeImportRecord` files `<packDir>/import.json` and `packDir` slugs the
- * pack's OWN name, so a second pack calling itself the same thing REPLACES the
- * first one's record — and that record is the membership list read here. By
- * the time this command runs the earlier list is gone; there is nothing to
- * reconstruct it from, and inventing one from the corpus would be guessing
- * which drafts a stranger's pack brought in.
+ * An import is filed under a key with two halves — the name it is called here,
+ * and the artefact location this workspace read it from — so a SECOND pack
+ * calling itself the same thing no longer replaces the first one's record
+ * (`pack/imported-audit.ts` · `export function packDir(root: string, key: PackKey): string {` · ~176).
+ * Both are kept, both are listed, and this command refuses to guess between
+ * them rather than taking whichever sorted first.
  *
- * What is available is refusing to be quiet about it. The record is named by
- * the two facts that identify WHICH import it is — where it came from and
- * when — so a user with two packs of one name can see which one they are
- * promoting, and the replacement rule is stated rather than left to be
- * discovered. The direction the collision fails in is the safe one: a
- * membership list that has narrowed leaves the earlier pack's items in the
- * queue to be promoted one at a time, where one that had widened would promote
- * items nobody chose. `mycontext pack import --name <text>` is how a receiver
- * avoids the collision in the first place, and its own refusal says so.
+ * What a re-import of the SAME artefact still does — and must, or a re-import
+ * would be a second record for one pack — is REPLACE that pack's own list. So
+ * the sentence stays, and it stays for the same reason it was written: the
+ * record is named by the two facts that identify which import it is, where it
+ * came from and when, so a user promoting one can see which one they have.
  */
 function membershipLine(out: Emit, record: ImportRecord): void {
   say(out,
@@ -328,6 +325,80 @@ function membershipLine(out: Emit, record: ImportRecord): void {
     'REPLACES that record, so what --all promotes is the most recent import\'s membership — ' +
     'anything an earlier pack of the same name brought in is not in it, and stays in the queue ' +
     'to be promoted one at a time.');
+}
+
+/**
+ * The ONE record `--pack` names, or `null` with the refusal already printed.
+ *
+ * ## Why a name may no longer be enough, and why this refuses rather than picks
+ *
+ * A pack name is a string a stranger chose. Two packs that call themselves the
+ * same thing used to be one record — the second import overwrote the first's
+ * membership list, which is the defect the two-part import key ended. Both
+ * records now exist, so `--pack <name>` can match two of them, and this
+ * command's whole subject is a BULK act on someone else's corpus: promoting
+ * the wrong pack's forty drafts because a lookup took whichever sorted first
+ * is precisely the harm the draft gate exists to stop.
+ *
+ * So the ambiguity is handed back with everything needed to settle it — each
+ * candidate named by where it came from and when it landed, which is what
+ * `pack list` prints — and `--source <path>` picks one. `--source` is matched
+ * against the record's own `source` verbatim, because that is the string a
+ * user can copy out of `pack list`; nothing is resolved or globbed here, so
+ * what is typed either names a record or names none.
+ */
+function packRecord(
+  known: readonly ImportRecord[], pack: string, source: string | null, out: Emit,
+): ImportRecord | null {
+  const named = known.filter((r) => r.pack === pack);
+  if (named.length === 0) {
+    say(out,
+      `my_context: no pack named ${JSON.stringify(pack)} has been imported into this workspace, ` +
+      'so there is no membership list to promote. ' + (known.length === 0
+        ? '`mycontext pack list` says the same; `mycontext pack import <path>` reads one in.'
+        : `Imported here: ${known.map((r) => JSON.stringify(r.pack)).join(', ')}. ` +
+          '`mycontext pack list` shows each with its version, its size and where it came from.'));
+    return null;
+  }
+
+  const matched = source === null ? named : named.filter((r) => r.source === source);
+  if (matched.length === 1) return matched[0];
+
+  if (matched.length === 0) {
+    say(out,
+      `my_context: no import of ${JSON.stringify(pack)} came from ${JSON.stringify(source)}. ` +
+      'Nothing was promoted. --source is matched against the source `mycontext pack list` ' +
+      'prints, byte for byte and with nothing resolved, so the ones that would match are:');
+    listSources(out, named);
+    return null;
+  }
+
+  say(out,
+    `my_context: ${matched.length} different packs imported here call themselves ` +
+    `${JSON.stringify(pack)}, so --pack does not say which one to promote and nothing was ` +
+    'promoted. A pack name is chosen by whoever wrote the pack, and two of them chose this ' +
+    'one; each import kept its own membership list. Name the one you mean with --source:');
+  listSources(out, matched);
+  return null;
+}
+
+/**
+ * One line per candidate import, each ending in the flag that picks it.
+ *
+ * The source is written whole and NOT through `say`: this line is meant to be
+ * COPIED, and `paragraph` would wrap it at the terminal width and hand the
+ * reader a path broken in half. It is also printed raw rather than quoted,
+ * because `--source` is matched against the record's own string byte for byte
+ * and `pack list` prints that same string — a refusal that showed an escaped
+ * spelling would be naming a value the command would then refuse.
+ */
+function listSources(out: Emit, records: readonly ImportRecord[]): void {
+  for (const r of records) {
+    say(out,
+      `${r.items.length} item(s), imported ${r.importedAt}` +
+      `${r.version === '' ? '' : `, version ${r.version}`}:`, '  ');
+    out(`    --source ${r.source}`);
+  }
 }
 
 /**
@@ -384,16 +455,8 @@ function cmdPromoteAll(
   }
 
   const known = readImportRecords(ctx.root);
-  const record = known.find((r) => r.pack === pack);
-  if (!record) {
-    say(out,
-      `my_context: no pack named ${JSON.stringify(pack)} has been imported into this workspace, ` +
-      'so there is no membership list to promote. ' + (known.length === 0
-        ? '`mycontext pack list` says the same; `mycontext pack import <path>` reads one in.'
-        : `Imported here: ${known.map((r) => JSON.stringify(r.pack)).join(', ')}. ` +
-          '`mycontext pack list` shows each with its version, its size and where it came from.'));
-    return 1;
-  }
+  const record = packRecord(known, pack, flag(args, 'source'), out);
+  if (record === null) return 1;
 
   // ONE call to the queue, for every member. `drafts` is `reviewQueue` ordered
   // for a human; membership is intersected with it rather than the filter being
@@ -822,7 +885,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
 
-  const valueFlags = ['type', 'scope', 'severity', 'revision', 'reason', 'pack'];
+  const valueFlags = ['type', 'scope', 'severity', 'revision', 'reason', 'pack', 'source'];
   const [subcommand = 'list', id] = positionals(args, valueFlags);
 
   if (!(SUBCOMMANDS as readonly string[]).includes(subcommand)) {

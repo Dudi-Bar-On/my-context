@@ -252,7 +252,20 @@ export function bucketise(incoming: Item[], existing: (id: string) => Item | nul
   };
 }
 
-/** `.audit/imported/acme-security/` — where this pack's history will be filed. */
+/**
+ * `.audit/imported/acme-security/` — the directory this pack's history is
+ * filed under.
+ *
+ * UNDER, not IN: one import's records sit in a directory below this one, named
+ * for the artefact location they came from, so that a second pack calling
+ * itself the same thing cannot land on the first one's
+ * (`pack/imported-audit.ts` · `export function packDir(root: string, key: PackKey): string {` · ~176).
+ * The report names the readable half, which is the half a person can find; the
+ * leaf is a digest and naming it here would be a path nobody could read in a
+ * sentence about where to look. The report is also rendered BEFORE the import
+ * is applied and the plan has no key in it, which is the other reason this
+ * stops where it does.
+ */
 function importedPath(pack: string): string {
   return `.audit/${IMPORTED_DIR}/${normalizeForSlug(pack)}/`;
 }
