@@ -60,6 +60,18 @@
  *     item, which would be `preview.whyn`'s own objection one axis along; the
  *     rung a reader is usually chasing is rung 6, and every item that failed
  *     THAT is now named in the `Not delivered` card below.
+ *
+ *     **And since 2026-08-29 every rung carries HOW MANY items fail at it.**
+ *     The owner reported *"the why not in injection preview shows only 3 items,
+ *     spill had much more"*, and the reading was right: over 673 items the
+ *     picker offered three names for 564 failures — 13 at rung 1, 551 at rung
+ *     2, 1 at rung 6 — and the card said *of how many* nowhere. A specimen
+ *     standing silently for 551 reads as the whole set, which is
+ *     `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` in a new
+ *     place. The tally is `rungOf`'s own partition COUNTED rather than a second
+ *     derivation of it, the three rungs this screen names nowhere else list
+ *     their population under the ladder, and rung 4 names its unknown instead
+ *     of drawing a zero. `RUNG_OPENABLE` carries the whole argument.
  *   - **The spilled-items list** (`#spilledRows`, `preview.spill` /
  *     `preview.spilln`) is LIVE and whole: one row per `Selection.spilled`
  *     entry, in that array's own order, with its tier, its band where the tier
@@ -201,6 +213,47 @@ const GATES = [
 
 /** `GATES`' index for a `GateCode`, or -1 for `passed` and anything unknown. */
 const RUNG = (code) => GATES.findIndex((gate) => gate.code === code);
+
+/**
+ * **The rungs whose whole population this card LISTS, rather than only counts.**
+ *
+ * Since 2026-08-29 every rung carries HOW MANY items fail at it. The owner read
+ * the card as *"the why not in injection preview shows only 3 items, spill had
+ * much more"*, and he was right about the reading: the picker offered three
+ * names for 564 failures, one of those names standing silently for 551 items,
+ * and nothing on the card said *of how many*. A specimen presented without its
+ * population reads as the whole set — which is
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` in a new
+ * place. The counts are a partition `rungOf` already computes, tallied rather
+ * than newly derived.
+ *
+ * **The picker itself does not change**, and that is a ruling rather than an
+ * omission: one exemplar per rung is the design, argued below where the strip
+ * is built, and a picker of 139 names would rebuild `preview.whyn`'s own
+ * objection one axis along.
+ *
+ * Whether a rung's NAMES can also be drawn is a different question per rung,
+ * and it has three answers:
+ *
+ *   - **rungs 1, 2 and 3** — `eligible`, `tier`, `focus` — are listed HERE,
+ *     below the ladder, in `/api/items`' own id order. Their ids are reachable
+ *     (rungs 1 and 2 are `ItemSummary.gate` over the whole corpus, rung 3 is
+ *     `Selection.focus.hidden`) and no other card on this screen names them.
+ *   - **rungs 5 and 6** — `seen`, `budget` — are already named IN FULL under
+ *     `Not delivered`: rung 6 as the spill rows with their tier and price, rung
+ *     5 as the `seenFiltered` rows beneath them. They are counted here and the
+ *     sentence says where the list already is. A second bounded list of the
+ *     same ids would be the same fact drawn twice, and the version down there
+ *     carries more of it.
+ *   - **rung 4** — `scope` — is counted with its unknown NAMED, and draws no
+ *     list at all. `ItemSummary.gate` says `scope` only in its item-level form
+ *     (an unscoped item under `scopePolicy: "inert"`); the per-event
+ *     `matchesScope` refusal is on no endpoint, so the items THAT drops are
+ *     absent from the verdict rather than placed on a rung nobody served. A
+ *     list here would be the measured half presented as the whole, and a bare
+ *     number would be a count standing where nobody measured.
+ */
+const RUNG_OPENABLE = new Set([0, 1, 2]);
 
 /**
  * **An audit instant, drawn as a wall date AND a wall time.**
@@ -1269,9 +1322,14 @@ export async function render(root, ctx) {
     spec.append(...ctx.t('preview.spec'));
     const ladderHost = el('div', 'gladder plate');
     ladderHost.id = 'gates';
+    // **Where the selected rung's own population is named**, for the three
+    // rungs this screen names nowhere else — see `RUNG_OPENABLE`. Built empty
+    // and refilled by `paint()`, because which rung it is about is the picker's
+    // answer and moves with every click.
+    const popWrap = el('div');
     const note = el('p', 'small');
     note.append(...ctx.t('preview.whyn'));
-    card.append(heading, pick, spaced(spec), ladderHost, spaced(note));
+    card.append(heading, pick, spaced(spec), ladderHost, popWrap, spaced(note));
     host.append(card);
 
     const hidden = new Set(selection.focus === null ? [] : selection.focus.hidden);
@@ -1303,14 +1361,61 @@ export async function render(root, ctx) {
       return spills.has(item.id) ? 5 : -1;
     };
 
+    // ── THE POPULATION EACH SPECIMEN STANDS FOR ───────────────────────────
+    //
+    // **One pass, and it is a TALLY of the partition `rungOf` already makes** —
+    // not a second derivation of anything. Every item the corpus holds is asked
+    // the same question the picker asks, and the answer is kept rather than
+    // thrown away after the first hit.
+    //
+    // `/api/items` is sorted by id, so each rung's list arrives in id order and
+    // `first[rung]` is exactly the specimen the picker has always offered: "the
+    // first item by id that fails here" is unchanged, and now it is drawn
+    // beside the number of items it is standing in for.
+    const population = GATES.map(() => []);
+    const first = GATES.map(() => null);
+    for (const item of corpus) {
+      const rung = rungOf(item);
+      if (rung < 0) continue;
+      population[rung].push(item.id);
+      if (first[rung] === null) first[rung] = item;
+    }
+
     const chosen = [];
     for (let rung = 0; rung < GATES.length; rung++) {
-      // `/api/items` is sorted by id, so "the first" is a stable choice and not
-      // whichever the store happened to hand back.
-      const hit = corpus.find((item) => rungOf(item) === rung);
-      if (hit !== undefined) chosen.push({ rung, item: hit });
+      if (first[rung] !== null) chosen.push({ rung, item: first[rung] });
     }
     let who = chosen.length === 0 ? null : chosen[chosen.length - 1];
+
+    /**
+     * **How many items fail at this rung, said on EVERY rung and in every
+     * state** — including the rungs nothing fails at, which is the same
+     * standard the `Not delivered` card's three emptinesses already meet: a
+     * measured zero is drawn and named, and an unmeasured thing is named as
+     * unmeasured rather than drawn as a zero.
+     *
+     * Four sentences, and the branch order is the whole of the argument:
+     *
+     *   - **rung 4 first, whatever its number.** Its count is the item-level
+     *     half of a question whose other half no endpoint answers, so it never
+     *     takes the plain sentence and never takes the zero one — `0` there
+     *     would claim the event's path excluded nothing, which is precisely the
+     *     thing nobody measured.
+     *   - **zero next**, so a rung with no failures says so rather than going
+     *     blank.
+     *   - **rungs 5 and 6 name where their list already is.** Those items are
+     *     drawn in full under `Not delivered`, with the tier and the price a
+     *     bare id here could not carry.
+     *   - everything else takes the plain count, and its ids are listed under
+     *     the ladder.
+     */
+    const rungSentence = (rung, n) => {
+      if (rung === 3) return ctx.t('preview.rungunk', { n: num(n) });
+      if (n === 0) return ctx.t('preview.rung0');
+      if (rung === 4) return ctx.t('preview.rungseen', { n: num(n) });
+      if (rung === 5) return ctx.t('preview.rungspill', { n: num(n) });
+      return ctx.t('preview.rungn', { n: num(n) });
+    };
 
     /** The binding rung's diagnosis, in the SERVER'S own words. */
     const diagnosis = (pickedItem, rung) => {
@@ -1354,7 +1459,17 @@ export async function render(root, ctx) {
         // lose the isolation an identifier needs in an RTL paragraph. `.v` is
         // the one that is both.
         const label = el('span', 'v', candidate.item.id);
-        button.append(label);
+        // **The specimen and the size of what it stands for, on the same
+        // control.** The ladder says it at length; the button says it where the
+        // choice is actually made, because a strip of three bare names is read
+        // as three failures — which is exactly how 564 of them came to be
+        // reported as *"only 3 items"*. Rung 4 takes its own word: the number
+        // beside it is the measured half of its population, never the whole.
+        const tally = el('span', 'small');
+        tally.append(...(candidate.rung === 3
+          ? ctx.t('preview.pickunk', { n: num(population[3].length) })
+          : ctx.t('preview.pickn', { n: num(population[candidate.rung].length) })));
+        button.append(label, ' ', tally);
         button.setAttribute('aria-pressed', String(candidate === who));
         button.onclick = () => { who = candidate; paint(); };
         pick.append(button);
@@ -1372,12 +1487,57 @@ export async function render(root, ctx) {
         const name = el('span');
         name.append(el('b', null, gate.name));
         const why = el('span', 'q');
+        // **The tally leads, and it is a property of the RUNG rather than of
+        // the specimen** — so it is drawn identically whether this rung passed
+        // for the selected item, bound it, or was never reached by it, and it
+        // does not move when the picker does. Its own `<span>`, because it is a
+        // keyed sentence sitting in a cell that also holds an unkeyed literal;
+        // appending the nodes bare would render the same and diverge
+        // structurally, which is the difference `screen-parity` exists to see.
+        const tally = el('span');
+        tally.append(...rungSentence(i, population[i].length));
+        why.append(tally, ' ');
         if (state === 'binds') why.append(...diagnosis(who.item, who.rung));
         else if (state === 'after') why.append(`not reached — ${gate.q}`);
         else why.append(gate.q);
         rung.append(name, why);
         ladderHost.append(rung);
       });
+
+      // ── AND THE SELECTED RUNG'S OWN POPULATION, NAMED ──────────────────
+      //
+      // Bounded through the house's one `boundedList`, never a second paging
+      // mechanism, and in the `'position'` order — the one that claims nothing
+      // about WHY these ids are in this sequence. They are in `/api/items`'
+      // id order, which is not an admission order, not a consideration order
+      // and not a recency, so the three sentences that name one would each be
+      // a claim this list cannot support.
+      //
+      // No When column here, deliberately. An item stopped at `eligible`,
+      // `tier` or `focus` reached no tier at all, and the two questions
+      // `whenRun` can answer are both about a delivery — a "last delivered"
+      // beside a retired item is a true fact about a different subject. The
+      // rows that DO carry one are the rows about a real injection event.
+      popWrap.replaceChildren();
+      if (who !== null && RUNG_OPENABLE.has(who.rung)) {
+        const opened = el('p', 'small');
+        opened.append(...ctx.t('preview.rungopen', { gate: GATES[who.rung].name }));
+        const popRows = el('div', 'rows');
+        popRows.id = 'gateRows';
+        popRows.setAttribute('role', 'group');
+        popRows.setAttribute('aria-label', ctx.tFlat('aria.gatepick'));
+        const popBound = boundedList(ctx, popRows, population[who.rung], (id) => {
+          const row = el('button', 'row');
+          row.type = 'button';
+          // `data-id` — the shell's delegated handler opens the pane, the one
+          // path every id in this product takes. Naming an item without making
+          // it openable is the button-that-does-nothing defect.
+          row.dataset.id = id;
+          row.append(idFull(id));
+          return row;
+        }, { cap: BOUND_CAP_LIST, order: 'position' });
+        popWrap.append(spaced(opened), popRows, popBound);
+      }
     }
     paint();
   }

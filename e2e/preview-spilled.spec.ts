@@ -188,6 +188,29 @@ const asRows = (spills: Spill[]): string[] => spills.map((s) => `${s.id} ${s.tie
  */
 const spilledList = (page: Page): Locator => page.locator('#spilledRows').last();
 
+/**
+ * **The landing render, waited for as its own step and with its own bound.**
+ *
+ * Every test below opens by reading the spilled list, and reading it while the
+ * boot render's `/api/select` + `/api/simulate` + `/api/items` wave is still in
+ * flight measures a screen that is still building. Fifteen seconds rather than
+ * the default five, matching `e2e/app.ts`'s own wait on the rail: this suite
+ * runs several servers over one corpus at once, and a first paint genuinely
+ * exceeds five seconds under that contention — measured 2026-08-29, three
+ * preview tests failing in one run with `#spilledRows .row` resolving to
+ * nothing for the whole five while the endpoints answered perfectly well.
+ *
+ * It bounds the WAIT and weakens no assertion: a landing render that never
+ * arrives still fails, as itself, with a sentence saying so.
+ */
+async function landing(page: Page): Promise<void> {
+  await expect(
+    spilledList(page).locator('.row').first(),
+    'the landing render never drew a spilled row, so everything below would be measuring a '
+    + 'screen that is still building',
+  ).toBeVisible({ timeout: 15_000 });
+}
+
 /** Drive the event picker to a tool event against `path`, and settle. */
 async function toolEvent(page: Page, path: string): Promise<void> {
   // The LANDING render first. Driving `#evsel` while the screen's own boot
@@ -275,7 +298,7 @@ test('the spilled list names items and costs, bounded, in the selector\'s own or
 test('the list CHANGES with the selection — the defect this card exists to end', async ({ app }) => {
   const { page } = app;
 
-  await expect(spilledList(page).locator('.row').first()).toBeVisible();
+  await landing(page);
   const atStart = await spilledRows(page);
   const startSpills = await spilledPayload(page, 'session-start', null);
   expect(atStart.length, 'a session start spills at these budgets').toBeGreaterThan(0);
@@ -340,7 +363,7 @@ test('the list CHANGES with the selection — the defect this card exists to end
 test('a session start and a tool event share no spilled row, where they reached different tiers', async ({ app }) => {
   const { page } = app;
 
-  await expect(spilledList(page).locator('.row').first()).toBeVisible();
+  await landing(page);
   const startSpills = await spilledPayload(page, 'session-start', null);
   const toolSpills = await spilledPayload(page, 'tool', SCOPED_PATH);
 
@@ -395,7 +418,7 @@ test('a spilled row says which band it was offered in, and only where a band was
   ).toBe(true);
 
   await page.selectOption('#pathsel', UNSCOPED_PATH);
-  await expect(spilledList(page).locator('.row').first()).toBeVisible();
+  await landing(page);
   const unbanded = await spilledList(page).locator('.row').evaluateAll(
     (rows) => rows.flatMap((r) => [...r.querySelectorAll('.m')]
       .map((m) => m.textContent ?? '').filter((t) => t.startsWith('band '))),
@@ -520,7 +543,7 @@ async function ask(page: Page, which: 'live' | 'cold'): Promise<void> {
   ).toBeVisible();
   await qButton(page, which).click();
   await expect(qButton(page, which)).toHaveAttribute('aria-pressed', 'true');
-  await expect(spilledList(page).locator('.row').first()).toBeVisible();
+  await landing(page);
 }
 
 /**
@@ -536,7 +559,7 @@ async function ask(page: Page, which: 'live' | 'cold'): Promise<void> {
 test('the preview asks the warm question by default and the cold one on request, and says which', async ({ app }) => {
   const { page } = app;
 
-  await expect(spilledList(page).locator('.row').first()).toBeVisible();
+  await landing(page);
   await expect(
     qButton(page, 'live'),
     'the DEFAULT does not move. This screen promises "exactly what Claude gets", and warm is the '
@@ -610,7 +633,7 @@ test('the preview asks the warm question by default and the cold one on request,
  */
 test('the warm view NAMES what the seen gate removed, and the cold view names the zero', async ({ app }) => {
   const { page } = app;
-  await expect(spilledList(page).locator('.row').first()).toBeVisible();
+  await landing(page);
 
   const warm = await simulatePayload(page, 'session-start', null, false);
   expect(
@@ -664,7 +687,7 @@ test('the warm view NAMES what the seen gate removed, and the cold view names th
  */
 test('the gate ladder can now bind at rung 5, and does so only on the warm question', async ({ app }) => {
   const { page } = app;
-  await expect(spilledList(page).locator('.row').first()).toBeVisible();
+  await landing(page);
 
   const warm = await simulatePayload(page, 'session-start', null, false);
   expect(warm.seenFiltered.length, 'nothing filtered means nothing to bind at rung 5')
@@ -672,8 +695,14 @@ test('the gate ladder can now bind at rung 5, and does so only on the warm quest
 
   // The picker offers one exemplar per rung; the rung-5 specimen is an id the
   // endpoint named, never one this screen guessed at.
+  //
+  // **`.v`, and not the button's own `textContent`.** Since 2026-08-29 each
+  // button carries the id AND the size of the population it stands for —
+  // `first of 104` — so the whole button reads as an id with a sentence stuck
+  // to it and matched nothing in `seenFiltered`. `.v` is the id run, which is
+  // what this assertion has always been about.
   const specimens = await page.locator('#gatepick').last().locator('button')
-    .evaluateAll((all) => all.map((b) => b.textContent?.trim() ?? ''));
+    .evaluateAll((all) => all.map((b) => b.querySelector('.v')?.textContent?.trim() ?? ''));
   const rung5 = specimens.find((id) => warm.seenFiltered.includes(id));
   expect(
     rung5,
@@ -704,7 +733,7 @@ test('the gate ladder can now bind at rung 5, and does so only on the warm quest
  */
 test('every delivered and spilled row carries a When, and the card names it as the past', async ({ app }) => {
   const { page } = app;
-  await expect(spilledList(page).locator('.row').first()).toBeVisible();
+  await landing(page);
 
   // **Wait for the SECOND paint, and wait for it explicitly.** The selection is
   // drawn first and the When a moment later, once `/api/injection-history`

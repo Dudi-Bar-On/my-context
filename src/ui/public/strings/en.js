@@ -154,7 +154,7 @@ export const strings = {
   // not" was reporting. Said rather than replaced: the rung a reader is
   // usually chasing is the budget, and every item that failed THAT now has a
   // list of its own below.
-  'preview.spec': 'The strip holds one {b:specimen} per gate — the first item by id that fails there — so it holds still while your selection moves. Every item that really spilled is named under {b:Not delivered} below, in the order the selector considered it.',
+  'preview.spec': 'The strip holds one {b:specimen} per gate — the first item by id that fails there — so it holds still while your selection moves. Every item that really spilled is named under {b:Not delivered} below, in the order the selector considered it. Each specimen now carries {b:how many items fail with it}, and the ladder below carries that count for every gate — including the gates nothing fails at, which say zero rather than going blank.',
   'preview.spill': 'Not delivered — every item that spilled, and what it cost',
   'preview.spilln': 'One row per item in {m:Selection.spilled}, {b:whole across every tier this event ran} — not the ribbon\'s per-tier split — in the selector\'s own candidate order, which is load-bearing: first-fit admits greedily, so the same three costs in a different order spill a different item. {b:band} appears where the tier offered its candidates in more than one: on a tool event band 1 is the items whose own globs name this path and band 2 is the items that match only by having no scope at all, so a scoped item displacing an unscoped one is visible rather than mysterious. An index line shows {b:—} instead of a cost: the index tier admits lines, and per-line costs are exposed by no endpoint, so the number is absent rather than invented.',
   'preview.ribbon': 'Budget ribbon — five tiers, and what fell out of each',
@@ -172,6 +172,27 @@ export const strings = {
   'preview.spillUnreached': 'Nothing reached the budget gate. {n} item(s) were removed one gate earlier, at {m:seen}, as already delivered to this session — so no tier had a candidate left to offer it. This zero is {b:not} "nothing spilled".',
   'preview.spillNoCand': 'Nothing reached the budget gate, and nothing was removed at {m:seen} either: no tier that ran on this event had a candidate to offer. This zero is {b:not} "nothing spilled".',
   'preview.gseen': 'already delivered to this session, so it was filtered at the {m:seen} gate — before any budget was consulted',
+  // ── Each rung's own population ─────────────────────────────────────────
+  //
+  // Added 2026-08-29. The picker offered three names over a corpus where 564
+  // items failed — 551 of them at one rung — and the card said "of how many"
+  // nowhere at all, so a specimen standing for 551 read as the whole set. The
+  // picker is unchanged (one exemplar per rung is the design, and 139 names
+  // would be `preview.whyn`'s own objection one axis along); what these
+  // sentences add is the number the specimen stands in for, on every rung,
+  // including the rungs nothing fails at.
+  'preview.rungn': '{b:{n} item(s) fail at this gate.} The strip above names the first of them by id; the rest are listed below.',
+  'preview.rung0': '{b:No item fails at this gate.} A measured zero: every item in the corpus was put to this gate and none stopped here — not a rung nobody looked at.',
+  // Rung 4 never takes a plain number and never takes the zero above. Its
+  // count is the item-level half of a question the other half of which no
+  // endpoint answers, and a bare `0` would claim this event's path excluded
+  // nothing — the one thing nobody measured.
+  'preview.rungunk': "{b:{n} item(s) fail at this gate at the item level} — an item with no scope of its own under {m:scopePolicy: inert}. How many the event's own path excludes is {b:unmeasured}: the per-event {m:matchesScope} refusal is served by no endpoint, so the items it drops are absent from this ladder rather than counted on it. Not a zero, and no list of them can be drawn here.",
+  'preview.rungseen': '{b:{n} item(s) fail at this gate.} Every one of them is named under {b:Filtered before budgeting}, in the {b:Not delivered} card below.',
+  'preview.rungspill': '{b:{n} item(s) fail at this gate.} Every one of them is named under {b:Not delivered} below, with the tier that dropped it and what it cost.',
+  'preview.rungopen': 'Every item stopped at {mv:gate}, by id — the strip above names the first of them, and this is the rest of what it stands for.',
+  'preview.pickn': 'first of {n}',
+  'preview.pickunk': 'first of {n} measured',
   'preview.when': '{b:The When on each row is the past, not this preview.} A preview is a simulation: nothing here is being injected as you read it. Each row carries the last time that item really was delivered, or really did spill, from {m:audit_item.role} joined to {m:audit.at} — matched on the tier the row itself names, and naming the tier when only another one has a record. Two rows can be weeks apart and both be right.',
   'preview.whenoff': '{b:Delivery times unavailable} — {reason}',
   'preview.whenabsent': '{b:Delivery times unavailable} — the audit projection has never been built in this workspace, so there is no record to read. {m:mycontext audit} builds it; a read surface may not, because building it is a write.',
