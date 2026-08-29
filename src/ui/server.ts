@@ -93,8 +93,8 @@ import {
   clearUiServerRecord, uiServerRecordPath, writeUiServerRecord,
 } from '../core/ui-server-record.ts';
 import {
-  cookieValue, mintToken, NonceStore, recordNonceMint, recordRefusal, SECURITY_HEADERS,
-  TOKEN_COOKIE, TOKEN_HEADER, tokenDigest, validateApiRequest,
+  cookieValue, CREDENTIAL_COOKIE, mintToken, NonceStore, recordNonceMint, recordRefusal,
+  SECURITY_HEADERS, TOKEN_COOKIE, TOKEN_HEADER, tokenDigest, validateApiRequest,
 } from './security.ts';
 import { serveStatic } from './static.ts';
 import { registerWatchRoutes } from './watch-model.ts';
@@ -665,7 +665,16 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     if (gate.check === 'token-mismatch'
       && headerFirst(req.headers[TOKEN_HEADER]) === null
       && cookieValue(req.headers.cookie, TOKEN_COOKIE) !== undefined) {
-      res.setHeader('set-cookie', `${TOKEN_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
+      // **Both cookies, in one response.** `CREDENTIAL_COOKIE` is the
+      // script-readable marker that says a token cookie exists and which
+      // server issued it; leaving it behind while expiring the token it points
+      // at would leave the page promising itself a credential the browser no
+      // longer holds — which is the nine-refusals boot again, wearing the fix's
+      // own clothes. They are set together and they are cleared together.
+      res.setHeader('set-cookie', [
+        `${TOKEN_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`,
+        `${CREDENTIAL_COOKIE}=; Path=/; SameSite=Strict; Max-Age=0`,
+      ]);
     }
     sendRefusal(res, gate.status);
   }
@@ -743,8 +752,19 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
       //
       // No `Secure`: the server is plain http on loopback by design, and a
       // Secure cookie would simply never be stored.
-      res.setHeader('set-cookie',
-        `${TOKEN_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict`);
+      //
+      // **And the marker beside it, in the same response** — see
+      // `CREDENTIAL_COOKIE` in security.ts for the whole argument. It is not
+      // `HttpOnly` and must not be: the one thing it exists to do is be
+      // READABLE, so that a page arriving with no fragment and no
+      // `sessionStorage` can tell "I hold a cookie credential from THIS
+      // server" from "I hold nothing" without spending nine refused requests
+      // to find out. Its value is this port, because the token cookie is
+      // host-scoped and shared with every other `mycontext ui` on 127.0.0.1.
+      res.setHeader('set-cookie', [
+        `${TOKEN_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict`,
+        `${CREDENTIAL_COOKIE}=${boundPort}; Path=/; SameSite=Strict`,
+      ]);
       sendJson(res, { status: 200, body: { token } });
       return;
     }

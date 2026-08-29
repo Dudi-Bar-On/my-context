@@ -510,9 +510,10 @@ export function closeProjectionUpkeep(): void {
  * So: nothing is created, nothing is repaired, and anything unexpected is
  * declined rather than fixed. The `audit_meta` read is also the shape probe —
  * a file that is not a database, or one missing the table, fails here.
- * `busy_timeout` IS set, unlike the read-only door, because this connection
- * takes the write lock and two hooks in two sessions against one workspace is
- * the ordinary case.
+ * `busy_timeout` is set because this connection takes the write lock and two
+ * hooks in two sessions against one workspace is the ordinary case. It used to
+ * say "unlike the read-only door"; since 2026-08-29 that door sets the same
+ * 3000 ms, for the second half of the same reason — see its docblock.
  *
  * **Damage THROWS out of here rather than returning a state**, and that is the
  * whole reason this returns a union instead of `DatabaseSync | null`. `null`
@@ -918,13 +919,66 @@ export class ProjectionStaleError extends Error {
  * tell "malformed" from its own read-only view of a mid-write moment, which is
  * the reasoning `Store.openReadOnlyChecked` already sets down.
  *
- * **No `busy_timeout`.** `openProjection` sets 3000 ms because it writes and
- * can be locked out. A read-only connection takes no write lock;
- * `Store.openReadOnlyChecked` sets none for that reason over 18,300 contended
- * trials, and `Ledger.openReadOnlyChecked` re-measured it at 3,000. If
- * contention ever surfaces here it arrives as an immediate throw, which is
- * what a read door wants: the caller discloses a failure instead of stalling
- * on one.
+ * ── `busy_timeout` IS SET, AND IT WAS DELIBERATELY NOT, UNTIL 2026-08-29 ────
+ *
+ * This door used to set none. The sentence it set none on read: *"A read-only
+ * connection takes no write lock; `Store.openReadOnlyChecked` sets none for
+ * that reason over 18,300 contended trials, and `Ledger.openReadOnlyChecked`
+ * re-measured it at 3,000. If contention ever surfaces here it arrives as an
+ * immediate throw, which is what a read door wants: the caller discloses a
+ * failure instead of stalling on one."*
+ *
+ * **The first half is true and was never sufficient, and the second half is
+ * true of a different kind of failure than the one that actually arrives.**
+ *
+ *  1. **A reader that takes no write lock is still refused by one.** Not every
+ *     moment of this database's life is a WAL moment. `openProjection`'s own
+ *     `discard()` deletes the file and both sidecars and rebuilds it, and
+ *     `new DatabaseSync(file)` + `PRAGMA journal_mode = WAL` is a window in
+ *     which the file is not yet in WAL at all; a WAL checkpoint — which
+ *     `openProjectionForUpkeep`'s own measurement names as the expensive part
+ *     of a short-lived writer's close, 10 ms of a 12.29 ms p95 — takes locks a
+ *     reader waits behind. `SQLITE_BUSY` reaches this connection. It reached
+ *     it enough to be the standing explanation for this suite's e2e
+ *     contention.
+ *
+ *  2. **The premise "there is one writer" expired.** The absence was decided
+ *     when the only writer was `mycontext audit`, run by a person, one at a
+ *     time. `recordAudit` now projects on the path that appends — see
+ *     `keepProjectionCurrent` and `begin()`'s own note that "two hooks in two
+ *     Claude sessions against one workspace is the ordinary case, not the
+ *     exotic one" — and the UI server reads this file while those writes land.
+ *     Both write doors wait 3000 ms for each other. A reader that waited zero
+ *     was the guaranteed loser of every race in the system.
+ *
+ *  3. **"Disclose rather than stall" is right about a STATE and wrong about a
+ *     MILLISECOND.** The four outcomes this door exists to keep apart —
+ *     absent, stale, wrong shape, wrong version — are decided by the CHECKS
+ *     below, and every one of them still throws immediately; a timeout cannot
+ *     delay or soften any of them. `SQLITE_BUSY` is the one failure here that
+ *     is transient by definition, and reporting a transient as a verdict is
+ *     how `database is locked` came to be rendered into whichever UI card was
+ *     mid-fetch. That is a message about the instant the fetch happened to
+ *     land, not about the corpus — the same "a proxy, not the property"
+ *     mistake this project has now caught six times.
+ *
+ * **3000 ms, the number both write doors already use** (`openProjection` and
+ * `openProjectionForUpkeep`), rather than a fourth number to keep in step. A
+ * held `BEGIN IMMEDIATE`/`COMMIT` on the upkeep connection measures 0.017 ms
+ * and a whole open/append/close 12.29 ms p95, so the bound is ~250x the
+ * realistic worst hold: it is not sized to make contention survivable, it is
+ * sized so that anything still refused after it is a writer that is genuinely
+ * stuck, which IS a state worth disclosing — and it is still disclosed, by the
+ * engine's own `SQLITE_BUSY`, unchanged.
+ *
+ * **The cost, named rather than left to be discovered.** `DatabaseSync` is
+ * synchronous, so this bound is also the longest a single caller — the UI
+ * server's request thread included — can be held inside this open. That is the
+ * trade: up to 3 s of waiting in a contended instant, against a certainty of a
+ * false error rendered in it. `Store.openReadOnlyChecked` and
+ * `Ledger.openReadOnlyChecked` are deliberately NOT changed with this: they
+ * were each measured on their own databases and their own writers, and this
+ * argument is about this file's second writer, not about theirs.
  *
  * There is deliberately **no unchecked `openProjectionReadOnly`** beside this,
  * for the reason `ledger.ts` gives: nothing calls one, the checked form never
@@ -951,6 +1005,13 @@ export function openProjectionReadOnlyChecked(root: string): DatabaseSync {
 
   const db = new DatabaseSync(file, { readOnly: true });
   try {
+    // The one knob this door sets, and the only statement here that is not a
+    // question about the file. See the `busy_timeout` section on the docblock
+    // for why the deliberate absence was reversed, why 3000 and not a new
+    // number, and what it costs. It writes nothing: `busy_timeout` is a
+    // per-connection setting, and this connection is one the engine refuses to
+    // write the database through (`isProjectionReadOnly` below asks it).
+    db.exec('PRAGMA busy_timeout = 3000;');
     // Positive evidence that this is a database, before "no tables" is allowed
     // to mean anything. See check 1 on the docblock: a zero-length file opens
     // clean and reports an empty `sqlite_master`. On a genuinely corrupt file

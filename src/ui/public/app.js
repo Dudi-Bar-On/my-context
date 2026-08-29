@@ -238,6 +238,100 @@ function rememberedToken() {
 function forgetToken() {
   try { sessionStorage.removeItem(TOKEN_KEY); } catch { /* nothing to forget */ }
 }
+
+/**
+ * The marker the handoff sets beside the `mycontext_token` cookie: the port of
+ * the server that issued it. `security.ts`'s `CREDENTIAL_COOKIE`.
+ *
+ * Not `HttpOnly`, and deliberately so — it is the one thing about this page's
+ * own credential that script is ALLOWED to know. The token itself stays
+ * unreadable.
+ */
+const CRED_COOKIE = 'mycontext_cred';
+
+/**
+ * The port named by the marker cookie, or `null`.
+ *
+ * Hand-parsed for the reason `security.ts`'s `cookieValue` is: zero runtime
+ * dependencies, the header is `name=value; name=value`, and anything that does
+ * not split cleanly is skipped rather than guessed at. `document.cookie` can
+ * itself throw where storage is blocked, which is a browser saying "you have
+ * no cookies" — the same answer as an absent marker.
+ */
+function credentialCookiePort() {
+  let raw = '';
+  // Coerced, not trusted: `document.cookie` throws where storage is blocked
+  // and is `undefined` in the shell's own in-process harnesses. Both mean the
+  // same thing here — no marker — and neither may take the boot down, which is
+  // the whole reason this function is allowed to be consulted before the first
+  // request.
+  try { raw = typeof document.cookie === 'string' ? document.cookie : ''; } catch { return null; }
+  for (const part of raw.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() !== CRED_COOKIE) continue;
+    const value = part.slice(eq + 1).trim();
+    return value === '' ? null : value;
+  }
+  return null;
+}
+
+/**
+ * **Does this page hold a credential AT ALL? Answered without spending a
+ * request to be told.**
+ *
+ * ── THE DEFECT ─────────────────────────────────────────────────────────────
+ *
+ * `plan:walk seq:85`, measured 2026-08-29 in a real browser against
+ * `.demo-corpus`: a boot with no credential — a bookmarked bare URL, a second
+ * tab, a tab whose server has been replaced — fired the shell's whole opening
+ * set (`/api/meta`, `/api/status`, `/api/watch/volume`, `/api/watch/stream`,
+ * `/api/sessions`, then the landing screen's `/api/status`, `/api/coverage`,
+ * `/api/select`, `/api/simulate`, `/api/items`) and had every one of them
+ * refused. **A refusal is the read surface's one WRITE** — `recordRefusal` →
+ * `recordAudit` → `keepProjectionCurrent`, a `BEGIN IMMEDIATE` transaction —
+ * so ten reads became ten writes, of nothing but failures, and every one of
+ * them was repeated the instant a nonce was pasted (`installNonceRedemption`
+ * re-runs the identical set). 5,207 of that corpus's 6,156 audit records, and
+ * 17% of the owner's live log, were the app refusing its own boot.
+ *
+ * ── WHY THE PAGE COULD NOT ANSWER THIS BEFORE ──────────────────────────────
+ *
+ * There are three places a credential can be, and until today the page could
+ * see only two of them. `token` is the in-memory one, from a redeemed nonce.
+ * `sessionStorage` is the tab's copy, which buys a reload. The third is the
+ * `mycontext_token` cookie — `HttpOnly` by design, so `document.cookie` will
+ * never show it — and `main()`'s own comment took the honest way out: *"The
+ * only way to find out whether this page is authenticated is to ASK THE
+ * SERVER."* That was true, and asking cost nine refusals. It is no longer
+ * true: `security.ts`'s `CREDENTIAL_COOKIE` is a marker set in the same
+ * response as the token cookie and cleared in the same response, carrying the
+ * issuing PORT and no credential at all.
+ *
+ * ── WHY THE PORT AND NOT MERELY "A COOKIE EXISTS" ──────────────────────────
+ *
+ * Cookies are scoped to a HOST, not a port, so every `mycontext ui` on
+ * 127.0.0.1 overwrites the same `mycontext_token`. A tab on the previous
+ * port therefore holds a cookie the current server never issued: that is
+ * `token-mismatch`, 869 of the 5,207 records above, and it is a boot that was
+ * refused ten times for a credential it could have known was not its own. The
+ * marker is overwritten by the same last-writer-wins rule, so it always names
+ * the server whose token the cookie currently holds.
+ *
+ * ── WHAT THIS IS NOT ───────────────────────────────────────────────────────
+ *
+ * It is not a second gate, and it never says yes on its own: `false` means
+ * "there is nothing to present", never "you may not". A `true` here still buys
+ * exactly one thing — the request is SENT — and the server decides it, which
+ * is why a stale cookie for the right port still goes out, is still refused,
+ * and is still audited. **Those refusals are the ones that must stay**: a
+ * wrong token is a security event, and this removes self-inflicted refusals,
+ * not the record of real ones.
+ */
+function credentialHeld() {
+  if (token !== null) return true;
+  return credentialCookiePort() === location.port;
+}
 let table = null;
 let sessionValue = 'cold';
 /**
@@ -742,6 +836,33 @@ async function refusalDetail(response) {
  * JSON, which is what `server.ts` parses (`JSON.parse(await readBody(req))`).
  */
 async function request(path, method, body) {
+  // **A request this page already knows the answer to is not sent.**
+  //
+  // See `credentialHeld()` for the measurement. With no token in memory, none
+  // in `sessionStorage` and no marker cookie for THIS server, the gate's
+  // answer is fixed before the socket opens: `validateApiRequest` finds
+  // neither `x-mycontext-token` nor `mycontext_token`, and returns
+  // `401 token-missing`. Sending it anyway buys one thing — an `access` record
+  // appended and projected under `BEGIN IMMEDIATE`, on the page's own boot.
+  //
+  // **`'401'` is not a pretence that the server was reached; it is the answer
+  // the gate gives, computed rather than fetched.** A refusal carries a status
+  // line and nothing else (owner ruling A4), so `refusalDetail()` on a real
+  // token-missing response returns this exact string. Keeping it byte-identical
+  // is deliberate: every caller — the screens, `fillProvenance`'s
+  // `prov.projFailed`, `ctx-post.spec.ts` — sees precisely what it saw before,
+  // and no new sentence reaches the page from here. What changes is only that
+  // the audit log no longer records the app refusing itself.
+  //
+  // `showDisconnected()` for the same parity: today the first 401 of a
+  // credential-less boot is what raises the banner, and the reader is owed it
+  // whether the refusal travelled or not. `route()`'s `sess.nocred` note still
+  // arrives by its own path — `noCredential` is cleared only where
+  // `loadSessions()` gets a real answer, and this branch is not one.
+  if (!credentialHeld()) {
+    showDisconnected();
+    throw new Error('401');
+  }
   let response;
   try {
     // Only send the header when there is something to send. A null token
@@ -1074,6 +1195,24 @@ function dispatchLiveEvent(event, data) {
  */
 function ensureLiveStream() {
   if (liveStop !== null) return;
+  // **A credential-less page opens no connection, and does not spend its ONE
+  // chance to open one either.**
+  //
+  // `/api/watch/stream` is the tenth of the ten refusals a credential-less boot
+  // used to record (see `credentialHeld()`), and it was the most expensive of
+  // them to answer with a fault: `liveStop` is set once and never cleared —
+  // "reopening after a fault would be exactly the reconnection §2 forbids" —
+  // so a stream refused during a boot with no token left the page with no live
+  // connection FOR THE REST OF ITS LIFE, including after a pasted nonce
+  // redeemed it in place. The recovery path re-runs every read; it could not
+  // re-run this.
+  //
+  // Returning without setting `liveStop` is what distinguishes "not opened"
+  // from "opened and died". Nothing is faulted, because nothing connected —
+  // announcing a dead stream the page never had would be the same false
+  // certainty in the other direction. `route()` subscribes on every screen it
+  // builds, so the redemption's own `route()` is what opens it for real.
+  if (!credentialHeld()) return;
   liveStop = stream(`/api/watch/stream?backlog=${BOUND_CAP_LIST}`, dispatchLiveEvent, () => {
     // An ended stream is not any one screen's to report — `dispatchLiveEvent`'s
     // `fault` branch above is where the one true, shell-owned account of it is
@@ -2398,12 +2537,21 @@ async function main() {
   // server was running perfectly. The message was wrong, and because the boot
   // returned here, nothing else was ever drawn.
   //
-  // There is now a third credential this code cannot see: the `mycontext_token`
+  // There is a third credential this code cannot see: the `mycontext_token`
   // cookie, set at handoff and HttpOnly by design, so `document.cookie` will
-  // never show it. The only way to find out whether this page is authenticated
-  // is to ASK THE SERVER — so the boot continues, and `api()` deals with a real
-  // 401 if one actually comes back. Bailing here would refuse to use a
-  // credential the browser is already holding.
+  // never show it. Bailing here would refuse to use a credential the browser is
+  // already holding — so the boot continues, and it always will.
+  //
+  // **What this comment used to say next was "the only way to find out whether
+  // this page is authenticated is to ASK THE SERVER", and that stopped being
+  // true on 2026-08-29.** Asking cost ten refusals per boot, each one a write
+  // (`plan:walk seq:85`), because there was no way to tell an unauthenticated
+  // page from an authenticated one without being refused. There is now:
+  // `credentialHeld()` reads the script-visible marker the handoff sets beside
+  // the HttpOnly cookie, and `request()` is where that answer is acted on — one
+  // place, so the heartbeat, the strip, the rail counts and every screen
+  // inherit it without knowing about it. Nothing about the ORDER below
+  // changes; what changes is that a page holding nothing sends nothing.
 
   window.myctx = {
     api,

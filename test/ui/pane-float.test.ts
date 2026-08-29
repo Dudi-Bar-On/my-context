@@ -299,6 +299,9 @@ function respond(body: unknown): Response {
   return { ok: true, status: 200, json: async (): Promise<unknown> => body } as unknown as Response;
 }
 
+/** The port this stand-in answers on, and the port its marker cookie names. */
+const FAKE_PORT = '4111';
+
 const tick = (): Promise<void> => new Promise((resolve) => { setImmediate(resolve); });
 
 /**
@@ -342,6 +345,15 @@ async function boot(): Promise<Harness> {
       addEventListener: (type: string, listener: (event: FakeEvent) => void): void => {
         (docListeners[type] ??= []).push(listener);
       },
+      // The handoff's script-readable marker (`security.ts`'s
+      // `CREDENTIAL_COOKIE`), naming the same port `location` below answers on.
+      // `app.js`' `credentialHeld()` (since `plan:walk seq:85`) declines to
+      // send a request whose refusal is already certain — no token, no marker,
+      // nothing to present — because each such request appends a `ui-refused`
+      // audit record. `fetchFake` answers as an AUTHENTICATED server does,
+      // which is the page this harness has always stood in for; it merely used
+      // to be able to leave that implicit. Nothing here is about credentials.
+      cookie: `mycontext_cred=${FAKE_PORT}`,
     };
 
     const fetchFake = async (target: string): Promise<Response> => {
@@ -376,7 +388,8 @@ async function boot(): Promise<Harness> {
       Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
     };
     define('document', document);
-    define('location', { hash: '#/coverage', pathname: '/', reload: (): void => {} });
+    define('location',
+      { hash: '#/coverage', pathname: '/', port: FAKE_PORT, reload: (): void => {} });
     define('history', { replaceState: (): void => {} });
     define('navigator', { language: 'en' });
     define('localStorage', store);

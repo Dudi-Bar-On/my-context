@@ -107,6 +107,57 @@ export const TOKEN_HEADER = 'x-mycontext-token';
 export const TOKEN_COOKIE = 'mycontext_token';
 
 /**
+ * **The marker beside the token cookie: "a token cookie was issued to this
+ * browser, by the server on THIS port". Script-readable, and not a
+ * credential.**
+ *
+ * ── THE DEFECT IT CLOSES ───────────────────────────────────────────────────
+ *
+ * `TOKEN_COOKIE` above is `HttpOnly` by design, so `document.cookie` can never
+ * show it. That is the right property for the credential and it left the page
+ * unable to answer one question about itself: *do I hold a credential at all?*
+ * The only way to find out was to make a request and be refused — and the
+ * shell makes NINE on every boot. Measured 2026-08-29 (`plan:walk seq:85`):
+ * a boot with no credential wrote ten `ui-refused` audit records, each one a
+ * `BEGIN IMMEDIATE` write, and then repeated all ten the moment a nonce was
+ * pasted. 5,207 of `.demo-corpus`'s 6,156 audit records, and 17% of the
+ * owner's live log, were the app refusing its own boot.
+ *
+ * The page cannot be told "you have no credential" by a credential-less
+ * request; that IS the request. So it is told by a cookie that carries no
+ * credential and can therefore be read.
+ *
+ * ── WHY IT CARRIES THE PORT ────────────────────────────────────────────────
+ *
+ * Because cookies are scoped to a HOST and not to a port — the fact
+ * `server.ts`'s handoff exemption already had to be widened for. Every
+ * `mycontext ui` on `127.0.0.1` writes the SAME `mycontext_token` cookie name,
+ * so the last server to hand one out owns it for every tab on every port. A
+ * tab on the previous port sends a token the current server never issued and
+ * is refused `token-mismatch` — 869 of the 5,207 records above.
+ *
+ * The marker is overwritten by exactly the same last-writer-wins rule, which
+ * is what makes it truthful: it always names the server whose token the cookie
+ * currently holds. A page whose `location.port` does not match it knows the
+ * cookie is somebody else's before it spends a request finding out.
+ *
+ * ── WHY PUBLISHING IT IS NOT A LEAK ────────────────────────────────────────
+ *
+ * The value is a port number the reader's own address bar is already showing,
+ * and `location.port` is readable by any script on the page regardless. It
+ * proves nothing, authenticates nothing, and the gate never reads it: it is
+ * not in `validateApiRequest`, and adding it there would turn a hint into a
+ * credential. The token stays `HttpOnly`; this is a flag beside it, not a copy
+ * of it.
+ *
+ * `SameSite=Strict` and `Path=/` are the token cookie's own attributes, kept
+ * identical on purpose: the two are set in one response and expired in one
+ * response, so they cannot drift apart into a marker that promises a
+ * credential the browser no longer has.
+ */
+export const CREDENTIAL_COOKIE = 'mycontext_cred';
+
+/**
  * One cookie's value out of a `Cookie` header, or `undefined`.
  *
  * Hand-parsed rather than depending on a parser: this project ships zero

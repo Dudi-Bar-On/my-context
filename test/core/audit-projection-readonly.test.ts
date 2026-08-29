@@ -506,9 +506,13 @@ test('the read door contains no write, and openProjection contains every one of 
     ['ensureLogDir — creating the .audit directory', /ensureLogDir/],
     ['exec(SCHEMA) — four CREATE TABLE and six CREATE INDEX', /SCHEMA/],
     ['journal_mode — a write to the database header', /journal_mode/],
-    // A read-only connection takes no write lock, so it has nothing to wait
-    // for; `Store.openReadOnlyChecked` sets none over 18,300 contended trials.
-    ['busy_timeout — a write-path knob', /busy_timeout/],
+    // `busy_timeout` used to be listed here, on the reasoning that a read-only
+    // connection takes no write lock and so has nothing to wait for. It was
+    // removed from this list on 2026-08-29 and the door now sets 3000 ms — see
+    // the test below, which pins that as a PROPERTY of the connection rather
+    // than as the absence of a string, and see the door's own docblock for the
+    // argument. It never belonged in this list anyway: this list is
+    // `openProjection`'s WRITES, and a per-connection timeout writes nothing.
   ];
   for (const [what, pattern] of writes) {
     assert.equal(pattern.test(door), false, `the read door must not contain ${what}`);
@@ -521,4 +525,72 @@ test('the read door contains no write, and openProjection contains every one of 
   // The ruling itself: the door must not be able to reach the sync either.
   assert.equal(/syncProjection\(/.test(door), false,
     'a read may not bring the projection up to date — that is the write ruling C1 forbids');
+});
+
+test('the read door waits for a concurrent writer: busy_timeout is 3000 ms, not the default 0', () => {
+  // **A DECISION test, and the decision was REVERSED on 2026-08-29
+  // (`plan:walk seq:85`). It used to assert the opposite.**
+  //
+  // The absence was argued from "a read-only connection takes no write lock",
+  // which is true and was never sufficient: a WAL checkpoint and the non-WAL
+  // window `openProjection`'s own `discard()`/create opens both hand a reader
+  // `SQLITE_BUSY`, and a reader waiting zero milliseconds is the guaranteed
+  // loser against two write doors that each wait 3000. What arrived on the
+  // page was `database is locked` rendered into whichever card was mid-fetch —
+  // a verdict about the instant a fetch happened to land, not about the
+  // corpus. The door's docblock carries the full argument and the cost.
+  //
+  // **Asserted of the CONNECTION, never of the source text.** The sibling
+  // `Ledger` test pins its own decision by grepping the file, and says why it
+  // has to: `Ledger` hides its handle behind a real private field. This door
+  // hands back a bare `DatabaseSync`, so the timeout can be read off the thing
+  // itself — and this project has now caught "a proxy instead of the property"
+  // six times, most recently a counter that went negative and inverted its own
+  // wait. A `PRAGMA busy_timeout` line can be present and shadowed, or moved
+  // behind a branch that does not run; what the engine reports cannot.
+  const root = box('busytimeout');
+  try {
+    recordAudit(root, { kind: 'access', op: 'ui-refused', refusal: {
+      check: 'token-missing', status: 401, method: 'GET', route: '/api/status',
+      host: '127.0.0.1:4111', origin: null,
+    } });
+    built(root);
+
+    const db = openProjectionReadOnlyChecked(root);
+    try {
+      const timeout = db.prepare('PRAGMA busy_timeout').get() as { timeout?: number };
+      assert.equal(Number(timeout.timeout), 3000,
+        'the read door must wait for a writer rather than reporting a transient lock as a '
+        + 'verdict — and it must wait the SAME 3000 ms both write doors already wait for each '
+        + 'other, not a fourth number to keep in step');
+    } finally {
+      db.close();
+    }
+
+    // Discriminating rather than vacuously green, the same way the write list
+    // above proves its slicing: a bare read-only open of the SAME file reports
+    // the engine's default, so a 3000 above can only have come from the door.
+    const bare = new DatabaseSync(auditDbPath(root), { readOnly: true });
+    try {
+      const fallback = bare.prepare('PRAGMA busy_timeout').get() as { timeout?: number };
+      assert.equal(Number(fallback.timeout), 0,
+        'the engine default is 0 — if this is not 0 the assertion above proves nothing');
+    } finally {
+      bare.close();
+    }
+
+    // And the timeout changed exactly one thing. The four outcomes this door
+    // exists to keep apart are decided by CHECKS, not by lock contention, so a
+    // waiting reader still refuses a stale projection instantly and by CLASS.
+    appendJsonlLine(auditDir(root), auditLogPath(root), {
+      protocol: AUDIT_PROTOCOL, at: '2026-08-29T10:00:00.000Z',
+      kind: 'access', op: 'ui-refused',
+      refusal: { check: 'token-missing', status: 401, method: 'GET', route: '/api/meta',
+        host: '127.0.0.1:4111', origin: null },
+    });
+    assert.throws(() => openProjectionReadOnlyChecked(root).close(), ProjectionStaleError,
+      'a busy_timeout must not soften a STATE: behind is still behind, and still a class');
+  } finally {
+    removeTree(root);
+  }
 });

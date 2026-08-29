@@ -39,7 +39,7 @@ import { readAudit, recordAudit } from '../../src/core/audit.ts';
 import { HELP_TOPICS } from '../../src/core/teach.ts';
 import { DIR_NAME } from '../../src/core/workspace.ts';
 import { registeredRoutes } from '../../src/ui/routes.ts';
-import { TOKEN_COOKIE, TOKEN_HEADER } from '../../src/ui/security.ts';
+import { CREDENTIAL_COOKIE, TOKEN_COOKIE, TOKEN_HEADER } from '../../src/ui/security.ts';
 import { registerReadRoutes } from '../../src/ui/server.ts';
 import { rawGet, redeemNonce, runUiChild, startUiChild, type UiHarness } from './helpers.ts';
 
@@ -200,6 +200,87 @@ test('a stale or wrong token does not lock a page out of /api/handoff', async ()
     const setCookie = viaCookie.headers.get('set-cookie') ?? '';
     assert.match(setCookie, new RegExp(`${TOKEN_COOKIE}=${token}`),
       'the handoff must overwrite the stale cookie with the token it just issued');
+  } finally { await h.stop(); removeTree(cwd); }
+});
+
+/**
+ * **The handoff sets a SECOND cookie, and it is a marker rather than a
+ * credential** (`plan:walk seq:85`, 2026-08-29).
+ *
+ * The defect it closes is measured on the browser side: the token cookie is
+ * `HttpOnly`, so a page that arrived with no fragment and no `sessionStorage`
+ * could not tell "I hold a cookie credential" from "I hold nothing" without
+ * making a request and being refused — and the shell makes ten on boot, each
+ * one an audit WRITE. 5,207 of `.demo-corpus`'s 6,156 records were that.
+ *
+ * Four claims, and the last two are the ones that keep this a marker:
+ * it names the ISSUING PORT (the token cookie is host-scoped and shared with
+ * every other `mycontext ui` on 127.0.0.1, so "a cookie exists" is not the
+ * same question as "a cookie for THIS server exists"); it is readable by
+ * script while the token beside it is not; it is not accepted as a credential
+ * by the gate; and a refusal that expires the token cookie expires this one
+ * in the same response, so the page can never be left believing in a
+ * credential the browser has thrown away.
+ */
+test('the handoff sets a readable credential MARKER beside the HttpOnly token cookie', async () => {
+  const cwd = project();
+  const h = await startUiChild(cwd);
+  try {
+    const handoff = await fetch(`http://127.0.0.1:${h.port}/api/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nonce: h.nonce }),
+    });
+    assert.equal(handoff.status, 200);
+    const token = ((await handoff.json()) as { token: string }).token;
+    const cookies = handoff.headers.getSetCookie();
+
+    const tokenCookie = cookies.find((c) => c.startsWith(`${TOKEN_COOKIE}=`));
+    const marker = cookies.find((c) => c.startsWith(`${CREDENTIAL_COOKIE}=`));
+    assert.ok(tokenCookie !== undefined, 'the handoff must still set the token cookie');
+    assert.ok(marker !== undefined,
+      'the handoff must set the credential marker — without it a page with only a cookie has ' +
+      'no way to know it has one, and finds out by being refused nine times');
+
+    // Claim 1: it names the issuing port, not merely "yes".
+    assert.equal(marker.split(';')[0], `${CREDENTIAL_COOKIE}=${h.port}`,
+      'the marker must carry the port that issued the token, because cookies are host-scoped ' +
+      'and every mycontext ui on 127.0.0.1 overwrites the same token cookie');
+
+    // Claim 2: readable by script — which is the whole point — while the
+    // credential beside it stays out of reach. Asserted in BOTH directions,
+    // because a marker that became HttpOnly would silently restore the defect
+    // and a token that lost it would be a real regression.
+    assert.equal(/HttpOnly/i.test(marker), false,
+      'the marker must NOT be HttpOnly: being readable is the one thing it exists to do');
+    assert.equal(/HttpOnly/i.test(tokenCookie), true,
+      'the TOKEN cookie must stay HttpOnly — the marker exists so that never has to change');
+    assert.match(marker, /SameSite=Strict/i);
+    assert.match(marker, /Path=\//);
+    // And it is not the token in another wrapper.
+    assert.equal(marker.includes(token), false,
+      'the marker must not carry the token, in any form — it is a flag beside the credential');
+
+    // Claim 3: the gate does not accept it. A caller holding only the marker
+    // holds nothing, and must be refused exactly as one holding nothing is.
+    const markerOnly = await fetch(`http://127.0.0.1:${h.port}/api/status`, {
+      headers: { cookie: `${CREDENTIAL_COOKIE}=${h.port}` },
+    });
+    assert.equal(markerOnly.status, 401,
+      'the marker must never authenticate anything — it is a hint to the page, not a key');
+
+    // Claim 4: expired together. A cookie-only wrong token is the refusal that
+    // clears the stale token cookie; the marker pointing at it must go too.
+    const mismatch = await fetch(`http://127.0.0.1:${h.port}/api/status`, {
+      headers: { cookie: `${TOKEN_COOKIE}=${'b'.repeat(64)}; ${CREDENTIAL_COOKIE}=${h.port}` },
+    });
+    assert.equal(mismatch.status, 403);
+    const cleared = mismatch.headers.getSetCookie();
+    assert.ok(cleared.some((c) => c.startsWith(`${TOKEN_COOKIE}=;`)),
+      'a stale token cookie must still be expired by the refusal path');
+    assert.ok(cleared.some((c) => c.startsWith(`${CREDENTIAL_COOKIE}=;`)),
+      'the marker must be expired in the SAME response as the token it points at, or the page ' +
+      'goes on believing it holds a credential the browser has just thrown away');
   } finally { await h.stop(); removeTree(cwd); }
 });
 

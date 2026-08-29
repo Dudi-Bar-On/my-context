@@ -373,7 +373,23 @@ function rewrittenAppJs(): string {
 interface Store { getItem: (k: string) => string | null; setItem: (k: string, v: string) => void;
   removeItem: (k: string) => void }
 
-interface FakeLocation { hash: string; pathname: string; reload: () => void }
+interface FakeLocation { hash: string; pathname: string; port: string; reload: () => void }
+
+/**
+ * The port this stand-in server answers on, and the port the marker cookie
+ * below names. Any number: what matters is that the two AGREE.
+ *
+ * `app.js`' `credentialHeld()` (since `plan:walk seq:85`) declines to send a
+ * request the gate's answer to is already known — no token in memory, none in
+ * `sessionStorage`, and no `mycontext_cred` marker for THIS origin means the
+ * page holds nothing and a request would only append a `ui-refused` audit
+ * record. This harness's `fetchFake` answers every read as an AUTHENTICATED
+ * server does, which is the page it has always been standing in for; before
+ * that gate existed the harness could leave the credential implicit, and now
+ * it has to say so. Nothing here is about credentials — the claims are the
+ * pane and the router — so the state is set once and never varied.
+ */
+const FAKE_PORT = '4111';
 
 interface Harness {
   /** Set the hash and fire `hashchange`, then wait for the router to land. */
@@ -457,9 +473,15 @@ async function boot(): Promise<Harness> {
       addEventListener: (type: string, listener: (event: FakeEvent) => void): void => {
         (docListeners[type] ??= []).push(listener);
       },
+      // The handoff's script-readable marker (`security.ts`'s
+      // `CREDENTIAL_COOKIE`), naming the port above. The token cookie beside it
+      // in a real browser is `HttpOnly` and would not appear here even if this
+      // were a real document — which is exactly why the marker exists.
+      cookie: `mycontext_cred=${FAKE_PORT}`,
     };
 
-    const location: FakeLocation = { hash: '', pathname: '/', reload: (): void => {} };
+    const location: FakeLocation =
+      { hash: '', pathname: '/', port: FAKE_PORT, reload: (): void => {} };
     const storage = (): Store => ({
       getItem: (): string | null => null,
       setItem: (): void => {},
