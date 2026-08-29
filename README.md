@@ -1763,7 +1763,10 @@ the context window. The defaults:
 | `pinned` | 6000 | the pinned tier at session start |
 | `jit` | 6000 | one file-triggered injection |
 | `restored` | 8000 | the re-injection after a compaction |
+| `continuity` | 2000 | the items marked `continuity`, carried into the next session |
 | `index` | 1200 | the index list |
+
+<!-- `core/config.ts` · `pinned: 6000, jit: 6000, restored: 8000, continuity: 2000, index: 1200,` · ~93 -->
 
 The unit is estimated tokens, and "estimated" is meant literally: it is the character count
 divided by four. my_context ships with no runtime dependencies and therefore no tokenizer, so
@@ -2629,20 +2632,32 @@ for exactly the history being maintained most actively. Records written before t
 existed simply lack it, and every surface shows those as **"tokens not recorded" — never
 as zero**. Zero is a measurement; absent is not.
 
-##### Six kinds, and the version the log declares
+##### Seven kinds, and the version the log declares
 
-`--kind` cuts the log by what a record *is*, and it accepts exactly six names:
-`mutation`, `injection`, `hook`, `focus`, `access` and `progress`. A name outside that set
-is refused with the whole list, rather than silently matching nothing.
+`--kind` cuts the log by what a record *is*, and it accepts exactly seven names:
+`mutation`, `injection`, `hook`, `focus`, `access`, `progress` and `execution`. A name
+outside that set is refused with the whole list, rather than silently matching nothing.
+<!-- `core/audit.ts` · `'mutation', 'injection', 'hook', 'focus', 'access', 'progress', 'execution',` · ~408 -->
 
-The newest of them is **`progress`, which records a step tick against a `procedure`**. It
+The newest is **`execution`, which records a command the web UI ran** — see
+[the web UI can run what it composes](#the-web-ui-can-run-what-it-composes). It is a pair of
+operations rather than one, `execute` and `execute-done`, written at the same instant and
+joined by the command's id: the first says a run was authorised and started, the second says
+how it ended and carries the process's exit code. Amending one row in place was weighed and
+refused — every hook appends to this log from its own process without a lock, so a
+read-modify-write destroys whatever another writer appended in between, measured at between
+1 and 21 lost rows per run. A refused run is not here at all: refusal happens at the request
+gate and is already `ui-refused` under `access`.
+<!-- `core/audit.ts` · `export const EXECUTION_OPS = ['execute', 'execute-done'] as const;` · ~391 -->
+
+Before it came **`progress`, which records a step tick against a `procedure`**. It
 belongs beside `focus` rather than under `mutation` for the same reason `focus` does: a tick
 changes no item. Everywhere else in the log a `mutation` means "this item's columns moved",
 and after a tick the procedure's file, its body, its steps and its `checksum` are all
 byte-for-byte what they were — the `- [x]` you see in `mycontext procedure show` is rendered
 over the stored list, not written into it. Filing a tick as a `mutation` would make
 `mycontext audit --kind mutation --item PROC-x` a question with a wrong answer, so it is a
-sixth kind instead. Its operations are `step-done`, `step-undone` and `step-reset`; the
+kind of its own instead. Its operations are `step-done`, `step-undone` and `step-reset`; the
 last is what `mycontext procedure activate` writes, before the activation it records.
 
 **The log now declares `my_context/audit@2` on every line it writes.** This build reads
@@ -2657,9 +2672,10 @@ line 2 declares protocol "my_context/audit@3", expected "my_context/audit@1" or
 The protocol is checked before the record's `kind` and `op` are looked at, which is what
 makes that message possible: the diagnosis is "this log is newer than I am" rather than a
 complaint about a vocabulary the reader happens not to know. **Upgrading is safe;
-downgrading is not.** A log containing `progress` records cannot be read by a build that
-predates the kind — `--kind`'s vocabulary is closed, and an unrecognised name takes the
-whole segment with it rather than being skipped.
+downgrading is not.** A log containing `progress` or `execution` records cannot be read by a
+build that predates those kinds — `--kind`'s vocabulary is closed, and an unrecognised name
+takes the whole segment with it rather than being skipped. Both arrived inside the break
+`@2` already declares, so neither of them bumped the protocol a second time.
 
 ##### Two files, and only one of them is the record
 
@@ -2700,11 +2716,15 @@ Three consequences worth knowing:
 > exported, its **mutations** go with it — `create`, `update`, `stage`, `promote`,
 > `discard`, `supersede`, `accept`, `refresh`, `link`, `unlink` — because an item's
 > Markdown carries no `created` or `updated` field, so those records are the only thing
-> that can date an item or say who touched it. **The five other kinds
+> that can date an item or say who touched it. **The six other kinds
 > `mycontext audit --kind` accepts do not travel** — injections, hook actions, focus
-> records, access records and progress records — for the reason the warning above already
-> gives: they describe a machine rather than a corpus, and they are where the local paths
-> and the session ids are. History that arrives from elsewhere lands in
+> records, access records, progress records and execution records — for the reason the
+> warning above already gives: they describe a machine rather than a corpus, and they are
+> where the local paths and the session ids are. The filter is one expression and it names
+> the kind that travels rather than the kinds that do not, so a kind added later is withheld
+> by default rather than carried by an omission.
+> <!-- `pack/history.ts` · `return filterAudit(readAudit(root), { kind: 'mutation' })` · ~447 -->
+> History that arrives from elsewhere lands in
 > `.audit/imported/<pack>/` rather than being merged into your own `audit.jsonl`, so a
 > receiver can always tell what it witnessed from what it was told — and even then it can
 > only rank a review queue by risk, never justify trust, because the log has no hash chain,
@@ -3268,8 +3288,12 @@ properties matter and each is exact:
 
 ##### Watch and Ask
 
-**Watch** streams the audit log live — all six record kinds: mutations, injections, hook
-actions, focus changes, access refusals and progress steps. An injection row carries the
+**Watch** streams the audit log live — every record kind there is: mutations, injections,
+hook actions, focus changes, access refusals, progress steps and command runs. The screen
+reads that list from the same constant the CLI's `--kind` refusal reads, so a kind added to
+the log cannot go missing from the stream.
+<!-- `ui/watch-model.ts` · `import { AUDIT_KINDS, type AuditKind, type AuditRecord } from '../core/audit.ts';` · ~2 -->
+An injection row carries the
 count of what that injection **spilled**, and a spill is the one thing the corpus records
 nowhere else: the ledger records deliveries only, so *"an item was selected and did not fit
 the budget"* exists as a fact in the audit log and in no other store. Reading *which* items
@@ -3427,7 +3451,7 @@ surface.
 | `list_drafts` | list what is waiting for human review, newest first — not to promote it, which it cannot do |
 | `audit_log` | read the [run-time audit log](#the-audit-log--what-my_context-actually-did): what has been changed in this workspace and by whom, and which items a session was shown, by scope — ids and tiers, never the injected text. Filter by item, session, op, actor or time. The argument is `actor`, not `origin`: no tool schema on this surface exposes a property named `origin`, and that pin is not worth carving an exception into for a read filter |
 | `load_context` | inject the pinned items and index now, exactly as a session start does. This is what `/mycontext:LoadMyContext` calls |
-| `mycontext_help` | read guidance on one topic: categories, scope, capture, workflow |
+| `mycontext_help` | read guidance on one topic: categories, scope, capture, workflow, tools, slash. That is every topic `mycontext help` serves except `cli`, and the schema's enum is derived from the list rather than kept by hand — see [the one help topic it does not offer](#the-one-help-topic-mycontext_help-does-not-offer) <!-- `core/teach.ts` · `export const MCP_HELP_TOPICS: HelpTopic[] = HELP_TOPICS.filter((t) => t !== 'cli');` · ~36 --> |
 | `mycontext_examples` | show a complete example item of a given type, to copy the shape from |
 | `focus_context` | narrow what my_context injects — see [session focus](#session-focus--narrowing-what-loads) — to given tags, categories or scopes, and read back what that hides: how many items, and how many load-bearing relations are left dangling. `preview` reports without changing anything; `clear` removes the focus. It cannot hide a `severity: hard` item, and every focus change is recorded in the audit log with its origin, so a model narrowing its own context leaves a trail |
 | `ingest_document` | extract normative items from a document, in the same two-call shape as the CLI's ingest commands |
@@ -3487,7 +3511,7 @@ kinds appear below. A *switch* is on or off and takes nothing after it (`--yes`,
 A *value flag* is followed by what it should be set to, and the two spellings
 `--name value` and `--name=value` mean the same thing everywhere in this CLI.
 
-Every flag the CLI accepts is in one of the seven tables below. No count is given here on
+Every flag the CLI accepts is in one of the eight tables below. No count is given here on
 purpose: this sentence used to say "these twenty-five are all of them", the three tables it
 introduced did hold exactly twenty-five rows, and twenty further flags were accepted by the
 shipped CLI and listed in none of them — six of those documented in this very section, four
@@ -3520,15 +3544,18 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | Flag | What it does | Where it works |
 |---|---|---|
 | `--body "<text>"` | the item's text — the paragraph Claude is given. On `add` it is mutually exclusive with `--file`, which supplies the body from a file instead | `add`, `edit` |
+| `--step "<text>"` | one step of a `procedure` — an operation performed once and then finished. Repeatable, in command-line order, and not comma-split, for the same reason `--note` is not: a step is a sentence. A repeatable operation is a `runbook`, which keeps its steps in its body instead. Steps cannot be edited or ticked through any command afterwards — correcting one means editing the Markdown and running `mycontext repair` | `add` |
 | `--note "<text>"` | add one `[note]` observation. Repeatable, in the order given, and not comma-split — an observation is a sentence, and sentences contain commas. It is where the *why* goes when the body came from a file rather than from you | `add` |
 | `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `edit`, `review promote`, `lesson-accept` |
 | `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection until a focus is set — `mycontext focus <tag>` narrows injection to the tags it names | `add`, `edit` |
 | `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused. `mycontext harden <id>` and `mycontext soften <id>` are the two settings under a shorter name | `add`, `edit`, `review promote`, `lesson-accept` |
 | `--always` | pin the item: inject it in full at every session start, whatever files you touch. `review promote --always` sets it while the item is still a draft; `mycontext edit --always` sets it, or `--always=false` clears it, at any point — behind the confirmation an item that already governs earns. `mycontext pin <id>` and `mycontext unpin <id>` are those two edits under a shorter name | `review promote`, `edit` |
+| `--continuity` | mark the item for the **continuity** tier: re-delivered at every session start and counted against the `continuity` budget rather than the pinned one. `--continuity=false` clears it. It is accepted on the rationale tier, unlike `--severity` and `--always`, because carrying a note forward is not a claim that it governs anything <!-- `cli/commands/edit.ts` · `'title', 'body', 'scope', 'tags', 'severity', 'always', 'continuity', 'status', 'extra',` · ~70 --> | `edit` |
 | `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created; on `edit`, the item's own title | `lesson-accept`, `edit` |
 | `--directive do\|dont` | whether the created rule prescribes or prohibits | `lesson-accept` |
-| `--extra key=value` | one category-specific field — a rule's `directive`, a requirement's `kind`. Repeatable, one key per flag, and the value is taken whole, commas included. It **merges**: a key you do not name keeps its value. There is no spelling that removes a key, because an empty value and an absent field are indistinguishable once written. It is content, so it carries the confirmation every content field carries — but not the before-and-after reach preview, which only `--scope`, `--always`, `--severity` and `--status` owe. That is the one asymmetry worth knowing, because `directive` is what decides whether a rule prohibits or prescribes | `edit` |
+| `--extra key=value` | one category-specific field — a rule's `directive`, a requirement's `kind`. Repeatable, one key per flag, and the value is taken whole, commas included. It **merges**: a key you do not name keeps its value. There is no spelling that removes a key, because an empty value and an absent field are indistinguishable once written. It is content, so it carries the confirmation every content field carries — but not the before-and-after reach preview, which only `--scope`, `--always`, `--severity` and `--status` owe. That is the one asymmetry worth knowing, because `directive` is what decides whether a rule prohibits or prescribes. `mycontext add` takes it too, so a category-specific field can be set at the moment of capture <!-- `cli/index.ts` · `const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'step', 'scope', 'tags', 'severity', 'extra'];` · ~487 --> | `add`, `edit` |
 | `--status <name>` | on `edit`, move an item's lifecycle status: `active`, `draft`, `deprecated` or `validated`. `superseded` is **refused** here, because a retirement names its replacement and records it in both directions — that is `mycontext supersede`. On `search` and on `export` it filters by status instead | `edit`, `search`, `export` |
+| `--agent` | record the lesson with `origin: agent` instead of `origin: human`, which is the one claim a shell cannot truthfully make on its own. It adds no way to lie that the bare command did not already have — it adds the first way to be accurate — and `lesson` is rationale tier, so what it records governs nothing either way. `lesson-accept` refuses it **by name**, in every spelling: accepting a staged candidate creates a rule that governs this repository, and an agent spelling of a gate is the gate's absence | `lesson` |
 | `--by <id>` | names the replacement that takes over from the item being retired. **Required** — retirement without a successor is not offered | `supersede` |
 | `--reason "<text>"` | why the retirement happened. It is recorded as a `supersession` observation on the **replacement**, reading `Replaces <old id>: <your text>` | `supersede` |
 
@@ -3549,6 +3576,8 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--tag <tag>` | items carrying that label | `search`, `focus`, `export` |
 | `--path <file>` | what governs a file. It returns the **unscoped** items too, because an item with no scope applies everywhere — the question is "what governs this file", not "what names it" | `search` |
 | `--relation <type>` | items carrying a relation of that type. `mycontext focus --relations` prints the types | `search` |
+| `--plan <plan>` | narrow the ready report to one plan — the value of the `plan` field the project's own planning category declares. A project whose categories declare no `plan`, `seq` and `state` has no planned work to order, and `mycontext ready` says so rather than reporting nothing | `ready` |
+| `--held` | list the tasks the report would otherwise only **count**: the ones whose `needs` are not all done. There is no `--all` beside it — "ready" is a derived answer about open work, and a flag that widened it to finished work would be asking a different question under the same name <!-- `core/command-flags.ts` · `ready: { allowed: ['plan', 'limit', 'held', ...DETAIL_FLAGS], values: ['plan', 'limit'] },` · ~154 --> | `ready` |
 | `--since <when>` | the start of a time window — a date, or a span like `1d`, `2w` | `audit` |
 | `--until <when>` | the end of that window | `audit` |
 | `--item <id>` | only records that touched one item | `audit` |
@@ -3570,11 +3599,13 @@ and its filters are AND-ed together.
 | `--category <category>` | narrow the focus to one category | `focus` |
 | `--scope <path-or-glob>` | narrow it to the items governing that path | `focus` |
 | `--preview` | report what a focus would hide and what that costs, and change nothing. It calls the same selection the injection will, so a preview and the injection after it cannot disagree | `focus` |
-| `--show` | print the focus currently set | `focus` |
+| `--show` | print what is currently set: on `focus`, the focus; on `session carry`, which session's state the next new session will carry | `focus`, `session carry` |
+| `--none` | carry nothing forward — new sessions get this project's index in its own order, with nothing marked. `mycontext session carry <id>` turns it back on | `session carry` |
 | `--clear` | remove it | `focus` |
 | `--relations` | list the relation types, which is what `--relation` and the relation report accept | `focus` |
 | `--unlink` | remove a relation instead of adding one | `edit` |
 | `--revision <id>` | which pending revision is meant, when an item carries more than one | `review promote-revision`, `review discard-revision` |
+| `--undo` | un-tick a procedure step instead of ticking it. Both write one line to the audit log and nothing else: the stored list is never edited, so a tick and its undo leave the procedure's file byte for byte what it was | `procedure step` |
 | `--force` | promote a **stale** revision, overwriting text that moved underneath it — after printing exactly what that destroys | `review promote-revision` |
 
 `--tag`, `--category` and `--scope` are the three axes a focus narrows on, and positional
@@ -3605,6 +3636,19 @@ a workspace exists.
 | `--overwrite-changed` | the answer to the **second** confirmation — replace the items you had changed with the pack's versions. It is separate from `--yes` deliberately, and `--yes` does not imply it: consent to an import is not consent to replacing a rule you wrote. Each replaced item lands `draft` and its previous version stays in the audit log. On a pack with nothing in the `changed` bucket it is accepted and does nothing, so a script that imports the same pack repeatedly does not have to know in advance whether this run collides. On `mycontext init` it is **refused**, with a message naming `pack import`: a corpus that does not exist yet has nothing to overwrite, and a flag accepted where it can do nothing is the silent swallow every refusal here exists to stop | `pack import` |
 | `--pack <path>` | found this workspace from an artefact, in the same command that creates it. It is the only flag `mycontext init` accepts, and everything else — a positional, `--global`, `--yes`, `--overwrite-changed` — is still refused by name. It asks nothing and takes no `--name`, so a full export is refused there and pointed at `pack import` | `init` |
 | `--pack <name>` | on `review promote`, which pack's drafts `--all` promotes — a **name**, not a path: the one `mycontext pack list` shows, which is the name the pack was filed under here. A name no import record carries is refused and points at that command; `--pack` without `--all` is refused too, rather than accepted where nothing would read it | `review promote` |
+| `--source <path>` | which import of that pack, when two packs imported here call themselves the same name. It is matched against the source `mycontext pack list` prints, byte for byte and with nothing resolved, and an ambiguity is refused with the candidates listed rather than resolved by guessing | `review promote` |
+
+**The two commands that are not about the corpus.** `mycontext ui` serves a browser view of this
+workspace and `mycontext statusline` bridges to Claude Code's own status line. Their flags configure a
+server and an editor setting rather than an item, which is why they are here rather than in any table above.
+
+| Flag | What it does | Where it works |
+|---|---|---|
+| `--port <n>` | the loopback port to serve on. The address is not a flag at all: it is `127.0.0.1` and a request to bind anything else is refused at startup rather than warned about | `ui` |
+| `--no-open` | print the URL instead of launching a browser — what you want when the shell is not on the machine you are reading from | `ui` |
+| `--idle-ms <n>` | how long an untouched server waits before exiting, in milliseconds. The default is eight hours and the ceiling is a day; a value that is not a positive finite number, or one above the ceiling, is refused rather than replaced by the default | `ui` |
+| `--nonce` | mint a fresh one-shot handoff nonce from a server that is **already running**, and print its URL, instead of starting a second one. It is a switch, it takes no value, and it is mutually exclusive with the other three — passing it beside them is refused rather than silently ignored <!-- `core/command-flags.ts` · `ui: { allowed: ['port', 'no-open', 'idle-ms', 'nonce'], values: ['port', 'idle-ms'] },` · ~168 --> | `ui` |
+| `--settings <path>` | which settings file to install into or restore, defaulting to Claude Code's own — `CLAUDE_CONFIG_DIR`, else `~/.claude/settings.json` | `statusline install`, `statusline uninstall` |
 
 #### Three rules that hold across all of them
 
@@ -3628,9 +3672,10 @@ every other switch, not just to `--yes`.
 **An unrecognised flag is refused — on most commands.** `mycontext status --ful` stops and
 names the typo rather than printing the default report and exiting 0. The commands that
 check are `add`, `audit`, `decay`, `doctor`, `edit`, `examples`, `export`, `focus`,
-`harden`, `inbox-promote`, `ingest-status`, `lesson`, `list`, `pin`, `query`, `refresh`,
-`repair`, `search`, `soften`, `status`, `supersede`, `todo`, `ui` and `unpin`, plus
-`pack`, `procedure`, `review` and `session`, each of which checks a subcommand against its
+`harden`, `inbox-promote`, `ingest-status`, `lesson`, `list`, `pin`, `query`, `ready`,
+`refresh`, `repair`, `search`, `soften`, `status`, `supersede`, `todo`, `ui` and `unpin`,
+plus `pack`, `procedure`, `review`, `session` and `statusline`, each of which checks a
+subcommand against its
 own set rather than against one union. `init` refuses too, in its own words — it takes
 exactly one flag, `--pack <path>`, and names the argument it will not act on rather than
 ignoring it. `mycontext help` refuses by a third route: it reads whatever follows as a topic
@@ -5427,10 +5472,14 @@ also **run** them: `POST /api/execute` is live, and every command in the catalog
 executable — the reads, the writes, and the ones that change what governs this project.
 
 > [!NOTE]
-> **The screens do not offer the button yet.** The endpoint is built and reachable; the
-> Copy-and-Execute control that puts it in front of you is still being built. This section
-> is here now rather than later because a live execution endpoint on your loopback address
-> is worth knowing about before a button appears, not after.
+> **The screens offer the button.** This note used to say they did not, and it was left
+> standing after the control shipped — the exact defect this document's [section
+> 8](#8-not-yet-available) exists to prevent, in the section that describes running commands
+> on your machine. The Copy-and-Execute control is one implementation
+> (`src/ui/public/lib/command-actions.js`) reused by every screen that composes a command,
+> rather than a transcription per screen, because the confirm is the security boundary and
+> nine copies of it would be nine chances to get it wrong.
+> <!-- `command-actions.js` · `outcome = await ctx.post('/api/execute', { id, values, nonce: answer.nonce });` · ~460 -->
 
 Each run is behind a confirm.
 
@@ -5752,10 +5801,6 @@ of the corpus: the item that says a requirement is unmet is the requirement itse
 - **`observations` cannot be edited by anyone, at any surface, by any origin.** They are set
   at capture and never afterwards; `update_item` has no such argument and neither does
   `mycontext edit`. Correcting one means superseding the item that carries it.
-- **`mycontext add` has no `--extra`.** `mycontext edit <id> --extra key=value` reaches the
-  category-specific fields — a rule's `directive`, an assumption's `validate_by` — but only
-  after the item exists, so a capture from the terminal cannot set one at the moment it is
-  captured. `create_item` takes them, so the route that exists is asking the model.
 - **Deletion will not be added at all.** `NOGOAL-no-agent-hard-delete` is an active item in
   this repository's own corpus, recording that as a deliberate non-goal. Retirement is
   supersession — `mycontext supersede <id> --by <id>`, which exists — and it keeps the item,
@@ -5775,7 +5820,9 @@ The [audit log](#the-audit-log--what-my_context-actually-did) shares the first a
 those and closes the second. It is gitignored for the same reason and, in this release, with
 the same consequence — stated where it is documented rather than left here, together with
 the v2.0 decision that a corpus export is to carry the mutation half of the log and leave
-the rest behind, which is decided and not built; it rotates at 8 MiB but still never
+the rest behind, which **shipped**: `mycontext export` writes a `history.jsonl` of mutations
+and of nothing else, and this sentence said "decided and not built" for months after it did.
+It rotates at 8 MiB but still never
 deletes, so its total growth is unbounded too; and unlike the revision store, it has a
 `doctor` check that reports its size. The revision store still has none.
 
@@ -5819,30 +5866,31 @@ does — are the ones it cannot answer.
 
 The count moved from four to seven and the gap did not, which is the point worth keeping:
 the three topics added since were the three *invocation surfaces*, and neither of these two
-subjects is one. What has changed is that the gap now has a sibling, below.
+subjects is one.
 
-### Three help topics `mycontext_help` does not offer
+### The one help topic `mycontext_help` does not offer
 
-`mycontext help <topic>` serves all seven. The `mycontext_help` **tool** advertises four:
-its schema enumerates the topics by hand — the only enum on that surface that is not derived
-from the vocabulary it names, where `SEVERITIES`, `STATUSES`, `AUDIT_KINDS` and `AUDIT_OPS`
-all are — and it was not widened when `cli`, `tools` and `slash` landed.
+`mycontext help <topic>` serves all seven. The `mycontext_help` **tool** offers six of them,
+and the one it withholds is `cli`.
 
-For one of the three that is correct and cannot be otherwise. The `cli` topic's command
-section is generated from the CLI's own command registry, which `src/cli/index.ts` fills as
-a side effect of loading; the MCP server never loads it, so the registry is empty there and
-the topic **refuses to render** rather than printing a command section that names nothing.
+That withholding is correct and cannot be otherwise. The `cli` topic's command section is
+generated from the CLI's own command registry, which `src/cli/index.ts` fills as a side
+effect of loading; the MCP server never loads it, so the registry is empty there and the
+topic **refuses to render** rather than printing a command section that names nothing.
 Advertising `cli` on that surface would advertise a topic the server cannot serve.
 
-The other two are a gap. `tools` is generated from the tool registry and `slash` from the
-committed `commands/` directory, and neither is populated by a side effect — both render in
-a process that has loaded nothing but `src/help/index.ts`, which
-`test/help/tools-topic.test.ts` proves in a child process. So the surface an agent is
-already on withholds the page about itself, and the fix is `enum: HELP_TOPICS` minus the
-topics the server genuinely cannot serve, plus the matching change to the tool's description
-in `src/help/topics/capture.md`. It is one small change in two places and it is not made
-here; `test/help/tools-topic.test.ts` pins the withheld set to exactly `cli`, `tools`,
-`slash` so that closing it is a decision rather than a surprise.
+**This entry used to name three, and two of them have since been closed.** `tools` and
+`slash` were withheld for no reason but a hand-written enum that nobody widened when they
+landed — `tools` renders from the tool registry and `slash` from the committed `commands/`
+directory, and neither needs a side effect to populate. The schema's enum is now derived
+(`MCP_HELP_TOPICS` is `HELP_TOPICS` minus `cli`, and nothing else), so a topic added to the
+CLI reaches the tool by default rather than by somebody remembering.
+`test/help/tools-topic.test.ts` pins the withheld set to exactly `cli`, in both directions:
+a topic added to it, and an empty set, both fail.
+<!-- `test/help/tools-topic.test.ts` · `[...withheld].sort(), ['cli'],` · ~490 -->
+
+What remains is the entry above: `query` and `config` are subjects neither surface has a
+topic for.
 
 ### Creating and writing a global layer
 

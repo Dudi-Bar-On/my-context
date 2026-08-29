@@ -64,6 +64,12 @@ function probe(files: Record<string, string>, args: string[] = []): Probe {
   mkdirSync(path.join(root, 'src'), { recursive: true });
   mkdirSync(path.join(root, 'docs', 'superpowers', 'plans'), { recursive: true });
   copyFileSync(SCRIPT, path.join(root, 'scripts', 'verify-citations.ts'));
+  // `DOC_FILES` names the two front-door documents BY NAME and refuses to run
+  // without them, so every throwaway tree has to carry them. Empty is the right
+  // content here: a probe measures the document it was handed, and a README with
+  // anything in it would add citations to every count below.
+  writeFileSync(path.join(root, 'README.md'), '', 'utf8');
+  writeFileSync(path.join(root, 'docs', 'README.he.md'), '', 'utf8');
   writeFileSync(path.join(root, 'src', 'target.ts'), TARGET, 'utf8');
   for (const [rel, body] of Object.entries(files)) {
     const full = path.join(root, rel);

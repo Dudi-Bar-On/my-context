@@ -58,6 +58,12 @@ function probe(doc: string): Probe {
     `// a file with one citable line\n${PRESENT}\n}\n`,
     'utf8',
   );
+  // `DOC_FILES` names the two front-door documents BY NAME and refuses to run
+  // without them, so every throwaway tree has to carry them. Empty is the right
+  // content here: a probe measures the document it was handed, and a README with
+  // anything in it would add citations to every count below.
+  writeFileSync(path.join(root, 'README.md'), '', 'utf8');
+  writeFileSync(path.join(root, 'docs', 'README.he.md'), '', 'utf8');
   writeFileSync(path.join(root, 'docs', 'superpowers', 'plans', 'probe.md'), doc, 'utf8');
 
   const result = spawnSync(
@@ -367,4 +373,103 @@ test('the summary always reports how many markers are in play', () => {
       assert.match(p.out, /1 marker\(s\), 0 fault\(s\)/);
     },
   );
+});
+
+// ---------------------------------------------------------------------------
+// THE FRONT DOOR. `DOC_FILES` is two named files rather than a root, and both
+// halves of that choice need a test: a citation written in a README is CHECKED
+// like any other document's, and a README that stops existing STOPS THE RUN
+// instead of quietly leaving the walk. The second is the whole reason the
+// list is names and not a directory — `walk` returns nothing for a path it
+// cannot read, which is right for a root and exactly wrong here.
+// ---------------------------------------------------------------------------
+
+/**
+ * Run the script over a throwaway repo whose README files are whatever
+ * `readmes` says. A key mapped to `null` is NOT created, which is how the
+ * missing-file refusal is driven.
+ */
+function probeReadmes(readmes: Record<string, string | null>): Probe {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-readme-'));
+  mkdirSync(path.join(root, 'scripts'), { recursive: true });
+  mkdirSync(path.join(root, 'src'), { recursive: true });
+  mkdirSync(path.join(root, 'docs', 'superpowers', 'plans'), { recursive: true });
+  copyFileSync(SCRIPT, path.join(root, 'scripts', 'verify-citations.ts'));
+  writeFileSync(
+    path.join(root, 'src', 'thing.ts'),
+    `// a file with one citable line\n${PRESENT}\n}\n`,
+    'utf8',
+  );
+  for (const [rel, body] of Object.entries(readmes)) {
+    if (body === null) continue;
+    writeFileSync(path.join(root, rel), body, 'utf8');
+  }
+  const result = spawnSync(
+    process.execPath,
+    [path.join(root, 'scripts', 'verify-citations.ts')],
+    { cwd: root, encoding: 'utf8' },
+  );
+  return {
+    code: result.status ?? -1,
+    out: `${result.stdout ?? ''}${result.stderr ?? ''}`,
+    dispose: () => removeTree(root),
+  };
+}
+
+function runReadmes(
+  readmes: Record<string, string | null>, check: (p: Probe) => void,
+): void {
+  const p = probeReadmes(readmes);
+  try {
+    check(p);
+  } finally {
+    p.dispose();
+  }
+}
+
+test('a citation in README.md is checked like any other document\'s', () => {
+  runReadmes(
+    {
+      'README.md': `A claim. <!-- ${cite(PRESENT)} · ~2 -->\n`,
+      'docs/README.he.md': '',
+    },
+    (p) => {
+      assert.equal(p.code, 0, p.out);
+      assert.match(p.out, /1 citation\(s\)/);
+    },
+  );
+});
+
+test('a BROKEN citation in README.md fails the run, ungated', () => {
+  runReadmes(
+    { 'README.md': `A claim. <!-- ${cite(GONE)} -->\n`, 'docs/README.he.md': '' },
+    (p) => {
+      assert.equal(p.code, 1, p.out);
+      assert.match(p.out, /BROKEN README\.md:1/);
+    },
+  );
+});
+
+test('a broken citation in the HEBREW README fails too — it is not the English one\'s shadow', () => {
+  runReadmes(
+    { 'README.md': '', 'docs/README.he.md': `טענה. <!-- ${cite(GONE)} -->\n` },
+    (p) => {
+      assert.equal(p.code, 1, p.out);
+      assert.match(p.out, /BROKEN docs\/README\.he\.md:1/);
+    },
+  );
+});
+
+test('a README that is not there stops the run rather than leaving the walk', () => {
+  runReadmes({ 'README.md': null, 'docs/README.he.md': '' }, (p) => {
+    assert.equal(p.code, 1, p.out);
+    assert.match(p.out, /README\.md is named in DOC_FILES and is not a file/);
+  });
+});
+
+test('a missing HEBREW README stops the run on the same terms', () => {
+  runReadmes({ 'README.md': '', 'docs/README.he.md': null }, (p) => {
+    assert.equal(p.code, 1, p.out);
+    assert.match(p.out, /docs\/README\.he\.md is named in DOC_FILES and is not a file/);
+  });
 });

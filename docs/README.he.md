@@ -1855,7 +1855,10 @@ mv ~/global-context/.my_context ~/.my-context
 | `pinned` | 6000 | הדרג הנעוץ בתחילת סשן |
 | `jit` | 6000 | הזרקה אחת שנורתה מקובץ |
 | `restored` | 8000 | ההזרקה מחדש אחרי כיווץ |
+| `continuity` | 2000 | הפריטים המסומנים `continuity`, שנישאים אל הסשן הבא |
 | `index` | 1200 | רשימת האינדקס |
+
+<!-- `core/config.ts` · `pinned: 6000, jit: 6000, restored: 8000, continuity: 2000, index: 1200,` · ~93 -->
 
 היחידה היא טוקנים משוערים, ו"משוערים" נאמר כפשוטו: זו ספירת התווים חלקי ארבע. my_context
 נשלח בלי תלויות זמן ריצה, ולכן בלי tokenizer. זהו קירוב שיכול לסטות לשני הכיוונים, לא
@@ -2169,8 +2172,12 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 בשורת הפקודה, ועוד שתי שורות לכל היותר שאומרות מה דורש את תשומת לבך.
 <span dir="ltr">`/mycontext:doctor`</span> מריצה את הבדיקה העצמית,
 <span dir="ltr">`/mycontext:decay`</span> מציגה מה לא הגיע לסשן לאחרונה,
+<span dir="ltr">`/mycontext:audit`</span> מציגה את [היומן הרץ](#יומן-הביקורת--מה-ש-my_context-באמת-עשה)
+של מה ששונה ומה כל סשן קיבל,
 ו-<span dir="ltr">`/mycontext:query`</span> כותבת ומריצה
 [SQL לקריאה בלבד](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה) מעל האינדקס.
+<span dir="ltr">`/mycontext:focus`</span> מצמצמת את מה שמוזרק — ראו
+[מיקוד סשן](#מיקוד-סשן--צמצום-מה-שנטען) — ומדווחת מה זה מסתיר.
 <span dir="ltr">`/mycontext:ui`</span> היא פקודת הקריאה היחידה שמחזירה לך את הפקודה במקום
 להריץ אותה: <span dir="ltr">`mycontext ui`</span> הוא שרת, ולכן הוא אינו חוזר, והוא פותח
 דפדפן במכונה שבה רצה המעטפת.
@@ -2800,14 +2807,25 @@ mycontext audit --files                 קובצי היומן שעל הדיסק,
 שנכתבו לפני שהשדה הזה היה קיים פשוט חסרות אותו, וכל משטח קריאה מציג אותן כ**"tokens not
 recorded" — לעולם לא כאפס**. אפס הוא מדידה; היעדר אינו מדידה.
 
-##### שישה סוגי רשומה, והגרסה שהיומן מצהיר עליה
+##### שבעה סוגי רשומה, והגרסה שהיומן מצהיר עליה
 
-<span dir="ltr">`--kind`</span> חותכת את היומן לפי מה שרשומה **היא**, והיא מקבלת בדיוק שישה
-שמות: <span dir="ltr">`mutation`, `injection`, `hook`, `focus`, `access`</span>
-ו-<span dir="ltr">`progress`</span>. שם שאינו בקבוצה הזאת מסורב עם הרשימה המלאה, ולא מתאים
+<span dir="ltr">`--kind`</span> חותכת את היומן לפי מה שרשומה **היא**, והיא מקבלת בדיוק שבעה
+שמות: <span dir="ltr">`mutation`, `injection`, `hook`, `focus`, `access`, `progress`</span>
+ו-<span dir="ltr">`execution`</span>. שם שאינו בקבוצה הזאת מסורב עם הרשימה המלאה, ולא מתאים
 בשקט לכלום.
+<!-- `core/audit.ts` · `'mutation', 'injection', 'hook', 'focus', 'access', 'progress', 'execution',` · ~408 -->
 
-החדש שבהם הוא <span dir="ltr">**`progress`**</span>, שרושם סימון של צעד ב-`procedure`. מקומו
+החדש שבהם הוא <span dir="ltr">**`execution`**</span>, שרושם פקודה שהממשק הרשתי הריץ — ראו
+[הממשק יכול להריץ את מה שהוא מרכיב](#הממשק-יכול-להריץ-את-מה-שהוא-מרכיב). הוא זוג פעולות ולא
+אחת, <span dir="ltr">`execute`</span> ו-<span dir="ltr">`execute-done`</span>, שנכתבות באותו
+רגע עצמו ומחוברות דרך המזהה של הפקודה: הראשונה אומרת שהרצה אושרה והתחילה, השנייה אומרת איך
+היא הסתיימה ונושאת את קוד היציאה של התהליך. תיקון שורה אחת במקום נשקל ונדחה — כל hook מוסיף
+ליומן הזה מהתהליך שלו עצמו ובלי נעילה, ולכן קריאה־שינוי־כתיבה הורסת כל מה שכותב אחר הוסיף
+בינתיים, במדידה בין שורה אחת ל-21 שורות אבודות להרצה. הרצה שסורבה אינה כאן כלל: הסירוב קורה
+בשער הבקשות והוא כבר <span dir="ltr">`ui-refused`</span> תחת <span dir="ltr">`access`</span>.
+<!-- `core/audit.ts` · `export const EXECUTION_OPS = ['execute', 'execute-done'] as const;` · ~391 -->
+
+לפניו הגיע <span dir="ltr">**`progress`**</span>, שרושם סימון של צעד ב-`procedure`. מקומו
 לצד <span dir="ltr">`focus`</span> ולא תחת <span dir="ltr">`mutation`</span>, מאותה סיבה
 עצמה: סימון אינו משנה שום פריט. בכל מקום אחר ביומן <span dir="ltr">`mutation`</span> אומרת
 "העמודות של הפריט הזה זזו", ואחרי סימון הקובץ של הנוהל, הגוף שלו, הצעדים שלו וה-`checksum`
@@ -2815,7 +2833,7 @@ recorded" — לעולם לא כאפס**. אפס הוא מדידה; היעדר �
 ב-<span dir="ltr">`mycontext procedure show`</span> מצויר מעל הרשימה השמורה, ולא נכתב לתוכה.
 תיוק סימון כ-<span dir="ltr">`mutation`</span> היה הופך את
 <span dir="ltr">`mycontext audit --kind mutation --item PROC-x`</span> לשאלה עם תשובה שגויה,
-ולכן זהו סוג שישי במקום זה. הפעולות שלו הן <span dir="ltr">`step-done`</span>,
+ולכן זהו סוג משלו במקום זה. הפעולות שלו הן <span dir="ltr">`step-done`</span>,
 <span dir="ltr">`step-undone`</span> ו-<span dir="ltr">`step-reset`</span>; האחרונה היא מה
 ש-<span dir="ltr">`mycontext procedure activate`</span> כותבת, לפני ההפעלה שהיא רושמת.
 
@@ -2836,8 +2854,11 @@ line 2 declares protocol "my_context/audit@3", expected "my_context/audit@1" or
 הפרוטוקול נבדק לפני שמסתכלים על ה-<span dir="ltr">`kind`</span> וה-<span dir="ltr">`op`</span>
 של הרשומה, וזה מה שמאפשר את ההודעה הזאת: האבחנה היא "היומן הזה חדש ממני" ולא תלונה על אוצר
 מילים שהקורא במקרה אינו מכיר. **שדרוג בטוח; שנמוך אינו.** יומן שמכיל רשומות
-<span dir="ltr">`progress`</span> אינו קריא לבנייה שקדמה לסוג הזה — אוצר המילים
+<span dir="ltr">`progress`</span> או <span dir="ltr">`execution`</span> אינו קריא לבנייה
+שקדמה לסוגים האלה — אוצר המילים
 של <span dir="ltr">`--kind`</span> סגור, ושם שאינו מוכר גורר איתו את כל המקטע במקום להידלג.
+שניהם הגיעו בתוך השבר ש-<span dir="ltr">`@2`</span> כבר מכריז עליו, ולכן אף אחד מהם לא העלה
+את הפרוטוקול פעם שנייה.
 
 ##### שני קבצים, ורק אחד מהם הוא הרישום
 
@@ -2891,10 +2912,14 @@ line 2 declares protocol "my_context/audit@3", expected "my_context/audit@1" or
 > נוסעות איתו — <span dir="ltr">`create`, `update`, `stage`, `promote`, `discard`,
 > `supersede`, `accept`, `refresh`, `link`, `unlink`</span> — מפני שב-Markdown של פריט אין
 > שדה <span dir="ltr">`created`</span> ואין שדה <span dir="ltr">`updated`</span> כלל, ולכן
-> רשומות השינוי הן הדבר היחיד שיכול לומר מתי פריט נוצר או מי נגע בו. **חמשת הסוגים האחרים
+> רשומות השינוי הן הדבר היחיד שיכול לומר מתי פריט נוצר או מי נגע בו. **ששת הסוגים האחרים
 > ש-<span dir="ltr">`mycontext audit --kind`</span> מקבלת אינם נוסעים** — הזרקות, פעולות
-> hooks, רשומות מיקוד, רשומות גישה ורשומות התקדמות — מהסיבה שהאזהרה שלמעלה כבר נותנת: הן
-> מתארות מכונה ולא קורפוס, והן המקום שבו נמצאים הנתיבים המקומיים ומזהי הסשן. היסטוריה
+> hooks, רשומות מיקוד, רשומות גישה, רשומות התקדמות ורשומות הרצה — מהסיבה שהאזהרה שלמעלה כבר
+> נותנת: הן מתארות מכונה ולא קורפוס, והן המקום שבו נמצאים הנתיבים המקומיים ומזהי הסשן.
+> המסנן הוא ביטוי אחד והוא נוקב בסוג ש**כן** נוסע ולא בסוגים שאינם, ולכן סוג שיתווסף מחר
+> נמנע כברירת מחדל ולא נוסע מכוח השמטה.
+> <!-- `pack/history.ts` · `return filterAudit(readAudit(root), { kind: 'mutation' })` · ~447 -->
+> היסטוריה
 > שמגיעה ממקום אחר נוחתת ב-<span dir="ltr">`.audit/imported/<pack>/`</span> ואינה מתמזגת
 > לתוך <span dir="ltr">`audit.jsonl`</span> שלכם, כך שהצד המקבל תמיד יכול להבחין בין מה
 > שהוא עצמו היה עד לו ובין מה שסופר לו — וגם אז היא יכולה רק לדרג תור סקירה לפי סיכון,
@@ -3509,8 +3534,11 @@ write. Run it in your own shell."* המנגנון נאמר באותו משפט �
 
 ##### Watch ו-Ask
 
-**Watch** מזרים את יומן הביקורת חי — כל ששת סוגי הרשומה: שינויים, הזרקות, פעולות hook,
-שינויי מיקוד, סירובי גישה וצעדי התקדמות. שורת הזרקה נושאת את **מספר** הפריטים שאותה הזרקה
+**Watch** מזרים את יומן הביקורת חי — כל סוגי הרשומה שיש: שינויים, הזרקות, פעולות hook,
+שינויי מיקוד, סירובי גישה, צעדי התקדמות והרצות של פקודות. המסך קורא את הרשימה הזאת מאותו
+קבוע שממנו קורא הסירוב של <span dir="ltr">`--kind`</span> בשורת הפקודה, ולכן סוג שנוסף
+ליומן אינו יכול להיעדר מהזרם.
+<!-- `ui/watch-model.ts` · `import { AUDIT_KINDS, type AuditKind, type AuditRecord } from '../core/audit.ts';` · ~2 --> שורת הזרקה נושאת את **מספר** הפריטים שאותה הזרקה
 לא הצליחה להכניס בתקציב, וזה הדבר האחד שהקורפוס אינו רושם בשום מקום אחר: הפנקס רושם מסירות
 בלבד, ולכן "פריט נבחר ולא נכנס בתקציב" קיים כעובדה ביומן הביקורת ובשום מאגר אחר. לקרוא
 **אילו** פריטים היו אלה היא שאלה אחרת, והמסך אינו עונה עליה — הוא מציג את המספר.
@@ -3675,7 +3703,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | `list_drafts` | מניית מה שממתין לסקירת אדם, החדש ביותר ראשון — לא כדי לקדם, מה שאין ביכולתו |
 | `audit_log` | קריאת [יומן הביקורת של זמן הריצה](#יומן-הביקורת--מה-ש-my_context-באמת-עשה): מה שונה בסביבת העבודה הזאת ובידי מי, ואילו פריטים הוצגו לסשן, לפי scope — מזהים ודרגים, לעולם לא הטקסט שהוזרק. סינון לפי פריט, סשן, פעולה, מבצע או זמן. הארגומנט הוא <span dir="ltr">`actor`</span> ולא <span dir="ltr">`origin`</span>: אף סכמת כלי במשטח הזה אינה חושפת תכונה בשם <span dir="ltr">`origin`</span>, ולא שווה לחרוט חריג בנעיצה הזאת בשביל מסנן קריאה |
 | `load_context` | הזרקת הפריטים הנעוצים והאינדקס עכשיו, בדיוק כמו תחילת סשן. זה מה ש-<span dir="ltr">`/mycontext:LoadMyContext`</span> קוראת לו |
-| `mycontext_help` | קריאת הדרכה על נושא אחד: <span dir="ltr">categories, scope, capture, workflow</span> |
+| `mycontext_help` | קריאת הדרכה על נושא אחד: <span dir="ltr">categories, scope, capture, workflow, tools, slash</span>. אלה כל הנושאים ש-<span dir="ltr">`mycontext help`</span> מגישה חוץ מ-`cli`, והאנומרציה בסכמה נגזרת מהרשימה ולא נשמרת ביד — ראו [נושא העזרה האחד ש-`mycontext_help` אינו מציע](#נושא-העזרה-האחד-ש-mycontext_help-אינו-מציע) <!-- `core/teach.ts` · `export const MCP_HELP_TOPICS: HelpTopic[] = HELP_TOPICS.filter((t) => t !== 'cli');` · ~36 --> |
 | `mycontext_examples` | הצגת פריט לדוגמה שלם מסוג נתון, להעתיק ממנו את הצורה |
 | `focus_context` | צמצום מה ש-my_context מזריק — ראו [מיקוד סשן](#מיקוד-סשן--צמצום-מה-שנטען) — לתגיות, לקטגוריות או ל-scope נתונים, וקריאה חוזרת של מה שזה מסתיר: כמה פריטים, וכמה קשרים נושאי-משקל נותרו תלושים. `preview` מדווח בלי לשנות דבר; `clear` מסיר את המיקוד. הוא אינו יכול להסתיר פריט `severity: hard`, וכל שינוי מיקוד נרשם ביומן הביקורת עם המקור שלו, כך שמודל שמצמצם את ההקשר של עצמו משאיר עקבות |
 | `ingest_document` | חילוץ פריטים נורמטיביים ממסמך, באותה צורה של שתי קריאות כמו פקודות הקליטה בשורת הפקודה |
@@ -3731,7 +3759,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 האיותים <span dir="ltr">`--name value`</span> ו-<span dir="ltr">`--name=value`</span>
 שקולים בכל מקום בשורת הפקודה הזאת.
 
-כל דגל ששורת הפקודה מקבלת נמצא באחת משבע הטבלאות שלמטה. אין כאן מספר, בכוונה: המשפט
+כל דגל ששורת הפקודה מקבלת נמצא באחת משמונה הטבלאות שלמטה. אין כאן מספר, בכוונה: המשפט
 הזה אמר פעם "עשרים וחמישה אלה הם כולם", שלוש הטבלאות שהוא הציג אכן החזיקו בדיוק עשרים
 וחמש שורות, ועשרים דגלים נוספים התקבלו על ידי שורת הפקודה ולא הופיעו באף אחת מהן — שישה
 מהם מתועדים בפרק הזה עצמו. מספר במקום הזה מתיישן ברגע שנוסף דגל, ומאותו רגע הוא טוען
@@ -3763,14 +3791,17 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 |---|---|---|
 | <span dir="ltr">`--body "<text>"`</span> | הטקסט של הפריט — הפסקה ש-Claude מקבל. ב-<span dir="ltr">`add`</span> הוא סותר את <span dir="ltr">`--file`</span>, שמספק את הגוף מתוך קובץ | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--note "<text>"`</span> | מוסיף תצפית <span dir="ltr">`[note]`</span> אחת. ניתן לחזרה, בסדר שניתן, ואינו מפוצל בפסיקים — תצפית היא משפט, ובמשפטים יש פסיקים. שם נמצא ה*למה* כשהגוף הגיע מקובץ ולא מכם | <span dir="ltr">`add`</span> |
+| <span dir="ltr">`--step "<text>"`</span> | צעד אחד של <span dir="ltr">`procedure`</span> — פעולה שמבצעים פעם אחת ומסיימים. ניתן לחזרה, בסדר שורת הפקודה, ואינו מפוצל בפסיקים, מאותה סיבה ש-<span dir="ltr">`--note`</span> אינו: צעד הוא משפט. פעולה שחוזרת היא <span dir="ltr">`runbook`</span>, ששומרת את צעדיה בגוף. צעדים אינם ניתנים לעריכה או לסימון בשום פקודה אחר כך — תיקון אחד מהם משמעו עריכת ה-Markdown והרצת <span dir="ltr">`mycontext repair`</span> | <span dir="ltr">`add`</span> |
 | <span dir="ltr">`--scope "<globs>"`</span> | תבניות הקבצים שהפריט נצמד אליהן, מופרדות בפסיקים | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
 | <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה כל עוד לא הוגדר מיקוד — <span dir="ltr">`mycontext focus <tag>`</span> מצמצם את ההזרקה לתגיות שהוא נוקב בהן | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--severity hard\|soft`</span> | פריטי `hard` מתקבלים לתקציב לפני `soft`. כל מילה אחרת מסורבת. <span dir="ltr">`mycontext harden <id>`</span> ו-<span dir="ltr">`mycontext soften <id>`</span> הן שתי ההגדרות האלה בשם קצר יותר | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
 | <span dir="ltr">`--always`</span> | לנעוץ את הפריט: להזריק אותו במלואו בתחילת כל סשן, בלי קשר לקבצים. <span dir="ltr">`review promote --always`</span> קובעת אותו כל עוד הפריט טיוטה; <span dir="ltr">`mycontext edit --always`</span> קובעת אותו, ו-<span dir="ltr">`--always=false`</span> מנקה אותו, בכל שלב — מאחורי האישור שפריט ששולט כבר מזכה בו. <span dir="ltr">`mycontext pin <id>`</span> ו-<span dir="ltr">`mycontext unpin <id>`</span> הן שתי העריכות האלה בשם קצר יותר | <span dir="ltr">`review promote`, `edit`</span> |
+| <span dir="ltr">`--continuity`</span> | לסמן את הפריט לדרג ה**המשכיות**: הוא נמסר מחדש בתחילת כל סשן ונספר מול תקציב <span dir="ltr">`continuity`</span> ולא מול הנעוץ. <span dir="ltr">`--continuity=false`</span> מנקה אותו. הוא מתקבל גם בדרג הנימוקים, בניגוד ל-<span dir="ltr">`--severity`</span> ול-<span dir="ltr">`--always`</span>, מפני שנשיאת הערה קדימה אינה טענה שהיא שולטת במשהו <!-- `cli/commands/edit.ts` · `'title', 'body', 'scope', 'tags', 'severity', 'always', 'continuity', 'status', 'extra',` · ~70 --> | `edit` |
 | <span dir="ltr">`--title "<text>"`</span> | להחליף את כותרת המועמד המבוים בניסוח שלך לפני שהכלל נוצר; ב-`edit`, הכותרת של הפריט עצמו | <span dir="ltr">`lesson-accept`, `edit`</span> |
 | <span dir="ltr">`--directive do\|dont`</span> | האם הכלל שנוצר מורה או אוסר | `lesson-accept` |
-| <span dir="ltr">`--extra key=value`</span> | שדה אחד ייחודי לקטגוריה — ה-<span dir="ltr">`directive`</span> של כלל, ה-<span dir="ltr">`kind`</span> של דרישה. ניתן לחזור עליו, מפתח אחד לכל דגל, והערך נלקח בשלמותו, פסיקים כלולים. הוא **ממזג**: מפתח שלא נקבתם בו שומר על ערכו. אין איות שמוחק מפתח, מפני שערך ריק ושדה נעדר אינם ניתנים להבחנה אחרי הכתיבה. הוא תוכן, ולכן הוא נושא את האישור שכל שדה תוכן נושא — אבל לא את תצוגת ההישג לפני ואחרי, שרק <span dir="ltr">`--scope`</span>, <span dir="ltr">`--always`</span>, <span dir="ltr">`--severity`</span> ו-<span dir="ltr">`--status`</span> חייבים. זו האסימטריה האחת שכדאי להכיר, מפני ש-<span dir="ltr">`directive`</span> הוא שקובע אם כלל אוסר או מורה | `edit` |
+| <span dir="ltr">`--extra key=value`</span> | שדה אחד ייחודי לקטגוריה — ה-<span dir="ltr">`directive`</span> של כלל, ה-<span dir="ltr">`kind`</span> של דרישה. ניתן לחזור עליו, מפתח אחד לכל דגל, והערך נלקח בשלמותו, פסיקים כלולים. הוא **ממזג**: מפתח שלא נקבתם בו שומר על ערכו. אין איות שמוחק מפתח, מפני שערך ריק ושדה נעדר אינם ניתנים להבחנה אחרי הכתיבה. הוא תוכן, ולכן הוא נושא את האישור שכל שדה תוכן נושא — אבל לא את תצוגת ההישג לפני ואחרי, שרק <span dir="ltr">`--scope`</span>, <span dir="ltr">`--always`</span>, <span dir="ltr">`--severity`</span> ו-<span dir="ltr">`--status`</span> חייבים. זו האסימטריה האחת שכדאי להכיר, מפני ש-<span dir="ltr">`directive`</span> הוא שקובע אם כלל אוסר או מורה. גם <span dir="ltr">`mycontext add`</span> מקבלת אותו, ולכן אפשר לקבוע שדה ייחודי לקטגוריה כבר ברגע הלכידה <!-- `cli/index.ts` · `const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'step', 'scope', 'tags', 'severity', 'extra'];` · ~487 --> | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--status <name>`</span> | להזיז את סטטוס מחזור החיים של פריט: <span dir="ltr">`active`, `draft`, `deprecated`</span> או `validated`. `superseded` **מסורב** כאן, כי פרישה נוקבת במחליף שלה ורושמת אותו בשני הכיוונים — וזו <span dir="ltr">`mycontext supersede`</span>. ב-`search` וב-`export` הוא מסנן לפי סטטוס במקום | <span dir="ltr">`edit`, `search`, `export`</span> |
+| <span dir="ltr">`--agent`</span> | לרשום את הלקח עם <span dir="ltr">`origin: agent`</span> במקום <span dir="ltr">`origin: human`</span>, וזו הטענה האחת שמעטפת של מסוף אינה יכולה לטעון באמת בעצמה. הוא אינו מוסיף שום דרך לשקר שלא הייתה לפקודה החשופה ממילא — הוא מוסיף את הדרך הראשונה לדייק — ו-`lesson` הוא דרג נימוקים, ולכן מה שהוא רושם אינו שולט בדבר כך או כך. <span dir="ltr">`lesson-accept`</span> מסרבת לו **בשמו**, בכל איות: אישור מועמד מבוים יוצר כלל ששולט במאגר הזה, ואיות סוכן של שער הוא היעדרו של השער | `lesson` |
 | <span dir="ltr">`--by <id>`</span> | נוקב במחליף שתופס את מקומו של הפריט הפורש. **חובה** — פרישה בלי יורש אינה מוצעת | `supersede` |
 | <span dir="ltr">`--reason "<text>"`</span> | למה הפרישה קרתה. זה נרשם כתצפית `supersession` על ה**מחליף**, בנוסח <span dir="ltr">`Replaces <old id>: <your text>`</span> | `supersede` |
 
@@ -3791,6 +3822,8 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--tag <tag>`</span> | פריטים הנושאים את התגית הזאת | <span dir="ltr">`search`, `focus`, `export`</span> |
 | <span dir="ltr">`--path <file>`</span> | מה שולט בקובץ. הוא מחזיר גם את הפריטים **חסרי ההיקף**, כי פריט בלי היקף חל בכל מקום — השאלה היא "מה שולט בקובץ הזה", לא "מה נוקב בשמו" | `search` |
 | <span dir="ltr">`--relation <type>`</span> | פריטים הנושאים קשר מהסוג הזה. <span dir="ltr">`mycontext focus --relations`</span> מדפיסה את הסוגים | `search` |
+| <span dir="ltr">`--plan <plan>`</span> | לצמצם את דוח ה-`ready` לתוכנית אחת — הערך של שדה ה-`plan` שקטגוריית התכנון של הפרויקט מכריזה עליו. פרויקט שקטגוריותיו אינן מכריזות על <span dir="ltr">`plan`, `seq`</span> ו-`state` אין לו עבודה מתוכננת לסדר, ו-<span dir="ltr">`mycontext ready`</span> אומרת זאת במקום לדווח על כלום | `ready` |
+| <span dir="ltr">`--held`</span> | להציג את המשימות שהדוח אחרת רק **סופר**: אלה שה-`needs` שלהן אינם כולם גמורים. אין <span dir="ltr">`--all`</span> לצידו — "מוכן" הוא תשובה נגזרת על עבודה פתוחה, ודגל שהיה מרחיב אותה לעבודה גמורה היה שואל שאלה אחרת תחת אותו שם <!-- `core/command-flags.ts` · `ready: { allowed: ['plan', 'limit', 'held', ...DETAIL_FLAGS], values: ['plan', 'limit'] },` · ~154 --> | `ready` |
 | <span dir="ltr">`--since <when>`</span> | תחילת חלון זמן — תאריך, או טווח כמו `1d`, `2w` | `audit` |
 | <span dir="ltr">`--until <when>`</span> | סוף אותו חלון | `audit` |
 | <span dir="ltr">`--item <id>`</span> | רק רשומות שנגעו בפריט אחד | `audit` |
@@ -3812,11 +3845,13 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--category <category>`</span> | לצמצם את המיקוד לקטגוריה אחת | `focus` |
 | <span dir="ltr">`--scope <path-or-glob>`</span> | לצמצם אותו לפריטים ששולטים בנתיב הזה | `focus` |
 | <span dir="ltr">`--preview`</span> | לדווח מה מיקוד היה מסתיר ומה זה עולה, ולא לשנות דבר. הוא קורא לאותה בחירה שההזרקה תקרא לה, ולכן תצוגה מקדימה וההזרקה שאחריה אינן יכולות לחלוק | `focus` |
-| <span dir="ltr">`--show`</span> | להדפיס את המיקוד המוגדר כרגע | `focus` |
+| <span dir="ltr">`--show`</span> | להדפיס את מה שמוגדר כרגע: ב-`focus`, המיקוד; ב-<span dir="ltr">`session carry`</span>, מאיזה סשן ייקח הסשן החדש הבא את מצבו | <span dir="ltr">`focus`, `session carry`</span> |
+| <span dir="ltr">`--none`</span> | לא לשאת דבר קדימה — סשנים חדשים מקבלים את האינדקס של הפרויקט בסדר שלו, בלי שום סימון. <span dir="ltr">`mycontext session carry <id>`</span> מחזירה את זה לפעולה | <span dir="ltr">`session carry`</span> |
 | <span dir="ltr">`--clear`</span> | להסיר אותו | `focus` |
 | <span dir="ltr">`--relations`</span> | לרשום את סוגי הקשרים, שהם מה ש-<span dir="ltr">`--relation`</span> ודוח הקשרים מקבלים | `focus` |
 | <span dir="ltr">`--unlink`</span> | להסיר קשר במקום להוסיף אותו | `edit` |
 | <span dir="ltr">`--revision <id>`</span> | באיזו רוויזיה ממתינה מדובר, כשפריט נושא יותר מאחת | <span dir="ltr">`review promote-revision`, `review discard-revision`</span> |
+| <span dir="ltr">`--undo`</span> | לבטל סימון של צעד ב-`procedure` במקום לסמן אותו. שניהם כותבים שורה אחת ליומן הביקורת ולא יותר: הרשימה השמורה לעולם אינה נערכת, ולכן סימון וביטולו משאירים את קובץ הנוהל בית אחר בית כפי שהיה | <span dir="ltr">`procedure step`</span> |
 | <span dir="ltr">`--force`</span> | לקדם רוויזיה **מיושנת**, ולדרוס טקסט שזז תחתיה — אחרי שהודפס בדיוק מה זה הורס | <span dir="ltr">`review promote-revision`</span> |
 
 <span dir="ltr">`--tag`</span>, <span dir="ltr">`--category`</span> ו-<span dir="ltr">`--scope`</span>
@@ -3850,6 +3885,20 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--overwrite-changed`</span> | התשובה לאישור ה**שני** — להחליף את הפריטים ששיניתם בגרסאות של החבילה. הוא נפרד מ-<span dir="ltr">`--yes`</span> במכוון, ו-<span dir="ltr">`--yes`</span> אינו גורר אותו: הסכמה לייבוא אינה הסכמה להחליף כלל שאתם כתבתם. כל פריט שהוחלף נוחת <span dir="ltr">`draft`</span> והגרסה הקודמת שלו נשארת ביומן הביקורת. בחבילה שדלי ה-<span dir="ltr">`changed`</span> שלה ריק הוא מתקבל ואינו עושה דבר, כך שסקריפט שמייבא את אותה חבילה שוב ושוב אינו צריך לדעת מראש אם ההרצה הזאת מתנגשת. ב-<span dir="ltr">`mycontext init`</span> הוא **מסורב**, והמסר נוקב ב-<span dir="ltr">`pack import`</span>: לקורפוס שאינו קיים עדיין אין מה לדרוס, ודגל שמתקבל היכן שאינו יכול לעשות דבר הוא הבליעה השקטה שכל סירוב כאן קיים כדי למנוע | <span dir="ltr">`pack import`</span> |
 | <span dir="ltr">`--pack <path>`</span> | לייסד את סביבת העבודה הזאת מארטיפקט, באותה פקודה שיוצרת אותה. זהו הדגל היחיד ש-<span dir="ltr">`mycontext init`</span> מקבלת, וכל השאר — ארגומנט מיקומי, <span dir="ltr">`--global`, `--yes`, `--overwrite-changed`</span> — עדיין מסורבים בשמם. היא אינה שואלת דבר ואין לה <span dir="ltr">`--name`</span>, ולכן ייצוא מלא מסורב שם ומופנה אל <span dir="ltr">`pack import`</span> | `init` |
 | <span dir="ltr">`--pack <name>`</span> | ב-<span dir="ltr">`review promote`</span>, של איזו חבילה הטיוטות ש-<span dir="ltr">`--all`</span> מקדמת — **שם**, לא נתיב: זה ש-<span dir="ltr">`mycontext pack list`</span> מציגה, השם שהחבילה תויקה תחתיו כאן. שם שאין לו רשומת ייבוא מסורב ומפנה לפקודה ההיא; גם <span dir="ltr">`--pack`</span> בלי <span dir="ltr">`--all`</span> מסורב, במקום להתקבל היכן ששום דבר לא היה קורא אותו | <span dir="ltr">`review promote`</span> |
+| <span dir="ltr">`--source <path>`</span> | איזה ייבוא של אותה חבילה, כששתי חבילות שיובאו לכאן קוראות לעצמן באותו שם. הוא מותאם מול המקור ש-<span dir="ltr">`mycontext pack list`</span> מדפיסה, בית אחר בית ובלי שום פתרון נתיבים, ורב-משמעות מסורבת עם רשימת המועמדים במקום להיפתר בניחוש | <span dir="ltr">`review promote`</span> |
+
+**שתי הפקודות שאינן על הקורפוס.** <span dir="ltr">`mycontext ui`</span> מגישה תצוגה בדפדפן
+של סביבת העבודה הזאת, ו-<span dir="ltr">`mycontext statusline`</span> מגשרת אל שורת הסטטוס
+של Claude Code עצמו. הדגלים שלהן מכווננים שרת והגדרה של עורך ולא פריט, ולכן הם כאן ולא באף
+טבלה שלמעלה.
+
+| דגל | מה הוא עושה | היכן הוא עובד |
+|---|---|---|
+| <span dir="ltr">`--port <n>`</span> | פורט ה-loopback להגשה. הכתובת אינה דגל כלל: היא <span dir="ltr">`127.0.0.1`</span>, ובקשה להאזין לכל כתובת אחרת מסורבת בהפעלה ולא זוכה לאזהרה | `ui` |
+| <span dir="ltr">`--no-open`</span> | להדפיס את הכתובת במקום לפתוח דפדפן — מה שרוצים כשהמעטפת אינה על המכונה שקוראים ממנה | `ui` |
+| <span dir="ltr">`--idle-ms <n>`</span> | כמה זמן שרת שלא נגעו בו ממתין לפני שהוא יוצא, במילישניות. ברירת המחדל היא שמונה שעות והתקרה היא יממה; ערך שאינו מספר חיובי וסופי, או ערך מעל התקרה, מסורב ולא מוחלף בברירת המחדל | `ui` |
+| <span dir="ltr">`--nonce`</span> | לייצר nonce מסירה חד-פעמי טרי משרת ש**כבר רץ**, ולהדפיס את הכתובת שלו, במקום להפעיל שרת שני. זהו מתג, הוא אינו מקבל ערך, והוא סותר את שלושת האחרים — העברתו לצידם מסורבת ולא נזרקת בשקט <!-- `core/command-flags.ts` · `ui: { allowed: ['port', 'no-open', 'idle-ms', 'nonce'], values: ['port', 'idle-ms'] },` · ~168 --> | `ui` |
+| <span dir="ltr">`--settings <path>`</span> | לאיזה קובץ הגדרות להתקין או ממנו לשחזר, כשברירת המחדל היא זה של Claude Code — <span dir="ltr">`CLAUDE_CONFIG_DIR`</span>, ואחרת <span dir="ltr">`~/.claude/settings.json`</span> | <span dir="ltr">`statusline install`, `statusline uninstall`</span> |
 
 #### שלושה כללים שחלים על כולם
 
@@ -3876,10 +3925,11 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 **דגל שאינו מוכר מסורב — ברוב הפקודות.** <span dir="ltr">`mycontext status --ful`</span>
 נעצר ונוקב בשגיאת ההקלדה במקום להדפיס את דוח ברירת המחדל ולצאת עם 0. הפקודות שבודקות הן
 <span dir="ltr">`add`, `audit`, `decay`, `doctor`, `edit`, `examples`, `export`, `focus`,
-`harden`, `inbox-promote`, `ingest-status`, `lesson`, `list`, `pin`, `query`, `refresh`,
-`repair`, `search`, `soften`, `status`, `supersede`, `todo`, `ui`</span> ו-`unpin`, ובנוסף
-<span dir="ltr">`pack`, `procedure`, `review`</span> ו-`session`, שכל אחת מהן בודקת כל
-תת-פקודה מול המערך שלה ולא מול איחוד אחד. גם `init` מסרבת, בניסוח משלה — היא מקבלת דגל
+`harden`, `inbox-promote`, `ingest-status`, `lesson`, `list`, `pin`, `query`, `ready`,
+`refresh`, `repair`, `search`, `soften`, `status`, `supersede`, `todo`, `ui`</span>
+ו-`unpin`, ובנוסף
+<span dir="ltr">`pack`, `procedure`, `review`, `session`</span> ו-`statusline`, שכל אחת מהן
+בודקת כל תת-פקודה מול המערך שלה ולא מול איחוד אחד. גם `init` מסרבת, בניסוח משלה — היא מקבלת דגל
 אחד בדיוק, <span dir="ltr">`--pack <path>`</span>, ונוקבת בארגומנט שלא תפעל לפיו במקום
 להתעלם ממנו. גם
 <span dir="ltr">`mycontext help`</span> מסרבת, בדרך שלישית: היא קוראת את מה שבא אחריה כשם
@@ -5889,9 +5939,13 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 ששולט בפרויקט הזה.
 
 > [!NOTE]
-> **המסכים עדיין אינם מציעים את הכפתור.** נקודת הקצה בנויה ונגישה; פקד ההעתקה־וההרצה שמעמיד
-> אותה מולכם עדיין נבנה. המקטע הזה נמצא כאן עכשיו ולא אחר כך משום שנקודת קצה חיה להרצה
-> בכתובת ה־loopback שלכם ראויה שתדעו עליה לפני שמופיע כפתור, לא אחריו.
+> **המסכים מציעים את הכפתור.** ההערה הזאת אמרה פעם שאינם, ונשארה עומדת אחרי שהפקד נשלח —
+> בדיוק הפגם ש[פרק 8](#8-עדיין-לא-זמין) של המסמך הזה קיים כדי למנוע, ודווקא במקטע שמתאר
+> הרצת פקודות על המכונה שלכם. פקד ההעתקה־וההרצה הוא מימוש אחד
+> (<span dir="ltr">`src/ui/public/lib/command-actions.js`</span>) שכל מסך שמרכיב פקודה
+> משתמש בו מחדש, ולא תעתיק לכל מסך, מפני שהאישור הוא גבול האבטחה ותשעה עותקים שלו היו תשע
+> הזדמנויות לטעות בו.
+> <!-- `command-actions.js` · `outcome = await ctx.post('/api/execute', { id, values, nonce: answer.nonce });` · ~460 -->
 
 כל הרצה נמצאת מאחורי אישור.
 
@@ -6219,11 +6273,6 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 - **<span dir="ltr">`observations`</span> אינן ניתנות לעריכה בידי אף אחד, בשום משטח, מכל
   מקור.** הן נקבעות בלכידה ולעולם לא אחריה; ל-`update_item` אין ארגומנט כזה וגם
   ל-<span dir="ltr">`mycontext edit`</span> לא. תיקון אחת מהן משמעו החלפת הפריט שנושא אותה.
-- **ל-`mycontext add` אין <span dir="ltr">`--extra`</span>.**
-  <span dir="ltr">`mycontext edit <id> --extra key=value`</span> מגיעה אל השדות הייחודיים
-  לקטגוריה — ה-`directive` של כלל, ה-`validate_by` של הנחה — אבל רק אחרי שהפריט קיים, ולכן
-  לכידה מהטרמינל אינה יכולה לקבוע אחד מהם ברגע הלכידה. `create_item` כן מקבל אותם, ולכן
-  המסלול שקיים הוא לבקש מהמודל.
 - **מחיקה לא תתווסף כלל.** `NOGOAL-no-agent-hard-delete` הוא פריט פעיל בקורפוס של המאגר
   הזה עצמו, שמתעד את זה כלא-מטרה מכוונת. פרישה היא החלפה —
   <span dir="ltr">`mycontext supersede <id> --by <id>`</span>, שקיימת — והיא משאירה את
@@ -6242,7 +6291,9 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 [יומן הביקורת](#יומן-הביקורת--מה-ש-my_context-באמת-עשה) חולק את הראשונה ואת השלישית מהן
 וסוגר את השנייה. הוא ב-gitignore מאותה סיבה, ובגרסה הזאת גם עם אותה תוצאה — שנאמרת במקום
 שבו הוא מתועד ולא כאן, יחד עם הכרעת v2.0 שלפיה ייצוא של קורפוס אמור לשאת את רשומות השינוי
-שביומן ולהשאיר את כל השאר מאחור, הכרעה שהוכרעה ולא נבנתה; הוא מתגלגל ב-8 MiB אבל עדיין
+שביומן ולהשאיר את כל השאר מאחור, הכרעה ש**נשלחה**: <span dir="ltr">`mycontext export`</span>
+כותבת <span dir="ltr">`history.jsonl`</span> של רשומות שינוי ושל שום דבר אחר, והמשפט הזה אמר
+"הוכרעה ולא נבנתה" חודשים אחרי שזה קרה. הוא מתגלגל ב-8 MiB אבל עדיין
 לעולם אינו מוחק, ולכן גם הצמיחה הכוללת שלו בלתי חסומה;
 ובניגוד למחסן הרוויזיות, יש לו בדיקת <span dir="ltr">`doctor`</span> שמדווחת על גודלו.
 למחסן הרוויזיות עדיין אין אף אחת.
@@ -6286,33 +6337,30 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 הקורפוס, ומה מפתח תצורה עושה — הם אלה שהוא אינו יכול לענות עליהם.
 
 הספירה עברה מארבעה לשבעה והפער לא זז, וזו הנקודה ששווה לשמור: שלושת הנושאים שנוספו מאז הם
-שלושת *משטחי ההפעלה*, ואף אחד משני הנושאים האלה אינו משטח הפעלה. מה שהשתנה הוא שלפער יש
-כעת אח, מיד למטה.
+שלושת *משטחי ההפעלה*, ואף אחד משני הנושאים האלה אינו משטח הפעלה.
 
-### שלושה נושאי עזרה ש-`mycontext_help` אינו מציע
+### נושא העזרה האחד ש-`mycontext_help` אינו מציע
 
 <span dir="ltr">`mycontext help <topic>`</span> מגישה את כל השבעה. **הכלי**
-`mycontext_help` מפרסם ארבעה: הסכמה שלו מונה את הנושאים ביד — האנומרציה היחידה במשטח הזה
-שאינה נגזרת מאוצר המילים שהיא נוקבת בו, בעוד <span dir="ltr">`SEVERITIES`, `STATUSES`,
-`AUDIT_KINDS`</span> ו-<span dir="ltr">`AUDIT_OPS`</span> כולן כן — והיא לא הורחבה
-כש-`cli`, `tools` ו-`slash` נחתו.
+`mycontext_help` מציע שישה מהם, והאחד שהוא מונע הוא `cli`.
 
-לגבי אחד מהשלושה זה נכון ואינו יכול להיות אחרת. מקטע הפקודות של הנושא `cli` נוצר מרישום
+המניעה הזאת נכונה ואינה יכולה להיות אחרת. מקטע הפקודות של הנושא `cli` נוצר מרישום
 הפקודות של שורת הפקודה עצמה, ש-<span dir="ltr">`src/cli/index.ts`</span> ממלא כתופעת לוואי
 של טעינתו; שרת ה-MCP לעולם אינו טוען אותו, ולכן הרישום ריק שם והנושא **מסרב להיווצר** במקום
 להדפיס מקטע פקודות שאינו נוקב באף פקודה. פרסום `cli` באותו משטח היה מפרסם נושא שהשרת אינו
 מסוגל להגיש.
 
-שני האחרים הם פער. `tools` נוצר מרישום הכלים ו-`slash` מהתיקייה `commands/` שנמצאת בבקרת
-גרסאות, ואף אחד מהם אינו נמלא בתופעת לוואי — שניהם נוצרים בתהליך שטען אך ורק את
-<span dir="ltr">`src/help/index.ts`</span>, מה
-ש-<span dir="ltr">`test/help/tools-topic.test.ts`</span> מוכיח בתהליך־בן. כך המשטח שהסוכן
-כבר נמצא עליו מונע ממנו דווקא את העמוד על עצמו, והתיקון הוא
-<span dir="ltr">`enum: HELP_TOPICS`</span> פחות הנושאים שהשרת באמת אינו מסוגל להגיש, בתוספת
-השינוי המתאים בתיאור הכלי ב-<span dir="ltr">`src/help/topics/capture.md`</span>. זהו שינוי
-קטן אחד בשני מקומות והוא אינו נעשה כאן;
+**הערך הזה נקב פעם בשלושה, ושניים מהם כבר נסגרו.** `tools` ו-`slash` נמנעו משום דבר מלבד
+אנומרציה שנכתבה ביד ואיש לא הרחיב אותה כשהם נחתו — `tools` נוצר מרישום הכלים ו-`slash`
+מהתיקייה `commands/` שנמצאת בבקרת גרסאות, ואף אחד מהם אינו זקוק לתופעת לוואי כדי להתמלא.
+האנומרציה בסכמה נגזרת עכשיו (<span dir="ltr">`MCP_HELP_TOPICS`</span> הוא
+<span dir="ltr">`HELP_TOPICS`</span> פחות `cli`, ולא יותר מזה), ולכן נושא שנוסף לשורת
+הפקודה מגיע אל הכלי כברירת מחדל ולא מכוח מישהו שזכר.
 <span dir="ltr">`test/help/tools-topic.test.ts`</span> מקבע את הקבוצה הנמנעת בדיוק ל-`cli`,
-`tools`, `slash`, כדי שסגירת הפער תהיה החלטה ולא הפתעה.
+ובשני הכיוונים: נושא שנוסף לה, וקבוצה ריקה, שניהם נכשלים.
+<!-- `test/help/tools-topic.test.ts` · `[...withheld].sort(), ['cli'],` · ~490 -->
+
+מה שנותר הוא הערך שלמעלה: `query` ו-`config` הם נושאים שלאף אחד מהמשטחים אין עמוד עבורם.
 
 ### יצירת שכבה גלובלית וכתיבה אליה
 

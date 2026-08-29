@@ -201,6 +201,44 @@ const REPO = path.resolve(import.meta.dirname, '..');
 const DOC_ROOTS = ['docs/superpowers/specs', 'docs/superpowers/plans', 'docs/design'];
 
 /**
+ * **THE FIFTH TREE: the front door, which is the one document a stranger
+ * reads and the one nothing was checking.**
+ *
+ * `DOC_ROOTS` names three directories of INTERNAL documents — specs, plans and
+ * the design of record. `README.md` and `docs/README.he.md` are in none of
+ * them, and they are the two files a person opens first. Measured on
+ * 2026-08-24 (`plan:rulings seq:48`): six claims in them were false or missing,
+ * among them "the server exits after fifteen idle minutes" against an
+ * `IDLE_MS` of eight hours, and "the served page is an empty shell" against a
+ * page that ships twenty-two screens. Both had been true once. Neither was
+ * cited, so neither could be caught — and a README that DENIES a shipped
+ * feature is worse than one that omits it, because a reader stops looking.
+ *
+ * **Two files by name, not a `docs/` root.** `docs/` also holds `ROADMAP.md`,
+ * `TUTORIAL.md`, `TEMPLATES.md` and the mutation-testing notes, and sweeping
+ * them in would be the move this script has refused twice: walking a tree to
+ * raise a number rather than to check a claim. These two are named because
+ * these two are the front door.
+ *
+ * **And naming them is only half of it, which is the part that took the work.**
+ * The walk alone checks nothing here: on the day this landed the two READMEs
+ * carried 29 `·` characters each and NOT ONE citation — every one of them a
+ * separator inside a rendered example item (`INV-prices-are-integer-cents ·
+ * invariant · …`), which names no file and is correctly read as prose. A gate
+ * pointed at a document that makes no citable claim reports "0 broken" and
+ * means nothing by it, which is this script's own definition of the worst
+ * outcome. So the claims that a build can falsify — a count, a default, an
+ * enumeration of what a command accepts — now carry a citation to the code
+ * that decides them, and they are written as HTML comments because the reader
+ * of a README is not the reader of a plan: the claim is prose, the anchor is
+ * invisible, and the gate reads both.
+ *
+ * Markdown rules apply to them in full, wrapping included: a citation split
+ * across two lines here is a fault, because Markdown could have held it on one.
+ */
+const DOC_FILES = ['README.md', 'docs/README.he.md'];
+
+/**
  * Source trees whose comment citations are checked. Walked on every run and
  * reported on every run; gated only under `--strict-source`.
  *
@@ -762,6 +800,21 @@ function main(): number {
 
   const docs: string[] = [];
   for (const root of DOC_ROOTS) walk(path.join(REPO, root), docs, isMarkdown);
+  // Named files, not a root, so a path that stops existing is a LOUD failure
+  // rather than a document that quietly leaves the walk. `walk` returns an
+  // empty list for a directory it cannot read, which is right for a root and
+  // exactly wrong for a file this script was pointed at by name.
+  for (const file of DOC_FILES) {
+    const full = path.join(REPO, file);
+    if (!statSync(full, { throwIfNoEntry: false })?.isFile()) {
+      process.stdout.write(
+        `my_context: ${file} is named in DOC_FILES and is not a file. ` +
+          'Rename it there or restore it; a front-door document may not leave the walk in silence.\n',
+      );
+      return 1;
+    }
+    docs.push(full);
+  }
   docs.sort();
 
   const rel = (full: string): string => path.relative(REPO, full).split(path.sep).join('/');
