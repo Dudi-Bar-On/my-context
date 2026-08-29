@@ -120,18 +120,43 @@
  *          but a ghost cannot yet appear BETWEEN two fills, which is the
  *          placement `preview.ribbonn` asks for. Filed.
  *
- * **The rungs' names and the ribbon's hints are the mockup's own literals, not
- * string keys, and cannot become keys here.** Its `GATES` table, its
- * `does not run on this event` label and its four hint sentences are built in
- * its own script with an inline `HEB?he:en`, so no `data-t` declares them —
- * and `test/ui/strings-parity.test.ts` fails a table key the design of record
- * does not declare, in that exact direction. They are drawn as literals, the
- * same treatment `parts.js`'s `TIERCHIP` gives a tier name and `watch.js`'s
- * `KIND_CHIP` gives a record kind. The gate CODES are product vocabulary and
- * are right as literals; the DESCRIPTIONS are prose and are not, so they stay
- * English under `א` and that is a defect this file cannot fix alone. Filed as
- * its own task, beside the one `watch.js` already carries for the emphasis
- * runs the string grammar has no marker for.
+ * **The rungs' names and descriptions are the mockup's own literals. The
+ * ribbon's two ABSENT-TIER sentences are not, since 2026-08-29 — and the reason
+ * this block used to give for leaving them that way had expired a fortnight
+ * before anybody re-read it.**
+ *
+ * It read: *"they cannot become keys here … `test/ui/strings-parity.test.ts`
+ * fails a table key the design of record does not declare, in that exact
+ * direction."* That direction was DROPPED on 2026-08-26 by
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap` — *"a feature
+ * built in the app no longer needs to be drawn in the mockup first"* — and
+ * `strings-parity` now compares mockup-to-app only. So the gate that was cited
+ * as forbidding the keys had stopped forbidding them, and two English sentences
+ * went on shipping under `א` on a reading nothing re-checked. **A constraint
+ * quoted from memory rather than from the gate is how a defect outlives its
+ * cause**, which is why the constraint is now cited with its decision beside it.
+ *
+ * `preview.notrun` and `preview.notrunn` carry those two sentences, in both
+ * tables, in the design of record's own English and Hebrew — its `renderRibbons`
+ * already drew both languages, so nothing was invented.
+ *
+ * What is still literal, and correctly:
+ *
+ *   - The gate CODES and the `GATES` table's one-line descriptions. The codes
+ *     are product vocabulary and are right as literals, the same treatment
+ *     `parts.js`'s `TIERCHIP` gives a tier name and `watch.js`'s `KIND_CHIP`
+ *     gives a record kind. The DESCRIPTIONS are prose and are not right as
+ *     literals — they stay English under `א`, and that is a real defect, now
+ *     RECORDED rather than asserted: `test/ui/screen-literals.test.ts`
+ *     enumerates every user-facing literal under `screens/` and holds the list
+ *     of unkeyed ones so it can only shrink.
+ *   - The four ribbon `.hint` sentences below, for the same reason and in the
+ *     same ledger.
+ *
+ * **That check is the durable half of this.** Before it, "we think the UI is
+ * translated" rested on nobody having added a literal — an assumption these two
+ * sentences disproved — and no gate could see them, because a string with no key
+ * is invisible to a key comparison and text under no `data-t` is not censused.
  */
 import { selectQuery } from '/lib/viewmodel.js';
 import {
@@ -379,6 +404,43 @@ function scaleFor(tier, budget) {
  */
 let dropSessionListener = null;
 
+/**
+ * **THE READER'S PLACE ON THIS SCREEN, HELD ACROSS EVERY `render()`.**
+ *
+ * `DEC-a-refresh-keeps-the-reader-s-place-or-it-asks` says a screen either
+ * keeps the reader's place or asks before redrawing. `preview` correctly
+ * declares `refresh: 'ask'` — and until 2026-08-29, when the reader said yes,
+ * it threw away the thing the asking was for. `render()` rebuilt `#evsel` from
+ * `EVENTS[0]`, and `chosenPath` and `sessionMode` were `let`s INSIDE `render()`,
+ * so a taken refresh returned the screen to *session-start · warm · no path*
+ * and the reader's question was gone.
+ *
+ * Measured in a real browser before the fix, on the live corpus: with
+ * `event=tool`, `path=my-context/src/core/select.ts` and the COLD question
+ * pressed, one re-render answered `session-start`, no path picker at all, and
+ * `live` pressed. Three separate losses on one act.
+ *
+ * **Module level, and that is the house's own answer to this shape rather than
+ * a new one.** `parts.js`'s `SIM_RANGE` holds the simulator's slider bound the
+ * same way, for the reason written there: an ES module is a singleton per page,
+ * so this object already outlives every `render()` and every navigation, which
+ * is exactly the lifetime a reader's pick wants. It does not survive a reload —
+ * also right: a reload is the reader starting over, and a question remembered
+ * across one is a question nobody on that page asked.
+ *
+ * **Not fixed by moving `refresh` to `'auto'`.** That would remove the ask and
+ * keep the loss. The ask stays; what changes is that taking it now costs the
+ * reader nothing.
+ *
+ * **`path` is VALIDATED on restore, never trusted.** `/api/coverage` walks the
+ * repository live, so a file that was in the list when the reader picked it can
+ * be gone by the next render. Assigning a `value` a `<select>` does not offer
+ * silently leaves it `''`, which would send a query about no file at all — so
+ * `ensureFiles` drops a remembered path the walk no longer names and falls back
+ * to the first file, exactly as a first visit does.
+ */
+const PICKED = { event: EVENTS[0], path: null, mode: 'live' };
+
 export async function render(root, ctx) {
   // A second render must not leave the first one's session listener behind —
   // `screens/watch.js`' `openStream` argument, for the other subscription a
@@ -418,12 +480,66 @@ export async function render(root, ctx) {
     option.value = name;
     evsel.append(option);
   }
+  // **The reader's event, restored — see `PICKED`.** A `<select>` rebuilt from
+  // `EVENTS` opens on `EVENTS[0]`, so this line is the whole difference between
+  // a taken refresh that keeps the reader's question and one that discards it.
+  // Membership-checked rather than assigned blind: `EVENTS` is the option list,
+  // and a value it does not offer would leave `evsel.value` as `''` and send a
+  // query about no event at all.
+  if (EVENTS.includes(PICKED.event)) evsel.value = PICKED.event;
   // The path slot. The mockup draws `session-start` and writes one unkeyed
   // literal here — `path — none (session-start takes none)`. Three of the four
   // events take no path, so the literal is drawn with the event it is actually
   // about; the sentence is the mockup's, the noun is the one on screen.
   const pathSlot = el('span');
   bar.append(evLabel, evsel, pathSlot);
+
+  /**
+   * **WHAT THE PATH PICKER CAN AND CANNOT DO, SAID BESIDE THE PATH PICKER.**
+   *
+   * Owner, 2026-08-28: *"event - when selecting tool, the path should be used as
+   * filter but it does nothing"*. Traced end to end and every link holds — the
+   * control refetches, `read-model.ts` sets `ctx.path`, `jitTarget()` normalises
+   * it, and the jit tier filters candidates on `matchesScope`. The control is
+   * not broken.
+   *
+   * **What makes it inert is the CORPUS, and the screen never mentioned it.**
+   * `matchesScope` answers `scopePolicyFor(config, item.type) !== 'inert'` for
+   * an item with no scope of its own — so under the default policy an unscoped
+   * item is unrestricted and matches EVERY path. 619 of this repository's 621
+   * items carry `scope: []`, so the jit candidate set is the same whatever path
+   * is chosen and the path is arithmetically incapable of changing the answer.
+   * Measured in a browser before this landed: `.gitignore`,
+   * `my-context/src/core/select.ts` and `reports/V2-HANDOVER.md` each delivered
+   * the SAME three ids.
+   *
+   * So this is the same shape the project keeps finding — correct about what it
+   * does, silent about what it cannot do — and it takes the same fix the
+   * `cap.warn` and bare-URL 401 disclosures took: **disclosure at the point of
+   * use.** Not a rewrite, and explicitly **not** hiding the control when nothing
+   * is scoped: a missing control is the same silence one step further on. And
+   * explicitly not changing `scopePolicy`, which is the owner's config and a
+   * corpus-wide behaviour change.
+   *
+   * **Drawn only on a tool event**, because that is the only event with a path
+   * at all, and it is where the sentence is about something.
+   *
+   * **Every figure is the SERVER'S OWN**, and that is why `/api/help/scope` is
+   * the source rather than `/api/items` plus a client-side policy lookup.
+   * `ItemSummary` carries `scope` and `type`, so the split is reachable from
+   * what this screen already holds — but the POLICY is not: resolving it means
+   * `Object.hasOwn(config.categories, type) ? … : DEFAULT_SCOPE_POLICY`, and a
+   * client spelling that fallback would be a second implementation of
+   * `scopePolicyFor` that agrees today and drifts later — the two-spellings
+   * defect `GateCode` exists to prevent. `/api/help/scope` already partitions
+   * the corpus into `scoped` and `unscoped` and stamps each unscoped item with
+   * `scopePolicyFor`'s own answer, so nothing new is needed server-side and
+   * nothing is re-derived here. `'inert'` is matched as a VALUE the way this
+   * file already matches `GateCode` values, which is reading a code rather than
+   * recomputing a decision.
+   */
+  const scopeNote = el('p', 'small');
+  scopeNote.id = 'scopeNote';
 
   // --- The QUESTION: this session, or a brand-new one ---------------------
   //
@@ -457,7 +573,10 @@ export async function render(root, ctx) {
   // strings rather than three invented ones. Presentation decision, recorded:
   // when the shell's session dialog lands, this becomes its second door and the
   // words are already shared.
-  let sessionMode = 'live';
+  // Restored from `PICKED` for the reason written there: the question a reader
+  // pressed is reader state that no fetch carries, and a refresh that resets it
+  // to warm is answering a question they had already left.
+  let sessionMode = PICKED.mode;
   const qbar = el('div', 'segbar');
   qbar.id = 'qpick';
   qbar.setAttribute('role', 'group');
@@ -498,6 +617,7 @@ export async function render(root, ctx) {
       button.onclick = () => {
         if (sessionMode === mode) return;
         sessionMode = mode;
+        PICKED.mode = mode;
         paintQ();
         void show();
       };
@@ -525,7 +645,9 @@ export async function render(root, ctx) {
   secondLine.append(...ctx.t('help.p2'));
   helpBox.append(firstLine, secondLine);
   help.append(summary, helpBox);
-  evCard.append(evH, bar, qbar, spaced(qNote), help);
+  // The scope disclosure sits between the picker it is about and the question
+  // strip — the point of use, which is the whole of the fix.
+  evCard.append(evH, bar, scopeNote, qbar, spaced(qNote), help);
   root.append(evCard);
 
   // --- Delivered, the scene, and the carry --------------------------------
@@ -539,7 +661,9 @@ export async function render(root, ctx) {
    * paint would be paying for a picker the screen has not shown.
    */
   let files = null;
-  let chosenPath = null;
+  // Restored from `PICKED`, and re-validated against the walk in `ensureFiles`
+  // below — see `PICKED` for why a remembered path may no longer exist.
+  let chosenPath = PICKED.path;
 
   /**
    * Every item and its injection verdict, fetched ONCE for the gate ladder.
@@ -561,7 +685,13 @@ export async function render(root, ctx) {
     if (files !== null) return files;
     const coverage = await ctx.api('/api/coverage');
     files = coverage.files.map((f) => f.path);
+    // A path the walk no longer names is dropped rather than carried: assigning
+    // it to the `<select>` would leave `picker.value` as `''` and send a query
+    // about no file. Falling back to the first file is exactly what a first
+    // visit does, so the recovered state is a state this screen can reach.
+    if (chosenPath !== null && !files.includes(chosenPath)) chosenPath = null;
     if (chosenPath === null && files.length > 0) [chosenPath] = files;
+    PICKED.path = chosenPath;
     return files;
   }
 
@@ -569,6 +699,77 @@ export async function render(root, ctx) {
     if (items !== null) return items;
     items = (await ctx.api('/api/items')).items;
     return items;
+  }
+
+  /**
+   * The corpus split by whether an item declares a scope, and the policy in
+   * force for the ones that do not — `/api/help/scope`'s `corpus`, fetched ONCE
+   * and cached like `/api/items`, and for the same reason: it is a fact about
+   * the corpus and the config, and it does not move when the reader changes the
+   * event, the path or the session.
+   *
+   * **It swallows its own failure the way `ensureHistory` does**, and into a
+   * REASON rather than into silence. A config that does not parse is a state
+   * `/api/config` reports as a field on a 200 (`read-model-config.ts`: *"Neither
+   * failure is a 500"*), and `/api/help/scope` resolves the policy through the
+   * workspace, so either a refusal or an unresolvable config must cost the
+   * reader this sentence and say why — never the selection beside it. The
+   * screen then draws `preview.scopeunk`, which reports the halves it DID
+   * measure and names the half it did not, rather than a zero nobody measured.
+   */
+  let scopeSplit = null;
+  let scopeError = null;
+
+  async function ensureScope() {
+    if (scopeSplit !== null || scopeError !== null) return;
+    try {
+      const body = await ctx.api('/api/help/scope');
+      const corpus = body.corpus;
+      if (corpus === null || corpus === undefined
+        || !Array.isArray(corpus.scoped) || !Array.isArray(corpus.unscoped)) {
+        scopeError = 'the scope join was not served';
+        return;
+      }
+      scopeSplit = {
+        scoped: corpus.scoped.length,
+        unscoped: corpus.unscoped.length,
+        // `policy` is `scopePolicyFor`'s own answer, stamped server-side per
+        // item. Matched as a value, never recomputed — see `scopeNote`.
+        inert: corpus.unscoped.filter((entry) => entry.policy === 'inert').length,
+      };
+    } catch (error) {
+      scopeError = error.message;
+    }
+  }
+
+  /**
+   * The disclosure itself, repainted on every `show()` because it appears and
+   * disappears with the event.
+   *
+   * **Three states and no fourth.** Measured, measured-with-an-inert-clause, and
+   * unmeasured-and-named — which is
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` applied to a
+   * sentence rather than to a number. A `scoped` count of zero is drawn as zero
+   * by the ordinary sentence: that IS the measurement, and it is the case where
+   * the sentence matters most.
+   */
+  function paintScopeNote(event) {
+    scopeNote.replaceChildren();
+    if (event !== 'tool') return;
+    if (scopeSplit === null) {
+      if (scopeError === null) return;
+      scopeNote.append(...ctx.t('preview.scopeunk', { reason: scopeError }));
+      return;
+    }
+    const { scoped, unscoped, inert } = scopeSplit;
+    scopeNote.append(...ctx.t('preview.scope', {
+      scoped: num(scoped), total: num(scoped + unscoped), unscoped: num(unscoped),
+    }));
+    // Only when the policy actually removes something. A clause reporting zero
+    // inert categories on every corpus is a sentence nobody reads.
+    if (inert > 0) {
+      scopeNote.append(' ', ...ctx.t('preview.scopeinert', { inert: num(inert) }));
+    }
   }
 
   /**
@@ -754,7 +955,7 @@ export async function render(root, ctx) {
       picker.append(option);
     }
     if (chosenPath !== null) picker.value = chosenPath;
-    picker.onchange = () => { chosenPath = picker.value; void show(); };
+    picker.onchange = () => { chosenPath = picker.value; PICKED.path = chosenPath; void show(); };
     pathSlot.append(label, ' ', picker);
   }
 
@@ -803,9 +1004,13 @@ export async function render(root, ctx) {
     const mine = ++generation;
     const event = evsel.value;
     try {
-      if (event === 'tool') await ensureFiles();
+      // Both are tool-event reads and neither blocks the other: the picker needs
+      // the repository walk, the disclosure beside it needs the scope join, and
+      // a reader on `session-start` pays for neither.
+      if (event === 'tool') await Promise.all([ensureFiles(), ensureScope()]);
       if (mine !== generation) return;
       drawPathSlot(event);
+      paintScopeNote(event);
       // No file to preview a tool event against. `/api/select` refuses
       // `event=tool` without a path, and asking anyway would turn an empty
       // repository into a refusal the reader would have to decode.
@@ -1610,11 +1815,28 @@ export async function render(root, ctx) {
       label.append(tierChip(tier));
 
       if (!sim.tiersRun.includes(tier)) {
-        label.append(el('span', null, 'does not run on this event'));
+        // **KEYED SINCE 2026-08-29, and they are the reason `screen-literals`
+        // exists.** Both of these shipped as English literals under no key and
+        // no `ctx.t`, so the screen switched language around them and they did
+        // not move — measured in a real browser with `document.dir === 'rtl'`
+        // and both sentences still in English. Nothing could see it:
+        // `strings-parity` compares KEY SETS, and a string with no key is
+        // invisible to a key comparison; `bidi.spec` censuses runs per `data-t`,
+        // and text under no `data-t` is not censused. The gates were sound and
+        // the defect sat outside what they measured.
+        //
+        // The copy is the design of record's own, both languages — its
+        // `renderRibbons` draws these two sentences in its `if(!runs)` branch
+        // with a Hebrew form beside the English — so the tables carry the
+        // mockup's words rather than invented ones.
+        const absentLabel = el('span');
+        absentLabel.append(...ctx.t('preview.notrun'));
+        label.append(absentLabel);
         const absent = el('div', 'track');
         absent.append(el('div', 'notrun'));
-        ribbon.append(label, absent,
-          el('div', 'hint', 'Absent, not empty — this event never reaches the tier at all.'));
+        const absentHint = el('div', 'hint');
+        absentHint.append(...ctx.t('preview.notrunn'));
+        ribbon.append(label, absent, absentHint);
         host.append(ribbon);
         continue;
       }
@@ -1700,7 +1922,7 @@ export async function render(root, ctx) {
     }
   }
 
-  evsel.onchange = () => { void show(); };
+  evsel.onchange = () => { PICKED.event = evsel.value; void show(); };
   // The question strip is repainted BEFORE the refetch, because the warm option
   // is labelled with the session id itself: a shell that moved to another
   // session and left this strip naming the old one would be captioning the new

@@ -159,6 +159,23 @@ export const strings = {
   'preview.spilln': 'One row per item in {m:Selection.spilled}, {b:whole across every tier this event ran} — not the ribbon\'s per-tier split — in the selector\'s own candidate order, which is load-bearing: first-fit admits greedily, so the same three costs in a different order spill a different item. {b:band} appears where the tier offered its candidates in more than one: on a tool event band 1 is the items whose own globs name this path and band 2 is the items that match only by having no scope at all, so a scoped item displacing an unscoped one is visible rather than mysterious. An index line shows {b:—} instead of a cost: the index tier admits lines, and per-line costs are exposed by no endpoint, so the number is absent rather than invented.',
   'preview.ribbon': 'Budget ribbon — five tiers, and what fell out of each',
   'preview.ribbonn': 'One segment per admitted item, sized by its real {m:itemCost}. Beneath each track is the {b:ghost lane}: every spilled item at the width it would have taken, in the position the selector considered it. A wide ghost followed by a narrow fill is first-fit being honest — drawing spills as a tail would misrepresent the algorithm. A tier this event never reaches is drawn as {b:absent}, hatched and named; an empty track would claim it ran and delivered nothing, which is a different fact. Follows the event selector above rather than adding a second one.',
+  // ── The absent-tier ribbon, keyed ─────────────────────────────────────
+  //
+  // Added 2026-08-29. These two sentences shipped as ENGLISH LITERALS with no
+  // key and no `ctx.t`, so the screen switched language around them and they
+  // did not move. No gate could see it: `strings-parity` compares KEY SETS, and
+  // a string with no key is invisible to it — there is nothing to be missing
+  // from the other table — while `bidi.spec` censuses runs per `data-t` and text
+  // under no `data-t` is not censused either. The gates are sound; the defect
+  // was outside what they measure. `test/ui/screen-literals.test.ts` is the
+  // check that now measures it.
+  //
+  // The copy is NOT invented: the design of record draws both sentences in
+  // `renderRibbons`' own `if(!runs)` branch, with a Hebrew form beside the
+  // English, so both tables carry the mockup's own words. What was missing was
+  // only a key.
+  'preview.notrun': 'does not run on this event',
+  'preview.notrunn': 'Absent, not empty — this event never reaches the tier at all.',
   'preview.contover': '{b:Continuity overflow} — {n} continuity item(s) did not fit {m:budgets.continuity}: {mv:ids}, costing {mv:cost} against a budget of {mv:budget}. The continuity guarantee is NOT in force for this session. It is said here, in the injected block itself and as a doctor finding, because a continuity item dropped in silence is the exact defect this tier exists to end.',
   // ── The warm/cold question, the `seen` gate, and the When column ───────
   //
@@ -172,6 +189,25 @@ export const strings = {
   'preview.spillUnreached': 'Nothing reached the budget gate. {n} item(s) were removed one gate earlier, at {m:seen}, as already delivered to this session — so no tier had a candidate left to offer it. This zero is {b:not} "nothing spilled".',
   'preview.spillNoCand': 'Nothing reached the budget gate, and nothing was removed at {m:seen} either: no tier that ran on this event had a candidate to offer. This zero is {b:not} "nothing spilled".',
   'preview.gseen': 'already delivered to this session, so it was filtered at the {m:seen} gate — before any budget was consulted',
+  // ── What the path picker can and cannot do ─────────────────────────────
+  //
+  // Added 2026-08-29. Owner: "event - when selecting tool, the path should be
+  // used as filter but it does nothing". Traced end to end and the wiring is
+  // whole: the control refetches, `ctx.path` is set, `jitTarget` normalises it
+  // and the jit tier filters on `matchesScope`. What makes it inert is the
+  // CORPUS — `matchesScope` returns true for an item with no scope of its own
+  // whenever its category's `scopePolicy` is not `inert`, and 619 of this
+  // repository's 621 items carry `scope: []`. So the candidate set is the same
+  // whatever path is chosen, and the owner reasonably read a control that
+  // cannot change the answer as broken.
+  //
+  // The fix is DISCLOSURE AT THE POINT OF USE, not a rewrite and not hiding
+  // the control — a missing control is the same silence one step further on.
+  // Every figure here is counted from `/api/items`' own `scope` field and
+  // `/api/config`'s resolved `scopePolicy`; nothing is estimated.
+  'preview.scope': '{b:The path narrows the {m:jit} tier and nothing else, and it can only narrow items that declare a scope.} {b:{scoped} of {total}} items in this corpus do. The other {b:{unscoped}} carry {m:scope: []}, and under the {m:scopePolicy} in force for their categories an unscoped item is {b:unrestricted} — it matches every path — so changing the file above cannot change whether they are candidates.',
+  'preview.scopeinert': 'Of those unscoped items, {b:{inert}} belong to a category set to {m:scopePolicy: inert}, under which an item with no scope of its own matches {b:no} path at all — so the file above cannot bring them in either.',
+  'preview.scopeunk': '{b:The path narrows the {m:jit} tier and nothing else, and it can only narrow items that declare a scope.} {b:How many of this corpus\'s items declare one is unmeasured here} — the scope join did not answer, so what the path can do on this corpus is left unstated rather than guessed at: {mv:reason}.',
   // ── Each rung's own population ─────────────────────────────────────────
   //
   // Added 2026-08-29. The picker offered three names over a corpus where 564

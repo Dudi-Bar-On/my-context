@@ -225,11 +225,34 @@ export const SCREEN_INVALIDATION = {
   //
   // `refresh: 'ask'` is UNCHANGED and deliberately so — this is a declaration
   // of staleness, not of safety, and the two are separate properties on the
-  // same row for exactly this reason. `DEC-a-refresh-keeps-the-reader-s-place
-  // -or-it-asks` settles it: the screen holds an event pick and a session pick,
-  // both reader state a silent rebuild would discard, so the owner gets the
-  // affordance and decides when to spend it. Widening the kinds without
-  // widening `refresh` is the whole shape of this fix.
+  // same row for exactly this reason. Widening the kinds without widening
+  // `refresh` is the whole shape of that fix.
+  //
+  // **THE STATED REASON CHANGED ON 2026-08-29, because the old one had stopped
+  // being true and was never wholly true.** It read: *"the screen holds an
+  // event pick and a session pick, both reader state a silent rebuild would
+  // discard"*. Two things were wrong with it.
+  //
+  //   - **The session pick did not exist.** `ctx.session()` was `/api/sessions`'
+  //     default and the screen offered no selector at all, so half the
+  //     justification named a control nobody could touch. It exists now — the
+  //     warm/cold question strip (`#qpick` in `screens/preview.js`) — so that
+  //     clause became true by the screen gaining the thing, not by the sentence
+  //     being right.
+  //   - **"A rebuild would discard them" is no longer the reason, because a
+  //     rebuild no longer discards them.** That WAS the behaviour, and it was a
+  //     defect rather than a justification: taking the refresh reset the event
+  //     to `session-start`, dropped the chosen path and returned the question to
+  //     warm — throwing away the very state the asking existed to protect.
+  //     `preview.js`'s `PICKED` holds all three across `render()` now.
+  //
+  // So the reason is restated as the one that survives: **a rebuild REORDERS
+  // AND REPLACES rows under an open pane.** This screen's lists are the
+  // selector's own admission and consideration orders over a corpus a mutation
+  // moves, and `boundedList` re-pages them — which is reason (3) in the
+  // derivation table above, the same one `coverage`, `gaps` and `ask` are
+  // listed under. The reader gets the affordance and decides when to spend it;
+  // what changed is that spending it now costs them nothing.
   preview: { kinds: ['mutation', 'focus', 'injection', 'hook'], refresh: 'ask' },
   coverage: { kinds: ['mutation'], refresh: 'ask' },
   gaps: { kinds: ['mutation'], refresh: 'ask' },

@@ -405,9 +405,27 @@ test('every preview. key the English table declares is placed by the screen', as
 test('the preview can ask the cold question, and the warm default is not replaced by it', () => {
   assert.match(previewSource, /sessionMode === 'cold' \? 'cold' : ctx\.session\(\)/,
     'the query must be able to carry `cold`, through `selectQuery`\'s own sentinel');
-  assert.match(previewSource, /let sessionMode = 'live';/,
-    'and it must OPEN on the warm question — the screen promises "exactly what Claude gets", '
-    + 'and cold is a different question that must never be silently substituted');
+  // **The warm default moved from a `let` inside `render()` to `PICKED`, and
+  // this assertion moved with it rather than being deleted.** The property is
+  // unchanged and is still exactly what is measured: the screen OPENS on the
+  // warm question. What changed on 2026-08-29 is WHERE the initial value lives
+  // — `plan:walk seq:64`: the mode, the event and the path were all `render()`
+  // locals, so taking the live-refresh affordance reset all three and threw away
+  // the reader state that `refresh: 'ask'` exists to protect. They are held at
+  // module scope now, which is the lifetime `parts.js`'s `SIM_RANGE` already
+  // uses for the simulator's slider.
+  //
+  // So it is asserted in two halves, because the two facts can now come apart:
+  // the module-level seed is what the FIRST render opens on, and the `render()`
+  // line is what every LATER render restores. A default of `'live'` that no
+  // render read would be a default in name only.
+  assert.match(previewSource, /const PICKED = \{ event: EVENTS\[0\], path: null, mode: 'live' \};/,
+    'the reader\'s place must be held across render() AND must open on the warm question — '
+    + 'the screen promises "exactly what Claude gets", and cold is a different question that '
+    + 'must never be silently substituted');
+  assert.match(previewSource, /let sessionMode = PICKED\.mode;/,
+    'and every render must seed the mode from it, or a taken refresh silently returns the '
+    + 'reader to warm — which is the defect `plan:walk seq:64` records');
   assert.equal(previewSource.includes("selectQuery(event, event === 'tool' ? chosenPath : null, sessionFor())"), true,
     'the one query builder reads the mode, so the two questions cannot come apart');
 });
