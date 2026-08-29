@@ -283,6 +283,12 @@ export const strings = {
   'ask.field.scoped': 'Has scope',
   'ask.field.title': 'Title contains',
   'ask.field.any': '(any)',
+  // The FETCH cap, and it is deliberately not one of the `ask.field.*` options
+  // above: those name a column to filter ON, this names how many rows to ask
+  // for. Reading it as a field would put "limit is 100" in a row of filters,
+  // where it would look like a narrowing of the corpus rather than a bound on
+  // the answer.
+  'ask.limit': 'Rows to fetch',
   'ask.run': 'Run',
   'ask.updatedAtTrap': '{m:updated_at} is {b:index write time}, not a content timestamp — and this surface never rebuilds the index (it reads exactly what the hooks read), so rows are as the last hook or CLI run left them.',
   'ask.predefined': 'Predefined queries',
@@ -298,6 +304,12 @@ export const strings = {
   'ask.rows': '{rows} rows',
   'th.role': 'Role',
   'ask.truncated': 'capped at {rows} rows — more matched; raise the limit to see them',
+  // The same fact at the TOP of the ladder, where the sentence above stops
+  // being an instruction and becomes a dead end: the limit control is already
+  // at the highest value the endpoint serves, so "raise the limit" names a move
+  // the reader cannot make. Two sentences rather than one because a control at
+  // its stop that is told to move is indistinguishable from a broken one.
+  'ask.truncatedMax': 'capped at {rows} rows — more matched, and this is the largest answer this endpoint serves. Narrow the filter to reach the rest.',
   // The bound every list declares — one vocabulary across five surfaces.
   // `admittedOf` and `recentOf` are the two ORDERS a bounded list can honestly
   // claim; `displayOnly` is the clause the preview must carry so a display cap
@@ -313,6 +325,13 @@ export const strings = {
   // wording `ui/read-model.ts` already uses for the same field.
   'list.consideredOf': 'Showing the first {shown} of {total}, in the order the selector considered them.',
   'list.recentOf': 'Showing the {shown} most recent of {total}.',
+  // The FOURTH, and the one that names no order at all — for a table whose
+  // order is the SERVER's and changes with the question asked (the Ask screen's
+  // result table: newest-first on the audit tab, by id on the corpus tab, by
+  // count on a predefined report). The other three would each be false on two
+  // of those three. See `orderKeyFor` in `screens/parts.js` for why saying
+  // nothing is honest there and would not be on the four lists above.
+  'list.positionOf': 'Showing the first {shown} of {total}.',
   'list.displayOnly': 'A display limit. All {total} were in the injection — none were dropped.',
   'list.showAll': 'Show all {total}',
   'list.showFewer': 'Show fewer',
@@ -340,6 +359,7 @@ export const strings = {
   'list.rowsAdmitted': 'Rows {from}–{to} of {total}, in the order the selector admitted them.',
   'list.rowsConsidered': 'Rows {from}–{to} of {total}, in the order the selector considered them.',
   'list.rowsRecent': 'Rows {from}–{to} of {total}, oldest first — the newest are last.',
+  'list.rowsPosition': 'Rows {from}–{to} of {total}.',
   'list.omittedBoth': '{before} before this page, {after} after it.',
   // ONE vocabulary for both `take` modes, and the row numbers beside them are
   // what fix the direction: on an append-only log the oldest rows carry the

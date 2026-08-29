@@ -2118,6 +2118,29 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <select id="qo"><option>is</option><option>is not</option></select>
         <select id="qv"></select>
         <select id="qvc" hidden><option data-t="ask.field.any">(any)</option></select>
+        <!-- The FETCH CAP — owner, 2026-08-29: "ask corpus has a limit
+             parameter but it could not be changed, either add capability to
+             set the limit or paging buttons". Both landed; they answer
+             different questions. This one is "go and get more", and it is the
+             one `ask.truncated` below has always instructed the reader to use
+             ("raise the limit to see them") without giving them anything to
+             raise.
+
+             It is a control OF ITS OWN and never a seventh entry in the field
+             selects beside it. Those name a column to narrow the corpus BY,
+             spelled (field, operator, value) and negatable; a cap has no
+             operator, no vocabulary, and bounds the answer rather than the
+             question. Rendered as a filter it would read as a claim about
+             which rows matched.
+
+             The rungs are the ENDPOINT's own: first the default it applies
+             unasked, last the maximum it serves, so the top of this control is
+             the top of the endpoint and `ask.truncatedMax` below can say so.
+             The audit tab's ladder is 200/500/1000/2000; the corpus tab's is
+             100/250/500/1000, because the two endpoints differ and a rung that
+             comes back 400 is worse than no rung. -->
+        <label class="small" id="qllabel" for="ql" data-t="ask.limit">Rows to fetch</label>
+        <select id="ql"><option>200</option><option>500</option><option>1000</option><option>2000</option></select>
         <button class="icon" style="inline-size:auto" id="qrun" data-t="ask.run">Run</button>
       </div>
       <p class="small" id="askcorpusnote" style="margin-block-start:8px" data-t="ask.updatedAtTrap" hidden><span class="m">updated_at</span>
@@ -2200,8 +2223,16 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <thead><tr><th data-t="th.at">At</th>
         <th data-t="th.kind">Kind</th><th data-t="th.what">What</th></tr></thead><tbody id="qres"></tbody></table>
       </div>
+      <!-- A FOURTH state, added 2026-08-29 with the fetch cap above. The
+           truncation sentence ends "raise the limit to see them", which is an
+           instruction only while there is a rung left; at the top of the ladder
+           it names a move the reader cannot make, and a control at its stop
+           that is being told to move is indistinguishable from a broken one.
+           So the top rung gets its own sentence, pointing at the filter instead
+           — the only thing that can still narrow the answer. -->
       <p class="small" id="qstate"><span
         data-t="ask.truncated">capped at <span class="v" data-v="rows">200</span> rows — more matched; raise the limit to see them</span><span
+        data-t="ask.truncatedMax">capped at <span class="v" data-v="rows">1,000</span> rows — more matched, and this is the largest answer this endpoint serves. Narrow the filter to reach the rest.</span><span
         data-t="ask.noRows">no rows matched</span></p>
       <details class="help"><summary data-t="ask.recallq">Why a search can return nothing</summary>
         <div class="helpbox">
@@ -3785,7 +3816,7 @@ const QROWS=[['09:22:41','injection','session-start','INV-prices-are-integer-cen
 /* Three states, not one: rows, rows capped by the LIMIT probe `ask.sqlCaption`
    describes, and nothing matched at all. Run cycles them, so the two the table
    could never draw are reachable. */
-const QSTATES=[['rows',QROWS.length],['truncated',200],['none',0]];
+const QSTATES=[['rows',QROWS.length],['truncated',200],['truncatedMax','1,000'],['none',0]];
 let qi=0;
 function renderQ(){
   const [state,n]=QSTATES[qi];
@@ -3810,6 +3841,7 @@ function renderQ(){
   cap.hidden = state==='none';
   cap.querySelector('[data-v="rows"]').textContent=n;
   $('[data-t="ask.truncated"]').hidden = state!=='truncated';
+  $('[data-t="ask.truncatedMax"]').hidden = state!=='truncatedMax';
   $('[data-t="ask.noRows"]').hidden = state!=='none';
 }
 renderQ();

@@ -105,7 +105,12 @@ interface AskModule {
   filterParam: (
     field: string, operator: string, value: string,
   ) => [string, string] | [string, string, true] | null;
-  queryPath: (mode: string, field: string, operator: string, value: string) => string;
+  queryPath: (
+    mode: string, field: string, operator: string, value: string, limit: number | string,
+  ) => string;
+  limitSteps: (mode: string) => number[];
+  limitFor: (mode: string, held: number | string) => number;
+  atLargestLimit: (mode: string, held: number | string | undefined) => boolean;
   clockOf: (at: string) => string;
   corpusRows: (rows: Record<string, unknown>[]) => Row[];
   auditRows: (records: Record<string, unknown>[]) => Row[];
@@ -180,19 +185,72 @@ test('(any) is no filter at all, whichever operator is showing', async () => {
 
 test('queryPath asks the tab\'s own endpoint, and asks nothing when nothing is filtered', async () => {
   const { queryPath } = await ask();
-  assert.equal(queryPath('corpus', 'type', 'is', ''), '/api/ask/corpus');
-  assert.equal(queryPath('audit', 'kind', 'is', ''), '/api/ask/audit');
-  assert.equal(queryPath('corpus', 'type', 'is', 'rule'), '/api/ask/corpus?type=rule');
-  assert.equal(queryPath('audit', 'kind', 'is', 'injection'), '/api/ask/audit?kind=injection');
+  // **The cap is on every path, including the unfiltered one.** It is a
+  // property of the ANSWER rather than of the question, so "no filter at all"
+  // still has a size — and the number the control shows is the number that was
+  // sent, on the first request as much as on the fifth.
+  assert.equal(queryPath('corpus', 'type', 'is', '', 100), '/api/ask/corpus?limit=100');
+  assert.equal(queryPath('audit', 'kind', 'is', '', 200), '/api/ask/audit?limit=200');
+  assert.equal(queryPath('corpus', 'type', 'is', 'rule', 100), '/api/ask/corpus?type=rule&limit=100');
+  assert.equal(queryPath('audit', 'kind', 'is', 'injection', 200),
+    '/api/ask/audit?kind=injection&limit=200');
+});
+
+test('the cap a reader chose is the cap that goes out, on both tabs', async () => {
+  const { queryPath } = await ask();
+  assert.equal(queryPath('corpus', 'type', 'is', 'rule', 1000),
+    '/api/ask/corpus?type=rule&limit=1000');
+  assert.equal(queryPath('audit', 'kind', 'is', 'injection', 2000),
+    '/api/ask/audit?kind=injection&limit=2000');
+});
+
+test('queryPath cannot compose a cap its endpoint would refuse', async () => {
+  const { queryPath } = await ask();
+  // The corpus endpoint takes 1..1000 and the audit one 1..2000, so the audit
+  // tab's top rung is past what the corpus tab serves. A reader who raised the
+  // audit tab and then switched lands on the corpus tab's OWN top — not on a
+  // request that comes back 400, and not dropped to the bottom of the ladder.
+  assert.equal(queryPath('corpus', 'type', 'is', 'rule', 2000),
+    '/api/ask/corpus?type=rule&limit=1000');
+  // A value that is no rung at all, and one that is not a number.
+  assert.equal(queryPath('corpus', 'type', 'is', 'rule', 137),
+    '/api/ask/corpus?type=rule&limit=100');
+  assert.equal(queryPath('audit', 'kind', 'is', 'injection', ''),
+    '/api/ask/audit?kind=injection&limit=200');
+});
+
+test('every rung is a value its own endpoint accepts, and the ends are its own two numbers', async () => {
+  const { limitSteps, atLargestLimit } = await ask();
+  // The ladder's ENDS are the endpoint's default and its maximum, and two
+  // separate sentences depend on that: the landing state is what the endpoint
+  // would have done unasked, and `ask.truncatedMax` is true exactly at the last
+  // rung. The numbers themselves are checked against the live endpoints below,
+  // in `every rung the cap control offers is one the endpoint serves`.
+  assert.equal(limitSteps('corpus')[0], 100);
+  assert.equal(limitSteps('corpus').at(-1), 1000);
+  assert.equal(limitSteps('audit')[0], 200);
+  assert.equal(limitSteps('audit').at(-1), 2000);
+  for (const mode of ['corpus', 'audit']) {
+    const steps = limitSteps(mode) as number[];
+    assert.deepEqual([...steps].sort((a, b) => a - b), steps, `${mode}: the rungs are unsorted`);
+    assert.ok(steps.every((step) => Number.isInteger(step) && step > 0), `${mode}: not integers`);
+    assert.equal(atLargestLimit(mode, steps.at(-1)), true, `${mode}: the top rung is not the top`);
+    assert.equal(atLargestLimit(mode, steps[0]), false, `${mode}: the first rung reads as the top`);
+  }
+  // A COPY, so a screen that renders the ladder cannot edit the declaration.
+  const steps = limitSteps('corpus') as number[];
+  steps.push(9999);
+  assert.equal((limitSteps('corpus') as number[]).includes(9999), false);
 });
 
 test('queryPath encodes the value, so a title fragment cannot become a second parameter', async () => {
   const { queryPath } = await ask();
-  const composed = queryPath('corpus', 'title', 'is', 'cents & pence?x=1');
+  const composed = queryPath('corpus', 'title', 'is', 'cents & pence?x=1', 100);
   const parsed = new URL(composed, 'http://127.0.0.1:1');
   assert.equal(parsed.pathname, '/api/ask/corpus');
   assert.equal(parsed.searchParams.get('title'), 'cents & pence?x=1');
-  assert.equal([...parsed.searchParams.keys()].length, 1, 'one parameter went out, not two');
+  assert.deepEqual([...parsed.searchParams.keys()], ['title', 'limit'],
+    'the filter went out as one parameter beside the cap, not as two');
 });
 
 test('queryPath sends the field NAME to negate, never an operator', async () => {
@@ -200,11 +258,11 @@ test('queryPath sends the field NAME to negate, never an operator', async () => 
   // `not=<field>`, and the server maps that onto `<>` itself. No operator token
   // and no fragment of SQL crosses the wire, which is what
   // CONST-no-http-route-accepts-sql asks of this screen.
-  assert.equal(queryPath('corpus', 'layer', 'is not', 'project'),
-    '/api/ask/corpus?layer=project&not=layer');
+  assert.equal(queryPath('corpus', 'layer', 'is not', 'project', 100),
+    '/api/ask/corpus?layer=project&not=layer&limit=100');
   // The case that used to come back 'unserved'.
-  assert.equal(queryPath('audit', 'kind', 'is not', 'focus'),
-    '/api/ask/audit?kind=focus&not=kind');
+  assert.equal(queryPath('audit', 'kind', 'is not', 'focus', 200),
+    '/api/ask/audit?kind=focus&not=kind&limit=200');
 });
 
 // ── The At column ─────────────────────────────────────────────────────────
@@ -467,7 +525,7 @@ test('every filter the screen can compose is one the endpoint accepts', async ()
       ['always', '1'], ['scoped', '0'], ['title', 'Money'],
     ];
     for (const [field, value] of corpus) {
-      const composed = queryPath('corpus', field, 'is', value);
+      const composed = queryPath('corpus', field, 'is', value, 100);
       const result = apiAskCorpus(ws, asUrl(composed));
       assert.equal(result.status, 200, `${composed} was refused: ${JSON.stringify(result.body)}`);
     }
@@ -476,7 +534,7 @@ test('every filter the screen can compose is one the endpoint accepts', async ()
       ['item', 'RULE-money-is-an-integer-number-of-cents'],
     ];
     for (const [field, value] of audit) {
-      const composed = queryPath('audit', field, 'is', value);
+      const composed = queryPath('audit', field, 'is', value, 200);
       const result = apiAskAudit(ws, asUrl(composed));
       // 200 with no records: this fixture never runs `mycontext audit`, so the
       // projection is `absent` — an empty state, not a fault, and not a 400.
@@ -490,11 +548,11 @@ test('a negated filter runs as a REAL `<>`, and the SQL on screen says so', asyn
   const { dir, done } = workspace();
   try {
     const ws = resolveWorkspace(dir);
-    const composed = queryPath('corpus', 'layer', 'is not', 'global');
+    const composed = queryPath('corpus', 'layer', 'is not', 'global', 100);
     // The value is the one the reader chose. Before 2026-08-26 this path read
     // `?layer=project` — the OTHER member, substituted here on the client — and
     // the SQL pane showed `layer = ?` for a question that said "is not".
-    assert.equal(composed, '/api/ask/corpus?layer=global&not=layer');
+    assert.equal(composed, '/api/ask/corpus?layer=global&not=layer&limit=100');
     const result = apiAskCorpus(ws, asUrl(composed));
     assert.equal(result.status, 200);
     const body = result.body as { sql: string; params: unknown[]; rows: unknown[] };
@@ -515,7 +573,7 @@ test('a negation on a WIDE field is served — the case that was refused outrigh
     const ws = resolveWorkspace(dir);
     // `type` has as many values as the corpus has categories, so no equality
     // could ever have expressed "not a rule". This used to be 'unserved'.
-    const composed = queryPath('corpus', 'type', 'is not', 'rule');
+    const composed = queryPath('corpus', 'type', 'is not', 'rule', 100);
     const result = apiAskCorpus(ws, asUrl(composed));
     assert.equal(result.status, 200);
     const body = result.body as { sql: string; params: unknown[] };
@@ -591,6 +649,15 @@ interface FakeElement extends FakeNode {
   setAttribute: (name: string, value: string) => void;
   addEventListener: (type: string, listener: (event: { target: FakeElement }) => void) => void;
   closest: (selector: string) => FakeElement | null;
+  // `boundedList` hands focus on when a step button has just gone inert, and a
+  // `<select>` on this screen re-runs the query from its `onchange`. Both are
+  // members the product touches, so both are here; nothing wider is.
+  focus: () => void;
+  onchange?: () => void;
+  // `boundedList` sets this on a step control that has nowhere left to go, and
+  // the test reads it: `disabled` was chosen over `aria-disabled` precisely so
+  // the refusal and the disabling are one decision, so it is worth asserting.
+  disabled?: boolean;
 }
 
 function element(tag: string): FakeElement {
@@ -630,6 +697,7 @@ function element(tag: string): FakeElement {
       other.parent = parent;
     },
     setAttribute: (name: string, value: string): void => { node.attributes[name] = value; },
+    focus: (): void => {},
     addEventListener: (type: string, listener: (event: { target: FakeElement }) => void): void => {
       (node.listeners[type] ??= []).push(listener);
     },
@@ -715,7 +783,11 @@ function mockupKinds(): string[] {
   const close = mockup.indexOf('</section>', open);
   const section = mockup.slice(mockup.indexOf('>', open) + 1, close);
 
-  const HIDDEN_KEYS = new Set(['ask.truncated', 'ask.noRows']);
+  // `renderQ` cycles four states and hides the three sentences that are not
+  // the one it is drawing. `ask.truncatedMax` joined them on 2026-08-29 with
+  // the fetch cap: it is the truncation sentence for a reader who is already at
+  // the top rung, where "raise the limit" names a move they cannot make.
+  const HIDDEN_KEYS = new Set(['ask.truncated', 'ask.truncatedMax', 'ask.noRows']);
   const VOID = new Set(['br', 'hr', 'img', 'input', 'meta', 'link', 'use']);
   const kinds = new Set<string>();
   const stack: { tag: string; skip: boolean }[] = [];
@@ -864,7 +936,19 @@ test('render draws every kind the mockup draws, and invents only what it means t
   // role, which the mockup never hued — and `subject` draws no chip at all any
   // more, because the op beside the id already says what makes it the subject.
   // The class is still drawn, by the KIND cell, and the mockup draws it too.
-  assert.deepEqual(built.filter((kind) => !drawn.includes(kind)), ['button.linkid.m']);
+  //
+  // **`div.bound` joined it on 2026-08-29, and it is an app-only kind ON
+  // PURPOSE rather than a mockup the app got ahead of.** `e2e/screen-parity`'s
+  // `ask` ledger lists what the mockup draws and the app does not, it is exact,
+  // and it may only shrink; in the run it was measured from this screen's
+  // projection refuses and no table is drawn at all, so a `.bound` block in the
+  // mockup would enter that ledger as a NEW gap in a spec file this task does
+  // not own. `boundedList` is a shared part the mockup already draws five
+  // times. The two genuinely new PRESENTATION decisions — the labelled cap
+  // select and the fourth `#qstate` sentence — are in the mockup, and neither
+  // adds a kind.
+  assert.deepEqual(built.filter((kind) => !drawn.includes(kind)),
+    ['button.linkid.m', 'div.bound']);
 });
 
 /** Every text run under a node, flattened — what a reader of that cell sees. */
@@ -1059,7 +1143,8 @@ test('clicking Corpus asks the corpus endpoint, keys its field names and hangs t
     click(tabs, corpusTab);
     await settle();
 
-    assert.ok(asked.includes('/api/ask/corpus'), `the corpus tab never asked for it: ${asked.join(', ')}`);
+    assert.ok(asked.some((route) => route.startsWith('/api/ask/corpus?')),
+      `the corpus tab never asked for it: ${asked.join(', ')}`);
     assert.equal(corpusTab.attributes['aria-pressed'], 'true');
     assert.equal(
       (tabs.children.find((node) => (node as FakeElement).dataset['tab'] === 'audit') as FakeElement)
@@ -1102,4 +1187,389 @@ test('clicking Corpus asks the corpus endpoint, keys its field names and hangs t
     const at = find(root, (node) => node.className === 'm small')!;
     assert.equal(at.textContent, '2026-08-23 05:21:54');
   });
+});
+
+// ── The two ways past a cap ─────────────────────────────────────────────────
+//
+// The owner's report of 2026-08-29: "ask corpus has a limit parameter but it
+// could not be changed, either add capability to set the limit or paging
+// buttons." Both landed, and the tests below drive both — separately, because
+// they answer different questions, and then together, because a reader meets
+// them together.
+//
+// **EVERY FIXTURE HERE IS BIGGER THAN THE THING IT MEASURES.** A corpus smaller
+// than the display cap would draw no bound line, page nowhere, and pass every
+// assertion below while measuring nothing — the failure mode this project has
+// hit four times in three days. So the row counts are DERIVED from
+// `BOUND_CAP_TABLE` and from the endpoints' own limits rather than written
+// down, and the paging assertions name the rows they expect to see move.
+
+const parts = async (): Promise<{ BOUND_CAP_TABLE: number }> =>
+  browserModule<{ BOUND_CAP_TABLE: number }>('screens', 'parts.js');
+
+/** `count` audit records that name NO item — one row each, oldest first on the wire. */
+function hookRecords(count: number): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  for (let n = 0; n < count; n++) {
+    const at = `2026-08-29T06:${String(Math.floor(n / 60)).padStart(2, '0')}`
+      + `:${String(n % 60).padStart(2, '0')}.000Z`;
+    out.push({ at, kind: 'hook', op: `step-${n}`, sessionId: 's-1' });
+  }
+  return out;
+}
+
+/** `count` corpus rows, ordered by id the way `corpusSelect` orders them. */
+function corpusRowsOf(count: number): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  for (let n = 0; n < count; n++) {
+    const id = `RULE-item-${String(n).padStart(4, '0')}`;
+    out.push({
+      id, type: 'rule', title: `Rule ${n}`, status: 'active', always: 0, has_scope: 0,
+      layer: 'project', file_path: `items/rule/${id}.md`, updated_at: '2026-08-23 05:21:54',
+    });
+  }
+  return out;
+}
+
+/**
+ * A corpus endpoint holding `matched` rows that obeys the cap on the path —
+ * including the truncation probe, which is the signal this screen has been
+ * carrying and doing nothing with.
+ */
+function corpusEndpoint(matched: number): (route: string) => unknown {
+  return (route: string): unknown => {
+    const limit = Number(new URL(route, 'http://127.0.0.1:1').searchParams.get('limit'));
+    return {
+      rows: corpusRowsOf(Math.min(limit, matched)),
+      sql: 'SELECT id, type, title, status, always, has_scope, layer, file_path, updated_at'
+        + '\nFROM items\nORDER BY id\nLIMIT ?',
+      params: [limit + 1],
+      truncated: matched > limit,
+    };
+  };
+}
+
+/** The bound line's `<div class="bound">`, or `null` where none is shown. */
+function boundOf(root: FakeNode): FakeElement | null {
+  return find(root, (n) => n.className === 'bound' && n.hidden !== true) as FakeElement | null;
+}
+
+/** What the bound line SAYS — the sentence a reader reads under the table. */
+function boundText(root: FakeNode): string {
+  const bound = boundOf(root);
+  assert.notEqual(bound, null, 'no bound line under the result table');
+  return textOf(bound!.children[0]!).trim();
+}
+
+/** Its step buttons, by the `data-step` name `boundedList` gives them. */
+function stepper(root: FakeNode, name: string): FakeElement {
+  const button = boundOf(root)!.children.find((n) => (n as FakeElement).dataset['step'] === name);
+  assert.notEqual(button, undefined, `the bound line has no ${name} control`);
+  return button as FakeElement;
+}
+
+/** The "show all" escape hatch: the one button in the line with no step name. */
+function showAll(root: FakeNode): FakeElement {
+  const button = boundOf(root)!.children.find(
+    (n) => n.tag === 'button' && (n as FakeElement).dataset['step'] === undefined,
+  );
+  assert.notEqual(button, undefined, 'the bound line has no show-all control');
+  return button as FakeElement;
+}
+
+/**
+ * A click on a control inside the bound line, WITH the bubble.
+ *
+ * `boundedList` listens on each button; `screens/ask.js` listens once on the
+ * line around them, so the page moves and then the status line under it is
+ * redrawn from the same answer. A helper that fired only the button's own
+ * listeners would exercise half of that and report the other half as working.
+ * The order here is the browser's: target first, then the ancestor.
+ */
+function clickBound(root: FakeNode, control: FakeElement): void {
+  const bound = boundOf(root)!;
+  click(control, control);
+  click(bound, control);
+}
+
+/** The result table's caption — the size of the ANSWER, not of the page. */
+function captionText(root: FakeNode): string {
+  return textOf(find(root, (n) => n.tag === 'caption')!).trim();
+}
+
+/** The line under the bound line: truncation, an empty state, or a refusal. */
+function stateText(root: FakeNode, card: FakeElement): string {
+  const at = card.children.indexOf(boundOf(root)! as FakeNode);
+  assert.notEqual(at, -1, 'the bound line is not a child of the card');
+  return textOf(card.children[at + 1]!).trim();
+}
+
+/** The filter row's four selects, in reading order: field, operator, value, cap. */
+function filterSelects(root: FakeNode): FakeElement[] {
+  const card = root.children.find((n) => n.className === 'card pane')! as FakeElement;
+  const row = card.children.find((n) => n.tag === 'div' && n.className === '')! as FakeElement;
+  return row.children.filter((n) => n.tag === 'select') as FakeElement[];
+}
+
+function cardOf(root: FakeElement): FakeElement {
+  return root.children.find((n) => n.className === 'card pane')! as FakeElement;
+}
+
+/** Moves to the corpus tab the way a reader does. */
+async function toCorpus(root: FakeElement): Promise<void> {
+  const tabs = cardOf(root).children.find((n) => n.className === 'segbar')! as FakeElement;
+  click(tabs, tabs.children.find((n) => (n as FakeElement).dataset['tab'] === 'corpus')! as FakeElement);
+  await settle();
+}
+
+test('a table longer than the display cap is paged, and the rows it holds back are COUNTED', async () => {
+  const { BOUND_CAP_TABLE } = await parts();
+  // Deliberately not a whole number of pages: a short last page is where an
+  // off-by-one in the window shows, and a fixture of exactly two full pages
+  // would never draw one.
+  const total = BOUND_CAP_TABLE * 2 + 11;
+  const asked: string[] = [];
+  await withDocument(async () => {
+    const root = await draw(async (route) => {
+      asked.push(route);
+      if (route === '/api/items') return ITEMS;
+      if (route.startsWith('/api/watch/volume')) throw new Error('no projection for the vocabulary');
+      if (route.startsWith('/api/ask/audit')) return { ...AUDIT_BODY, records: hookRecords(total) };
+      throw new Error(`the screen asked for ${route}, which this fixture does not serve`);
+    });
+
+    // **The whole answer is on screen as a number even where it is not on
+    // screen as rows.** The caption is the size of the ANSWER; the bound line
+    // is the position of the page. Neither is inferable from the other, and
+    // this table used to state neither: it put every row in the `<tbody>` at
+    // once with nothing saying how many there were or where the reader was.
+    assert.equal(captionText(root), `${total} rows`);
+    assert.equal(tableRows(root).length, BOUND_CAP_TABLE, 'the display cap did not bite');
+    assert.equal(boundText(root), `Showing the first ${BOUND_CAP_TABLE} of ${total}.`);
+
+    const opening = tableRows(root).map((cells) => cells.join(' | '));
+    const requests = asked.length;
+
+    clickBound(root, stepper(root, 'next'));
+    const second = tableRows(root).map((cells) => cells.join(' | '));
+    assert.equal(second.length, BOUND_CAP_TABLE);
+    assert.equal(
+      boundText(root),
+      `Rows ${BOUND_CAP_TABLE + 1}–${BOUND_CAP_TABLE * 2} of ${total}. `
+        + `${BOUND_CAP_TABLE} before this page, ${total - BOUND_CAP_TABLE * 2} after it.`,
+    );
+    // The page MOVED. The sentence alone would pass on a control that rewrote
+    // the line and redrew the same rows.
+    assert.equal(second.filter((row) => opening.includes(row)).length, 0,
+      'the second page shows rows the first page already showed');
+    // **And it cost no request.** The requirement's sharpest condition is that
+    // no surface answers "next" by re-reading the corpus; the whole answer is
+    // already in hand, so a page is a re-render.
+    assert.equal(asked.length, requests, `paging fetched: ${asked.slice(requests).join(', ')}`);
+
+    clickBound(root, stepper(root, 'next'));
+    assert.equal(tableRows(root).length, total - BOUND_CAP_TABLE * 2);
+    assert.equal(
+      boundText(root),
+      `Rows ${BOUND_CAP_TABLE * 2 + 1}–${total} of ${total}. `
+        + `${BOUND_CAP_TABLE * 2} before this page, 0 after it.`,
+    );
+    // The end of the list is where the way through STOPS rather than wrapping:
+    // an inert control is honest, a wrapping one is a lie about position.
+    assert.equal(stepper(root, 'next').disabled, true, 'Next is live past the last page');
+    assert.equal(stepper(root, 'prev').disabled, false);
+
+    clickBound(root, stepper(root, 'prev'));
+    clickBound(root, stepper(root, 'prev'));
+    assert.deepEqual(tableRows(root).map((cells) => cells.join(' | ')), opening);
+    assert.equal(stepper(root, 'prev').disabled, true, 'Previous is live before the first page');
+
+    clickBound(root, showAll(root));
+    assert.equal(tableRows(root).length, total);
+    assert.equal(boundText(root), `Showing all ${total}.`);
+    assert.equal(captionText(root), `${total} rows`, 'the answer changed size when the page did');
+  });
+});
+
+test('the audit tab has the same gap and the same control — many more rows than records', async () => {
+  const { BOUND_CAP_TABLE } = await parts();
+  // The shape the owner measured in the running app: one row per ITEM a record
+  // names, so a capped answer of N records draws far more than N rows — 986
+  // from 200 there. The fetch cap cannot help with that; paging is the answer.
+  const records: Record<string, unknown>[] = [];
+  for (let n = 0; n < 40; n++) {
+    records.push({
+      at: `2026-08-29T06:00:${String(n % 60).padStart(2, '0')}.000Z`,
+      kind: 'injection',
+      op: 'session-start',
+      sessionId: `s-${n}`,
+      injected: [{ id: `INV-a-${n}`, tier: 'pinned' }, { id: `INV-b-${n}`, tier: 'jit' }],
+      spilled: [{ id: `STD-c-${n}`, tier: 'jit', reason: 'budget' }],
+    });
+  }
+  await withDocument(async () => {
+    const root = await draw(async (route) => {
+      if (route === '/api/items') return ITEMS;
+      if (route.startsWith('/api/watch/volume')) throw new Error('no projection');
+      if (route.startsWith('/api/ask/audit')) return { ...AUDIT_BODY, records };
+      throw new Error(`unexpected ${route}`);
+    });
+    // Three rows per record, and not 40.
+    assert.equal(captionText(root), '120 rows');
+    assert.equal(tableRows(root).length, BOUND_CAP_TABLE);
+    assert.equal(boundText(root), `Showing the first ${BOUND_CAP_TABLE} of 120.`);
+    clickBound(root, showAll(root));
+    assert.equal(tableRows(root).length, 120);
+  });
+});
+
+test('raising the cap FETCHES more, which no amount of paging could', async () => {
+  const { BOUND_CAP_TABLE } = await parts();
+  // More than the corpus tab's first rung (100) and less than its second (250),
+  // so the first answer is truncated and the second is whole.
+  const matched = 137;
+  const asked: string[] = [];
+  await withDocument(async () => {
+    const corpus = corpusEndpoint(matched);
+    const root = await draw(async (route) => {
+      asked.push(route);
+      if (route.startsWith('/api/ask/corpus')) return corpus(route);
+      return FRESH(route);
+    });
+    const card = cardOf(root);
+    await toCorpus(root);
+
+    // The landing state is the ENDPOINT'S OWN default, sent explicitly so the
+    // control, the request and the SQL pane's parameters all say the same 100.
+    assert.equal(asked.at(-1), '/api/ask/corpus?limit=100');
+    assert.equal(captionText(root), '100 rows');
+    assert.equal(tableRows(root).length, BOUND_CAP_TABLE);
+    assert.equal(boundText(root), `Showing the first ${BOUND_CAP_TABLE} of 100.`);
+    // **The sentence that had no control behind it until today.** Paging can
+    // reach rows 51–100 and can never reach row 101: those 37 were never
+    // fetched, and only the cap can go and get them.
+    assert.equal(stateText(root, card),
+      'capped at 100 rows — more matched; raise the limit to see them');
+
+    const cap = filterSelects(root)[3]!;
+    assert.deepEqual(cap.children.map((o) => textOf(o)), ['100', '250', '500', '1,000']);
+    cap.value = '250';
+    cap.onchange!();
+    await settle();
+
+    assert.equal(asked.at(-1), '/api/ask/corpus?limit=250');
+    assert.equal(captionText(root), `${matched} rows`);
+    assert.equal(boundText(root), `Showing the first ${BOUND_CAP_TABLE} of ${matched}.`);
+    // Nothing is held back any more, so the truncation line is GONE rather than
+    // left standing over an answer it has stopped being true of.
+    assert.equal(stateText(root, card), '');
+    // And every one of the 137 is reachable, which is the two controls
+    // together: the cap fetched them, the bound line pages them.
+    clickBound(root, showAll(root));
+    assert.equal(tableRows(root).length, matched);
+    assert.equal(stateText(root, card), '', 'a truncation line came back on a whole answer');
+  });
+});
+
+test('at the top of the ladder the truncation sentence stops telling the reader to raise it', async () => {
+  const asked: string[] = [];
+  await withDocument(async () => {
+    // More rows than the corpus endpoint will ever serve, so the top rung is
+    // still truncated and "raise the limit" would name a move that does not
+    // exist.
+    const corpus = corpusEndpoint(5000);
+    const root = await draw(async (route) => {
+      asked.push(route);
+      if (route.startsWith('/api/ask/corpus')) return corpus(route);
+      return FRESH(route);
+    });
+    const card = cardOf(root);
+    await toCorpus(root);
+    assert.equal(stateText(root, card),
+      'capped at 100 rows — more matched; raise the limit to see them');
+
+    const cap = filterSelects(root)[3]!;
+    cap.value = '1000';
+    cap.onchange!();
+    await settle();
+
+    assert.equal(asked.at(-1), '/api/ask/corpus?limit=1000');
+    assert.equal(captionText(root), '1,000 rows');
+    const disclosed = 'capped at 1,000 rows — more matched, and this is the largest answer '
+      + 'this endpoint serves. Narrow the filter to reach the rest.';
+    assert.equal(stateText(root, card), disclosed);
+
+    // **THE STATUS LINE IS PART OF THE PAGE REFRESH** (owner, 2026-08-29).
+    // `list.allOf` says "Showing all 1,000." at exactly the moment the reader
+    // most needs to still be told that 1,000 was a cap and more matched. The
+    // two lines under this table are drawn by two different mechanisms, and
+    // this is the assertion that they are refreshed together rather than the
+    // disclosure surviving by luck of ordering.
+    clickBound(root, showAll(root));
+    assert.equal(boundText(root), 'Showing all 1,000.');
+    assert.equal(stateText(root, card), disclosed,
+      'the disclosure was not redrawn beside "Showing all"');
+
+    // The same, one step at a time rather than all at once.
+    clickBound(root, showAll(root));
+    clickBound(root, stepper(root, 'next'));
+    assert.equal(stateText(root, card), disclosed, 'the disclosure went stale on page two');
+  });
+});
+
+test('each tab draws its OWN ladder, and a rung the next tab cannot serve lands on its top', async () => {
+  await withDocument(async () => {
+    const root = await draw(async (route) => {
+      if (route.startsWith('/api/ask/corpus')) return corpusEndpoint(3)(route);
+      return FRESH(route);
+    });
+    const cap = filterSelects(root)[3]!;
+    // The audit endpoint's own two numbers at the ends of its ladder.
+    assert.deepEqual(cap.children.map((o) => textOf(o)), ['200', '500', '1,000', '2,000']);
+    assert.equal(cap.value, '200');
+
+    cap.value = '2000';
+    cap.onchange!();
+    await settle();
+    await toCorpus(root);
+
+    // 2,000 is past what `/api/ask/corpus` serves. The reader meant "as much as
+    // you have", so they land on the corpus tab's own top rather than being
+    // dropped back to its default — and the number they land on is the number
+    // on screen, which is what keeps this from being a silent clamp.
+    assert.deepEqual(cap.children.map((o) => textOf(o)), ['100', '250', '500', '1,000']);
+    assert.equal(cap.value, '1000');
+  });
+});
+
+test('every rung the cap control offers is one its endpoint serves, and one past the top is not', async () => {
+  const { queryPath, limitSteps } = await ask();
+  const { dir, done } = workspace();
+  try {
+    const ws = resolveWorkspace(dir);
+    for (const step of limitSteps('corpus')) {
+      const composed = queryPath('corpus', 'type', 'is', 'rule', step);
+      assert.equal(apiAskCorpus(ws, asUrl(composed)).status, 200, `${composed} was refused`);
+    }
+    for (const step of limitSteps('audit')) {
+      const composed = queryPath('audit', 'kind', 'is', 'injection', step);
+      assert.equal(apiAskAudit(ws, asUrl(composed)).status, 200, `${composed} was refused`);
+    }
+    // **The top rung is the endpoint's maximum, measured rather than asserted
+    // in a comment.** One past it is a 400, which is what makes
+    // `ask.truncatedMax`'s claim — "this is the largest answer this endpoint
+    // serves" — true of the server and not only of this screen.
+    const top = { corpus: limitSteps('corpus').at(-1)!, audit: limitSteps('audit').at(-1)! };
+    assert.equal(apiAskCorpus(ws, asUrl(`/api/ask/corpus?limit=${top.corpus + 1}`)).status, 400);
+    assert.equal(apiAskAudit(ws, asUrl(`/api/ask/audit?limit=${top.audit + 1}`)).status, 400);
+    // **And the FIRST rung is the endpoint's own default**, so the landing
+    // state is exactly what the endpoint would have done unasked. Compared
+    // through the bound parameters, which carry the probe row: same statement,
+    // same numbers.
+    const unasked = apiAskCorpus(ws, asUrl('/api/ask/corpus')).body as { params: unknown[] };
+    const landed = apiAskCorpus(
+      ws, asUrl(queryPath('corpus', 'type', 'is', '', limitSteps('corpus')[0]!)),
+    ).body as { params: unknown[] };
+    assert.deepEqual(landed.params, unasked.params);
+  } finally { done(); }
 });

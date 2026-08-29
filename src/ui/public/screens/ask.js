@@ -88,10 +88,66 @@
  *      itself, so a capped audit answer is indistinguishable from a complete
  *      one and this screen never claims otherwise. `ask.sqlCaption`'s sentence
  *      about the final `LIMIT` is therefore true of the corpus tab only.
+ *      **This got sharper on 2026-08-29 rather than going away**: the fetch
+ *      cap is now a control, so a reader can raise the audit tab's limit from
+ *      200 to 2,000 — and still cannot be told whether that was enough. The
+ *      remedy is one line in `core/audit-db.ts` (`filterSelect` binding
+ *      `limit + 1` the way `corpusSelect` does, and `queryProjection` dropping
+ *      the probe), which is a file this task does not own. It is in the report.
  *   5. **A sentence for a projection that is not `fresh`.** No key declares
  *      one. The server's own word is drawn as a literal chip, which is the
  *      treatment a record kind and a tier already get
  *      (`src/ui/public/screens/watch.js` · `const state = el('span', 'chip warn', String(volume.projectionState));` · ~670).
+ *
+ * ── TWO WAYS PAST A CAP, AND THEY ANSWER DIFFERENT QUESTIONS ──────────────
+ *
+ * The owner's report of 2026-08-29: *"ask corpus has a limit parameter but it
+ * could not be changed, either add capability to set the limit or paging
+ * buttons."* Both were built, because they are not alternatives:
+ *
+ *   - **Paging** (`boundedList`, `BOUND_CAP_TABLE`) answers *"show me the rest
+ *     of what you already have"*. It costs no request: the whole answer is in
+ *     hand and a page is a re-render, which is the condition
+ *     `REQ-a-bounded-list-gives-the-reader-a-way-to-reach-what-it-held` sets on
+ *     every bounded list in this product. Before it, an audit answer of 200
+ *     records drew 986 rows in one table — one row per item a record names —
+ *     with no bound line and nothing to say how far down the reader was.
+ *   - **The fetch cap** (`ask.limit`, `LIMIT_STEPS`) answers *"go and get
+ *     more"*, which no amount of paging can. A reader at the end of 100 corpus
+ *     rows under `ask.truncated` — *"more matched; raise the limit to see
+ *     them"* — was being told to move a control that did not exist.
+ *
+ * **The cap is NOT a `filterFields` entry, and that is the one design question
+ * this task had to answer.** `limit` is in `apiAskCorpus`' `unknownParams`
+ * allow-list beside `type`, `status` and the rest, so it would have fitted the
+ * filter machinery mechanically. It does not fit it in meaning: every entry of
+ * that list is a COLUMN a reader narrows the corpus by, spelled as (field,
+ * operator, value) and negatable. A cap has no operator — "limit is not 100" is
+ * not a question — no vocabulary to learn, and it does not narrow the corpus at
+ * all; it bounds the ANSWER. Rendered as a filter it would read as one, which
+ * is a claim about which rows matched.
+ *
+ * **`boundedList` fitted the table with one addition, `order: 'position'`.**
+ * The host is the `<tbody>` and the bound line goes under the `<table>` — the
+ * arrangement `screens/injected.js` already uses for the same reason (a `<div>`
+ * is not a legal child of a table). What did not fit was the ORDER sentence:
+ * the four surfaces before this one bound lists this app itself ordered, and
+ * this table's order is the server's `ORDER BY` and differs per tab. See
+ * `orderKeyFor` in `screens/parts.js`.
+ *
+ * **The design of record gained the cap control and the fourth state sentence;
+ * it did NOT gain the `div.bound` block, and that is a deliberate asymmetry.**
+ * `e2e/screen-parity.spec.ts`'s `ask` ledger is the list of kinds the MOCKUP
+ * draws and the app does not, it is exact, and *it may only shrink*. In the run
+ * that ledger was measured from, this screen's projection refuses and no table
+ * is drawn at all — `table`, `tbody`, `tr`, `td`, `caption` are all in it — so
+ * a `div.bound` in the mockup would enter that ledger as a NEW gap and its
+ * entry would have to be written into a spec file this task does not own.
+ * `boundedList` is a shared part the mockup already draws five times, and one
+ * more use of it by the app is an app-only kind, which that gate cannot see and
+ * `APP_ONLY_KINDS_ON_ASK` is the existing prose note for. The two genuinely new
+ * PRESENTATION decisions — a labelled cap select in the filter row, and a
+ * fourth `#qstate` sentence — are in the mockup, and the app follows them.
  *
  * ── NO `innerHTML`, NO `style` ATTRIBUTE ──────────────────────────────────
  *
@@ -100,7 +156,9 @@
  * `style-src 'self'` with no `'unsafe-inline'`. Every declaration the mockup
  * writes as an attribute is set through CSSOM here, with logical properties.
  */
-import { el, errorNote, linkId, mono, num, screenHead, spaced } from '/screens/parts.js';
+import {
+  BOUND_CAP_TABLE, boundedList, el, errorNote, linkId, mono, num, screenHead, spaced,
+} from '/screens/parts.js';
 
 /**
  * **ONE LIST PER TAB — every field the tab knows, whether a reader can FILTER
@@ -173,6 +231,69 @@ const CORPUS_FIELDS = [
   { name: 'scoped', filter: true, column: null, label: 'ask.field.scoped' },
   { name: 'title', filter: true, column: null, label: 'ask.field.title' },
 ];
+
+/**
+ * **The fetch cap's ladder, per tab — every rung a value its own endpoint
+ * accepts, the first rung the endpoint's OWN DEFAULT, the last its MAXIMUM.**
+ *
+ * Two ladders because the two endpoints are not the same shape and pretending
+ * otherwise would put a rung on screen that comes back 400: `apiAskCorpus`
+ * takes `limit` in 1..1000 defaulting to 100, `apiAskAudit` takes it in 1..2000
+ * defaulting to 200 (`src/ui/ask-model.ts` · `  const limit = intParam(url, 'limit', 1, 1000, 100);` · ~192).
+ *
+ * **The first rung is the default, so the landing state is exactly what the
+ * endpoint would have done unasked.** A screen whose opening question is not
+ * the endpoint's own would make the first answer a decision this control made
+ * silently, and the reader would have no way to get back to it.
+ *
+ * **The last rung is the maximum, so the top of the ladder is the top of the
+ * endpoint.** That is what lets `ask.truncatedMax` be true: a reader who is at
+ * the last rung and still truncated has genuinely run out of limit, and
+ * `ask.truncated`'s *"raise the limit"* would be an instruction they cannot
+ * follow. The two facts are one declaration — the sentence cannot come to
+ * disagree with the control about where the ladder ends.
+ *
+ * A ladder rather than a number input: a free integer would need its own
+ * validation of a range the server already owns, and every value it could
+ * refuse is a 400 the reader has to read to learn about.
+ */
+const LIMIT_STEPS = {
+  audit: [200, 500, 1000, 2000],
+  corpus: [100, 250, 500, 1000],
+};
+
+/** The tab's rungs. A copy: the caller renders it and must not be able to edit it. */
+export function limitSteps(mode) {
+  return [...(mode === 'corpus' ? LIMIT_STEPS.corpus : LIMIT_STEPS.audit)];
+}
+
+/**
+ * The rung `held` means, and **never a value off the ladder** — which is what
+ * makes `queryPath` unable to compose a limit its endpoint refuses.
+ *
+ * An exact rung is itself. Anything else falls to the largest rung BELOW it,
+ * and to the first rung when there is none. The case that is not hypothetical
+ * is the tab switch: a reader who raised the audit tab to 2,000 and clicks
+ * Corpus means "as much as you have", and 2,000 is past what that endpoint
+ * serves — so they land on 1,000, the corpus tab's own top, rather than being
+ * dropped back to 100. The chosen rung is what the control DISPLAYS, so nothing
+ * here is a silent clamp: the number the reader can see is the number that was
+ * sent, and it is in the SQL pane's parameters too.
+ */
+export function limitFor(mode, held) {
+  const steps = limitSteps(mode);
+  const asked = Number(held);
+  if (!Number.isInteger(asked)) return steps[0];
+  let chosen = steps[0];
+  for (const step of steps) if (step <= asked) chosen = step;
+  return chosen;
+}
+
+/** At the top of the tab's ladder — the state `ask.truncated` cannot honestly describe. */
+export function atLargestLimit(mode, held) {
+  const steps = limitSteps(mode);
+  return limitFor(mode, held) === steps[steps.length - 1];
+}
 
 /**
  * The three columns, and the string key each one's header takes.
@@ -332,16 +453,27 @@ export function filterParam(field, operator, value) {
   return operator === IS_NOT ? [field, value, true] : [field, value];
 }
 
-/** The path to fetch for one filter row. */
-export function queryPath(mode, field, operator, value) {
+/**
+ * The path to fetch for one filter row, at the cap the reader has chosen.
+ *
+ * **`limit` is ALWAYS sent, including at the endpoint's own default.** The
+ * alternative — omit it while it matches the default — would make the request
+ * and the SQL pane's parameters stop reflecting a control that is on screen
+ * saying 100, and it would put a branch here for a state nothing can tell apart
+ * from the other one. It goes through `limitFor`, so a value off the tab's
+ * ladder cannot be composed: there is no path from this function to a 400.
+ */
+export function queryPath(mode, field, operator, value, limit) {
   const filter = filterParam(field, operator, value);
   const base = mode === 'corpus' ? '/api/ask/corpus' : '/api/ask/audit';
-  if (filter === null) return base;
   const params = new URLSearchParams();
-  params.set(filter[0], filter[1]);
-  // `not` names the FIELD, never an operator: the server maps that name onto
-  // `<>` itself, so no fragment of SQL and no operator token crosses the wire.
-  if (filter[2] === true) params.set('not', filter[0]);
+  if (filter !== null) {
+    params.set(filter[0], filter[1]);
+    // `not` names the FIELD, never an operator: the server maps that name onto
+    // `<>` itself, so no fragment of SQL and no operator token crosses the wire.
+    if (filter[2] === true) params.set('not', filter[0]);
+  }
+  params.set('limit', String(limitFor(mode, limit)));
   return `${base}?${params.toString()}`;
 }
 
@@ -591,7 +723,19 @@ export async function render(root, ctx) {
   // `ask.run` STAYS in both string tables: the composer uses it for its own
   // read action, and `strings-parity` holds every sentence the mockup declares
   // to exist in the tables regardless of which screen draws it.
-  row.append(fieldLabel, fieldSelect, opSelect, valueSelect);
+  //
+  // **The fetch cap, LAST in the row and labelled separately.** It is the one
+  // control here that is not part of the (field, operator, value) triple —
+  // see `LIMIT_STEPS` for why it is not an entry in the field select — and it
+  // sits in this row rather than beside the table because it is a property of
+  // the QUESTION: the SQL pane directly below shows it arriving as the
+  // statement's last bound parameter.
+  const limitLabel = el('label', 'small');
+  limitLabel.htmlFor = 'ask-limit';
+  limitLabel.append(...ctx.t('ask.limit'));
+  const limitSelect = document.createElement('select');
+  limitSelect.id = 'ask-limit';
+  row.append(fieldLabel, fieldSelect, opSelect, valueSelect, limitLabel, limitSelect);
   card.append(row);
 
   // A property of the CORPUS query and of nothing else, so it hangs on that
@@ -680,6 +824,14 @@ export async function render(root, ctx) {
   table.append(caption, thead, tbody);
   plate.append(table);
   card.append(plate);
+
+  // **The bound line lives OUTSIDE the `<table>`**, which is not a preference:
+  // a `<div>` is not a legal child of a table, and `screens/injected.js` places
+  // the same part the same way for the same reason. It is replaced wholesale on
+  // every answer — `boundedList` closes over the rows it was given, so a line
+  // kept from a previous answer would page a list that is no longer on screen.
+  let boundLine = el('div', 'bound');
+  card.append(boundLine);
 
   let stateLine = el('p', 'small');
   card.append(stateLine);
@@ -774,11 +926,25 @@ export async function render(root, ctx) {
     fieldSelect.value = held;
     paintHead();
     paintValues();
+    paintLimits();
   }
 
   function swapStateLine(node) {
     stateLine.replaceWith(node);
     stateLine = node;
+  }
+
+  function swapBoundLine(node) {
+    boundLine.replaceWith(node);
+    boundLine = node;
+  }
+
+  /** The tab's rungs, redrawn per tab because the two endpoints' ladders differ. */
+  function paintLimits() {
+    const held = limitFor(mode, limitSelect.value);
+    limitSelect.replaceChildren();
+    for (const step of limitSteps(mode)) limitSelect.append(option(String(step), num(step)));
+    limitSelect.value = String(held);
   }
 
   /** One chip, `[className, glyph]` and a text run. */
@@ -860,11 +1026,64 @@ export async function render(root, ctx) {
     // a corpus that matched nothing are two facts, and one empty table would
     // report neither.
     plate.hidden = result.error !== null;
-    tbody.replaceChildren();
-    for (const row of result.rows) tbody.append(rowFor(row));
+    // **The rows go through the ONE bounded list**, host `<tbody>`, cap
+    // `BOUND_CAP_TABLE`. An audit answer of 200 records draws one row per item
+    // each record names — 986 of them on the owner's corpus — and until this
+    // landed they all went into the table at once with no line saying how many
+    // there were and no way to move through them. `order: 'position'` because
+    // this table's order is the server's and changes with the tab; see the
+    // header, and `orderKeyFor` in `screens/parts.js`.
+    const bound = boundedList(ctx, tbody, result.rows, (row) => rowFor(row),
+      { cap: BOUND_CAP_TABLE, order: 'position' });
+    // Hidden on an answer with NO rows, and that is not a silent drop: the
+    // state line immediately below already says which zero this is — the
+    // endpoint's refusal, an absent projection, or `ask.noRows` — in words a
+    // bound line cannot. "Showing all 0." beside any of the three is a second
+    // sentence for one fact, and beside a refusal it is a claim about a table
+    // that was not drawn.
+    bound.hidden = result.rows.length === 0;
+    swapBoundLine(bound);
+    // **THE STATUS LINE IS PART OF THE PAGE REFRESH, not only of the answer**
+    // — owner, 2026-08-29: *"the refresh mechanism you already implemented
+    // should include also the status line"*.
+    //
+    // The two lines under this table are drawn by two different mechanisms.
+    // `boundedList` owns the upper one and redraws it, and the rows above it,
+    // on every step; the lower one is this screen's own disclosure — the
+    // truncation sentence, the projection's word, `ask.noRows` — and it was
+    // drawn once per ANSWER and then left alone while the reader moved. Nothing
+    // visibly broke, because the disclosure is true of the whole answer at every
+    // page; but it survived by ORDERING rather than by construction, and the
+    // moment it acquires anything page-dependent it would be stale with nothing
+    // to catch it.
+    //
+    // The state it is sharpest about today is *show all*: `list.allOf` says
+    // "Showing all 100." at exactly the moment the reader most needs to still
+    // be told that 100 was a cap and more matched. Redrawing the disclosure
+    // beside it makes that a guarantee rather than a leftover.
+    //
+    // ONE DELEGATED LISTENER on the bound line, not three on its buttons: the
+    // steps and the escape hatch all bubble here, `boundedList` owns which of
+    // them exist, and a per-button wiring would have to be kept in step with a
+    // control set this file does not build. It runs AFTER the part's own
+    // handler — a listener on the target fires before one on its ancestor —
+    // so the page has already moved when the disclosure is redrawn.
+    bound.addEventListener('click', () => { paintState(result); });
     caption.replaceChildren(...ctx.t('ask.rows', { rows: num(result.rows.length) }));
     caption.hidden = result.rows.length === 0;
+    paintState(result);
+  }
 
+  /**
+   * The line under the bound line: what this ANSWER is — a refusal, a cap that
+   * bit, a projection that is not fresh, or nothing matched.
+   *
+   * Split out of `paint` so that the page controls can call it too (see the
+   * delegated listener above). It reads no state of its own: everything it says
+   * comes from the `result` it is handed, so a redraw at any moment says exactly
+   * what the first draw said about the same answer.
+   */
+  function paintState(result) {
     if (result.error !== null) {
       // The endpoint's own words, never a paraphrase: the 503 for a stale
       // projection names the state AND the command that repairs it, and no
@@ -875,7 +1094,13 @@ export async function render(root, ctx) {
     const line = el('p', 'small');
     const state = tableState(result.rows.length, result.truncated);
     if (state === 'truncated') {
-      line.append(...ctx.t('ask.truncated', { rows: num(result.rows.length) }));
+      // Two sentences, chosen by whether the control has anywhere left to go.
+      // `ask.truncated` ends *"raise the limit to see them"*, which stops being
+      // an instruction at the top of the ladder and becomes a control that
+      // looks broken. `atLargestLimit` and the ladder are one declaration, so
+      // the sentence cannot outlive the rung it is about.
+      const key = atLargestLimit(mode, limitSelect.value) ? 'ask.truncatedMax' : 'ask.truncated';
+      line.append(...ctx.t(key, { rows: num(result.rows.length) }));
     } else if (result.projectionState !== null && result.projectionState !== 'fresh') {
       // `absent` — nobody has built a projection. NOT "no rows matched": that
       // sentence is a claim about a log this answer never read. The server's
@@ -895,7 +1120,7 @@ export async function render(root, ctx) {
 
   async function runFilter() {
     const field = fieldSelect.value;
-    const path = queryPath(mode, field, opSelect.value, valueSelect.value, vocabulary[field] ?? []);
+    const path = queryPath(mode, field, opSelect.value, valueSelect.value, limitSelect.value);
     // The `'unserved'` guard that stood here is gone with the thing it guarded:
     // `queryPath` had a third answer for a negation this surface could not
     // express, and since 2026-08-26 there is no such negation. Removed rather
@@ -940,6 +1165,18 @@ export async function render(root, ctx) {
    * mockup's "a shortcut THROUGH the same filter fields" as an aggregate
    * endpoint can be: after "Operations by count" the `op` select knows every
    * op the log holds.
+   *
+   * **The fetch cap does NOT travel here, deliberately.** `/api/ask/summary`
+   * has a third limit of its own — 1..200, defaulting to 20 — and `report=ops`
+   * takes none at all, so the filter row's ladder does not fit it: two of its
+   * four rungs are past what this endpoint accepts on either tab, and sending
+   * one would be a 400 where the reader changed nothing. Clamping instead would
+   * put 200 rows on screen under a control reading 1,000. These reports are
+   * aggregates over the whole log rather than a page of it, so what a raised
+   * cap would buy is a longer top-N — a different question, and one no sentence
+   * on this screen currently asks. Named here and in this task's report rather
+   * than papered over; the rows they do return are still bounded and paged like
+   * every other answer.
    */
   async function runSummary(query) {
     selectTab('audit');
@@ -977,6 +1214,10 @@ export async function render(root, ctx) {
   fieldSelect.onchange = () => { paintValues(); void runFilter(); };
   opSelect.onchange = () => { void runFilter(); };
   valueSelect.onchange = () => { void runFilter(); };
+  // Live, like the other three, and for the ruling recorded above: this screen
+  // draws no Run button because it re-asks whenever the question changes, and a
+  // cap is part of the question.
+  limitSelect.onchange = () => { void runFilter(); };
 
   // The two vocabulary reads that are not the answer. Their refusals are NOT
   // drawn: this screen reports the refusal of the query it ran, and a second

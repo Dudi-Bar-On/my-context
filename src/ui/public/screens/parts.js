@@ -427,9 +427,28 @@ function sentence(ctx, key, slots) {
  * the same field — and that order is load-bearing rather than decorative:
  * first-fit admits greedily, so `[4,9,4]` against a budget of 10 spills a
  * different item than `[9,1,5]` does.
+ *
+ * **`'position'` is the fourth, and it is the one that claims NOTHING about
+ * order.** It landed 2026-08-29 with the Ask screen's result table, which is the
+ * first bounded list here whose order is not this app's to describe: the rows
+ * come back in whatever order the SERVER's `ORDER BY` chose, and that order is
+ * different on every tab of the one table — newest-first on the audit tab, by
+ * id on the corpus tab, by count on a predefined report. None of the three
+ * sentences above is true of all three, and picking the closest would be a
+ * claim about the answer rather than a reading of it.
+ *
+ * Saying nothing is honest HERE and would not be on the other four, which is
+ * why this is a fourth member rather than a replacement. Those four bound lists
+ * whose visible order is the argument for their contents — what the selector
+ * admitted, what it considered, what a log did most recently — and a reader who
+ * loses that loses the point of the list. The Ask table carries its order in
+ * its own At column, on screen, beside every row; the bound line there only has
+ * to say WHERE IN THE ANSWER the page sits, and row numbers say that without
+ * borrowing a word from a `ORDER BY` this file cannot see.
  */
 function orderKeyFor(spec) {
   if (spec.order === 'recent') return 'list.recentOf';
+  if (spec.order === 'position') return 'list.positionOf';
   return spec.order === 'considered' ? 'list.consideredOf' : 'list.admittedOf';
 }
 
@@ -441,6 +460,7 @@ function orderKeyFor(spec) {
  */
 function rowsKeyFor(spec) {
   if (spec.order === 'recent') return 'list.rowsRecent';
+  if (spec.order === 'position') return 'list.rowsPosition';
   return spec.order === 'considered' ? 'list.rowsConsidered' : 'list.rowsAdmitted';
 }
 
