@@ -3,113 +3,167 @@
  * The screen whose verdict is the strongest claim in the product: `cfg.v`,
  * *"the strongest 'a terminal cannot do this'"*.
  *
- * ── IT READS EVERYTHING, AND IT WRITES EXACTLY ONE THING ───────────────────
+ * ── ONE PANE PER CONFIGURATION SUBJECT ────────────────────────────────────
  *
- * REWRITTEN 2026-08-27 — task `plan:budget seq:5`,
- * `DEC-the-ui-writes-budgets-and-the-simulator-always-meant-to`. This screen
- * used to read only: the endpoint set it draws from still says so of itself
- * (`src/ui/read-model-config.ts` · `READS, VALIDATES and PREVIEWS; nothing writes, and nothing offers to.` · ~3),
- * and that sentence is still true of `/api/config`, `/api/config/check` and
- * `/api/config/preview` — nothing about THOSE three routes changed. What
- * changed is that the Budgets card (below) now also composes a confirm and a
- * write through `src/ui/execute.ts`'s `BUDGETS_ID` branch — the SAME
- * `GET /api/execute/confirm` / `POST /api/execute` pair every boundary
- * command on every other screen uses, not a second door into the server.
+ * REWRITTEN 2026-08-29 — `plan:config seq:1`, `plan:walk seq:13`,
+ * `plan:walk seq:10`, dispatched as one task because all three land here.
  *
- * The owner's ruling is narrow, and this file enforces the narrowness by
- * construction rather than by discipline: **the ONLY endpoint this screen can
- * reach that writes anything is `BUDGETS_ID`, and `BUDGETS_ID` writes ONLY
- * `config.json`'s `budgets` key.** `categories`, `watchedDocs`, `profile`,
- * `ui` and `handover` are still the user's file to edit by hand — the deny
- * hook (`pre-tool-use.ts`) still refuses an agent that tries, and `cfg.nocmd`
- * still quotes it on screen, rewritten to say what stays true: *"No
- * `mycontext` command edits a budget, and an agent still cannot… A person
- * can, here, behind a confirm."*
+ * `plan:config seq:1` measured what this screen was: *"one flat page. Its
+ * sections are Budgets, What changes, a scope-policy strip, Apply this, and
+ * Watched documents — which covers three of the seven things config.json
+ * actually carries and mixes a preview into the middle of them."* It named the
+ * subjects and the shape: **Profile, Categories, Budgets, Watched documents,
+ * each with its own heading, its own current value and its own settle step.**
+ * That is `composerPane` below, called four times.
  *
- * **And a budget write is behind the same field-by-field confirm a boundary
- * CLI command gets, never a shell command.** Doctor and Coverage compose an
- * argv through `lib/command.js` and hand it to `commandActions`, which draws
- * a `<code>` line and a Copy button beside Execute; a budget write has no argv
- * and no command line to show, so it does NOT go through `commandActions` —
- * `budgetSaveControl` below is a second, narrower control, built from the same
- * three pieces (`confirmPath`, `viewsFromEffect`, `diffTable`, all exported
- * from `lib/command-actions.js` for exactly this reuse) minus the parts that
- * are meaningless for a write that runs no process: no `<code>` line, no
- * Copy, no exit code.
+ * **The owner's second requirement, given 2026-08-25, governs every pane:**
+ * *"every configuration entry is treated as ask or composer does — the user
+ * SELECTS wherever possible, and where free text is unavoidable there are
+ * explanatory instructions about the value and a default or recommended value
+ * as a PLACEHOLDER before the user types."* So every closed vocabulary on this
+ * screen is a `.segbar` — `profile`, `tier`, `agentEdits`, `scopePolicy`, all
+ * four served as lists by `GET /api/config`'s `meta` — and the three places
+ * free text is unavoidable (a prefix, a description, a glob) carry the value
+ * IN FORCE as their placeholder and a sentence saying what the value is for.
+ * Nothing here invents a vocabulary: a control that offered a value the loader
+ * would refuse is a control that composes a refusal.
  *
- * ── WHAT IT CAN ASK, AND THE ONE THAT IT CANNOT ────────────────────────────
+ * ── THE SCREEN COMPOSES; IT DOES NOT WRITE ────────────────────────────────
  *
- * `GET /api/config` for the read model below; `GET /api/execute/confirm` and
- * `POST /api/execute` for the Budgets card's Write control. `POST
- * /api/config/check` and `POST /api/config/preview` exist and are registered
- * (`src/ui/read-model-config.ts` · `registerRoute('POST', '/api/config/check', {` · ~362)
- * and are STILL unreachable from here — `ctx.post` exists on the screen
- * contract now (`app.js`'s `post(path, body)`, added for `execute`), but
- * nothing below calls it with either of those two paths. Every preview that
- * would need a CANDIDATE config (the delta plate, the segbar's blast panels)
- * is therefore still ABSENT rather than approximated, and this task's report
- * names it as unchanged.
+ * `.my_context/config.json` is guarded by a deny hook and nothing on this
+ * screen writes it — the hook's own words are `cfg.nocmd`'s: *"changes to
+ * `.my_context/config.json` are the user's to make — ask, do not edit."* Each
+ * pane therefore ends in a **settle step** with three parts and no fourth:
  *
- * That absence is not new: the mockup binding for this task already records
- * three things it cannot produce as written
- * (`docs/superpowers/plans/2026-08-16-web-ui-2-palette-and-work.md` · `Three things this task cannot produce as written — the delta rows, three previews behind` · ~3068).
- * Two of the three are the delta plate and the segbar's blast panels, and the
- * missing POST is the mechanism behind both.
+ *   1. the exact bytes, as a `<pre class="m">` block indented to be pasted
+ *      INTO the object (`jsonBlock`), beside
+ *   2. the ABSOLUTE path the endpoint reported — `config.path`, the file this
+ *      server actually read, never the mockup's abbreviated
+ *      `.my_context/config.json`, which is a guess for a workspace elsewhere
+ *      on disk — and its Copy control, and
+ *   3. ONE composed command line and the house's single Copy-and-Execute
+ *      control, which is what turns a paste into a settled change: it is the
+ *      command that CONFIRMS the edit took (`plan:config seq:4`: *"what to run
+ *      afterwards to confirm it took"*).
  *
- * **The `.delta` and `.blast` rules are also not in `styles.css`.** Measured:
- * the mockup declares `.delta`, `.delta .was`, `.delta .will`, `.delta .arrow`,
- * `.delta.gain`, `.delta.loss`, `.blast`, `.blast.warn`, `.blast.crit` and
- * `.blast b` in its own `<style>` — ten rules, at
- * (`docs/design/web-ui-mockup.html` · `.delta{display:flex;gap:var(--sp-2);align-items:baseline;font-size:var(--fs-1);padding-block:3px}` · ~991)
- * and ~1010 — and `src/ui/public/styles.css` carries none of the ten (grepped:
- * neither `delta` nor `blast` appears in it outside prose). Drawing those rows
- * here would emit unstyled markup — a flex row with no flex, a blast panel with
- * no border — so the pairing they exist to show is drawn where the mockup ALSO
- * draws it and where the CSS does exist: the Budgets table's `6000 → 8000` cell.
- * Carrying the eight rules across is a `styles.css` edit, which this task does
- * not own; it is in the report.
+ * Part 3 is `screens/work.js`'s pattern exactly — `PALETTE` + `commandFor` +
+ * `composeCommand` + `commandActions`, the same four pieces the Review queue
+ * ships, so the line a reader sees and the argv the confirm rebuilds are one
+ * computation rendered twice. `verifyPlan` is this file's `revisionPlan`.
  *
- * ── WHAT IS SERVED AND DELIBERATELY NOT DRAWN ──────────────────────────────
+ * **Three panes compose a line and one deliberately does not.** No `mycontext`
+ * command reads or writes a budget — that is `cfg.nocmd`, still true and still
+ * on screen — so the Budgets pane composes NO command line, and drawing one
+ * there would be a fake receipt for the one subject the CLI cannot report. What
+ * it has instead is the write ruled in on 2026-08-27 (`plan:budget seq:5`,
+ * `DEC-the-ui-writes-budgets-and-the-simulator-always-meant-to`): the
+ * `BUDGETS_ID` branch of `src/ui/execute.ts`, behind the same `GET
+ * /api/execute/confirm` / `POST /api/execute` pair every boundary command uses.
+ * That is unchanged by this rewrite, down to the field-by-field confirm.
  *
- * `resolved.ui` arrives on every response and appears nowhere below. `ui.enabled`
- * is accepted, strictly validated, documented — and read by nothing. That is
- * TASK-ui-enabled-is-accepted-strictly-validated-and-read-by (plan:rulings
- * seq:42), OPEN at the time this was written, in its own words: *"So the key
- * parses, is strictly validated, is documented, and no code reads it. A user
- * who sets it to false gets a UI anyway."* It is cited by id rather than in the
- * `file · fragment · ~line` form because it lives in the corpus at the outer
- * repository root, which is not a path inside this package. A configuration screen that drew
- * the control would be asserting the setting works, in the one surface built to
- * end exactly that kind of silence. The mockup draws no `ui` block either, so
- * nothing is lost by waiting for the ruling.
+ * The three lines, and why each one is the receipt for its own subject:
  *
- * `resolved.categories` carries `agentEdits` and `enabled` per category and this
- * screen draws neither, because `<section data-p="config">` draws neither — the
- * task's own mockup binding says the `agentEdits` string "appears zero times in
- * it". The mockup is the specification; a control it does not have is not a
- * control this file invents.
+ *   Profile     `mycontext status` — its first line prints `profile "<name>"`
+ *               and the table under it is the per-category count the profile
+ *               decides. Measured on this corpus 2026-08-29: `my_context
+ *               1.0.2: 681 item(s), profile "standard"`.
+ *   Categories  `mycontext list <category>` — the category the pane just
+ *               changed, listed. It refuses BY NAME if the paste left the
+ *               category unresolvable, which is the failure `plan:config
+ *               seq:4` calls the acceptance test.
+ *   Watched     `mycontext doctor` — the self-check, which re-reads
+ *               `config.json` and reports if it no longer loads. Named
+ *               narrowly on purpose: nothing in the CLI PRINTS `watchedDocs`,
+ *               and this file's report says so rather than implying doctor
+ *               checks the globs.
  *
- * `skippedKeys`/`skippedNotice` ARE drawn, and that is a duty rather than a
- * nicety: the field's own words are that *"a surface that shows config to a
- * human and does not print this notice has re-created the silent drop this field
- * exists to end"* (`src/ui/read-model-config.ts` · `own words that "a surface that shows config to a human and does not print` · ~63).
- * The mockup has no slot and no key for it, so it is drawn in the SERVER'S OWN
- * WORDING, unedited — the same treatment `errorNote` gives a refusal
- * (`screens/parts.js` · ``So nothing here is worded: the endpoint's own `error` text is shown as it`` · ~181)
- * — and the missing key is in the report rather than invented into both tables.
+ * ── THE DELTA PLATE AND THE BLAST PANELS, WHICH WERE THE STANDOFF ─────────
  *
- * ── THE PURE HALF, AND WHY IT IS EXPORTED ──────────────────────────────────
+ * `plan:walk seq:10`: config.js would not draw the delta rows because there was
+ * no POST, and `styles.css` would not carry the rules because no module drew
+ * them. **`ctx.post` shipped 2026-08-23 and had zero callers**; the header this
+ * file used to carry still told the next reader the fetcher *"takes a path and
+ * nothing else: no method, no body"*, which is why nobody noticed. It is
+ * corrected here, in the same edit as the first call, which is what
+ * `plan:config seq:2` asked for in those words.
  *
- * `budgetRows`, `jsonBlock` and `policyPositions` take plain data and return
- * plain data: no `document`, no `ctx`, no network. They are what
+ * Every pane's plate is filled by `POST /api/config/preview`, with the pane's
+ * own CANDIDATE config in the body and the shared select grammar in the query
+ * (`selectQuery('session-start', null, 'cold')` — one grammar, the same
+ * `parseSelectQuery` `/api/select` uses). The response shape was VERIFIED
+ * against the running server before a row was drawn, which the task asked for:
+ * `{ governing: { becomesInjected, stopsBeingInjected, unchanged },
+ * agentEdits, scopePolicy, selection: { before, after } }`.
+ *
+ * **Every number on a blast panel is measured server-side or it is not drawn.**
+ * `cfg.spn` rules out the alternative in its own words — *"`scopePolicyFor`
+ * makes its effect computable exactly rather than estimated"* — and
+ * `blastReading` reads TWO destructive answers off that one response rather
+ * than one, which a browser had to catch: see its own docstring for the panel
+ * that said *"No change"* over a budget which had just spilled sixteen items.
+ *
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` decides the
+ * other half: the Watched documents pane draws NO governing count at all and
+ * names itself unmeasured, because `watchedDocs` is read by
+ * `src/hooks/post-tool-use.ts` and by nothing the preview endpoint runs.
+ * Posting a candidate that differs only in `watchedDocs` returns `0 / 0 /
+ * <every item>` — a true zero about a question nobody asked, which is exactly
+ * the reading that standard forbids.
+ *
+ * **The ten `.delta` / `.blast` rules are STILL not in `styles.css`.** They
+ * live only in the mockup's own `<style>` block (`.delta`, `.delta .was`,
+ * `.delta .will`, `.delta .arrow`, `.delta.gain`, `.delta.loss`, `.blast`,
+ * `.blast.warn`, `.blast.crit`, `.blast b` —
+ * `docs/design/web-ui-mockup.html` · `.delta{display:flex;gap:var(--sp-2);align-items:baseline;font-size:var(--fs-1);padding-block:3px}` · ~1250).
+ * Carrying them is a `styles.css` edit and `styles.css` is not this task's file
+ * — the markup is emitted here, unstyled, and the carry is in the report. That
+ * is the right direction for the standoff to break: the stylesheet's own note
+ * says it will not carry rules "for markup nothing renders", and something
+ * renders them now.
+ *
+ * ── WHAT IS SERVED AND DELIBERATELY NOT DRAWN ─────────────────────────────
+ *
+ * `resolved.ui` arrives on every response and appears nowhere below, and that
+ * is now a CHECKED omission rather than an inherited one.
+ * `TASK-ui-enabled-is-accepted-strictly-validated-and-read-by`
+ * (`plan:rulings seq:42`) is still open, in its own words: *"the key parses, is
+ * strictly validated, is documented, and no code reads it. A user who sets it
+ * to false gets a UI anyway."* A pane offering `ui.enabled` would assert the
+ * setting governs something. It governs nothing, so there is no pane. Cited by
+ * id rather than in the `file · fragment · ~line` form because it lives in the
+ * corpus at the outer repository root, which is not a path inside this package.
+ *
+ * `resolved.categories[].enabled` is read but not offered: whether a category
+ * exists at all is what `profile` decides, and a per-category `enabled` toggle
+ * beside a profile picker gives two controls for one outcome with no rule on
+ * screen for which wins. `extraFields` and `updates` are DRAWN as the value in
+ * force and are not composable here — they are a list and a nested object, and
+ * `plan:config seq:3`'s category wizard is where an editor for them belongs.
+ * Both are named in this task's report.
+ *
+ * `skippedKeys`/`skippedNotice` ARE drawn, and that is a duty: the field's own
+ * words are that *"a surface that shows config to a human and does not print
+ * this notice has re-created the silent drop this field exists to end"*
+ * (`src/ui/read-model-config.ts` · `own words that "a surface that shows config to a human and does not print` · ~63).
+ * No string table declares a key for it, so it is drawn in the SERVER'S OWN
+ * WORDING, unedited — the treatment `errorNote` gives a refusal.
+ *
+ * ── THE PURE HALF, AND WHY IT IS EXPORTED ─────────────────────────────────
+ *
+ * `budgetRows`, `jsonBlock`, `policyPositions`, `categoryEntry`, `valueDeltas`,
+ * `blastReading` and `verifyPlan` take plain data and return plain data: no
+ * `document`, no `ctx`, no network. They are what
  * `test/ui/config-screen.test.ts` runs under `node --test`. The DOM glue below
  * them is the stated untested surface (spec §6), and the split is what keeps
- * "which number is struck through" and "what exactly gets pasted" out of it.
+ * "which number is struck through", "what exactly gets pasted" and "which line
+ * would run" out of it.
  */
-import { confirmPath, diffTable, viewsFromEffect } from '/lib/command-actions.js';
-import { fieldView } from '/lib/viewmodel.js';
+import { composeCommand } from '/lib/command.js';
+import { commandActions, confirmPath, diffTable, viewsFromEffect } from '/lib/command-actions.js';
+import { PALETTE, commandFor } from '/lib/palette-defs.js';
+import { fieldView, selectQuery } from '/lib/viewmodel.js';
 import {
-  el, errorNote, mono, raiseSimRange, screenHead, spaced,
+  BOUND_CAP_LIST, boundedList, el, errorNote, mono, num, raiseSimRange, screenHead, spaced,
 } from '/screens/parts.js';
 
 
@@ -125,17 +179,39 @@ import {
 const BUDGET_ID = 'config:budgets';
 
 /**
- * The category whose `scopePolicy` the third card is about.
+ * The category the Categories pane OPENS on.
  *
  * The mockup hard-codes one: `<h3><span class="m">categories.lesson.scopePolicy</span></h3>`.
  * `lesson` is a real catalogue category (measured: present in the resolved
  * config of this repository and of `.demo-corpus`, both on the `standard`
- * profile), so the design of record's own subject is used rather than a
- * category picked here — and if a config ever resolves without it,
- * `policyPositions` answers `null` and the card is not drawn at all rather than
- * heading itself with a category that does not exist.
+ * profile), so the design of record's own subject is the opening selection
+ * rather than a category picked here — and a config that resolves without it
+ * opens on whatever its first category is instead, never on a heading naming a
+ * category that does not exist.
  */
 export const SP_CATEGORY = 'lesson';
+
+/** An error's message, however it arrived. */
+function message(error) {
+  return error && error.message ? error.message : String(error);
+}
+
+/**
+ * `POST /api/config/preview?…` — the ONE path this screen previews through.
+ *
+ * The query is the shared select grammar, built by the shared builder, because
+ * `parseSelectQuery` is the same parser `/api/select`, `/api/render` and
+ * `/api/simulate` read and a second spelling of `event=…&cold=1` here is how
+ * two of them come to disagree about what a preview is a preview OF.
+ *
+ * `session-start` and `cold=1`: a brand-new session's answer. That is the
+ * question a configuration change is actually about — what the NEXT session
+ * gets — and it is the one question that needs no session id, so the pane never
+ * has to ask a reader which session they meant before it can answer.
+ */
+function previewPath() {
+  return `/api/config/preview?${selectQuery('session-start', null, 'cold')}`;
+}
 
 /**
  * The Budgets table's five rows: `{ key, was, will }`, where `was` is `null`
@@ -144,16 +220,15 @@ export const SP_CATEGORY = 'lesson';
  * **The pair is the row** — `cfg.deltan`'s whole argument, in the mockup's own
  * words: *"Each row is the pair, not the direction alone… 'What was it before'
  * is half of 'what changes'."* Here `was` is the SHIPPED DEFAULT and `will` is
- * what this config resolves to, which is a different pairing from the mockup's
- * (its `6000 → 8000` is an edit in flight, and an edit in flight needs
- * `POST /api/config/preview`). It is the one before→after `GET /api/config`
- * can actually answer, and it answers it exactly: `meta.defaultBudgets` is
+ * what this config resolves to, which is a different pairing from the delta
+ * plate's (that one is an edit in flight, and an edit in flight is what
+ * `POST /api/config/preview` answers). `meta.defaultBudgets` is
  * `DEFAULT_BUDGETS` itself, passed through
  * (`src/ui/read-model-config.ts` · `  defaultBudgets: DEFAULT_BUDGETS,` · ~107).
  *
  * The key ORDER comes from the defaults object, never from a list written here:
  * `BUDGET_KEYS` is derived from `DEFAULT_BUDGETS` on the server too
- * (`src/core/config.ts` · `const BUDGET_KEYS = Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[];` · ~525),
+ * (`src/core/config.ts` · `const BUDGET_KEYS = Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[];` · ~1252),
  * so a sixth budget appears in this table the day it is added and no second
  * spelling of the tier list has to be found and edited.
  */
@@ -176,8 +251,8 @@ export function budgetRows(budgets, defaults) {
  * brace at two, which is the mockup's own shape and is asserted against the
  * mockup's bytes in `test/ui/config-screen.test.ts`.
  *
- * The KEY goes through `JSON.stringify` as well. It is a constant at both call
- * sites, so nothing here needs escaping today — and a composer that hand-wrote
+ * The KEY goes through `JSON.stringify` as well. It is a constant at every call
+ * site, so nothing here needs escaping today — and a composer that hand-wrote
  * its own quotes would be the one place in this file that could emit invalid
  * JSON for a value it did not expect.
  */
@@ -198,10 +273,10 @@ export function jsonBlock(key, value) {
  * refusal prints. The mockup happens to draw `global`/`required`/`inert`, which
  * is that order — checked, not assumed.
  *
- * `current` is what the CONFIG resolves to, so the pressed position is a
- * READING and not a selection: moving it would have to answer "and what would
- * that do to this corpus", which is `POST /api/config/preview` and is the
- * card's absent half. See `render` for what that costs the control.
+ * `current` is what the CONFIG resolves to. Since 2026-08-29 the bar is a
+ * CONTROL rather than a reading: moving it composes a candidate and asks
+ * `POST /api/config/preview` "and what would that do to this corpus", which is
+ * the question that used to have no answer and is why the bar shipped disabled.
  */
 export function policyPositions(categories, policies, name) {
   const category = (categories ?? []).find((c) => c.name === name);
@@ -214,7 +289,338 @@ export function policyPositions(categories, policies, name) {
 }
 
 /**
- * **The Budgets card's Write control — a second, narrower control beside
+ * The `categories` block a paste has to carry — **an ENTRY INSIDE the object,
+ * never a top-level key**, which `plan:config seq:4` names as the acceptance
+ * test for the whole composer: *"the file already HAS a categories object, so
+ * the block is an entry inside it and not a top-level key — getting that wrong
+ * produces invalid JSON and a refusal that reads like the wizard was wrong."*
+ *
+ * The entry is the RAW file's entry for that category, extended by the fields
+ * the reader moved. Raw and not resolved, and that is the whole of the care
+ * this function takes: `resolved` carries every field the catalogue supplied
+ * as well as the ones the file states, so pasting a resolved entry back would
+ * freeze twenty-four defaults into the user's file and silently opt them out of
+ * every future catalogue change. What the file said, plus what was changed, is
+ * the only merge that leaves the file saying what its author meant.
+ *
+ * A category the raw file has never mentioned starts from `{}`, which is the
+ * same rule one level down.
+ */
+export function categoryEntry(raw, name, changed) {
+  const declared = raw && typeof raw === 'object' && raw.categories
+    && typeof raw.categories === 'object' && !Array.isArray(raw.categories)
+    ? raw.categories[name]
+    : undefined;
+  const base = declared && typeof declared === 'object' && !Array.isArray(declared) ? declared : {};
+  return { ...base, ...changed };
+}
+
+/**
+ * The neutral rows of a delta plate: one per configuration VALUE that moved.
+ *
+ * `{ path, was, will }`, compared as text, because these are values a person
+ * typed into a form and `4000` from an `<input>` and `4000` from JSON are the
+ * same edit. A key present in `after` and absent from `before` carries
+ * `was: null`, which `deltaRow` draws as the arrow alone — the mockup's own
+ * treatment for a value that had no previous half.
+ *
+ * It reports what the FILE would say, never what the corpus would do. The
+ * second half is the server's answer and arrives beside these rows; keeping the
+ * two apart is what stops this function growing an opinion about a corpus it
+ * cannot see.
+ */
+export function valueDeltas(before, after) {
+  const rows = [];
+  for (const path of Object.keys(after ?? {})) {
+    const was = (before ?? {})[path];
+    const will = after[path];
+    if (was !== undefined && String(was) === String(will)) continue;
+    rows.push({ path, was: was === undefined ? null : String(was), will: String(will) });
+  }
+  return rows;
+}
+
+/**
+ * The blast panel's FACE, its level and its counts, read off the preview.
+ *
+ * `cfg.spn` states what this panel is: *"how much of the corpus stops working
+ * if this value changes"*. **Two different answers can be true of that
+ * sentence, and reading only one of them shipped a wrong panel** — measured in
+ * a browser on 2026-08-29, before this function had its second clause. Dropping
+ * `budgets.pinned` from 16,000 to 4,000 on the live corpus moved delivery from
+ * 25 items to 9 and spills from 1 to 17, and the panel said *"No change — this
+ * is the configuration in force"*, because `governing` is about ELIGIBILITY and
+ * a budget never moves `injection()`'s answer. The plate above it was drawing
+ * the loss in three rows while the panel underneath denied it.
+ *
+ * So there are two destructive readings and they are ranked rather than netted:
+ *
+ *   `stops`   an item stops GOVERNING — a rule that is no longer enforced
+ *             anywhere, whatever the budgets are. The stronger claim, so it
+ *             wins when both are true.
+ *   `spills`  an item still governs and no longer FITS. `select` is what the
+ *             hook runs, so `selection.after` is what would actually start
+ *             spilling rather than an estimate of it.
+ *
+ * their two mirrors `starts` and `fits`, which only add, and one reading that
+ * is neither — `edits`, which is `agentEdits` moving. **That one was the SAME
+ * defect a second time and was caught the same way**: `agentEditsFor` is one of
+ * the three lookups the preview runs, it names every item of the category it
+ * moves, and none of the other four faces can ever fire on it — an
+ * `allow`→`review` change moves neither `injection()` nor `select()`, so a
+ * panel reading only those two said "No change" over a measured list of
+ * thirty-eight items. `none` is a MEASURED zero and is drawn and named as one
+ * rather than left blank; it now means all three lookups agreed.
+ *
+ * Every number is a length or a count the server computed by running the real
+ * functions — `injection()` twice per item, `select()` twice over the same
+ * items and context — so nothing here estimates anything. A malformed answer
+ * degrades to zeros AND to `none` together, so a panel can never say "0 items"
+ * in a crit face.
+ */
+export function blastReading(preview) {
+  const answer = preview ?? {};
+  const governing = answer.governing ?? {};
+  const list = (value) => (Array.isArray(value) ? value : []);
+  const stops = list(governing.stopsBeingInjected).length;
+  const becomes = list(governing.becomesInjected).length;
+  const unchanged = Number.isFinite(governing.unchanged) ? governing.unchanged : 0;
+  const selection = answer.selection ?? {};
+  const delivered = (side) => list((selection[side] ?? {}).full).length;
+  const dropped = Math.max(0, delivered('before') - delivered('after'));
+  const added = Math.max(0, delivered('after') - delivered('before'));
+  // Every item of every category whose `agentEdits` moved — the server's own
+  // list, not a re-count: it filtered `i.type === name` itself, and spec §4's
+  // rule for this answer is that "17 items" is a number a reader has to trust
+  // and a list is one they can check.
+  const edited = list(answer.agentEdits)
+    .reduce((total, row) => total + list(row.items).length, 0);
+  const counts = { stops, becomes, dropped, added, edited, unchanged };
+  if (stops > 0) return { face: 'stops', level: 'crit', n: stops, ...counts };
+  if (dropped > 0) return { face: 'spills', level: 'crit', n: dropped, ...counts };
+  if (becomes > 0) return { face: 'starts', level: 'warn', n: becomes, ...counts };
+  if (edited > 0) return { face: 'edits', level: 'warn', n: edited, ...counts };
+  if (added > 0) return { face: 'fits', level: 'warn', n: added, ...counts };
+  return { face: 'none', level: 'none', n: 0, ...counts };
+}
+
+/**
+ * The line a pane composes, as a catalogue id, a value bag and an argv — the
+ * same triple `screens/work.js`'s `revisionPlan` returns, for the same reason.
+ *
+ * It goes through `commandFor` + `composeCommand` like every other composed
+ * line in this UI, so the quoting has a single implementation
+ * (`src/ui/public/lib/command.js` · `// Command-string composition for every composed write in the UI — the ONE` · ~1)
+ * and a category name carrying a space is quoted before it ever reaches a
+ * clipboard.
+ *
+ * It THROWS on a name the catalogue does not declare rather than composing a
+ * line from a literal array. A second spelling of a command whose flag set was
+ * verified against the real argument parser exactly once is how the two come to
+ * disagree, and the confirm's whole job is that they cannot.
+ */
+export function verifyPlan(name, values = {}) {
+  const def = PALETTE.find((entry) => entry.name === name);
+  if (def === undefined) {
+    throw new Error(`config: the command catalogue declares no "${name}"`);
+  }
+  return { id: def.name, values, argv: commandFor(def, values) };
+}
+
+/**
+ * `<div class="segbar">` with one `<button aria-pressed>` per legal value —
+ * the house's own picker for a closed vocabulary, and the control the mockup
+ * itself draws for `scopePolicy`.
+ *
+ * `role="group"` with `aria-label` names the set, because buttons whose meaning
+ * is "which of us is chosen" are a group and not unrelated controls.
+ * `aria-pressed` rather than `aria-checked`: these are toggle buttons, not
+ * radios in a form, and `.segbar button[aria-pressed="true"]` is the rule that
+ * gives the chosen one its gold face.
+ *
+ * The button's TEXT is the value itself — `global`, `normative`, `standard` —
+ * and is deliberately not translated: these are the literals the loader
+ * accepts and the refusal prints, so a Hebrew label would teach a vocabulary
+ * `config.json` does not have. The same call `work.js` makes about its `stale`
+ * chip, in the direction that is unambiguously right here.
+ */
+function segbar(ariaLabel, values, chosen, pick) {
+  const bar = el('div', 'segbar');
+  bar.setAttribute('role', 'group');
+  bar.setAttribute('aria-label', ariaLabel);
+  const buttons = [];
+  for (const value of values ?? []) {
+    const button = el('button', null, value);
+    button.type = 'button';
+    // Read by `e2e/` to press one position without depending on its WORDING.
+    // The same reason `parts.js` stamps `data-step` on its paging controls.
+    button.dataset.value = value;
+    button.setAttribute('aria-pressed', String(value === chosen()));
+    button.addEventListener('click', () => {
+      if (value === chosen()) return;
+      pick(value);
+      for (const [held, node] of buttons) {
+        node.setAttribute('aria-pressed', String(held === chosen()));
+      }
+    });
+    buttons.push([value, button]);
+    bar.append(button);
+  }
+  return bar;
+}
+
+/**
+ * A free-text field, with the value IN FORCE as its placeholder.
+ *
+ * That placeholder is the owner's requirement rather than a nicety: *"where
+ * free text is unavoidable there are explanatory instructions about the value
+ * and a default or recommended value as a PLACEHOLDER before the user types."*
+ * It is `.globin` — the stylesheet's existing input, defined for the
+ * Composer's glob field and the only themed text input this sheet ships, so
+ * this screen adds no selector `styles.css` would have to gain.
+ *
+ * `change` and not `input`: the field's job is to compose a candidate and ask
+ * the server what it would do, and a preview per keystroke is a request storm
+ * answering questions nobody finished asking.
+ */
+function textField(label, placeholder, value, settle) {
+  const input = el('input', 'globin');
+  input.type = 'text';
+  input.value = value;
+  input.setAttribute('placeholder', placeholder);
+  input.setAttribute('aria-label', label);
+  input.addEventListener('change', () => settle(input.value));
+  return input;
+}
+
+/** A labelled control: the keyed sentence, then the control under it. */
+function field(ctx, key, control) {
+  const wrap = el('div');
+  const label = el('p', 'small');
+  label.append(...ctx.t(key));
+  wrap.append(label, control);
+  return spaced(wrap);
+}
+
+/**
+ * One `.delta` row — `label was → will`, tinted by direction.
+ *
+ * `.was` is struck through and `.will` is highlighted; the classes are the
+ * mockup's own and are used verbatim, because the pairing is the argument:
+ * *"a lone `+1` chip keeps the direction while losing the pairing"*. A row
+ * with no `was` draws the arrow and the new value alone, which is what the
+ * mockup's own `deltaRow(kind, label, null, will)` branch does.
+ */
+function deltaRow(row) {
+  const box = el('div', row.kind ? `delta ${row.kind}` : 'delta');
+  box.append(row.label());
+  if (row.was !== null) box.append(el('span', 'was', row.was));
+  box.append(el('span', 'arrow', '→'), el('span', 'will', row.will));
+  return box;
+}
+
+/**
+ * The blast panel: `<div class="blast"><b>headline</b><span>detail</span>`,
+ * the mockup's own three faces.
+ *
+ * Every slot it substitutes is a count the server measured. The `none` face is
+ * a drawn, named zero — `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-
+ * thing-is` — and the `unmeasured` face is that standard's other clause: it
+ * carries NO count at all, because the question this pane's subject raises is
+ * one no endpoint answers.
+ */
+function blastPanel(ctx, blast, extra) {
+  const faces = {
+    none: ['blast', 'cfg.blast0', 'cfg.blast0n'],
+    starts: ['blast warn', 'cfg.blastw', 'cfg.blastwn'],
+    edits: ['blast warn', 'cfg.blaste', 'cfg.blasten'],
+    fits: ['blast warn', 'cfg.blasta', 'cfg.blastan'],
+    stops: ['blast crit', 'cfg.blastc', 'cfg.blastcn'],
+    spills: ['blast crit', 'cfg.blasts', 'cfg.blastsn'],
+    unmeasured: ['blast', 'cfg.blastu', 'cfg.blastun'],
+  };
+  const [cls, headKey, noteKey] = faces[blast.face];
+  const box = el('div', cls);
+  const slots = { n: String(blast.n), unchanged: String(blast.unchanged) };
+  const headline = el('b');
+  headline.append(...ctx.t(headKey, slots));
+  const detail = el('span');
+  detail.append(...ctx.t(noteKey, slots));
+  box.append(headline, detail);
+  if (extra) box.append(extra);
+  return box;
+}
+
+/**
+ * The per-item half of a delta plate: one `.delta.gain` per item that starts
+ * governing, one `.delta.loss` per item that stops.
+ *
+ * BOUNDED, through the shared bound rather than a slice: a profile change moves
+ * sixty-six items on this corpus, measured, and an unbounded list is the defect
+ * `boundedList` exists to end. `order: 'position'` because these arrive in the
+ * STORE's order, which is a property of the corpus and not a time series —
+ * `'recent'` would promise a newest-first reading this answer does not carry.
+ */
+function governanceRows(ctx, plate, preview) {
+  const list = (value) => (Array.isArray(value) ? value : []);
+  const items = [
+    ...list((preview.governing ?? {}).becomesInjected)
+      .map((item) => ({ kind: 'gain', id: item.id, wasKey: 'cfg.notgov', willKey: 'cfg.gov' })),
+    ...list((preview.governing ?? {}).stopsBeingInjected)
+      .map((item) => ({ kind: 'loss', id: item.id, wasKey: 'cfg.gov', willKey: 'cfg.notgov' })),
+  ];
+  if (items.length === 0) return;
+  const host = el('div');
+  const bound = boundedList(ctx, host, items, (item) => {
+    const box = el('div', `delta ${item.kind}`);
+    box.append(mono(item.id));
+    box.append(el('span', 'was', ctx.tFlat(item.wasKey)));
+    box.append(el('span', 'arrow', '→'), el('span', 'will', ctx.tFlat(item.willKey)));
+    return box;
+  }, { cap: BOUND_CAP_LIST, order: 'position' });
+  plate.append(host, bound);
+}
+
+/**
+ * The three rows that summarise the SELECTION — what the real selector did,
+ * twice, over the same items and the same context.
+ *
+ * `select` is what the hook runs, so `after.spilled` is what would actually
+ * start spilling rather than an estimate of it. Drawn only where a figure
+ * MOVED: three identical rows under a change that touched none of them would
+ * be three restatements of "nothing happened", which the blast panel above
+ * already says once.
+ *
+ * The token counts carry group separators and the budgets table does not. That
+ * asymmetry is the mockup's own — `6000` in the table, `4,260` in the plate —
+ * and it is right: the table is the digits a person types into a file, and a
+ * separator there is a number they cannot paste back.
+ */
+function selectionRows(ctx, selection) {
+  const before = selection?.before ?? {};
+  const after = selection?.after ?? {};
+  const size = (value) => (Array.isArray(value) ? value.length : 0);
+  const pairs = [
+    { key: 'cfg.delivered', was: size(before.full), will: size(after.full), up: 'gain' },
+    { key: 'cfg.spilledn', was: size(before.spilled), will: size(after.spilled), up: 'loss' },
+    { key: 'cfg.tokensn', was: Number(before.tokens ?? 0), will: Number(after.tokens ?? 0), up: null },
+  ];
+  return pairs.filter((pair) => pair.was !== pair.will).map((pair) => ({
+    kind: pair.up === null
+      ? null
+      : (pair.will > pair.was ? pair.up : (pair.up === 'gain' ? 'loss' : 'gain')),
+    label: () => {
+      const span = el('span');
+      span.append(...ctx.t(pair.key));
+      return span;
+    },
+    was: num(pair.was),
+    will: num(pair.will),
+  }));
+}
+
+/**
+ * **The Budgets pane's Write control — a second, narrower control beside
  * `commandActions`, not a reuse of it.**
  *
  * `commandActions` draws a `<code>` line (the argv) and a Copy button beside
@@ -279,7 +685,7 @@ function budgetSaveControl(ctx, inputs) {
     try {
       answer = await ctx.api(confirmPath(BUDGET_ID, values, ctx.lang));
     } catch (error) {
-      say(errorNote(error && error.message ? error.message : String(error)));
+      say(errorNote(message(error)));
       return;
     }
 
@@ -313,7 +719,7 @@ function budgetSaveControl(ctx, inputs) {
       try {
         outcome = await ctx.post('/api/execute', { id: BUDGET_ID, values, nonce: answer.nonce });
       } catch (error) {
-        say(errorNote(error && error.message ? error.message : String(error)));
+        say(errorNote(message(error)));
         return;
       }
       say(el('span', null, ctx.tFlat('cfg.saved')));
@@ -346,6 +752,163 @@ function budgetSaveControl(ctx, inputs) {
   return root;
 }
 
+/**
+ * **One pane, for one configuration subject** — the shape `plan:config seq:1`
+ * specified, built once and called four times.
+ *
+ * A pane is its heading, its explanatory sentence, its controls, its own
+ * "What changes" plate and its own settle step. Nothing is shared between two
+ * panes at runtime: each holds its own draft, composes its own candidate and
+ * asks its own preview, so a reader who moves a budget sees no rows appear
+ * under Profile.
+ *
+ * `spec` is the pane's whole contract:
+ *
+ *   `key`        the `data-pane` a browser test addresses it by.
+ *   `head`       its heading, `note` its sentence — THUNKS, never key strings.
+ *                A key reached through a variable is invisible to
+ *                `test/ui/config-screen.test.ts`'s scanner, which finds the
+ *                keys a screen names by matching a literal `ctx.t(` call
+ *                against this file's own bytes; a key missing from the Hebrew
+ *                table throws at render time, in Hebrew only, which is the
+ *                failure nobody sees until a reader reports a blank screen.
+ *                `screens/work.js`'s `LABEL` table is the same device.
+ *   `controls`   builds the controls, given the repaint to call on a change.
+ *   `values`     the `{ path: value }` the FILE would say — the neutral rows.
+ *   `base`       the same paths as the file says them NOW — a thunk for the
+ *                same reason `values` is, because on the Categories pane BOTH
+ *                sides move with the picker.
+ *   `block`      `{ key, value }` for `jsonBlock` — the bytes to paste.
+ *   `candidate`  the whole candidate config, or `null` for a subject whose
+ *                reach no endpoint measures.
+ *   `command`    the line the settle step offers, or `null`.
+ *   `plateId`    the mockup's own id for this plate, where it has one.
+ *   `extra`      a node appended inside the blast panel (the scope-policy
+ *                pane's unscoped-item count).
+ *
+ * **The plate is repainted whole on every change, never patched.** The rows,
+ * the counts and the panel's own face all belong to ONE candidate; rewriting
+ * a number in place and leaving the border colour alone is precisely the "says
+ * one thing, means another" defect the panel exists to prevent, arriving from
+ * the other side. `token` discards an answer that arrives after a newer one
+ * was asked, so a slow preview of an abandoned draft cannot overwrite a fresh
+ * one.
+ */
+function composerPane(ctx, config, spec) {
+  const card = el('div', 'card pane');
+  card.dataset.pane = spec.key;
+
+  const head = el('h3');
+  head.append(...spec.head());
+  const note = el('p', 'small');
+  note.append(...spec.note());
+  card.append(head, note);
+
+  const effectHead = el('h3');
+  effectHead.append(...ctx.t('cfg.effect'));
+  const plate = el('div', 'plate');
+  if (spec.plateId) plate.id = spec.plateId;
+
+  const applyHead = el('h3');
+  applyHead.append(...ctx.t('cfg.apply'));
+  const pre = el('pre', 'm');
+  // The mockup's compose-and-copy row, with the ABSOLUTE path the endpoint
+  // reports rather than the abbreviated `.my_context/config.json`: `path` is
+  // the file this server actually read, and a workspace elsewhere on disk
+  // makes the abbreviation a guess.
+  //
+  // A copy that fails says so, in the platform's own words — the treatment
+  // `screens/doctor.js` established, for the reason it records: the mockup's
+  // own "Copied"/"Copy failed" label swap is an unkeyed ternary in its script,
+  // so neither string table can carry it, and inventing the two keys here
+  // would fail the parity check.
+  const cmd = el('div', 'cmd');
+  const code = el('code', null, config.path);
+  const copy = el('button');
+  copy.type = 'button';
+  copy.append(...ctx.t('btn.copypatch'));
+  cmd.append(code, copy);
+
+  const settle = el('div');
+
+  let token = 0;
+  let pasteText = '';
+
+  copy.addEventListener('click', () => {
+    // Composed and copied, never applied. The user's own editor is the only
+    // thing that ever writes this file — which is what keeps the deny hook's
+    // rule about `.my_context/config.json` true of this UI as well.
+    navigator.clipboard.writeText(pasteText).catch((error) => {
+      cmd.after(errorNote(message(error)));
+    });
+  });
+
+  const paint = async () => {
+    const block = spec.block();
+    pasteText = jsonBlock(block.key, block.value);
+    pre.textContent = pasteText;
+
+    // The composed line is rebuilt with the draft, because its ARGUMENT can
+    // move with the controls — `mycontext list <category>` names whichever
+    // category the pane is showing. Built inside a `try`: a pane that cannot
+    // compose its line still has a plate worth reading, and the refusal is
+    // drawn where the line would have been.
+    settle.replaceChildren();
+    if (spec.command !== null) {
+      try {
+        const plan = spec.command();
+        const box = el('div', 'cmd');
+        box.append(el('code', null, composeCommand(plan.argv)));
+        settle.append(box, commandActions({
+          argv: plan.argv, id: plan.id, values: plan.values, ctx,
+        }));
+      } catch (error) {
+        settle.append(errorNote(message(error)));
+      }
+    }
+
+    const rows = valueDeltas(spec.base(), spec.values());
+    const candidate = spec.candidate();
+    if (candidate === null) {
+      plate.replaceChildren();
+      for (const row of rows) plate.append(deltaRow(neutral(row)));
+      plate.append(blastPanel(ctx, { face: 'unmeasured', level: 'none', n: 0, unchanged: 0 }));
+      return;
+    }
+
+    const mine = ++token;
+    let answer;
+    try {
+      answer = await ctx.post(previewPath(), { candidate });
+    } catch (error) {
+      if (mine !== token) return;
+      // The endpoint's own wording, unedited. A candidate the loader refuses
+      // comes back as `resolveConfig`'s message verbatim, which is the same
+      // sentence the CLI prints — the property `apiConfigPreview` was built to
+      // have, and a paraphrase here would be a second wording for one refusal.
+      plate.replaceChildren(errorNote(message(error)));
+      return;
+    }
+    if (mine !== token) return;
+
+    plate.replaceChildren();
+    for (const row of rows) plate.append(deltaRow(neutral(row)));
+    for (const row of selectionRows(ctx, answer.selection)) plate.append(deltaRow(row));
+    governanceRows(ctx, plate, answer);
+    plate.append(blastPanel(ctx, blastReading(answer), spec.extra ? spec.extra(answer) : null));
+  };
+
+  const controls = spec.controls(paint);
+  card.append(controls, effectHead, plate, applyHead, pre, cmd, settle);
+  void paint();
+  return card;
+}
+
+/** A value row, as `deltaRow` takes it: the config path drawn as a mono run. */
+function neutral(row) {
+  return { kind: null, label: () => mono(row.path), was: row.was, will: row.will };
+}
+
 export async function render(root, ctx) {
   root.replaceChildren();
   screenHead(ctx, root, 'cfg.h', 'cfg.v', 'cfg.sub');
@@ -358,10 +921,10 @@ export async function render(root, ctx) {
     // new value"*. Nothing is cached here; `render` runs per navigation.
     config = await ctx.api('/api/config');
   } catch (error) {
-    // INSTEAD of the four cards, never beside them. A config that could not be
-    // read and a config with nothing unusual in it are opposite facts, and four
-    // cards of defaults would report the second one.
-    root.append(errorNote(error.message));
+    // INSTEAD of the panes, never beside them. A config that could not be read
+    // and a config with nothing unusual in it are opposite facts, and four
+    // panes of defaults would report the second one.
+    root.append(errorNote(message(error)));
     return;
   }
 
@@ -385,190 +948,349 @@ export async function render(root, ctx) {
     return;
   }
   const resolved = config.resolved;
+  const meta = config.meta;
+  // The RAW file, which is what a candidate is built from and what a paste
+  // edits. `structuredClone` per pane below, so one pane's draft can never
+  // reach another's candidate through a shared object.
+  const raw = config.raw !== null && typeof config.raw === 'object' && !Array.isArray(config.raw)
+    ? config.raw
+    : {};
 
   // R14.2's disclosure, in the one sentence `skippedKeyNotice` composes. Drawn
-  // above the cards because it is about the FILE rather than about any one
+  // above the panes because it is about the FILE rather than about any one
   // setting, and drawn at all because the alternative is the silent drop the
   // field exists to end. Empty for every config this build fully understands,
-  // which is nearly all of them — measured empty on `.demo-corpus`.
+  // which is nearly all of them — measured empty on this repository and on
+  // `.demo-corpus`.
   if (resolved.skippedKeys.length > 0) {
     root.append(el('p', 'small', resolved.skippedNotice));
   }
 
-  const two = el('div', 'two');
-  root.append(two);
+  // `cfg.deltan` is the design of record's argument for the ROW SHAPE, and it
+  // is drawn ONCE, here, rather than under each of the four plates: it explains
+  // how every plate on the screen reads, and four copies of one paragraph is a
+  // screen arguing with itself.
+  const deltaNote = el('p', 'small');
+  deltaNote.append(...ctx.t('cfg.deltan'));
+  root.append(spaced(deltaNote));
 
-  // ── Card 1: Budgets ───────────────────────────────────────────────────────
+  // ── Pane 1: Profile ──────────────────────────────────────────────────────
+  // A closed set of two, served as `meta.profiles` — `Object.keys(PROFILES)`,
+  // passed through. The segbar is the whole control; there is no free text on
+  // this subject at all.
+  let profile = resolved.profile;
+  const profilePane = composerPane(ctx, config, {
+    key: 'profile',
+    head: () => ctx.t('cfg.profile'),
+    note: () => ctx.t('cfg.profilen'),
+    plateId: null,
+    controls: (paint) => field(ctx, 'cfg.inforce', segbar(
+      ctx.tFlat('cfg.profile'), meta.profiles, () => profile,
+      (value) => { profile = value; void paint(); },
+    )),
+    base: () => ({ profile: resolved.profile }),
+    values: () => ({ profile }),
+    block: () => ({ key: 'profile', value: profile }),
+    candidate: () => ({ ...structuredClone(raw), profile }),
+    // `mycontext status` prints `profile "<name>"` on its first line and the
+    // per-category table under it — the two things this pane changes, in one
+    // read. Measured on this corpus 2026-08-29.
+    command: () => verifyPlan('status'),
+    extra: null,
+  });
+
+  // ── Pane 2: Budgets ──────────────────────────────────────────────────────
   // The mockup's table, row for row: `<td class="m">jit</td>` and a value cell
-  // that is either the number or the PAIR, `6000 → <b>8000</b>`.
+  // that is either the number or the PAIR, `6000 → <b>8000</b>`, plus one
+  // `<input type="number">` per row in a third column.
   //
   // Numbers are drawn WITHOUT group separators, which is the mockup's own
   // choice here and not an oversight of `num()`: `<section data-p="config">`
   // writes `6000` in this table and `6,000` in the delta plate. The table is
   // the file's literal value — the digits a user types into `config.json` — and
   // a separator in that cell would be a number they cannot paste back.
-  const budgetCard = el('div', 'card pane');
-  const budgetHead = el('h3');
-  budgetHead.append(...ctx.t('cfg.budgets'));
-  const budgetTable = el('table');
-  const budgetBody = el('tbody');
-  // One `<input type="number">` per row, in the third column — the field this
-  // task adds. `min="1"` and `step="1"` are a UX hint only; the SERVER is the
-  // validator (`requirePositiveIntegerBudget`, `src/core/budgets-write.ts`),
-  // refusing by name rather than clamping, and a browser that skipped this
-  // attribute would still be refused correctly. Pre-filled with `row.will` —
-  // what the file resolves to right now — never `row.was`, the default.
   const budgetInputs = {};
-  for (const row of budgetRows(resolved.budgets, config.meta.defaultBudgets)) {
-    const tr = el('tr');
-    const value = el('td', 'm');
-    if (row.was === null) {
-      value.append(String(row.will));
-    } else {
-      // `<b>` on the value in force, exactly as the mockup bolds the new half
-      // of its pair: the default is context, the resolved value is what runs.
-      value.append(`${row.was} → `, el('b', null, String(row.will)));
-    }
-    const input = el('input', 'm');
-    input.type = 'number';
-    input.min = '1';
-    input.step = '1';
-    input.value = String(row.will);
-    input.setAttribute('aria-label', `budgets.${row.key}`);
-    budgetInputs[row.key] = input;
-    const editCell = el('td');
-    editCell.append(input);
-    tr.append(el('td', 'm', row.key), value, editCell);
-    budgetBody.append(tr);
-  }
-  budgetTable.append(budgetBody);
-  budgetCard.append(budgetHead, budgetTable, budgetSaveControl(ctx, budgetInputs));
-
-  // ── Card 2: What changes ──────────────────────────────────────────────────
-  // The plate is EMPTY, and that is the honest state rather than an omission.
-  // Its rows are a before→after of an edit in flight — `STD-api-errors…
-  // spilled → delivered` — computed by `POST /api/config/preview` running the
-  // real selector twice. No edit can be in flight on a screen whose fetcher
-  // cannot POST, so there is nothing to put in it; and the six `.delta*` rules
-  // are absent from `styles.css` besides (header). The note stays, because it
-  // is the design of record's argument for the shape and it is still true of
-  // the pair drawn in the Budgets card beside it.
-  const effectCard = el('div', 'card pane');
-  const effectHead = el('h3');
-  effectHead.append(...ctx.t('cfg.effect'));
-  const deltaPlate = el('div', 'plate');
-  deltaPlate.id = 'cfgdelta';
-  const deltaNote = el('p', 'small');
-  deltaNote.append(...ctx.t('cfg.deltan'));
-  effectCard.append(effectHead, deltaPlate, spaced(deltaNote));
-
-  two.append(budgetCard, effectCard);
-
-  // ── Card 3: categories.<lesson>.scopePolicy ───────────────────────────────
-  //
-  // **The segbar is a READING, not a control, and it says so by being
-  // disabled.** In the mockup each position swaps in a blast panel whose border
-  // and count ARE the blast radius (`cfg.spn`), and the count is exact because
-  // `scopePolicyFor` computes it over the real corpus — server-side, in
-  // `POST /api/config/preview`. This screen cannot ask that question, so the
-  // three positions carry only what `GET /api/config` knows: which one the
-  // config resolves to. A live-looking control that answered a click with
-  // nothing would be worse than a dead one — and estimating the radius in the
-  // browser is the exact thing `cfg.spn` rules out ("computable exactly rather
-  // than estimated"). `#spout` is left empty for the same reason `#cfgdelta` is.
-  const positions = policyPositions(resolved.categories, config.meta.scopePolicies, SP_CATEGORY);
-  if (positions !== null) {
-    const spCard = el('div', 'card pane');
-    const spHead = el('h3');
-    // `.m`, not a translated string: `categories.lesson.scopePolicy` is the
-    // config file's own path to the value, and the mockup draws it as a mono
-    // literal in both languages.
-    spHead.append(mono(`categories.${positions.name}.scopePolicy`));
-    const bar = el('div', 'segbar');
-    bar.id = 'spbar';
-    bar.setAttribute('role', 'group');
-    // An attribute cannot hold an element, which is the sink `tFlat` exists
-    // for — and `aria.scopepolicy` is the key the mockup itself hangs on this
-    // bar (`data-t-aria="aria.scopepolicy"`).
-    bar.setAttribute('aria-label', ctx.tFlat('aria.scopepolicy'));
-    for (const position of positions.positions) {
-      const button = el('button', null, position.value);
-      button.type = 'button';
-      button.disabled = true;
-      button.setAttribute('aria-pressed', String(position.pressed));
-      bar.append(button);
-    }
-    const spPlate = el('div', 'plate');
-    spPlate.id = 'spout';
-    const spNote = el('p', 'small');
-    spNote.append(...ctx.t('cfg.spn'));
-    spCard.append(spHead, bar, spPlate, spaced(spNote));
-    root.append(spCard);
-  }
-
-  // ── Card 4: Apply this ────────────────────────────────────────────────────
-  const applyCard = el('div', 'card pane');
-  const applyHead = el('h3');
-  applyHead.append(...ctx.t('cfg.apply'));
-  const nocmd = el('p', 'small');
-  nocmd.append(...ctx.t('cfg.nocmd'));
-
-  // The block as it stands, ready to be edited and pasted back — not a patch.
-  // The mockup's `pre` carries `-`/`+` lines because it is showing a pending
-  // edit; with no candidate there is no diff, and inventing `-`/`+` markers
-  // around identical lines would draw a change nobody made. What survives is
-  // the thing `cfg.nocmd` says this screen is for: "this is the edit, not a
-  // command" — the exact text of the section a user has to touch, so the digits
-  // they change are the only thing they have to type.
-  const budgetsText = jsonBlock('budgets', resolved.budgets);
-  const budgetsPre = el('pre', 'm', budgetsText);
-
-  // `<div class="cmd"><code>…</code><button>Copy the patch</button></div>` — the
-  // mockup's compose-and-copy row, with the ABSOLUTE path the endpoint reports
-  // rather than the mockup's abbreviated `.my_context/config.json`: `path` is
-  // the file this server actually read, and a workspace elsewhere on disk makes
-  // the abbreviation a guess.
-  //
-  // A copy that fails says so, in the platform's own words — the treatment
-  // `screens/doctor.js` established (`commandRow`), for the reason it records:
-  // the mockup's own "Copied"/"Copy failed" label swap is an unkeyed ternary in
-  // its script, so neither string table can carry it and inventing the two keys
-  // here would fail the parity check.
-  const cmd = el('div', 'cmd');
-  const code = el('code', null, config.path);
-  const copy = el('button');
-  copy.type = 'button';
-  copy.append(...ctx.t('btn.copypatch'));
-  copy.onclick = () => {
-    // Composed and copied, never applied. The user's own editor is the only
-    // thing that ever writes this file — which is what keeps the deny hook's
-    // rule about `.my_context/config.json` true of this UI as well.
-    navigator.clipboard.writeText(budgetsText).catch((error) => {
-      cmd.after(errorNote(error && error.message ? error.message : String(error)));
-    });
+  const budgetDraft = () => {
+    const values = {};
+    for (const [key, input] of Object.entries(budgetInputs)) values[key] = Number(input.value);
+    return values;
   };
-  cmd.append(code, copy);
+  const budgetsPane = composerPane(ctx, config, {
+    key: 'budgets',
+    head: () => ctx.t('cfg.budgets'),
+    note: () => ctx.t('cfg.budgetsn'),
+    plateId: 'cfgdelta',
+    controls: (paint) => {
+      const wrap = el('div');
+      const table = el('table');
+      const body = el('tbody');
+      for (const row of budgetRows(resolved.budgets, meta.defaultBudgets)) {
+        const tr = el('tr');
+        const value = el('td', 'm');
+        if (row.was === null) {
+          value.append(String(row.will));
+        } else {
+          // `<b>` on the value in force, exactly as the mockup bolds the new
+          // half of its pair: the default is context, the resolved value runs.
+          value.append(`${row.was} → `, el('b', null, String(row.will)));
+        }
+        // `min="1"` and `step="1"` are a UX hint only; the SERVER is the
+        // validator (`requirePositiveIntegerBudget`, `src/core/budgets-write.ts`),
+        // refusing by name rather than clamping, and a browser that skipped this
+        // attribute would still be refused correctly. Pre-filled with `row.will`
+        // — what the file resolves to right now — never `row.was`, the default,
+        // which is what the placeholder carries instead.
+        const input = el('input', 'm');
+        input.type = 'number';
+        input.min = '1';
+        input.step = '1';
+        input.value = String(row.will);
+        input.setAttribute('placeholder', String(meta.defaultBudgets[row.key]));
+        input.setAttribute('aria-label', `budgets.${row.key}`);
+        input.addEventListener('change', () => { void paint(); });
+        budgetInputs[row.key] = input;
+        const editCell = el('td');
+        editCell.append(input);
+        tr.append(el('td', 'm', row.key), value, editCell);
+        body.append(tr);
+      }
+      table.append(body);
+      // `cfg.nocmd` belongs to THIS pane and to no other: it is the sentence
+      // that says why a budget is written here and nowhere else, and why this
+      // is the one pane on the screen with no command line under it.
+      const nocmd = el('p', 'small');
+      nocmd.append(...ctx.t('cfg.nocmd'));
+      wrap.append(table, budgetSaveControl(ctx, budgetInputs), spaced(nocmd));
+      return wrap;
+    },
+    base: () => Object.fromEntries(budgetRows(resolved.budgets, meta.defaultBudgets)
+      .map((row) => [`budgets.${row.key}`, row.will])),
+    values: () => Object.fromEntries(
+      Object.entries(budgetDraft()).map(([key, value]) => [`budgets.${key}`, value])),
+    block: () => ({ key: 'budgets', value: budgetDraft() }),
+    candidate: () => ({ ...structuredClone(raw), budgets: budgetDraft() }),
+    // NO command line, deliberately. `cfg.nocmd`, drawn in this pane: no
+    // `mycontext` command edits or reports a budget, and a composed line here
+    // would be a receipt for a read the CLI cannot perform.
+    command: null,
+    extra: null,
+  });
 
-  const watchedHead = el('h3');
-  watchedHead.append(...ctx.t('cfg.watched'));
-  // The mockup's `style="margin-block-start:14px"` — 14px and not `spaced`'s
-  // 8px — set through CSSOM, never as an attribute: the server sends
-  // `style-src 'self'` with no `'unsafe-inline'`, so a `style="…"` attribute
-  // would be blocked. Logical property, as everywhere else in this UI.
-  watchedHead.style.setProperty('margin-block-start', '14px');
+  const two = el('div', 'two');
+  two.append(profilePane, budgetsPane);
+  root.append(two);
 
-  const watchedNote = el('p', 'small');
-  const watchedText = el('span');
-  watchedText.append(...ctx.t('cfg.watchednote'));
-  // `PROPOSED` is an unkeyed literal in the design of record and the badge is
-  // KEPT rather than dropped: the note describes `init` writing what the
-  // repository actually has, and `DEFAULT_WATCHED_DOCS` is still the fixed
-  // three-path list it argues against (`src/core/config.ts` · `export const DEFAULT_WATCHED_DOCS = [` · ~79)
-  // — measured: `.demo-corpus` resolves to exactly those three. The app's own
-  // rule is that a built feature drops the badge; this one is not built.
-  watchedNote.append(watchedText, ' ', el('span', 'prop', 'PROPOSED'));
-  const watchedPre = el('pre', 'm', jsonBlock('watchedDocs', resolved.watchedDocs));
+  // ── Pane 3: Categories ───────────────────────────────────────────────────
+  //
+  // The one pane with more than one field, because a category IS more than one
+  // field: `tier`, `scopePolicy`, `agentEdits` are closed sets and become
+  // segbars; `prefix` and `description` are free text and carry the value in
+  // force as their placeholder. `extraFields` and `updates` are shown as the
+  // value in force and are not composable — a list and a nested object, and
+  // `plan:config seq:3`'s wizard is where an editor for them belongs.
+  //
+  // **The scope-policy segbar is a CONTROL now.** It shipped disabled because
+  // moving it would have to answer "and what would that do to this corpus",
+  // and the fetcher could not ask. It can: each position composes a candidate
+  // and the panel below is the SERVER's count, exact because `scopePolicyFor`
+  // and `injection` run over the real corpus — which is the whole reason the
+  // POST exists (`cfg.spn`: "computable exactly rather than estimated").
+  const names = (resolved.categories ?? []).map((c) => c.name);
+  if (names.length > 0) {
+    let chosen = names.includes(SP_CATEGORY) ? SP_CATEGORY : names[0];
+    let draft = {};
+    const inForce = () => (resolved.categories ?? []).find((c) => c.name === chosen) ?? {};
+    const settled = (fieldName) => (Object.hasOwn(draft, fieldName)
+      ? draft[fieldName]
+      : inForce()[fieldName]);
 
+    const categoriesPane = composerPane(ctx, config, {
+      key: 'categories',
+      head: () => ctx.t('cfg.cats'),
+      note: () => ctx.t('cfg.catsn'),
+      plateId: 'spout',
+      controls: (paint) => {
+        const wrap = el('div');
+
+        // A bare `<select class="path">` — twenty-five categories is not a
+        // segbar, and `.path` is the treatment `screens/preview.js` already
+        // gives a long closed list on this stylesheet.
+        const picker = el('select', 'path');
+        picker.setAttribute('aria-label', ctx.tFlat('cfg.catpick'));
+        for (const name of names) {
+          const option = el('option', null, name);
+          option.value = name;
+          if (name === chosen) option.selected = true;
+          picker.append(option);
+        }
+        const heading = el('p', 'small');
+        const path = mono(`categories.${chosen}`);
+        heading.append(path);
+        picker.addEventListener('change', () => {
+          chosen = picker.value;
+          // A different category is a different subject, so the draft does not
+          // travel with it: carrying `tier: 'normative'` from `lesson` onto
+          // `rule` would compose a change to a category the reader never
+          // looked at. The controls are rebuilt from the new category's own
+          // values by the repaint below.
+          draft = {};
+          rebuild();
+          void paint();
+        });
+
+        const body = el('div');
+        const rebuild = () => {
+          body.replaceChildren();
+          path.textContent = `categories.${chosen}`;
+          const current = inForce();
+          const pick = (name) => (value) => { draft[name] = value; void paint(); };
+          body.append(
+            field(ctx, 'cfg.tier', segbar(
+              ctx.tFlat('cfg.tier'), meta.tiers, () => settled('tier'), pick('tier'))),
+            // `aria.scopepolicy` is the key the mockup itself hangs on this bar
+            // (`data-t-aria="aria.scopepolicy"`), and an attribute cannot hold
+            // an element, which is the sink `tFlat` exists for.
+            field(ctx, 'cfg.policy', segbar(
+              ctx.tFlat('aria.scopepolicy'), meta.scopePolicies,
+              () => settled('scopePolicy'), pick('scopePolicy'))),
+            field(ctx, 'cfg.agentedits', segbar(
+              ctx.tFlat('cfg.agentedits'), meta.agentEdits,
+              () => settled('agentEdits'), pick('agentEdits'))),
+            field(ctx, 'cfg.prefix', textField(
+              `categories.${chosen}.prefix`, String(current.prefix ?? ''),
+              String(settled('prefix') ?? ''), pick('prefix'))),
+            field(ctx, 'cfg.desc', textField(
+              `categories.${chosen}.description`, String(current.description ?? ''),
+              String(settled('description') ?? ''), pick('description'))),
+          );
+          // Read, drawn, and NOT composable — said on screen rather than left
+          // to be discovered as a missing control.
+          const extras = el('p', 'small');
+          extras.append(...ctx.t('cfg.extran', {
+            fields: (current.extraFields ?? []).join(', ') || '—',
+          }));
+          body.append(spaced(extras));
+        };
+        rebuild();
+
+        // The blast-radius sentence sits with the bar it is about, exactly as
+        // the design of record places it.
+        const spNote = el('p', 'small');
+        spNote.append(...ctx.t('cfg.spn'));
+        wrap.append(heading, picker, body, spaced(spNote));
+        return wrap;
+      },
+      // The in-force value of every field the reader has touched, so a row is
+      // drawn only where the draft actually DIFFERS and it can carry the pair —
+      // "what was it before" is half of "what changes". A static `{}` here drew
+      // an arrow-only row for a field moved away and moved back, which is a
+      // change nobody made.
+      base: () => Object.fromEntries(Object.keys(draft)
+        .map((name) => [`categories.${chosen}.${name}`, inForce()[name]])),
+      values: () => Object.fromEntries(Object.keys(draft)
+        .map((name) => [`categories.${chosen}.${name}`, draft[name]])
+        .filter(([, value]) => value !== undefined)),
+      block: () => ({ key: 'categories', value: { [chosen]: categoryEntry(raw, chosen, draft) } }),
+      candidate: () => {
+        const next = structuredClone(raw);
+        const categories = next.categories && typeof next.categories === 'object'
+          && !Array.isArray(next.categories) ? next.categories : {};
+        next.categories = { ...categories, [chosen]: categoryEntry(raw, chosen, draft) };
+        return next;
+      },
+      // The category the pane is showing, listed. It refuses BY NAME if the
+      // paste left the category unresolvable, which is the acceptance test
+      // `plan:config seq:4` names.
+      command: () => verifyPlan('list', { category: chosen }),
+      // The scope-policy half of the answer, which no other pane has: the
+      // UNSCOPED items of this category, whose reach that setting decides. It
+      // is the mockup's own "7 items become injectable nowhere", measured —
+      // `unscopedItems` is the list the server filtered, and its length is
+      // the count.
+      extra: (answer) => {
+        const entry = (Array.isArray(answer.scopePolicy) ? answer.scopePolicy : [])
+          .find((row) => row.category === chosen);
+        if (entry === undefined) return null;
+        const line = el('span');
+        line.append(...ctx.t('cfg.unscoped', {
+          n: String((entry.unscopedItems ?? []).length), cat: chosen, policy: entry.after,
+        }));
+        return line;
+      },
+    });
+    root.append(categoriesPane);
+  }
+
+  // ── Pane 4: Watched documents ────────────────────────────────────────────
+  //
+  // One `.globin` per glob in force, plus one empty field to add another, and
+  // the list REPLACES rather than merges — `cfg.watchednote`'s own warning,
+  // which is exactly the kind of thing the explanatory text exists to say
+  // before someone loses a list.
+  //
+  // **Its plate carries no governing count, and that is the standard rather
+  // than a shortfall.** `watchedDocs` is read by `src/hooks/post-tool-use.ts`
+  // and by nothing `POST /api/config/preview` runs — not `injection`, not
+  // `agentEditsFor`, not `scopePolicyFor`, not `select`. Posting a candidate
+  // that differs only here answers `0` changed and `<every item>` unchanged: a
+  // true zero about a question nobody asked. `candidate: () => null` is how
+  // this pane says so, and the panel it draws is the `unmeasured` face.
+  const watched = [...(resolved.watchedDocs ?? [])];
+  const watchedDraft = () => watched.map((value) => value.trim()).filter((value) => value !== '');
+  const watchedPane = composerPane(ctx, config, {
+    key: 'watched',
+    head: () => ctx.t('cfg.watched'),
+    note: () => ctx.t('cfg.watchedn'),
+    plateId: null,
+    controls: (paint) => {
+      const wrap = el('div');
+      // The two names are `watchedNote`/`watchedText` and stay that way:
+      // `screens/port.js` cites this exact line as the precedent for where it
+      // places its own `span.prop`, and a rename here breaks that citation
+      // without changing anything a reader sees.
+      const watchedNote = el('p', 'small');
+      const watchedText = el('span');
+      watchedText.append(...ctx.t('cfg.watchednote'));
+      // `PROPOSED` is an unkeyed literal in the design of record and the badge
+      // is KEPT: the note describes `init` writing what the repository actually
+      // has, and `DEFAULT_WATCHED_DOCS` is still the fixed three-path list it
+      // argues against (`src/core/config.ts` · `export const DEFAULT_WATCHED_DOCS = [` · ~117).
+      // The app's own rule is that a built feature drops the badge; this one is
+      // not built.
+      watchedNote.append(watchedText, ' ', el('span', 'prop', 'PROPOSED'));
+      const fields = el('div');
+      // One extra empty row, so adding a glob needs no control of its own.
+      // The placeholder is the glob IN FORCE at that position — the owner's
+      // "a default or recommended value as a PLACEHOLDER" — and the added row,
+      // which has no value in force behind it, carries the keyed hint instead.
+      const held = [...watched];
+      [...watched, ''].forEach((value, index) => {
+        const input = textField(
+          `watchedDocs[${index}]`, held[index] ?? ctx.tFlat('cfg.globhint'), value,
+          (next) => {
+            watched[index] = next;
+            void paint();
+          });
+        fields.append(spaced(input));
+      });
+      wrap.append(watchedNote, fields);
+      return wrap;
+    },
+    base: () => ({ watchedDocs: (resolved.watchedDocs ?? []).join(', ') }),
+    values: () => ({ watchedDocs: watchedDraft().join(', ') }),
+    block: () => ({ key: 'watchedDocs', value: watchedDraft() }),
+    candidate: () => null,
+    // The self-check: it re-reads `config.json` and refuses by name if the
+    // paste broke it. It does NOT report the globs themselves — nothing in the
+    // CLI does — which is what `cfg.watchedn` says on screen and what this
+    // task's report names as unmeasured.
+    command: () => verifyPlan('doctor'),
+    extra: null,
+  });
+  root.append(watchedPane);
+
+  // The one landing disclosure, at the foot of the screen: it is about the
+  // whole file rather than about any one pane.
   const help = el('details', 'help');
   const summary = el('summary');
   summary.append(...ctx.t('help.land'));
@@ -579,7 +1301,5 @@ export async function render(root, ctx) {
   receipt.append(...ctx.t('cfg.h2'));
   helpBox.append(landed, receipt);
   help.append(summary, helpBox);
-
-  applyCard.append(applyHead, nocmd, budgetsPre, cmd, watchedHead, watchedNote, watchedPre, help);
-  root.append(applyCard);
+  root.append(help);
 }

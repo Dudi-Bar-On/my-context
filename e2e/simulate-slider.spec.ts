@@ -61,7 +61,14 @@ test('the slider reaches a budget above the mockup literal, and shows the true v
 
   // --- read what is in force, so it can be put back -------------------------
   await page.evaluate(() => { location.hash = '#/config'; });
-  const jit = page.locator(`${CONFIG} input[aria-label="budgets.jit"]`);
+  // **The Budgets PANE**, not the Configure screen. `plan:config seq:1` split
+  // Configure into one pane per configuration subject on 2026-08-29, and three
+  // of the four panes now carry the house's Copy-and-Execute control — so
+  // `.confirm` and `.execresult` appear four times on this screen where they
+  // appeared once, and an unscoped locator is a strict-mode violation rather
+  // than a wrong element.
+  const BUDGETS = `${CONFIG} [data-pane="budgets"]`;
+  const jit = page.locator(`${BUDGETS} input[aria-label="budgets.jit"]`);
   await jit.waitFor({ state: 'visible', timeout: 20_000 });
   const original = await jit.inputValue();
   expect(original, 'the config screen must report a budget before this test changes one')
@@ -73,9 +80,9 @@ test('the slider reaches a budget above the mockup literal, and shows the true v
     // The confirm is the approval boundary for a budget write; it is answered,
     // never bypassed. `button.go` is the control's own class — the label is a
     // translated string and selecting on it would fail in Hebrew.
-    await expect(page.locator('.confirm')).toBeVisible({ timeout: 20_000 });
-    await page.locator('.confirm button.go').click();
-    await expect(page.locator('.execresult')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(`${BUDGETS} .confirm`)).toBeVisible({ timeout: 20_000 });
+    await page.locator(`${BUDGETS} .confirm button.go`).click();
+    await expect(page.locator(`${BUDGETS} .execresult`)).toBeVisible({ timeout: 20_000 });
 
     await page.evaluate(() => { location.hash = '#/simulate'; });
     const slider = page.locator(`${SIM} input[type="range"]`).first();
@@ -97,6 +104,6 @@ test('the slider reaches a budget above the mockup literal, and shows the true v
     await jit.waitFor({ state: 'visible', timeout: 20_000 });
     await jit.fill(original);
     await page.getByRole('button', { name: 'Write budgets' }).click();
-    await page.locator('.confirm button.go').click({ timeout: 20_000 }).catch(() => {});
+    await page.locator(`${BUDGETS} .confirm button.go`).click({ timeout: 20_000 }).catch(() => {});
   }
 });

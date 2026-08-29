@@ -509,8 +509,34 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // file, and this corpus had no repository files at all until fifteen were
   // added to the fixture. Code that was correct all along.
   palette: ['span.chip.crit'],
+  // **`div.blast` LEFT this list on 2026-08-29 because it was BUILT**, which is
+  // the only direction this ledger is allowed to move. `plan:walk seq:10` broke
+  // the standoff it recorded — config.js would not draw the rows without a
+  // POST, the stylesheet would not carry the rules without a drawing — by
+  // making the call: every pane of the rewritten Configure fills its plate from
+  // `POST /api/config/preview`, and the panel is drawn on load in its neutral
+  // face because "nothing changes yet" is a measured zero and
+  // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` requires it
+  // drawn.
+  //
+  // **The six that remain are INTERACTION, not missing code** — the same
+  // reading `palette`'s `span.chip.crit` gets three lines above. A `.delta` row
+  // exists only where a value MOVED, and the screen opens on the configuration
+  // in force, so its opening state composes no change and has no row to draw.
+  // Drawing one anyway would be a before→after of an edit nobody made, which is
+  // the one thing `cfg.deltan` argues against. All six are reached the moment a
+  // control is pressed and are held there by `e2e/config-composer.spec.ts` —
+  // 'the blast count is the server's own number' presses `inert` and asserts
+  // `.delta.loss` and the neutral value row that comes with it.
+  //
+  // **They are also UNSTYLED, and that is not this ledger's business but is
+  // recorded here so the next reader does not re-derive it.** The ten
+  // `.delta`/`.blast` rules live only in the mockup's own `<style>` block;
+  // `styles.css` still carries none of them, and its own note says it declined
+  // to "for markup nothing renders". Something renders them now, so the carry
+  // is a `styles.css` task rather than a blocked one.
   config: [
-    'div.blast', 'div.delta', 'div.delta.gain', 'div.delta.loss',
+    'div.delta', 'div.delta.gain', 'div.delta.loss',
     'span.arrow', 'span.was', 'span.will',
   ],
   docs: ['a', 'h4', 'pre', 'span.refusal'],

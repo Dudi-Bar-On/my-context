@@ -141,7 +141,15 @@ test('REQ-configure-and-the-simulator-agree-on-the-budgets-whatever: a budget wr
 
   await configPage.evaluate(() => { location.hash = '#/config'; });
   await expect(configPage.locator('[data-p="config"]')).toBeVisible({ timeout: 15_000 });
-  const jitInput = configPage.locator('input[aria-label="budgets.jit"]');
+  // **The Budgets PANE**, not the Configure screen. `plan:config seq:1` split
+  // Configure into one pane per configuration subject on 2026-08-29, and three
+  // of the four panes now carry the house's Copy-and-Execute control — so
+  // `.confirm` and `.execresult` appear four times on this screen where they
+  // appeared once. Every selector below addresses the pane `composerPane`
+  // stamps; a `.first()` would have gone on quietly picking whichever pane
+  // rendered first rather than the one this test is about.
+  const budgets = '[data-p="config"] [data-pane="budgets"]';
+  const jitInput = configPage.locator(`${budgets} input[aria-label="budgets.jit"]`);
   await expect(jitInput, 'the jit budget input never rendered').toBeVisible({ timeout: 10_000 });
   const before = Number(await jitInput.inputValue());
   // A value that cannot collide with whatever this corpus already holds —
@@ -173,9 +181,9 @@ test('REQ-configure-and-the-simulator-agree-on-the-budgets-whatever: a budget wr
     // it produces REACHES the other tab.
     await jitInput.fill(String(after));
     await configPage.getByRole('button', { name: 'Write budgets' }).click();
-    await expect(configPage.locator('.confirm')).toBeVisible({ timeout: 10_000 });
-    await configPage.locator('.confirm button.go').click();
-    await expect(configPage.locator('.execresult')).toBeVisible({ timeout: 10_000 });
+    await expect(configPage.locator(`${budgets} .confirm`)).toBeVisible({ timeout: 10_000 });
+    await configPage.locator(`${budgets} .confirm button.go`).click();
+    await expect(configPage.locator(`${budgets} .execresult`)).toBeVisible({ timeout: 10_000 });
 
     // Simulate declares `refresh: 'ask'` too (a live slider mid-drag is
     // exactly the state a silent rebuild must not discard) — so the write

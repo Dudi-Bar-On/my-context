@@ -6,8 +6,8 @@
  * untested surface (spec §6, and `test/ui/viewmodel.test.ts`'s own header: *"the
  * DOM rendering in `app.js` and `screens/*.js` has no test — that would need a
  * browser dependency this project does not have"*). That is not licence to test
- * nothing. Three things on this screen are decisions rather than pixels, and all
- * three are exported from the module and exercised here against the real bytes:
+ * nothing. SEVEN things on this screen are decisions rather than pixels, and all
+ * seven are exported from the module and exercised here against the real bytes:
  *
  *   1. `budgetRows` — which budget is drawn as a PAIR and which as a lone
  *      number, and in what order the four rows come out.
@@ -17,11 +17,33 @@
  *      the design of record's own `<pre>` bytes below.
  *   3. `policyPositions` — which segbar position is pressed, and what happens
  *      when the resolved config has no such category.
+ *   4. `categoryEntry` — that the composed block is an entry INSIDE the file's
+ *      `categories` object and not a top-level key, which `plan:config seq:4`
+ *      names as the acceptance test for the whole composer, and that it merges
+ *      over the RAW entry rather than the resolved one.
+ *   5. `valueDeltas` — which configuration values are drawn as a before→after
+ *      row, and which are not a change at all.
+ *   6. `blastReading` — the face a blast panel wears for a given preview, which
+ *      is where "measured, not estimated" is decided.
+ *   7. `verifyPlan` — the line each pane composes, built from the catalogue the
+ *      SERVER rebuilds the argv from, so the two cannot disagree.
  *
- * Plus two scans that no unit test of a pure function can replace: that the
+ * Plus three scans that no unit test of a pure function can replace: that the
  * screen names every `data-t` key its mockup section declares (a forgotten card
- * is a silent one), and that its CODE binds nothing that writes, runs or fetches
- * on its own.
+ * is a silent one), that every key it names is declared in BOTH string tables
+ * (this screen is now mostly app-only keys, which the mockup scan cannot see),
+ * and that its CODE reaches the network only through the two contract methods
+ * on the paths that are ruled in.
+ *
+ * ── WHAT MOVED ON 2026-08-29 ───────────────────────────────────────────────
+ *
+ * `plan:config seq:1`, `plan:walk seq:13` and `plan:walk seq:10` rewrote the
+ * screen into four composer panes with a live preview behind each. Two clauses
+ * of the old network test were true only of a screen that could neither preview
+ * nor compose, and both are gone with their reasons recorded at the test itself:
+ * this screen composes CLI command lines now, and it POSTs a candidate config to
+ * a route that reads. What it still may not do is write anything but a budget,
+ * and that is still asserted.
  *
  * ── HOW A TYPESCRIPT TEST IMPORTS A BROWSER SCREEN MODULE ──────────────────
  *
@@ -75,6 +97,15 @@ const PARTS = "'/screens/parts.js'";
  */
 const CMD_ACTIONS = "'/lib/command-actions.js'";
 const VIEWMODEL = "'/lib/viewmodel.js'";
+/**
+ * The two the composer added on 2026-08-29 (`plan:walk seq:13`). A composed
+ * command line on this screen goes through the SAME two modules every other
+ * composed line in this UI goes through — `PALETTE`/`commandFor` and
+ * `composeCommand` — and both are absolute specifiers for the same reason as
+ * the three above.
+ */
+const COMMAND = "'/lib/command.js'";
+const PALETTE_DEFS = "'/lib/palette-defs.js'";
 
 /** This task's published interface — hand-declared, so drift fails here. */
 interface ConfigScreen {
@@ -89,6 +120,21 @@ interface ConfigScreen {
     policies: readonly string[],
     name: string,
   ) => { name: string; current: string; positions: { value: string; pressed: boolean }[] } | null;
+  categoryEntry: (
+    raw: unknown, name: string, changed: Record<string, unknown>,
+  ) => Record<string, unknown>;
+  valueDeltas: (
+    before: Record<string, unknown>, after: Record<string, unknown>,
+  ) => { path: string; was: string | null; will: string }[];
+  blastReading: (preview: unknown) => {
+    face: 'none' | 'starts' | 'fits' | 'edits' | 'stops' | 'spills';
+    level: 'none' | 'warn' | 'crit';
+    n: number; stops: number; becomes: number;
+    dropped: number; added: number; edited: number; unchanged: number;
+  };
+  verifyPlan: (name: string, values?: Record<string, string>) => {
+    id: string; values: Record<string, string>; argv: string[];
+  };
 }
 
 const source = (): string => readFileSync(SCREEN, 'utf8');
@@ -100,6 +146,8 @@ async function screen(): Promise<ConfigScreen> {
     [PARTS, path.join(SCREENS, 'parts.js')],
     [CMD_ACTIONS, path.join(LIB, 'command-actions.js')],
     [VIEWMODEL, path.join(LIB, 'viewmodel.js')],
+    [COMMAND, path.join(LIB, 'command.js')],
+    [PALETTE_DEFS, path.join(LIB, 'palette-defs.js')],
   ] as const) {
     assert.ok(text.includes(`from ${specifier};`),
       `screens/config.js no longer imports from ${specifier}; the rewrite below would import an `
@@ -274,20 +322,31 @@ test('the screen names every data-t key its mockup section declares', async () =
 });
 
 /**
- * REWRITTEN 2026-08-27 — task `plan:budget seq:5`,
- * `DEC-the-ui-writes-budgets-and-the-simulator-always-meant-to`. The OLD name
- * of this test, "binds nothing that writes, runs or fetches", is false of this
- * file as of that ruling: the Budgets card now calls `ctx.post('/api/execute'`
- * behind a confirm. **This test is NARROWED here, not widened** — the same
- * distinction `test/ui/no-writes.test.ts` draws for `execute.ts` itself. What
- * still holds, and still fails: no `fetch(`, no `innerHTML`, no `eval`, no
+ * REWRITTEN 2026-08-29 — `plan:walk seq:13`, `plan:walk seq:10`. Two of this
+ * test's clauses were true of a screen that could neither preview nor compose,
+ * and the owner's ruling ended both.
+ *
+ * **`composes no CLI command` is gone, and it was gone deliberately.** The
+ * house pattern is settled and shipped on the Review queue: a control chooses
+ * an outcome, the choice COMPOSES a command line the reader can see, and one
+ * Execute runs it behind the approval boundary. Three of the four panes follow
+ * it. What `cfg.nocmd` actually asserts is narrower and is still asserted
+ * below: no `mycontext` command edits a BUDGET, so the Budgets pane composes
+ * none — its outcome goes through `BUDGETS_ID`, and the pane spec that says so
+ * is pinned here by its `command: null`.
+ *
+ * **The POST list grew by exactly one**, and it is a read: `/api/config/preview`
+ * validates and previews and writes nothing — `read-model-config.ts` says so of
+ * itself, and `test/ui/no-writes.test.ts` holds the server's import graph to it.
+ * The verb is HTTP's, chosen because a candidate config does not fit in a query
+ * string.
+ *
+ * What still holds, and still fails: no `fetch(`, no `innerHTML`, no `eval`, no
  * storage — this screen reaches the network through the SAME two contract
- * methods every other write-capable screen uses (`ctx.api`/`ctx.post`),
- * never a hand-rolled request, and it composes NO CLI command — no `<code>`
- * line, no `composeCommand` import, nothing `lib/command.js` would build —
- * which is the one property `cfg.nocmd` still asserts on screen.
+ * methods every other screen uses (`ctx.api`/`ctx.post`), never a hand-rolled
+ * request.
  */
-test('the screen reaches the network only through ctx.api/ctx.post, and composes no CLI command', async () => {
+test('the screen reaches the network only through ctx.api/ctx.post, and only on ruled paths', async () => {
   const code = codeLines();
 
   // The confirm GET: the literal `/api/config` read, and the dynamic budgets
@@ -299,18 +358,25 @@ test('the screen reaches the network only through ctx.api/ctx.post, and composes
     'the budgets confirm must go through confirmPath, the same query shape /api/execute/confirm reads');
 
   // The ONE write: `ctx.post('/api/execute'`, and only that literal path — a
-  // second POST target appearing here would mean a second write nobody ruled
-  // in, which is exactly what `no-writes.test.ts`'s RULED_WRITES guards on the
-  // server side.
+  // second literal POST target appearing here would mean a second write nobody
+  // ruled in, which is exactly what `no-writes.test.ts`'s RULED_WRITES guards
+  // on the server side.
   assert.deepEqual([...code.matchAll(/ctx\.post\('([^']+)'/g)].map((m) => m[1]), ['/api/execute']);
 
-  // No CLI command is composed here, ever — the property `cfg.nocmd` states on
-  // screen. `commandActions` and `command.js`'s `composeCommand` are what
-  // every OTHER boundary control on this UI uses to draw a `<code>` line; this
-  // screen imports neither, because a budget write has no argv to show.
-  for (const banned of ['commandActions', 'composeCommand', "from '/lib/command.js'"]) {
-    assert.equal(code.includes(banned), false, `screens/config.js names "${banned}" — it must not compose a command`);
-  }
+  // The preview POST, which is a READ. Its path is composed by `previewPath()`
+  // — a template literal carrying the shared select grammar, so it cannot match
+  // the literal-path regex above and is asserted by the call it makes.
+  assert.ok(code.includes('ctx.post(previewPath()'),
+    'the delta plate and the blast panels must go through POST /api/config/preview');
+  assert.ok(code.includes("selectQuery('session-start', null, 'cold')"),
+    'the preview query must be built by the shared select grammar, not spelled a second time');
+
+  // The Budgets pane composes NO command line — the one property `cfg.nocmd`
+  // still asserts on screen. Pinned on the pane's own spec rather than on the
+  // absence of a string, so a later edit that gave it a line fails here.
+  assert.match(code, /key: 'budgets',[^]*?\n {4}command: null,/,
+    'the Budgets pane must compose no command line: no mycontext command edits or reports a '
+    + 'budget, and a composed line there would be a receipt for a read the CLI cannot perform');
 
   // The browser-side counterpart of `test/ui/no-writes.test.ts`, which holds the
   // SERVER's import graph to the same rule. A hand-rolled request would void
@@ -362,4 +428,274 @@ test('a budget write raises the simulator range for every field it changed', () 
   assert.match(loop[0], /raiseSimRange\(key, Number\(change\.after\)\)/,
     'a budget written here can now exceed a range set on the simulator without carrying it up, '
     + 'which leaves the slider unable to reach the budget this screen just put in force');
+});
+
+/**
+ * **`categoryEntry` is the acceptance test `plan:config seq:4` names**, in that
+ * task's own words: *"the file already HAS a `categories` object, so the block
+ * is an entry INSIDE it and not a top-level key. Getting that wrong produces
+ * invalid JSON and a refusal that reads like the wizard was wrong."*
+ *
+ * Two properties, and the second is the one a composer gets wrong quietly. The
+ * block nests. And it merges over the RAW entry, never the resolved one: a
+ * resolved entry carries every field the catalogue supplied, so pasting one
+ * back would freeze two dozen defaults into the user's file and silently opt
+ * them out of every future catalogue change.
+ */
+test('categoryEntry composes an entry INSIDE categories, merged over the raw file', async () => {
+  const { categoryEntry, jsonBlock } = await screen();
+
+  const raw = {
+    profile: 'standard',
+    categories: {
+      task: { tier: 'rationale', prefix: 'TASK', extraFields: ['plan', 'seq'] },
+    },
+  };
+
+  // What the file said, plus what moved — `extraFields` survives untouched
+  // because the reader never touched it, and `prefix` is not restated.
+  assert.deepEqual(categoryEntry(raw, 'task', { tier: 'normative' }), {
+    tier: 'normative', prefix: 'TASK', extraFields: ['plan', 'seq'],
+  });
+
+  // A category the raw file has never mentioned starts from nothing, and the
+  // composed entry says only what was chosen. `lesson` resolves for every
+  // config on the standard profile and appears in NO raw file here.
+  assert.deepEqual(categoryEntry(raw, 'lesson', { scopePolicy: 'inert' }),
+    { scopePolicy: 'inert' });
+
+  // The nesting, as bytes. This is what a person pastes, and the shape it must
+  // have: `"categories"` at two spaces, the entry NAME at four, its fields at
+  // six. A top-level `"scopePolicy"` here is the invalid-JSON failure above.
+  assert.equal(
+    jsonBlock('categories', { lesson: categoryEntry(raw, 'lesson', { scopePolicy: 'inert' }) }),
+    '  "categories": {\n    "lesson": {\n      "scopePolicy": "inert"\n    }\n  }',
+  );
+
+  // A raw file with no `categories` object at all, and one whose `categories`
+  // is not an object, both compose from `{}` rather than throwing: this screen
+  // exists to help a person out of a broken file, not to fail beside them.
+  assert.deepEqual(categoryEntry({}, 'rule', { tier: 'normative' }), { tier: 'normative' });
+  assert.deepEqual(categoryEntry({ categories: [] }, 'rule', { tier: 'normative' }),
+    { tier: 'normative' });
+  assert.deepEqual(categoryEntry(null, 'rule', { tier: 'normative' }), { tier: 'normative' });
+});
+
+/**
+ * `valueDeltas` reports what the FILE would say and nothing about the corpus.
+ *
+ * Compared as TEXT, because `4000` typed into a number field and `4000` read
+ * out of JSON are the same edit and a strict comparison would draw a row for
+ * neither having moved.
+ */
+test('valueDeltas draws a row only where a value moved, and pairs it with what it was', async () => {
+  const { valueDeltas } = await screen();
+
+  assert.deepEqual(
+    valueDeltas({ 'budgets.jit': 6000, 'budgets.pinned': 6000 },
+      { 'budgets.jit': 8000, 'budgets.pinned': 6000 }),
+    [{ path: 'budgets.jit', was: '6000', will: '8000' }],
+  );
+
+  // The number a form hands back is a string; the value in force is a number.
+  // A row here would be a change nobody made.
+  assert.deepEqual(valueDeltas({ 'budgets.jit': 6000 }, { 'budgets.jit': '6000' }), []);
+
+  // A path the file does not have yet pairs with NOTHING — `was: null` is what
+  // draws the arrow alone, the mockup's own treatment for a value with no
+  // previous half. It is not the same row as one that moved from a value.
+  assert.deepEqual(valueDeltas({}, { 'categories.lesson.tier': 'normative' }),
+    [{ path: 'categories.lesson.tier', was: null, will: 'normative' }]);
+
+  assert.deepEqual(valueDeltas({ a: 1 }, {}), []);
+});
+
+/**
+ * **`blastReading` is where "measured, not estimated" is decided**, and the
+ * five faces are decided by the preview's own counts rather than by anything
+ * this browser worked out.
+ *
+ * **Two destructive readings, ranked and never netted off.** `cfg.spn` says the
+ * panel is *"how much of the corpus stops working if this value changes"*, and
+ * two different answers are true of that sentence: an item that stops
+ * GOVERNING, and an item that still governs and no longer FITS. Reading only
+ * the first shipped a wrong panel — measured in a browser on 2026-08-29,
+ * dropping `budgets.pinned` from 16,000 to 4,000 moved delivery from 25 items
+ * to 9 and the panel said *"No change"*, because a budget never moves
+ * `injection()`'s answer. The delivery clause below is what caught it, and it
+ * is the assertion that would fail if someone removed it again.
+ */
+test('blastReading takes its face and its counts from the server, never from a guess', async () => {
+  const { blastReading } = await screen();
+
+  const answer = (spec: {
+    becomes?: number; stops?: number; unchanged?: number;
+    before?: number; after?: number; edited?: number;
+  }): unknown => ({
+    governing: {
+      becomesInjected: Array.from({ length: spec.becomes ?? 0 }, (_, i) => ({ id: `A${i}` })),
+      stopsBeingInjected: Array.from({ length: spec.stops ?? 0 }, (_, i) => ({ id: `B${i}` })),
+      unchanged: spec.unchanged ?? 0,
+    },
+    agentEdits: spec.edited === undefined ? [] : [{
+      category: 'rule',
+      before: 'allow',
+      after: 'review',
+      items: Array.from({ length: spec.edited }, (_, i) => ({ id: `C${i}` })),
+    }],
+    selection: {
+      before: { full: Array.from({ length: spec.before ?? 0 }, () => ({})) },
+      after: { full: Array.from({ length: spec.after ?? 0 }, () => ({})) },
+    },
+  });
+
+  // Nothing governs differently and nothing moved in or out of the selection:
+  // a measured zero, drawn and named.
+  const still = blastReading(answer({ unchanged: 681, before: 25, after: 25 }));
+  assert.equal(still.face, 'none');
+  assert.equal(still.level, 'none');
+  assert.equal(still.n, 0);
+  assert.equal(still.unchanged, 681);
+
+  // An item stops governing: the strongest claim, and the headline number is
+  // that count.
+  const gone = blastReading(answer({ stops: 66, unchanged: 615, before: 25, after: 17 }));
+  assert.equal(gone.face, 'stops');
+  assert.equal(gone.level, 'crit');
+  assert.equal(gone.n, 66);
+
+  // Anything stopping is crit even where more items start than stop: the two
+  // directions are not netted off, because an item that stops governing is a
+  // rule that stops being enforced and no arrival makes up for it.
+  assert.equal(blastReading(answer({ becomes: 9, stops: 1 })).face, 'stops');
+
+  // **The clause a browser caught.** Nothing governs differently — a budget
+  // never moves `injection()`'s answer — and sixteen items stop being
+  // delivered. That is destructive, it is what `select` measured, and a panel
+  // that called it "No change" was contradicting the three delta rows above it.
+  const spilled = blastReading(answer({ unchanged: 710, before: 25, after: 9 }));
+  assert.equal(spilled.face, 'spills');
+  assert.equal(spilled.level, 'crit');
+  assert.equal(spilled.n, 16);
+  assert.equal(spilled.dropped, 16);
+
+  // The two mirrors, which only add.
+  const starts = blastReading(answer({ becomes: 4, unchanged: 677, before: 25, after: 25 }));
+  assert.equal(starts.face, 'starts');
+  assert.equal(starts.level, 'warn');
+  assert.equal(starts.n, 4);
+
+  // **The same defect a second time, and it was found the same way.**
+  // `agentEdits` moves neither `injection()` nor `select()`, so an
+  // `allow`→`review` change fires none of the four faces above it — and the
+  // panel said "No change" over a measured list of thirty-eight items. This is
+  // the assertion that fails if the fifth face is ever taken back out.
+  const edited = blastReading(answer({ unchanged: 710, before: 25, after: 25, edited: 38 }));
+  assert.equal(edited.face, 'edits');
+  assert.equal(edited.level, 'warn');
+  assert.equal(edited.n, 38);
+  assert.equal(edited.edited, 38);
+  // It ranks BELOW anything that changes what governs or what is delivered:
+  // who may edit an item matters less than whether the item is in force.
+  assert.equal(blastReading(answer({ stops: 1, edited: 38 })).face, 'stops');
+  assert.equal(blastReading(answer({ before: 25, after: 9, edited: 38 })).face, 'spills');
+
+  const fits = blastReading(answer({ unchanged: 710, before: 9, after: 25 }));
+  assert.equal(fits.face, 'fits');
+  assert.equal(fits.level, 'warn');
+  assert.equal(fits.n, 16);
+  assert.equal(fits.added, 16);
+
+  // A malformed answer degrades to zeros AND to `none` together, so a panel
+  // can never wear a crit face over "0 items".
+  for (const broken of [undefined, null, {}, { governing: {} }, { governing: { unchanged: 'x' } }]) {
+    const reading = blastReading(broken);
+    assert.equal(reading.face, 'none');
+    assert.equal(reading.level, 'none');
+    assert.equal(reading.n, 0);
+    assert.equal(reading.edited, 0);
+    assert.equal(reading.unchanged, 0);
+  }
+});
+
+/**
+ * **The composed line goes through the catalogue, or it is not composed.**
+ *
+ * `screens/work.js`'s `revisionPlan` states the property this holds to: a
+ * second spelling of a command whose flag set was verified against the real
+ * argument parser exactly once is how the two come to disagree — and the
+ * confirm's whole job is that the line a person read and the argv that runs are
+ * the same thing.
+ */
+test('verifyPlan composes each pane line from the catalogue, and refuses an unknown name', async () => {
+  const { verifyPlan } = await screen();
+
+  // Profile: `mycontext status` prints `profile "<name>"` and the per-category
+  // table the profile decides.
+  assert.deepEqual(verifyPlan('status'),
+    { id: 'status', values: {}, argv: ['mycontext', 'status'] });
+
+  // Categories: the category the pane is showing, listed. The argument is the
+  // catalogue's own `category` arg, so a name carrying a space is quoted by
+  // `composeCommand` rather than by anything written here.
+  assert.deepEqual(verifyPlan('list', { category: 'lesson' }),
+    { id: 'list', values: { category: 'lesson' }, argv: ['mycontext', 'list', 'lesson'] });
+
+  // Watched documents: the self-check.
+  assert.deepEqual(verifyPlan('doctor'),
+    { id: 'doctor', values: {}, argv: ['mycontext', 'doctor'] });
+
+  // A name the catalogue does not declare THROWS rather than composing a line
+  // from a literal array — the failure mode this function exists to prevent.
+  assert.throws(() => verifyPlan('config set'), /command catalogue declares no "config set"/);
+
+  // And every id this screen sends is one the SERVER's resolver can rebuild:
+  // `execute-catalogue.ts` loads this very file, so a name absent from it is a
+  // confirm that 400s at the boundary rather than a line that runs.
+  for (const name of ['status', 'list', 'doctor']) {
+    assert.ok(source().includes(`verifyPlan('${name}'`),
+      `the screen no longer composes ${name}; this list and the panes disagree`);
+  }
+});
+
+/**
+ * **Every string key this screen names is declared in BOTH tables.**
+ *
+ * `strings-parity.test.ts` compares the two tables against each other and
+ * against the design of record; neither direction can see a key a SCREEN names
+ * and no table declares. That key throws at render time — in one language only
+ * where the tables have drifted — which is the failure nobody sees until a
+ * reader reports a blank screen. This screen gained twenty-eight app-only keys
+ * on 2026-08-29 and none of them is in the mockup, so this is the only check
+ * that covers them.
+ */
+test('every key screens/config.js names is declared in both string tables', async () => {
+  const named = new Set<string>();
+  const code = codeLines();
+  for (const m of code.matchAll(/ctx\.t(?:Flat)?\('([^']+)'/g)) named.add(m[1]!);
+  for (const m of code.matchAll(/screenHead\(ctx, root, '([^']+)', '([^']+)', '([^']+)'/g)) {
+    named.add(m[1]!); named.add(m[2]!); named.add(m[3]!);
+  }
+  // The two face tables — `blastPanel`'s and `governanceRows`' — name their
+  // keys as literals in an array rather than at a `ctx.t(` call site, because
+  // WHICH key is drawn is the decision there. Collected by shape: a quoted key,
+  // not a call.
+  for (const m of code.matchAll(/'((?:cfg|aria|btn|exec|help|list|state)\.[A-Za-z0-9.]+)'/g)) {
+    named.add(m[1]!);
+  }
+  assert.ok(named.size >= 30,
+    `only ${named.size} key(s) found in screens/config.js — the patterns have stopped matching `
+    + 'rather than the screen having stopped naming keys.');
+
+  const tableUrl = (language: string): string =>
+    new URL(`file://${path.join(REPO, 'src', 'ui', 'public', 'strings', `${language}.js`)
+      .replaceAll('\\', '/')}`).href;
+  const en = (await import(tableUrl('en'))) as { strings: Record<string, string> };
+  const he = (await import(tableUrl('he'))) as { strings: Record<string, string> };
+
+  assert.deepEqual([...named].filter((key) => !(key in en.strings)).sort(), [],
+    'named by screens/config.js, missing from strings/en.js');
+  assert.deepEqual([...named].filter((key) => !(key in he.strings)).sort(), [],
+    'named by screens/config.js, missing from strings/he.js — this one is the silent half: '
+    + 'the screen renders in English and throws in Hebrew');
 });

@@ -33,7 +33,20 @@ import { expect, test as base } from '@playwright/test';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
 
 const CLI = path.resolve(import.meta.dirname, '..', 'src', 'cli', 'index.ts');
-const CONFIG = '[data-p="config"]';
+
+/**
+ * **The Budgets PANE, not the Configure screen.**
+ *
+ * `plan:config seq:1` split Configure into one pane per configuration subject
+ * on 2026-08-29, and three of the four panes now carry a composed command line
+ * and the house's Copy-and-Execute control — which means `.confirm` and
+ * `.execresult` appear four times on this screen where they used to appear
+ * once. Every selector below that was `[data-p="config"] .thing` addresses the
+ * pane instead: `data-pane` is stamped by `composerPane` for exactly this, and
+ * a `.first()` would have gone on quietly picking whichever pane rendered
+ * first rather than the one this file is about.
+ */
+const BUDGETS = '[data-p="config"] [data-pane="budgets"]';
 
 /** A bare, freshly-initialised workspace — no items, only `.my_context/config.json`. */
 function makeBudgetsWorkspace(): string {
@@ -60,7 +73,7 @@ base('a proposed budget shows as a real value in the confirm, and lands in confi
       ).toBeVisible({ timeout: 15_000 });
 
       await page.evaluate(() => { location.hash = '#/config'; });
-      const pinnedInput = page.locator(`${CONFIG} input[aria-label="budgets.pinned"]`);
+      const pinnedInput = page.locator(`${BUDGETS} input[aria-label="budgets.pinned"]`);
       await pinnedInput.waitFor({ state: 'visible', timeout: 15_000 });
 
       // The shipped default, drawn into the field the same way `budgetRows`
@@ -73,7 +86,7 @@ base('a proposed budget shows as a real value in the confirm, and lands in confi
       // The confirm's field-by-field diff — real values, not a file-level
       // placeholder. This is the exact thing the task named as insufficient
       // about `execute-effect.ts`'s `elsewhereInCorpus` for a non-item write.
-      const confirm = page.locator(`${CONFIG} .confirm`).first();
+      const confirm = page.locator(`${BUDGETS} .confirm`);
       await confirm.waitFor({ state: 'visible', timeout: 15_000 });
       await expect(confirm).toContainText('budgets.pinned');
       await expect(confirm).toContainText('6000');
@@ -85,7 +98,7 @@ base('a proposed budget shows as a real value in the confirm, and lands in confi
       await confirm.getByRole('button', { name: 'Write it', exact: true }).click();
 
       await expect(
-        page.locator(`${CONFIG} .execresult`),
+        page.locator(`${BUDGETS} .execresult`),
         'the write must report back — "Written to config.json."',
       ).toContainText('config.json');
 
@@ -96,7 +109,7 @@ base('a proposed budget shows as a real value in the confirm, and lands in confi
 
       // A successful write updates the field in place to the server's own
       // `after` value — not the value the closure captured before the write.
-      await expect(page.locator(`${CONFIG} input[aria-label="budgets.pinned"]`)).toHaveValue('22000');
+      await expect(page.locator(`${BUDGETS} input[aria-label="budgets.pinned"]`)).toHaveValue('22000');
     } finally {
       if (harness !== undefined) await harness.stop();
       try { rmSync(root, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
@@ -115,16 +128,16 @@ base('a value that is not a positive integer is refused — no confirm, no write
       await expect(page.locator('.nav').first()).toBeVisible({ timeout: 15_000 });
       await page.evaluate(() => { location.hash = '#/config'; });
 
-      const pinnedInput = page.locator(`${CONFIG} input[aria-label="budgets.pinned"]`);
+      const pinnedInput = page.locator(`${BUDGETS} input[aria-label="budgets.pinned"]`);
       await pinnedInput.waitFor({ state: 'visible', timeout: 15_000 });
       await pinnedInput.fill('-1');
       await page.getByRole('button', { name: 'Write budgets', exact: true }).click();
 
       await expect(
-        page.locator(`${CONFIG} .execresult`),
+        page.locator(`${BUDGETS} .execresult`),
         'a negative budget must be refused, naming what was wrong — never silently clamped',
       ).toContainText('positive integer', { timeout: 15_000 });
-      await expect(page.locator(`${CONFIG} .confirm`)).toBeHidden();
+      await expect(page.locator(`${BUDGETS} .confirm`)).toBeHidden();
 
       const onDisk = JSON.parse(readFileSync(configJsonPath(root), 'utf8')) as {
         budgets?: Record<string, number>;
