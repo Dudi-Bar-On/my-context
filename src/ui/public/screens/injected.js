@@ -34,15 +34,50 @@ import {
   BOUND_CAP_TABLE, boundedList, el, errorNote, linkId, screenHead, spaced, tierChip,
 } from '/screens/parts.js';
 
+/**
+ * This module's own unsubscribe from the shell's session listeners, if any.
+ * `screens/preview.js`' note carries the argument; the shape is identical
+ * because the defect is.
+ */
+let dropSessionListener = null;
+
 export async function render(root, ctx) {
+  // The same unsubscribe `screens/preview.js` and `screens/watch.js` take, for
+  // the same reason: `render()` runs again on every return to `#/injected` and
+  // on every live refresh, and a session listener that is never removed
+  // accumulates one per render.
+  if (dropSessionListener !== null) {
+    dropSessionListener();
+    dropSessionListener = null;
+  }
+
   root.replaceChildren();
   screenHead(ctx, root, 'inj.h', 'inj.v', 'inj.sub');
 
   const card = el('div', 'card pane');
   root.append(card);
 
+  /**
+   * **The render generation — this screen has `preview.js`'s shape exactly.**
+   *
+   * `show()` cleared `card` and only then awaited the seen file, and every
+   * append below lands after that await. Two overlapping calls therefore each
+   * cleared an already-empty card and each appended a full table, and this
+   * screen is subscribed to the session — which is the one input that starts a
+   * second call while the first is in flight.
+   *
+   * So the same two rules: the LAST call to start is the one that draws, and
+   * the card is replaced where the ANSWER arrives rather than before the
+   * request. Nothing is appended to `card` in between — the nodes are
+   * collected and committed in one `replaceChildren`, so the card is never
+   * half a render.
+   */
+  let generation = 0;
+
   async function show() {
-    card.replaceChildren();
+    const mine = ++generation;
+    /** What this render will put in `card`, committed in one act at the end. */
+    const parts = [];
     const session = ctx.session();
 
     const table = el('table');
@@ -91,9 +126,12 @@ export async function render(root, ctx) {
       try {
         data = await ctx.api(`/api/session/${encodeURIComponent(session)}/injected`);
       } catch (error) {
-        card.append(errorNote(error.message));
+        if (mine !== generation) return;
+        card.replaceChildren(errorNote(error.message));
         return;
       }
+      // A newer `show()` owns the card now — see the generation note above.
+      if (mine !== generation) return;
       // A read error is DISCLOSED BEFORE the rows, never rendered as "nothing
       // was injected" — an unreadable seen file and an empty one are two facts,
       // and this is the only surface that passes that string on. It is the seen
@@ -101,7 +139,7 @@ export async function render(root, ctx) {
       // state on any screen, and inventing one would fail the tables' parity
       // with the design of record.
       if (data.error !== null && data.error !== undefined) {
-        card.append(errorNote(data.error));
+        parts.push(errorNote(data.error));
       }
       // **A record, so it bounds by TIME** — every line carries `at`, which is
       // the When column beside it. `take: 'last'` because the seen file is an
@@ -137,8 +175,8 @@ export async function render(root, ctx) {
     // The bound line cannot live inside the `<table>` — a `<div>` is not a row
     // — so it sits between the table and the note, still directly under the
     // last row a reader sees.
-    card.append(table);
-    if (bound !== null) card.append(bound);
+    parts.push(table);
+    if (bound !== null) parts.push(bound);
     // Under the table, where a reader reaches the end of it and finds no rows.
     // Never beside a refusal: `errorNote` was appended before the table and
     // carries the seen file's own words, and two explanations of one absence
@@ -146,11 +184,14 @@ export async function render(root, ctx) {
     if (zeroKey !== null) {
       const zero = el('p', 'small');
       zero.append(...ctx.t(zeroKey));
-      card.append(spaced(zero));
+      parts.push(spaced(zero));
     }
-    card.append(spaced(note));
+    parts.push(spaced(note));
+    // One act, at the point the answer is in hand: the card never sits empty
+    // waiting for a fetch, and it never holds two renders.
+    card.replaceChildren(...parts);
   }
 
-  ctx.onSessionChange(() => { void show(); });
+  dropSessionListener = ctx.onSessionChange(() => { void show(); });
   await show();
 }

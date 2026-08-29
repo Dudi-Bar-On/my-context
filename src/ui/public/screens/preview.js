@@ -242,7 +242,30 @@ function scaleFor(tier, budget) {
   return range === null ? budget : Math.max(budget, range);
 }
 
+/**
+ * This module's own unsubscribe from the shell's session listeners, if any.
+ *
+ * Module-level and not per-render, because a screen module is imported ONCE
+ * and `render()` runs again on every return to `#/preview` and on every live
+ * refresh. `ctx.onSessionChange` used to push and never remove, so each of
+ * those renders left one more closure listening over a `show()` bound to a
+ * container the next render had already discarded.
+ */
+let dropSessionListener = null;
+
 export async function render(root, ctx) {
+  // A second render must not leave the first one's session listener behind —
+  // `screens/watch.js`' `openStream` argument, for the other subscription a
+  // screen can hold. `route()` calls `render()` again on every return to
+  // `#/preview` and `setupLiveScreen`'s refresh calls it in place, so without
+  // this the listeners accumulate one per render and a single session refresh
+  // starts three `show()` calls on the third visit. Dropped HERE rather than
+  // only on the way out, so it also covers a render that threw.
+  if (dropSessionListener !== null) {
+    dropSessionListener();
+    dropSessionListener = null;
+  }
+
   root.replaceChildren();
   screenHead(ctx, root, 'preview.h', 'preview.v', 'preview.sub');
 
@@ -367,18 +390,63 @@ export async function render(root, ctx) {
     pathSlot.append(label, ' ', picker);
   }
 
+  /**
+   * **The render generation, and the two rules that hang off it.**
+   *
+   * `show()` awaits `/api/select` and `/api/simulate`, and `draw()` APPENDS.
+   * Until 2026-08-29 there was no guard between those two facts, so two
+   * overlapping calls each cleared an already-empty `out` and then each
+   * appended a FULL render: the screen held two `#spilledRows`, two Delivered
+   * cards and two ribbons, one per selection, both on screen at once. Measured
+   * (`TASK-the-preview-can-hold-two-renders-at-once-and-session`): an unscoped
+   * `#spilledRows .row` read 40 rows from two different selections, and
+   * `e2e/preview-spilled.spec.ts`'s band assertion failed 4 runs out of 4 in
+   * isolation because of it.
+   *
+   * Overlaps are not exotic here. `evsel.onchange`, `pathsel.onchange` and
+   * `ctx.onSessionChange` all call this, and the session listener fires while
+   * the reader is mid-change.
+   *
+   * RULE 1 — **the LAST call to start is the one that draws.** Every entry
+   * takes a token; a call whose token is stale by the time its answers land
+   * abandons the render rather than appending to a screen somebody else now
+   * owns. Newest wins, not fastest: the reader's most recent question is the
+   * one they are looking at.
+   *
+   * RULE 2 — **`out` is cleared where the ANSWER arrives, not before the
+   * request.** Clearing first is what made a slow render a blank screen and a
+   * fast one a double, and it is why the two halves have to move together: a
+   * guard that abandoned the render while the clear stayed at the top would
+   * leave the screen empty every time a late call was dropped.
+   *
+   * The ONE pre-clear that survives is `shown`, below, and it is a different
+   * statement: the rows on screen answer the question `shown` records, so once
+   * the reader moves the event or the path they are an answer to a question
+   * nobody asked any more, and holding them under the new picker values would
+   * be a lie rather than a stale-but-true reading. A refresh for the SAME
+   * question — which is every `onSessionChange` on an unchanged selection —
+   * keeps what is drawn until the replacement is in hand.
+   */
+  let generation = 0;
+  /** The query string `out`'s current contents answer, or `null` if nothing does. */
+  let shown = null;
+
   async function show() {
+    const mine = ++generation;
     const event = evsel.value;
-    out.replaceChildren();
     try {
       if (event === 'tool') await ensureFiles();
+      if (mine !== generation) return;
       drawPathSlot(event);
       // No file to preview a tool event against. `/api/select` refuses
       // `event=tool` without a path, and asking anyway would turn an empty
       // repository into a refusal the reader would have to decode.
-      if (event === 'tool' && chosenPath === null) return;
+      if (event === 'tool' && chosenPath === null) { shown = null; out.replaceChildren(); return; }
 
       const qs = selectQuery(event, event === 'tool' ? chosenPath : null, ctx.session());
+      // Rule 2's exception — see above. The selection MOVED, so what is drawn
+      // answers a question the reader has already left.
+      if (qs !== shown) { shown = null; out.replaceChildren(); }
       // `/api/select` is `select()`'s serialization and nothing else (design
       // decision 7), so the SELECTION is read from there and never from the
       // simulator's copy of it. `/api/simulate` is asked only for the two things
@@ -388,11 +456,18 @@ export async function render(root, ctx) {
         ctx.api(`/api/simulate?${qs}`),
         ensureItems(),
       ]);
+      if (mine !== generation) return;
+      // Here, and nowhere earlier: the replacement is in hand, so the swap is
+      // one act and the screen is never both empty and current.
+      out.replaceChildren();
+      shown = qs;
       draw(selection, sim, corpus);
     } catch (error) {
+      if (mine !== generation) return;
       // The endpoint's own words, drawn INSTEAD of the data: an empty selection
       // and a refused request are two facts, and only one of them is about the
       // corpus.
+      shown = null;
       out.replaceChildren(errorNote(error.message));
     }
   }
@@ -983,6 +1058,6 @@ export async function render(root, ctx) {
   }
 
   evsel.onchange = () => { void show(); };
-  ctx.onSessionChange(() => { void show(); });
+  dropSessionListener = ctx.onSessionChange(() => { void show(); });
   await show();
 }

@@ -341,7 +341,16 @@ async function draw(
     session: () => 'cold',
     // The screen registers one; nothing here fires it, and a stand-in that
     // threw would fail on registration rather than on use.
-    onSessionChange: () => {},
+    //
+    // **It answers an UNSUBSCRIBE, because the shell's does.** `app.js`'s
+    // `ctx.onSessionChange` returns a function that removes the listener, and
+    // the screen holds it and calls it from its next `render()` — otherwise the
+    // listeners accumulate one per render
+    // (`TASK-the-preview-can-hold-two-renders-at-once-and-session`). A stand-in
+    // answering `undefined` is a stand-in for a contract the shell does not
+    // have, and this file renders more than once per process, so it would fail
+    // on the SECOND render over a difference that is not the screen's.
+    onSessionChange: () => (): void => {},
   };
   const root = element('section');
   await withDocument(async () => {

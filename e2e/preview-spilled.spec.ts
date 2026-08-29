@@ -152,9 +152,9 @@ const asRows = (spills: Spill[]): string[] => spills.map((s) => `${s.id} ${s.tie
  * with this spec run by itself — a pre-existing flake with a cause, not
  * weather.
  *
- * **The repair belongs in `src/ui/public/screens/preview.js` and is reported
- * rather than made here** (`src/**` is another lane). Until it lands, every
- * read below is scoped to ONE card, so an assertion compares one render
+ * **The repair belongs in `src/ui/public/screens/preview.js` and was reported
+ * rather than made here** (`src/**` was another lane). Until it landed, every
+ * read below was scoped to ONE card, so an assertion compared one render
  * against one payload instead of two renders against either.
  *
  * **The scoping cannot hide what it works around.** These assertions compare
@@ -162,6 +162,23 @@ const asRows = (spills: Spill[]): string[] => spills.map((s) => `${s.id} ${s.tie
  * so reading the wrong render fails outright rather than passing quietly; and
  * the duplicate `#spilledRows` itself is visible to `app-layout.spec.ts` and
  * `screen-parity.spec.ts`, which read the whole screen.
+ *
+ * ── THE REPAIR HAS LANDED, AND THIS `.last()` IS NOW REDUNDANT ────────────
+ *
+ * 2026-08-29, `TASK-the-preview-can-hold-two-renders-at-once-and-session`:
+ * `show()` carries a generation guard, its clear moved to where the answer
+ * arrives, and `ctx.onSessionChange` answers an unsubscribe that `render()`
+ * calls — so `#spilledRows` cannot be drawn twice and `.last()` and `.first()`
+ * now select the same node. `e2e/preview-overlap.spec.ts` is the gate on that,
+ * and it was watched red before it was watched green.
+ *
+ * **KEPT, and deliberately.** Removing it would delete the written record of a
+ * defect that shipped for months behind exactly this workaround, and it would
+ * cost nothing to keep: a scoped read of a single card is the same read. It is
+ * REDUNDANT, not wrong, and it is left as the belt beside the braces —
+ * `preview-overlap.spec.ts` fails on a second card, and these assertions keep
+ * comparing whatever they read against the payload for the current selection,
+ * so neither test can pass over a regression by leaning on the other.
  */
 const spilledList = (page: Page): Locator => page.locator('#spilledRows').last();
 

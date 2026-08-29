@@ -78,7 +78,15 @@
 //                                    the string tables on purpose (Task 8b), so
 //                                    it travels as a query parameter instead.
 //        ctx.session()              the current session id, or 'cold'.
-//        ctx.onSessionChange(fn)    fn(sessionId) on every future change.
+//        ctx.onSessionChange(fn)    fn(sessionId) on every future change — a
+//                                    CHANGE, not every read of /api/sessions.
+//                                    Returns an unsubscribe, and a screen that
+//                                    subscribes MUST hold it and call it from
+//                                    its next render(): render() runs again on
+//                                    every return to the route and on every
+//                                    live refresh, so a listener that is never
+//                                    removed accumulates one per render.
+//                                    screens/preview.js is the worked example.
 //        ctx.navigate(hash)         sets location.hash (triggers the router).
 //
 //   A screen throwing during render() is NOT caught here — per spec §6 the
@@ -1145,6 +1153,73 @@ function teardownLiveScreen() {
 }
 
 /**
+ * The render in flight for each `[data-p]` section, so two never write to one
+ * section at the same time.
+ *
+ * ── WHY THIS EXISTS, MEASURED ─────────────────────────────────────────────
+ *
+ * `TASK-the-preview-can-hold-two-renders-at-once-and-session` is written about
+ * `preview.js`'s `show()`, and the same shape sits one level up in THIS file.
+ * **Every screen's `render()` opens with `root.replaceChildren()`** — the
+ * property `route()` and `setupLiveScreen` both already lean on, twice each,
+ * in their own comments — and six of them then AWAIT an endpoint and append to
+ * `root` afterwards (`config`, `coverage`, `doctor`, `packs`, `port`, `work`).
+ * Two overlapping `render()` calls on one section therefore each clear an
+ * already-empty section and each append a whole screen.
+ *
+ * It is reachable through the app's own doors, and it was measured in a
+ * browser on 2026-08-29 over `.demo-corpus` rather than reasoned about:
+ *
+ *   three `location.hash` writes in ONE turn (`#/coverage`, `#/preview`,
+ *   `#/coverage`)          Coverage drew NINE `<h3>` where one render draws
+ *                          three — three whole screens stacked in one section.
+ *   two un-awaited `render()` calls, which is exactly what `act()` below makes
+ *                          SIX — two screens stacked.
+ *
+ * `route()` is entered from `hashchange` as `void route()`, and `act()` calls
+ * `render()` without awaiting it by design, so neither had anything stopping a
+ * second render from starting inside the first one's fetch.
+ *
+ * ── WHY SERIALIZED HERE RATHER THAN GUARDED IN EACH SCREEN ────────────────
+ *
+ * Because the ordering is this file's fact, not a screen's. A generation guard
+ * is the right answer INSIDE a screen that re-enters its own loader —
+ * `preview.js` and `injected.js` carry one, because their `show()` is called
+ * again by their own controls and by the session. But `render()` is called by
+ * the ROUTER, and twenty-one screens each re-deriving "am I still the current
+ * render of my section" is twenty-one chances to get it wrong for a rule that
+ * is true of all of them. One queue, at the one place that starts them.
+ *
+ * Chained rather than cancelled: a `fetch` already in flight cannot be
+ * unsent, and a render abandoned halfway leaves a half-drawn screen, which is
+ * the blank this project's own standard forbids. Each render therefore begins
+ * where the last one finished — the section is written once per render, in
+ * order, and the reader ends on the newest.
+ *
+ * A rejected render does not poison the queue: the next one still runs, and
+ * the failure belongs to whoever awaited it. Keyed WEAKLY, because a section
+ * is a DOM node this map must not keep alive.
+ */
+const sectionRender = new WeakMap();
+
+/**
+ * Render `mod` into `section`, after whatever was already rendering into it.
+ * Every caller in this file goes through here; nothing calls `mod.render`
+ * directly any more.
+ */
+async function renderScreen(mod, section) {
+  const previous = sectionRender.get(section);
+  const mine = (async () => {
+    // Its rejection is its own caller's to handle — swallowed HERE only so one
+    // failed render does not stop the next one from drawing.
+    if (previous !== undefined) { try { await previous; } catch { /* not this render's */ } }
+    await mod.render(section, window.myctx);
+  })();
+  sectionRender.set(section, mine);
+  await mine;
+}
+
+/**
  * Subscribe the screen `route()` just built. `mod` and `section` are what
  * `render()` needs to be called again; `name` is the `SCREEN_INVALIDATION`
  * key. A screen with no entry, or `watch`, gets no subscription at all —
@@ -1183,7 +1258,7 @@ function setupLiveScreen(name, mod, section) {
     // regardless of what the browser does mid-rebuild.
     const scrollHost = document.getElementById('screen');
     const savedScroll = scrollHost === null ? null : scrollHost.scrollTop;
-    void mod.render(section, window.myctx).then(() => {
+    void renderScreen(mod, section).then(() => {
       if (scrollHost !== null && savedScroll !== null) scrollHost.scrollTop = savedScroll;
     });
   };
@@ -1228,10 +1303,31 @@ async function loadSessions() {
   // See `noCredential`'s own header for why this can't just be `sessionValue
   // === 'cold'` read backwards.
   noCredential = false;
-  sessionValue = data.sessions.length === 0 ? 'cold' : (data.default ?? 'cold');
+  const next = data.sessions.length === 0 ? 'cold' : (data.default ?? 'cold');
+  // **ON CHANGE, and this is the difference between a listener and a pulse.**
+  //
+  // `onSessionChange(fn)` promises `fn` on every future CHANGE — the contract
+  // is written into this file's own header block. It used to fire on every
+  // CALL, which is a different thing: this function runs at boot and again on
+  // every nonce redeemed into a live page, so a screen subscribed here was
+  // told the session had moved when it had not, and re-fetched a selection it
+  // was already showing. Paired with `preview.js`'s appending `draw()` that is
+  // the second half of `TASK-the-preview-can-hold-two-renders-at-once-and-
+  // session`: a spurious notification is a spurious `show()`, and two `show()`
+  // calls in flight used to be two renders on screen.
+  //
+  // Recorded BEFORE the assignment, because "changed" is a comparison against
+  // what the shell was last showing and there is exactly one place that is
+  // known.
+  const changed = next !== sessionValue;
+  sessionValue = next;
   const label = document.getElementById('sesslbl');
   label.textContent = sessionValue === 'cold' ? flat(table.strings, 'sess.cold') : sessionValue;
-  for (const fn of sessionListeners) fn(sessionValue);
+  if (!changed) return;
+  // Over a COPY: a listener may unsubscribe from inside its own callback (a
+  // screen re-rendering itself does exactly that), and splicing the array
+  // being iterated would skip the listener after it.
+  for (const fn of [...sessionListeners]) fn(sessionValue);
 }
 
 /**
@@ -2041,7 +2137,10 @@ async function route() {
   unread.append(stateChip('screen.unread', 'title.screenUnread'));
   section.append(unread);
   const mod = await loader();
-  await mod.render(section, window.myctx);
+  // Through the queue, never straight at the module: two routes to one screen
+  // in one turn used to leave two whole renders stacked in its section. See
+  // `sectionRender` above for the measurement.
+  await renderScreen(mod, section);
   // Arm live invalidation for THIS screen, now that it has something on
   // screen to either rebuild or ask about. After render(), not before: a
   // record arriving mid-render would race a subscription against a first
@@ -2177,7 +2276,22 @@ async function main() {
     // to carry to the confirm route; see the screen-contract note above.
     lang: table.lang,
     session: currentSession,
-    onSessionChange: (fn) => sessionListeners.push(fn),
+    // **Returns its own unsubscribe, and a screen that subscribes must call
+    // it.** This used to answer `push`'s return value — an array length, which
+    // nothing could do anything with — and there was no way to stop listening
+    // at all. A screen module is imported once and its `render()` runs again on
+    // every return to its route and on every live refresh, so the listeners
+    // accumulated one per render: visit a screen three times and one session
+    // change started three renders of it. `subscribeStream` already answers an
+    // unsubscribe for the same reason; this is that contract, applied to the
+    // other subscription a screen can hold.
+    onSessionChange: (fn) => {
+      sessionListeners.push(fn);
+      return () => {
+        const at = sessionListeners.indexOf(fn);
+        if (at !== -1) sessionListeners.splice(at, 1);
+      };
+    },
     navigate: (hash) => { location.hash = hash; },
   };
 

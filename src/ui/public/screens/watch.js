@@ -312,12 +312,35 @@ function drawPulse(ctx, buckets) {
 }
 
 export async function render(root, ctx) {
-  // A second visit must not leave the first visit's subscription listening —
-  // the shared connection stays open regardless, but its callback would
-  // otherwise still be closures over a screen this render just discarded.
-  // Unsubscribing here rather than only on the way out also covers a reload
-  // of the same route and a render that threw before it reached its own
-  // teardown.
+  /**
+   * **CHECKED against `TASK-the-preview-can-hold-two-renders-at-once-and-
+   * session` on 2026-08-29, and safe on both halves — which is why this file
+   * is the pattern the other three now copy rather than a site that needed
+   * fixing.**
+   *
+   * The SUBSCRIPTION half is the block below, and it has been right since this
+   * screen landed: one module-level unsubscribe, dropped at the top of every
+   * `render()`. `screens/preview.js`, `screens/injected.js` and
+   * `screens/simulate.js` now hold `ctx.onSessionChange`'s unsubscribe in
+   * exactly this shape, and `app.js` grew one to hold because this file's
+   * argument applies word for word to the other subscription a screen can have.
+   *
+   * The DOUBLE-RENDER half is safe structurally: every host on this screen is
+   * created by the current `render()` and attached to `root` BEFORE the three
+   * reads at the foot of the file, so a second render's `root.replaceChildren()`
+   * detaches the first one's hosts and its late `applyBudget`/`applyVolume`/
+   * `applyBacklog` write into nodes that have left the document. The rows go
+   * through `renderRows()`, which is `body.replaceChildren(built)` — a REPLACE,
+   * inside a synchronous function, never a clear before a request and an append
+   * after it.
+   *
+   * A second visit must not leave the first visit's subscription listening —
+   * the shared connection stays open regardless, but its callback would
+   * otherwise still be closures over a screen this render just discarded.
+   * Unsubscribing here rather than only on the way out also covers a reload
+   * of the same route and a render that threw before it reached its own
+   * teardown.
+   */
   if (openStream !== null) {
     openStream();
     openStream = null;

@@ -371,7 +371,23 @@ const MORE_HE = ' פינויים נוספים';
 const LADDER_ITEMS_EN = ' items';
 const LADDER_ITEMS_HE = ' פריטים';
 
+/**
+ * This module's own unsubscribe from the shell's session listeners, if any.
+ *
+ * `screens/preview.js`' note carries the argument. Taken here even though this
+ * screen cannot hold two renders — see `render()`'s own note on why it cannot
+ * — because the accumulation is a defect on its own terms: three visits to
+ * `#/simulate` used to leave three listeners, so one session change fired
+ * three `run()` + `runSweep()` pairs, which is six requests for one answer.
+ */
+let dropSessionListener = null;
+
 export async function render(root, ctx) {
+  if (dropSessionListener !== null) {
+    dropSessionListener();
+    dropSessionListener = null;
+  }
+
   root.replaceChildren();
   screenHead(ctx, root, 'sim.h', 'sim.v', 'sim.sub');
 
@@ -1102,7 +1118,23 @@ export async function render(root, ctx) {
     drawLadder();
     rangeSaid.replaceChildren(...ctx.t('sim.rangeset', { tier: tier, max: num(Number(slider.max)) }));
   };
-  ctx.onSessionChange(() => { void run(); void runSweep(); });
+  /**
+   * **Why this screen cannot hold two renders, measured rather than assumed.**
+   *
+   * `preview.js`'s defect needs a container that is CLEARED before the request
+   * and APPENDED to after it. Every drawing surface on this screen is replaced
+   * wholesale inside a synchronous draw instead — `stairPlate`, `ladderPlate`,
+   * `tbody`, `chipNote`, `ratioPlate` and `tierPick` each open with
+   * `replaceChildren()` and finish appending before they yield, and none of the
+   * six is written to between an await and its own clear. Two overlapping
+   * `run()`s therefore leave ONE table, not two.
+   *
+   * What they can leave is the OLDER answer, if it resolves second. That is a
+   * different defect from the one this task is about and it is not made worse
+   * by anything here, so it is recorded rather than patched: a generation guard
+   * on `run()`/`runSweep()` is the same two lines `preview.js` now carries.
+   */
+  dropSessionListener = ctx.onSessionChange(() => { void run(); void runSweep(); });
 
   drawTierPick();
   try {

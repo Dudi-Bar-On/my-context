@@ -251,9 +251,30 @@ export async function render(root, ctx) {
 
   root.append(comb, heat);
 
-  // Two independent reads of two different sources, in flight together: the
-  // comb cannot tell the strip anything and the strip cannot tell the comb
-  // anything, so neither waits on the other's refusal.
+  /**
+   * **CHECKED against `TASK-the-preview-can-hold-two-renders-at-once-and-
+   * session` on 2026-08-29, and safe — for a structural reason, not by luck.**
+   *
+   * That defect is a container CLEARED before a request and APPENDED to after
+   * it, so two overlapping calls each clear an empty container and each append
+   * a whole render. This screen cannot reach that state, and the line above is
+   * why: `combPlate` and `heatPlate` are created fresh by THIS call and
+   * attached to `root` BEFORE either read starts. A second `render()` opens
+   * with `root.replaceChildren()`, which detaches them — so a first render
+   * whose fetch lands late appends its chart into a node that is no longer in
+   * the document. One render is on screen, and it is the newer one.
+   *
+   * It also subscribes to nothing: no `ctx.onSessionChange` here and no stream,
+   * so there is no listener to accumulate per render either. The two reads
+   * below draw INTO the plates and never re-append them, which is the property
+   * this note is actually about — moving either `el()` call after an `await`
+   * would reintroduce the defect, and that is what to look at if this screen
+   * ever grows a third card.
+   *
+   * Two independent reads of two different sources, in flight together: the
+   * comb cannot tell the strip anything and the strip cannot tell the comb
+   * anything, so neither waits on the other's refusal.
+   */
   await Promise.all([drawComb(ctx, combPlate), drawHeat(ctx, heatPlate)]);
 }
 
