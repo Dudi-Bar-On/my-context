@@ -57,6 +57,13 @@ import { test } from './app.ts';
 /** The three screens that draw a fixed-viewBox chart. */
 const CHART_SCREENS = ['simulate', 'graph', 'decay'] as const;
 
+/**
+ * The comb, scoped the way `measure` is: the decay screen's own section, not
+ * whichever `svg.chart` happens to be first in a document that keeps every
+ * screen it has ever drawn.
+ */
+const COMB = '#screen [data-p="decay"]:not([hidden]) svg.chart';
+
 /** Values distinctive enough that no real rule could produce them by accident. */
 const PROBE_TEXT_PX = 29;
 const PROBE_MONO_PX = 31;
@@ -78,11 +85,33 @@ interface Chart {
   readonly monoFontSize: string | null;
 }
 
-/** Every fixed-size `svg.chart` on the visible screen, measured. */
-function measure(page: Page): Promise<Chart[]> {
-  return page.evaluate(() => {
+/**
+ * Every fixed-size `svg.chart` **inside `screen`'s own section**, measured.
+ *
+ * ── IT WAS NOT SCOPED, AND SO IT MEASURED ONE CHART THREE TIMES ────────────
+ *
+ * `app.js` builds a section per screen inside `#screen` and hides the ones
+ * that are not current (`for (const other of body.querySelectorAll('[data-p]'))
+ * other.hidden = other !== section`), so a routed-away screen's chart stays in
+ * the document. A bare `document.querySelectorAll('svg.chart')` reaches it, and
+ * the zero-width guard below does not save a poll that runs in the same turn as
+ * the click: the outgoing screen is still laid out.
+ *
+ * Every per-screen test in this file opens ONE screen on a fresh page, so none
+ * of them could see it. The first test walks all three on one page, and it was
+ * reading the staircase three times over. Its own failure message printed the
+ * proof and nobody had a reason to look at it:
+ *
+ *     simulate 0 0 560 214 | graph 0 0 560 214 | decay 0 0 560 214
+ *
+ * — three screens, one viewBox, and the comb is 900 wide. Scoping the query to
+ * `[data-p="<screen>"]:not([hidden])` is what makes "all three screens agree"
+ * a statement about three screens.
+ */
+function measure(page: Page, screen: string): Promise<Chart[]> {
+  return page.evaluate((s) => {
     const out: Chart[] = [];
-    document.querySelectorAll('svg.chart').forEach((svg) => {
+    document.querySelectorAll(`#screen [data-p="${s}"]:not([hidden]) svg.chart`).forEach((svg) => {
       const rect = svg.getBoundingClientRect();
       if (rect.width === 0) return;
       const cs = getComputedStyle(svg);
@@ -102,7 +131,7 @@ function measure(page: Page): Promise<Chart[]> {
       });
     });
     return out;
-  }) as Promise<Chart[]>;
+  }, screen) as Promise<Chart[]>;
 }
 
 /**
@@ -135,7 +164,7 @@ async function chartsOn(page: Page, screen: string): Promise<Chart[]> {
         if (btn === null) throw new Error(`no rail button for screen ${s}`);
         if (location.hash !== `#/${s}`) btn.click();
       }, screen);
-      charts = await measure(page);
+      charts = await measure(page, screen);
       return charts.length;
     }, {
       timeout: 20_000,
@@ -158,11 +187,11 @@ async function chartsOn(page: Page, screen: string): Promise<Chart[]> {
  * MEASUREMENT rather than snapshotting it once is the fix, and it cannot mask
  * a real failure: what it waits for is a chart existing, not a chart passing.
  */
-async function charts(page: Page, why: string): Promise<Chart[]> {
+async function charts(page: Page, screen: string, why: string): Promise<Chart[]> {
   let seen: Chart[] = [];
   await expect
     .poll(async () => {
-      seen = await measure(page);
+      seen = await measure(page, screen);
       return seen.length;
     }, { timeout: 20_000, message: why })
     .toBeGreaterThan(0);
@@ -247,7 +276,7 @@ for (const screen of CHART_SCREENS) {
     const before = await chartsOn(app.page, screen);
     const after = await underProbe(
       app.page,
-      () => charts(app.page, `${screen}: the probe lost the chart it was measuring`),
+      () => charts(app.page, screen, `${screen}: the probe lost the chart it was measuring`),
     );
     expect(after.length, `${screen}: the probe lost a chart it was measuring`).toBe(before.length);
 
@@ -292,23 +321,23 @@ test('the probe can still fail — the restatement put back, and detected', asyn
     // Wait for the comb to be settled under the probe FIRST, so the element the
     // restatement lands on is the one that gets measured — a redraw between the
     // two would silently measure a clean chart and pass for the wrong reason.
-    await charts(app.page, 'the comb vanished under the probe, before the control could be set');
-    await app.page.evaluate(() => {
-      const svg = document.querySelector<SVGElement>('svg.chart');
+    await charts(app.page, 'decay', 'the comb vanished under the probe, before the control could be set');
+    await app.page.evaluate((comb) => {
+      const svg = document.querySelector<SVGElement>(comb);
       if (svg === null) throw new Error('the comb is not on the page');
       // `screens/decay.js` as it stood before 2026-08-29, verbatim.
       svg.style.setProperty('max-inline-size', '100%');
       svg.querySelectorAll<SVGElement>('text.mono').forEach((t) => {
         t.style.setProperty('font-size', 'var(--fs-chart-mono)');
       });
-    });
-    return measure(app.page);
+    }, COMB);
+    return measure(app.page, 'decay');
   });
-  await app.page.evaluate(() => {
-    const svg = document.querySelector<SVGElement>('svg.chart');
+  await app.page.evaluate((comb) => {
+    const svg = document.querySelector<SVGElement>(comb);
     svg?.style.removeProperty('max-inline-size');
     svg?.querySelectorAll<SVGElement>('text.mono').forEach((t) => t.style.removeProperty('font-size'));
-  });
+  }, COMB);
 
   const comb = restated[0];
   expect(comb, 'the comb was not measured under the restatement').toBeDefined();
@@ -320,5 +349,239 @@ test('the probe can still fail — the restatement put back, and detected', asyn
   if (comb!.monoFontSize !== null) {
     expect(comb!.monoFontSize, 'the inline font-size did not win, so the probe is not binding')
       .not.toBe(`${PROBE_MONO_PX}px`);
+  }
+});
+
+/* ── PER-MARK COLOUR, WHICH THE SHARED TEXT RULE USED TO ERASE ──────────────
+ *
+ * `svg.chart text{fill:var(--dim)}` is an AUTHOR rule. A `fill=` on a `<text>`
+ * is a PRESENTATION attribute, and presentation attributes lose to author
+ * rules — so for six days every per-mark colour the charts drew was computed,
+ * written into the DOM, and then thrown away by the cascade. Measured on the
+ * live corpus 2026-08-29, before the fix:
+ *
+ *     decay     `window 20`   asked var(--warn)   rendered rgb(169,166,184)
+ *     decay     `never`       asked var(--crit)   rendered rgb(169,166,184)
+ *     decay     109 ids       asked var(--ink)    rendered rgb(169,166,184)
+ *     simulate  `16,000`      asked var(--gold)   rendered rgb(169,166,184)
+ *
+ * 112 marks asking for a colour, 112 rendering the same grey.
+ *
+ * **So these tests assert the COMPUTED fill of a named mark, never the
+ * presence of a rule.** Grepping `screens/decay.js` for `var(--warn)` was true
+ * the whole time the chart was grey; it is the one thing that proves nothing
+ * here. The token values are not hardcoded either — they are resolved from the
+ * live sheet through a probe element, so a theme that redefines `--warn` moves
+ * the expectation with it instead of reddening the gate.
+ */
+
+/** The five colours a chart mark may spend, resolved from the live sheet. */
+function tokens(page: Page): Promise<Record<string, string>> {
+  return page.evaluate((names) => {
+    // A span coloured through the CSSOM: custom properties inherit from
+    // `:root`, so this reads what the SHEET means by `--warn` right now rather
+    // than what a test file remembers it meaning.
+    const probe = document.createElement('span');
+    probe.setAttribute('aria-hidden', 'true');
+    document.body.append(probe);
+    const out: Record<string, string> = {};
+    for (const name of names) {
+      probe.style.setProperty('color', `var(--${name})`);
+      out[name] = getComputedStyle(probe).color;
+    }
+    probe.remove();
+    return out;
+  }, ['dim', 'ink', 'warn', 'crit', 'gold']) as Promise<Record<string, string>>;
+}
+
+interface Mark {
+  /** The `class` attribute exactly as the screen wrote it, `''` when unclassed. */
+  readonly cls: string;
+  /** A `fill=` presentation attribute, which no mark may carry any more. */
+  readonly fillAttr: string | null;
+  readonly fill: string;
+  readonly text: string;
+}
+
+/** Every `<text>` on `screen`'s own fixed-size charts, with its computed fill. */
+function textMarks(page: Page, screen: string): Promise<Mark[]> {
+  return page.evaluate((s) => {
+    const out: Mark[] = [];
+    document.querySelectorAll(`#screen [data-p="${s}"]:not([hidden]) svg.chart`).forEach((svg) => {
+      // The same two exclusions `measure()` makes, for the same two reasons: a
+      // routed-away screen leaves its chart in the document at zero width, and
+      // `.pulse svg` is excluded by its own `block-size` rather than by name.
+      // The pulse draws no `<text>` at all, so it contributes nothing either way.
+      if (svg.getBoundingClientRect().width === 0) return;
+      if (getComputedStyle(svg).blockSize === '100%') return;
+      svg.querySelectorAll('text').forEach((t) => {
+        out.push({
+          cls: t.getAttribute('class') ?? '',
+          fillAttr: t.getAttribute('fill'),
+          fill: getComputedStyle(t).fill,
+          text: (t.textContent ?? '').slice(0, 32),
+        });
+      });
+    });
+    return out;
+  }, screen) as Promise<Mark[]>;
+}
+
+/** The poll-on-the-measurement `chartsOn` uses, for labels rather than boxes. */
+async function marksOn(page: Page, screen: string): Promise<Mark[]> {
+  let seen: Mark[] = [];
+  await expect
+    .poll(async () => {
+      await page.evaluate((s) => {
+        const btn = document.querySelector<HTMLElement>(`.nav[data-s="${s}"]`);
+        if (btn === null) throw new Error(`no rail button for screen ${s}`);
+        if (location.hash !== `#/${s}`) btn.click();
+      }, screen);
+      seen = await textMarks(page, screen);
+      return seen.length;
+    }, {
+      timeout: 20_000,
+      message:
+        `${screen} never drew a chart label, so nothing here was measured. Either the screen `
+        + 'refused or it broke, and neither is something this file may pass over.',
+    })
+    .toBeGreaterThan(0);
+  return seen;
+}
+
+/**
+ * The colour a mark's CLASS asks for — the whole vocabulary, in one place.
+ *
+ * `nid more` is read before `nid` because that is what the stylesheet says
+ * (`svg.chart text.nid.more` is more specific than `svg.chart text.nid`); a
+ * table that read them the other way round would agree with a page whose rules
+ * were in the wrong order.
+ */
+function asks(cls: string): string {
+  const has = (c: string): boolean => cls.split(/\s+/).includes(c);
+  if (has('nid') && has('more')) return 'warn';
+  if (has('warn')) return 'warn';
+  if (has('crit')) return 'crit';
+  if (has('gold')) return 'gold';
+  if (has('ink') || has('nid')) return 'ink';
+  // `.rel` and every unclassed mark: the shared rule's own `--dim`, which this
+  // fix deliberately did not move — the reason it is a class list and not a
+  // deletion of that declaration.
+  return 'dim';
+}
+
+interface Placed extends Mark { readonly screen: string }
+
+function evidenceOf(marks: readonly Placed[]): string {
+  return marks
+    .map((m) => `${m.screen} ${JSON.stringify(m.text)} class=${JSON.stringify(m.cls)} `
+      + `asks --${asks(m.cls)} renders ${m.fill}`)
+    .join(' | ');
+}
+
+test('every chart mark renders the colour its class asks for', async ({ app }) => {
+  const want = await tokens(app.page);
+  const all: Placed[] = [];
+  for (const screen of CHART_SCREENS) {
+    for (const mark of await marksOn(app.page, screen)) all.push({ screen, ...mark });
+  }
+
+  // **The defect's own shape, as a regression guard.** A `fill=` attribute on a
+  // `<text>` cannot win against `svg.chart text{fill:…}`, so writing one is
+  // writing a colour the reader will never see.
+  const attributed = all.filter((m) => m.fillAttr !== null);
+  expect(
+    attributed.length,
+    'a chart wrote a mark\'s colour as a `fill` presentation attribute, which loses to the '
+    + 'author rule `svg.chart text{fill:var(--dim)}` and renders grey. Put a class on the mark '
+    + `and a rule in styles.css instead: ${evidenceOf(attributed)}`,
+  ).toBe(0);
+
+  const wrong = all.filter((m) => m.fill !== want[asks(m.cls)]);
+  expect(
+    wrong.length,
+    `a chart mark did not render the colour its class asks for: ${evidenceOf(wrong)}`,
+  ).toBe(0);
+
+  // Presence, per kind. Without it the assertion above passes on a page that
+  // drew no coloured mark at all, which is exactly the state being fixed.
+  const kinds = [...new Set(all.map((m) => asks(m.cls)))];
+  for (const kind of ['warn', 'crit', 'ink', 'gold', 'dim']) {
+    expect(
+      kinds,
+      `no visible chart mark spends --${kind}, so nothing here proved it renders: `
+      + evidenceOf(all),
+    ).toContain(kind);
+  }
+
+  // And the three screens agree about the unclassed default.
+  const defaults = [...new Set(all.filter((m) => asks(m.cls) === 'dim').map((m) => m.fill))];
+  expect(
+    defaults,
+    `the chart screens disagree about the unclassed default: ${evidenceOf(all)}`,
+  ).toEqual([want.dim]);
+});
+
+/** `underProbe`'s shape for one rule: the crit tone driven to a chosen value. */
+async function underCritProbe<T>(page: Page, colour: string, body: () => Promise<T>): Promise<T> {
+  await page.evaluate((c) => {
+    const sheet = [...document.styleSheets].find((s) => (s.href ?? '').endsWith('/styles.css'));
+    if (sheet === undefined) {
+      throw new Error(
+        'the shipped styles.css is not among document.styleSheets, so there is no sheet to '
+        + 'drive. This is a broken probe, not a clean page: fail rather than report green.',
+      );
+    }
+    sheet.insertRule(`svg.chart text.crit{fill:${c}}`, sheet.cssRules.length);
+  }, colour);
+  try {
+    return await body();
+  } finally {
+    await page.evaluate(() => {
+      const sheet = [...document.styleSheets].find((s) => (s.href ?? '').endsWith('/styles.css'));
+      if (sheet === undefined) return;
+      sheet.deleteRule(sheet.cssRules.length - 1);
+    });
+  }
+}
+
+test('the stylesheet still owns a mark colour — driven, not read', async ({ app }) => {
+  // The test above would pass just as well if the colours came back as
+  // attributes. This one moves the SHEET and requires the marks to follow: an
+  // element carrying its own copy would not, which is the method of this file.
+  const PROBE_CRIT = 'rgb(1, 2, 3)';
+  const before = await marksOn(app.page, 'decay');
+  expect(
+    before.filter((m) => asks(m.cls) === 'crit').length,
+    'the comb drew no --crit mark, so the probe below would prove nothing',
+  ).toBeGreaterThan(0);
+
+  const want = await tokens(app.page);
+  const after = await underCritProbe(app.page, PROBE_CRIT, async () => {
+    let seen: Mark[] = [];
+    await expect
+      .poll(async () => { seen = await textMarks(app.page, 'decay'); return seen.length; },
+        { timeout: 20_000, message: 'the probe lost the comb it was measuring' })
+      .toBeGreaterThan(0);
+    return seen;
+  });
+
+  const placed = after.map((m) => ({ screen: 'decay', ...m }));
+  const crit = placed.filter((m) => asks(m.cls) === 'crit');
+  expect(crit.length, `the probe lost the comb's --crit marks: ${evidenceOf(placed)}`)
+    .toBeGreaterThan(0);
+  for (const mark of crit) {
+    expect(
+      mark.fill,
+      `the stylesheet moved svg.chart text.crit to ${PROBE_CRIT} and this mark did not follow, `
+      + `so it is carrying its own copy of a colour styles.css owns: ${evidenceOf(placed)}`,
+    ).toBe(PROBE_CRIT);
+  }
+  for (const mark of placed.filter((m) => asks(m.cls) === 'dim')) {
+    expect(
+      mark.fill,
+      'an unclassed mark moved with a rule that names .crit, so the classes are not doing the '
+      + `work this fix says they do: ${evidenceOf(placed)}`,
+    ).toBe(want.dim);
   }
 });

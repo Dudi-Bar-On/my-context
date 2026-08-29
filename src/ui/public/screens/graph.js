@@ -284,10 +284,17 @@ export function egoDrawing(data, rtl = false) {
   // The cap dropped nodes, and saying so is not optional — `gr.sub` promises
   // "a hard cap of 60 nodes with an explicit '+N more'". The mockup writes the
   // word `more` as an unkeyed ternary and paints it with an inline
-  // `fill:'var(--warn)'`; a custom property cannot resolve in a presentation
-  // attribute, and the repaint's rule is a class either way, so the fill is
-  // left to the stylesheet through `text.nid.more` and only the word is
-  // transcribed. Raised in this task's report with the other five.
+  // `fill:'var(--warn)'`; the fill is left to the stylesheet through
+  // `text.nid.more` and only the word is transcribed.
+  //
+  // **The class was right and the rule was missing.** The original reason given
+  // here — "a custom property cannot resolve in a presentation attribute" — is
+  // not true, and was measured false on the live corpus 2026-08-29: the comb's
+  // `<circle fill="var(--gold)">` computes rgb(232,195,104). What is true is
+  // stronger: a presentation attribute loses to `svg.chart text{fill:var(
+  // --dim)}`, so an attribute here would have drawn grey no matter what it
+  // named. `text.nid.more` itself was never declared until 2026-08-29
+  // (`styles.css` ~1563), so this word drew as an ordinary id until then.
   let more = null;
   if (data.omitted > 0) {
     const lastColumn = columns - 1;

@@ -658,7 +658,10 @@ export async function render(root, ctx) {
     }
     for (const label of placed.labels) {
       kids.push(svText(
-        { x: X(label.x), y: label.y, 'text-anchor': anchor(label.anchor), fill: 'var(--crit)' },
+        // `class`, not `fill`: a presentation attribute loses to
+        // `svg.chart text{fill:var(--dim)}`, so every one of these words drew
+        // grey. `styles.css` ~1541 owns the colour now.
+        { x: X(label.x), y: label.y, 'text-anchor': anchor(label.anchor), class: 'crit' },
         label.text,
       ));
     }
@@ -670,7 +673,7 @@ export async function render(root, ctx) {
       kids.push(svText(
         {
           x: X(STAIR_PL), y: STAIR_H + 10, 'text-anchor': anchor('start'),
-          fill: 'var(--crit)',
+          class: 'crit',
         },
         `+${num(placed.omitted)}${rtl ? MORE_HE : MORE_EN}`,
       ));
@@ -692,7 +695,7 @@ export async function render(root, ctx) {
       {
         x: X(nowOut ? nowU + 5 : nowU - 5), y: STAIR_PT + 9,
         'text-anchor': anchor(nowOut ? 'start' : 'end'),
-        fill: 'var(--gold)', class: 'mono',
+        class: 'mono gold',
       },
       num(cur),
     ));

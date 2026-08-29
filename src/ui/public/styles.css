@@ -1520,6 +1520,25 @@ svg.chart{display:block;max-inline-size:100%;block-size:auto;overflow:visible}
 .pulse svg{display:block;inline-size:100%;block-size:100%}
 svg.chart text{font-family:var(--sans);font-size:var(--fs-chart);fill:var(--dim)}
 svg.chart text.mono{font-family:var(--mono);font-size:var(--fs-chart-mono)}
+
+/* **A MARK'S COLOUR IS A CLASS, and this sheet is what spends it.**
+   The rule above is an AUTHOR rule; a `fill=` on a `<text>` is a PRESENTATION
+   attribute, and a presentation attribute loses to every author rule. So the
+   shared `fill:var(--dim)` silently beat every per-mark colour the screens
+   drew as an attribute. Measured on the live corpus 2026-08-29, before any of
+   this: 112 `<text>` elements asked for --warn, --crit or --ink and all 112
+   rendered rgb(169,166,184). The charts were encoding severity and the reader
+   saw one flat grey — worse than not encoding it, because the code read as
+   though the distinction were being made.
+   These four classes are the WHOLE vocabulary a chart mark may spend, so the
+   list is itself the meaning-hue budget
+   (DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn). An
+   unclassed mark is untouched and still takes --dim from the rule above, which
+   is why this is a class list and not a deletion of that `fill`. */
+svg.chart text.ink{fill:var(--ink)}
+svg.chart text.gold{fill:var(--gold)}
+svg.chart text.warn{fill:var(--warn)}
+svg.chart text.crit{fill:var(--crit)}
 svg.chart .axis{stroke:var(--rule);stroke-width:1}
 svg.chart .step{stroke:var(--ok);stroke-width:2;fill:none;stroke-linejoin:round}
 svg.chart .nowline{stroke:var(--gold);stroke-width:1.5}
@@ -1537,4 +1556,9 @@ svg.chart .edge.bearing{stroke:var(--ink);stroke-width:1.4;opacity:.55}
 svg.chart .edge.ref{stroke:var(--faint);stroke-width:.8}
 svg.chart .edge.dangling{stroke:var(--crit);stroke-width:1.6;stroke-dasharray:4 3}
 svg.chart text.nid{font-family:var(--mono);font-size:var(--fs-chart-nid);fill:var(--ink)}
+/* `graph.js` has written `class="nid more"` on the `+N more` box's label
+   since it was built — "the repaint's rule is a class either way" — but the
+   rule was never written here, so the word drew as an ordinary id. `.node.more`
+   above already spends --warn on the box; this spends it on the word. */
+svg.chart text.nid.more{fill:var(--warn)}
 svg.chart text.rel{font-family:var(--mono);font-size:var(--fs-chart-rel);fill:var(--dim)}

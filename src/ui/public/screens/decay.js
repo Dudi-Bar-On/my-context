@@ -453,16 +453,29 @@ function drawCombChart(report, rows, unplaceable, served) {
       class: 'axis', x1: X(dx(sessions)), y1: PT - 4, x2: X(dx(sessions)), y2: height - PB,
       'stroke-dasharray': '2 4', stroke: isWindow ? 'var(--warn)' : 'var(--rule)',
     }));
+    // ── COLOUR IS A CLASS ON EVERY MARK BELOW, AND NEVER AN ATTRIBUTE ─────
+    //
+    // These labels used to say `fill: 'var(--warn)'` and the reader never saw
+    // one. A `fill=` on a `<text>` is a PRESENTATION attribute and
+    // `svg.chart text{fill:var(--dim)}` (`styles.css` ~1521) is an AUTHOR
+    // rule, so the shared rule won every time: measured on the live corpus
+    // 2026-08-29, 112 marks on this chart asked for a colour and 112 rendered
+    // rgb(169,166,184). The sheet now owns the four it may spend
+    // (`styles.css` ~1538-1541) and the screen only says WHICH.
+    //
+    // Only the window tick means anything, so only it is classed; an ordinary
+    // tick carries nothing and takes --dim from `svg.chart text`, which is the
+    // same value it always rendered.
     kids.push(svText(
       {
         x: X(dx(sessions)), y: height - PB + 13, 'text-anchor': 'middle',
-        fill: isWindow ? 'var(--warn)' : 'var(--dim)',
+        ...(isWindow ? { class: 'warn' } : {}),
       },
       isWindow ? `window ${report.window}` : label,
     ));
   }
   kids.push(svText(
-    { x: X(dx(MAX_S)), y: height - PB + 24, 'text-anchor': 'middle', fill: 'var(--dim)' },
+    { x: X(dx(MAX_S)), y: height - PB + 24, 'text-anchor': 'middle' },
     AXIS_UNIT,
   ));
 
@@ -477,7 +490,7 @@ function drawCombChart(report, rows, unplaceable, served) {
   kids.push(svText(
     {
       x: X(NEVER_X + NEVER_W / 2), y: height - PB + 13, 'text-anchor': 'middle',
-      fill: 'var(--crit)',
+      class: 'crit',
     },
     NEVER,
   ));
@@ -489,7 +502,7 @@ function drawCombChart(report, rows, unplaceable, served) {
     // for the same reason: it keeps bidi-sensitive text out of every SVG in
     // the product.
     const label = svText(
-      { x: X(PL - 8), y: y + 3, 'text-anchor': anchor('end'), class: 'mono', fill: 'var(--ink)' },
+      { x: X(PL - 8), y: y + 3, 'text-anchor': anchor('end'), class: 'mono ink' },
       row.id.length > ID_MAX ? `${row.id.slice(0, ID_MAX - 1)}…` : row.id,
     );
     // `class: 'mono'` IS the typography, and there is deliberately no inline
@@ -506,7 +519,7 @@ function drawCombChart(report, rows, unplaceable, served) {
     // says a consumer that sums the three double-counts.
     if (row.unrestricted) {
       kids.push(svText(
-        { x: X(4), y: y + 3, 'text-anchor': anchor('start'), fill: 'var(--dim)' }, '∀',
+        { x: X(4), y: y + 3, 'text-anchor': anchor('start') }, '∀',
       ));
     }
     const bad = row.always && row.cold;
@@ -526,7 +539,7 @@ function drawCombChart(report, rows, unplaceable, served) {
       kids.push(svText(
         {
           x: X(outward ? cx + 9 : cx - 9), y: y + 3,
-          'text-anchor': anchor(outward ? 'start' : 'end'), fill: 'var(--crit)',
+          'text-anchor': anchor(outward ? 'start' : 'end'), class: 'crit',
         },
         BADPIN,
       ));
@@ -538,7 +551,7 @@ function drawCombChart(report, rows, unplaceable, served) {
   if (unplaceable > 0) {
     kids.push(svText(
       {
-        x: X(PL), y: height - PB + 24, 'text-anchor': anchor('start'), fill: 'var(--warn)',
+        x: X(PL), y: height - PB + 24, 'text-anchor': anchor('start'), class: 'warn',
       },
       `+${unplaceable} older than the ${served} sessions served`,
     ));

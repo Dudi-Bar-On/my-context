@@ -307,6 +307,12 @@ const SCREEN_SELECTORS = [
   'svg.chart .node.superseded', 'svg.chart .node.more',
   'svg.chart .edge', 'svg.chart .edge.bearing', 'svg.chart .edge.ref',
   'svg.chart .edge.dangling', 'svg.chart text.nid', 'svg.chart text.rel',
+  // The per-mark colour classes, added 2026-08-29 (plan:walk seq:78). Until
+  // they existed the screens wrote `fill="var(--warn)"` as a presentation
+  // attribute and `svg.chart text{fill:var(--dim)}` — an author rule — beat
+  // every one of them: 112 marks asked for a colour and 112 rendered grey.
+  'svg.chart text.ink', 'svg.chart text.gold', 'svg.chart text.warn',
+  'svg.chart text.crit', 'svg.chart text.nid.more',
   // **The provenance bar and the status strip, added 2026-08-29 with the
   // strip's four provenance groups (plan:walk seq:29b).** Both bars were
   // carried from the mockup byte-for-byte when `renderChrome()` landed and

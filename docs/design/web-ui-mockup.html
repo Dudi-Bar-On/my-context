@@ -1054,6 +1054,10 @@ details.help[open]>summary{margin-block-end:6px}
 svg.chart{display:block;max-inline-size:100%;block-size:auto;overflow:visible}
 svg.chart text{font-family:var(--sans);font-size:var(--fs-chart);fill:var(--dim)}
 svg.chart text.mono{font-family:var(--mono);font-size:var(--fs-chart-mono)}
+svg.chart text.ink{fill:var(--ink)}
+svg.chart text.gold{fill:var(--gold)}
+svg.chart text.warn{fill:var(--warn)}
+svg.chart text.crit{fill:var(--crit)}
 svg.chart .axis{stroke:var(--rule);stroke-width:1}
 svg.chart .step{stroke:var(--ok);stroke-width:2;fill:none;stroke-linejoin:round}
 svg.chart .nowline{stroke:var(--gold);stroke-width:1.5}
@@ -1221,6 +1225,7 @@ svg.chart .edge.bearing{stroke:var(--ink);stroke-width:1.4;opacity:.55}
 svg.chart .edge.ref{stroke:var(--faint);stroke-width:.8}
 svg.chart .edge.dangling{stroke:var(--crit);stroke-width:1.6;stroke-dasharray:4 3}
 svg.chart text.nid{font-family:var(--mono);font-size:var(--fs-chart-nid);fill:var(--ink)}
+svg.chart text.nid.more{fill:var(--warn)}
 svg.chart text.rel{font-family:var(--mono);font-size:var(--fs-chart-rel);fill:var(--dim)}
 .legend{display:flex;flex-wrap:wrap;gap:5px var(--sp-4);font-size:var(--fs-chart);
   color:var(--dim);margin-block-start:var(--sp-2)}
@@ -4715,21 +4720,24 @@ function renderComb(){
     const isWin=s===DECAY.window;
     k.push(sv('line',{class:'axis',x1:X(dx(s),W),y1:PT-4,x2:X(dx(s),W),y2:H-PB,
       'stroke-dasharray':'2 4',stroke:isWin?'var(--warn)':'var(--rule)'}));
+    /* COLOUR IS A CLASS: a fill= on a <text> is a presentation attribute and
+       loses to svg.chart text{fill:var(--dim)}, so every per-mark colour this
+       comb used to write as an attribute rendered grey. */
     k.push(svtext({x:X(dx(s),W),y:H-PB+13,'text-anchor':'middle',
-      fill:isWin?'var(--warn)':'var(--dim)'},isWin?(HEB?'חלון 20':'window 20'):lab));
+      ...(isWin?{class:'warn'}:{})},isWin?(HEB?'חלון 20':'window 20'):lab));
   }
   k.push(svtext({x:X(dx(maxS)/1,W),y:H-PB+24,'text-anchor':'middle'},
     HEB?'שיחות אחורה':'sessions ago'));
   const nx=W-PR+16;
   k.push(sv('rect',{class:'never',x:X(nx,W)-(HEB?46:0),y:PT-6,width:46,height:H-PT-PB+6,rx:4}));
-  k.push(svtext({x:X(nx+23,W),y:H-PB+13,'text-anchor':'middle',fill:'var(--crit)'},
+  k.push(svtext({x:X(nx+23,W),y:H-PB+13,'text-anchor':'middle',class:'crit'},
     HEB?'מעולם':'never'));
   const rowH=(H-PT-PB)/DECAY.rows.length;
   DECAY.rows.forEach(([id,ses,always,unres],i)=>{
     const y=PT+rowH*i+rowH/2;
-    k.push(svtext({x:X(PL-8,W),y:y+3,'text-anchor':ANC('end'),class:'mono',fill:'var(--ink)'},
+    k.push(svtext({x:X(PL-8,W),y:y+3,'text-anchor':ANC('end'),class:'mono ink'},
       id.length>32?id.slice(0,31)+'…':id));
-    if(unres) k.push(svtext({x:X(4,W),y:y+3,'text-anchor':ANC('start'),fill:'var(--dim)'},'∀'));
+    if(unres) k.push(svtext({x:X(4,W),y:y+3,'text-anchor':ANC('start')},'∀'));
     const cold = ses===null || ses>DECAY.window;
     const cx = ses===null ? nx+23 : dx(ses);
     const bad = always && cold;
@@ -4740,7 +4748,7 @@ function renderComb(){
       stroke: ses===null?'var(--crit)':bad?'var(--crit)':cold?'var(--warn)':'none',
       'stroke-width':bad?2:1.6}));
     if(bad) k.push(svtext({x:X(cx,W)+(HEB?-9:9),y:y+3,'text-anchor':ANC('start'),
-      fill:'var(--crit)'},HEB?'מוצמד ובכל זאת קר — הוא נשפך':'pinned, yet cold — it spilled'));
+      class:'crit'},HEB?'מוצמד ובכל זאת קר — הוא נשפך':'pinned, yet cold — it spilled'));
   });
   host.replaceChildren(chart(W,H,k,HEB
     ?'מסרק רעננות — שיחות מאז ההזרקה האחרונה, פריט לשורה, עם דלי נפרד ל"מעולם"'
@@ -4935,7 +4943,7 @@ function renderStair(){
      eviction labels use. */
   const nx=bx(cur), nout=nx+5+num(cur).length*CHW<=W-PR;
   k.push(svtext({x:X(nout?nx+5:nx-5,W),y:PT+9,'text-anchor':ANC(nout?'start':'end'),
-    fill:'var(--gold)',class:'mono'},num(cur)));
+    class:'mono gold'},num(cur)));
   host.replaceChildren(chart(W,H+foot,k,HEB
     ?'גרם מדרגות: כמות הפריטים המתקבלים כפונקציה של תקציב הרמה'
     :'Admission staircase: items admitted as a function of the tier budget'));
