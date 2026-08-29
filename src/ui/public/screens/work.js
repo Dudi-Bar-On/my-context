@@ -1,14 +1,79 @@
 /**
  * `nav.ch` — **Review queue**, `<section data-p="work">` in the design of
- * record. One card per pending revision, and the whole capability is the
- * three-column table inside it: `work.field` **Field**, `work.now` **In
- * force**, `work.prop` **Proposed**
- * (`docs/design/web-ui-mockup.html` · `<table><thead><tr><th data-t="work.field">Field</th>` · ~1935).
+ * record. TWO queues, each a stack of cards, and on every card the human takes
+ * ONE decision — Accept or Reject — before anything is offered to run.
  *
  * `work.v` states the bargain the screen exists to keep — *"the diff is the
  * capability; the approval is a paste"*. The diff is what a terminal cannot
- * lay out side by side; the approval is ONE LINE the human runs in their own
- * shell. Nothing here writes, and `work.sub` says so on the screen itself.
+ * lay out side by side; the approval is ONE LINE, composed here and run behind
+ * the one Copy-and-Execute control.
+ *
+ * ── THE OWNER'S RULING OF 2026-08-29, WHICH IS THIS FILE'S SHAPE ──────────
+ *
+ * *"review queue has only execute option but first user should accept or
+ * reject only then execute."*
+ *
+ * What shipped composed exactly ONE outcome — `review promote-revision` — and
+ * drew it on the revision queue alone. The CLI has FOUR settlements, two per
+ * queue (`mycontext review` · `usage:` · promote / discard /
+ * promote-revision / discard-revision), so a reader could accept a revision,
+ * could not reject anything, and could reach neither half of the draft queue.
+ * That was not a missing button; it was a screen that could only ever say yes.
+ *
+ * So every card now carries a two-button `.segbar` — **Accept** and **Reject**
+ * — and the choice is what COMPOSES the line. The composed line, the sentence
+ * saying what it will do, the audit op named in `help.land`, and the argv the
+ * Execute confirm rebuilds all move together, because they are all derived
+ * from the one `verdict` the reader picked. There is no state in which the
+ * `<code>` says one thing and the button runs another.
+ *
+ * **Execute stays the single approval boundary.** Accept and Reject write
+ * nothing on their own — they choose, and `commandActions` still owns the
+ * confirm, the nonce and the run. That is deliberately NOT the same decision as
+ * "should a click promote", which is the owner's to take and has not been
+ * taken.
+ *
+ * **Accept is the opening selection rather than an empty one**, and that is a
+ * measured constraint rather than a preference. `e2e/screen-parity.spec.ts`
+ * holds `work: []` — an EXACT ledger that may only shrink — and the mockup's
+ * work section draws `div.cmd`, `code`, `div.cmdstate` and a `button`. A card
+ * that composed nothing until a reader clicked would withdraw all four from the
+ * screen's opening state and need four NEW ledger entries, which that file
+ * forbids outright. So the opening state is the design of record's own line —
+ * the promote, byte for byte, which `test/ui/work-screen.test.ts` still pins
+ * against the mockup's `<code>` — with `aria-pressed` saying which of the two
+ * is selected and the other one click away. Recorded here rather than left as
+ * an inference, because it is the one place this screen's behaviour is decided
+ * by a test rather than by a reading.
+ *
+ * ── THE DRAFT QUEUE, WHICH WAS THE OTHER HALF AND WAS NEVER BUILT ────────
+ *
+ * `/api/review-queue` has been served since plan 2 and was read by nothing.
+ * Measured on the live corpus on 2026-08-29: `mycontext review revisions` → 0
+ * pending; `mycontext review list` → 1 draft pending. The screen built to show
+ * what is waiting for a human drew an empty table and never mentioned the one
+ * thing that was waiting.
+ *
+ * It is drawn now, in the same shape as a revision: one card, an id, what kind
+ * of thing it is, the two outcomes, the composed line. What a draft card does
+ * NOT have is a diff — a draft is not a proposal against a text in force, it is
+ * a whole item that does not govern yet — and inventing a two-column table for
+ * it would be drawing a comparison nobody made.
+ *
+ * ── A MEASURED ZERO IS DRAWN AND NAMED ───────────────────────────────────
+ *
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` (hard,
+ * active): *"a measured zero is drawn and named … neither is ever rendered as
+ * blank."* Both queues carry a headline sentence, and both carry a second one
+ * for the zero — `work.draftsEmpty`, `work.revisionsEmpty`. The empty revision
+ * card keeps the column heads over an empty `<tbody>`, which is
+ * `screens/gaps.js`' treatment and still right, but it no longer stands alone:
+ * the heads on their own are exactly the blank that standard forbids.
+ *
+ * The two queues are fetched INDEPENDENTLY and each draws its own refusal. A
+ * single `try` around both would let one endpoint's failure erase the other
+ * queue's contents, which is the same "an empty table reports the good one"
+ * mistake one level up.
  *
  * ── PER-FIELD STALENESS, WHICH IS THE ROW SHAPE AND NOT A BADGE ───────────
  *
@@ -19,106 +84,57 @@
  * REPLACES the row's two value cells: the field name takes `td.m.stale`, which
  * carries a rule down its reading-start edge, and the two cells become
  * `work.moved` / `work.blocked`
- * (`docs/design/web-ui-mockup.html` · `<td class="m stale">body <span class="chip warn" data-g="▲">stale</span></td>` · ~1941).
+ * (`docs/design/web-ui-mockup.html` · `<td class="m stale">body <span class="chip warn" data-g="▲">stale</span></td>` · ~2397).
  *
  * That is the honest shape, not a shorter one. A stale field's proposed text
  * was written against a version that no longer exists, so drawing it against
- * the CURRENT text would show a comparison nobody ever made. The two sentences
- * say what is true instead: it changed since staging, and promote refuses
- * until it is re-based.
+ * the CURRENT text would show a comparison nobody ever made.
  *
- * The rule itself is `td.stale`, carried into the stylesheet with its RTL
- * mirror written beside it rather than discovered later
- * (`src/ui/public/styles.css` · `[dir="rtl"] td.stale{box-shadow:inset -2px 0 0 var(--warn)}` · ~862)
- * — the physical offset `work.diffn`'s last sentence is about.
+ * **What Reject changes about a stale card, and it is the point.** This file
+ * used to record that "a stale revision here is offered only the command that
+ * will refuse" — promote refuses on a moved field, and promote was the only
+ * line the screen could compose. It is no longer the only one: `review
+ * discard-revision` settles a stale proposal perfectly well, and it is now one
+ * click away on the card that needs it most. The `--force` promote the plan
+ * wanted is still not composed, and still deliberately: the design of record
+ * draws no key for it and forcing a rewrite over text a human has since changed
+ * is not a decision a review screen should be able to take by accident.
  *
  * ── THE DIFF IS LINE-LEVEL AND `work.diffn` SAYS WORD-LEVEL ───────────────
  *
  * **Recorded, not resolved here.** `work.diffn` promises *"a word-level diff"*;
  * `lineDiff` is a line-level LCS and there is no word-level diff anywhere in
- * `src/`. Plan 2 Task 11 names this as one of two things the task "cannot
- * produce as written", and writing a second diff in the browser is the one
- * repair that would be worse than the gap: the line diff was moved out of the
- * CLI view precisely so that one implementation serves both surfaces
+ * `src/`. Writing a second diff in the browser is the one repair that would be
+ * worse than the gap: the line diff was moved out of the CLI view precisely so
+ * that one implementation serves both surfaces
  * (`src/core/revision-diff.ts` · `a second one written in the browser would be this project's` · ~12).
- *
- * So the note is rendered as the mockup draws it — the same call `decay.js`
- * makes about `dec.heatn`, a caption worth keeping when the thing it describes
- * is not built — and the discrepancy is this task's report, for the owner to
- * settle. What the reader loses is precision INSIDE a changed line, never a
- * changed line: every line of both texts is still shown.
  *
  * `<ins>` and `<del>` are the mockup's own elements and are used verbatim,
  * because the reason they are there is not decoration: *"both are real
  * {m:<ins>} and {m:<del>} elements, so a screen reader announces the change
- * without any added ARIA"*. **They carry no rule in this build**: the mockup's
- * `ins{}`/`del{}` tinting (mockup ~1001-1005) was not among the families
- * carried into `styles.css`, so both render at browser defaults — an underline
- * and a strike where the design has a tinted and a struck run. Reported, not
- * fixed here, because `styles.css` is held byte-identical by `styles-parity`.
+ * without any added ARIA"*.
  *
- * ── ONE COMPOSED COMMAND PER CARD, AND WHY NOT THREE ──────────────────────
+ * ── ONE COMPOSED COMMAND PER CARD, AND WHY IT CARRIES `--revision` ────────
  *
- * The mockup composes exactly one line — the promote, carrying `--revision`
- * (`docs/design/web-ui-mockup.html` · `mycontext review promote-revision RULE-never-log-customer-email --revision REV-8c21 --yes` · ~1952)
- * — and explains the stale case in prose instead, in the `help.land`
- * disclosure: *"If the body moved first, promote refuses and names both values
- * — that refusal is the product working, not failing"* (`work.h3`).
- *
- * Plan 2 Task 11's Step 1 instead composes THREE blocks on a stale card — a
- * discard, a `--force` promote, and a warning naming the moved fields — on six
- * keys (`work.discard`, `work.forcePromote`, `work.forceWarning`,
- * `work.itemMissing`, `work.noCurrent`, `work.stale`) that **no string table
- * declares**. The design of record draws none of them, so this screen composes
- * no `--force` at all. Both halves of that are in this task's report: the
- * plan/mockup disagreement, and the fact that a stale revision here is offered
- * only the command that will refuse.
- *
- * `--revision` is never optional. `commandFor` treats the flag as optional
- * (`src/ui/public/lib/palette-defs.js` · `flags: [{ name: 'revision', input: 'text' }, { name: 'force', boolean: true }, yes],` · ~142),
+ * `--revision` is never optional here. `commandFor` treats the flag as optional
+ * (`src/ui/public/lib/palette-defs.js` · `flags: [{ name: 'revision', input: 'text' }, { name: 'force', boolean: true }, yes],` · ~158),
  * so a revision that arrived without one would compose a line settling
  * whichever revision the log offers first rather than the one the human just
- * read. `revisionCommand` refuses instead, and the card shows the refusal
- * where its command would have been.
+ * read — and that is as true of the discard as of the promote, which is why the
+ * guard sits in `revisionPlan` above the verdict rather than beside one of
+ * them. `revisionPlan` refuses instead, and the card shows the refusal where
+ * its command would have been.
  *
- * ── WHAT IS SERVED AND NOT DRAWN ──────────────────────────────────────────
+ * ── WHAT IS SERVED AND STILL NOT DRAWN ───────────────────────────────────
  *
- * `/api/revisions` also answers `counts.revisions`/`counts.items`, `origin`,
- * `stagedAt`, `stale`, `itemMissing` and `changedSince`, and `<section
- * data-p="work">` draws none of them — no queue count, no "proposed by X at
- * T", no card-level stale banner. Left unread rather than promoted into
- * columns the design of record does not have, which is the call `status.js`
- * already made about eight served fields on its own screen
- * (`src/ui/public/screens/status.js` · `unread rather than promoted into columns the design of record does not` · ~46).
- *
- * **`/api/review-queue` is not read by this screen at all.** The plan gives
- * Work a second half — a draft queue on `work.drafts`, `work.draftsEmpty`,
- * `work.draftMeta`, `work.promoteDraft` and `work.discardDraft` — and again no
- * table declares any of those five keys, and `<section data-p="work">` draws no
- * draft. Fetching a queue in order to drop it would be a request whose answer
- * nothing on the screen can show. The endpoint, its five missing keys and the
- * disagreement are in this task's report.
- *
- * ── EMPTY IS THE REAL MARKUP WITH ZERO ROWS ───────────────────────────────
- *
- * Nothing pending draws the card and the column heads over an empty `<tbody>`,
- * the treatment `gaps.js` states for the same situation — *"No rows is the real
- * answer … drawn as the real markup with nothing in it — never as a sentence
- * congratulating the reader, which this screen has no key for and no business
- * inventing"*
- * (`src/ui/public/screens/gaps.js` · `// No rows is the real answer to a fully scoped repository, and it is drawn as` · ~82).
- * There is no `work.empty` in either table, so there is no sentence to write.
- *
- * What the empty card omits is everything that belongs to a REVISION: the
- * `<h3>` names an item and a revision id, the `.cmd` composes a settlement for
- * one, the `.cmdstate` reports that settlement's state, and the `help.land`
- * disclosure explains how that settlement lands. With nothing pending each
- * would have to be invented, and an invented id inside a `<code>` block is the
- * one thing a copy button must never offer.
- *
- * A refusal from the endpoint is drawn INSTEAD of the card, never beside an
- * empty one: a corpus with nothing pending and a read that failed are opposite
- * facts, and an empty table would report the good one.
+ * `/api/revisions` also answers `counts`, `origin`, `stagedAt`, `stale`,
+ * `itemMissing` and `changedSince`, and `/api/review-queue` answers `always`,
+ * `scope`, `injected`, `phrase` and `gate`. None is drawn: the design of record
+ * has no column for them, and the call `status.js` already made about eight
+ * served fields on its own screen governs these too
+ * (`src/ui/public/screens/status.js` · `Left unread rather than promoted into columns` · ~45).
+ * They are named in this task's report rather than promoted into columns
+ * nobody asked for.
  */
 import { composeCommand } from '/lib/command.js';
 import { commandActions } from '/lib/command-actions.js';
@@ -129,20 +145,76 @@ import { commandActions } from '/lib/command-actions.js';
 import { fieldView, MONO_FIELDS } from '/lib/viewmodel.js';
 import { PALETTE, commandFor } from '/lib/palette-defs.js';
 import {
-  BOUND_CAP_TABLE, boundedList, el, errorNote, mono, screenHead, spaced,
+  BOUND_CAP_LIST, BOUND_CAP_TABLE, boundedList, el, errorNote, mono, screenHead, spaced,
 } from '/screens/parts.js';
 
 /**
- * The catalogue entry this screen composes from — looked up once, by name, and
- * never re-declared. A second literal `['mycontext', 'review', …]` here would
- * be a second spelling of a command whose flag set was verified against the
- * real argument parser exactly once.
+ * **The four settlements, as a table of catalogue NAMES.**
+ *
+ * Two queues times two verdicts, and the CLI spells all four
+ * (`mycontext review` · its usage block). Written as names looked up in
+ * `PALETTE` rather than as four literal `['mycontext', 'review', …]` arrays: a
+ * second spelling of a command whose flag set was verified against the real
+ * argument parser exactly once is how the two come to disagree.
+ *
+ * `op` is the audit verb the run will record, and it is here rather than
+ * derived from the name because `help.land` promises the reader a specific
+ * `op:` to look for and a promise about the audit log has to be spelled beside
+ * the command that produces it.
  */
-const PROMOTE_REVISION = PALETTE.find((def) => def.name === 'review promote-revision');
+const SETTLEMENT = {
+  draft: {
+    accept: { command: 'review promote', op: 'promote' },
+    reject: { command: 'review discard', op: 'discard' },
+  },
+  revision: {
+    accept: { command: 'review promote-revision', op: 'promote-revision' },
+    reject: { command: 'review discard-revision', op: 'discard-revision' },
+  },
+};
 
+/** The two verdicts, in reading order. */
+const VERDICTS = ['accept', 'reject'];
 
 /**
- * The one line this card offers, composed and never run.
+ * Every keyed sentence this screen looks up by VERDICT, as a THUNK.
+ *
+ * A lookup returning a key string would read better and would be invisible to
+ * `test/ui/work-screen.test.ts`'s scanner, which finds the keys a screen names
+ * by matching a literal `t(` call against this file's own bytes. A key reachable only
+ * through a variable is a key that test cannot prove is declared in both
+ * tables — and a key missing from the Hebrew table throws at render time, in
+ * Hebrew only, which is the failure nobody sees until a reader reports a blank
+ * screen. So every call site is literal.
+ */
+const LABEL = {
+  accept: (ctx) => ctx.t('work.accept'),
+  reject: (ctx) => ctx.t('work.reject'),
+};
+
+/** The sentence saying what the chosen verdict will do, per queue. */
+const OUTCOME = {
+  draft: {
+    accept: (ctx) => ctx.t('work.promoteDraft'),
+    reject: (ctx) => ctx.t('work.discardDraft'),
+  },
+  revision: {
+    accept: (ctx) => ctx.t('work.promoteRev'),
+    reject: (ctx) => ctx.t('work.discardRev'),
+  },
+};
+
+/** The catalogue entry by name, or a refusal that names what is missing. */
+function settlementDef(name) {
+  const def = PALETTE.find((entry) => entry.name === name);
+  if (def === undefined) {
+    throw new Error(`work: the command catalogue declares no "${name}"`);
+  }
+  return def;
+}
+
+/**
+ * The line one verdict on one staged REVISION composes, and never runs.
  *
  * It goes through `commandFor` + `composeCommand` like every other composed
  * write in this UI, so the quoting has a single implementation
@@ -150,16 +222,14 @@ const PROMOTE_REVISION = PALETTE.find((def) => def.name === 'review promote-revi
  * and an id carrying a space is quoted before it ever reaches a clipboard.
  *
  * It THROWS rather than composing a weaker line. `--revision` is an optional
- * flag in the catalogue, so a missing `revisionId` would silently compose
- * `mycontext review promote-revision <id> --yes` — a valid command that
- * settles whichever revision the log offers first, which on a queue of two is
- * a coin toss the reader never sees. A missing `itemId` is refused by
- * `commandFor` itself, for the reason it refuses any required argument.
+ * flag in the catalogue for BOTH revision verbs, so a missing `revisionId`
+ * would silently compose a valid command that settles whichever revision the
+ * log offers first — a coin toss the reader never sees, and one that discards
+ * as easily as it promotes. A missing `itemId` is refused by `commandFor`
+ * itself, for the reason it refuses any required argument.
  */
-export function revisionPlan(rev) {
-  if (PROMOTE_REVISION === undefined) {
-    throw new Error('work: the command catalogue declares no "review promote-revision"');
-  }
+export function revisionPlan(rev, verdict = 'accept') {
+  const def = settlementDef(SETTLEMENT.revision[verdict].command);
   if (typeof rev.revisionId !== 'string' || rev.revisionId === '') {
     throw new Error('work: a revision with no revisionId composes no settlement — the pasted '
       + 'line must name the revision that was read, not the one the log offers first');
@@ -170,19 +240,40 @@ export function revisionPlan(rev) {
   // through the same `commandFor`. That is one computation rendered twice
   // rather than two that happen to agree — which is the only form in which
   // "the line you read is the line that runs" is a fact rather than a hope.
-  return { id: PROMOTE_REVISION.name, values, argv: commandFor(PROMOTE_REVISION, values) };
+  return { id: def.name, values, argv: commandFor(def, values) };
+}
+
+/**
+ * The same, for a DRAFT — `review promote <id> --yes` or
+ * `review discard <id> --yes`.
+ *
+ * No `--scope`, no `--severity`, no `--always`. `review promote` accepts all
+ * three and this screen composes none of them: they change what the item WILL
+ * say, which is an edit wearing a promotion's clothes, and a queue whose job is
+ * to settle what a person already wrote is the wrong place to rewrite it. The
+ * reader who wants them has the composed line and the Composer.
+ */
+export function draftPlan(draft, verdict = 'accept') {
+  const def = settlementDef(SETTLEMENT.draft[verdict].command);
+  const values = { id: draft.id, yes: true };
+  return { id: def.name, values, argv: commandFor(def, values) };
 }
 
 /**
  * The same settlement as the string a reader sees.
  *
- * Split from `revisionPlan` because the Copy-and-Execute control takes an ARGV
- * and an id — a string cannot be executed — and a screen carrying a string
- * beside the argv as an independent value is exactly the drift the confirm
- * exists to prevent.
+ * Split from the plans because the Copy-and-Execute control takes an ARGV and
+ * an id — a string cannot be executed — and a screen carrying a string beside
+ * the argv as an independent value is exactly the drift the confirm exists to
+ * prevent.
  */
-export function revisionCommand(rev) {
-  return composeCommand(revisionPlan(rev).argv);
+export function revisionCommand(rev, verdict) {
+  return composeCommand(revisionPlan(rev, verdict).argv);
+}
+
+/** The same, for a draft. */
+export function draftCommand(draft, verdict) {
+  return composeCommand(draftPlan(draft, verdict).argv);
 }
 
 /**
@@ -233,12 +324,11 @@ function valueCell(isMono, fill) {
  * annotated.
  *
  * The chip's text is the literal `stale`, not a key: the design of record
- * gives it no `data-t`, and adding one would fail `strings-parity` in the
- * direction that names it — a key in a table that the mockup does not declare.
- * The same asymmetry `doctor.js` transcribes for its `error`/`warning` card
- * headings, and the same open question with it: the word stays English in the
- * Hebrew UI. `data-g` is the mockup's attribute and is set for fidelity; the
- * glyph itself comes from `.chip.warn::before`, so it is written once, in CSS.
+ * gives it no `data-t`. The same asymmetry `doctor.js` transcribes for its
+ * `error`/`warning` card headings, and the same open question with it: the word
+ * stays English in the Hebrew UI. `data-g` is the mockup's attribute and is set
+ * for fidelity; the glyph itself comes from `.chip.warn::before`, so it is
+ * written once, in CSS.
  */
 function fieldRow(ctx, view) {
   const row = el('tr');
@@ -294,21 +384,17 @@ function diffTable(ctx) {
  * buttons across `screens/`, and adding Execute nine times would have been nine
  * chances to get the confirm wrong — the confirm being the security boundary.
  *
- * **`review promote-revision` IS in the catalogue, so this screen passes its
- * real id and the control offers Execute.** It is on the approval boundary, so
- * §3.2 gives it the stronger confirm; `COMMAND_EFFECTS` does not yet know what
- * a revision promotion changes field by field, so today that confirm declines
- * rather than weakening — *"a command whose effect cannot be shown that way
- * does not get a weaker confirm; it does not run"*. Passing a null id to hide
- * the button instead was weighed and refused: it would make this line look like
- * `procedure done`, which is outside the catalogue for a completely different
- * reason, and it would hide the one place the product says why it declines.
+ * **All four settlements are in the catalogue, so every card passes a real id
+ * and every card offers Execute.** All four are `boundary: true`, so §3.2 gives
+ * them the stronger confirm, and since `plan:execute seq:5b` the effect behind
+ * that confirm is DERIVED by the server running the command against a throwaway
+ * copy of the corpus — which is the only mechanism that could ever have covered
+ * these four, because what a promotion changes is a property of the corpus and
+ * not of the argv.
  *
  * The control is a SIBLING of `.cmd` and the pair is a fragment, not a wrapping
  * `<div>`: `.cmdactions button` carries its own background so the control does
- * not depend on which container it lands in, and a classless container is the
- * other half of the defect that left the Composer's read button rendering as
- * light text on the user agent's near-white button face.
+ * not depend on which container it lands in.
  */
 function commandRow(ctx, plan) {
   const block = document.createDocumentFragment();
@@ -323,14 +409,15 @@ function commandRow(ctx, plan) {
 /**
  * `<div class="cmdstate">` — the armed chip and its sentence.
  *
- * **Drawn unconditionally, as the design of record draws it, and that is an
- * open question rather than a settled reading.** `work.state` is *"copied, not
- * yet observed landing"*, which describes the state AFTER a copy; the mockup
- * shows it beside a command nobody has copied yet, because a mockup shows one
- * state of every widget it carries. `state.armed` is the only `state.*` key
- * either table declares and `.cmdstate` has exactly one use in the whole design
- * of record, so there is no second state to swap to and no key with which to
- * say "not yet copied". Raised in this task's report.
+ * **Drawn unconditionally, as the design of record draws it, and that is still
+ * an open question rather than a settled reading.** `work.state` is *"copied,
+ * not yet observed landing"*, which describes the state AFTER a copy; the
+ * mockup shows it beside a command nobody has copied yet, because a mockup
+ * shows one state of every widget it carries. `state.armed` is the only
+ * `state.*` key either table declares, so there is no second state to swap to
+ * and no key with which to say "not yet copied". Raised again in this task's
+ * report — the choice bar makes "armed" a better word than it was (a verdict
+ * HAS been taken by the time this is read) and does not make it a true one.
  */
 function commandState(ctx) {
   const box = el('div', 'cmdstate');
@@ -345,29 +432,124 @@ function commandState(ctx) {
 
 /**
  * `<details class="help"><summary>…<div class="helpbox">` — the mockup's own
- * disclosure widget, here carrying the three sentences that say how a paste is
- * known to have landed: run it yourself, look for the `promote-revision` audit
- * record, and read a refusal as the product working.
+ * disclosure widget, carrying the sentences that say how a paste is known to
+ * have landed: run it yourself, and look for the audit record.
+ *
+ * **`work.h2` names the op the CHOSEN verdict will write, not a fixed one.** It
+ * used to spell `op: promote-revision` as a literal, which was true of the only
+ * command this screen could compose and became false the moment there were
+ * four. A receipt sentence naming the wrong verb is worse than no receipt
+ * sentence: it sends a reader to `mycontext audit --op promote-revision` to
+ * look for a discard that is not there, and they conclude the run failed.
+ *
+ * `work.h3` is drawn on a REVISION card only. It is about promote refusing over
+ * a moved field, which is a fact about the revision queue; a draft has no text
+ * in force to have moved.
  *
  * The mockup bolds the opening run of each — `<b>Run it in your own shell.</b>`
- * — and no string table can carry that: `lib/i18n.js`'s run grammar has three
- * markers (`{m:}`, `{mv:}`, `{name}`) and no emphasis marker. Identical in kind
- * to the bold runs already missing from watch, decay, doctor and status, and
- * tracked with them; `.helpbox b` even has a rule in `styles.css` waiting for
- * one.
+ * — and `lib/i18n.js`'s `{b:}` marker carries that now.
  */
-function landingHelp(ctx) {
+function landingHelp(ctx, kind, spec) {
   const help = el('details', 'help');
   const summary = el('summary');
   summary.append(...ctx.t('help.land'));
   const box = el('div', 'helpbox');
-  for (const key of ['work.h1', 'work.h2', 'work.h3']) {
-    const line = el('span');
-    line.append(...ctx.t(key));
-    box.append(line);
+
+  const first = el('span');
+  first.append(...ctx.t('work.h1'));
+  const receipt = el('span');
+  receipt.append(...ctx.t('work.h2', { op: spec.op }));
+  box.append(first, receipt);
+
+  if (kind === 'revision') {
+    const refusal = el('span');
+    refusal.append(...ctx.t('work.h3'));
+    box.append(refusal);
   }
   help.append(summary, box);
   return help;
+}
+
+/**
+ * **The decision, and everything downstream of it.**
+ *
+ * `<div class="segbar">` with two `<button aria-pressed>` is the house's own
+ * two-state picker — `styles.css` gives `.segbar button[aria-pressed="true"]`
+ * the gold selected face, which is the sheet's one existing vocabulary for "one
+ * of these is chosen". The design of record has no visual for Reject at all
+ * (it composes a single promote and explains everything else in prose), so this
+ * is a choice made here rather than transcribed, and it is made by reusing a
+ * shape the stylesheet already ships instead of inventing a class nothing
+ * styles.
+ *
+ * `role="group"` with `aria-label` names the pair, because two buttons whose
+ * meaning is "which of us is selected" are a group and not two unrelated
+ * controls. `aria-pressed` rather than `aria-checked`: these are toggle
+ * buttons, not radios in a form, and `.segbar`'s own rule keys off `pressed`.
+ *
+ * **`body` is rebuilt on every press, not patched.** The composed line, the
+ * outcome sentence, the audit op and the whole Copy-and-Execute control — nonce
+ * handler, confirm and result region included — all belong to ONE verdict.
+ * Rewriting the `<code>` in place and leaving the control alone is precisely
+ * the "shows one command and runs another" defect the confirm exists to
+ * prevent, arriving from the other side. Replacing the subtree also discards
+ * any confirm the previous verdict had opened, which is the correct answer to
+ * "I changed my mind while a dialog was up".
+ *
+ * `plan` is built INSIDE the repaint and inside a `try`: a card that cannot
+ * compose one verdict can usually still compose the other, and losing the whole
+ * card — its diff, which is the thing worth reading — to one missing field
+ * would drop its reviewable half.
+ */
+function settlementBlock(ctx, kind, planFor) {
+  const block = document.createDocumentFragment();
+  const bar = el('div', 'segbar');
+  bar.setAttribute('role', 'group');
+  bar.setAttribute('aria-label', ctx.tFlat('work.outcome'));
+  const body = el('div');
+  const buttons = [];
+  let chosen = 'accept';
+
+  const paint = () => {
+    for (const [verdict, button] of buttons) {
+      button.setAttribute('aria-pressed', String(verdict === chosen));
+    }
+    const spec = SETTLEMENT[kind][chosen];
+    body.replaceChildren();
+    let plan;
+    try {
+      plan = planFor(chosen);
+    } catch (error) {
+      body.append(errorNote(error.message));
+      return;
+    }
+    const outcome = el('p', 'small');
+    outcome.append(...OUTCOME[kind][chosen](ctx));
+    body.append(
+      spaced(outcome), commandRow(ctx, plan), commandState(ctx), landingHelp(ctx, kind, spec),
+    );
+  };
+
+  for (const verdict of VERDICTS) {
+    const button = el('button');
+    button.type = 'button';
+    // Read by `e2e/` to press one verdict without depending on its WORDING,
+    // which changes with the reader's language. The same reason `parts.js`
+    // stamps `data-step` on its two paging controls.
+    button.dataset.verdict = verdict;
+    button.append(...LABEL[verdict](ctx));
+    button.addEventListener('click', () => {
+      if (chosen === verdict) return;
+      chosen = verdict;
+      paint();
+    });
+    buttons.push([verdict, button]);
+    bar.append(button);
+  }
+
+  paint();
+  block.append(bar, body);
+  return block;
 }
 
 /**
@@ -385,44 +567,119 @@ function revisionHead(rev) {
 
 function revisionCard(ctx, rev) {
   const card = el('div', 'card pane');
+  // Which queue a card belongs to, for a reader of the DOM rather than of the
+  // screen: `e2e/execute.spec.ts` presses Execute on "the Review queue's"
+  // control, and with two queues on one screen `.cmdactions` first() is no
+  // longer an unambiguous way to name one.
+  card.dataset.queue = 'revision';
   const { table, tbody } = diffTable(ctx);
   for (const field of rev.fields) tbody.append(fieldRow(ctx, fieldView(field)));
 
   const note = el('p', 'small');
   note.append(...ctx.t('work.diffn'));
   card.append(revisionHead(rev), table, spaced(note));
-
-  // A revision that cannot be settled still shows its diff — reading it is the
-  // point — with the refusal standing where the command would have been.
-  // Losing the whole card to one missing field would drop its reviewable half.
-  let plan;
-  try {
-    plan = revisionPlan(rev);
-  } catch (error) {
-    card.append(errorNote(error.message));
-    return card;
-  }
-  card.append(commandRow(ctx, plan), commandState(ctx), landingHelp(ctx));
+  card.append(settlementBlock(ctx, 'revision', (verdict) => revisionPlan(rev, verdict)));
   return card;
 }
 
-export async function render(root, ctx) {
-  root.replaceChildren();
-  screenHead(ctx, root, 'work.h', 'work.v', 'work.sub');
+/**
+ * One pending draft: what it is, what it says, and the two ways to settle it.
+ *
+ * No diff table. A draft is not a proposal against a text in force — it is a
+ * whole item that does not govern yet — so there is no "In force" column to
+ * fill, and drawing three heads over an em dash would state a comparison that
+ * was never made. What stands in its place is the title, which is the thing a
+ * person actually decides on, isolated in a `<bdi>` because it is authored text
+ * and may be in either direction.
+ */
+function draftCard(ctx, draft) {
+  const card = el('div', 'card pane');
+  card.dataset.queue = 'draft';
 
+  const head = el('h3');
+  head.append(mono(draft.id));
+  card.append(head);
+
+  const title = el('p');
+  const isolated = el('bdi');
+  isolated.textContent = typeof draft.title === 'string' ? draft.title : '';
+  title.append(isolated);
+  card.append(title);
+
+  const meta = el('p', 'small');
+  meta.append(...ctx.t('work.draftMeta', {
+    type: draft.type ?? '—', severity: draft.severity ?? '—', origin: draft.origin ?? '—',
+  }));
+  card.append(spaced(meta));
+
+  card.append(settlementBlock(ctx, 'draft', (verdict) => draftPlan(draft, verdict)));
+  return card;
+}
+
+/** A queue's headline sentence — the count, or the named zero. */
+function queueLine(ctx, nodes) {
+  const line = el('p', 'small');
+  line.append(...nodes);
+  return spaced(line);
+}
+
+/**
+ * The draft half. Its own fetch and its own refusal, so a failure here cannot
+ * erase the revision queue below it.
+ */
+async function drawDrafts(root, ctx) {
+  let data;
+  try {
+    data = await ctx.api('/api/review-queue');
+  } catch (error) {
+    // The refusal, and NO headline sentence. Both `work.drafts` and
+    // `work.draftsEmpty` state a measured count, and a read that failed has
+    // measured nothing — clause 2 of `STD-a-measured-zero-is-drawn`: an
+    // unmeasured thing is named as unmeasured, never rendered as a zero. The
+    // error note is that naming.
+    root.append(errorNote(error.message));
+    return;
+  }
+  const drafts = Array.isArray(data.drafts) ? data.drafts : [];
+  if (drafts.length === 0) {
+    root.append(queueLine(ctx, ctx.t('work.draftsEmpty')));
+    return;
+  }
+  root.append(queueLine(ctx, ctx.t('work.drafts', { n: String(drafts.length) })));
+  const stack = el('div');
+  // `order: 'position'` — the review queue is the STORE'S order, which is a
+  // property of the corpus and not a time series. `'recent'` would promise a
+  // newest-first reading this answer does not carry, which is the claim
+  // `parts.js` added that fourth order key to stop screens making.
+  const bound = boundedList(ctx, stack, drafts, (draft) => draftCard(ctx, draft),
+    { cap: BOUND_CAP_LIST, order: 'position' });
+  root.append(stack, bound);
+}
+
+/**
+ * The revision half — unchanged in shape, and now introduced by a sentence
+ * that says how many are waiting.
+ */
+async function drawRevisions(root, ctx) {
   let data;
   try {
     data = await ctx.api('/api/revisions');
   } catch (error) {
+    // No headline, for the reason `drawDrafts` states: a failed read has
+    // measured nothing, and both headline keys claim a count.
     root.append(errorNote(error.message));
     return;
   }
 
   const revisions = Array.isArray(data.revisions) ? data.revisions : [];
   if (revisions.length === 0) {
-    // The column heads over an empty body — see this file's header. Nothing is
-    // worded in the empty case, because no table declares a sentence for it.
+    // The column heads over an empty body — `screens/gaps.js`' treatment, and
+    // still right — but no longer on their own. `STD-a-measured-zero-is-drawn`
+    // is what the bare heads were failing: a table with no rows and no sentence
+    // is indistinguishable from a table that failed to load.
+    root.append(queueLine(ctx, ctx.t('work.revisionsEmpty')));
     const card = el('div', 'card pane');
+    card.dataset.queue = 'revision';
     const { table } = diffTable(ctx);
     const note = el('p', 'small');
     note.append(...ctx.t('work.diffn'));
@@ -431,6 +688,7 @@ export async function render(root, ctx) {
     return;
   }
 
+  root.append(queueLine(ctx, ctx.t('work.revisions', { n: String(revisions.length) })));
   // **A record: the revision log stamps each staging**, so the queue bounds by
   // time. `take: 'last'` because that log is append-only — the newest
   // revisions sit at its end. The stack keeps the log's own order, so a reader
@@ -439,6 +697,17 @@ export async function render(root, ctx) {
   const bound = boundedList(ctx, stack, revisions, (rev) => revisionCard(ctx, rev),
     { cap: BOUND_CAP_TABLE, order: 'recent', take: 'last' });
   root.append(stack, bound);
+}
+
+export async function render(root, ctx) {
+  root.replaceChildren();
+  screenHead(ctx, root, 'work.h', 'work.v', 'work.sub');
+  // Drafts first: it is the queue `mycontext review` shows by default, and the
+  // one the owner's report was about — a screen whose first card is the thing
+  // waiting for a decision. Sequential rather than `Promise.all` so the two
+  // sections land in a fixed order however the two fetches race.
+  await drawDrafts(root, ctx);
+  await drawRevisions(root, ctx);
 }
 
 export { fieldView, MONO_FIELDS };

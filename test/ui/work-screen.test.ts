@@ -80,15 +80,18 @@ interface FieldView {
  * is an assertion in its own right: a module that drifts from it fails here
  * rather than in a browser nobody is watching.
  */
+type Plan = { id: string; values: Record<string, unknown>; argv: string[] };
+type Verdict = 'accept' | 'reject';
+
 interface WorkModule {
   MONO_FIELDS: Set<string>;
   fieldView: (field: {
     field: string; changed?: boolean; noCurrent?: boolean; diff?: DiffLine[];
   }) => FieldView;
-  revisionCommand: (rev: { itemId?: string; revisionId?: string }) => string;
-  revisionPlan: (rev: { itemId?: string; revisionId?: string }) => {
-    id: string; values: Record<string, unknown>; argv: string[];
-  };
+  revisionCommand: (rev: { itemId?: string; revisionId?: string }, verdict?: Verdict) => string;
+  revisionPlan: (rev: { itemId?: string; revisionId?: string }, verdict?: Verdict) => Plan;
+  draftCommand: (draft: { id?: string }, verdict?: Verdict) => string;
+  draftPlan: (draft: { id?: string }, verdict?: Verdict) => Plan;
   render: (root: unknown, ctx: unknown) => Promise<void>;
 }
 
@@ -255,6 +258,110 @@ test('revisionCommand refuses a revision with no revisionId rather than composin
   assert.throws(() => revisionCommand({ revisionId: 'REV-8c21' }), /required/);
 });
 
+/**
+ * **THE OWNER'S RULING OF 2026-08-29, AS FOUR ASSERTIONS.**
+ *
+ * *"review queue has only execute option but first user should accept or reject
+ * only then execute."* The CLI spells four settlements — two queues times two
+ * verdicts — and this screen composed exactly one of them. What is pinned below
+ * is that all four are now composable and that each is the RIGHT one: a Reject
+ * that composed a promote would be the worst defect this screen could carry,
+ * and it would look completely normal on screen.
+ */
+test('the four settlements: each queue, each verdict, composes its own command', async () => {
+  const { revisionCommand, draftCommand } = await workModule();
+  const rev = { itemId: 'RULE-never-log-customer-email', revisionId: 'REV-8c21' };
+  const draft = { id: 'CONST-live-pass-probe' };
+
+  assert.equal(revisionCommand(rev, 'accept'),
+    'mycontext review promote-revision RULE-never-log-customer-email --revision REV-8c21 --yes');
+  assert.equal(revisionCommand(rev, 'reject'),
+    'mycontext review discard-revision RULE-never-log-customer-email --revision REV-8c21 --yes');
+  assert.equal(draftCommand(draft, 'accept'),
+    'mycontext review promote CONST-live-pass-probe --yes');
+  assert.equal(draftCommand(draft, 'reject'),
+    'mycontext review discard CONST-live-pass-probe --yes');
+});
+
+test('the opening verdict is accept, so the default line is the design of record own', async () => {
+  const { revisionCommand, draftCommand } = await workModule();
+  const rev = { itemId: 'RULE-never-log-customer-email', revisionId: 'REV-8c21' };
+  // Not a preference. `e2e/screen-parity.spec.ts` holds `work: []` as an EXACT
+  // ledger that may only shrink, and the mockup's work section draws
+  // `div.cmd`, `code` and `div.cmdstate`. A card composing nothing until a
+  // reader clicks would withdraw all three from the opening state and need new
+  // ledger entries, which that file forbids. See the screen's own header.
+  assert.equal(revisionCommand(rev), revisionCommand(rev, 'accept'));
+  assert.equal(draftCommand({ id: 'X' }), draftCommand({ id: 'X' }, 'accept'));
+});
+
+/**
+ * **A Reject is on the approval boundary exactly as an Accept is, and it needs
+ * `--revision` exactly as hard.**
+ *
+ * `discard-revision` takes `--revision` as an OPTIONAL flag too, so a missing
+ * `revisionId` composes a valid line that discards whichever revision the log
+ * offers first. The guard therefore sits above the verdict rather than beside
+ * the promote, and this asserts it from the discard side — which is the side a
+ * regression would reach, because the promote's guard is the one that already
+ * had a test.
+ */
+test('a revision with no revisionId composes NEITHER verdict', async () => {
+  const { revisionCommand } = await workModule();
+  assert.throws(() => revisionCommand({ itemId: 'RULE-x' }, 'reject'), /revisionId/);
+  assert.throws(() => revisionCommand({ itemId: 'RULE-x', revisionId: '' }, 'reject'), /revisionId/);
+});
+
+test('draftPlan names the catalogue entry each verdict IS, and composes through it', async () => {
+  const { draftPlan } = await workModule();
+  const defs = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'palette-defs.js')).href) as {
+    PALETTE: { name: string; boundary?: boolean }[];
+    commandFor: (def: unknown, values: Record<string, unknown>) => string[];
+  };
+  for (const [verdict, name] of [['accept', 'review promote'], ['reject', 'review discard']] as const) {
+    const plan = draftPlan({ id: 'CONST-x' }, verdict);
+    assert.equal(plan.id, name);
+    const def = defs.PALETTE.find((entry) => entry.name === name);
+    assert.ok(def, `the catalogue no longer carries ${name}`);
+    assert.deepEqual(plan.values, { id: 'CONST-x', yes: true });
+    assert.deepEqual(plan.argv, defs.commandFor(def, plan.values),
+      'the argv a reader is shown is not the catalogue own composition of the id and values '
+      + 'the confirm will be given');
+    assert.equal(def.boundary, true,
+      'settling a draft changes what governs this project, so it keeps the stronger confirm');
+  }
+});
+
+/**
+ * **`--yes` on all four, and no `--force` on any.**
+ *
+ * `--yes` because a command run from this UI is a child process with NO
+ * TERMINAL: a boundary command without it computes its change, prints it and
+ * refuses on stdin — the exact defect `doctor.js` shipped and the owner
+ * reported on 2026-08-28.
+ *
+ * No `--force` because the design of record draws no key for it and forcing a
+ * rewrite over text a human has since changed is not a decision a review screen
+ * should be able to take by accident. A stale revision's honest settlement is
+ * the discard, which this screen now offers.
+ */
+test('every composed settlement carries --yes and none carries --force', async () => {
+  const { revisionPlan, draftPlan } = await workModule();
+  const plans = [
+    revisionPlan({ itemId: 'A', revisionId: 'REV-1' }, 'accept'),
+    revisionPlan({ itemId: 'A', revisionId: 'REV-1' }, 'reject'),
+    draftPlan({ id: 'B' }, 'accept'),
+    draftPlan({ id: 'B' }, 'reject'),
+  ];
+  for (const plan of plans) {
+    assert.ok(plan.argv.includes('--yes'), `${plan.id} composes no --yes and would refuse for `
+      + 'want of a terminal');
+    assert.ok(!plan.argv.includes('--force'), `${plan.id} composes a --force`);
+    assert.equal(plan.argv[0], 'mycontext',
+      'Copy hands a shell what a HUMAN types, and that includes the program name');
+  }
+});
+
 test('revisionCommand quotes through the one quoting implementation', async () => {
   const { revisionCommand } = await workModule();
   assert.equal(
@@ -398,9 +505,9 @@ test('every string key the Work screen names is declared in both tables, with it
   const used = keysNamed();
 
   // A scanner that finds nothing reads exactly like a clean file.
-  assert.ok(used.length >= 15,
-    `the scan found ${used.length} key(s) in work.js; the screen names fifteen. A collapse means `
-    + 'the patterns stopped matching, not that the screen stopped naming keys.');
+  assert.ok(used.length >= 25,
+    `the scan found ${used.length} key(s) in work.js; the screen names twenty-five. A collapse `
+    + 'means the patterns stopped matching, not that the screen stopped naming keys.');
   assert.ok(!used.some((u) => u.key === 'btn.copy'),
     'the screen words its own Copy button again; Copy is lib/command-actions.js\' word now, and '
     + 'two screens wording one button is how they come to disagree about it');
@@ -437,9 +544,10 @@ test('every work. key the English table declares is placed by the screen', async
   // sentence of the design of record that silently does not render.
   assert.deepEqual(declared.filter((key) => !named.has(key)), [],
     'these work. keys are declared and drawn nowhere');
-  assert.equal(declared.length, 13,
-    `the English table declares ${declared.length} work. key(s); it has been 13 since this screen `
-    + 'was written. A new one is a new sentence on this screen and needs placing.');
+  assert.equal(declared.length, 25,
+    `the English table declares ${declared.length} work. key(s); it has been 25 since the owner's `
+    + '2026-08-29 ruling put Accept and Reject on every card and gave the draft queue a section '
+    + 'of its own (13 before that). A new one is a new sentence on this screen and needs placing.');
 });
 
 test('no translated string is assigned — t() returns nodes and they are appended (ruling A1)', async () => {

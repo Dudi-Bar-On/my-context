@@ -244,7 +244,14 @@ test("Review queue's Execute confirms honestly, even for a revision the corpus r
     // deliberately stale ("staged one revision against … (body made stale)").
     // If the corpus ever ships with that revision settled or removed, work
     // draws no card and this line times out naming exactly that.
-    const actions = page.locator(`${WORK} .cmdactions`).first();
+    //
+    // **Scoped to `[data-queue="revision"]` since 2026-08-29.** The screen now
+    // draws BOTH review queues — the draft queue landed with the owner's
+    // accept/reject ruling — so `.cmdactions` first() is a draft card's control
+    // on any corpus with a draft in it, and this test would have pressed
+    // Execute on `review promote` while claiming to test a revision.
+    const card = page.locator(`${WORK} [data-queue="revision"]`).first();
+    const actions = card.locator('.cmdactions').first();
     await expect(
       actions,
       'the Review queue drew no settlement row — the demo corpus\'s one staged '
@@ -268,7 +275,57 @@ test("Review queue's Execute confirms honestly, even for a revision the corpus r
       actions.locator('.confirm'),
       'a refused confirm must mint no nonce and offer no way to run it anyway',
     ).toBeHidden();
+
+    // **And the other half of the owner's ruling: the reader is not stuck with
+    // the one command that refuses.** Rejecting recomposes the card as
+    // `discard-revision`, which settles a stale proposal perfectly well — this
+    // screen's own header records that a stale revision used to be offered
+    // ONLY the command that would refuse.
+    await card.locator('button[data-verdict="reject"]').click();
+    await expect(
+      card.locator('.cmd code'),
+      'Reject must recompose the line, not merely light a button',
+    ).toContainText('review discard-revision');
+    await expect(
+      card.locator('.cmd code'),
+      'the promote must be gone from the card — one verdict is composed at a time',
+    ).not.toContainText('promote-revision');
   });
+
+/**
+ * **The draft queue, which is the half `/api/review-queue` served and nothing
+ * read** — owner report 2026-08-29. Measured before the fix: the live corpus
+ * had 0 pending revisions and 1 pending draft, and the screen showed an empty
+ * FIELD/IN FORCE/PROPOSED table and never mentioned the draft.
+ *
+ * Both verdicts are asserted here rather than only the promote, because the
+ * defect the ruling names is exactly a queue offering one outcome.
+ */
+test('the draft queue is drawn, and each draft composes both settlements', async ({ app }) => {
+  const { page } = app;
+  await page.evaluate(() => { location.hash = '#/work'; });
+
+  // Fails as itself: `scripts/demo-corpus.ts` leaves seven drafts unpromoted.
+  const card = page.locator(`${WORK} [data-queue="draft"]`).first();
+  await expect(
+    card,
+    'the Review queue drew no draft card — `.demo-corpus` may have been regenerated with '
+    + 'its review queue empty, which `mycontext review list` would say',
+  ).toBeVisible({ timeout: 15_000 });
+
+  const composed = card.locator('.cmd code');
+  await expect(composed).toContainText('mycontext review promote ');
+  await card.locator('button[data-verdict="reject"]').click();
+  await expect(composed).toContainText('mycontext review discard ');
+  await card.locator('button[data-verdict="accept"]').click();
+  await expect(composed).toContainText('mycontext review promote ');
+
+  // The decision is announced, not merely drawn: `.segbar button[aria-pressed]`
+  // is the sheet's own selected face and the only thing telling an assistive
+  // reader which of the two is armed.
+  await expect(card.locator('button[data-verdict="accept"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(card.locator('button[data-verdict="reject"]')).toHaveAttribute('aria-pressed', 'false');
+});
 
 /**
  * `mkdtemp`'d and thrown away — see this file's header for why a disposable
