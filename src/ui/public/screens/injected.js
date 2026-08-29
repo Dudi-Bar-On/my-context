@@ -29,6 +29,52 @@
  * **One row per DELIVERY, in the file's own order.** Nothing is sorted, grouped
  * or collapsed: a second delivery of an item is a second row, and an item the
  * corpus no longer holds keeps its row, because the injection still happened.
+ *
+ * ── THE OTHER NUMBER ON THE PAGE, AND WHY IT IS NOT THE SAME NUMBER ───────
+ *
+ * `inj.note` promises the reader that the Ledger *"would show a different
+ * number"*. `TASK-injected-now-lands-on-the-one-session-that-has-no-lines-and`
+ * is a report that the difference reached six against ZERO, which is not a
+ * discrepancy a reader can absorb. Measured against the live corpus on
+ * 2026-08-29 and pinned in `test/ui/injected-endpoints.test.ts`, the two
+ * surfaces differ on THREE independent axes and NEITHER IS WRONG on any of
+ * them — `/api/sessions`' `itemCount` is `COUNT(DISTINCT item_id)` over the
+ * ledger projection, and `lines` is every line of the seen file:
+ *
+ *   UNIT        items against DELIVERIES. One item delivered twice is one
+ *               `itemCount` and two rows here.
+ *   VOCABULARY  `SeenTier` is `LedgerTier` PLUS `continuity`, so a carried
+ *               reference is a row here that the ledger has no tier to hold.
+ *   STORE       a destroyed window (`/clear` → `hooks/session-end.ts` →
+ *               `clearSeen`) removes the seen file and keeps every ledger row.
+ *               That is the six-against-zero the task reports, and seven of the
+ *               live corpus's nineteen sessions are in it right now.
+ *
+ * So the two are answering different questions and this screen keeps answering
+ * its own. What it must NOT do is join the other one in: the design of record
+ * draws three columns and `plan:ui1 seq:17f` already cut the one join this
+ * response used to carry.
+ *
+ * ── AND ONE THING THIS SCREEN CANNOT SAY, BECAUSE ITS ENDPOINT DROPPED IT ──
+ *
+ * `zeroKey` below picks between "no session" and "this session received
+ * nothing". There is a THIRD state and the response cannot express it: a seen
+ * file that DOES NOT EXIST answers `{ lines: [], error: null }`, byte-identical
+ * to one that was read and held nothing, because `readJsonlFile` swallows
+ * ENOENT. So on a cleared session this screen draws `inj.zeroLines` — *"This
+ * session was read and has received nothing yet"* — about a file nobody
+ * opened. That is clause 2 of
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, whose scope
+ * reaches read models for exactly this reason.
+ *
+ * **The fix is not on this side of the wire and is not invented here.**
+ * `InjectedBody` needs one field — `seen: 'read' | 'absent'`, filled from
+ * `readSeen`, which is where the fact still exists — and then this screen needs
+ * one more key beside `inj.zeroLines`. Reported to the controller as
+ * `inj.noSeenFile`: *"No seen file was written for this session, so nothing was
+ * read here — the audit log may still record what it was given."* Until both
+ * land, the branch below is as honest as the response allows, and the test file
+ * named above fails the day it can be honest.
  */
 import {
   BOUND_CAP_TABLE, boundedList, el, errorNote, linkId, screenHead, spaced, tierChip,
@@ -166,6 +212,12 @@ export async function render(root, ctx) {
       // has already said so in the seen file's own words and two explanations
       // of one absence is worse than none. An unreadable seen file is not a
       // zero, and must never be drawn as one.
+      //
+      // **This branch cannot tell an EMPTY seen file from an ABSENT one**, and
+      // the sentence it picks claims the file was read. See the header's last
+      // section: the response collapses the two before they arrive, and the
+      // field that would separate them (`InjectedBody.seen`) is named there
+      // along with the key this screen would draw for it.
       const refused = data.error !== null && data.error !== undefined;
       zeroKey = !refused && data.lines.length === 0 ? 'inj.zeroLines' : null;
     }

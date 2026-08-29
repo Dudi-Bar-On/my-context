@@ -499,6 +499,72 @@ for (let i = 0; i < 24; i++) {
   if (i % 6 === 3) hook('subagent-start.ts', { session_id: session, hook_event_name: 'SubagentStart', cwd: OUT });
 }
 
+// ── ONE SESSION WHOSE WINDOW WAS DESTROYED: LEDGER HISTORY, NO SEEN FILE ───
+//
+// **The shape this fixture asserted the product never produces, produced by
+// the product.** The block at the foot of this file used to say, in its own
+// words, that *"a session that has a history in the audit log and no seen file
+// is a shape the product never produces, and a fixture that produces it is
+// teaching every screen a lie"*. That sentence was written to justify keeping
+// every seen file, and it is FALSE. Measured 2026-08-29 against the live
+// corpus at `../.my_context` — 680 items, 19 ledger sessions — SEVEN of the
+// nineteen have exactly that shape:
+//
+//     session            /api/sessions itemCount   /injected lines   seen file
+//     dedupe-probe                            16                 0   ABSENT
+//     diag-restore-1                          13                 0   ABSENT
+//     probe-x                                  2                 0   ABSENT
+//     probe-y                                  2                 0   ABSENT
+//     handover-probe                           2                 0   ABSENT
+//     handover-probe-2                         2                 0   ABSENT
+//     compact-probe-002                        2                 0   ABSENT
+//
+// It is not a corruption and it is not an accident of age. `/clear` destroys a
+// context window, and `hooks/session-end.ts` answers `reason: 'clear'` by
+// calling `clearWindowState` → `clearSeen`, which REMOVES the seen file and
+// leaves the ledger and the audit log untouched — deliberately, because the
+// injection still happened and the dedupe state is about a window that is
+// gone. `mycontext rebuild`'s 30-day mtime sweep is the second producer of it.
+//
+// **So the empty-seen-file case is a first-class state of this product, and a
+// fixture with no instance of it cannot reproduce the owner's report**
+// (`TASK-injected-now-lands-on-the-one-session-that-has-no-lines-and`). Every
+// seen file was kept when the real corpus became the base, which cured the
+// blank LANDING and, in the same stroke, removed the state entirely: there was
+// then no session in `.demo-corpus` on which `Injected now` could be seen
+// answering nothing, and no way to tell a screen that handles it from one that
+// does not. That is the ninth time this fixture has flattered a test.
+//
+// **Session 20 and never the newest.** The session every screen shows is
+// `/api/sessions`' `default` — `recentSessions(1)[0]`, session 23 — and it
+// keeps its history, so the landing still opens on rows. Session 20 sits third
+// in that list, three weeks back.
+//
+// It is worth saying plainly that NOTHING IN THE SHELL CAN SELECT IT: `app.js`
+// records that `#sessbtn` opens no popup and that `loadSessions()` exposes the
+// default "so a later task can wire the popup". Until that task lands, a
+// session other than the default is reachable only through the endpoint, which
+// is how `test/ui/injected-endpoints.test.ts` and `e2e/injected-empty.spec.ts`
+// reach it. That is a reason to HAVE the shape in the corpus, not a reason to
+// leave it out: the day the picker is wired, the state it will expose has been
+// under test since today rather than being discovered by the owner again.
+//
+// **Nothing here is fabricated.** The real `SessionEnd` hook is fed the real
+// payload on stdin, exactly as Claude Code feeds it, and whatever it does to
+// `state/` is what the product does. It writes its own `hook`/`session-end`
+// audit record saying what it removed, so the Watch feed carries the event
+// too rather than the state changing behind the log's back.
+const CLEARED_SESSION = 20;
+const cleared = hook('session-end.ts', {
+  session_id: `${session}-${CLEARED_SESSION}`, hook_event_name: 'SessionEnd',
+  reason: 'clear', cwd: OUT,
+});
+console.log(cleared
+  ? `demo-corpus: /clear replayed on ${session}-${CLEARED_SESSION} — its window was destroyed, so `
+    + 'the ledger keeps its injection and no seen file remains for `Injected now` to read'
+  : `demo-corpus: WARNING — the SessionEnd hook failed for ${session}-${CLEARED_SESSION}; the `
+    + 'cleared-window shape is ABSENT and the empty-seen-file case cannot be demonstrated');
+
 // A focus change — the feed draws this as a regime RULE across the table rather
 // than as a row, and it is the only thing that draws one.
 // ── ONE DOCTOR FINDING THAT EARNS A COMMAND ────────────────────────────────
@@ -818,12 +884,22 @@ const recent = parsed.filter((rec) => sessionIndex(rec) === null);
 // getting this wrong is how the first draft of this stripe broke the fixture.
 //
 // The injection preview does not replay a recording — it RE-COMPUTES what the
-// most recent session would be given. "Most recent" is decided by the log. The
-// block further down clears the newest NUMBERED session's seen file so it has a
-// full delivery to show; every other session keeps its seen file and therefore
-// has almost nothing left. So if any other session ends up newer, the preview
-// computes against a session whose seen file still holds everything and draws
-// ONE item instead of six — measured, exactly that, on the first attempt.
+// most recent session would be given. "Most recent" is decided by the log.
+//
+// This used to hold because the newest NUMBERED session's seen file was
+// DELETED and every other session kept its own, so only the newest had
+// anything left to be given. That deletion is gone — the real corpus is the
+// base now and fifty-one normative items are deep enough that any session has
+// a full delivery ahead of it — but the ordering requirement is not: the
+// preview and `Injected now` both key off this default, and a stripe that let
+// an older session end up newest would point both screens at a session this
+// script never shaped. Measured on the first attempt at this stripe: the
+// preview drew ONE item instead of six.
+//
+// It matters once more since `demo-session-a3f9c1-20` had its window cleared
+// above: if THAT session ever became the newest, `/api/sessions` would default
+// to the one session with no seen file and the blank landing this whole
+// fixture exists to keep away would be back.
 //
 // The bare unnumbered `demo-session-a3f9c1` is the tool-event id and sits in
 // the pulse window, minutes old. So the stripe puts session `newestSession` at
@@ -840,6 +916,19 @@ striped.forEach((rec) => {
   const jitter = ((newestSession - s) % 7) * 9 * 60 * MINUTE;
   rec['at'] = new Date(NOW - (weeksAgo * WEEK + jitter)).toISOString();
 });
+
+// The stripe keys `at` on the SESSION INDEX alone, so every record belonging
+// to one session lands on one stamp. That was harmless while each numbered
+// session had exactly one record; `demo-session-a3f9c1-20` now has two — its
+// start, and the `/clear` that destroyed its window — and a clear stamped at
+// the same instant as the injection it wiped is a history no reader can put in
+// order. Eleven minutes later is inside the same session and after it, which
+// is the only thing the ordering has to say.
+for (const rec of striped) {
+  if (sessionIndex(rec) === CLEARED_SESSION && rec['op'] === 'session-end') {
+    rec['at'] = new Date(Date.parse(String(rec['at'])) + 11 * MINUTE).toISOString();
+  }
+}
 
 recent.forEach((rec, i) => {
   // The first 180, 6.3s apart, walk the whole twenty-minute window and land
@@ -908,21 +997,47 @@ if (missing.length > 0) {
 //
 // The last line is the one that says the deletion was a workaround for the pool
 // and never a property anybody wanted: with depth behind it, both screens are
-// full at once and neither is borrowing from the other. Keeping the file is
-// also the HONEST state — a session that has a history in the audit log and no
-// seen file is a shape the product never produces, and a fixture that produces
-// it is teaching every screen a lie about what a real workspace looks like.
+// full at once and neither is borrowing from the other.
+//
+// **THE JUSTIFICATION THAT STOOD HERE WAS WRONG, AND IT COST THE FIXTURE THE
+// STATE IT MOST NEEDED TO CARRY.** It read: *"a session that has a history in
+// the audit log and no seen file is a shape the product never produces, and a
+// fixture that produces it is teaching every screen a lie about what a real
+// workspace looks like."* Measured against the live corpus on 2026-08-29, SEVEN
+// of nineteen ledger sessions have exactly that shape, and the product's own
+// `/clear` path is what makes it — the table and the reasoning are on
+// `CLEARED_SESSION` above. Keeping every seen file did not stop the fixture
+// lying; it moved the lie. It went from *"a session that received six things
+// shows none"* to *"no session can ever show none"*, and a screen cannot be
+// measured against a state its corpus has abolished.
+//
+// So both are here now, one session apart: session 23, the default every
+// screen lands on, keeps its full history and draws rows; session 20 had its
+// window destroyed and draws nothing, with `/api/sessions` still reporting its
+// injection. That is the owner's report, reproducible on demand.
 //
 // This closes the fixture half of
-// `TASK-injected-now-lands-on-the-one-session-that-has-no-lines-and`. The other
-// half — that `{"lines":[]}` should say something rather than render a bare
-// table head — is independent and still open, and it should be: a corpus that
-// happens to have data is not a reason to stop wording the empty case.
+// `TASK-injected-now-lands-on-the-one-session-that-has-no-lines-and` — the
+// landing is not the empty one, AND the empty one still exists to be drawn.
+// The other half, that `{"lines":[]}` must say something rather than render a
+// bare table head, is `screens/injected.js`' and is drawn from `inj.zeroLines`.
+// What NEITHER half closes is the read model underneath: `{lines: [], error:
+// null}` is the answer for a seen file that was read and held nothing AND for
+// a seen file that does not exist, and those are the two facts
+// `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` clause 2
+// forbids collapsing. Session 20 is the case that proves it — see the header
+// of `test/ui/injected-endpoints.test.ts`.
 const stateDir = path.join(OUT, '.my_context', 'state');
 if (existsSync(stateDir)) {
-  const kept = readdirSync(stateDir).filter((f) => f.endsWith('.seen.jsonl')).length;
-  console.log(`demo-corpus: ${kept} seen files kept — the newest session keeps its history, `
-    + 'so Injected now lands on rows rather than on a bare table head');
+  const seen = readdirSync(stateDir).filter((f) => f.endsWith('.seen.jsonl'));
+  const gone = !seen.includes(`${session}-${CLEARED_SESSION}.seen.jsonl`);
+  console.log(`demo-corpus: ${seen.length} seen files kept — the newest session keeps its `
+    + 'history, so Injected now lands on rows rather than on a bare table head');
+  console.log(gone
+    ? `demo-corpus: and ${session}-${CLEARED_SESSION} has none, so the empty-seen-file state `
+      + 'is a state a screen can be measured against rather than only described'
+    : `demo-corpus: WARNING — ${session}-${CLEARED_SESSION} still has a seen file; the cleared-`
+      + 'window state is NOT in this corpus and no screen can be measured against it');
 }
 
 // The projection is a WRITE, and the read-only UI may never build it. Building
