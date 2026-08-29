@@ -269,6 +269,63 @@ export function projectFieldUpdate(
 }
 
 /**
+ * The tag list a REPLACEMENT `tags` list must actually be stored as: every
+ * projected tag in it regenerated from the field it is projected from.
+ *
+ * **The hole this closes, measured by execution on 2026-08-29 against
+ * `src/mcp/server.ts` as a model reaches it.** `updateItem` projected only when
+ * the call carried `extra`, and `handWrittenProjectionError` was called from
+ * `src/cli/commands/edit.ts` and from nowhere else — so `mycontext edit --tags`
+ * was the only closed door and the tool surface was open in BOTH directions:
+ *
+ *     update_item({id, tags: [...,'state:done']})   tag rewritten to `done`,
+ *                                                   field left at `todo` —
+ *                                                   `stale`, doctor exits 1
+ *     update_item({id, tags: ['v2','ui']})          projected tag dropped, the
+ *                                                   field still says `todo` —
+ *                                                   `absent`, invisible to
+ *                                                   `focus state:todo`
+ *
+ * The first of those is the growth mechanism `plan:categories seq 19` names:
+ * every one of the twenty-eight it re-measured on 2026-08-25 was `tag=done`
+ * against a stale field, not one the other way round, which is exactly the
+ * asymmetry a tag-only write produces and a field-only write cannot.
+ *
+ * **Reconcile rather than refuse, and that is the store's own precedent.**
+ * `createItem` a few hundred lines up already takes a hand-written projected
+ * tag and reconciles it (see "A hand-written projected tag that AGREES with the
+ * field is a no-op"). `edit.ts` refuses instead because a COMMAND has two
+ * readings to choose between and a person to hand the choice back to; the store
+ * has neither, and the field is the store, so there is only one reading here:
+ * the field wins and the tag is regenerated. Refusing at this depth would also
+ * refuse `edit.ts`'s own composed patch, which arrives carrying the projected
+ * tag it just generated.
+ *
+ * A projection whose field is ABSENT is left exactly as the caller wrote it.
+ * That is the `unprojected` shape — a tag with no field behind it, which
+ * `doctor` reports as info and the seq-19 migration adopts — and regenerating
+ * from a field that does not exist would DELETE the only copy of the value.
+ */
+export function projectOntoTags(
+  config: Config,
+  item: Pick<Item, 'type' | 'extra'>,
+  tags: readonly string[],
+  extra: Record<string, string> = {},
+): string[] {
+  let out = [...tags];
+  for (const projection of projectionsFor(config, item.type)) {
+    const value = Object.hasOwn(extra, projection.field)
+      ? extra[projection.field]
+      : Object.hasOwn(item.extra, projection.field)
+        ? item.extra[projection.field]
+        : undefined;
+    if (value === undefined) continue;
+    out = reconcileTags(out, projection, value);
+  }
+  return out;
+}
+
+/**
  * The refusal for a hand-written projected tag, or `null` when every tag in the
  * list is a person's to write.
  *

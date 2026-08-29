@@ -180,13 +180,41 @@ test('--tags and --state compose: the projection lands on the replacement list',
   });
 });
 
+/**
+ * A list with no projected prefix is not REFUSED — step 1 of the seam has
+ * nothing to say about it — and every tag in it is stored exactly as typed.
+ *
+ * **What this test used to assert, and why the expectation moved.** It ended at
+ * `['v2', 'ui']`: the replacement list was stored as written and the
+ * projected `state:todo` this fixture carries was simply gone, while
+ * `state: todo` stayed in the frontmatter. That is `absent` in
+ * `projectionMismatch`'s terms and `mycontext doctor` calls it an ERROR — "the
+ * field is right and the item is in no answer" — so the command exited 0 and
+ * left the corpus failing its own gate, one line later. Omitting a generated
+ * tag is not a way to delete it, for the same reason typing one is not a way to
+ * set it: the field is the store, and a field that still holds a value still
+ * projects. `projectOntoTags` (core/tag-projection.ts) regenerates it.
+ *
+ * The projections are appended in `projectionsFor` order — field-name order,
+ * so two runs over one corpus produce the same file — after everything the
+ * caller typed, which keeps their own list in their own order.
+ */
 test('a --tags list with no projected prefix is a tag list like any other', () => {
   withProject((cwd) => {
     const id = task(cwd);
     const { code, out } = run(['edit', id, '--tags', 'v2,ui'], cwd);
 
     assert.equal(code, 0, out);
-    assert.deepEqual(tagsOf(itemFile(cwd, 'task', id)), ['v2', 'ui']);
+    assert.deepEqual(
+      tagsOf(itemFile(cwd, 'task', id)), ['v2', 'ui', 'state:todo'],
+      'both tags the caller typed are stored as typed, and the projection is not dropped',
+    );
+
+    let doctor = '';
+    assert.equal(
+      runCli(['doctor'], cwd, (l) => { doctor += l + '\n'; }), 0,
+      `a successful edit may not leave doctor red:\n${doctor}`,
+    );
   });
 });
 

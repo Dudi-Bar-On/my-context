@@ -256,3 +256,114 @@ test('create_item refuses an undeclared value and projects a declared one', asyn
     removeTree(cwd);
   }
 });
+
+/**
+ * **The door that was still open, and the one that made the number grow.**
+ *
+ * `plan:categories seq 19` counted thirteen tasks whose `state` tag and `state`
+ * field disagreed on 2026-08-23 and twenty-eight on 2026-08-25 — and every one
+ * of the twenty-eight was `tag=done` against a stale field, not one the other
+ * way round. That asymmetry is a signature: a field-only write cannot produce
+ * it, and a tag-only write is the only thing that can.
+ *
+ * Measured over this same server on 2026-08-29, before `projectOntoTags`
+ * existed: `update_item({id, tags: [..., 'state:done']})` answered "updated",
+ * wrote `state:done` into the tag block and left `state: todo` in the
+ * frontmatter — because `updateItem` projected only when the call carried
+ * `extra`, and `handWrittenProjectionError` was wired into
+ * `src/cli/commands/edit.ts` and nowhere else. The CLI's `--tags` door was shut
+ * and the tool surface — the one a model actually reaches — was open.
+ *
+ * The store RECONCILES rather than refusing, which is `createItem`'s own
+ * precedent a few hundred lines up: a command has two readings and a person to
+ * hand the choice back to, a store has neither, and the field is the store.
+ */
+test('update_item regenerates a hand-written projected tag from the field', async () => {
+  const cwd = project();
+  try {
+    const id = task(cwd);
+    const [res] = await session(cwd, [
+      {
+        name: 'update_item',
+        arguments: { id, tags: ['plan:categories', 'seq:20', 'state:done', 'v2'] },
+      },
+    ]);
+
+    assert.equal(res.isError, false, res.text);
+    const file = itemFile(cwd, id);
+    assert.match(file, /^state: todo$/m, 'the field is the store and nothing moved it');
+    assert.deepEqual(tagsOf(file), ['plan:categories', 'seq:20', 'state:todo', 'v2'],
+      'the projected tag is regenerated from the field, not taken from the caller');
+
+    const lines: string[] = [];
+    assert.equal(runCli(['doctor'], cwd, (l) => lines.push(l)), 0, lines.join('\n'));
+    assert.doesNotMatch(lines.join('\n'), /tag_projection_drift/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * The same door from the other side, and the mismatch kind is different.
+ * Dropping the projected tag from a replacement list left the field holding a
+ * value with no tag projected from it — `absent` in `projectionMismatch`'s
+ * terms, which is an item whose `state` is right and which `mycontext focus
+ * state:todo` and every progress view that groups by the tag cannot see.
+ *
+ * `['v2', 'ui']` here is the same list the "projects onto the list the caller
+ * passed" test above sends WITH `extra`; the whole difference is the absent
+ * `extra`, which is exactly what used to decide whether anything projected.
+ */
+test('update_item restores a projected tag a replacement list dropped', async () => {
+  const cwd = project();
+  try {
+    const id = task(cwd);
+    const [res] = await session(cwd, [
+      { name: 'update_item', arguments: { id, tags: ['v2', 'ui'] } },
+    ]);
+
+    assert.equal(res.isError, false, res.text);
+    const file = itemFile(cwd, id);
+    assert.match(file, /^state: todo$/m);
+    assert.deepEqual(tagsOf(file), ['v2', 'ui', 'state:todo'],
+      'every unrelated tag the caller passed survives, and the projection is appended');
+
+    const lines: string[] = [];
+    assert.equal(runCli(['doctor'], cwd, (l) => lines.push(l)), 0, lines.join('\n'));
+    assert.doesNotMatch(lines.join('\n'), /tag_projection_drift/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * The boundary the reconciliation must not cross: an item carrying a projected
+ * tag and NO field behind it. That is `unprojected` — `doctor` reports it as
+ * info and the seq-19 migration adopts it into the field — and regenerating
+ * from a field that does not exist would DELETE the only copy of the value.
+ * A tags edit on such an item must leave the projection exactly as written.
+ */
+test('update_item leaves a projected tag alone when no field backs it', async () => {
+  const cwd = project();
+  try {
+    const [made] = await session(cwd, [
+      {
+        name: 'create_item',
+        arguments: { type: 'task', title: 'Born half projected', body: 'x', tags: ['state:done'] },
+      },
+    ]);
+    assert.equal(made.isError, false, made.text);
+    const id = 'TASK-born-half-projected';
+    assert.deepEqual(tagsOf(itemFile(cwd, id)), ['state:done']);
+
+    const [res] = await session(cwd, [
+      { name: 'update_item', arguments: { id, tags: ['state:done', 'v2'] } },
+    ]);
+    assert.equal(res.isError, false, res.text);
+    const file = itemFile(cwd, id);
+    assert.deepEqual(tagsOf(file), ['state:done', 'v2']);
+    assert.doesNotMatch(file, /^state: /m, 'nothing invented a field, and nothing dropped the tag');
+  } finally {
+    removeTree(cwd);
+  }
+});

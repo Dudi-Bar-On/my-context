@@ -21,7 +21,7 @@ import { SUPERSEDED_BY } from './relations.ts';
 import { stageRevision, type RevisionChanges } from './revision.ts';
 import { makeId } from './slug.ts';
 import type { Store } from './store.ts';
-import { projectFieldUpdate } from './tag-projection.ts';
+import { projectFieldUpdate, projectOntoTags } from './tag-projection.ts';
 import { enumError, missingFieldError } from './teach.ts';
 import { normalizeEol } from './text.ts';
 import {
@@ -670,9 +670,31 @@ export function updateItem(
       { type: item.type, tags: input.tags ?? item.tags, extra: item.extra },
       input.extra,
     );
-  const update: UpdateInput = projected?.tags === undefined
+  // **The OTHER half of the same door, and the one that was still open**
+  // (`projectOntoTags`, core/tag-projection.ts — see its comment for the
+  // measurement). The block above answers "the caller moved a field, so move
+  // the tag with it". This one answers the mirror question the store never
+  // asked: the caller replaced the TAG LIST, and `tags` is assigned outright a
+  // few dozen lines down, so whatever it says about a projected prefix becomes
+  // the stored projection — with no field moving and nothing checking. Measured
+  // over `src/mcp/server.ts` on 2026-08-29: `update_item({tags:
+  // [...,'state:done']})` wrote the tag and left `state: todo` on disk, and
+  // `update_item({tags: ['v2','ui']})` dropped the projected tag while the
+  // field kept its value. Both exit `mycontext doctor` at 1 on drift the store
+  // itself had just written, and the first is precisely the `tag=done` against
+  // a stale field that seq 19 counted thirteen of, then twenty-eight of.
+  //
+  // Only when the caller actually PASSES `tags`, for the reason stated just
+  // above: a call that says nothing about tags must project nothing, or an
+  // unrelated `--title` edit becomes a migration.
+  const nextTags = input.tags === undefined
+    ? projected?.tags
+    : projectOntoTags(
+      ctx.config, item, projected?.tags ?? input.tags, input.extra ?? {},
+    );
+  const update: UpdateInput = nextTags === undefined
     ? input
-    : { ...input, tags: projected.tags };
+    : { ...input, tags: nextTags };
 
   if (origin !== 'human' && governsNormatively(ctx, item)) {
     const field = guardedChange(item, update);
