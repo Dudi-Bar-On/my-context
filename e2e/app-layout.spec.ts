@@ -40,6 +40,7 @@
 import type { Page } from '@playwright/test';
 import { test, expect } from './app.ts';
 import { SCREENS } from './mockup.ts';
+import { settleScreen } from './settle.ts';
 
 interface Box { selector: string; w: number; h: number; x: number; y: number }
 
@@ -171,6 +172,8 @@ test('every row of the app shell is occupied — no empty band', async ({ app })
 /**
  * **A row that says nothing is an empty band too, whatever its height.**
  *
+ * ── THE PROXY, AND THE PROPERTY IT STOOD IN FOR ────────────────────────────
+ *
  * The assertion above measures GEOMETRY — it collects each child's rect, sorts
  * them, and reports any vertical gap between them. That is exactly what it was
  * written for, and it is blind to the case it was named after. An element
@@ -183,50 +186,304 @@ test('every row of the app shell is occupied — no empty band', async ({ app })
  * design of record fills the same bar on every screen. It had been that way
  * since the shell landed. The owner, looking at the product: "the upper row is
  * empty." Eight days, one green gate, and the gate was right about what it
- * measured and silent about what it missed — the third such this day.
+ * measured and silent about what it missed.
  *
- * So this measures CONTENT: every row of the shell must render text a reader
- * can actually see. Swept over several screens, because a row filled on one
- * screen and blank on the next is the same defect arriving later.
+ * ── THE SIXTH INSTANCE OF ONE PATTERN, WHICH IS WHY IT IS WRITTEN DOWN HERE ─
+ *
+ * This project has now measured the same defect six times in three days, and
+ * every one of them was a gate that was CORRECT about what it measured:
+ *
+ *   1. `screen-parity`'s settle read "the element count stopped changing" as
+ *      "the screen finished loading" — but screens append their cards
+ *      synchronously and fill them when a fetch resolves, so a half-drawn
+ *      screen is perfectly stable. PROXY: count-stability. PROPERTY: drawn.
+ *   2. Several absence assertions were `toHaveCount(0)` against a selector
+ *      nothing had had time to write yet, satisfied by the instant before an
+ *      async read returns. PROXY: absent-now. PROPERTY: absent-once-settled.
+ *   3. `tree-parity` counted in-flight requests as a bare `+1/-1` number that
+ *      went NEGATIVE on the first screen and inverted its own wait — ten
+ *      screens inventoried at three nodes apiece, green. PROXY: a counter.
+ *      PROPERTY: the set of requests actually open.
+ *   4. `pane-size`'s settle was satisfied by the router's holding chip, two
+ *      elements present from the first frame that never change, so every
+ *      screen reported "0 linked". PROXY: some elements exist. PROPERTY: THIS
+ *      screen's elements exist.
+ *   5. A cycle check passed over zero items — vacuously true, and green
+ *      through the whole window in which there was nothing to check.
+ *   6. This one: a row's BOX read for a row's CONTENT.
+ *
+ * The shape is identical every time. **A proxy is measured instead of the
+ * property, because on the day it was written the two agreed.** Each proxy was
+ * true, cheap and correct against the case it was written for; each stopped
+ * tracking the property the moment something moved around it; and not one of
+ * them went red when it stopped tracking, because a proxy that has come loose
+ * still reports on itself perfectly. That is the whole failure mode: the gate
+ * does not break, it drifts, and drift has no colour.
+ *
+ * The counter-discipline this file now follows, and the reason each rule below
+ * is written the way it is: **name the property in the test's own title, then
+ * assert that sentence and nothing adjacent to it.** "SAYS something" is a
+ * claim about words. So this measures words — not height, not child count, not
+ * `textContent`, and not a label on the container.
+ *
+ * ── WHAT COUNTS AS SAYING SOMETHING, DECIDED HERE RATHER THAN IN THE CODE ───
+ *
+ * A row of the shell speaks if a reader looking at that band learns something.
+ * Two things qualify, and the boundary between them is the whole design:
+ *
+ *   **1. Glyphs actually painted inside the row's own box.** Measured with a
+ *   Range around each text node, not with `textContent`: `textContent` counts a
+ *   string the stylesheet has hidden, a `[hidden]` screen the router is still
+ *   holding inside `#screen`, and a node clipped outside the 26px band it
+ *   nominally belongs to. A reader reads none of those. The parent must pass
+ *   `checkVisibility` for visibility, opacity and content-visibility — the
+ *   platform's own answer rather than this file's guess at it — and the Range's
+ *   rect must INTERSECT the row's rect, so a run of text scrolled or overflowed
+ *   out of the band does not get to fill it.
+ *
+ *   **2. A drawn graphic that carries an accessible name.** A row of icon
+ *   buttons is not an empty band, and demanding literal glyphs would make this
+ *   gate wrong about a legitimate design. So an `<svg>`, `<img>`, `<canvas>`,
+ *   `<video>` or a `background-image` — something that PAINTS — counts, if the
+ *   nearest accessible name on it or above it is non-empty.
+ *
+ *   **And that name is searched from the graphic UP TO, BUT NOT INCLUDING, the
+ *   row.** This one exclusion is the difference between a gate and another
+ *   proxy. `renderChrome()` gives `#prov` an `aria-label` of its own; accept a
+ *   label on the row container and this assertion goes green on the very
+ *   element that motivated it, wearing the name of the thing it fails to say.
+ *   A container's label describes what a row is FOR. It is not content.
+ *
+ * **A measured zero needs no special case, and deliberately does not get one.**
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` requires a
+ * zero to be DRAWN AND NAMED, and a name is words — so a measured zero passes
+ * clause 1 as ordinary text, exactly like any other content. What fails here is
+ * a zero that was not drawn, or drawn as a blank, which is that standard's
+ * clause 3 ("a blank is indistinguishable from a failure to load") asserted
+ * rather than restated. Carving out an exemption for "it is only a zero" would
+ * have rebuilt the same defect one level up.
+ *
+ * **Known limit, stated rather than discovered later:** a text-node walk cannot
+ * see `::before`/`::after` content, so a row whose ONLY words came from a
+ * pseudo-element would read as silent. Checked before landing: every `content:`
+ * string in `styles.css` is a chip marker (◌ ◆ ● ▲ ■ ◇) or the help `?`, and
+ * each sits beside real text. The bias is toward a false RED, which is the
+ * direction a gate is allowed to be wrong in.
+ *
+ * ── AND IT IS DRIVEN WIDE, BECAUSE COVERAGE WAS ITS OWN PROXY ──────────────
+ *
+ * The first version of this test swept `['preview', 'watch', 'status',
+ * 'doctor']` by writing `location.hash = '#' + screen`. `route()` reads
+ * `location.hash.replace(/^#\//, '')` — WITH the slash — so `#watch` resolved
+ * to no known screen and fell through to `SCREENS.preview`. Four named screens,
+ * one page, measured four times, and the failure message said "watch". The loop
+ * variable was a proxy for the screen visited, and it came loose the moment the
+ * router grew its `#/` form.
+ *
+ * So the sweep now (a) uses `#/name`, (b) covers all twenty-one screens rather
+ * than four, (c) runs at three window sizes, because a row that collapses at
+ * one size is the same defect arriving later, and (d) — the part that keeps
+ * this honest — **asserts that the screen it measured is the screen it named**,
+ * by reading back the un-hidden `[data-p]`. A gate that silently measures the
+ * wrong page would be a seventh instance of the pattern above, committed by the
+ * test written to name it.
+ *
+ * The wait is `settleScreen`, the shared one. Four hand-rolled settles were
+ * deleted on 2026-08-28 and this file is not writing a fifth; a screen that
+ * does not settle is reported as NOT MEASURED and fails as itself, per
+ * `LESSON-every-bound-on-waiting-must-fail-as-itself-or-a-slow-machine`.
+ *
+ * ── WHAT IT COST, AND WHAT IT FOUND, MEASURED 2026-08-29 ───────────────────
+ *
+ * **Cost: 6.4 minutes**, per browser project, which makes this by a wide margin
+ * the most expensive test in the suite (the next is 22s). Sixty-three visits at
+ * 6.1s each, and the 6.1s is the APP, not the measurement: `settleScreen` spent
+ * 7 to 22 samples per screen at one viewport — `graph` 8, `preview` 21,
+ * `doctor` 22 — because every route fires `paintRailCounts()` alongside the
+ * screen's own reads, so `pending` is rarely empty early. The DOM measurement
+ * itself is one `evaluate` per screen and stops at three words. Written down so
+ * that whoever decides this is too slow trims the RIGHT thing: dropping the
+ * third viewport buys two minutes, dropping screens buys the coverage this task
+ * existed to add.
+ *
+ * **Found: nothing, and the nothing is measured rather than assumed.** Zero
+ * silent rows across 21 screens x 3 sizes, on both browser projects. Two facts
+ * make that a result instead of a shrug:
+ *
+ *   - It goes red on demand. Emptying every descendant of `#prov` and `#strip`
+ *     before measuring produced exactly `#prov is 1280x26px of nothing` and
+ *     `#strip is 1280x38px of nothing` — while the geometry assertion above
+ *     stayed green over the same page, which is the whole point of this test
+ *     existing beside that one. `#prov` keeps its own `aria-label` throughout,
+ *     and was still reported silent: the container-label exclusion has teeth.
+ *   - Not one row passed on clause 2. Instrumented over all 21 screens, every
+ *     row reported at least one painted word, so the named-graphic branch never
+ *     fired and nothing is being rescued by it. It stays because the day a row
+ *     of icons lands is not the day to decide what an icon says.
+ *
+ * So: **the app is right here, and the gate that said so was not.** The one
+ * defect this strengthening actually caught was in the test — the `#`-instead-
+ * of-`#/` sweep above, which reported four screens and had visited one.
  */
+const SHELL_VIEWPORTS = [
+  // The suite's pinned size, so this pass is comparable with every other
+  // measurement in this file.
+  { label: '1280x720', width: 1280, height: 720 },
+  // Larger than the pin. The three fixed rows stay at 46/26/38 and the `1fr`
+  // body absorbs all 280 extra pixels, so a row that only looked filled
+  // because it was cropped has room to show its blank here.
+  { label: '1600x1000', width: 1600, height: 1000 },
+  // Under `@media (max-width:1000px)`, the one breakpoint this stylesheet has
+  // (`.pair`, `.two` and `.sim` all drop to a single column there), and short
+  // enough that the body row is squeezed to under 60% of the window while the
+  // header, the provenance bar and the strip do not move at all.
+  { label: '900x560', width: 900, height: 560 },
+] as const;
+
 test('every row of the app shell SAYS something — no silent band', async ({ app }) => {
+  // Sixty-three settles. The default per-test budget is sized for a test that
+  // measures one page; this one walks twenty-one screens three times, and a
+  // timeout here would be a clock reporting on content.
+  test.setTimeout(600_000);
   const { page } = app;
   const silent: string[] = [];
-  for (const screen of ['preview', 'watch', 'status', 'doctor']) {
-    await page.evaluate((s) => { location.hash = `#${s}`; }, screen);
-    // The rows are filled by their own calls; wait for the last one rather than
-    // for a timeout, so a slow machine does not read as a blank bar.
-    await expect(page.locator('#provproj [data-k]').first()).toBeAttached({ timeout: 10_000 });
-    const rows = await page.evaluate(() => {
-      const shell = document.querySelector<HTMLElement>('.app');
-      if (shell === null) return [{ id: 'no .app at all', text: '', height: 0 }];
-      return [...shell.children]
-        .map((c) => {
-          const r = c.getBoundingClientRect();
-          return {
-            id: (c as HTMLElement).id !== '' ? (c as HTMLElement).id : (c as HTMLElement).className,
-            height: Math.round(r.height),
-            // Only text a reader can see: an element the stylesheet has hidden
-            // contributes to textContent and to nothing else.
-            text: [...c.querySelectorAll('*')]
-              .filter((el) => el.getBoundingClientRect().width > 0)
-              .map((el) => (el.textContent ?? ''))
-              .join('')
-              .trim(),
-          };
-        })
-        // A row reserved at zero height is the geometry test's business, not
-        // this one's, and the item pane is legitimately absent until opened.
-        .filter((r) => r.height > 0 && r.id !== 'pane');
-    });
-    for (const row of rows) {
-      if (row.text === '') silent.push(`"${screen}": ${row.id} is ${row.height}px of nothing`);
+  const unmeasured: string[] = [];
+
+  for (const vp of SHELL_VIEWPORTS) {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    for (const screen of SCREENS) {
+      // `#/name`, WITH the slash. Without it `route()` resolves nothing and
+      // renders the preview under this screen's name — see the header.
+      await page.evaluate((s) => { location.hash = `#/${s}`; }, screen);
+      const settled = await settleScreen(page, screen);
+      if (!settled.settled) {
+        unmeasured.push(`${vp.label} "${screen}": never settled — ${settled.count} elements and `
+          + `${settled.inFlight} /api reads still open after ${settled.attempts} samples`);
+        continue;
+      }
+      const shown = await page.evaluate(() => {
+        const open = document.querySelector<HTMLElement>('.body > [data-p]:not([hidden])');
+        return open === null ? null : (open.dataset['p'] ?? null);
+      });
+      if (shown !== screen) {
+        unmeasured.push(`${vp.label} "${screen}": the router showed "${shown}" instead — this `
+          + 'sweep did not visit the screen it names');
+        continue;
+      }
+
+      const rows = await page.evaluate(() => {
+        const shell = document.querySelector<HTMLElement>('.app');
+        if (shell === null) {
+          return [{ id: 'no .app at all', w: 0, h: 0, words: [] as string[], named: [] as string[] }];
+        }
+        // The platform's own answer to "is this rendered", rather than this
+        // file's guess at it: display, visibility, opacity and
+        // content-visibility, on the element and on every ancestor.
+        const SEEN = {
+          visibilityProperty: true, opacityProperty: true, contentVisibilityAuto: true,
+        };
+        // The first accessible name on `el` or above it, stopping BELOW `stop`
+        // — the row never lends its own label to its own emptiness.
+        const nameFor = (el: Element, stop: Element): string => {
+          for (let n: Element | null = el; n !== null && n !== stop; n = n.parentElement) {
+            const label = (n.getAttribute('aria-label') ?? '').trim();
+            if (label !== '') return label;
+            const by = (n.getAttribute('aria-labelledby') ?? '').trim();
+            if (by !== '') {
+              const joined = by.split(/\s+/)
+                .map((id) => document.getElementById(id))
+                .map((e) => (e === null ? '' : (e.textContent ?? '').trim()))
+                .filter((s) => s !== '').join(' ');
+              if (joined !== '') return joined;
+            }
+            if (n instanceof HTMLImageElement && n.alt.trim() !== '') return n.alt.trim();
+            const svgTitle = n.querySelector(':scope > title');
+            const titled = svgTitle === null ? '' : (svgTitle.textContent ?? '').trim();
+            if (titled !== '') return titled;
+            const attr = (n.getAttribute('title') ?? '').trim();
+            if (attr !== '') return attr;
+          }
+          return '';
+        };
+        // Something that PAINTS, as opposed to something that merely contains.
+        const paints = (el: Element): boolean =>
+          ['svg', 'img', 'canvas', 'video'].includes(el.tagName.toLowerCase())
+          || getComputedStyle(el).backgroundImage !== 'none';
+
+        const out: { id: string; w: number; h: number; words: string[]; named: string[] }[] = [];
+        for (const child of [...shell.children]) {
+          const row = child as HTMLElement;
+          const box = row.getBoundingClientRect();
+          // A row reserved at zero height is the geometry assertion's business,
+          // not this one's — and the item pane, the exit banner and the pane's
+          // drag handle are all legitimately absent until something opens them,
+          // which is exactly the zero-height case.
+          if (box.height <= 0 || box.width <= 0) continue;
+          const inside = (r: DOMRect): boolean =>
+            r.width > 0 && r.height > 0
+            && r.bottom > box.top + 0.5 && r.top < box.bottom - 0.5
+            && r.right > box.left + 0.5 && r.left < box.right - 0.5;
+
+          // Glyphs, measured where they are actually drawn. Stopped at three:
+          // the question is whether the row speaks, and three samples is enough
+          // to say what it said in the failure message.
+          const words: string[] = [];
+          const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n !== null && words.length < 3; n = walker.nextNode()) {
+            const raw = (n.nodeValue ?? '').replace(/\s+/g, ' ').trim();
+            if (raw === '') continue;
+            const holder = n.parentElement;
+            if (holder === null || !holder.checkVisibility(SEEN)) continue;
+            const range = document.createRange();
+            range.selectNodeContents(n);
+            if (!inside(range.getBoundingClientRect())) continue;
+            words.push(raw.length > 40 ? `${raw.slice(0, 40)}…` : raw);
+          }
+
+          // Only asked when the row painted no glyphs at all: this is the
+          // branch that keeps an icon-only row from reading as blank, and
+          // `getComputedStyle` per descendant is not worth paying for on a row
+          // that has already spoken.
+          const named: string[] = [];
+          if (words.length === 0) {
+            for (const el of row.querySelectorAll('*')) {
+              if (named.length >= 3) break;
+              if (!paints(el) || !el.checkVisibility(SEEN)) continue;
+              if (!inside(el.getBoundingClientRect())) continue;
+              const name = nameFor(el, row);
+              if (name !== '') named.push(`<${el.tagName.toLowerCase()}> "${name}"`);
+            }
+          }
+
+          out.push({
+            id: row.id !== '' ? `#${row.id}` : `.${row.className}`,
+            w: Math.round(box.width), h: Math.round(box.height), words, named,
+          });
+        }
+        return out;
+      });
+
+      for (const row of rows) {
+        if (row.words.length === 0 && row.named.length === 0) {
+          silent.push(`${vp.label} "${screen}": ${row.id} is ${row.w}x${row.h}px of nothing`);
+        }
+      }
     }
   }
-  expect(silent, 'a row of the shell reserves its height and renders no visible text. That is the '
-    + 'band of bare .app the geometry assertion above was written for, wearing an element: it '
-    + 'covers its span, so that test passes, and a reader still sees an empty strip across the '
-    + 'window.').toEqual([]);
+
+  // COVERAGE FIRST, and as its own failure. A screen that did not settle, or
+  // that the router quietly replaced with another one, was NOT MEASURED — and
+  // a gate reporting green over pages it never opened is the defect this whole
+  // file is about, committed one level up.
+  expect(unmeasured, 'this sweep did not measure every screen it walked, so its silence below '
+    + 'covers less than it claims. Re-run the named screens alone before reading anything into '
+    + 'a green result.').toEqual([]);
+
+  expect(silent, 'a row of the shell reserves its height and paints neither a visible word nor a '
+    + 'named graphic. That is the band of bare .app the geometry assertion above was written for, '
+    + 'wearing an element: it covers its span, so that test passes, and a reader still sees an '
+    + 'empty strip across the window. A measured zero is not this — a measured zero is DRAWN AND '
+    + 'NAMED and passes here as ordinary text.').toEqual([]);
 });
 
 /**
