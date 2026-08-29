@@ -244,12 +244,70 @@ function countNodes(node: TreeNode | null): number {
   return 1 + node.kids.reduce((n, k) => n + countNodes(k), 0);
 }
 
+/**
+ * **Where the wall clock went, per screen and per phase.**
+ *
+ * Written because this test failed at its 240s timeout IN ISOLATION and the
+ * three plausible causes — a quadratic diff over a corpus that grew, a slow
+ * extraction, and a settle loop that never settles — are indistinguishable
+ * from a single total. They are not indistinguishable from these six columns:
+ * a quadratic diff shows up in `diff`, a heavy extraction in `extract`, and a
+ * bad wait condition shows up as `attempts` pinned at the cap on every screen
+ * while `nodes` stays small. Kept rather than deleted after the diagnosis,
+ * because the next person to see this file slow needs the same six columns and
+ * should not have to re-derive them.
+ */
+interface ScreenTiming {
+  readonly screen: string;
+  /** Mockup rail click + its 300ms transition wait + the mockup extraction. */
+  readonly mock: number;
+  /** The settle loop: samples until the count stopped changing and nothing was in flight. */
+  readonly settle: number;
+  /** How many of the 25 samples were spent. 25 means the loop never settled. */
+  readonly attempts: number;
+  /** `/api` reads still in flight when the loop gave up or broke. */
+  readonly inFlight: number;
+  /** `EXTRACT_TREE` over the app section. */
+  readonly extract: number;
+  /** `vocabularyFor` + `diffTrees` + `classify` — all the pure work. Filled last. */
+  diff: number;
+  total: number;
+  readonly appNodes: number;
+}
+
+function renderTimings(rows: ScreenTiming[]): string {
+  const ms = (n: number): string => `${Math.round(n)}`;
+  const L: string[] = [];
+  L.push('**Where the time went** (ms)', '');
+  L.push('| screen | mock | settle | attempts | in flight | extract | diff | app nodes | total |');
+  L.push('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
+  for (const r of rows) {
+    L.push(`| ${r.screen} | ${ms(r.mock)} | ${ms(r.settle)} | ${r.attempts} | ${r.inFlight} | ` +
+      `${ms(r.extract)} | ${ms(r.diff)} | ${r.appNodes} | ${ms(r.total)} |`);
+  }
+  const sum = (pick: (r: ScreenTiming) => number): string =>
+    ms(rows.reduce((n, r) => n + pick(r), 0));
+  L.push(`| **all** | ${sum((r) => r.mock)} | ${sum((r) => r.settle)} | ` +
+    `${rows.reduce((n, r) => n + r.attempts, 0)} | | ${sum((r) => r.extract)} | ` +
+    `${sum((r) => r.diff)} | | ${sum((r) => r.total)} |`);
+  return L.join('\n');
+}
+
 test('inventory: the element TREE of every screen against its mockup section',
   async ({ app }, testInfo) => {
     // Twenty-one screens, two renders each, a settle loop on every one. The
     // kinds gate walks the same ground in ~16s alone and timed out at 30s under
-    // six workers; this walk carries a deeper extraction, so it gets the same
-    // 180s the other one was raised to.
+    // six workers; this walk carries a deeper extraction, so it was given more.
+    //
+    // **The budget is not what made this pass.** It stood at 240s and this test
+    // still hit it, alone, on 2026-08-29. What it actually costs, measured with
+    // the per-screen table below once the in-flight SET replaced the +1/-1
+    // counter: 36-57s for one project alone, of which 27-46s is the settle
+    // loop's own 400ms cadence, ~8s the mockup's 300ms transition waits, ~1.2s
+    // extraction and **77ms** of tree diffing across all twenty-one screens.
+    // The walk was never the cost, and the corpus growing to 680 items did not
+    // make it one. The budget is left where it is as headroom under contention;
+    // raising it further would be treating the symptom this file just removed.
     test.setTimeout(240_000);
     const { page } = app;
 
@@ -259,6 +317,7 @@ test('inventory: the element TREE of every screen against its mockup section',
 
     const results: ScreenResult[] = [];
     const unmeasurable: string[] = [];
+    const timings: ScreenTiming[] = [];
 
     /**
      * `/api` reads still in flight, excluding the shell's one live stream,
@@ -267,16 +326,50 @@ test('inventory: the element TREE of every screen against its mockup section',
      * waiting for their data is stable while it is still half-drawn —
      * `e2e/screen-parity.spec.ts` carries the measurement (2026-08-28,
      * `/api/simulate/sweep` landing after the loop settled) and the same
-     * two-part condition. This file does not FAIL on a divergence, so the cost
-     * here is a wrong inventory rather than a false red; a wrong inventory is
-     * what the next decision is taken against.
+     * two-part condition.
+     *
+     * ── IT COUNTS REQUEST OBJECTS, AND THAT IS THE WHOLE BUG THIS FILE HAD ──
+     *
+     * Until 2026-08-29 this was a bare `+1 / -1` over the two events, which
+     * assumes every completion the page reports was also STARTED under these
+     * listeners. The `app` fixture breaks that assumption by design: it
+     * resolves as soon as a rail button is visible, while `screens/preview.js`
+     * is still awaiting its boot reads. Those start BEFORE the handlers below
+     * are attached and finish after, so the counter is decremented for
+     * requests it never incremented for and lands at **-1** — measured here,
+     * on this file, in three consecutive runs.
+     *
+     * A permanent offset of -1 does not merely make `pending === 0`
+     * unreachable. It INVERTS the condition: "nothing in flight" now reads
+     * false, and "exactly one read still in flight" reads true. Both halves of
+     * that were measured on 2026-08-29, in one run of this spec alone:
+     *
+     *   preview, simulate, doctor, work, port, packs, docs, learn
+     *       exhausted all 25 samples — 18.2s, 27.6s, 11.7s, 12.5s, 12.4s,
+     *       19.2s, 35.5s, 31.3s of pure waiting on a screen that had finished.
+     *       That is 168 of the run's 216 seconds, and it is why the same spec
+     *       ran 34s one time and timed out at 240s the next.
+     *   coverage, injected, ask, decay, graph, status, capture, palette,
+     *   config, tut
+     *       broke on the SECOND sample with **3 nodes** in the section — the
+     *       heading and nothing else — because the offset made the in-flight
+     *       half true while the first read was still outstanding. Compared at
+     *       712, 56, 372, 903, 39, 27, 19, 66, 87 and 54 nodes on a healthy
+     *       run. Ten of twenty-one screens were inventoried EMPTY and the
+     *       test passed, which is the worse half: a slow spec is visible and
+     *       a fabricated inventory is not.
+     *
+     * Clamping at zero would hide both and would also mask a real leak. A set
+     * of the requests these listeners actually saw start is the counter the
+     * loop always meant to have.
      */
-    let pending = 0;
+    const inFlight = new Set<import('@playwright/test').Request>();
     const counts = (url: string): boolean =>
       url.includes('/api/') && !url.includes('/api/watch/stream');
-    page.on('request', (r) => { if (counts(r.url())) pending += 1; });
-    page.on('requestfinished', (r) => { if (counts(r.url())) pending -= 1; });
-    page.on('requestfailed', (r) => { if (counts(r.url())) pending -= 1; });
+    const done = (r: import('@playwright/test').Request): void => { inFlight.delete(r); };
+    page.on('request', (r) => { if (counts(r.url())) inFlight.add(r); });
+    page.on('requestfinished', done);
+    page.on('requestfailed', done);
 
     try {
       for (const screen of SCREENS) {
@@ -292,10 +385,12 @@ test('inventory: the element TREE of every screen against its mockup section',
         // for a reason that is purely an artefact of how the test drove the
         // page. Driven properly, the class is on all 21 and the difference it
         // reports is a real one about how the app prints.
+        const t0 = Date.now();
         await showScreen(mockupPage, screen);
         // The mockup's own transitions run on `hidden`; sample after they settle.
         await mockupPage.waitForTimeout(300);
         const mockTree = await mockupPage.evaluate(EXTRACT_TREE, `[data-p="${screen}"]`);
+        const tMock = Date.now();
 
         await page.evaluate((name) => { location.hash = `#/${name}`; }, screen);
         // Wait for the render to SETTLE, not merely to start: a screen draws
@@ -303,14 +398,34 @@ test('inventory: the element TREE of every screen against its mockup section',
         // sampling on "has any element" is how a previous parity run reported
         // `div.scene` missing from a screen that plainly draws it.
         let previous = -1;
+        let spent = 25;
+        let settled = false;
         for (let attempt = 0; attempt < 25; attempt++) {
           const now = await page.evaluate(
             (s) => document.querySelectorAll(`[data-p="${s}"] *`).length, screen);
-          if (now > 0 && now === previous && pending === 0) break;
+          if (now > 0 && now === previous && inFlight.size === 0) {
+            spent = attempt + 1; settled = true; break;
+          }
           previous = now;
           await page.waitForTimeout(400);
         }
+        const tSettle = Date.now();
         const appTree = await page.evaluate(EXTRACT_TREE, `[data-p="${screen}"]`);
+        const tExtract = Date.now();
+        timings.push({
+          screen, mock: tMock - t0, settle: tSettle - tMock, attempts: spent,
+          inFlight: inFlight.size, extract: tExtract - tSettle, diff: 0,
+          total: tExtract - t0, appNodes: countNodes(appTree),
+        });
+        // A run that dies at the timeout writes no report, and the per-screen
+        // numbers are the whole diagnosis exactly then. Off by default because
+        // twenty-one lines per project is noise on a run that finishes.
+        if (process.env['MYCONTEXT_TREE_PARITY_TRACE'] !== undefined) {
+          const t = timings[timings.length - 1]!;
+          console.log(`[trace] ${screen} mock=${t.mock} settle=${t.settle} ` +
+            `attempts=${t.attempts} inFlight=${t.inFlight} extract=${t.extract} ` +
+            `nodes=${t.appNodes}`);
+        }
 
         if (mockTree === null) {
           unmeasurable.push(`${screen}: the mockup has no [data-p="${screen}"] section`);
@@ -326,10 +441,31 @@ test('inventory: the element TREE of every screen against its mockup section',
             root: null, divergences: [] });
           continue;
         }
+        // **A screen that never settled is NOT MEASURED, for the same reason an
+        // unrendered one is not.** This file's header says it fails only for a
+        // reason that would make the measurement a lie, and comparing a screen
+        // whose reads have not landed is precisely that: it reports the mockup's
+        // whole subtree as ABSENT and the reader takes the next decision against
+        // it. Ten screens were inventoried at three nodes apiece on 2026-08-29
+        // and the run went green — see the in-flight comment above. An
+        // unsettled screen now says so instead.
+        if (!settled) {
+          unmeasurable.push(`${screen}: still growing, or still fetching ` +
+            `(${inFlight.size} \`/api\` reads in flight), after 25 samples over 10s`);
+          results.push({ screen, measured: false, mockNodes: countNodes(mockTree),
+            appNodes: countNodes(appTree),
+            note: 'NOT MEASURED — the screen had not finished drawing when the walk reached it',
+            root: null, divergences: [] });
+          continue;
+        }
 
+        const tDiff0 = Date.now();
         const vocab = vocabularyFor(screen);
         const divergences = diffTrees(screen, mockTree, appTree)
           .map((d) => classify(d, vocab));
+        const here = timings[timings.length - 1]!;
+        here.diff = Date.now() - tDiff0;
+        here.total += here.diff;
         results.push({ screen, measured: true, note: '',
           mockNodes: countNodes(mockTree), appNodes: countNodes(appTree),
           root: rootDivergence(mockTree, appTree), divergences, mockTree, appTree });
@@ -341,8 +477,12 @@ test('inventory: the element TREE of every screen against its mockup section',
     mkdirSync(OUT_DIR, { recursive: true });
     const tag = testInfo.project.name;
     writeFileSync(path.join(OUT_DIR, `trees-${tag}.json`),
-      JSON.stringify({ project: tag, at: new Date().toISOString(), results }, null, 2));
-    writeFileSync(path.join(OUT_DIR, `inventory-${tag}.md`), renderInventory(tag, results));
+      JSON.stringify({ project: tag, at: new Date().toISOString(), results, timings }, null, 2));
+    writeFileSync(path.join(OUT_DIR, `inventory-${tag}.md`),
+      `${renderInventory(tag, results)}\n\n---\n\n${renderTimings(timings)}\n`);
+    // On stdout too, because a run that dies at the timeout writes no files and
+    // the per-screen numbers are the whole diagnosis when it does.
+    console.log(`\n[tree-parity ${tag}]\n${renderTimings(timings)}\n`);
 
     // **The only assertions.** The inventory is the deliverable; a screen that
     // could not be measured is the one thing that would make it a lie, because
