@@ -326,6 +326,18 @@ test('every ribbon track draws one segment per item the payload admitted to it, 
  * Doctor — a row per finding, and no row of its own.
  * -------------------------------------------------------------------------- */
 
+/**
+ * The three severity cards, in `doctor.js`'s `CARDS` order — which is the
+ * order the screen draws them and therefore the order every per-card
+ * comparison below indexes by.
+ *
+ * These are the LEVELS `runChecks` emits, not the headings the cards wear:
+ * `doctor.js` writes "warning" over `warn` and "notice" over `info`, and its
+ * own comment says the level is the join key and the heading is the label. The
+ * join key is what a payload comparison needs.
+ */
+const LEVELS = ['error', 'warn', 'info'] as const;
+
 test('Doctor draws one row per finding /api/doctor returned, and invents none', async ({ app }) => {
   const { page } = app;
   await show(page, 'doctor');
@@ -354,26 +366,150 @@ test('Doctor draws one row per finding /api/doctor returned, and invents none', 
     + 'a finding invented by the screen.',
   ).toEqual(sortedPayload);
 
-  // **The empty card is the ruled case: an empty state only when the endpoint
-  // says empty.** Doctor draws all three severity cards unconditionally — "a
-  // doctor that could not run and a corpus with no findings are opposite
-  // facts" — so a card holding no rows is a claim that the payload holds no
-  // finding at that level, and it is checked as one.
+  // **Per CARD, against the payload's own per-level counts.** Doctor draws all
+  // three severity cards unconditionally — "a doctor that could not run and a
+  // corpus with no findings are opposite facts" — so each card's row count is
+  // a claim about how many findings the payload holds at THAT level, and the
+  // sum being right is satisfied by a screen that put every row in one card.
+  //
+  // This is where an `expect(perCard.some((n) => n === 0)).toBe(true)` stood
+  // until 2026-08-29, with the message *"no severity card was empty (1, 6, 1
+  // rows), so this run did not exercise the empty-card case … it is this
+  // assertion telling you it measured nothing about emptiness"*. The
+  // observation was right and the expression was wrong: a red gate for a
+  // non-defect is a gate readers learn to discount, and this one was red or
+  // green depending on what the corpus happened to hold that morning. The
+  // empty-card rule is now MEASURED ON EVERY RUN, over a body this suite
+  // serves itself — `an empty severity card appears exactly where /api/doctor
+  // returned nothing at that level`, below — which is strictly better than
+  // either failing or skipping, because the case no longer depends on the day.
   const perCard = await page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>('section[data-p="doctor"] .card')]
       .map((card) => card.querySelectorAll('tbody tr').length));
+  const owed = LEVELS.map((level) => doctor.findings.filter((f) => f.level === level).length);
   expect(
-    perCard.reduce((a, b) => a + b, 0),
-    `the three severity cards hold ${perCard.join(' + ')} rows between them, against `
-    + `${doctor.findings.length} findings in \`/api/doctor\``,
-  ).toBe(doctor.findings.length);
-  expect(
-    perCard.some((n) => n === 0),
-    `no severity card was empty (${perCard.join(', ')} rows), so this run did not exercise the `
-    + 'empty-card case. That is not a defect in the app; it is this assertion telling you it '
-    + 'measured nothing about emptiness over today\'s corpus.',
-  ).toBe(true);
+    perCard,
+    `the three severity cards hold ${perCard.join(' + ')} rows; \`/api/doctor\` returned `
+    + `${owed.join(' + ')} findings at ${LEVELS.join(', ')} respectively, out of `
+    + `${doctor.findings.length}. A card is one LEVEL, so a screen that drew the right total `
+    + 'in the wrong cards has told the reader an error is a notice.',
+  ).toEqual(owed);
 });
+
+/**
+ * **An empty severity card, measured every run because the body is served.**
+ *
+ * The owner's ruling is *"an empty state that appears only when the endpoint
+ * says empty"*, and it has two directions: a level the payload has nothing at
+ * must draw no rows AND say so, and a level it has findings at must draw them
+ * and say nothing. Over `.demo-corpus` on 2026-08-29 all three levels were
+ * occupied (1, 6, 1), so neither direction could be exercised at all.
+ *
+ * **Serving the body is why this is not a skip.** `page.route()` fulfilling
+ * `/api/doctor` is the pattern `e2e/doctor-repairless.spec.ts` and
+ * `e2e/chart-scale.spec.ts` already use, and its reasoning applies verbatim
+ * here: `.demo-corpus` is shared by every spec in this suite and driven by
+ * them, so editing items into it to empty a level would rewrite bodies
+ * underneath the others. `/api/doctor` serves `runChecks` verbatim —
+ * `{ findings: Finding[] }`, unfiltered — so fulfilling that route is the
+ * endpoint's own body shape, and what is under test is the DRAWING of it.
+ * A case that can be constructed should be constructed: "we could not measure
+ * this today" becomes "we measure it every run".
+ *
+ * **Four bodies, so every card is empty in one and full in another.** A rule
+ * checked only where it holds is half a rule: `NO_WARN` and `ONLY_WARN`
+ * between them leave each of the three cards empty at least once and populated
+ * at least once, `ALL_LEVELS` is the direction where no card may claim
+ * emptiness, and `NONE` is the owner's *"a clean corpus draws three empty
+ * cards, not an empty screen"*.
+ *
+ * The codes and messages are real ones from `src/doctor/checks.ts`, abbreviated
+ * rather than invented, so a reworded check leaves this spec asserting about a
+ * finding that still exists.
+ */
+interface Finding { level: string; code: string; message: string }
+
+const mk = (level: string, code: string, message: string): Finding => ({ level, code, message });
+
+const BODIES: { name: string; findings: Finding[]; owed: number[] }[] = [
+  {
+    name: 'nothing at warn',
+    findings: [
+      mk('error', 'index_stale', 'the index is older than the items it indexes. Run `mycontext rebuild`.'),
+      mk('info', 'nested_corpus', 'a second corpus is nested at "sub/project".'),
+      mk('info', 'audit_log_size', 'the audit log is large. Run `mycontext audit --files`.'),
+    ],
+    owed: [1, 0, 2],
+  },
+  {
+    name: 'nothing at error and nothing at notice',
+    findings: [
+      mk('warn', 'dead_scope', 'scope glob "src/billing/**" matches no file in the repository.'),
+      mk('warn', 'blocked_without_needs', 'is at state "blocked" and names nothing in "needs".'),
+    ],
+    owed: [0, 2, 0],
+  },
+  {
+    name: 'every level occupied',
+    findings: [
+      mk('error', 'index_stale', 'the index is older than the items it indexes. Run `mycontext rebuild`.'),
+      mk('warn', 'dead_scope', 'scope glob "src/billing/**" matches no file in the repository.'),
+      mk('info', 'nested_corpus', 'a second corpus is nested at "sub/project".'),
+    ],
+    owed: [1, 1, 1],
+  },
+  { name: 'a clean corpus', findings: [], owed: [0, 0, 0] },
+];
+
+for (const body of BODIES) {
+  test(`an empty severity card appears exactly where /api/doctor returned nothing at that level — ${body.name}`, async ({ app }) => {
+    const { page } = app;
+
+    await page.route('**/api/doctor*', (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ findings: body.findings }),
+    }));
+    await page.evaluate(() => { location.hash = '#/doctor'; });
+    // The three cards are built AFTER the endpoint answers, so their appearance
+    // is the signal that this served body is what is on screen — never a sleep.
+    await expect(
+      page.locator('section[data-p="doctor"] .card.pane'),
+      'Doctor did not draw its three severity cards over a served body, so nothing below is '
+      + 'reading the payload this test served',
+    ).toHaveCount(3, { timeout: 20_000 });
+
+    // `p.small` inside a card is `doc.zero` and nothing else: the tally is a
+    // child of the SECTION, the message is a `td.small`, and a command is a
+    // `div.cmd`. So "the card said it is empty" is exactly this count.
+    const drawn = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('section[data-p="doctor"] .card.pane')]
+        .map((card) => ({
+          rows: card.querySelectorAll('tbody tr').length,
+          saysZero: card.querySelectorAll(':scope > p.small').length,
+        })));
+
+    expect(
+      drawn.map((c) => c.rows),
+      `\`/api/doctor\` was served ${body.findings.length} findings — ${body.owed.join(' + ')} at `
+      + `${LEVELS.join(', ')} — and the three cards drew ${drawn.map((c) => c.rows).join(' + ')}. `
+      + 'A card is one level; rows landing in the wrong one tell the reader an error is a notice.',
+    ).toEqual(body.owed);
+
+    // **Both directions, which is the whole ruling.** A screen that drew the
+    // zero note unconditionally would satisfy "the empty card says so" and be
+    // telling every reader that a card with six errors in it found nothing.
+    expect(
+      drawn.map((c) => c.saysZero === 1),
+      'a level with no findings must NAME its zero — `doc.zero`, "Checked — nothing at this '
+      + 'level" — and a level with findings must not. A blank card headed `error` reads AS an '
+      + 'error (STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is), and a zero note '
+      + 'over a populated table is the same lie in the other direction. Served: '
+      + `${body.owed.join(' + ')}; drawn: ${drawn.map((c) => c.rows).join(' + ')}; said empty: `
+      + `${drawn.map((c) => c.saysZero).join(' + ')}.`,
+    ).toEqual(body.owed.map((n) => n === 0));
+  });
+}
 
 /* -------------------------------------------------------------------------- *
  * Procedures — a card per procedure, identified by the payload's own ids.
