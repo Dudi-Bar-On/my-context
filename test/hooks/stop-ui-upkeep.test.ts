@@ -35,11 +35,14 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit, type AuditRecord } from '../../src/core/audit.ts';
+import { readLatch } from '../../src/core/handover-ask.ts';
 import { writeTee } from '../../src/core/statusline-tee.ts';
 import {
   MAX_CONSECUTIVE_SPAWN_FAILURES, SPAWN_INTERVAL_MS, upkeepUiServer,
@@ -266,9 +269,32 @@ test('a spawn and a handover ask on one turn: the row carries both, the envelope
     'the upkeep leaked into the text the MODEL reads');
 });
 
+/**
+ * The latch still holds when an upkeep result is in hand.
+ *
+ * `plan:handover seq:9` changed what holding it MEANS — an ask that can be
+ * measured to have been ignored may be repeated once — so the handover is
+ * written between the two turns here, exactly as a model answering the ask
+ * would. What is being tested is the seam, not the ask rule: that rule is
+ * `test/hooks/stop-handover-ask.test.ts`'s and is pinned there in both
+ * directions.
+ */
 test('the ask is still latched once when an upkeep result is in hand', () => {
   const sb = sandbox({ port: PORT, handoverPath: 'reports/H.md', thresholdPercent: 98 });
   assert.notEqual(runStop(sb, { did: 'spawned', port: PORT }, 99).stdout, '');
+
+  // The mtime is SET rather than left to the clock: a file written in the same
+  // millisecond as the ask is a coin flip against a comparison that is
+  // deliberately strict, and a test that flakes on a millisecond teaches
+  // nobody anything.
+  const askedAt = readLatch(sb.root, sb.session).askedAt;
+  assert.ok(askedAt !== null, 'the ask recorded no wall clock to compare a write against');
+  const handover = path.join(sb.cwd, 'reports', 'H.md');
+  mkdirSync(path.dirname(handover), { recursive: true });
+  writeFileSync(handover, '# Handover\nwhat was decided, and why.\n', 'utf8');
+  const at = new Date(Date.parse(askedAt) + 2_000);
+  utimesSync(handover, at, at);
+
   assert.equal(runStop(sb, { did: 'spawned', port: PORT }, 99).stdout, '',
     'the latch stopped holding once the upkeep joined the note — a per-turn hook that repeats ' +
     'is not a verbose feature, it is a session that cannot finish');

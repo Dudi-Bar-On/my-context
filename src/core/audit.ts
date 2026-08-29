@@ -16,6 +16,7 @@ import { keepProjectionCurrent, type ProjectionUpkeep } from './audit-db.ts';
 // that "off | missing | read" has exactly one definition — `HandoverRead` is
 // what produces the value, and a second copy here would be a vocabulary free
 // to drift from the one the reader is actually handed.
+import type { HandoverAskVerdict } from './handover-ask.ts';
 import type { HandoverRead } from './handover.ts';
 import type { Origin } from './types.ts';
 
@@ -792,6 +793,44 @@ export interface AuditRecord {
   handoverPath?: string;
   /** Total lines in the file, present only for `read`. */
   handoverLines?: number;
+  /**
+   * `pre-compact` and `session-end`: whether the handover this session was
+   * ASKED for was actually written. Plan `handover` seq:9.
+   *
+   * **This is the field that makes an ask falsifiable.** `Stop` asks the model
+   * to bring the handover up to date at the occupancy threshold and records
+   * that it asked; until this existed, nothing recorded whether anything
+   * happened — so a row saying an ask went out read exactly like a mechanism
+   * that worked. That is the shape of failure this project measured in a
+   * neighbouring mechanism and ruled on in
+   * `DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is`, whose
+   * load-bearing sentence is *the flag is not a claim, it is a comparison*:
+   * the handover's mtime against the wall clock of the ask.
+   *
+   * **It goes on the two events that DESTROY a context window**, because those
+   * are the two moments where the answer still changes anything: `PreCompact`,
+   * which runs before a compaction, and `SessionEnd` with `reason: 'clear'`.
+   * `PostCompact` is too late — it can only report — which is why the three
+   * fields above are its and this one is not.
+   *
+   * A FIELD and not a sentence in `note`, for `trigger` and `occupancyPercent`'s
+   * reason: *how often is the handover we ask for actually written* is a
+   * question asked across every row in the log by somebody who wants a count,
+   * and a fact worth querying does not go behind a regex over English. The note
+   * carries what no field can — which ask, when, and when the file was last
+   * written.
+   *
+   * The five values are `core/handover-ask.ts`'s and are argued there. Two of
+   * them look redundant and are not: `off` is "nobody configured a handover"
+   * and `not-asked` is "somebody did and this session never crossed the
+   * threshold", the same distinction `handoverState` keeps between `off` and
+   * `missing`. And `unverifiable` is never folded into `ignored`: an accusation
+   * nothing supports is the same defect as a guarantee nothing supports.
+   *
+   * Inside the break `@2` already declares, with `trigger`, `occupancyPercent`,
+   * `command` and the three `handover*` fields above.
+   */
+  handoverAsk?: HandoverAskVerdict;
 }
 
 /** What a caller supplies; `protocol` and `at` are stamped here. */

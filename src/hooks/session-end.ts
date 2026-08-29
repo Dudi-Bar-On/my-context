@@ -1,4 +1,7 @@
 import { recordAudit } from '../core/audit.ts';
+import {
+  checkHandoverAsk, discloseIgnoredAsk, handoverConfigAt,
+} from '../core/handover-ask.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { clearWindowState } from '../core/window-state.ts';
 import { findProjectRoot } from '../core/workspace.ts';
@@ -164,6 +167,36 @@ export function buildSessionEndOutcome(input: HookInput, fallbackCwd: string): S
     }
 
     if (reason === 'clear') {
+      // ── THE OTHER BOUNDARY THAT DESTROYS A WINDOW ────────────────────────
+      //
+      // Plan `handover` seq:9, and the reason it is HERE and not only on
+      // `PreCompact`: a `/clear` destroys a context window exactly as a
+      // compaction does, so an ask that went unanswered before one is a stale
+      // handover about to become the only record of a session that is gone.
+      // `DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is` names
+      // both boundaries and rules `PostCompact` out of it — that hook can only
+      // report, and this one can still say something while it matters.
+      //
+      // Read BEFORE `clearWindowState`, deliberately. That function does not
+      // touch the latch or the handover today, so the order is not load-
+      // bearing yet; it is written this way so it never becomes a question the
+      // day the sweep grows.
+      //
+      // `handoverConfigAt` and not `resolveWorkspace`: this hook reaches for
+      // `findProjectRoot` precisely so a broken `config.json` cannot stop it
+      // clearing a destroyed window, and that helper keeps the same promise —
+      // an unparseable config turns the handover check off and changes nothing
+      // else. The whole added cost is one small JSON read, one latch read and
+      // one `stat`, well inside the platform's 1,500 ms abort.
+      const ask = checkHandoverAsk(root, handoverConfigAt(root), sessionId);
+      // The two verdicts that describe a mechanism nobody engaged add no
+      // clause, for `pre-compact.ts`'s reason: `off` is every unconfigured
+      // workspace and `not-asked` is every ordinary session, and a clause on
+      // all of them is boilerplate in the one channel this hook has.
+      const askNote = ask.verdict === 'off' || ask.verdict === 'not-asked'
+        ? ''
+        : `; handover ask ${ask.verdict} — ${ask.note}`;
+
       // The whole point of the hook. `clearWindowState` never throws and its
       // sentence distinguishes "cleared nothing" from "cleared" from "would
       // not go", so the record below is the truth rather than the intention.
@@ -173,9 +206,23 @@ export function buildSessionEndOutcome(input: HookInput, fallbackCwd: string): S
         op: 'session-end',
         sessionId,
         hook: 'SessionEnd',
-        note: `reason=clear; ${note}`,
+        // The FIELD is written for all five verdicts even where the note says
+        // nothing: *how often is the handover we ask for actually written* is a
+        // count, and a count needs the rows that answer "never asked" too.
+        handoverAsk: ask.verdict,
+        note: `reason=clear; ${note}${askNote}`,
       });
-      return { action: 'cleared', note };
+      // **The audit row above is the real channel, and this line is written
+      // anyway.** The platform copies a SessionEnd hook's output to stderr only
+      // on the FAILURE branch and this process exits 0, so nothing here is
+      // shown today — the file header says so. It is written for the reason the
+      // parse-error line below is: it costs nothing, it is the same disclosure
+      // `PreCompact` makes at the other boundary, and one mechanism should not
+      // have two spellings of its one important sentence depending on which
+      // hook noticed. The day this channel is surfaced, it is already there.
+      const disclosure = discloseIgnoredAsk(root, sessionId, ask, '/clear');
+      if (disclosure !== '') process.stderr.write(disclosure);
+      return { action: 'cleared', note: `${note}${askNote}` };
     }
 
     const retained = RETAIN_REASONS[reason];

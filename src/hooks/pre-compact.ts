@@ -1,5 +1,9 @@
 import { recordAudit } from '../core/audit.ts';
+import type { HandoverConfig } from '../core/config.ts';
 import { readOccupancy } from '../core/context-occupancy.ts';
+import {
+  checkHandoverAsk, discloseIgnoredAsk, type HandoverAskVerdict,
+} from '../core/handover-ask.ts';
 import { scanTranscriptIds, writeSnapshot } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { readSeen, seenIds } from '../core/seen-file.ts';
@@ -27,10 +31,25 @@ import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from '.
  * there is no percentage, WHICH of the three reasons that is. Neither belongs
  * in a numeric field, and putting the percentage in both places would be a
  * value living in two places at once, which is worse than either.
+ *
+ * **A THIRD field joined them on 2026-08-27 and it is the same move once more.**
+ * `handoverAsk` says whether the handover this session was ASKED for was
+ * actually written, by comparing the file's mtime against the wall clock of the
+ * ask — plan `handover` seq:9 and
+ * `DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is`. It sits on
+ * this row for the reason the other two do: this row is already about exactly
+ * this moment, and the moment is the last one where the answer changes
+ * anything. Unlike them it also has a stderr disclosure, and only for one of
+ * its five values — see `disclosure` below.
  */
-function measurement(root: string, input: HookInput, sessionId: string): {
+function measurement(
+  root: string, input: HookInput, sessionId: string, handover: HandoverConfig | null,
+): {
   trigger: string;
   occupancyPercent: number | null;
+  handoverAsk: HandoverAskVerdict;
+  /** The line to disclose, or `''`. Written by the caller, once. */
+  disclosure: string;
   note: string;
 } {
   // `'<absent>'` is `post-compact.ts`'s spelling for "the payload did not say",
@@ -66,19 +85,53 @@ function measurement(root: string, input: HookInput, sessionId: string): {
   // The two integers travel beside the percentage rather than instead of it:
   // the field is what a query reads, and these are what makes a later question
   // at finer precision still answerable from a row already written.
-  return occupancy.state === 'known'
-    ? {
-        trigger,
-        occupancyPercent: occupancy.percent,
-        note: `occupancy ${occupancy.usedTokens}/${occupancy.windowSize} tokens; `,
-      }
-    : {
-        trigger,
-        // `null`, never 0 and never omitted. `STD-absent-vs-zero`, on the field
-        // where the reassuring wrong reading is "the window was empty".
-        occupancyPercent: null,
-        note: `occupancy unmeasurable (${occupancy.why}); `,
-      };
+  const occupancyNote = occupancy.state === 'known'
+    ? `occupancy ${occupancy.usedTokens}/${occupancy.windowSize} tokens; `
+    : `occupancy unmeasurable (${occupancy.why}); `;
+
+  // ── THE THIRD FIELD, AND WHY IT BELONGS ON THIS ROW ─────────────────────
+  //
+  // Plan `handover` seq:9. `Stop` asks the model to bring the handover up to
+  // date when the window fills, and records that it asked. Nothing recorded
+  // whether it happened — so a row saying an ask went out read exactly like a
+  // mechanism that worked, which is the failure this project measured once
+  // already in a neighbouring mechanism and does not intend to ship twice.
+  //
+  // This hook is where the comparison belongs because this hook runs at the
+  // moment the answer still matters: BEFORE the compaction, on a timeout ten
+  // times this project's tightest, on a row that already carries `trigger` and
+  // `occupancyPercent` and is therefore already about exactly this instant.
+  // `PostCompact` can only report; `Stop` learns it a turn late.
+  //
+  // The cost is one latch read and one `stat` — no file contents, no
+  // transcript, and it is paid once per compaction rather than per turn.
+  // `checkHandoverAsk` never throws for any filesystem outcome.
+  const ask = checkHandoverAsk(root, handover, sessionId);
+
+  // The NOTE clause is suppressed for the two verdicts that describe a
+  // mechanism nobody engaged — `off` is an unconfigured workspace and
+  // `not-asked` is a session that never filled up — because a clause on every
+  // compaction in every workspace is the kind of per-event boilerplate
+  // `observe.ts` has already ruled makes a log unreadable. The FIELD is written
+  // in all five cases: a reader who wants the count wants the count.
+  const askNote = ask.verdict === 'off' || ask.verdict === 'not-asked'
+    ? ''
+    : `handover ask ${ask.verdict} — ${ask.note}; `;
+
+  return {
+    trigger,
+    // `null`, never 0 and never omitted, when unmeasurable. `STD-absent-vs-
+    // zero`, on the field where the reassuring wrong reading is "the window
+    // was empty".
+    occupancyPercent: occupancy.state === 'known' ? occupancy.percent : null,
+    handoverAsk: ask.verdict,
+    // Only `ignored`, once per session, and the asymmetry with the stand-down
+    // line above is argued on `ignoredAskLine`: one asks the user to go and
+    // install something, the other reports that a thing the product promised
+    // did not happen, at the last moment where knowing still helps.
+    disclosure: discloseIgnoredAsk(root, sessionId, ask, 'compaction'),
+    note: occupancyNote + askNote,
+  };
 }
 
 /**
@@ -108,7 +161,14 @@ export function buildRestoreSnapshot(
     // rows this function can write: a compaction whose snapshot was lost is
     // exactly the one whose occupancy someone will want afterwards, so the
     // measurement must not be a casualty of the failure it sits beside.
-    const measured = measurement(ws.projectRoot, input, sessionId);
+    const measured = measurement(ws.projectRoot, input, sessionId, ws.config.handover);
+
+    // Written HERE rather than inside `measurement`, and before anything that
+    // can fail: the snapshot write below can throw and take its own stderr
+    // line with it, and an ignored handover is the more important of the two
+    // facts — it is the one the compaction is about to make permanent. Once,
+    // for the same reason every other disclosure in this directory is once.
+    if (measured.disclosure !== '') process.stderr.write(measured.disclosure);
 
     // seen set ← the per-session file (parent-keyed: PreCompact is a
     // parent-only event by measurement — E2). Unreadable → empty set,
@@ -169,6 +229,7 @@ export function buildRestoreSnapshot(
         injected: [],
         trigger: measured.trigger,
         occupancyPercent: measured.occupancyPercent,
+        handoverAsk: measured.handoverAsk,
         note: measured.note +
           `SNAPSHOT WRITE FAILED (${reason}). ${itemIds.length} captured id(s) ` +
           `(${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
@@ -207,6 +268,7 @@ export function buildRestoreSnapshot(
       injected: itemIds.map((id) => ({ id, tier: 'snapshot' })),
       trigger: measured.trigger,
       occupancyPercent: measured.occupancyPercent,
+      handoverAsk: measured.handoverAsk,
       note: measured.note +
         `${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
         `transcript, ${itemIds.length} captured` +

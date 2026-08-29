@@ -1,15 +1,16 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
-import { handoverThresholdPercent, type Config, type HandoverConfig } from '../core/config.ts';
+import { handoverThresholdPercent } from '../core/config.ts';
 import {
   occupancyStandDownLine, readOccupancy, type UnmeasurableWhy,
 } from '../core/context-occupancy.ts';
-import { sanitizeSessionId } from '../core/ledger.ts';
+import {
+  checkHandoverAsk, handoverConfigAt, MAX_ASKS, readLatch, workspaceConfigAt, writeLatch,
+  type AskLatch,
+} from '../core/handover-ask.ts';
 import { isMainEntry } from '../core/paths.ts';
 import {
   upkeepStandDownLine, upkeepUiServer, type Upkeep, type UpkeepDeps,
 } from '../core/ui-server-upkeep.ts';
-import { findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
+import { findProjectRoot } from '../core/workspace.ts';
 import { observeAndRecord, type Observation, type ObservationSpec } from './observe.ts';
 import {
   hookParseErrorLine, parseHookInput, readStdin, type HookInput,
@@ -74,12 +75,19 @@ import {
  *     for nothing else. The emptiness stands for every other use, and a second
  *     use needs its own decision — `observe.ts`'s `SPEAKS` map is the gate that
  *     keeps the other five unfilled envelopes unfillable by accident.
- *  2. **At most once per session per crossing**, latched on disk before the ask
- *     is returned. A second ask arrives after the model has just written the
+ *  2. **At most TWICE per session**, latched on disk before the ask is
+ *     returned. A blind second ask arrives after the model has just written the
  *     handover, and then again next turn, and the turn after: a per-turn hook
  *     that repeats is not a verbose feature, it is a session that cannot
  *     finish. This is the most expensive bug the design can ship and the latch
  *     is the only thing standing between it and the product.
+ *
+ *     `seq:9` raised the bound from one to two and paid for the raise with a
+ *     measurement rather than an argument: the second ask is delivered ONLY
+ *     when `checkHandoverAsk` has compared the handover's mtime against the
+ *     first ask and found the file untouched, and it names the first ask when
+ *     it goes. There is no third under any circumstances — the audit row is the
+ *     accountability story for the ones that went unanswered.
  *  3. **It never blocks and it never guesses.** The whole path is one config
  *     read, one small tee read, one small latch read and pure comparisons. No
  *     transcript scan, no directory walk, no spawn — spec §5 — because the
@@ -100,146 +108,25 @@ import {
  */
 
 /**
- * The per-session latch, and everything that is remembered about this session's
- * handover ask. One small JSON file in `state/`, beside the seen file and the
- * restore snapshot — this is where per-session hook state lives, and inventing
- * a second location for one boolean and one number would be a second directory
- * for `mycontext status` and every cleanup path to learn about.
+ * The per-session latch, the workspace config read and the comparison that
+ * verifies an ask all live in `core/handover-ask.ts` now.
  *
- * **`sanitizeSessionId` is `ledger.ts`'s, deliberately, not
- * `statusline-tee.ts`'s.** The two differ in their failure direction: the tee's
- * REFUSES an id it cannot make a filename from (returning `null`), while
- * ledger's FOLDS one, always yielding a name. A refusal here would mean no
- * latch, and no latch means the stand-down line repeats on every turn of that
- * session — the exact noise the latch exists to prevent. It is also the
- * spelling every other file in `state/` already uses, so one session has one
- * name across all of them.
+ * They were written here, because `Stop` was the only hook that had them.
+ * `plan:handover seq:9` gave `PreCompact` and `SessionEnd` the same check —
+ * the two other events that destroy a context window — and a latch three hooks
+ * read is a core concern, not a per-turn hook detail two other hooks import a
+ * hook to reach. That module carries the arguments for the file format, the
+ * session-id spelling, the write-before-you-speak rule and the mtime
+ * comparison; nothing about any of them changed in the move.
  *
- * **Where this deliberately stops: `core/window-state.ts` does not remove it.**
- * `clearWindowState` removes the seen file and the restore snapshot when a
- * `/clear` destroys a context window, and this latch belongs to the same window
- * by the same argument. It is not added to that sweep here because doing so is
- * a change to what a `/clear` removes — a decision about another module's
- * stated contract, made from inside a per-turn hook — and the cost of leaving
- * it is bounded and one-directional: a session that clears and then refills its
- * window after having already been asked is asked once fewer, never once more.
- * Silence is the direction this design chooses everywhere it has a choice.
+ * **The config is still read TWICE per turn and that is still deliberate.**
+ * `runStopHook` below needs `ui` before `observeAndRecord` runs, and
+ * `handoverAsk` needs `handover` from inside it; sharing one read would mean
+ * threading a `Config` through `ObservationSpec.observe`, which is
+ * `observe.ts`'s shape and belongs to the nine other hooks as much as to this
+ * one. Two reads of one small JSON file is the cheaper of the two costs, and it
+ * is paid on a hook that already reads it.
  */
-interface AskLatch {
-  /**
-   * The `thresholdPercent` an ask was already delivered at, or `null` for a
-   * session that has not been asked.
-   *
-   * The THRESHOLD and not the occupancy, and that is what makes the two edits a
-   * user might make mid-session behave differently. Lowering it is somebody
-   * saying *ask me sooner than that*, which is a new instruction and is allowed
-   * to re-arm; raising it is not a request for anything, and a mechanism that
-   * has already spoken must not start again because a number moved away from
-   * it. Storing the occupancy instead would re-arm on every higher reading,
-   * which is every turn after the first.
-   */
-  askedAtThreshold: number | null;
-  /** Whether the stand-down line has already been shown for this session. */
-  stoodDown: boolean;
-}
-
-const NO_LATCH: AskLatch = { askedAtThreshold: null, stoodDown: false };
-
-function latchPath(root: string, sessionId: string): string {
-  return path.join(root, 'state', `${sanitizeSessionId(sessionId)}.handover-ask.json`);
-}
-
-/**
- * The latch as it stands, or `NO_LATCH` for anything that cannot be read.
- *
- * A latch that cannot be READ reads as "nothing has happened yet" — but that
- * alone would be the loop, so it is only half the rule. The other half is in
- * `claim` below: nothing is ever asked unless the latch was successfully
- * WRITTEN first. An unreadable-and-unwritable latch therefore produces silence,
- * not repetition, which is the direction this design cannot afford to get
- * wrong.
- */
-function readLatch(root: string, sessionId: string): AskLatch {
-  try {
-    const raw = JSON.parse(readFileSync(latchPath(root, sessionId), 'utf8')) as unknown;
-    if (raw === null || typeof raw !== 'object') return NO_LATCH;
-    const value = raw as Record<string, unknown>;
-    return {
-      askedAtThreshold: typeof value.askedAtThreshold === 'number'
-        ? value.askedAtThreshold
-        : null,
-      stoodDown: value.stoodDown === true,
-    };
-  } catch {
-    return NO_LATCH;
-  }
-}
-
-/**
- * Writes the latch, and says whether it went. `false` means the caller must
- * stay silent: the thing that would stop it repeating did not persist.
- *
- * A plain `writeFileSync`, not the atomic write-and-rename `ledger.ts` uses for
- * the restore snapshot. The trade is different in both directions: this file is
- * two fields written by one process per turn, so a torn write costs one
- * re-ask or one re-disclosure, while the snapshot is a whole context window
- * whose loss is unrecoverable. And `Stop` is the hook with the tightest timeout
- * of the ten, so a rename retry budget measured in seconds is a budget it does
- * not have.
- */
-function writeLatch(root: string, sessionId: string, latch: AskLatch): boolean {
-  try {
-    const file = latchPath(root, sessionId);
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, JSON.stringify(latch), 'utf8');
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * The handover configuration for this workspace, or `null` for every reason
- * there is not one.
- *
- * **`resolveWorkspace` throws on a `config.json` that is not valid JSON**, and
- * that throw is caught here rather than left to `observeAndRecord`'s outer
- * catch. The difference is the audit row: this hook's row is the only line in
- * the log that says where one turn ended and the next began, and letting a
- * broken config take it out would mean a user who mistyped a comma silently
- * lost the log's turn boundaries as well. A broken config turns this feature
- * off; it does not stop `Stop` observing.
- *
- * `path.dirname(root)` because `root` is `<repo>/.my_context` and
- * `resolveWorkspace` takes a directory to search FROM. It is the same read
- * `resolveWorkspace` does everywhere else — one small file — and there is no
- * cheaper way to learn the threshold, since the threshold is the thing the user
- * configured.
- */
-function handoverConfig(root: string): HandoverConfig | null {
-  return workspaceConfig(root)?.handover ?? null;
-}
-
-/**
- * The whole resolved configuration for this workspace, or `null` for every
- * reason there is not one — the read `handoverConfig` above has always done,
- * named separately because the UI-server upkeep needs a different key out of
- * the same file.
- *
- * **It is read TWICE per turn and that is deliberate.** `runStopHook` below
- * needs `ui` before `observeAndRecord` runs, and `handoverAsk` needs `handover`
- * from inside it; sharing one read would mean threading a `Config` through
- * `ObservationSpec.observe`, which is `observe.ts`'s shape and belongs to the
- * nine other hooks as much as to this one. Two reads of one small JSON file is
- * the cheaper of the two costs, and it is paid on a hook that already reads it.
- */
-function workspaceConfig(root: string): Config | null {
-  try {
-    return resolveWorkspace(path.dirname(root)).config;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * What the model is told, and it is the entire product surface of this feature:
@@ -262,6 +149,35 @@ function askText(handoverPath: string, percent: number): string {
     `The context window is ${percent.toFixed(1)}% full. Update ${handoverPath} NOW, before ` +
     'the compaction: what you were doing, what you decided and why, and what the next ' +
     'session must do first. You have this turn. Nothing else carries across.'
+  );
+}
+
+/**
+ * The SECOND ask, and the last one there will ever be.
+ *
+ * It exists at all only because the first one can be shown to have failed:
+ * `checkHandoverAsk` compared the handover's mtime against the moment the first
+ * ask went out and found the file untouched. Repeating an ask you cannot verify
+ * is nagging; repeating one you have measured as unanswered is the mechanism
+ * working.
+ *
+ * **It NAMES the first ask, and that is a requirement rather than a courtesy.**
+ * A second paragraph that reads identically to the first is indistinguishable
+ * from a hook that lost its latch, which is the most expensive bug this design
+ * can ship — so the text has to say, in the model's own context, that this is a
+ * repeat and why. Saying *the last time* is the other half: an instruction that
+ * might come again is one a model can reasonably defer.
+ */
+function repeatAskText(
+  handoverPath: string, percent: number, firstAskedAt: string | null,
+): string {
+  return (
+    `The context window is ${percent.toFixed(1)}% full and ${handoverPath} has NOT been ` +
+    'written since you were asked to update it' +
+    (firstAskedAt === null ? '' : ` at ${firstAskedAt}`) +
+    '. This is the second and LAST time you will be asked. Update it NOW: what you were ' +
+    'doing, what you decided and why, and what the next session must do first. You have ' +
+    'this turn. Nothing else carries across.'
   );
 }
 
@@ -300,8 +216,31 @@ function standDownOnce(root: string, sessionId: string, why: UnmeasurableWhy): v
  *  3. **No measurement.** Stand down, once, and never guess.
  *  4. **Below the threshold.** `>=`, so an exact crossing counts; a threshold
  *     nobody can land on is a threshold with an off-by-one in it.
- *  5. **Already asked at this threshold or a lower one.** The latch, argued on
- *     `AskLatch.askedAtThreshold`.
+ *  5. **The budget of asks is spent.** `MAX_ASKS`, and it is checked before
+ *     anything is stat'ed: a session that has been asked twice does no work at
+ *     all on any later turn.
+ *  6. **The last ask was answered.** The latch says so outright once a
+ *     verification has come back `acted-on`, so the ordinary post-ask turn
+ *     costs one latch read and nothing else.
+ *  7. **The last ask has not been answered YET, and cannot be shown to have
+ *     failed.** `checkHandoverAsk` compares the handover's mtime against
+ *     `askedAt` — see `core/handover-ask.ts`. `unverifiable` is silence: an
+ *     accusation nothing supports is the same defect as a guarantee nothing
+ *     supports.
+ *
+ * ── WHAT `seq:9` CHANGED, AND WHAT IT DID NOT ──────────────────────────────
+ *
+ * The latch used to mean *asked*. It now means *asked and NOT YET SATISFIED*,
+ * which is the whole of `DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-
+ * flag-is`: an ask that can be shown to have been ignored may be repeated,
+ * because repeating it is only dangerous when you cannot tell. It is still
+ * bounded, and the bound is what makes it safe — `MAX_ASKS` is 2, the second
+ * ask NAMES the first, and there is no third.
+ *
+ * **The threshold rule survives intact and is now the only re-arm that is not
+ * about failure.** Lowering `thresholdPercent` mid-session is a user saying
+ * *ask me sooner than that*, and it re-arms even a satisfied latch — inside the
+ * budget. Raising it is not a request for anything and re-arms nothing.
  *
  * Never throws: every filesystem call below is already wrapped, and
  * `readOccupancy` is documented as never throwing. That matters here more than
@@ -309,11 +248,13 @@ function standDownOnce(root: string, sessionId: string, why: UnmeasurableWhy): v
  * `observeAndRecord`'s catch has given up its own disclosure, and this builder
  * has a disclosure.
  */
-function handoverAsk(input: HookInput, root: string): { percent: number; text: string } | null {
+function handoverAsk(
+  input: HookInput, root: string,
+): { percent: number; text: string; repeat: boolean } | null {
   const sessionId = input.session_id;
   if (typeof sessionId !== 'string' || sessionId === '') return null;
 
-  const handover = handoverConfig(root);
+  const handover = handoverConfigAt(root);
   if (handover === null) return null;
 
   const occupancy = readOccupancy(root, sessionId);
@@ -329,15 +270,64 @@ function handoverAsk(input: HookInput, root: string): { percent: number; text: s
   if (occupancy.percent < threshold) return null;
 
   const latch = readLatch(root, sessionId);
-  if (latch.askedAtThreshold !== null && threshold >= latch.askedAtThreshold) return null;
+  // The bound, first, and before any filesystem work beyond the latch itself.
+  // A session that has spent its two asks is finished with this mechanism and
+  // must not pay a `stat` per turn to keep discovering that.
+  if (latch.asks >= MAX_ASKS) return null;
+
+  let base: AskLatch = latch;
+  let repeat = false;
+  if (latch.askedAtThreshold !== null) {
+    // Lowering is an instruction; raising is not. Unchanged from seq:6, and it
+    // is deliberately computed BEFORE the verification so that a satisfied
+    // latch can still be re-armed by a user who moved the target.
+    const lowered = threshold < latch.askedAtThreshold;
+    if (latch.satisfied) {
+      if (!lowered) return null;
+    } else {
+      const check = checkHandoverAsk(root, handover, sessionId);
+      if (check.verdict === 'acted-on') {
+        // Written even though nothing is asked on this turn: it is what makes
+        // every later turn of this session cost one latch read instead of a
+        // latch read and a `stat`. A failed write costs a repeat of this same
+        // check next turn, which is why it is not gated on.
+        base = { ...latch, satisfied: true };
+        writeLatch(root, sessionId, base);
+        if (!lowered) return null;
+      } else if (check.verdict !== 'ignored') {
+        // `unverifiable`. Silence — see the gate list above.
+        return null;
+      } else {
+        repeat = true;
+      }
+    }
+  }
 
   // Latched BEFORE the ask is returned, never after. The caller writes the
   // envelope and the audit row afterwards and either of those can fail; if the
   // latch were taken last, a failure between here and there would leave the
   // session armed and the model asked, which is the loop.
-  if (!writeLatch(root, sessionId, { ...latch, askedAtThreshold: threshold })) return null;
+  //
+  // `satisfied` goes back to `false` because a new ask is a new thing to
+  // satisfy, and `askedAt` is stamped here — the same instant the ask becomes
+  // real — so that no write that happened BEFORE this moment can be mistaken
+  // for a response to it.
+  const next: AskLatch = {
+    ...base,
+    askedAtThreshold: threshold,
+    askedAt: new Date().toISOString(),
+    asks: base.asks + 1,
+    satisfied: false,
+  };
+  if (!writeLatch(root, sessionId, next)) return null;
 
-  return { percent: occupancy.percent, text: askText(handover.path, occupancy.percent) };
+  return {
+    percent: occupancy.percent,
+    repeat,
+    text: repeat
+      ? repeatAskText(handover.path, occupancy.percent, latch.askedAt)
+      : askText(handover.path, occupancy.percent),
+  };
 }
 
 /**
@@ -390,10 +380,17 @@ export function observeStop(
   // so without this a session that was asked and one that was not are
   // indistinguishable afterwards — and the percentage is what makes the row
   // answer the question §4.4 exists to settle.
+  // A repeat says so IN THE ROW, not only in the model's context. An ask that
+  // was ignored and an ask that was acted on have to be distinguishable in the
+  // log without reading the handover — that is the whole of `seq:9`'s DONE
+  // WHEN — and this row is where `Stop` can say it: the second ask exists only
+  // because the first was measured to have failed.
   return ask === null
     ? { note: base }
     : {
-        note: `${base}; asked for a handover update at ${ask.percent.toFixed(1)}% occupancy`,
+        note: `${base}; asked${ask.repeat ? ' a SECOND time' : ''} for a handover update at ` +
+          `${ask.percent.toFixed(1)}% occupancy` +
+          (ask.repeat ? ' — the first ask went unanswered and this is the last one' : ''),
         context: ask.text,
       };
 }
@@ -456,7 +453,7 @@ export async function stopUpkeep(
     if (input.agent_id !== undefined) return null;
     const root = findProjectRoot(input.cwd ?? process.cwd());
     if (root === null) return null;
-    const config = workspaceConfig(root);
+    const config = workspaceConfigAt(root);
     if (config === null) return null;
 
     const upkeep = await upkeepUiServer(root, config, now, deps);

@@ -38,11 +38,14 @@
  */
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit, type AuditRecord } from '../../src/core/audit.ts';
+import { readLatch } from '../../src/core/handover-ask.ts';
 import { writeTee } from '../../src/core/statusline-tee.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { observeAndRecord } from '../../src/hooks/observe.ts';
@@ -274,18 +277,86 @@ test('the row says the ask was made, and at what', () => {
  * ------------------------------------------------------------------------- */
 
 /**
- * A second ask arrives AFTER the model has just written the handover, so it asks
- * for work that was done in the turn that produced it — and it arrives on the
- * next turn too, and the one after. A per-turn hook that repeats is not a
- * verbose feature; it is a session that cannot finish.
+ * **The rule seq:9 replaced, and the half of it that did not change.**
+ *
+ * A blind second ask arrives AFTER the model has just written the handover, so
+ * it asks for work that was done in the turn that produced it — and it arrives
+ * on the next turn too, and the one after. That is still the loop, and it is
+ * still forbidden: an ask that was ACTED ON is never repeated.
+ *
+ * What changed is that "acted on" is now measured rather than assumed
+ * (`DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is`), so this
+ * test writes the handover the way a model would and then insists on silence
+ * for the rest of the session, at any occupancy.
  */
-test('it asks ONCE — a second turn over the threshold is silent', () => {
+test('an ask that was ACTED ON is never repeated, at any occupancy', () => {
   const sb = sandbox({ thresholdPercent: 98 });
   assert.notEqual(runStop(sb, { percent: 99 }).stdout, '', 'the first crossing did not ask');
+  writeHandover(sb, 'after');
+
   assert.equal(runStop(sb, { percent: 99 }).stdout, '',
-    'Stop asked twice. This is the loop the latch exists to prevent.');
+    'Stop asked again for a handover that had just been written. This is the loop the latch ' +
+    'exists to prevent, and measuring the file is what makes the second ask safe elsewhere.');
   assert.equal(runStop(sb, { percent: 99.9 }).stdout, '',
     'a HIGHER occupancy after the ask re-armed it — the latch is per session, not per reading');
+});
+
+/**
+ * **The whole of seq:9 in one test.** The ask is verified, not assumed: a
+ * handover that was never written means the ask was IGNORED, and an ignored ask
+ * may be repeated exactly once. The bound is what makes the repeat safe — *a
+ * third would be nagging, and a hook that nags is a hook that gets uninstalled*.
+ */
+test('an ask that was IGNORED is repeated exactly once, and the second names the first', () => {
+  const sb = sandbox({ thresholdPercent: 98 });
+  const first = askedText(runStop(sb, { percent: 99 }));
+  assert.ok(first !== null, 'the first crossing did not ask');
+  const askedAt = readLatch(sb.root, sb.session).askedAt;
+  assert.ok(askedAt !== null, 'the latch recorded no wall clock for the ask');
+
+  const second = askedText(runStop(sb, { percent: 99 }));
+  assert.ok(second !== null,
+    'the handover was never written and Stop said nothing more about it — which is exactly ' +
+    'the silence seq:9 exists to end');
+  // It NAMES the first. A repeat that reads identically to the original is
+  // indistinguishable from a hook that lost its latch.
+  assert.match(second, new RegExp(askedAt.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'));
+  assert.match(second, /NOT been written/u);
+  assert.match(second, /second and LAST/u);
+
+  assert.equal(runStop(sb, { percent: 99.9 }).stdout, '',
+    'Stop asked a THIRD time. There is no third: the audit row is the accountability story ' +
+    'for the asks that went unanswered.');
+});
+
+/**
+ * The two asks are distinguishable in the LOG, without reading the handover —
+ * `seq:9`'s DONE WHEN, on the channel that survives the session.
+ */
+test('the row says which ask this was, and that the first went unanswered', () => {
+  const sb = sandbox({ thresholdPercent: 98 });
+  const first = stopRows(runStop(sb, { percent: 99 })).at(-1);
+  assert.ok(first, 'no row for the first ask');
+  assert.doesNotMatch(first.note ?? '', /SECOND/u);
+
+  const second = stopRows(runStop(sb, { percent: 99 })).at(-1);
+  assert.ok(second, 'no row for the second ask');
+  assert.match(second.note ?? '', /SECOND time/u);
+  assert.match(second.note ?? '', /went unanswered/u);
+});
+
+/**
+ * A handover written BEFORE the ask is not a response to it. The comparison is
+ * strictly `>` and this is the case that pins it: without that, any project
+ * that keeps a handover file at all would be read as having answered every ask
+ * it ever ignored.
+ */
+test('a handover last written BEFORE the ask does not count as answering it', () => {
+  const sb = sandbox({ thresholdPercent: 98 });
+  assert.notEqual(runStop(sb, { percent: 99 }).stdout, '');
+  writeHandover(sb, 'before');
+  assert.notEqual(runStop(sb, { percent: 99 }).stdout, '',
+    'a file whose last write predates the ask was accepted as an answer to it');
 });
 
 /** The latch is per SESSION, not per workspace: a second session asks for itself. */
@@ -307,6 +378,10 @@ test('a different session in the same workspace gets its own ask', () => {
 test('lowering the threshold mid-session can ask again; raising it cannot', () => {
   const sb = sandbox({ thresholdPercent: 98 });
   assert.notEqual(runStop(sb, { percent: 99 }).stdout, '');
+  // The handover is written, so the ask is SATISFIED and the only axis left in
+  // play is the threshold. Without this the re-ask below would be seq:9's
+  // ignored-ask repeat and the test would be measuring the wrong mechanism.
+  writeHandover(sb, 'after');
 
   retarget(sb, 99.5);
   assert.equal(runStop(sb, { percent: 99.6 }).stdout, '',
@@ -324,6 +399,27 @@ function retarget(sb: Sandbox, thresholdPercent: number): void {
   const raw = JSON.parse(readFileSync(file, 'utf8')) as { handover?: Record<string, unknown> };
   raw.handover = { ...raw.handover, thresholdPercent };
   writeFileSync(file, JSON.stringify(raw, null, 2), 'utf8');
+}
+
+/**
+ * The model writing the handover, placed on either side of the ask.
+ *
+ * **The mtime is SET rather than left to the clock**, and that is the whole
+ * reason this helper exists. A file written in the same millisecond as the ask
+ * is a coin flip against a comparison that is deliberately strict, and a test
+ * that flakes on a millisecond teaches nobody anything. Two seconds either side
+ * of the recorded `askedAt` is unambiguous in both directions and exercises the
+ * real code path — `checkHandoverAsk` reads an mtime and does not care who set
+ * it.
+ */
+function writeHandover(sb: Sandbox, when: 'before' | 'after'): void {
+  const askedAt = readLatch(sb.root, sb.session).askedAt;
+  assert.ok(askedAt !== null, 'nothing has been asked yet, so there is no ask to write around');
+  const file = path.join(sb.cwd, 'reports', 'H.md');
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, '# Handover\nwhat was decided, and why.\n', 'utf8');
+  const at = new Date(Date.parse(askedAt) + (when === 'after' ? 2_000 : -2_000));
+  utimesSync(file, at, at);
 }
 
 /* ---------------------------------------------------------------------------
