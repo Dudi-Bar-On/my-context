@@ -35,7 +35,7 @@
  * and the user agent's near-white button face and is invisible.
  */
 import { test, expect } from './app.ts';
-import type { Page } from '@playwright/test';
+import type { Page, Request } from '@playwright/test';
 
 /** WCAG AA for ordinary text, and a button's label is ordinary text. */
 const MIN_RATIO = 4.5;
@@ -76,20 +76,105 @@ interface Choice { screen: string; id: string; chars: number }
  */
 let chosen: Choice | null = null;
 
-/** Navigate, then wait until the screen has stopped growing. */
+/**
+ * The `/api/` calls this page has in flight, so "the fetch has come back" is a
+ * FACT rather than a length of time.
+ *
+ * `/api/watch/stream` is excluded because it is the one request that never
+ * finishes by design — the shell's single live connection, opened once and held
+ * open (`app.js`, "THE SHARED LIVE STREAM"). Counting it would mean no screen
+ * on this page is ever idle again.
+ *
+ * Keyed by `Request` rather than by a bare counter: the boot's own calls may
+ * already be in flight when the first `gotoScreen` installs these listeners,
+ * and their `requestfinished` would otherwise decrement a total they were never
+ * added to and drive it negative. Listeners are installed ONCE per page.
+ */
+const apiInFlight = new WeakMap<Page, Set<Request>>();
+function pendingApi(page: Page): Set<Request> {
+  const already = apiInFlight.get(page);
+  if (already !== undefined) return already;
+  const live = new Set<Request>();
+  apiInFlight.set(page, live);
+  const counts = (r: Request): boolean =>
+    r.url().includes('/api/') && !r.url().includes('/api/watch/stream');
+  page.on('request', (r) => { if (counts(r)) live.add(r); });
+  page.on('requestfinished', (r) => { live.delete(r); });
+  page.on('requestfailed', (r) => { live.delete(r); });
+  return live;
+}
+
+/**
+ * Navigate, then wait until the screen has ACTUALLY FINISHED DRAWING.
+ *
+ * ── WHY THIS IS NOT "THE COUNT STOPPED CHANGING" ANY MORE ─────────────────
+ *
+ * It was, copied from `button-contrast.spec.ts` — but only that spec's
+ * STABILITY half, without its existence half. That worked for exactly as long
+ * as `route()` left the section EMPTY while a screen's module imported and
+ * fetched: an empty section counts zero elements, `now > 0` was false, and the
+ * loop kept polling until the real content arrived.
+ *
+ * On 2026-08-29 `route()` stopped keeping that silence. It now writes a holding
+ * chip — `<p id="screenunread">` carrying `screen.unread`, "not read yet" —
+ * into the section BEFORE awaiting the screen module, deliberately, so the
+ * tallest row on the page is never a band of nothing (`app.js`, "AND IT SAYS SO
+ * WHILE IT IS EMPTY"). Two elements. Present from the first frame. Never
+ * changing. So `now > 0 && now === previous` became TRUE ON THE SECOND POLL,
+ * ~600ms in, with nothing drawn but the holding chip — and `discover()` counted
+ * `button.linkid` on a screen that had not rendered yet and found none, on all
+ * nine, every time the render took longer than one poll. Measured in a real
+ * browser on 2026-08-29 against this repository's own corpus: with this settle,
+ * every screen reports 0 linked; waiting for the property instead, the same
+ * nine screens report preview 16, injected 50, doctor 59, coverage 80.
+ *
+ * Nothing about the app was wrong. The measurement was.
+ *
+ * So this waits for the two facts the next line actually depends on:
+ *
+ *   the holding chip is GONE     Every screen's `render()` opens with
+ *                                `root.replaceChildren()`, uniformly — the
+ *                                property `route()` itself leans on twice. Its
+ *                                removal is the render having STARTED, and it
+ *                                is an event in the render, not a clock.
+ *   nothing is in flight         Six screens await an endpoint and append
+ *                                afterwards, so a heading drawn synchronously
+ *                                is the same trap one step along: `doctor` is
+ *                                the screen `button-contrast.spec.ts` records
+ *                                being measured half-drawn for this reason.
+ *
+ * plus the original stability poll, which covers the microtask between a
+ * response landing and its rows being appended.
+ *
+ * **And the bound fails as ITSELF.** Falling through to report "0 linked" for a
+ * screen that was still loading is how this failure read as a product defect
+ * for two days —
+ * `LESSON-every-bound-on-waiting-must-fail-as-itself-or-a-slow-machine`.
+ */
 async function gotoScreen(page: Page, screen: string): Promise<void> {
+  const pending = pendingApi(page);
   await page.evaluate((name) => { location.hash = `#/${name}`; }, screen);
-  // `button-contrast.spec.ts`' settle, and for its reason: a screen draws its
-  // heading synchronously and its rows after a fetch, so "has any element" is
-  // true almost immediately and is the wrong signal.
   let previous = -1;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const now = await page.evaluate(
-      (s) => document.querySelectorAll(`[data-p="${s}"] *`).length, screen);
-    if (now > 0 && now === previous) return;
-    previous = now;
+  let settled = false;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    // One evaluate, not two: both readings must come from the SAME DOM
+    // snapshot, or a stale count could be paired with a fresh "the chip is
+    // gone" and settle on a combination that was never simultaneously true.
+    const { count, holding } = await page.evaluate((s) => ({
+      count: document.querySelectorAll(`[data-p="${s}"] *`).length,
+      holding: document.querySelector(`[data-p="${s}"] #screenunread`) !== null,
+    }), screen);
+    if (!holding && pending.size === 0 && count > 0 && count === previous) {
+      settled = true;
+      break;
+    }
+    previous = count;
     await page.waitForTimeout(300);
   }
+  expect(settled,
+    `${screen}: still loading after 40 samples over 12s — NOT measured. Anything this walk `
+    + 'says about the screen would be a statement about a half-drawn page. Run this spec '
+    + 'alone before believing it.').toBe(true);
 }
 
 /**
