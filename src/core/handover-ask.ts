@@ -45,12 +45,24 @@ import { resolveWorkspace } from './workspace.ts';
  * judgement: a model that wrote something this module disliked would be asked
  * again for a document it had just written, which is the loop the latch exists
  * to prevent.
+ *
+ * ── WHAT THE BUDGET BELONGS TO — `plan:handover seq:10` ────────────────────
+ *
+ * The latch is stored per SESSION and the ask budget it holds belongs to a
+ * WINDOW. Those were the same thing until a compaction, and after one they are
+ * not: the session continues with the latch it had, so a session that had spent
+ * both asks was never asked about the window the compaction had just refilled —
+ * which is the window a handover exists to serve. The owner ruled on 2026-08-29
+ * that each rebuilt window gets its own two asks.
+ *
+ * `resetAsksForWindow` is that ruling, and the window it is handed is the
+ * continuity tier's, not one of ours. See its docstring, and `AskLatch.window`.
  */
 
 /**
  * Everything remembered about one session's handover ask. One small JSON file
  * in `state/`, beside the seen file and the restore snapshot — this is where
- * per-session hook state lives, and a second location for five fields would be
+ * per-session hook state lives, and a second location for seven fields would be
  * a second directory for `mycontext status` and every cleanup path to learn.
  *
  * **`sanitizeSessionId` is `ledger.ts`'s, deliberately, not
@@ -101,9 +113,33 @@ export interface AskLatch {
    * `DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is`: *a third
    * would be nagging, and a hook that nags is a hook that gets uninstalled*.
    * The count is what makes the bound a bound rather than an emergent property
-   * of the other four fields.
+   * of the other six fields.
    */
   asks: number;
+  /**
+   * The CONTEXT WINDOW this ask budget belongs to, or `null` for a budget that
+   * has never been handed to a window — which is every latch written before
+   * `plan:handover seq:10` and every latch in a session that has not yet been
+   * compacted.
+   *
+   * **The value is a compaction snapshot's `capturedAt` and nothing else.** It
+   * is not this module's notion of a window and must never become one: the
+   * continuity tier already decided what identifies a rebuilt window
+   * (`plan:live seq:9` — `core/seen-file.ts`'s `continuityFor`, keyed on
+   * `snapshot.capturedAt`, and `core/inject.ts` step 2b), and a second
+   * mechanism deciding the same question independently is the two-spellings
+   * defect `GateCode`'s docstring argues against and `decay.js` paid for twice
+   * in one day. `resetAsksForWindow` therefore takes the marker from its
+   * caller, and its only caller is the one hook that has already read that
+   * exact snapshot for that exact reason.
+   *
+   * Compared for EQUALITY, which is `restoredFor`'s comparison and is chosen
+   * for `Ledger.recordRestored`'s reason: equality matches "this compaction,
+   * fired again" — so a repeated `PostCompact` for one compaction returns the
+   * budget once — and stops matching the moment a later compaction writes a
+   * different `capturedAt`.
+   */
+  window: string | null;
   /**
    * Whether the most recent ask has been VERIFIED as acted on.
    *
@@ -149,6 +185,7 @@ export const NO_LATCH: AskLatch = {
   askedAtThreshold: null,
   askedAt: null,
   asks: 0,
+  window: null,
   satisfied: false,
   stoodDown: false,
   disclosedIgnored: false,
@@ -189,6 +226,13 @@ export function readLatch(root: string, sessionId: string): AskLatch {
       asks: typeof value.asks === 'number' && Number.isFinite(value.asks)
         ? value.asks
         : (askedAtThreshold === null ? 0 : 1),
+      // An absent or empty `window` is `null`, and `null` is read as "this
+      // budget has not been handed to a window yet" — never as a window whose
+      // marker happens to be missing. A latch written before `seq:10` lands
+      // here, and the first compaction after it sees `null !== capturedAt` and
+      // returns the budget once, which is exactly right for a session whose
+      // window really was rebuilt while nothing was recording windows.
+      window: typeof value.window === 'string' && value.window !== '' ? value.window : null,
       satisfied: value.satisfied === true,
       stoodDown: value.stoodDown === true,
       disclosedIgnored: value.disclosedIgnored === true,
@@ -204,7 +248,7 @@ export function readLatch(root: string, sessionId: string): AskLatch {
  *
  * A plain `writeFileSync`, not the atomic write-and-rename `ledger.ts` uses for
  * the restore snapshot. The trade is different in both directions: this file is
- * five small fields written by one process per turn, so a torn write costs one
+ * seven small fields written by one process per turn, so a torn write costs one
  * re-ask or one re-disclosure, while the snapshot is a whole context window
  * whose loss is unrecoverable. And `Stop` is the hook with the tightest timeout
  * of the ten, so a rename retry budget measured in seconds is a budget it does
@@ -219,6 +263,196 @@ export function writeLatch(root: string, sessionId: string, latch: AskLatch): bo
   } catch {
     return false;
   }
+}
+
+/**
+ * What became of one attempt to hand the ask budget to a rebuilt window.
+ *
+ *  - `nothing-asked` — this session has never been asked, so there is no budget
+ *                      to return and nothing is written. The ordinary case, and
+ *                      the reason a workspace that never crosses the threshold
+ *                      still writes no latch file at all.
+ *  - `same-window`   — the budget already belongs to this window. A repeated
+ *                      `PostCompact` for one compaction, which must return the
+ *                      budget ONCE, not once per firing.
+ *  - `no-identity`   — the compaction left no snapshot, so the rebuilt window
+ *                      cannot be told from the one before it. The budget stands.
+ *  - `reset`         — the budget was returned. The new window has its own two.
+ *  - `unwritable`    — the latch would not persist, so the budget stands. A
+ *                      reset that cannot record itself is a reset that happens
+ *                      again on the next firing, which is `writeLatch`'s rule.
+ */
+export type AskWindowResetVerdict =
+  | 'nothing-asked' | 'same-window' | 'no-identity' | 'reset' | 'unwritable';
+
+export interface AskWindowReset {
+  verdict: AskWindowResetVerdict;
+  /** The window marker as given, or `null` when the compaction had no identity. */
+  window: string | null;
+  /** One clause for an audit note, or `''` when nothing happened and nothing was owed. */
+  note: string;
+}
+
+/**
+ * **Hand the ask budget to a rebuilt context window.** `plan:handover seq:10`,
+ * the owner's ruling of 2026-08-29: the ask is a per-WINDOW obligation, not a
+ * per-session courtesy.
+ *
+ * The defect it closes: `MAX_ASKS` is 2 and the latch lives with the SESSION,
+ * so a session that had spent both asks was never asked again — including about
+ * the window a compaction had just refilled, which is precisely the window a
+ * handover exists to serve.
+ *
+ * ── WHERE THE WINDOW COMES FROM, AND WHY IT IS NOT DECIDED HERE ────────────
+ *
+ * `window` is a compaction snapshot's `capturedAt`, passed in by the caller.
+ * That is not a convenience: `plan:live seq:9` already established what
+ * identifies a rebuilt window and built the continuity tier on it —
+ * `continuityFor(seen, snapshot.capturedAt)` in `core/seen-file.ts`, fed by
+ * `core/inject.ts` step 2b. Deciding it a second time here would be two
+ * mechanisms independently answering *what is a new window*, which is the
+ * two-spellings defect this codebase has met repeatedly and which drifts
+ * silently by construction. So this function derives nothing. Its only caller
+ * is `hooks/post-compact.ts`, which has already read that snapshot — for
+ * `restoredFor`, the sibling comparison — and passes the same field off the
+ * same object.
+ *
+ * ── A COMPACTION WITH NO SNAPSHOT ──────────────────────────────────────────
+ *
+ * `window === null` means `PreCompact` never wrote a snapshot, so there is no
+ * identity at all — the same case `inject.ts` names at step 2b. Continuity
+ * answers it by OVER-DELIVERING, and this answers it by asking FEWER times, and
+ * the two are the same decision applied to opposite costs. Continuity's failure
+ * is a session that starts over with nothing, so it re-sends; the ask's failure
+ * is a hook that nags, and *a hook that nags is a hook that gets uninstalled*
+ * (`MAX_ASKS`). Resetting without identity would also be unbounded in a way
+ * resetting with it is not: with a marker the reset is idempotent per
+ * compaction, and without one nothing could tell a second firing from a second
+ * window. This module already states its tie-break — *the worst case is one ask
+ * fewer, which is the direction this design chooses everywhere it has a choice*
+ * (`readLatch`) — and this is that rule, not a new one.
+ *
+ * ── WHAT IS RETURNED AND WHAT IS DELIBERATELY KEPT ─────────────────────────
+ *
+ * Returned: `asks`, `askedAtThreshold`, `askedAt` and `satisfied` — the whole
+ * arming state, because leaving any of them would leave the new window unable
+ * to be asked. `satisfied` alone would silence it (gate 6 in `hooks/stop.ts`),
+ * and a surviving `askedAtThreshold` would make the new window's first ask a
+ * REPEAT that names an ask belonging to a window that no longer exists.
+ *
+ * Kept: `stoodDown` and `disclosedIgnored`. Both are once-per-session silences
+ * with their own recorded reasoning on their own fields, and neither is what
+ * the owner ruled on. `disclosedIgnored` says so outright — a compaction is a
+ * genuine argument for repeating the line, and the latch wins anyway. Returning
+ * them here would reopen two decisions under cover of a third.
+ *
+ * The verdict for the ask itself is not touched and cannot be: nothing here
+ * reads or writes `HandoverAskVerdict`, so `off`, `not-asked`, `acted-on`,
+ * `ignored` and `unverifiable` keep their meanings exactly. `PreCompact` has
+ * already judged and disclosed the destroyed window's ask by the time this
+ * runs — that is the whole of `seq:9` — so nothing this clears is unrecorded.
+ *
+ * ── WHAT IT COSTS, MEASURED ────────────────────────────────────────────────
+ *
+ * Nothing at all on `Stop`. The reset runs on `PostCompact` and on no other
+ * event, so the per-turn hook — the one with the real budget, and the one whose
+ * gate ladder is ordered by cost — gains no work: `hooks/stop.ts` is unchanged
+ * by `seq:10` except that `readLatch` now parses one more field.
+ *
+ * On `PostCompact`, 2026-08-29, dev machine, two runs of 4,000 iterations
+ * against a `%TEMP%` workspace on NTFS:
+ *
+ *     nothing-asked (no latch file)   median 0.018-0.022 ms   p95 0.022-0.026
+ *     same-window   (read only)       median 0.243-0.251 ms   p95 0.32-0.60
+ *     no-identity   (read only)       median 0.251-0.272 ms   p95 0.38-1.34
+ *     reset         (read + write)    median 0.249-0.285 ms   p95 0.37-1.24
+ *
+ * The commonest outcome by a wide margin is the cheapest: a workspace with no
+ * `handover` key has no latch file, and reading a file that is not there is the
+ * 0.02 ms line — the same band as the ask check itself. The whole hook it sits
+ * inside measures 2.1-2.4 ms median and 3.9-4.1 ms p95 end-to-end over a 64 KB
+ * summary, unchanged inside the noise of the baseline `post-compact-latency
+ * .perf.ts` records (p95 3.2-5.3 ms), against that suite's 50 ms ceiling and the
+ * manifest's 5,000 ms timeout.
+ *
+ * Never throws: `readLatch` and `writeLatch` swallow every filesystem outcome
+ * and this function does nothing else. `INV-hooks-fail-open`.
+ */
+/**
+ * Whether a latch carries nothing at all — which is what `readLatch` returns
+ * for an absent file and for an unreadable one alike. Written as a comparison
+ * against `NO_LATCH` rather than a field list so a seventh field cannot be
+ * forgotten here: this is the only place that asks the question.
+ */
+function isPristine(latch: AskLatch): boolean {
+  return (Object.keys(NO_LATCH) as (keyof AskLatch)[]).every((key) => latch[key] === NO_LATCH[key]);
+}
+
+export function resetAsksForWindow(
+  root: string, sessionId: string, window: string | null,
+): AskWindowReset {
+  const latch = readLatch(root, sessionId);
+
+  // Nothing has ever been asked, so there is no budget to return. Checked
+  // FIRST, and it is what keeps `state/` exactly as clean as it is today: a
+  // workspace with no `handover` key, or one that never crosses the threshold,
+  // has no latch file and must not acquire one because it was compacted.
+  if (latch.asks === 0 && latch.askedAt === null && latch.askedAtThreshold === null) {
+    // The stamp is still brought forward, so that `window` always names the
+    // window the latch's state belongs to and `same-window` above means what it
+    // says. Without it, a compaction that found nothing to return would leave a
+    // STALE marker, and a repeat firing of that same compaction — after an ask
+    // had since been made — would read as a new window and hand back a budget
+    // this window had already begun to spend. That is a third ask arriving by
+    // another door, and the bound is the thing this mechanism cannot lose.
+    //
+    // Only when a latch already exists: `writeLatch` would CREATE one, and a
+    // file per session in every workspace that never asks is the cost the check
+    // above exists to avoid. A pristine latch is either an absent file or an
+    // unreadable one, and both mean the session has no state to keep current.
+    if (window !== null && latch.window !== window && !isPristine(latch)) {
+      writeLatch(root, sessionId, { ...latch, window });
+    }
+    return { verdict: 'nothing-asked', window, note: '' };
+  }
+
+  // EQUALITY, `restoredFor`'s comparison: this is "the same compaction, fired
+  // again", and the budget is returned once per compaction, not once per event.
+  if (window !== null && latch.window === window) {
+    return { verdict: 'same-window', window, note: '' };
+  }
+
+  if (window === null) {
+    return {
+      verdict: 'no-identity',
+      window: null,
+      note: 'the handover ask budget was NOT returned: this compaction left no snapshot, so ' +
+        'the rebuilt window has no identity to hand it to',
+    };
+  }
+
+  const next: AskLatch = {
+    ...latch,
+    askedAtThreshold: null,
+    askedAt: null,
+    asks: 0,
+    window,
+    satisfied: false,
+  };
+  if (!writeLatch(root, sessionId, next)) {
+    return {
+      verdict: 'unwritable',
+      window,
+      note: 'the handover ask budget was NOT returned: the latch would not be written, so the ' +
+        'spent asks stand for this window too',
+    };
+  }
+  return {
+    verdict: 'reset',
+    window,
+    note: `the handover ask budget was returned for the window captured at ${window} ` +
+      `(${latch.asks} ask(s) spent in the window this compaction destroyed)`,
+  };
 }
 
 /**

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { recordAudit } from '../core/audit.ts';
 import { resolveConfig } from '../core/config.ts';
 import { readHandover, type HandoverRead } from '../core/handover.ts';
+import { resetAsksForWindow, type AskWindowResetVerdict } from '../core/handover-ask.ts';
 import { readSnapshotMeta, scanTextIds } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { readSeen, restoredFor } from '../core/seen-file.ts';
@@ -40,6 +41,30 @@ import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from '.
  * all three paths. The restore has therefore already happened by the time this
  * runs, so nothing here can feed it. This hook records; it does not restore,
  * and it could not.
+ *
+ * **THE ONE THING IT DOES RATHER THAN RECORDS — `plan:handover seq:10`.** It
+ * returns the handover ask budget to the window the compaction rebuilt. That
+ * is a write, and the paragraph above is why it is not a contradiction: this
+ * hook cannot restore anything, but it is the ONLY event that fires once a
+ * compaction is known to have COMPLETED, and it is the only one holding the
+ * snapshot whose `capturedAt` identifies the rebuilt window. Three consequences
+ * follow, and together they are the whole argument for the site:
+ *
+ *  - **Not `SessionStart(source: 'compact')`.** It fires from inside the try
+ *    block before the summary is committed (point 3 above), so a reset there
+ *    would hand a fresh budget to a compaction that then threw and left the
+ *    original window standing.
+ *  - **Not `Stop`.** That is where the ask is MADE, and a mechanism that
+ *    decided at ask time whether its window was new would be deciding what a
+ *    window is for the second time in this codebase — and paying for it on
+ *    every assistant turn of every session.
+ *  - **Not derived here either.** The identity is `snapshot.capturedAt`, the
+ *    field `restoredFor` already compares against further down the same function.
+ *
+ * `recordPostCompact`'s standing restraint — *nothing acts on any of these
+ * counts, and pruning the seen file is the owner's call and not this hook's* —
+ * is unchanged and still governs the three counts. The budget is not one of
+ * them: the owner made that call on 2026-08-29.
  *
  * **THERE IS NO OUTPUT ENVELOPE FOR THIS EVENT.** Build 2.1.239 declares a
  * `hookSpecificOutput` variant for twenty events and `PostCompact` is not one
@@ -82,6 +107,12 @@ export interface PostCompactOutcome {
   survived: number | null;
   /** How many the restore tier re-delivered for THIS compaction. */
   restored: number;
+  /**
+   * What became of the handover ask budget for the window this compaction
+   * rebuilt — `plan:handover seq:10`. The one thing this hook DOES rather than
+   * merely records; `recordPostCompact` argues the site.
+   */
+  askBudget: AskWindowResetVerdict;
   note: string;
 }
 
@@ -182,11 +213,20 @@ function handoverFields(read: HandoverRead | null): {
  *    says whether the re-injection was needed: an id the summary already
  *    carries was re-delivered into a window that already had it.
  *
- * Nothing acts on any of them. That is deliberate and it is the whole scope of
- * this commit: pruning the seen file of ids that neither the summary nor the
- * restore carried is the obvious next move and it is a behaviour change to the
- * dedupe state, which is the owner's call and not this hook's. The measurement
- * comes first, in the log, where it can be read before anything is decided.
+ * Nothing acts on any of them. That is deliberate: pruning the seen file of ids
+ * that neither the summary nor the restore carried is the obvious next move and
+ * it is a behaviour change to the dedupe state, which is the owner's call and
+ * not this hook's. The measurement comes first, in the log, where it can be
+ * read before anything is decided.
+ *
+ * **`askBudget` is the one thing that is acted on, and it is here because the
+ * owner made that call.** `plan:handover seq:10`, 2026-08-29: each rebuilt
+ * context window gets its own two asks. The reset is not a fourth count and
+ * does not touch the three above; it hands `core/handover-ask.ts` the window
+ * identity this hook already holds and lets that module decide what to do with
+ * it. The file header argues why this event and not the two neighbouring ones,
+ * and `resetAsksForWindow` argues why a compaction with no snapshot resets
+ * nothing.
  *
  * The handover resolved beside them is under the same discipline and one step
  * further from action: it is recorded, it is not returned on the outcome, and
@@ -218,6 +258,21 @@ export function recordPostCompact(
 
     const snapshot = readSnapshotMeta(root, sessionId);
     const captured = snapshot === null ? null : snapshot.itemIds.length;
+
+    // THE HANDOVER ASK BUDGET, RETURNED TO THE WINDOW THIS COMPACTION REBUILT.
+    // `plan:handover seq:10`, and it is done FIRST — before the summary scan
+    // and the seen read — so that nothing measured for the row can come
+    // between the window being rebuilt and its budget arriving.
+    //
+    // The window identity is `snapshot.capturedAt`, taken off the object this
+    // hook has ALREADY read, and it is the continuity tier's identity rather
+    // than a second one: `restoredFor` further down this function compares against
+    // the same field of the same snapshot, as does `continuityFor` in
+    // `core/inject.ts` step 2b. No notion of "a new window" is derived here.
+    //
+    // A compaction with NO snapshot passes `null`, which returns nothing —
+    // `resetAsksForWindow` argues that direction where the rule lives.
+    const askBudget = resetAsksForWindow(root, sessionId, snapshot?.capturedAt ?? null);
 
     // `null`, never 0, when there is no summary to scan. Zero would read as
     // "the compaction dropped every item", which is the opposite conclusion
@@ -255,6 +310,12 @@ export function recordPostCompact(
     // refuses on its own occupancy row.
     const handover = resolveHandover(root);
     if (handover.why !== null) parts.push(`handover unknown (${handover.why})`);
+    // `''` on the two verdicts where nothing happened and nothing was owed —
+    // `nothing-asked`, which is nearly every compaction in nearly every
+    // workspace, and `same-window`, which is one compaction firing twice. The
+    // three that changed something, or failed to, say so
+    // (INV-nothing-is-dropped-silently).
+    if (askBudget.note !== '') parts.push(askBudget.note);
     const note = parts.join('; ');
 
     recordAudit(root, {
@@ -262,7 +323,7 @@ export function recordPostCompact(
       ...handoverFields(handover.read), note,
     });
 
-    return { trigger, captured, survived, restored, note };
+    return { trigger, captured, survived, restored, askBudget: askBudget.verdict, note };
   } catch {
     // INV-hooks-fail-open. A knowledge base that breaks a compaction is worse
     // than one that says nothing.
