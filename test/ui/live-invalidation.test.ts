@@ -28,6 +28,15 @@
  * a screen registered under a mismatched key would still be found by its
  * module path.
  *
+ * **2026-08-29: the shell's own chrome joins, as a SIBLING export.** The
+ * status strip and the provenance bar are not screens — no route, no entry in
+ * `SCREENS`, built once by `renderChrome()` and outliving every navigation —
+ * so `CHROME_INVALIDATION` declares them per GROUP, and the same shape checks
+ * run over it at the bottom of this file. It could not be a key in
+ * `SCREEN_INVALIDATION`: the "declares no screen app.js does not route" test
+ * below fails on exactly that, and loosening it to admit one would cost the
+ * check that catches a renamed screen.
+ *
  * `SCREEN_INVALIDATION` cannot import `AuditKind` from `core/audit.ts` —
  * that module is TypeScript and this one ships to a browser with no build
  * step — so its seven kind strings are repeated as literals. This file is
@@ -38,7 +47,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { AUDIT_KINDS, kindOf, type AuditKind, type AuditOp } from '../../src/core/audit.ts';
+import { AUDIT_KINDS, AUDIT_OPS, kindOf, type AuditKind, type AuditOp } from '../../src/core/audit.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
 const PUBLIC = path.join(REPO, 'src', 'ui', 'public');
@@ -61,13 +70,35 @@ interface ScreenInvalidation {
 
 async function loadLiveInvalidation(): Promise<{
   SCREEN_INVALIDATION: Record<string, ScreenInvalidation>;
+  CHROME_INVALIDATION: Record<string, ScreenInvalidation>;
   LIVE_INVALIDATION_DEBOUNCE_MS: number;
 }> {
   const file = LIVE_INVALIDATION_FILE.replaceAll('\\', '/');
   return (await import(new URL(`file://${file}`).href)) as {
     SCREEN_INVALIDATION: Record<string, ScreenInvalidation>;
+    CHROME_INVALIDATION: Record<string, ScreenInvalidation>;
     LIVE_INVALIDATION_DEBOUNCE_MS: number;
   };
+}
+
+/**
+ * Every key `app.js`'s `CHROME_REFILL` declares a refill for — extracted the
+ * same way `routedScreens()` extracts the screen list, and for the identical
+ * reason: a hand-copied list here would pass forever while the shell grew a
+ * fifth strip group. `CHROME_REFILL`'s values are one-line arrows, so the
+ * first `};` after the declaration closes the object.
+ */
+function chromeRefillKeys(): string[] {
+  const source = readFileSync(path.join(PUBLIC, 'app.js'), 'utf8');
+  const start = source.indexOf('const CHROME_REFILL = {');
+  assert.ok(
+    start >= 0,
+    'app.js no longer declares `const CHROME_REFILL = {` — this extraction is stale',
+  );
+  const end = source.indexOf('};', start);
+  assert.ok(end > start, 'no closing `};` found for CHROME_REFILL after its declaration');
+  const body = source.slice(start, end);
+  return [...body.matchAll(/^ {2}([a-z]+): \(\) =>/gm)].map((m) => m[1]!).sort();
 }
 
 /**
@@ -275,4 +306,135 @@ test('the debounce is a positive, finite, hardcoded number of milliseconds', asy
   const source = readFileSync(LIVE_INVALIDATION_FILE, 'utf8');
   assert.doesNotMatch(source, /process\.env|process\.argv/,
     'the debounce must be a literal, not read from the environment or argv');
+});
+
+/* ══ THE SHELL'S OWN CHROME — `CHROME_INVALIDATION` ═════════════════════════
+ *
+ * The status strip and the provenance bar are not screens: they have no route,
+ * `SCREENS` does not list them, and `renderChrome()` builds them once for the
+ * life of the page. That is exactly why they could not be a key in
+ * `SCREEN_INVALIDATION` — the gate above fails a key `app.js` routes no screen
+ * for, and loosening it to admit one would cost the check that catches a
+ * renamed screen. A sibling export in the same file, under the same gate, is
+ * what keeps "one declaration read by the shell and by the gate" true.
+ *
+ * The three tests below are the shape checks the screen table already gets.
+ * The BEHAVIOUR — a record lands and a strip segment changes with nothing
+ * reloaded — is `e2e/strip-live-refresh.spec.ts`, for the reason
+ * `e2e/preview-compact-continuity.spec.ts` states about its own subject: a row
+ * carrying the wrong kinds is perfectly well formed, and a test that asserts
+ * this table has one more key measures nothing about what the strip does.
+ */
+
+test('CHROME_INVALIDATION and app.js\'s CHROME_REFILL declare the SAME groups', async () => {
+  // Both directions, like the screen gate above. A declared group with no
+  // refill is a row that can never act; a refill with no declaration is a
+  // segment whose staleness nobody wrote down — and the second is the one
+  // that reads as a decision when it is an omission.
+  const { CHROME_INVALIDATION } = await loadLiveInvalidation();
+  assert.deepEqual(
+    Object.keys(CHROME_INVALIDATION).sort(), chromeRefillKeys(),
+    'the chrome groups app.js can refill and the groups this table declares have drifted apart',
+  );
+});
+
+test('every chrome entry\'s kinds is \'*\' or a de-duplicated array of real AuditKind values', async () => {
+  const { CHROME_INVALIDATION } = await loadLiveInvalidation();
+  const kinds = new Set<string>(AUDIT_KINDS);
+  const bad: string[] = [];
+  for (const [group, entry] of Object.entries(CHROME_INVALIDATION)) {
+    const value = entry.kinds;
+    if (value === '*') continue;
+    if (!Array.isArray(value)) { bad.push(`${group}: not '*' or an array`); continue; }
+    const seen = new Set<string>();
+    for (const kind of value) {
+      if (!kinds.has(kind)) bad.push(`${group}: "${kind}" is not in AUDIT_KINDS`);
+      if (seen.has(kind)) bad.push(`${group}: "${kind}" listed twice`);
+      seen.add(kind);
+    }
+  }
+  assert.deepEqual(bad, []);
+});
+
+/**
+ * **Every chrome row is `'auto'`, and this is the gate that keeps the day one
+ * is not from being a silent no-op.**
+ *
+ * `app.js`'s `setupLiveChrome` SKIPS a chrome row whose `refresh` is not
+ * `'auto'`, deliberately: the shared affordance in the strip is the SCREEN's,
+ * driven by a single `pendingScreenRefresh` slot, and borrowing it for chrome
+ * would take back a screen refresh the reader has not pressed yet — while a
+ * second control in the strip is a presentation change the design of record
+ * decides first. Skipping is the safe direction, and it is also the silent
+ * one, so this is what makes it loud: set a chrome row to `'ask'` and this
+ * fails, naming the affordance that has to exist before the row may change.
+ */
+test('every chrome entry is \'auto\' — the shell has no \'ask\' path for chrome', async () => {
+  const { CHROME_INVALIDATION } = await loadLiveInvalidation();
+  const bad: string[] = [];
+  for (const [group, entry] of Object.entries(CHROME_INVALIDATION)) {
+    if (entry.refresh !== 'auto') {
+      bad.push(`${group}: refresh is ${JSON.stringify(entry.refresh)}`);
+    }
+  }
+  assert.deepEqual(
+    bad, [],
+    'a chrome group asks to be REFRESHED ON DEMAND, and nothing in app.js draws that '
+    + 'affordance for chrome — `setupLiveChrome` skips such a row, so it would simply stop '
+    + 'refreshing. Design the control (the mockup is edited first) before changing the row.',
+  );
+});
+
+/**
+ * The two groups whose honest answer is "nothing", written down rather than
+ * left absent — the same distinction the three static screens carry above, and
+ * checked here for the same reason: `[]` and a missing key read identically
+ * unless something enforces the difference.
+ *
+ * `repo` is `/api/meta`'s git state, and no op in `AUDIT_OPS` records a
+ * commit, a checkout or a fetch. `audit` is the injections-today and append-p95
+ * segment, which `renderChrome()` draws as `strip.unmeasured` from no endpoint
+ * at all. Neither can be made stale by a record, and neither may be refetched
+ * on one: an item write that made the git group flicker would be the wasteful
+ * blanket this per-group table exists to refuse.
+ */
+test('the two chrome groups with no live source declare "nothing" explicitly', async () => {
+  const { CHROME_INVALIDATION } = await loadLiveInvalidation();
+  for (const group of ['repo', 'audit']) {
+    assert.deepEqual(
+      CHROME_INVALIDATION[group]?.kinds, [],
+      `${group} should be the reasoned-about "nothing" case: [], not absent and not '*'`,
+    );
+  }
+});
+
+/**
+ * **The provenance bar's subject is the LOG, so its row is `'*'` — and this
+ * holds that against `kindOf` rather than against seven strings someone
+ * typed.**
+ *
+ * `#provproj` asks `/api/watch/volume` for its `projectionState`. Every op
+ * this build has writes a line into a segment on disk, and a record is the
+ * ONLY moment that answer can change — `recordAudit` catches the projection up
+ * in the same call, so the ordinary case moves nothing, and the cases that DO
+ * move it (`keepProjectionCurrent` returning `unbuilt`, `foreign`, `diverged`
+ * or `failed`, which it never repairs) are indistinguishable from the ordinary
+ * one at the frame. So the row must hear every kind, and an enumerated list
+ * would mean "all of them" in seven strings plus an edit due the day an eighth
+ * kind ships — the staleness `live-invalidation.js` exists to refuse.
+ */
+test('the provenance bar declares a kind for every op that can move the projection', async () => {
+  const { CHROME_INVALIDATION } = await loadLiveInvalidation();
+  const declared = CHROME_INVALIDATION['prov']?.kinds;
+  if (declared === '*') return; // the honest spelling of "all of them"
+  assert.ok(Array.isArray(declared), 'prov has no kinds to check');
+  const missing = [...new Set(AUDIT_OPS.map((op) => kindOf(op)))]
+    .filter((kind) => !declared.includes(kind));
+  assert.deepEqual(
+    missing, [],
+    `${missing.join(', ')} — a record of these kinds is a line appended to the audit log, and `
+    + 'the projection upkeep that runs beside it is best-effort. A row that does not hear them '
+    + 'leaves the bar asserting "already current" over a projection that stopped being current, '
+    + 'which is the one thing that bar exists to make impossible.',
+  );
 });

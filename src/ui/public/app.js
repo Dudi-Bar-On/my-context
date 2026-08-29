@@ -140,7 +140,14 @@ import { BOUND_CAP_LIST } from '/screens/parts.js';
 // WHICH kinds make each screen stale, and whether that screen may be
 // rebuilt in place or must ask first — see "LIVE INVALIDATION" below and
 // that file's own header for why both facts live in the one table.
-import { LIVE_INVALIDATION_DEBOUNCE_MS, SCREEN_INVALIDATION } from '/lib/live-invalidation.js';
+// `CHROME_INVALIDATION` is the same declaration for the shell's OWN chrome —
+// the status strip's four groups and the provenance bar — which is not a
+// screen, has no route, and is built once for the life of the page. Same file,
+// same shape, same gate; a separate export because that table is keyed by
+// SCREEN NAME and its gate fails on a key `app.js` routes no screen for.
+import {
+  CHROME_INVALIDATION, LIVE_INVALIDATION_DEBOUNCE_MS, SCREEN_INVALIDATION,
+} from '/lib/live-invalidation.js';
 
 const SCREENS = {
   preview: () => import('/screens/preview.js'),
@@ -1282,6 +1289,109 @@ function setupLiveScreen(name, mod, section) {
   });
 }
 
+/* ══ LIVE INVALIDATION FOR THE SHELL'S OWN CHROME ══════════════════════════
+ *
+ * Owner, 2026-08-29: *"the refresh mechanism you already implemented should
+ * include also the status line."*
+ *
+ * The strip shows an item count, a git state, a context fullness and — one row
+ * up, same chrome, same fill pass — how the audit projection stood. All of
+ * those move while a person works, and until now nothing told the strip so:
+ * `renderChrome()` built it once, `fillChrome()` filled it once at boot, and
+ * its only recovery was the per-segment Refresh control. So the strip
+ * participates in live invalidation the way a screen does, off
+ * `CHROME_INVALIDATION` — see that table's own header for how each row's kinds
+ * were derived and why every row is `'auto'`.
+ *
+ * ── WHAT IS DIFFERENT FROM `setupLiveScreen`, AND WHY ────────────────────
+ *
+ *  1. **Subscribed ONCE, for the life of the page, never torn down.**
+ *     `teardownLiveScreen()` exists because a subscription opened by the
+ *     screen that just left is not the next screen's to keep receiving. The
+ *     strip never leaves. Re-arming it per route would be a subscription
+ *     churned twenty times a session for chrome that never changes.
+ *  2. **One subscription PER GROUP, each with its own timer.** The strip's
+ *     segments have different sources, so a blanket re-fill on every record
+ *     would refetch four endpoints to redraw one of them — and would make the
+ *     git group flicker for an item write, over a fact no audit record can
+ *     move. Each group subscribes to its own kinds and refills its own
+ *     segment; a group whose kinds are `[]` never subscribes at all, which is
+ *     what makes "do not refetch what has not changed" structural rather than
+ *     a promise. Separate timers for the reason the debounce constant's own
+ *     header gives: one group's burst must not delay another group's refill.
+ *  3. **No `'ask'` path.** `showLiveAffordance` is the SCREEN's affordance,
+ *     driven by the single `pendingScreenRefresh` slot that belongs to
+ *     whichever screen is on show; borrowing it for chrome would take back a
+ *     screen refresh the reader has not pressed yet, and a second control in
+ *     the strip is a PRESENTATION change the design of record decides first.
+ *     A row that is not `'auto'` is therefore SKIPPED here rather than
+ *     silently auto-refreshed, and `test/ui/live-invalidation.test.ts` fails
+ *     on any such row so it cannot be introduced quietly.
+ *
+ * The three named states survive by construction, because this calls the same
+ * fillers the boot and the Refresh buttons call: a refill whose endpoint
+ * refuses draws `strip.unread` and offers the call again, `strip.unmeasured`
+ * belongs to the `audit` group which fetches nothing and is never refilled,
+ * and a measured zero is drawn as `0`. Each filler also collects its nodes
+ * and swaps them in with ONE `replaceChildren` at the end, so no segment is
+ * ever momentarily blank — see `fillItems`.
+ */
+const CHROME_REFILL = {
+  // Declared for the key even though `kinds: []` means it is never called:
+  // this object and `CHROME_INVALIDATION` are held to the SAME key set by
+  // `test/ui/live-invalidation.test.ts`, in both directions, so a row that
+  // gains kinds cannot find itself with nothing to run.
+  repo: () => { const el = document.getElementById('gitstate'); if (el !== null) void fillGit(el); },
+  corpus: () => { const el = document.getElementById('stripitems'); if (el !== null) void fillItems(el); },
+  session: () => { void fillContext(); },
+  // `renderChrome()` builds this group from no endpoint at all — there is
+  // nothing to fetch and nothing to make stale. A no-op, and not an absence:
+  // the key is what says somebody looked.
+  audit: () => {},
+  prov: () => { void fillProvenance(); },
+};
+
+/**
+ * The chrome's unsubscribes, empty until `setupLiveChrome()` runs once — and
+ * NOTHING CALLS THEM, deliberately. There is no `teardownLiveChrome()` beside
+ * `teardownLiveScreen()` because there is no moment to call it at: the strip
+ * outlives every route and dies only with the page, which is when the shared
+ * connection goes too. Kept as handles rather than a bare boolean so the state
+ * a reader finds here is "these five subscriptions, still open" rather than
+ * "armed", and so a future teardown has something to call.
+ */
+const liveChromeUnsubs = [];
+
+/**
+ * Arm the chrome's subscriptions. Idempotent and once-ever, the same shape as
+ * `ensureLiveStream()` and for the same reason: `renderChrome()` runs a second
+ * time when a pasted nonce redeems in place, and a second set of subscribers
+ * would refill every segment twice for one record.
+ */
+function setupLiveChrome() {
+  if (liveChromeUnsubs.length > 0) return;
+  for (const [group, decl] of Object.entries(CHROME_INVALIDATION)) {
+    const refill = CHROME_REFILL[group];
+    if (refill === undefined) continue;
+    // "Nothing invalidates me" costs nothing: no subscription, no timer, and
+    // no chance of a refetch for a record this segment does not read.
+    if (decl.kinds !== '*' && decl.kinds.length === 0) continue;
+    // See point 3 above. Skipping is the safe direction — it draws nothing and
+    // discards nothing — and the gate is what makes it loud.
+    if (decl.refresh !== 'auto') continue;
+    let timer = null;
+    liveChromeUnsubs.push(subscribeStream(decl.kinds, (event) => {
+      // Filtered here for the reason `setupLiveScreen` filters here: `hello`
+      // and `fault` reach every subscriber regardless of `kinds`, and `prov`
+      // asks for `'*'`, so without this a stream-level frame would refill a
+      // segment nothing invalidated.
+      if (event !== 'record') return;
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; refill(); }, LIVE_INVALIDATION_DEBOUNCE_MS);
+    }));
+  }
+}
+
 let stopHeartbeat = () => {};
 
 function currentSession() { return sessionValue; }
@@ -1664,6 +1774,11 @@ function tokenCount(n) {
  * The two halves are separate functions because each is its own retry target:
  * a failed `/api/meta` must not take the item count down with it, and asking
  * again must ask for the one thing that failed.
+ *
+ * **They are now each a live-REFILL target too**, for the same reason one step
+ * further on: `CHROME_INVALIDATION` declares different kinds per group, and
+ * `setupLiveChrome` calls exactly the filler whose source moved. This whole
+ * function runs at boot and never again — nothing wholesale re-fills the strip.
  */
 async function fillChrome() {
   const git = document.getElementById('gitstate');
@@ -1698,7 +1813,6 @@ async function fillChrome() {
 async function fillProvenance() {
   const proj = document.getElementById('provproj');
   if (proj === null) return;
-  proj.replaceChildren();
   const label = document.createElement('span');
   label.id = 'provprojlabel';
   label.dataset.k = 'prov.projLabel';
@@ -1714,11 +1828,17 @@ async function fillProvenance() {
     state.append(...translate(table.strings, 'prov.projFailed',
       { error: err instanceof Error ? err.message : String(err) }));
   }
-  proj.append(label, document.createTextNode(' '), state);
+  // Swapped in at the END, never cleared first. See `fillItems`.
+  proj.replaceChildren(label, document.createTextNode(' '), state);
 }
 
 async function fillGit(git) {
-  git.replaceChildren();
+  // Collected and swapped in below, for the reason `fillItems` states: a live
+  // refill that CLEARS first shows a blank where a named state was, for as
+  // long as the fetch takes. A plain array rather than a DocumentFragment —
+  // `replaceChildren` spreads it just the same, and `test/ui/pane-float.test.ts`
+  // drives this file against a minimal document stub.
+  const parts = [];
   const keyed = (key, subs) => {
     const el = document.createElement('span');
     el.dataset.k = key;
@@ -1743,29 +1863,47 @@ async function fillGit(git) {
     // it could not understand — and there `upstream: 'unknown'` is what should
     // render, never "on a branch".
     if (g === undefined || g === null) {
-      git.append(keyed('strip.notARepo', {}));
+      parts.push(keyed('strip.notARepo', {}));
     } else if (typeof g.branch === 'string') {
-      git.append(keyed('strip.branch',
+      parts.push(keyed('strip.branch',
         { branch: g.branch, commit: String(g.commit ?? '').slice(0, 7) }));
       const key = g.upstream === 'in-sync' ? 'strip.inSync'
         : g.upstream === 'differs' ? 'strip.differs'
           : g.upstream === 'no-upstream' ? 'strip.noUpstream' : 'strip.unknownTip';
-      git.append(chip(key, { branch: g.branch }, g.upstream === 'in-sync'));
+      parts.push(chip(key, { branch: g.branch }, g.upstream === 'in-sync'));
     } else if (g.detached === true) {
-      git.append(keyed('strip.detached', { commit: String(g.commit ?? '').slice(0, 7) }));
+      parts.push(keyed('strip.detached', { commit: String(g.commit ?? '').slice(0, 7) }));
     } else {
-      git.append(chip('strip.unknownTip', {}, false));
+      parts.push(chip('strip.unknownTip', {}, false));
     }
   } catch {
     // A failed read is not "not a git repository" — that half of the old
     // reasoning stands, and `strip.notARepo` is still never drawn from here.
     // What changed is that it is not a BLANK either. See `unreadState`.
-    git.append(...unreadState(() => { void fillGit(git); }));
+    parts.push(...unreadState(() => { void fillGit(git); }));
   }
+  git.replaceChildren(...parts);
 }
 
+/**
+ * **Swapped in at the END with one `replaceChildren` — never cleared first**,
+ * and the same is now true of `fillGit`, `fillContext` and `fillProvenance`.
+ *
+ * These functions used to open with `el.replaceChildren()` and append after
+ * the `await`, which was harmless while the only caller was a boot filling an
+ * empty strip. `CHROME_INVALIDATION` gives them a second caller — a live
+ * refill of a segment that is already SAYING something — and there the clear
+ * blanks a drawn value, a named `strip.unread`, or a measured zero for as long
+ * as the fetch takes. `STD-a-measured-zero-is-drawn-and-named-an-unmeasured
+ * -thing-is` clause 3 is the whole reason those named states exist: "a blank is
+ * indistinguishable from a failure to load". A blank that appears BECAUSE the
+ * data moved would be that defect arriving through the mechanism built to end
+ * it, and it would arrive on the segments a reader watches most.
+ *
+ * One statement writes the segment, so it goes from the old answer to the new
+ * one with nothing in between.
+ */
 async function fillItems(count) {
-  count.replaceChildren();
   const label = document.createElement('span');
   label.dataset.k = 'strip.items';
   label.append(...translate(table.strings, 'strip.items'));
@@ -1776,10 +1914,10 @@ async function fillItems(count) {
     // A measured zero is DRAWN and named — an empty corpus is a finding and
     // the reader is entitled to it (clause 1 of the same standard).
     value.textContent = String(status.items.total);
-    count.append(value, document.createTextNode(' '), label);
+    count.replaceChildren(value, document.createTextNode(' '), label);
   } catch {
     value.textContent = '—';
-    count.append(value, document.createTextNode(' '), label,
+    count.replaceChildren(value, document.createTextNode(' '), label,
       ...unreadState(() => { void fillItems(count); }));
   }
 }
@@ -1818,9 +1956,11 @@ async function fillItems(count) {
 async function fillContext() {
   const ctx = document.getElementById('ctx');
   if (ctx === null) return;
-  ctx.replaceChildren();
+  // Collected and swapped in at every exit below, never cleared first. See
+  // `fillItems` for why that matters now that this has a second caller.
+  const parts = [];
   const retry = () => { void fillContext(); };
-  if (noCredential) { ctx.append(...unreadState(retry)); return; }
+  if (noCredential) { ctx.replaceChildren(...unreadState(retry)); return; }
 
   const session = currentSession();
   let body = null;
@@ -1828,7 +1968,7 @@ async function fillContext() {
     try {
       body = await api('/api/watch/context?session=' + encodeURIComponent(session));
     } catch {
-      ctx.append(...unreadState(retry));
+      ctx.replaceChildren(...unreadState(retry));
       return;
     }
   }
@@ -1873,7 +2013,7 @@ async function fillContext() {
   // a dead end — the same rule the no-bridge state above follows for a
   // different reason.
   if (state.title === '') state.title = state.textContent;
-  ctx.append(state);
+  parts.push(state);
 
   // The project-knowledge share is a SECOND question, asked only of `known` —
   // the mockup's own rule, and the right one: "6.2k of it" has no antecedent
@@ -1906,8 +2046,9 @@ async function fillContext() {
         injections: String(view.myctx.injections),
       }));
     }
-    ctx.append(tail);
+    parts.push(tail);
   }
+  ctx.replaceChildren(...parts);
 }
 
 // --- The rail's count badges ------------------------------------------------
@@ -2299,6 +2440,12 @@ async function main() {
   // the first data call so the 56px band never exists, not even for a frame.
   renderChrome();
   void fillChrome();
+  // The strip's own live invalidation, armed HERE — beside the two calls that
+  // build and fill it, and before the first call that can fail, for the same
+  // reason the heartbeat and the nonce listener are: a page whose session read
+  // was refused still has a strip, and a strip that never learns anything
+  // moved is the state this exists to end. Once-ever; see `setupLiveChrome`.
+  setupLiveChrome();
 
   // **THE RECOVERY PATH AND THE HEARTBEAT ARE INSTALLED BEFORE THE FIRST CALL
   // THAT CAN FAIL. That ordering is the whole fix; see below.**

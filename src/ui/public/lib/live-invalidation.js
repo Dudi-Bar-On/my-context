@@ -278,6 +278,165 @@ export const SCREEN_INVALIDATION = {
   packs: { kinds: ['mutation'], refresh: 'ask' },
 };
 
+// ══ THE SHELL'S OWN CHROME — THE STATUS STRIP AND THE PROVENANCE BAR ═══════
+//
+// Owner, this morning: *"the refresh mechanism you already implemented should
+// include also the status line."*
+//
+// ── WHY A SECOND EXPORT IN THIS FILE, AND NOT A KEY IN THE TABLE ABOVE ────
+//
+// `SCREEN_INVALIDATION` is keyed by SCREEN NAME, and that is not decoration:
+// `test/ui/live-invalidation.test.ts` reads the screen list out of `app.js`'s
+// own `SCREENS` object and holds the table to it in BOTH directions — a routed
+// screen with no key fails, and a key `app.js` routes no screen for fails too
+// ("declared, but app.js routes no such screen"). A `strip` key in that object
+// is an orphan by that gate's own definition, and loosening the gate to admit
+// it would cost exactly the check that catches a renamed screen.
+//
+// The header above argues for ONE TABLE read by the shell and by the gate, and
+// that argument is kept rather than dodged: what it forbids is a screen's
+// STALENESS and a screen's SAFETY living in two maps that can drift out of
+// step about the same row. This is not a second map about those rows. It is
+// the same declaration, in the same file, under the same gate, about a
+// DIFFERENT SUBJECT — chrome that is not a screen, has no route, is built once
+// and outlives every navigation. One file, read by the shell and by the gate;
+// two tables only because the two subjects are keyed by different things and a
+// single key space would have to lie about one of them.
+//
+// ── WHY PER GROUP, AND NOT ONE ROW FOR "THE STRIP" ───────────────────────
+//
+// Because the strip has four sources and one row cannot carry four answers.
+// The segments do not share a blocker (`app.js`'s `renderChrome` header
+// records that assuming they did is how forty missing segments were explained
+// by two) and they do not share a source either, so a single row would be the
+// widest of the four applied to all of them: the git group refetched on every
+// item write, flickering for a fact no audit record can move. Keyed by the
+// group as the strip itself is grouped — `repo`, `corpus`, `session`, `audit`
+// — plus `prov` for the provenance bar above it, which is the same chrome, the
+// same fill pass and the same argument.
+//
+// ── HOW EACH ROW WAS DERIVED — from the endpoint each segment reads, the
+//    same method the screen table's own derivation block uses ─────────────
+//
+//   repo     `#gitstate`, filled by `fillGit` from `/api/meta` — branch,
+//            short commit and the upstream chip. Git state is moved by
+//            committing, checking out and fetching, and NO op in
+//            `core/audit.ts` records any of them: `MUTATION_OPS` is ten item
+//            edits, `HOOK_OPS` sixteen Claude Code events, and the remaining
+//            five kinds are injections, focus, refusals, step ticks and
+//            command runs. Nothing this log can carry changes what this
+//            segment says, so the honest entry is `[]` — the same
+//            written-down "nothing" `docs`, `tut` and `port` carry above,
+//            and the direct answer to "do not refetch what has not changed":
+//            an item write must not make the git group flicker, and with no
+//            kind declared it cannot.
+//   corpus   `#stripitems`, filled by `fillItems` from `/api/status` —
+//            `items.total`, a count over `store.all()`. The `status` SCREEN
+//            row above derives the identical dependency from the identical
+//            endpoint and lands on `['mutation']`; this segment draws one of
+//            the three counts that screen draws, so it inherits that
+//            derivation rather than re-deriving it differently.
+//   session  `#ctx`, filled by `fillContext` from `/api/watch/context`. Two
+//            halves, and only one of them is reachable from this log.
+//            The context PERCENTAGE comes from the status-line tee
+//            (`watch-model.ts`'s `readTee`), written by `mycontext
+//            statusline` on Claude Code's own per-message hook — a command
+//            that records NO audit record at all (checked: `statusline.ts`
+//            reads the projection and never appends to the log), so no kind
+//            announces it and this table may not pretend one does.
+//            The project-knowledge share IS reachable: it is
+//            `queryProjection(db, { sessionId, kind: 'injection' })`, summed
+//            — `injection` records and nothing else move that number.
+//            `['injection']`, for the half the stream can actually speak
+//            for.
+//   audit    `#auditstate` — injections today and the audit append p95, both
+//            permanently `strip.unmeasured` because no endpoint on this read
+//            surface exposes an aggregate over the audit log (`renderChrome`'s
+//            own header, in full). It is built by `renderChrome` and fetches
+//            nothing, so there is nothing a record could make stale. `[]`,
+//            and it is written down for the reason the three static screens'
+//            `[]` is: on the day that aggregate lands this row is where its
+//            kinds go, and an absent key would read as nobody having looked.
+//   prov     `#provproj`, filled by `fillProvenance` from `/api/watch/volume`
+//            — asked for its `projectionState` and not for its series. `'*'`,
+//            and the derivation is worth writing out because the obvious
+//            version of it is WRONG. Every record of every kind is a line
+//            appended to a segment on disk, and `projectionState`
+//            (`core/audit-db.ts`) answers `behind` the moment a segment is
+//            larger than the bytes the projection consumed — but `recordAudit`
+//            does not stop at the append: it calls `keepProjectionCurrent` in
+//            the same call, so in the ORDINARY case the projection is caught
+//            up before anyone can read it and this bar's answer does not move
+//            at all. What makes the row `'*'` is the other case, which is the
+//            one the bar exists for: that upkeep is best-effort and returns
+//            `unbuilt`, `foreign`, `diverged` or `failed` without repairing
+//            anything (`keepProjectionCurrent` "never rebuilds, and never
+//            creates a projection that does not exist"), and a read surface
+//            may not catch a projection up either, because syncing is a write.
+//            So a record is the ONLY moment this bar's answer can change, and
+//            whether it DID change is precisely what the frame cannot say —
+//            the difference between the two cases is on disk, not in the
+//            record. Asking again is one indexed row and one column; not
+//            asking means an upkeep that silently failed goes unreported until
+//            somebody reloads, over a projection every other screen is being
+//            refused from. This row's subject is the LOG ITSELF, the same
+//            reason `watch` and `ask` carry `'*'` above, and an enumerated
+//            list would be seven strings meaning "all of them" plus an edit
+//            due on the day an eighth kind ships.
+//
+// **Why `session` is not `'*'` for the same reason `prov` is.** The share the
+// context group draws also becomes UNAVAILABLE when the projection cannot be
+// read (`/api/watch/context` answers 200 with `mycontextError` rather than
+// refusing), so a case can be made that any kind moves it too. It is not made
+// here: the freshness of the projection is a single fact about the shell, the
+// provenance bar exists to state it, and `prov` states it on every kind. A
+// second segment refetching on every record to redraw the same disclosure one
+// line lower is the wasteful blanket this task's own bounds refuse. `session`
+// declares what moves its VALUE; `prov` declares what moves its AVAILABILITY,
+// once, where the reader is already looking for it.
+//
+// ── `auto`, ON EVERY ROW, AND THE ARGUMENT FOR IT ────────────────────────
+//
+// The property `DEC-a-refresh-keeps-the-reader-s-place-or-it-asks` names, and
+// `'auto'` is only safe where a rebuild can discard NOTHING. The header above
+// lists what makes a screen `'ask'`: an editable field or an open confirm
+// holding a single-use nonce, client-only interaction state no fetch carries,
+// and rows whose order or presence a mutation can change under an open pane.
+// The strip holds none of the three, and this was checked against what
+// `renderChrome`/`fillChrome` actually build rather than assumed from its size:
+// every segment is a label, a value, a chip or a retry button, all of them
+// rebuilt from the same fetch that drew them; there is no input, no selection,
+// no filter, no ordering, no scroll container (`.strip` is its own grid row,
+// outside `.body`'s `overflow-y:auto`) and no pane. Sixteen screens are `'ask'`
+// because a rebuild there costs a reader something; a rebuild here costs
+// nothing, and it is ambient provenance a reader SCANS rather than a place a
+// reader is working. Waiting to be pressed would leave the wrong number on the
+// bar whose entire job is to be right about the moment.
+//
+// The per-segment Refresh control is untouched by that and is not the same
+// affordance: live refresh answers "the data moved", `strip.unread` answers
+// "the call failed and I want to retry", and only the second is a thing a
+// reader asks for.
+//
+// **`'ask'` HAS NO IMPLEMENTATION FOR CHROME, DELIBERATELY, AND THE GATE SAYS
+// SO.** `app.js`'s `showLiveAffordance` is the SCREEN's affordance: one line
+// and one control in this same strip, driven by a single `pendingScreenRefresh`
+// slot that belongs to whichever screen is on show. A chrome row set to `'ask'`
+// would either clobber that slot — taking back a screen refresh the reader has
+// not pressed yet — or need a new visible control in the strip, which is a
+// PRESENTATION change and the mockup is edited first. So the shell skips a
+// chrome row that is not `'auto'` rather than guessing, and
+// `test/ui/live-invalidation.test.ts` fails on any row that is not `'auto'`:
+// the day one needs to ask, the affordance gets designed before the row
+// changes, instead of the row changing and nothing happening.
+export const CHROME_INVALIDATION = {
+  repo: { kinds: [], refresh: 'auto' },
+  corpus: { kinds: ['mutation'], refresh: 'auto' },
+  session: { kinds: ['injection'], refresh: 'auto' },
+  audit: { kinds: [], refresh: 'auto' },
+  prov: { kinds: '*', refresh: 'auto' },
+};
+
 // ── THE DEBOUNCE, STATED RATHER THAN TUNED ─────────────────────────────────
 //
 // One mutation is several rows, already true of code that ships today: a
@@ -301,4 +460,15 @@ export const SCREEN_INVALIDATION = {
 // value would turn "the burst is coalesced" into a second variable every
 // screen's author has to reason about, for a number nothing here claims to
 // have tuned.
+//
+// **The chrome above reuses this value rather than declaring a second one**,
+// and for a stronger reason than tidiness: one act writing several rows is
+// exactly the case that hits the strip hardest, because a single
+// `mycontext add` run through Execute, above, is a `mutation` the corpus
+// group wants AND two `execution`
+// rows the provenance bar wants, all inside one turnaround. Two independent
+// numbers would let those two segments settle at different moments and show a
+// reader a strip that is half old, for a burst that was one thing happening.
+// Each SUBSCRIPTION keeps its own timer — a per-group burst must not hold up
+// another group's refill — and every one of them counts to this.
 export const LIVE_INVALIDATION_DEBOUNCE_MS = 500;
