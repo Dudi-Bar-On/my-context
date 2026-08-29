@@ -52,6 +52,7 @@
  * nothing.
  */
 import { test, expect } from './app.ts';
+import { settleScreen } from './settle.ts';
 
 /** `tag.class1.class2`, classes sorted, for one visible element. */
 const COLLECT_KINDS = (selector: string): string[] | null => {
@@ -626,59 +627,14 @@ test('every screen draws every KIND of element its mockup section draws', async 
   const report: string[] = [];
   const stale: string[] = [];
 
-  /**
-   * **How many `/api` reads this page still has in flight.**
-   *
-   * The settle loop below asks whether the element count STOPPED CHANGING, and
-   * that is not the same question as whether the screen finished loading. Every
-   * screen builds its cards synchronously and fills them when its fetches
-   * resolve, so between `root.append(card)` and the response landing the count
-   * is stable — and two samples 400ms apart inside that window declare a
-   * half-drawn screen settled.
-   *
-   * **Measured 2026-08-28, and it is a false RED rather than a false green.**
-   * With `.demo-corpus` rebuilt to 679 items, `/api/simulate/sweep` — one
-   * server-side call that runs the whole selector once per rung — grew slow
-   * enough under four-worker contention to land after the loop had settled, and
-   * the Simulate screen was reported as missing `svg.chart`, `line.axis`,
-   * `path.step` and `text.mono`. Every one of those is built and correct; the
-   * screen was compared before it had drawn. It passed alone, on both projects,
-   * every time. That is exactly the wall-clock failure wearing an assertion's
-   * clothes that this test's own header calls the worst kind of red, arriving
-   * through the one hole the `settled` flag does not cover.
-   *
-   * So the loop now requires BOTH: nothing in flight, and the count stable.
-   * Nothing about the comparison is relaxed — this only stops it being taken
-   * against a screen whose answers had not arrived.
-   *
-   * **`/api/watch/stream` is excluded, because it never finishes.** It is the
-   * shell's one live connection, held open by design (`live-stream.spec.ts`:
-   * "the connection is opened once and shared"), so counting it would leave
-   * this permanently non-zero from the first visit to Watch onward and turn
-   * every later screen into a 10-second timeout.
-   *
-   * **It counts REQUEST OBJECTS, not events, and that is not a refinement.**
-   * A bare `+1 / -1` over the two events assumes every completion this page
-   * reports was also STARTED under these listeners, and the landing screen
-   * breaks that assumption: `app` navigates and resolves as soon as the rail is
-   * visible, while `screens/preview.js`'s boot render is still awaiting
-   * `/api/select`, `/api/simulate`, `/api/items` and `/api/injection-history`.
-   * Those four start BEFORE the handlers below are attached and finish after, so
-   * the counter is decremented for requests it never incremented for and lands
-   * NEGATIVE — measured 2026-08-29 as `-1`, on the first screen in the list.
-   *
-   * `pending !== 0` is then never true again and every screen exhausts its 25
-   * samples: a permanent red carrying the word "still fetching" about a screen
-   * that finished ten seconds earlier. Clamping at zero would hide it and would
-   * also mask a real leak; a set of the requests this listener actually saw
-   * start is the counter the loop meant to have.
-   */
-  const inFlight = new Set<import('@playwright/test').Request>();
-  const counts = (url: string): boolean => url.includes('/api/') && !url.includes('/api/watch/stream');
-  const done = (r: import('@playwright/test').Request): void => { inFlight.delete(r); };
-  page.on('request', (r) => { if (counts(r.url())) inFlight.add(r); });
-  page.on('requestfinished', done);
-  page.on('requestfailed', done);
+  // **The settle this walk needs is `e2e/settle.ts`, and it is shared.**
+  //
+  // The whole argument — why the element count stopping is not the same
+  // question as the screen having finished, why the reads in flight are held as
+  // a SET OF REQUEST OBJECTS rather than a counter that went negative on the
+  // landing screen and inverted this very wait, and why the router's holding
+  // chip has to be GONE before any of it means anything — lives there, written
+  // once for the four walks that were each carrying their own copy of it.
 
   try {
     for (const screen of BUILT) {
@@ -703,9 +659,10 @@ test('every screen draws every KIND of element its mockup section draws', async 
       // have written a ledger full of gaps that do not exist, which is worse
       // than no ledger at all.
       //
-      // Two consecutive equal counts, sampled 400ms apart, is the signal: a
-      // screen still fetching changes between samples. Capped so a genuinely
-      // empty screen fails on the assertion below rather than hanging here.
+      // What that signal actually is now lives in `settle.ts`: the router's
+      // holding chip gone, nothing in flight, and the count stopped moving.
+      // Capped so a genuinely empty screen fails on the assertion below rather
+      // than hanging here.
       //
       // **The cap needs a failure of its own, and this is why.** Until
       // 2026-08-27 exhausting these 25 attempts fell straight through to the
@@ -720,21 +677,14 @@ test('every screen draws every KIND of element its mockup section draws', async 
       // it was slow. Nothing about the comparison is relaxed — an unsettled
       // screen produces no ledger verdict at all, which is the only honest
       // answer when the measurement never finished.
-      let previous = -1;
-      let settled = false;
-      for (let attempt = 0; attempt < 25; attempt++) {
-        const now = await page.evaluate(
-          (s) => document.querySelectorAll(`[data-p="${s}"] *`).length, screen);
-        if (now > 0 && now === previous && inFlight.size === 0) { settled = true; break; }
-        previous = now;
-        await page.waitForTimeout(400);
-      }
-      expect(previous, `${screen}: never rendered anything`).toBeGreaterThan(0);
-      expect(settled,
-        `${screen}: still growing, or still fetching (${inFlight.size} \`/api\` reads in flight), after `
-        + '25 samples over 10s — it was NOT compared, because a half-drawn screen would be '
-        + 'reported as missing what the mockup draws and read exactly like a regression. This is '
-        + 'a LOAD failure: run this spec alone before believing anything about the ledger.')
+      const walk = await settleScreen(page, screen);
+      expect(walk.count, `${screen}: never rendered anything`).toBeGreaterThan(0);
+      expect(walk.settled,
+        `${screen}: still growing, still holding the router's unread chip, or still fetching `
+        + `(${walk.inFlight} \`/api\` reads in flight), after 25 samples over 10s — it was NOT `
+        + 'compared, because a half-drawn screen would be reported as missing what the mockup '
+        + 'draws and read exactly like a regression. This is a LOAD failure: run this spec alone '
+        + 'before believing anything about the ledger.')
         .toBe(true);
       const appKinds = (await page.evaluate(COLLECT_KINDS, `[data-p="${screen}"]`)) ?? [];
 

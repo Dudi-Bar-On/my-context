@@ -39,6 +39,7 @@
  * happens to compose the right thing.
  */
 import { test, expect } from './app.ts';
+import { settleScreen } from './settle.ts';
 import type { Page } from '@playwright/test';
 
 /**
@@ -198,32 +199,29 @@ async function buttonsOn(
   // the count has stopped moving" answers "is everything this screen is going
   // to draw actually drawn".
   //
+  //
+  // **And the third fact `settle.ts` adds is the one this file was one small
+  // change away from being bitten by.** The stability half alone is satisfied
+  // by the router's holding chip — two elements, present from the first frame,
+  // never changing. This spec survived only because it additionally required a
+  // real `<button>` and `stateChip` builds a `<span>`; the moment a holding
+  // state rendered a button, every `EXPECTED_EMPTY` screen and every other one
+  // would have been measured on the chip. `TASK-two-more-e2e-settles-can-be-
+  // satisfied-by-the-router-holding` (plan:walk seq:83) is that reading, and
+  // this is it closed rather than left latent.
+  //
   // `EXPECTED_EMPTY` screens genuinely draw no button, ever — requiring one
-  // there would just burn the full cap every run. They keep the original
-  // stability-only proxy, which is the right (and only) tool for a screen
-  // with no button to wait for.
-  let previous = -1;
-  let settled = false;
-  const waitForNoButtonProxy = EXPECTED_EMPTY.has(screen);
-  for (let attempt = 0; attempt < 25; attempt += 1) {
-    // One evaluate, not two: both readings must come from the SAME DOM
-    // snapshot, or a button that appears between two separate round-trips
-    // could pair a stale count with a fresh hasButton and settle on a
-    // combination that was never simultaneously true.
-    const { count, hasButton } = await page.evaluate((s) => ({
-      count: document.querySelectorAll(`[data-p="${s}"] *`).length,
-      hasButton: document.querySelector(`[data-p="${s}"] button`) !== null,
-    }), screen);
-    const stable = count > 0 && count === previous;
-    if (waitForNoButtonProxy ? stable : (hasButton && stable)) { settled = true; break; }
-    previous = count;
-    await page.waitForTimeout(400);
-  }
+  // there would just burn the full cap every run. They are the one case that
+  // asks for no fourth fact; the other three still hold for them.
+  const { settled } = await settleScreen(page, screen, {
+    ...(EXPECTED_EMPTY.has(screen) ? {} : { requires: 'button' }),
+  });
   // The cap fails as ITSELF. Falling through would judge a half-drawn screen
   // and report a load failure as a contrast defect — a message about
   // correctness produced by a slow machine, which is the shape
   // `LESSON-every-bound-on-waiting-must-fail-as-itself-or-a-slow` names.
-  expect(settled, `${screen}: still growing after 25 samples over 10s — NOT measured. `
+  expect(settled, `${screen}: still growing, still holding the router's unread chip, or `
+    + 'still fetching after 25 samples over 10s — NOT measured. '
     + 'Run this spec alone before believing anything it says.').toBe(true);
   const found = (await page.evaluate(COLLECT, `[data-p="${screen}"]`)) as Omit<ButtonReport, 'screen'>[] | null;
   // `null` means the section itself is not in the DOM — a different failure from

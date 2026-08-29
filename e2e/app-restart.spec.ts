@@ -19,6 +19,7 @@
  */
 import { test as base, expect } from '@playwright/test';
 import { spawnUiChild, type UiHarness } from '../test/ui/helpers.ts';
+import { startOnSafePort } from '../test/ui/unsafe-ports.ts';
 import { CORPUS } from './app.ts';
 
 /** Rendered means a rail AND real content, never merely a 200. */
@@ -36,7 +37,16 @@ base('a page open across a server restart recovers on a plain reload', async ({ 
   let first: UiHarness | null = null;
   let second: UiHarness | null = null;
   try {
-    first = await spawnUiChild(CORPUS, ['--port', '0']);
+    // **Through `startOnSafePort`, like every other server this suite opens.**
+    // `spawnUiChild` is called directly here rather than `startUiChild` because
+    // the RESTART below has to reuse this exact port — but calling it bare left
+    // the one screening `startUiChild` exists to do undone, and a port from
+    // Chrome's restricted list dies on the navigation with
+    // `net::ERR_UNSAFE_PORT` and no assertion behind it
+    // (`TASK-tests-that-bind-a-port-without-the-safe-port-guard-fail-with`,
+    // plan:walk seq:82). Screening the FIRST port is enough for both: the
+    // second server is handed the same number.
+    first = await startOnSafePort(() => spawnUiChild(CORPUS, ['--port', '0']));
     const port = first.port;
 
     // The path a person takes: open the printed link, let the PAGE redeem the

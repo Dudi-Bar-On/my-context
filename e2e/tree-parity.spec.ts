@@ -39,6 +39,7 @@
  */
 import { test, expect } from './app.ts';
 import { MOCKUP_URL, SCREENS, showScreen } from './mockup.ts';
+import { settleScreen } from './settle.ts';
 import {
   EXTRACT_TREE, diffTrees, classify, rootDivergence, vocabulary,
   type Divergence, type TreeNode,
@@ -319,57 +320,18 @@ test('inventory: the element TREE of every screen against its mockup section',
     const unmeasurable: string[] = [];
     const timings: ScreenTiming[] = [];
 
-    /**
-     * `/api` reads still in flight, excluding the shell's one live stream,
-     * which never finishes. The settle loop below asks whether the element
-     * count stopped changing, and a screen that has appended its cards and is
-     * waiting for their data is stable while it is still half-drawn —
-     * `e2e/screen-parity.spec.ts` carries the measurement (2026-08-28,
-     * `/api/simulate/sweep` landing after the loop settled) and the same
-     * two-part condition.
-     *
-     * ── IT COUNTS REQUEST OBJECTS, AND THAT IS THE WHOLE BUG THIS FILE HAD ──
-     *
-     * Until 2026-08-29 this was a bare `+1 / -1` over the two events, which
-     * assumes every completion the page reports was also STARTED under these
-     * listeners. The `app` fixture breaks that assumption by design: it
-     * resolves as soon as a rail button is visible, while `screens/preview.js`
-     * is still awaiting its boot reads. Those start BEFORE the handlers below
-     * are attached and finish after, so the counter is decremented for
-     * requests it never incremented for and lands at **-1** — measured here,
-     * on this file, in three consecutive runs.
-     *
-     * A permanent offset of -1 does not merely make `pending === 0`
-     * unreachable. It INVERTS the condition: "nothing in flight" now reads
-     * false, and "exactly one read still in flight" reads true. Both halves of
-     * that were measured on 2026-08-29, in one run of this spec alone:
-     *
-     *   preview, simulate, doctor, work, port, packs, docs, learn
-     *       exhausted all 25 samples — 18.2s, 27.6s, 11.7s, 12.5s, 12.4s,
-     *       19.2s, 35.5s, 31.3s of pure waiting on a screen that had finished.
-     *       That is 168 of the run's 216 seconds, and it is why the same spec
-     *       ran 34s one time and timed out at 240s the next.
-     *   coverage, injected, ask, decay, graph, status, capture, palette,
-     *   config, tut
-     *       broke on the SECOND sample with **3 nodes** in the section — the
-     *       heading and nothing else — because the offset made the in-flight
-     *       half true while the first read was still outstanding. Compared at
-     *       712, 56, 372, 903, 39, 27, 19, 66, 87 and 54 nodes on a healthy
-     *       run. Ten of twenty-one screens were inventoried EMPTY and the
-     *       test passed, which is the worse half: a slow spec is visible and
-     *       a fabricated inventory is not.
-     *
-     * Clamping at zero would hide both and would also mask a real leak. A set
-     * of the requests these listeners actually saw start is the counter the
-     * loop always meant to have.
-     */
-    const inFlight = new Set<import('@playwright/test').Request>();
-    const counts = (url: string): boolean =>
-      url.includes('/api/') && !url.includes('/api/watch/stream');
-    const done = (r: import('@playwright/test').Request): void => { inFlight.delete(r); };
-    page.on('request', (r) => { if (counts(r.url())) inFlight.add(r); });
-    page.on('requestfinished', done);
-    page.on('requestfailed', done);
+    // **The settle is `e2e/settle.ts`, shared with the three other walks.**
+    //
+    // It carries this file's own hardest-won measurement: until 2026-08-29 the
+    // in-flight guard here was a bare `+1 / -1` over the request events, the
+    // `app` fixture's boot reads finished under listeners they had never
+    // started under, and the counter sat permanently at **-1**. That does not
+    // merely make "nothing in flight" unreachable, it INVERTS it — eight
+    // screens burned all 25 samples on a page that had finished, and ten more
+    // were inventoried at THREE NODES apiece while the test went green. A set
+    // of the requests these listeners actually saw start is the counter this
+    // loop always meant to have, and the router's holding chip is the third
+    // fact it needs; both live there now rather than in four copies here.
 
     try {
       for (const screen of SCREENS) {
@@ -397,24 +359,15 @@ test('inventory: the element TREE of every screen against its mockup section',
         // its heading synchronously and its data after fetches resolve, and
         // sampling on "has any element" is how a previous parity run reported
         // `div.scene` missing from a screen that plainly draws it.
-        let previous = -1;
-        let spent = 25;
-        let settled = false;
-        for (let attempt = 0; attempt < 25; attempt++) {
-          const now = await page.evaluate(
-            (s) => document.querySelectorAll(`[data-p="${s}"] *`).length, screen);
-          if (now > 0 && now === previous && inFlight.size === 0) {
-            spent = attempt + 1; settled = true; break;
-          }
-          previous = now;
-          await page.waitForTimeout(400);
-        }
+        const walk = await settleScreen(page, screen);
+        const { settled, attempts: spent } = walk;
+        const previous = walk.count;
         const tSettle = Date.now();
         const appTree = await page.evaluate(EXTRACT_TREE, `[data-p="${screen}"]`);
         const tExtract = Date.now();
         timings.push({
           screen, mock: tMock - t0, settle: tSettle - tMock, attempts: spent,
-          inFlight: inFlight.size, extract: tExtract - tSettle, diff: 0,
+          inFlight: walk.inFlight, extract: tExtract - tSettle, diff: 0,
           total: tExtract - t0, appNodes: countNodes(appTree),
         });
         // A run that dies at the timeout writes no report, and the per-screen
@@ -450,8 +403,9 @@ test('inventory: the element TREE of every screen against its mockup section',
         // and the run went green — see the in-flight comment above. An
         // unsettled screen now says so instead.
         if (!settled) {
-          unmeasurable.push(`${screen}: still growing, or still fetching ` +
-            `(${inFlight.size} \`/api\` reads in flight), after 25 samples over 10s`);
+          unmeasurable.push(`${screen}: still growing, still holding the router's unread ` +
+            `chip, or still fetching (${walk.inFlight} \`/api\` reads in flight), after 25 ` +
+            'samples over 10s');
           results.push({ screen, measured: false, mockNodes: countNodes(mockTree),
             appNodes: countNodes(appTree),
             note: 'NOT MEASURED — the screen had not finished drawing when the walk reached it',

@@ -35,7 +35,8 @@
  * and the user agent's near-white button face and is invisible.
  */
 import { test, expect } from './app.ts';
-import type { Page, Request } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { settleScreen } from './settle.ts';
 
 /** WCAG AA for ordinary text, and a button's label is ordinary text. */
 const MIN_RATIO = 4.5;
@@ -76,33 +77,6 @@ interface Choice { screen: string; id: string; chars: number }
  */
 let chosen: Choice | null = null;
 
-/**
- * The `/api/` calls this page has in flight, so "the fetch has come back" is a
- * FACT rather than a length of time.
- *
- * `/api/watch/stream` is excluded because it is the one request that never
- * finishes by design — the shell's single live connection, opened once and held
- * open (`app.js`, "THE SHARED LIVE STREAM"). Counting it would mean no screen
- * on this page is ever idle again.
- *
- * Keyed by `Request` rather than by a bare counter: the boot's own calls may
- * already be in flight when the first `gotoScreen` installs these listeners,
- * and their `requestfinished` would otherwise decrement a total they were never
- * added to and drive it negative. Listeners are installed ONCE per page.
- */
-const apiInFlight = new WeakMap<Page, Set<Request>>();
-function pendingApi(page: Page): Set<Request> {
-  const already = apiInFlight.get(page);
-  if (already !== undefined) return already;
-  const live = new Set<Request>();
-  apiInFlight.set(page, live);
-  const counts = (r: Request): boolean =>
-    r.url().includes('/api/') && !r.url().includes('/api/watch/stream');
-  page.on('request', (r) => { if (counts(r)) live.add(r); });
-  page.on('requestfinished', (r) => { live.delete(r); });
-  page.on('requestfailed', (r) => { live.delete(r); });
-  return live;
-}
 
 /**
  * Navigate, then wait until the screen has ACTUALLY FINISHED DRAWING.
@@ -144,7 +118,11 @@ function pendingApi(page: Page): Set<Request> {
  *                                being measured half-drawn for this reason.
  *
  * plus the original stability poll, which covers the microtask between a
- * response landing and its rows being appended.
+ * response landing and its rows being appended. All three now live in
+ * `e2e/settle.ts`, shared with the three other walks that were each carrying
+ * their own copy — `TASK-two-more-e2e-settles-can-be-satisfied-by-the-router-
+ * holding` (plan:walk seq:83) asks for one implementation rather than three
+ * that drift, and this is that.
  *
  * **And the bound fails as ITSELF.** Falling through to report "0 linked" for a
  * screen that was still loading is how this failure read as a product defect
@@ -152,25 +130,11 @@ function pendingApi(page: Page): Set<Request> {
  * `LESSON-every-bound-on-waiting-must-fail-as-itself-or-a-slow-machine`.
  */
 async function gotoScreen(page: Page, screen: string): Promise<void> {
-  const pending = pendingApi(page);
   await page.evaluate((name) => { location.hash = `#/${name}`; }, screen);
-  let previous = -1;
-  let settled = false;
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    // One evaluate, not two: both readings must come from the SAME DOM
-    // snapshot, or a stale count could be paired with a fresh "the chip is
-    // gone" and settle on a combination that was never simultaneously true.
-    const { count, holding } = await page.evaluate((s) => ({
-      count: document.querySelectorAll(`[data-p="${s}"] *`).length,
-      holding: document.querySelector(`[data-p="${s}"] #screenunread`) !== null,
-    }), screen);
-    if (!holding && pending.size === 0 && count > 0 && count === previous) {
-      settled = true;
-      break;
-    }
-    previous = count;
-    await page.waitForTimeout(300);
-  }
+  // 40 samples at 300ms rather than `settle.ts`' 25 at 400ms: this walk visits
+  // nine screens inside one test and wants the finer cadence, and it pays for
+  // it with two more seconds of headroom.
+  const { settled } = await settleScreen(page, screen, { samples: 40, interval: 300 });
   expect(settled,
     `${screen}: still loading after 40 samples over 12s — NOT measured. Anything this walk `
     + 'says about the screen would be a statement about a half-drawn page. Run this spec '

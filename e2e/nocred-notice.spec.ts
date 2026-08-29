@@ -23,6 +23,7 @@
  */
 import { test as base, expect } from '@playwright/test';
 import { spawnUiChild, type UiHarness } from '../test/ui/helpers.ts';
+import { startOnSafePort } from '../test/ui/unsafe-ports.ts';
 import { test, CORPUS } from './app.ts';
 
 /** The command the notice must name, exactly — `mycontext ui --nonce`. */
@@ -52,7 +53,13 @@ async function expectRendered(page: import('@playwright/test').Page, when: strin
 base('the bare URL, with no fragment and no prior credential, names its own cause', async ({ page }) => {
   let harness: UiHarness | undefined;
   try {
-    harness = await spawnUiChild(CORPUS, ['--port', '0']);
+    // `spawnUiChild` rather than `startUiChild` because this test must NOT
+    // redeem the nonce — but the port still has to be one a browser will open,
+    // so the safe-port screen `startUiChild` carries is applied here by hand
+    // (`TASK-tests-that-bind-a-port-without-the-safe-port-guard-fail-with`,
+    // plan:walk seq:82). Without it this spec dies on `net::ERR_UNSAFE_PORT`
+    // with nothing said about the notice it exists to measure.
+    harness = await startOnSafePort(() => spawnUiChild(CORPUS, ['--port', '0']));
     const port = harness.port;
 
     // The reproduction from the corpus item, unmodified: the address alone,
