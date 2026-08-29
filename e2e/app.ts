@@ -50,7 +50,6 @@
  */
 import { test as base, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
@@ -131,45 +130,35 @@ export interface App {
  * `app` starts a server over the corpus, opens the page at its nonce fragment,
  * and waits for the boot to have produced a token — never merely for `load`,
  * which fires while the page is still an empty shell.
+ *
+ * **The audit projection is synced ONCE for the whole suite, and not here.**
+ *
+ * This fixture used to run `mycontext audit --limit 1` before starting each
+ * server, because reading `.demo-corpus` appends `access` records and a
+ * projection behind its log makes the read surface refuse — eighteen of
+ * twenty-one screens rendered that refusal where their content belongs on
+ * 2026-08-24, and a tree-parity inventory was taken against exactly that.
+ * That reasoning holds. The FREQUENCY was the defect.
+ *
+ * `mycontext audit` is a write. Run per fixture, with four workers, it wrote
+ * `.audit/audit.db` while sibling servers were reading it through a
+ * deliberately timeout-less read-only door, and the loser rendered `database
+ * is locked` / `disk I/O error` into whichever card was mid-fetch. Measured on
+ * `item-pane.spec.ts` at the default worker count: 2 of 12 runs failed with
+ * the write here, 0 of 12 with it moved out. It is the source of most of the
+ * "known e2e contention" list, which had already hidden one real failure.
+ *
+ * `e2e/global-setup.ts` now does it once, before any worker starts, and
+ * carries the full argument and the measurement. **This fixture only READS**,
+ * and it must stay that way: the projection is kept current during the run by
+ * `recordAudit`, which projects every record on the path that appends it, so
+ * one sync at the top is enough and a second one per test buys nothing but
+ * contention.
  */
-/**
- * **Sync the audit projection before serving, because reading this corpus is
- * what puts it behind.**
- *
- * `scripts/demo-corpus.ts` builds the projection as its last act and is right
- * to — its own comment calls it "the difference between a demo corpus that
- * works on first open and one that greets the owner with a 503". What it
- * cannot do is stay ahead: every READ appends an `access` record to
- * `audit.jsonl`, so the first suite run pushes the log past the projection and
- * every run after it measures a corpus in refusal. Found 2026-08-24 — eighteen
- * of the twenty-one screens were rendering "the audit projection is behind
- * relative to its log" where their content belongs, and a tree-parity
- * inventory had been taken against exactly that.
- *
- * **The fix belongs here and not in the read surface.** That refusal is
- * correct and is itself under test: a read may not sync, because syncing is a
- * write and answering from a stale projection would present a partial history
- * as a complete one. A harness is not a read surface, so it may do what the
- * server may not.
- *
- * `audit --limit 1` is the same call the builder ends with. It is synchronous
- * and it throws: a corpus that cannot be brought up to date is a measurement
- * about to be taken against screens that will refuse, which is the failure
- * this exists to end — so it fails loudly here rather than quietly there.
- */
-function syncProjection(): void {
-  execFileSync(process.execPath, [CLI, 'audit', '--limit', '1'], {
-    cwd: CORPUS, encoding: 'utf8', stdio: 'pipe',
-  });
-}
-
-const CLI = path.join(REPO, 'src', 'cli', 'index.ts');
-
 export const test = base.extend<{ app: App }>({
   app: async ({ page }, use) => {
     let harness: UiHarness | undefined;
     try {
-      syncProjection();
       harness = await startUiChild(CORPUS);
       const h = harness;
       await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);

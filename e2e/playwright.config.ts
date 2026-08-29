@@ -52,6 +52,29 @@ export default defineConfig({
   testDir: '.',
   testMatch: '*.spec.ts',
 
+  /**
+   * **The one write the suite makes, made once, before any worker starts.**
+   *
+   * `e2e/app.ts` used to bring the audit projection up to date inside every
+   * fixture, and `mycontext audit` is a write: four workers therefore wrote
+   * `.demo-corpus/.audit/audit.db` while sibling servers read it, and the
+   * losers rendered `database is locked` / `disk I/O error` into whichever
+   * card was mid-fetch. That is the source of most of the "known e2e
+   * contention" list, and that list had already hidden a real failure
+   * (`plan:walk seq:74`).
+   *
+   * Once here, the fixtures only read, and `recordAudit` keeps the projection
+   * current during the run from the write path it already owns. Measured on
+   * `item-pane.spec.ts` at the default worker count: 2 of 12 runs failed
+   * before, 0 of 12 after. `e2e/global-setup.ts` carries the whole argument.
+   *
+   * Deliberately NOT solved by lowering `workers` below: hiding contention
+   * costs everyone's wall clock and leaves the next writer to rediscover it.
+   * The cap below is a separate, earlier finding about headed browsers, and it
+   * stays for its own reasons.
+   */
+  globalSetup: './global-setup.ts',
+
   fullyParallel: true,
   /**
    * **Capped, because the default was buying nothing and costing determinism.**
