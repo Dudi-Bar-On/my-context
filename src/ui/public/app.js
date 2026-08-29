@@ -2098,7 +2098,14 @@ async function railCounts() {
   try {
     const status = await api('/api/status');
     counts.doctor = (status.health?.errors ?? 0) + (status.health?.warnings ?? 0);
-    counts.work = status.pendingRevisions?.revisions ?? 0;
+    // BOTH queues, because the screen draws both. Reading only
+    // `pendingRevisions` made the badge say 0 with a draft sitting on the
+    // screen waiting for a verdict -- a badge that undercounts what its own
+    // screen shows is worse than no badge, because it reads as "nothing to do
+    // here" rather than as missing. `/api/status` already served
+    // `reviewQueue.drafts`; nothing new is fetched.
+    counts.work = (status.pendingRevisions?.revisions ?? 0)
+      + (status.reviewQueue?.drafts ?? 0);
   } catch { /* stays null — named as unmeasured on the rail */ }
   try {
     const coverage = await api('/api/coverage');

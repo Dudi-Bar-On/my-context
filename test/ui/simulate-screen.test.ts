@@ -1013,12 +1013,15 @@ const DATA = [
   // `rungs`, drawn only once a tier actually has candidates to sweep (`jit`
   // needs the same walked file the fits table's `jit` row needs) — `LEAN`
   // draws none of it, for the same underlying reason it draws no `jit` row.
-  // Bare `circle` and bare `text` specifically: the mockup's eviction mark is
-  // an UNCLASSED `<circle>` and its "eviction" label an UNCLASSED `<text>`
-  // (`renderStair`, mockup ~4087-4090) — every OTHER text run on this chart
-  // carries `.mono` — so both need `RICH`'s sweep to contain a genuine
-  // eviction, not merely a non-empty one.
-  'circle', 'text',
+  // Bare `circle` specifically: the mockup's eviction MARK is an UNCLASSED
+  // `<circle>` (`renderStair`, mockup ~4087-4090), so it needs `RICH`'s sweep
+  // to contain a genuine eviction, not merely a non-empty one. Its `fill` is
+  // data-driven and no author rule targets it, which is why the 2026-08-29
+  // chart-colour pass deliberately left it unclassed.
+  //
+  // Bare `text` used to sit here beside it, for the eviction LABEL. It has
+  // moved to ABSENT — see the note there.
+  'circle',
   // The ladder's rows: `.ev` is a rung whose count fell from the one before
   // it, and `.at` is the highest rung at or below the budget being dragged.
   // `.at` needs only a non-empty sweep; `.ev`, like the eviction mark above,
@@ -1050,6 +1053,15 @@ const ABSENT = [
   // the classed ones it added on 2026-08-23 for the SAME elements, which
   // reads as the same stale-measurement artifact this comment describes.
   'svg', 'line', 'path',
+  // **Bare `text` joined them on 2026-08-29, and by the same argument.** The
+  // eviction label was the last unclassed `<text>` this chart drew; the
+  // chart-colour pass gave it `.crit` so the stylesheet could own its colour,
+  // because `svg.chart text{fill:var(--dim)}` is an author rule and the
+  // per-mark `fill=` attribute it carried was a presentation attribute that
+  // could never win. Every `<text>` `renderStair` now draws carries a class,
+  // so a BARE one can no longer appear from a correct build — which is what
+  // ABSENT means here, and not an omission.
+  'text',
 ];
 
 test('the twenty-one ledger kinds partition into closed, data-dependent and absent', async () => {

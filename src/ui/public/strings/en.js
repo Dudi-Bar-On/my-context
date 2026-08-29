@@ -477,7 +477,7 @@ export const strings = {
   // Review queue
   'work.h': 'Review queue',
   'work.v': 'the diff is the capability; the approval is a paste',
-  'work.sub': 'Per-field staleness against the text in force. Nothing here writes.',
+  'work.sub': 'Per-field staleness against the text in force.',
   'work.field': 'Field',
   'work.now': 'In force',
   'work.prop': 'Proposed',
@@ -499,7 +499,7 @@ export const strings = {
   'state.armed': 'armed',
   'work.state': 'copied, not yet observed landing',
   'help.land': 'How you will know it worked',
-  'work.h1': '{b:Run it in your own shell.} This tool never writes.',
+  'work.h1': '{b:Run it in your own shell.}',
   'work.h2': '{b:The receipt:} an audit record whose {m:op} is {mv:op}. Returning to this tab re-checks.',
   'work.h3': '{b:If the body moved first}, promote refuses and names both values — that refusal is the product working, not failing.',
   // Capture
