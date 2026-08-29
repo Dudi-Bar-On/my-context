@@ -333,14 +333,33 @@ export const DEFAULT_UI: UiConfig = { enabled: true, port: null };
  * Which handover document this project keeps, and how much of it a session may
  * be handed after a compaction. Spec §3.1.
  *
- * **This key runs the opposite way to `ui` directly above it, and the
- * asymmetry is the whole point.** `ui` is opt-OUT because resolving it grants a
- * permission and touches nothing; resolving THIS one means the product starts
- * READING A FILE IN SOMEBODY'S REPOSITORY, and no default may take that
- * decision on a user's behalf. So there is no `DEFAULT_HANDOVER` object beside
- * `DEFAULT_UI`: absent is `null` on `Config`, and `null` means the entire
- * feature is off and silent. A plugin does not read a repository's contents
- * because it was installed.
+ * **This key runs the opposite way to `ui.enabled` directly above it, and the
+ * asymmetry is the whole point.** `ui.enabled` is opt-OUT because resolving it
+ * grants a permission and costs a user nothing; resolving THIS one means the
+ * product starts READING A FILE IN SOMEBODY'S REPOSITORY, and no default may
+ * take that decision on a user's behalf. So there is no `DEFAULT_HANDOVER`
+ * object beside `DEFAULT_UI`: absent is `null` on `Config`, and `null` means
+ * the entire feature is off and silent. A plugin does not read a repository's
+ * contents because it was installed.
+ *
+ * **`ui.enabled`, and not `ui` — the correction, and what it changes about the
+ * comparison.** This paragraph said "`ui` is opt-OUT because resolving it
+ * grants a permission and touches nothing" until 2026-08-29. That is word for
+ * word the sentence `UiConfig`'s own docblock above retracted on 2026-08-27 as
+ * "true and is now false in both halves", replaced there "rather than left
+ * standing beside a contradiction" — and then left standing here, a hundred
+ * lines below its own retraction, which is the contradiction that wording was
+ * chosen to prevent.
+ *
+ * The half that was still right is the half this key is compared FOR, so the
+ * comparison survives; the half that was wrong is that `ui` names a section
+ * and a section has no direction. `ui` has two fields and they run opposite
+ * ways: `ui.enabled` is opt-OUT, and `ui.port` is opt-IN and is the SAME shape
+ * as this key — absent is off, because the only thing that reads it spawns a
+ * background server, exactly as the only thing that reads `handover.path`
+ * opens a file in somebody's repository. Naming the field rather than the
+ * section is therefore not pedantry: `ui` as written made the one UI key that
+ * agrees with `handover` read as the counter-example to it.
  *
  * The two defaults below exist because `marker` and `budgetTokens` are
  * refinements of a decision the user already took by writing `path`. `path`
