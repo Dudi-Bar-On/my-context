@@ -477,7 +477,11 @@ const KNOWN_GAPS: Record<string, string[]> = {
     // fresh-with-records (`b` alone), fresh-but-empty, `absent`, and `behind`.
     // A ceiling, not a moment — see DATA_DEPENDENT above.
     'b', 'caption', 'div.card', 'div.plate', 'h3', 'p.small', 'pre.m',
-    'span.chip.ok', 'span.chip.warn', 'span.m', 'span.prop', 'span.v',
+    // `span.chip.index` joined the union on 2026-08-29 with the Kind column
+    // (`plan:walk seq:73`): the mockup's own sample rows now draw the neutral
+    // kind chip, and like every other row-borne kind above it is absent
+    // whenever the projection refuses and the table has no rows to draw.
+    'span.chip.index', 'span.chip.ok', 'span.chip.warn', 'span.m', 'span.prop', 'span.v',
     'table', 'tbody', 'td', 'td.m.small', 'th', 'thead', 'tr',
   ],
   // **EMPTY, and the divergence here runs the OTHER WAY: the app draws MORE.**
@@ -573,9 +577,9 @@ const KNOWN_GAPS: Record<string, string[]> = {
 };
 
 /**
- * **Two kinds the APP draws that the mockup does not, on `ask`.** Recorded
- * here because this gate does not check that direction, so nothing else would
- * ever say them out loud.
+ * **ONE kind the APP draws that the mockup does not, on `ask`** — it was two
+ * until 2026-08-29. Recorded here because this gate does not check that
+ * direction, so nothing else would ever say it out loud.
  *
  * `button.linkid.m` — the mockup writes the item cell as a bare `span.m`.
  * Every screen this project has shipped writes an id as `linkId()`, the
@@ -583,14 +587,17 @@ const KNOWN_GAPS: Record<string, string[]> = {
  * The agent chose consistency with the app over consistency with the mockup;
  * the alternative would be one screen whose ids are the only dead ones.
  *
- * `span.chip.index` — the neutral chip for `subject`, the third of the audit
- * projection's three roles. The mockup hues only `injected` and `spilled` and
- * gives the third no treatment at all.
+ * `span.chip.index` LEFT this list from both ends at once, with `plan:walk
+ * seq:73`. It was the neutral chip the app invented for `subject`, the third of
+ * the audit projection's three roles, which the mockup hued not at all — and
+ * `subject` draws no chip any more, because the op now drawn beside the id is
+ * what makes that id the subject. The class is still on screen: it is the KIND
+ * cell's chip, and the mockup's own sample rows draw it too.
  *
- * Both await the owner's confirmation, alongside the two divergences already
- * registered above (`span.prop`, `span.chip`).
+ * The one that remains awaits the owner's confirmation, alongside the two
+ * divergences already registered above (`span.prop`, `span.chip`).
  */
-const APP_ONLY_KINDS_ON_ASK = ['button.linkid.m', 'span.chip.index'] as const;
+const APP_ONLY_KINDS_ON_ASK = ['button.linkid.m'] as const;
 void APP_ONLY_KINDS_ON_ASK;
 
 test('every screen draws every KIND of element its mockup section draws', async ({ app }) => {

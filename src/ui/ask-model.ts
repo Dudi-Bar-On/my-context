@@ -438,8 +438,10 @@ interface ItemChanges { count: number; lastOp: string | null; last: string | nul
  *
  * `label`, `count` and `last` carry `SummaryRow`'s own names on purpose: the
  * other three reports return `{ label, count, last }`, the Ask screen already
- * maps exactly those three into its At · Item · Role columns
- * (`src/ui/public/screens/ask.js` · `export function summaryRows(report, role, rows) {` · ~334),
+ * maps exactly those three into its At · Kind · What columns (they were
+ * At · Item · Role until 2026-08-29, `plan:walk seq:73`; the mapper is the
+ * same one and a summary row still claims no kind of its own)
+ * (`src/ui/public/screens/ask.js` · `export function summaryRows(report, role, rows) {` · ~461),
  * and a fourth report that renamed them would need a fourth mapper to show
  * anything at all. This row is that shape plus the columns a progress view
  * needs, so it fits the screen as it stands and a screen that wants the extra

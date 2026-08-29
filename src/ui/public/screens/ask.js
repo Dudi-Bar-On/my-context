@@ -77,11 +77,12 @@
  *      so the pane has nothing true to show and the card is not drawn beside
  *      them. They do feed the filter row's vocabulary, which is the only part
  *      of the mockup's sentence this build can keep.
- *   3. **A column for `count`.** The design's three columns are At · Item ·
- *      Role, and a report named "Operations by count" answers with a count.
- *      It is drawn INSIDE the role chip (`12 spilled`, the shape
- *      `screens/coverage.js` already gives a count plus a literal) rather than
- *      dropped.
+ *   3. **A column for `count`.** The design's three columns are At · Kind ·
+ *      What (they were At · Item · Role until 2026-08-29 — see `AUDIT_FIELDS`
+ *      below for the ruling), and a report named "Operations by count" answers
+ *      with a count. It is drawn INSIDE the chip that closes the What cell
+ *      (`12 spilled`, the shape `screens/coverage.js` already gives a count
+ *      plus a literal) rather than dropped.
  *   4. **`ask.truncated` on the audit tab.** Only `corpusSelect` binds the
  *      probe row — `params.push(f.limit + 1)`; `filterSelect` binds the cap
  *      itself, so a capped audit answer is indistinguishable from a complete
@@ -102,30 +103,114 @@
 import { el, errorNote, linkId, mono, num, screenHead, spaced } from '/screens/parts.js';
 
 /**
- * The audit projection's own column names, drawn as LITERALS. Product
- * vocabulary is never translated here — the same ruling `screens/watch.js`
- * makes for a record kind and `screens/parts.js` makes for a tier — and the
- * mockup draws these four as bare options for exactly that reason. The corpus
- * field names are prose and are keyed, below.
- */
-const AUDIT_FIELDS = ['kind', 'op', 'origin', 'item'];
-const CORPUS_FIELDS = ['type', 'status', 'layer', 'always', 'scoped', 'title'];
-const CORPUS_LABEL = {
-  type: 'ask.field.type',
-  status: 'ask.field.status',
-  layer: 'ask.field.layer',
-  always: 'ask.field.always',
-  scoped: 'ask.field.scoped',
-  title: 'ask.field.title',
-};
-
-/**
+ * **ONE LIST PER TAB — every field the tab knows, whether a reader can FILTER
+ * on it, and which COLUMN shows it. The filter select and the table's headers
+ * are both derived from this, and neither is written down a second time.**
+ *
+ * Until 2026-08-29 there were two lists: `AUDIT_FIELDS`, which fed the filter
+ * select, and a literal `['th.at', 'th.item', 'th.role']` in `render()`, which
+ * fed the header row. They disagreed, and the disagreement WAS the defect
+ * `plan:walk seq:73` reports. `kind` and `op` — the two fields that say what a
+ * record IS — were in the filter list and in neither column, so the audit
+ * history drew a timestamp and two em dashes 498 times and a reader could not
+ * tell a subagent stopping from a credential being refused. Both dashes were
+ * honest: a `hook` row is a session-lifecycle event and an `access` row is a
+ * credential refusal, and neither is about an item. An honest dash is still
+ * useless if nothing beside it says what the row is.
+ *
+ * Two hand-kept lists of one thing is the failure `lib/live-invalidation.js`'s
+ * header is an essay on and `lib/palette-defs.js` names in one line — *"a
+ * hand-kept list… is a defect waiting to happen"*. So a field is declared once
+ * and the declaration answers both questions at once: adding one to the select
+ * forces an answer about where it is DRAWN, and adding a column is not
+ * expressible without a field to fill it.
+ *
+ * `filter: false` is the entry a reader sees and cannot query — the timestamp
+ * every row has, and the corpus id. `column: null` is the converse and is
+ * written down rather than omitted, for `live-invalidation.js`'s reason:
+ * *"nothing invalidates me" is a legal and common answer, and it is
+ * indistinguishable from "nobody thought about this" unless it is written
+ * down.* `origin` and the four corpus flags are filterable and undrawn on
+ * purpose — each would spend a column, on every row, on a value a reader
+ * narrows BY rather than scans; the What cell already carries the op and the
+ * item, which are what a record is and what it is about.
+ *
+ * **`column` is not a per-KIND table and must never become one.** This screen
+ * declares `kinds: '*'` in `lib/live-invalidation.js` because its subject IS
+ * the log; a column set enumerating the seven members of `AUDIT_KINDS` would
+ * be the same staleness one layer up, blank on the eighth. Nothing below names
+ * a kind: `kind` and `op` are drawn as the record's own words, whatever they
+ * are.
+ *
+ * The audit field names are drawn as LITERALS — product vocabulary is never
+ * translated here, the same ruling `screens/watch.js` makes for a record kind
+ * and `screens/parts.js` makes for a tier, and the mockup draws those four as
+ * bare options for exactly that reason. The corpus field names are prose and
+ * are keyed.
+ *
  * A field name IS its query parameter, on both tabs — `type`, `status`,
  * `layer`, `always`, `scoped`, `title` and `kind`, `op`, `origin`, `item` are
  * spelled identically in `apiAskCorpus`' and `apiAskAudit`'s `unknownParams`
  * allow-lists. There is no mapping table here on purpose: a second spelling of
  * ten names is how the screen and the endpoint come to disagree about one.
+ * `at` and `id` below are the two entries that are NOT parameters, which is
+ * exactly what `filter: false` says about them.
  */
+const AUDIT_FIELDS = [
+  { name: 'at', filter: false, column: 'at', label: null },
+  { name: 'kind', filter: true, column: 'kind', label: null },
+  { name: 'op', filter: true, column: 'what', label: null },
+  { name: 'origin', filter: true, column: null, label: null },
+  { name: 'item', filter: true, column: 'what', label: null },
+];
+const CORPUS_FIELDS = [
+  { name: 'updated_at', filter: false, column: 'at', label: null },
+  { name: 'type', filter: true, column: 'kind', label: 'ask.field.type' },
+  { name: 'id', filter: false, column: 'what', label: null },
+  { name: 'status', filter: true, column: null, label: 'ask.field.status' },
+  { name: 'layer', filter: true, column: null, label: 'ask.field.layer' },
+  { name: 'always', filter: true, column: null, label: 'ask.field.always' },
+  { name: 'scoped', filter: true, column: null, label: 'ask.field.scoped' },
+  { name: 'title', filter: true, column: null, label: 'ask.field.title' },
+];
+
+/**
+ * The three columns, and the string key each one's header takes.
+ *
+ * **They are the Audit stream's own three** (`screens/watch.js` · `for (const
+ * key of ['th.at', 'th.kind', 'th.what'])`), and that is the point rather than
+ * a coincidence. This product had two tables over one log with two different
+ * column sets; the reader who learns one was learning nothing about the other.
+ * `th.kind` and `th.what` were already in the mockup's string vocabulary for
+ * that table, so no sentence had to be invented and no translation reviewed.
+ *
+ * **Item and Role MERGED into What rather than two columns added.** `Role` was
+ * empty for exactly the rows `Item` was empty for — one record, one reason —
+ * and a column blank whenever its neighbour is blank is not earning its width.
+ * Merged, the cell says the op for every row and qualifies the item with its
+ * role where there is one, so every row says something; the alternative was a
+ * five-column table two of whose columns are blank together on most rows.
+ */
+const COLUMN_HEAD = { at: 'th.at', kind: 'th.kind', what: 'th.what' };
+
+/** The tab's field declarations — the ONE list both derivations below read. */
+function fieldsOf(mode) {
+  return mode === 'corpus' ? CORPUS_FIELDS : AUDIT_FIELDS;
+}
+
+/** The filter select's vocabulary, derived: every field a reader can query. */
+export function filterFields(mode) {
+  return fieldsOf(mode).filter((field) => field.filter);
+}
+
+/** The header keys, derived: every column some field is declared to fill. */
+export function columnHeads(mode) {
+  const columns = [];
+  for (const field of fieldsOf(mode)) {
+    if (field.column !== null && !columns.includes(field.column)) columns.push(field.column);
+  }
+  return columns.map((column) => COLUMN_HEAD[column]);
+}
 
 /**
  * `always` and `scoped` are `1` or `0` at the endpoint — it refuses anything
@@ -177,15 +262,33 @@ const IS_NOT = 'is not';
 
 /**
  * The chip a role wears. `injected` and `spilled` are the mockup's own two —
- * `ch.className='chip '+(role==='spilled'?'warn':'ok')` — and the third role
- * the projection has, `subject`, is drawn in the neutral chip rather than in a
- * fourth meaning hue nobody ruled. Bare `.chip` is the one that cannot be
- * read (near-black text, no background: the owner ruling recorded in
- * `e2e/screen-parity.spec.ts`'s preview note), so the neutral is `.chip.index`
- * — `screens/parts.js`'s own fallback.
+ * `ch.className='chip '+(role==='spilled'?'warn':'ok')`.
+ *
+ * **`subject` gets no chip any more, and losing it is the merge paying for
+ * itself.** It used to take the neutral chip, because the Role column had to
+ * say SOMETHING for a mutation's own item and the design gives the third role
+ * no hue. With the op drawn beside the id, `create RULE-x ◇subject` says
+ * "subject" twice: `create` is what makes that id the subject. The chip is
+ * drawn only where it adds a fact the row does not otherwise carry — which of
+ * an injection's several items landed and which spilled.
  */
 const ROLE_CHIP = { injected: ['chip ok', '●'], spilled: ['chip warn', '▲'] };
-const ROLE_CHIP_NEUTRAL = ['chip index', '◇'];
+/**
+ * The KIND cell's chip, and the fallback for a count with no role.
+ *
+ * Neutral for EVERY kind, which is where this diverges from the Audit stream's
+ * `KIND_CHIP` and the reason is worth stating. That screen hues `mutation` and
+ * `access` because its pulse is coloured by kind and the chip is the pulse's
+ * legend; there is no pulse here. This column also carries a corpus CATEGORY
+ * on the other tab, which has no audit hue at all, so one neutral treatment is
+ * the only one that is true on both tabs — and a second per-kind hue table is
+ * a second thing to keep in step with `core/audit.ts`.
+ *
+ * Bare `.chip` is the one that cannot be read (near-black text, no background:
+ * the owner ruling recorded in `e2e/screen-parity.spec.ts`'s preview note), so
+ * the neutral is `.chip.index` — `screens/parts.js`'s own fallback.
+ */
+const NEUTRAL_CHIP = ['chip index', '◇'];
 
 // ── THE PURE HALF ─────────────────────────────────────────────────────────
 //
@@ -268,10 +371,21 @@ export function clockOf(at) {
   return Number.isNaN(when.getTime()) ? text : when.toLocaleTimeString('en-GB', { hour12: false });
 }
 
-/** `/api/ask/corpus`' rows in the design's three columns. */
+/**
+ * `/api/ask/corpus`' rows in the design's three columns.
+ *
+ * **`kind` is the item's CATEGORY, and that is what the column means here.**
+ * A corpus row's answer to "what is this" is `rule`, `decision`, `invariant` —
+ * the same question the audit tab answers with `hook` or `access`. Until this
+ * merge a corpus row drew `At | <id> | —`, with the dash for a Role a corpus
+ * row can never have: the same empty column the audit tab was reported for,
+ * on a tab nobody happened to report.
+ */
 export function corpusRows(rows) {
   return rows.map((row) => ({
     at: row.updated_at ?? null,
+    kind: typeof row.type === 'string' ? row.type : null,
+    op: null,
     item: row.id ?? null,
     linkable: true,
     role: null,
@@ -291,11 +405,15 @@ export function corpusRows(rows) {
  * That is also what the mockup's own sample draws: two rows at one timestamp,
  * one `injected` and one `spilled`.
  *
- * **A record that names no item still gets a row.** A hook action, a
- * session-start or a focus change is a real record with a real timestamp and
- * no item, and an item-shaped table that dropped it would drop it silently.
- * Both cells take the em dash the design uses for "no value here" — the mark
- * `screens/status.js` already draws for a count this server cannot take.
+ * **A record that names no item still gets a row, and since 2026-08-29 that
+ * row SAYS SOMETHING.** A hook action, a session-start or a focus change is a
+ * real record with a real timestamp and no item, and an item-shaped table that
+ * dropped it would drop it silently. It kept it and drew two em dashes
+ * instead, which is the defect `plan:walk seq:73` reports: on the owner's
+ * machine 59 of the last 60 records were `hook` and one was `access`, none of
+ * them named an item, and 498 rows read `06:22:59 | — | —`. The dashes were
+ * honest and useless. Every row now carries `kind` and `op` — what the record
+ * IS — whether or not it is about an item.
  *
  * Newest first. `filterSelect` takes the newest n in descending order and
  * reverses them, so the wire order is oldest-first and every reading surface
@@ -305,16 +423,25 @@ export function auditRows(records) {
   const out = [];
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index];
+    // The record's OWN words, never a table keyed by kind: a value this build
+    // has never met draws itself, which is what `kinds: '*'` in
+    // `lib/live-invalidation.js` promises about this screen.
+    const said = {
+      at: record.at,
+      kind: typeof record.kind === 'string' ? record.kind : null,
+      op: typeof record.op === 'string' ? record.op : null,
+      count: null,
+    };
     const named = [];
     if (typeof record.itemId === 'string') named.push([record.itemId, 'subject']);
     for (const ref of record.injected ?? []) named.push([ref.id, 'injected']);
     for (const ref of record.spilled ?? []) named.push([ref.id, 'spilled']);
     if (named.length === 0) {
-      out.push({ at: record.at, item: null, linkable: false, role: null, count: null });
+      out.push({ ...said, item: null, linkable: false, role: null });
       continue;
     }
     for (const [item, role] of named) {
-      out.push({ at: record.at, item, linkable: true, role, count: null });
+      out.push({ ...said, item, linkable: true, role });
     }
   }
   return out;
@@ -334,6 +461,16 @@ export function auditRows(records) {
 export function summaryRows(report, role, rows) {
   return rows.map((row) => ({
     at: row.last ?? null,
+    // **An aggregate has no kind, and says so rather than borrowing one.** A
+    // report row folds many records together; `create` belongs to `mutation`
+    // and `subagent-stop` to `hook`, but the only way to say so here would be
+    // an op→kind table copied out of `core/audit.ts` — the enumerated
+    // vocabulary this file's field declarations refuse on principle, wrong the
+    // day an eighth kind ships. The em dash is the honest answer, and unlike
+    // the one this task was reported for it does not stand alone: the What
+    // cell names the op, the item or the session the row counts.
+    kind: null,
+    op: null,
     item: row.label ?? null,
     linkable: report === 'items',
     role: report === 'items' ? role : null,
@@ -354,9 +491,13 @@ export function tableState(count, truncated) {
   return count === 0 ? 'none' : 'rows';
 }
 
-/** `[className, glyph]` for a role, or the neutral chip for anything else. */
+/**
+ * `[className, glyph]` for a role the design HUES, or `null` for one it does
+ * not. `subject` is the `null` — see `ROLE_CHIP` for why it stopped earning a
+ * chip when the op arrived beside it.
+ */
 export function roleChip(role) {
-  return ROLE_CHIP[role] ?? ROLE_CHIP_NEUTRAL;
+  return ROLE_CHIP[role] ?? null;
 }
 
 // ── THE GLUE ──────────────────────────────────────────────────────────────
@@ -516,14 +657,25 @@ export async function render(root, ctx) {
   const plate = styled(el('div', 'plate'), { 'margin-block-start': '10px' });
   const table = el('table');
   const caption = el('caption');
+  // **The header row is DERIVED and REDRAWN per tab, never written down.** It
+  // was a literal list here, which is the second of the two hand-kept lists
+  // `AUDIT_FIELDS` above describes; `columnHeads()` reads the same
+  // declarations the filter select reads, so a column and the field that fills
+  // it cannot be added one without the other. Both tabs answer with the same
+  // three today — a corpus row's kind is its category and its what is its id —
+  // and the redraw is still per tab, because that is a property of the
+  // declarations and not a promise this function is entitled to make.
   const head = el('tr');
-  for (const key of ['th.at', 'th.item', 'th.role']) {
-    const cell = el('th');
-    cell.append(...ctx.t(key));
-    head.append(cell);
-  }
   const thead = el('thead');
   thead.append(head);
+  function paintHead() {
+    head.replaceChildren();
+    for (const key of columnHeads(mode)) {
+      const cell = el('th');
+      cell.append(...ctx.t(key));
+      head.append(cell);
+    }
+  }
   const tbody = el('tbody');
   table.append(caption, thead, tbody);
   plate.append(table);
@@ -612,13 +764,15 @@ export async function render(root, ctx) {
   }
 
   function paintFields() {
-    const fields = mode === 'corpus' ? CORPUS_FIELDS : AUDIT_FIELDS;
-    const held = fields.includes(fieldSelect.value) ? fieldSelect.value : fields[0];
+    const fields = filterFields(mode);
+    const names = fields.map((field) => field.name);
+    const held = names.includes(fieldSelect.value) ? fieldSelect.value : names[0];
     fieldSelect.replaceChildren();
-    for (const name of fields) {
-      fieldSelect.append(option(name, mode === 'corpus' ? ctx.t(CORPUS_LABEL[name]) : name));
+    for (const field of fields) {
+      fieldSelect.append(option(field.name, field.label === null ? field.name : ctx.t(field.label)));
     }
     fieldSelect.value = held;
+    paintHead();
     paintValues();
   }
 
@@ -627,32 +781,65 @@ export async function render(root, ctx) {
     stateLine = node;
   }
 
+  /** One chip, `[className, glyph]` and a text run. */
+  function chipOf([className, glyph], text) {
+    const chip = el('span', className, text);
+    chip.dataset.g = glyph;
+    return chip;
+  }
+
+  /**
+   * One row, in the three columns `columnHeads()` derived: **At**, **Kind**,
+   * **What**.
+   *
+   * The What cell is composed in the order a reader asks the questions — what
+   * happened, to which item, in which role — and every part is optional
+   * EXCEPT that the cell is never empty. An audit row always has an op; a
+   * corpus row always has an id; a summary row always has a label. The em dash
+   * stays as the last resort for a shape none of the three produces, because a
+   * cell that silently drew nothing would be the reported defect returning by
+   * a different route.
+   */
   function rowFor(row) {
     const line = el('tr');
     line.append(el('td', 'm small', row.at === null ? '—' : clockOf(row.at)));
-    const itemCell = el('td');
+
+    // The record's own word, drawn as a literal — product vocabulary is never
+    // translated (`screens/watch.js`'s ruling for a kind, `parts.js`'s for a
+    // tier). A kind this build has never seen draws itself.
+    const kindCell = el('td');
+    if (row.kind === null) kindCell.append('—');
+    else kindCell.append(chipOf(NEUTRAL_CHIP, row.kind));
+
+    const what = el('td');
+    let said = false;
+    const gap = () => { if (said) what.append(' '); said = true; };
+    if (row.op !== null) { gap(); what.append(mono(row.op)); }
     // `button.linkid` is what every id on every screen already is, so a click
     // reaches the global item pane when the shell grows one; the mockup draws
     // a bare `span.m` here and every shipped screen — the Audit stream's own
     // table included — draws the button. A label that is NOT an item id (an op
     // name, a session id) stays a plain monospace run: a linkid on one would
     // resolve to nothing.
-    if (row.item === null) itemCell.append('—');
-    else if (row.linkable) itemCell.append(linkId(row.item, false));
-    else itemCell.append(mono(row.item));
-    const roleCell = el('td');
-    if (row.role === null && row.count === null) {
-      roleCell.append('—');
-    } else {
-      const [className, glyph] = roleChip(row.role);
-      const text = row.count === null ? row.role
-        : row.role === null ? num(row.count)
-        : `${num(row.count)} ${row.role}`;
-      const chip = el('span', className, text);
-      chip.dataset.g = glyph;
-      roleCell.append(chip);
+    if (row.item !== null) {
+      gap();
+      what.append(row.linkable ? linkId(row.item, false) : mono(row.item));
     }
-    line.append(itemCell, roleCell);
+    const hue = roleChip(row.role);
+    if (row.count !== null) {
+      // A count is drawn INSIDE the chip — `12 spilled`, the shape
+      // `screens/coverage.js` gives a count plus a literal. With no role to
+      // qualify it (`report=ops`, `report=sessions`) it takes the neutral.
+      gap();
+      what.append(chipOf(hue ?? NEUTRAL_CHIP,
+        row.role === null ? num(row.count) : `${num(row.count)} ${row.role}`));
+    } else if (hue !== null) {
+      gap();
+      what.append(chipOf(hue, row.role));
+    }
+    if (!said) what.append('—');
+
+    line.append(kindCell, what);
     return line;
   }
 

@@ -2167,11 +2167,38 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
            same defect watch.voidn exists to prevent, inverted. Ask's is also
            the only result table in this file without a caption; preview.cap is
            the pattern. Run cycles the three states. -->
+      <!-- ── At | Kind | What, since 2026-08-29 — the columns this table used
+           to be At | Item | Role, and the change is a RULING rather than a
+           tidy-up (`plan:walk seq:73`).
+
+           The owner's report: "ask screen, audit history, many item records in
+           the results are blanked wit no item - bug". Measured, the join was
+           never broken — of the 60 most recent records 59 were `hook` and one
+           was `access`, and NOT ONE of them names an item, because a session
+           lifecycle event and a credential refusal are not about items. The
+           em dashes were honest. What the table could not do was say what a
+           record IS: `kind` and `op` are in its own filter vocabulary and were
+           never DRAWN, so 498 rows read `06:22:59 | — | —` and a subagent
+           stopping was indistinguishable from a credential being refused.
+
+           Item and Role MERGED rather than two more columns added. Role was
+           blank for exactly the rows Item was blank for — one record, one
+           reason — so a column that is empty whenever its neighbour is empty
+           was not earning its width. What | says the op for every row and
+           qualifies the item with its role where there is one, which is the
+           shape the Audit stream's own table (§6 above) already uses; two
+           audit tables in one product with two column sets was the deeper
+           defect.
+
+           These sample rows are also the FIXTURE PATTERN corrected. The two
+           rows drawn here until today both named an item, so the design was
+           validated on the one shape the real log almost never has. Five rows
+           now, and three of them name nothing. -->
       <div class="plate" style="margin-block-start:10px">
       <table>
         <caption data-t="ask.rows"><span class="v" data-v="rows">2</span> rows</caption>
         <thead><tr><th data-t="th.at">At</th>
-        <th data-t="th.item">Item</th><th data-t="th.role">Role</th></tr></thead><tbody id="qres"></tbody></table>
+        <th data-t="th.kind">Kind</th><th data-t="th.what">What</th></tr></thead><tbody id="qres"></tbody></table>
       </div>
       <p class="small" id="qstate"><span
         data-t="ask.truncated">capped at <span class="v" data-v="rows">200</span> rows — more matched; raise the limit to see them</span><span
@@ -3733,23 +3760,50 @@ $$('#asktabs button').forEach(b=>b.addEventListener('click',()=>{
   $$('#asktabs button').forEach(x=>x.setAttribute('aria-pressed','false'));
   b.setAttribute('aria-pressed','true'); paintTab();}));
 
-const QROWS=[['09:22:41','INV-prices-are-integer-cents','injected'],
-             ['09:22:41','STD-api-errors-use-problem-json','spilled']];
+/* [at, kind, op, item, role] — ONE ROW PER ITEM A RECORD NAMES, and a row for
+   a record that names none.
+
+   Three of the five name nothing, on purpose. The two rows this held until
+   2026-08-29 both carried an item, which is the fixture pattern this file has
+   been caught by before: a design validated on the data that flatters it. The
+   real log is dominated by `hook` — 59 of the last 60 records on the owner's
+   machine — and every one of those rows was a bare timestamp and two dashes
+   until the Kind and What columns landed above.
+
+   The KIND chip is neutral for every kind. The Audit stream hues its own by
+   kind because its pulse is coloured the same way and the chip is the pulse's
+   legend; there is no pulse here, this column also carries a CORPUS CATEGORY
+   on the other tab (which has no audit hue at all), and a second per-kind hue
+   table is a second thing to keep in step with core/audit.ts. The hue that
+   earns its place on this table is the ROLE, which is a fact about the item
+   beside it and only ever `injected` or `spilled`. */
+const QROWS=[['09:22:41','injection','session-start','INV-prices-are-integer-cents','injected'],
+             ['09:22:41','injection','session-start','STD-api-errors-use-problem-json','spilled'],
+             ['09:22:32','hook','subagent-stop',null,null],
+             ['09:22:16','access','ui-refused',null,null],
+             ['09:21:58','mutation','create','RULE-money-is-an-integer-number-of-cents',null]];
 /* Three states, not one: rows, rows capped by the LIMIT probe `ask.sqlCaption`
    describes, and nothing matched at all. Run cycles them, so the two the table
    could never draw are reachable. */
-const QSTATES=[['rows',2],['truncated',200],['none',0]];
+const QSTATES=[['rows',QROWS.length],['truncated',200],['none',0]];
 let qi=0;
 function renderQ(){
   const [state,n]=QSTATES[qi];
   const tb=$('#qres'); tb.replaceChildren();
-  if(state!=='none') QROWS.forEach(([a,i,role])=>{
+  if(state!=='none') QROWS.forEach(([a,kind,op,i,role])=>{
     const r=document.createElement('tr');
     const c1=document.createElement('td'); c1.className='m small'; c1.textContent=a;
-    const c2=document.createElement('td'); c2.append(mono(i));
-    const c3=document.createElement('td');
-    const ch=document.createElement('span'); ch.className='chip '+(role==='spilled'?'warn':'ok');
-    ch.dataset.g = role==='spilled'?'▲':'●'; ch.textContent=role; c3.append(ch);
+    const c2=document.createElement('td');
+    const kc=document.createElement('span'); kc.className='chip index';
+    kc.dataset.g='◇'; kc.textContent=kind; c2.append(kc);
+    /* The op ALWAYS, the item only where the record names one, the role chip
+       only where the item has one. Every row says what it is. */
+    const c3=document.createElement('td'); c3.append(mono(op));
+    if(i!==null) c3.append(' ',mono(i));
+    if(role!==null){
+      const ch=document.createElement('span'); ch.className='chip '+(role==='spilled'?'warn':'ok');
+      ch.dataset.g = role==='spilled'?'▲':'●'; ch.textContent=role; c3.append(' ',ch);
+    }
     r.append(c1,c2,c3); tb.append(r);
   });
   const cap=$('[data-t="ask.rows"]');

@@ -74,9 +74,21 @@ registerHooks({
 /** One entry of a value select: what is sent, and what is shown. */
 interface Choice { value: string; label: string }
 
-/** One line of the result table, in the design's three columns. */
+/**
+ * One line of the result table, in the design's three columns — At, Kind and
+ * What since 2026-08-29 (`plan:walk seq:73`).
+ *
+ * `kind` and `op` are the two that arrived with the merge, and they are the
+ * whole subject of that task: they were in the filter vocabulary, they were
+ * never drawn, and a log dominated by `hook` rows — the ordinary state of any
+ * machine that has run agents — therefore rendered as a timestamp and two em
+ * dashes. `item` and `role` survive as row FIELDS while ceasing to be columns:
+ * they are composed into the What cell beside the op.
+ */
 interface Row {
   at: string | null;
+  kind: string | null;
+  op: string | null;
   item: string | null;
   linkable: boolean;
   role: string | null;
@@ -99,7 +111,9 @@ interface AskModule {
   auditRows: (records: Record<string, unknown>[]) => Row[];
   summaryRows: (report: string, role: string | null, rows: Record<string, unknown>[]) => Row[];
   tableState: (count: number, truncated: boolean) => string;
-  roleChip: (role: string | null) => [string, string];
+  roleChip: (role: string | null) => [string, string] | null;
+  filterFields: (mode: string) => { name: string; label: string | null }[];
+  columnHeads: (mode: string) => string[];
   render: (root: unknown, ctx: unknown) => Promise<void>;
 }
 
@@ -213,15 +227,25 @@ test('an instant becomes a wall clock; a stamp with no zone is left exactly as i
 
 // ── The rows ──────────────────────────────────────────────────────────────
 
-test('corpus rows carry the index write time and a linkable id', async () => {
+test('corpus rows carry the index write time, the category, and a linkable id', async () => {
   const { corpusRows } = await ask();
   const rows = corpusRows([
     { id: 'RULE-a', type: 'rule', updated_at: '2026-08-23 05:21:54' },
     { id: 'DEC-b', type: 'decision', updated_at: '2026-08-22 01:00:00' },
   ]);
+  // The CATEGORY is what a corpus row answers "what is this" with, and it is
+  // the column the audit tab fills with `hook` or `access`. Until the merge
+  // this row drew `At | <id> | —`, the dash standing for a Role a corpus row
+  // can never have: the same empty column the audit tab was reported for.
   assert.deepEqual(rows, [
-    { at: '2026-08-23 05:21:54', item: 'RULE-a', linkable: true, role: null, count: null },
-    { at: '2026-08-22 01:00:00', item: 'DEC-b', linkable: true, role: null, count: null },
+    {
+      at: '2026-08-23 05:21:54', kind: 'rule', op: null,
+      item: 'RULE-a', linkable: true, role: null, count: null,
+    },
+    {
+      at: '2026-08-22 01:00:00', kind: 'decision', op: null,
+      item: 'DEC-b', linkable: true, role: null, count: null,
+    },
   ]);
 });
 
@@ -245,17 +269,57 @@ test('a mutation names its subject, and the three roles are the projection\'s ow
   const { auditRows } = await ask();
   const rows = auditRows([{ at: 'A', kind: 'mutation', op: 'create', itemId: 'RULE-x', origin: 'human' }]);
   assert.deepEqual(rows, [
-    { at: 'A', item: 'RULE-x', linkable: true, role: 'subject', count: null },
+    {
+      at: 'A', kind: 'mutation', op: 'create',
+      item: 'RULE-x', linkable: true, role: 'subject', count: null,
+    },
   ]);
 });
 
-test('a record that names no item still gets a row', async () => {
+test('a record that names no item still gets a row, and the row says what it is', async () => {
   const { auditRows } = await ask();
   // A hook action, a session-start, a focus change: a real record with a real
   // timestamp and no item. An item-shaped table that dropped it would drop it
-  // silently, which is the one thing this corpus's own invariant forbids.
+  // silently, which is the one thing this corpus's own invariant forbids — and
+  // one that KEPT it and drew two em dashes is the defect `plan:walk seq:73`
+  // reports. `kind` and `op` are what the row carries instead.
   const rows = auditRows([{ at: 'A', kind: 'hook', op: 'session-start', sessionId: 's1' }]);
-  assert.deepEqual(rows, [{ at: 'A', item: null, linkable: false, role: null, count: null }]);
+  assert.deepEqual(rows, [{
+    at: 'A', kind: 'hook', op: 'session-start',
+    item: null, linkable: false, role: null, count: null,
+  }]);
+});
+
+test('a log of nothing but hook rows still tells its rows apart — the reported case', async () => {
+  const { auditRows } = await ask();
+  // The measured shape: 59 `hook` and one `access` in the last 60 records, not
+  // one of them naming an item. Under the old three columns every row of this
+  // rendered `06:22:59 | — | —` and a reader could not tell a subagent
+  // stopping from a credential being refused. The assertion is exactly that:
+  // the rows are DISTINGUISHABLE from each other by what the table draws.
+  const rows = auditRows([
+    { at: '1', kind: 'hook', op: 'subagent-stop', sessionId: 's1' },
+    { at: '2', kind: 'hook', op: 'session-end', sessionId: 's1' },
+    { at: '3', kind: 'hook', op: 'post-tool-use', sessionId: 's1' },
+    { at: '4', kind: 'access', op: 'ui-refused' },
+  ]);
+  assert.deepEqual(rows.map((row) => row.item), [null, null, null, null]);
+  const said = rows.map((row) => `${row.kind}/${row.op}`);
+  assert.deepEqual(said, [
+    'access/ui-refused', 'hook/post-tool-use', 'hook/session-end', 'hook/subagent-stop',
+  ]);
+  assert.equal(new Set(said).size, rows.length, 'every row reads differently from every other');
+});
+
+test('an unregistered kind draws itself — nothing here is keyed by AUDIT_KINDS', async () => {
+  const { auditRows } = await ask();
+  // This screen declares `kinds: '*'` in `lib/live-invalidation.js` because its
+  // subject IS the log. A column set or a chip table enumerating the seven
+  // members of `AUDIT_KINDS` would be that staleness one layer up, blank on the
+  // eighth kind the day it ships. The record's own words, whatever they are.
+  const rows = auditRows([{ at: 'A', kind: 'telemetry', op: 'sampled' }]);
+  assert.equal(rows[0]!.kind, 'telemetry');
+  assert.equal(rows[0]!.op, 'sampled');
 });
 
 test('audit rows read newest first, against the oldest-first order the endpoint sends', async () => {
@@ -273,8 +337,11 @@ test('audit rows read newest first, against the oldest-first order the endpoint 
 test('a predefined report keeps its count, and claims a role only where it has one', async () => {
   const { summaryRows } = await ask();
   const spilled = summaryRows('items', 'spilled', [{ label: 'STD-x', count: 12, last: 'A' }]);
+  // An aggregate folds many records together and claims no kind and no op: the
+  // only way to say `create` belongs to `mutation` here would be an op→kind
+  // table copied out of `core/audit.ts`, wrong the day an eighth kind ships.
   assert.deepEqual(spilled, [
-    { at: 'A', item: 'STD-x', linkable: true, role: 'spilled', count: 12 },
+    { at: 'A', kind: null, op: null, item: 'STD-x', linkable: true, role: 'spilled', count: 12 },
   ]);
   // `report=items` with no role is a different question — every role at once —
   // and claims none of them.
@@ -300,11 +367,50 @@ test('the role chip uses the mockup\'s two hues and invents no third', async () 
   const { roleChip } = await ask();
   assert.deepEqual(roleChip('injected'), ['chip ok', '●']);
   assert.deepEqual(roleChip('spilled'), ['chip warn', '▲']);
-  // `subject` is the projection's third role and the mockup gives it no hue,
-  // so it takes the neutral chip — never bare `.chip`, which is the one that
-  // renders near-black text on a near-black panel.
-  assert.deepEqual(roleChip('subject'), ['chip index', '◇']);
-  assert.deepEqual(roleChip(null), ['chip index', '◇']);
+  // `subject` is the projection's third role, the mockup gives it no hue, and
+  // since the merge it needs none: `create RULE-x` already says which record
+  // that id is the subject of, so a `◇subject` chip beside it said "subject"
+  // twice. A role with no hue draws NO chip rather than a neutral one.
+  assert.equal(roleChip('subject'), null);
+  assert.equal(roleChip(null), null);
+});
+
+// ── The columns and the filters, from ONE list ────────────────────────────
+
+test('the filter vocabulary and the table columns are derived from one declaration', async () => {
+  const { filterFields, columnHeads } = await ask();
+  // The filter select is unchanged in membership and order — this is the same
+  // four names the endpoint's `unknownParams` allow-list accepts, and the same
+  // four the mockup writes as bare options.
+  assert.deepEqual(filterFields('audit').map((f) => f.name), ['kind', 'op', 'origin', 'item']);
+  assert.deepEqual(
+    filterFields('corpus').map((f) => f.name),
+    ['type', 'status', 'layer', 'always', 'scoped', 'title'],
+  );
+  // The corpus field names are prose and are keyed; the audit ones are product
+  // vocabulary and are literals.
+  assert.deepEqual(filterFields('audit').map((f) => f.label), [null, null, null, null]);
+  assert.deepEqual(filterFields('corpus').map((f) => f.label), [
+    'ask.field.type', 'ask.field.status', 'ask.field.layer',
+    'ask.field.always', 'ask.field.scoped', 'ask.field.title',
+  ]);
+  // And the headers come out of the SAME declarations — the Audit stream's own
+  // three (`screens/watch.js`), on both tabs.
+  assert.deepEqual(columnHeads('audit'), ['th.at', 'th.kind', 'th.what']);
+  assert.deepEqual(columnHeads('corpus'), ['th.at', 'th.kind', 'th.what']);
+});
+
+test('every column some field declares is a column the header row can name', async () => {
+  const { columnHeads } = await ask();
+  // The failure this guards is a field declared into a column `COLUMN_HEAD`
+  // has no key for: `ctx.t(undefined)` would draw an empty header, which is a
+  // table whose columns are unlabelled rather than a build that refused.
+  for (const mode of ['audit', 'corpus']) {
+    for (const key of columnHeads(mode)) {
+      assert.equal(typeof key, 'string', `${mode}: a column with no header key`);
+      assert.match(key, /^th\./, `${mode}: ${String(key)} is not a header key`);
+    }
+  }
 });
 
 // ── The string keys ───────────────────────────────────────────────────────
@@ -628,9 +734,13 @@ function mockupKinds(): string[] {
     if (!buried && !hidden) kinds.add(kindOf(tag, className));
     if (!VOID.has(tag) && !body.trim().endsWith('/')) stack.push({ tag, skip: buried || hidden });
   }
-  // The two rows `renderQ` builds: `c1.className='m small'`, the item as
-  // `mono(i)`, and the role as `chip ok` / `chip warn`.
-  for (const kind of ['tr', 'td', 'td.m.small', 'span.m', 'span.chip.ok', 'span.chip.warn']) {
+  // The five rows `renderQ` builds: `c1.className='m small'` for the clock, a
+  // neutral `chip index` for the kind, the op and the item as `mono()`, and the
+  // role as `chip ok` / `chip warn` where the row has one. Three of the five
+  // name no item at all, which is the shape the real log actually has.
+  for (const kind of [
+    'tr', 'td', 'td.m.small', 'span.m', 'span.chip.index', 'span.chip.ok', 'span.chip.warn',
+  ]) {
     kinds.add(kind);
   }
   return [...kinds].sort();
@@ -744,16 +854,99 @@ test('render draws every kind the mockup draws, and invents only what it means t
     'a kind the mockup draws is missing from the render — emphasis is carryable now, so a '
     + 'name here is a real gap rather than the grammar limit this list used to hold');
 
-  // Two kinds this screen draws that the mockup does not, both deliberate and
-  // both in this task's report. `button.linkid.m` is what every id on every
-  // shipped screen is — the mockup draws a bare `span.m` in the item cell and
-  // the app-wide convention is the button that reaches the item pane.
-  // `span.chip.index` is the neutral chip for the projection's third role,
-  // `subject`, which the mockup never draws and gives no hue.
-  assert.deepEqual(
-    built.filter((kind) => !drawn.includes(kind)),
-    ['button.linkid.m', 'span.chip.index'],
-  );
+  // **ONE kind this screen draws that the mockup does not, and it was two.**
+  // `button.linkid.m` is what every id on every shipped screen is — the mockup
+  // draws a bare `span.m` in the item cell and the app-wide convention is the
+  // button that reaches the item pane.
+  //
+  // `span.chip.index` left this list on 2026-08-29 from BOTH ends at once. It
+  // was the neutral chip the app invented for `subject`, the projection's third
+  // role, which the mockup never hued — and `subject` draws no chip at all any
+  // more, because the op beside the id already says what makes it the subject.
+  // The class is still drawn, by the KIND cell, and the mockup draws it too.
+  assert.deepEqual(built.filter((kind) => !drawn.includes(kind)), ['button.linkid.m']);
+});
+
+/** Every text run under a node, flattened — what a reader of that cell sees. */
+function textOf(node: FakeNode): string {
+  if (node.tag === '#text') return node.textContent;
+  if (node.children.length === 0) return node.textContent;
+  return node.children.map(textOf).join('');
+}
+
+/** The result table's `<tbody>` rows, each as its three cells' text. */
+function tableRows(root: FakeNode): string[][] {
+  const body = find(root, (node) => node.tag === 'tbody');
+  assert.notEqual(body, null, 'the screen drew no <tbody>');
+  return body!.children.map((row) => row.children.map((cell) => textOf(cell).trim()));
+}
+
+/** The header row's cells. */
+function tableHead(root: FakeNode): string[] {
+  const head = find(root, (node) => node.tag === 'thead');
+  assert.notEqual(head, null, 'the screen drew no <thead>');
+  return head!.children[0]!.children.map((cell) => textOf(cell).trim());
+}
+
+/**
+ * **The reported corpus: a log that is almost all `hook`.**
+ *
+ * 59 `hook` and one `access` in the last 60 records, not one of them naming an
+ * item — measured on the owner's own machine, and the ordinary state of any
+ * machine that has run agents. A fixture whose rows all name items passes the
+ * old three columns and proves nothing.
+ */
+const HOOK_LOG = {
+  records: [
+    { at: '2026-08-29T06:22:16.000Z', kind: 'access', op: 'ui-refused', origin: 'agent' },
+    { at: '2026-08-29T06:22:32.000Z', kind: 'hook', op: 'session-end', sessionId: 's-1' },
+    { at: '2026-08-29T06:22:59.000Z', kind: 'hook', op: 'subagent-stop', sessionId: 's-1' },
+  ],
+  sql: 'SELECT json(rec) AS rec FROM audit ORDER BY seq DESC LIMIT ?',
+  params: [200],
+  projectionState: 'fresh',
+};
+
+test('a log of nothing but hook rows renders rows a reader can tell apart', async () => {
+  const root = await draw(async (route: string) => {
+    if (route === '/api/items') return ITEMS;
+    if (route.startsWith('/api/watch/volume')) throw new Error('no projection for the vocabulary');
+    if (route.startsWith('/api/ask/audit')) return HOOK_LOG;
+    throw new Error(`the screen asked for ${route}, which this fixture does not serve`);
+  });
+
+  // The columns the design of record now declares, drawn from the same field
+  // declarations the filter select is drawn from.
+  assert.deepEqual(tableHead(root), ['At', 'Kind', 'What']);
+
+  const rows = tableRows(root);
+  assert.equal(rows.length, 3, 'one row per record; none of them names an item');
+  // Newest first, and NOT ONE of them is `06:22:59 | — | —`.
+  assert.deepEqual(rows.map((cells) => cells.slice(1)), [
+    ['hook', 'subagent-stop'],
+    ['hook', 'session-end'],
+    ['access', 'ui-refused'],
+  ]);
+  // The assertion the old table could not have made: every row reads
+  // differently from every other one, so a subagent stopping is distinguishable
+  // from a credential being refused.
+  const said = rows.map((cells) => cells.join(' | '));
+  assert.equal(new Set(said).size, said.length, 'two rows read identically');
+  assert.equal(said.filter((line) => line.includes('—')).length, 0,
+    'a cell fell back to the em dash on a record that has both a kind and an op');
+});
+
+test('a record that names items still names them, beside what it did', async () => {
+  const root = await draw(FRESH);
+  const rows = tableRows(root);
+  // `RECORDS` is one injection naming two items in two roles and one mutation
+  // naming its subject — three rows, newest first.
+  assert.deepEqual(rows.map((cells) => cells.slice(1)), [
+    ['injection', 'session-start INV-prices-are-integer-cents injected'],
+    ['injection', 'session-start STD-api-errors-use-problem-json spilled'],
+    // No `subject` chip: `create` is what makes that id the subject.
+    ['mutation', 'create RULE-money-is-an-integer-number-of-cents'],
+  ]);
 });
 
 test('the SQL pane shows the server\'s own statement, verbatim, with its parameters', async () => {
