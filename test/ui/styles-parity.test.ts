@@ -283,6 +283,13 @@ const SCREEN_SELECTORS = [
   '.readout', '.readout b',
   '.div-row', '.div-l,.div-r', '.div-l', '.div-l i', '.div-r i',
   '.div-name,.div-n', '.div-n',
+  // `.div-name` gained a rule of its own on 2026-08-29 (`plan:walk seq:47`):
+  // the shared rule's `nowrap`/`ellipsis` moved down onto `.div-n`, which is a
+  // `12/22` tally and does want one line, and the NAME now wraps instead —
+  // measured clipping 10 of 10 real ids at the old 168px track, and 6 of 6 of
+  // the design's own fixtures. Listed here with the change, per this file's
+  // standing brief: "Extend that test with every block you add."
+  '.div-name',
   '.heat', '.hstrip', '.hstrip i', '.hstrip i.h1', '.hstrip i.h2',
   '.hstrip i.h3', '.hstrip i.sp', '.hname', '.heataxis',
   '.mini', '.mini i.g', '.mini i.u', '.mini i.x',

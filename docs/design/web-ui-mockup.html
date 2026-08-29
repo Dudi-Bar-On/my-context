@@ -1126,16 +1126,17 @@ svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
 /* — spill ratio: a diverging bar. Both halves are logical, so RTL mirrors for
      free — including the corner radii, which the source sketch had to restate
      by hand because it used physical ones. — */
-.div-row{display:grid;grid-template-columns:minmax(96px,168px) 1fr 1fr 56px;gap:var(--sp-2);
+.div-row{display:grid;grid-template-columns:minmax(96px,288px) 1fr 1fr 56px;gap:var(--sp-2);
   align-items:center;font-size:var(--fs-0);padding-block:3px}
 .div-l,.div-r{block-size:11px;display:flex}
 .div-l{justify-content:flex-end}
 .div-l i{background:var(--ok);border-start-start-radius:2px;border-end-start-radius:2px}
 .div-r i{background:repeating-linear-gradient(45deg,var(--crit) 0 3px,transparent 3px 6px);
   border:1px solid var(--crit);border-start-end-radius:2px;border-end-end-radius:2px}
-.div-name,.div-n{font-family:var(--mono);direction:ltr;unicode-bidi:isolate;
+.div-name,.div-n{font-family:var(--mono);direction:ltr;unicode-bidi:isolate}
+.div-name{white-space:normal;overflow-wrap:anywhere}
+.div-n{color:var(--dim);text-align:end;font-variant-numeric:tabular-nums;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.div-n{color:var(--dim);text-align:end;font-variant-numeric:tabular-nums}
 
 /* — 90-day heatstrip: one cell per day. An empty cell is nothing happening; a
      hatched cell is a spill. Six quiet weeks are six weeks of empty cells. — */
