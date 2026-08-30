@@ -299,7 +299,11 @@ test('a long session holds rows back, and the screen draws the way to reach them
   // **The bound line states a truncation, and the number it truncates from is
   // the session's own.** `BOUND_CAP_TABLE` is 50; anything at or below it draws
   // "Showing all N" and no control at all, which is the state test 1 measures
-  // on the default session.
+  // on the default session. This table passes `order: 'recent', take: 'last'`
+  // because a seen file is an append-only log, so its opening page is the
+  // NEWEST end and its line says so — *"Showing the 50 most recent of 60"*, not
+  // *"the first 50"*. `e2e/bounded-paging.spec.ts` holds that direction against
+  // a mounted list; this is the first time the corpus itself has produced one.
   const bound = probe.locator('.bound');
   await expect(bound, 'the table declares its bound whatever it holds').toBeVisible();
   await expect(bound.locator('p'),
@@ -307,7 +311,7 @@ test('a long session holds rows back, and the screen draws the way to reach them
     + 'events, three compactions and three resumes so its seen file passes 50 lines. If this '
     + 'reads "Showing all N", the long-session shape is gone from the fixture and the only '
     + 'bounded surface the product itself fills is gone with it.')
-    .toHaveText(/Showing \d+ of \d+/);
+    .toHaveText(/Showing the 50 most recent of \d+\./);
 
   // The rows are capped at the bound, not merely reported as capped.
   await expect(probe.locator('tbody tr')).toHaveCount(50);
@@ -315,13 +319,23 @@ test('a long session holds rows back, and the screen draws the way to reach them
   // **ABSENT is the failure mode this control has** — `bounded-paging.spec.ts`'s
   // first test asserts the mirror of this over the default session, and the
   // requirement's own sentence is that *an inert control is the same lie as a
-  // blank screen*. Both step buttons exist here because both directions are
-  // reachable from a middle page after one press; on arrival `prev` is
-  // disabled, which is the browser's own answer and is `bounded-paging`'s to
-  // assert.
+  // blank screen*. Both buttons are here; on arrival the one pointing past the
+  // newest end is disabled, which is the browser's own answer and the
+  // append-only reading `take: 'last'` exists for.
   await expect(bound.locator('button[data-step]'),
     'a list holding rows back must offer the way to them').toHaveCount(2);
-  await expect(bound.locator('button[data-step="next"]')).toBeVisible();
+  await expect(bound.locator('button[data-step="next"]'),
+    'nothing is newer than the opening page of an append-only log').toBeDisabled();
+  await expect(bound.locator('button[data-step="prev"]'),
+    'and the rows it held back are OLDER, so Previous is the way to them').toBeEnabled();
+
+  // The way through actually goes somewhere: the older page is different rows.
+  const newestFirstRow = await probe.locator('tbody tr').first().textContent();
+  await bound.locator('button[data-step="prev"]').click();
+  await expect(bound.locator('p')).toHaveText(/Rows \d+–\d+ of \d+/);
+  await expect(probe.locator('tbody tr').first(),
+    'Previous on an append-only log means OLDER, not the same page re-drawn')
+    .not.toHaveText(newestFirstRow ?? '');
 });
 
 /**

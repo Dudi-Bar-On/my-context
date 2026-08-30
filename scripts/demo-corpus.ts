@@ -51,6 +51,7 @@
  */
 import { updateItem } from '../src/core/mutate.ts';
 import { openRebuiltStore } from '../src/core/open-store.ts';
+import { linkItems } from '../src/core/relations.ts';
 import { stageRevision } from '../src/core/revision.ts';
 import { resolveWorkspace } from '../src/core/workspace.ts';
 import { execFileSync } from 'node:child_process';
@@ -565,6 +566,110 @@ console.log(cleared
   : `demo-corpus: WARNING — the SessionEnd hook failed for ${session}-${CLEARED_SESSION}; the `
     + 'cleared-window shape is ABSENT and the empty-seen-file case cannot be demonstrated');
 
+// ── ONE LONG WORKING SESSION, SO A BOUNDED LIST CAN OVERFLOW ───────────────
+//
+// **Every numbered session above receives exactly one `SessionStart` and
+// nothing else, and no real session looks like that.** A session starts, then
+// edits files, then compacts when the window fills, then resumes. The
+// twenty-four sessions in the loop are twenty-four session STARTS; the tool
+// events all went to the bare unnumbered `demo-session-a3f9c1`, so no NUMBERED
+// session in this corpus has ever carried a `jit` or a `restored` line.
+//
+// Two shapes were absent because of it, and both sat in
+// `e2e/screen-parity.spec.ts`'s `KNOWN_GAPS.injected` reading as code:
+//
+//   `span.chip.ok`   the neutral `jit` chip. Every row any session delivered
+//                    was `pinned`, so the chip had nothing to mark.
+//   `button`         the bound line's *Show all N*. `BOUND_CAP_TABLE` is 50
+//                    and the largest seen file held 16, so `boundedList`
+//                    hid the control — correctly — and
+//                    `TASK-the-demo-corpus-cannot-trip-a-single-list-bound-so-paging-is`
+//                    was filed because **a feature the demo corpus cannot
+//                    demonstrate looks exactly like a feature that does not
+//                    work.**
+//
+// **Produced, not composed.** Every event below is the REAL hook fed the REAL
+// payload on stdin, exactly as `hooks/session-end.ts` is fed its `/clear`
+// above. The seen file this leaves behind is whatever the injector wrote; the
+// tiers on its lines are whatever the selector chose; the repeats are real
+// re-deliveries of the pinned tier on each restart, each with its own instant.
+// Nothing is appended to a seen file by this script, here or anywhere.
+//
+// **Measured: 6 lines after the start, 21 after the tool events, 60 after the
+// compacts and resumes** — across `pinned`, `continuity`, `jit` and
+// `restored`. The 50 is crossed by the SESSION being long, which is what makes
+// a bound bite in the product, and not by a cap lowered until the fixture
+// happened to trip it. `e2e/screen-parity.spec.ts`'s own header names that
+// edit as the one that makes a gate worse than nothing.
+//
+// **NOT THE NEWEST SESSION, and the reason is a measurement rather than a
+// preference.** `/api/sessions` defaults to the newest, every screen lands on
+// it, and the injection preview RE-COMPUTES what a session start would deliver
+// — so a session that has already been injected with everything it can hold
+// has nothing left to be given. Measured over this corpus, three ways:
+//
+//     session with one SessionStart      /api/select full = 6   delivered pane full
+//     + fifteen tool events              /api/select full = 0   delivered pane EMPTY
+//     + compacts and resumes             /api/select full = 0   delivered pane EMPTY
+//
+// That is correct behaviour reading as a broken screen, and it is the same
+// trade this file's closing block already prices for the seen file. So the
+// long session sits at index 11 — five weeks back in the stripe — and the
+// default stays the freshly-started session 23, whose delivered pane is full.
+//
+// **What that costs, said out loud: `button` still cannot draw on the SERVED
+// injected screen**, because nothing in the shell can select a session other
+// than the default — `app.js` records that `#sessbtn` opens no popup and that
+// `loadSessions()` exposes the default "so a later task can wire the popup".
+// The corpus now HOLDS the state; reaching it needs the picker. That is a code
+// gap with a task, not a fixture gap, and it is the second time this session
+// slot has taught that difference (`CLEARED_SESSION` above is the first).
+const LONG_SESSION = 11;
+const longId = `${session}-${LONG_SESSION}`;
+// The fifteen files this corpus wrote for the coverage walk, in their own
+// order — a session edits what the repository has, and `REPO_FILES` is what it
+// has. Deterministic, like everything else here.
+for (const rel of REPO_FILES) {
+  hook('pre-tool-use.ts', {
+    session_id: longId, hook_event_name: 'PreToolUse',
+    tool_name: 'Edit', tool_input: { file_path: `${OUT}/${rel}` }, cwd: OUT,
+  });
+}
+// Three compactions and three resumes. `pre-compact` writes the window state
+// that `session-start --source compact` then restores from, so the pair is run
+// in that order rather than either alone: a `compact` start with no preceding
+// `PreCompact` restores nothing and the `restored` tier never runs.
+for (let round = 0; round < 3; round++) {
+  hook('pre-compact.ts', { session_id: longId, hook_event_name: 'PreCompact', cwd: OUT });
+  hook('session-start.ts', {
+    session_id: longId, hook_event_name: 'SessionStart', source: 'compact', cwd: OUT,
+  });
+}
+for (let round = 0; round < 3; round++) {
+  hook('session-start.ts', {
+    session_id: longId, hook_event_name: 'SessionStart', source: 'resume', cwd: OUT,
+  });
+}
+{
+  const seenFile = path.join(OUT, '.my_context', 'state', `${longId}.seen.jsonl`);
+  const seenLines = existsSync(seenFile)
+    ? readFileSync(seenFile, 'utf8').split('\n').filter(Boolean) : [];
+  const tiers = new Set(seenLines.map((l) => (JSON.parse(l) as { tier: string }).tier));
+  // **Reported rather than asserted, and reported in the direction that
+  // matters.** A throw here would make a corpus that is merely SMALLER than
+  // expected unbuildable; a silent pass would let the shape disappear with
+  // nothing saying so. `e2e/injected-empty.spec.ts` holds the assertion, so a
+  // fixture that stops crossing the bound goes red in a test rather than in a
+  // build log nobody reads.
+  console.log(seenLines.length > 50
+    ? `demo-corpus: ${longId} is a long working session — ${seenLines.length} injection rows `
+      + `across ${[...tiers].sort().join(', ')}, past the 50-row display bound, so a served `
+      + 'list has something to hold back'
+    : `demo-corpus: WARNING — ${longId} accumulated only ${seenLines.length} injection rows; `
+      + 'the 50-row bound is NOT crossed anywhere in this corpus and no list can demonstrate '
+      + 'paging over its own data');
+}
+
 // A focus change — the feed draws this as a regime RULE across the table rather
 // than as a row, and it is the only thing that draws one.
 // ── ONE DOCTOR FINDING THAT EARNS A COMMAND ────────────────────────────────
@@ -603,8 +708,9 @@ writeFileSync(driftDoc, [
 ].join('\n'));
 console.log('demo-corpus: one source_drift finding staged, so Doctor has a remedy to compose');
 
-cli(['focus', 'billing']);
-cli(['focus', '--clear']);
+// (The focus change itself is written at the END of this script — see the
+// block above the audit tally. It has to be the LAST unnumbered record in the
+// log, and the reason is measured rather than stylistic.)
 
 // ── ONE PENDING REVISION, because the Work screen has nothing to draw without
 //    one ─────────────────────────────────────────────────────────────────────
@@ -810,6 +916,156 @@ cli(['focus', '--clear']);
   console.log(`demo-corpus: one pack of ${carried.length} items imported from another corpus`);
 }
 
+// ── RELATIONS, SO THE EGO GRAPH HAS A GRAPH ────────────────────────────────
+//
+// **`KNOWN-the-demo-corpus-has-no-relations-at-all-so-the-graph-screen`, filed
+// 2026-08-25 at severity `hard`: NOT ONE ITEM in this corpus carried a
+// relation.** The mockup's Graph section draws an ego graph of seven nodes and
+// five labelled edges; the app drew ONE node — the focus — and a legend. Eight
+// of the screen's parity findings are that single fact, and every one of them
+// is AMBIGUOUS rather than structural: `path.bearing.edge`,
+// `path.dangling.edge`, `path.edge.ref`, `rect.node`, `rect.node.superseded`,
+// `rect.missing.node`, `rect.more.node` and `text.rel` are all in the screen's
+// own vocabulary, so the code CAN build every one of them. It had nothing to
+// build them from. **The screen is therefore UNJUDGED, not judged and passed.**
+//
+// **Written through `linkItems`, which is the relation surface itself** — the
+// same function the `link_items` MCP tool calls, persisting through `persist()`
+// and appending its own `link` audit record, exactly as the staged revision
+// above is written through `stageRevision`. The CLI has no `link` verb at all
+// (`mycontext help cli` names it as the refusal people hit most), so the core
+// function is not a shortcut past a command — it is the only surface there is.
+//
+// **The FOCUS is computed the way the screen computes it, never hard-coded.**
+// `screens/graph.js` reads `/api/items` and focuses `items.items[0].id`, and
+// `apiItems` sorts by id ascending — so the ego is whatever id sorts first in
+// this corpus. That is an item the real base supplies and it moves when the
+// base moves; deriving it here is what keeps the scene pointed at the node the
+// screen will actually draw rather than at one this script guessed.
+//
+// **The four shapes the legend names, each produced by the thing that produces
+// it, and none of them fabricated:**
+//
+//   a load-bearing edge   `refines` and `constrains` — `RELATION_CLASSIFICATION`
+//                         calls both load-bearing, so they draw `.edge.bearing`.
+//   a referential edge    `relates_to` and `links_to`, which draw `.edge.ref`.
+//   a DANGLING edge and   one relation whose target is an id no item has.
+//   its MISSING node      Unresolved links are permitted by design (spec §3.2)
+//                         and `linkItems` says so in its own return message —
+//                         *"the link resolves when it is created"*. This is the
+//                         product's own state, not a broken record.
+//   a SUPERSEDED node     `mycontext supersede <id> --by <id>`, the real CLI
+//                         command, on one demo-authored item retired in favour
+//                         of another. It writes both directions itself, which
+//                         `linkItems` refuses to forge.
+//
+// **And the cap, which nothing else in this corpus could show.**
+// `GRAPH_NODE_CAP` is 60 and `omitted` is the mockup's *"+N more"*, so the
+// disclosure that a graph is a PARTIAL view needs a focus with more than
+// fifty-nine neighbours. A hub is the honest shape for it: the id that sorts
+// first here is a founding constraint, and the items linked to it below say so
+// in their relation types. Sixty-four ordinary neighbours plus the two the
+// paragraph below names — sixty-six relations, measured — so the cap is
+// crossed rather than grazed and one more item arriving in the base cannot
+// uncross it.
+//
+// **WHICH neighbours survive the cap is decided by `apiGraph`, not by this
+// script, and the two that MUST survive are therefore given the type that
+// sorts first.** The endpoint sorts each node's adjacency by `(type, other id)`
+// and fills `kept` in that order, so with sixty-four neighbours and a cap of
+// sixty the last few are always dropped. `blocks` sorts ahead of `constrains`,
+// `links_to`, `refines` and `relates_to`, so the retired neighbour and the
+// dangling edge are the first two entries in the list and cannot be the ones
+// the cap refuses. Measured the other way round first: with the retired item
+// linked as an ordinary `refines`, it fell outside the sixty and
+// `rect.node.superseded` was the one kind of the eight that still did not draw.
+{
+  // Read back before the store is opened, for the reason the pinned ids above
+  // are: the CLI owns its id scheme and asking it is the only way to be right.
+  const retiring = idsOf('known_issue')
+    .find((i) => i.title === 'The importer drops trailing whitespace in titles');
+  const replacement = idsOf('lesson')
+    .find((i) => i.title === 'A cached count outlived the thing it counted');
+
+  const ws = resolveWorkspace(OUT);
+  const { store } = openRebuiltStore(ws);
+  let focus: string | undefined;
+  let linked = 0;
+  try {
+    const ctx = { root: ws.projectRoot!, store, config: ws.config };
+    // `apiItems`' own comparator, so this is the same first item the screen
+    // asks for rather than one that merely sorts near it.
+    const ids = store.all().map((it) => it.id)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    focus = ids[0];
+    if (focus === undefined) throw new Error('demo-corpus: no item to focus the ego graph on');
+    // The dangling one, from the focus outward. The target is NAMED so a
+    // reader of the corpus can see it was never meant to resolve.
+    linkItems(ctx, {
+      from: focus, to: 'CONST-an-item-this-corpus-has-never-held', relation: 'blocks',
+    });
+    linked++;
+    // The neighbour that is about to be retired.
+    if (retiring !== undefined) {
+      linkItems(ctx, { from: retiring.id, to: focus, relation: 'blocks' });
+      linked++;
+    }
+    // Rotated over four types so the two edge CLASSES both appear and the
+    // labels differ — `text.rel` is the type written on the edge, and four
+    // identical labels would draw the kind without showing what it is for.
+    // Sixty-four, so the cap is crossed rather than grazed and one more item
+    // arriving in the base cannot uncross it.
+    const RELATIONS = ['refines', 'constrains', 'relates_to', 'links_to'];
+    for (const [n, id] of ids.slice(1, 65).entries()) {
+      if (id === retiring?.id) continue;
+      linkItems(ctx, { from: id, to: focus, relation: RELATIONS[n % RELATIONS.length]! });
+      linked++;
+    }
+  } finally {
+    store.close();
+  }
+  // Retired through the command a human retires an item with. It is already a
+  // neighbour, so this changes its `status` and nothing else about the
+  // picture — which is exactly what `egoNodeClass` reads to draw
+  // `rect.node.superseded`.
+  if (retiring !== undefined && replacement !== undefined) {
+    cli(['supersede', retiring.id, '--by', replacement.id, '--yes']);
+    console.log(`demo-corpus: ${retiring.id} superseded, so one ego neighbour is retired`);
+  } else {
+    console.log('demo-corpus: WARNING — the item to retire was not found; the ego graph has no '
+      + 'superseded node and `rect.node.superseded` cannot be measured');
+  }
+  cli(['rebuild']);
+  console.log(`demo-corpus: ${linked} relations around ${focus}, so the ego graph draws `
+    + 'bearing and referential edges, a dangling one, and the 60-node cap\'s "+N more"');
+}
+
+// ── THE FOCUS CHANGE, AND IT IS WRITTEN LAST ON PURPOSE ────────────────────
+//
+// The Watch feed draws a focus record as a regime RULE across the table rather
+// than as a row, and it is the only thing in this corpus that draws one —
+// `div.rw`, `span.ln` and `tr.regime` on that screen are these two records and
+// nothing else.
+//
+// **They only draw while they are still inside the pulse window, and the
+// window is a COUNT.** The re-clocking below gives the newest 180 unnumbered
+// records a stamp inside the pulse's twenty minutes and everything older a
+// 47-minute walk that reaches back days. So a focus record written in the
+// middle of the script is only recent while fewer than 180 unnumbered records
+// follow it — and on 2026-08-30, when the ego graph's sixty-six `link`
+// mutations landed after it, it stopped being recent and all three kinds went
+// out of the Watch feed. Nothing about the screen changed; a build-order
+// detail nobody had written down decided it.
+//
+// Written last, that cannot happen again: whatever else this script grows, the
+// focus change is the newest thing that happened to this corpus, which is also
+// the truer story — a reader's most recent action is the one whose regime the
+// feed is drawn under.
+cli(['focus', 'billing']);
+cli(['focus', '--clear']);
+console.log('demo-corpus: focus set and cleared last, so the Watch feed has a regime rule '
+  + 'inside the pulse window');
+
 const lines = readFileSync(auditLog, 'utf8').split('\n').filter(Boolean);
 for (const line of lines) {
   try { const k = (JSON.parse(line) as { kind: string }).kind; produced[k] = (produced[k] ?? 0) + 1; } catch { /* skip */ }
@@ -839,6 +1095,16 @@ const sessionIndex = (rec: Record<string, unknown>): number | null => {
 };
 
 const parsed = lines.map((l) => JSON.parse(l) as Record<string, unknown>);
+/**
+ * Where each record sat in the append-only log, captured BEFORE anything is
+ * sorted or rewritten.
+ *
+ * `at` is about to be replaced wholesale, so after the stripe below the file's
+ * own order is the only surviving statement of what happened first — and
+ * inside one session it is the only one that matters. Keyed on object identity
+ * rather than on a field, so nothing is written into the records themselves.
+ */
+const logOrder = new Map(parsed.map((rec, i) => [rec, i] as const));
 // Newest first for spreading, then written back oldest first as the log is.
 parsed.sort((a, b) => String(b['at']).localeCompare(String(a['at'])));
 
@@ -904,6 +1170,35 @@ const recent = parsed.filter((rec) => sessionIndex(rec) === null);
 // The bare unnumbered `demo-session-a3f9c1` is the tool-event id and sits in
 // the pulse window, minutes old. So the stripe puts session `newestSession` at
 // `NOW` itself and the pulse walk starts thirty seconds behind it.
+//
+// ── A SESSION IS A SPAN, NOT AN INSTANT ────────────────────────────────────
+//
+// The stripe used to key `at` on the SESSION INDEX alone, so every record
+// belonging to one session landed on one stamp. That was harmless while each
+// numbered session had exactly one record, and it stopped being harmless
+// twice: `demo-session-a3f9c1-20` gained the `/clear` that destroyed its
+// window, and `demo-session-a3f9c1-11` is now a long working session carrying
+// tens of them. **A whole session's history stamped at one instant is not a
+// history** — the audit stream orders by `at`, so a clear would sort level
+// with the injection it wiped and fifteen tool events would sort level with
+// each other and with the start that preceded them.
+//
+// The fix that stood here was eleven minutes added to one record by name, and
+// it did not generalise. This is the general rule and it replaces it: the
+// session's LAST record in log order keeps the stripe's own stamp, and every
+// earlier record steps thirty seconds back from it. Log order is the only
+// statement of what happened first that survives the rewrite (`logOrder`), and
+// stepping BACKWARD rather than forward is what keeps the newest session's
+// last record exactly at `NOW` — the property the paragraph above is about.
+/** How far apart two records of one session sit. */
+const WITHIN_SESSION = 30_000;
+/** The log position of each session's last record — its anchor in the stripe. */
+const lastOf = new Map<number, number>();
+for (const rec of striped) {
+  const s = sessionIndex(rec) ?? 0;
+  const at = logOrder.get(rec) ?? 0;
+  if (at > (lastOf.get(s) ?? -1)) lastOf.set(s, at);
+}
 striped.forEach((rec) => {
   const s = sessionIndex(rec) ?? 0;
   // 0 for the newest session, growing going back.
@@ -914,21 +1209,10 @@ striped.forEach((rec) => {
   // stamps is not a history. Keyed on the DISTANCE from the newest session so
   // that the newest gets exactly zero and stays the newest record.
   const jitter = ((newestSession - s) % 7) * 9 * 60 * MINUTE;
-  rec['at'] = new Date(NOW - (weeksAgo * WEEK + jitter)).toISOString();
+  // 0 for the session's own last record, growing going back through it.
+  const within = ((lastOf.get(s) ?? 0) - (logOrder.get(rec) ?? 0)) * WITHIN_SESSION;
+  rec['at'] = new Date(NOW - (weeksAgo * WEEK + jitter + within)).toISOString();
 });
-
-// The stripe keys `at` on the SESSION INDEX alone, so every record belonging
-// to one session lands on one stamp. That was harmless while each numbered
-// session had exactly one record; `demo-session-a3f9c1-20` now has two — its
-// start, and the `/clear` that destroyed its window — and a clear stamped at
-// the same instant as the injection it wiped is a history no reader can put in
-// order. Eleven minutes later is inside the same session and after it, which
-// is the only thing the ordering has to say.
-for (const rec of striped) {
-  if (sessionIndex(rec) === CLEARED_SESSION && rec['op'] === 'session-end') {
-    rec['at'] = new Date(Date.parse(String(rec['at'])) + 11 * MINUTE).toISOString();
-  }
-}
 
 recent.forEach((rec, i) => {
   // The first 180, 6.3s apart, walk the whole twenty-minute window and land

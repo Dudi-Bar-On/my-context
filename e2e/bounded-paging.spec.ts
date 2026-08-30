@@ -20,26 +20,52 @@
  *     button from the tab order, and `document.activeElement` after a real
  *     `disabled = true` is the browser's own answer, not the fake's.
  *
- * ── WHY THE CONTROL IS MOUNTED RATHER THAN FOUND ──────────────────────────
+ * ── WHY THE CONTROL IS MOUNTED RATHER THAN FOUND, AND WHAT CHANGED ────────
  *
- * **No bounded surface in the simulated corpus exceeds its own cap**, measured
- * 2026-08-27: the preview delivers 4 rows against `BOUND_CAP_LIST` of 20, the
- * injected table 0 against 50, and the pack stack holds 1. That is not a gap in
- * the corpus — `e2e/screen-parity.spec.ts` records the same fact about the same
- * table and calls it DATA — and the first test below asserts it directly,
- * because "a list holding back nothing draws no control" is a requirement
- * condition and this corpus is the only place it can be measured against real
- * data.
+ * **The measurement this file was written on is out of date, and the direction
+ * it moved in is the one that matters.** It read, on 2026-08-27:
  *
- * For the other three questions the corpus offers nothing to click, so the same
- * `boundedList` the five screens call is mounted INSIDE the running app, on the
- * preview section, through the app's own `/screens/parts.js`, `/lib/i18n.js` and
- * `/strings/en.js`. It is the shipped module under the shipped stylesheet inside
- * the shipped shell — every ancestor rule that decides whether the buttons can
- * be seen is the real one. Lowering a cap until the fixture happened to trip it
- * would have measured the same code against a corpus this product never serves,
- * and `screen-parity`'s header names that edit as the one that makes a gate
- * worse than nothing.
+ *     No bounded surface in the simulated corpus exceeds its own cap: the
+ *     preview delivers 4 rows against BOUND_CAP_LIST of 20, the injected table
+ *     0 against 50, and the pack stack holds 1.
+ *
+ * Re-measured over `.demo-corpus` on 2026-08-30, screen by screen, in the
+ * browser:
+ *
+ *     preview  Delivered        6 of 20      Showing all 6.
+ *     preview  Carried lines    3 of 20      Showing all 3.
+ *     preview  NOT DELIVERED  136 of 20      Showing the first 20 of 136.  ← two step controls
+ *     injected default          6 of 50      Showing all 6.
+ *     work     Review queue    12 of 20      Showing all 12.
+ *     work     Revisions        1 of 50      Showing all 1.
+ *     packs                     1 of 50      Showing all 1.
+ *     ask      Audit        8,565 of 50      Showing the first 50 of 8,565.  ← two step controls
+ *
+ * Two surfaces already cross, and neither was made to: the spill list is what a
+ * corpus of seven hundred items does to five small budgets, and the Ask tab is
+ * reading a real audit projection. **The first served-screen test below is
+ * therefore the one `plan:port seq:94b` asked for** — the control driven
+ * through the app rather than through a mounted module — and the mounted tests
+ * are KEPT, exactly as that task requires, because they cover the `take: 'last'`
+ * direction and the display-only wording that no one fixture session reaches.
+ *
+ * A third crosses since 2026-08-30 and had to be built:
+ * `scripts/demo-corpus.ts` now drives one session through a full working day of
+ * REAL hook payloads, so its seen file holds sixty rows against a cap of fifty.
+ * It is not the default session and the shell has no picker, so
+ * `e2e/injected-empty.spec.ts` reaches it the way that file already reaches the
+ * cleared one.
+ *
+ * For the questions the corpus still offers nothing to click for — a list of
+ * exactly 45 going inert at its last page, an append-only log's `take: 'last'`,
+ * the Hebrew table — the same `boundedList` the five screens call is mounted
+ * INSIDE the running app, on the preview section, through the app's own
+ * `/screens/parts.js`, `/lib/i18n.js` and `/strings/en.js`. It is the shipped
+ * module under the shipped stylesheet inside the shipped shell — every ancestor
+ * rule that decides whether the buttons can be seen is the real one. Lowering a
+ * cap until the fixture happened to trip it would have measured the same code
+ * against a corpus this product never serves, and `screen-parity`'s header
+ * names that edit as the one that makes a gate worse than nothing.
  */
 import { test, expect } from './app.ts';
 import type { Page } from '@playwright/test';
@@ -109,17 +135,73 @@ const step = (root: string, which: 'prev' | 'next'): string =>
 
 /* ══ CONDITION 3, AGAINST THE REAL CORPUS ════════════════════════════════ */
 
-test('the preview holds back nothing in this corpus, and therefore draws no paging control', async ({ app }) => {
+test('the delivered list holds back nothing in this corpus, and therefore draws no paging control', async ({ app }) => {
   await showPreview(app.page);
   const bound = app.page.locator('section[data-p="preview"] #deliveredRows + .bound');
   await expect(bound, 'the delivered list still declares its bound').toBeVisible();
-  await expect(bound.locator('p'), 'four rows against a cap of twenty is not a truncation')
+  // Six rows against a cap of twenty is not a truncation. The list two cards
+  // down IS truncated — 136 against the same cap — which is why this test names
+  // `#deliveredRows` rather than the screen: the two states now sit on one
+  // screen, and that is the pair a reader has to be able to tell apart.
+  await expect(bound.locator('p'), 'a delivery smaller than the cap is not a truncation')
     .toHaveText(/Showing all \d+\./);
   // ABSENT, not hidden and not disabled. *An inert control is the same lie as a
   // blank screen* is the requirement's own sentence, and a hidden button is
   // still a node in the document that a reader cannot use.
   await expect(bound.locator('button[data-step]'),
     'a list showing everything must not offer a way to somewhere else').toHaveCount(0);
+});
+
+/* ══ THE WAY THROUGH, ON A SERVED SCREEN, OVER THE PRODUCT'S OWN DATA ════ */
+
+test('Not delivered holds rows back, and the control walks them without a mounted module', async ({ app }) => {
+  await showPreview(app.page);
+  // `drawSpilled` appends its bound directly after `#spilledRows`, the same
+  // arrangement `#deliveredRows` has above.
+  const bound = app.page.locator('section[data-p="preview"] #spilledRows + .bound');
+  const boundLine = bound.locator('p');
+  await expect(bound, 'the spill list declares its bound').toBeVisible();
+
+  // **Non-vacuity, and it is the whole point of this test.** A corpus whose
+  // spill list fits inside the cap would pass every assertion below by drawing
+  // nothing, which is exactly the hole `plan:port seq:94b` was filed for: *a
+  // feature the demo corpus cannot demonstrate looks exactly like a feature
+  // that does not work.*
+  await expect(boundLine,
+    'the spill list must exceed BOUND_CAP_LIST for anything below to mean anything. If this '
+    + 'reads "Showing all N", no served screen in this corpus holds a row back and the paging '
+    + 'control is once again untested outside a mounted module — which is the state '
+    + '`TASK-the-demo-corpus-cannot-trip-a-single-list-bound-so-paging-is` records.')
+    .toHaveText(/Showing the first 20 of \d+/);
+
+  const rows = app.page.locator('section[data-p="preview"] #spilledRows .row');
+  await expect(rows, 'the page is the cap, not the whole list').toHaveCount(20);
+  const firstOnPageOne = await rows.first().getAttribute('data-id');
+
+  // ABSENT versus DISABLED, in both directions, on arrival: there is nothing
+  // before the first page and there is something after it.
+  await expect(bound.locator('button[data-step="prev"]'),
+    'the first page has nothing before it').toBeDisabled();
+  await expect(bound.locator('button[data-step="next"]')).toBeEnabled();
+
+  await bound.locator('button[data-step="next"]').click();
+  await expect(boundLine,
+    'the line must say WHERE the reader is, on served data as on mounted data')
+    .toHaveText(/Rows 21–40 of \d+/);
+  await expect(rows.first(),
+    'the second page must be different rows, not the same twenty re-rendered')
+    .not.toHaveAttribute('data-id', firstOnPageOne ?? '');
+
+  // **The rows are still the product's**, which a mounted list cannot check:
+  // every one of them is an id the shell's delegated handler will open, so a
+  // page reached by the control is as usable as the page it opened on.
+  await expect(rows.first()).toHaveAttribute('data-id', /.+/);
+
+  // Forward AND back — *a reader who steps past what they wanted must be able
+  // to return.*
+  await bound.locator('button[data-step="prev"]').click();
+  await expect(boundLine).toHaveText(/Showing the first 20 of \d+/);
+  await expect(rows.first()).toHaveAttribute('data-id', firstOnPageOne ?? '');
 });
 
 /* ══ THE CONTROL IS VISIBLE, WHICH ONLY A CASCADE CAN SAY ════════════════ */
