@@ -13,9 +13,14 @@
  * keyed by an ATTRIBUTE, that attribute’s value, because neither an
  * `aria-label` nor a `title` is reachable by the text path and both stayed English in
  * the Hebrew UI until they were keyed. The Hebrew values are the mockup’s own
- * `const HE = {…}` table. Adding a key the mockup does not declare, or dropping one it
- * does, fails `test/ui/strings-parity.test.ts` in the direction that names it. If the
- * mockup and the product are agreed to diverge, the mockup changes first.
+ * `const HE = {…}` table. DROPPING a key the mockup declares fails
+ * `test/ui/strings-parity.test.ts` in the direction that names it. ADDING one the
+ * mockup does not declare does NOT, and has not since 2026-08-26:
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap` dropped the
+ * invented direction, leaving the mockup as history and as a list of gaps rather
+ * than as a permission slip. The gate's own docstring is the authority on which
+ * directions exist on the day you read this; this paragraph said the opposite for
+ * three days and fifteen modules quoted it rather than the gate.
  *
  * Three brace grammars, and two of them are value slots:
  *
@@ -307,6 +312,10 @@ export const strings = {
   'sim.fits': 'Fits',
   'sim.spills': 'Spills',
   'sim.chipn': 'The fits column is a {b:ratio}, not a count: "{fits} of {eligible}" says how much of what was eligible actually arrived, and the chip flips at the boundary. The row for the tier being dragged follows the slider.',
+  // The ratio the fits chip draws, in the words `sim.chipn` above already
+  // quotes — the mockup's own `' of '`, which used to reach the page as an
+  // unkeyed English literal and now does not.
+  'sim.fitsOf': '{fits} of {eligible}',
   'help.whyBudget': 'Why raising a budget can remove an item',
   'sim.evict': '{m:fitToBudget} is {b:first-fit}: it keeps trying later items after one does not fit. A larger budget admits a large item early, which can then crowd out two small ones that previously both fitted. "Spilled" is not a suffix of a priority list.',
   'sim.ratio': 'Selected, then not delivered',
@@ -321,6 +330,11 @@ export const strings = {
   'watch.h': 'Audit stream',
   'watch.v': 'the only record of what spilled',
   'watch.sub': 'Six record kinds — mutations, injections, hook actions, focus changes, access refusals and progress steps. A focus change is a {b:regime change}, drawn as a rule across the feed rather than as one row.',
+  // The regime rule's own label. `watch.sub` above already carries the phrase
+  // in both languages; the ROW that draws the rule used to carry it as an
+  // English literal in the module, which is the one place the language toggle
+  // cannot reach.
+  'watch.regime': 'regime change',
   'watch.pulsen': '{b:Activity pulse} — one column per ten seconds, newest at the reading-end edge. Height is records in that column, colour is the record kind. It is the only thing that makes a live stream feel live, and the time buckets it needs are already indexed by {m:idx_audit_at}.',
   'aria.wfilters': 'Filter',
   'watch.all': 'All',
@@ -366,6 +380,11 @@ export const strings = {
   // where it would look like a narrowing of the corpus rather than a bound on
   // the answer.
   'ask.limit': 'Rows to fetch',
+  // The operator select's two options. The mockup draws them as bare
+  // literals with no `data-t`, so they used to be the only prose on the Ask
+  // screen the A/א toggle could not reach.
+  'ask.opIs': 'is',
+  'ask.opIsNot': 'is not',
   'ask.run': 'Run',
   'ask.updatedAtTrap': '{m:updated_at} is {b:index write time}, not a content timestamp — and this surface never rebuilds the index (it reads exactly what the hooks read), so rows are as the last hook or CLI run left them.',
   'ask.predefined': 'Predefined queries',
@@ -451,6 +470,12 @@ export const strings = {
   'doc.zero': 'Checked — nothing at this level.',
   'inj.zeroLines': 'This session was read and has received nothing yet.',
   'inj.noSession': 'No session is selected, so nothing was read — which is not the same as a session that received nothing.',
+  // The THIRD zero, and until `InjectedBody.seen` was served there was no way
+  // to tell it from the second: `readJsonlFile` swallows ENOENT, so an absent
+  // seen file and an empty one arrived as the same `{ lines: [], error: null }`
+  // and a cleared session was told it “was read and has received nothing” about a
+  // file nobody opened. Seven of nineteen live sessions were in that state.
+  'inj.noSeenFile': 'No seen file was written for this session, so nothing was read here — the audit log may still record what it was given.',
   // The rail's count badges. Three states, because a badge that is merely
   // absent cannot tell "nothing needs attention" from "nobody looked" —
   // STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is.
@@ -472,6 +497,11 @@ export const strings = {
   'doc.d2': 'scope {mv:scope} matches no file',
   'doc.d3': '{b:zero files match any watched glob}, so the capture nudge can never fire. The shipped defaults name three paths from one workflow; this repo has none of them.',
   'doc.notice': 'notice',
+  // The other two card headings. The mockup keys only `doc.notice` and
+  // draws these two as literals; the app draws all three from the table, so
+  // two of three headings are no longer English under Hebrew.
+  'doc.error': 'error',
+  'doc.warning': 'warning',
   'doc.d4': 'a second cross-project knowledge store exists on this machine. {b:mycontext never reads or writes it} — reported so you learn it here rather than from a surprise.',
   'doc.d5': 'another plugin writes durable learnings here — the same kind as {m:lesson}, in a second spelling with no shared ids. It is a {b:watched} path, so edits nudge and a human decides.',
   // **A finding with no composed command SAYS SO, and the screen counts them.**
@@ -567,6 +597,10 @@ export const strings = {
   'cap.o1': 'invariant, normative',
   'cap.o2': 'standard, normative',
   'cap.nosim': 'These are the items whose {b:scope matches}. No similarity or ranking is shown, because no similarity metric exists in this product — and inventing one here is how a mockup starts lying.',
+  // `notGoverning` — served since the screen was built and drawn nowhere for
+  // want of this key. It is the count the overlap check REMOVED: items whose
+  // scope matches and which do not govern. A bare number would not be a fact.
+  'cap.notgov': '{n} more items match this scope and do not govern — drafts, deprecated items and rationale categories.',
   // Composer
   'pal.h': 'Composer',
   'pal.v': 'real pickers and a live glob tester',
@@ -598,6 +632,12 @@ export const strings = {
   'cfg.v': 'the strongest "a terminal cannot do this"',
   'cfg.sub': 'Every change previewed as a diff of what would govern, validated against the same {m:resolveConfig} that will read it.',
   'cfg.budgets': 'Budgets',
+  // The two hard stops `/api/config` carries as FIELDS rather than as a 500.
+  // The loader's own sentence follows each of these, unedited and
+  // untranslated; what these say is WHICH of the two failures it is, which
+  // is the one thing about them a reader could not get from the text itself.
+  'cfg.parseErr': '{m:config.json} could not be parsed. The loader’s own message follows.',
+  'cfg.resolveErr': '{m:config.json} parsed, and could not be resolved. The loader’s own message follows.',
   'cfg.effect': 'What changes',
   'cfg.deltan': 'Each row is the {b:pair}, not the direction alone: the old value struck through, the new one highlighted, and the row tinted by which way it went. "What was it before" is half of "what changes", and a lone {m:+1} chip keeps the direction while losing the pairing.',
   'aria.scopepolicy': 'scopePolicy',
@@ -697,6 +737,10 @@ export const strings = {
   'pr.w2': '{b:That is a distinction, not an exemption.} The gate exists to stop an agent changing normative {i:content}; a checkbox is {i:progress}. Every flip is audited, so the relaxation is visible rather than quiet.',
   'pr.w3': '{b:What is not relaxed:} the state. {m:active → done} stays yours. Ticking the last box does not close the procedure — it lets the agent {i:ask}. An agent that can mark its own procedure done can declare victory.',
   'pr.aband': 'Abandoned rather than finished is {m:superseded} — the existing status already means exactly that, and a fifth spelling of one idea is the defect this project has paid for four times.',
+  // The disclosure card's heading. The card is the endpoint's own
+  // qualifications in the endpoint's own words; this says what the card IS,
+  // so it is no longer a `.card.pane` a reader meets with no title on it.
+  'pr.disc': 'True whether or not a card above says so',
   // Export / import
   'port.h': 'Export / import',
   'port.sub': '{b:Built, and this screen reports it.} It used to list five open questions; all five are answered now, so it lists the answers instead.',
@@ -752,6 +796,13 @@ export const strings = {
   'dv.parity': 'The EN/HE switch self-disables when the parity test is red — a mirror that has drifted is worse than none.',
   'dv.rendered': '§{ordinal} — {heading}',
   'dv.mdnote': 'Rendered by a hand-written subset renderer: no HTML string is ever produced, so there is nothing to sanitise. Raw HTML, images and unknown URL schemes are {b:refused and shown as refusals}, not silently dropped.',
+  // The three refusals `dv.mdnote` promises, worded. The mockup builds them
+  // inside its own script and keys none of them; drawn from here they are the
+  // renderer's words in the reader's language, and the alt text and the link
+  // label — which are the document's, not the product's — still survive.
+  'dv.imgRefused': '{alt} (image refused)',
+  'dv.linkRefused': '{label} (link refused)',
+  'dv.htmlRefused': 'raw HTML block refused',
   // Tutorials
   'tu.h': 'Tutorials',
   'tu.v': 'each one titled with a job, not a feature',
@@ -871,4 +922,11 @@ export const strings = {
   // key with no substitutions, and t() throws on one it cannot fill.
   'ex.codeSkew': '{b:This page is newer than the server answering it.} Files under {m:src/ui/public/} are read from disk on every request, so a reload picks up new screens; the server’s own modules were loaded when it started and cannot change until it does. Restart it to catch up.',
   'ex.ok': 'OK',
+  // The one refusal frame every screen shares — `errorNote` in
+  // `screens/parts.js`. The message inside it is the server's, the
+  // platform's or the command's, verbatim and in whatever language it was
+  // written in; what was missing until 2026-08-30 was any word at all around
+  // it, so every refusal on every screen was unworded English at the exact
+  // moment something had gone wrong.
+  'err.note': 'Refused. The wording is the system’s own and is not translated: {error}',
 };

@@ -55,26 +55,30 @@
  * draws three columns and `plan:ui1 seq:17f` already cut the one join this
  * response used to carry.
  *
- * ── AND ONE THING THIS SCREEN CANNOT SAY, BECAUSE ITS ENDPOINT DROPPED IT ──
+ * ── THE THIRD ZERO, WHICH THIS SCREEN COULD NOT SAY UNTIL 2026-08-30 ──────
  *
- * `zeroKey` below picks between "no session" and "this session received
- * nothing". There is a THIRD state and the response cannot express it: a seen
- * file that DOES NOT EXIST answers `{ lines: [], error: null }`, byte-identical
- * to one that was read and held nothing, because `readJsonlFile` swallows
- * ENOENT. So on a cleared session this screen draws `inj.zeroLines` — *"This
- * session was read and has received nothing yet"* — about a file nobody
- * opened. That is clause 2 of
+ * `zeroKey` below picks between three states now, and for weeks it could only
+ * pick between two. A seen file that DOES NOT EXIST used to answer
+ * `{ lines: [], error: null }`, byte-identical to one that was read and held
+ * nothing, because `readJsonlFile` swallows ENOENT — so on a cleared session
+ * this screen drew `inj.zeroLines`, *"This session was read and has received
+ * nothing yet"*, about a file nobody opened. Seven of the live corpus's
+ * nineteen sessions were in that state. That is clause 2 of
  * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, whose scope
  * reaches read models for exactly this reason.
  *
- * **The fix is not on this side of the wire and is not invented here.**
- * `InjectedBody` needs one field — `seen: 'read' | 'absent'`, filled from
- * `readSeen`, which is where the fact still exists — and then this screen needs
- * one more key beside `inj.zeroLines`. Reported to the controller as
- * `inj.noSeenFile`: *"No seen file was written for this session, so nothing was
- * read here — the audit log may still record what it was given."* Until both
- * land, the branch below is as honest as the response allows, and the test file
- * named above fails the day it can be honest.
+ * **Both halves have landed.** `InjectedBody.seen` is `'read' | 'absent'`,
+ * filled from `readSeen`, which is where the fact still existed
+ * (`src/ui/read-model.ts` · ``      // `state.file` — what THIS read saw, not a fresh question to the disk.`` · ~966);
+ * `inj.noSeenFile` is the key drafted for it and is now in both tables. The
+ * rule the endpoint states for its client is followed exactly: a client that
+ * cannot tell the two apart must say UNMEASURED rather than pick one, so an
+ * `absent` file draws the sentence about the FILE and never the sentence about
+ * the session.
+ *
+ * A non-null `error` still draws `errorNote` and NEITHER zero sentence. An
+ * unreadable seen file is not a zero of any kind, and two explanations of one
+ * absence is worse than none.
  */
 import {
   BOUND_CAP_TABLE, boundedList, el, errorNote, linkId, screenHead, spaced, tierChip,
@@ -155,6 +159,12 @@ export async function render(root, ctx) {
     //                  screen knows nothing about what was injected.
     //   MEASURED ZERO  a seen file was read and holds no lines. This session
     //                  exists and has received nothing yet.
+    //   NO SEEN FILE   no seen file was written at all — a cleared window.
+    //                  Nothing was read, so nothing was measured, and the
+    //                  sentence is about the FILE rather than about the
+    //                  session. Separable since `InjectedBody.seen` landed;
+    //                  before that it wore MEASURED ZERO's sentence and made
+    //                  a specific false claim on seven of nineteen sessions.
     //   REFUSED        the read failed, and the seen file's own words are
     //                  passed on below — already handled, and unchanged.
     //
@@ -181,9 +191,23 @@ export async function render(root, ctx) {
       // A read error is DISCLOSED BEFORE the rows, never rendered as "nothing
       // was injected" — an unreadable seen file and an empty one are two facts,
       // and this is the only surface that passes that string on. It is the seen
-      // file's own words, not a paraphrase: the mockup declares no key for this
-      // state on any screen, and inventing one would fail the tables' parity
-      // with the design of record.
+      // file's own words, not a paraphrase.
+      //
+      // **The reason recorded here was retired and this comment outlived it.**
+      // It said the mockup "declares no key for this state on any screen, and
+      // inventing one would fail the tables' parity with the design of record"
+      // — the direction dropped on 2026-08-26 by
+      // `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`. This is
+      // a SIXTEENTH site of the premise `plan:walk seq:92` enumerated fifteen
+      // of; its grep missed this one the way it missed `port.js` and
+      // `packs.js`, because the wording is "parity with the design of record"
+      // rather than "the direction that names it".
+      //
+      // Nothing about the DRAWING changes: the seen file's sentence is still
+      // passed on unedited. What changed is that `errorNote` now words its own
+      // frame around it (`err.note`), so a Hebrew reader is told this is a
+      // refusal and that the run inside it is untranslated, instead of meeting
+      // bare English at the moment a read failed.
       if (data.error !== null && data.error !== undefined) {
         parts.push(errorNote(data.error));
       }
@@ -213,13 +237,20 @@ export async function render(root, ctx) {
       // of one absence is worse than none. An unreadable seen file is not a
       // zero, and must never be drawn as one.
       //
-      // **This branch cannot tell an EMPTY seen file from an ABSENT one**, and
-      // the sentence it picks claims the file was read. See the header's last
-      // section: the response collapses the two before they arrive, and the
-      // field that would separate them (`InjectedBody.seen`) is named there
-      // along with the key this screen would draw for it.
+      // **An EMPTY seen file and an ABSENT one are two sentences now.**
+      // `InjectedBody.seen` is the field that separates them and `inj.noSeenFile`
+      // is the sentence for the second; the header carries the reasoning.
+      //
+      // `'absent'` is tested for by name rather than `!== 'read'`: a response
+      // that omits the field — an older server, a shape this screen has not met
+      // — falls to `inj.zeroLines`, which is the claim the RESPONSE supports.
+      // Reading an unknown value as "absent" would put a specific and possibly
+      // false statement about the disk on screen.
       const refused = data.error !== null && data.error !== undefined;
-      zeroKey = !refused && data.lines.length === 0 ? 'inj.zeroLines' : null;
+      zeroKey = null;
+      if (!refused && data.lines.length === 0) {
+        zeroKey = data.seen === 'absent' ? 'inj.noSeenFile' : 'inj.zeroLines';
+      }
     }
 
     const note = el('p', 'small');

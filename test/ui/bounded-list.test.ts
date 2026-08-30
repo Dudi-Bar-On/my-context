@@ -162,6 +162,7 @@ interface PartsModule {
     ctx: unknown, host: unknown, items: unknown[],
     draw: (item: unknown, i: number) => unknown, spec: Spec,
   ) => FakeNode;
+  errorNote: (message: unknown, ctx?: unknown) => FakeNode;
 }
 
 type Strings = Record<string, string>;
@@ -616,4 +617,67 @@ test('raiseSimRange only ever raises, and never invents a range nobody set', asy
   assert.equal(parts.simRangeFor('range-c'), 25_000);
 
   parts.setSimRange('range-c', null);
+});
+
+
+/* ══ THE REFUSAL NOTE ════════════════════════════════════════════════════ *
+ *
+ * `errorNote` is the ONE renderer every server refusal on every screen in this
+ * UI passes through, and until 2026-08-30 it drew the endpoint's English with
+ * no word of its own around it — so a reader in Hebrew met English at the exact
+ * moment something had gone wrong. The reason recorded in the function's own
+ * docstring was that a key the design of record does not declare fails
+ * `test/ui/strings-parity.test.ts`; that direction was dropped on 2026-08-26
+ * and the paragraph outlived it by three days on fifteen modules.
+ *
+ * Both halves are asserted here, because the fix is worth nothing if either
+ * fails: the FRAME must change language, and the MESSAGE inside it must not.
+ */
+
+test('errorNote wraps the message in err.note, and the message survives verbatim', async () => {
+  const doc = fakeDoc();
+  const { errorNote } = await parts(doc);
+  const ctx = await context(doc);
+
+  const note = errorNote('the index is out of date', ctx);
+  assert.equal(note.tag, 'p');
+  assert.equal(note.className, 'small spill', 'the refusal is still .spill (--crit)');
+  assert.match(text(note), /^Refused\./, 'the frame is the product own word');
+  assert.ok(
+    text(note).includes('the index is out of date'),
+    'the endpoint own sentence must reach the page unedited — the frame says it is '
+    + 'untranslated precisely so that it can be',
+  );
+});
+
+test('the frame changes language and the message does not — which is the whole point', async () => {
+  const doc = fakeDoc();
+  const { errorNote } = await parts(doc);
+
+  const english = text(errorNote('boom', await context(doc, 'en')));
+  const hebrew = text(errorNote('boom', await context(doc, 'he')));
+
+  assert.notEqual(hebrew, english, 'the refusal frame did not change language');
+  assert.ok(/[֐-׿]/.test(hebrew), 'the Hebrew frame drew no Hebrew');
+  assert.ok(!/[֐-׿]/.test(english), 'the English frame drew Hebrew');
+  for (const rendered of [english, hebrew]) {
+    assert.ok(rendered.includes('boom'), 'the message must be identical in both languages');
+  }
+});
+
+/**
+ * **The fallback, and why it is not a second wording.**
+ *
+ * `ctx` defaults to `globalThis.myctx`, which the shell publishes and
+ * `node --test` does not. With no shell there is no table to draw from, so the
+ * message is drawn BARE — exactly what shipped before the key existed, which is
+ * never worse than it. Asserted so that a caller which loses its context
+ * degrades to the old behaviour instead of to a thrown key lookup on a screen
+ * that is already reporting a failure.
+ */
+test('with no ctx at all the message is drawn bare rather than throwing', async () => {
+  const doc = fakeDoc();
+  const { errorNote } = await parts(doc);
+  assert.equal(text(errorNote('bare', undefined)), 'bare');
+  assert.equal(text(errorNote(null, undefined)), '', 'a null message is empty, not "null"');
 });

@@ -154,19 +154,32 @@
  * well-and-`<bdi>` treatment belongs to the item detail pane, which has its
  * own key for saying so (`pane.well`), and to no part of this screen.
  *
- * **The refusal words are the renderer's own, and no key exists for them.**
- * `refusal`, `(link refused)` and the mockup's trailing `refused: …` summary
- * are hard-coded English (and hard-coded Hebrew) inside the mockup's script;
- * no `dv.*` key declares any of them, and declaring one would fail
- * `strings-parity` in the direction that names it. So the inline labels are
- * kept in the renderer's own words — the same treatment `errorNote` already
- * gives a server refusal
- * (`src/ui/public/screens/parts.js` · ``So nothing here is worded: the endpoint's own `error` text is shown as it`` · ~181)
- * — and the trailing summary line is NOT drawn: it is a second telling of
- * refusals already shown inline, and drawing it would put an untranslated
- * English sentence on the Hebrew page for no fact the reader does not have.
- * `markdownNodes` still RETURNS the list, so nothing is lost to a caller and
- * the test can assert on it. Reported as a missing key.
+ * **The three refusal labels are KEYED — `dv.imgRefused`, `dv.linkRefused`,
+ * `dv.htmlRefused` — and until 2026-08-30 they were not.** The mockup
+ * hard-codes them in its own script, in English and in Hebrew, under no
+ * `data-t`, and this comment said declaring a key for them "would fail
+ * `strings-parity` in the direction that names it". That direction was dropped
+ * on 2026-08-26 by `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`;
+ * the gate has one mockup-facing check today and its docstring says which. So
+ * `dv.mdnote`'s promise — *"refused and shown as refusals"* — is now kept in
+ * the reader's language rather than in English under `א`.
+ *
+ * What is still NOT translated, and correctly: the alt text and the link
+ * label inside those sentences. They are the DOCUMENT's words, not the
+ * product's, and they are substituted into the key rather than replaced by it.
+ * The mockup's trailing `refused: …` summary is still not drawn — it is a
+ * second telling of refusals already shown inline. `markdownNodes` still
+ * RETURNS the list, so nothing is lost to a caller and the test can assert on
+ * it.
+ *
+ * **`markdownNodes` takes the labeller, not `ctx`.** `label(key, subs)` is a
+ * flat-string function — `ctx.tFlat`, in the browser — because a refusal label
+ * is `textContent` on a `span.refusal` and an attribute-shaped sink cannot
+ * hold the elements `t()` builds
+ * (`src/ui/public/lib/i18n.js` · `export function tFlat(strings, key, subs = {}) {` · ~168).
+ * It defaults to the English wording so `node --test` can keep passing a
+ * two-method `doc` and nothing else, which is the same bargain `doc` itself
+ * makes — and so a caller that forgets it fails no differently than before.
  */
 import { el, errorNote, screenHead, spaced } from '/screens/parts.js';
 
@@ -268,7 +281,7 @@ function refusalBlock(doc, label, source) {
  * AND counted for the caller, and threading a second return value through the
  * block loop for it would say nothing extra.
  */
-function inlineNodes(text, refusals, doc) {
+function inlineNodes(text, refusals, doc, labelFor) {
   const out = [];
   let last = 0;
   INLINE.lastIndex = 0;
@@ -283,7 +296,7 @@ function inlineNodes(text, refusals, doc) {
       // only thing about the image the reader can be told without fetching it.
       const alt = m[2].slice(2, m[2].indexOf(']'));
       refusals.push('image');
-      out.push(make(doc, 'span', 'refusal', `${alt} (image refused)`));
+      out.push(make(doc, 'span', 'refusal', labelFor('dv.imgRefused', { alt })));
     } else if (m[3] !== undefined) {
       const cut = m[3].indexOf('](');
       const label = m[3].slice(1, cut);
@@ -297,7 +310,7 @@ function inlineNodes(text, refusals, doc) {
         // enumerated. The LABEL survives, so the reader knows a link was there
         // and what it claimed to be.
         refusals.push('url scheme');
-        out.push(make(doc, 'span', 'refusal', `${label} (link refused)`));
+        out.push(make(doc, 'span', 'refusal', labelFor('dv.linkRefused', { label })));
       }
     } else if (m[4] !== undefined) {
       out.push(make(doc, 'b', null, m[4].slice(2, -2)));
@@ -351,13 +364,13 @@ function tableCells(line) {
 }
 
 /** The header row, its delimiter, and every `|`-bearing line after them. */
-function tableNodes(lines, start, refusals, doc) {
+function tableNodes(lines, start, refusals, doc, labelFor) {
   const table = doc.createElement('table');
   const head = doc.createElement('thead');
   const headRow = doc.createElement('tr');
   for (const cell of tableCells(lines[start])) {
     const th = doc.createElement('th');
-    th.append(...inlineNodes(cell, refusals, doc));
+    th.append(...inlineNodes(cell, refusals, doc, labelFor));
     headRow.append(th);
   }
   head.append(headRow);
@@ -367,7 +380,7 @@ function tableNodes(lines, start, refusals, doc) {
     const row = doc.createElement('tr');
     for (const cell of tableCells(lines[i])) {
       const td = doc.createElement('td');
-      td.append(...inlineNodes(cell, refusals, doc));
+      td.append(...inlineNodes(cell, refusals, doc, labelFor));
       row.append(td);
     }
     body.append(row);
@@ -388,7 +401,7 @@ function tableNodes(lines, start, refusals, doc) {
  * and a loose list would need the `.md li p` rule the design of record does not
  * draw.
  */
-function listNodes(lines, start, refusals, doc) {
+function listNodes(lines, start, refusals, doc, labelFor) {
   const opener = (line) => BULLET.exec(line) ?? ORDERED.exec(line);
   const indent = opener(lines[start])[1].length;
   const list = doc.createElement(ORDERED.test(lines[start]) ? 'ol' : 'ul');
@@ -401,13 +414,13 @@ function listNodes(lines, start, refusals, doc) {
       // A nested list hangs off the item above it. With no item above it — a
       // block that opens already indented — the list itself is the only home,
       // which is the same reading `blocks()` gives an orphaned continuation.
-      const [nested, next] = listNodes(lines, i, refusals, doc);
+      const [nested, next] = listNodes(lines, i, refusals, doc, labelFor);
       (item ?? list).append(nested);
       i = next;
       continue;
     }
     item = doc.createElement('li');
-    item.append(...inlineNodes(lines[i].slice(marker[0].length), refusals, doc));
+    item.append(...inlineNodes(lines[i].slice(marker[0].length), refusals, doc, labelFor));
     list.append(item);
     i += 1;
     // A wrapped item: a line that is neither blank, nor a marker, nor the start
@@ -415,7 +428,7 @@ function listNodes(lines, start, refusals, doc) {
     // was never meant to be seen.
     while (i < lines.length && lines[i].trim() !== ''
       && opener(lines[i]) === null && !startsBlock(lines[i])) {
-      item.append(doc.createTextNode(' '), ...inlineNodes(lines[i].trim(), refusals, doc));
+      item.append(doc.createTextNode(' '), ...inlineNodes(lines[i].trim(), refusals, doc, labelFor));
       i += 1;
     }
   }
@@ -436,7 +449,7 @@ function listNodes(lines, start, refusals, doc) {
  * in the item corpus, 130 in this repository's documents, every one of them
  * printing its own `-` markers inside a paragraph.
  */
-function blocks(lines, refusals, doc) {
+function blocks(lines, refusals, doc, labelFor) {
   const out = [];
   let i = 0;
   while (i < lines.length) {
@@ -501,7 +514,7 @@ function blocks(lines, refusals, doc) {
     if (ATX.test(line)) {
       const level = line.match(/^#+/)[0].length;
       const heading = doc.createElement(`h${Math.min(level + 1, 4)}`);
-      heading.append(...inlineNodes(line.replace(/^#+\s*/, ''), refusals, doc));
+      heading.append(...inlineNodes(line.replace(/^#+\s*/, ''), refusals, doc, labelFor));
       out.push(heading);
       i += 1;
       continue;
@@ -524,7 +537,7 @@ function blocks(lines, refusals, doc) {
         i += 1;
       }
       const quote = doc.createElement('blockquote');
-      quote.append(...blocks(inner, refusals, doc));
+      quote.append(...blocks(inner, refusals, doc, labelFor));
       out.push(quote);
       continue;
     }
@@ -533,14 +546,14 @@ function blocks(lines, refusals, doc) {
     // sentence containing a pipe is prose, and the row under the header is the
     // only thing that says otherwise.
     if (line.includes('|') && i + 1 < lines.length && isTableDelimiter(lines[i + 1])) {
-      const [table, next] = tableNodes(lines, i, refusals, doc);
+      const [table, next] = tableNodes(lines, i, refusals, doc, labelFor);
       out.push(table);
       i = next;
       continue;
     }
 
     if (BULLET.test(line) || ORDERED.test(line)) {
-      const [list, next] = listNodes(lines, i, refusals, doc);
+      const [list, next] = listNodes(lines, i, refusals, doc, labelFor);
       out.push(list);
       i = next;
       continue;
@@ -554,7 +567,7 @@ function blocks(lines, refusals, doc) {
     // sit after a blank line, cannot be taken for one.
     if (i + 1 < lines.length && SETEXT.test(lines[i + 1])) {
       const heading = doc.createElement(lines[i + 1].trim().startsWith('=') ? 'h2' : 'h3');
-      heading.append(...inlineNodes(line.trim(), refusals, doc));
+      heading.append(...inlineNodes(line.trim(), refusals, doc, labelFor));
       out.push(heading);
       i += 2;
       continue;
@@ -565,11 +578,28 @@ function blocks(lines, refusals, doc) {
       para.push(lines[i]);
     }
     const paragraph = doc.createElement('p');
-    paragraph.append(...inlineNodes(para.join('\n'), refusals, doc));
+    paragraph.append(...inlineNodes(para.join('\n'), refusals, doc, labelFor));
     out.push(paragraph);
   }
   return out;
 }
+
+/**
+ * The labeller of last resort: the three refusal sentences as `en.js` declares
+ * them, spelled once here so a caller with no string table — `node --test`
+ * passing a two-method `doc` — draws exactly what shipped before the keys
+ * existed, rather than a key name or a blank.
+ *
+ * It is a FALLBACK and not the source of truth. The browser passes
+ * `ctx.tFlat`, so a Hebrew reader sees Hebrew; this exists so the pure half of
+ * this file stays runnable with nothing but a `doc`, which is the whole reason
+ * that half is testable at all.
+ */
+const ENGLISH_REFUSAL = (key, subs = {}) => {
+  if (key === 'dv.imgRefused') return `${subs.alt} (image refused)`;
+  if (key === 'dv.linkRefused') return `${subs.label} (link refused)`;
+  return 'raw HTML block refused';
+};
 
 /**
  * Markdown → `{ nodes, refusals }`. **No HTML string is produced anywhere in
@@ -586,9 +616,10 @@ function blocks(lines, refusals, doc) {
  * rendering its coercion puts that fact on the screen instead of blanking the
  * card.
  */
-export function markdownNodes(src, doc) {
+export function markdownNodes(src, doc, labelFor = ENGLISH_REFUSAL) {
   const refusals = [];
-  const nodes = blocks(String(src).replaceAll('\r\n', '\n').split('\n'), refusals, doc);
+  const nodes = blocks(
+    String(src).replaceAll('\r\n', '\n').split('\n'), refusals, doc, labelFor);
   return { nodes, refusals };
 }
 
@@ -661,5 +692,5 @@ export async function render(root, ctx) {
   // scoped/unscoped split; the join is the Learn screen's whole subject and
   // duplicating it here would put the same fact on two screens with nothing
   // holding them equal.
-  md.append(...markdownNodes(body.markdown, document).nodes);
+  md.append(...markdownNodes(body.markdown, document, ctx.tFlat).nodes);
 }

@@ -565,14 +565,16 @@ test('the two cap. keys this screen cannot place are exactly cap.o1 and cap.o2',
   const en = await table('en');
   const declared = Object.keys(en).filter((key) => key.startsWith('cap.')).sort();
   const named = new Set(keysNamed().map((u) => u.key));
-  // SEVEN since 2026-08-27. It was 8 from the day this screen was written
-  // until `plan:execute seq:6c` retired `cap.warn`: Capture offers Execute, so
-  // "run it in your own shell" is false and the key is gone from BOTH tables
-  // rather than left declared and unused, which is how a retired sentence gets
-  // picked up again by the next screen.
-  assert.equal(declared.length, 7,
-    `the English table declares ${declared.length} cap. key(s); it has been 7 since seq:6c `
-    + 'was written. A new one is a new sentence on this screen and needs placing.');
+  // EIGHT since 2026-08-30. It was 8 from the day this screen was written,
+  // went to 7 when `plan:execute seq:6c` retired `cap.warn` (Capture offers
+  // Execute, so "run it in your own shell" is false and the key is gone from
+  // BOTH tables rather than left declared and unused), and is 8 again now that
+  // `cap.notgov` words `notGoverning` — the count this screen was serving and
+  // could not label while it believed a key the mockup does not declare would
+  // fail `strings-parity`. It does not, and has not since 2026-08-26.
+  assert.equal(declared.length, 8,
+    `the English table declares ${declared.length} cap. key(s); it has been 8 since cap.notgov `
+    + 'landed. A new one is a new sentence on this screen and needs placing.');
   // The other direction of the same fact. `strings-parity` proves the two
   // tables agree with the mockup's `data-t` set; it cannot prove the screen
   // ever draws one.
@@ -584,19 +586,25 @@ test('the two cap. keys this screen cannot place are exactly cap.o1 and cap.o2',
     + 'design of record that silently does not render.');
 });
 
-test('notGoverning is served, recorded, and drawn nowhere — the absence is the assertion', async () => {
+test('notGoverning is served AND drawn, through cap.notgov and nothing else', async () => {
   // `/api/capture` counts the scope-matched items the governing filter removed
   // and serves the number precisely because dropping them silently is what
-  // `INV-nothing-is-dropped-silently` forbids. There is no `cap.` key for it,
-  // and a bare digit with no label is not a fact. So it is not drawn — and
-  // the day a key arrives, THIS is the test that goes red and says so.
-  assert.ok(source.includes('notGoverning'),
-    'the module does not mention notGoverning at all — a served field dropped without a word is '
-    + 'the defect this screen is supposed to be recording, not repeating');
-  assert.ok(!CODE.includes('notGoverning'),
-    'notGoverning reaches the DOM. There is no string for it in either table and '
-    + '`strings-parity.test.ts` fails in both directions, so it cannot be labelled — either a '
-    + 'key landed and this test should be rewritten, or English was invented here.');
+  // `INV-nothing-is-dropped-silently` forbids.
+  //
+  // **This test used to assert the OPPOSITE, and said so in its own words:**
+  // *"the day a key arrives, THIS is the test that goes red and says so."* It
+  // did. `cap.notgov` landed on 2026-08-30, once the reason for the absence —
+  // "`strings-parity.test.ts` fails in both directions" — was read against the
+  // gate instead of quoted from memory. It fails in ONE direction, and has
+  // since 2026-08-26.
+  assert.ok(CODE.includes('notGoverning'),
+    'notGoverning no longer reaches the DOM. It is served, it is a fact about the answer this '
+    + 'screen just drew, and dropping it silently is the thing the endpoint carries it to stop');
+  assert.ok(CODE.includes("ctx.t('cap.notgov'"),
+    'the count is drawn without cap.notgov — a bare digit with no label is not a fact, and an '
+    + 'English sentence invented at the call site is not translated');
+  const en = await table('en');
+  assert.ok('cap.notgov' in en, 'cap.notgov is drawn and not declared');
 });
 
 test('no translated string is assigned — t() returns nodes and they are appended (ruling A1)', () => {

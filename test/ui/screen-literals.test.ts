@@ -337,15 +337,24 @@ const KNOWN_LITERALS: { file: string; text: string; verdict: Verdict; reason: st
       + 'threshold and only half is listed — recorded here so the next reader fixes both. '
       + 'Not this task\'s file (lane discipline); reported to the owner.',
   },
-  // ── watch.js — not this task's file; reported, not touched ────────────
-  {
-    file: 'watch.js',
-    text: 'regime change · ',
-    verdict: 'unkeyed',
-    reason: 'A feed row prefix. `watch.js` already carries a filed task for the emphasis '
-      + 'runs its string grammar has no marker for, and this belongs with it. Not this '
-      + 'task\'s file; reported.',
-  },
+  // ── watch.js ──────────────────────────────────────────────────────────
+  //
+  // **`'regime change · '` LEFT this ledger on 2026-08-30, and it is the first
+  // entry it has lost to a KEY rather than to a deletion.** It was recorded as
+  // a feed-row prefix belonging with the emphasis-run task; that was never why
+  // it was English. `screens/watch.js` refused to key it on the ground that
+  // `strings-parity.test.ts` "compares both tables against the mockup's
+  // `data-t` set in BOTH directions" — a direction dropped on 2026-08-26 by
+  // `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`, quoted from
+  // memory rather than read from the gate. `watch.regime` is the key, in both
+  // tables. The ` · ` separator that stayed beside it carries no letter-word
+  // and falls below the prose line, which is that line doing its job rather
+  // than the ledger excusing anything.
+  //
+  // The ledger shrank by exactly one. It is a FLOOR and not a measurement —
+  // `plan:walk seq:108` proved it, with `is not` reaching the DOM through a
+  // variable this check cannot see — so the fourteen sites `plan:walk seq:92`
+  // keyed and corrected are not all visible here, and only this one was.
 ];
 
 test('every user-facing literal under screens/ is enumerated, and the ledger is exact', () => {

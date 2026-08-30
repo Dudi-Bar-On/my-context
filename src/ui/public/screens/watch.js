@@ -529,22 +529,32 @@ export async function render(root, ctx) {
    * the series either side of it is not comparable. Drawn as a row it reads as
    * one more event, and the disappearance it explains looks causeless.
    *
-   * **`regime change · ` is the mockup's own English literal and is NOT keyed.**
-   * The design of record builds it inside a `HEB ? … : …` ternary in script, so
-   * neither string table declares it and neither could: `strings-parity.test.ts`
-   * compares both tables against the mockup's `data-t` set in BOTH directions,
-   * and a key invented here would fail it as an invented string. Transcribed
-   * rather than corrected, and raised in this task's report — the fix is a key
-   * in the mockup first. `watch.sub` already carries the concept in both
-   * languages ("A focus change is a regime change, drawn as a rule across the
-   * feed"), so the meaning is not lost, only this row's label.
+   * **`watch.regime` is the label, and it was an English literal until
+   * 2026-08-30.** The design of record builds the phrase inside a
+   * `HEB ? … : …` ternary in its own script, under no `data-t`, and this
+   * comment gave that as the reason a key was impossible: *"`strings-parity`
+   * compares both tables against the mockup's `data-t` set in BOTH
+   * directions"*. It does not. It compares them in ONE direction, and has
+   * since 2026-08-26 —
+   * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap` dropped the
+   * invented direction and the gate's docstring says so in its own words. The
+   * claim above was quoted from memory, and it kept this row English under `א`
+   * for three days after it stopped being true.
+   *
+   * `watch.sub` already carried the concept in both languages ("A focus change
+   * is a regime change, drawn as a rule across the feed"); what was missing was
+   * this ROW's label, which is the one a reader meets at the boundary itself.
+   * The ` · ` separator stays a text node beside the translated span, for the
+   * reason `screenHead`'s ✅ does: a translated element's children are replaced
+   * wholesale, and a glyph nested inside one does not survive it.
    */
   function regimeRow(described, at) {
     const row = el('tr', 'regime');
     const cell = el('td');
     cell.colSpan = 3;
     const wrap = el('div', 'rw');
-    const text = el('span', null, 'regime change · ');
+    const text = el('span');
+    text.append(...ctx.t('watch.regime'), ' · ');
     text.append(mono(described.op));
     if (described.note !== null) text.append(' — ', bdi(described.note));
     wrap.append(el('span', null, '◇'), text, el('span', 'ln'), mono(at));
@@ -597,12 +607,19 @@ export async function render(root, ctx) {
    * is deliberate rather than lazy. `token-missing` and `token-mismatch` are
    * the vocabulary `security.ts` refuses in, they are what the audit record
    * stores, and they are the words somebody grepping the log will search for.
-   * Prose would need four new sentences in both string tables — and
-   * `strings-parity` requires every key to exist in the mockup too, so it would
-   * mean writing four Hebrew security sentences nobody here can review. An
-   * identifier needs no translation, exactly as `SessionStart` and an item id
-   * need none, and it says strictly more than the bare `ui-refused` this
+   * An identifier needs no translation, exactly as `SessionStart` and an item
+   * id need none, and it says strictly more than the bare `ui-refused` this
    * rendered before.
+   *
+   * **One of the two reasons given here was wrong, and it is struck.** This
+   * used to add that "`strings-parity` requires every key to exist in the
+   * mockup too", so four new keys were impossible. It does not, and has not
+   * since 2026-08-26 —
+   * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap` dropped that
+   * direction. Four keys COULD be written; they should not be, and the reason
+   * is the paragraph above rather than a gate. Re-measured 2026-08-30 with the
+   * rest of `plan:walk seq:92` — the refusal survived its stated cause, which
+   * is what makes it worth restating rather than deleting.
    */
   function whatOf(described) {
     const box = bdi('');

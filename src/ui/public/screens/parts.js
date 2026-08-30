@@ -175,23 +175,55 @@ export function tierChip(tier) {
 }
 
 /**
- * A refusal, in the SERVER'S OWN WORDS.
+ * A refusal: a WORDED frame in the reader's language, around the refusing
+ * party's own words, unedited.
  *
- * **The mockup has no string for this on any of the three screens**, and
- * inventing one would fail `test/ui/strings-parity.test.ts` in the direction
- * that names it — a key in a table that the design of record does not declare.
- * So nothing here is worded: the endpoint's own `error` text is shown as it
- * arrived, which is the same treatment `/api/session/:session/injected`'s
- * `error` field already carries — "the seen file's own words, not a
- * paraphrase". Recorded as an open question for the owner rather than resolved
- * here.
+ * **The frame is `err.note`, and it exists because the refusal used to have
+ * none.** This paragraph said, until 2026-08-30, that the mockup declares no
+ * string for it and that inventing one "would fail
+ * `test/ui/strings-parity.test.ts` in the direction that names it". That
+ * direction was dropped on 2026-08-26 by
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`, and the gate
+ * has had ONE mockup-facing check ever since — the GAP direction, which fails
+ * on a sentence the design drew and the product does not have. A key the
+ * mockup never drew is ordinary development. Re-read the gate's own docstring
+ * before quoting it; this comment is the reason a defect outlived its cause on
+ * fifteen modules, and it is the widest of the fifteen: EVERY server refusal
+ * on EVERY screen in this UI came through here, so a reader in Hebrew was
+ * shown English at the exact moment something had gone wrong.
+ *
+ * **What is NOT worded, and must not be.** The message itself. It is the
+ * endpoint's `error` text, the platform's exception, a command's `stderr` or
+ * an audit note, and it is shown as it arrived — the same treatment
+ * `/api/session/:session/injected`'s `error` field already carries, "the seen
+ * file's own words, not a paraphrase". `err.note` says so in the sentence, so
+ * a reader is told the run is untranslated rather than left to wonder why half
+ * the line changed language and half did not.
+ *
+ * **`ctx` defaults to the shell's own, and no call site had to change.** Every
+ * caller here and in `lib/command-actions.js` already had a translated screen
+ * around it; threading a parameter through six of them to reach one paragraph
+ * would have been six edits for one sentence. `globalThis.myctx` is what
+ * `app.js` publishes (`src/ui/public/app.js` · `  window.myctx = {` · ~2556),
+ * and it is the same shape `screens/packs.js` already relies on for `document`
+ * (`src/ui/public/screens/packs.js` · `export function isolated(text, doc = globalThis.document) {` · ~192).
+ * Where there is no shell — `node --test` importing this module with a
+ * stand-in `document` — the message is drawn bare, which is exactly what
+ * shipped before and is never worse than it.
  *
  * It is `.spill` (`--crit`) and it is drawn INSTEAD of the data, never beside
  * an empty view: an endpoint that refused and a corpus that is empty are two
  * facts, and this project's own invariant is that the difference survives.
  */
-export function errorNote(message) {
-  return el('p', 'small spill', message);
+export function errorNote(message, ctx = globalThis.myctx) {
+  const text = message === undefined || message === null ? '' : String(message);
+  const note = el('p', 'small spill');
+  if (ctx !== undefined && ctx !== null && typeof ctx.t === 'function') {
+    note.append(...ctx.t('err.note', { error: text }));
+  } else {
+    note.textContent = text;
+  }
+  return note;
 }
 
 // --- The bound every list declares ------------------------------------------

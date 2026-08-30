@@ -697,14 +697,23 @@ export async function render(root, ctx) {
   fieldLabel.append(...ctx.t('ask.field'));
   const fieldSelect = document.createElement('select');
   fieldSelect.id = 'ask-field';
-  // `is` / `is not` are the mockup's own literals and carry no `data-t` — the
-  // only PROSE on this screen that no string table declares, so the א/A toggle
-  // cannot reach them. Reported rather than keyed here: adding a key that the
-  // design of record does not declare fails `strings-parity` in the direction
-  // that names it.
+  // **The operator labels are KEYED, and the values are not.** `is` / `is not`
+  // are the mockup's own literals and carry no `data-t`, and this comment used
+  // to stop there: "adding a key that the design of record does not declare
+  // fails `strings-parity` in the direction that names it". It does not, and
+  // has not since 2026-08-26 — `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`
+  // dropped that direction and the gate's docstring says so. Until it was
+  // re-read, these two were the only PROSE on this screen the א/A toggle could
+  // not reach.
+  //
+  // The `<option>` VALUE stays the English literal, because it is not prose:
+  // `filterFor` compares it against `IS_NOT` to decide whether to negate, and a
+  // control whose behaviour changed with the UI language would be a second
+  // thing to reconcile. Label translated, value fixed — the split `tierChip`
+  // already makes between a tier's name and its chip.
   const opSelect = document.createElement('select');
-  const isNotOption = option(IS_NOT, IS_NOT);
-  opSelect.append(option(IS, IS), isNotOption);
+  const isNotOption = option(IS_NOT, ctx.t('ask.opIsNot'));
+  opSelect.append(option(IS, ctx.t('ask.opIs')), isNotOption);
   const valueSelect = document.createElement('select');
   // **NO RUN BUTTON, and that is an owner ruling rather than an omission.**
   //

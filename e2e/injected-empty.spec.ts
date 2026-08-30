@@ -187,21 +187,27 @@ test('a session with no seen file draws its columns AND a sentence, never a bare
   // entitled to know what would have been in it.
   await expect(probe.locator('thead th')).toHaveCount(3);
 
-  // THE SENTENCE. `inj.zeroLines`, drawn under the table where a reader
+  // THE SENTENCE. `inj.noSeenFile`, drawn under the table where a reader
   // reaches the end of it and finds no rows.
-  const zero = probe.locator('p.small', { hasText: 'received nothing' });
+  const zero = probe.locator('p.small', { hasText: 'No seen file was written' });
   await expect(zero,
     'STD-a-measured-zero-is-drawn-and-named: a blank is indistinguishable from a failure '
     + 'to load, and this is the screen whose subtitle promises live delivery state').toBeVisible();
-  // **The WORDING is pinned as it stands, and it over-claims.** This session's
-  // seen file does not exist, so nothing was read; the response cannot say so
-  // (`{lines: [], error: null}` is also what a file that WAS read and held
-  // nothing answers) and the screen has only this key. When `InjectedBody`
-  // gains the field that tells the two apart, this line becomes
-  // `inj.noSeenFile` — `screens/injected.js`' header carries the field, the key
-  // and the English, and `test/ui/injected-endpoints.test.ts` holds the
-  // collapse itself.
-  await expect(zero).toHaveText('This session was read and has received nothing yet.');
+  // **The WORDING moved on 2026-08-30, and this line said in advance that it
+  // would.** It used to pin `inj.zeroLines` — *"This session was read and has
+  // received nothing yet"* — and to record that the sentence OVER-CLAIMED:
+  // this session's seen file does not exist, so nothing was read, and the
+  // response could not tell that apart from a file that WAS read and held
+  // nothing (`{lines: [], error: null}` is both). `InjectedBody.seen` is the
+  // field that separates them, `inj.noSeenFile` is the key the screen draws for
+  // `absent`, and `test/ui/injected-endpoints.test.ts` holds the collapse
+  // itself. Seven of nineteen live sessions were being told the wrong one.
+  await expect(zero).toHaveText(
+    'No seen file was written for this session, so nothing was read here — the audit log may '
+    + 'still record what it was given.');
+  // And it must NOT claim the session was read. That is the sentence this test
+  // pinned for weeks and the one the field exists to stop.
+  await expect(probe.getByText('was read and has received nothing')).toHaveCount(0);
 
   // Visible is not the same as occupying space — `states.spec.ts`' own point:
   // a state that renders nothing is not a state.
@@ -246,4 +252,100 @@ test('the picker\'s itemCount and the injected lines disagree about the cleared 
   expect(measured.error,
     'and NOT as an error: nothing failed, which is exactly why the two answers are hard to '
     + 'tell apart and why the screen has to say which one it is').toBeNull();
+});
+
+/* ══ 4 · THE LONG SESSION, WHICH IS THE OTHER END OF THE SAME AXIS ═══════ */
+
+/**
+ * The session `scripts/demo-corpus.ts` drives through a full working day —
+ * fifteen tool events, three compactions and three resumes, all through the
+ * real hooks on stdin.
+ */
+const LONG = 'demo-session-a3f9c1-11';
+
+/**
+ * **A bounded list that holds something back, over data the product wrote.**
+ *
+ * `TASK-the-demo-corpus-cannot-trip-a-single-list-bound-so-paging-is`
+ * (`plan:port seq:94b`) measured the fixture on 2026-08-27 and found that **not
+ * one bounded surface in it exceeded its own bound** — the preview delivered 4
+ * rows against a cap of 20, this table 0 against 50, the pack stack 1. So every
+ * paging assertion in `e2e/bounded-paging.spec.ts` had to be made against a
+ * `boundedList` MOUNTED over synthetic rows, and the agent that wrote it
+ * refused to lower a cap to make the fixture trip: *"Lowering a cap to make the
+ * fixture trip would have turned every paging assertion green against a bound
+ * no user ever meets."*
+ *
+ * The fixture crosses it now, and it crosses it by being a longer SESSION
+ * rather than by anything being lowered. Sixty rows against a cap of fifty, on
+ * a seen file written entirely by `hooks/session-start.ts` and
+ * `hooks/pre-tool-use.ts` being fed real payloads.
+ *
+ * **Mounted for the same reason test 2 is** — the shell has no session picker,
+ * so the only session the served screen can be pointed at is the default. That
+ * is the residual gap and it is named in `screen-parity.spec.ts`'s `injected`
+ * entry: this table draws its control the day `#sessbtn` opens a popup, and not
+ * before.
+ */
+test('a long session holds rows back, and the screen draws the way to reach them', async ({ app }) => {
+  await openInjected(app.page);
+  const root = await mountFor(app.page, LONG);
+  const probe = app.page.locator(root);
+
+  expect(await refusalIn(app.page, root),
+    'the read was REFUSED, so this test measured a refusal and not a bounded list — '
+    + 'the audit-projection contention of `plan:walk seq:85`. Re-run alone.').toBe('');
+
+  // **The bound line states a truncation, and the number it truncates from is
+  // the session's own.** `BOUND_CAP_TABLE` is 50; anything at or below it draws
+  // "Showing all N" and no control at all, which is the state test 1 measures
+  // on the default session.
+  const bound = probe.locator('.bound');
+  await expect(bound, 'the table declares its bound whatever it holds').toBeVisible();
+  await expect(bound.locator('p'),
+    `${LONG} must hold back rows — \`scripts/demo-corpus.ts\` drives it through fifteen tool `
+    + 'events, three compactions and three resumes so its seen file passes 50 lines. If this '
+    + 'reads "Showing all N", the long-session shape is gone from the fixture and the only '
+    + 'bounded surface the product itself fills is gone with it.')
+    .toHaveText(/Showing \d+ of \d+/);
+
+  // The rows are capped at the bound, not merely reported as capped.
+  await expect(probe.locator('tbody tr')).toHaveCount(50);
+
+  // **ABSENT is the failure mode this control has** — `bounded-paging.spec.ts`'s
+  // first test asserts the mirror of this over the default session, and the
+  // requirement's own sentence is that *an inert control is the same lie as a
+  // blank screen*. Both step buttons exist here because both directions are
+  // reachable from a middle page after one press; on arrival `prev` is
+  // disabled, which is the browser's own answer and is `bounded-paging`'s to
+  // assert.
+  await expect(bound.locator('button[data-step]'),
+    'a list holding rows back must offer the way to them').toHaveCount(2);
+  await expect(bound.locator('button[data-step="next"]')).toBeVisible();
+});
+
+/**
+ * **The `jit` tier reaches a screen at all**, which no numbered session in this
+ * fixture could show until 2026-08-30.
+ *
+ * Every session in the loop received exactly one `SessionStart`, and a session
+ * start delivers `pinned`; the tool events all went to the bare unnumbered
+ * session. So every row every screen could draw was `pinned`, the neutral chip
+ * had nothing to mark, and `span.chip.ok` sat in `screen-parity`'s ledger for
+ * this screen reading as a kind the code does not build. It builds it.
+ */
+test('a session that edited files carries jit rows, and they are chipped as jit', async ({ app }) => {
+  await openInjected(app.page);
+  const root = await mountFor(app.page, LONG);
+  const probe = app.page.locator(root);
+
+  expect(await refusalIn(app.page, root),
+    'the read was REFUSED — re-run alone.').toBe('');
+
+  // The tier chip the mockup gives `jit`. `TIERCHIP` maps it to `chip ok`, the
+  // same neutral face every other screen gives the tier.
+  await expect(probe.locator('tbody span.chip.ok').first(),
+    `${LONG} must carry at least one jit line — the fixture drives fifteen PreToolUse events `
+    + 'through the real hook on it. A table of nothing but pinned rows is the state that made '
+    + 'this chip look like missing code for eight days.').toBeVisible();
 });

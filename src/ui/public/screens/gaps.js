@@ -37,9 +37,18 @@
  *     place it costs most: a gaps table computed from a truncated walk names
  *     fewer directories than the repository has, and a reader who is not told
  *     reads the short list as the whole answer. Two things it deliberately is
- *     NOT. It is not a fourth key — a sentence worded here would be a string
- *     the design of record does not declare, which `strings-parity.test.ts`
- *     fails in the direction that names it. And it does not close
+ *     NOT. It is not a fourth key — and the reason recorded here was wrong for
+ *     three days. It said a sentence worded here "would be a string the design
+ *     of record does not declare, which `strings-parity.test.ts` fails in the
+ *     direction that names it";
+ *     `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap` dropped
+ *     that direction on 2026-08-26 and the gate's docstring says so.
+ *     Re-measured 2026-08-30: a fourth key would pass. It is still not written,
+ *     because nothing here is left unworded — `cov.k4` and `gaps.r2` are both
+ *     declared, both translated and both on screen, so this disclosure already
+ *     reads in Hebrew. A fourth key would be a BETTER sentence, which is
+ *     product copy for the owner rather than a defect to fix. And it does not
+ *     close
  *     `TASK-page-or-filter-api-coverage-and-disclose-any-truncation`
  *     (plan:ui1 seq:17e), which asks the ENDPOINT to carry HOW MANY paths were
  *     left out; this discloses the flag that is already served, and a flag is
@@ -49,8 +58,10 @@
  *     nothing for it, because the STRING cannot carry it: `gaps.cat` is
  *     `category {m:open_question}` in English and `קטגוריה {m:open_question}` in
  *     Hebrew, and an `{m:…}` run is a LITERAL — `strings/en.js`' own grammar
- *     block says so, and `strings-parity.test.ts` holds the two payloads
- *     identical for exactly that reason. So the key can name one category, the
+ *     block says so, and `strings-parity.test.ts` holds the two `{m:…}`
+ *     payloads identical for exactly that reason. That check is between the two
+ *     TABLES and is untouched by the 2026-08-26 ruling, which dropped only the
+ *     mockup-facing invented direction. So the key can name one category, the
  *     one the mockup's demo row happens to show, and there is no substitution
  *     for the others. Drawing the name alone in the `Where` cell would lose the
  *     word that tells a category apart from a directory, which is the whole

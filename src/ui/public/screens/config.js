@@ -933,18 +933,32 @@ export async function render(root, ctx) {
   // show the text to fix. Both are hard stops: `resolved` is null in the first
   // case and null in the second, so there is nothing to draw underneath.
   //
-  // The wording is the LOADER'S, verbatim and unworded, because no string table
-  // declares a key for either (`configure.parseError`/`configure.resolveError`
-  // are the plan's names for keys that were never added, and adding them would
-  // fail `test/ui/strings-parity.test.ts` in the direction that names a key the
-  // design of record does not declare). `errorNote` is the established
-  // treatment; the missing keys are this task's report.
+  // **WHICH of the two failures it is, is now worded; the loader's sentence
+  // under it still is not.** This comment used to say the plan's names for
+  // these keys — `configure.parseError` / `configure.resolveError` — "were
+  // never added, and adding them would fail
+  // `test/ui/strings-parity.test.ts` in the direction that names a key the
+  // design of record does not declare". That direction was dropped on
+  // 2026-08-26 by `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`
+  // and the gate has had one mockup-facing check ever since. `cfg.parseErr` and
+  // `cfg.resolveErr` are those two keys, in both tables.
+  //
+  // The loader's own message follows each, through `errorNote`, which words its
+  // own frame and says in the sentence that what it wraps is untranslated. The
+  // two facts are different: WHICH failure this is, is the product's to say and
+  // is now said in the reader's language; WHAT the loader found is the loader's
+  // to say and is shown as it arrived.
+  const stop = (key, text) => {
+    const lead = el('p', 'small');
+    lead.append(...ctx.t(key));
+    root.append(lead, errorNote(text));
+  };
   if (config.parseError !== null) {
-    root.append(errorNote(config.parseError));
+    stop('cfg.parseErr', config.parseError);
     return;
   }
   if (config.resolveError !== null) {
-    root.append(errorNote(config.resolveError));
+    stop('cfg.resolveErr', config.resolveError);
     return;
   }
   const resolved = config.resolved;

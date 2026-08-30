@@ -16,18 +16,21 @@
  * ever will: `core/select.ts` does not export it, and this screen was never
  * going to be the second place that rule got written.
  *
- * **The readout under the staircase** (`#readout`) is STILL refused, for a
- * reason the sweep does not touch. Its numbers are not the problem —
- * *"N in · M out · T tokens used"*, and the *"next in at …"* line beneath it,
- * are both derivable from data this screen already has. Its WORDS are: the
- * mockup builds that sentence out of English and Hebrew literals inside its
- * own script, under no `data-t`, and therefore under no key in either string
- * table. `test/ui/strings-parity.test.ts` fails on a key the design of record
- * does not declare, so the sentence cannot be worded here at all — and
- * spelling it out of keys that DO exist would put a different sentence on
- * screen under the mockup's name. Recorded as an open question for the owner:
- * the day `#readout` gets a `data-t`, it is ten lines, and none of them touch
- * the sweep this task built.
+ * **The readout under the staircase** (`#readout`) is still not built, and the
+ * reason recorded here was WRONG for three days. It said
+ * `test/ui/strings-parity.test.ts` "fails on a key the design of record does
+ * not declare" — a direction dropped on 2026-08-26 by
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`. Re-measured
+ * against the gate's own docstring on 2026-08-30: it has ONE mockup-facing
+ * check, the GAP direction, and a key the mockup never drew passes it.
+ *
+ * So the block is UNBLOCKED and is not built here, which is a different
+ * sentence and has to be said as one. What it needs is four sentences of new
+ * product copy in two languages — *"N in · M out · T tokens used"* and *"next
+ * in at …"*, drawn from data this screen already has — and drafting those is
+ * the agent's under `DEC-claude-drafts-the-mockup-and-the-owner-approves`
+ * while approving them is not. It is ten lines and four sentences, filed as
+ * ready rather than as forbidden, and it still does not touch the sweep.
  *
  * **The stale sentence is gone.** `sim.stairn` used to say `itemCost` was
  * *"private in select.ts today: one export, and this chart is live"* — wrong
@@ -910,14 +913,21 @@ export async function render(root, ctx) {
       } else {
         const eligible = counts.fits + counts.spills;
         c2.append(mono(num(counts.budget)));
-        // The fits column is a RATIO, as `sim.chipn` says. It is written with a
-        // solidus rather than the mockup script's `' of '`: that word is an
-        // unkeyed English literal in the mockup's own demo loop, with no key in
-        // either string table, and shipping it would put untranslated English
-        // inside a Hebrew sentence. Recorded as an open question for the owner.
+        // The fits column is a RATIO, as `sim.chipn` says, and it is written in
+        // the mockup's own words again. It shipped as a bare solidus because
+        // the `' of '` in the mockup's demo loop is an unkeyed literal and
+        // "shipping it would put untranslated English inside a Hebrew
+        // sentence" — true of a literal, and never true of a key. The reason
+        // no key was written was `strings-parity` failing on one the design of
+        // record does not declare, which stopped being a rule on 2026-08-26.
+        // `sim.fitsOf` is that key; `sim.chipn` directly below already quoted
+        // the same two slots in both languages, so the copy needed no
+        // inventing at all.
         const chip = el('span', `chip ${counts.spills > 0 ? 'warn' : 'ok'}`);
         chip.dataset.g = counts.spills > 0 ? '▲' : '●';
-        chip.textContent = `${num(counts.fits)}/${num(eligible)}`;
+        chip.append(...ctx.t('sim.fitsOf', {
+          fits: num(counts.fits), eligible: num(eligible),
+        }));
         c3.append(chip);
         if (counts.spills > 0) {
           const spillChip = el('span', 'chip warn', num(counts.spills));
@@ -1018,9 +1028,11 @@ export async function render(root, ctx) {
     //
     // **Both words are keys that already exist, and neither is new.** The
     // mockup writes them as bare English/Hebrew literals in its script, under
-    // no `data-t`, so this screen has no key of its own for them and may not
-    // invent one — `strings-parity` fails a key the design of record does not
-    // declare. `preview.delivered` and `sim.spills` are the same two words in
+    // no `data-t`. Inventing a key is ALLOWED here — `strings-parity` dropped
+    // the invented direction on 2026-08-26 — and is still not what this does,
+    // because two keys carrying these exact two words already exist and a
+    // second spelling of a word is how two surfaces come to disagree about it.
+    // `preview.delivered` and `sim.spills` are the same two words in
     // the same two languages, already declared and already on screen: in
     // Hebrew they are the mockup's legend verbatim (`נמסר`, `נשפך`), and in
     // English they differ only in being the table's own column headings

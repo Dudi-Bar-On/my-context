@@ -72,16 +72,27 @@
  *
  * ── WHAT THE MOCKUP DRAWS THAT THIS CANNOT ────────────────────────────────
  *
- * One `<b>` run, inside `tu.gap`
- * (`docs/design/web-ui-mockup.html` · `<b>to write</b> rather than as a language toggle` · ~2306).
- * `lib/i18n.js`'s grammar has three markers and no emphasis one
- * (`src/ui/public/lib/i18n.js` · `const RUN = /\{(?:(mv|m):)?([^}]*)\}/g;` · ~19),
- * so no string table can carry a bold run, and adding a key here would fail
- * `strings-parity` in the direction that names it. This is the FOURTH site of
- * one defect already tracked as
- * `TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup`, whose
- * three sites are on the Audit stream; `preview`'s `i` is the same defect
- * wearing italics. Reported as this screen's one parity gap, not worked around.
+ * **Nothing, since 2026-08-25 — and this paragraph said otherwise until
+ * 2026-08-30.** It recorded the one `<b>` run inside `tu.gap`
+ * (`docs/design/web-ui-mockup.html` · `<b>to write</b> rather than as a language toggle` · ~2306)
+ * as unbuildable, on TWO reasons, and both had expired before it was last read:
+ *
+ *   - *"`lib/i18n.js`'s grammar has three markers and no emphasis one"*. It has
+ *     five. `{b:}` and `{i:}` landed on 2026-08-25 and they NEST, which is the
+ *     whole of why that parser stopped being one regex
+ *     (`src/ui/public/lib/i18n.js` · `const MARKER = /^\{(mv|m|b|i):/;` · ~35).
+ *     `tu.gap` carries `{b:to write}` in both tables today, and so does the
+ *     mockup's own `HE` table, so the run is drawn.
+ *   - *"adding a key here would fail `strings-parity` in the direction that
+ *     names it"*. That direction was dropped on 2026-08-26 by
+ *     `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`. No new
+ *     key was needed in the end — the VALUE of an existing one was — but the
+ *     citation was wrong either way, and it is the citation this screen is one
+ *     of fifteen sites of (`plan:walk seq:92`).
+ *
+ * `TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup` is what
+ * closed the first; this screen was listed under it and nobody came back to
+ * strike the line. Read the grammar, not a comment about it.
  *
  * **`EN` and `HE` are literals, and the mockup wrote them that way** — the two
  * `<th>` carry no `data-t`, and the string tables declare no key for either.

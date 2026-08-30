@@ -177,22 +177,27 @@ export function repairFor(code, item) {
 /**
  * The mockup's three cards, in its order, each with the heading it draws.
  *
- * `error` and `warning` are LITERALS with no `data-t` in the design of record;
- * only the third is keyed (`doc.notice`). That asymmetry is the mockup's and
- * is transcribed rather than corrected — adding `doc.error`/`doc.warning` to
- * the tables would fail `test/ui/strings-parity.test.ts` in the direction that
- * names it: a key in a table that the design of record does not declare. It
- * means two of the three card headings stay English in the Hebrew UI, which is
- * an open question for the owner and not a decision taken here.
+ * **All three are keyed now, and two of them were not until 2026-08-30.**
+ * `error` and `warning` are LITERALS with no `data-t` in the design of record
+ * and only `doc.notice` was keyed, so two of the three card headings stayed
+ * English in the Hebrew UI. This comment gave the reason as
+ * `test/ui/strings-parity.test.ts` failing "in the direction that names it: a
+ * key in a table that the design of record does not declare" — a direction
+ * dropped on 2026-08-26 by
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`, three days
+ * before this file was last read. The gate's own docstring says which
+ * directions it has; a constraint quoted from memory is how a defect outlives
+ * its cause. `doc.error` and `doc.warning` are the two new keys, in both
+ * tables, and the mockup is untouched — the app is what is built.
  *
  * The heading is also not the level VALUE: `runChecks` emits `warn` and
  * `info`, the mockup writes "warning" and "notice". The level is the join key,
  * the heading is the label, and they are allowed to differ.
  */
 const CARDS = [
-  { level: 'error', literal: 'error', key: null },
-  { level: 'warn', literal: 'warning', key: null },
-  { level: 'info', literal: null, key: 'doc.notice' },
+  { level: 'error', key: 'doc.error' },
+  { level: 'warn', key: 'doc.warning' },
+  { level: 'info', key: 'doc.notice' },
 ];
 
 /**
@@ -444,8 +449,7 @@ export async function render(root, ctx) {
   for (const card of CARDS) {
     const pane = el('div', 'card pane');
     const heading = el('h3');
-    if (card.key === null) heading.append(card.literal);
-    else heading.append(...ctx.t(card.key));
+    heading.append(...ctx.t(card.key));
 
     const table = el('table');
     const tbody = el('tbody');

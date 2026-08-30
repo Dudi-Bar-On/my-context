@@ -13,9 +13,14 @@
  * keyed by an ATTRIBUTE, that attribute’s value, because neither an
  * `aria-label` nor a `title` is reachable by the text path and both stayed English in
  * the Hebrew UI until they were keyed. The Hebrew values are the mockup’s own
- * `const HE = {…}` table. Adding a key the mockup does not declare, or dropping one it
- * does, fails `test/ui/strings-parity.test.ts` in the direction that names it. If the
- * mockup and the product are agreed to diverge, the mockup changes first.
+ * `const HE = {…}` table. DROPPING a key the mockup declares fails
+ * `test/ui/strings-parity.test.ts` in the direction that names it. ADDING one the
+ * mockup does not declare does NOT, and has not since 2026-08-26:
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap` dropped the
+ * invented direction, leaving the mockup as history and as a list of gaps rather
+ * than as a permission slip. The gate's own docstring is the authority on which
+ * directions exist on the day you read this; this paragraph said the opposite for
+ * three days and fifteen modules quoted it rather than the gate.
  *
  * Three brace grammars, and two of them are value slots:
  *
@@ -242,6 +247,7 @@ export const strings = {
   'sim.fits': 'נכנס',
   'sim.spills': 'נשפך',
   'sim.chipn': 'עמודת הנכנסים היא {b:יחס}, לא מניין: "{fits} מתוך {eligible}" אומר כמה ממה שהיה כשיר באמת הגיע, והשבב מתהפך בגבול. השורה של הרמה הנגררת עוקבת אחרי המחוון.',
+  'sim.fitsOf': '{fits} מתוך {eligible}',
   'help.whyBudget': 'למה העלאת תקציב עלולה להסיר פריט',
   'sim.evict': '{m:fitToBudget} הוא {b:first-fit}: תקציב גדול יותר מכניס פריט גדול מוקדם, שיכול לדחוק שניים קטנים.',
   'sim.ratio': 'נבחר, ואז לא נמסר',
@@ -256,6 +262,7 @@ export const strings = {
   'watch.h': 'זרם ביקורת',
   'watch.v': 'התיעוד היחיד של מה שנשפך',
   'watch.sub': 'שישה סוגי רשומות. שינוי מיקוד הוא {b:שינוי משטר}.',
+  'watch.regime': 'שינוי משטר',
   'watch.pulsen': '{b:דופק פעילות} — עמודה לכל עשר שניות, החדשה בקצה הקריאה. הגובה הוא מספר הרשומות באותה עמודה, הצבע הוא סוג הרשומה. זה הדבר היחיד שגורם לזרם חי להיראות חי, ודליי הזמן שהוא דורש כבר מאונדקסים ב‑{m:idx_audit_at}.',
   'aria.wfilters': 'סינון',
   'watch.all': 'הכול',
@@ -291,6 +298,8 @@ export const strings = {
   'ask.field.title': 'הכותרת מכילה',
   'ask.field.any': '(הכול)',
   'ask.limit': 'שורות לשליפה',
+  'ask.opIs': 'הוא',
+  'ask.opIsNot': 'אינו',
   'ask.run': 'הרצה',
   'ask.updatedAtTrap': '{m:updated_at} הוא {b:זמן הכתיבה לאינדקס}, לא חותמת זמן של התוכן — והמסך הזה לעולם אינו בונה את האינדקס מחדש (הוא קורא בדיוק את מה שהווים קוראים), ולכן השורות הן כפי שהריצה האחרונה של וו או של שורת הפקודה הותירה אותן.',
   'ask.predefined': 'שאילתות מוגדרות מראש',
@@ -325,6 +334,7 @@ export const strings = {
   'doc.zero': 'נבדק — אין ממצאים ברמה זו.',
   'inj.zeroLines': 'הסשן נקרא ולא קיבל עדין דבר.',
   'inj.noSession': 'לא נבחר סשן, לכן לא נקרא דבר — וזה אינו דומה לסשן שלא קיבל דבר.',
+  'inj.noSeenFile': 'לא נכתב קובץ נראו לסשן הזה, ולכן לא נקרא כאן דבר — ייתכן שיומן הביקורת עדיין מתעד מה נמסר לו.',
   'rail.cntSome': 'ממתינים לטיפול: {count}',
   'rail.cntZero': 'אין דבר הדורש טיפול',
   'rail.cntNone': 'לא נמדד — נקודת הקצה של המסך הזה סירבה',
@@ -340,6 +350,8 @@ export const strings = {
   'doc.d2': 'ההיקף {mv:scope} אינו תואם אף קובץ',
   'doc.d3': '{b:אף קובץ אינו תואם לאף תבנית נצפית}, ולכן הדחיפה לתיעוד לא תוכל לפעול לעולם. ברירות המחדל מציינות שלושה נתיבים מתוך תהליך עבודה אחד; במאגר הזה אין אף אחד מהם.',
   'doc.notice': 'הודעה',
+  'doc.error': 'שגיאה',
+  'doc.warning': 'אזהרה',
   'doc.d4': 'קיים במכונה הזו מאגר ידע נוסף החוצה פרויקטים. {b:mycontext לעולם אינה קוראת או כותבת אליו} — הדבר מדווח כדי שתדעו זאת מכאן ולא מהפתעה.',
   'doc.d5': 'תוסף אחר כותב כאן לקחים מתמשכים — אותו סוג ידע כמו {m:lesson}, באיות שני וללא מזהים משותפים. זהו נתיב {b:נצפה}, ולכן עריכה דוחפת ואדם מכריע.',
   // A finding with no composed command says so, and the screen counts them. See
@@ -421,6 +433,7 @@ export const strings = {
   'cap.o1': 'אינווריאנטה, נורמטיבי',
   'cap.o2': 'תקן, נורמטיבי',
   'cap.nosim': 'אלה הפריטים ש{b:ההיקף שלהם תואם}. אין דירוג דמיון, כי אין מדד דמיון במוצר.',
+  'cap.notgov': '{n} פריטים נוספים תואמים את ההיקף הזה ואינם חלים עליו — טיוטות, פריטים שהוצאו משימוש וקטגוריות נימוק.',
   // Composer
   'pal.h': 'מרכיב פקודות',
   'pal.v': 'בוררים אמיתיים ובודק גלוב חי',
@@ -452,6 +465,8 @@ export const strings = {
   'cfg.v': 'ה"מסוף לא יכול" החזק ביותר',
   'cfg.sub': 'כל שינוי כהפרש של מה שיחול, מאומת מול אותו {m:resolveConfig} שיקרא אותו.',
   'cfg.budgets': 'תקציבים',
+  'cfg.parseErr': 'לא ניתן לפרסר את {m:config.json}. הודעת הטוען עצמו מופיעה מיד.',
+  'cfg.resolveErr': '{m:config.json} נפרסר, ולא ניתן היה ליישב אותו. הודעת הטוען עצמו מופיעה מיד.',
   'cfg.effect': 'מה משתנה',
   'cfg.deltan': 'כל שורה היא {b:הזוג}, לא הכיוון לבדו: הערך הישן מחוק בקו, החדש מודגש, והשורה נצבעת לפי הכיוון שאליו זזה. "מה זה היה קודם" הוא חצי מ"מה משתנה", ושבב {m:+1} לבדו שומר על הכיוון ומאבד את ההצמדה.',
   'aria.scopepolicy': 'scopePolicy',
@@ -537,6 +552,7 @@ export const strings = {
   'pr.w2': '{b:זו הבחנה, לא פטור.} השער קיים כדי למנוע מסוכן לשנות {i:תוכן} נורמטיבי; תיבת סימון היא {i:התקדמות}. כל היפוך נרשם בביקורת, כך שההקלה גלויה ולא שקטה.',
   'pr.w3': '{b:מה שאינו מוקל:} המצב. {m:active → done} נשאר שלכם. סימון התיבה האחרונה אינו סוגר את הנוהל — הוא מאפשר לסוכן {i:לשאול}. סוכן שיכול לסמן את הנוהל שלו כהושלם יכול להכריז על ניצחון.',
   'pr.aband': 'נטוש ולא הושלם הוא {m:superseded} — הסטטוס הקיים כבר אומר בדיוק את זה, ואיות חמישי לרעיון אחד הוא הפגם שהפרויקט הזה שילם עליו ארבע פעמים.',
+  'pr.disc': 'נכון בין אם כרטיס למעלה אומר זאת ובין אם לא',
   // Export / import
   'port.h': 'ייצוא / ייבוא',
   'port.sub': '{b:נבנה, והמסך הזה מדווח על כך.} הוא נהג למנות חמש שאלות פתוחות; כולן נענו, ולכן הוא מונה כעת את התשובות.',
@@ -592,6 +608,9 @@ export const strings = {
   'dv.parity': 'מתג EN/HE מנטרל את עצמו כשמבחן הזהות אדום.',
   'dv.rendered': '§{ordinal} — {heading}',
   'dv.mdnote': 'מוצג במעבד תת‑קבוצה שנכתב ביד: שום מחרוזת HTML אינה נוצרת.',
+  'dv.imgRefused': '{alt} (תמונה נדחתה)',
+  'dv.linkRefused': '{label} (קישור נדחה)',
+  'dv.htmlRefused': 'בלוק HTML גולמי נדחה',
   // Tutorials
   'tu.h': 'מדריכים',
   'tu.v': 'כל אחד נושא שם של משימה, לא של תכונה',
@@ -680,4 +699,5 @@ export const strings = {
   // אותו {m:…} ריצה אחת, באותו מקום, כמו באנגלית — {m:src/ui/public/} הוא נתיב ולא פרוזה.
   'ex.codeSkew': '{b:הדף הזה חדש יותר מהשרת שעונה לו.} קבצים תחת {m:src/ui/public/} נקראים מהדיסק בכל בקשה, ולכן רענון מביא את המסכים החדשים; המודולים של השרת עצמו נטענו כשהוא עלה, ואינם משתנים עד שהוא יופעל מחדש. הפעילו אותו מחדש כדי לסגור את הפער.',
   'ex.ok': 'הבנתי',
+  'err.note': 'סירוב. הנוסח הוא של המערכת עצמה ואינו מתורגם: {error}',
 };

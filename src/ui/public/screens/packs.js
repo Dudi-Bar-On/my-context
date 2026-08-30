@@ -153,7 +153,19 @@
  * and this task's own record retires it: *"Approved for implementation by the
  * owner on 2026-08-22; the mockup's PROPOSED badge is retired as a scope
  * marker."* No `pk.v` exists in either string table to put in its place, and an
- * empty `.verdict` drawn to satisfy a kind count would be parity theatre. Both
+ * empty `.verdict` drawn to satisfy a kind count would be parity theatre.
+ *
+ * **"No `pk.v` exists" is the state of the tables, not a prohibition — and this
+ * file read it as one.** It is the second of the two sites `plan:walk seq:92`'s
+ * grep missed (`screens/port.js` is the other), because both phrase the retired
+ * `strings-parity` premise as *a key that does not exist* rather than *a key
+ * that may not be invented*. The invented direction was dropped on 2026-08-26
+ * by `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`, so `pk.v`
+ * could be written into both tables today and the gate would pass. It is not
+ * written here because a verdict claims what a screen is GOOD AT, and
+ * `DEC-claude-drafts-the-mockup-and-the-owner-approves` reserves that approval
+ * to the owner — `plan:walk seq:108` takes all three verdicts to them at once.
+ * Both
  * kinds are in this task's report for the `KNOWN_GAPS` ledger. That is also why
  * this file writes its own heading instead of calling `screenHead`, which
  * requires a verdict key.

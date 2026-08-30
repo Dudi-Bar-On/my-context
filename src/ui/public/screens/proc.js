@@ -68,12 +68,25 @@
  * *"Abandoned rather than finished is `superseded`"*. So the screen already
  * knows the state exists and has no row for it.
  *
- * **No fifth row is added here.** `pr.` declares no meaning string and no
- * injection string for it, and inventing either would fail
- * `test/ui/strings-parity.test.ts` in the direction that names it. What keeps
- * it from being dropped is that the CARD prints the stage as its own chip
- * text: an abandoned procedure reads `abandoned` on screen, in the CLI's own
- * word, whether or not the table above it has a row. Reported.
+ * **No fifth row is added here, and the reason has CHANGED.** This paragraph
+ * said the blocker was `test/ui/strings-parity.test.ts` failing "in the
+ * direction that names it" on a `pr.` meaning string the design of record does
+ * not declare. That direction was dropped on 2026-08-26 by
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`, so the gate
+ * is not what stops it and has not been for days. Re-measured 2026-08-30
+ * against the gate's own docstring.
+ *
+ * What stops it is the HEADING directly above the table. `pr.states` is *"Four
+ * states, and exactly one of them injects"*, in both tables and in the design
+ * of record, and a fifth row under a sentence that counts four is a screen
+ * disagreeing with itself in the space of two elements. Correcting that
+ * sentence is a change to the design of record, which is the owner's under
+ * `DEC-claude-drafts-the-mockup-and-the-owner-approves` — one sentence and one
+ * row, and they land together or not at all.
+ *
+ * What keeps the state from being dropped meanwhile is that the CARD prints the
+ * stage as its own chip text: an abandoned procedure reads `abandoned` on
+ * screen, in the CLI's own word, whether or not the table above it has a row.
  *
  * ── DISCLOSURES ARE RENDERED, IN THE SERVER'S OWN WORDS ───────────────────
  *
@@ -82,14 +95,21 @@
  * plainly that *"A screen that renders the rows and drops the disclosures has
  * re-created the silent drop they exist to end."*
  *
- * **`pr.` has a key for none of them.** So they are rendered exactly the way
- * this UI already renders an endpoint's `error` text: as it arrived, in the
- * server's own words, with nothing worded here
- * (`src/ui/public/screens/parts.js` · `export function errorNote(message) {` · ~191).
- * The cost is that they stay English in the Hebrew UI — the same defect the
- * literal `stale` chip carries on Work and the `error`/`warning` headings
- * carry on Doctor, and reported with them rather than papered over with a key
- * the design of record does not declare.
+ * **`pr.` has a key for none of them, and it cannot: they are the server's
+ * sentences, not the product's.** A disclosure is composed by
+ * `src/ui/proc-model.ts` out of what this corpus actually holds, so there is
+ * nothing fixed to key. They are rendered exactly the way this UI renders an
+ * endpoint's `error` text — as it arrived, in the server's own words
+ * (`src/ui/public/screens/parts.js` · `export function errorNote(message, ctx = globalThis.myctx) {` · ~211).
+ * The cost is that they stay English in the Hebrew UI; what has changed since
+ * 2026-08-30 is that the CARD around them now says what they are (`pr.disc`),
+ * so a reader is told they are the endpoint's qualifications rather than left
+ * with a titled-nothing card of English.
+ *
+ * The `error`/`warning` headings this used to be reported alongside are keyed
+ * now (`doc.error`, `doc.warning`): they were the product's words all along,
+ * and the reason given for leaving them — `strings-parity` failing on a key the
+ * mockup does not declare — was retired on 2026-08-26.
  *
  * `file-ticks-are-not-progress` is the one worth reading twice, because it
  * contradicts the paragraph printed directly above it. `pr.md` says *"there is
@@ -583,16 +603,28 @@ function writeCard(ctx) {
  * an empty screen rather than any card on it. The per-item ones name their own
  * id in their own text, so nothing is lost by moving them here.
  *
- * The card carries no `<h3>`: `pr.` declares no heading for it, and a heading
- * invented here would fail `strings-parity` in the direction that names it.
- * A `.card.pane` with no heading is the shape `work.js`'s empty card already
- * takes. **Where these sentences belong on the page is an open question for
- * the owner** — the model says as much about the workspace-scope limit in
- * particular — and putting them in one honest place is what keeps the answer
- * available when they rule.
+ * **The card carries an `<h3>` since 2026-08-30, and did not before.** The
+ * reason recorded here was that "a heading invented here would fail
+ * `strings-parity` in the direction that names it" — the direction dropped on
+ * 2026-08-26 by
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`, quoted from
+ * memory rather than from the gate. `pr.disc` is the heading, in both tables,
+ * and it words the one thing a reader could not otherwise get: that these
+ * sentences are true whether or not a card above them says so, which is the
+ * model's own account of why it sends them at all.
+ *
+ * **Where these sentences belong on the page is still an open question for the
+ * owner** — the model says as much about the workspace-scope limit in
+ * particular. Naming the card does not answer it; it stops the card being
+ * anonymous while it waits.
  */
-function disclosureCard(messages) {
+function disclosureCard(ctx, messages) {
   const card = el('div', 'card pane');
+  const h = el('h3');
+  h.append(...ctx.t('pr.disc'));
+  card.append(h);
+  // The sentences themselves are the endpoint's, unedited: composed per corpus,
+  // so there is nothing fixed to key and nothing here that could be.
   for (const entry of messages) card.append(el('p', 'small', entry.message));
   return card;
 }
@@ -651,5 +683,5 @@ export async function render(root, ctx) {
     list !== null ? list.disclosures : [],
     ...details.map((detail) => (detail.ok ? detail.procedure.disclosures : [])),
   ]);
-  if (messages.length > 0) root.append(disclosureCard(messages));
+  if (messages.length > 0) root.append(disclosureCard(ctx, messages));
 }

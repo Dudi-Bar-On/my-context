@@ -83,11 +83,20 @@
  *
  * ── WHAT THIS SCREEN COULD NOT SAY, FOR WANT OF A KEY ──────────────────────
  *
- * The string tables carry exactly eight `pal.` keys and no more, and
- * `strings-parity.test.ts` fails in both directions, so a ninth cannot be
- * invented here. Three sentences the design asks for therefore have no
- * wording, and each is drawn as data or not at all rather than in a language
- * this build would have chosen for itself:
+ * The string tables carry exactly eight `pal.` keys and no more. This
+ * paragraph said a ninth "cannot be invented here" because
+ * `strings-parity.test.ts` "fails in both directions". It fails in ONE, and has
+ * since 2026-08-26 —
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap` dropped the
+ * invented direction and the gate's own docstring says so. Re-measured
+ * 2026-08-30 under `plan:walk seq:92`.
+ *
+ * **A ninth key is therefore allowed, and none of the three below is written,
+ * for a reason that outlives the gate: not one of them is English on a Hebrew
+ * page.** Each is already drawn as data or answered by native semantics, so a
+ * new key would be new product COPY — the owner's to approve under
+ * `DEC-claude-drafts-the-mockup-and-the-owner-approves` — rather than a
+ * translation defect to close. The three, with what each draws today:
  *
  *   - **The live count line.** The mockup fills `#globcount` from a hard-coded
  *     English/Hebrew ternary in its own script, not from its string table —
@@ -431,12 +440,14 @@ export async function render(root, ctx) {
   const picker = document.createElement('select');
   for (const def of PALETTE) picker.append(optionEl(def.name, `${def.name} · ${def.kind}`));
   // `btn.compose` — *Compose* — is the caption, and it is a REUSED key rather
-  // than a new one: `strings-parity.test.ts` fails in both directions and the
-  // tables carry eight `pal.` keys, none of them naming this control. It is
-  // the same word the gaps screen's own button uses for the same act
-  // ("compose a command"), and choosing WHAT to compose is what this picker
-  // does. The plan's `palette.pick` — *Command* — was never added to either
-  // table; reported rather than invented here.
+  // than a new one. The reason recorded here was that
+  // `strings-parity.test.ts` "fails in both directions"; it fails in one, and
+  // has since 2026-08-26. The reuse stands on its own merits: it is the same
+  // word the gaps screen's button uses for the same act ("compose a command"),
+  // and choosing WHAT to compose is what this picker does — a second spelling
+  // of one word is how two screens come to disagree about it. The plan's
+  // `palette.pick` — *Command* — is a THIRD name for one control and is still
+  // not added, now as a choice rather than as a refusal.
   card.append(labelled(ctx.t('btn.compose'), picker));
 
   const form = el('div');

@@ -50,8 +50,13 @@
  * (`src/ui/public/screens/palette.js` · ``(`category`, `--severity`) is the CLI's word rather than a translated one and`` · ~332),
  * built in the same shape it builds them
  * (`src/ui/public/screens/palette.js` · ``const caption = document.createTextNode(`${spec.name}${spec.required === true ? ' *' : ''}:`);`` · ~679).
- * No key is invented, nothing is worded here, and `strings-parity.test.ts`
- * has nothing new to fail on.
+ * No key is invented, and that is a ruling about WHAT they are rather than
+ * about what a gate would allow: `category` and `--severity` are the words
+ * `mycontext add` takes on a terminal, so a translated caption would name an
+ * argument that does not exist. Keying them has been permitted since
+ * 2026-08-26 (`DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`);
+ * it is still wrong, which is the difference between a constraint and a
+ * decision.
  *
  * ── THE COMMAND IS COMPOSED IN THE BROWSER, THROUGH THE ONE QUOTING RULE ───
  *
@@ -98,19 +103,27 @@
  * `parts.js` records for tier names
  * (`src/ui/public/screens/parts.js` · `The tier NAME is not a translated string anywhere in the mockup` · ~157).
  *
- * **`notGoverning` is served, and this screen cannot draw it.** It counts the
+ * **`notGoverning` is served and is DRAWN, since 2026-08-30.** It counts the
  * scope-matched items the governing filter removed — drafts, deprecated items,
  * rationale categories — and the model carries it precisely because dropping
  * them silently is what `INV-nothing-is-dropped-silently` forbids
  * (`src/ui/capture-model.ts` · `**This number has no string in the mockup, and it is served anyway.**` · ~151).
- * There is no `cap.` key for it and `strings-parity.test.ts` fails in both
- * directions, so the only renderings available are a bare number with no label
- * — which is not a fact, it is a digit — or English this file made up. Neither
- * ships. **The Capture screen still cannot tell a user that three drafts
- * already sit in the scope they are about to file into**, and that sentence is
- * this task's loudest open question rather than a thing quietly not computed.
- * `test/ui/capture-screen.test.ts` pins the absence so the day a key arrives,
- * the test that says "it is drawn nowhere" is the thing that goes red.
+ *
+ * This paragraph used to end the other way: *"There is no `cap.` key for it and
+ * `strings-parity.test.ts` fails in both directions"*, leaving a bare digit or
+ * invented English as the only choices and neither shipping. The second half of
+ * that sentence stopped being true on 2026-08-26, when
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap` dropped the
+ * invented direction; the gate compares the tables to the mockup in ONE
+ * direction now and its docstring says which. `cap.notgov` is the key, in both
+ * tables, and **the Capture screen can now tell a user that three drafts
+ * already sit in the scope they are about to file into** — which this file
+ * called its loudest open question for as long as the retired rule went
+ * unre-read.
+ *
+ * It is drawn only when it is non-zero. A zero here is not a measured zero
+ * being suppressed: `governing` is already on screen beside it, so "and none
+ * were removed" is the absence of a removal notice rather than a missing fact.
  *
  * ── TWO MORE SENTENCES THE TABLES DECLARE AND THIS SCREEN CANNOT PLACE ─────
  *
@@ -130,7 +143,7 @@
 import { composeCommand } from '/lib/command.js';
 import { commandActions } from '/lib/command-actions.js';
 import { PALETTE, commandFor } from '/lib/palette-defs.js';
-import { el, errorNote, screenHead, spaced } from '/screens/parts.js';
+import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
 
 /**
  * The one catalogue entry this screen composes. `overlap: true` is the
@@ -341,10 +354,15 @@ export async function render(root, ctx) {
   table.append(tbody);
   const nosim = el('p', 'small');
   nosim.append(...ctx.t('cap.nosim'));
+  // What the governing filter REMOVED, under the table of what it kept. Its own
+  // paragraph rather than a cell, because it is a fact about the answer and not
+  // a row in it — the treatment `gaps.js` gives its truncation disclosure.
+  const notgov = el('p', 'small');
+  notgov.hidden = true;
   const cmd = el('div', 'cmd');
   const code = el('code');
   cmd.append(code);
-  card.append(head, table, spaced(nosim), cmd);
+  card.append(head, table, notgov, spaced(nosim), cmd);
 
   /**
    * The shared Copy control, rebuilt on every recomposition.
@@ -407,6 +425,7 @@ export async function render(root, ctx) {
     clearRefusal();
     head.hidden = true;
     table.hidden = true;
+    notgov.hidden = true;
     refusal = errorNote(message);
     head.before(refusal);
   };
@@ -460,6 +479,7 @@ export async function render(root, ctx) {
       tbody.replaceChildren();
       head.hidden = true;
       table.hidden = true;
+      notgov.hidden = true;
       return;
     }
     const mine = ++asked;
@@ -486,9 +506,18 @@ export async function render(root, ctx) {
     }));
     head.hidden = false;
     table.hidden = false;
-    // `body.notGoverning` arrives here and is deliberately not read: see the
-    // header. There is no key for it and no wordless rendering of a count that
-    // is a fact rather than a digit.
+    // `notGoverning` — the count the governing filter took out. Coerced through
+    // `Number` and tested for a positive integer rather than truthiness: a
+    // response that omits the field and a response that sends zero are the same
+    // fact here, and neither draws a sentence about nothing.
+    const removed = Number(body.notGoverning);
+    if (Number.isFinite(removed) && removed > 0) {
+      notgov.replaceChildren(...ctx.t('cap.notgov', { n: num(removed) }));
+      notgov.hidden = false;
+    } else {
+      notgov.replaceChildren();
+      notgov.hidden = true;
+    }
   }
 
   scope.addEventListener('input', () => {

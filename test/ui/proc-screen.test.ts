@@ -548,9 +548,14 @@ test('every pr. key the English table declares is placed by the screen, bar the 
   const declared = Object.keys(en).filter((key) => key.startsWith('pr.')).sort();
   const named = new Set(keysNamed().map((u) => u.key));
 
-  assert.equal(declared.length, 26,
-    `the English table declares ${declared.length} pr. key(s); it has been 26 since this screen `
-    + 'was drawn. A new one is a new sentence on this screen and needs placing.');
+  // 26 from the day this screen was drawn, 27 since 2026-08-30: `pr.disc` names
+  // the disclosure card, which carried no `<h3>` because this screen believed a
+  // heading the mockup does not declare would fail `strings-parity`. That
+  // direction was dropped on 2026-08-26 and the card was anonymous for the
+  // three days nobody re-read the gate.
+  assert.equal(declared.length, 27,
+    `the English table declares ${declared.length} pr. key(s); it has been 27 since pr.disc `
+    + 'landed. A new one is a new sentence on this screen and needs placing.');
   assert.deepEqual(declared.filter((key) => !named.has(key)), SAMPLE_STEP_KEYS,
     'these pr. keys are declared and drawn nowhere. Only the mockup\'s five sample steps may be '
     + 'in this list — every other key is a sentence of the design of record that silently does '

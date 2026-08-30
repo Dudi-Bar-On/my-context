@@ -30,15 +30,32 @@
  * on the same day to say so in the mockup's own words: *"Built, and this
  * screen reports it."* A badge over that sentence would contradict it.
  *
- * `screenHead()` is therefore NOT used here, and it is the only screen so far
- * that cannot use it: it takes a `verdictKey` and prepends a glyph
+ * `screenHead()` is therefore NOT used here: it takes a `verdictKey` and
+ * prepends a glyph
  * (`src/ui/public/screens/parts.js` · `export function screenHead(ctx, root, titleKey, verdictKey, subKey, glyph = '✅') {` · ~88),
  * and there is no `port.v` in either string table to give it. The `.phd` /
  * `h2` / `.verdict` / `.psub` shape is drawn here instead, with `.verdict`
- * left EMPTY rather than deleted — the element is the design of record's, the
- * badge inside it is the one thing the ruling removes, and a screen that is
- * built with no sentence saying what it is good at is this screen's own open
- * question rather than a licence to invent one.
+ * left EMPTY rather than deleted — the element is the design of record's and
+ * the badge inside it is the one thing the ruling removes.
+ *
+ * **"There is no `port.v`" is a fact about the tables, not a rule, and it was
+ * read as a rule.** `plan:walk seq:92` counted fifteen modules refusing to key
+ * a string because `strings-parity` was believed to fail on one the design of
+ * record does not declare; this screen and `packs.js` are the two its grep
+ * missed, because they say *a key that does not exist* where the other thirteen
+ * say *a key that may not be invented*. Same retired direction, different
+ * wording. It was dropped on 2026-08-26 by
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`, so writing
+ * `port.v` into both tables would pass the gate today.
+ *
+ * **It is still not written, and that is `plan:walk seq:108`'s call rather than
+ * this file's.** A screen built with no sentence saying what it is good at is
+ * this screen's own open question rather than a licence to invent one: a
+ * verdict CLAIMS something about the product, and
+ * `DEC-claude-drafts-the-mockup-and-the-owner-approves` leaves the drafting
+ * with the agent and the approving with the owner. seq:108 takes `pr.v`,
+ * `port.v` and `pk.v` to the owner together, which is the cheapest sitting
+ * they will get on it.
  *
  * The badge is not discarded, it is MOVED to the one thing on this screen that
  * really is named and not real: the `git bundle` rung. See `RUNGS`.
