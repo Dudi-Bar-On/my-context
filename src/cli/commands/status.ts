@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
+import { skippedKeyNotice } from '../../core/config.ts';
 import { computeDecay } from '../../core/decay.ts';
 import { Ledger, type Usage } from '../../core/ledger.ts';
 import { topUpLedger } from '../../core/ledger-replay.ts';
@@ -236,6 +237,21 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
         // which would be a twelfth surface to document and refuse flags on.
         version: VERSION,
         profile: ws.config.profile,
+        // Beside `profile`, because it is the same subject: what this build
+        // read out of `config.json`, and what it did not. A piped document is
+        // still a surface that shows config, and `--json` exists to be piped
+        // — per F2/INV-nothing-is-dropped-silently the skip must be reported
+        // here too, not left to be inferred from `health.warnings` going up
+        // by one. The count is not the key.
+        //
+        // Two fields, the same pair and the same names `/api/config` carries
+        // (`ui/read-model-config.ts` · `    skippedKeys: config.skippedKeys,`
+        // · ~86): the machine-readable list, and the ONE human sentence, from
+        // `skippedKeyNotice` rather than composed here. Always present, `[]`
+        // and `''` when there is nothing skipped, so a consumer can tell
+        // "checked, nothing dropped" from a field that was never populated.
+        skippedKeys: ws.config.skippedKeys,
+        skippedNotice: skippedKeyNotice(ws.config),
         items: {
           total: items.length,
           byCategory: Object.fromEntries(tally(items, (i) => i.type)),
@@ -307,6 +323,32 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     // able to answer from the shortest report this command has. See the note on
     // the `version` field in the `--json` document above.
     out(`my_context ${VERSION}: ${items.length} item(s), profile "${ws.config.profile}"`);
+
+    // Directly under the one line in this report that SHOWS CONFIG — the
+    // profile — because that is what makes this command one of the surfaces
+    // `skippedKeys` names a duty for: "a surface that shows config to a human
+    // and does not print this notice has re-created the silent drop this field
+    // exists to end" (`config.ts` · `  skippedKeys: string[];` · ~529).
+    // Before this, a `"uiu"` one transposed letter from `"ui"` printed
+    // `profile "standard"` here and NOTHING else — the setting was not in
+    // force and the user had no way to learn it at a terminal.
+    //
+    // `skippedKeyNotice`'s sentence verbatim, never a second phrasing of the
+    // same fact: it is the one wording, it names the KEY, and it names both
+    // readings (a misspelling, or a config from a newer build) because the
+    // resolver cannot tell them apart and the reader can.
+    //
+    // At EVERY detail level, `--summary` included, for the same reason the
+    // review queue is: a shorter report may drop rows, never a fact that says
+    // part of the user's config is not applying. It is above the tallies
+    // rather than beside `health:` because it is not a doctor finding —
+    // `doctor` reports it too (`config_key_skipped`, checks.ts), and the
+    // `health:` line below counts that warning, but a count is not the key.
+    const skipped = skippedKeyNotice(ws.config);
+    if (skipped !== '') {
+      out('');
+      say(out, skipped);
+    }
 
     if (detail !== 'summary') {
       for (const [heading, key] of [

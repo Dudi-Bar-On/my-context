@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { constants, mkdtempSync, rmSync, mkdirSync, writeFileSync, utimesSync } from 'node:fs';
+import { constants, mkdtempSync, rmSync, mkdirSync, readFileSync, writeFileSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   listRepoFiles, checkIndexFreshness, checkOrphanRelations, checkSourceDrift, checkDeadScopes,
-  checkPermissions, checkSessionIdMismatch, checkUnknownCategory, runChecks,
+  checkPermissions, checkSessionIdMismatch, checkSkippedConfigKeys, checkUnknownCategory, runChecks,
 } from '../../src/doctor/checks.ts';
-import { resolveConfig } from '../../src/core/config.ts';
+import { resolveConfig, skippedKeyNotice } from '../../src/core/config.ts';
+import { runCli } from '../../src/cli/index.ts';
 import { chunkDocument } from '../../src/ingest/chunk.ts';
 import { SESSION_PROTOCOL, ingestDir } from '../../src/ingest/session.ts';
 import type { Item } from '../../src/core/types.ts';
@@ -779,5 +780,100 @@ test('unknown category: runChecks includes the finding', () => {
       JSON.stringify(findings.map((f) => f.code)));
   } finally {
     cleanup();
+  }
+});
+
+/**
+ * **The silent-drop tests, driven through the COMMAND.**
+ *
+ * The defect these pin was never that `skippedKeyNotice` composed the wrong
+ * sentence — it composed the right one and nothing at a terminal called it.
+ * So the test that matters below writes a genuinely misspelled key into a
+ * real workspace's `config.json` and runs `mycontext doctor` through `runCli`
+ * — `status`'s half of the same defect is in `test/cli/status.test.ts`, beside
+ * the command it drives. A test over the composed string proves only that the
+ * string exists; it cannot tell a wired-up command from a notice that reaches
+ * nobody, which is exactly what shipped.
+ *
+ * Every assertion names the KEY. "Output is non-empty", or a match on the
+ * finding's `code` alone, would pass on a notice that fires without saying
+ * WHICH key was dropped — which is an alarm, not a disclosure.
+ */
+function skippedKeyProject(key: string): { cwd: string; cleanup: () => void } {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-skipped-'));
+  runCli(['init'], cwd, () => {});
+  const file = path.join(cwd, '.my_context', 'config.json');
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  raw[key] = { enabled: false };
+  writeFileSync(file, JSON.stringify(raw, null, 2), 'utf8');
+  return { cwd, cleanup: () => removeTree(cwd) };
+}
+
+/** Wrapped prose compared as prose: `doctor` and `status` both wrap this
+ * sentence to the layout budget with a hanging indent, so the bytes on screen
+ * are not the bytes of the sentence. Collapsing runs of whitespace compares
+ * the WORDING — which is the thing under test, since the ruling is that both
+ * surfaces print `skippedKeyNotice`'s sentence rather than one of their own. */
+function flat(text: string): string {
+  return text.replace(/\s+/g, ' ');
+}
+
+test('a skipped config key is a warn finding, worded by skippedKeyNotice', () => {
+  const config = resolveConfig({ uiu: { enabled: false } });
+  const findings = checkSkippedConfigKeys(config);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.level, 'warn');
+  assert.equal(findings[0]!.code, 'config_key_skipped');
+  // VERBATIM, not merely similar: a second phrasing of one disclosure is the
+  // drift this check exists to prevent.
+  assert.equal(findings[0]!.message, skippedKeyNotice(config));
+  assert.match(findings[0]!.message, /"uiu"/);
+});
+
+test('a config this build fully understands produces no skipped-key finding', () => {
+  assert.deepEqual(checkSkippedConfigKeys(resolveConfig({ ui: { enabled: false } })), []);
+});
+
+/** Two keys, one finding — `skippedKeyNotice` names them both in one
+ * sentence, so emitting it per key would print that sentence twice. */
+test('two skipped keys are one finding naming both', () => {
+  const findings = checkSkippedConfigKeys(resolveConfig({ uiu: {}, budgts: {} }));
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!.message, /"uiu", "budgts"/);
+});
+
+test('`mycontext doctor` names a misspelled config key on the default report', () => {
+  const { cwd, cleanup } = skippedKeyProject('uiu');
+  try {
+    let out = '';
+    const code = runCli(['doctor'], cwd, (s) => { out += s + '\n'; });
+    // Disclosure, not enforcement: the unknown-key skip is deliberate forward
+    // compatibility, so a `warn` must not fail this command.
+    assert.equal(code, 0, out);
+    assert.match(out, /config_key_skipped/);
+    assert.match(out, /"uiu"/, out);
+    assert.ok(
+      flat(out).includes(flat(skippedKeyNotice(resolveConfig({ uiu: { enabled: false } })))),
+      out,
+    );
+    assert.match(out, /0 error\(s\), 1 warning\(s\), 0 note\(s\)/);
+  } finally {
+    cleanup();
+  }
+});
+
+/** The silence audit's other half: a workspace whose config this build fully
+ * understands must not grow a notice, or the disclosure becomes noise and
+ * stops being read. (`status`'s half of this is in `test/cli/status.test.ts`.) */
+test('a clean config leaves `mycontext doctor` exactly as it was', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-skipped-clean-'));
+  try {
+    runCli(['init'], cwd, () => {});
+    let doctor = '';
+    runCli(['doctor'], cwd, (s) => { doctor += s + '\n'; });
+    assert.equal(/config_key_skipped/.test(doctor), false, doctor);
+    assert.equal(/not a key this build understands/.test(doctor), false, doctor);
+  } finally {
+    removeTree(cwd);
   }
 });

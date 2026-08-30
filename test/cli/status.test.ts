@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { recordAudit } from '../../src/core/audit.ts';
+import { resolveConfig, skippedKeyNotice } from '../../src/core/config.ts';
 import { Ledger } from '../../src/core/ledger.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { VERSION } from '../../src/core/version.ts';
@@ -561,5 +562,106 @@ test('the version status prints is package.json\'s', () => {
   withProject((cwd) => {
     const { out } = run(['status', '--json'], cwd);
     assert.equal((JSON.parse(out) as { version: string }).version, pkg.version);
+  });
+});
+
+/**
+ * **A misspelled config section, driven through the command.**
+ *
+ * `resolveConfig` has always carried an unknown top-level key on
+ * `skippedKeys` and `skippedKeyNotice` has always composed the sentence that
+ * discloses it — and for the whole of that time the only caller was the web
+ * UI's `/api/config`. `status` printed `profile "standard"` over a config with
+ * `"uiu"` in it and said nothing, so the user's setting was not in force and
+ * they had every reason to believe it was.
+ *
+ * These tests therefore write a real misspelled key into a real workspace and
+ * run the real command. Asserting over `skippedKeyNotice`'s return value would
+ * prove the sentence exists, which was never in doubt; only running `status`
+ * proves `status` says it.
+ *
+ * And every assertion names the KEY. A notice that fired without saying WHICH
+ * key was dropped would satisfy "output is non-empty" and still leave the user
+ * hunting through their own config file.
+ */
+function misspelledKeyProject(key: string): string {
+  const cwd = project();
+  const file = path.join(cwd, '.my_context', 'config.json');
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  raw[key] = { enabled: false };
+  writeFileSync(file, JSON.stringify(raw, null, 2), 'utf8');
+  return cwd;
+}
+
+/** The sentence is wrapped to the layout budget before it is printed, so the
+ * bytes on screen are not the bytes of the sentence. Collapsing runs of
+ * whitespace compares the WORDING — the thing under test, since the point is
+ * that `status` prints `skippedKeyNotice`'s sentence and not one of its own. */
+function flat(text: string): string {
+  return text.replace(/\s+/g, ' ');
+}
+
+/** `"uiu"` is one transposed letter from `"ui"` — the mistake this defect was
+ * found through, not a synthetic `zzz`. */
+const UIU = flat(skippedKeyNotice(resolveConfig({ uiu: { enabled: false } })));
+
+test('a misspelled config key is disclosed by name, at every detail level', () => {
+  const cwd = misspelledKeyProject('uiu');
+  try {
+    // `--summary` included, deliberately: a shorter report may drop rows,
+    // never a fact that says part of the user's config is not applying.
+    for (const args of [['status'], ['status', '--summary'], ['status', '--short'], ['status', '--full']]) {
+      const { code, out } = run(args, cwd);
+      assert.equal(code, 0, out);
+      assert.match(out, /"uiu"/, `${args.join(' ')} must NAME the key: ${out}`);
+      assert.ok(flat(out).includes(UIU), `${args.join(' ')} must print skippedKeyNotice: ${out}`);
+    }
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/** The `--json` document is piped rather than read, and a consumer must not
+ * have to infer the drop from `health.warnings` going up by one. */
+test('--json carries the skipped key and the same one sentence', () => {
+  const cwd = misspelledKeyProject('uiu');
+  try {
+    const { out } = run(['status', '--json'], cwd);
+    const doc = JSON.parse(out) as { skippedKeys: string[]; skippedNotice: string };
+    assert.deepEqual(doc.skippedKeys, ['uiu']);
+    assert.equal(doc.skippedNotice, skippedKeyNotice(resolveConfig({ uiu: { enabled: false } })));
+    assert.match(doc.skippedNotice, /"uiu"/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/** `doctor` reports the same fact as a `config_key_skipped` warning, and
+ * `status`'s health line counts doctor findings — so the number moves too.
+ * The count is not the disclosure (it does not name the key), but a health
+ * line that stayed at zero beside the notice above it would be its own
+ * reads-clean-next-to-a-problem trap. */
+test('the health line counts the doctor warning the same key raises', () => {
+  const cwd = misspelledKeyProject('uiu');
+  try {
+    assert.match(run(['status'], cwd).out, /health: 0 error\(s\), 1 warning\(s\), 0 note\(s\)/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/** The other half of the silence audit: a config this build fully understands
+ * must not grow a notice, or the disclosure becomes noise and stops being read. */
+test('a config with no unknown key prints no notice and no empty fields', () => {
+  withProject((cwd) => {
+    const { out } = run(['status'], cwd);
+    assert.equal(/not a key this build understands/.test(out), false, out);
+    const doc = JSON.parse(run(['status', '--json'], cwd).out) as {
+      skippedKeys: string[]; skippedNotice: string;
+    };
+    // Present and empty rather than absent: a consumer can tell "checked,
+    // nothing dropped" from a field that was never populated.
+    assert.deepEqual(doc.skippedKeys, []);
+    assert.equal(doc.skippedNotice, '');
   });
 });

@@ -3,7 +3,7 @@ import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathS
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AUDIT_MAX_BYTES, AUDIT_REPORT_BYTES, auditDir, auditSize } from '../core/audit.ts';
-import { scopePolicyFor, type Config } from '../core/config.ts';
+import { scopePolicyFor, skippedKeyNotice, type Config } from '../core/config.ts';
 import { isEligible, itemCost } from '../core/select.ts';
 import {
   BLOCKED_STATE, buildTaskIndex, NEEDS_FIELD, readNeeds, workItems,
@@ -744,6 +744,69 @@ export function checkUnknownCategory(items: Item[], config: Config): Finding[] {
     });
   }
   return findings;
+}
+
+/**
+ * **The top-level config keys this build did not read, disclosed to the
+ * person who wrote them.**
+ *
+ * `resolveConfig` accepts an unknown top-level key, leaves it out of the
+ * resolved config, and carries it on `skippedKeys` (`config.ts` ·
+ * `  skippedKeys: string[];` · ~529). That field's own docblock states the
+ * consequence as a duty rather than a convenience: *"a surface that shows
+ * config to a human and does not print this notice has re-created the silent
+ * drop this field exists to end."* Until this check existed, the only caller
+ * of `skippedKeyNotice` (`config.ts` ·
+ * `export function skippedKeyNotice(config: Config): string {` · ~1637) was
+ * the web UI's `/api/config` — so a `"uiu"` one transposed letter from
+ * `"ui"` made `doctor` report `0 error(s), 0 warning(s), 0 note(s)` and the
+ * user believed the setting they wrote was in force. The person most likely
+ * to have hand-edited `config.json` is at a terminal, which is the surface
+ * that was silent.
+ *
+ * The message is `skippedKeyNotice(config)` VERBATIM. Nothing here composes a
+ * sentence of its own, and nothing here should: two spellings of one
+ * disclosure drift apart, which is the same failure — a fact worded in one
+ * place and not carried to another — that this check exists to end. That
+ * function also names the KEY, which is what makes this a disclosure rather
+ * than an alarm: "some key was skipped" tells the reader nothing they can act
+ * on, and a test asserting merely that output is non-empty would pass on it.
+ *
+ * **`warn`, and the argument, because both neighbours are defensible.**
+ *
+ *  - **Not `error`.** An `error` fails this command's exit code (`doctor.ts` ·
+ *    `export function exitCode(` · ~58), and nothing here is broken: the
+ *    config PARSED, every key this build understands is in force, and the
+ *    corpus is healthy. The skip is also deliberate forward compatibility — a
+ *    config written for a newer my_context is MEANT to load on this one — so
+ *    `error` would turn a perfectly correct file red and fail CI on the day
+ *    somebody runs an older build. That is the same line the `warn`/`error`
+ *    split was already drawn on for `dead_scope`: worth surfacing, must not
+ *    break someone's CI. Disclosure is what this task asked for; enforcement
+ *    is not, and an unknown key is deliberately not a hard refusal.
+ *  - **Not `info`.** `info` in this file is the level for a fact that is the
+ *    feature working — `checkAuditSize`: *"a large audit log in a busy project
+ *    is the feature working."* A skipped key is the opposite. Whatever the
+ *    user wrote there is NOT in force, and under the misspelling reading —
+ *    the likelier one at a terminal, where the file is hand-edited — their
+ *    intent was discarded without their knowing. A fact that means a setting
+ *    silently does not apply outranks a note, and at `--summary` the note
+ *    count is the one a reader skims past.
+ *
+ * `warn` is therefore what is left, and it is the right shape rather than
+ * merely the residue: counted in the summary line at every detail level,
+ * printed with its key at the default and `--full` levels, and never the
+ * reason a build goes red.
+ *
+ * **One finding, not one per key.** `skippedKeyNotice` names every skipped key
+ * in a single sentence; emitting it per key would print that same sentence N
+ * times over. (`read-model-config.ts` maps it per key instead because its
+ * consumer is a table with a `where` column — a different shape, same words.)
+ */
+export function checkSkippedConfigKeys(config: Config): Finding[] {
+  const notice = skippedKeyNotice(config);
+  if (notice === '') return [];
+  return [{ level: 'warn', code: 'config_key_skipped', message: notice }];
 }
 
 /**
@@ -1711,6 +1774,7 @@ export function runChecks(opts: {
     () => checkDeadScopes(opts.repoRoot, opts.items, opts.config),
     () => checkScopePolicy(opts.items, opts.config),
     () => checkUnknownCategory(opts.items, opts.config),
+    () => checkSkippedConfigKeys(opts.config),
     () => checkContinuity(opts.items, opts.config),
     () => checkPermissions(opts.root, accessSync, opts.repoRoot),
     () => checkSessionIdMismatch(opts.root),
