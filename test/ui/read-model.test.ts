@@ -911,6 +911,7 @@ test('/api/session/:session/injected reads the SEEN FILE, joins nothing, keeps v
     // DELIVERY. `seenIds` — the shape `/api/select` needs — would have
     // deduped and sorted these three lines into two ids, which is the right
     // answer to a different question.
+    assert.equal(body.seen, 'read', 'there is a seen file here and it was read');
     assert.deepEqual(body.lines.map((l) => [l.id, l.tier, l.at]), [
       [item.id, 'pinned', '2026-08-01T09:14:02.000Z'],
       ['RULE-gone', 'jit', '2026-08-01T09:22:41.000Z'],
@@ -945,6 +946,12 @@ test('/api/session/:session/injected does NOT answer from the ledger', () => {
     assert.deepEqual(body.lines, [],
       'the live dedupe state is what this screen shows, and it holds nothing for this session');
     assert.equal(body.error, null, 'an absent seen file is empty-and-readable, not an error');
+    // ...and it is not a MEASURED zero either. `seen` is the field that says
+    // so: no file was opened here, so a client must not draw "this session was
+    // read and has received nothing yet" over it
+    // (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`).
+    assert.equal(body.seen, 'absent',
+      'the ENOENT the read observed reaches the client instead of being spent on an empty array');
   } finally { f.done(); }
 });
 
@@ -972,6 +979,9 @@ test('an unreadable seen file is disclosed, never rendered as "nothing was injec
     assert.notEqual(body.error, '');
     assert.deepEqual(body.lines, [],
       'empty LINES beside a non-null error is a different fact from an empty answer');
+    assert.equal(body.seen, 'read',
+      'a file that exists and cannot be trusted is not an absent one: `absent` is spent on an '
+      + 'observed ENOENT and nothing else, and `error` is what this state is disclosed by');
   } finally { f.done(); }
 });
 
@@ -1011,9 +1021,12 @@ test('/api/session/:session/injected serves a not-projected corpus, and takes no
   try {
     // No ledger tables at all: the endpoint reads none, so the null state
     // costs it nothing — a fresh corpus answers 200 with an honest empty file.
+    // `seen: 'absent'` is part of that honesty and is asserted in the WHOLE-body
+    // shape deliberately: this is the one place the response's exact field set
+    // is pinned, so a field added or dropped without a decision fails here.
     const result = apiInjected(f.ws, url('session/s1/injected', ''), { session: 's1' });
     assert.equal(result.status, 200);
-    assert.deepEqual(result.body, { lines: [], error: null });
+    assert.deepEqual(result.body, { lines: [], error: null, seen: 'absent' });
     assert.equal(withStores(f.ws, (_store, ledger) => ledger), null,
       'and reading it did not create the ledger tables');
 

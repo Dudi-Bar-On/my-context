@@ -30,32 +30,37 @@
  * from a caveat into a measurement, so that a future change which quietly makes
  * one match the other fails here instead of shipping.
  *
- * ── AND ONE PLACE WHERE SOMETHING IS GENUINELY LOST ───────────────────────
+ * ── AND ONE PLACE WHERE SOMETHING WAS GENUINELY LOST, NOW SERVED ──────────
  *
- * The last test is not about the disagreement. `readSeen` returns
+ * The last test is not about the disagreement. `readSeen` used to return
  * `{ lines: [], error: null }` for a seen file that was read and held nothing
  * AND for a seen file that does not exist, because `readJsonlFile` swallows
- * ENOENT (`src/core/jsonl-log.ts` · `if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return [];`).
- * `apiInjected` passes that state on verbatim, so the two arrive at the browser
- * byte-identical.
+ * ENOENT (`src/core/jsonl-log.ts` · `if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {`).
+ * `apiInjected` passed that state on verbatim, so the two arrived at the
+ * browser byte-identical.
  *
  * Those are the MEASURED ZERO and the UNMEASURED THING of
  * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, and clause 2
  * of that standard is explicit that its scope reaches read models *"because
  * clause 2 cannot be honoured by a screen whose endpoint collapsed 'none' and
- * 'not measured' into the same empty array before it arrived."* This is that
- * collapse, and the consequence is a sentence: `screens/injected.js` draws
+ * 'not measured' into the same empty array before it arrived."* That was the
+ * collapse, and the consequence was a sentence: `screens/injected.js` drew
  * `inj.zeroLines` — *"This session was read and has received nothing yet"* —
  * over a session whose seen file was never read at all.
  *
- * The fix is one field on `InjectedBody` and is described where it belongs,
- * in `src/ui/read-model.ts`'s lane rather than this one. The last test pins the
- * collapse AS IT STANDS so that the day the field lands, this file fails and
- * says exactly which assertion to rewrite — the shrink-only-ledger discipline
- * `e2e/screen-parity.spec.ts` uses for the same reason.
+ * **`InjectedBody.seen` now carries the fact**, filled from `readSeen` — which
+ * is where it still existed — through `readJsonlFileState`, and NOT from a
+ * second `existsSync` beside the read. The last test is the inversion this file
+ * was written to demand: the two cases now differ, and the difference is
+ * produced by the REAL `SessionEnd` hook fed `{reason: 'clear'}` on stdin,
+ * because that is how a live corpus reaches this state (seven of nineteen
+ * sessions were in it) and a fixture that reproduced it by calling
+ * `clearSeen` itself would be testing this file's idea of the product rather
+ * than the product.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -95,6 +100,35 @@ function fixture(): Fixture {
   const root = ws.projectRoot!;
   assert.ok(root, 'the fixture must resolve a project root, or readSeen has nowhere to look');
   return { dir, ws, root, done: () => removeTree(dir) };
+}
+
+const HOOK_SESSION_END = path.join(
+  import.meta.dirname, '..', '..', 'src', 'hooks', 'session-end.ts',
+);
+
+/**
+ * The REAL `SessionEnd` hook, spawned as Claude Code spawns it: the binary,
+ * `--disable-warning=ExperimentalWarning` for the type-stripping notice, the
+ * payload as JSON on stdin, and the workspace as `cwd`.
+ *
+ * `spawnSync` and not the exported `buildSessionEndOutcome`, deliberately.
+ * `INV-hooks-fail-open` makes this hook exit 0 whatever happens, so the only
+ * honest way to know it did its work is to run the process the platform runs
+ * and then look at the disk — which is the same thing `scripts/demo-corpus.ts`
+ * does to put this state into the demo corpus, and what
+ * `test/hooks/hook-binaries-e2e.test.ts` does for the hook's own behaviour.
+ * Calling the function would skip the entry point, the stdin read and the
+ * payload parse, which are three of the places this path can stop working.
+ */
+function runSessionEnd(cwd: string, payload: Record<string, unknown>): {
+  code: number; stderr: string;
+} {
+  const run = spawnSync(
+    process.execPath,
+    ['--disable-warning=ExperimentalWarning', HOOK_SESSION_END],
+    { cwd, input: JSON.stringify(payload), encoding: 'utf8' },
+  );
+  return { code: run.status ?? -1, stderr: run.stderr ?? '' };
 }
 
 const url = (endpoint: string): URL => new URL(`http://127.0.0.1:1/api/${endpoint}`);
@@ -219,51 +253,118 @@ test('a cleared window keeps its ledger history and loses its seen file, which i
 /* ══ THE COLLAPSE, WHICH IS NOT A DISAGREEMENT ═════════════════════════════ */
 
 /**
- * **Pinned as it stands, and the day this fails is the day it was fixed.**
+ * **The inversion. This assertion used to say the two were identical.**
  *
  * The three tests above are about two endpoints answering different questions
- * honestly. This one is about ONE endpoint answering two different questions
- * with the same bytes, which is the defect
- * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` names.
- *
- * The fix `src/ui/read-model.ts` needs — one field, and `readSeen` is where the
- * fact still exists to be carried:
+ * honestly. This one is about ONE endpoint that answered two different
+ * questions with the same bytes, which is the defect
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` names, and
+ * about the field that stopped it:
  *
  *     export interface InjectedBody {
  *       lines: InjectedLine[];
  *       error: string | null;
- *       seen: 'read' | 'absent';   // ← the state ENOENT is currently spent on
+ *       seen: 'read' | 'absent';   // ← the state ENOENT used to be spent on
  *     }
  *
- * With it, `screens/injected.js` draws `inj.zeroLines` for `read` and a new
- * key for `absent`, and stops telling a reader that a file nobody opened was
- * read and held nothing.
+ * With it, `screens/injected.js` draws `inj.zeroLines` for `read` and
+ * `inj.noSeenFile` for `absent`, and stops telling a reader that a file nobody
+ * opened was read and held nothing.
+ *
+ * **The cleared half is produced by the REAL hook, on stdin.** `/clear` is the
+ * producer that makes this state common — `SessionEnd` with `reason: 'clear'`
+ * → `clearWindowState` → `clearSeen` — and `scripts/demo-corpus.ts` replays
+ * exactly this payload against exactly this binary for the same reason. A test
+ * that called `clearSeen` itself would prove the read model can distinguish two
+ * states a test invented; this one proves it distinguishes the state the
+ * PRODUCT produces. A `lines.length > 0` assertion before the clear is what
+ * keeps the after-state from being vacuous.
  */
-test('an ABSENT seen file and an EMPTY one are one answer, though the disk tells them apart', () => {
+test('a cleared session answers "absent" and an empty one answers "read" — the real hook produces it', () => {
   const f = fixture();
   try {
-    // MEASURED ZERO: the file exists and holds no lines. Producible in the
-    // wild — a crash during the first `appendJsonlLine` leaves a torn line
-    // that `parseJsonlLog` heals away to nothing, and the file stays.
+    // ── THE CLEARED WINDOW ────────────────────────────────────────────────
+    // A session that really received something, so its `absent` afterwards is
+    // a REMOVAL and not an emptiness.
+    appendSeen(f.root, 's-cleared-hook', [
+      { id: 'RULE-always-use-posix-paths', tier: 'pinned', at: '2026-08-04T09:00:00.000Z' },
+      { id: 'REF-where-the-billing-rework-stands', tier: 'jit', at: '2026-08-04T09:00:01.000Z' },
+    ]);
+    const before = injectedFor(f.ws, 's-cleared-hook');
+    assert.equal(before.lines.length, 2, 'non-vacuity: there was something to lose');
+    assert.equal(before.seen, 'read', 'and while the file is there, the read is a read');
+
+    // The product's own path to this state, driven as Claude Code drives it:
+    // the hook binary, the payload on stdin, nothing of `clearSeen` called from
+    // here. Its own audit record and its ledger rows are left exactly where the
+    // hook leaves them.
+    const hook = runSessionEnd(f.dir, {
+      hook_event_name: 'SessionEnd', session_id: 's-cleared-hook', reason: 'clear', cwd: f.dir,
+    });
+    assert.equal(hook.code, 0, `the SessionEnd hook must exit 0: ${hook.stderr}`);
+    assert.equal(existsSync(seenFilePath(f.root, 's-cleared-hook')), false,
+      'the fixture must actually destroy the window, or this test asserts nothing');
+
+    // ── THE MEASURED ZERO ─────────────────────────────────────────────────
+    // The file exists and holds no lines. Producible in the wild — a crash
+    // during the first `appendJsonlLine` leaves a torn line that `parseJsonlLog`
+    // heals away to nothing, and the file stays.
     const empty = seenFilePath(f.root, 's-empty');
     mkdirSync(path.dirname(empty), { recursive: true });
     writeFileSync(empty, '');
     assert.equal(existsSync(empty), true);
 
-    // NOT MEASURED: no file was ever written for this session.
-    assert.equal(existsSync(seenFilePath(f.root, 's-never')), false);
-
+    const cleared = injectedFor(f.ws, 's-cleared-hook');
     const read = injectedFor(f.ws, 's-empty');
-    const never = injectedFor(f.ws, 's-never');
-    assert.deepEqual(read, { lines: [], error: null });
-    assert.deepEqual(never, { lines: [], error: null });
-    assert.deepEqual(JSON.parse(JSON.stringify(read)), JSON.parse(JSON.stringify(never)),
-      'CURRENT BEHAVIOUR, and the defect: two different facts about the world reach the '
-      + 'browser as identical bytes. When `InjectedBody` gains the field that tells them '
-      + 'apart, this assertion is the one to invert — see the note above it');
-    // The distinction is not unknowable; it is DISCARDED. Asserted here so the
-    // finding cannot be read as "the filesystem could not say".
-    assert.notEqual(existsSync(empty), existsSync(seenFilePath(f.root, 's-never')),
-      'the fact survives on disk right up to the ENOENT branch that spends it');
+
+    // Both are still empty and neither is an error — that much was never the
+    // defect, and the tiers above show why it must not become one: the
+    // injection HAPPENED, and nothing failed when the window was destroyed.
+    assert.deepEqual(cleared.lines, []);
+    assert.deepEqual(read.lines, []);
+    assert.equal(cleared.error, null);
+    assert.equal(read.error, null);
+
+    // THE POINT. Two different facts about the world, two different answers.
+    assert.equal(cleared.seen, 'absent', 'no seen file was written or one was taken away');
+    assert.equal(read.seen, 'read', 'a file was opened and it held nothing');
+    assert.notDeepEqual(
+      JSON.parse(JSON.stringify(cleared)), JSON.parse(JSON.stringify(read)),
+      'the two states must reach the browser as DIFFERENT bytes — an assertion that the '
+      + 'response is merely non-empty would pass on the defect this field was added to fix',
+    );
+
+    // A session nothing ever wrote for is `absent` too, and that is correct:
+    // the field says whether a file was there, not why it was not. The screen
+    // needs one sentence for both, because the audit log is where the
+    // difference between them survives.
+    assert.equal(existsSync(seenFilePath(f.root, 's-never')), false);
+    assert.equal(injectedFor(f.ws, 's-never').seen, 'absent');
+  } finally { f.done(); }
+});
+
+/**
+ * **`read` is not "the read succeeded", and a client must not draw a zero off
+ * it alone.** `absent` is spent on an observed ENOENT and on nothing else, so a
+ * seen file that exists and cannot be trusted is `read` WITH an error — which
+ * is what keeps `screens/injected.js`' rule intact: a refusal draws
+ * `errorNote` and no zero sentence at all, and neither `inj.zeroLines` nor
+ * `inj.noSeenFile` may appear beside it.
+ */
+test('an unreadable seen file is "read" with an error, never "absent"', () => {
+  const f = fixture();
+  try {
+    const broken = seenFilePath(f.root, 's-broken');
+    mkdirSync(path.dirname(broken), { recursive: true });
+    // Newline-terminated, so it is corruption rather than a torn tail — the one
+    // shape `parseJsonlLog` gives no tolerance at all.
+    writeFileSync(broken, '{"protocol":"not-the-seen-protocol"}\n');
+
+    const body = injectedFor(f.ws, 's-broken');
+    assert.notEqual(body.error, null, 'the fixture must actually produce an unreadable file');
+    assert.deepEqual(body.lines, [], 'no partial answer — dedupe is all-or-disclosed');
+    assert.equal(body.seen, 'read',
+      'a file that could not be trusted was still a file: calling it `absent` would tell the '
+      + 'reader nothing was ever written here, which is a second false sentence');
   } finally { f.done(); }
 });

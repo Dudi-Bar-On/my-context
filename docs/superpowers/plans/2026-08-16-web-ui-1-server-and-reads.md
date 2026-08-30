@@ -259,7 +259,7 @@ rather than a preference.
 `src/core/focus.ts` binds `recordAudit`
 (`core/focus.ts` · `import { recordAudit, type AuditWriteResult } from './audit.ts';` · ~3) and calls
 it inside `setFocus` and `unsetFocus`; `src/core/seen-file.ts` binds `appendJsonlLine`
-(`core/seen-file.ts` · `import { appendJsonlLine, readJsonlFile, type JsonlLogSpec } from './jsonl-log.ts';` · ~4)
+(`core/seen-file.ts` · `appendJsonlLine, readJsonlFileState, type JsonlFileState, type JsonlLogSpec,` · ~5)
 and calls it inside `appendSeen`; and `src/core/audit.ts` calls `appendJsonlLine` itself
 (`core/audit.ts` · `appendJsonlLine(auditDir(root), file, record);` · ~736). But
 `readFocus` (`core/focus.ts` · `export function readFocus(root: string): FocusState {` · ~321) and

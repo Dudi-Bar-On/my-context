@@ -1,7 +1,9 @@
 import { readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { retryOnTransientFsError } from './rebuild.ts';
-import { appendJsonlLine, readJsonlFile, type JsonlLogSpec } from './jsonl-log.ts';
+import {
+  appendJsonlLine, readJsonlFileState, type JsonlFileState, type JsonlLogSpec,
+} from './jsonl-log.ts';
 import { sanitizeSessionId, type LedgerTier } from './ledger.ts';
 
 // --- The per-session seen file ----------------------------------------------
@@ -44,9 +46,43 @@ export interface SeenLine {
   at: string;
 }
 
+/**
+ * Whether this session HAD a seen file, re-exported under its own name so a
+ * caller reads one spelling of the fact from the module that produced it.
+ * `jsonl-log.ts` holds the definition and the reasoning; the values are
+ * `'read'` and `'absent'`.
+ */
+export type { JsonlFileState } from './jsonl-log.ts';
+
 export interface SeenState {
   lines: SeenLine[];
   error: string | null;
+  /**
+   * `absent` when there was NO seen file, `read` when there was one.
+   *
+   * **The two states `lines: []` alone cannot separate, and they are different
+   * events.** An empty-but-present file is a session that was measured and has
+   * received nothing. An absent one is a session nothing measured: either it
+   * was never injected into, or — the case that made this field necessary — a
+   * `/clear` destroyed its window and `clearSeen` REMOVED the file while the
+   * ledger and the audit log kept every delivery, deliberately, because the
+   * injection did happen. `pruneSnapshots`' 30-day sweep produces the same
+   * shape. Seven of nineteen sessions in the live corpus were in it when this
+   * field was added, and the surface that drew them said "this session was read
+   * and has received nothing yet" about a file nobody opened
+   * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, clause 2,
+   * whose scope reaches read models for exactly this reason).
+   *
+   * **`read` whenever `error !== null`, and that is not a claim that the read
+   * succeeded.** `absent` is spent only on an observed ENOENT
+   * (`readJsonlFileState`); every other failure got PAST the existence check —
+   * a refused line was read whole, and an unreadable file was found and could
+   * not be opened. Neither is "there was no file", so neither may be drawn as
+   * one, and `error` is the field that says what went wrong. A caller drawing a
+   * zero must consult `error` first: an unreadable seen file is not a zero of
+   * any kind.
+   */
+  file: JsonlFileState;
 }
 
 const TIERS = new Set<string>(['pinned', 'jit', 'restored', 'continuity']);
@@ -136,15 +172,23 @@ export function appendSeen(
  */
 export function readSeen(root: string, key: string): SeenState {
   try {
-    const rows = readJsonlFile(specFor(seenFilePath(root, key)));
+    // `readJsonlFileState`, not `readJsonlFile`: the second drops the one fact
+    // that separates "this session received nothing" from "this session has no
+    // seen file", and there is no honest way to recover it afterwards — an
+    // `existsSync` here would be a SECOND reading of the disk, taken a moment
+    // later, free to disagree with the read it is describing. See `SeenState.file`.
+    const read = readJsonlFileState(specFor(seenFilePath(root, key)));
     return {
-      lines: rows.map((r) => ({
+      lines: read.rows.map((r) => ({
         id: r.id as string, tier: r.tier as SeenTier, at: r.at as string,
       })),
       error: null,
+      file: read.state,
     };
   } catch (err) {
-    return { lines: [], error: reason(err) };
+    // A throw got past the ENOENT branch, so a file was there — `SeenState.file`
+    // says what `read` does and does not mean on this path.
+    return { lines: [], error: reason(err), file: 'read' };
   }
 }
 

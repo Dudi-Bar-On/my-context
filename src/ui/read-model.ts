@@ -68,7 +68,8 @@ import {
   type GateCode, type SelectContext, type SelectEvent, type Selection,
 } from '../core/select.ts';
 import {
-  continuityFor, CONTINUITY_WINDOW_SESSION, readSeen, seenIds, type SeenLine,
+  continuityFor, CONTINUITY_WINDOW_SESSION, readSeen, seenIds,
+  type JsonlFileState, type SeenLine,
 } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
 import { VERSION } from '../core/version.ts';
@@ -841,6 +842,42 @@ export type InjectedLine = SeenLine;
 export interface InjectedBody {
   lines: InjectedLine[];
   error: string | null;
+  /**
+   * Whether there WAS a seen file for this session — `SeenState.file`, passed
+   * on the way `error` is.
+   *
+   * **The field exists because `lines: []` was answering two questions.** A
+   * seen file that was read and held nothing, and no seen file at all, arrived
+   * here byte-identical: `readJsonlFile` spent the ENOENT on an empty array, so
+   * `screens/injected.js` drew `inj.zeroLines` — *"This session was read and
+   * has received nothing yet"* — over a file nobody opened. That is the
+   * measured zero and the unmeasured thing of
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, whose
+   * clause 2 names read models explicitly *"because clause 2 cannot be
+   * honoured by a screen whose endpoint collapsed 'none' and 'not measured'
+   * into the same empty array before it arrived"*.
+   *
+   * It is not a rare shape. `/clear` fires `SessionEnd`, `hooks/session-end.ts`
+   * calls `clearWindowState` → `clearSeen`, and the seen file is REMOVED while
+   * the ledger and `.audit/` are deliberately left whole, because the injection
+   * happened and only the dedupe state is about a window that is gone;
+   * `pruneSnapshots`' 30-day sweep is the second producer. Seven of the live
+   * corpus's nineteen sessions were `absent` when this field was added, and
+   * `scripts/demo-corpus.ts` replays the real hook so one session in the demo
+   * corpus is too.
+   *
+   * **Read off the read, not re-asked.** `readSeen` reports what its own
+   * `readFileSync` saw. An `existsSync` here would be a second spelling of the
+   * same question, asked of the disk a moment later and free to disagree — and
+   * a second spelling is how these two facts came apart in the first place.
+   *
+   * **`read` is not a promise that the read SUCCEEDED**, and a client drawing a
+   * zero must consult `error` first (`screens/injected.js` already does: a
+   * refusal draws `errorNote` and no zero sentence at all). `absent` is spent
+   * only on an observed ENOENT, so a refused line and an unopenable file are
+   * both `read` — they found a file — and both carry a non-null `error`.
+   */
+  seen: JsonlFileState;
 }
 
 /**
@@ -881,6 +918,16 @@ export interface InjectedBody {
  * to put it. **The mockup has no string for rendering it**, on this screen or
  * any other; the response carries the fact and where it is drawn is an open
  * question for the owner.
+ *
+ * `seen` is `SeenState.file`, and it is what stops this response from
+ * answering two questions with one empty array — the full reasoning is on
+ * `InjectedBody.seen`. A client draws its zero sentence for `read` and a
+ * different one for `absent`; the key drafted for the second is
+ * `inj.noSeenFile` — *"No seen file was written for this session, so nothing
+ * was read here — the audit log may still record what it was given."* Serving
+ * the field is this function's half. **A client that cannot yet tell them apart
+ * must say UNMEASURED rather than pick one**, which is the same rule that made
+ * the field necessary.
  */
 export function apiInjected(ws: Workspace, url: URL, params: { session: string }): JsonResult {
   const bad = unknownParams(url, []);
@@ -914,6 +961,9 @@ export function apiInjected(ws: Workspace, url: URL, params: { session: string }
     const body: InjectedBody = {
       lines: state.lines,
       error: state.error,
+      // `state.file` — what THIS read saw, not a fresh question to the disk.
+      // The reasoning, and what `read` does not promise, is on `InjectedBody.seen`.
+      seen: state.file,
     };
     return { status: 200, body };
   });

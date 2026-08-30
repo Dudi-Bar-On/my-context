@@ -263,21 +263,69 @@ export function parseJsonlLog(raw: string, spec: JsonlLogSpec): JsonlRow[] {
 }
 
 /**
- * One log file, read whole. Absent is `[]`; unreadable throws `spec.unreadable`;
- * a damaged line throws `spec.refuse` unless it is a torn tail.
+ * Whether there was a FILE — the fact the ENOENT branch below observes.
  *
- * The ENOENT branch is the ONLY error swallowed here, and deliberately: a
- * permissions failure, a lock, or an I/O error is not "nothing has been
- * recorded", and reporting it as such would hide the entire log from every
- * surface that reads it.
+ *  - `read`   — a file was there and its bytes were handed to the parser.
+ *  - `absent` — `readFileSync` answered ENOENT. Nothing else answers `absent`:
+ *               a permissions failure or an I/O error is a file that could not
+ *               be read, not a file that is not there, and it throws.
+ *
+ * **Why this is a value and not something each caller re-asks.** `[]` is the
+ * honest answer to "what does the log hold" for both an absent log and an empty
+ * one, and for most callers that is the whole question. It is not the whole
+ * question for a log a PRODUCER REMOVES — `clearSeen` deletes a seen file when
+ * `/clear` destroys a context window, and `pruneSnapshots` sweeps one at 30
+ * days — because there "nothing was recorded" and "the record was taken away"
+ * are different facts about the world, and a surface that has to draw one of
+ * them cannot pick a sentence from an empty array. Any second spelling of the
+ * question — an `existsSync` beside the read — asks the disk again a moment
+ * later and can disagree with what the read saw, which is exactly how these two
+ * facts came apart. So the read reports what it observed, once.
  */
-export function readJsonlFile(spec: JsonlLogSpec): JsonlRow[] {
+export type JsonlFileState = 'read' | 'absent';
+
+export interface JsonlFileRead {
+  rows: JsonlRow[];
+  /** `absent` only on an observed ENOENT; see `JsonlFileState`. */
+  state: JsonlFileState;
+}
+
+/**
+ * One log file, read whole, WITH the presence fact `readJsonlFile` drops.
+ * Same three outcomes and the same bytes — `absent` is `{ rows: [], state:
+ * 'absent' }`, unreadable throws `spec.unreadable`, a damaged line throws
+ * `spec.refuse` unless it is a torn tail — so a caller moving from one to the
+ * other changes nothing about what it reads, only about what it can say.
+ */
+export function readJsonlFileState(spec: JsonlLogSpec): JsonlFileRead {
   let raw: string;
   try {
     raw = readFileSync(spec.file, 'utf8');
   } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return [];
+    // The ENOENT branch is the ONLY error swallowed here, and deliberately: a
+    // permissions failure, a lock, or an I/O error is not "nothing has been
+    // recorded", and reporting it as such would hide the entire log from every
+    // surface that reads it.
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      return { rows: [], state: 'absent' };
+    }
     throw spec.unreadable(err);
   }
-  return parseJsonlLog(raw, spec);
+  return { rows: parseJsonlLog(raw, spec), state: 'read' };
+}
+
+/**
+ * One log file, read whole. Absent is `[]`; unreadable throws `spec.unreadable`;
+ * a damaged line throws `spec.refuse` unless it is a torn tail.
+ *
+ * Byte-for-byte the behaviour every caller has always had: it is
+ * `readJsonlFileState` with the presence fact dropped, which is the right shape
+ * for a caller that has no way to be wrong about it — `readAudit` reads only
+ * segments `readdirSync` just listed, and `readLog` answers "no revisions are
+ * pending" identically for a log that never existed and one that holds no
+ * lines. A caller for which the two DIFFER (see `JsonlFileState`) calls
+ * `readJsonlFileState` instead of asking the disk a second time.
+ */
+export function readJsonlFile(spec: JsonlLogSpec): JsonlRow[] {
+  return readJsonlFileState(spec).rows;
 }
