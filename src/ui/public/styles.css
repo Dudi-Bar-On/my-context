@@ -1354,9 +1354,10 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
    over what the six modules actually construct — which is the measurement
    that cannot miss either.
 
-   NOT carried, deliberately: config’s .delta and .blast families. No built
-   module emits them — they are held in screen-parity’s KNOWN_GAPS. CSS for
-   markup nothing renders is the same defect as a field no screen reads.
+   NOT carried, deliberately, on 2026-08-23: config’s .delta and .blast
+   families. No built module emitted them — they were held in screen-parity’s
+   KNOWN_GAPS. CSS for markup nothing renders is the same defect as a field no
+   screen reads.
 
    CORRECTED 2026-08-25, twice, because BOTH of this note's premises had gone
    stale and neither was re-checked:
@@ -1367,6 +1368,12 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
      The .delta/.blast half said they wait "until ctx.api can POST". ctx.post
      shipped 2026-08-23 (app.js ~534, exported ~947) and has zero callers. The
      blocker is gone; the work is plan:walk seq:10.
+
+   CLOSED 2026-08-30 (plan:walk seq:112). The premise expired for the last
+   time: screens/config.js draws div.blast on every one of its four panes and
+   div.delta on every value that moved, div.blast LEFT screen-parity's
+   KNOWN_GAPS on 2026-08-29 because it is BUILT, and the ten rules are carried
+   below, byte-identical to the design of record.
 
    A deliberate omission is a decision plus a PREMISE. The decision keeps; the
    premise expires, and nothing here expires with it. */
@@ -1380,6 +1387,52 @@ ins{background:var(--okbg);color:var(--ink);text-decoration:none;border-radius:2
   padding-inline:2px}
 del{background:var(--critbg);color:var(--dim);text-decoration:line-through;border-radius:2px;
   padding-inline:2px}
+
+/* ── CARRIED 2026-08-30: config’s ten .delta / .blast rules (plan:walk
+   seq:112) ────────────────────────────────────────────────────────────
+   The carry the note above declined twice, now that something renders it.
+   Four composer panes, each with a delta plate and a blast panel, and the
+   panel's whole job is that a change which governs 66 items must not look
+   like one that governs none. Measured by the lane that built the screen, on
+   the LIVE corpus: profile standard→minimal stops injecting 66 items,
+   budgets.pinned 16000→4000 spills 16, categories.rule.agentEdits
+   review→allow moves 39. Unstyled, all three read as ordinary paragraphs.
+   (The figure is a property of the corpus, not of this file — the same
+   profile change measures 74 on `.demo-corpus`, which is what the browser
+   test below drives, and that test reads the server's number rather than
+   asserting either one.)
+
+   Three separate marks carry the difference and none of them is decorative:
+   the BORDER colour (--edge-3 neutral, --warn, --crit), the strike-through on
+   .was — which is the only thing that says a value is the old one — and the
+   flex row itself, without which was/arrow/will are three runs of text with
+   no gap and no baseline.
+
+   No sixth meaning-hue: gold, ok, crit and warn only. Byte-identical to
+   docs/design/web-ui-mockup.html ~1256-1280, held there by
+   test/ui/styles-parity.test.ts and driven in a browser by
+   e2e/config-blast-face.spec.ts, which asserts the COMPUTED difference
+   between a face reporting a change and one reporting none rather than the
+   presence of a class. */
+
+/* — before → after delta rows (mockup ~1256-1265) — */
+.delta{display:flex;gap:var(--sp-2);align-items:baseline;font-size:var(--fs-1);padding-block:3px}
+.delta .was{font-family:var(--mono);font-size:var(--fs-0);color:var(--dim);
+  text-decoration:line-through;direction:ltr;unicode-bidi:isolate}
+.delta .will{font-family:var(--mono);font-size:var(--fs-0);color:var(--ink);font-weight:650;
+  background:var(--goldbg);border-radius:var(--r-sm);padding-inline:4px;
+  direction:ltr;unicode-bidi:isolate}
+.delta .arrow{color:var(--gold)}
+.delta.gain{color:var(--ok)}
+.delta.loss{color:var(--crit)}
+
+/* — blast radius: the border carries how much of the corpus stops working
+     (mockup ~1275-1280) — */
+.blast{border:1px solid var(--edge-3);background:var(--sink);border-radius:var(--r-md);
+  padding:9px 11px;margin-block-start:9px;font-size:var(--fs-1)}
+.blast.warn{border-color:var(--warn);background:var(--warnbg);color:var(--warn)}
+.blast.crit{border-color:var(--crit);background:var(--critbg);color:var(--crit)}
+.blast b{display:block;margin-block-end:5px}
 
 /* ── CARRIED: the graphics the eight gap screens draw ─────────────────
    Wave-2 pre-work, 2026-08-23. Carried BEFORE the screens that consume

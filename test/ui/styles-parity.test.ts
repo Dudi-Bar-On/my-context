@@ -270,6 +270,28 @@ const SCREEN_SELECTORS = [
   // found by re-measuring over what the six modules CONSTRUCT rather than over
   // what the design of record draws.
   '.refusal', 'ins', 'del',
+  // **Configure's ten `.delta`/`.blast` rules, carried 2026-08-30 (plan:walk
+  // seq:112).** Listed here with the carry, per this file's standing brief:
+  // "Extend that test with every block you add."
+  //
+  // They were declined twice by styles.css's own note — "CSS for markup
+  // nothing renders" — and the premise expired without the note expiring with
+  // it: `screens/config.js` draws `div.blast` on all four composer panes and
+  // `div.delta` on every value that moved, and `div.blast` left
+  // `screen-parity`'s KNOWN_GAPS on 2026-08-29 because it is BUILT.
+  //
+  // The two families are one carry because they are one reading. The plate
+  // says WHICH values moved and the panel says HOW MUCH of the corpus that
+  // costs; unstyled, a panel reporting 66 items stopping is the same grey
+  // paragraph as one reporting none. Held byte-identical in both directions
+  // so neither the border colours nor `.was`'s strike-through can drift from
+  // the design of record — and driven, computed rather than by class name, in
+  // `e2e/config-blast-face.spec.ts`, because this file greps a stylesheet and
+  // a stylesheet that reads correctly is exactly what 110 grey chart marks
+  // looked like for six days.
+  '.delta', '.delta .was', '.delta .will', '.delta .arrow',
+  '.delta.gain', '.delta.loss',
+  '.blast', '.blast.warn', '.blast.crit', '.blast b',
   // Wave-2 pre-work, 2026-08-23: the graphics the eight gap screens draw,
   // carried ahead of them because these screens already exist and open — an
   // agent building a heat map has to be able to look at one. Derived from
