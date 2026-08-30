@@ -110,16 +110,18 @@
  * <every item>` — a true zero about a question nobody asked, which is exactly
  * the reading that standard forbids.
  *
- * **The ten `.delta` / `.blast` rules are STILL not in `styles.css`.** They
- * live only in the mockup's own `<style>` block (`.delta`, `.delta .was`,
- * `.delta .will`, `.delta .arrow`, `.delta.gain`, `.delta.loss`, `.blast`,
- * `.blast.warn`, `.blast.crit`, `.blast b` —
- * `docs/design/web-ui-mockup.html` · `.delta{display:flex;gap:var(--sp-2);align-items:baseline;font-size:var(--fs-1);padding-block:3px}` · ~1250).
- * Carrying them is a `styles.css` edit and `styles.css` is not this task's file
- * — the markup is emitted here, unstyled, and the carry is in the report. That
- * is the right direction for the standoff to break: the stylesheet's own note
- * says it will not carry rules "for markup nothing renders", and something
- * renders them now.
+ * **The ten `.delta` / `.blast` rules WERE carried on 2026-08-30**
+ * (`plan:walk seq:112`), byte-identical from the mockup, and this paragraph
+ * said they were "STILL not in `styles.css`" for the hours in between. The
+ * standoff broke in the direction predicted here: the stylesheet's own note
+ * declined to carry rules "for markup nothing renders", this screen rendered
+ * them, and the carry followed.
+ *
+ * They are `.delta`, `.delta .was`, `.delta .will`, `.delta .arrow`,
+ * `.delta.gain`, `.delta.loss`, `.blast`, `.blast.warn`, `.blast.crit` and
+ * `.blast b`, and `e2e/config-blast-face.spec.ts` now asserts the COMPUTED
+ * difference between a change face and a no-change one — crit red against
+ * neutral — rather than the presence of a class.
  *
  * ── WHAT IS SERVED AND DELIBERATELY NOT DRAWN ─────────────────────────────
  *

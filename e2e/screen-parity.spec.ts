@@ -153,8 +153,25 @@ const BUILT = [
 // states and the entry below is their union. Tracked as
 // TASK-on-a-working-corpus-the-audit-projection-is-stale-within and
 // TASK-the-401-is-the-read-surface-s-one-write-and-it-makes-the-next.
+// **`graph` LEFT this set on 2026-08-30, and leaving it is the point.** It was
+// here because `.demo-corpus` carried NO RELATION AT ALL
+// (`KNOWN-the-demo-corpus-has-no-relations-at-all-so-the-graph-screen`, filed
+// at severity `hard`): the app drew one node and a legend, so eight of this
+// screen's ten entries were the fixture's silence rather than the code's, and
+// the ceiling was the only honest way to hold them. `scripts/demo-corpus.ts`
+// now builds the ego scene through `linkItems` — sixty-four neighbours over
+// four relation types, one edge whose target no item has, one neighbour retired
+// with `mycontext supersede`, and four more than the endpoint's sixty-node cap
+// so `omitted` is non-zero. All eight closed in one run.
+//
+// **A ceiling that becomes an equality is what `plan:port seq:94` is for**, in
+// its own words: `DATA_DEPENDENT` "makes parity a CEILING for eight screens, so
+// drawing FEWER kinds than the mockup passes silently", and "emptying it is how
+// the ceiling becomes an equality". This is one of the eight, emptied — the
+// screen is now measured against the CODE, and a regression on it fails here
+// rather than passing quietly.
 const DATA_DEPENDENT = new Set<string>([
-  'watch', 'ask', 'decay', 'simulate', 'coverage', 'graph', 'proc', 'capture',
+  'watch', 'ask', 'decay', 'simulate', 'coverage', 'proc', 'capture',
 ]);
 
 const KNOWN_GAPS: Record<string, string[]> = {
@@ -360,17 +377,34 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // reading as a code gap, and the gate is what forced them out — it failed in
   // the stale direction the moment they started drawing.
   //
-  // **`button` is the bound line's "Show all N" control**, and it is DATA for a
-  // different reason: `boundedList` hides it, correctly, when nothing was
-  // truncated. `BOUND_CAP_TABLE` is 50 and this session delivered 4, so the cap
-  // cannot bite and `COLLECT_KINDS` skips it by construction (`offsetParent`).
-  // Lowering the cap until the gate went green would be tuning the ledger,
-  // which the header above names as the one edit that makes this file worse
-  // than nothing.
+  // **`button` is the bound line's "Show all N" control, and as of 2026-08-30
+  // it is neither a code gap nor a fixture gap — it is the unwired session
+  // picker.** The reading that stood here was that no bounded surface in the
+  // corpus could cross its cap, so `boundedList` hid the control correctly and
+  // `COLLECT_KINDS` skipped it by construction. The first half of that is no
+  // longer true: `scripts/demo-corpus.ts` now runs a LONG working session
+  // through the real hooks — `demo-session-a3f9c1-11`, sixty injection rows
+  // across four tiers — and over that session the table holds back ten rows and
+  // draws both step controls. `e2e/injected-empty.spec.ts` measures it.
   //
-  // **`span.chip.ok` is the `jit` chip**, and it is DATA too: every row this
-  // session delivered is `pinned`, so the neutral chip has nothing to mark. It
-  // closes when the fixture's newest session carries a jit delivery.
+  // What stops it drawing HERE is that this walk sees only the session
+  // `/api/sessions` calls `default`, and **nothing in the shell can select
+  // another one**: `app.js` records that `#sessbtn` opens no popup and that
+  // `loadSessions()` exposes the default *"so a later task can wire the popup"*.
+  // The default is deliberately the freshly-started session 23 — six rows —
+  // because a long session's injection preview re-computes to a delivery of
+  // ZERO and both of its panes go empty, measured three ways in
+  // `scripts/demo-corpus.ts` beside the block that builds it.
+  //
+  // So this entry closes when the picker lands, not when the fixture grows
+  // again. Lowering the cap until the gate went green would be tuning the
+  // ledger, which the header above names as the one edit that makes this file
+  // worse than nothing.
+  //
+  // **`span.chip.ok` is the `jit` chip**, and it is the same fact one step
+  // along: session 11 carries `jit` and `restored` lines and would draw it,
+  // session 23 has only ever received `pinned`, and this walk can only see
+  // session 23.
   injected: ['button', 'span.chip.ok'],
   // Shrank from 15 to 8 while this gate was being written: the agent building
   // screens/watch.js landed the SVG (rect, svg), the bidi runs and the table,
@@ -427,16 +461,24 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'b', 'circle', 'div', 'div.heataxis', 'div.hname', 'div.hstrip', 'i',
     'i.h1', 'i.h2', 'i.h3', 'i.sp', 'line', 'rect', 'svg', 'text',
   ],
-  // `path` was the whole ego graph before the edges landed. What remains is the
-  // classed forms the old collector could not see, and every one of them needs
-  // a focus WITH RELATIONS — this corpus creates none, so the screen draws its
-  // nodes and has no edge to draw. DATA, not code: the agent rendered all of
-  // them against a connected body and photographed the result.
-  graph: [
-    'b', 'path', 'path.bearing.edge', 'path.dangling.edge', 'path.edge.ref',
-    'rect.missing.node', 'rect.more.node', 'rect.node', 'rect.node.superseded',
-    'text.rel',
-  ],
+  // **EMPTY SINCE 2026-08-30, and every one of the ten came out because the
+  // element now draws.** Nine were the same fact — *"this corpus creates no
+  // relation, so the screen draws its nodes and has no edge to draw"* — and the
+  // fix was the fixture, not this screen: `scripts/demo-corpus.ts` now writes
+  // the ego scene through `linkItems`, the relation surface itself, and the
+  // eight kinds that scene needs (`path.bearing.edge`, `path.dangling.edge`,
+  // `path.edge.ref`, `rect.node`, `rect.node.superseded`, `rect.missing.node`,
+  // `rect.more.node`, `text.rel`) closed together in one run. `path` and `b` came
+  // out with them, measured absent-then-present the same way.
+  //
+  // **This screen was UNJUDGED for five days, not judged and passed**, and the
+  // known issue said so in those words: whether the layered layout is
+  // deterministic, whether the sixty-node cap draws its *"+N more"*, whether an
+  // edge to a missing target renders as dangling — none of it had been seen.
+  // The one node that rendered proved only that the screen booted. This entry
+  // being empty, with the screen out of `DATA_DEPENDENT`, is the first time the
+  // gate has had anything to say about it.
+  graph: [],
   // **EMPTY, and deliberately written down as empty.** The walk found one
   // divergence here and it produces no name: the mockup wraps two of the four
   // description cells' label runs in `<span data-t="ln.c">` / `<span
@@ -529,12 +571,12 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // 'the blast count is the server's own number' presses `inert` and asserts
   // `.delta.loss` and the neutral value row that comes with it.
   //
-  // **They are also UNSTYLED, and that is not this ledger's business but is
-  // recorded here so the next reader does not re-derive it.** The ten
-  // `.delta`/`.blast` rules live only in the mockup's own `<style>` block;
-  // `styles.css` still carries none of them, and its own note says it declined
-  // to "for markup nothing renders". Something renders them now, so the carry
-  // is a `styles.css` task rather than a blocked one.
+  // **They WERE unstyled until 2026-08-30, and are not any more.** The ten
+  // `.delta`/`.blast` rules lived only in the mockup's own `<style>` block
+  // while `styles.css` declined them "for markup nothing renders"; this screen
+  // rendered them, and `plan:walk seq:112` carried them byte-identical. Left
+  // recorded rather than deleted so the next reader sees why the ledger's
+  // entries below were once about a screen drawing shapes with no rules.
   config: [
     'div.delta', 'div.delta.gain', 'div.delta.loss',
     'span.arrow', 'span.was', 'span.will',
