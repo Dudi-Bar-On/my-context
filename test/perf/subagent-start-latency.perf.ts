@@ -67,30 +67,112 @@
  * premise, because a selection that quietly went empty is fast and proves
  * nothing.
  *
- * Recorded baseline (2026-08-21, dev machine): p95 184.8, 200.9 and 243.4 ms
- * across three runs, against the unchanged 500 ms ceiling. Read these as
- * LOAD-INFLATED: the machine was running several worktrees' suites at once,
- * and the sibling file's idle-machine baseline for its own 500-item shape is
- * 45.6–46.3 ms (2026-08-16). What the loaded machine does still say, because
- * both were measured back to back in one process, is the comparison that
- * matters here: subagent-start 184.8 ms against session-start 212.4 ms on the
- * same corpus size at the same moment. This event is the CHEAPER of the two,
- * which is what skipping the index refresh predicts. Re-derive all of it on an
- * idle machine before reading any single number as a regression signal.
+ * ── The statistic, and why it is a percentile rather than a maximum ──────
+ *
+ * Until 2026-08-30 the assertion below called itself a p95 and computed a
+ * MAXIMUM: the local helper indexed `floor(n * 0.95)`, which is the last
+ * index of the sorted array for every `n <= 20`, and `ITERATIONS` was
+ * exactly 20. So the "500 ms p95 ceiling" was a max-of-twenty, dominated by
+ * its worst sample — one GC pause or one descheduled iteration set it, and
+ * the number moved with the machine rather than with the code. That is
+ * exactly the shape of the two red runs recorded below.
+ *
+ * Resolved by making the statistic match its name, NOT by renaming the
+ * ceiling to "max" and not by widening it. The full argument — a per-dispatch
+ * budget is not a promise that no single call ever exceeds it, and a
+ * regression detector needs a stable statistic where a maximum gets worse the
+ * harder you sample — lives in `test/helpers/perf-stats.ts`, which this file
+ * now shares with its siblings. `ITERATIONS` is 100 because a p95 needs
+ * samples above it: at 20 there is one, at 100 there are five.
+ *
+ * ── Recorded baselines ──────────────────────────────────────────────────
+ *
+ * Everything recorded before 2026-08-30 was a MAX-OF-20 and is kept here
+ * relabelled rather than deleted. It remains the best record of how this
+ * shape's worst case moved, and it is NOT comparable with a p95.
+ *
+ * 2026-08-21, dev machine: max-of-20 184.8, 200.9 and 243.4 ms across three
+ * runs, against the unchanged 500 ms ceiling. Read these as LOAD-INFLATED:
+ * the machine was running several worktrees' suites at once, and the sibling
+ * file's idle-machine baseline for its own 500-item shape is 45.6–46.3 ms
+ * (2026-08-16). What the loaded machine does still say, because both were
+ * measured back to back in one process, is the comparison that matters here:
+ * subagent-start 184.8 ms against session-start 212.4 ms on the same corpus
+ * size at the same moment. This event is the CHEAPER of the two, which is
+ * what skipping the index refresh predicts.
+ *
+ * ── 2026-08-30: THE FIRST p95-OF-100 RUNS ARE ALL RED, AND THEY ARE NOT A
+ * REGRESSION SIGNAL. THIS CEILING IS NOT CERTIFIED. ─────────────────────
+ *
+ * The machine, because a measurement taken under unknown load is not a
+ * measurement: dev machine, 20 logical cores, 64 GB, DELIBERATELY NOT IDLE
+ * and not idlable — six other agents were working this tree throughout, the
+ * box moved between 16 and 65 resident `node` processes and between 45% and
+ * a pinned 100% CPU, and `Everything` (a filesystem indexer) and `MsMpEng`
+ * (Defender) were its two largest cumulative CPU consumers. NINE runs, each
+ * n=100, each carrying the CPU and resident `node`-process count read in the
+ * minute before it. Every one of them RED (ms):
+ *
+ *     CPU  node   p95      min    median   max      first-25 → last-25
+ *     100    62  5768.4   179.5  1205.9   7338.4
+ *     100    62  2765.4   401.9   628.6   6501.7
+ *     100    62  4601.9   214.2   729.9   7456.1
+ *      77    21  6101.3   293.9   491.4  14661.0
+ *      90    24  4070.2   414.7  1190.7   5987.9
+ *      98    56  5019.1   183.8   535.7  10272.4
+ *     100    65  2209.4   513.0   896.7   6075.5   1346.9 → 728.8
+ *      77    22  1503.5   359.0   738.7   1997.5    736.0 → 597.8
+ *      78    23  1258.7   385.2   780.3   1535.4    851.1 → 638.1
+ *
+ * Read that as the machine, on this suite's own recorded rule — every
+ * statistic up together. The MEDIAN is 491–1206 ms against the 45.6–46.3 ms
+ * idle baseline above: 10–26×. The MINIMUM sample, 179.5–513.0 ms, is
+ * 4–11× that same baseline and in two runs already at or over the ceiling.
+ * The load never fell below 21 concurrent `node` processes for the whole
+ * session, and the quietest run measured (78% CPU) was still 17× the idle
+ * median — so no quiet window was reachable, not merely not taken.
+ * No choice of statistic rescues a measurement taken there, and the response
+ * is to re-measure somewhere quieter — never to widen the ceiling to fit.
+ *
+ * **The control, run to settle exactly this.** `session-start-latency.perf.ts`
+ * was already at n=100 and was NOT touched by the change above. Run on the
+ * same box in the same window, its 500-item shape measured p95 4703.7 ms,
+ * min 502.3, median 1062.4, max 6546.0 — red, on the same corpus size, with
+ * no edit of any kind. So the redness here belongs to the machine and not to
+ * the statistic, the sample count, or the code. The two figures also
+ * reproduce this file's own standing claim, on the same box at the same
+ * moment: subagent-start's median (738.7–896.7 ms) sits BELOW
+ * session-start's (1062.4 ms). This event is still the cheaper of the two,
+ * which is what skipping the index refresh predicts.
+ *
+ * The fixture slope is falling (1346.9 → 728.8 and 736.0 → 597.8), which is a
+ * busy box settling, not the fixture: nothing in this loop is consumed, and
+ * the same decaying head is recorded below from 2026-08-21. A decaying head
+ * is precisely what the old max-of-20 reported and a p95 does not.
+ *
+ * **So this ceiling is honest but UNVERIFIED.** The statistic now matches its
+ * name and the ceiling is unchanged at 500 ms; what is missing is a run on a
+ * machine capable of certifying it. That run is owed. Until it is taken, a
+ * red result from this file means nothing on its own — check the median
+ * against 45.6–46.3 ms first, and check whether the SessionStart cases in the
+ * same process went red with it.
  *
  * **What the loaded machine also showed, recorded so the next reader does not
  * re-diagnose it.** Across five runs on that box this case went red twice
- * (3075.8 ms, 1368.1 ms) and green three times — and on two of the green runs
+ * (3075.8 ms, 1368.1 ms — both MAX-OF-20 verdicts, and both a single
+ * first-iteration outlier decided by the defect above) and green three times — and on two of the green runs
  * the UNTOUCHED SessionStart cases in the same process went red instead
  * (569.6, 561.4 and 513.1 ms against the same 500 ms ceiling), as did
  * `fallback-latency.perf.ts` against its own hard 300 ms. Which member of the
  * 500 ms family reddens is a coin toss on a loaded machine; that they move
  * together is the signature `test/helpers/perf.ts` records for the runner
  * rather than the code. The ceiling is NOT widened for it, for the reason that
- * file gives: a bound sized to absorb a busy dev box certifies nothing. The 3 s sample itself was reproduced outside
- * the suite and is a first-iteration effect on a busy box — 3087, 1305, 859,
- * 768, … decaying inside one 20-sample run, and a flat 374–396 ms across a
- * later run of the identical shape. The seen-file append's share was measured
+ * file gives: a bound sized to absorb a busy dev box certifies nothing. The
+ * 3 s sample itself was reproduced outside the suite and is a first-iteration
+ * effect on a busy box — 3087, 1305, 859, 768, … decaying inside one
+ * 20-sample run, and a flat 374–396 ms across a later run of the identical
+ * shape. A decaying head is precisely what a maximum reports and a percentile
+ * does not, which is the other half of the case for the change above. The seen-file append's share was measured
  * the same way, by running this shape with and without a `session_id` (no id
  * means no dedupe key and no append): ~40 ms for 25 lines. Small, and on the
  * timed path deliberately.
@@ -108,12 +190,18 @@ import type { HookInput } from '../../src/hooks/io.ts';
 import { buildSubagentStartOutput } from '../../src/hooks/subagent-start.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { perfCeiling } from '../helpers/perf.ts';
+import { PERF_SAMPLES, report, slope, summarize } from '../helpers/perf-stats.ts';
 
 const CORPUS_SIZE = 500;
 /** How many of them are `always: true`, so the full tier and the seen-file append are non-empty. */
 const PINNED = 25;
 const WARMUP = 3;
-const ITERATIONS = 20;
+/**
+ * The sample count is part of the assertion's MEANING, not a tuning knob — see
+ * "The statistic" in the header and `test/helpers/perf-stats.ts`. It was 20,
+ * at which count the reported p95 IS the maximum.
+ */
+const ITERATIONS = PERF_SAMPLES;
 /** The parent's id, shared by every dispatch below exactly as it is in production. */
 const PARENT = 'perf-subagent-parent';
 // 500ms is the product budget; widened 10× on the GitHub Windows runner only
@@ -144,11 +232,6 @@ function payload(cwd: string, agent: string): HookInput {
   return { hook_event_name: 'SubagentStart', session_id: PARENT, agent_id: agent, cwd };
 }
 
-function p95(samples: number[]): number {
-  const sorted = [...samples].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))];
-}
-
 test('SubagentStart stays under the 500ms p95 ceiling on a 500-item corpus', () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-perf-subagent-'));
   runCli(['init'], cwd, () => {});
@@ -177,11 +260,10 @@ test('SubagentStart stays under the 500ms p95 ceiling on a 500-item corpus', () 
     samples.push(Number(process.hrtime.bigint() - started) / 1e6);
   }
 
-  const measured = p95(samples);
-  assert.ok(
-    measured < CEILING_MS,
-    `subagent-start p95 was ${measured.toFixed(1)}ms (max ${Math.max(...samples).toFixed(1)}ms)`,
-  );
+  const measured = summarize(samples);
+  console.log(report('subagent-start', measured, CEILING_MS));
+  console.log(slope('subagent-start', samples));
+  assert.ok(measured.p95 < CEILING_MS, report('subagent-start', measured, CEILING_MS));
 
   removeTree(cwd);
 });
