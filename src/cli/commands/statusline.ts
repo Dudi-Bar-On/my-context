@@ -282,6 +282,23 @@ export function runDelegate(
   }
 }
 
+/**
+ * The subcommands this verb dispatches on, exported for the same reason
+ * `pack`, `procedure`, `review` and `session` export theirs: the registry's
+ * usage line is built from this list rather than restating it, and
+ * `test/helpers/approval-boundary.ts` pins what the usage line ADVERTISES
+ * against what this command actually DISPATCHES.
+ *
+ * That pin is why this constant exists at all. Both of these take `--yes`
+ * (`statusline install --yes` writes a Claude Code setting), and the probe
+ * that enumerates the approval boundary reaches a flag only on a command
+ * STRING it knows about — so a subcommand that is dispatched here and
+ * advertised nowhere derivable is a `--yes` nothing measures. It was one:
+ * the probe expanded four commands from a hand-kept list written when four
+ * had subcommands, and this was the fifth.
+ */
+export const SUBCOMMANDS = ['install', 'uninstall'] as const;
+
 const USAGE =
   'usage: mycontext statusline                    (reads Claude Code\'s payload on stdin)\n' +
   '       mycontext statusline install   [--settings <path>] [--yes]\n' +
@@ -329,17 +346,29 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
   if (sub === 'install') return cmdStatuslineInstall(ws, args.slice(1), out);
   if (sub === 'uninstall') return cmdStatuslineUninstall(ws, args.slice(1), out);
 
-  // The bare verb takes NO arguments at all — every flag on this command
-  // belongs to a subcommand. Refusing them here is what keeps `--yes` from
-  // being readable as consent on a verb that never asks for any (see
+  // A first argument that is not a flag is a SUBCOMMAND, and this verb has
+  // exactly the two above. Refused here — before the flag check rather than
+  // after it — so that the answer to "is this command dispatched by
+  // subcommand?" survives an unknown flag on the same command line. That is
+  // how `test/helpers/approval-boundary.ts` now asks the parser which commands
+  // are subcommanded instead of keeping a list: it probes with a bogus
+  // subcommand AND a sentinel flag, and a flag refusal arriving first would
+  // hide the subcommand entirely — which is exactly the blind spot that let
+  // `statusline install --yes` go unmeasured. The other four subcommanded
+  // commands (`pack`, `procedure`, `review`, `session`) already check the
+  // subcommand first, so this also makes the five agree.
+  if (sub !== undefined && !sub.startsWith('--')) {
+    out(`my_context: unknown subcommand "${sub}".\n${USAGE}`);
+    return 1;
+  }
+
+  // The bare verb takes NO flags at all — every flag on this command belongs
+  // to a subcommand. Refusing them here is what keeps `--yes` from being
+  // readable as consent on a verb that never asks for any (see
   // test/helpers/approval-boundary.ts, which probes exactly this), and it has
   // to happen BEFORE stdin: a status line that silently ignored a mistyped
   // argument and then blocked on a pipe would be the worst of both.
   if (refuseUnknownFlag(args, [], [], USAGE, out)) return 1;
-  if (args.length > 0) {
-    out(`my_context: unknown subcommand "${sub}".\n${USAGE}`);
-    return 1;
-  }
 
   if (!stdinIsOurs()) {
     out(NO_PAYLOAD);
@@ -446,7 +475,11 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
 
 registerCommand({
   name: 'statusline',
-  usage: 'statusline [install|uninstall] [--yes]',
+  // Derived from SUBCOMMANDS, not restated: `review`'s comment explains why a
+  // second hand-kept spelling of a subcommand list drifts — and here the
+  // approval-boundary probe reads this very line, so a drifted one would hide
+  // a `--yes`.
+  usage: `statusline [${SUBCOMMANDS.join('|')}] [--yes]`,
   summary: 'the opt-in status line bridge: tee Claude Code’s context figure for the web UI',
   run: cmdStatusline,
 });

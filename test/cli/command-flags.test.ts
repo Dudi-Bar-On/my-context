@@ -41,6 +41,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { COMMAND_FLAGS, DETAIL_FLAGS } from '../../src/core/command-flags.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -292,5 +293,84 @@ test('every named entry point has a spec of its own in the map', async () => {
     `${missing.join(', ')} is a named entry point with no flag spec. \`runNamed\` reads ` +
     'COMMAND_FLAGS[entry.name], so the command would refuse --yes and be unusable ' +
     'non-interactively — the one case the four exist for.',
+  );
+});
+
+/**
+ * **The header's census, derived — because a count in a comment goes stale.**
+ *
+ * The paragraph above `FlagSpec` used to open "over the 38 commands `COMMANDS`
+ * registers", and 38 was wrong in both directions at once: the registry holds
+ * 32 when only `cli/commands/index.ts` has been imported, and 39 once
+ * `cli/index.ts` has, because seven commands are registered in the entry
+ * module itself. Both READMEs said 39 and were right; the source comment
+ * beside the map was the one thing nobody could check. That is the same
+ * hand-kept-number drift this project has now measured in the citations, in
+ * the wave map, in the README's audit-kind tables and — the reason this test
+ * exists at all — in the approval-boundary probe's subcommanded list, which
+ * was written when four commands had subcommands and stayed four after a
+ * fifth shipped.
+ *
+ * Two things are asserted, and the second is the one that matters:
+ *
+ *   1. **The figures.** Every number in the header is read out of the comment
+ *      and compared with the registry, this map, and a count of
+ *      `registerCommand` calls in `cli/index.ts`.
+ *   2. **The inventory.** The header names every command whose spec is NOT
+ *      here, in prose, and those names plus `COMMAND_FLAGS`' keys must be
+ *      exactly the registered set — no overlap, nothing left over. A count can
+ *      be right while the enumeration is short; this is what makes a command
+ *      that arrives and is never mentioned fail here rather than silently
+ *      falling outside the paragraph that claims to account for all of them.
+ */
+test('the flag-spec header counts and names every registered command', () => {
+  const source = readFileSync(path.join(SRC, 'core', 'command-flags.ts'), 'utf8');
+  const header = source.slice(0, source.indexOf('*/'));
+  assert.ok(header.includes('MEASURED'), 'the header block comment was not found');
+
+  const number = (pattern: RegExp, what: string): number => {
+    const found = pattern.exec(header);
+    assert.ok(found, `the header no longer states ${what}. If the wording changed, update the ` +
+      'pattern; do not delete the assertion — the number it watches was wrong for six days.');
+    return Number(found[1]);
+  };
+
+  const total = number(/over the \*\*(\d+)\*\* commands/, 'how many commands the CLI dispatches');
+  const bySideEffect = number(/(\d+) registered by/, 'how many `cli/commands/index.ts` registers');
+  const inEntry = number(/(\d+) more registered in/, 'how many `cli/index.ts` registers');
+  const rows = [...header.matchAll(/^ \* +\| *(\d+) \|/gm)].map((m) => Number(m[1]));
+  const here = number(/\*\*(\d+)\*\* of the (\d+) are here/, 'how many specs are in this map');
+  const separable = number(/\*\*\d+\*\* of the (\d+) are here/, 'how many specs are separable');
+
+  assert.equal(total, COMMANDS.size, 'the header states a command count the registry disagrees with');
+  assert.equal(
+    inEntry, (readFileSync(path.join(SRC, 'cli', 'index.ts'), 'utf8').match(/registerCommand\(/g) ?? []).length,
+    'the header states how many commands `cli/index.ts` registers, and it registers a ' +
+    'different number. That split is the whole reason the old figure was wrong.',
+  );
+  assert.equal(bySideEffect + inEntry, total, 'the header\'s two halves do not add up to its own total');
+  assert.equal(rows.length, 4, 'the header\'s census table no longer has four rows');
+  assert.equal(rows.reduce((a, b) => a + b, 0), total, `the census table sums to ${rows.reduce((a, b) => a + b, 0)}, not ${total}`);
+  assert.equal(rows[0], separable, 'the census table and the sentence below it disagree about the separable count');
+  assert.equal(here, Object.keys(COMMAND_FLAGS).length, 'the header states how many specs are here, and a different number is here');
+
+  // The inventory. Only backticked names that ARE registered commands count,
+  // so the prose may go on naming modules, constants and flags freely.
+  const named = new Set(
+    [...header.matchAll(/`([a-z][a-z-]*)`/g)].map((m) => m[1]).filter((n) => COMMANDS.has(n)),
+  );
+  const overlap = [...named].filter((n) => Object.hasOwn(COMMAND_FLAGS, n)).sort();
+  assert.deepEqual(
+    overlap, [],
+    'the header names a command as absent whose spec is in COMMAND_FLAGS. One of the two is ' +
+    'lying, and the header is the half a reader believes without checking.',
+  );
+  const unaccounted = [...COMMANDS.keys()]
+    .filter((n) => !named.has(n) && !Object.hasOwn(COMMAND_FLAGS, n)).sort();
+  assert.deepEqual(
+    unaccounted, [],
+    `${unaccounted.join(', ')} is registered, has no spec here, and the header does not say ` +
+    'why. Add it to the map or name it in the header — a command that is in neither is one ' +
+    'the paragraph claiming to account for all of them silently missed.',
   );
 });

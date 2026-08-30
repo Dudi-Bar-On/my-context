@@ -44,10 +44,14 @@ import { SUBCOMMANDS as PACK_SUBCOMMANDS } from '../../src/cli/commands/pack.ts'
 import { SUBCOMMANDS as PROCEDURE_SUBCOMMANDS } from '../../src/cli/commands/procedure.ts';
 import { SUBCOMMANDS as REVIEW_SUBCOMMANDS } from '../../src/cli/commands/review.ts';
 import { SUBCOMMANDS as SESSION_SUBCOMMANDS } from '../../src/cli/commands/session.ts';
+import { SUBCOMMANDS as STATUSLINE_SUBCOMMANDS } from '../../src/cli/commands/statusline.ts';
 import { removeTree } from './tmp.ts';
 
 /** A flag string no command accepts, used to prove the probe below can fail. */
 export const SENTINEL = '--zzz-not-a-flag-any-command-accepts';
+
+/** A positional no command has as a subcommand — see `subcommandedByParser`. */
+export const NOT_A_SUBCOMMAND = 'zzz-not-a-subcommand-any-command-has';
 
 /**
  * Commands whose argument surface the `--yes` probe cannot reach, each with the
@@ -117,8 +121,42 @@ export const UNGATED: Record<string, string> = {
 export const NOT_COUNTED = ['review discard-revision'];
 
 /**
- * The commands whose SUBCOMMAND is the mechanism, expanded from each command's
- * own exported list rather than from a second copy written here.
+ * Takes `--yes`, and is NOT on the approval boundary — with the reason.
+ *
+ * `gated` is a fact about the argument parser: these command strings accept
+ * `--yes`, and §7's flag table says so, because a reader who types the flag
+ * needs to know where it works. The BOUNDARY is a narrower claim — "changes
+ * what governs this project with no human in the loop" — and the two are not
+ * the same set. `statusline install --yes` writes `statusLine` into Claude
+ * Code's own `settings.json` and saves the command it displaced; it puts no
+ * text in front of a model, creates no item, and promotes nothing. Neither
+ * does `uninstall`, which puts the saved copy back.
+ *
+ * This record is why deriving `boundary` as "everything gated" was safe until
+ * now and is not any more: the day the probe started expanding `statusline`,
+ * "gated" and "on the boundary" stopped coinciding, and folding these two into
+ * §7's table would have put a Claude Code settings edit in the list of things
+ * that change what governs this corpus — and onto the deny list the skill
+ * reads — which is a false claim in a document whose value is that it is
+ * exact. The alternative, leaving them out of `gated` too, would have put the
+ * blind spot back where it was found.
+ *
+ * Every entry is re-verified in `approvalBoundary()`: one that stops taking
+ * `--yes` fails rather than lingering as an excuse for a command that no
+ * longer exists in that shape.
+ */
+export const OUTSIDE_BOUNDARY: Record<string, string> = {
+  'statusline install': 'writes Claude Code\'s own settings.json (the statusLine entry) and '
+    + 'saves the command it displaced. It changes nothing about what governs this project — '
+    + 'see test/cli/statusline.test.ts, which states the same ruling where the bare verb '
+    + 'refuses --yes',
+  'statusline uninstall': 'restores the saved statusLine entry in that same settings.json; '
+    + 'the other half of install, and off the boundary for the same reason',
+};
+
+/**
+ * The commands whose SUBCOMMAND is the mechanism — DERIVED from the registry
+ * and from the running parser, not listed here.
  *
  * A permission rule is matched against the command string, and `--yes` is
  * accepted per subcommand: `mycontext review --yes` and `mycontext procedure
@@ -144,18 +182,130 @@ export const NOT_COUNTED = ['review discard-revision'];
  * the same silent hole as `pack`'s wearing the opposite disguise: there, the
  * verb refused everything and looked unreachable; here it accepts a read and
  * looks answered. Expanding it means both subcommands are probed by name.
+ *
+ * `statusline` is the fifth, and it is the one that proves this table could
+ * not stay a LIST. The four above were written down on the day four commands
+ * had subcommands; `statusline install --yes` and `statusline uninstall --yes`
+ * shipped afterwards, the list did not grow, and so the probe asked about the
+ * bare verb — which refuses `--yes` — and answered "not gated" for a command
+ * string that takes it. Nothing was wrong by this module's own contract, which
+ * is the whole defect: a checker whose entire job is to enumerate the approval
+ * boundary had a blind spot with no failing test in it, because the thing it
+ * could not see was the thing it was never told to look at. So the set below
+ * is asked for rather than remembered, twice over.
+ *
+ * ── HOW THE SET IS DERIVED, AND WHY IT TAKES TWO QUESTIONS ─────────────────
+ *
+ * 1. **What each command ADVERTISES**, read off the registry: a `usage` line
+ *    whose first token after the command name is an alternation of bare words
+ *    — `pack [import|list] [<path>]` — is a command dispatched by subcommand,
+ *    and the alternation names them. Three of the five build that line from
+ *    their own `SUBCOMMANDS` constant already, so for them this is the
+ *    executable list read through one indirection.
+ * 2. **What each command DISPATCHES**, asked of the running parser: every
+ *    registered command is handed a bogus subcommand and the sentinel flag on
+ *    one command line, and the ones that answer with a subcommand refusal are
+ *    the subcommanded ones. The sentinel is what makes that safe to run
+ *    against every command in the registry rather than a chosen few — a
+ *    command that is NOT subcommanded refuses the unknown flag and does no
+ *    work, which is why `mycontext ui zzz --sentinel` prints a refusal instead
+ *    of starting a web server.
+ *
+ * Neither question alone is enough, and they fail differently. (1) alone
+ * trusts a hand-written usage string: `procedure`'s and `statusline`'s are
+ * typed out, and one that lost a subcommand would silently shrink this set
+ * back into a blind spot. (2) alone can say WHICH commands are subcommanded
+ * but not what the subcommands are CALLED, and enumerating those by probing is
+ * not possible — there is nothing to enumerate over. Asserted against each
+ * other, a usage line that stops matching the dispatch is red, and so is a
+ * sixth subcommanded command arriving with nothing said about it.
+ *
+ * What is still NOT covered, stated rather than left to be discovered: a
+ * command that dispatches on a subcommand, advertises it in some other shape
+ * (`foo <sub>`), AND refuses an unknown one in words no other command uses,
+ * would be missed by both halves at once. The refusal wording is the thin
+ * part — every one of the five says "unknown … subcommand" today, and
+ * `subcommandedByParser` matches exactly that.
  */
-const SUBCOMMANDED: Record<string, readonly string[]> = {
+
+/** `[a|b|c]` — an alternation of bare words, as the first thing a usage says. */
+const SUBCOMMAND_GROUP = /^\[([a-z][\w-]*(?:\|[a-z][\w-]*)+)\]$/;
+
+/**
+ * The five commands' own exported lists, pinned against what their registry
+ * `usage` advertises.
+ *
+ * This is NOT the set — the set is derived below, and a sixth subcommanded
+ * command joins it without this record being touched. What this buys is the
+ * one thing the derivation cannot ask for: that the advertised subcommand
+ * NAMES are the ones the command dispatches on. `subcommandedFromUsage`
+ * requires the keys here to be exactly the derived set, so a new member cannot
+ * arrive un-pinned; it has to export its list and be named here, with the
+ * failure saying so.
+ */
+const DECLARED_SUBCOMMANDS: Record<string, readonly string[]> = {
   pack: PACK_SUBCOMMANDS,
   procedure: PROCEDURE_SUBCOMMANDS,
   review: REVIEW_SUBCOMMANDS,
   session: SESSION_SUBCOMMANDS,
+  statusline: STATUSLINE_SUBCOMMANDS,
 };
+
+/** Question 1: the subcommanded set as the registry's usage lines state it. */
+export function subcommandedFromUsage(): Record<string, readonly string[]> {
+  const derived: Record<string, readonly string[]> = {};
+  for (const def of COMMANDS.values()) {
+    const rest = def.usage.startsWith(def.name)
+      ? def.usage.slice(def.name.length).trim()
+      : def.usage.trim();
+    const group = SUBCOMMAND_GROUP.exec(rest.split(/\s+/)[0] ?? '');
+    if (group !== null) derived[def.name] = group[1].split('|');
+  }
+  assert.ok(
+    Object.keys(derived).length > 0,
+    'no registered command advertises subcommands. Either the registry is empty in this ' +
+    'process or SUBCOMMAND_GROUP no longer matches the usage lines — both would classify ' +
+    'every subcommand-only flag as unreachable, in silence.',
+  );
+  assert.deepEqual(
+    Object.keys(derived).sort(), Object.keys(DECLARED_SUBCOMMANDS).sort(),
+    'the set of commands whose usage advertises subcommands has changed. Export that ' +
+    'command\'s SUBCOMMANDS and name it in DECLARED_SUBCOMMANDS — the probe below reaches a ' +
+    'flag only on a command STRING it knows, so an unexpanded subcommanded command can carry ' +
+    'a `--yes` that nothing measures. That is how `statusline install --yes` went unseen.',
+  );
+  for (const [name, subs] of Object.entries(derived)) {
+    assert.deepEqual(
+      [...subs], [...DECLARED_SUBCOMMANDS[name]],
+      `${name}'s usage line advertises [${subs.join('|')}] and it dispatches on ` +
+      `[${DECLARED_SUBCOMMANDS[name].join('|')}]. A subcommand that is dispatched and not ` +
+      `advertised is one this derivation never probes.`,
+    );
+  }
+  return derived;
+}
+
+/** How all five refuse a subcommand they do not have. */
+const SUBCOMMAND_REFUSAL = /\bunknown (?:[a-z-]+ )?subcommand\b/;
+
+/**
+ * Question 2: which commands the PARSER dispatches by subcommand.
+ *
+ * Takes the probe's `run` rather than opening a second workspace, so this
+ * costs one extra invocation per registered command inside the run the
+ * derivation already pays for.
+ */
+export function subcommandedByParser(run: (argv: string[]) => string): string[] {
+  return [...COMMANDS.keys()]
+    .filter((name) => SUBCOMMAND_REFUSAL.test(run([name, NOT_A_SUBCOMMAND, SENTINEL])))
+    .sort();
+}
 
 /** Every command string a permission rule would be written against. */
 export function commandStrings(): string[] {
-  const top = [...COMMANDS.keys()].filter((name) => !Object.hasOwn(SUBCOMMANDED, name));
-  const expanded = Object.entries(SUBCOMMANDED)
+  const subcommanded = subcommandedFromUsage();
+  const top = [...COMMANDS.keys()].filter((name) => !Object.hasOwn(subcommanded, name));
+  const expanded = Object.entries(subcommanded)
     .flatMap(([name, subs]) => subs.map((sub) => `${name} ${sub}`));
   return [...top, ...expanded].sort();
 }
@@ -173,6 +323,27 @@ export function commandStrings(): string[] {
  * --yes" is satisfied by every command that refuses earlier for an unrelated
  * reason, which on the first draft of this probe classified all but one command
  * as gated.
+ *
+ * ── THE `--yes` QUESTION IS ASKED WITHOUT ANSWERING IT ─────────────────────
+ *
+ * `--yes` is passed with the SENTINEL AFTER IT, never on its own. Both flags
+ * are read by the same left-to-right walk (`unknownFlag`, cli/commands/format.ts),
+ * which reports the FIRST name it does not recognize — so a command that does
+ * not take `--yes` still names `--yes`, and one that does takes it and then
+ * refuses the sentinel. Either way the command stops at flag validation and
+ * the classification is unchanged, which was checked against the set the bare
+ * form produced before this was adopted.
+ *
+ * It matters because a bare `--yes` does not ask whether the gate exists — it
+ * ANSWERS it, and the command then does the thing. That was survivable only
+ * for as long as every gated command happened to fail on a missing positional
+ * first, and expanding `statusline` ended it: `statusline install` needs no
+ * argument, so probing it with a bare `--yes` INSTALLED the mycontext status
+ * line into the developer's own `~/.claude/settings.json` and saved the
+ * displaced command under `~/.my-context/`, on a machine where the suite was
+ * merely being run. `test/helpers/real-home-guard.ts` caught the write, which
+ * is the only reason it was not shipped. A probe whose job is to enumerate the
+ * approval boundary must not cross it.
  */
 export function gatedCommands(): Set<string> {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-boundary-'));
@@ -186,13 +357,29 @@ export function gatedCommands(): Set<string> {
     const refuses = (text: string, flag: string): boolean =>
       text.includes(`unknown flag "${flag}"`) || text.includes(`unknown option "${flag}"`);
 
+    // Question 2 of the derivation above, asked here because this is where a
+    // workspace and a `run` already exist. Both directions: a subcommanded
+    // command whose usage does not advertise its subcommands would never be
+    // expanded (the blind spot), and a command expanded on the strength of a
+    // usage line it does not honour would be probed as command strings the
+    // parser has never heard of.
+    assert.deepEqual(
+      subcommandedByParser(run), Object.keys(subcommandedFromUsage()).sort(),
+      'the commands the PARSER dispatches by subcommand and the ones whose registry usage ' +
+      'ADVERTISES subcommands are not the same set. Whichever is right, the ones only the ' +
+      'parser knows are commands this probe would never expand — and a subcommand-only ' +
+      '`--yes` on one of them is an approval-boundary flag nothing measures.',
+    );
+
     const all = commandStrings();
     const gated = new Set<string>();
     const unreachable: string[] = [];
     for (const command of all) {
       const argv = command.split(' ');
       if (!refuses(run([...argv, SENTINEL]), SENTINEL)) { unreachable.push(command); continue; }
-      if (!refuses(run([...argv, '--yes']), '--yes')) gated.add(command);
+      // `--yes` FIRST and the sentinel behind it: see the header. The command
+      // refuses one of the two and runs nothing either way.
+      if (!refuses(run([...argv, '--yes', SENTINEL]), '--yes')) gated.add(command);
     }
     assert.deepEqual(
       unreachable.sort(), Object.keys(NO_FLAG_PROBE).sort(),
@@ -246,8 +433,21 @@ export function approvalBoundary(): ApprovalBoundary {
   if (cached) return cached;
   const gated = gatedCommands();
   const aliases = NAMED_ENTRY_POINTS.map((entry) => entry.name);
+  // Re-verified rather than trusted: an entry excusing a command that no
+  // longer takes `--yes` is an excuse for something that is not there, and it
+  // would go on quietly keeping a real member out of §7 if that name were
+  // later reused.
+  const stale = Object.keys(OUTSIDE_BOUNDARY).filter((name) => !gated.has(name)).sort();
+  assert.deepEqual(
+    stale, [],
+    'a command string named in OUTSIDE_BOUNDARY no longer takes `--yes`. Drop the entry — ' +
+    'while it stands, it subtracts a name from the boundary on the strength of a reason ' +
+    'about a command line that no longer exists.',
+  );
   const boundary = [
-    ...[...gated].filter((name) => !aliases.includes(name)),
+    ...[...gated].filter(
+      (name) => !aliases.includes(name) && !Object.hasOwn(OUTSIDE_BOUNDARY, name),
+    ),
     ...Object.keys(UNGATED),
   ].sort();
   cached = {

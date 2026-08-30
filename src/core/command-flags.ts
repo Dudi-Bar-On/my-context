@@ -34,14 +34,28 @@
  *
  * ── WHAT IS HERE, AND WHAT IS DELIBERATELY NOT ─────────────────────────────
  *
- * MEASURED 2026-08-24, over the 38 commands `COMMANDS` registers:
+ * MEASURED 2026-08-24 and corrected 2026-08-30, over the **39** commands the
+ * CLI dispatches: 32 registered by `cli/commands/index.ts`'s column of
+ * side-effect imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 29 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   | 30 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
  *   |  5 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
  *   |  3 | take no flags at all — `show`, `rebuild`, `help`                   |
  *
- * Twenty of the 29 are here, and they are the ones whose spec was already a
+ * **This paragraph said 38, and 38 was neither number.** `COMMANDS` holds 32
+ * when only `cli/commands/index.ts` has been imported and 39 once `cli/index.ts`
+ * has, because seven commands — `init`, `add`, `list`, `show`, `examples`,
+ * `help`, `rebuild` — are registered in the entry module rather than in a
+ * module of their own; both READMEs say 39 and were right while this said 38.
+ * A count in a comment is exactly the hand-kept number this repository keeps
+ * finding stale, so it is no longer only a comment: `test/cli/command-flags.test.ts`
+ * derives every figure above from the registry and from this map and fails if
+ * the paragraph drifts, and it derives the INVENTORY below the same way — the
+ * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
+ * the registered set, so a command cannot arrive and be silently uncounted.
+ *
+ * **21** of the 30 are here, and they are the ones whose spec was already a
  * declarative constant over a FLAT surface — one command, one flag set. What
  * is not here is recorded rather than left to be discovered:
  *
