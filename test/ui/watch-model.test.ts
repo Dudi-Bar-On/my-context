@@ -179,6 +179,44 @@ test('/api/watch/volume: a projection nobody has built is disclosed as absent, n
   } finally { done(); }
 });
 
+/**
+ * **The strip's own sentence, held to its own words** (statusline defect 2).
+ *
+ * `strip.myctx` reads `'{tokens} of it from project knowledge'`. "OF IT" is of
+ * the context window whose fullness is drawn beside it, so the number has to be
+ * bounded the way the window is: to what survived the last compaction, and to
+ * text that reached THIS model rather than a subagent this session dispatched.
+ *
+ * Measured before the fix, on this repository's own corpus: 2,556,774 tokens
+ * beside a 1,000,000-token window at 25.1% full. This asserts the same two
+ * bounds `mycontext statusline` applies, because both surfaces now run the one
+ * implementation in `core/context-share.ts` and a reader who has both open must
+ * never see them disagree.
+ */
+test('/api/watch/context: the share is bounded to this window, not to the session’s lifetime', () => {
+  const { dir, root, done } = workspace();
+  try {
+    const inject = (op: string, tokens: number): void => {
+      recordAudit(root, {
+        kind: 'injection', op, sessionId: 's1', hook: 'SessionStart',
+        injected: [{ id: 'RULE-a', tier: 'pinned' }], tokens,
+      } as Parameters<typeof recordAudit>[1]);
+    };
+    inject('session-start', 4000);
+    inject('subagent-start', 500000);
+    recordAudit(root, { kind: 'hook', op: 'pre-compact', sessionId: 's1', hook: 'PreCompact' });
+    inject('compact-restore', 1500);
+    inject('jit', 700);
+    inject('subagent-start', 900000);
+    buildProjection(dir);
+
+    const ws = resolveWorkspace(dir);
+    const body = apiWatchContext(ws, url('/api/watch/context', 'session=s1')).body as
+      { mycontext: { tokens: number; injections: number; unrecorded: number } | null };
+    assert.deepEqual(body.mycontext, { tokens: 2200, injections: 2, unrecorded: 0 });
+  } finally { done(); }
+});
+
 test('/api/watch/volume: a projection behind its log refuses rather than answering short', () => {
   const { dir, root, done } = workspace();
   try {

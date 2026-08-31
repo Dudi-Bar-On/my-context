@@ -37,9 +37,9 @@ delete process.env.CLAUDE_CONFIG_DIR;
 
 const { runCli } = await import('../../src/cli/index.ts');
 const { recordAudit } = await import('../../src/core/audit.ts');
-const { classifyContext, readTee } = await import('../../src/core/statusline-tee.ts');
+const { classifyContext, readTee, writeTee } = await import('../../src/core/statusline-tee.ts');
 const { GLOBAL_DIR, resolveWorkspace } = await import('../../src/core/workspace.ts');
-const { myctxShare, myctxShareByRow, occupancyFromPayload, statusLineText } =
+const { myctxShare, myctxShareByRow, occupancyFromPayload, occupancyFromTee, statusLineText } =
   await import('../../src/cli/commands/statusline.ts');
 const { LEVEL_GLYPH, NO_EXTRAS, SEP } =
   await import('../../src/cli/commands/statusline-powerline.ts');
@@ -426,6 +426,180 @@ test('the SQL share and the record-by-record share give the same answer', () => 
     }
     assert.deepEqual(byRow, { tokens: 4000, injections: 5, unrecorded: 3 });
     assert.deepEqual(myctxShare(root, 's1'), byRow);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * **THE ALLEGED CROSS-SESSION LEAK, PINNED SHUT** (statusline defect 1).
+ *
+ * The report was that `mycontext statusline` prints "whichever sample was
+ * written most recently — in practice, the operator's own live session", so
+ * that every session but one is told something false about itself and the
+ * colour bands can never be seen to move. It was reproduced four times, and
+ * the reproduction varied `context_window.used_percentage`.
+ *
+ * It is NOT what the code does, and this test is the proof, run the way the
+ * defect was reported: two sessions, one workspace, interleaved, through a
+ * real process. Each is told its own number.
+ *
+ * The reproduction could not have shown otherwise. `classifyContext` derives
+ * the percentage from `current_usage`'s three token counts over
+ * `context_window_size` — §4b constraint 3, matching what Claude Code itself
+ * displays — and NEVER from `used_percentage`, the rounded integer Claude Code
+ * sends alongside it. Four payloads differing only in a field nothing reads
+ * are four identical payloads, and the one figure they all printed was the
+ * base payload's own, correctly. The next test asserts that too, because "the
+ * field is ignored" is what made a careful reading of the symptom point at the
+ * wrong module.
+ *
+ * The mutation that makes this red is the defect exactly as reported: have
+ * `readTee` answer with the newest file in `.statusline/` rather than with the
+ * named session's.
+ */
+test('two sessions in one workspace are each told their OWN context figure', () => {
+  const dir = project();
+  try {
+    const at = (sessionId: string, cacheRead: number): Record<string, unknown> => {
+      const p = payload(sessionId, dir);
+      (p.context_window as Record<string, unknown>).current_usage = {
+        input_tokens: 1000, cache_creation_input_tokens: 6000,
+        cache_read_input_tokens: cacheRead, output_tokens: 9000,
+      };
+      return p;
+    };
+    const line = (p: Record<string, unknown>): string => {
+      const result = spawnSync(process.execPath, [CLI, 'statusline'], {
+        cwd: dir, input: JSON.stringify(p), encoding: 'utf8',
+        env: { ...process.env, NO_COLOR: '1' },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout;
+    };
+
+    // 25,000 / 200,000 = 12.5%; 186,000 / 200,000 = 93.0%. Interleaved, then
+    // repeated, because the report rested on its second pass: "with the tee
+    // files definitely present, printed the same figure again for both".
+    for (const pass of [1, 2]) {
+      assert.match(line(at('sess-low', 18000)), /ctx 12\.5%/, `pass ${pass}: the low session`);
+      assert.match(line(at('sess-high', 179000)), /ctx 93\.0%/, `pass ${pass}: the high session`);
+    }
+
+    // And the band MOVES with it, which the report says can never be observed:
+    // the low session is `ok` and the high one is not.
+    assert.ok(line(at('sess-low', 18000)).includes(`${LEVEL_GLYPH.ok} ctx 12.5%`));
+    assert.ok(!line(at('sess-high', 179000)).includes(`${LEVEL_GLYPH.ok} ctx 93.0%`));
+
+    // **The read, asked directly, with the OTHER session's sample the newer of
+    // the two on disk.** The command above cannot show this on its own: it
+    // tees the session it was handed immediately before reading it back, so
+    // that session's file is always the newest one in the directory and a
+    // "newest wins" bug would be invisible to it. Here `sess-high` is written
+    // last and `sess-low` is the one asked for, which is the report's scenario
+    // exactly — two sessions open, one of them not the most recent writer.
+    const root = path.join(dir, '.my_context');
+    assert.equal(writeTee(root, at('sess-low', 18000)).written, true);
+    assert.equal(writeTee(root, at('sess-high', 179000)).written, true);
+    const low = occupancyFromTee(root, 'sess-low', Date.now());
+    const high = occupancyFromTee(root, 'sess-high', Date.now());
+    assert.equal(low.state, 'known');
+    assert.equal(high.state, 'known');
+    assert.equal(low.state === 'known' ? low.percent : null, 12.5,
+      'the older session is still told its own number, not the newer writer’s');
+    assert.equal(high.state === 'known' ? high.percent : null, 93);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+test('the context figure comes from `current_usage`, never from `used_percentage`', () => {
+  const dir = project();
+  try {
+    const line = (mutate: (cw: Record<string, unknown>) => void): string => {
+      const p = payload('sess-src', dir);
+      mutate(p.context_window as Record<string, unknown>);
+      const result = spawnSync(process.execPath, [CLI, 'statusline'], {
+        cwd: dir, input: JSON.stringify(p), encoding: 'utf8',
+        env: { ...process.env, NO_COLOR: '1' },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout;
+    };
+    // The reported reproduction, exactly: only `used_percentage` moves.
+    for (const pct of [22, 65, 80, 93]) {
+      assert.match(
+        line((cw) => { cw.used_percentage = pct; cw.remaining_percentage = 100 - pct; }),
+        /ctx 23\.5%/,
+        `used_percentage ${pct} changes nothing, because nothing reads it`,
+      );
+    }
+    // The field that IS read moves it.
+    assert.match(
+      line((cw) => {
+        cw.current_usage = {
+          input_tokens: 1000, cache_creation_input_tokens: 6000,
+          cache_read_input_tokens: 179000, output_tokens: 9000,
+        };
+      }),
+      /ctx 93\.0%/,
+    );
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * **DEFECT 2: a lifetime total presented as a current share.**
+ *
+ * Measured on this repository's own corpus, 2026-08-31: 2,556,774 tokens over
+ * 289 injection records and fourteen days, printed beside a 1,000,000-token
+ * window that was 25.1% full. Two bounds fix it and NEITHER alone is enough —
+ * bounding to the compaction epoch by itself still gave 1,192,523, because 83%
+ * of that epoch belonged to `subagent-start`. So both bounds are asserted here
+ * over one corpus built to separate them.
+ */
+test('the myctx share counts only THIS window: since the last compaction, and never a subagent’s', () => {
+  const dir = project();
+  const root = path.join(dir, '.my_context');
+  try {
+    const inject = (op: string, sessionId: string, tokens: number): void => {
+      recordAudit(root, {
+        kind: 'injection', op, sessionId, hook: 'SessionStart',
+        injected: [{ id: 'RULE-a', tier: 'pinned' }], tokens,
+      } as Parameters<typeof recordAudit>[1]);
+    };
+
+    // ── the epoch that was compacted away ──
+    inject('session-start', 's1', 4000);
+    inject('jit', 's1', 8000);
+    inject('subagent-start', 's1', 500000);
+    // Everything above this line is gone from the window.
+    recordAudit(root, { kind: 'hook', op: 'pre-compact', sessionId: 's1', hook: 'PreCompact' });
+    recordAudit(root, { kind: 'hook', op: 'post-compact', sessionId: 's1', hook: 'PostCompact' });
+
+    // ── the epoch the session is actually holding ──
+    inject('compact-restore', 's1', 1500);
+    inject('jit', 's1', 700);
+    // A subagent this session dispatched. The record carries THIS session's id
+    // — `INJECTION_OPS` files it that way on purpose, so that
+    // `audit --kind injection` does not under-report what models were shown —
+    // but the text went into a different model's window and never into this
+    // one.
+    inject('subagent-start', 's1', 900000);
+
+    assert.deepEqual(
+      myctxShare(root, 's1'),
+      { tokens: 2200, injections: 2, unrecorded: 0 },
+      'only compact-restore + jit, and only since the pre-compact',
+    );
+
+    // A session that has never been compacted keeps the unbounded sum, which
+    // is the right answer for it: it is still holding everything it was given.
+    // The subagent bound still applies — that one is not about time.
+    inject('session-start', 's2', 3300);
+    inject('subagent-start', 's2', 777000);
+    assert.deepEqual(myctxShare(root, 's2'), { tokens: 3300, injections: 1, unrecorded: 0 });
   } finally {
     removeTree(dir);
   }

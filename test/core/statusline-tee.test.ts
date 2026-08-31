@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { removeTree } from '../helpers/tmp.ts';
 import {
   sanitizeSessionId, statuslineDir, teePath, writeTee, readTee, classifyContext,
-  sweepStaleTeeTemps, TEE_TMP_MAX_AGE_MS,
+  classifyRateLimits, sweepStaleTeeTemps, TEE_TMP_MAX_AGE_MS,
 } from '../../src/core/statusline-tee.ts';
 
 /**
@@ -354,4 +354,64 @@ test('classifyContext: a current_usage missing its fields is UNKNOWN, not a gues
   }));
   assert.equal(sample.state, 'unknown');
   assert.equal(sample.usedTokens, null);
+});
+
+/* ── THE ACCOUNT'S TWO RATE-LIMIT WINDOWS ────────────────────────────────────
+ *
+ * EXTERNAL SCHEMA, exactly as `classifyContext` above is: `rate_limits` is
+ * Claude Code's, verified against a real captured payload on this machine
+ * (2026-08-31 — `five_hour` 16%, `seven_day` 50%). Nothing here fails when
+ * Claude Code changes it; every unrecognised shape degrades to `null`.
+ *
+ * **The direction that matters is absence.** A window nobody reported is not a
+ * window measured at 0%, and a surface drawing a fabricated zero would be
+ * making a claim about somebody's account that nothing supports — which is the
+ * mirror of the blank `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-
+ * thing-is` forbids, and just as wrong.
+ */
+test('classifyRateLimits reads both windows out of a real payload shape', () => {
+  const at = 1788209400;
+  const got = classifyRateLimits({
+    context_window: null,
+    rate_limits: {
+      five_hour: { used_percentage: 16, resets_at: at },
+      seven_day: { used_percentage: 50, resets_at: at + 144600 },
+    },
+  });
+  assert.deepEqual(got, {
+    fiveHour: { usedPercent: 16, resetsAt: at },
+    sevenDay: { usedPercent: 50, resetsAt: at + 144600 },
+  });
+});
+
+test('every shape that is not a reported percentage answers null, never zero', () => {
+  const none = { fiveHour: null, sevenDay: null };
+  assert.deepEqual(classifyRateLimits(undefined), none, 'no payload at all');
+  assert.deepEqual(classifyRateLimits({}), none, 'a payload with no rate_limits — it is optional');
+  assert.deepEqual(classifyRateLimits({ rate_limits: null }), none);
+  assert.deepEqual(classifyRateLimits({ rate_limits: 'nope' }), none);
+  assert.deepEqual(classifyRateLimits({ rate_limits: { five_hour: null } }), none,
+    'one window present and null is still two absent windows');
+  assert.deepEqual(
+    classifyRateLimits({ rate_limits: { five_hour: { used_percentage: '16', resets_at: 1 } } }),
+    none,
+    'a percentage sent as a STRING is a shape this code does not read — and 16 is not what it '
+    + 'means, because inventing a number from an unrecognised shape is how an external schema '
+    + 'change becomes a wrong figure instead of a missing one',
+  );
+});
+
+test('a window with no reset time keeps its percentage and loses only the countdown', () => {
+  assert.deepEqual(
+    classifyRateLimits({ rate_limits: { seven_day: { used_percentage: 49 } } }),
+    { fiveHour: null, sevenDay: { usedPercent: 49, resetsAt: null } },
+    'the figure is still worth drawing; the countdown is what cannot be guessed',
+  );
+});
+
+test('one window reported and the other not is exactly that, and not two of either', () => {
+  assert.deepEqual(
+    classifyRateLimits({ rate_limits: { seven_day: { used_percentage: 50, resets_at: 5 } } }),
+    { fiveHour: null, sevenDay: { usedPercent: 50, resetsAt: 5 } },
+  );
 });

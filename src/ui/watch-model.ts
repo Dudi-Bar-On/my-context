@@ -6,7 +6,10 @@ import {
 } from '../core/audit-db.ts';
 import { AuditTail } from '../core/audit-tail.ts';
 import type { TailBacklog } from '../core/audit-tail.ts';
-import { classifyContext, readTee, type ContextSample } from '../core/statusline-tee.ts';
+import {
+  classifyContext, classifyRateLimits, readTee,
+  type ContextSample, type RateLimits,
+} from '../core/statusline-tee.ts';
 // **The handover verdict is READ here, never re-derived** (`plan:walk seq:118`).
 // `checkHandoverAsk` is the one implementation of "was the ask acted on" — it
 // compares the latch's `askedAt` against the handover file's mtime — and a
@@ -15,6 +18,7 @@ import { classifyContext, readTee, type ContextSample } from '../core/statusline
 // strip renders what it is told. Only the non-writing half of that module is
 // bound here; `writeLatch`, `resetAsksForWindow` and `discloseIgnoredAsk` are
 // named as writers in `test/ui/no-writes.test.ts` and stay out of `src/ui/`.
+import { contextEpochStart, shareOf } from '../core/context-share.ts';
 import { checkHandoverAsk, type HandoverAskVerdict } from '../core/handover-ask.ts';
 // The ONE place the 98 default is applied (`core/config.ts`). The occupancy
 // bands the strip colours with are named against this number and are derived
@@ -271,16 +275,6 @@ export function apiWatchVolume(ws: Workspace, url: URL): JsonResult {
   };
 }
 
-/** The §4b numerator, shared with `mycontext statusline` in shape: recorded tokens summed, absences counted. */
-function share(records: { tokens?: number }[]): { tokens: number; injections: number; unrecorded: number } {
-  let tokens = 0;
-  let unrecorded = 0;
-  for (const r of records) {
-    if (typeof r.tokens === 'number') tokens += r.tokens;
-    else unrecorded++;
-  }
-  return { tokens, injections: records.length, unrecorded };
-}
 
 export interface WatchContextBody {
   session: string;
@@ -325,6 +319,21 @@ export interface WatchContextBody {
     /** The threshold the ask fires at, or `null` when the feature is off. */
     thresholdPercent: number | null;
   };
+  /**
+   * **The account's own two rate-limit windows** (owner ruling 2026-08-31).
+   *
+   * The same stored payload the context figure comes from already carries
+   * `rate_limits`, so this costs no new source, no new call and no new file
+   * read: `readTee` opened the file one line above and `classifyRateLimits`
+   * reads a second key out of the same object.
+   *
+   * Both windows are independently nullable and so is each `resetsAt`, and
+   * every one of those nulls means NOT REPORTED rather than zero — see
+   * `classifyRateLimits` for the three levels at which the payload can decline
+   * to say. The client draws nothing for a null; a placeholder percentage would
+   * be a claim about an account that nobody made.
+   */
+  rateLimits: RateLimits;
 }
 
 /**
@@ -353,7 +362,23 @@ export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
     context: classifyContext(tee.payload),
   };
 
-  const read = readProjection(root, (db) => share(queryProjection(db, { sessionId: session, kind: 'injection' })));
+  // **The same two bounds the terminal applies, out of the same module.**
+  // The strip's own sentence is `'{tokens} of it from project knowledge'` —
+  // "OF IT", of the context window whose fullness is drawn beside it — so an
+  // unbounded lifetime sum makes that sentence false, and it was false by
+  // 2.5x on this repository's own corpus. `contextEpochStart` bounds it to
+  // what survived the last compaction and `shareOf` drops the
+  // `subagent-start` records, which carry this session's id but were
+  // delivered into other models' windows. Neither rule is spelled here:
+  // `core/context-share.ts` owns both, and `mycontext statusline` runs the
+  // same two, so the terminal and the browser cannot disagree about one
+  // number again.
+  const read = readProjection(root, (db) => {
+    const epoch = contextEpochStart(db, session);
+    return shareOf(queryProjection(db, {
+      sessionId: session, kind: 'injection', ...(epoch === null ? {} : { since: epoch }),
+    }));
+  });
   let mycontext: { tokens: number; injections: number; unrecorded: number } | null = null;
   let mycontextError: string | null = null;
   if (!read.ok) {
@@ -382,7 +407,15 @@ export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
     // and the strip must not colour against one.
     thresholdPercent: handoverConfig === null ? null : handoverThresholdPercent(handoverConfig),
   };
-  const body: WatchContextBody = { session, sample, mycontext, mycontextError, handover };
+  // Read off the payload `readTee` already opened, beside the context window
+  // and never in place of it. `tee === null` is the no-sample state and answers
+  // two absent windows, which is what "nobody told us" looks like here.
+  const rateLimits = tee === null
+    ? { fiveHour: null, sevenDay: null }
+    : classifyRateLimits(tee.payload);
+  const body: WatchContextBody = {
+    session, sample, mycontext, mycontextError, handover, rateLimits,
+  };
   return { status: 200, body };
 }
 

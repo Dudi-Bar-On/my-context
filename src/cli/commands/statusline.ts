@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { filterSelect, openProjection, syncProjection } from '../../core/audit-db.ts';
 import { handoverThresholdPercent } from '../../core/config.ts';
 import { readOccupancy } from '../../core/context-occupancy.ts';
+import { contextEpochStart, shareOf, shareSql } from '../../core/context-share.ts';
 import { isMainEntry } from '../../core/paths.ts';
 import { classifyContext, writeTee, type ContextSample } from '../../core/statusline-tee.ts';
 import { resolveWorkspace, type Workspace } from '../../core/workspace.ts';
@@ -42,52 +43,26 @@ export interface MyctxShare {
 }
 
 /**
- * The three figures, computed IN SQLITE over `filterSelect`'s own SELECT.
- *
- * **Why an aggregate rather than `queryProjection` and a loop.** The obvious
- * version — ask for the matching records, sum them in JavaScript — was written
- * first and then measured, because this runs on Claude Code's per-message
- * path. `test/perf/statusline-latency.perf.ts` took it at **p95 71.8 ms over
- * 5,000 injection records for one session**, growing linearly, because every
- * matching record is re-serialized by `json(rec)` and parsed again in JS just
- * to read one number off it. The same question answered as an aggregate
- * returns ONE row: p95 47.0 ms at 5,000 and 16.2 ms at 1,000 on the same
- * machine, and the JS side stops being proportional to the session's history
- * at all.
- *
- * **What is single-sourced and what is not.** The FILTER is not respelled:
- * `filterSelect` (audit-db.ts) is the one implementation, exposed for exactly
- * this, and it is nested here verbatim. What this SQL does duplicate is one
- * fact about the record shape — that `tokens` may be ABSENT, and that an
- * absence is counted rather than summed as zero (`audit.ts`, the field's own
- * contract). Two spellings of a rule is how this project has repeatedly
- * shipped drift, so the two are pinned against each other by a test that runs
- * the loop and this aggregate over the same corpus and requires the same
- * answer — the shape `test/core/audit-projection.test.ts` already uses to hold
- * `filterSelect` to `filterAudit`.
- *
- * `json_type`, not `IS NOT NULL`: a JSON `null` and a missing key are both
- * "no number here", and so is a string, which is what makes this agree with
- * the loop's `typeof record.tokens === 'number'` rather than merely resemble
- * it.
- */
-function shareSql(inner: string): string {
-  return `SELECT
-      count(*) AS injections,
-      coalesce(sum(CASE WHEN ty IN ('integer', 'real') THEN t ELSE 0 END), 0) AS tokens,
-      coalesce(sum(CASE WHEN ty IN ('integer', 'real') THEN 0 ELSE 1 END), 0) AS unrecorded
-    FROM (SELECT json_type(rec, '$.tokens') AS ty, rec ->> '$.tokens' AS t FROM (${inner}))`;
-}
-
-/**
- * The §4b numerator: what mycontext put into this session, from the injection
- * records' `tokens` — the estimate frozen at injection time, never re-derived
- * from today's corpus.
+ * The §4b numerator: what mycontext put into THIS session's context window,
+ * from the injection records' `tokens` — the estimate frozen at injection
+ * time, never re-derived from today's corpus.
  *
  * Records that predate that field are COUNTED as unrecorded, not summed as
  * zero: an absent estimate is an absence, and a status line that quietly read
  * it as 0 would understate the share by exactly the amount it could not see,
  * confidently.
+ *
+ * **Two bounds, and both were measured before either was written**
+ * (`core/context-share.ts` carries the numbers and the argument). Until
+ * 2026-08-31 this summed EVERY injection record matching the session id, with
+ * no time bound and no compaction boundary: on this repository's own corpus
+ * that was 2,556,774 tokens beside a 1,000,000-token window at 25.1% full — a
+ * fourteen-day lifetime counter printed next to a percentage of the window as
+ * though the two were commensurable. Bounding it to the current compaction
+ * epoch alone still gave 1,192,523, because 83% of that belongs to
+ * `subagent-start` records, which carry the PARENT session's id and were
+ * delivered into ninety-nine other models' windows. Both bounds live in
+ * `context-share.ts` and neither is spelled here.
  *
  * The projection is synced first and this THROWS when it cannot answer, so the
  * caller can print "unavailable" rather than a number that is quietly behind
@@ -97,7 +72,14 @@ export function myctxShare(projectRoot: string, sessionId: string): MyctxShare {
   const db = openProjection(projectRoot);
   try {
     syncProjection(projectRoot, db);
-    const { sql, params } = filterSelect({ sessionId, kind: 'injection' });
+    // `null` — never compacted — becomes NO `since` at all rather than a
+    // sentinel date: a session that has held everything ever injected into it
+    // is correctly answered by an unbounded sum, and inventing an epoch start
+    // for it would be a bound nobody measured.
+    const epoch = contextEpochStart(db, sessionId);
+    const { sql, params } = filterSelect({
+      sessionId, kind: 'injection', ...(epoch === null ? {} : { since: epoch }),
+    });
     const row = db.prepare(shareSql(sql)).get(...params) as {
       injections: number; tokens: number; unrecorded: number;
     };
@@ -115,20 +97,11 @@ export function myctxShare(projectRoot: string, sessionId: string): MyctxShare {
  * The loop the aggregate above replaced, kept so the two can be held to the
  * same answer over a real corpus rather than by reading the SQL.
  *
- * Exported for the test and used nowhere else, deliberately: a rule spelled
- * twice needs the second spelling to stay executable, or the pin is a comment.
+ * Re-exported from `core/context-share.ts` rather than reimplemented, so the
+ * pin in `test/cli/statusline.test.ts` keeps testing the ONE loop the UI
+ * server also runs.
  */
-export function myctxShareByRow(
-  records: { tokens?: unknown }[],
-): MyctxShare {
-  let tokens = 0;
-  let unrecorded = 0;
-  for (const record of records) {
-    if (typeof record.tokens === 'number') tokens += record.tokens;
-    else unrecorded++;
-  }
-  return { tokens, injections: records.length, unrecorded };
-}
+export const myctxShareByRow = shareOf;
 
 /**
  * `readOccupancy`'s answer, for a session this bridge holds the payload of.

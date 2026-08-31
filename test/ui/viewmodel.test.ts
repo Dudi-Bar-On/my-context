@@ -116,6 +116,13 @@ interface ViewModelModule {
   contextStrip: (body: unknown, isCold: boolean) => Strip;
   /** `plan:walk seq:117` — the two boundaries, derived from a threshold. */
   occupancyBands: (threshold: unknown) => { warn: number; crit: number } | null;
+  fillLevel: (pct: unknown, ageMs?: unknown) => string | null;
+  CONTEXT_FILL_WARN_PERCENT: number;
+  CONTEXT_FILL_CRIT_PERCENT: number;
+  rateWindows: (body: unknown) => {
+    fiveHour: { usedPercent: number; resetsAt: number | null } | null;
+    sevenDay: { usedPercent: number; resetsAt: number | null } | null;
+  };
   /** `plan:walk seq:117` — which band a live figure falls in, or `'stale'`, or nothing. */
   occupancyLevel: (pct: unknown, threshold: unknown, ageMs: unknown) => string | null;
   OCCUPANCY_WARN_FRACTION: number;
@@ -393,6 +400,82 @@ test('occupancyBands are a fraction of the threshold, not a remembered pair of n
   assert.equal(occupancyBands(null), null);
   assert.equal(occupancyBands(undefined), null);
   assert.equal(occupancyBands(Number.NaN), null);
+});
+
+/**
+ * **The ABSOLUTE fill bands, which are the half of the context figure that does
+ * NOT move** — owner ruling 2026-08-31, *"the context figure becomes TWO
+ * fields, not one."*
+ *
+ * `occupancyBands` above is derived from the configured handover threshold and
+ * moves with it. This pair does not, and that is the whole distinction: how
+ * full a window is does not become a different fact because somebody
+ * reconfigured when the handover fires. The two boundaries are declared once,
+ * exported by name, and restated by name in `src/cli/commands/statusline-
+ * powerline.ts` — `test/cli/statusline-powerline.test.ts` holds the terminal
+ * and the browser to the same answer at every boundary, which is the seam.
+ * This file holds the DECLARATION.
+ */
+test('the absolute fill bands are fixed at 60 and 85, and are exported by name', async () => {
+  const { CONTEXT_FILL_WARN_PERCENT, CONTEXT_FILL_CRIT_PERCENT } = await vm();
+  assert.equal(CONTEXT_FILL_WARN_PERCENT, 60);
+  assert.equal(CONTEXT_FILL_CRIT_PERCENT, 85);
+});
+
+test('fillLevel bands on the absolute pair, and refuses to place a fossil', async () => {
+  const {
+    fillLevel, CONTEXT_FILL_WARN_PERCENT: W, CONTEXT_FILL_CRIT_PERCENT: C,
+    CONTEXT_SAMPLE_FRESH_MS,
+  } = await vm();
+  // Derived from the constants, never written down twice: a boundary moved
+  // there moves this test with it.
+  assert.equal(fillLevel(0, 0), 'ok');
+  assert.equal(fillLevel(W - 0.1, 0), 'ok');
+  // `>=` on both boundaries, so a window sitting exactly on one is IN it.
+  assert.equal(fillLevel(W, 0), 'warn');
+  assert.equal(fillLevel(C - 0.1, 0), 'warn');
+  assert.equal(fillLevel(C, 0), 'crit');
+  assert.equal(fillLevel(100, 0), 'crit');
+
+  // NO THRESHOLD ARGUMENT, and that is the point of the split: this is the same
+  // answer at every configured threshold, because it does not take one.
+  assert.equal(fillLevel.length, 2, 'fillLevel takes a percentage and an age — never a threshold');
+
+  // A fossil is unplaced here exactly as it is for the handover proximity, so
+  // the two fields go quiet together rather than one of them staying confident.
+  assert.equal(fillLevel(91, CONTEXT_SAMPLE_FRESH_MS), 'crit');
+  assert.equal(fillLevel(91, CONTEXT_SAMPLE_FRESH_MS + 1), 'stale');
+
+  // Nothing to place is null, never a band.
+  assert.equal(fillLevel(null, 0), null);
+  assert.equal(fillLevel(Number.NaN, 0), null);
+});
+
+/**
+ * **The account's two rate-limit windows, read defensively.** The payload can
+ * decline to say at three levels — no `rateLimits` at all, one window missing,
+ * a percentage in a shape this code will not read — and every one of them is
+ * `null`, never a zero. A window nobody reported is not a window measured at
+ * 0%, and drawing one would be a claim about an account that was never made.
+ */
+test('rateWindows answers null for every shape that is not a reported percentage', async () => {
+  const { rateWindows } = await vm();
+  assert.deepEqual(rateWindows(null), { fiveHour: null, sevenDay: null });
+  assert.deepEqual(rateWindows({}), { fiveHour: null, sevenDay: null });
+  assert.deepEqual(rateWindows({ rateLimits: null }), { fiveHour: null, sevenDay: null });
+  assert.deepEqual(
+    rateWindows({ rateLimits: { fiveHour: { usedPercent: '12', resetsAt: 5 }, sevenDay: null } }),
+    { fiveHour: null, sevenDay: null },
+    'a percentage that is not a number is NOT REPORTED, and never 12',
+  );
+  assert.deepEqual(
+    rateWindows({ rateLimits: { fiveHour: { usedPercent: 16, resetsAt: null }, sevenDay: { usedPercent: 50, resetsAt: 1788354000 } } }),
+    {
+      fiveHour: { usedPercent: 16, resetsAt: null },
+      sevenDay: { usedPercent: 50, resetsAt: 1788354000 },
+    },
+    'a reported percentage with no reset time is still worth drawing',
+  );
 });
 
 test('occupancyLevel places a figure in a band, and refuses to place a fossil', async () => {
