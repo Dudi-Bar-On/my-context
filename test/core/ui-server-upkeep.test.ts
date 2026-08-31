@@ -290,7 +290,7 @@ async function failingSpawns(sb: Sandbox, spawner: FakeSpawn, attempts: number):
   return at;
 }
 
-test('three failed spawns stand the mechanism down for the session', async () => {
+test('three failed spawns stand the mechanism down while nothing is serving', async () => {
   const sb = sandbox();
   const spawner = fakeSpawn();
   // Three attempts, so three spawns have been made; the third is CONFIRMED
@@ -306,9 +306,11 @@ test('three failed spawns stand the mechanism down for the session', async () =>
   assert.equal(spawner.calls.length, MAX_CONSECUTIVE_SPAWN_FAILURES,
     'a fourth spawn was attempted on the very turn the mechanism gave up');
 
-  // And it STAYS down. `stood-down` is reported on exactly one turn and
-  // `nothing` thereafter, which is what gives the caller exactly one turn on
-  // which it has something to disclose.
+  // And it STAYS down for as long as nothing answers — which is the condition,
+  // and since 2026-08-31 it is the whole condition: a server that turns up
+  // lifts it (see the lift tests below). `stood-down` is reported on exactly
+  // one turn and `nothing` thereafter, which is what gives the caller exactly
+  // one turn on which it has something to disclose.
   assert.deepEqual(
     await upkeepUiServer(sb.root, CONFIGURED, at + SPAWN_INTERVAL_MS + 1_000,
       { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT }),
@@ -572,4 +574,184 @@ test('the stand-down line says the port was checked, in the sentence that claims
   assert.match(line, /not answering/u,
     '"could not be started" was read once as an outage while a healthy server held the port; '
     + 'the claim has to carry the condition under which it holds, in the same sentence');
+});
+
+/* ---------------------------------------------------------------------------
+ * Standing down is not going quiet, and it is not permanent.
+ *
+ * **The owner's ruling of 2026-08-31.** Until it, the `stoodDown` guard sat
+ * ahead of the probe: a stood-down workspace stopped probing, stopped writing
+ * and stopped learning, so a server that came back was never noticed and the
+ * feature stayed off with nothing saying so. The guard now gates the SPAWN
+ * alone.
+ *
+ * Every test here asserts a DISTINCTION, the shape the rest of this file uses:
+ * a stood-down workspace that is still probing must be tellable from one that
+ * has gone quiet, and a lifted one from a workspace that never had trouble.
+ * ------------------------------------------------------------------------- */
+
+/** Stands `sb` down: three spawns, none answering, then the turn that gives up. */
+async function stoodDownAt(sb: Sandbox, spawner: FakeSpawn): Promise<number> {
+  const at = await failingSpawns(sb, spawner, MAX_CONSECUTIVE_SPAWN_FAILURES);
+  const gave = await upkeepUiServer(sb.root, CONFIGURED, at,
+    { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT });
+  assert.deepEqual(gave, { did: 'stood-down', failures: MAX_CONSECUTIVE_SPAWN_FAILURES });
+  assert.equal(stateOf(sb.root)['stoodDown'], true);
+  return at + PROBE_FLOOR_MS + 1_000;
+}
+
+test('a stood-down workspace KEEPS PROBING, and its state file keeps moving', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  let at = await stoodDownAt(sb, spawner);
+  const spawnsWhenItGaveUp = spawner.calls.length;
+
+  const clocks: unknown[] = [];
+  for (let i = 0; i < 3; i += 1) {
+    const result = await upkeepUiServer(sb.root, CONFIGURED, at,
+      { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT });
+    assert.deepEqual(result, { did: 'nothing', why: 'stood-down' });
+    clocks.push(stateOf(sb.root)['lastProbeAt']);
+    at += PROBE_FLOOR_MS + 1_000;
+  }
+
+  assert.deepEqual(clocks, [...new Set(clocks)],
+    'the state file stopped moving under a stood-down workspace — which is going quiet, not '
+    + 'standing down, and it is how a feature switches itself off with nobody able to tell');
+  assert.equal(stateOf(sb.root)['lastOutcome'], 'stood-down',
+    'a reader of the file cannot see that these probes are still running and still finding '
+    + 'nothing, which is the only thing that distinguishes a live refusal from a dead one');
+  assert.equal(spawner.calls.length, spawnsWhenItGaveUp,
+    'a stood-down workspace started a process. The probe is what was un-gated; the spawn is '
+    + 'the thing the refusal exists to prevent, and it stays prevented');
+});
+
+test('a server that answers where the RECORD says lifts the stand-down', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const at = await stoodDownAt(sb, spawner);
+
+  const close = await serverAt(sb.globalRoot);
+  try {
+    assert.deepEqual(
+      await upkeepUiServer(sb.root, CONFIGURED, at,
+        { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT }),
+      { did: 'nothing', why: 'stood-down-lifted' },
+      'the mechanism stayed stood down while a server was plainly answering — the caution was '
+      + 'never about probing, and a probe is how it finds out the situation ended');
+    const after = stateOf(sb.root);
+    assert.equal(after['stoodDown'], false);
+    assert.equal(after['consecutiveSpawnFailures'], 0);
+    assert.equal(after['lastOutcome'], 'stood-down-lifted');
+  } finally {
+    await close();
+  }
+});
+
+test('a CONFIGURED PORT that answers lifts the stand-down too', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  // The occupancy check is the second of the two proofs a server exists, and it
+  // is the one that mattered on 2026-08-31: a healthy server whose record was
+  // lost is invisible to the probe and visible only here.
+  let serving = false;
+  const deps = {
+    globalRoot: sb.globalRoot,
+    spawnFn: spawner.fn,
+    portAcceptsFn: async (): Promise<boolean> => serving,
+  };
+  const at = await failingSpawns(sb, spawner, MAX_CONSECUTIVE_SPAWN_FAILURES);
+  await upkeepUiServer(sb.root, CONFIGURED, at, deps);
+  assert.equal(stateOf(sb.root)['stoodDown'], true);
+
+  serving = true;
+  assert.deepEqual(
+    await upkeepUiServer(sb.root, CONFIGURED, at + PROBE_FLOOR_MS + 1_000, deps),
+    { did: 'nothing', why: 'stood-down-lifted' });
+  assert.equal(stateOf(sb.root)['stoodDown'], false);
+  assert.equal(stateOf(sb.root)['lastOutcome'], 'stood-down-lifted');
+});
+
+test('a lift is distinguishable from a workspace that was never stood down', async () => {
+  // Two workspaces, both looking at the SAME live server on the same turn. One
+  // has just recovered from a stand-down; the other never had trouble. Without
+  // its own outcome value both would write `alive` and a reader arriving later
+  // could not tell that one of them had failed three times an hour ago — which
+  // is a flag changing with nothing saying why, the defect `lastOutcome` was
+  // added to fix, one level down.
+  const recovered = sandbox();
+  const untroubled = sandbox();
+  const spawner = fakeSpawn();
+  const at = await stoodDownAt(recovered, spawner);
+
+  const close = await serverAt(recovered.globalRoot);
+  try {
+    await upkeepUiServer(recovered.root, CONFIGURED, at,
+      { globalRoot: recovered.globalRoot, spawnFn: spawner.fn,
+        portAcceptsFn: NOTHING_ON_THE_PORT });
+    await upkeepUiServer(untroubled.root, CONFIGURED, at,
+      { globalRoot: recovered.globalRoot, spawnFn: spawner.fn,
+        portAcceptsFn: NOTHING_ON_THE_PORT });
+  } finally {
+    await close();
+  }
+
+  assert.equal(stateOf(recovered.root)['lastOutcome'], 'stood-down-lifted');
+  assert.equal(stateOf(untroubled.root)['lastOutcome'], 'alive');
+  assert.notDeepEqual(
+    { ...stateOf(recovered.root), lastProbeAt: 0, lastSpawnAt: 0 },
+    { ...stateOf(untroubled.root), lastProbeAt: 0, lastSpawnAt: 0 },
+    'a workspace that recovered from a stand-down and one that never had trouble wrote '
+    + 'indistinguishable state — a mechanism that failed three times and then recovered has '
+    + 'something intermittent behind it, and that is worth a reader knowing');
+});
+
+test('after a lift the mechanism spawns again, so the lift is not cosmetic', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const deps = {
+    globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+  };
+  let at = await stoodDownAt(sb, spawner);
+  const spawnsWhenItGaveUp = spawner.calls.length;
+
+  const close = await serverAt(sb.globalRoot);
+  await upkeepUiServer(sb.root, CONFIGURED, at, deps);
+  await close();
+
+  // The server has gone again, and the spawn floor has elapsed. A lift that
+  // only cleared a flag would leave this workspace refusing forever.
+  at += SPAWN_INTERVAL_MS + 1_000;
+  assert.deepEqual(await upkeepUiServer(sb.root, CONFIGURED, at, deps),
+    { did: 'spawned', port: PORT });
+  assert.equal(spawner.calls.length, spawnsWhenItGaveUp + 1);
+});
+
+test('a lift does not reach for the stderr the stand-down used', async () => {
+  // `did: 'stood-down'` is the ONLY variant `stopUpkeep` discloses on, and a
+  // lift must not become a second one. A line reporting that nothing is wrong
+  // any more, on a hook that rides every assistant turn, is a smaller occasion
+  // than the refusal was — not a larger one.
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const at = await stoodDownAt(sb, spawner);
+  const close = await serverAt(sb.globalRoot);
+  try {
+    const lift = await upkeepUiServer(sb.root, CONFIGURED, at,
+      { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT });
+    assert.notEqual(lift.did, 'stood-down',
+      'the lift was returned on the one variant the caller writes to stderr on');
+  } finally {
+    await close();
+  }
+});
+
+test('the stand-down line says the refusal can end without a person', () => {
+  const line = upkeepStandDownLine(MAX_CONSECUTIVE_SPAWN_FAILURES, path.join('X', '.my_context'));
+  assert.match(line, /resume by itself/u,
+    '"will not try again on its own" is now an overstatement — the mechanism keeps checking '
+    + 'and lifts itself — and an overstatement here has a person delete a file they did not '
+    + 'need to touch');
+  assert.match(line, /ui-server-upkeep\.json/u,
+    'the file is still the way out when nothing ever turns up, and the line still has to name it');
 });

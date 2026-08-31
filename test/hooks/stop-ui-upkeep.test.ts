@@ -45,7 +45,7 @@ import { readAudit, type AuditRecord } from '../../src/core/audit.ts';
 import { readLatch } from '../../src/core/handover-ask.ts';
 import { writeTee } from '../../src/core/statusline-tee.ts';
 import {
-  MAX_CONSECUTIVE_SPAWN_FAILURES, SPAWN_INTERVAL_MS, upkeepUiServer,
+  MAX_CONSECUTIVE_SPAWN_FAILURES, PROBE_FLOOR_MS, SPAWN_INTERVAL_MS, upkeepUiServer,
   type Upkeep, type UpkeepDeps,
 } from '../../src/core/ui-server-upkeep.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
@@ -393,6 +393,40 @@ test('the stand-down is disclosed on stderr, on exactly the turn it happens', as
   assert.equal(silent, '',
     'the stand-down line repeated. Stop fires on every assistant turn, so a line that repeats ' +
     'is a paragraph in front of the user on every turn for the rest of the session');
+});
+
+test('the LIFT is silent, on the hook that would have to say it', async () => {
+  // The owner's ruling of 2026-08-31 came with a condition: a lift is not an
+  // occasion to speak. `stopUpkeep` writes to stderr on `did: 'stood-down'` and
+  // on nothing else, and the lift must not become a second one — a line saying
+  // that nothing is wrong any more, on a hook that fires every assistant turn,
+  // is a smaller occasion than the refusal was, not a larger one.
+  const sb = sandbox({ port: PORT });
+  const spawner = fakeSpawn();
+  let serving = false;
+  const deps: UpkeepDeps = {
+    globalRoot: sb.globalRoot,
+    spawnFn: spawner.fn,
+    portAcceptsFn: async (): Promise<boolean> => serving,
+  };
+
+  let at = NOW;
+  for (let i = 0; i <= MAX_CONSECUTIVE_SPAWN_FAILURES; i += 1) {
+    await upkeepUiServer(sb.root, resolveWorkspace(sb.cwd).config, at, deps);
+    at += SPAWN_INTERVAL_MS + 1_000;
+  }
+
+  serving = true;
+  const silent = await capturingStderr(async () => {
+    const result = await stopUpkeep(
+      { session_id: sb.session, cwd: sb.cwd }, deps, at + PROBE_FLOOR_MS + 1_000,
+    );
+    assert.deepEqual(result, { did: 'nothing', why: 'stood-down-lifted' },
+      'the stand-down survived a server answering on the configured port');
+  });
+  assert.equal(silent, '',
+    'the lift announced itself. The state file carries it — that is the trade this whole '
+    + 'mechanism makes, and a recovery is the last thing that needs a paragraph');
 });
 
 /* ---------------------------------------------------------------------------

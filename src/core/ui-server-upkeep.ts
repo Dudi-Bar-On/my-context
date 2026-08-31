@@ -58,18 +58,28 @@
  * `readOccupancy`'s `UnmeasurableWhy`, chosen deliberately over a log line: this
  * path rides `Stop`, so a log here is a line on every assistant turn.
  *
- * ── A STAND-DOWN IS STILL PERMANENT, AND THAT IS NOT DECIDED HERE ──────────
+ * ── A STAND-DOWN IS LEFT BY EVIDENCE, AND OTHERWISE BY A PERSON ────────────
  *
- * `stoodDown` is written `true` and never written back to `false` by anything
- * in this file. The guard for it also sits ahead of the probe, so a stood-down
- * workspace stops probing, stops writing, and stops learning — a server that
- * comes back is never noticed. The only exit is a person deleting the state
- * file, which is what `upkeepStandDownLine` tells them to do.
+ * Ruled 2026-08-31, out of the same investigation. Until that day `stoodDown`
+ * was written `true` and never written back, and its guard sat AHEAD of the
+ * probe — so a stood-down workspace stopped probing, stopped writing and
+ * stopped learning. A server that came back was never noticed, and the one
+ * sentence saying a human was needed had been spoken on a single turn's stderr
+ * in a session that was over. The feature was off and nothing said so.
  *
- * That is stated rather than changed. Whether a refusal should expire is a
- * question about how much caution the owner wants, not a defect in the reading
- * of the evidence, and the fix above removes the cause that made a permanent
- * stand-down easy to reach by accident. See the report of 2026-08-31.
+ * **The guard now gates the SPAWN alone.** A stood-down workspace keeps probing
+ * on the same 60-second floor, keeps writing its state, and lifts the
+ * stand-down the moment a server answers — `recordServerSeen` argues that at
+ * length. The caution is untouched, because the caution was never about
+ * probing: `MAX_CONSECUTIVE_SPAWN_FAILURES` is about not spawning into a
+ * situation that keeps rejecting the spawn, and a probe is how the mechanism
+ * finds out that the situation has ended. One connect per interval, no process,
+ * no stderr.
+ *
+ * What did NOT change: the threshold, both intervals, the decision to stand
+ * down at all, and the once-per-refusal disclosure. Deleting the state file
+ * still works and is still what that disclosure names, because a stand-down
+ * whose cause never resolves still needs a person.
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -127,6 +137,11 @@ export const SPAWN_INTERVAL_MS = 5 * 60_000;
  * needs a human, not another attempt. Three rather than one because a single
  * failure is indistinguishable from a race — a server mid-bind when the probe
  * ran — and three consecutive ones, five minutes apart, are not.
+ *
+ * The refusal is about SPAWNING and only about spawning. Since 2026-08-31 the
+ * probe keeps running through it and a server that answers ends it — see
+ * `recordServerSeen`. This number is unchanged by that, because nothing it
+ * argues was ever an argument for looking less often.
  */
 export const MAX_CONSECUTIVE_SPAWN_FAILURES = 3;
 
@@ -164,7 +179,9 @@ const STATE_FILE = 'ui-server-upkeep.json';
 export type Upkeep =
   | {
     did: 'nothing';
-    why: 'off' | 'disabled' | 'too-soon' | 'alive' | 'stood-down' | 'port-already-serving';
+    why:
+      | 'off' | 'disabled' | 'too-soon' | 'alive' | 'stood-down'
+      | 'port-already-serving' | 'stood-down-lifted';
   }
   | { did: 'spawned'; port: number }
   | { did: 'stood-down'; failures: number };
@@ -196,8 +213,10 @@ export type Upkeep =
  *  - `spawn-failed`        a spawn was attempted, the next probe found no
  *                          server, AND the configured port was not answering
  *                          either. This is the genuine failure.
- *  - `stood-down`          `spawn-failed` reached the threshold. Someone is
- *                          needed.
+ *  - `stood-down`          `spawn-failed` reached the threshold. No spawn will
+ *                          be attempted; the probe keeps running.
+ *  - `stood-down-lifted`   a server was SEEN while stood down, so the refusal
+ *                          ended. Written on the one call that ends it.
  *  - `too-soon`            refused by policy — the spawn floor had not elapsed.
  *
  * `off` and `disabled` are absent on purpose and their absence is not a gap:
@@ -211,6 +230,7 @@ export type UpkeepOutcome =
   | 'spawned'
   | 'spawn-failed'
   | 'stood-down'
+  | 'stood-down-lifted'
   | 'too-soon';
 
 /**
@@ -290,7 +310,8 @@ const FRESH: UpkeepState = {
  * does not record an outcome" — true, and the one answer that cannot mislead.
  */
 const OUTCOMES: readonly UpkeepOutcome[] = [
-  'alive', 'port-already-serving', 'spawned', 'spawn-failed', 'stood-down', 'too-soon',
+  'alive', 'port-already-serving', 'spawned', 'spawn-failed',
+  'stood-down', 'stood-down-lifted', 'too-soon',
 ];
 
 export function upkeepStatePath(root: string): string {
@@ -306,6 +327,14 @@ export function upkeepStatePath(root: string): string {
  * it by hand**, because the owner wanting the server is why any of this exists;
  * and **how to turn the mechanism off and how to let it try again**, because a
  * refusal that does not say how to leave it is a refusal nobody can act on.
+ *
+ * Since 2026-08-31 it must also say **that the refusal can end without them**,
+ * and that clause is not a courtesy. The mechanism keeps probing and lifts
+ * itself when a server answers, so "will not try again" — which is what this
+ * line used to say — became the kind of overstatement that has a person delete
+ * a file they did not need to touch, or else stop trusting the sentence. The
+ * accurate claim is narrower and is the one made below: it will not START one
+ * on its own.
  *
  * A fourth was added on 2026-08-31: **the condition under which the claim
  * holds**, in the same sentence as the claim. "Could not be started" was read
@@ -325,11 +354,13 @@ export function upkeepStandDownLine(failures: number, root: string): string {
   return (
     `my_context: the web UI server could not be started ${failures} times in a row — the ` +
     'configured port was not answering on any of those attempts, so nothing was already ' +
-    'serving there — and the upkeep has stood down and will not try again on its own. ' +
-    'Start it yourself with ' +
-    '`mycontext ui`, or remove `ui.port` from .my_context/config.json to turn the upkeep off ' +
+    'serving there — and the upkeep has stood down: it will not START one on its own again, ' +
+    'though it keeps checking and will resume by itself if a server turns up on that port. ' +
+    'To get one now, start it yourself with `mycontext ui`; to turn the upkeep off, remove ' +
+    '`ui.port` from .my_context/config.json ' +
     `(\`ui.enabled: false\` does the same without unsetting the port). Delete ` +
-    `${upkeepStatePath(root)} to let it try again. Nothing else about this turn changed.\n`
+    `${upkeepStatePath(root)} to make it start trying again without one. ` +
+    'Nothing else about this turn changed.\n'
   );
 }
 
@@ -441,14 +472,78 @@ function startServer(port: number, spawnFn: typeof spawn): void {
 }
 
 /**
+ * A server was SEEN — and if the mechanism had stood down, that is the evidence
+ * that ends it.
+ *
+ * **One function for both ways of seeing one**, deliberately: `alive` (the
+ * record's server answered) and `port-already-serving` (no usable record, but
+ * the configured port answered) are two different proofs of the same fact, and
+ * two copies of the lift would be two places for the lift to drift.
+ *
+ * ── WHY A LIFT IS SAFE, WHICH IS NOT THE SAME AS SAYING IT IS HARMLESS ─────
+ *
+ * The stand-down was never caution about PROBING. It is caution about spawning
+ * into a situation that keeps rejecting the spawn — `MAX_CONSECUTIVE_SPAWN_FAILURES`
+ * argues exactly that and still does. A server that is answering is proof that
+ * the situation ended, and it is proof obtained without starting anything. So
+ * the refusal is left by EVIDENCE here, and by a person deleting the file, and
+ * by nothing else. No timer, no attempt count, no "try once more in an hour".
+ *
+ * ── SILENT, AND THAT IS THE RULE RATHER THAN AN OVERSIGHT ──────────────────
+ *
+ * Nothing is written to stderr. The stand-down disclosure is said on exactly
+ * one turn because a line that repeats every turn is a paragraph in front of
+ * the owner for the rest of the session — and a LIFT is a smaller occasion than
+ * that one, not a larger one: it reports that nothing is wrong any more.
+ * `lastOutcome` carries it instead, which is the same trade this whole field
+ * exists to make.
+ *
+ * ── WHY THE LIFT GETS ITS OWN OUTCOME, AND NOT `alive` ─────────────────────
+ *
+ * Because a flag that changes with nothing saying why is the defect this field
+ * was added to fix, one level down. Without `stood-down-lifted`, the only trace
+ * of a stand-down ending is `stoodDown` going quiet — and a reader who arrives
+ * afterwards cannot tell a workspace that recovered from one that never had
+ * trouble. Those are different histories and the difference is worth acting on:
+ * a mechanism that failed three times and then recovered is a mechanism with
+ * something intermittent behind it.
+ *
+ * What it does NOT record is WHICH proof lifted it, and that is not a gap: the
+ * very next call, one probe interval later, writes `alive` or
+ * `port-already-serving` and says so. `lastOutcome` answers "what did the last
+ * call decide"; the lift is a decision, and it is decided once.
+ */
+function recordServerSeen(
+  root: string, next: UpkeepState, seen: 'alive' | 'port-already-serving',
+): Upkeep {
+  const lifted = next.stoodDown;
+  writeState(root, {
+    ...next,
+    // The counter resets on a SUCCESSFUL PROBE, not on a successful spawn:
+    // spawning proves nothing (see `Upkeep`), and a server that came back is
+    // the only evidence that whatever was wrong is no longer wrong.
+    spawnPending: false,
+    consecutiveSpawnFailures: 0,
+    stoodDown: false,
+    lastOutcome: lifted ? 'stood-down-lifted' : seen,
+  });
+  return { did: 'nothing', why: lifted ? 'stood-down-lifted' : seen };
+}
+
+/**
  * Probe, and put the server back if it is gone.
  *
  * **The guards are ordered by cost, cheapest first**, and the order is load
  * bearing rather than tidy: `off` and `disabled` are two field reads and they
  * come before anything touches a disk, so an unconfigured workspace pays
- * nothing and — asserted in the tests — leaves nothing behind. `stood-down`
- * and the probe floor are one small state read. Only then a probe, only then
- * the occupancy check, only then the spawn floor, and only then a process.
+ * nothing and — asserted in the tests — leaves nothing behind. The probe floor
+ * is one small state read. Only then a probe, only then the occupancy check,
+ * only then the stand-down, only then the spawn floor, and only then a process.
+ *
+ * **`stood-down` is no longer among the guards at the top**, and that is the
+ * second half of the 2026-08-31 ruling. It sits below the probe and below the
+ * occupancy check, because it gates the SPAWN and nothing else: a workspace
+ * that has given up on STARTING a server must still be able to NOTICE one.
  *
  * **The occupancy check sits between the probe and the failure judgement**, and
  * that position is the 2026-08-31 fix rather than an optimisation. See the
@@ -473,21 +568,14 @@ export async function upkeepUiServer(
   if (!config.ui.enabled) return { did: 'nothing', why: 'disabled' };
 
   const state = readState(root);
-  if (state.stoodDown) return { did: 'nothing', why: 'stood-down' };
+  // NOTE: `stoodDown` is NOT read here. It gates the SPAWN, further down, and
+  // gating the probe with it was the 2026-08-31 defect — see the header.
   if (!due(state.lastProbeAt, now, PROBE_FLOOR_MS)) return { did: 'nothing', why: 'too-soon' };
 
   const liveness = await probeUiServer(deps.globalRoot);
   const next: UpkeepState = { ...state, lastProbeAt: now };
 
-  if (liveness.state === 'alive') {
-    // The counter resets on a SUCCESSFUL PROBE, not on a successful spawn:
-    // spawning proves nothing (see `Upkeep`), and a server that came back is
-    // the only evidence that whatever was wrong is no longer wrong.
-    writeState(root, {
-      ...next, spawnPending: false, consecutiveSpawnFailures: 0, lastOutcome: 'alive',
-    });
-    return { did: 'nothing', why: 'alive' };
-  }
+  if (liveness.state === 'alive') return recordServerSeen(root, next, 'alive');
 
   // ── IS THE CONFIGURED PORT ALREADY SERVING? ────────────────────────────────
   //
@@ -514,18 +602,28 @@ export async function upkeepUiServer(
   // A squatter that is not our server reaches here as well, and is answered the
   // same way on purpose: the recorded outcome says the PORT is occupied, which
   // is what was measured, and never that the server is healthy, which was not.
+  //
+  // Failures are reset by `recordServerSeen`, not merely left alone. Every one
+  // of them was counted against a spawn that could not have succeeded, so
+  // keeping them would be keeping a tally of a question nobody asked.
   const accepts = deps.portAcceptsFn ?? portAccepts;
-  if (await accepts(SPAWN_HOST, port)) {
-    // Failures are reset, not merely left alone. Every one of them was counted
-    // against a spawn that could not have succeeded, so keeping them would be
-    // keeping a tally of a question nobody asked.
-    writeState(root, {
-      ...next,
-      spawnPending: false,
-      consecutiveSpawnFailures: 0,
-      lastOutcome: 'port-already-serving',
-    });
-    return { did: 'nothing', why: 'port-already-serving' };
+  if (await accepts(SPAWN_HOST, port)) return recordServerSeen(root, next, 'port-already-serving');
+
+  // ── THE STAND-DOWN, WHICH GATES THE SPAWN AND NOTHING ELSE ────────────────
+  //
+  // Reached only when nothing is serving — both proofs above have failed — so
+  // this is the one place where standing down changes what happens next, and
+  // what it changes is that no process is started. The probe has already run,
+  // and its clock is about to be written, so the workspace keeps looking. That
+  // is the whole of the recovery: the next call on which a server answers goes
+  // through `recordServerSeen` above and lifts this.
+  //
+  // `did: 'nothing'` rather than `did: 'stood-down'`, unchanged: the caller
+  // discloses on the latter, and it is emitted on exactly one call — the one
+  // that gives up, below.
+  if (next.stoodDown) {
+    writeState(root, { ...next, lastOutcome: 'stood-down' });
+    return { did: 'nothing', why: 'stood-down' };
   }
 
   // A spawn is judged HERE and nowhere else. `spawn` not throwing says only
