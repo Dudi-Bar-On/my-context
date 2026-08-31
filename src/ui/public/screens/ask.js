@@ -156,8 +156,13 @@
  * `style-src 'self'` with no `'unsafe-inline'`. Every declaration the mockup
  * writes as an attribute is set through CSSOM here, with logical properties.
  */
+// `clockOf` — the At column, `09:26:05`. It used to live here and be exported
+// only because this screen's own test imported it; it now lives beside `num()`
+// with the Audit stream's copy folded into it, because both audit tables draw
+// the SAME records from the same log and were reading them through two
+// different parse guards. `parts.js` carries the guard and the argument.
 import {
-  BOUND_CAP_TABLE, boundedList, el, errorNote, linkId, mono, num, screenHead, spaced,
+  BOUND_CAP_TABLE, boundedList, clockOf, el, errorNote, linkId, mono, num, screenHead, spaced,
 } from '/screens/parts.js';
 
 /**
@@ -475,32 +480,6 @@ export function queryPath(mode, field, operator, value, limit) {
   }
   params.set('limit', String(limitFor(mode, limit)));
   return `${base}?${params.toString()}`;
-}
-
-/**
- * A wall clock, `09:26:05` — the mockup's At column.
- *
- * **Only a real INSTANT is reduced to one.** An audit record's `at` is UTC
- * ISO-8601 by declaration; the index's `updated_at` is `2026-08-23 05:21:54`,
- * which carries no zone at all — `new Date()` reads it as LOCAL time, and
- * rendering that as a clock would shift a timestamp by the machine's offset
- * and show the result as if it had been measured. So a string that is not an
- * instant is rendered AS IT ARRIVED, which is also what `screens/watch.js`
- * does with a stamp it cannot parse.
- *
- * `en-GB` is a FORMAT choice, not a language one — the 24-hour spelling in
- * both UI languages, the same argument `parts.js`'s `num()` makes for `en-US`.
- *
- * **A second spelling of `screens/watch.js`'s `clockOf`**, which is not
- * exported and lives in a file this task does not own. Both audit tables must
- * read their At column the same way; the fix is to move it into
- * `screens/parts.js` beside `num()`, and that is in this task's report.
- */
-export function clockOf(at) {
-  const text = String(at);
-  if (!/T.*(Z|[+-]\d\d:?\d\d)$/.test(text)) return text;
-  const when = new Date(text);
-  return Number.isNaN(when.getTime()) ? text : when.toLocaleTimeString('en-GB', { hour12: false });
 }
 
 /**

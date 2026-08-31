@@ -400,26 +400,82 @@ test('constructs the corpus does not use stay out, and fall through verbatim', a
  * first draft of this test assumed otherwise and was wrong.** The alternation
  * puts code first so that a link or a bold run INSIDE backticks is not
  * re-parsed, and that holds only where both alternatives could start at the
- * same index. A regex still takes the LEFTMOST match, so `**`x`**` is a bold
- * run whose payload keeps its backticks as literal text — the monospace is
- * lost, and with it the `unicode-bidi:isolate` that `.m` carries.
+ * same index. A regex still takes the LEFTMOST match, so `**`x`**` goes to the
+ * bold branch — and until 2026-08-31 that branch set `textContent`, so the
+ * payload kept its backticks as literal text and the monospace was lost, and
+ * with it the `unicode-bidi:isolate` that `.m` carries.
  *
- * This is not hypothetical: the served `scope` topic writes exactly that
+ * That was never hypothetical: the served `scope` topic writes exactly that
  * twice, in the bullet list under *"When an empty scope means something
- * else"*. Pinned here so the cost is a fact in this task's report rather than
- * a reading of the pattern.
+ * else"*, so both occurrences are on screen the first time anyone opens
+ * Documentation.
+ *
+ * **The fix is NESTING, and this test is the pin on which of the two fixes it
+ * is.** The alternation is unchanged, so the tie-break below still resolves
+ * the same way; what changed is that an emphasis payload is parsed instead of
+ * pasted. Re-ordering the alternation would have been the other fix, and it is
+ * not free: a bold run written INSIDE a code span — which must stay literal —
+ * occurs 2,659 times across `docs/` and `reports/`, 27 times in the item
+ * corpus and 4 times in the four help topics.
+ *
+ * The `.m` this asserts is a class name, which is as far as a Node test can
+ * see. The claim that actually matters — a Hebrew reader gets an isolated,
+ * left-to-right run — is a property of the RENDERED element and is measured as
+ * one in `e2e/bidi.spec.ts` and `e2e/docs-bidi.spec.ts`.
  */
-test('a code span inside a bold run loses its monospace — leftmost match, not code-first', async () => {
+test('a code span inside a bold run keeps its .m — the payload is parsed, not pasted', async () => {
   const { nodes } = await md('**`required`** — an item must declare a glob');
   assert.deepEqual(nodes[0]!.children.map((n) => kind(n)), ['b', '#text']);
-  assert.equal(textOf(nodes[0]!.children[0]!), '`required`', 'the backticks survive as text inside the <b>');
-  assert.equal(textOf(nodes[0]!), '`required` — an item must declare a glob');
+  const bold = nodes[0]!.children[0]!;
+  assert.deepEqual(bold.children.map((n) => kind(n)), ['span.m'],
+    'the bold run holds a real monospace element, not its backticks as text');
+  assert.equal(textOf(bold), 'required', 'and the backticks are consumed, as they are anywhere else');
+  assert.equal(textOf(nodes[0]!), 'required — an item must declare a glob');
+
+  // The one this screen actually serves, both of them, verbatim from `scope.md`.
+  for (const source of ['- **`required`** — an item of that category must declare at least one glob.',
+    '- **`inert`** — an empty scope stops meaning *everywhere*']) {
+    const { nodes: served } = await md(source);
+    assert.equal(kindsOf(served).includes('span.m'), true,
+      `the served scope topic lost its monospace run: ${source}`);
+  }
+
+  // Single-asterisk emphasis is the same branch and the same guarantee.
+  const stressed = await md('*see `--flag` first*');
+  assert.deepEqual(stressed.nodes[0]!.children.map((n) => kind(n)), ['em']);
+  assert.deepEqual(stressed.nodes[0]!.children[0]!.children.map((n) => kind(n)),
+    ['#text', 'span.m', '#text']);
 
   // The tie-break itself, where both alternatives DO start at index 0: the
-  // code span takes it, and the `**` inside stays literal.
+  // code span takes it, and the `**` inside stays literal. This is what a
+  // precedence swap would have broken, and it is unchanged.
   const tied = await md('`**x**` after');
   assert.deepEqual(tied.nodes[0]!.children.map((n) => kind(n)), ['span.m', '#text']);
   assert.equal(textOf(tied.nodes[0]!.children[0]!), '**x**');
+});
+
+/**
+ * **The scanner survives being re-entered.** `INLINE` is one module-level `g`
+ * regex and the emphasis branches now recurse through it, so the outer scan's
+ * `lastIndex` is clobbered by every nested pass. Reading the match's own end
+ * instead is what keeps the rest of the line from being re-scanned from zero —
+ * which is not a subtle wrongness but a hang, and a hang in a test run reads
+ * as a machine problem rather than as this line.
+ */
+test('a nested emphasis pass does not derail the rest of the line', async () => {
+  const { nodes, refusals } = await md(
+    'first **`a`** then `b` then **`c`** and [d](#4) last');
+  assert.deepEqual(nodes[0]!.children.map((n) => kind(n)),
+    ['#text', 'b', '#text', 'span.m', '#text', 'b', '#text', 'a', '#text']);
+  assert.equal(textOf(nodes[0]!), 'first a then b then c and d last');
+  assert.deepEqual(refusals, []);
+
+  // A refusal raised from INSIDE an emphasis run still reaches the caller's
+  // list — the out-parameter is threaded through the recursion, not shadowed.
+  const refused = await md('**[go](javascript:boom)**');
+  assert.deepEqual(refused.refusals, ['url scheme']);
+  assert.deepEqual(refused.nodes[0]!.children[0]!.children.map((n) => kind(n)),
+    ['span.refusal']);
 });
 
 test('CRLF is normalised, so a Windows document keeps its paragraphs', async () => {

@@ -126,13 +126,18 @@
  * forbids, and the design of record draws no alignment class. A table renders
  * as a table, start-aligned. Reported rather than silently dropped.
  *
- * **One inline cost, because it is a defect and not a limit.** "Code spans
- * win" is a TIE-BREAK, not a priority: a regex takes the leftmost match, so
- * `**`x`**` is a bold run whose payload keeps its backticks as literal text
- * and loses `.m` — and with `.m` goes the `unicode-bidi:isolate` that makes a
- * flag or a path read correctly inside RTL prose. The served `scope` topic
- * writes exactly that twice. Kept, because it is the mockup's own pattern and
- * changing the alternation would change what a code span protects; reported.
+ * **The inline cost this header used to report is CLOSED, and it was closed by
+ * nesting rather than by re-ordering the alternation.** "Code spans win" is a
+ * TIE-BREAK, not a priority: a regex takes the leftmost match, so `**`x`**`
+ * used to be a bold run whose payload kept its backticks as literal text and
+ * lost `.m` — and with `.m` went the `unicode-bidi:isolate` that makes a flag
+ * or a path read correctly inside RTL prose. The served `scope` topic writes
+ * exactly that twice, in the bullet list under *"When an empty scope means
+ * something else"*, so both occurrences were on screen the first time anyone
+ * opened Documentation. An emphasis payload now runs through the inline pass
+ * again, so the code span inside it is a real `.m` run; the ALTERNATION is
+ * untouched, so a code span still swallows a `**` at the same index. Why that
+ * way round is measured and argued at `INLINE` below.
  *
  * **`.md` still styles an `h1` this renderer never emits, and `h4` now has a
  * rule.** The heading branch builds `h{min(level + 1, 4)}` — `#` becomes `h2`,
@@ -215,10 +220,35 @@ const SAFE_HREF = /^(https?:|#|\.\/|\/)/;
  * A regex takes the LEFTMOST match; the alternation only decides which branch
  * wins when two could start at the same index. So code first means a link or a
  * bold run written INSIDE backticks is not re-parsed — a backtick-wrapped
- * `**x**` is one `.m` run carrying its asterisks as text — and it does NOT
- * mean a code span inside a bold run survives:
- * `**`x`**` starts with `**`, so it is a `<b>` whose payload keeps its
- * backticks as text. Measured in `test/ui/docs-screen.test.ts`, both ways.
+ * `**x**` is one `.m` run carrying its asterisks as text. Measured in
+ * `test/ui/docs-screen.test.ts`, both ways.
+ *
+ * **AND THE OTHER NESTING IS A REAL NESTING, WHICH IS A DIFFERENT QUESTION
+ * FROM PRECEDENCE.** `**`x`**` starts with `**`, so leftmost gives it to the
+ * bold branch — and until 2026-08-31 that branch set `textContent`, so the
+ * payload kept its backticks as literal text and lost `.m`, and with `.m` the
+ * `unicode-bidi:isolate` that keeps a path or a `--flag` from reordering
+ * mid-sentence on the Hebrew page. `.m` is not decoration here: `styles.css`
+ * reserves it for *"Direction KNOWN ltr: identifiers, paths, globs, commands,
+ * flags"*, and `e2e/bidi.spec.ts` exists because that reordering was measured.
+ *
+ * The emphasis branches therefore RE-ENTER `inlineNodes` on their payload. The
+ * alternation is not touched, and that choice is measured rather than
+ * preferred. Swapping precedence so a code span could win from inside a bold
+ * run would change what a code span PROTECTS, and the corpus says what that
+ * costs: the inverse shape — a bold run written inside a code span, which must
+ * stay literal — occurs 2,659 times across the 137 documents under `docs/` and
+ * `reports/`, 27 times in the item corpus and 4 times in the four help topics.
+ * The swap is not free; the nesting is. Counted the same way, the shape this
+ * fixes — a code span inside an emphasis run — occurs 69 times in the help
+ * topics (7 of the 8 files), 157 times in 76 item bodies, and 1,768 times in
+ * the documents.
+ *
+ * Nesting brings the other inline branches inside an emphasis run with it, and
+ * that blast radius was counted too: a LINK inside a bold run appears 6 times
+ * in the documents and zero times in the items or the help topics, and a
+ * markdown IMAGE inside one appears zero times anywhere — so no refusal starts
+ * being drawn where a reader was previously shown plain text.
  *
  * The image alternative is what makes `![a](b)` a refusal rather than a link:
  * it starts one character earlier than the link alternative inside the same
@@ -276,6 +306,21 @@ function refusalBlock(doc, label, source) {
 }
 
 /**
+ * An emphasis run, with its payload PARSED rather than pasted in as text.
+ *
+ * This is the whole of the nesting fix: `**`--flag`**` is a `<b>` holding a
+ * real `span.m`, so the isolation survives a bold run in Hebrew prose. The
+ * recursion terminates because the payload is strictly shorter than the match
+ * that produced it — `**` and `*` are both consumed — and it cannot re-enter
+ * on the same text.
+ */
+function emphasisNode(doc, tag, payload, refusals, labelFor) {
+  const node = make(doc, tag, null, null);
+  node.append(...inlineNodes(payload, refusals, doc, labelFor));
+  return node;
+}
+
+/**
  * One line of markdown to nodes. `refusals` is an out-parameter, the mockup's
  * own arrangement: an inline refusal has to be both drawn where it happened
  * AND counted for the caller, and threading a second return value through the
@@ -286,6 +331,14 @@ function inlineNodes(text, refusals, doc, labelFor) {
   let last = 0;
   INLINE.lastIndex = 0;
   for (let m = INLINE.exec(text); m !== null; m = INLINE.exec(text)) {
+    // Where THIS match ends, read off `m` before any nested pass runs.
+    // `INLINE` is one module-level `g` regex and the emphasis branches below
+    // re-enter this function with it, which leaves the SHARED `lastIndex`
+    // wherever the inner scan stopped — zero, since an inner scan always runs
+    // to the end. Restoring it below is what lets one scanner serve a
+    // recursive parse; reading `INLINE.lastIndex` here instead would resume
+    // the outer scan from the start of the line and never terminate.
+    const end = m.index + m[0].length;
     if (m.index > last) out.push(doc.createTextNode(text.slice(last, m.index)));
     if (m[1] !== undefined) {
       // `.m` — monospace, `direction:ltr`, `unicode-bidi:isolate`. A path or a
@@ -313,11 +366,12 @@ function inlineNodes(text, refusals, doc, labelFor) {
         out.push(make(doc, 'span', 'refusal', labelFor('dv.linkRefused', { label })));
       }
     } else if (m[4] !== undefined) {
-      out.push(make(doc, 'b', null, m[4].slice(2, -2)));
+      out.push(emphasisNode(doc, 'b', m[4].slice(2, -2), refusals, labelFor));
     } else {
-      out.push(make(doc, 'em', null, m[5].slice(1, -1)));
+      out.push(emphasisNode(doc, 'em', m[5].slice(1, -1), refusals, labelFor));
     }
-    last = INLINE.lastIndex;
+    last = end;
+    INLINE.lastIndex = end;
   }
   if (last < text.length) out.push(doc.createTextNode(text.slice(last)));
   return out;

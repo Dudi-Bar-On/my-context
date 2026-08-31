@@ -93,7 +93,13 @@
  * through CSSOM here, and only with logical properties.
  */
 import { dedupeKey, describeRecord, describeStreamEvent } from '/lib/viewmodel.js';
-import { el, errorNote, linkId, mono, num, screenHead, spaced } from '/screens/parts.js';
+// `clockOf` — the mockup's `At` column, `09:26:05`. Shared with Ask's audit
+// table and with the injection preview's `When` rather than spelled a third
+// time here: this screen's own copy reformatted anything `Date` would accept,
+// Ask's refused a stamp carrying no zone, and the two audit tables therefore
+// disagreed about the same record. `parts.js` holds the guard, the two
+// precisions and the whole argument.
+import { clockOf, el, errorNote, linkId, mono, num, screenHead, spaced } from '/screens/parts.js';
 
 /** The mockup's pulse: 120 columns of ten seconds each, in a 900x34 box. */
 const PULSE_W = 900;
@@ -193,22 +199,6 @@ function sv(tag, attrs) {
  */
 function bdi(text) {
   return el('bdi', null, text);
-}
-
-/**
- * The mockup's `At` column: a wall clock, `09:26:05`.
- *
- * `en-GB` is a FORMAT choice and not a language one, the same argument
- * `parts.js`'s `num()` makes for `en-US`: it is the 24-hour spelling in both
- * UI languages, and an audit timestamp that changed shape with the interface
- * language would be a second thing to reconcile for no reader's benefit.
- *
- * A timestamp this build cannot parse is rendered AS IT ARRIVED rather than as
- * `Invalid Date` — the record's own bytes are the last true thing left.
- */
-function clockOf(at) {
-  const when = new Date(at);
-  return Number.isNaN(when.getTime()) ? String(at) : when.toLocaleTimeString('en-GB', { hour12: false });
 }
 
 function kindChip(kind) {

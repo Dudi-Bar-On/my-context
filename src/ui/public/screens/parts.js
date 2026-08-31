@@ -50,6 +50,96 @@ export function num(n) {
   return Number(n).toLocaleString('en-US');
 }
 
+/**
+ * ── ONE AUDIT INSTANT, ONE SPELLING ────────────────────────────────────────
+ *
+ * `audit.at` is drawn on three screens — the Audit stream's `At`, Ask's `At`
+ * and the injection preview's `When` — and until 2026-08-31 each screen
+ * formatted it in its own file. Two of the three were near-copies that
+ * disagreed about which strings they would reformat at all, so feeding both
+ * audit tables the same malformed record made them disagree about what a
+ * reader was looking at; the third was a considered divergence carrying a
+ * third copy of the same argument. A reader comparing the Audit stream against
+ * the Ask table against the preview's When column was comparing three
+ * renderings of one fact and could not tell whether they disagreed. The pair
+ * below is that decision, written ONCE, beside `num()` for the reason this
+ * file exists.
+ *
+ * **ABSOLUTE, never relative.** *"3 minutes ago"* reads better in a sentence
+ * and is useless everywhere this value actually goes: it cannot be compared
+ * against the same record on another screen, it cannot be pasted into a bug
+ * report or matched against a log line, and it is a different string every
+ * time the screen redraws — so two rows a reader is comparing may have been
+ * rendered against two different `now`s, and a live stream re-renders. An
+ * audit stamp is EVIDENCE, and evidence is quoted rather than narrated.
+ *
+ * **`en-GB` is a FORMAT choice and not a language one** — the same argument
+ * `num()` makes for `en-US`. It is the 24-hour, day-first spelling in both UI
+ * languages, and an audit timestamp that changed shape with the interface
+ * language would be a second thing to reconcile for no reader's benefit. It is
+ * also not a user-facing STRING: nothing here is keyed, and nothing here needs
+ * to be.
+ *
+ * **Hebrew does need its own treatment, and it is not a second format.** A
+ * stamp is digits and separators, which the bidi algorithm reads as NEUTRAL —
+ * so inside RTL prose `29/08/2026, 04:33` is two number runs with a neutral
+ * between them, and the time can be laid out to the LEFT of the date. What
+ * fixes that is the isolated run around the value, not a different calendar:
+ * every call site puts this output inside `.m` (`td.m small` on both audit
+ * tables) or an `{mv:…}` slot, which is `.m.v` — `direction:ltr;
+ * unicode-bidi:isolate`. That is a property of the RENDERED run, so it is
+ * measured as one in `e2e/bidi.spec.ts` rather than asserted about a class
+ * name in a string.
+ *
+ * **Two precisions, because the two columns answer different questions.**
+ * `clockOf` keeps SECONDS: the audit stream lands a burst of ten `ui-refused`
+ * records inside one second, and dropping the seconds would collapse that
+ * burst into ten rows stamped identically. `stampOf` drops them and adds the
+ * DATE instead: two preview rows can be weeks apart — `preview.when` says so
+ * on the screen — a bare clock draws those two identically, and a second on a
+ * weeks-old delivery is noise standing where the day should be.
+ *
+ * **ONE parse guard, and it is the stricter of the two that were here.** Only
+ * a real INSTANT is reformatted. An audit record's `at` is UTC ISO-8601 by
+ * declaration; the index's `updated_at` is `2026-08-23 05:21:54`, which
+ * carries no zone at all — `new Date()` reads that as LOCAL time, so
+ * reformatting it shifts the value by the running machine's offset and then
+ * presents the result as though it had been measured. A string that is not an
+ * instant, and a string `Date` cannot parse, are therefore both drawn AS THEY
+ * ARRIVED: the record's own bytes are the last true thing left.
+ */
+const INSTANT = /T.*(Z|[+-]\d\d:?\d\d)$/;
+
+/** The `Date` behind an `at`, or `null` when it is not an instant this may reformat. */
+function instantOf(at) {
+  const text = String(at);
+  if (!INSTANT.test(text)) return null;
+  const when = new Date(text);
+  return Number.isNaN(when.getTime()) ? null : when;
+}
+
+/** A wall clock to the SECOND, `09:26:05` — both audit tables' `At` column. */
+export function clockOf(at) {
+  const when = instantOf(at);
+  if (when === null) return String(at);
+  return when.toLocaleTimeString('en-GB', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
+}
+
+/**
+ * A wall DATE and a wall clock to the minute, `29/08/2026, 04:33` — the
+ * injection preview's `When`, where two rows can be weeks apart.
+ */
+export function stampOf(at) {
+  const when = instantOf(at);
+  if (when === null) return String(at);
+  return when.toLocaleString('en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    hour12: false,
+  });
+}
+
 /** The mockup's `style="margin-block-start:8px"`, without the attribute. */
 export function spaced(e) {
   e.style.setProperty('margin-block-start', '8px');

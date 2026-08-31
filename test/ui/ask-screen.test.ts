@@ -111,7 +111,6 @@ interface AskModule {
   limitSteps: (mode: string) => number[];
   limitFor: (mode: string, held: number | string) => number;
   atLargestLimit: (mode: string, held: number | string | undefined) => boolean;
-  clockOf: (at: string) => string;
   corpusRows: (rows: Record<string, unknown>[]) => Row[];
   auditRows: (records: Record<string, unknown>[]) => Row[];
   summaryRows: (report: string, role: string | null, rows: Record<string, unknown>[]) => Row[];
@@ -266,22 +265,14 @@ test('queryPath sends the field NAME to negate, never an operator', async () => 
 });
 
 // ── The At column ─────────────────────────────────────────────────────────
-
-test('an instant becomes a wall clock; a stamp with no zone is left exactly as it arrived', async () => {
-  const { clockOf } = await ask();
-  // A real UTC instant — an audit record's `at`, which is ISO-8601 by
-  // declaration. The rendered clock is the RUNNING MACHINE'S, so the shape is
-  // asserted rather than the digits: pinning them would pin a timezone.
-  assert.match(clockOf('2026-08-23T05:21:54.000Z'), /^\d\d:\d\d:\d\d$/);
-  assert.match(clockOf('2026-08-23T05:21:54+03:00'), /^\d\d:\d\d:\d\d$/);
-  // The index's `updated_at`, which carries no zone at all. `new Date()` would
-  // read it as LOCAL time and the clock would be off by the machine's offset —
-  // a timestamp shifted by an hour and presented as if it had been measured.
-  assert.equal(clockOf('2026-08-23 05:21:54'), '2026-08-23 05:21:54');
-  // A stamp this build cannot parse is the record's own bytes, which are the
-  // last true thing left.
-  assert.equal(clockOf('not a date'), 'not a date');
-});
+//
+// `clockOf` was exported from `screens/ask.js` only because this file imported
+// it, and it was one of THREE spellings of one audit instant — this screen's,
+// the Audit stream's, and the injection preview's. It now lives in
+// `screens/parts.js` beside `num()` and is driven by `test/ui/audit-stamp.test.ts`,
+// which also carries the argument for the guard it kept. What stays here is the
+// screen's own use of it: the `updated_at` case, asserted through a rendered
+// row further down this file.
 
 // ── The rows ──────────────────────────────────────────────────────────────
 
@@ -1183,7 +1174,9 @@ test('clicking Corpus asks the corpus endpoint, keys its field names and hangs t
     assert.equal(note.hidden, false);
 
     // `updated_at` reaches the At column exactly as the index wrote it — see
-    // `clockOf`: it carries no zone, so it is not reduced to a wall clock.
+    // `parts.js`' `clockOf`: it carries no zone, so it is not an instant and is
+    // not reduced to a wall clock. This is the screen's END of that decision;
+    // the decision itself is driven in `test/ui/audit-stamp.test.ts`.
     const at = find(root, (node) => node.className === 'm small')!;
     assert.equal(at.textContent, '2026-08-23 05:21:54');
   });

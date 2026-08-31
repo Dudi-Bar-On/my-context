@@ -159,9 +159,15 @@
  * is invisible to a key comparison and text under no `data-t` is not censused.
  */
 import { selectQuery } from '/lib/viewmodel.js';
+// `stampOf` — the When column's `29/08/2026, 04:33`. It is the DATE-carrying
+// half of the one audit-instant helper rather than a third local spelling of
+// it: a preview row's whole point is that two rows can be weeks apart, and
+// that stays a real divergence from the audit tables' bare clock — it is just
+// a divergence in PRECISION over one shared parse guard, decided once in
+// `parts.js`, instead of a third copy of the same paragraph.
 import {
   BOUND_CAP_LIST, boundedList, el, errorNote, idFull, linkId, mono, num, screenHead,
-  simRangeFor, spaced, tierChip,
+  simRangeFor, spaced, stampOf, tierChip,
 } from '/screens/parts.js';
 
 /**
@@ -279,32 +285,6 @@ const RUNG = (code) => GATES.findIndex((gate) => gate.code === code);
  *     number would be a count standing where nobody measured.
  */
 const RUNG_OPENABLE = new Set([0, 1, 2]);
-
-/**
- * **An audit instant, drawn as a wall date AND a wall time.**
- *
- * `screens/ask.js`'s `clockOf` reduces an `at` to `09:26:05`, which is right
- * for a table whose every row is from the last few minutes and wrong here: the
- * whole point of the When on a preview row is that two rows can be WEEKS apart
- * (see `preview.when`), and a bare clock would draw those two identically.
- *
- * `en-GB` is a FORMAT choice and not a language one — the 24-hour, day-first
- * spelling in both UI languages, the same argument `parts.js`'s `num()` makes
- * for `en-US` and `clockOf` makes for itself.
- *
- * A string that is not a parsable instant is drawn AS IT ARRIVED, which is what
- * both existing spellings of this do: rendering an unparsed stamp through a
- * formatter is how a value gets shifted by the machine's offset and then shown
- * as though it had been measured.
- */
-function stampOf(at) {
-  const when = new Date(String(at));
-  if (Number.isNaN(when.getTime())) return String(at);
-  return when.toLocaleString('en-GB', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-    hour12: false,
-  });
-}
 
 /**
  * `/api/injection-history`'s rows, indexed the two ways a preview row asks.
