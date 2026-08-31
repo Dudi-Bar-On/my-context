@@ -67,6 +67,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import type { RefusalCheck } from '../core/audit.ts';
+import { measureCorpusDrift } from '../core/corpus-drift.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { VERSION } from '../core/version.ts';
 import { liveWorkspace, repositoryRoot, type Workspace } from '../core/workspace.ts';
@@ -235,9 +236,38 @@ export function registerReadRoutes(): void {
   // to keep in step with this one. So the fact travels on the request that is
   // already being made, and it stays a fact rather than a payload: `ctx.code`
   // is the same value every other route sees.
+  //
+  // **It carries a second now: `corpus`** (`plan:live seq:4`, shaped by the
+  // measurement in `seq:5`). Everything this page knows about a changing corpus
+  // comes from the audit log, and a Markdown item edited in an editor or by a
+  // branch switch appends nothing to it — so the page can be looking at a
+  // corpus that has moved under it and say nothing. That is the same defect
+  // `staleCode` above exists to remove, one layer down: not "this code is old"
+  // but "this DATA is". It rides the heartbeat for the identical reason, and
+  // the reason is stronger here, because a corpus drifts while a tab sits open
+  // in a way a server's own code cannot.
+  //
+  // **`measureCorpusDrift` is a stat sweep and not a watcher, and that was
+  // measured rather than preferred.** `fs.watch` on this platform loses every
+  // named event in a burst of ~20 saved files and missed a real item edit 10
+  // times out of 10 when 60 files were rewritten around it; it also costs
+  // 96–1,121ms CPU per minute against this sweep's 6.24. See
+  // `core/corpus-drift.ts` for the numbers and what they rule out.
+  //
+  // It stays a READ — `/api/ping` is one of the routes `test/ui/no-writes.test.ts`
+  // holds to that — and it never refreshes anything. `SCREEN_INVALIDATION` and
+  // `CHROME_INVALIDATION` remain the only things that decide what a change
+  // makes stale; this hands them a fact they previously could not have.
   registerRoute('GET', '/api/ping', {
     kind: 'json',
-    handle: (ctx) => ({ status: 200, body: { ok: true, staleCode: ctx.code.isStale() } }),
+    handle: (ctx) => ({
+      status: 200,
+      body: {
+        ok: true,
+        staleCode: ctx.code.isStale(),
+        corpus: measureCorpusDrift(ctx.ws.projectRoot),
+      },
+    }),
   });
   // `git` is `null` in a workspace with no `.git` — present either way, because
   // "no repository" is a fact the strip renders rather than a field to omit.
@@ -284,6 +314,21 @@ export function registerReadRoutes(): void {
         // config every other endpoint answered from cannot disagree. See
         // `ApiContext.configError` in `routes.ts`.
         configError: ctx.configError,
+        // **The out-of-band-edit disclosure, at first paint** (`plan:live seq:4`).
+        //
+        // The same value `/api/ping` carries, from the same function, on the
+        // request the shell already makes when it fills the status strip. Both
+        // channels, for the reason `staleCode` needed both: the heartbeat is
+        // the only one that reaches a tab which has been open since the
+        // morning, and `/api/meta` is the only one that reaches a tab in its
+        // first minute — a strip that had to wait up to 60 seconds before it
+        // could say anything about the corpus would be silent over exactly the
+        // window in which a reader is deciding whether to trust the page.
+        //
+        // Present either way, and `drifted: false` is a MEASUREMENT rather than
+        // an absence — the sweep ran and found nothing newer than the log. The
+        // unmeasured case is `drifted: null` and is a different sentence.
+        corpus: measureCorpusDrift(ctx.ws.projectRoot),
       },
     }),
   });

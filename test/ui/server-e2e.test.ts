@@ -142,11 +142,25 @@ test('wrong token 403, missing header 401, bad Origin 403 — and no CORS header
     assertSecurityHeaders(good, '/api/ping');
     // By shape, not by value — see `test/ui/open.test.ts` for why `staleCode`
     // is not pinned here: this test is about headers and refusals, and the
-    // field it gained is measured against a tree the suite does not own.
-    const body = await good.json() as { ok: boolean; staleCode: boolean };
-    assert.deepEqual(Object.keys(body).sort(), ['ok', 'staleCode']);
+    // fields it gained are measured against trees the suite does not own.
+    //
+    // `corpus` is the out-of-band-edit disclosure (`plan:live seq:4`), and its
+    // value is deliberately not pinned for the same reason plus one of its own:
+    // it reports whether anything under `items/` is newer than the audit log,
+    // and this suite's fixtures are written by the suite itself moments before
+    // the request. The CONTRACT is that the field is present and can say "not
+    // known" — `test/ui/corpus-drift.test.ts` is where the three states are
+    // held apart.
+    const body = await good.json() as {
+      ok: boolean; staleCode: boolean; corpus: { drifted: boolean | null };
+    };
+    assert.deepEqual(Object.keys(body).sort(), ['corpus', 'ok', 'staleCode']);
     assert.equal(body.ok, true);
     assert.equal(typeof body.staleCode, 'boolean');
+    assert.ok(
+      body.corpus.drifted === null || typeof body.corpus.drifted === 'boolean',
+      'the heartbeat must always carry a corpus finding, even when it is "not known"',
+    );
   } finally { await h.stop(); removeTree(cwd); }
 });
 

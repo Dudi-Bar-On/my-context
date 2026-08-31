@@ -435,15 +435,23 @@ test('ui --no-open prints a URL that a real request can reach, and opens no brow
     const { token } = await handoff.json() as { token: string };
     const ping = await fetch(`${origin}/api/ping`, { headers: { 'X-Mycontext-Token': token } });
     assert.equal(ping.status, 200);
-    // `plan:live seq:12` gave the heartbeat a second field. Asserted by SHAPE
-    // rather than by value: `staleCode` is measured against the repository's
-    // own `src/` for a child started this way, so pinning it to `false` would
-    // make this test — which is about a printed URL being reachable — fail for
-    // an edit somebody else made while the suite ran.
-    const body = await ping.json() as { ok: boolean; staleCode: boolean };
-    assert.deepEqual(Object.keys(body).sort(), ['ok', 'staleCode']);
+    // `plan:live seq:12` gave the heartbeat a second field and `plan:live seq:4`
+    // a third. Asserted by SHAPE rather than by value, and the reason covers
+    // both: `staleCode` is measured against the repository's own `src/` for a
+    // child started this way, and `corpus` against the repository's own
+    // `.my_context/` — six agents work this tree, so pinning either to `false`
+    // would make this test, which is about a printed URL being reachable, fail
+    // for an edit somebody else made while the suite ran.
+    const body = await ping.json() as {
+      ok: boolean; staleCode: boolean; corpus: { drifted: boolean | null };
+    };
+    assert.deepEqual(Object.keys(body).sort(), ['corpus', 'ok', 'staleCode']);
     assert.equal(body.ok, true);
     assert.equal(typeof body.staleCode, 'boolean');
+    assert.ok(
+      body.corpus.drifted === null || typeof body.corpus.drifted === 'boolean',
+      'the heartbeat must always carry a corpus finding, even when it is "not known"',
+    );
   } finally {
     if (child !== null && child.exitCode === null && child.signalCode === null) {
       await new Promise<void>((done) => { child!.once('exit', () => done()); child!.kill(); });
