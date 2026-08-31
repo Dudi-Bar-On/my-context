@@ -595,7 +595,25 @@ body.sim-rt .gloss,body.sim-rt .gloss.float{background-image:none;box-shadow:non
   @starting-style{ [data-p]:not([hidden]){opacity:0} }
 }
 
-.phd{display:flex;flex-wrap:wrap;gap:6px var(--sp-3);align-items:baseline;margin-block-end:3px}
+/* THE TITLE ROW RESERVES ROOM FOR THE SCREEN'S LIVE AFFORDANCE, 2026-08-31.
+   Owner: "the refresh button should be move maybe to title because now it
+   overrides screen data."
+
+   The affordance used to OVERLAY the screen — same grid cell, sticky, z-index 4
+   — which was chosen to avoid a real defect: inserted into the flow above a body
+   scrolled to 300px it moved the content under the reader, and scroll anchoring
+   was right to do it. Overlaying solved that and bought a worse one, because
+   what it overlays is data.
+
+   Both failure modes have one answer: the row is ALWAYS this tall, whether or
+   not the affordance is in it. Nothing is covered, because the affordance now
+   has a place of its own; and nothing shifts when it appears or disappears,
+   because the place was always there. An affordance that appears by TAKING
+   space it did not previously hold is the 300px defect again in a new place.
+
+   37px is what it costs: `.icon` is 27px, plus 4px of block padding either side
+   of it and a 1px border. Measured off the control, not chosen. */
+.phd{display:flex;flex-wrap:wrap;gap:6px var(--sp-3);align-items:baseline;margin-block-end:3px;min-block-size:37px}
 .verdict{font-size:var(--fs-0);color:var(--dim)}
 .psub{color:var(--dim);font-size:var(--fs-1);margin:0 0 var(--sp-4);max-inline-size:78ch}
 
@@ -850,7 +868,17 @@ details.help[open]>summary{margin-block-end:6px}
    content at all — without it the group refuses and pushes the strip's tail
    off the end. */
 .strip>*{flex:0 0 auto}
-.ctxstate{flex:1 1 auto;min-inline-size:0}
+/* AND IT CLIPS, since 2026-08-31 — the same treatment `.auditstate` has had
+   since it was written, and for the same reason. The chips inside are
+   `flex:none` and cannot give way, so once the group is squeezed past them they
+   rendered OUTSIDE it: over the separator, over the audit group, and past the
+   right edge of the window. The 2026-08-31 pass put two more chips in here (the
+   absolute fill band and the gold handover marker), which is what took it from
+   theoretical to measured — 136px past the window at 900px with a full window,
+   a rate limit in band and a handover verdict all showing at once.
+   A group that clips is bounded and discloses through its titles; a group that
+   spills takes its neighbours with it. */
+.ctxstate{flex:1 1 auto;min-inline-size:0;overflow:hidden}
 /* THE ONLY TWO CLIPPING BOXES IN THE BAR, and the one place a descender can
    actually be cut: `overflow:hidden` is what makes the ellipsis work and it
    clips VERTICALLY too, so the box has to be taller than the ink and not
@@ -913,12 +941,22 @@ details.help[open]>summary{margin-block-end:6px}
    information density, the same ordering `.sgrp-audit` above is written for.
 
    With a floor, because "yields" is not "disappears", and the floor is the
-   whole group and not just its number: 220px is the label plus the count
+   whole group and not just its number: 220px was the label plus the count
    (120px, measured) plus the drift chip's own 88px. At a bare 120px floor the
    chip measured ZERO at 900px - the state gone, the reader back to not knowing
    the corpus can move under this page at all, which is the exact defect the
-   audit group's own 170px floor was written against one rule down. */
-.sgrp-corpus{flex:0 2 auto;min-inline-size:220px}
+   audit group's own floor was written against one rule down.
+
+   330px SINCE 2026-08-31, and the number is arithmetic rather than taste: the
+   group gained the two corpus doors, whose own floor is 110px (see
+   `#corpusnotes`), and the group's floor has to be at least the sum of what it
+   holds or its children OVERFLOW IT. That is not a cosmetic overflow: `.sgrp`
+   sets no `overflow`, so at 220px the doors rendered OUTSIDE the group, on top
+   of the separator and the session label beside it, and a click aimed at the
+   doctor count landed on whatever was painted over it. Measured in a browser,
+   not reasoned: a click retried five times against three different intercepting
+   elements. A floor smaller than the group's own contents is not a floor. */
+.sgrp-corpus{flex:0 2 auto;min-inline-size:345px}
 /* And the squeeze lands on the CHIP'S SENTENCE and not on the count: the count
    is a measured figure and a clipped one is a wrong one, while "corpus changed
    outside the log" ellipsises and stays legible with its full text one hover
@@ -926,6 +964,19 @@ details.help[open]>summary{margin-block-end:6px}
 .corpusstate{flex:none}
 .corpusdrift{display:flex;align-items:center;flex:0 1 auto;min-inline-size:88px;overflow:hidden}
 .corpusdrift .chip{min-inline-size:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* THE TWO DOORS KEEP A FLOOR, for the reason `.sgrp-audit` has one: a control
+   squeezed to zero is a control that is not there, and these two are the whole
+   of the owner's *"a count that is not a door is only half of it"*. At 0 they
+   are also worse than absent — the buttons keep their own width inside a
+   clipped box, so a click lands on whatever is drawn over them.
+   110px is the first door, measured: the doctor count is always readable and
+   clickable, and the review count — which is only drawn when there is something
+   in it — is what ellipsises at the narrow end. Kept as small as that on
+   purpose, because every pixel of a floor is a pixel the context figure one
+   group along does not get. */
+#corpusnotes{display:flex;align-items:center;gap:var(--sp-3);min-inline-size:110px}
+#corpusnotes .linkid{min-inline-size:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  display:inline-block}
 /* AND THE CONTEXT GROUP'S OWN CHIPS ARE NOT SENTENCES, so they do not take the
    sentence's line-height. `.ctxstate>span` is 1.9 because it is a CLIPPING BOX
    around running text and the ink needed ~4px of clearance inside it; a chip is
@@ -949,17 +1000,22 @@ details.help[open]>summary{margin-block-end:6px}
    not wrap the git chip or shave a separator. */
 /* AND IT YIELDS FIRST. Both groups shrink, but not equally: a shrink factor
    of 3 against the context group's 1 means the deficit lands on the audit
-   group — the one holding two figures this read surface has no source for —
+   group — the one holding a figure this read surface has no source for —
    before it lands on the live context measurement, which is the number this
    product is about. Owner, 2026-08-29: "other more important info could not be
    seen like the context size left filled percentage". Priority by information
    density, not by declaration order. */
-/* With a FLOOR, because "yields first" is not "disappears": at 0 the two
-   properties are gone and the reader is back to not knowing they exist, which
-   is the four-of-forty-four defect wearing a flexbox. 170px is the group
-   label plus its state chip, measured — enough that the state is always
-   readable and only the property NAMES ellipsise. */
-.sgrp-audit{flex:0 3 auto;min-inline-size:170px}
+/* With a FLOOR, because "yields first" is not "disappears": at 0 the property
+   is gone and the reader is back to not knowing it exists, which is the
+   four-of-forty-four defect wearing a flexbox.
+   170px WAS the group label plus its state chip with TWO properties in the
+   group. The 2026-08-31 ruling cut one of them — the audit append p95 and its
+   `measured` chip — so the floor was re-measured against what is left and
+   comes down to 120px: the label, the chip, and the em dash before
+   `injections today`. A floor kept at the old value is a group reserving room
+   for a property that no longer exists, and every pixel of it comes out of the
+   context figure one group along. */
+.sgrp-audit{flex:0 3 auto;min-inline-size:120px}
 .auditstate{min-inline-size:0;overflow:hidden}
 .sprop{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-inline-size:0}
 .auditstate>.m,.auditstate>.chip{flex:none}
@@ -1577,14 +1633,28 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <!-- Seven states, not one: readGitInfo can report four upstream answers and
          two head shapes, and /api/meta can fail to answer at all. A strip that
          can only say "in sync" makes a claim about the repository the reader
-         cannot check. Click to cycle, as #ctx does. -->
+         cannot check. Click to cycle, as #ctx does.
+
+         SIX STATES, NOT SEVEN, SINCE 2026-08-31 (owner ruling, the status-bar
+         strip pass). `strip.inSync` — "in sync with origin/<branch>" — was
+         REASSURANCE: it fired in the common case, held a permanent place in the
+         most expensive row this design has, and changed nothing a reader would
+         do next. The five that remain are CONDITIONS, and every one of them is
+         a thing to act on. The branch NAME and the commit stay: that is
+         identity, and it is what tells a reader which build is on screen.
+
+         So the upstream verdict now costs NOTHING in the common case and still
+         carries the whole signal, because the only state it draws is the state
+         worth drawing. `strip.differs` is the divergence flag; this reader
+         cannot count ahead/behind — that needs a revision walk and
+         `src/ui/git-info.ts` reads FILES — and inventing two numbers it did not
+         measure is the one thing worse than not showing them. -->
     <span class="sgrp sgrp-repo">
       <span class="slab" data-t="strip.grp.repo">repo</span>
-      <span class="gitstate" id="gitstate" title="Click to cycle the seven git states the spec requires"
+      <span class="gitstate" id="gitstate" title="Click to cycle the six git states the spec requires"
         data-t-title="title.gitState">
         <span data-t="strip.branch">branch <span class="m v" data-v="branch">main</span> @ <span class="m v" data-v="commit">7f3a91c</span></span>
         <span data-t="strip.detached">detached HEAD @ <span class="m v" data-v="commit">7f3a91c</span></span>
-        <span class="chip ok" data-g="●" data-t="strip.inSync">in sync with origin/<span class="m v" data-v="branch">main</span></span>
         <span class="chip warn" data-g="▲" data-t="strip.differs">differs from origin/<span class="m v" data-v="branch">main</span></span>
         <span class="chip warn" data-g="▲" data-t="strip.noUpstream">no upstream</span>
         <span class="chip warn" data-g="▲" data-t="strip.unknownTip">the local tip could not be read</span>
@@ -2064,6 +2134,14 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <button type="button" data-t="sim.rangebtn">Set range</button>
           <div class="execresult" role="status" hidden></div>
         </div>
+        <!-- MOVED HERE FROM THE STATUS STRIP, 2026-08-31. It is a control that
+             changes what this page is PRETENDING to be, which is what this
+             section is for; in the strip it was transient state a reader had
+             just set, occupying the far end of the densest row in the design.
+             Wrapped in nothing new: `label.small`, a bare `input` and a bare
+             `span` are all kinds this section already draws, so the move costs
+             the parity ledger nothing. -->
+        <label class="small"><input type="checkbox" id="sim-rt"> <span data-t="strip.rt">simulate reduced-transparency</span></label>
         <p class="small" style="margin-block-start:8px" data-t="sim.rangen">The slider explores a
           range; this sets the range. It is the <b>simulator’s own bound</b> and not a budget —
           nothing here writes <span class="m">config.json</span>. It can never fall below the budget
@@ -3016,10 +3094,27 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
        four hues to one system tone. Colour is the fast channel; the word is
        the channel that always survives.
 
-       The audit append p95 MOVED UP beside injections-today, which is the one
-       ordering change: both are read off the same log, and a bar grouped by
-       provenance cannot have one of its groups split in half by another.
-       Order within a group is untouched.
+       The audit append p95 MOVED UP beside injections-today, which was the one
+       ordering change at the time. It is GONE as of 2026-08-31 — see the audit
+       group below for the ruling — and injections-today is what that group
+       carries now.
+
+       ── THE 2026-08-31 PASS: ONLY WHAT CHANGES A DECISION ─────────────────
+       Owner: *"include only meaningful info not just to fill the place there,
+       if there are more important info, current less important could be
+       replaced."* Each field was then read against one question — would this
+       change what I do next — and three failed it: the audit append p95 and
+       its `measured` chip (a developer diagnostic with no action attached),
+       the `in sync with origin/<branch>` reassurance (true in the common case
+       and therefore free of information), and the reduced-transparency demo
+       toggle (transient state the reader had just set). Three took their
+       places: the account's two rate-limit windows, the doctor notice count
+       and the count of items awaiting a ruling — and the context figure split
+       into the two questions it had been conflating.
+
+       WHAT DID NOT MOVE: `injections today`. It is the at-a-glance proof the
+       core feature is firing at all, and it stays even though it has no source
+       on this read surface, drawn and named as unmeasured.
 
        NOT MEASURED IS A STATE, AND SO IS NOT READ. Each of the first three
        groups can now say "not read" — the endpoint did not answer — and the
@@ -3047,6 +3142,38 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <span class="chip warn" data-g="▲" data-t="strip.corpusDrifted" data-t-title="title.corpusDrifted" title="An item file under items/ is newer than the last thing the audit log recorded, so this page is drawing a corpus that has moved under it.">corpus changed outside the log — <span class="v" data-v="age">4m</span> ago</span>
         <span class="chip ok" data-g="●" data-t="strip.corpusInStep" data-t-title="title.corpusInStep" title="Nothing under items/ is newer than the last recorded change — measured, not assumed.">in step with the log</span>
         <span class="chip unmeas" data-g="◌" data-t="strip.corpusDriftUnknown" data-t-title="title.corpusDriftUnknown" title="Whether anything changed outside the log could not be measured. This is &quot;not known&quot; rather than &quot;nothing changed&quot;.">outside edits not known</span>
+      </span>
+      <!-- ── WHAT THE CORPUS IS WAITING ON, AND A DOOR TO IT (owner ruling,
+           2026-08-31). Two counts, both already in the body this group ALREADY
+           fetches: `/api/status` serves `health` and `reviewQueue` beside the
+           item count, so neither of these costs a request, a doctor sweep on
+           the heartbeat, or a millisecond this row was not already paying.
+           That was the condition the ruling attached to the first of them —
+           *"if you cannot make it cheap, do not build it"* — and the cheap path
+           turned out to be a field that was already on the wire.
+
+           A COUNT THAT IS NOT A DOOR IS HALF A COUNT, so both are buttons: the
+           owner has twice reported doctor findings discovered late, and a
+           number with no way to the list is a number you have to go looking
+           for anyway. `.linkid` is the shell's existing link-button primitive;
+           nothing new is styled for this.
+
+           THE SAME TWO NUMBERS THE RAIL BADGES DRAW, from one spelling — the
+           rail's `doctor` badge is errors + warnings and its `work` badge is
+           pending revisions + review-queue drafts. A second arithmetic here
+           would be two surfaces disagreeing about one corpus.
+
+           The review count draws ONLY when it is non-zero: an empty queue is
+           nothing to rule on and needs no row. The doctor count is drawn at
+           zero, because a measured zero is a finding
+           (STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is,
+           clause 1) — "no findings" is the answer a reader most wants and the
+           one a blank cannot give. -->
+      <span class="sprop" id="corpusnotes">
+        <button type="button" class="linkid" data-t="strip.doc" data-t-title="title.doc" title="Every doctor finding at error or warning level, counted from the same tally the rail badge draws. Opens Doctor.">
+          <span class="m v" data-v="count">12</span> doctor notices</button>
+        <button type="button" class="linkid" data-t="strip.queue" data-t-title="title.queue" title="Drafts in the project layer waiting to be promoted, plus revision proposals waiting for a verdict. Opens the review queue.">
+          <span class="m v" data-v="count">3</span> to rule on</button>
       </span>
     </span>
     <span class="sep"></span>
@@ -3082,10 +3209,57 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
              survives a dichromat, a mono printer and forced-colors. The fourth state
              is not a level at all: a sample older than fifteen minutes is drawn
              UNCOLOURED, because a fossil in confident red is worse than no colour. -->
-        <span class="chip ok" data-g="●" data-t="strip.ctxOk" data-t-title="title.ctxOk" title="This window is below 88.2%, comfortably under the 98% the handover ask fires at.">well below the handover ask</span>
-        <span class="chip warn" data-g="▲" data-t="strip.ctxWarn" data-t-title="title.ctxWarn" title="This window is at or past 88.2% and has not yet reached 98%, where the handover ask fires.">nearing the handover ask</span>
-        <span class="chip crit" data-g="■" data-t="strip.ctxCrit" data-t-title="title.ctxCrit" title="This window is at or past 98%, the threshold the handover ask fires at.">at the handover ask</span>
+        <span class="chip ok" data-g="●" data-t="strip.fillOk" data-t-title="title.fillOk" title="This window is below 60% full. The band is absolute — 60 and 85 — and is not the handover threshold.">room left</span>
+        <span class="chip warn" data-g="▲" data-t="strip.fillWarn" data-t-title="title.fillWarn" title="This window is at or past 60% full and below 85%. The band is absolute and is not the handover threshold.">filling up</span>
+        <span class="chip crit" data-g="■" data-t="strip.fillCrit" data-t-title="title.fillCrit" title="This window is at or past 85% full. The band is absolute and is not the handover threshold.">nearly full</span>
+        <!-- AND, SEPARATELY, HOW CLOSE THE HANDOVER ASK IS. Owner ruling
+             2026-08-31: two questions, two fields, two colours. The three chips
+             above say how FULL the window is, on fixed bands that never move.
+             The two below say how close the ASK is, on bands derived from the
+             configured `handoverThresholdPercent` — which is why they move when
+             that value moves and the three above do not.
+
+             The pair is the point. Red with no gold is a full window whose ask
+             has not fired; red AND gold is both. One three-step ramp could
+             never draw that difference, and that is what it was doing.
+
+             GOLD, and not a sixth hue.
+             DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn
+             assigns all five, and two full ramps would need a sixth and a
+             seventh. Gold already means "this wants your attention" here, and
+             the ask is a REQUEST rather than a severity — so it is one marker
+             at two weights, not a ramp. Below the warn band it draws NOTHING:
+             the reassurance that used to sit there is exactly what this pass
+             cut from the repo group one row up. -->
+        <span class="chip gov" data-g="◆" data-t="strip.ctxWarn" data-t-title="title.ctxWarn" title="This window is at or past 76.5% and has not yet reached 85%, where the handover ask fires.">handover near</span>
+        <span class="chip gov" data-g="◆" data-t="strip.ctxCrit" data-t-title="title.ctxCrit" title="This window is at or past 85%, the threshold the handover ask fires at."><b>handover due</b></span>
         <span class="chip unmeas" data-g="◌" data-t="strip.ctxLevelStale" data-t-title="title.ctxLevelStale" title="This reading is more than fifteen minutes old, so it is shown without a level.">too old to place</span>
+        <!-- ── THE ACCOUNT'S OWN TWO WINDOWS, 2026-08-31 (owner ruling).
+             `rate_limits.five_hour` and `rate_limits.seven_day` are in the
+             status-line payload this strip already tees to disk, verbatim, so
+             this needs no new source and no new call — `classifyRateLimits`
+             reads them at the same moment `classifyContext` reads the context
+             window, and `/api/watch/context` carries both.
+
+             The owner's seven-day window read 49% and nothing on any surface
+             said so. A percentage with no reset time is alarming rather than
+             actionable, so the countdown is half the field: `resets_at` is unix
+             SECONDS and what is drawn is the time from now to then.
+
+             BANDED BY `occupancyBands`/`occupancyLevel`, the SAME function the
+             handover proximity uses — never a second threshold set. A
+             hand-kept number that has to agree with a derived one is this
+             project's most-repeated defect. Below the warn band the chip is
+             SILENT, for the reason the gold marker above is: a limit nowhere
+             near its ceiling changes nothing a reader does next.
+
+             POSSIBLY ABSENT, and then nothing is drawn — not a placeholder.
+             `rate_limits` is optional in the payload and either window inside
+             it can be missing on its own. -->
+        <span class="small" data-t="strip.rl5">5h <span class="m v" data-v="pct">16</span>% · <span class="v" data-v="reset">2h</span></span>
+        <span class="small" data-t="strip.rl7">7d <span class="m v" data-v="pct">50</span>% · <span class="v" data-v="reset">1d</span></span>
+        <span class="chip warn" data-g="▲" data-t="strip.rlNear" data-t-title="title.rate" title="One of the account's two rate-limit windows is inside the last tenth of the way to its ceiling. The band is the same one the handover proximity uses; there is no second threshold set.">limit near</span>
+        <span class="chip crit" data-g="■" data-t="strip.rlAt" data-t-title="title.rate" title="One of the account's two rate-limit windows is at its ceiling. The band is the same one the handover proximity uses; there is no second threshold set.">limit hit</span>
         <!-- AND WHAT BECAME OF THE HANDOVER ASK (plan:walk seq:118). Every
              `pre-compact` record has carried `handoverAsk` since 2026-08-27 — a
              settled verdict, computed by `core/handover-ask.ts` against the file's
@@ -3103,25 +3277,38 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       </span>
     </span>
     <span class="sep"></span>
-    <!-- Both audit figures, together, because they are read off the same log.
-         Neither has a source in the read surface today — no endpoint exposes
-         an aggregate over the audit log — so the design of record draws them
-         NAMED AS UNMEASURED rather than dropping them, which is the treatment
-         plan:port seq:6's "a shorter TRUE bar" got wrong in one direction:
-         true, and silent about what it was not saying. -->
+    <!-- ONE audit figure since 2026-08-31, not two (owner ruling, the
+         status-bar strip pass).
+
+         `strip.append` — the audit append p95 — and the `strip.meas`
+         *measured* chip beside it are CUT. The p95 is a latency measurement of
+         the audit log's write path: a developer diagnostic with no action
+         attached, holding a permanent place in the most expensive row this
+         design has. It is not useless, it is MISPLACED; where it belongs is a
+         performance surface, and until one exists the figure lives where it
+         was always actually measured — `core/audit-db.ts`'s own benchmark
+         header, which is where the mockup's 0.55 ms came from in the first
+         place. Nothing on this bar was ever measuring it.
+
+         `injections today` STAYS, deliberately: it is the at-a-glance proof
+         that the one feature this product exists for is firing at all. It has
+         no source on the read surface either, so it is drawn NAMED AS
+         UNMEASURED rather than dropped — the treatment plan:port seq:6's "a
+         shorter TRUE bar" got wrong in one direction: true, and silent about
+         what it was not saying. -->
     <span class="sgrp sgrp-audit">
       <span class="slab" data-t="strip.grp.audit">audit</span>
-      <span class="auditstate" id="auditstate" title="Click to cycle the audit figures between measured and not measured"
+      <span class="auditstate" id="auditstate" title="Click to cycle the injections figure between measured and not measured"
         data-t-title="title.audit">
-        <span class="chip ok" data-g="●" data-t="strip.meas">measured</span>
         <span class="chip unmeas" data-g="◌" data-t="strip.unmeasured" title="This read surface exposes no aggregate over the audit log, so the figure is unknown rather than zero. Refreshing cannot help; the endpoint has to exist first." data-t-title="title.unmeasured">not measured</span>
         <span class="m v measured" id="injval" data-v="inj">128</span> <span class="sprop" data-t="strip.inj">injections today</span>
-        <span class="m v measured" id="p95val" data-v="p95">0.55 ms</span> <span class="sprop" data-t="strip.append">audit append p95</span>
       </span>
     </span>
-    <span style="margin-inline-start:auto" class="small noprint">
-      <label><input type="checkbox" id="sim-rt"> <span data-t="strip.rt">simulate reduced-transparency</span></label>
-    </span>
+    <!-- THE REDUCED-TRANSPARENCY DEMO CONTROL IS NOT HERE ANY MORE. Owner
+         ruling 2026-08-31: it is transient state a reader set moments earlier,
+         it changed nothing anyone would do next, and it held the far end of
+         this row permanently. It moved to the Simulate section, beside the
+         other controls that change what this page is pretending to be. -->
   </footer>
 
   <div class="banner" id="exited" hidden role="alert">
@@ -3243,7 +3430,7 @@ const bdi=t=>{const e=document.createElement('bdi');e.textContent=t;return e;};
    A slot is NOT free of language. Hebrew is RTL and inflects, so a slot may sit
    somewhere else in the Hebrew sentence than in the English one, and a Hebrew
    sentence that spelled a small number as a word ("שלוש") has to take the
-   numeral instead, because a slot cannot inflect. `strip.inSync` is the sharp
+   numeral instead, because a slot cannot inflect. `strip.differs` is the sharp
    case, and it is a MONOSPACE slot: English writes `origin/{mv:branch}`, but a
    bare `origin/` immediately before an isolated run resolves to the wrong
    visual order in an RTL paragraph, so the Hebrew says `{mv:branch} ב‑origin`
@@ -3257,7 +3444,7 @@ const bdi=t=>{const e=document.createElement('bdi');e.textContent=t;return e;};
    sentence that runs the other way. */
 
 /* ── KEY NAMING — settled here so the next batch does not add a THIRD ───────
-   `namespace.suffix`, and the suffix is camelCase: `strip.inSync`,
+   `namespace.suffix`, and the suffix is camelCase: `strip.noUpstream`,
    `help.whyTree`, `strip.ctx.notYetKnown`, `strip.myctxPartial`,
    `aria.tierBudget`, `title.gitState`. A namespace may nest — `strip.ctx.*`,
    `ask.predefined.*` — and every segment obeys the same rule. Three attributes
@@ -3420,11 +3607,10 @@ const HE={_dir:'rtl',_lang:'he',
  'pane.histn':'שנים‑עשר דליים שבועיים מהקרנת הביקורת, מקווקווים בשבוע שבו הפריט {b:נשפך} ואפורים בשבוע שבו לא נמסר דבר. זו התשובה הזולה ביותר לשאלה "האם הדבר הזה עדיין חי", וההיסטוריה היחידה ששייכת {i:לכל} פריט ולא למסך נפרד.',
  'pane.body':'גוף — כפי שנכתב','pane.well':'טקסט קורפוס יושב בגומחה ובתוך {m:<bdi>}.',
  'btn.copy':'העתקה','btn.copypatch':'העתקת התיקון','btn.compose':'הרכבה',
- 'strip.items':'פריטים','strip.append':'הוספת ביקורת p95','strip.meas':'נמדד',
+ 'strip.items':'פריטים',
  'strip.rt':'הדמיית שקיפות מופחתת',
  'strip.branch':'ענף {mv:branch=main} @ {mv:commit=7f3a91c}',
  'strip.detached':'HEAD מנותק @ {mv:commit=7f3a91c}',
- 'strip.inSync':'מסונכרן עם {mv:branch=main} ב‑origin',
  'strip.differs':'שונה מ‑{mv:branch=main} ב‑origin',
  'strip.noUpstream':'ללא מקור מרוחק',
  'strip.unknownTip':'לא ניתן לקרוא את הקצה המקומי',
@@ -4359,8 +4545,13 @@ $('#ctx').addEventListener('click',()=>{ci=(ci+1)%CTXSTATES.length;paintCtx();})
 /* ── strip git state: six, not one ──
    readGitInfo answers with a head shape and an upstream verdict. "differs" is
    a claim about the repository; when the local tip cannot be read there is no
-   verdict to give, and strip.unknownTip says exactly that instead of guessing. */
-const GITSTATES=[['strip.branch','strip.inSync'],
+   verdict to give, and strip.unknownTip says exactly that instead of guessing.
+
+   The FIRST state draws the branch and nothing else, and that is the common
+   case: `in-sync` used to append a reassurance chip there and the 2026-08-31
+   ruling cut it. A branch that matches its upstream now costs this row the
+   width of the branch name and no more. */
+const GITSTATES=[['strip.branch'],
                  ['strip.branch','strip.differs'],
                  ['strip.branch','strip.noUpstream'],
                  ['strip.branch','strip.unknownTip'],
@@ -4385,7 +4576,7 @@ $('#gitstate').addEventListener('click',()=>{gsi=(gsi+1)%GITSTATES.length;paintG
    product is actually in, rather than only in the state it hopes for.
 
    The VALUE spans are swapped rather than toggled, because the label beside
-   them ("items", "injections today", "audit append p95") stays on screen in
+   them ("items", "injections today") stays on screen in
    every state: the property is what the reader is owed, and hiding the whole
    segment is what made forty of forty-four invisible in the first place. */
 function stripCycle(id, states){
@@ -4414,9 +4605,8 @@ stripCycle('corpusstate', [
   { on:['strip.items','strip.unread'], vals:{ itemsval:'—' } },
 ]);
 stripCycle('auditstate', [
-  { on:['strip.inj','strip.append','strip.unmeasured'], vals:{ injval:'—', p95val:'—' } },
-  { on:['strip.inj','strip.append','strip.meas'], vals:{ injval:'128', p95val:'0.55 ms' },
-    measured:['injval','p95val'] },
+  { on:['strip.inj','strip.unmeasured'], vals:{ injval:'—' } },
+  { on:['strip.inj'], vals:{ injval:'128' }, measured:['injval'] },
 ]);
 
 let beats=0;
