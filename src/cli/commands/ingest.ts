@@ -23,6 +23,24 @@ import { flag, hasFlag, positionals, registerCommand, type Emit } from './regist
  */
 const INGEST_STATUS = COMMAND_FLAGS['ingest-status'];
 
+/**
+ * `ingest` and `ingest-apply` refuse an unknown flag as of plan:builder
+ * seq:1c, against the sets in `core/command-flags.ts`. Until then both read
+ * their flags inline where each was used and validated none of them, so
+ * `mycontext ingest-apply <id> --ancho <a> --stdin` reported the usage line
+ * for a MISSING `--anchor` while the typo it was complaining about sat in the
+ * same command line, unmentioned.
+ */
+const INGEST = COMMAND_FLAGS.ingest;
+const INGEST_APPLY = COMMAND_FLAGS['ingest-apply'];
+
+/** `ingest`'s own usage, named because the refusal prints it too. */
+const INGEST_USAGE = 'usage: mycontext ingest <path> [--anchor <anchor>]';
+
+/** `ingest-apply`'s, for the same reason — it had three call sites already. */
+const INGEST_APPLY_USAGE =
+  'usage: mycontext ingest-apply <session-id> --anchor <anchor> (--file <path> | --stdin)';
+
 /** The repo root is the parent of `.my_context`. Source paths are relative to it. */
 function repoRoot(ws: Workspace): string {
   return path.dirname(ws.projectRoot as string);
@@ -43,9 +61,14 @@ function requireWorkspace(ws: Workspace, out: Emit): boolean {
 function cmdIngest(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
 
+  // Before the positional check, not after: a command line carrying both a
+  // missing <path> and a misspelt flag has two faults, and the one the user
+  // can see in front of them is the flag.
+  if (refuseUnknownFlag(args, INGEST.allowed, INGEST.values, INGEST_USAGE, out)) return 1;
+
   const [target] = positionals(args, ['anchor']);
   if (!target) {
-    out('usage: mycontext ingest <path> [--anchor <anchor>]');
+    out(INGEST_USAGE);
     return 1;
   }
 
@@ -116,9 +139,13 @@ function cmdIngest(ws: Workspace, args: string[], out: Emit): number {
 function cmdIngestApply(ws: Workspace, args: string[], out: Emit, cwd: string): number {
   if (!requireWorkspace(ws, out)) return 1;
 
+  if (refuseUnknownFlag(args, INGEST_APPLY.allowed, INGEST_APPLY.values, INGEST_APPLY_USAGE, out)) {
+    return 1;
+  }
+
   const [id] = positionals(args, ['anchor', 'file']);
   const anchor = flag(args, 'anchor');
-  const usage = 'usage: mycontext ingest-apply <session-id> --anchor <anchor> (--file <path> | --stdin)';
+  const usage = INGEST_APPLY_USAGE;
   if (!id || !anchor) {
     out(usage);
     return 1;

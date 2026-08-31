@@ -463,18 +463,58 @@ test('lesson-accept prints the edited candidate — not the pre-edit one — bef
   });
 });
 
-test('lesson-discard treats --title\'s own value as a flag argument, not the key, like lesson-accept does', () => {
+/**
+ * **This test changed with plan:builder seq:1c, and the change is the point.**
+ *
+ * It used to assert that `mycontext lesson-discard <id> --title X <key>`
+ * SUCCEEDS: `--title` is not a flag this command has, so `positionals` was
+ * handed `lesson-accept`'s value-flag list purely so that `X` would be eaten
+ * as `--title`'s argument instead of being read as the key. That protected
+ * against the sharp failure — discarding, or claiming to discard, a candidate
+ * the caller never named — and it accepted the blunt one: the command took a
+ * flag it does not have and said nothing.
+ *
+ * seq:1c gave `lesson-discard` a parser, so the flag is now REFUSED. The
+ * original hazard is still what is being tested, and it is tested more
+ * strictly: `X` must not be read as the key, and now neither must anything
+ * else, because nothing runs at all. Both candidates are still staged
+ * afterwards, which is the half a refusal that merely printed would not give.
+ */
+test('lesson-discard refuses a flag it does not have, rather than swallowing its value', () => {
   withProject((cwd) => {
     const { lessonId, keys } = stage(cwd);
-    // No positional named "X" was staged — if lesson-discard's positional
-    // parsing consumed "--title" as an unrecognized flag but left its value
-    // "X" as a stray positional, "X" would be silently treated as the key
-    // (fails closed: "no candidate X", but silently on the wrong grounds).
-    // With the same valueFlags list lesson-accept uses, "X" is consumed as
-    // --title's argument and never reaches positional parsing at all.
     const { code, out } = run(['lesson-discard', lessonId, '--title', 'X', keys[0]], cwd);
+    assert.equal(code, 1, out);
+    assert.match(out, /unknown option "--title"/);
+    assert.match(out, /usage: mycontext lesson-discard <LESSON-id> <key>/);
+    // Neither `X` nor the real key was acted on: nothing says "discarded", and
+    // the candidate the caller did name is still there to be discarded.
+    assert.doesNotMatch(out, /discarded candidate/);
+    const after = run(['lesson-discard', lessonId, keys[0]], cwd);
+    assert.equal(after.code, 0, after.out);
+    assert.match(after.out, new RegExp(`discarded candidate ${keys[0]}`));
+  });
+});
+
+/**
+ * The four `lesson-accept` DOES have, still accepted after the refusal was
+ * added — the direction a new gate breaks. `--scope` is the one to prove
+ * twice: it is `listFlag`, so it may repeat, and a refusal walking argv with
+ * the wrong value-flag list would read the second `--scope`'s value as an
+ * unknown flag.
+ */
+test('lesson-accept still takes every flag it had, including a repeated --scope', () => {
+  withProject((cwd) => {
+    const { lessonId, keys } = stage(cwd);
+    const { code, out } = run([
+      'lesson-accept', lessonId, keys[0],
+      '--title', 'Run migrations off-peak',
+      '--scope', 'migrations/**', '--scope', 'ops/**',
+      '--severity', 'hard', '--directive', 'do',
+    ], cwd);
     assert.equal(code, 0, out);
-    assert.match(out, new RegExp(`discarded candidate ${keys[0]}`));
+    assert.doesNotMatch(out, /unknown option/);
+    assert.match(out, /my_context: created RULE-/);
   });
 });
 

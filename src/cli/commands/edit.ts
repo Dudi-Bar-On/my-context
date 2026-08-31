@@ -1,5 +1,6 @@
 import type { UpdatableName } from '../../core/categories.ts';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
+import { EDIT_FLAGS, declaredEditFlags, isEditFlag } from '../../core/edit-flags.ts';
 import { scopePolicyFor, type Config } from '../../core/config.ts';
 import { normalizePosix } from '../../core/paths.ts';
 import { updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
@@ -66,11 +67,17 @@ import {
  * `continuity` and `yes` are switches (`--always=false` unpins — see
  * `boolFlag`; `--continuity=false` takes an item off the continuity tier the
  * same way). */
-const ALLOWED = [
-  'title', 'body', 'scope', 'tags', 'severity', 'always', 'continuity', 'status', 'extra',
-  'unlink', 'yes',
-];
-const VALUE_FLAGS = ['title', 'body', 'scope', 'tags', 'severity', 'status', 'extra'];
+/**
+ * This command's own eleven, and the seven of them that take a value — moved
+ * to `core/edit-flags.ts` by plan:builder seq:2b and bound back here.
+ *
+ * `edit` is still the one command with no static entry in `COMMAND_FLAGS`, and
+ * the reason is unchanged: its ACCEPTED set is these plus whatever flags this
+ * project's categories declare, which no static record can state. What moved is
+ * the RESOLUTION — `editFlagSurface(config)` — so that a read surface can be
+ * told what this workspace accepts without importing a module that writes.
+ */
+const { allowed: ALLOWED, values: VALUE_FLAGS } = EDIT_FLAGS;
 
 const USAGE =
   `usage: mycontext edit <id> [--title "<text>"] [--body "<text>"] [--scope "a/**,b/**"]
@@ -93,62 +100,12 @@ const USAGE =
  * them, and a category added tomorrow cannot leave a refusal behind.
  * -------------------------------------------------------------------------- */
 
-/** The flag names this command spells itself, and therefore never derives. */
-const BUILT_IN = new Set(ALLOWED);
-
 /**
- * Whether a declaration says its name is typed as a flag OF THIS COMMAND.
- *
- * The declared `command` is the whole test, and that direction is deliberate:
- * `mycontext help categories` and `mycontext examples <type>` print that string
- * verbatim as the spelling a person types, so anything else would let the
- * printed instruction and the accepted argv drift — which is the defect this
- * requirement exists to close, reproduced one level down. A declaration with no
- * `command` means the generic `--extra <name>=<value>` spelling (see
- * `UpdatableName.command`), and one naming a different command — `mycontext
- * pin`, `mycontext harden` — is that command's business, not this one's.
- *
- * `store: 'field'` as well, because a `tag` is a membership: `--tags` is the
- * only thing that writes one, and a second flag writing a single tag would be
- * the remove-then-add-by-hand the ruling of 2026-08-23 refuses outright.
- *
- * Tokenised rather than matched with a regular expression built from a
- * user-supplied name: these names come out of `config.json`, and `--state` must
- * not match `--stateful` or be able to carry metacharacters into a pattern.
+ * `isEditFlag` and `declaredFlags` moved to `core/edit-flags.ts` with
+ * plan:builder seq:2b, and `declaredEditFlags` is the same function under the
+ * name it needed once it was not inside `edit`. Their reasoning moved with
+ * them; what stayed is every refusal that reads a declaration, below.
  */
-function isEditFlag(name: string, decl: UpdatableName): boolean {
-  if (decl.store !== 'field' || decl.command === undefined) return false;
-  if (!decl.command.startsWith('mycontext edit ')) return false;
-  return decl.command.split(/[\s=]+/).includes(`--${name}`);
-}
-
-/**
- * Every value flag this command accepts BEYOND the ten it spells itself, in
- * name order, unioned over the categories this project has.
- *
- * The union rather than one category's, because argv is parsed before the item
- * — and therefore its type — is known. A flag declared by SOME category is
- * accepted here and then checked against the item's OWN declaration once it is
- * loaded (`undeclaredFlagError`), which is the same two-stage shape `--severity`
- * already has: the vocabulary is checked against `SEVERITIES` up front and
- * against the category's declaration afterwards.
- *
- * Nothing in the shipped catalogue derives a flag: `title`, `body`, `scope` and
- * `status` name `mycontext edit` but are already spelled above, `severity` and
- * `always` name `harden`/`pin`, and every other declared name has no command
- * and is therefore the generic `--extra` spelling. So this is empty for a
- * project that has declared nothing of its own, and costs it one pass over the
- * catalogue.
- */
-function declaredFlags(config: Config): string[] {
-  const names = new Set<string>();
-  for (const category of Object.values(config.categories)) {
-    for (const [name, decl] of Object.entries(updatesFor(config, category.name))) {
-      if (!BUILT_IN.has(name) && isEditFlag(name, decl)) names.add(name);
-    }
-  }
-  return [...names].sort();
-}
 
 /** The usage block with the declared flags appended, so a person reads them
  * BEFORE the attempt rather than out of the refusal that follows one. */
@@ -537,7 +494,7 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
   // once and threaded through `refuseUnknownFlag`, `positionals` and every
   // usage line below, so those three cannot disagree about which token is a
   // flag's value and which is the id.
-  const declared = declaredFlags(ws.config);
+  const declared = declaredEditFlags(ws.config);
   const allowed = declared.length === 0 ? ALLOWED : [...ALLOWED, ...declared];
   const valueFlags = declared.length === 0 ? VALUE_FLAGS : [...VALUE_FLAGS, ...declared];
   const usage = usageFor(declared);

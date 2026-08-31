@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
+import { COMMAND_FLAGS } from '../core/command-flags.ts';
 import { resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
 import { renderItem } from '../core/item.ts';
 import { scopeCell } from '../core/render-item.ts';
@@ -32,7 +33,7 @@ import './commands/index.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './commands/context.ts';
 import { outcomeLines, reportOf } from './commands/pack.ts';
 import {
-  DETAIL_FLAGS, DETAIL_USAGE, col, detailLevel, emitJson, records, refuseUnknownFlag, table,
+  DETAIL_USAGE, col, detailLevel, emitJson, records, refuseUnknownFlag, table,
   unknownFlag, wantsJson,
 } from './commands/format.ts';
 import {
@@ -115,8 +116,16 @@ export function openStore(ws: Workspace): { store: Store; loaded: number; errors
 
 const INIT_USAGE = 'usage: mycontext init [--pack <path>]';
 
-/** The one flag `init` accepts, and it takes a value. */
-const INIT_VALUE_FLAGS = ['pack'];
+/**
+ * The one flag `init` accepts, and it takes a value.
+ *
+ * Lifted to `core/command-flags.ts` by plan:builder seq:1b, along with `add`'s,
+ * `list`'s and `examples`' — this module is the one `test/ui/no-writes.test.ts`
+ * bans from `src/ui/`, so a spec declared here is a spec a read surface cannot
+ * import at any price. Bound back under its old name so that
+ * `refusedInitArguments` below reads exactly as it did.
+ */
+const { values: INIT_VALUE_FLAGS } = COMMAND_FLAGS.init;
 
 /**
  * The `config.json` a bare `mycontext init` writes.
@@ -483,8 +492,16 @@ const STEP_HELP =
   'edited or ticked afterwards through any command — correcting one means editing the Markdown ' +
   'and running `mycontext repair`.';
 
-/** The value-taking flags of `mycontext add`, in the form `positionals` wants. */
-const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'step', 'scope', 'tags', 'severity', 'extra'];
+/**
+ * `mycontext add`'s flag surface, in the form `unknownFlag` and `positionals`
+ * want — lifted to `core/command-flags.ts` by plan:builder seq:1b and bound
+ * back under both of its old names, so the two call sites below are unmoved.
+ *
+ * `ADD_FLAGS = [...ADD_VALUE_FLAGS, 'yes']` is now said there rather than
+ * here, and it is still said once: `allowed` is derived from `values` in the
+ * map, not typed out beside it.
+ */
+const { allowed: ADD_FLAGS, values: ADD_VALUE_FLAGS } = COMMAND_FLAGS.add;
 
 /**
  * The observation category `--note` writes.
@@ -515,8 +532,6 @@ const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'step', 'scope', 'tags', 'sever
  * for the rest — which is what the message now says instead of "not here".
  */
 const NOTE_CATEGORY = 'note';
-/** Every flag `mycontext add` accepts. Anything else is refused, not absorbed. */
-const ADD_FLAGS = [...ADD_VALUE_FLAGS, 'yes'];
 
 /**
  * `--file <path>`: the body is a SNAPSHOT of that file, and the item records
@@ -843,6 +858,17 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
 
 const LIST_USAGE = `usage: mycontext list [category] ${DETAIL_USAGE}`;
 
+/**
+ * `list` takes the detail levels and nothing else.
+ *
+ * It had no constant at all until plan:builder seq:1b — the list was an
+ * argument expression at the `refuseUnknownFlag` call below, which is the same
+ * defect as a module-private constant one step earlier: a spec with no name is
+ * a spec nothing can import, and a UI that wanted to know what `mycontext
+ * list` takes had to read this line and copy it.
+ */
+const { allowed: LIST_FLAGS } = COMMAND_FLAGS.list;
+
 function cmdList(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
 
@@ -851,7 +877,7 @@ function cmdList(ws: Workspace, args: string[], out: Emit): number {
   // did. The shared helper now lives in format.ts beside `DETAIL_USAGE`; see
   // `unknownFlag`'s doc comment there for the reasoning, which was written
   // here first.
-  if (refuseUnknownFlag(args, DETAIL_FLAGS, [], LIST_USAGE, out)) return 1;
+  if (refuseUnknownFlag(args, LIST_FLAGS, [], LIST_USAGE, out)) return 1;
 
   let detail;
   let json: boolean;
@@ -1069,12 +1095,15 @@ function cmdHelp(ws: Workspace, args: string[], out: Emit): number {
 
 const EXAMPLES_USAGE = 'usage: mycontext examples <category> [--short]';
 
+/** `--short`, and it is the whole flag surface. Lifted with `list`'s, above. */
+const { allowed: EXAMPLES_FLAGS } = COMMAND_FLAGS.examples;
+
 function cmdExamples(ws: Workspace, args: string[], out: Emit): number {
   // Refused before anything is printed — see `unknownFlag` (format.ts). This
   // command took `args[0]` and ignored everything after it, so `mycontext
   // examples rule --shrot` printed the full item and exited 0: the reader
   // asked for the short form, was handed the long one, and was told nothing.
-  if (refuseUnknownFlag(args, ['short'], [], EXAMPLES_USAGE, out)) return 1;
+  if (refuseUnknownFlag(args, EXAMPLES_FLAGS, [], EXAMPLES_USAGE, out)) return 1;
 
   const type = args.find((a) => !a.startsWith('--'));
   if (!type) { out(EXAMPLES_USAGE); return 1; }

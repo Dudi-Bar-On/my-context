@@ -718,6 +718,11 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   '/api/procedure/PROC-no-such-procedure',
   '/api/port',
   '/api/packs',
+  // plan:builder seq:2b. It reads `COMMAND_FLAGS`, `FLAG_DECLARATIONS` and the
+  // config `ApiContext` already resolved — it opens no store at all, which is
+  // why it is the cheapest entry on this list and still has to be on it: a
+  // route nobody probes is a route nothing proves read-only.
+  '/api/flags',
 ];
 
 /** Does a registered path template match this concrete pathname? */

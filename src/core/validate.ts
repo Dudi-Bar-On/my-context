@@ -26,7 +26,14 @@ export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated'
  * — refuses a bad one against this list and `enumError`, rather than each
  * growing its own copy of the vocabulary and its own wording for the refusal. */
 export const SEVERITIES: Severity[] = ['hard', 'soft'];
-const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];
+/**
+ * Exported for the same reason `STATUSES` and `SEVERITIES` are, and for one
+ * more that arrived with plan:builder seq:2: `audit --origin` declares this as
+ * its legal values, and `cli/commands/audit.ts` kept a second copy of the same
+ * three words until that declaration needed a single home. The vocabulary is
+ * `Origin`'s, not the audit filter's — the filter is one of its two readers.
+ */
+export const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];
 
 /**
  * Without this, `status: 'activ'` (or any other typo) persists happily —

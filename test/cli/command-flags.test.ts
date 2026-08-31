@@ -13,13 +13,17 @@
  * had allowed it — the same shape, and the same fix, as `stageOf`/`STAGES`/
  * `READY_TAG` in `core/procedure-stage.ts`.
  *
- * **This file is a MOVE, and these tests are what make that checkable.** The
+ * **The lift is a MOVE, and these tests are what make that checkable.** The
  * shape lifted is the one the codebase already had — `{ allowed, values }`,
  * the exact record `PACK_FLAGS`, `PROCEDURE_FLAGS`, `REVIEW_FLAGS` and
  * `SESSION_FLAGS` are written in — not a richer declaration. A spec that
- * declared legal values, placeholders and examples is what
- * `REQ-every-command-the-ui-offers-is-built-checked-before-it-can` asks for
- * next, and inventing it here would have made this diff stop reading as a move.
+ * declares legal values, placeholders and examples is what
+ * `REQ-every-command-the-ui-offers-is-built-checked-before-it-can` asks for,
+ * and it arrived as a SECOND table (`FLAG_DECLARATIONS`, plan:builder seq:2)
+ * over the same key space rather than as a change to this one. The tests for
+ * it are in their own section at the foot of this file, and the first of them
+ * is what ties the two tables together: they must cover exactly the same
+ * flags, in both directions.
  *
  * ── THE TWO ASSERTIONS, AND WHY NEITHER ALONE IS ENOUGH ────────────────────
  *
@@ -42,7 +46,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
-import { COMMAND_FLAGS, DETAIL_FLAGS } from '../../src/core/command-flags.ts';
+import {
+  ARTEFACT_FORMATS, AUDIT_ROLES, COMMAND_FLAGS, DETAIL_FLAGS, FLAG_DECLARATIONS,
+  RULE_DIRECTIVES,
+} from '../../src/core/command-flags.ts';
+import { AUDIT_KINDS, AUDIT_OPS } from '../../src/core/audit.ts';
+import { ORIGINS, SEVERITIES, STATUSES } from '../../src/core/validate.ts';
+import { RELATION_TYPES } from '../../src/core/vocabulary.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const SRC = path.resolve(import.meta.dirname, '../../src');
@@ -73,6 +83,15 @@ const LIFTED_FROM: Record<string, string> = {
   unpin: 'cli/commands/edit.ts',
   harden: 'cli/commands/edit.ts',
   soften: 'cli/commands/edit.ts',
+  // plan:builder seq:1b — the four out of the entry module itself, which is
+  // the one module `test/ui/no-writes.test.ts` bans from `src/ui/`. Two of
+  // them (`add`, `init`) had constants to move; `list` and `examples` had
+  // their flag lists written as arguments at the `refuseUnknownFlag` call, so
+  // for those the "old spelling" below is the call and not a declaration.
+  add: 'cli/index.ts',
+  list: 'cli/index.ts',
+  examples: 'cli/index.ts',
+  init: 'cli/index.ts',
 };
 
 /**
@@ -93,18 +112,54 @@ const BORN_HERE: Record<string, string> = {
     + 'anywhere else.',
 };
 
+/**
+ * Specs that were WRITTEN here, for commands that already existed and had none.
+ *
+ * The third record, and the one that makes a claim the other two do not: these
+ * five commands VALIDATED NO FLAGS, so their accepted set was not moved from
+ * anywhere and was not declared with the command either — it was read out of
+ * every `flag`/`hasFlag`/`listFlag` call each one reaches and then written
+ * down. That is a behaviour change (plan:builder seq:1c), not a lift, and the
+ * distinction has to survive in the record: `LIFTED_FROM` would assert a copy
+ * was removed from a module that never had one, and `BORN_HERE` would claim
+ * the command is newer than this module, which is the opposite of true.
+ *
+ * The reason each one earns is the risk it carried, because that is what a
+ * later reader has to weigh if one of these refusals turns out to break a
+ * caller nobody enumerated.
+ */
+const WRITTEN_HERE: Record<string, string> = {
+  ingest: 'read `--anchor` inline and refused nothing; a typo in it was dropped and the '
+    + 'whole document ingested instead of the one anchor asked for.',
+  'ingest-apply': 'read `--anchor` and `--file` inline, and `--stdin` was never read at all — '
+    + '`readPayload` falls back to fd 0. A misspelt `--file` therefore did not fail: it '
+    + 'silently waited on stdin.',
+  'lesson-stage': 'same payload pair as ingest-apply, same silent fallback to fd 0.',
+  'lesson-accept': 'read four overrides that each change the text of a rule about to govern '
+    + 'this repository, and dropped any of them that was misspelt while reporting success.',
+  'lesson-discard': 'took no flags and said nothing about the ones it was handed.',
+};
+
+const PROVENANCE: Record<string, string>[] = [LIFTED_FROM, BORN_HERE, WRITTEN_HERE];
+
 test('every lifted spec says which module it left, and no spec arrives unaccounted for', () => {
   assert.deepEqual(
     Object.keys(COMMAND_FLAGS).sort(),
-    [...Object.keys(LIFTED_FROM), ...Object.keys(BORN_HERE)].sort(),
+    PROVENANCE.flatMap((record) => Object.keys(record)).sort(),
     'COMMAND_FLAGS and the record of where each spec came from disagree. A spec added without ' +
-    'saying which module it left — or that it was born here — is a spec nobody can check the ' +
-    'removal of.',
+    'saying which module it left — or that it was born here, or that it was written here for a ' +
+    'command that had none — is a spec nobody can check the removal of.',
   );
-  // The two records are disjoint, or a name could be excused by whichever one
-  // the reader happened to look at.
-  const both = Object.keys(BORN_HERE).filter((n) => Object.hasOwn(LIFTED_FROM, n));
-  assert.deepEqual(both, [], 'a spec cannot both have been lifted and have been born here');
+  // The three records are disjoint, or a name could be excused by whichever
+  // one the reader happened to look at. Counting is enough and is the check
+  // that cannot miss a pair: the assertion above already fixes the union.
+  const names = PROVENANCE.flatMap((record) => Object.keys(record));
+  assert.equal(
+    new Set(names).size, names.length,
+    'a spec is named in two provenance records at once, and they make incompatible claims: ' +
+    'lifted says a copy was removed, born-here says the command is newer than this module, ' +
+    'and written-here says the command had no spec at all.',
+  );
 });
 
 test('`values` is always a subset of `allowed` — a value flag nobody accepts cannot exist', () => {
@@ -132,6 +187,49 @@ test('DETAIL_FLAGS still reaches its old home, so every importer of it is unmove
 const SENTINEL = '--zzz-not-a-flag-any-command-accepts';
 const refuses = (text: string, flag: string): boolean =>
   text.includes(`unknown flag "${flag}"`) || text.includes(`unknown option "${flag}"`);
+
+/**
+ * **Commands that refuse in words of their own, and how they NAME what they
+ * refused.**
+ *
+ * The probe below asks one question — "did this command line stop at flag
+ * validation, and on WHICH name" — and it read the answer out of the two
+ * sentences `unknownFlag` produces. That was every lifted command until
+ * plan:builder seq:1b, and it stops being every one here.
+ *
+ * `init` is the command that also refuses a bare POSITIONAL, so it cannot use
+ * `refuseUnknownFlag` at all: `refusedInitArguments` walks argv for everything
+ * that is neither an accepted flag nor a value one of them consumed, and the
+ * refusal quotes those arguments back with `JSON.stringify`. Same question,
+ * different words — so this record supplies the words rather than excusing the
+ * command from the question, which is the difference between this and
+ * `approval-boundary.ts`'s `NO_FLAG_PROBE`. Nothing here is skipped: `init`'s
+ * `--pack` is proved accepted and the sentinel proved refused, exactly as
+ * every other spec's flags are.
+ *
+ * The quoting is what makes it exact rather than approximate. `INIT_USAGE`
+ * prints the bare text `--pack <path>` in the same refusal, so a substring
+ * search for `--pack` would find it whether the flag was accepted or not; the
+ * quotes `JSON.stringify` adds are only ever around an argument the command
+ * REFUSED, which is the fact being asked about.
+ *
+ * Every entry is re-verified below: one whose command has since adopted the
+ * shared refusal fails, rather than going on reading a second wording that
+ * nothing produces any more.
+ */
+const OWN_REFUSAL: Record<string, { why: string; quote: (arg: string) => string }> = {
+  init: {
+    why: 'refuses every argument it cannot act on — unknown flags AND bare positionals — in '
+      + 'one sentence of its own, quoting them back, rather than reporting an unknown option',
+    quote: (arg) => JSON.stringify(arg),
+  },
+};
+
+/** Did `command` refuse `arg`, in whichever words that command refuses in? */
+const refusedBy = (command: string, text: string, arg: string): boolean => {
+  const own = OWN_REFUSAL[command];
+  return own === undefined ? refuses(text, arg) : text.includes(own.quote(arg));
+};
 
 /**
  * **THE SENTINEL GOES IN EVERY PROBE, AND THE FLAG IS ALWAYS JOINED.** Both
@@ -164,16 +262,30 @@ test('every lifted flag is one the real CLI accepts, and a sentinel is refused',
     };
 
     const problems: string[] = [];
+    // A command excused into OWN_REFUSAL that has since adopted the shared
+    // wording would be read through a second matcher nothing produces, which is
+    // the stale-excuse shape this repository keeps finding. Checked first, so
+    // the failure names the record rather than the command.
+    for (const name of Object.keys(OWN_REFUSAL)) {
+      if (!Object.hasOwn(COMMAND_FLAGS, name)) {
+        problems.push(`${name}: named in OWN_REFUSAL and has no spec here to probe`);
+      } else if (refuses(run([name, SENTINEL]), SENTINEL)) {
+        problems.push(
+          `${name}: refuses in the shared words after all — drop its OWN_REFUSAL entry, ` +
+          'which is now a second reading of a sentence the command no longer prints',
+        );
+      }
+    }
     for (const [name, spec] of Object.entries(COMMAND_FLAGS)) {
-      if (!refuses(run([name, SENTINEL]), SENTINEL)) {
+      if (!refusedBy(name, run([name, SENTINEL]), SENTINEL)) {
         problems.push(`${name}: does not refuse the sentinel, so this probe cannot read it`);
         continue;
       }
       for (const flag of spec.allowed) {
         const answer = run([name, `--${flag}=x`, SENTINEL]);
-        if (refuses(answer, `--${flag}`)) {
+        if (refusedBy(name, answer, `--${flag}`)) {
           problems.push(`${name}: the lifted spec advertises --${flag}, which the CLI refuses`);
-        } else if (!refuses(answer, SENTINEL)) {
+        } else if (!refusedBy(name, answer, SENTINEL)) {
           // Neither name was refused, so the command got past its own check and
           // this probe has proved nothing about `--flag`. A silent pass here is
           // exactly the shape of test this project treats as worthless.
@@ -219,6 +331,25 @@ const OLD_SPELLINGS: Record<string, RegExp[]> = {
   'cli/commands/todo.ts': [/^const ALLOWED\b/m, /^const VALUE_FLAGS\b/m],
   'cli/commands/ui.ts': [/^const UI_FLAGS\b/m, /^const UI_VALUE_FLAGS\b/m],
   'cli/commands/edit.ts': [/^const NAMED_ALLOWED\b/m],
+  /**
+   * The entry module. `ADD_FLAGS`, `ADD_VALUE_FLAGS` and `INIT_VALUE_FLAGS`
+   * were declarations and are checked as declarations — the destructuring that
+   * binds those same names back out of `COMMAND_FLAGS` reads
+   * `const { allowed: ADD_FLAGS`, which none of these patterns match, and that
+   * is deliberate: the name staying is what keeps the diff a move, while the
+   * VALUES having one home is the whole point.
+   *
+   * The last two are not declarations because `list` and `examples` never had
+   * one. Their accepted sets were literal arguments at the call that refused
+   * against them, so the copy to prove gone is that call, spelled as it was.
+   */
+  'cli/index.ts': [
+    /^const ADD_FLAGS\b/m,
+    /^const ADD_VALUE_FLAGS\b/m,
+    /^const INIT_VALUE_FLAGS\b/m,
+    /refuseUnknownFlag\(args, DETAIL_FLAGS, \[\], LIST_USAGE/,
+    /refuseUnknownFlag\(args, \['short'\], \[\], EXAMPLES_USAGE/,
+  ],
 };
 
 test('no lifted command module declares a flag spec of its own any more', () => {
@@ -261,19 +392,35 @@ test('no lifted command module declares a flag spec of its own any more', () => 
  * `edit`'s surface static this test is what tells them the note above is now
  * out of date.
  */
-test('edit keeps its own spec, because its accepted set is per-workspace', () => {
+test('edit keeps no static spec, because its accepted set is per-workspace', () => {
   const text = readFileSync(path.join(SRC, 'cli', 'commands', 'edit.ts'), 'utf8');
-  assert.match(text, /^const ALLOWED\b/m, 'edit\'s own spec left the module — if it is static now, lift it and delete this test');
-  assert.match(text, /^const VALUE_FLAGS\b/m);
-  assert.match(
-    text, /declaredFlags\(ws\.config\)/,
-    'the per-workspace half of edit\'s accepted set is what makes it unliftable. If this call ' +
-    'is gone the reason is gone with it.',
-  );
   assert.equal(
     Object.hasOwn(COMMAND_FLAGS, 'edit'), false,
     'a static spec for `edit` cannot be right: it would be missing every flag this project\'s ' +
     'own categories declare, and a builder over it would compose a command the CLI refuses.',
+  );
+  assert.match(
+    text, /declaredEditFlags\(ws\.config\)/,
+    'the per-workspace half of edit\'s accepted set is what makes it unliftable. If this call ' +
+    'is gone the reason is gone with it.',
+  );
+  // The base and the resolution moved to `core/edit-flags.ts` with
+  // plan:builder seq:2b, so that a READ surface can compute the surface
+  // without importing a module that writes; the command binds them back.
+  //
+  // Checked as an ABSENT declaration rather than a present import, for the
+  // reason `OLD_SPELLINGS` above gives: two lists that agree today is the
+  // state this module exists to end, and here only one of them would be the
+  // one `GET /api/flags` serves.
+  assert.doesNotMatch(
+    text, /^const ALLOWED = \[/m,
+    'edit.ts declares its own accepted list again. The endpoint resolves the surface from ' +
+    '`EDIT_FLAGS`, so a second list here is one no builder would ever see.',
+  );
+  assert.doesNotMatch(text, /^const VALUE_FLAGS = \[/m);
+  assert.match(
+    text, /from '(\.\.\/)+core\/edit-flags\.ts';/,
+    'edit.ts no longer imports the module that resolves its own surface',
   );
 });
 
@@ -373,4 +520,241 @@ test('the flag-spec header counts and names every registered command', () => {
     'why. Add it to the map or name it in the header — a command that is in neither is one ' +
     'the paragraph claiming to account for all of them silently missed.',
   );
+});
+
+// ─── plan:builder seq:2 — what a flag MEANS, and what may be put in it ──────
+
+/**
+ * **The declaration layer, and why every assertion below is about a different
+ * way for it to be worthless.**
+ *
+ * `FLAG_DECLARATIONS` exists to be the ONE description of a flag that the
+ * select, the placeholder, the help text and the refusal all read. Each of
+ * those four consumers can be broken separately:
+ *
+ *   - a flag with no declaration renders as a bare text box with no hint,
+ *     which is the state the owner described on 2026-08-24 — a user who "does
+ *     not know what is the correct format what is legal and what is not";
+ *   - a declaration for a flag the command REFUSES renders a control that
+ *     composes a command line the CLI will reject;
+ *   - a value-taking flag with neither a vocabulary nor a format is a text box
+ *     again, wearing a description;
+ *   - and a vocabulary COPIED rather than imported is the drift this whole plan
+ *     exists to end. That last one is the assertion to read first: it is
+ *     checked by IDENTITY, because equal contents is precisely the state that
+ *     goes stale without anything failing.
+ */
+
+/**
+ * Every closed vocabulary a declaration is allowed to name, by the constant it
+ * must BE — not a list of legal contents, a list of legal ARRAYS.
+ *
+ * Seven are imported from the module that enforces them. Three are exported by
+ * `core/command-flags.ts` itself and imported BY the module that enforces
+ * them, because they had been module-private beside their own parser: a closed
+ * list next to the operation that checks it is reachable only by importing the
+ * operation, which for `cli/commands/audit.ts` and `cli/commands/export.ts`
+ * means a read surface cannot have it at all.
+ *
+ * `ORIGINS` is in the first group and was in the second an hour earlier, which
+ * is worth a sentence: `cli/commands/audit.ts` kept its own copy of the three
+ * `Origin` values while `core/validate.ts` enforced the same three on every
+ * created item. The duplication was already WRITTEN DOWN as a fact in a
+ * 2026-08-20 plan document — "enforced twice", citing both — and no test had
+ * ever objected.
+ */
+const KNOWN_VOCABULARIES: Record<string, readonly string[]> = {
+  SEVERITIES, STATUSES, AUDIT_KINDS, AUDIT_OPS, RELATION_TYPES, DETAIL_FLAGS,
+  ORIGINS, AUDIT_ROLES, ARTEFACT_FORMATS, RULE_DIRECTIVES,
+};
+
+test('every flag of every command is declared, and nothing else is', () => {
+  assert.deepEqual(
+    Object.keys(FLAG_DECLARATIONS).sort(), Object.keys(COMMAND_FLAGS).sort(),
+    'a command has a flag spec and no declaration record, or the other way round.',
+  );
+  const problems: string[] = [];
+  for (const [name, spec] of Object.entries(COMMAND_FLAGS)) {
+    const declared = Object.keys(FLAG_DECLARATIONS[name]);
+    for (const flag of spec.allowed) {
+      if (!declared.includes(flag)) problems.push(`${name}: --${flag} is accepted and undeclared`);
+    }
+    for (const flag of declared) {
+      if (!spec.allowed.includes(flag)) {
+        problems.push(`${name}: --${flag} is declared and the command refuses it`);
+      }
+    }
+  }
+  assert.deepEqual(
+    problems, [],
+    'BOTH directions matter and they fail differently: an undeclared flag renders as a bare ' +
+    'text box with no hint, and a declared flag the command refuses renders a control that ' +
+    'composes a command line the CLI rejects.',
+  );
+});
+
+test('a flag that takes a value declares its legal values OR its format and an example', () => {
+  const problems: string[] = [];
+  for (const [name, spec] of Object.entries(COMMAND_FLAGS)) {
+    for (const [flag, decl] of Object.entries(FLAG_DECLARATIONS[name])) {
+      const takesValue = spec.values.includes(flag);
+      const hasVocabulary = decl.values !== undefined;
+      const hasFormat = decl.format !== undefined && decl.example !== undefined;
+      if (takesValue && !hasVocabulary && !hasFormat) {
+        problems.push(
+          `${name}: --${flag} takes a value and declares neither a vocabulary nor a format ` +
+          'with an example, so there is nothing to put in the select or the placeholder',
+        );
+      }
+      if (hasVocabulary && decl.format !== undefined) {
+        problems.push(
+          `${name}: --${flag} declares both a closed vocabulary and a format. One flag, one ` +
+          'answer: a vocabulary IS the placeholder, and two answers is how they disagree',
+        );
+      }
+      if (decl.format !== undefined && decl.example === undefined) {
+        problems.push(`${name}: --${flag} declares a format and no example of it`);
+      }
+      if (!takesValue && (hasVocabulary || decl.format !== undefined)) {
+        problems.push(
+          `${name}: --${flag} is BARE — it consumes no token — and declares a value shape. ` +
+          'A switch has no value to have a shape',
+        );
+      }
+      if (decl.note.trim() === '') {
+        problems.push(`${name}: --${flag} has an empty note, so it cannot be rendered at all`);
+      }
+    }
+  }
+  assert.deepEqual(problems, [], 'a declaration that cannot drive a control is not a declaration');
+});
+
+/**
+ * **The anti-copy gate, and it is checked by IDENTITY.**
+ *
+ * `deepEqual` against a list of legal contents would pass on the day somebody
+ * writes `values: ['hard', 'soft']` beside `SEVERITIES` — two spellings that
+ * agree today, which is the exact state this repository has now measured going
+ * stale four times. So the assertion is `===`: a declared vocabulary must be
+ * the array the parser itself checks against, reached by import.
+ */
+test('every declared vocabulary IS a constant the parser enforces, not a copy of one', () => {
+  const known = Object.values(KNOWN_VOCABULARIES);
+  const problems: string[] = [];
+  for (const [name, flags] of Object.entries(FLAG_DECLARATIONS)) {
+    for (const [flag, decl] of Object.entries(flags)) {
+      if (decl.values === undefined) continue;
+      if (!known.some((vocabulary) => vocabulary === decl.values)) {
+        problems.push(
+          `${name}: --${flag} declares a vocabulary that is not one of the enforced constants ` +
+          `(${Object.keys(KNOWN_VOCABULARIES).join(', ')}). Declare it once, in the module that ` +
+          'refuses against it or in command-flags.ts itself, and import it here',
+        );
+      }
+    }
+  }
+  assert.deepEqual(problems, [], 'a hand-written vocabulary is the drift this plan exists to end');
+});
+
+/**
+ * The four vocabularies that MOVED into `core/command-flags.ts`, checked at the
+ * far end — in the module that enforces each one, and against the spelling it
+ * used to keep there.
+ *
+ * The same shape as `OLD_SPELLINGS` above and for the same reason: comparing
+ * VALUES would pass on two lists that happen to agree, which is the state the
+ * move exists to end. `--origin` and `--role` are additionally checked against
+ * the running CLI below, where their real vocabulary is visible from outside.
+ */
+const MOVED_VOCABULARIES: Record<string, RegExp[]> = {
+  'cli/commands/audit.ts': [/^const ORIGINS\b/m, /^const AUDIT_ROLES\b/m],
+  'cli/commands/export.ts': [/^const FORMATS: readonly ArtefactFormat\[\] = \['dir', 'zip'\];$/m],
+  'lesson/derive.ts': [/enum: \['do', 'dont'\]/],
+};
+
+test('no module keeps its own spelling of a vocabulary that moved to the declarations', () => {
+  const problems: string[] = [];
+  for (const [rel, spellings] of Object.entries(MOVED_VOCABULARIES)) {
+    const text = readFileSync(path.join(SRC, ...rel.split('/')), 'utf8');
+    if (!/from '(\.\.\/)+core\/command-flags\.ts';/.test(text)) {
+      problems.push(`${rel} does not import core/command-flags.ts`);
+    }
+    for (const decl of spellings) {
+      if (decl.test(text)) problems.push(`${rel} still declares ${String(decl)}`);
+    }
+  }
+  assert.deepEqual(
+    problems, [],
+    'a vocabulary is declared in two places again. The select would be built from one and the ' +
+    'refusal made against the other, which is how a UI comes to offer a value the CLI rejects.',
+  );
+});
+
+/**
+ * **And the vocabularies are real: the running CLI is asked what it enforces.**
+ *
+ * Identity proves the declaration and the refusal read one array. It does not
+ * prove that array is the one the command actually CHECKS — a flag can be
+ * declared with a vocabulary nothing enforces, which is exactly what `--role`
+ * was before `AUDIT_ROLES` existed: `--role subjekt` counted nothing and said
+ * nothing. So the refusal is parsed and compared member for member.
+ *
+ * Only READ-ONLY commands are probed, and the limit is stated rather than left
+ * to be discovered. `audit` and `search` answer a question and write nothing,
+ * so a probe that gets past flag validation costs a table nobody reads. The
+ * same probe on `add --severity` would create an item and on `export --format`
+ * a directory, so `SEVERITIES` and `ARTEFACT_FORMATS` are covered by identity
+ * alone — `SEVERITIES` reaches the same `enumError` through `validateCreate`,
+ * and `ARTEFACT_FORMATS` through `export`'s own refusal.
+ */
+const LIVE_PROBE: { argv: string[]; flags: string[] }[] = [
+  { argv: ['audit'], flags: ['kind', 'op', 'origin', 'role'] },
+  { argv: ['search', 'anything'], flags: ['status', 'relation'] },
+];
+
+test('a declared vocabulary is the one the running CLI enforces, member for member', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-vocab-'));
+  try {
+    assert.equal(runCli(['init'], dir, () => {}), 0, 'the probe workspace did not initialize');
+    const run = (argv: string[]): string => {
+      const lines: string[] = [];
+      try { runCli(argv, dir, (s) => lines.push(s)); }
+      catch (err) { lines.push(`THREW: ${(err as Error).message}`); }
+      // `enumError`'s sentence is wrapped by the paragraph renderer on some
+      // commands and not on others, so the line breaks are collapsed before
+      // anything is read out of it.
+      return lines.join(' ').replace(/\s+/g, ' ');
+    };
+    const BOGUS = 'zzz-not-a-legal-value';
+    const problems: string[] = [];
+    for (const { argv, flags } of LIVE_PROBE) {
+      for (const flag of flags) {
+        const declared = FLAG_DECLARATIONS[argv[0]][flag]?.values;
+        assert.ok(declared, `${argv[0]} --${flag} is live-probed and declares no vocabulary`);
+        const refusal = run([...argv, `--${flag}=${BOGUS}`]);
+        const said = new RegExp(`"${flag}" must be one of: ([^.]+)\\. You passed "${BOGUS}"`)
+          .exec(refusal);
+        if (said === null) {
+          problems.push(
+            `${argv[0]}: --${flag}=${BOGUS} was not refused with the vocabulary. The declaration ` +
+            `offers ${declared.length} values that nothing checks. Got: ${refusal.slice(0, 200)}`,
+          );
+          continue;
+        }
+        const enforced = said[1].split(', ');
+        if (JSON.stringify(enforced) !== JSON.stringify([...declared])) {
+          problems.push(
+            `${argv[0]}: --${flag} declares [${[...declared].join(', ')}] and the CLI enforces ` +
+            `[${enforced.join(', ')}]`,
+          );
+        }
+      }
+    }
+    assert.deepEqual(
+      problems, [],
+      'a declared vocabulary and the vocabulary the command enforces are not the same set. A ' +
+      'select built from this declaration would offer a value the CLI refuses, or hide one it ' +
+      'takes.',
+    );
+  } finally { removeTree(dir); }
 });

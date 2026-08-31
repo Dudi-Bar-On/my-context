@@ -474,13 +474,21 @@ const refuses = (text: string, flag: string): boolean =>
  * silently keeping an excuse it no longer needs.
  */
 const NO_FLAG_PROBE: Record<string, string> = {
-  'lesson-accept': 'validates no flags at all — it fails on the missing staged candidate first, '
-    + 'so the sentinel is ACCEPTED and the probe would answer "accepts everything". Its four '
-    + 'flags are read out of the usage line it prints instead, checked below.',
-  'lesson-discard': 'same: it fails on the missing staged candidate before any flag is looked at.',
   rebuild: 're-indexes what is on disk and validates nothing — it runs even when handed the '
     + 'sentinel. It takes no flags, and the catalogue advertises none.',
 };
+
+/**
+ * `lesson-accept` and `lesson-discard` were the other two rows, excused
+ * because they "validate no flags at all" and failed on the missing staged
+ * candidate first — so the sentinel was ACCEPTED and this probe would have
+ * answered "accepts everything" for two WRITE entries in the catalogue.
+ *
+ * plan:builder seq:1c gave both a parser (`core/command-flags.ts`), so the
+ * excuse is gone and the catalogue's four `lesson-accept` flags are now
+ * checked against the real refusal rather than read out of the usage line the
+ * command happened to print.
+ */
 
 /**
  * Flags the command accepts and the catalogue deliberately does NOT offer.
@@ -642,5 +650,193 @@ test('every argv the catalogue composes is one the real parser accepts', async (
     );
   } finally {
     ws.dispose();
+  }
+});
+
+// ─── plan:builder seq:3 — the catalogue against the registry, BOTH ways ─────
+
+/**
+ * **The gate that makes the catalogue's coverage a claim rather than a hope.**
+ *
+ * `every def names a command string the CLI registry actually has` runs ONE
+ * direction: a def that names a command nobody registers fails. The other
+ * direction was unchecked, and it is the one that goes wrong silently — a
+ * command the CLI has and the catalogue lacks is invisible, so the catalogue
+ * falls behind the parser one shipped command at a time and every test stays
+ * green. That is the drift `plan:builder` exists to end, measured four times
+ * this week already (§7 of both READMEs, the deny block, the skill, and the
+ * approval-boundary probe's hand-kept subcommanded list).
+ *
+ * So this test is written the way `KNOWN_GAPS` in `screen-parity` is: **an
+ * unlisted gap is a regression, AND a closed entry must be deleted.** A
+ * command string must be EITHER in the catalogue or named below with a reason,
+ * never both and never neither. Adding an entry without removing its row here
+ * fails; shipping a command without doing one or the other fails.
+ *
+ * **The count worth knowing.** The registry dispatches 39 COMMANDS, and five of
+ * them dispatch again on a subcommand, so a permission rule — and a catalogue
+ * entry — is written against one of 53 command STRINGS. `builder/3`'s title
+ * says 38 and its body says the CLI registers 38; both are stale, and the
+ * figure a reader of this test needs is neither: `commandStrings()` is derived
+ * here on every run and nothing below is written down twice.
+ */
+
+/**
+ * Command strings the catalogue WITHHOLDS, as a decision rather than a backlog.
+ *
+ * These three are the ones `plan:walk seq:108` measured. Of seven
+ * `commandActions` call sites, five pass a catalogue id and get Execute; `proc`,
+ * `port` and `packs` pass `id: null` and get Copy alone — and each of those
+ * three screens gives the SAME first reason in its own words: the command it
+ * composes is not in the catalogue, the client sends an id and never a command,
+ * so there is nothing for the server to rebuild and nothing to execute.
+ *
+ * Adding these entries would therefore hand Execute to three screens as a side
+ * effect of a coverage exercise. That is a decision about the approval boundary
+ * and it is an open question with the owner, so it is not taken here. Each row
+ * carries the screen's OWN second reason too, because two of the three survive
+ * the catalogue gaining an entry and would still have to be answered.
+ */
+const WITHHELD: Record<string, string> = {
+  'procedure done': 'proc.js composes this and passes `id: null`. Its second reason outlives a '
+    + 'catalogue entry: the composed line carries no `--yes` because the confirmation prompt IS '
+    + 'the human\'s decision ("active -> done stays yours"), and offering Execute would answer '
+    + 'that prompt on their behalf.',
+  export: 'port.js composes this and passes `id: null`. Its second reason outlives a catalogue '
+    + 'entry too: the composed line is deliberately one argument short — `--out` arrives with no '
+    + 'destination, because the CLI refuses to default one — so an Execute button on it could '
+    + 'only refuse, or write somewhere the reader did not pick.',
+  init: 'packs.js composes `init --pack <path>` and passes `id: null`. Here the omission is the '
+    + 'ANSWER rather than a shortfall, in that screen\'s own words: `init` is the command run '
+    + 'BEFORE there is a workspace for this UI to be served from, so there was never anything '
+    + 'for the catalogue to carry.',
+};
+
+/**
+ * Command strings the catalogue does not carry YET, each with the reason.
+ *
+ * Unlike `WITHHELD`, nothing here is a decision against an entry — it is the
+ * measured distance between what the CLI dispatches and what the Composer
+ * offers, named so that it cannot grow in silence. The owner ruled on
+ * 2026-08-24 that the catalogue should cover all of them.
+ *
+ * **The reasons cluster into three, and only the third is real work on the
+ * catalogue itself.** A `kind: 'read'` def must name a screen or an endpoint —
+ * `every read def names a screen or an endpoint` is the test, and it is right:
+ * a read the UI cannot execute is not a read, it is a command to copy. Most
+ * rows below are that shape. A few are writes that would be entries today if
+ * anybody had written them. And every row shares one consequence: `palette.js`
+ * builds the Composer's picker from `PALETTE` itself, so closing a row changes
+ * what a screen shows — which is a UI change, governed by the mockup and owed a
+ * browser test that drives it.
+ */
+const UNCATALOGUED: Record<string, string> = {
+  audit: 'a read with no execution path in this UI. `/api/audit` does not exist; the audit log '
+    + 'reaches the browser through the Watch and Ask read models, which answer different '
+    + 'questions.',
+  examples: 'a read whose answer is an example item and its updatable surface. `mycontext help` '
+    + 'is catalogued and reaches `#/learn`; this one has no screen of its own.',
+  focus: 'a WRITE — it sets the injection focus for the whole project — and the one write in '
+    + 'this list whose entry needs a design decision first: a focus is not addressed by an item '
+    + 'id, so the def\'s `args` have no `source` any existing screen resolves.',
+  'inbox-promote': 'a write on the approval boundary, and a straightforward entry. It is here '
+    + 'rather than in the catalogue only because closing it changes the Composer picker.',
+  ingest: 'a read that prints an extraction request for a model to answer. Its output is a '
+    + 'protocol document, not a report a screen renders.',
+  'ingest-apply': 'a write that reads its payload from a FILE or from stdin. Neither is '
+    + 'composable by a form that produces one argv, which is the same shape that keeps '
+    + '`lesson-stage` out.',
+  'ingest-status': 'a read with no screen. The ingest sessions are not rendered anywhere in this '
+    + 'UI yet.',
+  lesson: 'a write, and the entry is straightforward. Held with the rest so that closing the '
+    + 'Composer\'s gap is one reviewed change rather than nine.',
+  'lesson-stage': 'a write whose payload is a FILE or stdin — see `ingest-apply`.',
+  'pack import': 'a write on the approval boundary. `packs.js` already composes it, and its '
+    + 'entry is straightforward; it is held with `init`, which the same screen composes, so that '
+    + 'the two are settled together.',
+  'pack list': 'a read the Packs screen already renders from `/api/packs`, so the entry would be '
+    + 'a second route to a page that exists.',
+  'procedure activate': 'a write the Procedures screen composes. Held with `procedure done`, '
+    + 'which is WITHHELD: settling one subcommand of a screen\'s pair and not the other is how a '
+    + 'screen ends up with Execute on half its buttons.',
+  'procedure list': 'a read the Procedures screen already renders from `/api/procedures`.',
+  'procedure show': 'a read already rendered from `/api/procedure/:id`.',
+  'procedure step': 'a write, held with the other two `procedure` subcommands.',
+  query: 'a read that takes SQL. Offering a text box that composes arbitrary SQL into a command '
+    + 'line is a design decision about the Composer, not a missing row.',
+  ready: 'a read with no screen. Readiness is derived per run and nothing in this UI renders it.',
+  'review list': 'a read the Work screen already renders; `review revisions` is catalogued '
+    + 'because the revision queue is the half that screen composes from.',
+  'review show': 'a read of one queue entry, already rendered by the Work screen.',
+  'session carry': 'a read of what a session leaves behind, with no screen.',
+  'session list': 'a read the Sessions data reaches through `/api/sessions`.',
+  'session name': 'a write, and a small one. Held with the rest.',
+  'statusline install': 'a write, and the one pair in this list that is NOT on the approval '
+    + 'boundary: it edits Claude Code\'s own settings.json and changes nothing that governs this '
+    + 'project (see OUTSIDE_BOUNDARY in test/helpers/approval-boundary.ts). Composing an edit to '
+    + 'a file outside the workspace is its own decision.',
+  'statusline uninstall': 'the other half of install, and off the boundary for the same reason.',
+  todo: 'a read with no screen of its own.',
+  ui: 'the command that STARTS this server. A def for it would compose, inside the running UI, '
+    + 'the line that launches the running UI.',
+};
+
+test('every command string is catalogued or named as a gap, in BOTH directions', async () => {
+  const { PALETTE } = await defs();
+  const catalogued = PALETTE.map((def) => commandString(def));
+  const named = [...Object.keys(WITHHELD), ...Object.keys(UNCATALOGUED)];
+
+  // Checked first, so the failure names the overlap rather than arriving as a
+  // length mismatch in the comparison below. THIS is "a closed entry must be
+  // deleted": a row that stays after its entry lands excuses a gap that is not
+  // there any more, and the next reader believes it.
+  const both = named.filter((command) => catalogued.includes(command)).sort();
+  assert.deepEqual(
+    both, [],
+    'these command strings are IN the catalogue and still named as gaps. Delete the row — while ' +
+    'it stands it is a written reason for an absence that has been closed.',
+  );
+  const twice = named.filter((c) => Object.hasOwn(WITHHELD, c) && Object.hasOwn(UNCATALOGUED, c));
+  assert.deepEqual(twice, [], 'a command cannot be both withheld by decision and merely not yet done');
+
+  const real = commandStrings();
+  // Anti-vacuity, and the number is derived rather than asserted: a broken
+  // derivation returns few strings and every membership test below would pass.
+  assert.ok(real.length > 40, `commandStrings() returned ${real.length}; the derivation is broken`);
+
+  assert.deepEqual(
+    [...catalogued, ...named].sort(), [...real].sort(),
+    'the catalogue and the registry do not partition the command strings between them. A ' +
+    'command the CLI dispatches that is neither catalogued nor named here is the silent half ' +
+    'of this drift: nothing offers it, nothing says why, and no test notices. A name here that ' +
+    'the registry does not have is the other half — a reason for the absence of something that ' +
+    'does not exist.',
+  );
+
+  const empty = Object.entries({ ...WITHHELD, ...UNCATALOGUED })
+    .filter(([, reason]) => reason.trim() === '')
+    .map(([command]) => command);
+  assert.deepEqual(empty, [], 'a named gap with no reason is an unnamed gap with extra steps');
+});
+
+/**
+ * The three WITHHELD rows are about a specific, measured consequence, so the
+ * consequence is asserted rather than described: each is composed by a screen
+ * that passes `id: null`, and each of those screens says so in its own source.
+ *
+ * If somebody catalogues one of them, the row above fails first. If somebody
+ * changes a screen to pass an id, this fails — which is the Execute grant the
+ * owner has an open question about, arriving as a red test rather than as a
+ * button.
+ */
+test('the three withheld commands are still composed with no catalogue id', () => {
+  const screens = path.resolve(import.meta.dirname, '../../src/ui/public/screens');
+  for (const screen of ['proc.js', 'port.js', 'packs.js']) {
+    const text = readFileSync(path.join(screens, screen), 'utf8');
+    assert.match(
+      text, /commandActions\(\{ argv, id: null/,
+      `${screen} no longer composes with \`id: null\`. That is the Execute grant plan:walk ` +
+      'seq:108 measured and the owner has an open question about — it is not a refactor.',
+    );
   }
 });

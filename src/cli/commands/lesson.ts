@@ -20,6 +20,29 @@ import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from
  */
 const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.lesson;
 
+/**
+ * The other three commands in this module refuse an unknown flag as of
+ * plan:builder seq:1c, against sets WRITTEN in `core/command-flags.ts` rather
+ * than lifted — they had none, and validated nothing.
+ *
+ * `lesson-accept` is the one where that mattered beyond typos. It reads four
+ * overrides out of argv (`edits`, below) and every one of them changes the
+ * text of a rule that is about to govern this repository; a misspelt
+ * `--serverity hard` was silently dropped and the rule created from the staged
+ * value, reported as a success. The `--agent` refusal above `cmdLessonAccept`
+ * is deliberately NOT folded in here: see that comment, and the entry for this
+ * command in `core/command-flags.ts`.
+ */
+const LESSON_STAGE = COMMAND_FLAGS['lesson-stage'];
+const LESSON_ACCEPT = COMMAND_FLAGS['lesson-accept'];
+const LESSON_DISCARD = COMMAND_FLAGS['lesson-discard'];
+
+const LESSON_STAGE_USAGE = 'usage: mycontext lesson-stage <LESSON-id> (--file <path> | --stdin)';
+const LESSON_ACCEPT_USAGE =
+  'usage: mycontext lesson-accept <LESSON-id> <key> [--title "…"] [--scope "a/**,b/**"] '
+  + '[--severity hard|soft] [--directive do|dont]';
+const LESSON_DISCARD_USAGE = 'usage: mycontext lesson-discard <LESSON-id> <key>';
+
 function requireWorkspace(ws: Workspace, out: Emit): boolean {
   if (ws.projectRoot) return true;
   out('my_context: no workspace here. Run `mycontext init` to create one.');
@@ -170,9 +193,13 @@ function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
 function cmdLessonStage(ws: Workspace, args: string[], out: Emit, cwd: string): number {
   if (!requireWorkspace(ws, out)) return 1;
 
+  if (refuseUnknownFlag(args, LESSON_STAGE.allowed, LESSON_STAGE.values, LESSON_STAGE_USAGE, out)) {
+    return 1;
+  }
+
   const [lessonId] = positionals(args, ['file']);
   if (!lessonId) {
-    out('usage: mycontext lesson-stage <LESSON-id> (--file <path> | --stdin)');
+    out(LESSON_STAGE_USAGE);
     return 1;
   }
 
@@ -307,9 +334,16 @@ function cmdLessonAccept(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
 
+  // After the `--agent` paragraph and before anything else. Both refusals stop
+  // the command; the order decides only WHICH sentence a caller who typed
+  // `--agent` reads, and the specific one is worth more than the generic one.
+  if (refuseUnknownFlag(args, LESSON_ACCEPT.allowed, LESSON_ACCEPT.values, LESSON_ACCEPT_USAGE, out)) {
+    return 1;
+  }
+
   const [lessonId, key] = positionals(args, ['title', 'scope', 'severity', 'directive']);
   if (!lessonId || !key) {
-    out('usage: mycontext lesson-accept <LESSON-id> <key> [--title "…"] [--scope "a/**,b/**"] [--severity hard|soft] [--directive do|dont]');
+    out(LESSON_ACCEPT_USAGE);
     return 1;
   }
 
@@ -414,9 +448,13 @@ function cmdLessonDiscard(ws: Workspace, args: string[], out: Emit): number {
   // as a positional and silently resolve it as the key (asymmetric with
   // accept, and confusing) instead of consuming it as an unrecognized flag's
   // argument the same way accept does.
+  if (refuseUnknownFlag(
+    args, LESSON_DISCARD.allowed, LESSON_DISCARD.values, LESSON_DISCARD_USAGE, out,
+  )) return 1;
+
   const [lessonId, key] = positionals(args, ['title', 'scope', 'severity', 'directive']);
   if (!lessonId || !key) {
-    out('usage: mycontext lesson-discard <LESSON-id> <key>');
+    out(LESSON_DISCARD_USAGE);
     return 1;
   }
 

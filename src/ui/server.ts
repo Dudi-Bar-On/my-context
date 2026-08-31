@@ -85,6 +85,7 @@ import {
   apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem, apiItems,
   apiRender, apiSelect, apiSessions, apiSimulate, apiSimulateSweep, apiStatus,
 } from './read-model.ts';
+import { registerFlagRoutes } from './read-model-flags.ts';
 import { registerConfigRoutes } from './read-model-config.ts';
 import { registerWorkRoutes } from './read-model-work.ts';
 import { matchRoute, registerRoute, type ApiContext, type JsonResult } from './routes.ts';
@@ -325,6 +326,12 @@ export function registerReadRoutes(): void {
   // writes nothing: the file is the user's to change, so the settlement leaves
   // as a command the browser composes, never as a route that edits it.
   registerConfigRoutes();
+  // plan:builder seq:2b. What every command accepts and what may be put in
+  // each flag — static for twenty-nine of them, COMPUTED for `edit`, whose
+  // accepted set is whatever flags this project's categories declare. Same two
+  // reasons as the two calls above for registering it here rather than beside
+  // the server start.
+  registerFlagRoutes();
   // The injection preview's When column: `audit_item.role` joined to
   // `audit.at`, one query, its own route so that a projection which is behind
   // costs the preview its timestamps and never its selection. Registered here

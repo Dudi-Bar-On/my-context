@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { lstatSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { COMMAND_FLAGS } from '../../core/command-flags.ts';
+import { ARTEFACT_FORMATS, COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { retryOnTransientFsError, type LoadError } from '../../core/rebuild.ts';
 import type { ItemFilters } from '../../core/search.ts';
 import { enumError } from '../../core/teach.ts';
@@ -80,7 +80,12 @@ const USAGE = `usage: mycontext export --out <path> [--format dir|zip]
                         [--no-history] [--dry-run] [--json]`;
 
 /** The two containers, and the one place their names are spelled. */
-const FORMATS: readonly ArtefactFormat[] = ['dir', 'zip'];
+/**
+ * The two artefact formats, now `core/command-flags.ts`'s (plan:builder
+ * seq:2), where they are `--format`'s declared `values`. Bound back under the
+ * old name so the refusal below reads as it did.
+ */
+const FORMATS: readonly ArtefactFormat[] = ARTEFACT_FORMATS;
 
 /**
  * What stays behind, in the words a person reads.

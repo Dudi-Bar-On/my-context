@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { retryOnTransientFsError } from '../core/rebuild.ts';
 import path from 'node:path';
+import { RULE_DIRECTIVES } from '../core/command-flags.ts';
 import type { Config } from '../core/config.ts';
 import { createItem, type MutationContext } from '../core/mutate.ts';
 import { checksum, makeId } from '../core/slug.ts';
@@ -219,7 +220,7 @@ export const RULE_CANDIDATE_SCHEMA: Record<string, unknown> = {
     additionalProperties: false,
     properties: {
       title: { type: 'string', maxLength: 200, description: 'The directive itself, phrased as an instruction: "Run migrations outside peak hours".' },
-      directive: { enum: ['do', 'dont'], description: '"do" prescribes; "dont" prohibits.' },
+      directive: { enum: RULE_DIRECTIVES, description: '"do" prescribes; "dont" prohibits.' },
       body: { type: 'string', description: 'Why. Cite the mechanism from the lesson, not the incident narrative.' },
       scope: { type: 'array', items: { type: 'string' }, description: 'POSIX globs this governs. Omit rather than guessing; a bare "**" is rejected.' },
       severity: { enum: ['hard', 'soft'] },
@@ -319,8 +320,17 @@ export function validateRuleCandidates(raw: unknown): { valid: RuleCandidate[]; 
 
     if (!title) return reject('"title" is required and is the directive itself.');
     if (title.length > 200) return reject(`"title" is ${title.length} characters; the limit is 200.`);
+    // The literal comparison is what NARROWS `entry.directive` for the push
+    // below; `RULE_DIRECTIVES` is what the schema above advertises and what
+    // `lesson-accept --directive` offers as a select. They are asserted
+    // identical in `test/cli/command-flags.test.ts` rather than left to agree
+    // by inspection — this is the one vocabulary in the product that decides
+    // whether a rule prescribes or prohibits.
     if (entry.directive !== 'do' && entry.directive !== 'dont') {
-      return reject(`"directive" is required and must be "do" or "dont". You passed ${JSON.stringify(entry.directive)}.`);
+      return reject(
+        `"directive" is required and must be ${RULE_DIRECTIVES.map((d) => `"${d}"`).join(' or ')}. `
+        + `You passed ${JSON.stringify(entry.directive)}.`,
+      );
     }
 
     if (typeof entry.body !== 'string' || entry.body.trim() === '') {

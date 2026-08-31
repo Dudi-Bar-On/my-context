@@ -70,15 +70,32 @@ export const NO_FLAG_PROBE: Record<string, string> = {
     + '--pack <path>, and says so rather than reporting an unknown option. There is no --yes '
     + 'on it to find either way: `init --pack` creates the corpus it imports into, so there is '
     + 'nothing yet to protect, and everything a pack brings in still lands `draft`',
-  ingest: 'prints its usage for the missing <path> before any flag is looked at',
-  'ingest-apply': 'prints its usage for the missing <session-id> first',
-  'lesson-accept': 'prints its usage for the missing <LESSON-id> <key> first — and there is '
-    + 'no --yes on it to find either way; see UNGATED below',
-  'lesson-discard': 'prints its usage for the missing <LESSON-id> <key> first',
-  'lesson-stage': 'prints its usage for the missing <LESSON-id> first',
   rebuild: 're-indexes what is on disk and takes no flags at all',
   show: 'takes an id, not flags — it reads the sentinel as the id and says so',
 };
+
+/**
+ * **This table used to have nine rows, and the five that left are worth
+ * naming here rather than only in a diff.**
+ *
+ * `ingest`, `ingest-apply`, `lesson-stage`, `lesson-accept` and
+ * `lesson-discard` were excused because each printed its usage for a missing
+ * POSITIONAL before any flag was looked at — so the probe could not reach
+ * their flag surface, and its silence about them was recorded rather than
+ * mistaken for an answer. That was the honest thing to do about a hole, and
+ * it was still a hole: the reason those commands failed on the positional
+ * first is that they validated no flags AT ALL, so the probe was not being
+ * blocked by an ordering accident, it was being blocked by the absence of the
+ * very thing it measures. `lesson-accept` sat in that gap while creating
+ * ACTIVE rules from four command-line overrides it silently dropped if
+ * misspelt.
+ *
+ * plan:builder seq:1c gave all five parsers, against sets in
+ * `core/command-flags.ts`, and this probe now reaches them: it confirms, by
+ * running them, that none takes `--yes` — which is what `UNGATED` below
+ * asserts about `lesson-accept` in prose, and which nothing could check while
+ * the excuse stood.
+ */
 
 /**
  * The member the `--yes` probe cannot find, because there is nothing to find.

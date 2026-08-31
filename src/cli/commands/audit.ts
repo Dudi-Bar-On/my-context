@@ -7,7 +7,8 @@ import {
   auditDbPath, openProjection, queryProjection, sessions, syncProjection, topItems,
   type SummaryRow,
 } from '../../core/audit-db.ts';
-import { COMMAND_FLAGS } from '../../core/command-flags.ts';
+import { AUDIT_ROLES, COMMAND_FLAGS } from '../../core/command-flags.ts';
+import { ORIGINS } from '../../core/validate.ts';
 import { Ledger } from '../../core/ledger.ts';
 import { topUpLedger } from '../../core/ledger-replay.ts';
 import { enumError } from '../../core/teach.ts';
@@ -34,17 +35,23 @@ const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.audit;
 const DEFAULT_LIMIT = 50;
 const DEFAULT_TOP = 20;
 
-const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];
-
 /**
- * How an item can appear in a record, which is what `--role` selects between.
+ * `--origin` and `--role`'s vocabularies were declared HERE until
+ * plan:builder seq:2, which is the placement `core/vocabulary.ts`'s header
+ * describes: a closed list living beside the operation that checks it, so the
+ * only surface that could offer it as a select was this module — the one a
+ * read surface may not import.
  *
- * These are the three branches `itemsWithoutDb` and `topItems` actually test.
- * The flag took any string at all until this list existed: `--role subjekt`
- * counted nothing and said nothing, which is the same silent-wrong-answer
- * failure `--kind` and `--op` are already guarded against by `enumError`.
+ * `--role`'s is now `core/command-flags.ts`'s, where it is the `values` of this
+ * command's own flag declaration. `--origin`'s went the other way, to
+ * `core/validate.ts`: that module was ALREADY enforcing the same three `Origin`
+ * values on every created item, so the copy here was the second of two and the
+ * fix was to delete it rather than to move it. Either way the refusals below
+ * check against the same array the select is built from. `--role`'s three members are the
+ * branches `itemsWithoutDb` and `topItems` actually test, and the flag took
+ * any string at all until that list existed: `--role subjekt` counted nothing
+ * and said nothing.
  */
-const AUDIT_ROLES = ['subject', 'injected', 'spilled'];
 
 function buildFilter(args: string[]): AuditFilter {
   const filter: AuditFilter = {};

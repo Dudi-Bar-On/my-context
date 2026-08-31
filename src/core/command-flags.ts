@@ -19,18 +19,29 @@
  * eventually. `core/procedure-stage.ts` is the same move at smaller scale, for
  * the same reason, on the same day.
  *
- * ── WHAT THIS MODULE IS NOT, YET ───────────────────────────────────────────
+ * ── THE TWO HALVES OF THIS MODULE, AND WHY THEY ARE SEPARATE ───────────────
  *
- * It is a MOVE. `FlagSpec` is the shape the codebase already had — the exact
- * `{ allowed, values }` record that `PACK_FLAGS` (cli/commands/pack.ts),
- * `PROCEDURE_FLAGS`, `REVIEW_FLAGS` and `SESSION_FLAGS` are written in — and
- * nothing here declares a legal value, a placeholder or an example.
+ * `COMMAND_FLAGS` is a MOVE. `FlagSpec` is the shape the codebase already had
+ * — the exact `{ allowed, values }` record that `PACK_FLAGS`
+ * (cli/commands/pack.ts), `PROCEDURE_FLAGS`, `REVIEW_FLAGS` and
+ * `SESSION_FLAGS` are written in — and it answers one question: would the
+ * parser accept this token.
+ *
+ * `FLAG_DECLARATIONS`, at the bottom of the file, answers the other one:
+ * what does the flag MEAN, and what may be put in it.
  * `REQ-every-command-the-ui-offers-is-built-checked-before-it-can` asks for
- * exactly that next ("a flag that declares its legal values drives the select;
- * a flag that declares a format hint and an example drives the placeholder and
- * the help; and both drive the check"). Inventing it in the same commit as the
- * move would have made the diff stop reading as a move, which is the one thing
- * a lift of this size cannot afford.
+ * exactly that ("a flag that declares its legal values drives the select; a
+ * flag that declares a format hint and an example drives the placeholder and
+ * the help; and both drive the check"), and `plan:builder seq:2` built it.
+ *
+ * They stayed two tables rather than becoming one richer record, and the
+ * reason is the reason they arrived in different commits: `allowed` and
+ * `values` are what `refuseUnknownFlag` and `positionals` are HANDED, argument
+ * for argument, by thirty commands. Folding a description into the object
+ * those two walk would have turned a lift into a signature change across every
+ * command in the CLI, and the description would then be load-bearing on the
+ * parser — so a wrong note could break a refusal. Two tables, one key space,
+ * and a test that requires them to cover exactly the same flags.
  *
  * ── WHAT IS HERE, AND WHAT IS DELIBERATELY NOT ─────────────────────────────
  *
@@ -38,16 +49,25 @@
  * CLI dispatches: 32 registered by `cli/commands/index.ts`'s column of
  * side-effect imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 30 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
- *   |  5 | read their flags INLINE where they are used, with no spec to lift  |
+ *   | 35 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   |  0 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
  *   |  3 | take no flags at all — `show`, `rebuild`, `help`                   |
  *
+ * **The second row is kept at zero rather than deleted, and the zero is the
+ * news.** It read 5 until `plan:builder seq:1c`, and those five had no spec
+ * because they refused no unknown flag: a command with nothing to disagree
+ * with cannot be checked, so nothing could tell a builder that the command it
+ * had composed was wrong. They were given parsers rather than an exception,
+ * and the row stays so that the partition still covers all 39 — and so that a
+ * sixth command written the same way lands in a row that has a name.
+ *
  * **This paragraph said 38, and 38 was neither number.** `COMMANDS` holds 32
  * when only `cli/commands/index.ts` has been imported and 39 once `cli/index.ts`
- * has, because seven commands — `init`, `add`, `list`, `show`, `examples`,
- * `help`, `rebuild` — are registered in the entry module rather than in a
- * module of their own; both READMEs say 39 and were right while this said 38.
+ * has, because seven commands are registered in the entry module rather than in
+ * a module of their own — `show`, `help` and `rebuild`, which take no flags,
+ * and the four whose specs the map below now holds; both READMEs say 39 and
+ * were right while this said 38.
  * A count in a comment is exactly the hand-kept number this repository keeps
  * finding stale, so it is no longer only a comment: `test/cli/command-flags.test.ts`
  * derives every figure above from the registry and from this map and fails if
@@ -55,9 +75,26 @@
  * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
  * the registered set, so a command cannot arrive and be silently uncounted.
  *
- * **21** of the 30 are here, and they are the ones whose spec was already a
- * declarative constant over a FLAT surface — one command, one flag set. What
- * is not here is recorded rather than left to be discovered:
+ * **30** of the 35 are here. Twenty-one arrived with the first lift, and they
+ * are the ones whose spec was already a declarative constant over a FLAT
+ * surface — one command, one flag set. The other four arrived with
+ * `plan:builder seq:1b` and came out of `src/cli/index.ts` itself — the entry
+ * module `test/ui/no-writes.test.ts` bans from `src/ui/`, which made them the
+ * only four specs a read surface could not reach AT ALL: not module-private in
+ * a module the graph merely discourages, but inside the one module the graph
+ * forbids. Two were already constants there and two had never been constants
+ * anywhere, written inline at the refusal that used them.
+ *
+ * The last five arrived with `plan:builder seq:1c` and are the only entries
+ * here that were WRITTEN rather than moved, because the commands they describe
+ * had no spec to move and refused no unknown flag at all. That is a behaviour
+ * change, it was measured against every invocation in this repository before it
+ * was made, and the entries themselves carry the measurement.
+ *
+ * All nine are named in the map below and deliberately not here, because the
+ * inventory test reads a backticked command name in this header as the claim
+ * that its spec is ABSENT. What is absent is recorded rather than left to be
+ * discovered:
  *
  *   - **`pack`, `procedure`, `review`, `session`, `statusline`** keep their
  *     specs, because those are keyed by SUBCOMMAND (`review promote`, `pack
@@ -66,21 +103,17 @@
  *     requirement above will make once, for the selects and the placeholders
  *     as well as the check. Their records are already this exact shape, so the
  *     move is mechanical the day that key is chosen.
- *   - **`add`, `list`, `examples`, `init`** live in `src/cli/index.ts` — the
- *     banned module itself, and therefore the specs that most need to be out
- *     of it. They are separable (`ADD_FLAGS`/`ADD_VALUE_FLAGS` are already
- *     constants); `init`'s is entangled with the hint table it prints.
  *   - **`edit`** cannot be a static entry at all: its accepted set is
  *     `[...ALLOWED, ...declaredFlags(ws.config)]`, computed per workspace from
  *     the flags this project's categories declare. A read surface can only
  *     have `edit`'s spec by being told which workspace it is asking about.
- *   - **`ingest`, `ingest-apply`, `lesson-stage`, `lesson-accept`,
- *     `lesson-discard`** have no spec to lift: they read flags inline where
- *     they are used and refuse no unknown flag at all. `palette-lib.test.ts`'s
- *     `NO_FLAG_PROBE` already records two of them as unreachable for exactly
- *     this reason. Writing a spec for them would be writing one, not moving it.
  *   - **`show`, `rebuild`, `help`** take no flags. The absence is the fact.
  */
+
+import { AUDIT_KINDS, AUDIT_OPS } from './audit.ts';
+import { ORIGINS, SEVERITIES, STATUSES } from './validate.ts';
+import { RELATION_TYPES } from './vocabulary.ts';
+import type { ArtefactFormat } from '../pack/reader.ts';
 
 /**
  * One command's flag surface.
@@ -111,6 +144,16 @@ export interface FlagSpec {
  * strings would put the dependency the wrong way round.
  */
 export const DETAIL_FLAGS = ['full', 'short', 'summary', 'json'];
+
+/**
+ * `add`'s value-taking flags, named because its `allowed` is DERIVED from
+ * them: the command accepts every flag that takes a value, plus the
+ * confirmation, and that is the sentence `ADD_FLAGS = [...ADD_VALUE_FLAGS,
+ * 'yes']` said in `cli/index.ts`. Spelling the eight names a second time
+ * inside `allowed` would be the duplicate this module exists to remove —
+ * the same reason `[...DETAIL_FLAGS, 'quiet']` below is still a spread.
+ */
+const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'step', 'scope', 'tags', 'severity', 'extra'];
 
 /**
  * The lifted specs, keyed by the command name the registry knows.
@@ -195,4 +238,593 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
   unpin: { allowed: ['yes'], values: [] },
   harden: { allowed: ['yes'], values: [] },
   soften: { allowed: ['yes'], values: [] },
+
+  /**
+   * ── THE FOUR OUT OF `src/cli/index.ts` (plan:builder seq:1b) ─────────────
+   *
+   * `add`, `list`, `examples` and `init` are registered in the entry module
+   * rather than in a module of their own, and their specs were written there
+   * too. That is the one placement a read surface cannot work around:
+   * `test/ui/no-writes.test.ts` BANS `src/cli/index.ts` from `src/ui/`,
+   * because `cli/commands/index.ts` is a column of bare side-effect imports
+   * and reaching the entry point registers every mutating command. So these
+   * four were not merely private — they were unreachable, and a builder that
+   * wanted to compose `mycontext add` had no choice but to write the list
+   * down again.
+   *
+   * A MOVE, like the rest of this map. `list` and `examples` had no constant
+   * to move: their flag lists were argument expressions at the
+   * `refuseUnknownFlag` call that used them, which is the same defect one
+   * step earlier — a spec with no name is a spec nothing can import.
+   */
+
+  /**
+   * `--yes` is the gate; everything else supplies a field. `allowed` is
+   * derived from `ADD_VALUE_FLAGS` above rather than restated.
+   */
+  add: { allowed: [...ADD_VALUE_FLAGS, 'yes'], values: ADD_VALUE_FLAGS },
+  /**
+   * The detail levels and nothing else — `list`'s category filter is a
+   * POSITIONAL, so the one thing a reader might expect to find here is
+   * absent for a reason rather than by omission.
+   */
+  list: { allowed: DETAIL_FLAGS, values: [] },
+  /** `--short` picks the four-to-six-line form; the category is positional. */
+  examples: { allowed: ['short'], values: [] },
+  /**
+   * `init`'s one flag, and `allowed` and `values` are the SAME list because
+   * that is the fact: the only flag it takes consumes the next token.
+   *
+   * What did not move with it is `INIT_ARGUMENT_HINTS`, and that is the
+   * distinction this entry is worth reading for. `init` does not call
+   * `refuseUnknownFlag`: it refuses every argument it cannot act on —
+   * unknown flags AND bare positionals — in one sentence of its own, then
+   * prints a hint for three flag names it wants to answer rather than merely
+   * decline (`--global`, `--yes`, `--overwrite-changed`). Those hints are
+   * help TEXT about flags this command does NOT accept, so they are not part
+   * of the accepted set and would be false in it. The spec is what the
+   * command parses with; the hints are what it says. Only the first is here.
+   */
+  init: { allowed: ['pack'], values: ['pack'] },
+
+  /**
+   * ── THE FIVE THAT HAD NO SPEC AT ALL (plan:builder seq:1c) ───────────────
+   *
+   * These five are the one entry in this map that is NOT a move. `ingest`,
+   * `ingest-apply`, `lesson-stage`, `lesson-accept` and `lesson-discard` read
+   * their flags inline where each one is used — `flag(args, 'anchor')`,
+   * `readPayload`'s `flag(args, 'file')`, `edits()`'s four — and refused no
+   * unknown flag at all. There was nothing to lift, so the sets below were
+   * WRITTEN, by reading every `flag`/`hasFlag`/`listFlag` call each command
+   * reaches, and each command now refuses against the same record.
+   *
+   * **That is a behaviour change and it was measured before it was made.**
+   * A command given a refusal it never had breaks any caller that was passing
+   * something it ignored. Every invocation of the five in this repository —
+   * both READMEs, `docs/`, `skills/`, `commands/`, the corpus under
+   * `.my_context/`, the tests and the e2e specs — was enumerated first, and
+   * the flags they carry are `--anchor`, `--stdin`, `--file`, `--title`,
+   * `--scope`, `--severity` and `--directive`. All seven are accepted below;
+   * nothing that was being passed is now refused.
+   *
+   * **Why it had to happen here rather than being written off.**
+   * `REQ-every-command-the-ui-offers-is-built-checked-before-it-can` asks that
+   * a composed command be refused until it passes the CLI's OWN parser. For
+   * these five there was no parser to pass: a builder could compose
+   * `mycontext lesson-accept <id> <key> --whatever` and nothing in this
+   * product could say otherwise. The alternative was a named exception in the
+   * requirement, and an unstated exception is the failure mode a stated one
+   * exists to replace — so the parser was the cheaper of the two, given that
+   * the accepted sets were already knowable by reading.
+   */
+
+  /** `--anchor` narrows the request to one heading of the document. */
+  ingest: { allowed: ['anchor'], values: ['anchor'] },
+  /**
+   * `--stdin` is BARE and is the one flag here that nothing reads: with no
+   * `--file`, `readPayload` reads fd 0 regardless. It is in `allowed`
+   * because it is in the usage line, in both READMEs and in the request
+   * `mycontext ingest` prints for the extractor to call back with — a flag a
+   * command advertises and would then refuse is worse than one it ignores.
+   */
+  'ingest-apply': { allowed: ['anchor', 'file', 'stdin'], values: ['anchor', 'file'] },
+  /** The same payload pair as `ingest-apply`, and `--stdin` is bare here too. */
+  'lesson-stage': { allowed: ['file', 'stdin'], values: ['file'] },
+  /**
+   * `edits()`'s four overrides, every one of which takes a value.
+   *
+   * `--agent` is NOT here, and its refusal stays where it is rather than
+   * being folded into this one. `cmdLessonAccept` refuses it by name with a
+   * paragraph explaining that accepting a staged candidate IS the approval
+   * gate and an agent spelling of a gate is the gate's absence. Reduced to
+   * `unknown option "--agent"` that sentence is gone, and it is the sentence
+   * that matters: this is the one command in the product whose flag refusal
+   * is a security boundary rather than a typo check.
+   */
+  'lesson-accept': {
+    allowed: ['title', 'scope', 'severity', 'directive'],
+    values: ['title', 'scope', 'severity', 'directive'],
+  },
+  /**
+   * Two positionals and no flags — the empty set is the fact, and stating it
+   * here is what lets the command refuse rather than absorb.
+   *
+   * `cmdLessonDiscard` still passes `accept`'s value flags to `positionals`,
+   * and that is not dead now that the refusal runs first: it keeps the two
+   * sibling commands reading one argv the same way, which is the asymmetry
+   * its own comment was written about.
+   */
+  'lesson-discard': { allowed: [], values: [] },
+};
+
+/**
+ * ═══ WHAT A FLAG MEANS, AND WHAT MAY BE PUT IN IT (plan:builder seq:2) ═════
+ *
+ * Everything above answers "would the parser accept this token". Nothing above
+ * answers the question the owner actually asked on 2026-08-24 — that a user
+ * "does not know what is the correct format what is legal and what is not".
+ * `--severity` and `--scope` are indistinguishable in `{ allowed, values }`:
+ * both are names that take a value. One has two legal values and the other has
+ * an infinite number in a particular shape, and that difference is the whole of
+ * what a person needs.
+ *
+ * **The shape is `UpdatableName`'s, one level up.** `core/categories.ts`
+ * already decided how to describe a value a person may set: a closed `values`
+ * vocabulary, an ABSENT `values` meaning free text — a real answer rather than
+ * a gap — and a `note` a person reads. This extends that idea to a flag rather
+ * than inventing a second vocabulary language, and it adds the one thing a flag
+ * needs that a field did not: free text is not FORMLESS. `--scope` takes
+ * comma-separated globs, `--tags` a comma-separated list, `--body` prose,
+ * `--limit` a positive whole number and `--item` an existing item id. Those are
+ * five different kinds of free text and, until this table, nothing in the
+ * product could tell them apart.
+ *
+ * ── ONE DECLARATION, FOUR CONSUMERS ───────────────────────────────────────
+ *
+ * A `values` vocabulary drives a SELECT and the refusal. A `format` and an
+ * `example` drive the PLACEHOLDER and the help. The `note` is the sentence
+ * beside the control. They are one record because the alternative is four
+ * descriptions of one flag, and this repository has now paid four times over
+ * for two descriptions of one thing.
+ *
+ * ── DERIVE, DO NOT COPY — WHICH IS WHY FOUR VOCABULARIES MOVED HERE ────────
+ *
+ * A `values` list that is a second spelling of what the parser enforces is the
+ * defect this plan exists to end, so every closed vocabulary below is either
+ * imported from the module that enforces it (`SEVERITIES`, `STATUSES`,
+ * `AUDIT_KINDS`, `AUDIT_OPS`, `RELATION_TYPES`, `DETAIL_FLAGS`, `ORIGINS`) or
+ * is declared here and imported BY the module that enforces it.
+ *
+ * Four had to move, because each was a closed vocabulary living beside the
+ * operation that checks it — exactly the placement `core/vocabulary.ts`'s
+ * header describes as the reason `RELATION_TYPES` moved three times before it
+ * settled. `AUDIT_ROLES` was module-private in `cli/commands/audit.ts`,
+ * `ARTEFACT_FORMATS` in `cli/commands/export.ts`, and `RULE_DIRECTIVES` was a
+ * JSON-schema enum literal in `lesson/derive.ts`.
+ *
+ * The fourth did not come here at all, and that is the more useful half of the
+ * story. `--origin`'s vocabulary is `Origin`'s, and `core/validate.ts` already
+ * enforced it on every created item — while `cli/commands/audit.ts` kept a
+ * SECOND copy of the same three words for the filter. Two spellings of one
+ * union, one of them unreachable from any read surface, and a 2026-08-20 plan
+ * document had already recorded the duplication as a fact ("enforced twice")
+ * without anything failing over it. So `ORIGINS` was exported from the module
+ * that had the older claim on it rather than moved into this one: a
+ * declaration's job is to name where a vocabulary lives, not to collect them.
+ *
+ * `test/cli/command-flags.test.ts` holds the gate: a declared vocabulary must
+ * be the SAME ARRAY as the constant the parser uses — identity, not contents —
+ * or be named there with a reason. Equal contents is the state that drifts.
+ *
+ * ── WHAT IS NOT DECIDED HERE, AND IS NOT A GAP ────────────────────────────
+ *
+ * Some flags have a closed vocabulary this process cannot know: `--type`,
+ * `--category` and `--to` take a category name, and which names are legal is
+ * whatever THIS workspace enables. Those declare a `source` — the name of the
+ * set a builder must ask the server for — alongside the format and example
+ * every free-text flag carries. `edit` is the whole command in that position
+ * and is why `plan:builder seq:2b` exists; `source` is the same answer at flag
+ * granularity, and it is deliberately a NAME rather than a value, because a
+ * static list of this project's categories would be exactly the hand-copied
+ * vocabulary this table exists to remove.
+ */
+
+/** How an item can appear in an audit record — what `audit --role` selects. */
+export const AUDIT_ROLES = ['subject', 'injected', 'spilled'];
+
+/** What `export --format` writes: a directory tree, or one zip file. */
+export const ARTEFACT_FORMATS: ArtefactFormat[] = ['dir', 'zip'];
+
+/** Whether a rule prescribes or prohibits — `lesson-accept --directive`. */
+export const RULE_DIRECTIVES = ['do', 'dont'];
+
+/**
+ * One flag, and everything a person, a select, a placeholder or a refusal
+ * needs to know about it.
+ *
+ * `note` is required and the rest is absent when it does not apply, which is
+ * `UpdatableName`'s asymmetry and it is deliberate for the same reason: an
+ * absent `values` means free text, which is an answer, whereas an absent `note`
+ * would mean the flag cannot be rendered, and rendering is half of what this
+ * exists for.
+ */
+export interface FlagDeclaration {
+  /**
+   * The closed vocabulary, or absent for free text.
+   *
+   * Never written out where a constant exists: it is the array the parser
+   * checks against, by identity.
+   */
+  values?: readonly string[];
+  /**
+   * What shape the free text takes, as a phrase completing "it takes …".
+   * Required whenever the flag consumes a value and has no `values`.
+   */
+  format?: string;
+  /** One legal value, as it would be typed. Required alongside `format`. */
+  example?: string;
+  /**
+   * The set a builder must ASK for, when the vocabulary is real but
+   * per-workspace. A name, never the values — see the header.
+   */
+  source?: 'categories' | 'items' | 'tags' | 'plans' | 'sessions';
+  /** One line a person reads, beside the control or in the help. */
+  note: string;
+}
+
+/** Every flag of one command, by name. */
+export type FlagDeclarations = Readonly<Record<string, FlagDeclaration>>;
+
+/**
+ * The four detail levels, declared once. They are BARE — each is a switch, not
+ * a value — so none carries a format, and that absence is the fact.
+ */
+const DETAIL: FlagDeclarations = {
+  full: { note: 'Every field of every row, bodies included.' },
+  short: { note: 'Four to six lines per row - the form both READMEs print.' },
+  summary: { note: 'Counts only. No rows.' },
+  json: { note: 'One JSON document instead of a table, for a program to read.' },
+};
+
+/** `--limit`, wherever it caps a report. */
+const LIMIT: FlagDeclaration = {
+  format: 'a positive whole number', example: '50',
+  note: 'How many rows at most. Omit it to take the command\'s own default.',
+};
+
+/** `--yes`, on the commands whose gate it answers. */
+const YES: FlagDeclaration = {
+  note: 'Answer the confirmation without a prompt. This is the approval boundary: anything '
+    + 'holding a shell can type it, so a command that takes it can change what governs this '
+    + 'project with no human in the loop.',
+};
+
+/** An item id, wherever a flag takes one. */
+const ITEM_ID: FlagDeclaration = {
+  format: 'the id of an item that already exists', example: 'RULE-never-log-secrets',
+  source: 'items',
+  note: 'Ids are printed by `mycontext list`, `mycontext search` and every report.',
+};
+
+/** A category name: closed, but per-workspace — see the header. */
+const CATEGORY: FlagDeclaration = {
+  format: 'one category name this workspace has enabled', example: 'rule',
+  source: 'categories',
+  note: 'Which names are legal depends on the profile and on `categories` in config.json; '
+    + '`mycontext help categories` prints the resolved set.',
+};
+
+/** A tag filter, wherever one is accepted. */
+const TAG_FILTER = (what: string): FlagDeclaration => ({
+  format: 'one tag, or several comma-separated', example: 'v2,ui',
+  source: 'tags',
+  note: `Only ${what} carrying one of these tags.`,
+});
+
+/** `--since`/`--until`, whose grammar is `parseWhen`'s and is worth stating. */
+const WHEN = (edge: string): FlagDeclaration => ({
+  format: 'an ISO-8601 instant, a date read as UTC midnight, or a span back from now',
+  example: '7d',
+  note: `${edge} of the window. "2026-08-16T09:00:00Z", "2026-08-16", "7d", "12h" and "30m" `
+    + 'are all accepted; anything else is refused by name.',
+});
+
+/**
+ * What each flag means and what may be put in it, keyed exactly as
+ * `COMMAND_FLAGS` is.
+ *
+ * The test requires this to cover every flag of every command in that map and
+ * nothing else, in BOTH directions — a declaration for a flag the command
+ * refuses is as much a defect as a flag nobody described.
+ */
+export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
+  audit: {
+    ...DETAIL,
+    since: WHEN('The earliest record shown, inclusive'),
+    until: WHEN('The latest record shown, exclusive'),
+    item: { ...ITEM_ID, note: 'Only records that name this item, in any role.' },
+    session: {
+      format: 'a session id as the sessions report prints it', example: 'sess-01J8Z',
+      source: 'sessions',
+      note: 'Only records written during that session; `mycontext audit --sessions` lists them.',
+    },
+    kind: {
+      values: AUDIT_KINDS,
+      note: 'The family of operation. A kind is a group of ops, not a second name for one.',
+    },
+    op: {
+      values: AUDIT_OPS,
+      note: 'One operation exactly. Every op belongs to exactly one kind.',
+    },
+    origin: { values: ORIGINS, note: 'Who or what performed it.' },
+    role: {
+      values: AUDIT_ROLES,
+      note: 'How the item appears in the record: the subject of the mutation, injected into a '
+        + 'session, or spilled from one for budget.',
+    },
+    limit: LIMIT,
+    items: { note: 'Report by ITEM rather than by record - what was touched, and how often.' },
+    sessions: { note: 'Report by SESSION rather than by record.' },
+    files: { note: 'Report by FILE rather than by record.' },
+  },
+  decay: {
+    ...DETAIL,
+    sessions: {
+      format: 'a positive whole number of sessions', example: '10',
+      note: 'How far back "lately" reaches: an item not injected within this many sessions is '
+        + 'reported as decaying.',
+    },
+    all: { note: 'Include items never injected at all, not only the lapsed ones.' },
+  },
+  doctor: {
+    ...DETAIL,
+    quiet: {
+      note: 'Print nothing when every check passes. The exit code still carries the answer.',
+    },
+  },
+  export: {
+    out: {
+      format: 'a path outside the workspace, absolute or relative to the current directory',
+      example: './corpus-export',
+      note: 'Where the artefact is written. Required - there is no default, because a default '
+        + 'would put somebody\'s corpus somewhere they never named.',
+    },
+    format: {
+      values: ARTEFACT_FORMATS,
+      note: 'A directory tree, or a single zip file. `dir` when omitted.',
+    },
+    'pack-name': {
+      format: 'a slug', example: 'team-conventions',
+      note: 'The name the pack introduces itself by where it is imported. With --as-pack only.',
+    },
+    'pack-version': {
+      format: 'a version string', example: '1.0.0',
+      note: 'What an importer records as the version it took. With --as-pack only.',
+    },
+    type: { ...CATEGORY, note: `Export only items of this category. ${CATEGORY.note}` },
+    status: { values: STATUSES, note: 'Export only items in this lifecycle status.' },
+    tag: TAG_FILTER('items'),
+    'as-pack': { note: 'Write an importable PACK rather than a copy of the corpus.' },
+    'no-history': { note: 'Leave the revision and audit history out of the artefact.' },
+    'dry-run': { note: 'Report what would be written, and write nothing.' },
+    json: DETAIL.json,
+  },
+  focus: {
+    tag: {
+      format: 'one tag, or several comma-separated', example: 'v2,ui',
+      source: 'tags',
+      note: 'Narrow injection to items carrying these tags.',
+    },
+    category: { ...CATEGORY, note: `Narrow injection to this category. ${CATEGORY.note}` },
+    scope: {
+      format: 'comma-separated path globs', example: 'src/**,docs/*.md',
+      note: 'Narrow injection to items whose own scope overlaps these paths.',
+    },
+    clear: { note: 'Remove the focus entirely; injection goes back to the whole corpus.' },
+    show: { note: 'Print the focus in force, and change nothing.' },
+    preview: { note: 'Print what this focus WOULD inject, without setting it.' },
+    relations: {
+      note: 'Pull in items related to the matched ones, not only the ones that match.',
+    },
+    json: DETAIL.json,
+  },
+  'inbox-promote': {
+    to: { ...CATEGORY, note: `The category the note or todo becomes an item in. ${CATEGORY.note}` },
+    title: {
+      format: 'one line of prose', example: 'Never log secrets',
+      note: 'The promoted item\'s title. Omit it to keep the note\'s own first line.',
+    },
+    yes: YES,
+  },
+  'ingest-status': DETAIL,
+  lesson: {
+    agent: {
+      note: 'Record the lesson as origin "agent" rather than "human" - the one claim a shell '
+        + 'cannot truthfully make on its own. `lesson-accept` refuses it by name.',
+    },
+  },
+  query: {
+    json: DETAIL.json,
+    limit: { ...LIMIT, note: 'How many rows at most. The hard cap is 1000 either way.' },
+  },
+  ready: {
+    ...DETAIL,
+    plan: {
+      format: 'one plan name', example: 'builder',
+      source: 'plans',
+      note: 'Only tasks belonging to this plan.',
+    },
+    limit: LIMIT,
+    held: {
+      note: 'Also list the tasks a blocker is holding, which the report otherwise only counts.',
+    },
+  },
+  refresh: { yes: YES },
+  repair: { yes: YES },
+  search: {
+    ...DETAIL,
+    text: {
+      format: 'words to match in a title or body', example: 'migrations',
+      note: 'Free text, and the same match the bare positional makes.',
+    },
+    type: { ...CATEGORY, note: `Only items of this category. ${CATEGORY.note}` },
+    tag: TAG_FILTER('items'),
+    path: {
+      format: 'one repository path', example: 'src/core/store.ts',
+      note: 'Only items whose scope globs match this path - what would activate if you edited it.',
+    },
+    status: { values: STATUSES, note: 'Only items in this lifecycle status.' },
+    relation: {
+      values: RELATION_TYPES,
+      note: 'Only items on this side of a relation. The vocabulary is closed deliberately: an '
+        + 'open one produces derives_from, derivedFrom and derived-from in one corpus.',
+    },
+    limit: LIMIT,
+  },
+  status: DETAIL,
+  supersede: {
+    by: {
+      ...ITEM_ID,
+      note: 'The replacement that takes over. REQUIRED - a retirement with no successor is not '
+        + 'offered, because both directions are recorded.',
+    },
+    reason: {
+      format: 'one or two sentences of prose', example: 'Replaced by the derived check.',
+      note: 'Why the retirement happened. It is written as a supersession observation on the '
+        + 'REPLACEMENT, reading "Replaces <old id>: <your text>".',
+    },
+    yes: YES,
+  },
+  todo: {
+    ...DETAIL,
+    tag: TAG_FILTER('todos'),
+    limit: LIMIT,
+    all: { note: 'Include the todos already promoted or dropped, not only the open ones.' },
+  },
+  ui: {
+    port: {
+      format: 'a TCP port number', example: '58888',
+      note: 'Where to listen on 127.0.0.1. Omit it to take the first free port.',
+    },
+    'no-open': { note: 'Do not launch a browser; print the URL instead.' },
+    'idle-ms': {
+      format: 'a whole number of milliseconds', example: '28800000',
+      note: 'How long the server may sit unused before it exits. The default is fifteen minutes, '
+        + 'which is shorter than most pieces of work.',
+    },
+    nonce: {
+      note: 'Print a fresh one-shot credential for a server already running, and do nothing '
+        + 'else. Mutually exclusive with the other three, which this command refuses rather '
+        + 'than silently ignores.',
+    },
+  },
+  pin: { yes: YES },
+  unpin: { yes: YES },
+  harden: { yes: YES },
+  soften: { yes: YES },
+  add: {
+    body: {
+      format: 'prose - the whole body of the item',
+      example: 'Secrets in logs outlive the incident.',
+      note: 'What the item says. Mutually exclusive with --file, which is refused rather than '
+        + 'resolved by precedence.',
+    },
+    file: {
+      format: 'a path inside this repository', example: 'docs/prd.md',
+      note: 'The body is a SNAPSHOT of that file, and the item records where it came from, so '
+        + '`mycontext doctor` reports it when the two diverge.',
+    },
+    note: {
+      format: 'one sentence', example: 'Captured from the incident review.',
+      note: 'Adds one "[note]" observation. Repeatable, in the order given, and NOT comma-split '
+        + '- an observation is a sentence, and sentences contain commas.',
+    },
+    step: {
+      format: 'one sentence, one step', example: 'Take the database out of the load balancer.',
+      note: 'One step of a `procedure`. Repeatable, keeps command-line order, not comma-split, '
+        + 'and no later command can edit or tick it.',
+    },
+    scope: {
+      format: 'comma-separated path globs', example: 'src/**,docs/*.md',
+      note: 'The paths this item attaches to. Omitting it means the whole repository.',
+    },
+    tags: {
+      format: 'a comma-separated list', example: 'v2,ui',
+      source: 'tags',
+      note: 'Free-form labels. They change nothing about injection until a focus is set.',
+    },
+    severity: {
+      values: SEVERITIES,
+      note: 'hard items are admitted to a budget before soft ones. Any other word is refused.',
+    },
+    extra: {
+      format: 'key=value, one key per flag', example: 'directive=do',
+      note: 'One category-specific field - a rule\'s directive, a requirement\'s kind. '
+        + 'Repeatable, and the value is taken whole, commas included.',
+    },
+    yes: YES,
+  },
+  list: DETAIL,
+  examples: {
+    short: {
+      note: 'The example item alone, four to six lines, without the updatable surface.',
+    },
+  },
+  init: {
+    pack: {
+      format: 'a path to a directory or .zip that already exists', example: './team-pack.zip',
+      note: 'Found the workspace from an artefact somebody else exported. Everything it brings '
+        + 'in lands `draft` and governs nothing until a person promotes it.',
+    },
+  },
+  ingest: {
+    anchor: {
+      format: 'a heading from the document', example: 'Authentication',
+      note: 'Ask for one section rather than the whole document. Omit it to take the next '
+        + 'pending anchor.',
+    },
+  },
+  'ingest-apply': {
+    anchor: {
+      format: 'the anchor the candidates were extracted for', example: 'Authentication',
+      note: 'REQUIRED: it names which part of the session these candidates answer.',
+    },
+    file: {
+      format: 'a path to a JSON file of candidates', example: './candidates.json',
+      note: 'Where the extracted candidates are read from.',
+    },
+    stdin: {
+      note: 'Read the candidates from standard input. Required explicitly, so that a command '
+        + 'with neither flag fails with usage instead of blocking forever on a terminal.',
+    },
+  },
+  'lesson-stage': {
+    file: {
+      format: 'a path to a JSON file of rule candidates', example: './candidates.json',
+      note: 'Where the derived candidates are read from.',
+    },
+    stdin: { note: 'Read the candidates from standard input rather than from a file.' },
+  },
+  'lesson-accept': {
+    title: {
+      format: 'one line of prose', example: 'Run migrations outside peak hours',
+      note: 'Replace the staged candidate\'s title with your own wording before the rule exists.',
+    },
+    scope: {
+      format: 'comma-separated path globs', example: 'migrations/**,ops/**',
+      note: 'The paths the created rule attaches to. It may be repeated, and every occurrence is '
+        + 'unioned rather than the first one winning.',
+    },
+    severity: {
+      values: SEVERITIES,
+      note: 'The created rule\'s severity. Passed through as typed and re-validated against the '
+        + 'merged candidate, so a value outside this list is refused rather than dropped.',
+    },
+    directive: {
+      values: RULE_DIRECTIVES,
+      note: '"do" prescribes; "dont" prohibits. It is the field that decides which, so a '
+        + 'silently dropped value would invert the rule.',
+    },
+  },
+  'lesson-discard': {},
 };
