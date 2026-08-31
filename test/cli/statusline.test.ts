@@ -189,14 +189,18 @@ test('statusLineText renders each state without ever inventing a number', () => 
   // `occupancyBands(98).warn` and 98 is the threshold itself, so moving either
   // boundary moves which of these is which — see the powerline test for the pin.
   // The bands are ABSOLUTE — green below 60, amber to 85, red past it — and
-  // they do not move when the handover threshold does. The ASK is the other
-  // question and gets its own gold marker, which is why 99.2% below carries
-  // one and 42% does not.
-  assert.equal(at(42), bar(...head, `${LEVEL_GLYPH.ok} ctx 42.0%`));
-  assert.equal(at(70), bar(...head, `${LEVEL_GLYPH.warn} ctx 70.0%`));
+  // they do not move when the handover threshold does.
+  //
+  // The ASK is the other question, and since the owner's 2026-08-31 ruling it
+  // answers at EVERY fill as a distance rather than falling silent until it is
+  // nearly due. So all four rows below carry the block, and what changes across
+  // them is the number in it — 56.0 points of head-room at 42%, 4.6 at 93.4%,
+  // and none at all at 99.2%, where the words take over.
+  assert.equal(at(42), bar(...head, '◆ ask 98 · +56.0', `${LEVEL_GLYPH.ok} ctx 42.0%`));
+  assert.equal(at(70), bar(...head, '◆ ask 98 · +28.0', `${LEVEL_GLYPH.warn} ctx 70.0%`));
   // 93.4% is past 88.2 — the ask approaching, at a threshold of 98 — so the
-  // gold marker is beside the red fill. Two questions, two answers.
-  assert.equal(at(93.4), bar(...head, '◆ ask near', `${LEVEL_GLYPH.crit} ctx 93.4%`));
+  // marker has gone gold beside the red fill. Two questions, two answers.
+  assert.equal(at(93.4), bar(...head, '◆ ask 98 · +4.6', `${LEVEL_GLYPH.crit} ctx 93.4%`));
   assert.equal(at(99.2), bar(...head, '◆ handover due', `${LEVEL_GLYPH.crit} ctx 99.2%`));
 
   // The reasons `readOccupancy` keeps apart stay apart here. Collapsing them
@@ -269,9 +273,15 @@ test('a payload with no workspace behind it is classified the way the tee would 
  * surface whose whole job is disclosure — and the powerline did not get to
  * drop it just because the owner's sketch had four blocks in it.
  *
- * The context block stays LAST whatever else is disclosed: the ruling is that
- * the right end of the bar is what shifts as the window fills, and a block
- * after it would move the thing the eye is trained on.
+ * **SUPERSEDED, and recorded rather than dropped.** This paragraph used to
+ * read: *"The context block stays LAST whatever else is disclosed: the ruling
+ * is that the right end of the bar is what shifts as the window fills, and a
+ * block after it would move the thing the eye is trained on."* An owner ruling
+ * of 2026-08-31 replaced it — the context figure is now CENTRED, with the
+ * disclosures drawn to its right, because the owner ruled it the most
+ * important information on the bar and the centre is where the eye lands. See
+ * `statusline-powerline.ts` · `buildSegments` for the full record of the
+ * supersession. What this test pins is unchanged: both notes reach the line.
  */
 test('a tee that did not land is disclosed beside a myctx share that did', () => {
   const line = statusLineText(
@@ -291,7 +301,8 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
   );
   assert.equal(line, bar(
     'Opus 4.5', 'test_mycontext_plugin', 'campaign/my-context-test',
-    'myctx 6.2k', 'tee not written (disk full)', `${LEVEL_GLYPH.ok} ctx 23.5%`,
+    '◆ ask 98 · +74.5', `${LEVEL_GLYPH.ok} ctx 23.5%`,
+    'myctx 6.2k', 'tee not written (disk full)',
   ));
 
   // `≥` and not a rounded-up guess: some records carry no estimate, so the
@@ -307,7 +318,7 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       },
       false, null,
     ),
-    bar('myctx ≥6.2k', `${LEVEL_GLYPH.ok} ctx 23.5%`),
+    bar('◆ ask 98 · +74.5', `${LEVEL_GLYPH.ok} ctx 23.5%`, 'myctx ≥6.2k'),
   );
 
   // Two notes, two fields: a share that could not be computed is named, and
@@ -324,9 +335,10 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       false, null,
     ),
     bar(
+      '◆ ask 98 · +74.5',
+      `${LEVEL_GLYPH.ok} ctx 23.5%`,
       'myctx unavailable (projection sync failed)',
       'tee not written (unsafe session id)',
-      `${LEVEL_GLYPH.ok} ctx 23.5%`,
     ),
   );
 
@@ -343,7 +355,7 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       },
       false, null,
     ),
-    bar('Opus 4.5', 'p', 'b', `${LEVEL_GLYPH.ok} ctx 23.5%`),
+    bar('Opus 4.5', 'p', 'b', '◆ ask 98 · +74.5', `${LEVEL_GLYPH.ok} ctx 23.5%`),
   );
 });
 

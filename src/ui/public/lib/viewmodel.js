@@ -220,6 +220,104 @@ export function occupancyLevel(pct, threshold, ageMs) {
   return 'ok';
 }
 
+/* ══ AND THE ABSOLUTE FILL BANDS — A SECOND QUESTION, NOT A SECOND RAMP ════
+ *
+ * Owner ruling, 2026-08-31: *"the context figure becomes TWO fields, not one."*
+ *
+ * `occupancyLevel` above answers ONE question — how close is the handover ask —
+ * and it answers it in the threshold's own units, so it moves when the
+ * threshold moves. That is right for the ask and wrong for the window: how FULL
+ * a context window is does not become a different fact because somebody
+ * reconfigured when the handover fires.
+ *
+ * So the two questions are drawn as two fields:
+ *
+ *   ABSOLUTE FILL         ok  < 60      warn  60–85      crit  >= 85
+ *                         Fixed. Never derived from the threshold.
+ *   HANDOVER PROXIMITY    silent below T * 0.9, then one GOLD marker at two
+ *                         weights. `occupancyLevel` decides WHEN it fires; the
+ *                         presentation is a flag rather than a ramp.
+ *
+ * **The pair is the point, and it is why one ramp could not do this.** Red at
+ * 91% with no gold beside it says the window is nearly full and the ask has not
+ * fired. Red AND gold says both. A single three-step ramp collapses those two
+ * readings into one colour and the reader cannot tell them apart — which is
+ * what it had been doing.
+ *
+ * **Gold, and not a sixth hue.**
+ * `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn` assigns all
+ * five meaning-hues; two full ramps would need a sixth and a seventh. Gold
+ * already means "this wants your attention" in this product, and the handover
+ * ask is exactly that — a REQUEST, not a severity level.
+ *
+ * **DECLARED ONCE, HERE, AND RESTATED BY NAME ELSEWHERE.** 60 and 85 are new
+ * constants and a second copy of either is the defect this project has measured
+ * eight times, so they are exported under names another surface can restate the
+ * way `lib/live-invalidation.js` restates `STREAM_POLL_MS` and this file
+ * restates `CONTEXT_SAMPLE_FRESH_MS`. `test/ui/viewmodel.test.ts` holds any such
+ * restatement to these, so the mirror cannot rot in silence.
+ */
+export const CONTEXT_FILL_WARN_PERCENT = 60;
+export const CONTEXT_FILL_CRIT_PERCENT = 85;
+
+/**
+ * The band an occupancy figure falls in on the ABSOLUTE scale — `'ok'`,
+ * `'warn'`, `'crit'` — or `'stale'` for a sample too old to be levelled, or
+ * `null` when there is no percentage to level.
+ *
+ * No threshold argument, deliberately: that is the whole difference between
+ * this and `occupancyLevel`. `ageMs` is the caller's and is treated exactly as
+ * `occupancyLevel` treats it — a fossil is drawn without a level rather than in
+ * a confident colour, and the two fields must go unplaced together or a reader
+ * gets one live-looking answer beside one withheld one.
+ *
+ * `>=` on both boundaries, so a window sitting exactly on 85 is nearly full
+ * rather than one step below it.
+ */
+export function fillLevel(pct, ageMs) {
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return null;
+  if (typeof ageMs === 'number' && Number.isFinite(ageMs) && ageMs > CONTEXT_SAMPLE_FRESH_MS) {
+    return 'stale';
+  }
+  if (pct >= CONTEXT_FILL_CRIT_PERCENT) return 'crit';
+  if (pct >= CONTEXT_FILL_WARN_PERCENT) return 'warn';
+  return 'ok';
+}
+
+/* ══ THE ACCOUNT'S TWO RATE-LIMIT WINDOWS ══════════════════════════════════
+ *
+ * Owner ruling, 2026-08-31. `rate_limits.five_hour` and `rate_limits.seven_day`
+ * ride in the status-line payload the tee already stores WHOLE, so this needs
+ * no new source and no new call — `core/statusline-tee.ts` reads them at the
+ * same moment it reads the context window and `/api/watch/context` carries
+ * both.
+ *
+ * **Possibly absent, at three levels, and each is silence rather than a
+ * placeholder**: `rate_limits` is optional in the payload, either window inside
+ * it can be missing on its own, and either field inside a window can be a shape
+ * this code does not recognise. `STD-a-measured-zero-is-drawn-and-named` asks
+ * for a measured zero to be DRAWN; a window the payload never mentioned is not
+ * a measured zero, and inventing a `0%` for it would be a claim about an
+ * account nobody made.
+ */
+export function rateWindows(body) {
+  const r = body === null || body === undefined ? null : body.rateLimits;
+  if (r === null || r === undefined || typeof r !== 'object') return { fiveHour: null, sevenDay: null };
+  const one = (w) => {
+    if (w === null || w === undefined || typeof w !== 'object') return null;
+    if (typeof w.usedPercent !== 'number' || !Number.isFinite(w.usedPercent)) return null;
+    return {
+      usedPercent: w.usedPercent,
+      // Unix SECONDS, and `null` when the payload did not carry one. The
+      // countdown is what makes the figure actionable rather than merely
+      // alarming, but a reset time nobody served is not one this page may
+      // guess at.
+      resetsAt: typeof w.resetsAt === 'number' && Number.isFinite(w.resetsAt) ? w.resetsAt : null,
+    };
+  };
+  return { fiveHour: one(r.fiveHour), sevenDay: one(r.sevenDay) };
+}
+
 // The strip's decision table (spec §4b + §7): five states, each its own
 // rendering, never a number invented for a state that lacks one. `age` is
 // computed by the caller from receivedAt at render time so it ticks — it is
@@ -235,10 +333,14 @@ export function occupancyLevel(pct, threshold, ageMs) {
 // not pretend to.
 export function contextStrip(body, isCold) {
   const handover = handoverOf(isCold ? null : body);
+  // The account's two windows ride the same body and are read here so every
+  // caller gets one view object rather than reaching back into the response.
+  // A cold session is a hypothetical and has no account reading either.
+  const rate = rateWindows(isCold ? null : body);
   if (isCold || body === null) {
     return {
       state: 'cold', pct: null, used: null, size: null, receivedAt: null,
-      myctx: null, myctxError: null, handover,
+      myctx: null, myctxError: null, handover, rate,
     };
   }
   const myctx = body.mycontext ?? null;
@@ -246,7 +348,7 @@ export function contextStrip(body, isCold) {
   if (body.sample === null) {
     return {
       state: 'no-bridge', pct: null, used: null, size: null, receivedAt: null,
-      myctx, myctxError, handover,
+      myctx, myctxError, handover, rate,
     };
   }
   const c = body.sample.context;
@@ -259,6 +361,7 @@ export function contextStrip(body, isCold) {
     myctx,
     myctxError,
     handover,
+    rate,
   };
 }
 

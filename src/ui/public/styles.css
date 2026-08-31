@@ -609,7 +609,17 @@ bdi{unicode-bidi:isolate}
    content at all — without it the group refuses and pushes the strip's tail
    off the end. */
 .strip>*{flex:0 0 auto}
-.ctxstate{flex:1 1 auto;min-inline-size:0}
+/* AND IT CLIPS, since 2026-08-31 — the same treatment `.auditstate` has had
+   since it was written, and for the same reason. The chips inside are
+   `flex:none` and cannot give way, so once the group is squeezed past them they
+   rendered OUTSIDE it: over the separator, over the audit group, and past the
+   right edge of the window. The 2026-08-31 pass put two more chips in here (the
+   absolute fill band and the gold handover marker), which is what took it from
+   theoretical to measured — 136px past the window at 900px with a full window,
+   a rate limit in band and a handover verdict all showing at once.
+   A group that clips is bounded and discloses through its titles; a group that
+   spills takes its neighbours with it. */
+.ctxstate{flex:1 1 auto;min-inline-size:0;overflow:hidden}
 /* THE ONLY TWO CLIPPING BOXES IN THE BAR, and the one place a descender can
    actually be cut: `overflow:hidden` is what makes the ellipsis work and it
    clips VERTICALLY too, so the box has to be taller than the ink and not
@@ -672,12 +682,22 @@ bdi{unicode-bidi:isolate}
    information density, the same ordering `.sgrp-audit` above is written for.
 
    With a floor, because "yields" is not "disappears", and the floor is the
-   whole group and not just its number: 220px is the label plus the count
+   whole group and not just its number: 220px was the label plus the count
    (120px, measured) plus the drift chip's own 88px. At a bare 120px floor the
    chip measured ZERO at 900px - the state gone, the reader back to not knowing
    the corpus can move under this page at all, which is the exact defect the
-   audit group's own 170px floor was written against one rule down. */
-.sgrp-corpus{flex:0 2 auto;min-inline-size:220px}
+   audit group's own floor was written against one rule down.
+
+   330px SINCE 2026-08-31, and the number is arithmetic rather than taste: the
+   group gained the two corpus doors, whose own floor is 110px (see
+   `#corpusnotes`), and the group's floor has to be at least the sum of what it
+   holds or its children OVERFLOW IT. That is not a cosmetic overflow: `.sgrp`
+   sets no `overflow`, so at 220px the doors rendered OUTSIDE the group, on top
+   of the separator and the session label beside it, and a click aimed at the
+   doctor count landed on whatever was painted over it. Measured in a browser,
+   not reasoned: a click retried five times against three different intercepting
+   elements. A floor smaller than the group's own contents is not a floor. */
+.sgrp-corpus{flex:0 2 auto;min-inline-size:345px}
 /* And the squeeze lands on the CHIP'S SENTENCE and not on the count: the count
    is a measured figure and a clipped one is a wrong one, while "corpus changed
    outside the log" ellipsises and stays legible with its full text one hover
@@ -685,6 +705,19 @@ bdi{unicode-bidi:isolate}
 .corpusstate{flex:none}
 .corpusdrift{display:flex;align-items:center;flex:0 1 auto;min-inline-size:88px;overflow:hidden}
 .corpusdrift .chip{min-inline-size:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* THE TWO DOORS KEEP A FLOOR, for the reason `.sgrp-audit` has one: a control
+   squeezed to zero is a control that is not there, and these two are the whole
+   of the owner's *"a count that is not a door is only half of it"*. At 0 they
+   are also worse than absent — the buttons keep their own width inside a
+   clipped box, so a click lands on whatever is drawn over them.
+   110px is the first door, measured: the doctor count is always readable and
+   clickable, and the review count — which is only drawn when there is something
+   in it — is what ellipsises at the narrow end. Kept as small as that on
+   purpose, because every pixel of a floor is a pixel the context figure one
+   group along does not get. */
+#corpusnotes{display:flex;align-items:center;gap:var(--sp-3);min-inline-size:110px}
+#corpusnotes .linkid{min-inline-size:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  display:inline-block}
 /* AND THE CONTEXT GROUP'S OWN CHIPS ARE NOT SENTENCES, so they do not take the
    sentence's line-height. `.ctxstate>span` is 1.9 because it is a CLIPPING BOX
    around running text and the ink needed ~4px of clearance inside it; a chip is
@@ -708,17 +741,22 @@ bdi{unicode-bidi:isolate}
    not wrap the git chip or shave a separator. */
 /* AND IT YIELDS FIRST. Both groups shrink, but not equally: a shrink factor
    of 3 against the context group's 1 means the deficit lands on the audit
-   group — the one holding two figures this read surface has no source for —
+   group — the one holding a figure this read surface has no source for —
    before it lands on the live context measurement, which is the number this
    product is about. Owner, 2026-08-29: "other more important info could not be
    seen like the context size left filled percentage". Priority by information
    density, not by declaration order. */
-/* With a FLOOR, because "yields first" is not "disappears": at 0 the two
-   properties are gone and the reader is back to not knowing they exist, which
-   is the four-of-forty-four defect wearing a flexbox. 170px is the group
-   label plus its state chip, measured — enough that the state is always
-   readable and only the property NAMES ellipsise. */
-.sgrp-audit{flex:0 3 auto;min-inline-size:170px}
+/* With a FLOOR, because "yields first" is not "disappears": at 0 the property
+   is gone and the reader is back to not knowing it exists, which is the
+   four-of-forty-four defect wearing a flexbox.
+   170px WAS the group label plus its state chip with TWO properties in the
+   group. The 2026-08-31 ruling cut one of them — the audit append p95 and its
+   `measured` chip — so the floor was re-measured against what is left and
+   comes down to 120px: the label, the chip, and the em dash before
+   `injections today`. A floor kept at the old value is a group reserving room
+   for a property that no longer exists, and every pixel of it comes out of the
+   context figure one group along. */
+.sgrp-audit{flex:0 3 auto;min-inline-size:120px}
 .auditstate{min-inline-size:0;overflow:hidden}
 .sprop{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-inline-size:0}
 .auditstate>.m,.auditstate>.chip{flex:none}
@@ -776,12 +814,54 @@ bdi{unicode-bidi:isolate}
    8px MORE. `e2e/strip.spec.ts` now measures every control in the strip
    against the strip, which is the assertion that would have caught it. */
 #screenstale,#livestate{display:flex;align-items:center;gap:var(--sp-2)}
-/* ── AND `#screenstale` NOW RENDERS WITH THE SCREEN IT ACTS ON — owner ruling
-   2026-08-31, `plan:walk seq:116`: "move the refresh button to the screen".
-   Still APP-ONLY; the design of record declares neither affordance, and this
-   rule is the layout the move needs rather than a look it invents.
+/* ── AND `#screenstale` NOW RENDERS IN THE SCREEN'S TITLE ROW — owner ruling
+   2026-08-31, `plan:walk seq:116` ("move the refresh button to the screen")
+   and then, the same day, *"the refresh button should be move maybe to title
+   because now it overrides screen data"*. Still APP-ONLY; the design of record
+   declares neither affordance, and this rule is the layout the move needs
+   rather than a look it invents.
 
-   **IT OVERLAYS THE SCREEN, IT DOES NOT DISPLACE IT, AND THAT IS MEASURED.**
+   ── WHAT THIS REPLACED, AND WHY NEITHER FAILURE COMES BACK ────────────────
+
+   Two placements have been wrong here and each was wrong in the other's
+   direction, so the fix has to answer both at once or it is one of them again.
+
+     IN THE FLOW, above the content. With `#screen` scrolled to 300px,
+     inserting a 58px affordance moved `scrollTop` to 358. Scroll anchoring was
+     RIGHT to keep the reader's place; the affordance was wrong to have a place
+     in the flow at all. `e2e/live-refresh.spec.ts`'s acceptance test for
+     `DEC-a-refresh-keeps-the-reader-s-place-or-it-asks` catches this.
+
+     OVERLAID, in the screens' own grid cell, sticky, `z-index:4`. Nothing
+     moved — and the price was that it covered the data underneath it, which is
+     what the owner then reported.
+
+   THE ANSWER IS A RESERVED SLOT, not a third placement: `.phd` is always 37px
+   tall (see its rule), so the affordance sits in the title row beside the
+   heading and the verdict, and the room it needs is room the row already had.
+   Nothing is covered, because it has a place of its own; and nothing moves when
+   it appears or is taken, because that place is there either way. An affordance
+   that appears by TAKING space it did not previously hold is the 300px defect
+   wearing a different placement.
+
+   WHAT IT GIVES UP, said rather than discovered: it no longer follows the
+   reader down a long screen. It scrolls away with the title it belongs to. That
+   is the trade the owner asked for — the control acts on the SCREEN and is now
+   drawn with the screen's own name — and it is not a return to the strip, which
+   the 2026-08-31 ruling took it out of.
+
+   The three things the old placement was careful about all survive: the single
+   affordance element is still moved rather than copied (`append` relocates a
+   node), `#screenstale[hidden]` below still beats this rule's specificity, and
+   `.icon` being `display:grid` — a block, which is what stacked the message
+   above the button the first time — is still answered by `#screenstale`'s own
+   `display:flex` above.
+
+   **WHAT THIS RULE USED TO SAY, kept so the next reader does not re-derive
+   it:** it took `grid-column:1;grid-row:1` — the same cell every `[data-p]`
+   screen takes, since `.body` is `display:grid` and the screens crossfade in
+   place — with `position:sticky` and `z-index:4` over `.body{overflow-y:auto}`.
+   That is what "overlay" was.
    `app.js` prepends this into `.body` (`#screen`), which is `display:grid` with
    every `[data-p]` screen in ONE cell (`grid-column:1;grid-row:1`) so an
    outgoing and an incoming screen crossfade in place. This takes THE SAME CELL,
@@ -805,11 +885,34 @@ bdi{unicode-bidi:isolate}
    whatever scrolls under it, which is unreadable at exactly the moment it
    matters. `z-index:4` clears the screens' own content and stays under `.hdr`
    (5) and the exit banner (30). */
-#screenstale{grid-column:1;grid-row:1;align-self:start;justify-self:start;
-  position:sticky;inset-block-start:0;z-index:4;
-  inline-size:fit-content;max-inline-size:100%;background:var(--panel);
+/* `flex:1 1 0`, and the ZERO BASIS is the load-bearing part of it.
+   `.phd` is `flex-wrap:wrap`, and a wrapping flex container collects items onto
+   a line by their HYPOTHETICAL MAIN SIZE — the base, before any shrinking. An
+   affordance whose base is its content therefore takes a second line and grows
+   the row, and shrinking it afterwards is too late: measured, the acceptance
+   test for `DEC-a-refresh-keeps-the-reader-s-place-or-it-asks` moved a body
+   scrolled to 300px to 326px, which is the 26px that second line cost. With a
+   base of 0 it never causes a wrap; `flex-grow:1` then hands it the room left
+   over on the title's own line, and `justify-content:flex-end` puts its content
+   at the far end of that room — which is what the auto margin used to do and
+   cannot, because grow has already taken the free space an auto margin needs. */
+/* `margin:0` FIRST, because the affordance is a `<p>` and the user agent gives
+   a `<p>` `1em` of block margin. Overlaid in its own grid cell that cost
+   nothing; in a flex row it is 13px above and 13px below, so the item's OUTER
+   height was 63px in a slot reserved for its 37px BORDER box — and the 26px
+   difference is exactly what the acceptance test measured when a body scrolled
+   to 300px came back reading 326. A reservation is only a reservation if it is
+   measured on the same box the layout uses. */
+#screenstale{margin:0;align-self:center;flex:1 1 0;min-inline-size:0;justify-content:flex-end;
+  background:var(--panel);
   border:1px solid var(--edge-3);border-radius:var(--r-md);
   padding-block:4px;padding-inline:var(--sp-2);color:var(--dim)}
+/* The MESSAGE gives way, never the button — the same bound-and-disclose the
+   context sentence in the strip gets, and for the same reason: the row is a
+   fixed height and the sentence is the part of this that can be read later.
+   It discloses in full through the `title` `affordanceElement` sets. */
+#screenstale>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  min-inline-size:0}
 /* AND THE LAYOUT RULE ABOVE MUST NOT DEFEAT `hidden`, which is what it did for
    the first hours of its life. Both spans are BUILT hidden and unhidden only
    when there is something to say — a stream fault, or a record for the screen
@@ -898,7 +1001,25 @@ bdi{unicode-bidi:isolate}
 }
 
 
-.phd{display:flex;flex-wrap:wrap;gap:6px var(--sp-3);align-items:baseline;margin-block-end:3px}
+/* THE TITLE ROW RESERVES ROOM FOR THE SCREEN'S LIVE AFFORDANCE, 2026-08-31.
+   Owner: "the refresh button should be move maybe to title because now it
+   overrides screen data."
+
+   The affordance used to OVERLAY the screen — same grid cell, sticky, z-index 4
+   — which was chosen to avoid a real defect: inserted into the flow above a body
+   scrolled to 300px it moved the content under the reader, and scroll anchoring
+   was right to do it. Overlaying solved that and bought a worse one, because
+   what it overlays is data.
+
+   Both failure modes have one answer: the row is ALWAYS this tall, whether or
+   not the affordance is in it. Nothing is covered, because the affordance now
+   has a place of its own; and nothing shifts when it appears or disappears,
+   because the place was always there. An affordance that appears by TAKING
+   space it did not previously hold is the 300px defect again in a new place.
+
+   37px is what it costs: `.icon` is 27px, plus 4px of block padding either side
+   of it and a 1px border. Measured off the control, not chosen. */
+.phd{display:flex;flex-wrap:wrap;gap:6px var(--sp-3);align-items:baseline;margin-block-end:3px;min-block-size:37px}
 .verdict{font-size:var(--fs-0);color:var(--dim)}
 .psub{color:var(--dim);font-size:var(--fs-1);margin:0 0 var(--sp-4);max-inline-size:78ch}
 

@@ -20,9 +20,22 @@
  */
 import { test, expect } from './app.ts';
 
-/** The first id button on the injection preview — the screen the owner was on. */
+/** The first id button on the injection preview — the screen the owner was on.
+ *
+ * **Scoped to `#screen`, since 2026-08-31.** `.linkid` is the shell's link-button
+ * primitive and the status strip started using it that day, for the two corpus
+ * doors the owner ruled in (the doctor notice count and the review queue). An
+ * unscoped `button.linkid` therefore resolves to a STRIP control, whose click
+ * routes to another screen instead of opening the item pane — so this helper
+ * would hand every test below a button that cannot do the thing they measure.
+ *
+ * The same hazard one container along is already written down at
+ * `an id on a different screen opens the pane too`: the router keeps every
+ * visited screen in the DOM, so an unscoped selector finds whichever screen was
+ * visited first. The fix is the same one, applied at the shell boundary.
+ */
 async function firstLink(page: import('@playwright/test').Page) {
-  const link = page.locator('button.linkid').first();
+  const link = page.locator('#screen button.linkid').first();
   await expect(link, 'no button.linkid rendered — this test cannot measure what it is for')
     .toBeVisible({ timeout: 15_000 });
   return link;

@@ -724,15 +724,18 @@ base('a change made somewhere else still offers the affordance rather than redra
       // Pressed from its new home — `plan:walk seq:116` moved it out of the
       // status strip and into the section it acts on, and the control still
       // does what its own words say.
-      // **Inside `#screen`, over the screen it names — not in the status strip**
-      // (`plan:walk seq:116`). It takes the same grid cell as the `[data-p]`
-      // section so it overlays rather than displaces, which is why the scroll
+      // **In the visible screen's TITLE ROW**, since the owner's second ruling of
+      // 2026-08-31: *"the refresh button should be move maybe to title because
+      // now it overrides screen data."* It used to take the screens' own grid
+      // cell and OVERLAY them, which is how it stopped displacing content and
+      // started covering it. `.phd` now reserves 37px on every screen whether or
+      // not this is in it, so neither happens — which is why the scroll
       // assertions in `e2e/live-refresh.spec.ts` still hold with it up.
       await expect(
-        page.locator('#screen > #screenstale'),
-        'the affordance must render WITH the screen it acts on, not at the end of a status bar '
-        + 'whose every group refreshes itself silently — the placement contradicted the wording '
-        + '("New activity for this screen") and the wording lost',
+        page.locator('#screen [data-p]:not([hidden]) .phd > #screenstale'),
+        'the affordance must render WITH the screen it acts on — in that screen’s own title row, '
+        + 'beside its name — not at the end of a status bar whose every group refreshes itself '
+        + 'silently, and not overlaid on the data it is a statement about',
       ).toBeVisible();
       await expect(
         page.locator('#strip #screenstale'),

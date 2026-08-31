@@ -147,7 +147,10 @@ import { markdownNodes } from '/screens/docs.js';
 // three-state table for `measureCorpusDrift`'s answer — both in the module
 // beside `contextStrip` and both unit-tested there, because a decision table
 // inside a DOM builder is a decision table no test can reach.
-import { contextStrip, corpusDrift, formatAge, occupancyBands, occupancyLevel } from '/lib/viewmodel.js';
+import {
+  CONTEXT_FILL_CRIT_PERCENT, CONTEXT_FILL_WARN_PERCENT,
+  contextStrip, corpusDrift, fillLevel, formatAge, occupancyBands, occupancyLevel,
+} from '/lib/viewmodel.js';
 // The rail's Coverage-gaps badge counts the SAME directories the gaps table
 // lists, through the same function. See `paintRailCounts` for why the count is
 // derived here rather than served as a number by `/api/status`.
@@ -1514,21 +1517,29 @@ let pendingScreenRefresh = null;
  * already answered — *"New activity for this screen"* — and the placement was
  * saying something else, louder.
  *
- * ── WHERE IT WENT, AND WHY NOT INSIDE THE SECTION'S FLOW ─────────────────
+ * ── WHERE IT WENT: THE SCREEN'S TITLE ROW, IN A RESERVED SLOT ────────────
  *
- * Into the `[data-p]` section it is about, as its FIRST child and
- * `position:sticky` at the top of it. Two properties had to survive the move
- * and both are load-bearing:
+ * Into the visible `[data-p]` section's `.phd` — the heading row `parts.js`'s
+ * `screenHead()` builds for every screen — beside the screen's own name and
+ * verdict. Owner, 2026-08-31: *"the refresh button should be move maybe to
+ * title because now it overrides screen data."*
+ *
+ * The row is 37px tall WHETHER OR NOT this is in it, which is the whole design:
+ * see `styles.css`'s `.phd` and `#screenstale` rules for the two failures a
+ * reserved slot answers together — content covered (the overlay this replaces)
+ * and content displaced (the 300px scroll defect the overlay was chosen to
+ * avoid). Two properties had to survive the move and both are load-bearing:
  *
  *   1. **It may not move the reader's place.** `DEC-a-refresh-keeps-the-reader
  *      -s-place-or-it-asks` has an acceptance test that measures `.body`'s
  *      scrollTop across a refresh, and `plan:walk seq:64` measured a refresh
  *      discarding three of the owner's selections in one act. A block inserted
  *      into the section's flow would push every row down by its own height the
- *      instant it appeared. `position:sticky` with the section as containing
- *      block takes it OUT of that: it overlays the first line of the screen
- *      rather than displacing it, and `scrollTop` is untouched in both
- *      directions.
+ *      instant it appeared. The reserved slot takes it OUT of that: the title
+ *      row is already as tall as this control, so putting the control in it
+ *      changes no height at all and `scrollTop` is untouched in both
+ *      directions. (The placement this replaced achieved the same by overlaying
+ *      the screen in its own grid cell, which is where the covering came from.)
  *   2. **It may not be erased by the render it is offering.** Every screen's
  *      `render()` opens with `root.replaceChildren()`, which would take this
  *      with it. It is not appended once and left: it is INSERTED when shown and
@@ -1552,21 +1563,62 @@ function showLiveAffordance(onTake) {
   pendingScreenRefresh = onTake;
   const body = document.getElementById('screen');
   if (body === null) return;
+  // **WHERE THE READER WAS READING WHEN THIS APPEARED**, captured here and used
+  // by `act()` instead of the offset at the moment the control is pressed.
+  //
+  // This is what the title-row placement costs and how it is paid. The old
+  // OVERLAY was `position:sticky` at the top of the scroll container, so it was
+  // on screen wherever the reader had scrolled to and pressing it moved nothing.
+  // In the title row it scrolls away with the title, so reaching it means
+  // scrolling back to the top — and `scrollTop` is 0 by the time the click
+  // lands. Restoring THAT would return the reader to the top of a screen they
+  // were reading the middle of, which is `DEC-a-refresh-keeps-the-reader-s-
+  // place-or-it-asks` broken by the mechanism built to honour it.
+  //
+  // A reader's place is where they were reading, not where they had to go to
+  // reach a button. Measured: without this, the decision's own acceptance test
+  // reads 0 where it scrolled to 300.
+  pendingScreenScroll = body.scrollTop;
   const el = affordanceElement();
   el.hidden = false;
-  // **Into `.body` and NOT into the `[data-p]` section**, and the difference is
-  // measured. `.body` is `display:grid` with every screen in ONE cell, and this
-  // takes the same cell (`styles.css`), so it OVERLAYS the screen rather than
-  // displacing it. Inside the section it would be in normal flow: with the body
-  // scrolled to 300px, inserting a 58px affordance above the content moved
-  // `scrollTop` to 358 — the browser keeping the reader's place, correctly, over
-  // a change this control had no business making. `DEC-a-refresh-keeps-the-
-  // reader-s-place-or-it-asks`'s acceptance test caught it.
+  // **INTO THE VISIBLE SCREEN'S TITLE ROW** — owner, 2026-08-31: *"the refresh
+  // button should be move maybe to title because now it overrides screen
+  // data."*
   //
-  // `prepend`, so it is the first thing a screen reader reaches on the way in:
-  // it is a statement ABOUT this screen, and a statement placed after the
-  // content it qualifies is one a reader meets only if they read to the end.
-  body.prepend(el);
+  // It used to go into `.body` and take the screens' own grid cell, which
+  // OVERLAID the screen. That was a deliberate trade and it bought a real
+  // property — with the body scrolled to 300px, an affordance inserted into the
+  // flow moved `scrollTop` to 358, and `DEC-a-refresh-keeps-the-reader-s-place-
+  // or-it-asks`'s acceptance test caught it — but the price was covering the
+  // data the reader was looking at, which is the report above.
+  //
+  // Neither failure comes back, because the room is RESERVED rather than taken:
+  // `.phd` is 37px tall on every screen whether or not this is in it (see its
+  // rule in `styles.css`, carried byte-identical from the design of record).
+  // Nothing is overlaid, because the affordance has a place of its own; nothing
+  // shifts when it appears or is taken, because that place is there either way.
+  // An affordance that appears by TAKING space it did not previously hold is
+  // the 300px defect again in a new place.
+  //
+  // **`.phd` and not the section**, which is what makes the reservation
+  // possible: it is one row, it is the first thing in every screen, and
+  // `parts.js`'s `screenHead()` builds it for all of them. Falling back to
+  // `body.prepend` for a screen that somehow has none keeps the affordance
+  // reachable rather than silently dropping it — and that path is the OLD
+  // placement, cell and all, so it is no worse than what it replaces.
+  //
+  // The order within the row is deliberate: APPENDED, after the heading and the
+  // verdict, so a screen reader meets the screen's name first and then the
+  // qualification about it. `role="status"` is what announces it out of order
+  // to a reader who is elsewhere on the page; position is for the reader who
+  // arrives at the top.
+  //
+  // `append` MOVES a node already in the document rather than copying it, so
+  // the single-affordance guarantee survives the move exactly as it survived
+  // `prepend`: one element cannot be in two title rows at once.
+  const head = visibleSection()?.querySelector('.phd') ?? null;
+  if (head === null) body.prepend(el);
+  else head.append(el);
 }
 
 /**
@@ -1579,6 +1631,10 @@ function showLiveAffordance(onTake) {
  */
 function hideLiveAffordance() {
   pendingScreenRefresh = null;
+  // Cleared with the affordance it belongs to: an offset kept past the notice
+  // that recorded it would send a LATER refresh — an Execute run, an auto
+  // redraw — to a place nobody was reading.
+  pendingScreenScroll = null;
   if (screenStaleEl === null) return;
   screenStaleEl.hidden = true;
   screenStaleEl.remove();
@@ -1613,6 +1669,12 @@ function visibleSection() {
  * copying it, so the move is the removal.
  */
 let screenStaleEl = null;
+/**
+ * `#screen`'s scroll offset at the moment the affordance went up, or `null`
+ * when none is showing. See `showLiveAffordance` for why the offset at the
+ * moment it is PRESSED is the wrong one to keep.
+ */
+let pendingScreenScroll = null;
 function affordanceElement() {
   if (screenStaleEl !== null) return screenStaleEl;
   const stale = document.createElement('p');
@@ -1625,6 +1687,13 @@ function affordanceElement() {
   stale.setAttribute('role', 'status');
   const staleMsg = document.createElement('span');
   staleMsg.append(...translate(table.strings, 'live.screenStale'));
+  // BOUND AND DISCLOSED. In the title row the message shares one line with the
+  // screen's own heading, so `#screenstale>span:first-child` ellipsises it
+  // rather than letting it wrap the row taller than the slot reserved for it.
+  // An ellipsis with no way to the rest is the shape 05-dataviz.html's
+  // bound-AND-disclose rule refuses, and this is the way to the rest — the same
+  // treatment the context sentence in the strip already gets.
+  staleMsg.title = flat(table.strings, 'live.screenStale');
   const staleBtn = document.createElement('button');
   staleBtn.type = 'button';
   staleBtn.className = 'icon';
@@ -1749,6 +1818,13 @@ function setupLiveScreen(name, mod, section) {
   const decl = SCREEN_INVALIDATION[name];
 
   const act = () => {
+    // Read BEFORE `hideLiveAffordance()` clears it: this is the reading
+    // position `showLiveAffordance` recorded when the notice went up, and it is
+    // preferred over the live `scrollTop` for the reason written there. `null`
+    // — every path that is not a taken affordance, such as an Execute run or an
+    // auto redraw — falls through to the offset the reader is at now, which is
+    // the same value the live read has always given those paths.
+    const takenFrom = pendingScreenScroll;
     hideLiveAffordance();
     // **Every screen's `render()` opens with `root.replaceChildren()`**
     // (`route()`'s own comment on this, above) — for however long the
@@ -1764,7 +1840,7 @@ function setupLiveScreen(name, mod, section) {
     // FINAL state — the property the test actually measures — holds
     // regardless of what the browser does mid-rebuild.
     const scrollHost = document.getElementById('screen');
-    const savedScroll = scrollHost === null ? null : scrollHost.scrollTop;
+    const savedScroll = takenFrom ?? (scrollHost === null ? null : scrollHost.scrollTop);
     return renderScreen(mod, section).then(() => {
       if (scrollHost !== null && savedScroll !== null) scrollHost.scrollTop = savedScroll;
       // **After EVERY redraw, not only the first.** One Execute is three
@@ -2435,7 +2511,35 @@ function renderChrome() {
   const drift = document.createElement('span');
   drift.className = 'corpusdrift';
   drift.id = 'corpusdrift';
-  corpus.append(count, drift);
+  // ── AND WHAT THE CORPUS IS WAITING ON — owner ruling 2026-08-31.
+  //
+  // Two counts and two doors: doctor findings at error or warning level, and
+  // the items waiting for the owner to rule on them. The owner has twice
+  // reported that doctor findings are discovered late, and *"a count that is
+  // not a door is only half of it"*.
+  //
+  // **THE COST WAS THE WHOLE QUESTION, AND IT IS ZERO.** The ruling was
+  // conditional — *"DO NOT run a full doctor sweep on the heartbeat … if you
+  // cannot make it cheap, do not build it"* — because `runChecks` over this
+  // corpus is 103 findings across 732 items and MEASURED AT 0.8–1.7 SECONDS a
+  // run, beside the 6.24 ms/min `measureCorpusDrift` costs. Running that on a
+  // heartbeat, per visible tab, is not a field, it is a regression.
+  //
+  // It is not run. `/api/status` — the ONE call this group already makes for
+  // the item count — has served `health: {errors, warnings, infos}` and
+  // `reviewQueue` beside that count since it was written. So both numbers come
+  // off a response already on the wire, refreshed on `mutation` exactly as the
+  // count is, and the heartbeat is untouched. `fillItems` fills this element
+  // from the same body in the same pass.
+  //
+  // `.sprop` and not a new class: it is the strip's existing shrink-and-
+  // ellipsise treatment (`min-inline-size:0; overflow:hidden; text-overflow:
+  // ellipsis; white-space:nowrap`), which is what keeps the strip from spilling
+  // at 900px. Nothing is added to either stylesheet for this.
+  const notes = document.createElement('span');
+  notes.className = 'sprop';
+  notes.id = 'corpusnotes';
+  corpus.append(count, drift, notes);
   strip.append(sep());
 
   const session = group('session', 'strip.grp.session', strip);
@@ -2457,7 +2561,22 @@ function renderChrome() {
   auditState.className = 'auditstate';
   auditState.id = 'auditstate';
   auditState.append(stateChip('strip.unmeasured', 'title.unmeasured'));
-  for (const key of ['strip.inj', 'strip.append']) {
+  // ── ONE FIGURE SINCE 2026-08-31, NOT TWO — owner ruling.
+  //
+  // `strip.append` (the audit append p95) and the `strip.meas` chip beside it
+  // are CUT. The p95 is a latency measurement of the audit log's WRITE path: a
+  // developer diagnostic with no action attached, holding a permanent place in
+  // the densest row this shell has. It is not useless, it is MISPLACED — and
+  // nothing here was ever measuring it. The mockup's `0.55 ms` came out of
+  // `core/audit-db.ts`'s own benchmark header, and that is where the figure
+  // still lives, beside `test/perf/audit-latency.perf.ts` which takes it. No
+  // measurement was lost by this cut, because none was being made.
+  //
+  // `injections today` stays, and the ruling was explicit that it stays: it is
+  // the at-a-glance proof the one feature this product exists for is firing at
+  // all. It has no source on this read surface either, so it is drawn and
+  // NAMED as unmeasured rather than dropped.
+  for (const key of ['strip.inj']) {
     const dash = document.createElement('span');
     dash.className = 'm';
     dash.textContent = '—';
@@ -2800,13 +2919,38 @@ async function fillGit(git) {
       // already on screen is noise a screen reader reads out twice.
       if (commit.length > 7) segment.title = commit;
       parts.push(segment);
-      // The chip carries the full branch too, and always did: `strip.inSync`/
-      // `strip.differs` say "in sync with origin/{branch}" — a REMOTE ref, which
-      // is a different string from the local branch's display name.
-      const key = g.upstream === 'in-sync' ? 'strip.inSync'
-        : g.upstream === 'differs' ? 'strip.differs'
+      // **THE UPSTREAM VERDICT DRAWS NOTHING WHEN THERE IS NOTHING TO ACT ON**
+      // — owner ruling 2026-08-31, the pass that asked of every field in this
+      // bar *"would this change what I do next"*.
+      //
+      // `in-sync` answered no. "in sync with origin/<branch>" is REASSURANCE:
+      // it is the common case, so it holds a permanent place in the most
+      // expensive row this shell has and spends it on the one state a reader
+      // never needs told. The three states below are CONDITIONS — every one of
+      // them is something to do — and the branch NAME and commit above are
+      // identity, which is why they stay in every state including this one.
+      //
+      // So the field now costs nothing in the common case and still carries
+      // the whole signal: it draws exactly when it has something to say.
+      //
+      // **What this is NOT: ahead/behind counts.** The ruling asked for them
+      // and this reader cannot honestly produce them. `src/ui/git-info.ts`
+      // reads `.git` AS FILES — no shell-out, no revision walk — and says so in
+      // its own words: *"ahead/behind counts need a revision walk, which is not
+      // a file read, so 'differs' is as precise as this reader can honestly be"*
+      // (spec §4 fixes the same vocabulary from the other side). Two numbers
+      // this server did not measure, in a bar whose entire job is provenance,
+      // is worse than the word that is true. Reported to the owner rather than
+      // resolved here.
+      //
+      // The chip carries the full branch too, and always did: `strip.differs`
+      // says "differs from origin/{branch}" — a REMOTE ref, which is a
+      // different string from the local branch's display name.
+      if (g.upstream !== 'in-sync') {
+        const key = g.upstream === 'differs' ? 'strip.differs'
           : g.upstream === 'no-upstream' ? 'strip.noUpstream' : 'strip.unknownTip';
-      parts.push(chip(key, { branch: g.branch }, g.upstream === 'in-sync'));
+        parts.push(chip(key, { branch: g.branch }, false));
+      }
     } else if (g.detached === true) {
       parts.push(keyed('strip.detached', { commit: String(g.commit ?? '').slice(0, 7) }));
     } else {
@@ -2845,17 +2989,91 @@ async function fillItems(count) {
   label.append(...translate(table.strings, 'strip.items'));
   const value = document.createElement('span');
   value.className = 'm';
+  const notes = document.getElementById('corpusnotes');
   try {
     const status = await api('/api/status');
     // A measured zero is DRAWN and named — an empty corpus is a finding and
     // the reader is entitled to it (clause 1 of the same standard).
     value.textContent = String(status.items.total);
     count.replaceChildren(value, document.createTextNode(' '), label);
+    // ── THE SAME BODY, TWO MORE FACTS. See `renderChrome`'s note on
+    // `#corpusnotes` for why this costs nothing: `health` and `reviewQueue`
+    // were already in this response, so neither count adds a call and neither
+    // runs a doctor sweep. Filled in the same pass and with one
+    // `replaceChildren`, so the two elements can never disagree about which
+    // answer they are drawing.
+    if (notes !== null) notes.replaceChildren(...corpusNoteButtons(status));
   } catch {
     value.textContent = '—';
     count.replaceChildren(value, document.createTextNode(' '), label,
       ...unreadState(() => { void fillItems(count); }));
+    // The counts have no answer either, and the retry above asks for all three
+    // at once. Cleared rather than left showing the previous corpus's numbers:
+    // a stale count beside a `not read` item count is the fossil `walk/123`
+    // named, one element along.
+    if (notes !== null) notes.replaceChildren();
   }
+}
+
+/**
+ * **THE TWO COUNTS THE CORPUS GROUP DRAWS, AS DOORS** — owner ruling
+ * 2026-08-31.
+ *
+ * Both are `button.linkid`, the shell's existing link-button primitive, because
+ * the ruling attached the door to the count: *"a count that is not a door is
+ * only half of it"*. Neither invents arithmetic — `doctorNoticeCount` and
+ * `reviewQueueCount` are the SAME two functions the rail badges call, so the
+ * strip and the rail cannot come apart about one corpus.
+ *
+ * **The doctor count is drawn at zero and the review count is not, and that is
+ * not an inconsistency.** A corpus with no findings is a measured zero and the
+ * reader is entitled to it — *"no findings"* is the answer most worth having
+ * and a blank cannot give it (`STD-a-measured-zero-is-drawn-and-named-an-
+ * unmeasured-thing-is`, clause 1). An empty review queue is not a finding about
+ * the corpus at all: it is the absence of a request, and the ruling says this
+ * one *"renders only when non-zero"*.
+ */
+function corpusNoteButtons(status) {
+  const out = [];
+  const open = (key, titleKey, count, route) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'linkid';
+    btn.dataset.k = key;
+    btn.append(...translate(table.strings, key, { count: String(count) }));
+    btn.title = flat(table.strings, titleKey);
+    btn.onclick = () => { location.hash = `#/${route}`; };
+    return btn;
+  };
+  out.push(open('strip.doc', 'title.doc', doctorNoticeCount(status), 'doctor'));
+  const queue = reviewQueueCount(status);
+  if (queue > 0) out.push(open('strip.queue', 'title.queue', queue, 'work'));
+  return out;
+}
+
+/**
+ * **ONE SPELLING OF EACH COUNT, CALLED TWICE.** The rail's badges and the
+ * strip's two doors draw the same two numbers, and a second arithmetic here
+ * would be two surfaces disagreeing about one corpus — which is exactly the
+ * defect `railCounts` already carries a comment about, from the day the Work
+ * badge read only `pendingRevisions` and said 0 with a draft on screen.
+ *
+ * Doctor is errors + warnings and NOT infos: an `info` finding is a remark, and
+ * a count that includes remarks is a count nobody acts on. That is the rail's
+ * existing choice, kept rather than re-litigated.
+ */
+function doctorNoticeCount(status) {
+  return (status?.health?.errors ?? 0) + (status?.health?.warnings ?? 0);
+}
+
+/**
+ * BOTH queues, because the screen the button opens draws both: drafts waiting
+ * to be promoted and revision proposals waiting for a verdict are each an item
+ * awaiting the owner's ruling, and counting one of them makes the number read
+ * as "nothing to do here" while the other is full.
+ */
+function reviewQueueCount(status) {
+  return (status?.pendingRevisions?.revisions ?? 0) + (status?.reviewQueue?.drafts ?? 0);
 }
 
 /**
@@ -3020,11 +3238,26 @@ function drawContext() {
     parts.push(tail);
   }
 
-  // ── HOW MUCH RUNWAY IS LEFT — `plan:walk seq:117`, and the ONLY state it
-  // applies to is `known`, because it is a band around a percentage and the
-  // other four states have no percentage to band.
-  const levelChip = occupancyChip(view);
-  if (levelChip !== null) parts.push(levelChip);
+  // ── HOW FULL THE WINDOW IS, AND — SEPARATELY — HOW CLOSE THE ASK IS.
+  //
+  // Owner ruling 2026-08-31: *"the context figure becomes TWO fields, not
+  // one."* One chip used to answer both questions and could therefore answer
+  // neither: a window at 91% with the ask not yet fired and a window at 91%
+  // past the ask came out as the same colour. They are two facts and they are
+  // drawn as two.
+  //
+  // Both apply ONLY to `known`, because both are bands around a percentage and
+  // the other four states have no percentage to band. Both are also withheld
+  // together on a stale sample — see `fillChip` — so a reader never gets one
+  // live-looking answer beside one that was refused.
+  const fill = fillChip(view);
+  if (fill !== null) parts.push(fill);
+  const proximity = handoverProximityChip(view);
+  if (proximity !== null) parts.push(proximity);
+  // ── AND THE ACCOUNT'S OWN TWO WINDOWS, which are neither of the above: the
+  // context window is this session's, and these are the account's. Drawn from
+  // the same body, silent when the payload did not carry them.
+  parts.push(...rateLimitParts(view));
   // ── AND WHAT BECAME OF THE HANDOVER ASK — `plan:walk seq:118`. Drawn in
   // EVERY state, including the ones with no context figure at all: whether the
   // handover was written is a fact about this session, not about whether the
@@ -3036,19 +3269,21 @@ function drawContext() {
 }
 
 /**
- * **THE OCCUPANCY BAND, AS A CHIP WITH A WORD IN IT** — `plan:walk seq:117`,
- * owner ruling 2026-08-31.
+ * **HOW FULL THE WINDOW IS, ON ABSOLUTE BANDS** — `plan:walk seq:117`, and the
+ * owner ruling of 2026-08-31 that split one chip into two fields.
  *
  * The context figure carried no colour at all, so a reader could see 60.1% and
  * not see how much runway that left. Three things this had to be, and each of
  * them ruled out an easier version:
  *
- *  1. **Derived from `handoverThresholdPercent`, never hard-coded.** The value
- *     is configurable and `core/config.ts` names ONE place its 98 default is
- *     applied; a constant in this file would be a second. It is served on
- *     `/api/watch/context` and the bands come out of `occupancyBands()` in
- *     `lib/viewmodel.js`, where the derivation and the two auto-compaction
- *     records it was measured against are written down.
+ *  1. **ABSOLUTE, and that is the change.** This chip's boundaries are
+ *     `CONTEXT_FILL_WARN_PERCENT` (60) and `CONTEXT_FILL_CRIT_PERCENT` (85),
+ *     declared ONCE in `lib/viewmodel.js` and never spelled here or in a title.
+ *     They are deliberately NOT derived from `handoverThresholdPercent`: how
+ *     full a window is does not become a different fact because somebody
+ *     reconfigured when the handover fires. The threshold-derived question —
+ *     how close is the ask — is `handoverProximityChip` below, one element
+ *     along, in gold.
  *  2. **Colour is never the only carrier.** The percentage stays a number in
  *     the sentence beside this, and the state is a `.chip` — a WORD, a glyph,
  *     and one of the five budgeted hues. That is `06-a11y.html`'s rule ("a
@@ -3064,58 +3299,202 @@ function drawContext() {
  *     level: `.chip.unmeas` spends `--dim` and carries `◌`, and it is the same
  *     chip `strip.unread` and `strip.unmeasured` already wear.
  *
- * `null` when there is nothing to band: a state with no percentage, or a
- * corpus with the handover feature switched off, where there is no ask and
- * therefore no threshold to name a band against. Silence rather than a guess.
+ * `null` when there is nothing to band: a state with no percentage at all.
+ * Unlike the gold marker beside it this survives the handover feature being
+ * switched off, because an absolute band needs no threshold — a corpus with no
+ * handover configured still has a window that can fill up.
  *
  * No sixth hue (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-
- * warn`): ok, warn and crit already exist, the neutral already exists, and
- * every one of these `.chip.*` modifiers is in the mockup at the same value —
- * which `test/ui/styles-parity.test.ts` checks in both directions.
+ * warn`): ok, warn and crit already exist, the neutral already exists, gold
+ * already exists, and every one of these `.chip.*` modifiers is in the mockup
+ * at the same value — which `test/ui/styles-parity.test.ts` checks in both
+ * directions.
  */
-function occupancyChip(view) {
-  const threshold = view.handover.threshold;
+function fillChip(view) {
   const ageMs = view.receivedAt === null ? null : Math.max(0, Date.now() - Date.parse(view.receivedAt));
-  const level = view.state === 'known' ? occupancyLevel(view.pct, threshold, ageMs) : null;
+  const level = view.state === 'known' ? fillLevel(view.pct, ageMs) : null;
   if (level === null) return null;
-  const bands = occupancyBands(threshold);
   const chip = document.createElement('span');
   if (level === 'stale') {
     chip.className = 'chip unmeas';
-    chip.dataset.g = '◌';
+    chip.dataset.g = '\u25cc';
     chip.dataset.k = 'strip.ctxLevelStale';
     chip.append(...translate(table.strings, 'strip.ctxLevelStale'));
     chip.title = flat(table.strings, 'title.ctxLevelStale');
     return chip;
   }
   chip.className = 'chip ' + level;
-  // The title names BOTH boundaries and where they came from, because "warn"
-  // with no numbers is a colour a reader has to take on trust. One decimal
-  // place: 98 * 0.9 is 88.2, and rounding it to 88 would print a boundary the
-  // code does not use.
-  const subs = { warn: bands.warn.toFixed(1), threshold: String(threshold) };
-  // **Every key spelled in full, never composed from a prefix.**
-  // `test/ui/viewmodel.test.ts` reads the literal keys out of this file's own
-  // bytes and holds both string tables to them, and a key built with `+` is a
-  // key that gate cannot see — which is the whole point of it: `t()` throws on
-  // a missing key, so a typo blanks the strip rather than mislabelling a word.
+  // The title names both boundaries, and they are read off the module that
+  // declares them rather than typed here — a second copy of 60 or 85 is the
+  // defect this project has measured eight times, and a title is exactly where
+  // one would hide.
+  const subs = {
+    fillWarn: String(CONTEXT_FILL_WARN_PERCENT),
+    fillCrit: String(CONTEXT_FILL_CRIT_PERCENT),
+  };
+  // Every key spelled in full, never composed from a prefix — see the note on
+  // `handoverProximityChip` below, and `test/ui/viewmodel.test.ts`, which reads
+  // these literals out of this file's own bytes.
   if (level === 'crit') {
-    chip.dataset.g = '■';
+    chip.dataset.g = '\u25a0';
+    chip.dataset.k = 'strip.fillCrit';
+    chip.append(...translate(table.strings, 'strip.fillCrit'));
+    chip.title = flat(table.strings, 'title.fillCrit', subs);
+  } else if (level === 'warn') {
+    chip.dataset.g = '\u25b2';
+    chip.dataset.k = 'strip.fillWarn';
+    chip.append(...translate(table.strings, 'strip.fillWarn'));
+    chip.title = flat(table.strings, 'title.fillWarn', subs);
+  } else {
+    chip.dataset.g = '\u25cf';
+    chip.dataset.k = 'strip.fillOk';
+    chip.append(...translate(table.strings, 'strip.fillOk'));
+    chip.title = flat(table.strings, 'title.fillOk', subs);
+  }
+  return chip;
+}
+
+/**
+ * **HOW CLOSE THE HANDOVER ASK IS — ONE GOLD MARKER AT TWO WEIGHTS, AND
+ * SILENT BELOW THE WARN BAND.** Owner ruling 2026-08-31.
+ *
+ * `occupancyBands`/`occupancyLevel` still decide WHEN this fires, unchanged and
+ * still derived from the SERVED `handoverThresholdPercent` — the value is
+ * configurable, `core/config.ts` names one place its default is applied, and a
+ * constant here would be a second one. What changed is the presentation: a
+ * three-step ok/warn/crit ramp became a flag.
+ *
+ *   below T * 0.9    nothing at all
+ *   at or past       `chip gov` — gold, a diamond, "nearing the handover ask"
+ *   at or past T     `chip gov` with the words in a `{b:}` run — the same gold
+ *                    marker, emphasised, "at the handover ask"
+ *
+ * **Why the `ok` state is now silence.** It said *"well below the handover
+ * ask"*, which is the common case and therefore free of information — the same
+ * reasoning that cut `strip.inSync` from the repo group in this pass. A field
+ * that only speaks when it has something to say costs the row nothing the rest
+ * of the time.
+ *
+ * **Why gold and not a sixth hue.**
+ * `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn` assigns all
+ * five meaning-hues, and two full ramps beside each other would need a sixth
+ * and a seventh. Gold already means "this wants your attention" in this
+ * product, and an ask is a REQUEST rather than a severity level. The absolute
+ * fill chip beside this keeps ok/warn/crit, so between them the pair says both
+ * things at once: crit with no gold is a nearly-full window whose ask has not
+ * fired, and crit WITH gold is both.
+ *
+ * **Colour is still never the only carrier.** Two gold chips at two weights are
+ * one hue, so the two states are told apart by their WORDS — which is what
+ * survives a dichromat, a monochrome printer and forced-colors — and by the
+ * `{b:}` run, which survives all three as well.
+ *
+ * A stale sample draws nothing here: `fillChip` beside it has already said the
+ * reading is too old to place, and two chips saying that would be one fact
+ * twice.
+ */
+function handoverProximityChip(view) {
+  const threshold = view.handover.threshold;
+  const ageMs = view.receivedAt === null ? null : Math.max(0, Date.now() - Date.parse(view.receivedAt));
+  const level = view.state === 'known' ? occupancyLevel(view.pct, threshold, ageMs) : null;
+  if (level === null || level === 'stale' || level === 'ok') return null;
+  const bands = occupancyBands(threshold);
+  const chip = document.createElement('span');
+  chip.className = 'chip gov';
+  chip.dataset.g = '\u25c6';
+  // One decimal place: at the configured threshold of 85 the warn band opens at
+  // 76.5, and rounding it to 77 would print a boundary the code does not use.
+  const subs = { warn: bands.warn.toFixed(1), threshold: String(threshold) };
+  if (level === 'crit') {
     chip.dataset.k = 'strip.ctxCrit';
     chip.append(...translate(table.strings, 'strip.ctxCrit'));
     chip.title = flat(table.strings, 'title.ctxCrit', subs);
-  } else if (level === 'warn') {
-    chip.dataset.g = '▲';
+  } else {
     chip.dataset.k = 'strip.ctxWarn';
     chip.append(...translate(table.strings, 'strip.ctxWarn'));
     chip.title = flat(table.strings, 'title.ctxWarn', subs);
-  } else {
-    chip.dataset.g = '●';
-    chip.dataset.k = 'strip.ctxOk';
-    chip.append(...translate(table.strings, 'strip.ctxOk'));
-    chip.title = flat(table.strings, 'title.ctxOk', subs);
   }
   return chip;
+}
+
+/**
+ * **THE ACCOUNT'S TWO RATE-LIMIT WINDOWS** — owner ruling 2026-08-31: the
+ * owner's seven-day window read 49% and nothing on any surface said so.
+ *
+ * **No new source and no new call.** `rate_limits.five_hour` and
+ * `.seven_day` ride in the status-line payload the tee already stores WHOLE, so
+ * `classifyRateLimits` reads them at the moment `classifyContext` reads the
+ * context window and `/api/watch/context` carries both. Everything below is
+ * presentation over a field that was already on the wire.
+ *
+ * **The countdown is half the field.** `resetsAt` is unix SECONDS and the age
+ * is computed HERE, at draw time, for the same reason the "as of … ago" label
+ * beside it is: a percentage with no reset time is alarming rather than
+ * actionable, and a countdown frozen at fetch time is not a countdown. A window
+ * whose reset time the payload did not carry draws its percentage and no
+ * countdown, rather than a guess.
+ *
+ * **Banded by `occupancyLevel` — the SAME function the handover proximity
+ * uses, never a second threshold set.** A hand-kept number that has to agree
+ * with a derived one is this project's most-repeated defect. Silent below the
+ * warn band, for the reason the gold marker is: a limit nowhere near its
+ * ceiling changes nothing a reader does next. ONE chip for both windows and not
+ * two, because the answer a reader needs is "is either of them close", and two
+ * chips saying the same word is the crowding this pass exists to undo.
+ *
+ * **Absent is silence, never a placeholder.** Both windows are independently
+ * nullable — see `classifyRateLimits` for the three levels at which the payload
+ * can decline to say — and a `0%` invented for a window nobody reported would
+ * be a claim about an account that was never made.
+ */
+function rateLimitParts(view) {
+  const out = [];
+  const windows = [
+    { key: 'strip.rl5', window: view.rate.fiveHour },
+    { key: 'strip.rl7', window: view.rate.sevenDay },
+  ];
+  let worst = null;
+  for (const { key, window } of windows) {
+    if (window === null) continue;
+    const span = document.createElement('span');
+    span.className = 'small';
+    span.dataset.k = key;
+    span.append(...translate(table.strings, key, {
+      pct: String(Math.round(window.usedPercent)),
+      // `resetsAt` is SECONDS; `formatAge` takes milliseconds. Clamped at zero
+      // so a window whose reset moment has passed but whose payload has not
+      // been rewritten yet reads "0s" rather than a negative countdown.
+      reset: window.resetsAt === null
+        ? '\u2014'
+        : formatAge(Math.max(0, window.resetsAt * 1000 - Date.now())),
+    }));
+    span.title = flat(table.strings, 'title.rate');
+    out.push(span);
+    // No `ageMs` argument: the staleness rule belongs to the CONTEXT sample,
+    // which is a measurement of this window and goes out of date as the session
+    // moves. A rate-limit percentage is a fact about the account over a fixed
+    // period and the reset time beside it says how long that period has left,
+    // so the reader can see for themselves how old the reading is.
+    const level = occupancyLevel(window.usedPercent, view.handover.threshold, null);
+    if (level === 'crit') worst = 'crit';
+    else if (level === 'warn' && worst === null) worst = 'warn';
+  }
+  if (worst !== null) {
+    const chip = document.createElement('span');
+    chip.className = 'chip ' + worst;
+    if (worst === 'crit') {
+      chip.dataset.g = '\u25a0';
+      chip.dataset.k = 'strip.rlAt';
+      chip.append(...translate(table.strings, 'strip.rlAt'));
+    } else {
+      chip.dataset.g = '\u25b2';
+      chip.dataset.k = 'strip.rlNear';
+      chip.append(...translate(table.strings, 'strip.rlNear'));
+    }
+    chip.title = flat(table.strings, 'title.rate');
+    out.push(chip);
+  }
+  return out;
 }
 
 /**
@@ -3273,15 +3652,14 @@ async function railCounts() {
   // the two numbers `/api/status` answered perfectly well.
   try {
     const status = await api('/api/status');
-    counts.doctor = (status.health?.errors ?? 0) + (status.health?.warnings ?? 0);
+    counts.doctor = doctorNoticeCount(status);
     // BOTH queues, because the screen draws both. Reading only
     // `pendingRevisions` made the badge say 0 with a draft sitting on the
     // screen waiting for a verdict -- a badge that undercounts what its own
     // screen shows is worse than no badge, because it reads as "nothing to do
     // here" rather than as missing. `/api/status` already served
     // `reviewQueue.drafts`; nothing new is fetched.
-    counts.work = (status.pendingRevisions?.revisions ?? 0)
-      + (status.reviewQueue?.drafts ?? 0);
+    counts.work = reviewQueueCount(status);
   } catch { /* stays null — named as unmeasured on the rail */ }
   try {
     const coverage = await api('/api/coverage');

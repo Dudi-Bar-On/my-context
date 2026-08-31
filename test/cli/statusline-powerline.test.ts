@@ -30,7 +30,7 @@ import {
   absoluteFillLevel, askSegment, bandsAreDerived, bandsFor, buildSegments, colourAllowed,
   fillBands,
   contextSegment, displayWidth, fitSegments, freshMs, gitBranch, levelFor, modelSegment,
-  payloadExtras, rateLimitSegment, renderPowerline, separatorFor, until,
+  payloadExtras, rateLimitSegment, renderPowerline, separatorFor, until, centreOffset,
   type ModelModes, type PowerlineInput, type Segment,
 } from '../../src/cli/commands/statusline-powerline.ts';
 
@@ -251,45 +251,98 @@ test('the context block changes colour as the window fills, and carries a glyph 
   );
   assert.equal(new Set(Object.values(LEVEL_GLYPH)).size, 4, 'four glyphs, all different');
 
-  // The other blocks do not move with it. That is the layout's whole claim: the
-  // right end of the bar shifts, and nothing else does. Compared below the ask
-  // in both cases, because crossing the ask deliberately adds the gold marker —
-  // asserted in its own test rather than quietly weakening this one.
+  // The other blocks do not move with it: ONE block changes as the window
+  // fills and the rest are untouched. Until 2026-08-31 that block was the last
+  // one and this test compared every block but the last; since the owner
+  // centred the context figure it is the ANCHOR, so the comparison is now
+  // "every block that is not the anchor" — the same claim, addressed by role
+  // rather than by position, which is what stops it silently weakening the
+  // next time the layout moves.
+  //
+  // `threshold: null` in both, because crossing the ask deliberately changes
+  // the ask block too, and that is asserted in its own test rather than
+  // quietly folded into this one.
+  const notAnchor = (segs: Segment[]): Segment[] => segs.filter((seg) => seg.anchor !== true);
+  const anchorOf = (segs: Segment[]): Segment | undefined => segs.find((seg) => seg.anchor === true);
   const calm = buildSegments(input({
     occupancy: { state: 'known', percent: 10, ageMs: 0 }, threshold: null,
   }));
   const near = buildSegments(input({
     occupancy: { state: 'known', percent: 70, ageMs: 0 }, threshold: null,
   }));
-  assert.deepEqual(calm.slice(0, -1), near.slice(0, -1));
-  assert.notDeepEqual(calm.at(-1), near.at(-1));
+  assert.deepEqual(notAnchor(calm), notAnchor(near));
+  assert.notDeepEqual(anchorOf(calm), anchorOf(near));
+  assert.equal(calm.filter((seg) => seg.anchor === true).length, 1, 'exactly one anchor');
 });
 
-test('the gold ask marker is the OTHER question, and it is derived from the threshold', () => {
+/**
+ * **THE HANDOVER SCALE** — owner ruling, 2026-08-31, candidate "headroom".
+ *
+ * The block used to be SILENT below the warn band. It now answers "how far am
+ * I from the ask" at every fill, as a NUMBER, and collapses to words once the
+ * number is spent. The three shapes the owner chose are asserted verbatim.
+ */
+test('the handover scale answers the distance as a number, at every fill', () => {
   const marker = (percent: number, threshold: number | null): Segment | null =>
     askSegment({ state: 'known', percent, ageMs: 0 }, threshold);
 
   for (const threshold of [98, 85, 50]) {
     const bands = web.occupancyBands(threshold);
     assert.ok(bands !== null);
-    // Silent below the approach: an ask that is not near costs no columns.
-    assert.equal(marker(bands.warn - 0.1, threshold), null);
-    assert.equal(marker(bands.warn, threshold)?.text, `${ASK_GLYPH} ask near`);
+    // BELOW the approach it is no longer silent — it states the gap. This is
+    // the line the ruling moved, and it is asserted at the exact boundary the
+    // old contract went quiet at.
+    const below = bands.warn - 0.1;
+    assert.equal(
+      marker(below, threshold)?.text,
+      `${ASK_GLYPH} ask ${threshold} · +${(threshold - below).toFixed(1)}`,
+    );
+    assert.equal(
+      marker(bands.warn, threshold)?.text,
+      `${ASK_GLYPH} ask ${threshold} · +${(threshold - bands.warn).toFixed(1)}`,
+    );
     assert.equal(marker(bands.crit, threshold)?.text, `${ASK_GLYPH} handover due`);
-    // ONE gold, in two strengths. Weight and words carry the difference; a
-    // second gold would be the same gold to a mono terminal and to a printer.
+
+    // The gap SHRINKS as the window fills, and it is the figure that carries
+    // that — a scale whose number did not move would be a decoration.
+    assert.equal(marker(threshold - 40, threshold)?.text, `${ASK_GLYPH} ask ${threshold} · +40.0`);
+    assert.equal(marker(threshold - 2, threshold)?.text, `${ASK_GLYPH} ask ${threshold} · +2.0`);
+
+    // ONE gold, EARNED. Dim while there is nothing to act on; gold as the ask
+    // approaches; gold and bold once it has fired. Words and weight carry the
+    // last step, never a second hue — a second gold is the same gold to a mono
+    // terminal and to a printer.
+    assert.equal(marker(below, threshold)?.ink.bg, PALETTE['neutral']?.bg);
     assert.equal(marker(bands.warn, threshold)?.ink.bg, PALETTE['gold']?.bg);
     assert.equal(marker(bands.crit, threshold)?.ink.bg, PALETTE['gold']?.bg);
+    assert.notEqual(marker(below, threshold)?.bold, true);
     assert.notEqual(marker(bands.warn, threshold)?.bold, true);
     assert.equal(marker(bands.crit, threshold)?.bold, true);
+    // The marker glyph never leaves, so the block's identity does not move
+    // with its urgency.
+    for (const pct of [below, bands.warn, bands.crit]) {
+      assert.ok(marker(pct, threshold)?.text.startsWith(ASK_GLYPH));
+    }
   }
 
-  // THE RULING'S OWN EXAMPLE. At the threshold that was in effect (98) the ask
-  // is silent at 80% while the fill is already amber; move the threshold to 85
-  // and the same 80% is approaching. The fill does not move with it.
-  assert.equal(marker(80, 98), null);
-  assert.equal(marker(80, 85)?.text, `${ASK_GLYPH} ask near`);
+  // THE OWNER'S OWN THREE EXAMPLES, verbatim, at the threshold in force here.
+  assert.equal(marker(25.1, 85)?.text, '◆ ask 85 · +59.9');
+  assert.equal(marker(81.8, 85)?.text, '◆ ask 85 · +3.2');
+  assert.equal(marker(91.0, 85)?.text, '◆ handover due');
+
+  // THE EARLIER RULING'S EXAMPLE, still true and still worth pinning: the ask
+  // is a different question from the fill. At 98 the ask is 18 points away
+  // while the fill is already amber; at 85 the same 80% is approaching. The
+  // fill does not move with the threshold, and now the DISTANCE says so in
+  // numbers rather than by falling silent.
+  assert.equal(marker(80, 98)?.text, `${ASK_GLYPH} ask 98 · +18.0`);
+  assert.equal(marker(80, 98)?.ink.bg, PALETTE['neutral']?.bg, 'not near at 98');
+  assert.equal(marker(80, 85)?.ink.bg, PALETTE['gold']?.bg, 'near at 85');
   assert.equal(ctxInk(80, 0, 98), ctxInk(80, 0, 85));
+
+  // A threshold that is not a whole number keeps its decimal, and the gap
+  // always carries one.
+  assert.equal(marker(80, 92.5)?.text, `${ASK_GLYPH} ask 92.5 · +12.5`);
 
   // No ask configured, no distance to it. No claim about a window that cannot
   // be measured, and none about a fossil.
@@ -346,7 +399,8 @@ test('with colour off it is the same text and not one escape byte', () => {
   // the same line. A degradation that also drops a fact is not a degradation.
   assert.equal(coloured.replaceAll(/\u001b\[[0-9;]*m/g, ''), plain);
   assert.equal(plain, `${CAP_LEFT} Opus 5 ${SEP} test_mycontext_plugin ${SEP} `
-    + `campaign/my-context-test ${SEP} ${LEVEL_GLYPH.ok} ctx 42.0% ${CAP_RIGHT}`);
+    + `campaign/my-context-test ${SEP} ${ASK_GLYPH} ask 98 · +56.0 `
+    + `${SEP} ${LEVEL_GLYPH.ok} ctx 42.0% ${CAP_RIGHT}`);
 });
 
 test('colourAllowed refuses when the user says so, and does not refuse the one pipe that renders', () => {
@@ -368,7 +422,13 @@ test('colourAllowed refuses when the user says so, and does not refuse the one p
 });
 
 test('a narrow terminal elides the branch from the LEFT and never wraps', () => {
-  const columns = 60;
+  // 85 columns, not 60: the handover scale the owner added on 2026-08-31 is a
+  // permanent ~19-cell block, so the width at which the branch is SHORTENED
+  // rather than given up entirely moved up with it. The assertion is the same
+  // one — the distinguishing tail is the half worth keeping — measured where
+  // eliding is what actually happens. Below this the branch is given up whole
+  // and the `…` says so, which the ladder test covers.
+  const columns = 85;
   const narrow = line({}, false, columns);
   assert.ok(displayWidth(narrow) <= columns, `${displayWidth(narrow)} > ${columns}`);
   // The distinguishing TAIL survives; the leading `…` says a head was removed.
@@ -386,6 +446,153 @@ test('a narrow terminal elides the branch from the LEFT and never wraps', () => 
     );
     assert.match(rendered, /ctx 42\.0%/, `the context block was given up at ${w} columns`);
   }
+});
+
+/**
+ * **THE CONTEXT BLOCK IS CENTRED WHEN THERE IS ROOM** — owner ruling,
+ * 2026-08-31, option (a): centre when it fits, left-to-right when it does not.
+ *
+ * The ruling replaced "the context block stays LAST" (see `buildSegments` for
+ * the record of the supersession) and it came with a condition the owner was
+ * explicit about: **no field is spent to buy the position**. Both halves are
+ * asserted here, and the second is the one worth guarding — a centring that
+ * quietly dropped a block to make itself fit would be exactly the failure this
+ * whole bar exists not to have.
+ */
+function centredInput(): PowerlineInput {
+  // Balanced on purpose: identity to the left of the anchor, disclosures and
+  // windows to its right. A left-heavy bar cannot be centred at any width, and
+  // that case has its own assertion below.
+  return input({
+    model: 'Opus 5',
+    project: 'proj',
+    branch: 'main',
+    occupancy: { state: 'known', percent: 42, ageMs: 0 },
+    threshold: 98,
+    myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
+    costUsd: 0.42,
+    warmPercent: 99.1,
+    sevenDay: { usedPercent: 49, resetsAt: null },
+    fiveHour: { usedPercent: 12, resetsAt: null },
+  });
+}
+
+/** Where the anchor's middle falls, counted the way `widthOf` counts. */
+function anchorMidpoint(fitted: Segment[]): number {
+  const at = fitted.findIndex((seg) => seg.anchor === true);
+  assert.ok(at >= 0, 'the bar has an anchor');
+  let start = 1;
+  for (let i = 0; i < at; i++) start += displayWidth(fitted[i]?.text ?? '') + 3;
+  return start + (displayWidth(fitted[at]?.text ?? '') + 2) / 2;
+}
+
+/**
+ * The narrowest terminal that can centre this bar, DERIVED rather than typed:
+ * wide enough for the whole bar, AND wide enough that the anchor's own
+ * midpoint reaches the middle. Both bind, and which one binds depends on how
+ * the blocks are balanced — so a block that changes width moves this number
+ * with it instead of leaving a stale literal in the test.
+ */
+function widthThatCentres(segs: Segment[]): number {
+  const whole = displayWidth(renderPowerline(segs, { colour: false, columns: null }));
+  const mid = anchorMidpoint(segs);
+  // TWICE THE LONGER HALF. The indent can only push the bar to the right, so
+  // the terminal has to be wide enough for the heavier side of the anchor to
+  // sit in half of it — `2 x max(left, right)`, the same arithmetic the lane
+  // report gave the owner for "how wide before this centres". Plus one,
+  // because at exactly that width the slack is zero, and an indent of zero is
+  // the fallback rather than the centred case.
+  return Math.ceil(Math.max(mid * 2, (whole - mid) * 2)) + 1;
+}
+
+test('the context block lands on the terminal centre when the width allows it', () => {
+  const full = centredInput();
+  const segs = buildSegments(full, NOW);
+  const enough = widthThatCentres(segs);
+
+  for (const columns of [enough, enough + 20, enough + 100]) {
+    const fitted = fitSegments(segs, columns);
+    const offset = centreOffset(fitted, columns);
+    assert.ok(offset > 0, `expected an indent at ${columns} columns`);
+    // Within half a cell of the terminal's centre — the rounding of an odd
+    // width, and nothing else.
+    assert.ok(
+      Math.abs(offset + anchorMidpoint(fitted) - columns / 2) <= 1,
+      `at ${columns} the anchor midpoint is ${offset + anchorMidpoint(fitted)}, centre is ${columns / 2}`,
+    );
+    const rendered = renderPowerline(segs, { colour: false, columns });
+    assert.ok(rendered.startsWith(' '.repeat(offset) + CAP_LEFT), 'the indent is plain spaces');
+    assert.ok(displayWidth(rendered) <= columns, 'and it still never exceeds the terminal');
+  }
+});
+
+test('centring never costs a block — the same width shows the same blocks either way', () => {
+  const full = centredInput();
+  const segs = buildSegments(full, NOW);
+  const enough = Math.ceil(anchorMidpoint(segs) * 2);
+
+  // The owner's condition, stated as a test: at every width, what the bar
+  // SHOWS is decided by `fitSegments` alone, and the indent is applied to
+  // whatever survived. Centring can therefore never be the reason a field went.
+  for (let columns = enough + 40; columns >= 12; columns--) {
+    const fitted = fitSegments(segs, columns);
+    const rendered = renderPowerline(segs, { colour: false, columns });
+    for (const seg of fitted) {
+      assert.ok(
+        rendered.includes(seg.text),
+        `at ${columns} columns the block "${seg.text}" fitted but was not drawn`,
+      );
+    }
+    assert.ok(displayWidth(rendered) <= columns, `at ${columns} the line is ${displayWidth(rendered)} wide`);
+    assert.match(rendered, /ctx 42\.0%/, `the context figure went at ${columns} columns`);
+  }
+});
+
+test('with no room to centre, the bar starts at column 0 — the ruled fallback', () => {
+  const full = centredInput();
+  const segs = buildSegments(full, NOW);
+
+  // A terminal exactly as wide as the bar: there is no slack to indent into,
+  // so the line runs left-to-right exactly as it did before the ruling.
+  const whole = displayWidth(renderPowerline(segs, { colour: false, columns: null }));
+  assert.equal(centreOffset(fitSegments(segs, whole), whole), 0, 'no slack, no indent');
+  assert.ok(!renderPowerline(segs, { colour: false, columns: whole }).startsWith(' '));
+
+  // **Narrower than that is NOT automatically uncentred, and the test says so
+  // rather than pretending otherwise.** Once `fitSegments` gives a block up
+  // the bar gets shorter, so a narrow terminal can have slack again and the
+  // remaining blocks re-centre in it. What must hold at EVERY width is the
+  // pair below: the line never exceeds the terminal, and the indent never
+  // pushes it past the right edge.
+  for (let columns = whole; columns >= 12; columns--) {
+    const fitted = fitSegments(segs, columns);
+    const offset = centreOffset(fitted, columns);
+    assert.ok(offset >= 0, `a negative indent would crop the left at ${columns}`);
+    const rendered = renderPowerline(segs, { colour: false, columns });
+    assert.ok(
+      displayWidth(rendered) <= columns,
+      `at ${columns} the indented line is ${displayWidth(rendered)} wide`,
+    );
+  }
+
+  // No width to centre IN. Claude Code's pipe does not always report one, and
+  // a bar that guessed a terminal size would indent into a wrap.
+  assert.equal(centreOffset(fitSegments(segs, null), null), 0);
+  assert.ok(!renderPowerline(segs, { colour: false, columns: null }).startsWith(' '));
+
+  // A LEFT-HEAVY bar cannot be centred at any width, because the indent can
+  // only ever push right. It falls back rather than cropping its own left.
+  const leftHeavy = buildSegments(input({
+    model: 'Opus 5 (1M context) high think 200k+',
+    project: 'test_mycontext_plugin',
+    branch: 'campaign/my-context-test',
+    myctx: null, costUsd: null, warmPercent: null,
+  }), NOW);
+  assert.equal(centreOffset(leftHeavy, 200), 0, 'nothing to the right to balance against');
+
+  // And a bar with no anchor at all — a shape `buildSegments` never makes, so
+  // it is constructed by hand — is left alone rather than centred on a guess.
+  assert.equal(centreOffset([{ text: 'x', ink: PALETTE['ok'] ?? { bg: 0, fg: 0 } }], 200), 0);
 });
 
 test('a block given up for width leaves a mark, and two marks collapse into one', () => {
@@ -416,20 +623,42 @@ test('a block given up for width leaves a mark, and two marks collapse into one'
 
 test('the blocks that have nothing to say are absent, and the ones that do are present', () => {
   assert.equal(
-    line({ model: null, project: null, branch: null }),
+    // `threshold: null` as well: with the handover feature off there is no ask
+    // and so no distance to it, which is what makes this the genuinely minimal
+    // bar. With a threshold configured the scale is present at every fill by
+    // the owner's ruling, and that is asserted on the next line rather than
+    // hidden by choosing an input that avoids it.
+    line({ model: null, project: null, branch: null, threshold: null }),
     `${CAP_LEFT} ${LEVEL_GLYPH.ok} ctx 42.0% ${CAP_RIGHT}`,
     'a session with no model, no project and no branch is one block, not three empty ones',
+  );
+  assert.equal(
+    line({ model: null, project: null, branch: null }),
+    `${CAP_LEFT} ${ASK_GLYPH} ask 98 · +56.0 ${SEP} ${LEVEL_GLYPH.ok} ctx 42.0% ${CAP_RIGHT}`,
+    'a configured ask always states its distance, even on an otherwise empty bar',
   );
   assert.match(line({ teeNote: 'tee not written (disk full)' }), /tee not written \(disk full\)/);
   assert.match(line({ myctxNote: 'projection sync failed' }), /myctx unavailable/);
   assert.match(line({ myctx: { tokens: 6200, injections: 3, unrecorded: 0 } }), /myctx 6\.2k/);
   assert.match(line({ myctx: { tokens: 6200, injections: 3, unrecorded: 2 } }), /myctx ≥6\.2k/);
-  // The context block is LAST whatever else is disclosed.
+  // **SUPERSEDED CLAIM, restated to the ruling that replaced it.** This used
+  // to assert "the context block is LAST whatever else is disclosed". Since
+  // the owner centred it on 2026-08-31 it is the ANCHOR, with the disclosures
+  // drawn to its right — so what is pinned now is that the anchor exists, that
+  // there is exactly one, and that the two groups fall either side of it. The
+  // claim moved from a position to a role; it did not weaken.
   const busy = buildSegments(input({
     myctx: { tokens: 6200, injections: 3, unrecorded: 1 },
     teeNote: 'tee not written (disk full)',
   }));
-  assert.match(busy.at(-1)?.text ?? '', / ctx /);
+  const anchorAt = busy.findIndex((seg) => seg.anchor === true);
+  assert.ok(anchorAt >= 0, 'the bar always has an anchor');
+  assert.equal(busy.filter((seg) => seg.anchor === true).length, 1, 'and only one');
+  assert.match(busy[anchorAt]?.text ?? '', / ctx /);
+  assert.ok(anchorAt > 0, 'the identity blocks are to its left');
+  assert.ok(anchorAt < busy.length - 1, 'the disclosures are to its right');
+  // The ask rides immediately left of it: they are one question asked twice.
+  assert.ok(busy[anchorAt - 1]?.text.startsWith(ASK_GLYPH));
 });
 
 /* -------------------------------------------------------------------- *
@@ -647,12 +876,15 @@ test('the whole bar, from a real payload shape, with every group present', () =>
     teeNote: null,
   }, NOW), { colour: false, columns: null });
 
+  // The owner's 2026-08-31 layout, whole: identity left, the scale and the
+  // context figure at the middle, the disclosures and the windows right.
   assert.equal(rendered, [
     `${CAP_LEFT} Opus 5 high think`, 'test_mycontext_plugin', 'campaign/my-context-test',
   ].join(` ${SEP} `)
+    + ` ${SEP} ${ASK_GLYPH} ask 98 · +56.0`
+    + ` ${SEP} ${LEVEL_GLYPH.ok} ctx 42.0%`
     + ` ${SEP} myctx 6.2k ${SEP_THIN} $0.42 · warm 99.1%`
-    + ` ${SEP} ${LEVEL_GLYPH.ok} 7d 49% ·1d4h ${SEP_THIN} ${LEVEL_GLYPH.ok} 5h 12% ·3h12m`
-    + ` ${SEP_THIN} ${LEVEL_GLYPH.ok} ctx 42.0% ${CAP_RIGHT}`);
+    + ` ${SEP} ${LEVEL_GLYPH.ok} 7d 49% ·1d4h ${SEP_THIN} ${LEVEL_GLYPH.ok} 5h 12% ·3h12m ${CAP_RIGHT}`);
 });
 
 test('two blocks on the same ground are parted by the THIN separator, never an invisible one', () => {
@@ -705,11 +937,14 @@ test('the line gives itself up in the order the owner ranked, not by width', () 
   assert.ok(at(120).includes(`${LEVEL_GLYPH.ok} 7d 49% ·1d4h`));
   assert.ok(!at(100).includes('myctx 6.2k'), 'the share goes before the windows');
   assert.ok(at(100).includes(`${LEVEL_GLYPH.ok} 5h 12% ·3h12m`));
-  assert.ok(!at(80).includes('test_mycontext_plugin'), 'the project name goes before the windows');
-  assert.ok(at(80).includes('Opus 5 high think'), 'the model outlives the project');
+  assert.ok(!at(100).includes('test_mycontext_plugin'), 'the project name goes before the windows');
+  assert.ok(at(95).includes('Opus 5 high think'), 'the model outlives the project');
   assert.ok(at(60).includes(`${LEVEL_GLYPH.ok} 7d 49% ·1d4h`), 'the windows are the last real blocks');
   assert.ok(at(60).includes(`${LEVEL_GLYPH.ok} 5h 12% ·3h12m`));
-  assert.equal(at(40).at(-1), `${LEVEL_GLYPH.ok} ctx 42.0%`);
+  // The context figure is no longer the last BLOCK — it is the anchor, with
+  // the windows drawn to its right — so what is pinned is that it is still
+  // there, which is the claim that mattered.
+  assert.ok(at(40).includes(`${LEVEL_GLYPH.ok} ctx 42.0%`));
   assert.deepEqual(
     at(16), [`${LEVEL_GLYPH.ok} ctx 42.0%`],
     'the context figure is the one thing never given up',

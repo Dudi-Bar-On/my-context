@@ -84,30 +84,40 @@ function declaredHeaderProvenanceKeys(): Set<string> {
 }
 
 /**
- * **The ledger of what the strip declares and does not draw — one entry, and
- * it shrinks.**
+ * **The ledger of what the strip declares and does not draw — EMPTY since
+ * 2026-08-31, and it emptied by the segment leaving the design of record.**
  *
- * `strip.meas` is the "measured" chip that sits beside the audit append p95
- * when there IS a p95. There is not one: no endpoint on this read surface
- * exposes an aggregate over the audit log, and the mockup's `0.55 ms` is a
- * benchmark figure out of `core/audit-db.ts`'s header rather than something
- * this server measures. The app draws `strip.unmeasured` in its place — the
- * segment is present and NAMED as unmeasured, per
- * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, rather than
- * dropped — so this chip becomes reachable on the day that aggregate lands,
- * and this entry is deleted with the same commit.
+ * It held one entry, `strip.meas`: the "measured" chip beside the audit append
+ * p95, unreachable because no endpoint on this read surface exposes an
+ * aggregate over the audit log and the mockup's `0.55 ms` was a benchmark
+ * figure out of `core/audit-db.ts`'s header rather than anything this server
+ * took. The owner's status-bar ruling of 2026-08-31 cut the p95 and that chip
+ * together — a developer diagnostic with no action attached, holding a
+ * permanent place in the densest row this shell has — so the entry is gone
+ * because the thing it tracked is, which is one of the two legitimate ways a
+ * ledger shrinks. (The other is the gap being closed. Neither is deleting the
+ * entry to go green.)
  *
- * Nothing else in the strip is in here. If a second entry ever seems necessary,
- * the question to answer first is whether the segment has a source, because
+ * Nothing else in the strip is in here, and a second entry would be a claim
+ * that the design of record declares something the app cannot draw. The
+ * question to answer first is whether the segment has a SOURCE, because
  * `plan:port seq:6` assumed two segments shared one blocker and there were
  * forty with several.
  */
-const NOT_DRAWN_YET = new Set(['strip.meas']);
+const NOT_DRAWN_YET = new Set<string>([]);
 
 interface Scenario {
   readonly name: string;
   readonly git?: unknown;
   readonly items?: number;
+  /**
+   * `/api/status`' health tally, which the corpus group's doctor count is read
+   * off (owner ruling 2026-08-31). Defaults to a measured zero, which is what
+   * every scenario written before that ruling means.
+   */
+  readonly health?: { errors: number; warnings: number; infos: number };
+  /** `/api/status`' two waiting queues, which the review count is the sum of. */
+  readonly queue?: { drafts: number; revisions: number };
   /** `null` fulfils nothing and lets the real endpoint answer. */
   readonly context?: unknown;
   /** The `corpus` block `/api/meta` and `/api/ping` both carry — the drift sweep. */
@@ -132,6 +142,21 @@ const KNOWN_SAMPLE = (state: string, used: number | null, size: number | null, p
  * rather than hard-coded into an expectation below, so a fixture at a different
  * threshold moves the boundaries the tests check with it.
  */
+/**
+ * The `rateLimits` block `/api/watch/context` serves — `classifyRateLimits`'
+ * shape, which is the payload's own two windows read at the moment
+ * `classifyContext` reads the context window.
+ *
+ * `resetsAt` is unix SECONDS and is set into the FUTURE from now rather than
+ * pinned, because what the strip draws is a countdown computed at render time:
+ * a fixture with a fixed epoch would go negative the day after it was written,
+ * and the clamp that stops it would then be the only thing under test.
+ */
+const RATE = (five: number | null, seven: number | null) => ({
+  fiveHour: five === null ? null : { usedPercent: five, resetsAt: Math.floor(Date.now() / 1000) + 7_200 },
+  sevenDay: seven === null ? null : { usedPercent: seven, resetsAt: Math.floor(Date.now() / 1000) + 140_000 },
+});
+
 const HANDOVER = (verdict: string, extra: Record<string, unknown> = {}) => ({
   verdict,
   path: verdict === 'off' ? null : 'reports/V2-HANDOVER.md',
@@ -150,11 +175,33 @@ const SCENARIOS: readonly Scenario[] = [
     name: 'on a branch, in sync, context known and healthy, handover not yet asked',
     git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
     items: 43,
+    // Both corpus counts non-zero, so the two doors are drawn and this file
+    // sees them. `in-sync` deliberately draws NO upstream chip since the
+    // 2026-08-31 ruling — the reassurance was cut — which is asserted on its
+    // own further down rather than inferred from this union.
+    health: { errors: 2, warnings: 3, infos: 9 },
+    queue: { drafts: 4, revisions: 1 },
     corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
     context: {
       session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
       mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
       handover: HANDOVER('not-asked'),
+      // Both windows well inside their ceilings: the figures draw, the band
+      // chip does not. That is the common case and it is meant to cost the row
+      // nothing.
+      rateLimits: RATE(16, 50),
+    },
+  },
+  {
+    name: 'the window is two thirds full and the ask has NOT fired — the pair, apart',
+    git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+    items: 43,
+    corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
+    context: {
+      session: 's', sample: KNOWN_SAMPLE('known', 140000, 200000, 70.0),
+      mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+      handover: HANDOVER('not-asked'),
+      rateLimits: RATE(16, 50),
     },
   },
   {
@@ -169,6 +216,11 @@ const SCENARIOS: readonly Scenario[] = [
         askedAt: new Date(Date.now() - 7_200_000).toISOString(),
         writtenAt: new Date(Date.now() - 7_000_000).toISOString(),
       }),
+      // The seven-day window inside the last tenth of the way to its ceiling.
+      // Banded by the SAME `occupancyLevel` the gold marker uses, against the
+      // same served threshold of 98 — so 95 is `warn` here for the same reason
+      // 95 would be `warn` there, and there is no second threshold set.
+      rateLimits: RATE(16, 95),
     },
   },
   {
@@ -180,6 +232,11 @@ const SCENARIOS: readonly Scenario[] = [
       session: 's', sample: KNOWN_SAMPLE('known', 197000, 200000, 98.5),
       mycontext: null, mycontextError: 'the audit log could not be read',
       handover: HANDOVER('ignored', { askedAt: new Date(Date.now() - 600_000).toISOString() }),
+      // The five-hour window AT its ceiling. One chip for both windows, and it
+      // reports the WORSE of the two: the question a reader has is "is either
+      // of them close", and two chips saying one word is the crowding this
+      // pass exists to undo.
+      rateLimits: RATE(99, 50),
     },
   },
   {
@@ -266,9 +323,9 @@ async function boot(page: Page, s: Scenario): Promise<void> {
       body: JSON.stringify({
         version: '1.0.2', profile: 'default',
         items: { total: s.items, byCategory: {}, byStatus: {}, byOrigin: {} },
-        reviewQueue: { drafts: 0, always: 0, globalLayerDrafts: 0 },
-        pendingRevisions: { items: 0, fields: 0 },
-        health: { errors: 0, warnings: 0, infos: 0 },
+        reviewQueue: { drafts: s.queue?.drafts ?? 0, always: 0, globalLayerDrafts: 0 },
+        pendingRevisions: { items: 0, fields: 0, revisions: s.queue?.revisions ?? 0 },
+        health: s.health ?? { errors: 0, warnings: 0, infos: 0 },
       }),
     }));
   }
@@ -384,11 +441,16 @@ test('an unmeasured segment says so, and offers the call again', async ({ app })
       + 'blank wearing a label').toBeGreaterThan(0);
   }
 
-  // And the two figures that have no source at all are named as unmeasured
-  // rather than dropped — including their LABELS, so the property the reader
-  // is owed is on screen even while its number is not.
+  // And the ONE figure that has no source at all is named as unmeasured rather
+  // than dropped — including its LABEL, so the property the reader is owed is
+  // on screen even while its number is not. It was two until 2026-08-31; the
+  // audit append p95 and its `measured` chip were cut by the owner's ruling as
+  // a developer diagnostic with no action attached, and `injections today` was
+  // kept by the same ruling as the at-a-glance proof the core feature fires.
   const audit = ((await page.locator('#auditstate').textContent()) ?? '');
-  expect(audit, 'the audit group must still name both properties').toContain('injections');
+  expect(audit, 'the audit group must still name the injections property').toContain('injections');
+  expect(audit, 'the audit append p95 was cut — it may not come back through a label')
+    .not.toContain('p95');
   expect(await page.locator('#auditstate [data-k="strip.unmeasured"]').count()).toBe(1);
 });
 
@@ -802,50 +864,76 @@ test('with the repo group gone, the context figure holds the largest share of th
     await page.setViewportSize({ width: 1280, height: 720 });
   });
 
-/* ══ `plan:walk seq:117` — THE OCCUPANCY BANDS, DRIVEN EITHER SIDE ═══════ */
+/* ══ `plan:walk seq:117`, RE-RULED 2026-08-31 — TWO FIELDS, DRIVEN APART ══ */
 
 /**
- * **Three occupancies either side of the boundaries, and the computed colour
- * read off the page** — the task's own acceptance, in those words.
+ * **The context figure answers TWO questions and they are drawn as two fields**
+ * — owner ruling 2026-08-31, *"the context figure becomes TWO fields, not
+ * one."*
  *
- * The boundaries are `T` and `T * 0.9` where `T` is the SERVED
- * `handoverThresholdPercent`. At the 98 this fixture serves that is 98 and
- * 88.2, and the cases below straddle both: 23.5 and 88.1 are `ok`, 88.2 and
- * 97.9 are `warn`, 98.0 and 99.7 are `crit`. 98.0 is on the boundary
- * deliberately — a figure sitting exactly on the threshold is AT the ask, not
- * one step below it.
+ *   ABSOLUTE FILL       how full the window is. ok / warn / crit on FIXED
+ *                       bands (`CONTEXT_FILL_WARN_PERCENT` = 60,
+ *                       `CONTEXT_FILL_CRIT_PERCENT` = 85). Does not move when
+ *                       anybody reconfigures the handover threshold.
+ *   HANDOVER PROXIMITY  how close the ask is. One GOLD marker at two weights,
+ *                       fired by `occupancyLevel` against the SERVED
+ *                       threshold, and SILENT below `T * 0.9`.
  *
- * The hues are read as COMPUTED COLOUR and required to be three distinct
- * values, rather than compared against three literal `rgb()` strings: what
- * matters is that the three states are told apart, and pinning the literals
- * would make this file fail on a palette change that broke nothing.
+ * **The pair is the point, and the case below that proves it is 91%.** At the
+ * 98 this fixture serves, 91% is a nearly-full window (crit) whose ask has NOT
+ * fired (91 < 98, and 91 > 88.2 so the gold marker is at its lighter weight).
+ * One three-step ramp could not draw that: it had one colour for the two
+ * readings, which is what the split exists to end.
+ *
+ * The boundaries are DERIVED here as they are in the product — the absolute
+ * pair read off `lib/viewmodel.js`, the threshold read off the fixture's own
+ * served `HANDOVER` — so a boundary moved in either place moves this test with
+ * it. A test that remembers a number fails for the wrong reason the next time
+ * one is configured.
  */
-const BANDS: readonly { pct: number; key: string; band: string }[] = [
-  { pct: 23.5, key: 'strip.ctxOk', band: 'ok' },
-  { pct: 88.1, key: 'strip.ctxOk', band: 'ok' },
-  { pct: 88.2, key: 'strip.ctxWarn', band: 'warn' },
-  { pct: 97.9, key: 'strip.ctxWarn', band: 'warn' },
-  { pct: 98.0, key: 'strip.ctxCrit', band: 'crit' },
-  { pct: 99.7, key: 'strip.ctxCrit', band: 'crit' },
+const FILL_CASES: readonly { pct: number; key: string; band: string }[] = [
+  { pct: 0, key: 'strip.fillOk', band: 'ok' },
+  { pct: 59.9, key: 'strip.fillOk', band: 'ok' },
+  { pct: 60, key: 'strip.fillWarn', band: 'warn' },
+  { pct: 70, key: 'strip.fillWarn', band: 'warn' },
+  { pct: 84.9, key: 'strip.fillWarn', band: 'warn' },
+  { pct: 85, key: 'strip.fillCrit', band: 'crit' },
+  { pct: 91, key: 'strip.fillCrit', band: 'crit' },
+  { pct: 99.7, key: 'strip.fillCrit', band: 'crit' },
 ];
 
-test('the occupancy is banded against the SERVED threshold, and the bands move with it',
+/** `null` means the gold marker must be SILENT at that occupancy. */
+const ASK_CASES: readonly { pct: number; key: string | null }[] = [
+  { pct: 23.5, key: null },
+  { pct: 70, key: null },
+  { pct: 88.1, key: null },
+  { pct: 88.2, key: 'strip.ctxWarn' },
+  { pct: 91, key: 'strip.ctxWarn' },
+  { pct: 97.9, key: 'strip.ctxWarn' },
+  { pct: 98.0, key: 'strip.ctxCrit' },
+  { pct: 99.7, key: 'strip.ctxCrit' },
+];
+
+const AT_OCCUPANCY = (pct: number): Scenario => ({
+  name: `occupancy ${pct}%`,
+  git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+  items: 43,
+  corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
+  context: {
+    session: 's',
+    sample: KNOWN_SAMPLE('known', Math.round(200000 * pct / 100), 200000, pct),
+    mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+    handover: HANDOVER('not-asked'),
+    rateLimits: RATE(16, 50),
+  },
+});
+
+test('the absolute fill band is fixed, and does not move with the handover threshold',
   async ({ app }) => {
     const { page } = app;
     const colours = new Map<string, string>();
-    for (const { pct, key, band } of BANDS) {
-      await boot(page, {
-        name: `occupancy ${pct}%`,
-        git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
-        items: 43,
-        corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
-        context: {
-          session: 's',
-          sample: KNOWN_SAMPLE('known', Math.round(200000 * pct / 100), 200000, pct),
-          mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
-          handover: HANDOVER('not-asked'),
-        },
-      });
+    for (const { pct, key, band } of FILL_CASES) {
+      await boot(page, AT_OCCUPANCY(pct));
       const m = await page.evaluate((k) => {
         const el = document.querySelector(`#ctx [data-k="${k}"]`);
         if (el === null) {
@@ -856,32 +944,117 @@ test('the occupancy is banded against the SERVED threshold, and the bands move w
           };
         }
         return {
-          found: true,
-          colour: getComputedStyle(el).color,
-          text: (el.textContent ?? '').trim(),
-          title: (el as HTMLElement).title,
-          drew: '',
+          found: true, colour: getComputedStyle(el).color,
+          text: (el.textContent ?? '').trim(), title: (el as HTMLElement).title, drew: '',
         };
       }, key);
-      expect(m.found, `${pct}% must draw ${key} — the boundaries are ${'98'} and 88.2 at the served `
-        + `threshold of 98. Drew: ${m.drew}`).toBe(true);
-      // **Colour is never the only carrier.** A word, in the chip, that
-      // survives a dichromat, a mono printer and forced-colors.
-      expect(m.text, `${pct}%: the band must be a WORD as well as a hue`).not.toBe('');
-      // And the numbers the band was derived from are one hover away, so
-      // "warn" is not a colour a reader has to take on trust.
-      expect(m.title, `${pct}%: the title must name the threshold the band came from`)
-        .toContain('98');
+      expect(m.found, `${pct}% must draw ${key} — the absolute boundaries are 60 and 85 and `
+        + `they are not the handover threshold. Drew: ${m.drew}`).toBe(true);
+      // Colour is never the only carrier: a WORD, in the chip, that survives a
+      // dichromat, a mono printer and forced-colors.
+      expect(m.text, `${pct}%: the fill band must be a WORD as well as a hue`).not.toBe('');
+      // And the title names the boundary it came from, so "filling" is not a
+      // colour a reader has to take on trust — AND says the band is ABSOLUTE,
+      // because the whole point is that it is not the threshold. Every one of
+      // the three names its own boundary; only the two lower ones name the pair,
+      // since `crit` has nothing above it to bound against.
+      expect(m.title, `${pct}%: the title must say the band is absolute`).toContain('ABSOLUTE');
+      expect(m.title, `${pct}%: the title must name the boundary it came from`)
+        .toContain(band === 'ok' ? '60' : band === 'warn' ? '60' : '85');
       colours.set(band, m.colour);
 
       // The percentage itself is STILL A NUMBER on screen beside the chip.
       const sentence = await page.locator('#ctx [data-k="strip.ctx.known"]').textContent();
-      expect(sentence ?? '', `${pct}%: the percentage must stay a number — colour is an addition to `
-        + 'the reading, never a replacement for it').toContain(String(pct));
+      expect(sentence ?? '', `${pct}%: the percentage must stay a number — colour is an addition `
+        + 'to the reading, never a replacement for it').toContain(String(pct));
     }
     expect(new Set(colours.values()).size,
-      'the three bands must be three distinct computed colours — a band a reader cannot tell from '
-      + `its neighbour is a band that says nothing. Got: ${JSON.stringify([...colours])}`).toBe(3);
+      'the three fill bands must be three distinct computed colours — a band a reader cannot tell '
+      + `from its neighbour is a band that says nothing. Got: ${JSON.stringify([...colours])}`)
+      .toBe(3);
+  });
+
+test('the handover ask is a GOLD marker at two weights, and is silent below the warn band',
+  async ({ app }) => {
+    const { page } = app;
+    const seen = new Map<string, { colour: string; text: string; bold: number }>();
+    for (const { pct, key } of ASK_CASES) {
+      await boot(page, AT_OCCUPANCY(pct));
+      const m = await page.evaluate(() => {
+        const el = document.querySelector('#ctx [data-k="strip.ctxWarn"], #ctx [data-k="strip.ctxCrit"]');
+        return el === null
+          ? { key: null as string | null, colour: '', text: '', title: '', bold: 0 }
+          : {
+            key: (el as HTMLElement).dataset['k'] ?? null,
+            colour: getComputedStyle(el).color,
+            text: (el.textContent ?? '').trim(),
+            title: (el as HTMLElement).title,
+            bold: el.querySelectorAll('b').length,
+          };
+      });
+      expect(m.key, `${pct}%: the handover marker must ${key === null ? 'be SILENT' : `draw ${key}`}`
+        + ' — below the warn band it says nothing at all, because "well below the handover ask" is '
+        + 'the common case and therefore free of information. That is the same ruling that cut '
+        + '`strip.inSync` from the repo group.').toBe(key);
+      if (key === null) continue;
+      expect(m.text, `${pct}%: the marker must be a WORD, not a hue alone`).not.toBe('');
+      expect(m.title, `${pct}%: the marker owes the reader the threshold it came from`)
+        .toContain('98');
+      seen.set(key, { colour: m.colour, text: m.text, bold: m.bold });
+    }
+
+    const warn = seen.get('strip.ctxWarn')!;
+    const crit = seen.get('strip.ctxCrit')!;
+    // ONE HUE, TWO WEIGHTS. `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-
+    // crit-and-warn` assigns all five meaning-hues, and two full ramps beside
+    // each other would need a sixth and a seventh. Gold already means "this
+    // wants your attention", and an ask is a request rather than a severity.
+    expect(crit.colour, 'both weights of the handover marker are GOLD — a second hue here would be '
+      + 'a sixth meaning-colour, which the hue budget does not have').toBe(warn.colour);
+    // So the two states are told apart by the WORD and by the emphasis, which
+    // are the carriers that survive a dichromat, a mono printer and
+    // forced-colors — never by the hue, because there is only one.
+    expect(crit.text, 'the two weights must not say the same thing').not.toBe(warn.text);
+    expect(crit.bold, 'the AT-the-ask weight is emphasised, and the emphasis is markup — a `{b:}` '
+      + 'run in the string table — so it survives a monochrome printer').toBeGreaterThan(0);
+    expect(warn.bold, 'the approaching weight is the quieter one').toBe(0);
+  });
+
+test('a full window and a fired ask are DIFFERENT facts, and 91% is where that shows',
+  async ({ app }) => {
+    const { page } = app;
+    await boot(page, AT_OCCUPANCY(91));
+    // Awaited as LOCATORS before anything is read off the page: `boot` waits for
+    // the context group's FIRST keyed segment, and the chips arrive in the same
+    // `replaceChildren` as that segment only when the fetch that carries them
+    // has resolved. A bare `evaluate` here is a single synchronous read that can
+    // legitimately land one frame early — it did, inside the full file and never
+    // alone, which is the signature of a race rather than a defect.
+    await expect(page.locator('#ctx [data-k="strip.fillCrit"]')).toBeAttached();
+    await expect(page.locator('#ctx [data-k="strip.ctxWarn"]')).toBeAttached();
+    const m = await page.evaluate(() => {
+      const fill = document.querySelector('#ctx [data-k="strip.fillCrit"]');
+      const ask = document.querySelector('#ctx [data-k="strip.ctxWarn"]');
+      const fired = document.querySelector('#ctx [data-k="strip.ctxCrit"]');
+      return {
+        fill: fill === null ? '' : getComputedStyle(fill).color,
+        ask: ask === null ? '' : getComputedStyle(ask).color,
+        firedDrawn: fired !== null,
+        drew: [...document.querySelectorAll('#ctx [data-k]')]
+          .map((e) => (e as HTMLElement).dataset['k']).join(', '),
+      };
+    });
+    // The reading this whole split exists to make possible: the window is
+    // nearly full AND the ask has not fired. One ramp had one colour for both.
+    expect(m.fill, '91% is past the absolute crit band of 85, so the fill chip must be drawn. '
+      + `Drew: ${m.drew}`).not.toBe('');
+    expect(m.ask, '91% is past 88.2 — nine tenths of the served threshold of 98 — so the gold '
+      + 'marker must be drawn at its lighter weight').not.toBe('');
+    expect(m.firedDrawn, '91% is BELOW the served threshold of 98, so the ask has not fired and '
+      + 'the emphasised weight must not be drawn').toBe(false);
+    expect(m.fill, 'the two fields must be two colours, or a reader cannot tell "the window is '
+      + 'full" from "the ask has fired" — which is the entire reason there are two of them')
+      .not.toBe(m.ask);
   });
 
 /**
@@ -1097,4 +1270,196 @@ test('with nothing served, the drift chip says not known rather than in step', a
   });
   await expect(page.locator('#corpusdrift [data-k="strip.corpusDriftUnknown"]')).toBeVisible();
   await expect(page.locator('#corpusdrift [data-k="strip.corpusInStep"]')).toHaveCount(0);
+});
+
+/* ══ THE 2026-08-31 STATUS-BAR PASS: WHAT WAS CUT, AND WHAT REPLACED IT ══ */
+
+/**
+ * **A branch that matches its upstream draws its NAME and nothing else.**
+ *
+ * Owner ruling: *"in sync with origin/<branch>" occupies an expensive place —
+ * keep the branch NAME and commit, drop the reassurance.* The verdict now costs
+ * this row nothing in the common case and still carries the whole signal,
+ * because the only state it draws is a state worth drawing.
+ *
+ * The three CONDITIONS are asserted alongside it, so "nothing is drawn" cannot
+ * quietly become "nothing is ever drawn" — which is the failure mode of every
+ * field that earns its place by being silent.
+ */
+test('the in-sync reassurance is gone, and the conditions that replaced it are not',
+  async ({ app }) => {
+    const { page } = app;
+    const base = {
+      items: 43,
+      corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
+      context: {
+        session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+        mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+        handover: HANDOVER('not-asked'), rateLimits: RATE(16, 50),
+      },
+    };
+    const drewFor = async (upstream: string): Promise<string[]> => {
+      await boot(page, {
+        ...base, name: `upstream ${upstream}`,
+        git: { branch: 'main', commit: '7f3a91c9d2', upstream },
+      });
+      return page.evaluate(() => [...document.querySelectorAll('#gitstate [data-k]')]
+        .map((el) => (el as HTMLElement).dataset['k'] ?? ''));
+    };
+
+    expect(await drewFor('in-sync'),
+      'a branch in sync with its upstream draws its NAME and its COMMIT — identity, which stays — '
+      + 'and no chip at all. "in sync with origin/main" is true in the common case and therefore '
+      + 'free of information, and it was holding a permanent place in the most expensive row this '
+      + 'shell has.').toEqual(['strip.branch']);
+
+    // And every state that IS worth acting on still speaks. A field that earns
+    // its place by silence has to be shown still capable of noise.
+    expect(await drewFor('differs')).toEqual(['strip.branch', 'strip.differs']);
+    expect(await drewFor('no-upstream')).toEqual(['strip.branch', 'strip.noUpstream']);
+    expect(await drewFor('unknown')).toEqual(['strip.branch', 'strip.unknownTip']);
+  });
+
+/**
+ * **The two corpus counts are DOORS, and they cost nothing to serve.**
+ *
+ * The ruling attached a condition to the doctor count: *"DO NOT run a full
+ * doctor sweep on the heartbeat … if you cannot make it cheap, do not build
+ * it."* It is not run. `/api/status` — the one call the corpus group already
+ * makes for the item count — has served `health` and `reviewQueue` beside that
+ * count since it was written, so both numbers ride a response already on the
+ * wire. What this test can hold is the OTHER half: that they are read from that
+ * response and that pressing them goes somewhere.
+ */
+test('the doctor and review counts are drawn from /api/status, and both are doors',
+  async ({ app }) => {
+    const { page } = app;
+    await boot(page, SCENARIOS[0]!);
+
+    const doc = page.locator('#corpusnotes [data-k="strip.doc"]');
+    await expect(doc, 'the doctor count must be drawn').toBeVisible();
+    // errors + warnings, and NOT infos: an `info` finding is a remark, and a
+    // count that includes remarks is a count nobody acts on. Same arithmetic as
+    // the rail badge, from one spelling.
+    await expect(doc, 'errors + warnings, the same two the rail badge sums').toContainText('5');
+    expect(await doc.evaluate((el) => el.tagName.toLowerCase()),
+      'a count that is not a door is only half of it').toBe('button');
+
+    const queue = page.locator('#corpusnotes [data-k="strip.queue"]');
+    await expect(queue, 'the review count must be drawn when it is non-zero').toBeVisible();
+    await expect(queue, 'both queues — drafts to promote and revisions to rule on').toContainText('5');
+
+    await doc.click();
+    await expect.poll(() => page.evaluate(() => location.hash),
+      { message: 'the doctor count did not open Doctor' }).toBe('#/doctor');
+    await boot(page, SCENARIOS[0]!);
+    await page.locator('#corpusnotes [data-k="strip.queue"]').click();
+    await expect.poll(() => page.evaluate(() => location.hash),
+      { message: 'the review count did not open the review queue' }).toBe('#/work');
+  });
+
+/**
+ * **An empty review queue draws nothing; a doctor count of zero draws ZERO.**
+ *
+ * They differ on purpose. A corpus with no findings is a MEASURED ZERO and the
+ * reader is entitled to it — *"no findings"* is the answer most worth having
+ * and a blank cannot give it
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, clause 1).
+ * An empty review queue is not a finding about the corpus at all: it is the
+ * absence of a request, and the ruling says that one *"renders only when
+ * non-zero"*.
+ */
+test('a zero doctor count is drawn and named; an empty review queue is not drawn',
+  async ({ app }) => {
+    const { page } = app;
+    await boot(page, {
+      name: 'a clean corpus with nothing waiting',
+      git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+      items: 43,
+      health: { errors: 0, warnings: 0, infos: 4 },
+      queue: { drafts: 0, revisions: 0 },
+      corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
+      context: {
+        session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+        mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+        handover: HANDOVER('not-asked'), rateLimits: RATE(16, 50),
+      },
+    });
+    await expect(page.locator('#corpusnotes [data-k="strip.doc"]'),
+      'a measured zero is drawn and named — "no findings" is the answer a reader most wants and '
+      + 'a blank cannot give it').toContainText('0');
+    await expect(page.locator('#corpusnotes [data-k="strip.queue"]'),
+      'an empty review queue is the absence of a request, not a finding, and the ruling says it '
+      + 'renders only when non-zero').toHaveCount(0);
+  });
+
+/**
+ * **The account's two rate-limit windows: a figure, a countdown, and a band
+ * that is silent until it matters.**
+ *
+ * The owner's seven-day window read 49% and nothing on any surface said so.
+ * `resets_at` is unix SECONDS and the countdown is what makes the figure
+ * actionable rather than merely alarming, so both halves are asserted.
+ */
+test('the rate-limit windows draw a figure and a countdown, and band silently below the warn band',
+  async ({ app }) => {
+    const { page } = app;
+    await boot(page, SCENARIOS[0]!);
+    const five = page.locator('#ctx [data-k="strip.rl5"]');
+    const seven = page.locator('#ctx [data-k="strip.rl7"]');
+    await expect(five, 'the five-hour window must be drawn').toContainText('16');
+    await expect(seven, 'the seven-day window must be drawn').toContainText('50');
+    // The countdown, computed at render time from `resetsAt`. Matched as a
+    // SHAPE and not as `2h`: the fixture sets the reset two hours out when the
+    // module loads and `formatAge` floors, so a suite that takes eight minutes
+    // to reach this test legitimately renders `1h`. A test that remembers a
+    // number fails for the wrong reason, and here the wrong reason would be
+    // its own runtime.
+    await expect(five, 'a percentage with no reset time is alarming rather than actionable')
+      .toContainText(/\d+[smhd]/);
+    // Both windows well inside their ceilings: no chip, no width, nothing said.
+    await expect(page.locator('#ctx [data-k="strip.rlNear"], #ctx [data-k="strip.rlAt"]'),
+      'a limit nowhere near its ceiling changes nothing a reader does next, so it draws no chip')
+      .toHaveCount(0);
+  });
+
+/**
+ * **Absent is silence, never a placeholder.** `rate_limits` is optional in the
+ * payload and either window inside it can be missing on its own. A `0%`
+ * invented for a window nobody reported would be a claim about an account that
+ * was never made — which is the opposite failure from the blank
+ * `STD-a-measured-zero-is-drawn-and-named` forbids, and the ruling names it:
+ * *"treat as possibly-absent; render nothing rather than a placeholder."*
+ */
+test('a window the payload did not carry draws nothing at all', async ({ app }) => {
+  const { page } = app;
+  await boot(page, {
+    name: 'seven-day window served, five-hour window absent',
+    git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+    items: 43,
+    corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
+    context: {
+      session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+      mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+      handover: HANDOVER('not-asked'), rateLimits: RATE(null, 50),
+    },
+  });
+  await expect(page.locator('#ctx [data-k="strip.rl7"]')).toContainText('50');
+  await expect(page.locator('#ctx [data-k="strip.rl5"]'),
+    'a window nobody reported is not a window measured at 0%').toHaveCount(0);
+
+  await boot(page, {
+    name: 'no rate_limits block at all',
+    git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+    items: 43,
+    corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
+    context: {
+      session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+      mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+      handover: HANDOVER('not-asked'),
+    },
+  });
+  await expect(page.locator('#ctx [data-k="strip.rl5"], #ctx [data-k="strip.rl7"]'),
+    'an older server that carries no rateLimits at all must leave the strip silent about the '
+    + 'account, not claim two zeroes').toHaveCount(0);
 });

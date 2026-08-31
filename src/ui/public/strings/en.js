@@ -965,11 +965,31 @@ export const strings = {
   // `handoverThresholdPercent` and are never a constant here — see
   // `lib/viewmodel.js`'s `occupancyBands` for the derivation and the two
   // auto-compaction records it was measured against.
-  'strip.ctxOk': 'well below the handover ask',
-  'strip.ctxWarn': 'nearing the handover ask',
-  'strip.ctxCrit': 'at the handover ask',
+  // ── HOW FULL THE WINDOW IS, on ABSOLUTE bands (owner ruling 2026-08-31).
+  // These three answer "how much room is left"; the two gold chips below answer
+  // "has the handover ask fired". Two questions, two fields, two colours — red
+  // at 91% with NO gold means the window is full and the ask has not fired,
+  // which one three-step ramp could never draw. The boundaries are
+  // CONTEXT_FILL_WARN_PERCENT and CONTEXT_FILL_CRIT_PERCENT in
+  // `lib/viewmodel.js`, declared once and restated by name anywhere else they
+  // are needed.
+  'strip.fillOk': 'room left',
+  'strip.fillWarn': 'filling up',
+  'strip.fillCrit': 'nearly full',
+  // ── AND HOW CLOSE THE HANDOVER ASK IS. One GOLD marker at two weights, not
+  // a second ramp: `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-
+  // warn` assigns all five hues, and two ramps would need a sixth and a
+  // seventh. Gold already means "this wants your attention" here, and an ask is
+  // a REQUEST rather than a severity. Below the warn band it says nothing at
+  // all: the reassurance state that used to sit there — `strip.ctxOk`, "well
+  // below the handover ask" — was cut in the same pass that cut `strip.inSync`,
+  // and for the same reason. It fired in the common case and changed nothing.
+  'strip.ctxWarn': 'handover near',
+  'strip.ctxCrit': '{b:handover due}',
   'strip.ctxLevelStale': 'too old to place',
-  'title.ctxOk': 'This window is below {warn}%, comfortably under the {threshold}% the handover ask fires at. The bands are derived from that threshold rather than fixed: the warn band opens nine tenths of the way to it, so it moves when the threshold does.',
+  'title.fillOk': 'This window is below {fillWarn}% full. These bands are ABSOLUTE — {fillWarn} and {fillCrit} — and are not the handover threshold: this chip answers how much room is left, and the gold marker beside it answers whether the handover ask has fired. Two questions, two fields.',
+  'title.fillWarn': 'This window is at or past {fillWarn}% full and below {fillCrit}%. These bands are ABSOLUTE and do not move when the handover threshold moves — a full window and a fired ask are different facts, and this chip is only about the first.',
+  'title.fillCrit': 'This window is at or past {fillCrit}% full. These bands are ABSOLUTE and do not move when the handover threshold moves. With no gold marker beside it, this says the window is nearly full and the handover ask has NOT yet fired.',
   'title.ctxWarn': 'This window is at or past {warn}% and has not yet reached {threshold}%, where the handover ask fires. This is the room there is to act in — finish a thought, capture a lesson, write the handover deliberately. Claude Code compacts automatically at about 99.75%, so once the ask has gone out under two points of the window are left.',
   'title.ctxCrit': 'This window is at or past {threshold}%, the threshold the handover ask fires at. Claude Code compacts automatically at about 99.75%, so what remains past this point is under two per cent of the window.',
   'title.ctxLevelStale': 'This reading is more than fifteen minutes old, so it is shown WITHOUT a level. The status-line bridge rewrites it on every response, so a sample this old is not describing the window in front of you — and a fossil in a confident colour is worse than an uncoloured number.',
@@ -994,18 +1014,27 @@ export const strings = {
   'strip.unmeasured': 'not measured',
   'title.unread': 'The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again.',
   'title.unmeasured': 'This read surface exposes no aggregate over the audit log, so the figure is unknown rather than zero. Refreshing cannot help; the endpoint has to exist first.',
-  'title.gitState': 'Click to cycle the seven git states the spec requires',
+  'title.gitState': 'Click to cycle the six git states the spec requires',
   'strip.branch': 'branch {mv:branch} @ {mv:commit}',
   'strip.detached': 'detached HEAD @ {mv:commit}',
-  'strip.inSync': 'in sync',
   'strip.differs': 'differs from origin',
   'strip.noUpstream': 'no upstream',
   'strip.unknownTip': 'the local tip could not be read',
   'strip.notARepo': 'not a git repository',
   'strip.items': 'items',
+  // ── WHAT THE CORPUS IS WAITING ON, and a door to it (owner ruling
+  // 2026-08-31). Both counts come out of the `/api/status` body the item count
+  // above already fetches — `health` and `reviewQueue` — so neither costs a
+  // request, and neither runs a doctor sweep on the heartbeat. Both are
+  // BUTTONS: the owner has twice reported doctor findings discovered late, and
+  // a count that is not a door is half a count.
+  'strip.doc': '{mv:count} doctor notices',
+  'title.doc': 'Every doctor finding at error or warning level, from the same tally the rail badge draws. It is served beside the item count on the one call this group already makes, so nothing here re-runs the checks. Opens Doctor.',
+  'strip.queue': '{mv:count} to rule on',
+  'title.queue': 'Drafts in the project layer waiting to be promoted, plus revision proposals waiting for a verdict — the same two queues the rail badge counts. Drawn only when there is something in them. Opens the review queue.',
   'strip.inj': 'injections today',
   'title.corpus': 'Click to cycle the item count and the state where it could not be read',
-  'title.audit': 'Click to cycle the audit figures between measured and not measured',
+  'title.audit': 'Click to cycle the injections figure between measured and not measured',
   'title.ctx': 'Click to cycle the context states, the three project-knowledge answers and the unread state',
   'strip.ctx.known': 'context {pct}% ({used} of {size}) — as of last response, {age} ago',
   'strip.ctx.notYetKnown': 'context not yet known — no API call since the last compact',
@@ -1024,8 +1053,19 @@ export const strings = {
   'strip.myctx': '{tokens} of it from project knowledge ({injections} injections)',
   'strip.myctxPartial': '≥{tokens} of it from project knowledge ({injections} injections, {unrecorded} not recorded)',
   'strip.myctxUnavailable': 'project-knowledge share unavailable: {error}',
-  'strip.append': 'audit append p95',
-  'strip.meas': 'measured',
+  // ── THE ACCOUNT'S TWO RATE-LIMIT WINDOWS (owner ruling 2026-08-31). Read
+  // off `rate_limits.five_hour` / `.seven_day` in the status-line payload this
+  // strip already tees to disk — no new source and no new call. The countdown
+  // is half the field: a percentage with no reset time is alarming rather than
+  // actionable, and `resets_at` is unix SECONDS.
+  'strip.rl5': '5h {mv:pct}% · {reset}',
+  'strip.rl7': '7d {mv:pct}% · {reset}',
+  // Banded by `occupancyBands`/`occupancyLevel` — the SAME function the
+  // handover proximity uses, never a second threshold set. Silent below the
+  // warn band, for the reason the gold marker is silent there.
+  'strip.rlNear': 'limit near',
+  'strip.rlAt': 'limit hit',
+  'title.rate': 'The account’s own rate-limit windows, read from the same status-line payload the context figure comes from. The band is the one occupancyBands computes from the configured handover threshold — there is no second threshold set here, because a hand-kept number that has to agree with a derived one is the defect this project has measured seven times.',
   'strip.rt': 'simulate reduced-transparency',
   // The provenance bar — one home for the qualifications every screen owes
   // The label was PAINTED, with its own `HEB ? … : …` ternary in the mockup's
