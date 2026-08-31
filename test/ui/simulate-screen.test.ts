@@ -204,14 +204,55 @@ const table = (lang: string): Promise<{ strings: Record<string, string> }> =>
  */
 function simulateBody(
   tiersRun: string[], full: { tier: string }[], spilled: { tier: string }[],
+  seenFiltered: string[] = [],
 ): unknown {
+  // Ids and `costs` are SYNTHESISED here rather than left empty, and that is a
+  // fixture correction rather than a convenience. `costs` is a lookup table over
+  // `full ∪ spilled` on the real endpoint, and the readout, the recommendation
+  // and the window check all price a tier through it — a fixture serving an
+  // empty `costs` beside a non-empty selection is a shape `/api/simulate` cannot
+  // produce, and measuring against it would prove those three blocks work on
+  // data no server sends. A spilled item is dearer than an admitted one here, so
+  // "the cheapest thing that did not fit" is a distinguishable number.
+  const withIds = (rows: { tier: string }[], prefix: string): { tier: string; id: string }[] =>
+    rows.map((row, i) => ({ tier: row.tier, id: `${prefix}-${row.tier}-${i}` }));
+  const admitted = withIds(full, 'RULE-in');
+  const out = withIds(spilled, 'RULE-out');
   return {
     selection: {
-      full, spilled, index: { normative: [], truncated: 0 },
+      full: admitted.map((row) => ({ tier: row.tier, item: { id: row.id } })),
+      spilled: out.map((row) => ({ tier: row.tier, id: row.id })),
+      index: { normative: [], truncated: 0 },
     },
-    budgets: { pinned: 2400, jit: 1800, restored: 2400, index: 900 },
-    costs: [],
+    // `continuity` is present because `Config.budgets` has five keys and the
+    // whole-window check sums five: a fixture missing one would validate four
+    // budgets and silently agree with the defect `plan:budget seq:3` exists to
+    // catch.
+    budgets: { pinned: 2400, jit: 1800, restored: 2400, continuity: 1200, index: 900 },
+    costs: [
+      ...admitted.map((row, i) => ({ id: row.id, tokens: 100 + i * 10 })),
+      ...out.map((row, i) => ({ id: row.id, tokens: 300 + i * 10 })),
+    ],
     tiersRun,
+    seenFiltered,
+  };
+}
+
+/** `GET /api/watch/context`'s body, exactly `apiWatchContext` serves. */
+function contextBody(windowSize: number | null, usedTokens: number): unknown {
+  if (windowSize === null) return { session: 's', sample: null, mycontext: null, mycontextError: null };
+  return {
+    session: 's',
+    sample: {
+      receivedAt: '2026-08-31T09:00:00.000Z',
+      model: 'Opus 5 (1M context)',
+      version: '2.1.247',
+      context: {
+        state: 'known', usedTokens, windowSize, percent: (usedTokens / windowSize) * 100,
+      },
+    },
+    mycontext: { tokens: 1, injections: 1, unrecorded: 0 },
+    mycontextError: null,
   };
 }
 
@@ -254,6 +295,10 @@ const JIT_RUNGS = [
 const RICH = async (route: string): Promise<unknown> => {
   if (route === '/api/coverage') return { files: [{ path: 'src/index.ts' }] };
   if (route === '/api/watch/ratio') return { rows: RATIO_ROWS, roleWindow: 1000, truncated: true, projectionState: 'fresh' };
+  // A window big enough that the five budgets clear the reserve — so the rich
+  // render draws the OK verdict and the ceiling recommendation, and neither the
+  // tight nor the over verdict is what a passing run happens to be measuring.
+  if (route.startsWith('/api/watch/context?')) return contextBody(1_000_000, 600_789);
   // The screen opens on `jit`, and only `jit` is ever asked for here — the
   // other three tiers' sweeps are exercised by `read-model.test.ts` directly
   // against the real endpoint, not re-fixtured a second time in this file.
@@ -264,9 +309,17 @@ const RICH = async (route: string): Promise<unknown> => {
     return sweepBody('jit', JIT_RUNGS);
   }
   if (route.startsWith('/api/simulate?')) {
+    // The COMPACT response carries `seenFiltered`, because the `seen` gate is a
+    // property of the session and the corpus rather than of the event — which is
+    // the reason `run()` reads it off that one and not off whichever resolved
+    // second. Two ids, so `restored` and `continuity` reading `0 of 0` have a
+    // measured reason to give and not a blank.
     return route.includes('event=tool')
       ? simulateBody(['jit'], [{ tier: 'jit' }, { tier: 'jit' }], [{ tier: 'jit' }])
-      : simulateBody(['pinned', 'restored', 'index'], [{ tier: 'pinned' }], []);
+      : simulateBody(
+        ['pinned', 'restored', 'continuity', 'index'], [{ tier: 'pinned' }], [],
+        ['STD-already-delivered-one', 'STD-already-delivered-two'],
+      );
   }
   throw new Error(`the simulator asked for ${route}, which this fixture does not serve`);
 };
@@ -282,6 +335,11 @@ const RICH = async (route: string): Promise<unknown> => {
  */
 const LEAN = async (route: string): Promise<unknown> => {
   if (route === '/api/coverage') return { files: [] };
+  // No status-line bridge: the endpoint answers 200 with `sample: null`, which
+  // is the "installed nothing / sampled nothing" state and NOT an error. The
+  // screen must refuse to validate against it rather than reading the absence
+  // as a window of zero.
+  if (route.startsWith('/api/watch/context?')) return contextBody(null, 0);
   if (route === '/api/watch/ratio') {
     throw new Error(
       'the audit projection is behind relative to its log, and this endpoint may not catch it up',
@@ -328,17 +386,28 @@ interface Drawn { root: FakeElement; routes: string[] }
  */
 async function draw(
   api: (route: string) => Promise<unknown>, lang = 'en',
-  interact?: (root: FakeElement) => void,
+  interact?: (root: FakeElement, fire: () => void) => void,
+  session = 'cold',
 ): Promise<Drawn> {
   const { render } = await simulate();
   const { t, tFlat } = await i18n();
   const strings = (await table(lang)).strings;
   const routes: string[] = [];
+  /**
+   * The shell's session listeners, held so a test can FIRE one.
+   *
+   * `plan:budget seq:6` asks for the `plan:live seq:3` case explicitly — *"the
+   * test for this task should include a mutation arriving while a value is
+   * typed"* — and a stand-in that swallowed the listener made that case
+   * unreachable. It still answers a real unsubscribe, because the screen calls
+   * one from its next `render()` and this file renders more than once.
+   */
+  const listeners: (() => void)[] = [];
   const ctx = {
     t: (key: string, subs: Record<string, string | number> = {}) => t(strings, key, subs, doc),
     tFlat: (key: string, subs: Record<string, string | number> = {}) => tFlat(strings, key, subs),
     api: (route: string) => { routes.push(route); return api(route); },
-    session: () => 'cold',
+    session: () => session,
     // The screen registers one; nothing here fires it, and a stand-in that
     // threw would fail on registration rather than on use.
     //
@@ -350,7 +419,13 @@ async function draw(
     // answering `undefined` is a stand-in for a contract the shell does not
     // have, and this file renders more than once per process, so it would fail
     // on the SECOND render over a difference that is not the screen's.
-    onSessionChange: () => (): void => {},
+    onSessionChange: (fn: () => void) => {
+      listeners.push(fn);
+      return (): void => {
+        const at = listeners.indexOf(fn);
+        if (at !== -1) listeners.splice(at, 1);
+      };
+    },
   };
   const root = element('section');
   await withDocument(async () => {
@@ -367,7 +442,7 @@ async function draw(
     // they touch resolves within a microtask of being called.
     await new Promise((resolve) => { setTimeout(resolve, 0); });
     if (interact !== undefined) {
-      interact(root);
+      interact(root, () => { for (const fn of [...listeners]) fn(); });
       // `slider.oninput` debounces its own `run()` behind a real 150ms
       // `setTimeout` (`pending = setTimeout(...)`), which a bare 0ms flush
       // does not wait out — that timer firing AFTER `document` is torn down
@@ -992,6 +1067,23 @@ const CLOSED = [
   // (`stairCol`, `ladderCol`), the card that holds them, and the ladder's own
   // (always-present, sometimes-empty) plate.
   'div', 'div.card.pane.sim', 'div.ladder.plate',
+  // **`div.readout` LEFT `ABSENT` ON 2026-08-31, and it left by being BUILT** —
+  // which is the direction this partition is allowed to move and the one the
+  // note below `ABSENT` predicted in these words: *"The day `#readout` gets a
+  // `data-t`, THIS is the assertion that goes red and says the last two entries
+  // may come out."* It went red on exactly that line.
+  //
+  // The block's own refusal is discharged rather than restated. It was never
+  // about the sweep: its WORDS were unkeyed English/Hebrew ternaries in the
+  // mockup's script, and inventing a key used to fail `strings-parity` — a
+  // direction dropped on 2026-08-26. `sim.readout`, `sim.nextin` and
+  // `sim.evictw` carry `renderStair`'s own three sentences verbatim in both
+  // languages; the KEY is what is new, and the key was the forbidden part.
+  //
+  // CLOSED and not DATA: the container is built once per render whether or not
+  // the tier being dragged has anything to report. Only its CONTENTS wait on
+  // data, and `div.small` below is where that dependence is recorded.
+  'div.readout',
   // `sim.snap`'s own `{offrung}` — the mockup's illustrative "6,050" — is
   // supplied UNCONDITIONALLY (`render`'s own header explains why a static
   // illustrative number is correct here rather than one derived from data),
@@ -1030,17 +1122,24 @@ const DATA = [
   // `.at` needs only a non-empty sweep; `.ev`, like the eviction mark above,
   // needs a genuine eviction in it.
   'div.at', 'div.ev',
+  // **`div.small` is the readout's own two lines, and it is DATA rather than
+  // CLOSED for a reason the container above is not.** `next in at …` is drawn
+  // only where the tier being dragged has something SPILLED to name, and the
+  // eviction warning only where the sweep contains a downward step. `RICH`'s
+  // `jit` has both; `LEAN` reaches `jit` through no event at all, so the readout
+  // is empty there and neither line exists. Same shape as `span.chip.warn`
+  // above, and absent under `LEAN` for the same underlying reason.
+  'div.small',
 ];
 
 const ABSENT = [
-  // The readout between the staircase and the ladder — refused for the
-  // reason the module header gives at length, unchanged by this task: its
-  // WORDS are unkeyed English/Hebrew literals in the mockup's own script,
-  // under no `data-t`, so no key in either string table carries them.
-  'div.readout',
-  // The readout's own "next in at …" line, and nowhere else on this screen
-  // that class is drawn — it is absent for exactly the reason its parent is.
-  'div.small',
+  // **Both of this list's data-shaped entries are gone, and the list is now
+  // STRUCTURAL ONLY.** `div.readout` and `div.small` were the readout and its
+  // "next in at …" line; both are built as of 2026-08-31 and have moved to
+  // CLOSED and DATA respectively — see the notes there. What remains below is
+  // the four kinds a CORRECT build can never emit, which is a different claim
+  // from "not implemented yet" and is the one this list should only ever hold.
+  //
   // **Bare `svg`, `line` and `path` — structurally, not by omission.** Every
   // `<svg>`, `<line>` and `<path>` `renderStair` ever draws carries a class
   // (`chart`; `axis`, `defline` or `nowline`; `step` — mockup ~3890-4095,
@@ -1092,4 +1191,445 @@ test('the twenty-one ledger kinds partition into closed, data-dependent and abse
   for (const kind of ABSENT) {
     assert.ok(!rich.has(kind), `${kind} is listed ABSENT but the module now draws it`);
   }
+});
+
+/* ══ plan:walk seq:86 — the staircase can be asked the cold question ═════════
+   The screen contained the string `cold` zero times and always sent
+   `ctx.session()`, so it could only ever ask the warm question. These tests pin
+   the control and the ROUTES it changes — a segmented button that repaints
+   itself without moving the query would look identical and answer nothing. ── */
+
+/** The question strip: the one `.segbar` whose buttons carry `data-q`. */
+function questionBar(root: FakeNode): FakeElement {
+  const found = byKind(root, 'div.segbar').find(
+    (bar) => (bar.children[0] as FakeElement | undefined)?.dataset['q'] !== undefined,
+  );
+  assert.ok(found !== undefined, 'no question strip was drawn');
+  return found as FakeElement;
+}
+
+/** The recommendation bar: the one `.segbar` whose buttons carry `data-rec`. */
+function recBar(root: FakeNode): FakeElement {
+  const found = byKind(root, 'div.segbar').find(
+    (bar) => (bar.children[0] as FakeElement | undefined)?.dataset['rec'] !== undefined,
+  );
+  assert.ok(found !== undefined, 'no recommendation bar was drawn');
+  return found as FakeElement;
+}
+
+/** Every `p.small` a render drew, folded to text — where this screen's prose lives. */
+const notesOf = (root: FakeNode): string[] => all(root, (n) => kindOf(n) === 'p.small').map(flatText);
+
+test('the question strip offers warm and cold, warm pressed, and names the session itself', async () => {
+  const { root } = await draw(RICH, 'en', undefined, 'sess-1');
+  const en = (await table('en')).strings;
+
+  const buttons = questionBar(root).children as FakeElement[];
+  assert.deepEqual(buttons.map((b) => b.dataset['q']), ['live', 'cold']);
+  // Warm is the DEFAULT and does not move. The ruling is the preview's and it
+  // carries: cold is offered and labelled, never silently substituted.
+  assert.deepEqual(buttons.map((b) => b.attributes['aria-pressed']), ['true', 'false']);
+  // The warm option is named by the session ITSELF — a value, not prose — and
+  // the cold one takes the design of record's own string.
+  assert.match(flatText(buttons[0]!), /sess-1/);
+  assert.match(flatText(buttons[1]!), new RegExp(en['sess.cold']!));
+});
+
+test('a shell with no session draws one button, not an inert second one', async () => {
+  // `ctx.session()` already answers `cold` where there are no sessions at all,
+  // so the two questions collapse there — correctly, because there is no warm
+  // question to ask. Every other test in this file renders in exactly that state.
+  const { root } = await draw(RICH);
+  const buttons = questionBar(root).children as FakeElement[];
+  assert.deepEqual(buttons.map((b) => b.dataset['q']), ['cold']);
+});
+
+test('pressing cold moves every query to cold=1, and pressing it twice is not two fetches', async () => {
+  const { routes } = await draw(RICH, 'en', (root) => {
+    const cold = questionBar(root).children[1] as unknown as { onclick: () => void };
+    cold.onclick();
+    // Idempotent: the handler returns early when the mode has not changed, so a
+    // second press is not a second pair of requests for the same answer.
+    cold.onclick();
+  }, 'sess-1');
+
+  const sim = routes.filter((r) => r.startsWith('/api/simulate'));
+  assert.ok(sim.some((r) => r.includes('session=sess-1')), 'nothing was ever asked warm');
+  const cold = sim.filter((r) => r.includes('cold=1'));
+  assert.ok(cold.length >= 2, `the cold press changed no query — ${JSON.stringify(sim)}`);
+  // One `/api/simulate` pair and one sweep for the press, not two of each.
+  assert.equal(cold.filter((r) => r.startsWith('/api/simulate?')).length, 2);
+  assert.equal(cold.filter((r) => r.startsWith('/api/simulate/sweep?')).length, 1);
+});
+
+test('the seen gate is named, and a measured 0 of 0 says which emptiness it is', async () => {
+  const { root } = await draw(RICH, 'en', undefined, 'sess-1');
+  const en = (await table('en')).strings;
+  const { tFlat } = await i18n();
+
+  // The COUNT, drawn once under the table: the gate runs before any tier picks
+  // candidates, so it is not attributable to a tier and is not drawn per row.
+  assert.ok(notesOf(root).includes(tFlat(en, 'sim.seen', { n: '2' })),
+    'the count the seen gate removed was not named');
+
+  // And the ROWS get the distinction that count makes possible. `restored` and
+  // `continuity` both ran and both admitted nothing; with the gate having
+  // removed two items, the row says so rather than leaving a bare `0 of 0`.
+  const rows = byKind(root, 'tbody')[0]!.children;
+  const restored = flatText(rows[2]!);
+  assert.match(restored, /0 of 0/);
+  assert.match(restored, new RegExp(en['sim.zeroSeen']!));
+  assert.doesNotMatch(restored, new RegExp(en['sim.zeroNone']!));
+
+  // The tier that DID deliver carries no reason at all — the sentence is for an
+  // empty row and would be noise on a full one.
+  assert.doesNotMatch(flatText(rows[0]!), new RegExp(en['sim.zeroSeen']!));
+});
+
+test('with nothing removed at the gate, an empty tier says nothing qualified instead', async () => {
+  // Same code, one field of one response different: `seenFiltered` empty. That
+  // is the proof the sentence is MEASURED and not a constant — no branch of the
+  // screen changed between this render and the one above.
+  const { root } = await draw(async (route) => (
+    route.startsWith('/api/simulate?') && !route.includes('event=tool')
+      ? simulateBody(['pinned', 'restored', 'continuity', 'index'], [{ tier: 'pinned' }], [], [])
+      : RICH(route)), 'en', undefined, 'sess-1');
+  const en = (await table('en')).strings;
+  const { tFlat } = await i18n();
+
+  const restored = flatText(byKind(root, 'tbody')[0]!.children[2]!);
+  assert.match(restored, new RegExp(en['sim.zeroNone']!));
+  assert.doesNotMatch(restored, new RegExp(en['sim.zeroSeen']!));
+  assert.ok(notesOf(root).includes(tFlat(en, 'sim.seen0', {})),
+    'a measured zero at the gate must be drawn and named, not left blank');
+});
+
+test('a tier with nothing to sweep draws WHY its staircase is empty, never a blank plate', async () => {
+  // `index` is refused by the sweep endpoint by construction, so the screen
+  // draws the absent state locally — and now says which absence it is.
+  const { root } = await draw(RICH, 'en', (drawnRoot) => {
+    const tierPick = byKind(drawnRoot, 'div.segbar')[0]!;
+    const button = tierPick.children.find((c) => flatText(c) === 'index') as
+      { onclick: () => void } | undefined;
+    assert.ok(button !== undefined, 'no index button was drawn');
+    button.onclick();
+  }, 'sess-1');
+  const en = (await table('en')).strings;
+  const { tFlat } = await i18n();
+
+  // The staircase's own plate is `#stair`, the first `.plate` this screen builds.
+  const stair = byKind(root, 'div.plate')[0]!;
+  assert.equal(flatText(stair), tFlat(en, 'sim.stairIndex', {}),
+    'the index tier drew a blank staircase rather than naming its absence');
+});
+
+/* ══ plan:budget seq:2 — the recommendation carries the numbers ══════════════ */
+
+test('the recommendation says what the tier costs, is set to, and would have to be', async () => {
+  const { root } = await draw(RICH, 'en', undefined, 'sess-1');
+  const en = (await table('en')).strings;
+  const { tFlat } = await i18n();
+
+  // `jit`: two admitted at 100 and 110, one spilled at 300 — 510 in all, three
+  // candidates. The budget in force is 1,800. The sweep's largest admission is
+  // two items, first reached at 600, so 600 is what it would have to BE.
+  assert.ok(notesOf(root).includes(tFlat(en, 'sim.recn', {
+    tier: 'jit', cost: '510', n: '3', set: '1,800', need: '600',
+  })), 'the recommendation did not carry its three numbers');
+});
+
+test('what it would have to BE is the cheapest largest admission, not the last rung', async () => {
+  // `JIT_RUNGS` ends on an EVICTION — 15,000 admits ONE where 600 admitted two.
+  // A recommendation reading `rungs.at(-1)` would tell a reader to spend 15,000
+  // to receive fewer items than 600 buys, which is `sim.evict`'s whole subject:
+  // first-fit is not monotone in membership.
+  const { root } = await draw(RICH, 'en', undefined, 'sess-1');
+  const exact = recBar(root).children[0]!;
+  assert.match(flatText(exact), /600/);
+  assert.doesNotMatch(flatText(exact), /15,000/);
+});
+
+test('the three offered values are derived, labelled with what they buy, and pressable', async () => {
+  const { root } = await draw(RICH, 'en', undefined, 'sess-1');
+  const [exact, grow, ceiling] = recBar(root).children as FakeElement[];
+
+  // 600 exactly; 600 with 20% headroom; and window − the other four budgets −
+  // a 25% working reserve = 1,000,000 − 6,900 − 250,000.
+  assert.match(flatText(exact!), /600/);
+  assert.match(flatText(exact!), /admits all 2/);
+  assert.match(flatText(grow!), /720/);
+  assert.match(flatText(grow!), /20% headroom/);
+  assert.match(flatText(ceiling!), /743,100/);
+  assert.match(flatText(ceiling!), /6,900 tokens and a 25% working reserve/);
+  // Every one of them is a value a reader can take, not a slogan.
+  for (const button of [exact, grow, ceiling]) {
+    assert.notEqual((button as unknown as { disabled: boolean }).disabled, true);
+  }
+});
+
+test('with no window measured the ceiling is NOT OFFERED, and says so rather than guessing', async () => {
+  // The bridge is not installed, so `/api/watch/context` answers `sample: null`.
+  // The other two recommendations are derivable without a window and still
+  // stand; only the one that needs it stands down.
+  const { root } = await draw(async (route) => (route.startsWith('/api/watch/context?')
+    ? contextBody(null, 0)
+    : RICH(route)), 'en', undefined, 'sess-1');
+  const en = (await table('en')).strings;
+
+  const [exact, , ceiling] = recBar(root).children as FakeElement[];
+  assert.match(flatText(exact!), /600/, 'a value needing no window stopped being offered');
+  assert.match(flatText(ceiling!), new RegExp(en['sim.recCeilNon']!));
+  assert.equal((ceiling as unknown as { disabled: boolean }).disabled, true,
+    'a recommendation with no number behind it must not be pressable');
+});
+
+/* ══ plan:budget seq:3 — validation is against the whole window ══════════════ */
+
+test('without the status-line bridge the five budgets are NOT validated, and the refusal names what is missing', async () => {
+  const { root } = await draw(LEAN, 'en', undefined, 'sess-1');
+  const en = (await table('en')).strings;
+  const { tFlat } = await i18n();
+
+  const refusal = all(root, (n) => kindOf(n) === 'p.small'
+    && flatText(n) === tFlat(en, 'sim.winNone', {}))[0];
+  assert.ok(refusal !== undefined,
+    'a screen with no measured window either validated against a guess or said nothing');
+  // And it is a REFUSAL, not a verdict: no chip is drawn beside it, because a
+  // chip is a judgement and nothing was judged. Scoped to this note rather than
+  // to the screen — the fits column draws `span.chip.ok` of its own, and a
+  // global census would confuse a measured ratio with an unmeasured window.
+  assert.deepEqual(all(refusal, (n) => kindOf(n).startsWith('span.chip')), [],
+    'a verdict chip was drawn over a window nobody measured');
+  // The whole-window verdict is not drawn in any other form either.
+  assert.ok(!notesOf(root).some((t) => t.includes('across all five tiers')));
+});
+
+test('with a window the check is over all FIVE budgets, not the one being dragged', async () => {
+  const { root } = await draw(RICH, 'en', undefined, 'sess-1');
+  const en = (await table('en')).strings;
+  const { tFlat } = await i18n();
+
+  // 2,400 + 1,800 + 2,400 + 1,200 + 900 = 8,700 of 1,000,000. The continuity
+  // budget is in that sum deliberately: the task's own text names four tiers and
+  // `Config.budgets` has five, and validating four would leave the fifth free to
+  // overflow the window — the exact failure the check exists to catch.
+  const line = notesOf(root).find((t) => t.includes('across all five tiers'));
+  assert.ok(line !== undefined, 'the whole-window check drew nothing');
+  assert.equal(line!.trim(), tFlat(en, 'sim.winOk', {
+    total: '8,700', win: '1,000,000', pct: '1', left: '991,300', res: '25',
+  }));
+});
+
+test('a sum that overflows the window is refused as a sum, and the chip says so', async () => {
+  // One budget raised past the whole window: each of the other four is
+  // unremarkable on its own, and the FIVE together do not fit. That is the
+  // failure mode a per-field check cannot see.
+  const { root } = await draw(RICH, 'en', (drawnRoot) => {
+    const field = byKind(drawnRoot, 'input.m')[1] as unknown as { value: string };
+    const go = byKind(drawnRoot, 'div.cmdactions')[2]!.children[2] as unknown as
+      { onclick: () => void };
+    field.value = '1200000';
+    go.onclick();
+  }, 'sess-1');
+
+  const line = notesOf(root).find((t) => t.includes('across all five tiers'));
+  assert.match(line!, /does not fit a 1,000,000-token window: 206,900 tokens over/);
+  assert.equal(byKind(root, 'span.chip.crit').length, 1);
+  (await parts()).setSimRange('jit', null);
+});
+
+/* ══ plan:budget seq:4 — a full window is a state with a next step ═══════════ */
+
+test('a budget that cannot land in the window running now names the ACT, and blocks nothing', async () => {
+  const en = (await table('en')).strings;
+  const { tFlat } = await i18n();
+  let sliderAfter = '';
+  const { root } = await draw(RICH, 'en', (drawnRoot) => {
+    // The ceiling: 743,100, which fits the WINDOW and does not fit what is LEFT
+    // of it — 1,000,000 less the 600,789 already spent is 399,211.
+    (recBar(drawnRoot).children[2] as unknown as { onclick: () => void }).onclick();
+    sliderAfter = (byKind(drawnRoot, 'input')[0] as unknown as { value: string }).value;
+  }, 'sess-1');
+
+  const lines = notesOf(root);
+  assert.ok(lines.some((t) => t === tFlat(en, 'sim.full', {
+    used: '600,789', win: '1,000,000', free: '399,211', total: '750,000', n: '2', tier: 'jit',
+  })), `the full-window next step was not drawn — ${JSON.stringify(lines.slice(-3))}`);
+
+  // **AND SET IT ANYWAY.** The value is taken, the slider holds it, and nothing
+  // was disabled: budgets are read at session start, so a compact is when the
+  // new value takes effect — saying "cannot" and keeping nothing would make the
+  // reader do it twice.
+  assert.equal(sliderAfter, '743100');
+
+  // The window itself still FITS, and the two sentences stay apart: "the five
+  // budgets do not fit the window" and "this window has no room right now" are
+  // two facts with two different next steps.
+  assert.ok(lines.some((t) => t.includes('across all five tiers') && !t.includes('does not fit')),
+    'the whole-window verdict was folded into the full-window one');
+  (await parts()).setSimRange('jit', null);
+});
+
+test('a budget that fits the window it is running in draws no next step at all', async () => {
+  // The other half of the same property, and the reason this is not a banner:
+  // the opening state asks for 8,700 of 399,211 free, so there is nothing to
+  // act on and nothing is said. A sentence drawn unconditionally would be a
+  // weather report.
+  const { root } = await draw(RICH, 'en', undefined, 'sess-1');
+  assert.ok(!notesOf(root).some((t) => t.includes('cannot take effect')),
+    'the full-window next step was drawn over a window with room in it');
+});
+
+/* ══ plan:budget seq:6 — an edited budget shows what it was ══════════════════ */
+
+test('the value in force is drawn beside the value being simulated, while editing', async () => {
+  const seen: string[] = [];
+  await draw(RICH, 'en', (root) => {
+    const slider = byKind(root, 'input')[0] as unknown as { value: string; oninput: () => void };
+    // `#inForce` is the first `span.m` this screen builds — the left half of the
+    // pairing, built in `ctl` before anything else that carries the class.
+    const force = byKind(root, 'span.m')[1]!;
+    seen.push(flatText(force));
+    // Drag. The number before the arrow must NOT follow the thumb — that is the
+    // whole of what the reader had lost without it.
+    slider.value = '900';
+    slider.oninput();
+    seen.push(flatText(force));
+  }, 'sess-1');
+  assert.deepEqual(seen, ['1,800', '1,800'],
+    'the budget in force followed the thumb, so the reader still cannot see what it was');
+});
+
+test('one control puts it back, and it is disabled until something has changed', async () => {
+  const states: (string | boolean)[] = [];
+  await draw(RICH, 'en', (root) => {
+    const slider = byKind(root, 'input')[0] as unknown as { value: string; oninput: () => void };
+    const restore = byKind(root, 'div.cmdactions')[1]!.children[0] as unknown as
+      { disabled: boolean; onclick: () => void };
+
+    // 1 — nothing has changed, so the control answers "nothing has changed" by
+    //     being unpressable. That is the second question it exists to answer.
+    states.push(restore.disabled);
+
+    // 2 — drag, and it wakes up.
+    slider.value = '900';
+    slider.oninput();
+    states.push(restore.disabled, slider.value);
+
+    // 3 — press it, and the value in force comes back.
+    restore.onclick();
+    states.push(slider.value, restore.disabled);
+  }, 'sess-1');
+  assert.deepEqual(states, [true, false, '900', '1800', true]);
+});
+
+test('restore also clears a range the reader set, so ONE control is the whole of it', async () => {
+  const seen: string[] = [];
+  await draw(RICH, 'en', (root) => {
+    const slider = byKind(root, 'input')[0] as unknown as { max: string };
+    const box = byKind(root, 'div.cmdactions')[0]!;
+    const field = box.children[1] as unknown as { value: string };
+    const go = box.children[2] as unknown as { onclick: () => void };
+    const restore = byKind(root, 'div.cmdactions')[1]!.children[0] as unknown as
+      { disabled: boolean; onclick: () => void };
+
+    field.value = '40000';
+    go.onclick();
+    seen.push(slider.max, String(restore.disabled));
+    restore.onclick();
+    // The derived bound is back: `JIT_RUNGS`'s 15,000 last rung, which is what
+    // `sliderMaxFor` answers with no range set.
+    seen.push(slider.max, String(restore.disabled));
+  }, 'sess-1');
+  assert.deepEqual(seen, ['40000', 'false', '15000', 'true']);
+  (await parts()).setSimRange('jit', null);
+});
+
+test('a session change arriving mid-edit does not discard the edit', async () => {
+  // `plan:live seq:3`'s case, which `plan:budget seq:6` asks for by name: a live
+  // refresh that replaced a reader's typed value with the corpus's is the exact
+  // defect that rule exists to prevent, and an edited budget form is a reader's
+  // place.
+  const seen: string[] = [];
+  await draw(RICH, 'en', (root, fire) => {
+    const slider = byKind(root, 'input')[0] as unknown as { value: string; oninput: () => void };
+    const rangeField = byKind(root, 'input.m')[0] as unknown as { value: string };
+    slider.value = '900';
+    slider.oninput();
+    rangeField.value = '4242';
+    fire();
+    seen.push(slider.value, rangeField.value);
+  }, 'sess-1');
+  assert.deepEqual(seen, ['900', '4242'],
+    'a session change overwrote a value the reader was in the middle of choosing');
+});
+
+/* ══ The readout, built at last ══════════════════════════════════════════════ */
+
+test('the readout draws what is in, what is out, what that costs, and what arrives next', async () => {
+  const { root } = await draw(RICH, 'en', undefined, 'sess-1');
+  const readout = byKind(root, 'div.readout')[0];
+  assert.ok(readout !== undefined, 'the readout was not built');
+
+  // Two admitted (100 + 110), one spilled (300): 510 in all. The cheapest thing
+  // that did not fit costs 300 and the admitted set takes 210, so it arrives at
+  // 510 — the mockup's own arithmetic, `at.used + cheap.cost`.
+  assert.match(flatText(readout.children[0]!), /2 in · 1 out · 510 tokens used/);
+  assert.match(flatText(readout.children[1]!), /next in at 510 — RULE-out-jit-0/);
+  // `JIT_RUNGS` carries an eviction, so the third line is the mockup's warning.
+  assert.match(flatText(readout.children[2]!), /evicts at least one item/);
+});
+
+test('a tier neither event reached draws NO readout — absent, never three zeroes', async () => {
+  const { root } = await draw(LEAN);
+  const readout = byKind(root, 'div.readout')[0]!;
+  assert.deepEqual(readout.children, [],
+    '"0 in · 0 out · 0 tokens used" would claim a tier ran and delivered nothing');
+});
+
+/* ══ The keys ═══════════════════════════════════════════════════════════════ */
+
+test('every string key the Budget simulator names is declared in both tables, with its slots agreed', async () => {
+  const source = readFileSync(path.join(PUBLIC, 'screens', 'simulate.js'), 'utf8');
+  const en = (await table('en')).strings;
+  const he = (await table('he')).strings;
+  const { slots } = await browserModule<{ slots: (t: string) => string[] }>('lib', 'i18n.js');
+
+  // Every `ctx.t('…')` and `ctx.tFlat('…')` this screen names, plus the keys it
+  // holds as DATA — the recommendation bar's three pairs are `head:`/`sub:`
+  // fields in a table rather than call sites, and a scanner blind to those would
+  // pass a screen naming six keys nothing declares.
+  const named = new Set<string>();
+  for (const m of source.matchAll(/ctx\.t(?:Flat)?\('([^']+)'/g)) named.add(m[1]!);
+  for (const m of source.matchAll(/(?:head|sub):\s*'(sim\.[^']+)'/g)) named.add(m[1]!);
+  assert.ok(named.size >= 40, `only ${named.size} keys were found — the scanner has gone blind`);
+
+  const missing: string[] = [];
+  for (const key of [...named].sort()) {
+    if (!Object.hasOwn(en, key)) missing.push(`en:${key}`);
+    if (!Object.hasOwn(he, key)) missing.push(`he:${key}`);
+  }
+  assert.deepEqual(missing, [], 'the screen names a key no table declares');
+
+  // And the two languages agree about which substitutions each key takes. A
+  // Hebrew value that dropped a slot the English carries throws at render time
+  // in one language only, which is the failure no English-only render can see.
+  const mismatched: string[] = [];
+  for (const key of [...named].sort()) {
+    if (!Object.hasOwn(en, key) || !Object.hasOwn(he, key)) continue;
+    if ([...slots(en[key]!)].sort().join() !== [...slots(he[key]!)].sort().join()) {
+      mismatched.push(key);
+    }
+  }
+  assert.deepEqual(mismatched, []);
+});
+
+test('the screen renders in Hebrew with every new sentence supplied', async () => {
+  // The English renders above would catch a missing substitution in `en.js`
+  // alone: `t()` throws on one, deliberately. This is the same guarantee for the
+  // other table, and it is the only thing in this file that reads it.
+  const { root } = await draw(RICH, 'he', undefined, 'sess-1');
+  const he = (await table('he')).strings;
+  assert.match(flatText(byKind(root, 'tbody')[0]!.children[2]!), new RegExp(he['sim.zeroSeen']!));
+  assert.ok(byKind(root, 'div.readout')[0]!.children.length > 0, 'the Hebrew readout drew nothing');
 });

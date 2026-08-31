@@ -320,6 +320,51 @@ export const strings = {
   'sim.evict': '{m:fitToBudget} is {b:first-fit}: it keeps trying later items after one does not fit. A larger budget admits a large item early, which can then crowd out two small ones that previously both fitted. "Spilled" is not a suffix of a priority list.',
   'sim.ratio': 'Selected, then not delivered',
   'sim.ration': 'Delivered grows from the centre toward the reading start, spilled toward the reading end, both normalised to the largest count in the table. A long red half names {b:which budget is too small}, which is the question this simulator exists to answer. The two numbers come from {m:audit_item.role} through {m:topItems} — already exported, already indexed, called twice.',
+  // ── The question: this session, or a brand-new one (plan:walk seq:86) ────
+  // The injection preview's precedent, carried to the second screen with the
+  // same defect. Warm stays the default; cold is offered and LABELLED.
+  'sim.qnote': '{b:Two questions, not two views.} The default is what the session in the strip above would be given now, with the {m:seen} set it has really been handed. {b:Cold} answers what a brand-new window would get from the same corpus. Both are legitimate, neither is ever shown as the other, and the pressed control says which one this screen is answering.',
+  'sim.seen': '{b:Filtered before budgeting} — {n} item(s) were removed at the {m:seen} gate, because this session has already been given them. That gate runs before any tier picks its candidates, so a tier reading 0 of 0 below may be empty for that reason rather than because nothing qualified. Ask the cold question to see what a brand-new window would be given.',
+  'sim.seen0': 'Nothing was removed at the {m:seen} gate, so an empty tier below is empty because nothing qualified for it. A cold question always reads zero here: a brand-new window has been shown nothing.',
+  'sim.zeroSeen': 'everything it could have had was already delivered',
+  'sim.zeroNone': 'nothing qualified for it',
+  'sim.stair0seen': 'No rung to draw. The {m:seen} gate removed {n} item(s) before this tier picked its candidates, so it had none left to admit — this staircase is empty for a measured reason rather than an unknown one.',
+  'sim.stair0none': 'No rung to draw: nothing qualified for this tier under the question being asked.',
+  'sim.stairIndex': 'The {m:index} tier admits index LINES rather than items, and no endpoint exposes per-line costs — so there is nothing here to price. Absent, not empty.',
+  'sim.stairNoPath': 'The {m:jit} tier is reached only by a {m:tool} event, which needs a file path, and this repository walk offers none. Absent, not empty.',
+  // ── The readout under the staircase (mockup #readout) ────────────────────
+  // The words are the design of record's own, lifted from `renderStair`'s
+  // unkeyed English/Hebrew ternaries and given the keys it never had.
+  'sim.readout': '{b:{fits} in · {spills} out · {used} tokens used}',
+  'sim.nextin': 'next in at {mv:at} — {mv:id}',
+  'sim.evictw': 'Raising this budget evicts at least one item — see the downward step. First-fit is not monotone in membership.',
+  // ── The recommendation carries the numbers (plan:budget seq:2) ───────────
+  'sim.rech': 'What this tier costs, what it is set to, and what it would have to be',
+  'sim.recn': 'The {mv:tier} tier costs {cost} tokens for the {n} item(s) that reached it, is set to {set}, and would have to be {need} for every one of them to be admitted.',
+  'sim.recNone': 'Not measured: this tier has been swept under no question this screen can ask, so there is no cost to report and no value to recommend. Nothing is guessed.',
+  'sim.recExact': 'Exactly enough',
+  'sim.recExactn': 'admits all {n} · costs {cost} tokens of the window',
+  'sim.recGrow': 'Room to grow',
+  'sim.recGrown': 'admits all {n} with {pct}% headroom for the corpus to grow · costs {cost} tokens of the window',
+  'sim.recCeil': 'The most this tier may take',
+  'sim.recCeiln': 'leaves the other four tiers their {other} tokens and a {pct}% working reserve inside the {win}-token window · costs {cost} tokens',
+  'sim.recCeilNon': 'not offered: no window has been measured, and a ceiling against a guessed window is worse than no ceiling at all',
+  'sim.recFreeh': 'Or a value of your own',
+  'sim.recGo': 'Simulate it',
+  'sim.recSet': 'Simulating {mv:tier} at {value}.',
+  'sim.recRange': 'Simulating {mv:tier} at {value}. The range maximum rose to {max} so the slider can reach it.',
+  'sim.recBad': 'A budget must be a positive integer written in digits. Got {typed}. Nothing was changed.',
+  // ── Validation is against the whole window (plan:budget seq:3) ───────────
+  'sim.winh': 'All five budgets, against the whole window',
+  'sim.winOk': '{total} tokens across all five tiers, of a {win}-token window — {pct}% — leaving {left} tokens to work in, which clears the {res}% working reserve this screen holds back.',
+  'sim.winTight': '{total} tokens across all five tiers, of a {win}-token window — {pct}%. It fits, and it leaves only {left} tokens to work in, under the {res}% working reserve. A budget that technically fits and leaves nothing to work in is still wrong.',
+  'sim.winOver': '{total} tokens across all five tiers does not fit a {win}-token window: {over} tokens over. A single budget that passes on its own while the five together do not is the failure this check exists to catch.',
+  'sim.winNone': '{b:Not validated, and not guessed.} No context window has been measured for this session, so there is no ceiling to hold five budgets to. {m:context_window_size} comes from Claude Code’s status line and from nowhere else this product can reach, and a model-to-window table measured this machine wrong by 5x — so this screen names what is missing instead of accepting or rejecting numbers against a guess. Install the bridge with {m:mycontext statusline install}.',
+  // ── A full window is a state with a next step (plan:budget seq:4) ────────
+  'sim.full': '{b:This cannot take effect in the window you have now.} {used} of {win} tokens are already in use, {free} are left, and the five budgets ask for {total}. Run {m:/compact} or {m:/clear} and the {n} {mv:tier} item(s) will arrive — budgets are read at session start, so that is the moment a new value takes effect. The value is set either way; only its consequence is deferred.',
+  // ── An edited budget shows what it was (plan:budget seq:6) ───────────────
+  'sim.restore': 'Restore the values in force',
+  'sim.wasn': '{b:The first number is the budget in force} — what {m:config.json} holds for this tier right now — and the second is the value being simulated. {b:Restore} puts the slider and every range back to it, and is enabled only while something has changed.',
   // Injected now
   'inj.h': 'Injected now',
   'inj.v': 'live, not hypothetical',

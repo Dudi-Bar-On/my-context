@@ -16,21 +16,38 @@
  * ever will: `core/select.ts` does not export it, and this screen was never
  * going to be the second place that rule got written.
  *
- * **The readout under the staircase** (`#readout`) is still not built, and the
- * reason recorded here was WRONG for three days. It said
+ * **The readout under the staircase (`#readout`) IS BUILT**, 2026-08-31, and
+ * the standing refusal recorded here is discharged rather than restated. That
+ * refusal was WRONG for three days before it was merely obsolete: it said
  * `test/ui/strings-parity.test.ts` "fails on a key the design of record does
  * not declare" — a direction dropped on 2026-08-26 by
  * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`. Re-measured
  * against the gate's own docstring on 2026-08-30: it has ONE mockup-facing
  * check, the GAP direction, and a key the mockup never drew passes it.
  *
- * So the block is UNBLOCKED and is not built here, which is a different
- * sentence and has to be said as one. What it needs is four sentences of new
- * product copy in two languages — *"N in · M out · T tokens used"* and *"next
- * in at …"*, drawn from data this screen already has — and drafting those is
- * the agent's under `DEC-claude-drafts-the-mockup-and-the-owner-approves`
- * while approving them is not. It is ten lines and four sentences, filed as
- * ready rather than as forbidden, and it still does not touch the sweep.
+ * **The WORDS are the design of record's own; only the KEYS are new.**
+ * `sim.readout`, `sim.nextin` and `sim.evictw` carry `renderStair`'s three
+ * sentences out of the `HEB ? … : …` ternaries it wrote them in, English and
+ * Hebrew both, verbatim. The key was the forbidden part and is not forbidden
+ * any more, so nothing here was drafted that the mockup had not already said.
+ *
+ * **THE SCREEN CAN NOW ASK THE COLD QUESTION** (`plan:walk seq:86`). Until
+ * 2026-08-31 this file contained the string `cold` zero times: it always sent
+ * `ctx.session()`, so *what would a brand-new window get* was reachable from
+ * `curl` and from nowhere in the product. Measured on this repository, same
+ * event, only that parameter differing — `session=<id>` answered
+ * `pinned 1 of 1` where `cold=1` answered `pinned 24 of 25`, and the fits table
+ * drew `restored 0 of 0` and `continuity 0 of 0` while 104 items sat removed
+ * one gate earlier, accounted for in no cell of it. The warm question stays the
+ * DEFAULT and cold is offered, labelled, and never silently substituted; the
+ * `seen` count `/api/simulate` has served since 2026-08-29 is drawn and named,
+ * and a tier reading `0 of 0` says which of the two emptinesses it is.
+ *
+ * **The budget blocks below the table are `plan:budget seq:2, 3, 4 and 6`**,
+ * built in that order because each assumes the last: a recommendation that
+ * carries its three derived numbers, a validation over all five budgets against
+ * the whole window that REFUSES rather than guessing one, the next step a full
+ * window has, and the pairing plus the one control that puts an edit back.
  *
  * **The stale sentence is gone.** `sim.stairn` used to say `itemCost` was
  * *"private in select.ts today: one export, and this chart is live"* — wrong
@@ -115,6 +132,50 @@ const EVENT_FOR = {
  * dragging the thumb away from the reader's finger.
  */
 const SLIDER = { min: '0', max: '12000', step: '1' };
+
+/**
+ * **The fraction the second recommendation lets the corpus grow by**
+ * (`plan:budget seq:2`: *"that cost with headroom for the corpus to grow by a
+ * stated fraction"*). Stated, and stated ON SCREEN — `sim.recGrown` carries it
+ * as a `{pct}` slot rather than baking "20%" into the sentence, so the number a
+ * reader is offered and the number this constant holds cannot drift apart.
+ *
+ * A FRACTION and not a token count, for `HandoverConfig.thresholdPercent`'s own
+ * reason one level up: a fixed number of tokens of headroom means something
+ * different on a corpus of twenty items and one of two thousand, and the thing
+ * being grown is the corpus.
+ */
+const GROWTH = 0.2;
+
+/**
+ * **The working reserve — the one open choice `plan:budget seq:3` left, closed
+ * here as a FRACTION of the window and recorded as a decision.**
+ *
+ * The task's words: *"A budget that technically fits and leaves nothing to work
+ * in is still wrong. Whether that reserve is stated as a number or a fraction is
+ * the one open choice here."* A fraction, because the window it is a reserve of
+ * is not a constant — this machine reports 1,000,000 and the same product runs
+ * against 200,000 — and a reserve of "50,000 tokens" is a fifth of one window
+ * and a quarter of the other. The percentage is drawn in every sentence that
+ * uses it (`{res}`, `{pct}`), so it is never an invisible policy.
+ *
+ * A quarter is a judgement and is the owner's to change; it is one constant and
+ * one number in four strings.
+ */
+const RESERVE = 0.25;
+
+/**
+ * **The question this screen is answering, restored across renders** — the
+ * injection preview's `PICKED`, for the reason written there: the question a
+ * reader pressed is reader state that no fetch carries, and a `render()` that
+ * resets it to warm (a language toggle, a return to the route) is answering a
+ * question they had already left.
+ *
+ * `'live'` is the default and stays the default. `plan:walk seq:86`'s ruling,
+ * inherited from the preview: cold is a second, equally legitimate question and
+ * must be reachable and LABELLED, never silently substituted.
+ */
+const PICKED = { mode: 'live' };
 
 /**
  * The typed range maximum, validated — or `null`, which is a REFUSAL and never
@@ -407,6 +468,30 @@ export async function render(root, ctx) {
    * `GET /api/simulate/sweep` answered, oldest threshold first.
    */
   let rungs = null;
+  /**
+   * The context window this session is running in, or `null` — which is a
+   * REFUSAL and never a zero.
+   *
+   * `{ size, used }` when `GET /api/watch/context` carried a `known` sample with
+   * a window size, and `null` for every other state that endpoint can answer:
+   * no bridge, no sample for this session, a sample Claude Code's schema has
+   * moved under, or a `not-yet-known` reading between a compaction and the next
+   * API call. All four collapse here on purpose — the ACT is the same for all of
+   * them and `sim.winNone` names it — while the thing that must never collapse
+   * is `null` into `0`, which is what would turn "we never measured" into "the
+   * window is empty".
+   */
+  let win = null;
+  /**
+   * The ids `select`'s own `seen` gate removed under the question being asked —
+   * `/api/simulate`'s `seenFiltered`, which this screen never used to request.
+   * `[]` is a MEASURED zero (a cold question always reads zero, correctly) and
+   * is a different fact from the response not having been read yet, which is
+   * why the first paint draws nothing until one lands.
+   */
+  let seenOut = [];
+  /** The last `/api/simulate` pair, so a redraw needs no refetch. */
+  let lastBoth = null;
 
   // --- The admission staircase and threshold ladder ------------------------
   // The mockup's `<div class="card pane sim">`: two columns, the staircase
@@ -432,9 +517,28 @@ export async function render(root, ctx) {
   // An `aria-label` is an ATTRIBUTE and cannot hold an element, which is the
   // sink `tFlat` exists for and the reason reaching for it is written down.
   slider.setAttribute('aria-label', ctx.tFlat('aria.tierBudget'));
+  /* ── `16,000 → 22,000` — WHAT IT WAS, BESIDE WHAT IT IS ────────────────────
+
+     `plan:budget seq:6`, the owner's own complaint: *"after changing the
+     controls the user does not know what it was if he does not want to apply his
+     changes"*. The screen used to hold ONLY the dragged value, so the number you
+     dragged away from was gone the moment you dragged.
+
+     It is drawn WHILE editing and not on apply, which is the whole point of the
+     task: *"by the time the confirm renders, the reader has already lost the
+     value they were deciding about"*. And it is DERIVED — `budgets[tier]` is
+     `Config.budgets` off the same `/api/simulate` response the rest of this
+     screen reads, the pairing `diffBudgets` computes server-side for Configure's
+     confirm — so there is no second source to disagree with.
+
+     The arrow is a bare `→` and carries no key: it is a MARK, not a word, and
+     `sim.wasn` under the control is the sentence that says which side is which
+     without naming a reading direction that flips under `dir="rtl"`. */
+  const inForceVal = el('span', 'm');
+  inForceVal.id = 'inForce';
   const budgetVal = el('span', 'm');
   budgetVal.id = 'budgetVal';
-  ctl.append(tierName, slider, budgetVal);
+  ctl.append(tierName, slider, inForceVal, ' → ', budgetVal);
 
   /* ── The range control — a Config-style number and a button that commits it ──
 
@@ -487,19 +591,114 @@ export async function render(root, ctx) {
   const rangeNote = el('p', 'small');
   rangeNote.append(...ctx.t('sim.rangen'));
 
+  /* ── ONE CONTROL THAT PUTS IT BACK ─────────────────────────────────────────
+
+     `plan:budget seq:6`'s first half: *"One control that discards the edits and
+     puts the inputs back to what `config.json` holds. It also answers 'has
+     anything changed at all' — it is only enabled when something has."*
+
+     It lives in a `.cmdactions` of its own rather than beside the thumb, for a
+     reason that is not layout: every button this app builds must be styled by
+     something (`e2e/button-contrast.spec.ts`), and `.cmdactions button` and
+     `.segbar button` are the two rules `styles.css` has. A bare button dropped
+     into `.simctl` would be the one control on this screen with no rule behind
+     it, and no rule may be added here — the stylesheet is not this task's file.
+
+     **It restores the SIMULATION, and writes nothing.** Configure's Restore
+     would be a different control on a different screen with `config.json` behind
+     it; this one puts the slider back to the budget in force and clears every
+     range a reader set, which is the whole of what this screen holds. */
+  const restoreCtl = el('div', 'cmdactions');
+  restoreCtl.id = 'restorectl';
+  const restoreGo = el('button');
+  restoreGo.type = 'button';
+  restoreGo.append(...ctx.t('sim.restore'));
+  restoreGo.disabled = true;
+  restoreCtl.append(restoreGo);
+
+  const wasNote = el('p', 'small');
+  wasNote.append(...ctx.t('sim.wasn'));
+
   const tierPick = el('div', 'segbar');
   tierPick.id = 'tierPick';
   tierPick.setAttribute('role', 'group');
   tierPick.setAttribute('aria-label', ctx.tFlat('aria.tierpick'));
 
-  // `#readout` is deliberately NOT built — see the header's second refusal.
+  /* ── THE QUESTION: this session, or a brand-new one ────────────────────────
+
+     **`plan:walk seq:86`, and it is the preview's answer copied rather than a
+     second design.** Measured on this screen before the change: it contained the
+     string `cold` zero times, always sent `ctx.session()`, and could therefore
+     only ever ask the warm question. Same corpus, same event, only that
+     parameter differing — `session=<id>` answered `full: 1, spilled: 0` where
+     `cold=1` answered `full: 25, spilled: 1`, and the fits table drew
+     `restored 0 of 0` and `continuity 0 of 0` with no way to ask why.
+
+     **THE DEFAULT DOES NOT MOVE.** Warm is what the session in the strip would
+     actually be given now; cold is offered, LABELLED, and never silently swapped
+     in. That ruling was taken on the preview and it carries here unchanged: a
+     reader who cannot tell which of the two they are looking at is worse off
+     than one who could only ever see the first.
+
+     The three strings are the design of record's own — `sess.cold`,
+     `sess.coldn` and `preview.qwarmn`, already declared, already on screen one
+     route away. Borrowing them rather than inventing three is the same reading
+     `drawRatio`'s legend takes below: a second spelling of a word is how two
+     surfaces come to disagree about it. Only the NOTE is this screen's own,
+     because `preview.qnote` names a file picker this screen does not have.
+
+     `simq`, not `qpick`: the router keeps every visited screen inside `#screen`,
+     merely hidden, so the preview's `#qpick` is still in the document when this
+     one draws. Two elements under one id is a defect whether or not this file
+     ever queries by it. */
+  let sessionMode = PICKED.mode;
+  const qbar = el('div', 'segbar');
+  qbar.id = 'simq';
+  qbar.setAttribute('role', 'group');
+  qbar.setAttribute('aria-label', ctx.tFlat('sess.title'));
+  const qNote = el('p', 'small');
+  qNote.append(...ctx.t('sim.qnote'));
+
+  /**
+   * The session every `/api/simulate` and `/api/simulate/sweep` call on this
+   * screen carries — `'cold'` is `selectQuery`'s own sentinel for `cold=1` and
+   * is not a session id (`lib/viewmodel.js`).
+   *
+   * A shell with no sessions at all already answers `'cold'` from
+   * `ctx.session()`, so the two states collapse there, correctly: there is no
+   * warm question to ask, and `drawQ` draws one button rather than an inert
+   * second one.
+   */
+  const sessionFor = () => (sessionMode === 'cold' ? 'cold' : ctx.session());
+
+  /* ── THE READOUT, BUILT ────────────────────────────────────────────────────
+
+     The mockup's `<div class="readout" id="readout">`, and the module header's
+     standing refusal of it is DISCHARGED rather than repeated. The refusal was
+     never about the sweep: its WORDS were unkeyed English/Hebrew ternaries in
+     the mockup's own script, and inventing a key used to fail
+     `strings-parity` — a direction `DEC-the-app-is-what-is-built-the-mockup-is-
+     history-and-a` dropped on 2026-08-26.
+
+     So the keys are new and the WORDS ARE NOT: `sim.readout`, `sim.nextin` and
+     `sim.evictw` carry `renderStair`'s own three sentences, English and Hebrew,
+     lifted out of its ternaries verbatim. What is new is the key, which is the
+     part the gate forbade and no longer does. */
+  const readout = el('div', 'readout');
+  readout.id = 'readout';
+
   const stairNote = el('p', 'small');
   stairNote.append(...ctx.t('sim.stairn'));
   // The range control sits directly under the slider it bounds, and above the
   // tier picker, because the range is per TIER and reading it any other way
-  // round invites the belief that one number bounds all five.
+  // round invites the belief that one number bounds all five. The restore
+  // control follows both, because it is what puts either of them back; the
+  // question strip follows the tier picker, because "which tier" and "which
+  // session" are the two axes of one question and reading them apart invites
+  // the belief that the second is a view of the first.
   stairCol.append(
-    stairHead, stairPlate, ctl, rangeCtl, spaced(rangeNote), tierPick, spaced(stairNote),
+    stairHead, stairPlate, ctl, rangeCtl, spaced(rangeNote), restoreCtl, spaced(wasNote),
+    tierPick, qbar, spaced(qNote), readout, spaced(stairNote),
   );
 
   const ladderCol = el('div');
@@ -539,6 +738,24 @@ export async function render(root, ctx) {
   plate.append(table);
 
   const chipNote = el('p', 'small');
+
+  /* ── WHAT THE `seen` GATE REMOVED, NAMED ───────────────────────────────────
+
+     The second half of `plan:walk seq:86`, and the half that makes an empty row
+     readable. `/api/simulate` has served `seenFiltered` since 2026-08-29 — the
+     ids `select`'s own `injectable ∩ seen` removed — and this screen has never
+     asked for it. Measured warm against this repository on 2026-08-31: 104 items
+     removed at that gate, accounted for in no cell of the fits table, while four
+     of its five rows read `0 of 0`.
+
+     It sits under the table rather than beside a row because the gate runs
+     BEFORE any tier picks its candidates, so the count is not attributable to a
+     tier and a per-row copy of it would claim it was. The rows get the
+     distinction the count makes possible, and nothing stronger — see
+     `zeroReason` in `drawTable`. */
+  const seenNote = el('p', 'small');
+  seenNote.id = 'seenNote';
+
   const evictHelp = el('details', 'help');
   const evictSummary = el('summary');
   evictSummary.append(...ctx.t('help.whyBudget'));
@@ -547,7 +764,101 @@ export async function render(root, ctx) {
   evictText.append(...ctx.t('sim.evict'));
   evictBox.append(evictText);
   evictHelp.append(evictSummary, evictBox);
-  tableCard.append(plate, spaced(chipNote), evictHelp);
+  /* ── THE RECOMMENDATION CARRIES THE NUMBERS, NOT THE ADVICE ────────────────
+
+     `plan:budget seq:2`. *"Raise the budget" is not actionable.* So this block
+     says what the tier COSTS, what it is SET to, and what it would have to BE,
+     and then offers three values, each labelled with what it buys and what it
+     costs — *"because a list of numbers with no consequences attached is a guess
+     with a dropdown"*.
+
+     **All three are DERIVED and none is invented.**
+
+       - The exact cost is the last rung of THIS tier's sweep — the smallest
+         budget at which `fitToBudget` admits every candidate. Not the sum of
+         `costs`, which is the same number only while first-fit happens to be
+         monotone, and `sim.evict` is the whole argument that it is not.
+       - The growth value is that number with `GROWTH` headroom, and the
+         percentage is drawn beside it.
+       - The ceiling is `window − the other four budgets − a working reserve`,
+         and it is the one that CANNOT be derived without the status-line
+         bridge. When no window has been measured the button is not drawn
+         holding a guess; it is drawn saying it is not offered, which is
+         `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` applied
+         to a recommendation.
+
+     Plus free entry, per the owner's requirement. The slider is a control for
+     exploring and cannot be typed into; this is the field for a reader who
+     already knows the number they want. */
+  const recHead = el('h3');
+  recHead.append(...ctx.t('sim.rech'));
+  const recLine = el('p', 'small');
+  recLine.id = 'recn';
+  const recBar = el('div', 'segbar');
+  recBar.id = 'recbar';
+  recBar.setAttribute('role', 'group');
+  recBar.setAttribute('aria-label', ctx.tFlat('sim.rech'));
+  const recCtl = el('div', 'cmdactions');
+  recCtl.id = 'recctl';
+  const recLabel = el('label', 'small');
+  recLabel.htmlFor = 'recFree';
+  recLabel.append(...ctx.t('sim.recFreeh'));
+  const recFree = el('input', 'm');
+  recFree.id = 'recFree';
+  recFree.type = 'number';
+  recFree.min = '1';
+  recFree.step = '1';
+  // The same raw, untranslated spelling Configure's budget inputs and this
+  // screen's own range field use — an identifier a test can select on in either
+  // language, not a sentence.
+  recFree.setAttribute('aria-label', 'simulate.budget');
+  const recGo = el('button');
+  recGo.type = 'button';
+  recGo.append(...ctx.t('sim.recGo'));
+  const recSaid = el('div', 'execresult');
+  recSaid.hidden = true;
+  recSaid.setAttribute('role', 'status');
+  recCtl.append(recLabel, recFree, recGo, recSaid);
+
+  /* ── VALIDATION IS AGAINST THE WHOLE WINDOW, AND REFUSES TO GUESS ──────────
+
+     `plan:budget seq:3`. `pinned + jit + restored + continuity + index` must fit
+     `context_window_size`; *"a single budget that passes on its own while the
+     [five] together do not is the failure mode this exists to prevent, and it is
+     the one a per-field check cannot see."*
+
+     **FIVE, where the task's own text says four, and the difference is said out
+     loud rather than smoothed over.** The item was written on 2026-08-27 and
+     names `pinned + jit + restored + index`; `continuity` is a budget in
+     `Config.budgets` and in `BUDGET_KEYS` today. Validating four of five would
+     leave the fifth free to overflow the window, which is precisely the failure
+     the item exists to prevent, so the check sums what the config actually
+     holds. Recorded for the owner rather than decided in silence.
+
+     **The ceiling is only knowable when the bridge has spoken**, so without a
+     sample this REFUSES rather than validating against a guess.
+     `GET /api/watch/context` is the one endpoint that carries Claude Code's own
+     `context_window_size` (`classifyContext`, through `apiWatchContext`) — it
+     already exists and already refuses to invent a number, so nothing
+     server-side is added here and no model-to-window table is consulted. On this
+     machine one such table would say 200,000 where the truth is 1,000,000. */
+  const winHead = el('h3');
+  winHead.append(...ctx.t('sim.winh'));
+  const winLine = el('p', 'small');
+  winLine.id = 'winn';
+  // A SECOND line and never a clause of the first: "the five budgets do not fit
+  // the window" and "the window you are in has no room for them right now" are
+  // two facts with two different next steps, and folding them into one sentence
+  // is how a reader learns neither.
+  const fullLine = el('p', 'small');
+  fullLine.id = 'winfull';
+
+  tableCard.append(
+    plate, spaced(chipNote), spaced(seenNote),
+    recHead, recLine, recBar, recCtl,
+    winHead, winLine, fullLine,
+    evictHelp,
+  );
   root.append(tableCard);
 
   // --- Selected, then not delivered ---------------------------------------
@@ -582,6 +893,319 @@ export async function render(root, ctx) {
     if (document.activeElement !== rangeMax) rangeMax.value = slider.max;
   }
 
+  /** The budget in force for `tier`, or `null` before the first response. */
+  function inForce() {
+    if (budgets === null) return null;
+    const raw = Number(budgets[tier] ?? 0);
+    return Number.isFinite(raw) ? raw : null;
+  }
+
+  /**
+   * **"Has anything changed at all" — the question the restore control answers
+   * by being enabled** (`plan:budget seq:6`).
+   *
+   * Two things on this screen can differ from what is in force: the value being
+   * simulated, and a range a reader set on ANY tier — not only this one, because
+   * one control puts them all back and a button that says "restore" while
+   * leaving four tiers' ranges where they were would be lying about its scope.
+   */
+  function changedFromForce() {
+    if (budgets === null) return false;
+    if (TIERS.some((name) => simRangeFor(name) !== null)) return true;
+    return Number(slider.value) !== inForce();
+  }
+
+  /**
+   * The pairing beside the thumb, and the restore button's enabled state — the
+   * two halves of `plan:budget seq:6`, redrawn together because they are two
+   * readings of one fact.
+   */
+  function drawWas() {
+    const force = inForce();
+    inForceVal.textContent = force === null ? '—' : num(force);
+    restoreGo.disabled = !changedFromForce();
+  }
+
+  /**
+   * **What this tier would have to BE**: the smallest budget at which the sweep
+   * admits as many items as it ever admits.
+   *
+   * Not `rungs[rungs.length - 1]`, and the difference is `sim.evict`'s whole
+   * subject: first-fit is not monotone in membership, so the LAST rung of a
+   * sweep with an eviction in it admits FEWER items than an earlier one. The
+   * rung list arrives ascending and collapsed, so the first rung carrying the
+   * maximum count is both the largest admission and the cheapest way to reach
+   * it — which is exactly the number a recommendation should carry.
+   *
+   * `null` for a tier with no sweep: nothing swept, nothing to recommend.
+   */
+  function neededFor(list) {
+    if (list === null || list.length === 0) return null;
+    let best = list[0];
+    for (const rung of list) if (rung.count > best.count) best = rung;
+    return best.count === 0 ? null : { threshold: best.threshold, count: best.count };
+  }
+
+  /**
+   * What the current tier COSTS, off the selection this screen already holds.
+   *
+   * `costs` is a lookup table `/api/simulate` builds over `full ∪ spilled`, so
+   * the candidates that reached this tier and the price of each are both in one
+   * response and cannot be two answers to two questions. A candidate whose id
+   * `costs` does not price answers `null` for the whole total rather than a
+   * short sum: a cost that is quietly one item light is the silent drop this
+   * project keeps paying for.
+   */
+  function costOf(sim) {
+    if (sim === null || !sim.tiersRun.includes(tier)) return null;
+    const ids = [
+      ...sim.selection.full.filter((e) => e.tier === tier).map((e) => e.item?.id),
+      ...sim.selection.spilled.filter((s) => s.tier === tier).map((s) => s.id),
+    ];
+    const priced = new Map((sim.costs ?? []).map((c) => [c.id, c.tokens]));
+    let total = 0;
+    for (const id of ids) {
+      const cost = priced.get(id);
+      if (typeof cost !== 'number') return null;
+      total += cost;
+    }
+    return { ids, n: ids.length, tokens: total };
+  }
+
+  /** The `/api/simulate` response for whichever event runs the current tier. */
+  function simForTier() {
+    if (lastBoth === null) return null;
+    return EVENT_FOR[tier] === 'tool' ? lastBoth.tool : lastBoth.compact;
+  }
+
+  /**
+   * The five budgets as they would stand with the value being simulated applied
+   * to the tier being dragged — which is the set `plan:budget seq:3` validates.
+   * `null` until the config has been read; nothing is validated against
+   * defaults this file made up.
+   */
+  function candidateBudgets() {
+    if (budgets === null) return null;
+    return { ...budgets, [tier]: Number(slider.value) };
+  }
+
+  /* ── THE READOUT'S CONTENTS ────────────────────────────────────────────────
+     The mockup's `renderStair` tail, port for port: how many are in, how many
+     are out and what that costs; the budget the next one would arrive at; and
+     the eviction warning when the sweep contains a downward step. Every figure
+     comes from responses this screen already holds. */
+  function drawReadout() {
+    readout.replaceChildren();
+    const sim = simForTier();
+    const counts = countFor(tier, sim);
+    const priced = costOf(sim);
+    // A tier neither event reached has no readout, for `countFor`'s own reason:
+    // "0 in · 0 out · 0 tokens used" would claim it ran and delivered nothing.
+    if (counts === null || priced === null) return;
+    const line = el('div');
+    line.append(...ctx.t('sim.readout', {
+      fits: num(counts.fits), spills: num(counts.spills), used: num(priced.tokens),
+    }));
+    readout.append(line);
+
+    // `next in at` — the mockup's own arithmetic: the cheapest thing that did
+    // not fit arrives when the budget reaches what is already spent plus its own
+    // cost. Drawn only when there IS something out; a readout claiming a next
+    // arrival where everything already arrived would be inventing a queue.
+    const spilledIds = sim.selection.spilled.filter((s) => s.tier === tier).map((s) => s.id);
+    const prices = new Map((sim.costs ?? []).map((c) => [c.id, c.tokens]));
+    let cheapest = null;
+    for (const id of spilledIds) {
+      const cost = prices.get(id);
+      if (typeof cost !== 'number') continue;
+      if (cheapest === null || cost < cheapest.cost) cheapest = { id, cost };
+    }
+    if (cheapest !== null) {
+      // What the ADMITTED items take: everything this tier priced, less what
+      // spilled. `priced.tokens` covers `full ∪ spilled` by construction, so
+      // this is a subtraction rather than a second pass with a second chance to
+      // disagree with the total drawn one line above it.
+      const used = priced.tokens - spilledIds
+        .reduce((sum, id) => sum + (prices.get(id) ?? 0), 0);
+      const next = el('div', 'small');
+      next.append(...ctx.t('sim.nextin', {
+        at: num(used + cheapest.cost), id: cheapest.id,
+      }));
+      readout.append(next);
+    }
+
+    if (rungs !== null && rungs.some((r) => r.evicted.length > 0)) {
+      const warn = el('div', 'small');
+      warn.append(...ctx.t('sim.evictw'));
+      // CSSOM, never a `style` attribute: the server sends `style-src 'self'`
+      // with no `'unsafe-inline'`, which is the one thing on this block that may
+      // not be transcribed from the mockup literally.
+      warn.style.setProperty('color', 'var(--crit)');
+      readout.append(warn);
+    }
+  }
+
+  /* ── THE RECOMMENDATION ────────────────────────────────────────────────────
+     `plan:budget seq:2`, drawn from the sweep and the priced selection. */
+  function drawRec() {
+    recLine.replaceChildren();
+    recBar.replaceChildren();
+    const sim = simForTier();
+    const priced = costOf(sim);
+    const need = neededFor(rungs);
+    const set = inForce();
+    if (priced === null || need === null || set === null) {
+      recLine.append(...ctx.t('sim.recNone'));
+      return;
+    }
+    recLine.append(...ctx.t('sim.recn', {
+      tier, cost: num(priced.tokens), n: num(priced.n), set: num(set), need: num(need.threshold),
+    }));
+
+    // The ceiling, and it is the term that refuses. `window − the other four
+    // budgets − a working reserve`, or nothing at all: a ceiling computed
+    // against a window nobody measured is the guess this whole task forbids.
+    const others = budgets === null ? 0
+      : TIERS.filter((name) => name !== tier)
+        .reduce((sum, name) => sum + Number(budgets[name] ?? 0), 0);
+    const reserve = win === null ? 0 : Math.round(win.size * RESERVE);
+    const ceiling = win === null ? null : win.size - others - reserve;
+
+    const offers = [
+      {
+        head: 'sim.recExact',
+        sub: 'sim.recExactn',
+        subs: { n: num(need.count), cost: num(need.threshold) },
+        value: need.threshold,
+      },
+      {
+        head: 'sim.recGrow',
+        sub: 'sim.recGrown',
+        subs: {
+          n: num(need.count),
+          pct: num(Math.round(GROWTH * 100)),
+          cost: num(Math.ceil(need.threshold * (1 + GROWTH))),
+        },
+        value: Math.ceil(need.threshold * (1 + GROWTH)),
+      },
+      ceiling !== null && ceiling > 0
+        ? {
+          head: 'sim.recCeil',
+          sub: 'sim.recCeiln',
+          subs: {
+            other: num(others),
+            pct: num(Math.round(RESERVE * 100)),
+            win: num(win.size),
+            cost: num(ceiling),
+          },
+          value: ceiling,
+        }
+        : { head: 'sim.recCeil', sub: 'sim.recCeilNon', subs: {}, value: null },
+    ];
+
+    for (const offer of offers) {
+      const button = el('button');
+      button.type = 'button';
+      button.dataset.rec = offer.head;
+      const head = el('span');
+      head.append(...ctx.t(offer.head));
+      if (offer.value !== null) head.append(' ', mono(num(offer.value)));
+      const sub = el('span', 'small');
+      sub.append(...ctx.t(offer.sub, offer.subs));
+      button.append(head, ' ', sub);
+      // Not offered is not the same as offered-and-inert: the button that
+      // carries no number cannot be pressed, and says why in its own subtitle.
+      button.disabled = offer.value === null;
+      if (offer.value !== null) button.onclick = () => { applyBudget(offer.value, recSaid); };
+      recBar.append(button);
+    }
+  }
+
+  /* ── THE WHOLE-WINDOW CHECK, AND THE FULL-WINDOW NEXT STEP ─────────────────
+     `plan:budget seq:3` and `plan:budget seq:4`, drawn together because they
+     read the same two numbers and mean two different things. */
+  function drawWindow() {
+    winLine.replaceChildren();
+    fullLine.replaceChildren();
+    const candidate = candidateBudgets();
+    if (candidate === null) return;
+    const total = TIERS.reduce((sum, name) => sum + Number(candidate[name] ?? 0), 0);
+
+    if (win === null) {
+      // THE REFUSAL. It names what is missing and stops; it does not validate.
+      winLine.append(...ctx.t('sim.winNone'));
+      return;
+    }
+    const reserve = Math.round(win.size * RESERVE);
+    const left = win.size - total;
+    const chip = el('span', 'chip');
+    const subs = {
+      total: num(total), win: num(win.size),
+      pct: num(Math.round((total / win.size) * 100)),
+      left: num(Math.max(left, 0)), res: num(Math.round(RESERVE * 100)),
+      over: num(Math.max(total - win.size, 0)),
+    };
+    let key = 'sim.winOk';
+    if (total > win.size) { key = 'sim.winOver'; chip.className = 'chip crit'; chip.dataset.g = '■'; } else if (left < reserve) { key = 'sim.winTight'; chip.className = 'chip warn'; chip.dataset.g = '▲'; } else { chip.className = 'chip ok'; chip.dataset.g = '●'; }
+    winLine.append(chip, ' ', ...ctx.t(key, subs));
+
+    /* **A FULL WINDOW IS A STATE WITH A NEXT STEP, NOT A FAILURE**
+       (`plan:budget seq:4`). The five budgets can fit the window and still have
+       nowhere to land in the window RUNNING RIGHT NOW, because that window is
+       already part spent. The message names the ACT — *"run /compact or /clear
+       and the N pinned items will arrive"* — rather than the state, because
+       "the context window is full" is a weather report.
+
+       **And nothing is blocked.** No control is disabled, no value is refused
+       and the simulation carries on: budgets are read at SessionStart, so a
+       compact or a clear is precisely the moment a new value takes effect. The
+       write is not blocked by a full window, only its consequence is deferred —
+       and saying "cannot" while doing nothing would make the reader do it
+       twice. */
+    const free = Math.max(win.size - win.used, 0);
+    if (total > free) {
+      const counts = countFor(tier, simForTier());
+      const need = neededFor(rungs);
+      const arriving = counts !== null ? counts.fits : (need === null ? 0 : need.count);
+      fullLine.append(...ctx.t('sim.full', {
+        used: num(win.used), win: num(win.size), free: num(free), total: num(total),
+        n: num(arriving), tier,
+      }));
+    }
+  }
+
+  /**
+   * One place a budget is applied to the slider — the three recommendation
+   * buttons and the free-entry field all come through it.
+   *
+   * **A value you asked to simulate must be reachable**, and assigning above an
+   * `input[type=range]`'s `max` clamps in silence. So a value past the bound
+   * raises the bound, through the range store the range control already owns —
+   * which is not a new rule but the one `sim.rangen` already ships: *"raising a
+   * budget past it — here or on Configure — raises it."* The receipt says so
+   * when it happens, because a control that moved a second number without
+   * saying is the silent-change defect the range ruling exists to prevent.
+   */
+  function applyBudget(value, said) {
+    said.hidden = false;
+    if (value > Number(slider.max)) {
+      setSimRange(tier, value);
+      applyBound();
+      said.replaceChildren(...ctx.t('sim.recRange', {
+        tier, value: num(value), max: num(Number(slider.max)),
+      }));
+    } else {
+      said.replaceChildren(...ctx.t('sim.recSet', { tier, value: num(value) }));
+    }
+    slider.value = String(value);
+    budgetVal.textContent = num(value);
+    drawStair();
+    drawLadder();
+    drawWas();
+    drawWindow();
+    void run();
+  }
+
   /**
    * The staircase itself: `rungs` turned into an SVG, geometry for geometry
    * with the mockup's own `renderStair` (~4066), with one deliberate
@@ -593,7 +1217,33 @@ export async function render(root, ctx) {
    */
   function drawStair() {
     stairPlate.replaceChildren();
-    if (rungs === null || rungs.length === 0) return;
+    if (rungs === null) return;
+    /* ── AN EMPTY STAIRCASE SAYS WHY IT IS EMPTY ────────────────────────────
+       `plan:walk seq:86`: *"a reader sees a flat staircase and cannot tell
+       whether the tiers are empty because nothing qualified or because
+       everything had already been delivered."* A blank plate was the fourth
+       reading of that — it could not even say which of the four absences it
+       was. Each of them is now named, and each is a MEASURED absence:
+
+         index          the endpoint refuses it by construction (per-line costs)
+         jit, no path   a `tool` event needs a file and the walk offers none
+         seen removed   the gate took the candidates before this tier saw them
+         nothing        nothing qualified — which is the only one that used to
+                        be readable, and only by guessing.
+
+       The `seen` count is the fact the screen never asked for. Warm on this
+       repository it is 104 and the staircase drew nothing at all. */
+    if (rungs.length === 0 || rungs.every((r) => r.count === 0)) {
+      const why = el('p', 'small');
+      if (tier === 'index') why.append(...ctx.t('sim.stairIndex'));
+      else if (EVENT_FOR[tier] === 'tool' && files !== null && chosenPath === null) {
+        why.append(...ctx.t('sim.stairNoPath'));
+      } else if (seenOut.length > 0) {
+        why.append(...ctx.t('sim.stair0seen', { n: num(seenOut.length) }));
+      } else why.append(...ctx.t('sim.stair0none'));
+      stairPlate.append(why);
+      return;
+    }
 
     const rtl = document.documentElement.dir === 'rtl';
     const X = (u) => (rtl ? STAIR_W - u : u);
@@ -740,7 +1390,10 @@ export async function render(root, ctx) {
    */
   function drawLadder() {
     ladderPlate.replaceChildren();
-    if (rungs === null || rungs.length === 0) return;
+    // The all-zero sweep is cleared here too, and not only in `drawStair`: a
+    // ladder listing one rung that admits nothing beside a staircase saying
+    // there is no rung to draw would be two answers to one question.
+    if (rungs === null || rungs.length === 0 || rungs.every((r) => r.count === 0)) return;
 
     const rtl = document.documentElement.dir === 'rtl';
     const cur = Number(slider.value);
@@ -775,6 +1428,8 @@ export async function render(root, ctx) {
       applyBound();
       drawStair();
       drawLadder();
+      drawReadout();
+      drawRec();
       return;
     }
     const path = tier === 'jit' ? await ensurePath() : null;
@@ -783,10 +1438,12 @@ export async function render(root, ctx) {
       applyBound();
       drawStair();
       drawLadder();
+      drawReadout();
+      drawRec();
       return;
     }
     const qs = selectQuery(
-      EVENT_FOR[tier], EVENT_FOR[tier] === 'tool' ? path : null, ctx.session(), { tier },
+      EVENT_FOR[tier], EVENT_FOR[tier] === 'tool' ? path : null, sessionFor(), { tier },
     );
     try {
       const sweep = await ctx.api(`/api/simulate/sweep?${qs}`);
@@ -801,6 +1458,56 @@ export async function render(root, ctx) {
     applyBound();
     drawStair();
     drawLadder();
+    drawReadout();
+    drawRec();
+    drawWindow();
+    drawWas();
+  }
+
+  /**
+   * The question strip — `paintQ`'s shape from `screens/preview.js`, and its
+   * ruling with it: the warm option is named by the SESSION ITSELF (a value,
+   * drawn the way `#sesslbl` draws it, because that is what identifies the
+   * question), and the cold option is prose taking the design of record's own
+   * string.
+   *
+   * A shell with no sessions answers `'cold'` from `ctx.session()`, so one
+   * button is drawn rather than an inert second one asking a question that does
+   * not exist.
+   */
+  function drawQ() {
+    qbar.replaceChildren();
+    const live = ctx.session();
+    const options = live === 'cold' ? ['cold'] : ['live', 'cold'];
+    for (const mode of options) {
+      const button = el('button');
+      button.type = 'button';
+      button.dataset.q = mode;
+      const head = el('span');
+      if (mode === 'live') head.append(el('b', 'v', live));
+      else head.append(...ctx.t('sess.cold'));
+      const sub = el('span', 'small');
+      sub.append(...ctx.t(mode === 'live' ? 'preview.qwarmn' : 'sess.coldn'));
+      button.append(head, ' ', sub);
+      button.setAttribute('aria-pressed', String(mode === sessionMode));
+      button.onclick = () => {
+        if (sessionMode === mode) return;
+        sessionMode = mode;
+        PICKED.mode = mode;
+        // The old sweep and the old selection belong to the OLD question —
+        // cleared before either request goes out, so nothing is ever drawn
+        // under a label that no longer describes it.
+        rungs = null;
+        lastBoth = null;
+        seenOut = [];
+        drawQ();
+        drawStair();
+        drawLadder();
+        void run();
+        void runSweep();
+      };
+      qbar.append(button);
+    }
   }
 
   function drawTierPick() {
@@ -822,9 +1529,17 @@ export async function render(root, ctx) {
         // refines it — never below what is about to be assigned.
         applyBound();
         if (budgets !== null) slider.value = String(budgets[tier]);
+        // The receipts belong to the tier they were left on: a range set on
+        // `pinned` and a budget simulated on it are not statements about `jit`.
+        rangeSaid.hidden = true;
+        recSaid.hidden = true;
         drawStair();
         drawLadder();
         drawTierPick();
+        drawReadout();
+        drawRec();
+        drawWindow();
+        drawWas();
         void run();
         void runSweep();
       };
@@ -853,12 +1568,12 @@ export async function render(root, ctx) {
     const path = await ensurePath();
     const override = value === null ? {} : { [tier]: value };
     const compactQs = selectQuery(
-      'compact', null, ctx.session(), EVENT_FOR[tier] === 'compact' ? override : {},
+      'compact', null, sessionFor(), EVENT_FOR[tier] === 'compact' ? override : {},
     );
     const compact = ctx.api(`/api/simulate?${compactQs}`);
     if (path === null) return { compact: await compact, tool: null };
     const toolQs = selectQuery(
-      'tool', path, ctx.session(), EVENT_FOR[tier] === 'tool' ? override : {},
+      'tool', path, sessionFor(), EVENT_FOR[tier] === 'tool' ? override : {},
     );
     return { compact: await compact, tool: await ctx.api(`/api/simulate?${toolQs}`) };
   }
@@ -929,6 +1644,27 @@ export async function render(root, ctx) {
           fits: num(counts.fits), eligible: num(eligible),
         }));
         c3.append(chip);
+        /* ── A MEASURED `0 of 0` SAYS WHICH EMPTINESS IT IS ────────────────
+           `plan:walk seq:86`'s own done-when: *"a tier drawing 0/0 says whether
+           that is nothing qualified or everything was already delivered."*
+           Before this, four of this table's five rows read `0 of 0` warm on
+           this repository while 104 items sat removed one gate earlier, and the
+           screen accounted for them nowhere.
+
+           **The claim is exactly the gate's own and no stronger.** Rung 5 runs
+           before any tier picks its candidates, so an item it removed might
+           still have been no candidate of THIS tier — `always` for pinned,
+           `matchesScope` for jit, the restore list for restored. So the row
+           says *everything it could have had was already delivered* only when
+           the gate actually removed something under the question being asked,
+           and *nothing qualified for it* when it did not. What a fresh window
+           would really get is the OTHER question, and the control above is how
+           a reader asks it. */
+        if (counts.fits === 0 && counts.spills === 0) {
+          const why = el('span', 'small');
+          why.append(...ctx.t(seenOut.length > 0 ? 'sim.zeroSeen' : 'sim.zeroNone'));
+          c3.append(' ', why);
+        }
         if (counts.spills > 0) {
           const spillChip = el('span', 'chip warn', num(counts.spills));
           spillChip.dataset.g = '▲';
@@ -951,6 +1687,14 @@ export async function render(root, ctx) {
         fits: num(current.fits), eligible: num(current.eligible),
       }));
     }
+
+    // The `seen` count, named. A measured zero is DRAWN and named — `sim.seen0`
+    // says the gate removed nothing, which is what makes every empty row below
+    // it readable as "nothing qualified" rather than as an unexplained blank.
+    seenNote.replaceChildren();
+    seenNote.append(...(seenOut.length === 0
+      ? ctx.t('sim.seen0')
+      : ctx.t('sim.seen', { n: num(seenOut.length) })));
   }
 
   /**
@@ -1056,7 +1800,18 @@ export async function render(root, ctx) {
     budgetVal.textContent = num(value);
     try {
       const both = await fetchBoth(String(value));
+      lastBoth = both;
+      // `seenFiltered` rides on the COMPACT response deliberately: the `seen`
+      // gate is a property of the session and the corpus, not of the event, and
+      // `compact` is the one request this screen always makes. Reading it off
+      // whichever response happened to be second would make the count depend on
+      // whether a file walk existed.
+      seenOut = both.compact.seenFiltered ?? [];
       drawTable(both);
+      drawReadout();
+      drawRec();
+      drawWindow();
+      drawWas();
     } catch (error) {
       tbody.replaceChildren();
       chipNote.replaceChildren(errorNote(error.message));
@@ -1104,6 +1859,12 @@ export async function render(root, ctx) {
     budgetVal.textContent = num(Number(slider.value));
     drawStair();
     drawLadder();
+    // Synchronous on every tick, and deliberately NOT behind the 150ms debounce
+    // the refetch sits behind: both read numbers this screen already holds, and
+    // a "what it was" pairing that lags the thumb by a sixth of a second is a
+    // pairing a reader watches disagree with the control they are dragging.
+    drawWas();
+    drawWindow();
     clearTimeout(pending);
     pending = setTimeout(() => { void run(); }, 150);
   };
@@ -1136,6 +1897,52 @@ export async function render(root, ctx) {
     drawStair();
     drawLadder();
     rangeSaid.replaceChildren(...ctx.t('sim.rangeset', { tier: tier, max: num(Number(slider.max)) }));
+    drawWas();
+  };
+
+  /**
+   * **One control puts it back** — `plan:budget seq:6`.
+   *
+   * It discards the SIMULATION and writes nothing: the slider returns to the
+   * budget `config.json` holds for this tier, and every range a reader set is
+   * unset so the derived bound comes back. `setSimRange(tier, null)` is the
+   * unset — `simRangeFor` answers `null` for anything that is not a positive
+   * integer — and it is the same seam the range control's own commit goes
+   * through, so there is one writer of that store and not two.
+   *
+   * The bound BEFORE the value, for the reason every other assignment on this
+   * screen takes that order: the other one clamps.
+   */
+  restoreGo.onclick = () => {
+    if (budgets === null) return;
+    for (const name of TIERS) setSimRange(name, null);
+    applyBound();
+    slider.value = String(budgets[tier]);
+    budgetVal.textContent = num(budgets[tier]);
+    rangeSaid.hidden = true;
+    recSaid.hidden = true;
+    drawStair();
+    drawLadder();
+    drawWas();
+    drawWindow();
+    void run();
+  };
+
+  /**
+   * Free entry — the other half of `plan:budget seq:2`'s offer, and it takes
+   * `parseRangeMax`'s grammar rather than a second one: a field that looks like
+   * the range field beside it while accepting what that one refuses is the
+   * two-spellings defect the range ruling already named. Refused BY NAME and
+   * never clamped.
+   */
+  recGo.onclick = () => {
+    const wanted = parseRangeMax(recFree.value);
+    if (wanted === null) {
+      recSaid.hidden = false;
+      recSaid.replaceChildren(...ctx.t('sim.recBad', { typed: recFree.value }));
+      return;
+    }
+    applyBudget(wanted, recSaid);
   };
   /**
    * **Why this screen cannot hold two renders, measured rather than assumed.**
@@ -1156,6 +1963,45 @@ export async function render(root, ctx) {
   dropSessionListener = ctx.onSessionChange(() => { void run(); void runSweep(); });
 
   drawTierPick();
+  drawQ();
+
+  /* ── THE WINDOW, ASKED FOR ONCE ────────────────────────────────────────────
+
+     `GET /api/watch/context` is the ONE place in this product Claude Code's own
+     `context_window_size` is reachable — the status-line tee, through
+     `classifyContext`. It is fetched here rather than derived anywhere, and its
+     absence is carried as `null` rather than as a number.
+
+     **Its own try/catch, and deliberately not the table's**, for the reason the
+     spill ratio's has one: this endpoint answering nothing must cost the screen
+     its window validation and never its fits table, which is served by a
+     different endpoint reading a different store and is still perfectly true.
+     Every failure lands as "no window measured", which is exactly what a
+     refusal, a 500 and a missing bridge all are from here.
+
+     One request, before the first paint of the validation block. It is not
+     re-fetched on a drag: a context window does not change because a slider
+     did, and one request per rung for an answer that cannot have moved is the
+     defect `drawRatio` above already records. */
+  try {
+    const live = ctx.session();
+    if (live !== 'cold') {
+      const body = await ctx.api(`/api/watch/context?session=${encodeURIComponent(live)}`);
+      const sample = body.sample === null ? null : body.sample.context;
+      if (sample !== null && sample.state === 'known'
+        && typeof sample.windowSize === 'number' && sample.windowSize > 0
+        && typeof sample.usedTokens === 'number') {
+        win = { size: sample.windowSize, used: sample.usedTokens };
+      }
+    }
+  } catch {
+    // `win` stays `null`, which is the refusal `sim.winNone` names. Nothing is
+    // drawn about a window nobody measured, and the error is not surfaced as a
+    // second failure: "no window" is the whole of what a reader can act on, and
+    // `sim.winNone` already tells them how to get one.
+    win = null;
+  }
+
   try {
     // The defaults, from the config the server is running on — never a literal
     // in this file. The mockup's `TIER_BUDGET` is demo data; `budgets` on the
@@ -1163,6 +2009,8 @@ export async function render(root, ctx) {
     // from and needs to be able to drag back to.
     const both = await fetchBoth(null);
     budgets = both.compact.budgets;
+    lastBoth = both;
+    seenOut = both.compact.seenFiltered ?? [];
     // The bound BEFORE the value. Assigning above `max` clamps silently, so the
     // other order draws a budget nobody set — see `sliderMaxFor`. This is the
     // first of the three places `applyBound` runs; the tier buttons and
@@ -1172,6 +2020,10 @@ export async function render(root, ctx) {
     slider.value = String(budgets[tier]);
     budgetVal.textContent = num(budgets[tier]);
     drawTable(both);
+    drawReadout();
+    drawRec();
+    drawWindow();
+    drawWas();
   } catch (error) {
     chipNote.replaceChildren(errorNote(error.message));
   }
