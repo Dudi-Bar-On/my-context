@@ -69,7 +69,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { myctxShare, statusLineText } from '../../src/cli/commands/statusline.ts';
+import { myctxShare, occupancyFromPayload, statusLineText } from '../../src/cli/commands/statusline.ts';
+import { NO_EXTRAS } from '../../src/cli/commands/statusline-powerline.ts';
 import { AUDIT_PROTOCOL, auditDir, auditLogPath } from '../../src/core/audit.ts';
 import { ensureLogDir } from '../../src/core/jsonl-log.ts';
 import {
@@ -225,7 +226,17 @@ test('the print path stays affordable as the session accumulates injections', ()
 test('the formatting itself is not where the time goes', () => {
   const sample = classifyContext(payload('perf'));
   const share = { tokens: 6200, injections: 3, unrecorded: 1 };
-  const measured = measure(() => { statusLineText(sample, 'Opus 4.5', share, null); });
+  // The powerline replaced the pipe-delimited line on 2026-08-31, so what is
+  // measured here is now segment assembly plus ANSI, at a real terminal width.
+  // The band lookup it calls is a pure function over two numbers; the module
+  // load that supplies it happens once, at import, and is not in this loop.
+  const input = {
+    ...NO_EXTRAS,
+    model: 'Opus 4.5', project: 'my-context', branch: 'master',
+    occupancy: occupancyFromPayload(sample), threshold: 98,
+    myctx: share, myctxNote: null, teeNote: null,
+  };
+  const measured = measure(() => { statusLineText(input, true, 120); });
   console.log(`  statusLineText  p95 ${measured.toFixed(3)} ms`);
   assert.ok(
     measured < perfCeiling(1),

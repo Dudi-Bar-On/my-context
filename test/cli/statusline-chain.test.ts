@@ -8,6 +8,22 @@ import { fileURLToPath } from 'node:url';
 import { removeTree } from '../helpers/tmp.ts';
 
 /**
+ * OUR line, as opposed to a delegate's.
+ *
+ * The bridge prints a powerline bar (`src/cli/commands/statusline-powerline.ts`),
+ * so this matches the two blocks that identify it — the model and the context
+ * figure — rather than the whole line. Deliberately not the whole line: these
+ * tests are about WHOSE line came back and whether one came back at all, and a
+ * fixture that pinned every block would fail on a layout change that has
+ * nothing to do with delegation.
+ *
+ * The escapes between the blocks are why this is two assertions worth of
+ * pattern rather than one literal: Claude Code renders the ANSI this command
+ * writes to its pipe, so a real run has SGR sequences between every block.
+ */
+const OWN_LINE = /Opus 4\.5 [\s\S]*ctx 23\.5%/;
+
+/**
  * `mycontext statusline install` CHAINS rather than replaces (2026-08-27).
  *
  * The bridge is not the only thing that wants a status line. On the owner's
@@ -212,7 +228,7 @@ test('the installed command STARTS and prints a line when a shell runs it, as Cl
     });
     assert.equal(result.status, 0, `the installed command did not run: ${result.stderr}`);
     assert.match(
-      result.stdout, /Opus 4\.5 \| ctx 23\.5% \(47\.0k\/200\.0k\)/,
+      result.stdout, OWN_LINE,
       'the bridge did not start — nothing was teed and no delegate would ever have run',
     );
     const tee = readTee(path.join(dir, '.my_context'), 'sess-installed');
@@ -320,7 +336,7 @@ test('with no previous status line there is nothing to delegate to: the bridge p
     assert.equal(run(['statusline', 'install', '--settings', file, '--yes'], dir).code, 0);
     const result = bridge(dir, 'sess-none');
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Opus 4\.5 \| ctx 23\.5% \(47\.0k\/200\.0k\)/);
+    assert.match(result.stdout, OWN_LINE);
   } finally {
     removeTree(dir);
   }
@@ -353,7 +369,7 @@ for (const { name, body } of FAILURES) {
       const result = bridge(dir, session);
       assert.equal(result.status, 0, result.stderr);
       assert.match(
-        result.stdout, /Opus 4\.5 \| ctx 23\.5% \(47\.0k\/200\.0k\)/,
+        result.stdout, OWN_LINE,
         'a failed delegate must fall back to our own line, never to a blank one',
       );
       assert.doesNotMatch(result.stdout, /half a line/, 'a non-zero exit\'s partial output was trusted');

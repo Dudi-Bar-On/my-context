@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { removeTree } from '../helpers/tmp.ts';
+import type { UnmeasurableWhy } from '../../src/core/context-occupancy.ts';
 
 /**
  * `mycontext statusline` — the §4b bridge (ui3 tasks 4 and 5).
@@ -38,8 +39,10 @@ const { runCli } = await import('../../src/cli/index.ts');
 const { recordAudit } = await import('../../src/core/audit.ts');
 const { classifyContext, readTee } = await import('../../src/core/statusline-tee.ts');
 const { GLOBAL_DIR, resolveWorkspace } = await import('../../src/core/workspace.ts');
-const { myctxShare, myctxShareByRow, statusLineText } =
+const { myctxShare, myctxShareByRow, occupancyFromPayload, statusLineText } =
   await import('../../src/cli/commands/statusline.ts');
+const { LEVEL_GLYPH, NO_EXTRAS, SEP } =
+  await import('../../src/cli/commands/statusline-powerline.ts');
 const { openProjection, queryProjection, syncProjection } =
   await import('../../src/core/audit-db.ts');
 const { INSTALLED, claudeSettingsPath } = await import('../../src/cli/commands/statusline-install.ts');
@@ -141,34 +144,117 @@ function payload(sessionId: string, projectDir: string): Record<string, unknown>
   };
 }
 
+/**
+ * One bar, spelled the way the renderer spells it.
+ *
+ * The separator is composed from the module's own `SEP` rather than typed as a
+ * literal: U+E0B0 is a private-use glyph that an editor, a terminal or a
+ * copy-paste renders as nothing at all, and a test that pasted it would either
+ * assert against an empty string it could not see or fail with two identical
+ * looking values. Composing it means the assertions below read as blocks.
+ */
+function bar(...blocks: string[]): string {
+  return `▐ ${blocks.join(` ${SEP} `)} ▌`;
+}
+
+/**
+ * The four blocks the owner drew, and the states the last one takes.
+ *
+ * Rendered to a STRING and asserted on — nothing here installs anything, writes
+ * a setting or touches a home directory (`test/helpers/real-home-guard.ts`).
+ *
+ * `colour: false` throughout, so what is pinned is the TEXT: every block says
+ * its fact in words, and the hue is the second carrier rather than the only
+ * one. The colours, and the band they are chosen by, are pinned in
+ * `test/cli/statusline-powerline.test.ts` against the web's own
+ * `occupancyLevel` rather than against a number written here.
+ */
 test('statusLineText renders each state without ever inventing a number', () => {
-  const known = classifyContext(payload('s', '/repo'));
-  assert.equal(
-    statusLineText(known, 'Opus 4.5', { tokens: 6200, injections: 3, unrecorded: 0 }, null),
-    'Opus 4.5 | ctx 23.5% (47.0k/200.0k) | myctx 6.2k of it (3 injections)',
+  const base = {
+    ...NO_EXTRAS,
+    model: 'Opus 4.5',
+    project: 'test_mycontext_plugin',
+    branch: 'campaign/my-context-test',
+    threshold: 98,
+    myctx: null,
+    myctxNote: null,
+    teeNote: null,
+  };
+  const at = (percent: number): string => statusLineText(
+    { ...base, occupancy: { state: 'known' as const, percent, ageMs: 0 } }, false, null,
   );
-  assert.equal(
-    statusLineText(known, 'Opus 4.5', { tokens: 6200, injections: 3, unrecorded: 2 }, null),
-    'Opus 4.5 | ctx 23.5% (47.0k/200.0k) | myctx ≥6.2k of it (3 injections, 2 not recorded)',
+  const head = ['Opus 4.5', 'test_mycontext_plugin', 'campaign/my-context-test'];
+
+  // Calm, approaching, and at the ask. The figures are not chosen here: 88.2 is
+  // `occupancyBands(98).warn` and 98 is the threshold itself, so moving either
+  // boundary moves which of these is which — see the powerline test for the pin.
+  // The bands are ABSOLUTE — green below 60, amber to 85, red past it — and
+  // they do not move when the handover threshold does. The ASK is the other
+  // question and gets its own gold marker, which is why 99.2% below carries
+  // one and 42% does not.
+  assert.equal(at(42), bar(...head, `${LEVEL_GLYPH.ok} ctx 42.0%`));
+  assert.equal(at(70), bar(...head, `${LEVEL_GLYPH.warn} ctx 70.0%`));
+  // 93.4% is past 88.2 — the ask approaching, at a threshold of 98 — so the
+  // gold marker is beside the red fill. Two questions, two answers.
+  assert.equal(at(93.4), bar(...head, '◆ ask near', `${LEVEL_GLYPH.crit} ctx 93.4%`));
+  assert.equal(at(99.2), bar(...head, '◆ handover due', `${LEVEL_GLYPH.crit} ctx 99.2%`));
+
+  // The reasons `readOccupancy` keeps apart stay apart here. Collapsing them
+  // into one "unknown" is the whole failure that type exists to prevent, and
+  // the status line is where a person reads the answer.
+  const why = (w: UnmeasurableWhy): string => statusLineText(
+    { ...base, occupancy: { state: 'unmeasurable' as const, why: w } }, false, null,
   );
+  assert.equal(why('no-bridge'), bar(...head, `${LEVEL_GLYPH.neutral} ctx — no bridge`));
+  assert.equal(why('no-sample'), bar(...head, `${LEVEL_GLYPH.neutral} ctx — no sample`));
+  assert.equal(why('unknown-shape'), bar(...head, `${LEVEL_GLYPH.neutral} ctx — unreadable`));
   assert.equal(
-    statusLineText(
-      { state: 'not-yet-known', usedTokens: null, windowSize: 200000, percent: null },
-      'Opus 4.5', null, null,
-    ),
-    'Opus 4.5 | ctx not yet known (no API call since the last compact)',
+    new Set([why('no-bridge'), why('no-sample'), why('unknown-shape')]).size, 3,
+    'three reasons, three sentences — a reader told "not installed" about a bridge that IS '
+    + 'installed goes and installs it a second time',
   );
-  assert.equal(
-    statusLineText(
-      { state: 'unknown', usedTokens: null, windowSize: null, percent: null },
-      null, null, 'projection sync failed',
-    ),
-    'ctx unknown (this Claude Code sends no context_window) | myctx unavailable (projection sync failed)',
+
+  // A FOSSIL SAYS `—` AND NEVER A NUMBER. A stale figure drawn as if fresh is
+  // the defect that cost a missed handover at a full window while the strip
+  // read 60.1%; the one thing this block must never do is look like a reading.
+  assert.equal(why('stale'), bar(...head, `${LEVEL_GLYPH.neutral} ctx — stale`));
+  // The CTX block specifically, not the whole line — `Opus 4.5` has a digit in
+  // it and the model block is entitled to one. What must carry no digit is the
+  // block a reader reads as the occupancy.
+  const staleCtx = why('stale').split(SEP).at(-1);
+  assert.doesNotMatch(staleCtx ?? '', /[0-9]/);
+});
+
+/**
+ * The payload states map onto the reasons the tee does — the same mapping, not
+ * a second opinion about the same three shapes.
+ *
+ * `not-yet-known` is `no-sample` and NOT `unknown-shape`, for
+ * `readOccupancy`'s own stated reason: `current_usage === null` is what Claude
+ * Code sends between a compaction and the next API call, and reporting a schema
+ * break there sends a person to re-verify their binary over a payload that was
+ * perfectly well formed and simply had nothing to report yet.
+ */
+test('a payload with no workspace behind it is classified the way the tee would be', () => {
+  assert.deepEqual(
+    occupancyFromPayload(classifyContext(payload('s', '/repo'))),
+    { state: 'known', percent: 23.5, ageMs: 0 },
   );
-  // The no-workspace row: no tee, no myctx half, nothing invented.
-  assert.equal(
-    statusLineText(known, 'Opus 4.5', null, null),
-    'Opus 4.5 | ctx 23.5% (47.0k/200.0k)',
+  assert.deepEqual(
+    occupancyFromPayload({
+      state: 'not-yet-known', usedTokens: null, windowSize: 200000, percent: null,
+    }),
+    { state: 'unmeasurable', why: 'no-sample' },
+  );
+  assert.deepEqual(
+    occupancyFromPayload({ state: 'unknown', usedTokens: null, windowSize: null, percent: null }),
+    { state: 'unmeasurable', why: 'unknown-shape' },
+  );
+  // `known` with no percentage is a window size that was absent or zero, which
+  // is a shape this product cannot read — never a 0% window.
+  assert.deepEqual(
+    occupancyFromPayload({ state: 'known', usedTokens: 4000, windowSize: null, percent: null }),
+    { state: 'unmeasurable', why: 'unknown-shape' },
   );
 });
 
@@ -180,14 +266,84 @@ test('statusLineText renders each state without ever inventing a number', () => 
  * `myctxShare` answers for that same id perfectly well, so the line would
  * show a confident myctx figure and never mention that the web UI is getting
  * no sample at all. That is `INV-nothing-is-dropped-silently` on the one
- * surface whose whole job is disclosure.
+ * surface whose whole job is disclosure — and the powerline did not get to
+ * drop it just because the owner's sketch had four blocks in it.
+ *
+ * The context block stays LAST whatever else is disclosed: the ruling is that
+ * the right end of the bar is what shifts as the window fills, and a block
+ * after it would move the thing the eye is trained on.
  */
 test('a tee that did not land is disclosed beside a myctx share that did', () => {
-  const known = classifyContext(payload('s', '/repo'));
+  const line = statusLineText(
+    {
+      ...NO_EXTRAS,
+      model: 'Opus 4.5',
+      project: 'test_mycontext_plugin',
+      branch: 'campaign/my-context-test',
+      threshold: 98,
+      occupancy: { state: 'known', percent: 23.5, ageMs: 0 },
+      myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
+      myctxNote: null,
+      teeNote: 'tee not written (disk full)',
+    },
+    false,
+    null,
+  );
+  assert.equal(line, bar(
+    'Opus 4.5', 'test_mycontext_plugin', 'campaign/my-context-test',
+    'myctx 6.2k', 'tee not written (disk full)', `${LEVEL_GLYPH.ok} ctx 23.5%`,
+  ));
+
+  // `≥` and not a rounded-up guess: some records carry no estimate, so the
+  // true share is at least this and the block says exactly that.
   assert.equal(
-    statusLineText(known, 'Opus 4.5', { tokens: 6200, injections: 3, unrecorded: 0 }, null,
-      'tee not written (disk full)'),
-    'Opus 4.5 | ctx 23.5% (47.0k/200.0k) | myctx 6.2k of it (3 injections) | tee not written (disk full)',
+    statusLineText(
+      {
+        ...NO_EXTRAS,
+        model: null, project: null, branch: null, threshold: 98,
+        occupancy: { state: 'known', percent: 23.5, ageMs: 0 },
+        myctx: { tokens: 6200, injections: 3, unrecorded: 2 },
+        myctxNote: null, teeNote: null,
+      },
+      false, null,
+    ),
+    bar('myctx ≥6.2k', `${LEVEL_GLYPH.ok} ctx 23.5%`),
+  );
+
+  // Two notes, two fields: a share that could not be computed is named, and
+  // the tee's own refusal is named beside it rather than instead of it.
+  assert.equal(
+    statusLineText(
+      {
+        ...NO_EXTRAS,
+        model: null, project: null, branch: null, threshold: 98,
+        occupancy: { state: 'known', percent: 23.5, ageMs: 0 },
+        myctx: null, myctxNote: 'projection sync failed',
+        teeNote: 'tee not written (unsafe session id)',
+      },
+      false, null,
+    ),
+    bar(
+      'myctx unavailable (projection sync failed)',
+      'tee not written (unsafe session id)',
+      `${LEVEL_GLYPH.ok} ctx 23.5%`,
+    ),
+  );
+
+  // A session that injected nothing is not a session with a zero share: the
+  // block is absent, and the owner's four blocks are what is left.
+  assert.equal(
+    statusLineText(
+      {
+        ...NO_EXTRAS,
+        model: 'Opus 4.5', project: 'p', branch: 'b', threshold: 98,
+        occupancy: { state: 'known', percent: 23.5, ageMs: 0 },
+        myctx: { tokens: 0, injections: 0, unrecorded: 0 },
+        myctxNote: null, teeNote: null,
+      },
+      false, null,
+    ),
+    bar('Opus 4.5', 'p', 'b', `${LEVEL_GLYPH.ok} ctx 23.5%`),
   );
 });
 
@@ -282,7 +438,30 @@ test('the command tees the payload keyed by session and prints the line (spawned
       cwd: dir, input: JSON.stringify(payload('sess-e2e', dir)), encoding: 'utf8',
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Opus 4\.5 \| ctx 23\.5% \(47\.0k\/200\.0k\)/);
+    // The powerline, end to end through a real process: the model block, the
+    // context block, and both caps. Escapes ARE expected here — Claude Code
+    // reads this pipe and renders them, which is why `colourAllowed` does not
+    // key on `isTTY` alone (a status line coloured only when nobody is looking
+    // at it is not a coloured status line).
+    assert.match(result.stdout, /Opus 4\.5 /);
+    assert.match(result.stdout, /ctx 23\.5% /);
+    assert.ok(result.stdout.includes('▐'), 'the opening cap is on the line');
+    assert.ok(result.stdout.includes('▌'), 'the closing cap is on the line');
+    assert.ok(result.stdout.includes(SEP), 'the powerline separator U+E0B0 is on the line');
+    assert.doesNotMatch(result.stdout, / \| /, 'the pipe-delimited line was replaced, not wrapped');
+
+    // NO_COLOR is honoured by the same command on the same payload, and what
+    // comes back is the SAME TEXT with not one escape byte in it. This is the
+    // half that cannot be checked by rendering in-process: the decision reads
+    // the environment, so only a real child process can be told 'no'.
+    const plain = spawnSync(process.execPath, [CLI, 'statusline'], {
+      cwd: dir, input: JSON.stringify(payload('sess-e2e', dir)), encoding: 'utf8',
+      env: { ...process.env, NO_COLOR: '1' },
+    });
+    assert.equal(plain.status, 0, plain.stderr);
+    assert.ok(!plain.stdout.includes('\u001b'), 'never a raw escape into a pipe that said no');
+    assert.match(plain.stdout, /ctx 23\.5% /);
+    assert.ok(plain.stdout.includes(SEP), 'the same text, and the glyphs are text');
     const tee = readTee(path.join(dir, '.my_context'), 'sess-e2e');
     assert.equal((tee?.payload as { session_id?: string } | undefined)?.session_id, 'sess-e2e');
   } finally {

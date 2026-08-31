@@ -1,6 +1,9 @@
 import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { filterSelect, openProjection, syncProjection } from '../../core/audit-db.ts';
+import { handoverThresholdPercent } from '../../core/config.ts';
+import { readOccupancy } from '../../core/context-occupancy.ts';
 import { isMainEntry } from '../../core/paths.ts';
 import { classifyContext, writeTee, type ContextSample } from '../../core/statusline-tee.ts';
 import { resolveWorkspace, type Workspace } from '../../core/workspace.ts';
@@ -8,6 +11,10 @@ import { readStdin } from '../../hooks/io.ts';
 import { refuseUnknownFlag } from './format.ts';
 import { registerCommand, type Emit } from './registry.ts';
 import { cmdStatuslineInstall, cmdStatuslineUninstall, delegateFor } from './statusline-install.ts';
+import {
+  buildSegments, colourAllowed, gitBranch, payloadExtras, renderPowerline,
+  type OccupancyView, type PowerlineInput,
+} from './statusline-powerline.ts';
 
 // --- The status line bridge (spec §4b) --------------------------------------
 //
@@ -123,59 +130,78 @@ export function myctxShareByRow(
   return { tokens, injections: records.length, unrecorded };
 }
 
-function fmtK(n: number): string {
-  return `${(n / 1000).toFixed(1)}k`;
+/**
+ * `readOccupancy`'s answer, for a session this bridge holds the payload of.
+ *
+ * **The tee is the source, not the payload in hand.** The bridge has just
+ * written this sample, so reading it back costs one small file — and it is
+ * what buys the three unmeasurable reasons (`no-bridge`, `no-sample`,
+ * `unknown-shape`) already spelled once in `core/context-occupancy.ts`, kept
+ * apart there on purpose, and not respelled here. A second classification of
+ * the same payload in this file would be a second chance to be silently wrong
+ * about which of the three a shape is.
+ *
+ * **The freshness gate is `readOccupancy`'s, not this file's.** Since
+ * 2026-08-31 that module owns `CONTEXT_SAMPLE_FRESH_MS` and answers
+ * `why: 'stale'` for a sample it will not present as current, and it carries
+ * `receivedAt` on the known branch so nothing has to read the tee twice. The
+ * age computed below is therefore the age of a sample already shown to be
+ * fresh; it is still passed to `levelFor` rather than assumed, so the terminal
+ * and the browser run the same predicate over the same constant.
+ */
+export function occupancyFromTee(projectRoot: string, sessionId: string, now: number): OccupancyView {
+  const occ = readOccupancy(projectRoot, sessionId);
+  if (occ.state === 'unmeasurable') return { state: 'unmeasurable', why: occ.why };
+  const at = Date.parse(occ.receivedAt);
+  // A stamp this product wrote and cannot parse is age 0 here and NOT a huge
+  // age, because `readOccupancy` has already refused every sample it could not
+  // date: anything reaching this line has been shown to be current, and
+  // inventing a staleness on top of that would grey out a live reading.
+  const ageMs = Number.isFinite(at) ? Math.max(0, now - at) : 0;
+  return { state: 'known', percent: occ.percent, ageMs };
+}
+
+/**
+ * The same answer for a session with no workspace to tee into — from the
+ * payload in hand, which is the only thing there is.
+ *
+ * The mapping matches `readOccupancy`'s own, deliberately and for its stated
+ * reason: `not-yet-known` is `no-sample` and NOT `unknown-shape`, because
+ * `current_usage === null` is what Claude Code sends between a compaction and
+ * the next API call — a perfectly well-formed payload with nothing to report
+ * yet — and reporting a schema break there sends a person to re-verify their
+ * Claude Code binary over nothing.
+ */
+export function occupancyFromPayload(sample: ContextSample): OccupancyView {
+  if (sample.state === 'known' && sample.percent !== null) {
+    return { state: 'known', percent: sample.percent, ageMs: 0 };
+  }
+  if (sample.state === 'not-yet-known') return { state: 'unmeasurable', why: 'no-sample' };
+  return { state: 'unmeasurable', why: 'unknown-shape' };
 }
 
 /**
  * One line, one spelling per state — the same honesty rules the UI strip
- * renders, so a user who reads both never sees them disagree.
+ * renders, so a user who reads both never sees them disagree, and now the same
+ * BANDS as well: the colour of the last block comes from the web's own
+ * `occupancyLevel` (see `statusline-powerline.ts`), never from a threshold
+ * spelled a second time here.
  *
  * `myctxNote` is why the myctx half is MISSING; `teeNote` is why the sample
- * did not reach disk. They are two facts and they are two parameters, because
- * folding them into one drops whichever did not win: `writeTee` refuses an
- * unsafe `session_id` while `myctxShare` answers for that same id perfectly
- * well, so a single note rendered only when the share is absent would print a
- * confident myctx figure and never mention that the web UI is getting nothing
- * (`INV-nothing-is-dropped-silently`, on the one surface whose job is
- * disclosure).
+ * did not reach disk. They are two facts and they are two fields on
+ * `PowerlineInput`, because folding them into one drops whichever did not win:
+ * `writeTee` refuses an unsafe `session_id` while `myctxShare` answers for
+ * that same id perfectly well, so a single note rendered only when the share
+ * is absent would print a confident myctx figure and never mention that the
+ * web UI is getting nothing (`INV-nothing-is-dropped-silently`, on the one
+ * surface whose job is disclosure).
  */
 export function statusLineText(
-  sample: ContextSample,
-  model: string | null,
-  myctx: MyctxShare | null,
-  myctxNote: string | null,
-  teeNote: string | null = null,
+  input: PowerlineInput,
+  colour: boolean,
+  columns: number | null,
 ): string {
-  const parts: string[] = [];
-  if (model !== null) parts.push(model);
-
-  if (sample.state === 'known' && sample.usedTokens !== null) {
-    const pct = sample.percent !== null ? `${sample.percent.toFixed(1)}%` : '?%';
-    const size = sample.windowSize !== null ? fmtK(sample.windowSize) : '?';
-    parts.push(`ctx ${pct} (${fmtK(sample.usedTokens)}/${size})`);
-  } else if (sample.state === 'not-yet-known') {
-    parts.push('ctx not yet known (no API call since the last compact)');
-  } else {
-    parts.push('ctx unknown (this Claude Code sends no context_window)');
-  }
-
-  if (myctx !== null) {
-    if (myctx.injections > 0) {
-      // `≥` rather than a rounded-up guess: some records carry no estimate, so
-      // the true share is at least this and the line says exactly that.
-      const approx = myctx.unrecorded > 0 ? '≥' : '';
-      const suffix = myctx.unrecorded > 0
-        ? ` (${myctx.injections} injections, ${myctx.unrecorded} not recorded)`
-        : ` (${myctx.injections} injections)`;
-      parts.push(`myctx ${approx}${fmtK(myctx.tokens)} of it${suffix}`);
-    }
-  } else if (myctxNote !== null) {
-    parts.push(`myctx unavailable (${myctxNote})`);
-  }
-
-  if (teeNote !== null) parts.push(teeNote);
-  return parts.join(' | ');
+  return renderPowerline(buildSegments(input), { colour, columns });
 }
 
 // --- Delegating to the status line this bridge displaced --------------------
@@ -407,9 +433,21 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
     : typeof p?.cwd === 'string' ? p.cwd
     : cwd;
 
-  let projectRoot: string | null;
+  let projectRoot: string | null = null;
+  // The threshold the occupancy bands are derived FROM, read from the session's
+  // own workspace and not from this process's: two projects may configure two
+  // different asks, and colouring one session's window against the other's
+  // threshold is the same class of error as teeing into the wrong `.statusline/`.
+  // `null` is the handover feature switched off, which is not a threshold of
+  // zero — there is no ask, so there is no band to name, and the block draws
+  // neutral rather than a guessed green.
+  let threshold: number | null = null;
   try {
-    projectRoot = resolveWorkspace(sessionCwd).projectRoot;
+    const sessionWs = resolveWorkspace(sessionCwd);
+    projectRoot = sessionWs.projectRoot;
+    threshold =
+      sessionWs.config.handover === null ? null
+      : handoverThresholdPercent(sessionWs.config.handover);
   } catch {
     // A corrupt config.json in that tree. Not this command's business, and not
     // a reason to blank the status line.
@@ -448,10 +486,48 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
     }
   }
 
+  // Read back through `readOccupancy` when there is a workspace to read it
+  // from, so the three unmeasurable reasons come from the one module that
+  // keeps them apart; from the payload in hand when there is not, which is the
+  // only source a session with no corpus has.
+  const occupancy: OccupancyView =
+    projectRoot !== null && typeof p?.session_id === 'string'
+      ? occupancyFromTee(projectRoot, p.session_id, Date.now())
+      : occupancyFromPayload(sample);
+
   // Computed before the delegate runs, not after: this is the fallback, and a
   // fallback assembled only once something has already gone wrong is a code
   // path that first runs on the user's machine.
-  const ownLine = statusLineText(sample, model, myctx, myctxNote, teeNote);
+  //
+  // `renderer: true` — the pipe on the other side of this stdout is Claude
+  // Code's status line, which renders ANSI. It is asserted by the payload
+  // having parsed: a human running the verb by hand was refused above with
+  // NO_PAYLOAD and never reaches here, so the pipe that gets escapes is always
+  // one that asked for them. See `colourAllowed`.
+  // Everything else the payload carries that this bar draws: the model modes,
+  // the two rate-limit windows, the cost, and the cache ratio DERIVED from the
+  // same three token counts the occupancy is. Read off `payload`, the parsed
+  // bytes Claude Code sent, and every field is absent-tolerant.
+  const extras = payloadExtras(payload);
+
+  const ownLine = statusLineText(
+    {
+      ...extras,
+      model,
+      // `projectRoot` is the `.my_context` directory, so the NAME comes from the
+      // session directory Claude Code named — which is the repository, and is what
+      // the owner is reading when they look at this block.
+      project: path.basename(sessionCwd),
+      branch: gitBranch(sessionCwd),
+      occupancy,
+      threshold,
+      myctx,
+      myctxNote,
+      teeNote,
+    },
+    colourAllowed(process.env, process.stdout.isTTY === true, true),
+    typeof process.stdout.columns === 'number' ? process.stdout.columns : null,
+  );
 
   // The courtesy, last. `delegateFor` answers `null` for every reason not to
   // chain — no saved copy, nothing displaced, a command string this project
