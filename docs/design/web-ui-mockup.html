@@ -468,7 +468,7 @@ button{font:inherit;color:inherit}
 body.sim-rt .gloss,body.sim-rt .gloss.float{background-image:none;box-shadow:none;border-color:var(--ink)}
 
 /* ═══ shell ═══ */
-.app{display:grid;grid-template-rows:46px 1fr 26px 38px;grid-template-columns:214px 1fr;
+.app{display:grid;grid-template-rows:46px 1fr 26px 69px;grid-template-columns:214px 1fr;
   block-size:100vh;grid-template-areas:"top top" "rail body" "prov prov" "strip strip"}
 /* The item pane's width, 2026-08-27. DRAFTED BY CLAUDE, APPROVED BY THE OWNER
    the same day — the pen ruling of 2026-08-25 is that Claude drafts and the
@@ -852,7 +852,7 @@ details.help[open]>summary{margin-block-end:6px}
    descenders where it is wanted. Re-measured after: 8.9px above the ink and
    10.1px below it, at every size. */
 .strip{grid-area:strip;background:var(--panel);border-block-start:1px solid var(--rule);
-  display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);
+  display:grid;grid-template-rows:28px 38px;padding-inline:var(--sp-3);
   padding-block:0 2px;font-size:var(--fs-strip);color:var(--dim)}
 .strip .sep{inline-size:1px;block-size:18px;background:var(--rule)}
 /* The git group shows one of six states; the rest are `hidden`. .chip sets
@@ -867,7 +867,16 @@ details.help[open]>summary{margin-block-end:6px}
    instead. `min-inline-size:0` is what lets a flex item shrink below its
    content at all — without it the group refuses and pushes the strip's tail
    off the end. */
-.strip>*{flex:0 0 auto}
+.striprow{display:flex;align-items:center;gap:var(--sp-3);min-inline-size:0;overflow:hidden}
+.striprow>.sgrp{block-size:100%}
+/* A CHIP MAY NEVER WRAP IN THIS BAR. Measured 2026-09-01 at 1280px: the audit
+   clock's warn chip wrapped to three lines, 48.8px tall in a 38px row, and hung
+   3.4px past the bottom of the window - which for the LAST grid row is not an
+   overhang, it is a clip. The groups already bound and disclose (overflow plus
+   a title); what they cannot survive is a child that grows in the one axis the
+   row has no slack in. */
+.striprow .chip{white-space:nowrap}
+.striprow>*{flex:0 0 auto}
 /* AND IT CLIPS, since 2026-08-31 — the same treatment `.auditstate` has had
    since it was written, and for the same reason. The chips inside are
    `flex:none` and cannot give way, so once the group is squeezed past them they
@@ -916,6 +925,10 @@ details.help[open]>summary{margin-block-end:6px}
 .sgrp-corpus .slab{color:var(--gold)}
 .sgrp-session .slab{color:var(--ok)}
 .sgrp-audit .slab{color:var(--warn)}
+.sgrp-model .slab{color:var(--carry)}
+.sgrp-window .slab{color:var(--dim)}
+.sgrp-cost .slab{color:var(--dim)}
+.sgrp-limits .slab{color:var(--carry)}
 /* The context group is still the one item allowed to give way. It is now
    wrapped in its provenance group, so the `flex:1 1 auto` that used to be
    enough on .ctxstate has to sit on the group that IS the child of .strip —
@@ -928,6 +941,9 @@ details.help[open]>summary{margin-block-end:6px}
    belongs at the end, where the live-stream fault and the refresh affordance
    already sit. */
 .sgrp-session{flex:0 1 auto;min-inline-size:0}
+.sgrp-window{flex:0 1 auto;min-inline-size:0}
+.modelstate,.windowstate,.coststate,.limitstate{display:flex;align-items:center;gap:var(--sp-3);min-inline-size:0}
+.windowstate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* THE CORPUS GROUP CAN GIVE WAY NOW, BECAUSE IT CARRIES A SENTENCE.
    Until the drift chip landed (`plan:walk seq:4`, drawn 2026-08-31) this group
    was a count and a five-letter noun and `flex:0 0 auto` cost nothing. With the
@@ -985,6 +1001,70 @@ details.help[open]>summary{margin-block-end:6px}
    and the corpus group's 34.1px was already past it. 1.3 keeps the ink clear of
    its own overflow box and hands the row back 8px. */
 .ctxstate>.chip{line-height:1.3;flex:none}
+/* ── THE CONTEXT FIGURE IS THE EMPHASISED ELEMENT OF THE WHOLE BAR ──────
+   Owner ruling 2026-09-01, in two parts on one day.
+
+   FIRST: "verify the percentage has coloured levels green yellow red,
+   currently only white text". The band WAS computed and WAS correct — it was
+   attached to the chip BESIDE the figure ("room left"), while the number
+   itself stayed --dim. A reader looking at 39.2% saw grey and concluded the
+   levels were not implemented. The terminal has always put the band on the
+   block itself (● ctx 25.1%); the strip was the surface that had drifted.
+
+   SECOND: "emphesize the context metrics by a background and or bigger
+   bolded font, background colour should represent the level".
+
+   NO SIXTH HUE. --okbg/--warnbg/--critbg are already declared and already
+   spent by .chip.ok/.warn/.crit. A background in a hue the budget already
+   assigns is not a new hue (DEC-the-meaning-hue-budget-is-five-gold-ok-
+   carry-crit-and-warn).
+
+   IT CANNOT JITTER, and that is why the metrics and the colours are split
+   across two rules. This one fixes the BOX — 16px, 700, one line-height, one
+   padding, one border width — and the four below change nothing but colour.
+   A figure that grew when the band changed would move the whole row while
+   somebody was reading it, which is worse than a bar that is merely quiet.
+
+   28px TALL: 16px x 1.5 line box, +1px padding and +1px border on each side.
+   The state row is 38px, so it clears by 5px on each side and the container
+   is sized ONCE, with this element already in it.
+
+   MEASURED CONTRAST, dark register (the only designed one this product has;
+   see the file header on @media print): ok 7.03:1, warn 5.43:1, crit 5.96:1,
+   unmeasured 7.51:1 — every one past 4.5 for normal text and this text is
+   large. The BACKGROUND alone is a weak signal (1.16-1.20:1 against --panel)
+   and is not asked to carry the fact by itself: the ink carries it, the
+   border carries it, and the chip beside it carries the WORD, which is what
+   survives a dichromat, a mono printer and forced-colors (06-a11y.html).
+
+   `.ctxstate>.ctxfig` and not `.ctxfig`: `.ctxstate>span` above is (0,1,1)
+   and would otherwise win on line-height and font-size. */
+.ctxstate>.ctxfig{font-size:var(--fs-2);font-weight:700;line-height:1.5;
+  padding-block:1px;padding-inline:var(--sp-2);border:1px solid;
+  border-radius:var(--r-sm);flex:0 1 auto}
+.ctxfig.ok{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+.ctxfig.warn{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
+.ctxfig.crit{color:var(--crit);border-color:var(--crit);background:var(--critbg)}
+/* NOT a level, and visibly so: a state with no percentage, or a sample too
+   old to place. Same box, no meaning hue — a fossil in confident red is
+   worse than an uncoloured number. */
+.ctxfig.unmeas{color:var(--dim);border-color:var(--rule);background:var(--panel-2)}
+/* AND THE TWO RATE WINDOWS CARRY THEIR OWN BAND, since 2026-09-01. They were
+   --dim at every value: the chip said "limit near" once one crossed, and the
+   percentages never coloured at all. Banded by `fillLevel`, which is what the
+   terminal bands them with — the ABSOLUTE bands, because a quota’s own
+   fullness has nothing to do with when a handover is due. Ink only: these are
+   the account’s figures beside the window’s, and two backgrounded blocks in
+   one row is two things claiming to be the most important. */
+.rlfig.ok{color:var(--ok)}
+.rlfig.warn{color:var(--warn)}
+.rlfig.crit{color:var(--crit)}
+.rlfig.unmeas{color:var(--dim)}
+/* The repository name in the header group, and the audit clock in the strip.
+   Both ellipsise: a repo name and an op are user- and product-authored and
+   nothing bounds their length. */
+.reponame{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-inline-size:0}
+.auditlog{display:flex;align-items:center;gap:var(--sp-3);min-inline-size:0;overflow:hidden}
 /* WHICH GROUP GIVES WAY, AND IN WHAT ORDER — measured at 1280px, not reasoned
    about. Before this rule the audit group was `flex:none` at its full natural
    width and the session group, the only shrinkable item left, was squeezed to
@@ -1651,6 +1731,13 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
          measure is the one thing worse than not showing them. -->
     <span class="sgrp sgrp-repo">
       <span class="slab" data-t="strip.grp.repo">repo</span>
+      <!-- WHICH REPOSITORY IS OPEN - added 2026-09-01. The wordmark says
+           "mycontext", which is the PRODUCT; nothing in this chrome said which
+           clone, and two windows on two clones were indistinguishable. The
+           terminal bar has carried the project name on its line 1 since it was
+           written. It sits with the branch and the commit because it is the
+           same fact one level up. -->
+      <span class="reponame" id="reponame"><span data-t="strip.project"><span class="m v" data-v="project">test_mycontext_plugin</span></span></span>
       <span class="gitstate" id="gitstate" title="Click to cycle the six git states the spec requires"
         data-t-title="title.gitState">
         <span data-t="strip.branch">branch <span class="m v" data-v="branch">main</span> @ <span class="m v" data-v="commit">7f3a91c</span></span>
@@ -3125,6 +3212,110 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
        who cannot tell those apart stops trusting the surface". Before this,
        the two live groups did exactly that, permanently and in silence. -->
   <footer class="strip">
+    <!-- LINE 1 - IDENTITY: what does not change while the session runs
+
+         TWO ROWS SINCE 2026-09-01, and the split is the terminal bar's, which
+         the owner approved there first: line 1 is identity, line 2 is
+         everything that moves. The reason is a reading habit rather than a
+         width - after ten minutes a reader stops looking at line 1 at all, so
+         every changing number belongs on one row and motion never appears
+         where the eye has learned that nothing does.
+
+         WHY THE REPO GROUP IS NOT HERE. It is identity, and it is already
+         drawn - in the HEADER, where plan:walk seq:114 moved it on 2026-08-31
+         so the context figure could have the width back. The header is the row
+         above this one and is permanently visible, so the project, the branch
+         and the commit are already on an identity line; moving them a second
+         time would reverse a day-old ruling to gain nothing. The parity gate
+         reads the header group and this footer as ONE surface, the way
+         e2e/strip.spec.ts already does.
+
+         WHAT IS HERE is what the terminal bar carries on its line 1 and this
+         strip carried nowhere: the model and its non-default modes, the name
+         of THIS window, and what the window is FOR. -->
+    <div class="striprow striprow-identity">
+      <!-- The model block, with the modes folded in exactly as the terminal
+           folds them: each mode renders ONLY when it is not the ordinary case,
+           so an ordinary session pays no width for the whole group. 'medium'
+           effort is the default and is suppressed; 'null' is "the payload did
+           not say", which is treated as the default - this bar reports the
+           presence of a state, never the absence of a field. -->
+      <span class="sgrp sgrp-model">
+        <span class="slab" data-t="strip.grp.model">model</span>
+        <span class="modelstate" id="modelstate" title="Click to cycle the model block between named, moded and unread"
+          data-t-title="title.model">
+          <span data-t="strip.model"><span class="v" data-v="name">Claude Opus 4.6</span></span>
+          <span class="small" data-t="strip.modelModes"><span class="v" data-v="modes">high &middot; think &middot; 200k+</span></span>
+          <span class="chip unmeas" data-g="&#9676;" data-t="strip.unread" title="The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again." data-t-title="title.unread">not read</span>
+        </span>
+      </span>
+      <span class="sep"></span>
+      <!-- WHICH WINDOW THIS IS, AND WHAT IT IS FOR.
+
+           The session name is drawn ONLY when it differs from the project name,
+           for the reason the terminal draws it only then: a session called
+           after its project restates a block already on screen, and this
+           field's whole job is telling two windows apart when the model, the
+           project and the branch are identical in both.
+
+           FOCUS IS READ FROM state/focus.json AND NOT FROM THE AUDIT LOG.
+           Every 'focus-set' row in the real log carries 'sessionId: null' -
+           measured on this repository's own log - so the log cannot answer
+           "what is this session focused on" at all. The file can, and it is a
+           few hundred bytes.
+
+           Unlike the terminal, "no focus" is DRAWN here rather than left
+           silent: this row has the width, and after a compaction the question
+           a reader actually has is not "how full am I" but "where was I". -->
+      <span class="sgrp sgrp-window">
+        <span class="slab" data-t="strip.grp.window">window</span>
+        <span class="windowstate" id="windowstate" title="Click to cycle the window name and the focus states"
+          data-t-title="title.window">
+          <span data-t="strip.sessionName">named <span class="v" data-v="name">walk lane</span></span>
+          <span data-t="strip.focus">focus <span class="m v" data-v="focus">plan:walk seq:118</span></span>
+          <span class="small" data-t="strip.noFocus">no focus set</span>
+          <span class="chip unmeas" data-g="&#9676;" data-t="strip.unread" title="The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again." data-t-title="title.unread">not read</span>
+        </span>
+      </span>
+    </div>
+      <span class="sep"></span>
+      <!-- THE ACCOUNT'S QUOTA, WHICH IS NOT THIS SESSION'S WINDOW - owner
+           ruling 2026-09-01, the second rebalance of the same evening.
+
+           MEASURED at 2273px: the session group was eight fields and 1,492px,
+           sixty-five per cent of the whole strip, while every other group sat
+           between 129 and 432px. The row was not overloaded by its group COUNT;
+           one group was larger than all the others combined.
+
+           The split is by SUBJECT, which is the rule: the context figure, the
+           ask, the project-knowledge share and the handover verdict are all
+           about this session's window. The five-hour and seven-day windows are
+           about the account's quota - a different thing, on a different clock,
+           hours and days against a figure that moves on every response. A slow
+           fact belongs with the other slow facts, which is line 1.
+
+           BANDED BY fillLevel - the ABSOLUTE bands, which is what the terminal
+           bands the same two windows with. Never a second threshold set. -->
+      <span class="sgrp sgrp-limits">
+        <span class="slab" data-t="strip.grp.limits">limits</span>
+        <span class="limitstate" id="limitstate" title="Click to cycle the account's two rate-limit windows and their band"
+          data-t-title="title.rate">
+          <span class="small rlfig ok" data-t="strip.rl5">5h <span class="m v" data-v="pct">16</span>% &middot; <span class="v" data-v="reset">2h</span></span>
+          <span class="small rlfig ok" data-t="strip.rl7">7d <span class="m v" data-v="pct">50</span>% &middot; <span class="v" data-v="reset">1d</span></span>
+          <span class="chip warn" data-g="&#9650;" data-t="strip.rlNear" data-t-title="title.rate" title="One of the account's two rate-limit windows is inside the warn band. The band is the same one the context figure uses; there is no second threshold set.">limit near</span>
+          <span class="chip crit" data-g="&#9632;" data-t="strip.rlAt" data-t-title="title.rate" title="One of the account's two rate-limit windows is past the crit band. The band is the same one the context figure uses; there is no second threshold set.">limit hit</span>
+          <!-- NEITHER WINDOW REPORTED, which is a different sentence from "not
+               read": the endpoint answered, and what it carried had no
+               rate_limits in it. A group whose label has nothing after it is
+               the band of nothing this shell has been caught drawing once
+               already. -->
+          <span class="chip unmeas" data-g="&#9676;" data-t="strip.rlNone" data-t-title="title.rate" title="The status-line payload this figure comes from carried no rate-limit windows, so the account's quota is unknown rather than empty.">no account windows reported</span>
+          <span class="chip unmeas" data-g="&#9676;" data-t="strip.unread" title="The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again." data-t-title="title.unread">not read</span>
+        </span>
+      </span>
+    </div>
+    <!-- LINE 2 - STATE: everything that moves -->
+    <div class="striprow striprow-state">
     <!-- The count and the state where it could not be read. A blank number
          beside the word "items" is the failure clause 3 names. -->
     <span class="sgrp sgrp-corpus">
@@ -3234,32 +3425,32 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <span class="chip gov" data-g="◆" data-t="strip.ctxWarn" data-t-title="title.ctxWarn" title="This window is at or past 76.5% and has not yet reached 85%, where the handover ask fires.">handover near</span>
         <span class="chip gov" data-g="◆" data-t="strip.ctxCrit" data-t-title="title.ctxCrit" title="This window is at or past 85%, the threshold the handover ask fires at."><b>handover due</b></span>
         <span class="chip unmeas" data-g="◌" data-t="strip.ctxLevelStale" data-t-title="title.ctxLevelStale" title="This reading is more than fifteen minutes old, so it is shown without a level.">too old to place</span>
-        <!-- ── THE ACCOUNT'S OWN TWO WINDOWS, 2026-08-31 (owner ruling).
-             `rate_limits.five_hour` and `rate_limits.seven_day` are in the
-             status-line payload this strip already tees to disk, verbatim, so
-             this needs no new source and no new call — `classifyRateLimits`
-             reads them at the same moment `classifyContext` reads the context
-             window, and `/api/watch/context` carries both.
+        <!-- AND HOW FAR THE ASK IS, AS A NUMBER - added 2026-09-01, from the
+             terminal bar, which has drawn the headroom since the owner ruled
+             that the distance is worth reading at ANY fill.
 
-             The owner's seven-day window read 49% and nothing on any surface
-             said so. A percentage with no reset time is alarming rather than
-             actionable, so the countdown is half the field: `resets_at` is unix
-             SECONDS and what is drawn is the time from now to then.
+             THE STATE AND THE DISTANCE ARE TWO FACTS. The two gold chips above
+             say WHAT BECAME of the ask; this says how far the next one is. A
+             reader who has been told "handover written 2h ago" still does not
+             know whether the next ask is sixty points away or three.
 
-             BANDED BY `occupancyBands`/`occupancyLevel`, the SAME function the
-             handover proximity uses — never a second threshold set. A
-             hand-kept number that has to agree with a derived one is this
-             project's most-repeated defect. Below the warn band the chip is
-             SILENT, for the reason the gold marker above is: a limit nowhere
-             near its ceiling changes nothing a reader does next.
+             The gold is still EARNED and this block does not spend it: it is
+             the neutral chip, because a marker that is gold at every fill -
+             including a window at 25% with sixty points of headroom - has
+             stopped meaning anything by the time it is needed. It goes quiet
+             at the threshold, where the distance is spent and the gold
+             "handover due" above takes over.
 
-             POSSIBLY ABSENT, and then nothing is drawn — not a placeholder.
-             `rate_limits` is optional in the payload and either window inside
-             it can be missing on its own. -->
-        <span class="small" data-t="strip.rl5">5h <span class="m v" data-v="pct">16</span>% · <span class="v" data-v="reset">2h</span></span>
-        <span class="small" data-t="strip.rl7">7d <span class="m v" data-v="pct">50</span>% · <span class="v" data-v="reset">1d</span></span>
-        <span class="chip warn" data-g="▲" data-t="strip.rlNear" data-t-title="title.rate" title="One of the account's two rate-limit windows is inside the last tenth of the way to its ceiling. The band is the same one the handover proximity uses; there is no second threshold set.">limit near</span>
-        <span class="chip crit" data-g="■" data-t="strip.rlAt" data-t-title="title.rate" title="One of the account's two rate-limit windows is at its ceiling. The band is the same one the handover proximity uses; there is no second threshold set.">limit hit</span>
+             The distance is threshold minus percent in points of the window, at
+             the same one decimal place the context figure uses, so the two
+             figures are read in the same units and subtract in the reader's
+             head. Neither number is chosen here: askHeadroom in
+             lib/viewmodel.js is the one spelling and both surfaces call it. -->
+        <span class="chip unmeas" data-g="&#9670;" data-t="strip.ctxAsk" data-t-title="title.ctxAsk" title="How far this window is from the handover ask, in points of the window. The threshold is the configured one, never a constant in the client.">ask <span class="m v" data-v="threshold">85</span> &middot; +<span class="m v" data-v="headroom">59.9</span></span>
+        <!-- THE ACCOUNT'S TWO WINDOWS MOVED OUT OF THIS GROUP on 2026-09-01.
+             They are `.sgrp-limits` on line 1 now - a different subject on a
+             different clock, and the group that was sixty-five per cent of the
+             whole strip is the reason. See that group for the ruling. -->
         <!-- AND WHAT BECAME OF THE HANDOVER ASK (plan:walk seq:118). Every
              `pre-compact` record has carried `handoverAsk` since 2026-08-27 — a
              settled verdict, computed by `core/handover-ask.ts` against the file's
@@ -3302,6 +3493,51 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         data-t-title="title.audit">
         <span class="chip unmeas" data-g="◌" data-t="strip.unmeasured" title="This read surface exposes no aggregate over the audit log, so the figure is unknown rather than zero. Refreshing cannot help; the endpoint has to exist first." data-t-title="title.unmeasured">not measured</span>
         <span class="m v measured" id="injval" data-v="inj">128</span> <span class="sprop" data-t="strip.inj">injections today</span>
+        <!-- AND WHEN THE LOG LAST MOVED - added 2026-09-01, from the terminal
+             bar, whose own header calls this the one field that catches a whole
+             CLASS of defect at the source: a watcher that stopped watching, a
+             projection that stopped syncing, an injection count that spanned
+             fourteen days. Every one of those is something that stopped being
+             current while nothing said so.
+
+             THREE STATES, KEPT APART. An empty log and a failed read are
+             different facts - "nothing has been recorded" is a measurement and
+             "I could not tell" is not - and a bar that draws them identically
+             has destroyed the only difference that matters.
+
+             THE STALENESS MARK IS DERIVED, NOT CHOSEN. Past
+             CONTEXT_SAMPLE_FRESH_MS - lib/viewmodel.js's own constant, the same
+             one that decides a context sample is too old to present as current
+             - the block goes warn. No threshold is spelled here. -->
+        <span class="sprop" data-t="strip.log">last <span class="m v" data-v="op">subagent-stop</span>, <span class="v" data-v="age">4m</span> ago</span>
+        <span class="chip warn" data-g="&#9650;" data-t="strip.logQuiet" data-t-title="title.log" title="Nothing has been appended to the audit log for longer than a context sample stays current.">nothing logged for <span class="v" data-v="age">3h20m</span></span>
+        <span class="sprop" data-t="strip.logEmpty">nothing recorded yet</span>
+        <span class="chip warn" data-g="&#9650;" data-t="strip.logUnreadable" data-t-title="title.log" title="The audit projection could not be opened, so when the log last moved is unknown rather than never.">audit log unreadable</span>
+      </span>
+    </span>
+    <span class="sep"></span>
+    <!-- WHAT THIS SESSION IS COSTING, AND HOW MUCH OF IT THE CACHE IS
+         ABSORBING - added 2026-09-01, from the terminal bar, which folds the
+         two into one block because they are one question.
+
+         cost.total_cost_usd rides the status-line payload this strip already
+         tees to disk, so this needs no new source and no new call - the same
+         reasoning rate_limits came in under, one row up.
+
+         THE WARM FIGURE IS DERIVED AND NOT SENT. There is no prompt_cache field
+         in any payload this project has captured; what there is is
+         cache_read_input_tokens over the input total Claude Code itself
+         displays (input + cache_creation + cache_read) - the same arithmetic
+         classifyContext already does for the occupancy, in the same place. A
+         payload that did not carry the three numbers draws nothing rather than
+         a zero. -->
+    <span class="sgrp sgrp-cost">
+      <span class="slab" data-t="strip.grp.cost">cost</span>
+      <span class="coststate" id="coststate" title="Click to cycle the cost and cache figures and the state where they could not be read"
+        data-t-title="title.cost">
+        <span data-t="strip.cost">$<span class="m v" data-v="usd">4.62</span></span>
+        <span class="small" data-t="strip.warm"><span class="m v" data-v="pct">91.4</span>% served from cache</span>
+        <span class="chip unmeas" data-g="&#9676;" data-t="strip.unread" title="The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again." data-t-title="title.unread">not read</span>
       </span>
     </span>
     <!-- THE REDUCED-TRANSPARENCY DEMO CONTROL IS NOT HERE ANY MORE. Owner
@@ -3309,6 +3545,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
          it changed nothing anyone would do next, and it held the far end of
          this row permanently. It moved to the Simulate section, beside the
          other controls that change what this page is pretending to be. -->
+    </div>
   </footer>
 
   <div class="banner" id="exited" hidden role="alert">

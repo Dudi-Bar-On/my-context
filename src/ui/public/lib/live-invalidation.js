@@ -479,7 +479,13 @@ export const CHROME_INVALIDATION = {
   repo: { kinds: [], refresh: 'auto' },
   corpus: { kinds: ['mutation'], refresh: 'auto' },
   session: { kinds: ['injection'], refresh: 'auto' },
-  audit: { kinds: [], refresh: 'auto' },
+  // `'*'` since 2026-09-01, when the group gained the audit clock. It was
+  // `[]` while the group's only content was `injections today`, which has no
+  // source on this read surface and is drawn named as unmeasured. The clock
+  // reports that the log moved, so every kind is its event; subscribing to a
+  // subset would be a clock that stops for the kinds nobody listed. It shares
+  // the session group's one call, so this costs no second endpoint.
+  audit: { kinds: '*', refresh: 'auto' },
   prov: { kinds: '*', refresh: 'auto' },
   rail: { kinds: ['mutation'], refresh: 'auto' },
 };

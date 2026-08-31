@@ -1,6 +1,10 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { UnmeasurableWhy } from '../../core/context-occupancy.ts';
+import {
+  distinctSessionName, modeFlags,
+  type ModelModes, type RateLimit,
+} from '../../core/statusline-tee.ts';
 
 // --- The status line, as powerline blocks -----------------------------------
 //
@@ -108,6 +112,8 @@ interface BandModule {
   OCCUPANCY_WARN_FRACTION: number;
   /** How full the window is — absolute, and never derived from the threshold. */
   fillLevel: (pct: unknown, ageMs: unknown) => string | null;
+  /** How far the ask is, in points of the window — `threshold - pct`. */
+  askHeadroom: (pct: unknown, threshold: unknown) => number | null;
   CONTEXT_FILL_WARN_PERCENT: number;
   CONTEXT_FILL_CRIT_PERCENT: number;
   CONTEXT_SAMPLE_FRESH_MS: number;
@@ -117,7 +123,7 @@ async function loadBands(): Promise<BandModule | null> {
   try {
     const mod = (await import(LEVEL_SOURCE)) as Partial<BandModule>;
     if (typeof mod.occupancyLevel !== 'function' || typeof mod.occupancyBands !== 'function'
-        || typeof mod.fillLevel !== 'function') {
+        || typeof mod.fillLevel !== 'function' || typeof mod.askHeadroom !== 'function') {
       return null;
     }
     return mod as BandModule;
@@ -163,6 +169,22 @@ export function bandsFor(threshold: number | null): { warn: number; crit: number
 /** How old a sample may be and still be levelled — the web's own constant. */
 export function freshMs(): number | null {
   return BANDS === null ? null : BANDS.CONTEXT_SAMPLE_FRESH_MS;
+}
+
+/**
+ * **How far the ask is, in points of the window — the web's own subtraction.**
+ *
+ * Reached through the same bridge the bands are, and for the same reason: the
+ * strip draws this distance beside the same gold marker, and a second
+ * `threshold - percent` written here would be a second spelling of one number.
+ *
+ * `null` when the shared module did not load, which is the same degradation
+ * every other reader of it takes: the block goes rather than being guessed.
+ */
+export function headroomFor(percent: number, threshold: number | null): number | null {
+  if (BANDS === null) return null;
+  const headroom = BANDS.askHeadroom(percent, threshold);
+  return typeof headroom === 'number' && Number.isFinite(headroom) ? headroom : null;
 }
 
 /**
@@ -339,6 +361,32 @@ export interface Segment {
    */
   bold?: boolean;
   /**
+   * **WHICH FIELD THIS BLOCK IS, as a stable id — the unit of parity.**
+   *
+   * The web strip and this bar diverged because each was specified separately
+   * with nothing holding them together, which is this project's most-repeated
+   * defect and had been measured EIGHT times by 2026-09-01. What holds them
+   * together now is `test/ui/strip-parity.test.ts`, and this tag is what it
+   * compares: the strip carries the same ids in `data-f`, and the terminal's
+   * set must be a SUBSET of the strip's. A field added here and nowhere there
+   * fails that test by name.
+   *
+   * **It is an id, never a rendering.** Two surfaces are entitled to say one
+   * fact differently — the browser can give the context figure a background
+   * and a larger face and the terminal cannot — and nothing about presentation
+   * travels through this. What travels is WHICH FACT is on the bar.
+   *
+   * A block that qualifies another block's absence carries the SAME id as the
+   * block it qualifies: `myctx unavailable (…)` is the myctx field in its
+   * absent state, not a field of its own. That is how the web strip already
+   * renders `strip.myctxUnavailable`, and folding them keeps the comparison
+   * about facts rather than about states.
+   *
+   * Absent on `ELLIPSIS_SEGMENT` alone, which is not a field: it is the mark
+   * that says a field was dropped.
+   */
+  field?: string;
+  /**
    * Where this block sits in the order the line gives itself up — see `GIVE`.
    * Lower goes first. Absent means "first of all", which is what an untagged
    * block should be: a block whose value nobody ranked has not earned a place
@@ -396,7 +444,7 @@ export function contextSegment(occ: OccupancyView): Segment {
   if (occ.state === 'unmeasurable') {
     return {
       text: `${LEVEL_GLYPH.neutral} ${UNMEASURABLE_TEXT[occ.why]}`,
-      ink: INK.neutral, required: true, anchor: true,
+      ink: INK.neutral, required: true, anchor: true, field: 'context',
     };
   }
   // ONE call answers both "how full" and "too old to say": `fillLevel` takes
@@ -407,7 +455,8 @@ export function contextSegment(occ: OccupancyView): Segment {
   const level = absoluteFillLevel(occ.percent, occ.ageMs);
   if (level === 'stale') {
     return {
-      text: `${LEVEL_GLYPH.neutral} ctx — stale`, ink: INK.neutral, required: true, anchor: true,
+      text: `${LEVEL_GLYPH.neutral} ctx — stale`,
+      ink: INK.neutral, required: true, anchor: true, field: 'context',
     };
   }
   const glyph = level === null ? LEVEL_GLYPH.neutral : LEVEL_GLYPH[level];
@@ -418,6 +467,7 @@ export function contextSegment(occ: OccupancyView): Segment {
     ink: inkForLevel(level),
     required: true,
     anchor: true,
+    field: 'context',
   };
 }
 
@@ -427,47 +477,18 @@ export interface MyctxBlock {
   unrecorded: number;
 }
 
-/**
- * One rate-limit window, as Claude Code reports it.
- *
- * Both fields are separately optional because both are separately absent in
- * real payloads: `rate_limits` itself is optional, and a window inside it can
- * arrive with a percentage and no reset, or the reverse. `null` renders
- * nothing rather than a placeholder — a `?` in a block is a claim that
- * something is wrong, and an absent field is not a fault.
- */
-export interface RateLimit {
-  /** 0–100, as sent. */
-  usedPercent: number | null;
-  /** UNIX SECONDS, as sent — not milliseconds. Converted once, in `until`. */
-  resetsAt: number | null;
-}
+
 
 /**
- * The model's non-default modes, folded into the model block.
- *
- * Every one of these renders ONLY when it is not the ordinary case, so a
- * ordinary session pays zero columns for the whole group. `null` is "the
- * payload did not say", which is treated exactly like the default: this bar
- * does not report the absence of a field, only the presence of a state.
- *
- * **`effort` carries an assumption and it is written down here rather than
- * left in the code.** `thinking`, `fast_mode` and `exceeds_200k_tokens` are
- * booleans whose default is plainly `false`. `effort.level` is a WORD, and
- * this file has no way to observe which word means "unchanged" — it is
- * `'medium'` on every payload read on this machine, so `'medium'` is treated
- * as the default and suppressed. If Claude Code's default moves, the symptom
- * is a block that is always there rather than one that is never there, which
- * is the harmless direction.
+ * **The payload reader lives in `core/statusline-tee.ts` since 2026-09-01** —
+ * the module that owns the tee owns the schema of what is teed. Re-exported
+ * here, unchanged, because this file's callers name it by this path and
+ * because the web strip now reads the same facts off the same function (see
+ * that module for why a second reader would have been a second spelling of an
+ * external schema).
  */
-export interface ModelModes {
-  effort: string | null;
-  thinking: boolean | null;
-  fastMode: boolean | null;
-  exceeds200k: boolean | null;
-}
-
-export const DEFAULT_EFFORT = 'medium';
+export { DEFAULT_EFFORT, payloadExtras } from '../../core/statusline-tee.ts';
+export type { ModelModes, RateLimit } from '../../core/statusline-tee.ts';
 
 export interface PowerlineInput {
   model: string | null;
@@ -725,16 +746,22 @@ export function since(at: string, now: number): string | null {
 export function lastAuditSegment(last: LastAudit | null, now: number): Segment | null {
   if (last === null) return null;
   if (last.state === 'empty') {
-    return { text: 'log — nothing recorded', ink: INK.neutral, give: GIVE.lastAudit };
+    return {
+      text: 'log — nothing recorded', ink: INK.neutral, give: GIVE.lastAudit, field: 'last-audit',
+    };
   }
   if (last.state === 'unreadable') {
-    return { text: 'log — unreadable', ink: INK.warn, give: GIVE.lastAudit };
+    return {
+      text: 'log — unreadable', ink: INK.warn, give: GIVE.lastAudit, field: 'last-audit',
+    };
   }
   const ago = since(last.at, now);
   if (ago === null) {
     // A stamp this product wrote and cannot parse. Not an age of zero, and not
     // silence either: the row is there and its date is not readable.
-    return { text: `log ${last.op} — undated`, ink: INK.warn, give: GIVE.lastAudit };
+    return {
+      text: `log ${last.op} — undated`, ink: INK.warn, give: GIVE.lastAudit, field: 'last-audit',
+    };
   }
   const fresh = freshMs();
   const stale = fresh !== null && now - Date.parse(last.at) > fresh;
@@ -742,6 +769,7 @@ export function lastAuditSegment(last: LastAudit | null, now: number): Segment |
     text: `log ${last.op} ·${ago}`,
     ink: stale ? INK.warn : INK.neutral,
     give: GIVE.lastAudit,
+    field: 'last-audit',
   };
 }
 
@@ -758,7 +786,7 @@ export function lastAuditSegment(last: LastAudit | null, now: number): Segment |
  * percentage is a countdown to nothing in particular.
  */
 export function rateLimitSegment(
-  label: string, limit: RateLimit | null, now: number, give: number,
+  label: string, limit: RateLimit | null, now: number, give: number, field: string,
 ): Segment | null {
   if (limit === null || limit.usedPercent === null || !Number.isFinite(limit.usedPercent)) {
     return null;
@@ -774,6 +802,7 @@ export function rateLimitSegment(
     text: `${glyph} ${label} ${limit.usedPercent.toFixed(0)}%${countdown}`,
     ink: inkForLevel(level),
     give,
+    field,
   };
 }
 
@@ -833,7 +862,8 @@ export function askSegment(occ: OccupancyView, threshold: number | null): Segmen
   if (level === null || level === 'stale') return null;
   if (level === 'crit') {
     return {
-      text: `${ASK_GLYPH} handover due`, ink: INK.gold, bold: true, give: GIVE.handoverDue,
+      text: `${ASK_GLYPH} handover due`,
+      ink: INK.gold, bold: true, give: GIVE.handoverDue, field: 'ask',
     };
   }
   // The threshold reads as configured — `85`, not `85.0` — while the DISTANCE
@@ -841,11 +871,19 @@ export function askSegment(occ: OccupancyView, threshold: number | null): Segmen
   // that shows `+3` for anything from 2.5 to 3.5 hides the last message before
   // the ask.
   const ask = Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1);
-  const headroom = threshold - occ.percent;
+  // **The subtraction is IMPORTED, not repeated.** `askHeadroom` lives in
+  // `lib/viewmodel.js` beside `occupancyBands`, and the web strip draws the
+  // same distance beside the same gold marker. Two spellings of one arithmetic
+  // is how two surfaces come to disagree about one number — the defect this
+  // whole file already avoids for the BANDS, applied to the figure they band.
+  // `null` only where this function has already returned.
+  const headroom = headroomFor(occ.percent, threshold);
+  if (headroom === null) return null;
   return {
     text: `${ASK_GLYPH} ask ${ask} · +${headroom.toFixed(1)}`,
     ink: level === 'warn' ? INK.gold : INK.neutral,
     give: GIVE.handoverDue,
+    field: 'ask',
   };
 }
 
@@ -854,19 +892,16 @@ export const ASK_GLYPH = '◆';
 
 /** The model block, with the modes that are not the ordinary case folded in. */
 export function modelSegment(model: string | null, modes: ModelModes): Segment | null {
-  const flags: string[] = [];
-  if (modes.effort !== null && modes.effort !== '' && modes.effort !== DEFAULT_EFFORT) {
-    flags.push(modes.effort);
-  }
-  // Words, not glyphs alone. A bare `✳` is a hue's problem wearing a
-  // different hat: it carries meaning only to a reader who already knows it.
-  if (modes.thinking === true) flags.push('think');
-  if (modes.fastMode === true) flags.push('fast');
-  if (modes.exceeds200k === true) flags.push('200k+');
+  // **Which modes are worth drawing is `modeFlags`', and it is shared.** The
+  // web strip folds the same words in beside the model name, and "which words
+  // count as not the ordinary case" is one judgement about an external payload
+  // rather than two. Words and not glyphs, for the reason it always was: a bare
+  // mark carries meaning only to a reader who already knows it.
+  const flags = modeFlags(modes);
   const name = model === null || model === '' ? null : model;
   if (name === null && flags.length === 0) return null;
   const text = [name, ...flags].filter((part) => part !== null).join(' ');
-  return { text, ink: INK.model, give: GIVE.model };
+  return { text, ink: INK.model, give: GIVE.model, field: 'model' };
 }
 
 /**
@@ -949,10 +984,14 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   if (model !== null) identity.push(model);
 
   if (input.project !== null && input.project !== '') {
-    identity.push({ text: input.project, ink: INK.project, give: GIVE.project });
+    identity.push({
+      text: input.project, ink: INK.project, give: GIVE.project, field: 'project',
+    });
   }
   if (input.branch !== null && input.branch !== '') {
-    identity.push({ text: input.branch, ink: INK.branch, elidable: true, give: GIVE.branch });
+    identity.push({
+      text: input.branch, ink: INK.branch, elidable: true, give: GIVE.branch, field: 'branch',
+    });
   }
 
   // **Only when it differs from the project.** A session named after its
@@ -961,17 +1000,23 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   // cannot distinguish is a window it should say nothing about. Compared
   // trimmed and case-insensitively, because "My-Context" and "my-context" are
   // the same answer to "which window is this".
-  const named = input.sessionName?.trim() ?? '';
-  const project = input.project?.trim() ?? '';
-  if (named !== '' && named.toLowerCase() !== project.toLowerCase()) {
-    identity.push({ text: named, ink: INK.project, give: GIVE.sessionName });
+  // **The suppression rule is `distinctSessionName`', and it is shared.** The
+  // web strip applies the same one, server-side, on the same field: two
+  // spellings of "only when it tells two windows apart" is two bars that
+  // disagree about whether to draw a block.
+  const named = distinctSessionName(input.sessionName, input.project);
+  if (named !== null) {
+    identity.push({
+      text: named, ink: INK.project, give: GIVE.sessionName, field: 'session-name',
+    });
   }
 
   // Focus last on line 1: it is the narrowest thing said there — the tool, the
   // repository, the branch, this window, and finally what this window is FOR.
   if (input.focus !== null && input.focus.trim() !== '') {
     identity.push({
-      text: `focus ${focusText(input.focus)}`, ink: INK.neutral, give: GIVE.focus,
+      text: `focus ${focusText(input.focus)}`,
+      ink: INK.neutral, give: GIVE.focus, field: 'focus',
     });
   }
 
@@ -983,10 +1028,19 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   if (ask !== null) state.push(ask);
   state.push(contextSegment(input.occupancy));
 
-  const seven = rateLimitSegment('7d', input.sevenDay, now, GIVE.sevenDay);
-  if (seven !== null) state.push(seven);
-  const five = rateLimitSegment('5h', input.fiveHour, now, GIVE.fiveHour);
-  if (five !== null) state.push(five);
+  // **Written as a table so each window's FIELD ID is a `field:` property.**
+  // That is the one form `test/ui/strip-parity.test.ts` derives both surfaces'
+  // field sets from — an id passed as a bare positional argument would be
+  // invisible to it, and a derivation with a blind spot is a hand-kept list
+  // wearing a regex. The web strip's `rateLimitParts` is written the same way,
+  // with the same two ids.
+  for (const w of [
+    { field: 'rate-7d', label: '7d', limit: input.sevenDay, give: GIVE.sevenDay },
+    { field: 'rate-5h', label: '5h', limit: input.fiveHour, give: GIVE.fiveHour },
+  ]) {
+    const seg = rateLimitSegment(w.label, w.limit, now, w.give, w.field);
+    if (seg !== null) state.push(seg);
+  }
 
   if (input.myctx !== null && input.myctx.injections > 0) {
     const approx = input.myctx.unrecorded > 0 ? '≥' : '';
@@ -994,17 +1048,30 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
       text: `myctx ${approx}${fmtK(input.myctx.tokens)}`,
       ink: INK.project,
       give: GIVE.myctxShare,
+      field: 'myctx',
     });
   } else if (input.myctxNote !== null) {
+    // The SAME field id as the share above, in its absent state — see
+    // `Segment.field`. The strip draws exactly this pairing already
+    // (`strip.myctx` and `strip.myctxUnavailable`), and a block that explains
+    // why a field is missing is not a second field.
     state.push({
-      text: `myctx unavailable (${input.myctxNote})`, ink: INK.neutral, give: GIVE.notes,
+      text: `myctx unavailable (${input.myctxNote})`,
+      ink: INK.neutral, give: GIVE.notes, field: 'myctx',
     });
   }
   // The two notes are DISCLOSURES and they belong with the state, not with the
   // identity: a tee that stopped landing is news, and news goes on the line the
   // reader is still looking at.
   if (input.teeNote !== null) {
-    state.push({ text: input.teeNote, ink: INK.warn, give: GIVE.notes });
+    // **The CONTEXT field, in its absent state, and that is not a dodge.** A
+    // tee that did not reach disk is the reason there is no context sample to
+    // draw, and the web strip says the same thing with `strip.ctx.noBridgeShort`
+    // — the observable consequence of the same failure. Giving it a field id of
+    // its own would demand the browser draw a fact it cannot observe: the write
+    // happens in this process, and a page that can stat nothing cannot know it
+    // failed. Tagged as the field it qualifies, per `Segment.field`.
+    state.push({ text: input.teeNote, ink: INK.warn, give: GIVE.notes, field: 'context' });
   }
 
   // Cost and cache in one block: they are one question — what this turn is
@@ -1019,6 +1086,7 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
       text: [cost, warm].filter((part) => part !== null).join(' · '),
       ink: INK.project,
       give: GIVE.costCache,
+      field: 'cost-cache',
     });
   }
 
@@ -1044,72 +1112,6 @@ export function buildSegments(input: PowerlineInput, now: number = Date.now()): 
   return [...identity, ...state];
 }
 
-/**
- * Everything this bar reads off Claude Code's payload beyond the model name.
- *
- * EXTERNAL SCHEMA, and read the way `core/statusline-tee.ts` reads one: every
- * field is optional at every level, every wrong type is an absence, and an
- * absence renders NOTHING rather than a placeholder. The set of fields was
- * confirmed present in this machine's own tee captures rather than taken from
- * documentation; `prompt_cache`, `pr`, `vim`, `agent` and `git_worktree` were
- * confirmed ABSENT and are deliberately not read, because a reader written
- * against a field nobody has seen is a reader nothing can test.
- */
-export function payloadExtras(payload: unknown): {
-  modes: ModelModes;
-  fiveHour: RateLimit | null;
-  sevenDay: RateLimit | null;
-  costUsd: number | null;
-  warmPercent: number | null;
-  sessionName: string | null;
-} {
-  const num = (v: unknown): number | null =>
-    typeof v === 'number' && Number.isFinite(v) ? v : null;
-  const bool = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null);
-  const obj = (v: unknown): Record<string, unknown> | null =>
-    typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null;
-
-  const p = obj(payload) ?? {};
-  const effortLevel = obj(p['effort'])?.['level'];
-  const modes: ModelModes = {
-    effort: typeof effortLevel === 'string' ? effortLevel : null,
-    thinking: bool(obj(p['thinking'])?.['enabled']),
-    fastMode: bool(p['fast_mode']),
-    exceeds200k: bool(p['exceeds_200k_tokens']),
-  };
-
-  const window = (raw: unknown): RateLimit | null => {
-    const w = obj(raw);
-    if (w === null) return null;
-    const usedPercent = num(w['used_percentage']);
-    const resetsAt = num(w['resets_at']);
-    return usedPercent === null && resetsAt === null ? null : { usedPercent, resetsAt };
-  };
-  const limits = obj(p['rate_limits']);
-
-  const usage = obj(obj(p['context_window'])?.['current_usage']);
-  const read = num(usage?.['cache_read_input_tokens']);
-  const created = num(usage?.['cache_creation_input_tokens']);
-  const fresh = num(usage?.['input_tokens']);
-  // The denominator is the input total Claude Code itself displays, which is
-  // also `classifyContext`'s numerator for the occupancy: one arithmetic, two
-  // readers. A zero total is not 0% warm — it is nothing to divide.
-  const total = (read ?? 0) + (created ?? 0) + (fresh ?? 0);
-  const warmPercent =
-    read === null || total <= 0 ? null : (read / total) * 100;
-
-  return {
-    modes,
-    fiveHour: window(limits?.['five_hour']),
-    sevenDay: window(limits?.['seven_day']),
-    costUsd: num(obj(p['cost'])?.['total_cost_usd']),
-    warmPercent,
-    // Read here rather than beside the model, because it is a fact about the
-    // SESSION and not about the model: two windows on one model and one repo
-    // differ only by this.
-    sessionName: typeof p['session_name'] === 'string' ? p['session_name'] : null,
-  };
-}
 
 // --- Rendering --------------------------------------------------------------
 

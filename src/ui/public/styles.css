@@ -379,7 +379,7 @@ bdi{unicode-bidi:isolate}
    report" rather than inventing the wrapper) — so this rule has nothing to
    grid until a shell task adds `<div class="app" id="app">`. See this task's
    own report for what that leaves stacked instead of side-by-side. */
-.app{display:grid;grid-template-rows:46px 1fr 26px 38px;grid-template-columns:214px 1fr;
+.app{display:grid;grid-template-rows:46px 1fr 26px 69px;grid-template-columns:214px 1fr;
   block-size:100vh;grid-template-areas:"top top" "rail body" "prov prov" "strip strip"}
 /* ─── The item pane's width — the ONE custom property in this file the mockup
    does not declare, and the only reason it is not in the TOKENS block above:
@@ -593,7 +593,7 @@ bdi{unicode-bidi:isolate}
    descenders where it is wanted. Re-measured after: 8.9px above the ink and
    10.1px below it, at every size. */
 .strip{grid-area:strip;background:var(--panel);border-block-start:1px solid var(--rule);
-  display:flex;align-items:center;gap:var(--sp-3);padding-inline:var(--sp-3);
+  display:grid;grid-template-rows:28px 38px;padding-inline:var(--sp-3);
   padding-block:0 2px;font-size:var(--fs-strip);color:var(--dim)}
 .strip .sep{inline-size:1px;block-size:18px;background:var(--rule)}
 /* The git group shows one of six states; the rest are `hidden`. .chip sets
@@ -608,7 +608,16 @@ bdi{unicode-bidi:isolate}
    instead. `min-inline-size:0` is what lets a flex item shrink below its
    content at all — without it the group refuses and pushes the strip's tail
    off the end. */
-.strip>*{flex:0 0 auto}
+.striprow{display:flex;align-items:center;gap:var(--sp-3);min-inline-size:0;overflow:hidden}
+.striprow>.sgrp{block-size:100%}
+/* A CHIP MAY NEVER WRAP IN THIS BAR. Measured 2026-09-01 at 1280px: the audit
+   clock's warn chip wrapped to three lines, 48.8px tall in a 38px row, and hung
+   3.4px past the bottom of the window - which for the LAST grid row is not an
+   overhang, it is a clip. The groups already bound and disclose (overflow plus
+   a title); what they cannot survive is a child that grows in the one axis the
+   row has no slack in. */
+.striprow .chip{white-space:nowrap}
+.striprow>*{flex:0 0 auto}
 /* AND IT CLIPS, since 2026-08-31 — the same treatment `.auditstate` has had
    since it was written, and for the same reason. The chips inside are
    `flex:none` and cannot give way, so once the group is squeezed past them they
@@ -657,6 +666,10 @@ bdi{unicode-bidi:isolate}
 .sgrp-corpus .slab{color:var(--gold)}
 .sgrp-session .slab{color:var(--ok)}
 .sgrp-audit .slab{color:var(--warn)}
+.sgrp-model .slab{color:var(--carry)}
+.sgrp-window .slab{color:var(--dim)}
+.sgrp-cost .slab{color:var(--dim)}
+.sgrp-limits .slab{color:var(--carry)}
 /* The context group is still the one item allowed to give way. It is now
    wrapped in its provenance group, so the `flex:1 1 auto` that used to be
    enough on .ctxstate has to sit on the group that IS the child of .strip —
@@ -669,6 +682,9 @@ bdi{unicode-bidi:isolate}
    belongs at the end, where the live-stream fault and the refresh affordance
    already sit. */
 .sgrp-session{flex:0 1 auto;min-inline-size:0}
+.sgrp-window{flex:0 1 auto;min-inline-size:0}
+.modelstate,.windowstate,.coststate,.limitstate{display:flex;align-items:center;gap:var(--sp-3);min-inline-size:0}
+.windowstate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* THE CORPUS GROUP CAN GIVE WAY NOW, BECAUSE IT CARRIES A SENTENCE.
    Until the drift chip landed (`plan:walk seq:4`, drawn 2026-08-31) this group
    was a count and a five-letter noun and `flex:0 0 auto` cost nothing. With the
@@ -726,6 +742,70 @@ bdi{unicode-bidi:isolate}
    and the corpus group's 34.1px was already past it. 1.3 keeps the ink clear of
    its own overflow box and hands the row back 8px. */
 .ctxstate>.chip{line-height:1.3;flex:none}
+/* ── THE CONTEXT FIGURE IS THE EMPHASISED ELEMENT OF THE WHOLE BAR ──────
+   Owner ruling 2026-09-01, in two parts on one day.
+
+   FIRST: "verify the percentage has coloured levels green yellow red,
+   currently only white text". The band WAS computed and WAS correct — it was
+   attached to the chip BESIDE the figure ("room left"), while the number
+   itself stayed --dim. A reader looking at 39.2% saw grey and concluded the
+   levels were not implemented. The terminal has always put the band on the
+   block itself (● ctx 25.1%); the strip was the surface that had drifted.
+
+   SECOND: "emphesize the context metrics by a background and or bigger
+   bolded font, background colour should represent the level".
+
+   NO SIXTH HUE. --okbg/--warnbg/--critbg are already declared and already
+   spent by .chip.ok/.warn/.crit. A background in a hue the budget already
+   assigns is not a new hue (DEC-the-meaning-hue-budget-is-five-gold-ok-
+   carry-crit-and-warn).
+
+   IT CANNOT JITTER, and that is why the metrics and the colours are split
+   across two rules. This one fixes the BOX — 16px, 700, one line-height, one
+   padding, one border width — and the four below change nothing but colour.
+   A figure that grew when the band changed would move the whole row while
+   somebody was reading it, which is worse than a bar that is merely quiet.
+
+   28px TALL: 16px x 1.5 line box, +1px padding and +1px border on each side.
+   The state row is 38px, so it clears by 5px on each side and the container
+   is sized ONCE, with this element already in it.
+
+   MEASURED CONTRAST, dark register (the only designed one this product has;
+   see the file header on @media print): ok 7.03:1, warn 5.43:1, crit 5.96:1,
+   unmeasured 7.51:1 — every one past 4.5 for normal text and this text is
+   large. The BACKGROUND alone is a weak signal (1.16-1.20:1 against --panel)
+   and is not asked to carry the fact by itself: the ink carries it, the
+   border carries it, and the chip beside it carries the WORD, which is what
+   survives a dichromat, a mono printer and forced-colors (06-a11y.html).
+
+   `.ctxstate>.ctxfig` and not `.ctxfig`: `.ctxstate>span` above is (0,1,1)
+   and would otherwise win on line-height and font-size. */
+.ctxstate>.ctxfig{font-size:var(--fs-2);font-weight:700;line-height:1.5;
+  padding-block:1px;padding-inline:var(--sp-2);border:1px solid;
+  border-radius:var(--r-sm);flex:0 1 auto}
+.ctxfig.ok{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+.ctxfig.warn{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
+.ctxfig.crit{color:var(--crit);border-color:var(--crit);background:var(--critbg)}
+/* NOT a level, and visibly so: a state with no percentage, or a sample too
+   old to place. Same box, no meaning hue — a fossil in confident red is
+   worse than an uncoloured number. */
+.ctxfig.unmeas{color:var(--dim);border-color:var(--rule);background:var(--panel-2)}
+/* AND THE TWO RATE WINDOWS CARRY THEIR OWN BAND, since 2026-09-01. They were
+   --dim at every value: the chip said "limit near" once one crossed, and the
+   percentages never coloured at all. Banded by `fillLevel`, which is what the
+   terminal bands them with — the ABSOLUTE bands, because a quota’s own
+   fullness has nothing to do with when a handover is due. Ink only: these are
+   the account’s figures beside the window’s, and two backgrounded blocks in
+   one row is two things claiming to be the most important. */
+.rlfig.ok{color:var(--ok)}
+.rlfig.warn{color:var(--warn)}
+.rlfig.crit{color:var(--crit)}
+.rlfig.unmeas{color:var(--dim)}
+/* The repository name in the header group, and the audit clock in the strip.
+   Both ellipsise: a repo name and an op are user- and product-authored and
+   nothing bounds their length. */
+.reponame{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-inline-size:0}
+.auditlog{display:flex;align-items:center;gap:var(--sp-3);min-inline-size:0;overflow:hidden}
 /* WHICH GROUP GIVES WAY, AND IN WHAT ORDER — measured at 1280px, not reasoned
    about. Before this rule the audit group was `flex:none` at its full natural
    width and the session group, the only shrinkable item left, was squeezed to

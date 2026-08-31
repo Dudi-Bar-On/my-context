@@ -161,6 +161,31 @@ export function occupancyBands(threshold) {
 }
 
 /**
+ * **HOW FAR THE ASK IS, IN POINTS OF THE WINDOW — one spelling, two surfaces.**
+ *
+ * `threshold - pct`, and the reason it is a function rather than a subtraction
+ * written twice is the reason `occupancyBands` is: the terminal bar draws
+ * `◆ ask 85 · +59.9` and the web strip draws the same distance beside the same
+ * gold marker, and two spellings of one arithmetic is how two surfaces come to
+ * disagree about one number. `cli/commands/statusline-powerline.ts` reaches
+ * this through the same `import()` bridge it reaches `occupancyLevel` through.
+ *
+ * `null` when there is nothing to subtract — no percentage, or no configured
+ * ask to measure a distance to. A headroom measured against a threshold nobody
+ * set would be a number invented by the renderer.
+ *
+ * NOT clamped at zero: a window past the ask has NEGATIVE headroom and that is
+ * a true fact about it. Both surfaces stop drawing the figure there and let the
+ * gold "handover due" say it instead, but that is a rendering choice made by
+ * each of them, not a lie told here.
+ */
+export function askHeadroom(pct, threshold) {
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return null;
+  if (typeof threshold !== 'number' || !Number.isFinite(threshold)) return null;
+  return threshold - pct;
+}
+
+/**
  * **How old a context sample may be and still be levelled.**
  *
  * `plan:walk seq:117`: *"Do not colour a stale figure as though it were live.
@@ -337,10 +362,17 @@ export function contextStrip(body, isCold) {
   // caller gets one view object rather than reaching back into the response.
   // A cold session is a hypothetical and has no account reading either.
   const rate = rateWindows(isCold ? null : body);
+  // ── AND THE SEVEN FACTS THE TERMINAL BAR HAS ALWAYS DRAWN AND THIS ONE
+  // NEVER DID (2026-09-01). Read on the same body, in the same pass, so a
+  // caller gets ONE view object — the reason `rate` is read here and not in
+  // the DOM builder. `identityOf` reports every one of them as `null` for a
+  // cold session, which is what a hypothetical has to say about a model, a
+  // cost or a log it has no reading of.
+  const identity = identityOf(isCold ? null : body);
   if (isCold || body === null) {
     return {
       state: 'cold', pct: null, used: null, size: null, receivedAt: null,
-      myctx: null, myctxError: null, handover, rate,
+      myctx: null, myctxError: null, handover, rate, ...identity,
     };
   }
   const myctx = body.mycontext ?? null;
@@ -348,7 +380,7 @@ export function contextStrip(body, isCold) {
   if (body.sample === null) {
     return {
       state: 'no-bridge', pct: null, used: null, size: null, receivedAt: null,
-      myctx, myctxError, handover, rate,
+      myctx, myctxError, handover, rate, ...identity,
     };
   }
   const c = body.sample.context;
@@ -362,6 +394,56 @@ export function contextStrip(body, isCold) {
     myctxError,
     handover,
     rate,
+    ...identity,
+  };
+}
+
+/**
+ * **WHAT THE TERMINAL BAR DRAWS AND THIS STRIP DID NOT** — read off the served
+ * body, defensively, and never derived here.
+ *
+ * Every one of these was already on `mycontext statusline` and on no web
+ * surface at all. They diverged because each bar was specified separately with
+ * nothing holding them together; `test/ui/strip-parity.test.ts` is what holds
+ * them together now, and this is the client half of the fields it checks.
+ *
+ * **Not computed, in every case where computing was the tempting option.**
+ * The non-default MODES are folded into one phrase by the server, because which
+ * words count as "not the ordinary case" is a judgement about an external
+ * payload rather than about a language. The CACHE SHARE is derived from the
+ * three token counts by `payloadExtras`, beside the occupancy that divides the
+ * same numerator — a browser repeating that division would be a second
+ * spelling. The LOG's staleness is decided by `age > CONTEXT_SAMPLE_FRESH_MS`
+ * at draw time, against this module's own constant, so no second boundary
+ * exists to disagree with the one the context chip already uses.
+ *
+ * `null` throughout means NOT SERVED, which the caller draws as a named
+ * unmeasured state and never as a zero.
+ */
+function identityOf(body) {
+  const b = body === null || body === undefined || typeof body !== 'object' ? {} : body;
+  const str = (v) => (typeof v === 'string' && v !== '' ? v : null);
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const log = b.lastAudit === null || b.lastAudit === undefined
+    || typeof b.lastAudit !== 'object' ? null : b.lastAudit;
+  return {
+    model: str(b.sample?.model),
+    modes: str(b.modes),
+    sessionName: str(b.sessionName),
+    // `focus` is read from `state/focus.json` by the server and NOT from the
+    // audit log: every `focus-set` row in the real log carries `sessionId:
+    // null`, so the log cannot answer "what is this session focused on" at
+    // all. That is measured, not assumed. `false` is the measured no-focus
+    // state and `null` is "the server did not say" — two different sentences.
+    focus: str(b.focus),
+    focusRead: typeof b.focus === 'string' || b.focus === null,
+    costUsd: num(b.costUsd),
+    warmPercent: num(b.warmPercent),
+    lastAudit: log === null || typeof log.state !== 'string' ? null : {
+      state: log.state,                  // 'known' | 'empty' | 'unreadable'
+      op: str(log.op),
+      at: str(log.at),
+    },
   };
 }
 

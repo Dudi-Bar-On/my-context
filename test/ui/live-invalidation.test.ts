@@ -386,26 +386,42 @@ test('every chrome entry is \'auto\' — the shell has no \'ask\' path for chrom
 });
 
 /**
- * The two groups whose honest answer is "nothing", written down rather than
- * left absent — the same distinction the three static screens carry above, and
+ * The group whose honest answer is "nothing", written down rather than left
+ * absent — the same distinction the three static screens carry above, and
  * checked here for the same reason: `[]` and a missing key read identically
  * unless something enforces the difference.
  *
- * `repo` is `/api/meta`'s git state, and no op in `AUDIT_OPS` records a
- * commit, a checkout or a fetch. `audit` is the injections-today and append-p95
- * segment, which `renderChrome()` draws as `strip.unmeasured` from no endpoint
- * at all. Neither can be made stale by a record, and neither may be refetched
- * on one: an item write that made the git group flicker would be the wasteful
- * blanket this per-group table exists to refuse.
+ * `repo` is `/api/meta`'s git state, and no op in `AUDIT_OPS` records a commit,
+ * a checkout or a fetch. It cannot be made stale by a record and may not be
+ * refetched on one: an item write that made the git group flicker would be the
+ * wasteful blanket this per-group table exists to refuse.
+ *
+ * **`audit` LEFT THIS TEST ON 2026-09-01, because it gained a live source.**
+ * It was `[]` while the group's only content was `injections today`, which has
+ * no endpoint on this read surface and is drawn NAMED as unmeasured. The group
+ * now also carries the audit CLOCK — the newest row's op and how long ago —
+ * which `/api/watch/context` serves, so there is a source, and `'*'` is its
+ * honest subscription: the clock's entire job is to report that the log moved,
+ * so a record of ANY kind is precisely its event. A row that leaves this test
+ * because the thing it described stopped being true is the direction these
+ * ledgers are meant to move; one that leaves because somebody stopped checking
+ * is not, which is why the reason is written here rather than left to a diff.
+ * The `'*'` case is held by the provenance-bar test below, which `audit` now
+ * shares.
  */
-test('the two chrome groups with no live source declare "nothing" explicitly', async () => {
+test('the chrome group with no live source declares "nothing" explicitly', async () => {
   const { CHROME_INVALIDATION } = await loadLiveInvalidation();
-  for (const group of ['repo', 'audit']) {
-    assert.deepEqual(
-      CHROME_INVALIDATION[group]?.kinds, [],
-      `${group} should be the reasoned-about "nothing" case: [], not absent and not '*'`,
-    );
-  }
+  assert.deepEqual(
+    CHROME_INVALIDATION['repo']?.kinds, [],
+    "repo should be the reasoned-about 'nothing' case: [], not absent and not '*'",
+  );
+  // AND `audit` is now the opposite case, asserted here so the move is a
+  // MEASUREMENT rather than a deletion: a group that quietly went from `[]` to
+  // absent would look identical to this edit in a diff.
+  assert.equal(
+    CHROME_INVALIDATION['audit']?.kinds, '*',
+    "audit carries the audit clock since 2026-09-01, so its subscription is every kind",
+  );
 });
 
 /**

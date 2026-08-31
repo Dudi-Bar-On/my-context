@@ -936,6 +936,47 @@ export const strings = {
   // The four provenance-group labels. Colour says where a number came from
   // and these say it a second time, because colour alone fails a dichromat,
   // a monochrome printer and forced-colors (06-a11y.html).
+  // ── THE TWO-ROW STRIP'S LINE 1, AND THE THREE FIELDS LINE 2 GAINED
+  // (2026-09-01). Every one of these was already on the terminal status line
+  // and on no web surface at all, which is the divergence this pass exists to
+  // end: the two bars were specified separately with nothing holding them
+  // together, and this project has now measured that same defect eight times.
+  //
+  // The strip is a SUPERSET, never a harmonisation: it keeps every field it
+  // had — the review queue included, which the terminal refuses because it
+  // costs a second database there and is free from /api/status here — and
+  // gains everything the terminal draws.
+  'strip.project': '{mv:project}',
+  'strip.grp.model': 'model',
+  'strip.grp.window': 'window',
+  'strip.grp.cost': 'cost',
+  'strip.grp.limits': 'limits',
+  'strip.rlNone': 'no account windows reported',
+  'strip.model': '{name}',
+  // The non-default modes only. Composed server-side into one phrase, because
+  // which words are "not the ordinary case" is a judgement about a payload and
+  // not about a language: 'medium' effort is the default and is suppressed,
+  // and a null is "the payload did not say", treated exactly as a default.
+  'strip.modelModes': '{modes}',
+  'title.model': 'The model answering this session, and any mode that is not the ordinary case — effort, extended thinking, fast mode, or a window past 200k. A mode at its default is not drawn: this block reports the presence of a state, never the absence of a field.',
+  'strip.sessionName': 'named {name}',
+  'title.window': 'Which window this is, and what it is for. The name is drawn only when it differs from the project name — a session called after its project restates a block already on screen, and this field exists to tell two windows apart when the model, the project and the branch are identical in both.',
+  'strip.focus': 'focus {mv:focus}',
+  'strip.noFocus': 'no focus set',
+  'strip.cost': '${usd}',
+  'strip.warm': '{pct}% served from cache',
+  'title.cost': 'What this session has cost so far, and how much of the input the cache served. The share is DERIVED from the token counts in the same payload the context figure comes from — cache reads over the input total — because no payload this project has captured carries a cache field of its own.',
+  // The DISTANCE to the ask, which is a different fact from what became of the
+  // last one. Neutral, never gold: gold is earned at the warn band and a
+  // marker that is gold at every fill has stopped meaning anything by the time
+  // it is needed.
+  'strip.ctxAsk': 'ask {threshold} · +{headroom}',
+  'title.ctxAsk': 'How far this window is from the handover ask, in points of the window. The threshold is the configured one and is served, never a constant in this page; the distance is the same subtraction the terminal bar makes, out of the same module. It goes quiet at the threshold, where the distance is spent and the gold marker takes over.',
+  'strip.log': 'last {mv:op}, {age} ago',
+  'strip.logQuiet': 'nothing logged for {age}',
+  'strip.logEmpty': 'nothing recorded yet',
+  'strip.logUnreadable': 'audit log unreadable',
+  'title.log': 'When the audit log last moved, and what moved it. A watcher that stopped watching, a projection that stopped syncing and an injection count that spans a fortnight are all the same failure — something stopped being current and nothing said so — and a visible stamp on the newest row catches the class rather than an instance. Past the age at which a context sample stops being current, this turns amber; that boundary is the same constant, not a second one.',
   'strip.grp.repo': 'repo',
   'strip.grp.corpus': 'corpus',
   'strip.grp.session': 'session',

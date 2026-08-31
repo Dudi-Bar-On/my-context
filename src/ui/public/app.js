@@ -148,8 +148,9 @@ import { markdownNodes } from '/screens/docs.js';
 // beside `contextStrip` and both unit-tested there, because a decision table
 // inside a DOM builder is a decision table no test can reach.
 import {
-  CONTEXT_FILL_CRIT_PERCENT, CONTEXT_FILL_WARN_PERCENT,
-  contextStrip, corpusDrift, fillLevel, formatAge, occupancyBands, occupancyLevel,
+  CONTEXT_FILL_CRIT_PERCENT, CONTEXT_FILL_WARN_PERCENT, CONTEXT_SAMPLE_FRESH_MS,
+  askHeadroom, contextStrip, corpusDrift, fillLevel, formatAge,
+  occupancyBands, occupancyLevel,
 } from '/lib/viewmodel.js';
 // The rail's Coverage-gaps badge counts the SAME directories the gaps table
 // lists, through the same function. See `paintRailCounts` for why the count is
@@ -542,6 +543,7 @@ function fillCorpusDrift() {
   if (view.state === 'drifted') {
     chip.className = 'chip warn';
     chip.dataset.g = '▲';
+    chip.dataset.f = 'corpus-drift';
     chip.dataset.k = 'strip.corpusDrifted';
     // The age is the whole reason the endpoint answers `aheadByMs` at all:
     // "an edit landed since you opened this tab" and "an edit landed last
@@ -559,12 +561,14 @@ function fillCorpusDrift() {
     // to it rather than to a silence they have to interpret.
     chip.className = 'chip ok';
     chip.dataset.g = '●';
+    chip.dataset.f = 'corpus-drift';
     chip.dataset.k = 'strip.corpusInStep';
     chip.append(...translate(table.strings, 'strip.corpusInStep'));
     chip.title = flat(table.strings, 'title.corpusInStep');
   } else {
     chip.className = 'chip unmeas';
     chip.dataset.g = '◌';
+    chip.dataset.f = 'corpus-drift';
     chip.dataset.k = 'strip.corpusDriftUnknown';
     chip.append(...translate(table.strings, 'strip.corpusDriftUnknown'));
     chip.title = flat(table.strings, 'title.corpusDriftUnknown');
@@ -2175,11 +2179,22 @@ const CHROME_REFILL = {
   // gains kinds cannot find itself with nothing to run.
   repo: () => { const el = document.getElementById('gitstate'); if (el !== null) void fillGit(el); },
   corpus: () => { const el = document.getElementById('stripitems'); if (el !== null) void fillItems(el); },
+  // ── AND WITH IT, SINCE 2026-09-01, LINE 1 AND THE COST GROUP. The model,
+  // the window's name and focus, the cost, the cache share and the audit clock
+  // all ride `/api/watch/context`, so one call refills all of them and there is
+  // no second row in this table for facts that arrive in one body.
   session: () => { void fillContext(); },
-  // `renderChrome()` builds this group from no endpoint at all — there is
-  // nothing to fetch and nothing to make stale. A no-op, and not an absence:
-  // the key is what says somebody looked.
-  audit: () => {},
+  // **NOT A NO-OP ANY MORE.** This row read `() => {}` while the group's only
+  // content was `injections today`, which has no source on this read surface
+  // and is drawn NAMED as unmeasured. The group now also carries the audit
+  // CLOCK — when the log last moved, and what moved it — which is served on
+  // `/api/watch/context`, so there is something to make stale and something to
+  // run. `kinds: '*'` beside it, because the clock's entire job is to report
+  // that the log moved: a row of ANY kind is exactly the event it reports, and
+  // a subscription to a subset would be a clock that stops for the kinds
+  // nobody listed. It shares `session`'s call, so the extra kinds cost a
+  // refetch of one body this page already refetches, never a second endpoint.
+  audit: () => { void fillContext(); },
   prov: () => { void fillProvenance(); },
   // **THE RAIL'S COUNT BADGES, WHICH NOTHING EVER REFRESHED** — `plan:walk
   // seq:120`, third of the three causes the owner's report has under it.
@@ -2428,9 +2443,34 @@ function renderChrome() {
   }
   strip.replaceChildren();
 
-  const sep = () => {
+  // ── TWO ROWS SINCE 2026-09-01, AND THE SPLIT IS THE TERMINAL BAR'S.
+  //
+  // Owner ruling: line 1 is IDENTITY — what does not change while the session
+  // runs — and line 2 is STATE, everything that moves. The reason is a reading
+  // habit rather than a width: after ten minutes a reader stops looking at
+  // line 1 at all, so every changing number belongs on one row and motion
+  // never appears where the eye has learned that nothing does. The terminal is
+  // the precedent (`cli/commands/statusline-powerline.ts` · `buildLines`), the
+  // owner approved it there, and the strip follows it here.
+  //
+  // **The rows are ELEMENTS, not a wrap.** `.strip` is a grid of two STATED
+  // rows — 26px and 38px — so the bar is sized once, for its tallest content,
+  // and can never be a container smaller than what is in it. A flex row that
+  // wrapped would have grown silently, pushed its overflow out of the 38px the
+  // `.app` grid reserved, and left whatever escaped behind the cards laid out
+  // as though the strip ended where its box said it did. That is not a
+  // hypothetical: it is what one intermediate state of this very change did,
+  // measured on the owner's page — a 64px box with 134px of content in it.
+  const identityRow = document.createElement('div');
+  identityRow.className = 'striprow striprow-identity';
+  const stateRow = document.createElement('div');
+  stateRow.className = 'striprow striprow-state';
+  strip.append(identityRow, stateRow);
+
+  const sep = (into) => {
     const e = document.createElement('span');
     e.className = 'sep';
+    if (into !== undefined) into.append(e);
     return e;
   };
 
@@ -2484,11 +2524,70 @@ function renderChrome() {
     // pickers, which carry `margin-inline-start:auto` and stay pinned to the
     // far edge either way. Moved rather than built in place so `group()` keeps
     // its one shape for all four provenance groups.
+    // ── AND THE PROJECT'S NAME, which no web surface drew at all until
+    // 2026-09-01. The terminal bar has carried it on line 1 since it was
+    // written; the browser had a wordmark saying "mycontext" — the product —
+    // and nothing saying WHICH REPOSITORY is open. Two windows on two clones
+    // were indistinguishable in the chrome.
+    //
+    // `projectRoot` is the `.my_context` directory, so the NAME is its
+    // parent's — the same derivation `mycontext statusline` makes from the
+    // session directory Claude Code names, and the same one the session-name
+    // suppression compares against server-side.
+    const name = document.createElement('span');
+    name.className = 'reponame';
+    name.id = 'reponame';
+    repo.append(name);
     const pickers = topbar.querySelector('.topr');
     if (pickers !== null) topbar.insertBefore(repo, pickers);
   }
 
-  const corpus = group('corpus', 'strip.grp.corpus', strip);
+  // ══ LINE 1 — IDENTITY ═════════════════════════════════════════════════
+  //
+  // The repo group is NOT rebuilt here and that is deliberate. It is identity
+  // and it is already drawn, in the header, where `plan:walk seq:114` moved it
+  // on 2026-08-31 to give the context figure its width back. The header is the
+  // row above this one and is permanently visible, so the project, the branch
+  // and the commit are already on an identity line; moving them again would
+  // reverse a day-old ruling to gain nothing. `e2e/strip.spec.ts` already
+  // reads the header group and this footer as ONE surface, and
+  // `test/ui/strip-parity.test.ts` does the same.
+  const model = group('model', 'strip.grp.model', identityRow);
+  const modelState = document.createElement('span');
+  modelState.className = 'modelstate';
+  modelState.id = 'modelstate';
+  model.append(modelState);
+  sep(identityRow);
+
+  const windowGrp = group('window', 'strip.grp.window', identityRow);
+  const windowState = document.createElement('span');
+  windowState.className = 'windowstate';
+  windowState.id = 'windowstate';
+  windowGrp.append(windowState);
+
+  // ── AND THE CORPUS GROUP JOINS THEM — owner ruling 2026-09-01,
+  // *"rebalance the fields between the lines to show their maximum lenght and
+  // not truncated"*.
+  //
+  // MEASURED at the owner's 2273px: row 1 was using 335px and row 2 was
+  // saturated, with exactly two segments clipped — `in step with the log` (104
+  // shown, 168 needed) and `injections today` (37 shown, 101 needed). 128px of
+  // unmet need beside ~1,600px of unused space one row up.
+  //
+  // WHICH GROUP MOVES IS NOT ARBITRARY, and it is not the biggest one. The row
+  // split is IDENTITY over STATE, and the corpus group is the one line-2 group
+  // whose facts are not this session's: an item count, whether the files have
+  // moved under the log, how many doctor findings stand and how many items
+  // await a ruling all change on the corpus's timescale — an edit, a branch
+  // switch, a promotion — and not on the per-message timescale everything left
+  // on line 2 moves at. The session group could not move: the context figure
+  // changes on every response, and motion on the row the eye has learned is
+  // still is the whole thing this split exists to prevent.
+  //
+  // It is also, and this is a coincidence worth writing down rather than
+  // relying on, one of the two groups that was clipping.
+  sep(identityRow);
+  const corpus = group('corpus', 'strip.grp.corpus', identityRow);
   const count = document.createElement('span');
   count.className = 'corpusstate';
   count.id = 'stripitems';
@@ -2540,14 +2639,66 @@ function renderChrome() {
   notes.className = 'sprop';
   notes.id = 'corpusnotes';
   corpus.append(count, drift, notes);
-  strip.append(sep());
+  sep(identityRow);
 
-  const session = group('session', 'strip.grp.session', strip);
+  // ── THE ACCOUNT'S QUOTA IS A DIFFERENT SUBJECT FROM THIS SESSION'S WINDOW,
+  // and since 2026-09-01 it is a different GROUP — owner ruling, the second
+  // rebalance of the same evening.
+  //
+  // MEASURED at 2273px with the two rows first drawn: `sgrp-session` was eight
+  // fields and 1,492px — SIXTY-FIVE PERCENT of the whole strip in one group,
+  // where every other group measured between 129 and 432px. Row 2 was not
+  // overloaded because it held three groups; it was overloaded because one of
+  // them was larger than all the others combined. Moving whole groups between
+  // rows could only have inverted that.
+  //
+  // **The split is by subject, which is the rule the owner set** (*"divide the
+  // rows by related subjects, simmilar to the terminal status line"*). The
+  // context figure, the ask, the myctx share and the handover verdict are all
+  // about THIS SESSION'S WINDOW. The five-hour and seven-day windows are about
+  // the ACCOUNT'S QUOTA — a different thing, on a different clock: hours and
+  // days, against a figure that moves on every response. A slow fact belongs
+  // with the other slow facts, which is line 1.
+  //
+  // **This is one place the two bars deliberately differ, and the parity test
+  // is built to allow it.** The terminal carries the rate windows on its line
+  // 2, because a terminal has one width and no second row to spend. What
+  // `test/ui/strip-parity.test.ts` compares is WHICH FACTS are on the bar,
+  // never where or how they are drawn — a gate that asserted layout would fail
+  // the first time one surface could do something the other cannot.
+  const limits = group('limits', 'strip.grp.limits', identityRow);
+  const limitState = document.createElement('span');
+  limitState.className = 'limitstate';
+  limitState.id = 'limitstate';
+  limits.append(limitState);
+
+  // ══ LINE 2 — STATE ════════════════════════════════════════════════════
+
+  const session = group('session', 'strip.grp.session', stateRow);
   const ctx = document.createElement('span');
   ctx.className = 'ctxstate';
   ctx.id = 'ctx';
   session.append(ctx);
-  strip.append(sep());
+  sep(stateRow);
+
+  // ── WHAT THIS SESSION IS COSTING, AND HOW MUCH THE CACHE IS ABSORBING.
+  //
+  // One group and not two fields in the session group, because they are the
+  // ACCOUNT's facts rather than this window's: the context figure beside them
+  // measures the window, and `$4.62` measures the bill. The terminal folds the
+  // pair into one block for the same reason — they are one question — and this
+  // is that block with a label on it.
+  //
+  // No new source and no new call: `cost.total_cost_usd` rides the status-line
+  // payload `/api/watch/context` already reads, and the warm share is derived
+  // from the three token counts in the same payload by the same `payloadExtras`
+  // the terminal parses it with.
+  const cost = group('cost', 'strip.grp.cost', stateRow);
+  const costState = document.createElement('span');
+  costState.className = 'coststate';
+  costState.id = 'coststate';
+  cost.append(costState);
+  sep(stateRow);
 
   // ── THE AUDIT GROUP — two properties the reader is owed, and the one state
   // both are permanently in. Built here rather than in `fillChrome()` because
@@ -2556,7 +2707,7 @@ function renderChrome() {
   // either way — the property is what the reader is owed, and hiding the
   // whole segment is how forty of forty-four came to be invisible — with an
   // em dash where the figure goes and ONE chip naming the state for both.
-  const audit = group('audit', 'strip.grp.audit', strip);
+  const audit = group('audit', 'strip.grp.audit', stateRow);
   const auditState = document.createElement('span');
   auditState.className = 'auditstate';
   auditState.id = 'auditstate';
@@ -2582,11 +2733,25 @@ function renderChrome() {
     dash.textContent = '—';
     const label = document.createElement('span');
     label.className = 'sprop';
+    label.dataset.f = 'injections';
     label.dataset.k = key;
     label.append(...translate(table.strings, key));
     auditState.append(dash, document.createTextNode(' '), label);
   }
-  audit.append(auditState);
+  // ── AND WHEN THE LOG LAST MOVED, which is the one figure in this group that
+  // DOES have a source on the read surface — `newestAuditRow` over the audit
+  // projection `/api/watch/context` already opens. It is the field the group's
+  // header calls impossible, made possible by a different endpoint answering
+  // it; `injections today` above still has none and is still named unmeasured.
+  //
+  // Its own element beside the injections figure, for the reason `#corpusdrift`
+  // is its own beside the count: two facts, two sources, two refill triggers,
+  // and one `replaceChildren` per fact means a refill of either can never blank
+  // the other.
+  const auditLog = document.createElement('span');
+  auditLog.className = 'auditlog';
+  auditLog.id = 'auditlog';
+  audit.append(auditState, auditLog);
 
   // ── THE SHARED LIVE STREAM'S OWN FAULT — present but hidden, exactly as
   // `#prov` is built empty above, so the row's width does not jump the
@@ -2599,7 +2764,7 @@ function renderChrome() {
   const live = document.createElement('span');
   live.id = 'livestate';
   live.hidden = true;
-  strip.append(liveSep, live);
+  stateRow.append(liveSep, live);
 
   // ── THE SCREEN-LIVE AFFORDANCE IS NO LONGER BUILT HERE — `plan:walk
   // seq:116`, owner ruling 2026-08-31: *"move the refresh button to the
@@ -2862,6 +3027,11 @@ async function fillGit(git) {
   };
   const chip = (key, subs, ok) => {
     const el = keyed(key, subs);
+    // The upstream VERDICT, which is a different fact from the branch's name:
+    // `git-info.ts` reads `.git` as files and cannot walk revisions, so this
+    // says `differs` where a count would be a number nobody measured. Web-only
+    // — the terminal draws the branch and not its upstream.
+    el.dataset.f = 'upstream';
     el.className = ok ? 'chip ok' : 'chip warn';
     el.dataset.g = ok ? '●' : '▲';
     return el;
@@ -2878,13 +3048,26 @@ async function fillGit(git) {
     // `return` early on a shape the strip cannot draw, and neither of these
     // facts is the git group's.
     noteCorpusDrift(meta);
+    // ── AND WHICH REPOSITORY IS OPEN. The wordmark says "mycontext", which is
+    // the PRODUCT; nothing in this chrome said which clone. The terminal bar
+    // has carried the project name on its line 1 since it was written, and two
+    // windows on two clones were indistinguishable here.
+    //
+    // `repoRoot` is served by `/api/meta`, the call this function already
+    // makes. Drawn before the git branch for the reason the two disclosures
+    // above are drawn there: everything below can `return` early on a shape
+    // the strip cannot draw, and the repository's name is not the git group's
+    // fact to lose with it.
+    drawProjectName(meta);
     const g = meta.git;
     // `branch` is checked BEFORE `detached`, because git-info.ts documents one
     // shape where both `branch === null` and `detached === false` hold — a HEAD
     // it could not understand — and there `upstream: 'unknown'` is what should
     // render, never "on a branch".
     if (g === undefined || g === null) {
-      parts.push(keyed('strip.notARepo', {}));
+      const none = keyed('strip.notARepo', {});
+      none.dataset.f = 'upstream';
+      parts.push(none);
     } else if (typeof g.branch === 'string') {
       // **THE BRANCH KEEPS ITS FULL NAME AGAIN, BECAUSE THE GROUP MOVED** —
       // `plan:walk seq:114`, owner ruling 2026-08-31.
@@ -2915,6 +3098,7 @@ async function fillGit(git) {
       const commit = String(g.commit ?? '');
       const segment = keyed('strip.branch',
         { branch: g.branch, commit: commit.slice(0, 7) });
+      segment.dataset.f = 'branch';
       // Only when something was actually dropped. A title repeating what is
       // already on screen is noise a screen reader reads out twice.
       if (commit.length > 7) segment.title = commit;
@@ -2952,7 +3136,9 @@ async function fillGit(git) {
         parts.push(chip(key, { branch: g.branch }, false));
       }
     } else if (g.detached === true) {
-      parts.push(keyed('strip.detached', { commit: String(g.commit ?? '').slice(0, 7) }));
+      const detached = keyed('strip.detached', { commit: String(g.commit ?? '').slice(0, 7) });
+      detached.dataset.f = 'branch';
+      parts.push(detached);
     } else {
       parts.push(chip('strip.unknownTip', {}, false));
     }
@@ -2985,6 +3171,14 @@ async function fillGit(git) {
  */
 async function fillItems(count) {
   const label = document.createElement('span');
+  // ── WEB-ONLY, AND LEGITIMATELY SO. The item count, the drift sweep, the two
+  // doors and the injection tally have no terminal counterpart and are not
+  // owed one: `test/ui/strip-parity.test.ts` checks ONE direction — the
+  // terminal's fields must be a subset of these — because the browser has room
+  // the terminal does not and the owner ruled that it be used. Tagged all the
+  // same, so the set this surface declares is the whole of what it draws and
+  // not merely the half that has a twin.
+  label.dataset.f = 'items';
   label.dataset.k = 'strip.items';
   label.append(...translate(table.strings, 'strip.items'));
   const value = document.createElement('span');
@@ -3035,19 +3229,21 @@ async function fillItems(count) {
  */
 function corpusNoteButtons(status) {
   const out = [];
-  const open = (key, titleKey, count, route) => {
+  const open = (key, titleKey, count, route, field) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'linkid';
+    btn.dataset.f = field;
     btn.dataset.k = key;
     btn.append(...translate(table.strings, key, { count: String(count) }));
     btn.title = flat(table.strings, titleKey);
     btn.onclick = () => { location.hash = `#/${route}`; };
     return btn;
   };
-  out.push(open('strip.doc', 'title.doc', doctorNoticeCount(status), 'doctor'));
+  out.push(open('strip.doc', 'title.doc', doctorNoticeCount(status), 'doctor',
+    'doctor-notices'));
   const queue = reviewQueueCount(status);
-  if (queue > 0) out.push(open('strip.queue', 'title.queue', queue, 'work'));
+  if (queue > 0) out.push(open('strip.queue', 'title.queue', queue, 'work', 'review-queue'));
   return out;
 }
 
@@ -3111,7 +3307,21 @@ async function fillContext() {
   const ctx = document.getElementById('ctx');
   if (ctx === null) return;
   const retry = () => { void fillContext(); };
-  if (noCredential) { ctx.replaceChildren(...unreadState(retry)); return; }
+  // ── THE FOUR OTHER BOXES THIS ONE ANSWER FILLS (2026-09-01).
+  //
+  // The model, the window's name and focus, the cost and the audit clock all
+  // ride `/api/watch/context`, so one refusal is a refusal for all five and
+  // every one of them must SAY so rather than sit blank —
+  // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, clause 3:
+  // "a blank is indistinguishable from a failure to load". A retry in each is
+  // the same retry; they all ask this one function again.
+  const unread = () => {
+    for (const id of ['modelstate', 'windowstate', 'coststate', 'auditlog', 'limitstate']) {
+      const el = document.getElementById(id);
+      if (el !== null) el.replaceChildren(...unreadState(retry));
+    }
+  };
+  if (noCredential) { ctx.replaceChildren(...unreadState(retry)); unread(); return; }
 
   const session = currentSession();
   let body = null;
@@ -3121,6 +3331,7 @@ async function fillContext() {
     } catch {
       lastContextBody = null;
       ctx.replaceChildren(...unreadState(retry));
+      unread();
       return;
     }
   }
@@ -3164,6 +3375,37 @@ function drawContext() {
 
   const view = contextStrip(body, cold);
   const state = document.createElement('span');
+  // ── THE FIGURE CARRIES THE BAND, AND IT IS THE EMPHASISED ELEMENT OF THE
+  // WHOLE BAR — owner ruling 2026-09-01, in two parts.
+  //
+  // FIRST: *"verify the percentage has coloured levels green yellow red,
+  // currently only white text"*. The band WAS computed and WAS correct — it
+  // was attached to a chip beside the figure reading "room left", while the
+  // number itself stayed neutral. A reader looking at `39.2%` saw grey and
+  // concluded the levels were not implemented. That is the terminal's shape
+  // (`● ctx 25.1%`, the block itself carrying the band) and the strip was the
+  // one that had drifted from it.
+  //
+  // SECOND: *"emphesize the context metrics by a background and or bigger
+  // bolded font, background colour should represent the level"*. `.ctxfig` is
+  // one class carrying the METRICS — 16px, 700 weight, its own padded box —
+  // and `.ctxfig.ok/.warn/.crit/.unmeas` carry ONLY colour. That split is what
+  // keeps the bar still: the box is the same size in every state, so the row
+  // cannot move as the session fills, and the colour is the only thing that
+  // changes. A figure that grew when the band changed would shift the whole
+  // row while somebody was reading it.
+  //
+  // NO SIXTH HUE. `--okbg`, `--warnbg` and `--critbg` are already declared and
+  // already spent by `.chip.ok/.warn/.crit`; a background in a hue the budget
+  // already assigns is not a new hue
+  // (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`).
+  //
+  // AND THE CHIP BESIDE IT STAYS. Colour is never the only carrier
+  // (`06-a11y.html`: a glyph AND a colour AND a name) and `room left` is the
+  // NAME — what survives a dichromat, a mono printer and forced-colors. The
+  // terminal spends a glyph on exactly this and for exactly this reason.
+  state.className = 'ctxfig ' + ctxFigureLevel(view);
+  state.dataset.f = 'context';
   if (view.state === 'known') {
     state.dataset.k = 'strip.ctx.known';
     state.append(...translate(table.strings, 'strip.ctx.known', {
@@ -3212,6 +3454,11 @@ function drawContext() {
   if (view.state === 'known') {
     const tail = document.createElement('span');
     tail.className = 'small';
+    // All three answers are ONE field in its three states - the share, the
+    // partial share, and the reason there is none. A block explaining why a
+    // field is missing is not a second field; the terminal tags its own
+    // "myctx unavailable" the same way.
+    tail.dataset.f = 'myctx';
     if (view.myctx === null) {
       tail.dataset.k = 'strip.myctxUnavailable';
       tail.append(...translate(table.strings, 'strip.myctxUnavailable', {
@@ -3254,10 +3501,24 @@ function drawContext() {
   if (fill !== null) parts.push(fill);
   const proximity = handoverProximityChip(view);
   if (proximity !== null) parts.push(proximity);
-  // ── AND THE ACCOUNT'S OWN TWO WINDOWS, which are neither of the above: the
-  // context window is this session's, and these are the account's. Drawn from
-  // the same body, silent when the payload did not carry them.
-  parts.push(...rateLimitParts(view));
+  // ── AND HOW FAR THE NEXT ASK IS, AS A NUMBER - owner ruling 2026-09-01.
+  //
+  // The chips above say WHAT BECAME of the ask; this says how far the next one
+  // is. Two different facts, and the owner asked for both: a reader told
+  // "handover written 2h ago" still does not know whether the next ask is
+  // sixty points away or three. The terminal has drawn it since the ruling
+  // that the distance is worth reading at ANY fill.
+  //
+  // NEUTRAL, and that is what keeps the gold earned. A marker that is gold at
+  // every fill - including a window at 25% with sixty points of headroom - has
+  // stopped meaning anything by the time it is needed, which is precisely why
+  // `handoverProximityChip` above is silent below the warn band.
+  const head = askHeadroomChip(view);
+  if (head !== null) parts.push(head);
+  // The account's two windows are NOT here any more: they are their own group
+  // on line 1 since 2026-09-01 — a different subject on a different clock. See
+  // `renderChrome`. They are still drawn from this same body, in the same pass,
+  // by `drawIdentity` below.
   // ── AND WHAT BECAME OF THE HANDOVER ASK — `plan:walk seq:118`. Drawn in
   // EVERY state, including the ones with no context figure at all: whether the
   // handover was written is a fact about this session, not about whether the
@@ -3266,6 +3527,289 @@ function drawContext() {
   const handoverChip = handoverVerdictChip(view);
   if (handoverChip !== null) parts.push(handoverChip);
   ctx.replaceChildren(...parts);
+  // The same one answer fills line 1 and the two line-2 groups beside this one.
+  drawIdentity(view);
+}
+
+/**
+ * **HOW FAR THE HANDOVER ASK IS, AS A NUMBER** — owner ruling 2026-09-01, and
+ * the field the strip had no answer for at all.
+ *
+ * The strip already carried the ask's STATE — *"handover written 4h ago"* — and
+ * the gold marker that fires as the ask approaches. Neither of them is the
+ * DISTANCE, and the owner asked for both: they are two facts, and the one a
+ * reader plans against is how many points are left.
+ *
+ * **The subtraction is `askHeadroom`'s and nobody else's.** It is declared in
+ * `lib/viewmodel.js` beside `occupancyBands`, and `statusline-powerline.ts`
+ * reaches the same function through the same bridge it reaches the bands
+ * through. A `threshold - pct` written here would be a second spelling of one
+ * number, which is the defect this whole pass exists to end.
+ *
+ * **Neutral, never gold, and that is what keeps the gold worth something.**
+ * `handoverProximityChip` beside this spends the gold when the ask approaches;
+ * this one carries the figure at every live fill in the chip the strip already
+ * uses for "this is a reading, not a verdict".
+ *
+ * `null` in three cases, each of which is a refusal rather than a zero: no
+ * configured ask (there is no distance to a threshold nobody set), a state with
+ * no percentage to subtract from, and a sample too old to place — a fossil with
+ * sixty points of headroom is not reassurance, it is a stale claim wearing a
+ * plus sign. It also goes quiet AT the ask, where the distance is spent and the
+ * gold `handover due` beside it takes the sentence over.
+ */
+function askHeadroomChip(view) {
+  const threshold = view.handover.threshold;
+  if (view.state !== 'known' || threshold === null) return null;
+  const ageMs = view.receivedAt === null ? null : Math.max(0, Date.now() - Date.parse(view.receivedAt));
+  const level = occupancyLevel(view.pct, threshold, ageMs);
+  if (level === null || level === 'stale' || level === 'crit') return null;
+  const headroom = askHeadroom(view.pct, threshold);
+  if (headroom === null) return null;
+  const chip = document.createElement('span');
+  chip.className = 'chip unmeas';
+  chip.dataset.f = 'ask';
+  chip.dataset.g = '◆';
+  chip.dataset.k = 'strip.ctxAsk';
+  chip.append(...translate(table.strings, 'strip.ctxAsk', {
+    // The threshold reads as configured — `85`, not `85.0` — while the
+    // DISTANCE always carries its decimal, because it is the figure that moves
+    // and a gap showing `+3` for anything from 2.5 to 3.5 hides the last
+    // message before the ask. The same two rules the terminal block follows.
+    threshold: Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1),
+    headroom: headroom.toFixed(1),
+  }));
+  chip.title = flat(table.strings, 'title.ctxAsk');
+  return chip;
+}
+
+/**
+ * **WHICH REPOSITORY IS OPEN** — drawn in the header's provenance group, beside
+ * the branch and the commit, because it is the same fact one level up.
+ *
+ * `projectRoot` is the `.my_context` directory, so the NAME is its parent's.
+ * That is the same derivation `mycontext statusline` makes from the session
+ * directory Claude Code names, and the same one `distinctSessionName` compares
+ * a session name against server-side — so the three cannot disagree about what
+ * this project is called.
+ *
+ * A workspace with no `repoRoot` draws nothing rather than a placeholder: the
+ * git group beside this already says `not a git repository`, and two blocks
+ * saying one absence is one fact twice.
+ */
+function drawProjectName(meta) {
+  const el = document.getElementById('reponame');
+  if (el === null) return;
+  const root = typeof meta?.repoRoot === 'string' ? meta.repoRoot : null;
+  if (root === null) { el.replaceChildren(); return; }
+  const name = root.split(/[\\/]/).filter((part) => part !== '').pop() ?? null;
+  if (name === null) { el.replaceChildren(); return; }
+  const span = document.createElement('span');
+  span.dataset.k = 'strip.project';
+  span.dataset.f = 'project';
+  span.append(...translate(table.strings, 'strip.project', { project: name }));
+  el.replaceChildren(span);
+}
+
+/**
+ * **WHICH BAND THE CONTEXT FIGURE ITSELF WEARS.**
+ *
+ * `fillLevel` and nothing else — the ABSOLUTE bands, declared once in
+ * `lib/viewmodel.js`, the same call `fillChip` makes one element along. Two
+ * calls of one function, never two functions: the chip and the figure are the
+ * WORD and the COLOUR for one fact, and a reader who saw them disagree would
+ * be right to stop trusting both.
+ *
+ * `'unmeas'` for everything that is not a live level — a state with no
+ * percentage, and a sample too old to place. Visibly not-a-level rather than a
+ * level, which is the treatment `.chip.unmeas` already gets and for the same
+ * reason: a fossil in confident red is worse than an uncoloured number.
+ */
+function ctxFigureLevel(view) {
+  if (view.state !== 'known') return 'unmeas';
+  const ageMs = view.receivedAt === null ? null : Math.max(0, Date.now() - Date.parse(view.receivedAt));
+  const level = fillLevel(view.pct, ageMs);
+  return level === 'ok' || level === 'warn' || level === 'crit' ? level : 'unmeas';
+}
+
+/**
+ * **LINE 1, AND THE TWO LINE-2 GROUPS THAT RIDE THE SAME ANSWER.**
+ *
+ * Every field here was already drawn by `mycontext statusline` and by no web
+ * surface at all. They diverged because the two bars were specified separately
+ * with nothing holding them together — this project's most-repeated defect,
+ * measured eight times by 2026-09-01 — and `test/ui/strip-parity.test.ts` is
+ * what holds them together now.
+ *
+ * **The strip is a SUPERSET, never a harmonisation.** It keeps every field it
+ * already had, including the review queue, which the terminal refuses because
+ * it costs a second database open there and is free from `/api/status` here.
+ * Same field, different verdict, and the reason is the surface's cost model
+ * rather than the field's worth.
+ *
+ * `data-f` beside `data-k` on every keyed segment: `data-k` says WHICH SENTENCE
+ * was drawn and `data-f` says WHICH FACT it is about. The parity test compares
+ * the second, because two surfaces are entitled to say one fact differently —
+ * the browser can give the context figure a background and a larger face and
+ * the terminal cannot — and nothing about presentation may travel through a
+ * gate whose subject is coverage.
+ */
+function drawIdentity(view) {
+  // `{ field }` and not a positional argument, because `field: '<id>'` is the
+  // one form `test/ui/strip-parity.test.ts` derives both surfaces' field sets
+  // from. An id passed positionally would be invisible to that derivation, and
+  // a derivation with a blind spot is a hand-kept list wearing a regex.
+  const keyed = (key, subs, { field, cls }) => {
+    const el = document.createElement('span');
+    el.dataset.k = key;
+    el.dataset.f = field;
+    if (cls !== undefined) el.className = cls;
+    el.append(...translate(table.strings, key, subs));
+    return el;
+  };
+
+  const model = document.getElementById('modelstate');
+  if (model !== null) {
+    const parts = [];
+    // A session with no sample has no model to name, and says so with the
+    // chip the whole strip already uses for it rather than going blank.
+    if (view.model === null) {
+      parts.push(stateChip('strip.unread', 'title.unread'));
+    } else {
+      parts.push(keyed('strip.model', { name: view.model }, { field: 'model' }));
+      // The modes are composed by the server out of `modeFlags`, the same
+      // judgement the terminal folds into its model block. Absent means "no
+      // mode is out of the ordinary", which costs this row nothing.
+      if (view.modes !== null) {
+        parts.push(keyed('strip.modelModes', { modes: view.modes },
+          { field: 'model', cls: 'small' }));
+      }
+    }
+    model.replaceChildren(...parts);
+  }
+
+  const windowEl = document.getElementById('windowstate');
+  if (windowEl !== null) {
+    const parts = [];
+    // Drawn only when it differs from the project name — the suppression is
+    // `distinctSessionName`'s, applied server-side, so both bars apply one
+    // rule. A window named after its project restates the header.
+    if (view.sessionName !== null) {
+      parts.push(keyed('strip.sessionName', { name: view.sessionName },
+        { field: 'session-name' }));
+    }
+    // **Read from `state/focus.json`, never from the audit log** — every
+    // `focus-set` row in the real log carries `sessionId: null`, so the log
+    // cannot answer this at all. Unlike the terminal, the no-focus case is
+    // DRAWN: this row has the width, and after a compaction the question a
+    // reader has is not "how full am I" but "where was I".
+    if (!view.focusRead) parts.push(stateChip('strip.unread', 'title.unread'));
+    else if (view.focus === null) {
+      parts.push(keyed('strip.noFocus', {}, { field: 'focus', cls: 'small' }));
+    } else parts.push(keyed('strip.focus', { focus: view.focus }, { field: 'focus' }));
+    windowEl.replaceChildren(...parts);
+  }
+
+  const cost = document.getElementById('coststate');
+  if (cost !== null) {
+    const parts = [];
+    if (view.costUsd !== null) {
+      parts.push(keyed('strip.cost', { usd: view.costUsd.toFixed(2) },
+        { field: 'cost-cache' }));
+    }
+    if (view.warmPercent !== null) {
+      parts.push(keyed('strip.warm', { pct: view.warmPercent.toFixed(1) },
+        { field: 'cost-cache', cls: 'small' }));
+    }
+    // A payload that carried neither is not a session that cost nothing. The
+    // named unread state, never an invented `$0.00`.
+    if (parts.length === 0) parts.push(stateChip('strip.unread', 'title.unread'));
+    cost.replaceChildren(...parts);
+  }
+
+  const log = document.getElementById('auditlog');
+  if (log !== null) log.replaceChildren(...auditClockParts(view));
+
+  // The account's quota, in its own group on line 1. Silent when the payload
+  // carried no window — absence is silence here and never a placeholder, for
+  // the reason `rateLimitParts` gives: a 0% invented for a window nobody
+  // reported would be a claim about an account that was never made. A body
+  // that answered NOTHING is a different case and says so.
+  const limits = document.getElementById('limitstate');
+  if (limits !== null) {
+    const parts = rateLimitParts(view);
+    // **A GROUP MAY NOT BE EMPTY.** `rateLimitParts` is silent for a window the
+    // payload did not carry, which is right for ONE window beside another that
+    // reported: a 0% invented for a window nobody reported would be a claim
+    // about an account that was never made. It is not right for the whole
+    // group, because a label with nothing after it is the band of nothing this
+    // shell has already been caught drawing once. Neither window reported is a
+    // NAMED absence (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-
+    // thing-is`, clause 3: "a blank is indistinguishable from a failure to
+    // load"), and it is a different sentence from "not read" — the endpoint
+    // answered, and what it carried had no `rate_limits` in it.
+    if (parts.length === 0) {
+      const none = document.createElement('span');
+      none.className = 'chip unmeas';
+      none.dataset.g = '◌';
+      none.dataset.k = 'strip.rlNone';
+      none.dataset.f = 'rate-5h';
+      none.append(...translate(table.strings, 'strip.rlNone'));
+      none.title = flat(table.strings, 'title.rate');
+      parts.push(none);
+    }
+    limits.replaceChildren(...parts);
+  }
+}
+
+/**
+ * **WHEN THE AUDIT LOG LAST MOVED** — the one field in the audit group that
+ * has a source on this read surface.
+ *
+ * Three states, kept apart, because an empty log and a failed read are
+ * different facts: "nothing has been recorded" is a measurement and "I could
+ * not tell" is not, and a bar that draws them identically has destroyed the
+ * only difference that matters.
+ *
+ * **The staleness mark is DERIVED, not chosen.** Past `CONTEXT_SAMPLE_FRESH_MS`
+ * — this page's own constant, the same one that decides a context sample is too
+ * old to present as current — the block goes `warn`. Reusing it is the honest
+ * reading rather than a convenience: the constant answers "how long before a
+ * reading stops being evidence of a live session", and a log that has recorded
+ * nothing for that long is the same claim about the same session. No threshold
+ * is spelled here, and if that constant moves this moves with it.
+ *
+ * The age is computed HERE, at draw time, for the reason the "as of … ago"
+ * label beside it is: a duration frozen when the value was fetched is not a
+ * duration.
+ */
+function auditClockParts(view) {
+  const last = view.lastAudit;
+  const keyed = (key, subs, cls, glyph) => {
+    const el = document.createElement('span');
+    el.dataset.k = key;
+    el.dataset.f = 'last-audit';
+    el.className = cls;
+    if (glyph !== undefined) el.dataset.g = glyph;
+    el.append(...translate(table.strings, key, subs));
+    el.title = flat(table.strings, 'title.log');
+    return el;
+  };
+  if (last === null) return [stateChip('strip.unread', 'title.unread')];
+  if (last.state === 'empty') return [keyed('strip.logEmpty', {}, 'sprop')];
+  if (last.state !== 'known' || last.at === null || last.op === null) {
+    return [keyed('strip.logUnreadable', {}, 'chip warn', '▲')];
+  }
+  const at = Date.parse(last.at);
+  // A stamp this product wrote and cannot parse. Not an age of zero, and not
+  // silence either: the row is there and its date is not readable.
+  if (!Number.isFinite(at)) return [keyed('strip.logUnreadable', {}, 'chip warn', '▲')];
+  const ageMs = Math.max(0, Date.now() - at);
+  const age = formatAge(ageMs);
+  if (ageMs > CONTEXT_SAMPLE_FRESH_MS) {
+    return [keyed('strip.logQuiet', { age }, 'chip warn', '▲')];
+  }
+  return [keyed('strip.log', { op: last.op, age }, 'sprop')];
 }
 
 /**
@@ -3315,6 +3859,10 @@ function fillChip(view) {
   const level = view.state === 'known' ? fillLevel(view.pct, ageMs) : null;
   if (level === null) return null;
   const chip = document.createElement('span');
+  // The WORD for the band the figure beside it wears in COLOUR. Web-only as a
+  // separate field: the terminal spends a glyph on the same job, inside the
+  // context block itself, so there is no second block there to name.
+  chip.dataset.f = 'fill';
   if (level === 'stale') {
     chip.className = 'chip unmeas';
     chip.dataset.g = '\u25cc';
@@ -3401,6 +3949,7 @@ function handoverProximityChip(view) {
   const bands = occupancyBands(threshold);
   const chip = document.createElement('span');
   chip.className = 'chip gov';
+  chip.dataset.f = 'ask';
   chip.dataset.g = '\u25c6';
   // One decimal place: at the configured threshold of 85 the warn band opens at
   // 76.5, and rounding it to 77 would print a boundary the code does not use.
@@ -3450,15 +3999,33 @@ function handoverProximityChip(view) {
 function rateLimitParts(view) {
   const out = [];
   const windows = [
-    { key: 'strip.rl5', window: view.rate.fiveHour },
-    { key: 'strip.rl7', window: view.rate.sevenDay },
+    { key: 'strip.rl5', window: view.rate.fiveHour, field: 'rate-5h' },
+    { key: 'strip.rl7', window: view.rate.sevenDay, field: 'rate-7d' },
   ];
   let worst = null;
-  for (const { key, window } of windows) {
+  for (const { key, window, field } of windows) {
     if (window === null) continue;
     const span = document.createElement('span');
-    span.className = 'small';
+    // ── BANDED ON THE FIGURE, 2026-09-01 — owner ruling. These two were
+    // NEUTRAL AT EVERY VALUE: the chip below said "limit near" once a window
+    // crossed, and the percentages themselves never carried a colour at all.
+    //
+    // **`fillLevel`, which is what the terminal bands them with**, and NOT
+    // `occupancyLevel` — which is what the chip below still used. That was a
+    // real divergence: `rateLimitSegment` colours a window on the ABSOLUTE
+    // bands, because a quota's own fullness has nothing to do with when a
+    // handover is due, and the chip here was banding the same numbers against
+    // the handover threshold. Two surfaces, two answers, one fact. One
+    // function now, and the boundaries are still declared once.
+    //
+    // Age 0: a rate-limit window arrives with the payload being read right
+    // now, so there is no such thing as a stale one — `fillLevel`'s `stale`
+    // branch is unreachable from here and is not pretended otherwise.
+    const level = fillLevel(window.usedPercent, 0);
+    span.className = 'small rlfig ' + (level === 'ok' || level === 'warn' || level === 'crit'
+      ? level : 'unmeas');
     span.dataset.k = key;
+    span.dataset.f = field;
     span.append(...translate(table.strings, key, {
       pct: String(Math.round(window.usedPercent)),
       // `resetsAt` is SECONDS; `formatAge` takes milliseconds. Clamped at zero
@@ -3475,7 +4042,10 @@ function rateLimitParts(view) {
     // moves. A rate-limit percentage is a fact about the account over a fixed
     // period and the reset time beside it says how long that period has left,
     // so the reader can see for themselves how old the reading is.
-    const level = occupancyLevel(window.usedPercent, view.handover.threshold, null);
+    // The SAME band the figure beside it wears, and the same one the terminal
+    // uses — see the note above. This read `occupancyLevel` against the
+    // handover threshold until 2026-09-01, which meant the chip and the
+    // terminal's block could disagree about one window.
     if (level === 'crit') worst = 'crit';
     else if (level === 'warn' && worst === null) worst = 'warn';
   }

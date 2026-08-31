@@ -36,6 +36,12 @@ import { readFileSync } from 'node:fs';
 import { test, expect } from './app.ts';
 import type { Page } from '@playwright/test';
 import { MOCKUP_PATH, MOCKUP_URL } from './mockup.ts';
+import path from 'node:path';
+
+/** The terminal bar's source, read for its field ids and nothing else. */
+const TERMINAL_PATH = path.join(
+  import.meta.dirname, '..', 'src', 'cli', 'commands', 'statusline-powerline.ts',
+);
 
 /**
  * Every `data-t` key the design of record's `<footer class="strip">` declares,
@@ -190,6 +196,15 @@ const SCENARIOS: readonly Scenario[] = [
       // chip does not. That is the common case and it is meant to cost the row
       // nothing.
       rateLimits: RATE(16, 50),
+      // ── THE SEVEN FIELDS THE STRIP GAINED ON 2026-09-01, all present at
+      // once so line 1 and the cost group are drawn in full somewhere in this
+      // walk. Their absent states are reached by the scenarios below.
+      modes: 'high · think · 200k+',
+      sessionName: 'walk lane',
+      costUsd: 4.62,
+      warmPercent: 91.4,
+      focus: 'plan:walk seq:118',
+      lastAudit: { state: 'known', op: 'subagent-stop', at: new Date().toISOString() },
     },
   },
   {
@@ -202,6 +217,13 @@ const SCENARIOS: readonly Scenario[] = [
       mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
       handover: HANDOVER('not-asked'),
       rateLimits: RATE(16, 50),
+      // A log that has not moved for longer than a context sample stays
+      // current, and a session with NO focus. Both are measured states and
+      // both are drawn: `nothing logged for 3h20m` in the warn hue, and
+      // `no focus set` — which the terminal leaves silent and this row has the
+      // width to say.
+      focus: null,
+      lastAudit: { state: 'known', op: 'jit', at: new Date(Date.now() - 12_000_000).toISOString() },
     },
   },
   {
@@ -216,11 +238,18 @@ const SCENARIOS: readonly Scenario[] = [
         askedAt: new Date(Date.now() - 7_200_000).toISOString(),
         writtenAt: new Date(Date.now() - 7_000_000).toISOString(),
       }),
-      // The seven-day window inside the last tenth of the way to its ceiling.
-      // Banded by the SAME `occupancyLevel` the gold marker uses, against the
-      // same served threshold of 98 — so 95 is `warn` here for the same reason
-      // 95 would be `warn` there, and there is no second threshold set.
-      rateLimits: RATE(16, 95),
+      // The seven-day window inside the warn band. **Banded by `fillLevel`
+      // since 2026-09-01, not by `occupancyLevel`** — the ABSOLUTE bands, 60
+      // and 85, which is what `rateLimitSegment` bands the same two windows
+      // with in the terminal. A quota's own fullness has nothing to do with
+      // when a handover is due, and banding it against the handover threshold
+      // was one surface answering a question the other answered differently.
+      // 70 is `warn` on those bands; 95 would now be `crit`, which is the
+      // scenario below.
+      rateLimits: RATE(16, 70),
+      // A log with no rows at all. A MEASUREMENT — "nothing has been recorded"
+      // — and not the same fact as a read that failed, which is below.
+      lastAudit: { state: 'empty' },
     },
   },
   {
@@ -232,11 +261,15 @@ const SCENARIOS: readonly Scenario[] = [
       session: 's', sample: KNOWN_SAMPLE('known', 197000, 200000, 98.5),
       mycontext: null, mycontextError: 'the audit log could not be read',
       handover: HANDOVER('ignored', { askedAt: new Date(Date.now() - 600_000).toISOString() }),
-      // The five-hour window AT its ceiling. One chip for both windows, and it
-      // reports the WORSE of the two: the question a reader has is "is either
-      // of them close", and two chips saying one word is the crowding this
-      // pass exists to undo.
+      // The five-hour window past the absolute crit band. One chip for both
+      // windows, and it reports the WORSE of the two: the question a reader has
+      // is "is either of them close", and two chips saying one word is the
+      // crowding this pass exists to undo.
       rateLimits: RATE(99, 50),
+      // "I could not tell", which is not a measurement and does not render as
+      // one. Collapsing this into `empty` would make a broken projection look
+      // like a quiet machine.
+      lastAudit: { state: 'unreadable' },
     },
   },
   {
@@ -308,6 +341,10 @@ async function boot(page: Page, s: Scenario): Promise<void> {
       status: 200, contentType: 'application/json',
       body: JSON.stringify({
         version: '1.0.2', git: s.git, staleCode: false,
+        // The repository's own directory, which the header group's project
+        // name is the basename of — the same derivation `mycontext statusline`
+        // makes from the session directory Claude Code names.
+        repoRoot: '/w/test_mycontext_plugin',
         // `corpus` rides `/api/meta` at first paint and `/api/ping` on the
         // heartbeat, both from `measureCorpusDrift`. Omitting it here is a
         // scenario in its own right: the strip must then say NOT KNOWN, never
@@ -344,11 +381,37 @@ async function boot(page: Page, s: Scenario): Promise<void> {
   // `renderChrome()`; the segments inside them arrive with their fetches. Wait
   // for the last one to land rather than for `load`, which fires while every
   // group is still empty.
-  // THREE in the strip since `plan:walk seq:114`, and the fourth in the header.
-  await expect(page.locator('#strip .slab')).toHaveCount(3);
+  // SIX in the strip since 2026-09-01, and the seventh in the header. The bar
+  // is two rows now — identity above, state below — and the count is DERIVED
+  // from the mockup rather than pinned here, for the reason every other number
+  // in this file is: a test that remembers a number fails for the wrong reason
+  // the next time the design of record gains a group.
+  await expect(page.locator('#strip .slab')).toHaveCount(declaredStripGroups());
   await expect(page.locator('#hdrrepo .slab')).toHaveCount(1);
   await expect(page.locator('#ctx [data-k]').first()).toBeVisible();
   await expect(page.locator('#gitstate [data-k]').first()).toBeVisible();
+  // AND WAIT FOR THE WHOLE DRAW, not for its first element. `drawContext`
+  // fills `#ctx` and then calls `drawIdentity`, which fills line 1, the cost
+  // group and the audit clock; `#auditlog` is the LAST box it touches. Waiting
+  // on `#ctx`'s first child alone left a window in which a test could read a
+  // half-drawn bar — which is what an intermittent failure in one browser
+  // project per run turned out to be.
+  await expect(page.locator('#auditlog').locator('*').first()).toBeAttached();
+}
+
+/**
+ * How many provenance groups the design of record declares INSIDE the strip.
+ *
+ * Derived, never pinned. The strip went from three groups to six on 2026-09-01
+ * when the bar split into two rows and gained the model, the window and the
+ * cost; a remembered `3` would have failed that day for a reason that is not a
+ * defect, and a remembered `6` will do the same the next time.
+ */
+function declaredStripGroups(): number {
+  const html = readFileSync(MOCKUP_PATH, 'utf8');
+  const open = html.indexOf('<footer class="strip">');
+  const close = html.indexOf('</footer>', open);
+  return [...html.slice(open, close).matchAll(/class="slab"/g)].length;
 }
 
 /** Every `data-k` the strip is currently drawing. */
@@ -356,6 +419,50 @@ function drawn(page: Page): Promise<string[]> {
   return page.evaluate(() => [...document.querySelectorAll('#strip [data-k], #hdrrepo [data-k]')]
     .map((el) => (el as HTMLElement).dataset['k'] ?? ''));
 }
+
+/**
+ * Every FIELD id the strip is currently drawing — the header's provenance group
+ * included, because the repo group is the same surface in a different row since
+ * `plan:walk seq:114` and a gate that got weaker when a group moved would be a
+ * gate that rewarded moving it.
+ */
+function fields(page: Page): Promise<string[]> {
+  return page.evaluate(() => [...document.querySelectorAll('#strip [data-f], #hdrrepo [data-f]')]
+    .map((el) => (el as HTMLElement).dataset['f'] ?? ''));
+}
+
+/**
+ * **THE PARITY GATE'S BROWSER HALF: the terminal's fields, actually drawn.**
+ *
+ * `test/ui/strip-parity.test.ts` compares the two surfaces by scanning bytes,
+ * which is fast and is what a unit gate can do. It cannot prove the strip
+ * DRAWS what it declares — a `data-f` on a branch nothing reaches would satisfy
+ * it. This does: it collects `[data-f]` out of a real page across every state
+ * the file walks, and asserts the same subset.
+ *
+ * The terminal's set is derived from its own source here too, by the same one
+ * form, so there is no list of field names in this file either.
+ */
+test('every field the terminal status line draws is drawn by the strip', async ({ app }) => {
+  const { page } = app;
+  const terminal = new Set(
+    [...readFileSync(TERMINAL_PATH, 'utf8').matchAll(/(?:\bfield: |\.dataset\.f = )'([a-z0-9-]+)'/g)]
+      .map((m) => m[1]!),
+  );
+  expect(terminal.size,
+    'the terminal declared too few field ids to be reading the file — a scan that stops '
+    + 'matching turns the subset assertion below into a tautology').toBeGreaterThan(9);
+
+  const seen = new Set<string>();
+  for (const scenario of SCENARIOS) {
+    await boot(page, scenario);
+    for (const f of await fields(page)) seen.add(f);
+  }
+  expect([...terminal].filter((f) => !seen.has(f)).sort(),
+    'the terminal status line draws these and the strip never drew one of them in any state '
+    + 'this file walks. The strip is a SUPERSET by the owner ruling of 2026-09-01, so the fix '
+    + 'is to draw them — never to drop them from the terminal.').toEqual([]);
+});
 
 test('the strip draws every segment the design of record declares', async ({ app }) => {
   const { page } = app;
@@ -389,27 +496,39 @@ test('every provenance group is told apart by a WORD as well as by a colour', as
     ...document.querySelectorAll('#hdrrepo .slab, #strip .slab'),
   ].map((el) => ({ text: (el.textContent ?? '').trim(), colour: getComputedStyle(el).color })));
 
-  // FOUR provenance groups, across TWO rows since `plan:walk seq:114` — the
-  // repo group is in the header and the other three are in the strip. The
-  // count is what it always was, because what moved is where a group is drawn
-  // and not how many there are.
-  expect(groups, 'the shell must carry the four provenance groups').toHaveLength(4);
+  // ── SEVEN GROUPS SINCE 2026-09-01, AND COLOUR IS NO LONGER ONE PER GROUP.
+  //
+  // It was four, and four colours, until the bar split into two rows and gained
+  // the model, the window and the cost. Seven groups cannot have seven hues:
+  // `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn` assigns
+  // five and this pass introduced none, so colour now groups the bar by SOURCE
+  // and the WORD is what tells one group from another.
+  //
+  // That is not a weakening, and the old comment on the assertion below already
+  // said why: `--gold` and `--ok` measure 1.04:1 against each other — the same
+  // state to a dichromat, identical grey on a mono printer, one system tone
+  // under forced-colors. The word was always the channel that survived all
+  // three, and it is the one held to one-per-group here.
+  //
+  // The COUNT is derived — from the design of record's own slabs — for the
+  // reason every other number in this file is derived.
+  const expected = declaredStripGroups() + 1;
+  expect(groups, 'the shell must carry every provenance group the design declares, the '
+    + "header's repo group included").toHaveLength(expected);
   // Colour, because the owner asked for it: "use colors to diffrentiate
-  // between properties".
+  // between properties". More than one, and never one for the whole bar — a
+  // bar whose entire job is provenance rendered in a single colour makes a
+  // reader parse a sentence to learn what a glance should say.
   expect(new Set(groups.map((g) => g.colour)).size,
-    'four provenance groups, four colours — a bar whose whole job is provenance rendered in one '
-    + 'colour makes a reader parse a sentence to learn what a glance should say').toBe(4);
-  // AND a word, because colour alone is not a channel. --gold and --ok measure
-  // 1.04:1 against each other: the same state to a dichromat, identical grey on
-  // a monochrome printer, and one system tone under forced-colors. This is the
-  // assertion that survives all three.
+    'the provenance groups must be coloured by source, in more than one hue').toBeGreaterThan(3);
+  // AND a word, one per group, because colour alone is not a channel.
   expect(new Set(groups.map((g) => g.text)).size,
-    'four provenance groups, four distinct labels — 06-a11y.html: "a glyph AND a colour AND a '
-    + 'name in the accessible string"').toBe(4);
+    'every provenance group needs its own label — 06-a11y.html: "a glyph AND a colour AND a '
+    + 'name in the accessible string"').toBe(expected);
   for (const g of groups) expect(g.text, 'a group label may not be empty').not.toBe('');
 });
 
-test('the four group colours survive forced-colors as words, not as hues', async ({ app }) => {
+test('the group colours survive forced-colors as words, not as hues', async ({ app }) => {
   const { page } = app;
   await page.emulateMedia({ forcedColors: 'active' });
   const words = await page.evaluate(() => [
@@ -418,8 +537,8 @@ test('the four group colours survive forced-colors as words, not as hues', async
   await page.emulateMedia({ forcedColors: 'none' });
   expect(new Set(words).size,
     'forced-colors replaces every colour in the page with a system tone, so a bar differentiated '
-    + 'by colour ALONE becomes one colour. The words are what is left, and there must be four of '
-    + 'them.').toBe(4);
+    + 'by colour ALONE becomes one colour. The words are what is left, and there must be one per '
+    + 'group.').toBe(declaredStripGroups() + 1);
 });
 
 test('an unmeasured segment says so, and offers the call again', async ({ app }) => {
@@ -531,22 +650,61 @@ test('the strip is tall enough for its controls and centres them in the row', as
       .map((el) => el.getBoundingClientRect())
       .filter((b) => b.height > 0 && b.width > 0);
     const label = document.querySelector('#strip .slab')!;
+    // MEASURED AGAINST THE LABEL'S OWN ROW, not against the whole strip.
+    // The bar is two rows since 2026-09-01, so a label on the identity row is
+    // correctly nowhere near the centre of the FOOTER — it is centred in the
+    // 28px track it sits in, which is what the owner's "the text is cut" /
+    // "moved up a little" reading was always about. Comparing ink against the
+    // footer would assert that a two-row bar is a one-row bar.
+    const row = label.closest('.striprow')!.getBoundingClientRect();
     const range = document.createRange();
     range.selectNodeContents(label);
     const ink = range.getBoundingClientRect();
     return {
       height: Math.round(box.height),
       tallest: Math.round(Math.max(...kids.map((b) => b.height))),
-      inkTop: Math.round(ink.top - box.top),
-      inkBottom: Math.round(box.bottom - ink.bottom),
+      inkTop: Math.round(ink.top - row.top),
+      inkBottom: Math.round(row.bottom - ink.bottom),
       bottom: Math.round(box.bottom),
       viewport: window.innerHeight,
+      top: Math.round(box.top),
+      // The fourth track of `.app`'s own `grid-template-rows`, resolved by the
+      // browser — the number the strip must be, read from the shell rather
+      // than typed here.
+      gridRow: Math.round(parseFloat(
+        getComputedStyle(document.getElementById('app')!).gridTemplateRows.split(' ')[3] ?? '0',
+      )),
+      // AND THE CONTENT'S OWN EXTENT, which is what actually went wrong: on
+      // 2026-09-01 an intermediate state of the two-row change had a 64px box
+      // with 137px of content in it, escaping in BOTH directions. Geometry that
+      // measures only the BOX cannot see that — `e2e/app-layout.spec.ts`'s
+      // no-empty-band assertion passed over exactly this shape once already.
+      contentTop: Math.round(Math.min(...kids.map((b) => b.top))),
+      contentBottom: Math.round(Math.max(...kids.map((b) => b.bottom))),
     };
   });
 
-  expect(m.height, 'the strip row is 38px — the shell grid\'s fourth row').toBe(38);
+  // ── DERIVED, NOT REMEMBERED, SINCE 2026-09-01. This read `toBe(38)`
+  // while the bar was one row; it is two rows now — 28px of identity over
+  // 38px of state — and a remembered number would have failed that day for a
+  // reason that is not a defect, and again the next time a row moves. What the
+  // assertion is actually for is that the strip is EXACTLY the row the shell
+  // grid reserves for it: a bar taller than its box overflows a container that
+  // reserved less, and whatever escapes lands behind content laid out as though
+  // the strip ended where its box says it does.
+  expect(m.height, 'the strip must be exactly the shell grid\'s fourth row').toBe(m.gridRow);
   expect(m.bottom, 'the strip ends at the bottom edge of the window, as the grid puts it')
     .toBe(m.viewport);
+  // ── THE CONTAINER ENCLOSES ITS CONTENT. The owner reported the strip's
+  // groups sitting above and below its own box, hidden behind cards laid out as
+  // though the bar ended where it said it did. A parent not sized by its
+  // children is the whole of that defect and everything else was a consequence,
+  // so it is asserted directly rather than inferred from the height above.
+  expect(m.contentTop, 'something in the strip starts ABOVE the strip')
+    .toBeGreaterThanOrEqual(m.top);
+  expect(m.contentBottom, 'something in the strip ends BELOW the strip — and the '
+    + 'strip is the last grid row, so below it is outside the window')
+    .toBeLessThanOrEqual(m.bottom);
   expect(m.height - m.tallest,
     'the tallest thing in the strip is a chip or the retry button. At 30px that measured 31px in '
     + 'a 30px row — no clearance, and a pixel of it outside the window. There must be room around '
@@ -641,6 +799,48 @@ test('no text in the strip is clipped by the box it sits in, at any window heigh
  * is the four-of-forty-four defect wearing a flexbox — the property is gone and
  * the reader is back to not knowing it exists.
  */
+/**
+ * **AT THE OWNER'S WIDTH, NOTHING IS SHORTENED.** Owner ruling 2026-09-01:
+ * *"rebalance the fields between the lines to show their maximum lenght and
+ * not truncated"*.
+ *
+ * Measured at 2273px on the day: row 1 was using 34% of the strip while row 2
+ * was saturated, and exactly two segments were clipped — `in step with the
+ * log` (104px shown, 168 needed) and `injections today` (37 shown, 101 needed).
+ * 128px of unmet need beside 1,600px of unused space one row up.
+ *
+ * **Truncation is measured, not eyeballed**: an element whose `scrollWidth`
+ * exceeds its `clientWidth` is one whose text does not fit its box, which is
+ * exactly what an ellipsis means and is true whether or not one is rendered.
+ *
+ * This is a WIDTH-SPECIFIC assertion and deliberately so. The strip still
+ * ellipsises at a narrow window — that is what the give-way order and the
+ * titles are for, and `every provenance group keeps a width` below holds that
+ * behaviour at 900px. What the owner ruled is that a bar with 1,600px spare
+ * has no business shortening anything, and the fix for that is the balance of
+ * the two rows rather than shorter strings.
+ */
+test('nothing in the strip is truncated at the width the owner reads it at', async ({ app }) => {
+  const { page } = app;
+  await boot(page, SCENARIOS[0]!);
+  await page.setViewportSize({ width: 2273, height: 900 });
+  const clipped = await page.evaluate(() => [
+    ...document.querySelectorAll('#strip *, #hdrrepo *'),
+  ].filter((el) => {
+    const e = el as HTMLElement;
+    if (e.offsetParent === null) return false;
+    return e.scrollWidth > e.clientWidth + 1;
+  }).map((el) => {
+    const e = el as HTMLElement;
+    const name = e.dataset['k'] ?? (e.id === '' ? e.className : e.id);
+    return `${name}: ${e.clientWidth} shown, ${e.scrollWidth} needed`;
+  }));
+  await page.setViewportSize({ width: 1280, height: 720 });
+  expect(clipped, 'at 2273px the strip has room for every field at full length. A segment '
+    + 'shortened here is a row that needs rebalancing, never a string that needs abbreviating.')
+    .toEqual([]);
+});
+
 test('every provenance group keeps a width, and the strip never spills', async ({ app }) => {
   const { page } = app;
   for (const size of [{ width: 1280, height: 720 }, { width: 1024, height: 640 }, { width: 1920, height: 1080 }]) {
@@ -655,8 +855,10 @@ test('every provenance group keeps a width, and the strip never spills', async (
         spill: strip.scrollWidth - strip.clientWidth,
       };
     });
-    expect(m.groups.length, `${size.width}px: three provenance groups in the strip — the fourth `
-      + 'moved to the header on 2026-08-31 (`plan:walk seq:114`)').toBe(3);
+    expect(m.groups.length, `${size.width}px: every provenance group the design of record `
+      + 'declares inside the footer — DERIVED, because the count went from three to seven '
+      + 'in one evening and a remembered number fails for the wrong reason each time')
+      .toBe(declaredStripGroups());
     for (const g of m.groups) {
       expect(g.width, `${size.width}px: ${g.name} collapsed to nothing. A group squeezed to zero `
         + 'has removed the property from the strip as surely as never building it').toBeGreaterThan(20);
@@ -1405,8 +1607,8 @@ test('the rate-limit windows draw a figure and a countdown, and band silently be
   async ({ app }) => {
     const { page } = app;
     await boot(page, SCENARIOS[0]!);
-    const five = page.locator('#ctx [data-k="strip.rl5"]');
-    const seven = page.locator('#ctx [data-k="strip.rl7"]');
+    const five = page.locator('#limitstate [data-k="strip.rl5"]');
+    const seven = page.locator('#limitstate [data-k="strip.rl7"]');
     await expect(five, 'the five-hour window must be drawn').toContainText('16');
     await expect(seven, 'the seven-day window must be drawn').toContainText('50');
     // The countdown, computed at render time from `resetsAt`. Matched as a
@@ -1418,7 +1620,7 @@ test('the rate-limit windows draw a figure and a countdown, and band silently be
     await expect(five, 'a percentage with no reset time is alarming rather than actionable')
       .toContainText(/\d+[smhd]/);
     // Both windows well inside their ceilings: no chip, no width, nothing said.
-    await expect(page.locator('#ctx [data-k="strip.rlNear"], #ctx [data-k="strip.rlAt"]'),
+    await expect(page.locator('#limitstate [data-k="strip.rlNear"], #limitstate [data-k="strip.rlAt"]'),
       'a limit nowhere near its ceiling changes nothing a reader does next, so it draws no chip')
       .toHaveCount(0);
   });
@@ -1444,8 +1646,8 @@ test('a window the payload did not carry draws nothing at all', async ({ app }) 
       handover: HANDOVER('not-asked'), rateLimits: RATE(null, 50),
     },
   });
-  await expect(page.locator('#ctx [data-k="strip.rl7"]')).toContainText('50');
-  await expect(page.locator('#ctx [data-k="strip.rl5"]'),
+  await expect(page.locator('#limitstate [data-k="strip.rl7"]')).toContainText('50');
+  await expect(page.locator('#limitstate [data-k="strip.rl5"]'),
     'a window nobody reported is not a window measured at 0%').toHaveCount(0);
 
   await boot(page, {
@@ -1459,7 +1661,7 @@ test('a window the payload did not carry draws nothing at all', async ({ app }) 
       handover: HANDOVER('not-asked'),
     },
   });
-  await expect(page.locator('#ctx [data-k="strip.rl5"], #ctx [data-k="strip.rl7"]'),
+  await expect(page.locator('#limitstate [data-k="strip.rl5"], #limitstate [data-k="strip.rl7"]'),
     'an older server that carries no rateLimits at all must leave the strip silent about the '
     + 'account, not claim two zeroes').toHaveCount(0);
 });

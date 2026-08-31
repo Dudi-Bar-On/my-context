@@ -1063,7 +1063,7 @@ test('a rate-limit window is banded by the SAME function the context fill is', (
   // colouring it by the context threshold was the first spelling here and it
   // meant a 7-day window went amber at a boundary set for a context window.
   const ink = (pct: number): number | undefined =>
-    rateLimitSegment('7d', { usedPercent: pct, resetsAt: null }, NOW, GIVE.sevenDay)?.ink.bg;
+    rateLimitSegment('7d', { usedPercent: pct, resetsAt: null }, NOW, GIVE.sevenDay, 'rate-7d')?.ink.bg;
 
   assert.equal(ink(FILL_WARN - 0.1), PALETTE['ok']?.bg);
   assert.equal(ink(FILL_WARN), PALETTE['warn']?.bg);
@@ -1071,13 +1071,13 @@ test('a rate-limit window is banded by the SAME function the context fill is', (
 
   // A glyph too, the same four, for the same reason.
   assert.equal(
-    rateLimitSegment('7d', { usedPercent: 49, resetsAt: null }, NOW, 0)?.text,
+    rateLimitSegment('7d', { usedPercent: 49, resetsAt: null }, NOW, 0, 'rate-7d')?.text,
     `${LEVEL_GLYPH.ok} 7d 49%`,
   );
   // A window with no percentage is not a block. A countdown to nothing in
   // particular is not worth a column.
-  assert.equal(rateLimitSegment('7d', { usedPercent: null, resetsAt: 1 }, NOW, 0), null);
-  assert.equal(rateLimitSegment('7d', null, NOW, 0), null);
+  assert.equal(rateLimitSegment('7d', { usedPercent: null, resetsAt: 1 }, NOW, 0, 'rate-7d'), null);
+  assert.equal(rateLimitSegment('7d', null, NOW, 0, 'rate-7d'), null);
 });
 
 test('the countdown is two units wide, and it never counts upwards', () => {

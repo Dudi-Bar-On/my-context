@@ -341,3 +341,175 @@ export function classifyRateLimits(payload: unknown): RateLimits {
   };
   return { fiveHour: read('five_hour'), sevenDay: read('seven_day') };
 }
+
+/* == WHAT CLAUDE CODE'S PAYLOAD CARRIES BESIDE THE CONTEXT WINDOW ==========
+ *
+ * **Moved here from `cli/commands/statusline-powerline.ts` on 2026-09-01, and
+ * the move is the point.** The web strip became a SUPERSET of the terminal
+ * status line that day, which means the browser now draws the model's modes,
+ * the cost and the cache share — every one of them read off the SAME stored
+ * payload `classifyContext` and `classifyRateLimits` already read here.
+ *
+ * A second reader for the browser would have been a second spelling of an
+ * EXTERNAL schema: this project's most-repeated defect, in the one place where
+ * the thing being agreed with is not even ours. So the parse lives in the
+ * module that owns the tee, both surfaces call it, and
+ * `statusline-powerline.ts` re-exports it so its own callers are unchanged.
+ */
+/**
+ * One rate-limit window, as Claude Code reports it.
+ *
+ * Both fields are separately optional because both are separately absent in
+ * real payloads: `rate_limits` itself is optional, and a window inside it can
+ * arrive with a percentage and no reset, or the reverse. `null` renders
+ * nothing rather than a placeholder — a `?` in a block is a claim that
+ * something is wrong, and an absent field is not a fault.
+ */
+export interface RateLimit {
+  /** 0–100, as sent. */
+  usedPercent: number | null;
+  /** UNIX SECONDS, as sent — not milliseconds. Converted once, in `until`. */
+  resetsAt: number | null;
+}
+
+/**
+ * The model's non-default modes, folded into the model block.
+ *
+ * Every one of these renders ONLY when it is not the ordinary case, so a
+ * ordinary session pays zero columns for the whole group. `null` is "the
+ * payload did not say", which is treated exactly like the default: this bar
+ * does not report the absence of a field, only the presence of a state.
+ *
+ * **`effort` carries an assumption and it is written down here rather than
+ * left in the code.** `thinking`, `fast_mode` and `exceeds_200k_tokens` are
+ * booleans whose default is plainly `false`. `effort.level` is a WORD, and
+ * this file has no way to observe which word means "unchanged" — it is
+ * `'medium'` on every payload read on this machine, so `'medium'` is treated
+ * as the default and suppressed. If Claude Code's default moves, the symptom
+ * is a block that is always there rather than one that is never there, which
+ * is the harmless direction.
+ */
+export interface ModelModes {
+  effort: string | null;
+  thinking: boolean | null;
+  fastMode: boolean | null;
+  exceeds200k: boolean | null;
+}
+
+export const DEFAULT_EFFORT = 'medium';
+
+/**
+ * Everything this bar reads off Claude Code's payload beyond the model name.
+ *
+ * EXTERNAL SCHEMA, and read the way `core/statusline-tee.ts` reads one: every
+ * field is optional at every level, every wrong type is an absence, and an
+ * absence renders NOTHING rather than a placeholder. The set of fields was
+ * confirmed present in this machine's own tee captures rather than taken from
+ * documentation; `prompt_cache`, `pr`, `vim`, `agent` and `git_worktree` were
+ * confirmed ABSENT and are deliberately not read, because a reader written
+ * against a field nobody has seen is a reader nothing can test.
+ */
+export function payloadExtras(payload: unknown): {
+  modes: ModelModes;
+  fiveHour: RateLimit | null;
+  sevenDay: RateLimit | null;
+  costUsd: number | null;
+  warmPercent: number | null;
+  sessionName: string | null;
+} {
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const bool = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null);
+  const obj = (v: unknown): Record<string, unknown> | null =>
+    typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null;
+
+  const p = obj(payload) ?? {};
+  const effortLevel = obj(p['effort'])?.['level'];
+  const modes: ModelModes = {
+    effort: typeof effortLevel === 'string' ? effortLevel : null,
+    thinking: bool(obj(p['thinking'])?.['enabled']),
+    fastMode: bool(p['fast_mode']),
+    exceeds200k: bool(p['exceeds_200k_tokens']),
+  };
+
+  const window = (raw: unknown): RateLimit | null => {
+    const w = obj(raw);
+    if (w === null) return null;
+    const usedPercent = num(w['used_percentage']);
+    const resetsAt = num(w['resets_at']);
+    return usedPercent === null && resetsAt === null ? null : { usedPercent, resetsAt };
+  };
+  const limits = obj(p['rate_limits']);
+
+  const usage = obj(obj(p['context_window'])?.['current_usage']);
+  const read = num(usage?.['cache_read_input_tokens']);
+  const created = num(usage?.['cache_creation_input_tokens']);
+  const fresh = num(usage?.['input_tokens']);
+  // The denominator is the input total Claude Code itself displays, which is
+  // also `classifyContext`'s numerator for the occupancy: one arithmetic, two
+  // readers. A zero total is not 0% warm — it is nothing to divide.
+  const total = (read ?? 0) + (created ?? 0) + (fresh ?? 0);
+  const warmPercent =
+    read === null || total <= 0 ? null : (read / total) * 100;
+
+  return {
+    modes,
+    fiveHour: window(limits?.['five_hour']),
+    sevenDay: window(limits?.['seven_day']),
+    costUsd: num(obj(p['cost'])?.['total_cost_usd']),
+    warmPercent,
+    // Read here rather than beside the model, because it is a fact about the
+    // SESSION and not about the model: two windows on one model and one repo
+    // differ only by this.
+    sessionName: typeof p['session_name'] === 'string' ? p['session_name'] : null,
+  };
+}
+
+/**
+ * **The modes worth drawing, in order, as WORDS.** Shared by both bars since
+ * 2026-09-01: the terminal folds them into its model block and the web strip
+ * draws them beside the model name, and which words count as "not the ordinary
+ * case" is one judgement about an external payload rather than two.
+ *
+ * Every entry renders ONLY when it is not the ordinary case, so an ordinary
+ * session pays nothing for the whole group. `null` is "the payload did not
+ * say", treated exactly as the default: this reports the presence of a state,
+ * never the absence of a field.
+ *
+ * Words and not glyphs. A bare mark carries meaning only to a reader who
+ * already knows it, which is a hue's problem wearing a different hat.
+ */
+export function modeFlags(modes: ModelModes): string[] {
+  const flags: string[] = [];
+  if (modes.effort !== null && modes.effort !== '' && modes.effort !== DEFAULT_EFFORT) {
+    flags.push(modes.effort);
+  }
+  if (modes.thinking === true) flags.push('think');
+  if (modes.fastMode === true) flags.push('fast');
+  if (modes.exceeds200k === true) flags.push('200k+');
+  return flags;
+}
+
+/**
+ * **The session name, but only when it tells two windows apart.**
+ *
+ * `null` when the payload sent none and when it merely restates the project:
+ * a session called after its project repeats a block already on the bar, and
+ * this field's whole job is distinguishing two windows whose model, project
+ * and branch are identical — the ordinary case for anyone running more than
+ * one.
+ *
+ * Compared trimmed and case-insensitively, because "My-Context" and
+ * "my-context" are the same answer to "which window is this".
+ *
+ * Shared by both bars for the reason `modeFlags` is: two spellings of one
+ * suppression rule is two bars that disagree about whether to draw a field.
+ */
+export function distinctSessionName(
+  sessionName: string | null, project: string | null,
+): string | null {
+  const named = sessionName?.trim() ?? '';
+  const owner = project?.trim() ?? '';
+  if (named === '') return null;
+  return named.toLowerCase() === owner.toLowerCase() ? null : named;
+}

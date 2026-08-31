@@ -184,3 +184,22 @@ export function newestAuditRow(db: DatabaseSync): { op: string; at: string } | n
     ? { op: row.op, at: row.at }
     : null;
 }
+
+/**
+ * **The newest audit row, in the three states a reader must be able to tell
+ * apart:** a row, an empty log, and a read that failed.
+ *
+ * Declared beside `newestAuditRow` rather than in either bar, because BOTH
+ * bars draw it since 2026-09-01 and the three states are the whole point of
+ * the type. "Nothing has been recorded" is a MEASUREMENT and "I could not
+ * tell" is not; collapsing them makes a broken projection look like a quiet
+ * machine, which is precisely the confusion this field exists to end.
+ *
+ * `at` is passed through and NEVER aged here. Both renderers compute the age
+ * from their own render time, because a duration frozen when the value was
+ * fetched is the fossil defect this product has already shipped three times.
+ */
+export type LastAuditRead =
+  | { state: 'known'; op: string; at: string }
+  | { state: 'empty' }
+  | { state: 'unreadable' };

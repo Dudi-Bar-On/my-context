@@ -436,10 +436,32 @@ const SCREEN_SELECTORS = [
   // in its old one. Listed here with the rule, per this file's standing brief.
   '.hdr [hidden]',
   '.strip', '.strip .sep', '.strip [hidden]',
-  '.gitstate,.ctxstate,.corpusstate,.auditstate', '.strip>*', '.ctxstate', '.ctxstate>span',
+  '.gitstate,.ctxstate,.corpusstate,.auditstate', '.ctxstate', '.ctxstate>span',
+  // **`.strip>*` BECAME `.striprow>*` on 2026-09-01, and the entry MOVED rather
+  // than being dropped.** The strip is two rows now — identity above, state
+  // below, the terminal bar's own split — so `.strip` is a grid of two STATED
+  // heights and the flex rule belongs on the rows inside it. A `flex:` property
+  // left on the children of a grid is inert, which is exactly the kind of rule
+  // that goes on passing while doing nothing.
+  '.striprow', '.striprow>*', '.striprow>.sgrp',
   // The provenance grouping itself: a colour per source AND a label word.
   '.sgrp', '.slab', '.sgrp-repo .slab', '.sgrp-corpus .slab',
   '.sgrp-session .slab', '.sgrp-audit .slab', '.sgrp-session',
+  // The three groups line 1 and line 2 gained with the two-row strip
+  // (2026-09-01). No new hue: `--carry` and `--dim` are already spent here.
+  '.sgrp-model .slab', '.sgrp-window .slab', '.sgrp-cost .slab', '.sgrp-limits .slab',
+  '.sgrp-window', '.modelstate,.windowstate,.coststate,.limitstate', '.windowstate',
+  '.striprow .chip',
+  // **The emphasised context figure and the two banded rate windows.** The
+  // owner's 2026-09-01 ruling put the band on the FIGURE — it had been on a
+  // chip beside it while the number stayed grey — and asked for a background
+  // and a heavier face. Listed here with the rules, per this file's standing
+  // brief, and worth the entry: the box metrics and the colours are two rules
+  // ON PURPOSE, so that a band change can never resize the row, and a carry
+  // that merged them would silently reintroduce the jitter.
+  '.ctxstate>.ctxfig', '.ctxfig.ok', '.ctxfig.warn', '.ctxfig.crit', '.ctxfig.unmeas',
+  '.rlfig.ok', '.rlfig.warn', '.rlfig.crit', '.rlfig.unmeas',
+  '.reponame', '.auditlog',
   // Added 2026-08-31 with the corpus group's drift chip (`plan:walk seq:4`
   // drawn at last): a group that used to be a count and a noun now carries a
   // sentence, so it needs a shrink factor, a floor, and a clipping box for

@@ -7,7 +7,7 @@ import {
 import { AuditTail } from '../core/audit-tail.ts';
 import type { TailBacklog } from '../core/audit-tail.ts';
 import {
-  classifyContext, classifyRateLimits, readTee,
+  classifyContext, classifyRateLimits, distinctSessionName, modeFlags, payloadExtras, readTee,
   type ContextSample, type RateLimits,
 } from '../core/statusline-tee.ts';
 // **The handover verdict is READ here, never re-derived** (`plan:walk seq:118`).
@@ -18,7 +18,17 @@ import {
 // strip renders what it is told. Only the non-writing half of that module is
 // bound here; `writeLatch`, `resetAsksForWindow` and `discloseIgnoredAsk` are
 // named as writers in `test/ui/no-writes.test.ts` and stay out of `src/ui/`.
-import { contextEpochStart, shareOf } from '../core/context-share.ts';
+import {
+  contextEpochStart, newestAuditRow, shareOf, type LastAuditRead,
+} from '../core/context-share.ts';
+// **Focus is read from `state/focus.json`, never from the audit log.** Every
+// `focus-set` row in the real log carries `sessionId: null` — measured on this
+// repository's own log — so the log cannot answer "what is this session focused
+// on" at all. `readFocus` never throws and never writes; the writers
+// (`writeFocus`, `clearFocus`, `setFocus`, `unsetFocus`) stay out of `src/ui/`
+// and are named as writers in `test/ui/no-writes.test.ts`.
+import { describeFocus, isFocusActive, readFocus } from '../core/focus.ts';
+import path from 'node:path';
 import { checkHandoverAsk, type HandoverAskVerdict } from '../core/handover-ask.ts';
 // The ONE place the 98 default is applied (`core/config.ts`). The occupancy
 // bands the strip colours with are named against this number and are derived
@@ -334,6 +344,39 @@ export interface WatchContextBody {
    * be a claim about an account that nobody made.
    */
   rateLimits: RateLimits;
+  /**
+   * ── THE SEVEN FIELDS THAT MADE THIS STRIP A SUPERSET OF THE TERMINAL LINE
+   * (2026-09-01). Every one of them was already drawn by `mycontext statusline`
+   * and by no web surface at all, and they diverged for the reason this
+   * project has now measured EIGHT times: two things that must agree, with
+   * nothing holding them together. `test/ui/strip-parity.test.ts` holds them
+   * together now, in the direction that matters — the terminal's field set
+   * must be a SUBSET of the strip's, and web-only fields are legitimate.
+   *
+   * **NO NEW SOURCE AND ONE NEW READ.** `modes`, `sessionName`, `costUsd` and
+   * `warmPercent` come off the payload `readTee` already opened, through the
+   * same `payloadExtras` the terminal parses it with. `lastAudit` rides the
+   * projection this handler already opens for the myctx share, on its own
+   * `readProjection` so that a share that refuses cannot take the clock down
+   * with it. `focus` is the one new read: a few hundred bytes of JSON, and
+   * ENOENT — no focus — is the common case.
+   */
+  /** The non-default modes as one phrase, or `null` when the session has none. */
+  modes: string | null;
+  /** `session_name`, and only when it differs from the project name. */
+  sessionName: string | null;
+  /** `cost.total_cost_usd`. */
+  costUsd: number | null;
+  /** The share of this turn's input the cache served — DERIVED, never sent. */
+  warmPercent: number | null;
+  /**
+   * What mycontext has in focus, already rendered to a phrase, or `null` for
+   * no focus. `null` is a MEASURED absence here, not an unread one: the file
+   * is read on every call and `readFocus` never throws.
+   */
+  focus: string | null;
+  /** When the audit log last moved, in its three distinguished states. */
+  lastAudit: LastAuditRead;
 }
 
 /**
@@ -413,8 +456,48 @@ export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
   const rateLimits = tee === null
     ? { fiveHour: null, sevenDay: null }
     : classifyRateLimits(tee.payload);
+  // ── AND THE REST OF WHAT THE TERMINAL BAR READS OFF THE SAME BYTES. One
+  // call to the one parser: a second reader for the browser would be a second
+  // spelling of an EXTERNAL schema, which is this project's most-repeated
+  // defect in the one place where the thing being agreed with is not ours.
+  const extras = payloadExtras(tee === null ? null : tee.payload);
+  const flags = modeFlags(extras.modes);
+  // The project NAME, which is what `buildLines` compares a session name
+  // against: `projectRoot` is the `.my_context` directory, so the name is its
+  // parent's — the repository. One suppression rule, in `distinctSessionName`,
+  // called by both bars.
+  const project = path.basename(path.dirname(root));
+  // **Its own `readProjection`, not the share's.** The share can refuse — a
+  // projection behind its log is a refusal — and the audit clock is exactly
+  // the field a reader wants when something else has just failed. A health
+  // signal that goes dark whenever its neighbour does is not a health signal.
+  //
+  // Wrapped in an object so the two nulls stay apart: `value === null` is a
+  // projection that was never built (`readProjection`'s own absent state) and
+  // `value.row === null` is a projection that holds no rows. The first is "I
+  // could not tell" and the second is a measurement, and this endpoint may not
+  // collapse them any more than the terminal may.
+  const clock = readProjection(root, (db) => ({ row: newestAuditRow(db) }));
+  const lastAudit: LastAuditRead = !clock.ok || clock.value === null
+    ? { state: 'unreadable' }
+    : clock.value.row === null
+      ? { state: 'empty' }
+      : { state: 'known', op: clock.value.row.op, at: clock.value.row.at };
+  // Read from the file and NOT from the log — see the import. `isFocusActive`
+  // is the same gate the terminal applies, and a focus that could not be READ
+  // is answered as no focus here for the reason it is there: this bar has no
+  // room to say which, and `focusErrorNote` already tells the story on the
+  // surface that does.
+  const focusState = readFocus(root);
+  const focus = isFocusActive(focusState.focus) ? describeFocus(focusState.focus) : null;
   const body: WatchContextBody = {
     session, sample, mycontext, mycontextError, handover, rateLimits,
+    modes: flags.length === 0 ? null : flags.join(' · '),
+    sessionName: distinctSessionName(extras.sessionName, project),
+    costUsd: extras.costUsd,
+    warmPercent: extras.warmPercent,
+    focus,
+    lastAudit,
   };
   return { status: 200, body };
 }
