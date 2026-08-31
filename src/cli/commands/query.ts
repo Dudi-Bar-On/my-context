@@ -67,45 +67,129 @@ const FORBIDDEN = [
  *
  * `REPLACE` is the only one, and that is measured rather than remembered: this
  * engine (SQLite 3.51.2, node:sqlite) exposes 166 functions, and `replace` is
- * the single one of them whose name the keyword scan's `\bWORD\b` regex hits.
- * `json_replace`, `jsonb_replace`, `last_insert_rowid` and the `pragma_*`
- * table-valued functions all embed a guarded word but are NOT hit, because `_`
- * is a word character and so blocks the boundary — each verified through
- * `mycontext query` itself, not by reading the regex. Re-run the census
+ * the single one of them whose BARE NAME is a FORBIDDEN token. `json_replace`,
+ * `jsonb_replace`, `last_insert_rowid` and the `pragma_*` table-valued
+ * functions all embed a guarded word but are NOT hit: `_` is an identifier
+ * character, so each of them is ONE token — verified through `mycontext query`
+ * itself. Re-run the census
  * (`SELECT name FROM pragma_function_list`) before adding to this set.
  *
- * The exemption below is "followed by `(`", and it is safe for the whole
- * FORBIDDEN list rather than only for this member: no write statement in SQLite
- * puts `(` directly after its LEADING keyword. Every one of them takes another
- * bare word first — `REPLACE INTO`, `INSERT INTO`, `INSERT OR REPLACE INTO`,
+ * This exemption is "followed by `(`", and it is safe for the whole FORBIDDEN
+ * list rather than only for this member: no write statement in SQLite puts `(`
+ * directly after its LEADING keyword. Every one of them takes another bare word
+ * first — `REPLACE INTO`, `INSERT INTO`, `INSERT OR REPLACE INTO`,
  * `DELETE FROM`, `UPDATE <table>`, `DROP TABLE`, `VACUUM INTO`, `PRAGMA <name>`,
- * `ATTACH DATABASE`. `VACUUM` in particular is not exempted at all, which
- * matters because `VACUUM INTO '<path>'` is the one statement where this
- * function, not the read-only connection, is the actual write barrier.
+ * `ATTACH DATABASE`. It is nonetheless kept to this one measured member, and
+ * `VACUUM` is exempted by NO rule in this file at all — see
+ * `ONLY_THE_SCAN_STOPS_THESE`, which is where that reasoning now lives.
  */
 const ALSO_A_FUNCTION_NAME = new Set(['REPLACE']);
 
 /**
- * The scan pattern for one FORBIDDEN keyword.
+ * The FORBIDDEN entries the READ-ONLY CONNECTION DOES NOT BACKSTOP, so the
+ * text scan is the whole barrier and gets no positional exemption at all.
  *
- * For a keyword that also names a function, a trailing `(` means the token is
- * being APPLIED rather than starting a statement, so it is not a write:
- * `SELECT replace(title,'a','b') FROM items` writes nothing, and refusing it
- * (which this guard did) is a false positive a reader has to work around with
- * `substr`. `\s*` is part of the exemption because SQLite accepts whitespace
- * between a function name and its argument list, and `strip` above turns a
- * comment in that gap into a space — without it the false positive would only
- * move rather than go.
+ * Everything else on the list writes — if it writes anything — to the tables
+ * in `dbPath`, and `Store.openReadOnly` refuses that at the engine layer
+ * whatever gets past this file (measured: on a `{ readOnly: true }`
+ * connection `DELETE FROM items` fails with "attempt to write a readonly
+ * database"). These four are the exceptions:
  *
- * This is a RELAXATION of a security-relevant guard, so it is deliberately the
- * narrowest shape that fixes the defect: `REPLACE` anywhere else — including
- * `REPLACE INTO` on the next line, and `INSERT OR REPLACE INTO` — is still
- * refused. See `test/cli/query-guard-scalar-functions.test.ts`, which pins the
- * write forms next to the reason the exemption exists.
+ *   - `VACUUM` — `VACUUM INTO '<path>'` writes a full copy of the database to
+ *     a path the CALLER names, never to `dbPath`, and it SUCCEEDS on a
+ *     read-only connection. Measured against a scratch copy of this branch's
+ *     own index: 126,976 bytes written, all items readable. This scan is the
+ *     only thing standing in front of it.
+ *   - `ATTACH` / `DETACH` — the other shape of the same gap: a second file the
+ *     caller names. `ATTACH` happens to be refused by this engine today
+ *     ("unable to open database"), which is the engine's choice and not a
+ *     guarantee this file may lean on.
+ *   - `PRAGMA` — pragmas are not ordinary statements and some of them
+ *     (`writable_schema` above all) reopen surfaces this denylist has no entry
+ *     for. It is not a plausible identifier and is not worth the argument.
+ *
+ * The cost of keeping these strict is that they stay refused where they are an
+ * ordinary identifier too — `SELECT 1 AS vacuum`. Double-quoting is the way
+ * through (`SELECT 1 AS "vacuum"`), because `strip` blanks `"…"` before the
+ * scan; `query-guard-scalar-functions.test.ts` pins both halves.
  */
-function forbiddenPattern(keyword: string): RegExp {
-  const boundary = `\\b${keyword}\\b`;
-  return new RegExp(ALSO_A_FUNCTION_NAME.has(keyword) ? `${boundary}(?!\\s*\\()` : boundary);
+const ONLY_THE_SCAN_STOPS_THESE = new Set(['VACUUM', 'ATTACH', 'DETACH', 'PRAGMA']);
+
+/**
+ * Tokens after which SQLite's grammar requires a NAME, so the word that
+ * follows one is an IDENTIFIER rather than the start of a statement.
+ *
+ * This is the positional half of the guard, and it is what stops the scan
+ * answering a question the boundary already answers. `WITH analyze AS (SELECT
+ * 1 AS n) SELECT * FROM analyze` reads nothing and writes nothing, and this
+ * guard refused it — measured against SQLite 3.51.2, twelve of the nineteen
+ * FORBIDDEN tokens are accepted by the engine as ordinary unquoted
+ * identifiers, so a corpus whose ids are English words collides with them for
+ * real rather than in theory.
+ *
+ * **Why this is not the half-parser the risk analysis warned about.** It is
+ * not asked to tell every write from every read. It is asked only whether a
+ * token sits in a position where SQLite requires a name — a one-token lookback
+ * over a statement that has ALREADY passed the single-statement check and the
+ * `^(SELECT|WITH)` prefix check. And it is applied ONLY to the keywords the
+ * engine refuses anyway (see `ONLY_THE_SCAN_STOPS_THESE`), so being wrong here
+ * costs a defence-in-depth layer, never the barrier. No SQLite write statement
+ * begins immediately after any of these tokens: `WITH x AS (…) DELETE FROM y`
+ * puts `)` before `DELETE`, not `AS`.
+ *
+ * Deliberately absent: `(`. `SELECT * FROM (DELETE FROM items)` must stay
+ * refused, and every write form in `query.test.ts`'s nested-keyword sweep is
+ * spelled that way. Also absent: `[` and a backtick — `strip` does not
+ * understand those quoting forms, and this is not the place to start.
+ */
+const NAME_FOLLOWS = new Set(['AS', 'FROM', 'JOIN', 'WITH', 'RECURSIVE', 'BY', ',', '.']);
+
+/**
+ * The stripped statement as words and single punctuation characters. Words are
+ * SQLite's identifier shape (`$` included); everything else that is not
+ * whitespace is one token of its own, so `release.id` is three tokens and the
+ * lookback and lookahead below can see the `.`.
+ */
+function tokenize(upper: string): string[] {
+  return upper.match(/[A-Z_][A-Z_0-9$]*|\d+(?:\.\d+)?|\S/g) ?? [];
+}
+
+/**
+ * The first FORBIDDEN keyword in `upper` that is being used AS A KEYWORD, or
+ * `null` if every occurrence is an identifier or a function application.
+ *
+ * Three exemptions, each narrow and each measured:
+ *
+ *   1. **Identifier position** — the previous token is one of `NAME_FOLLOWS`.
+ *      `WITH release AS (…)`, `FROM release`, `JOIN release`, `AS commit`,
+ *      `ORDER BY commit`, `main.release`.
+ *   2. **Qualified reference** — the next token is `.`, so the word is the
+ *      qualifier of a name: `release.id`.
+ *   3. **Function application** — the next token is `(` and the word also
+ *      names a SQLite function, i.e. it is in `ALSO_A_FUNCTION_NAME`, whose
+ *      comment carries the census that says `REPLACE` is the only member.
+ *      Tokenizing rather than regex-scanning also retires that comment's worry
+ *      about `json_replace` and the `pragma_*` functions: each is ONE token, so
+ *      a guarded word embedded in a longer name is not a match at all.
+ *
+ * None of the three applies to `ONLY_THE_SCAN_STOPS_THESE`, which is checked
+ * first and returns unconditionally.
+ */
+function offendingKeyword(upper: string): string | null {
+  const forbidden = new Set(FORBIDDEN);
+  const tokens = tokenize(upper);
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (!forbidden.has(token)) continue;
+    if (ONLY_THE_SCAN_STOPS_THESE.has(token)) return token;
+    const previous = i === 0 ? null : tokens[i - 1];
+    const next = i + 1 < tokens.length ? tokens[i + 1] : null;
+    if (previous !== null && NAME_FOLLOWS.has(previous)) continue;
+    if (next === '.') continue;
+    if (next === '(' && ALSO_A_FUNCTION_NAME.has(token)) continue;
+    return token;
+  }
+  return null;
 }
 
 /**
@@ -163,12 +247,21 @@ function strip(sql: string): string {
  * reports "pass exactly one statement", not the read-only message — the tests
  * assert each error where it is actually produced.
  *
- * The keyword scan has ONE exemption, and it is narrow on purpose: see
- * `forbiddenPattern` and `ALSO_A_FUNCTION_NAME` above. It exists because this
- * guard is not only the CLI's — `DEC-the-ask-screen-accepts-typed-sql-reversing-
- * shown-never-typed` rules that the web Ask screen will reuse THIS function
- * rather than grow a second one, so a false positive here is a refusal a reader
- * meets in a browser, where there is no `substr` workaround to discover.
+ * The keyword scan is POSITIONAL for every keyword the engine backstops and
+ * ABSOLUTE for the four it does not: see `offendingKeyword`, `NAME_FOLLOWS` and
+ * `ONLY_THE_SCAN_STOPS_THESE` above. That split exists because this guard is not
+ * only the CLI's — `DEC-the-ask-screen-accepts-typed-sql-reversing-shown-never-
+ * typed` rules that the web Ask screen will reuse THIS function rather than grow
+ * a second one, so a false positive here is a refusal a reader meets in a
+ * browser, where there is no `substr` workaround to discover.
+ *
+ * Note what that screen does NOT hand this function: a VALUE. It composes its
+ * statement server-side from a closed set of field names and binds every value
+ * the caller typed as a parameter (`ui/ask-model.ts` · `export function corpusSelect(f: CorpusFilter): { sql: string; params: (string | number)[] } {` · ~111
+ * and `core/audit-db.ts` · `export function filterSelect(filter: AuditFilter): { sql: string; params: (string | number)[] } {` · ~1178),
+ * so a keyword inside a value never reaches this text at all. What is left for
+ * this scan to judge is the STATEMENT — which is why judging a bare IDENTIFIER
+ * as a write was answering a question the boundary had already answered.
  */
 export function assertSelectOnly(sql: string): void {
   const bare = strip(sql).trim().replace(/;\s*$/, '');
@@ -186,14 +279,12 @@ export function assertSelectOnly(sql: string): void {
     );
   }
 
-  const upper = bare.toUpperCase();
-  for (const keyword of FORBIDDEN) {
-    if (forbiddenPattern(keyword).test(upper)) {
-      throw new Error(
-        `my_context: query is read-only — "${keyword}" is not allowed. ` +
-        `Use the CLI commands to change items; the index is rebuilt from Markdown anyway.`,
-      );
-    }
+  const keyword = offendingKeyword(bare.toUpperCase());
+  if (keyword !== null) {
+    throw new Error(
+      `my_context: query is read-only — "${keyword}" is not allowed. ` +
+      `Use the CLI commands to change items; the index is rebuilt from Markdown anyway.`,
+    );
   }
 }
 

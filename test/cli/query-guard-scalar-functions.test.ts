@@ -126,31 +126,108 @@ test('json_replace and pragma_table_info really run through the command', () => 
 });
 
 /**
- * A KNOWN, MEASURED false positive that is deliberately NOT fixed here.
+ * THE FALSE REFUSAL THIS SPLIT EXISTS TO END, and the measurement behind it.
  *
  * Probed one keyword at a time against the real engine: SQLite accepts
  * REPLACE, TRUNCATE, VACUUM, PRAGMA, ATTACH, DETACH, REINDEX, ANALYZE, BEGIN,
  * ROLLBACK, SAVEPOINT and RELEASE as ordinary unquoted IDENTIFIERS (alias, CTE
  * name, table name) — only INSERT, UPDATE, DELETE, DROP, CREATE, ALTER and
- * COMMIT are hard keywords it refuses there. So `WITH analyze AS (SELECT 1 AS n)
- * SELECT * FROM analyze` is a perfectly read-only statement that this guard
- * refuses, and `analyze` is a plausible name for a CTE.
+ * COMMIT are hard keywords it refuses there. The guard used to refuse all
+ * nineteen WHEREVER THEY APPEARED, so `WITH analyze AS (SELECT 1 AS n) SELECT
+ * * FROM analyze` — a statement that reads nothing and writes nothing — was
+ * refused for being English.
  *
- * It is left refused because telling identifier position from statement
- * position needs a real parser, not a lookahead: `ANALYZE items` (the write)
- * and `FROM analyze` (the read) differ only in what a grammar knows about the
- * surrounding clause. This function is the SOLE barrier for
- * `VACUUM INTO '<path>'`, so a half-parser here is how a hole gets made. Pinned
- * so the next reader finds a measurement rather than rediscovering it, and so
- * that a fix — if one is ever made properly — has to come here and change it.
+ * That was not theoretical. Measured against the live corpus this project
+ * keeps on itself (717 items): `release` is a TAG in use, and two item ids
+ * carry a guarded word as an ordinary word —
+ * `TASK-the-version-number-for-the-release-is-the-owner-s-call-the` and
+ * `TASK-the-query-read-only-guard-rejects-replace-a-scalar-function`. Naming a
+ * CTE after the thing you are asking about is the obvious spelling of that
+ * question, and it was the one spelling the guard refused.
+ *
+ * WHAT CHANGED, and why it is not the half-parser the risk analysis warned of.
+ * The list did not shrink: all nineteen keywords are still refused in every
+ * write form (the sweep below, and `query.test.ts`'s). What changed is that
+ * for the keywords the READ-ONLY CONNECTION ALREADY REFUSES, the scan no
+ * longer answers a question the engine has answered — a one-token lookback
+ * says whether the word sits where SQLite requires a NAME. Being wrong there
+ * costs a defence-in-depth layer, never the barrier.
+ *
+ * The four where the connection is NOT a backstop — VACUUM, PRAGMA, ATTACH,
+ * DETACH — get no positional exemption at all and are still refused wherever
+ * they appear. `VACUUM INTO '<path>'` writes a full copy of the database to a
+ * caller-named path and SUCCEEDS on a `{ readOnly: true }` connection, so for
+ * that one statement this function is the whole defence.
  */
-test('KNOWN LIMITATION: a guarded word used as a bare identifier is still refused', () => {
-  assert.throws(() => assertSelectOnly('WITH analyze AS (SELECT 1 AS n) SELECT * FROM analyze'), /not allowed/i);
-  assert.throws(() => assertSelectOnly('SELECT 1 AS vacuum'), /not allowed/i);
-  // Double-quoting is the workaround, and it works because `strip` blanks
-  // `"…"` before the scan — so a reader who hits the above has a way through.
-  assertSelectOnly('WITH "analyze" AS (SELECT 1 AS n) SELECT * FROM "analyze"');
-  assertSelectOnly('SELECT 1 AS "vacuum"');
+test('a guarded word in IDENTIFIER position is accepted where the engine is the real barrier', () => {
+  // The eight the engine backstops. Each is a name SQLite itself accepts —
+  // verified through `mycontext query` against the live index, not assumed.
+  for (const word of [
+    'replace', 'truncate', 'reindex', 'analyze',
+    'begin', 'rollback', 'savepoint', 'release',
+  ]) {
+    assertSelectOnly(`WITH ${word} AS (SELECT 1 AS n) SELECT * FROM ${word}`);
+    assertSelectOnly(`SELECT id AS ${word} FROM items`);
+    assertSelectOnly(`SELECT 1 AS n FROM items ORDER BY ${word}`);
+    // `AS` before the alias: a bare `FROM items release` puts an ordinary
+    // identifier before the guarded word, which the lookback cannot vouch for
+    // and therefore still refuses. Recorded rather than hidden.
+    assertSelectOnly(`SELECT ${word}.id FROM items AS ${word}`);
+  }
+  // The corpus-shaped question that was refused: name the CTE after the tag.
+  assertSelectOnly(
+    "WITH release AS (SELECT i.id FROM items i, json_each(i.data, '$.tags') t" +
+    " WHERE t.value = 'release') SELECT count(*) AS tagged FROM release",
+  );
+});
+
+test('the four the read-only connection does not backstop are refused wherever they appear', () => {
+  for (const word of ['vacuum', 'pragma', 'attach', 'detach']) {
+    assert.throws(() => assertSelectOnly(`WITH ${word} AS (SELECT 1 AS n) SELECT * FROM ${word}`), /not allowed/i, word);
+    assert.throws(() => assertSelectOnly(`SELECT 1 AS ${word}`), /not allowed/i, word);
+    // Double-quoting is the way through, and it works because `strip` blanks
+    // `"…"` before the scan. It is the unblocking condition a reader who hits
+    // one of these four needs, and the refusal does not yet say so — see the
+    // report for the wording that is owed.
+    assertSelectOnly(`SELECT 1 AS "${word}"`);
+    assertSelectOnly(`WITH "${word}" AS (SELECT 1 AS n) SELECT * FROM "${word}"`);
+  }
+});
+
+test('the CTE named after a corpus tag runs end to end, and the engine agrees it is read-only', () => {
+  // The guard is now permissive here, so the claim that these are real reads
+  // is checked against the ENGINE rather than against the guard that stopped
+  // asking. Each runs on the read-only connection `cmdQuery` opens; a write
+  // would be refused there, and a syntax error would fail the exit code.
+  const cwd = project();
+  try {
+    for (const word of [
+      'replace', 'truncate', 'reindex', 'analyze',
+      'begin', 'rollback', 'savepoint', 'release',
+    ]) {
+      const { code, out } = run(
+        [`query`, `WITH ${word} AS (SELECT id FROM items) SELECT count(*) AS n FROM ${word}`, `--json`],
+        cwd,
+      );
+      assert.equal(code, 0, `${word}: ${out}`);
+      assert.equal((JSON.parse(out) as { rows: { n: number }[] }).rows[0].n, 1, word);
+    }
+  } finally { removeTree(cwd); }
+});
+
+test('identifier position is a LOOKBACK, not a licence: a write after `)` is still refused', () => {
+  // `WITH x AS (…) DELETE FROM y` is legal SQLite and puts `)` — not `AS` —
+  // before the write keyword, which is exactly why the lookback set may not
+  // contain `(` or `)`. These are the shapes that would turn the relaxation
+  // into a hole, and every one of them must stay refused.
+  assert.throws(() => assertSelectOnly('WITH x AS (SELECT 1) DELETE FROM items'), /not allowed/i);
+  assert.throws(() => assertSelectOnly('WITH x AS (SELECT 1) INSERT INTO items VALUES (1)'), /not allowed/i);
+  assert.throws(() => assertSelectOnly('WITH release AS (SELECT 1) REPLACE INTO items VALUES (1)'), /not allowed/i);
+  assert.throws(() => assertSelectOnly('SELECT * FROM (REINDEX)'), /not allowed/i);
+  assert.throws(() => assertSelectOnly('SELECT * FROM items WHERE 1 = (SELECT 1) ROLLBACK TO SAVEPOINT s'), /not allowed/i);
+  // `AS` before a keyword is an alias, but `TO` before one is not a name
+  // position — `ROLLBACK TO SAVEPOINT s` must not be laundered through it.
+  assert.throws(() => assertSelectOnly('SELECT 1 AS n FROM items ROLLBACK TO SAVEPOINT s'), /not allowed/i);
 });
 
 test('every other FORBIDDEN keyword is still refused in its real statement form', () => {
