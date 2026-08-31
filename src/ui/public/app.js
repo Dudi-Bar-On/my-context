@@ -569,6 +569,113 @@ function fillCorpusDrift() {
   host.replaceChildren(chip);
 }
 
+/* ══ THE CONTEXT WINDOW FILLED AND THE LOG DID NOT SEE IT ═══════════════
+ *
+ * Owner, 2026-08-31, CRITICAL: *"the status bar now refreshes but only when i
+ * reload the page - i want it to be updated automatically without refreshing
+ * the web page."*
+ *
+ * **THE CAUSE IS THE SAME ONE AS `noteCorpusDrift` ABOVE, ONE SEGMENT OVER.**
+ * `CHROME_INVALIDATION.session` declares `kinds: ['injection']`, and that
+ * declaration is honest — its own derivation block says so at length: the
+ * project-knowledge share IS injection records, and the context PERCENTAGE is
+ * the status-line tee, written by `mycontext statusline` on Claude Code's
+ * per-message hook, *"a command that records NO audit record at all"*. A fact
+ * with no audit kind can never appear in a list of kinds. So the group filled
+ * at first paint, subscribed to a kind that a working session may not produce
+ * for an hour, and sat there. Every other strip segment was live; this one was
+ * a photograph.
+ *
+ * **NOT CLOSED BY GIVING THE FACT A KIND, AND NOT BY A WATCHER.** Both are
+ * ruled out by measurement rather than by preference, and both are written down
+ * where they were measured: `fs.watch` collapses to two events naming nothing
+ * past ~20-50 files on this platform (`core/corpus-drift.ts`), and an audit row
+ * per assistant message is one row per message — 5,207 rows of exactly that
+ * shape were deleted from this corpus for being noise. What is left is the
+ * channel that already exists, which is what `corpus` above did with the
+ * identical problem.
+ *
+ * ── WHY THIS IS NOT SIMPLY `void fillContext()` ON THE HEARTBEAT ─────────
+ *
+ * Because the two questions cost two different amounts and only one of them
+ * has to be asked every minute. Measured 2026-08-31, Windows/Node 24:
+ *
+ *     /api/ping's occupancy read      0.32ms p50   flat
+ *     /api/watch/context, full        4.69ms p50   grows with the session's
+ *                                                  injection count
+ *
+ * The expensive one opens the audit projection and sums this session's
+ * injection records. The cheap one is one `existsSync`, one small file and one
+ * `JSON.parse`. So the ping carries the cheap one, and the answer decides:
+ * MOVED, and the group is refetched in full; unmoved, and it is REDRAWN from
+ * the body already in hand, which costs nothing and still re-computes every
+ * age from `Date.now()`. The reader gets a group that is correct on every tick
+ * either way, and the server pays 4.69ms only on the ticks where something
+ * actually happened — at most once per assistant message.
+ *
+ * **The stamp includes the server's `stale` verdict**, which is what makes an
+ * IDLE session work rather than freeze. Nothing moves for hours, so nothing is
+ * refetched — and then the sample crosses `CONTEXT_SAMPLE_FRESH_MS`,
+ * `readOccupancy` starts answering `unmeasurable/stale` instead of a
+ * percentage, the stamp changes, and the strip refetches and de-colours itself.
+ * That is `walk/123`'s fossil being caught by the same mechanism that keeps the
+ * figure live, rather than by a second one.
+ */
+let occupancyStamp = null;
+
+/**
+ * The last answer `/api/watch/context` gave, and whether the session was cold.
+ *
+ * `null` means nothing has answered yet — or the last call was REFUSED, which
+ * is cleared deliberately in `fillContext`'s catch: a redraw must never bring
+ * back a body the server has since refused to confirm, and `strip.unread` with
+ * its retry is the honest state there.
+ */
+let lastContextBody = null;
+
+/**
+ * Everything about an occupancy answer that a redraw could not work out for
+ * itself. One string, compared for equality — the same shape `noteCorpusDrift`
+ * remembers its answer in, and cheaper than a deep compare of five fields.
+ *
+ * `null` in (no session named, or a body that predates the field) gives
+ * `'absent'`, which is stable: a heartbeat that never names a session must not
+ * refetch on every tick.
+ */
+function stampOccupancy(occupancy) {
+  if (occupancy === null || occupancy === undefined || typeof occupancy !== 'object') return 'absent';
+  if (occupancy.state !== 'known') return `unmeasurable:${String(occupancy.why)}`;
+  return `known:${String(occupancy.receivedAt)}:${String(occupancy.usedTokens)}/${String(occupancy.windowSize)}`;
+}
+
+/**
+ * The heartbeat's query string: `?session=…`, or empty before a session is
+ * known.
+ *
+ * Empty rather than `?session=cold`: `'cold'` is this shell's word for "no
+ * session to ask about", not a session id, and sending it would have the server
+ * look for a `.statusline/cold.json` and answer `no-sample` — a claim about the
+ * bridge for a question nobody asked.
+ */
+function pingQuery() {
+  const session = currentSession();
+  return session === 'cold' ? '' : '?session=' + encodeURIComponent(session);
+}
+
+/** Any `/api` answer that carries `occupancy`. Anything else is ignored. */
+function noteOccupancy(answer) {
+  if (answer === null || typeof answer !== 'object') return;
+  if (answer.occupancy === undefined) return;
+  const next = stampOccupancy(answer.occupancy);
+  const moved = next !== occupancyStamp;
+  occupancyStamp = next;
+  // A page that has never drawn the group has nothing to redraw, so the first
+  // answer always fetches — including the `'absent'` one, which is how a strip
+  // whose boot `fillContext()` was refused gets a second chance.
+  if (moved || lastContextBody === null) { void fillContext(); return; }
+  drawContext();
+}
+
 function showCodeSkew() {
   if (codeSkewDismissed) return;
   if (table === null || !(CODE_SKEW_KEY in table.strings)) return;
@@ -2785,9 +2892,6 @@ async function fillItems(count) {
 async function fillContext() {
   const ctx = document.getElementById('ctx');
   if (ctx === null) return;
-  // Collected and swapped in at every exit below, never cleared first. See
-  // `fillItems` for why that matters now that this has a second caller.
-  const parts = [];
   const retry = () => { void fillContext(); };
   if (noCredential) { ctx.replaceChildren(...unreadState(retry)); return; }
 
@@ -2797,12 +2901,50 @@ async function fillContext() {
     try {
       body = await api('/api/watch/context?session=' + encodeURIComponent(session));
     } catch {
+      lastContextBody = null;
       ctx.replaceChildren(...unreadState(retry));
       return;
     }
   }
 
-  const view = contextStrip(body, session === 'cold');
+  // Remembered so `drawContext()` can redraw this same answer without asking
+  // for it again — see `noteOccupancy`, which is what pays for that.
+  lastContextBody = { body, cold: session === 'cold' };
+  drawContext();
+}
+
+/**
+ * **REDRAW THE CONTEXT GROUP FROM THE ANSWER ALREADY IN HAND** —
+ * `plan:walk seq:124`.
+ *
+ * Split out of `fillContext()` rather than folded into it because the two halves
+ * have different costs and the heartbeat needs to choose between them.
+ * `/api/watch/context` opens the audit projection and sums this session's
+ * injection records; measured 2026-08-31 over a 360-injection session it is
+ * 4.69ms p50, and it grows with the session — `cli/commands/statusline.ts`'s own
+ * header cites 5,000 injection records for one session as a shape this product
+ * meets. `readOccupancy`, on `/api/ping`, is 0.32ms flat. So the heartbeat asks
+ * the cheap question every tick and pays the expensive one only when the answer
+ * moved.
+ *
+ * **The redraw is not a lesser rendering, and that is what makes the choice
+ * safe.** It calls the same builders over the same body, so every state, chip
+ * and title comes out identical — the ONE thing that differs is the thing that
+ * must: `age`, `occupancyChip`'s `ageMs` and the handover chip are all computed
+ * from `Date.now()` at draw time, so a redraw of an unmoved sample tells the
+ * truth about how old it now is. A design that skipped the redraw entirely
+ * would freeze the "as of … ago" label at whatever it said when the fetch
+ * happened to resolve, which is `walk/123`'s fossil wearing a different hat.
+ */
+function drawContext() {
+  const ctx = document.getElementById('ctx');
+  if (ctx === null || lastContextBody === null) return;
+  const { body, cold } = lastContextBody;
+  // Collected and swapped in at every exit below, never cleared first. See
+  // `fillItems` for why that matters now that this has more than one caller.
+  const parts = [];
+
+  const view = contextStrip(body, cold);
   const state = document.createElement('span');
   if (view.state === 'known') {
     state.dataset.k = 'strip.ctx.known';
@@ -3519,10 +3661,30 @@ async function main() {
   // `staleCode`, and this is the only channel that reaches a tab which has been
   // open since the morning. Still `.catch(() => {})`: a heartbeat that cannot
   // reach the server is `showExited()`'s business, raised by `api()` itself.
+  //
+  // **AND THE SESSION IT NAMES** (`plan:walk seq:124`). `occupancy` is the one
+  // fact on this request that is session-scoped rather than workspace-scoped,
+  // so the heartbeat has to say which session it is asking about; without the
+  // parameter the server answers `null`, which is "nobody asked" and not a
+  // reading. `currentSession()` is read on every tick rather than captured
+  // once, because the reader can change sessions under this timer and a
+  // heartbeat pinned to the session that was current at boot would keep the
+  // strip live for a session nobody is looking at.
+  //
+  // **THE CADENCE IS STILL 60s, AND IT WAS RULED RATHER THAN INHERITED.**
+  // The occupancy read is 0.32ms and would be affordable far faster — but
+  // `measureCorpusDrift` rides this same request, and its once-a-minute budget
+  // (6.24ms/min, measured against `fs.watch`'s 96-1,121ms/min) is the argument
+  // that ruled out a watcher in the first place. Shortening this interval
+  // multiplies that sweep for every visible tab; a second timer would be a
+  // second cadence to keep in step. So the interval stands, and what makes 60s
+  // enough is the pair above: the sample under it is rewritten once per
+  // assistant message, and every age on the strip is recomputed at draw time.
   stopHeartbeat = startHeartbeat(
-    document, () => api('/api/ping').then((answer) => {
+    document, () => api('/api/ping' + pingQuery()).then((answer) => {
       noteCodeSkew(answer);
       noteCorpusDrift(answer);
+      noteOccupancy(answer);
     }).catch(() => {}), 60_000);
   installNonceRedemption();
   // Installed here for the same reason as the two above: it is a document

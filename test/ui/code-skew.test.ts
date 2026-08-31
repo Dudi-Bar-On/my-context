@@ -257,9 +257,17 @@ test('the shell reads staleCode from BOTH channels it has', () => {
   // arriving on the same channel read as the first one leaving. What this file
   // is about is that the disclosure reaches a tab open since the morning, and
   // that is what is asserted.
-  assertMatches(app, /api\('\/api\/ping'\)\.then\(\(answer\) => \{[\s\S]{0,200}?noteCodeSkew\(answer\);/,
+  // **Loosened a second time, on 2026-08-31, when `plan:walk seq:124`'s
+  // occupancy reading joined this request and made the target a session-scoped
+  // one.** The heartbeat now sends `?session=…`, so the literal `'/api/ping'`
+  // is a prefix rather than the whole argument. Pinning the closing paren would
+  // make a THIRD disclosure arriving on the same channel read as the first one
+  // leaving, which is the mistake this test's own header warns about. What is
+  // asserted is unchanged: it is `/api/ping`, and the answer reaches
+  // `noteCodeSkew`.
+  assertMatches(app, /api\('\/api\/ping'[^;]{0,40}?\)\.then\(\(answer\) => \{[\s\S]{0,200}?noteCodeSkew\(answer\);/,
     'the heartbeat must carry the disclosure: it is the only poll a morning tab makes');
-  assertMatches(app, /startHeartbeat\(\s*\n?\s*document, \(\) => api\('\/api\/ping'\)/,
+  assertMatches(app, /startHeartbeat\(\s*\n?\s*document, \(\) => api\('\/api\/ping'[^;]{0,40}?\)/,
     'and it must still BE the heartbeat that carries it, not a poll of its own');
   assertMatches(app, /const meta = await api\('\/api\/meta'\);\n(?:\s*\/\/.*\n)*\s*noteCodeSkew\(meta\);/,
     'first paint must disclose too, without waiting up to a minute');

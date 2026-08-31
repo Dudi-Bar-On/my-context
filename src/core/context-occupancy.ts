@@ -27,9 +27,9 @@ import { classifyContext, readTee, statuslineDir } from './statusline-tee.ts';
 // does no directory walk and no transcript scan (spec §5).
 
 /**
- * Why an occupancy could not be measured. Three reasons, and they are kept
- * apart because they are three different things to tell a human and they have
- * three different fixes:
+ * Why an occupancy could not be measured. Four reasons, and they are kept
+ * apart because they are four different things to tell a human and they have
+ * four different fixes:
  *
  *  - `no-bridge`     — there is no `.statusline/` at all. The opt-in bridge was
  *                      never installed, so nothing has ever sampled this
@@ -41,16 +41,71 @@ import { classifyContext, readTee, statuslineDir } from './statusline-tee.ts';
  *                      Claude Code's status-line schema has moved, and that is
  *                      a claim about an external interface this repository does
  *                      not own (see `statusline-tee.ts`'s EXTERNAL SCHEMA note).
+ *  - `stale`         — there is a perfectly readable sample and it is a FOSSIL:
+ *                      older than `CONTEXT_SAMPLE_FRESH_MS`, so this module
+ *                      will not present it as how full the window is NOW. Added
+ *                      2026-08-31, `plan:walk seq:123`; see that constant for
+ *                      the reported case and for why it is not `unknown-shape`.
  *
  * Collapsing them to a single "unavailable" was the tempting simplification and
  * is what makes the disclosure useless: a person told "not installed" about a
  * bridge that IS installed goes and installs it a second time.
  */
-export type UnmeasurableWhy = 'no-bridge' | 'no-sample' | 'unknown-shape';
+export type UnmeasurableWhy = 'no-bridge' | 'no-sample' | 'unknown-shape' | 'stale';
 
 export type Occupancy =
   | { state: 'unmeasurable'; why: UnmeasurableWhy }
-  | { state: 'known'; percent: number; usedTokens: number; windowSize: number };
+  | {
+    state: 'known'; percent: number; usedTokens: number; windowSize: number;
+    /**
+     * When the bridge tee'd the sample this reading came from, ISO-8601 — the
+     * envelope's own `receivedAt`, passed through and never re-derived.
+     *
+     * Present because a caller that must decide whether the reading MOVED
+     * cannot do it from the three numbers above: two consecutive samples can
+     * carry the same token triple, and an age computed from a value frozen at
+     * the previous read is the exact defect `walk/123` reports. Every existing
+     * caller ignores it; the field is additive.
+     */
+    receivedAt: string;
+  };
+
+/**
+ * **How old a context sample may be and still be reported as a reading.**
+ *
+ * `plan:walk seq:123`. The reported case is one sentence: the strip showed
+ * 60.1% while the real occupancy was 100%, because the sample it drew had been
+ * received 29 hours earlier and nothing anywhere checked. A figure that polls
+ * correctly and reports a fossil is not fixed — and the same fossil is why the
+ * `Stop` handover ask never fired: 60.1% is below any sane threshold, so the
+ * mechanism compared a dead number and stayed silent, which is indistinguishable
+ * from a mechanism that works.
+ *
+ * **The value is not new and is not chosen here.** `lib/viewmodel.js` has
+ * declared `CONTEXT_SAMPLE_FRESH_MS = 15 * 60_000` since `seq:117` and
+ * `occupancyLevel` has answered `'stale'` past it — on the CLIENT only. The
+ * server never enforced it, so the two halves of one product disagreed about
+ * the same sample: the strip's chip went neutral while `readOccupancy` handed
+ * every other caller a confident percentage. This is the server side of that
+ * one constant, and this module now OWNS it — `lib/viewmodel.js` restates it
+ * by name, the way that file already restates `STREAM_POLL_MS`, and
+ * `test/ui/viewmodel.test.ts` fails if the two ever differ.
+ *
+ * The argument for the number itself belongs to whoever picked it and is kept
+ * where it was written: the tee is rewritten by `mycontext statusline` on
+ * Claude Code's per-message hook, so in a session somebody is working in it is
+ * seconds to a couple of minutes old; fifteen minutes is far enough past that
+ * no ordinary pause between turns trips it, and near enough that a session
+ * nobody is in stops being drawn as a live reading.
+ *
+ * **Why this is `stale` and not `unknown-shape` or `no-sample`.** Nothing about
+ * Claude Code's schema is implicated — the sample parsed perfectly — and the
+ * bridge HAS spoken for this session, so neither existing reason is true of it.
+ * The fix is also different from all three: nobody installs anything and nobody
+ * upgrades anything; the session is idle, and the next assistant message makes
+ * the reading current again.
+ */
+export const CONTEXT_SAMPLE_FRESH_MS = 15 * 60_000;
 
 /**
  * Reads how full `sessionId`'s context window is, or names why it cannot.
@@ -111,11 +166,32 @@ export function readOccupancy(root: string, sessionId: string): Occupancy {
     return { state: 'unmeasurable', why: 'unknown-shape' };
   }
 
+  // **THE FRESHNESS GATE, LAST** — `plan:walk seq:123`. Last, and only on this
+  // branch, because it is the one branch that hands a caller a NUMBER, and a
+  // number is the only thing that can be a fossil. The three reasons above keep
+  // their exact meanings: a sample that is old AND unreadable is still
+  // `unknown-shape`, because a schema break is the actionable half of it, and a
+  // session the bridge has never sampled is still `no-sample` however long ago
+  // that was.
+  //
+  // `Date.parse` on our OWN envelope field, never on anything Claude Code
+  // wrote. `NaN` therefore means this product's writer produced something this
+  // product cannot read, and it lands on `stale` rather than falling through:
+  // the promise this gate makes is "no reading is presented as current unless
+  // it can be SHOWN to be current", and a sample that cannot be dated cannot be
+  // shown to be anything. Falling through would restore the reported defect for
+  // the one case nobody would think to test.
+  const receivedMs = Date.parse(tee.receivedAt);
+  if (!Number.isFinite(receivedMs) || Date.now() - receivedMs > CONTEXT_SAMPLE_FRESH_MS) {
+    return { state: 'unmeasurable', why: 'stale' };
+  }
+
   return {
     state: 'known',
     percent: sample.percent,
     usedTokens: sample.usedTokens,
     windowSize: sample.windowSize,
+    receivedAt: tee.receivedAt,
   };
 }
 
@@ -156,6 +232,16 @@ export function occupancyStandDownLine(why: UnmeasurableWhy): string {
       'has just started or has just been compacted looks like. The bridge samples once per ' +
       'assistant message, so the next one should supply it. Nothing needs fixing, and nothing ' +
       'else about this turn changed.\n'
+    );
+  }
+  if (why === 'stale') {
+    return (
+      'my_context: the context window’s fullness cannot be reported — the status-line bridge is ' +
+      'installed and its last sample for this session is more than fifteen minutes old, which is ' +
+      'what a session nobody has worked in for a while looks like. An old reading is not used as ' +
+      'a current one, so nothing will ask you to refresh the handover until a fresh sample ' +
+      'arrives. The bridge samples once per assistant message, so the next one supplies it; ' +
+      'nothing needs fixing, and nothing else about this turn changed.\n'
     );
   }
   return (

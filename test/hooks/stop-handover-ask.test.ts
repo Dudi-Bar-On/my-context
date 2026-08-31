@@ -46,6 +46,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit, type AuditRecord } from '../../src/core/audit.ts';
 import { readLatch } from '../../src/core/handover-ask.ts';
+import { CONTEXT_SAMPLE_FRESH_MS } from '../../src/core/context-occupancy.ts';
 import { writeTee } from '../../src/core/statusline-tee.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { observeAndRecord } from '../../src/hooks/observe.ts';
@@ -146,10 +147,20 @@ function runStop(sb: Sandbox, options: {
   /** `false` installs no `.statusline/` at all — the `no-bridge` case. */
   bridge?: boolean;
   session?: string;
+  /**
+   * Ages the sample past `CONTEXT_SAMPLE_FRESH_MS` — the `stale` case
+   * (`plan:walk seq:123`). `writeTee`'s third argument is the real writer's own
+   * `receivedAt`, so the fixture ages the way a real sample ages.
+   */
+  staleSample?: boolean;
 } = {}): Turn {
   const session = options.session ?? sb.session;
   if (options.bridge !== false && options.percent !== undefined) {
-    const written = writeTee(sb.root, { session_id: session, ...sampleAt(options.percent) });
+    const receivedAt = options.staleSample === true
+      ? new Date(Date.now() - CONTEXT_SAMPLE_FRESH_MS - 60_000).toISOString()
+      : new Date().toISOString();
+    const written = writeTee(
+      sb.root, { session_id: session, ...sampleAt(options.percent) }, receivedAt);
     assert.deepEqual(written, { written: true }, 'the status-line fixture was not written');
   }
 
@@ -222,6 +233,54 @@ test('with no handover configured it never asks, whatever the occupancy', () => 
   assert.equal(noBridge.stderr, '',
     'the stand-down line asks the user to install a bridge for a feature they have not ' +
     'configured — an unconfigured mechanism promised nothing, so it has nothing to disclose');
+});
+
+/**
+ * **THE FOSSIL, WHICH IS WHY THIS MECHANISM LOOKED LIKE IT WORKED** —
+ * `plan:walk seq:123`.
+ *
+ * The reported case: the sample read 60.1% and had been received 29 hours
+ * earlier, while the window was actually full. `readOccupancy` had no freshness
+ * check, so `Stop` compared a dead 60.1 against the threshold, fell below it,
+ * and returned `null`. **The ask never fired and nothing said why** — which is
+ * indistinguishable from a mechanism working correctly on a session that never
+ * filled up, and is exactly the silence this whole feature exists to end.
+ *
+ * With the gate on the server side, the fossil is refused before the
+ * comparison. The ask still does not fire — it must not, because nobody knows
+ * how full the window is — but the mechanism now STANDS DOWN and says so, which
+ * is the difference between a feature that is quiet and a feature that is
+ * broken.
+ *
+ * Both halves are asserted, because either alone would pass over the defect: no
+ * ask (a fossil must never trigger one either, at any percentage) AND a
+ * disclosure naming the reason.
+ */
+test('a 29-hour-old sample stands down and SAYS so, instead of comparing a dead number', () => {
+  const sb = sandbox({ thresholdPercent: 98 });
+  const turn = runStop(sb, { percent: 60.1, staleSample: true });
+  assert.equal(turn.stdout, '', 'a fossil is not a measurement and must not drive an ask');
+  assert.notEqual(turn.stderr, '',
+    'silence here is the reported defect: the mechanism stood down and nobody was told');
+  assert.match(turn.stderr, /fifteen minutes/u);
+  assert.doesNotMatch(turn.stderr, /statusline install/u,
+    'the bridge IS installed — telling this user to install it is the collapse the four ' +
+    'reasons exist to undo');
+});
+
+/**
+ * The other half of the same gate: a stale sample ABOVE the threshold is still
+ * refused. This is the case that would be tempting to let through — "it says
+ * 99.9, surely we should ask" — and it is the one that matters most, because an
+ * ask fired off a fossil sends the model to rewrite a handover against a window
+ * whose real occupancy nobody knows.
+ */
+test('a stale sample above the threshold does not ask either', () => {
+  const sb = sandbox({ thresholdPercent: 98 });
+  assert.equal(runStop(sb, { percent: 99.9, staleSample: true }).stdout, '');
+  // The control, so this test cannot pass because the harness stopped asking:
+  // the same percentage, fresh, in a fresh sandbox, DOES ask.
+  assert.notEqual(runStop(sandbox({ thresholdPercent: 98 }), { percent: 99.9 }).stdout, '');
 });
 
 /* ---------------------------------------------------------------------------

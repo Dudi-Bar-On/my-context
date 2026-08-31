@@ -442,16 +442,21 @@ test('ui --no-open prints a URL that a real request can reach, and opens no brow
     // `.my_context/` — six agents work this tree, so pinning either to `false`
     // would make this test, which is about a printed URL being reachable, fail
     // for an edit somebody else made while the suite ran.
+    // `plan:walk seq:124` gave it a fourth, and that one IS pinned: it is
+    // session-scoped, this request names no session, and `null` — "nobody
+    // asked" — is the whole of its contract here. It is not measured against
+    // anything six agents could move.
     const body = await ping.json() as {
-      ok: boolean; staleCode: boolean; corpus: { drifted: boolean | null };
+      ok: boolean; staleCode: boolean; corpus: { drifted: boolean | null }; occupancy: unknown;
     };
-    assert.deepEqual(Object.keys(body).sort(), ['corpus', 'ok', 'staleCode']);
+    assert.deepEqual(Object.keys(body).sort(), ['corpus', 'occupancy', 'ok', 'staleCode']);
     assert.equal(body.ok, true);
     assert.equal(typeof body.staleCode, 'boolean');
     assert.ok(
       body.corpus.drifted === null || typeof body.corpus.drifted === 'boolean',
       'the heartbeat must always carry a corpus finding, even when it is "not known"',
     );
+    assert.equal(body.occupancy, null, 'a ping that names no session asked nothing');
   } finally {
     if (child !== null && child.exitCode === null && child.signalCode === null) {
       await new Promise<void>((done) => { child!.once('exit', () => done()); child!.kill(); });

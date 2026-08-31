@@ -67,6 +67,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import type { RefusalCheck } from '../core/audit.ts';
+import { readOccupancy, type Occupancy } from '../core/context-occupancy.ts';
 import { measureCorpusDrift } from '../core/corpus-drift.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { VERSION } from '../core/version.ts';
@@ -209,6 +210,37 @@ const PUBLIC_DIR = path.join(import.meta.dirname, 'public');
 let routesRegistered = false;
 
 /**
+ * `/api/ping`'s occupancy field: the reading for `?session=`, or `null` when no
+ * session was named.
+ *
+ * **`null` is "nobody asked", and it is not an `unmeasurable`.** The four
+ * `UnmeasurableWhy` reasons each say something about a workspace a reader can
+ * act on — install the bridge, wait a message, upgrade, the session is idle —
+ * and none of them is true of a request that simply carried no session id. The
+ * boot heartbeat is exactly that request: `fillChrome()` runs before
+ * `loadSessions()`, deliberately, so the strip exists before the first data
+ * call. Answering `no-sample` there would put a claim about the bridge on a
+ * question nobody asked, which is the collapse
+ * `core/context-occupancy.ts`'s four reasons exist to undo.
+ *
+ * A workspace with no `projectRoot` is `null` for the same reason and not a
+ * refusal: `/api/ping` answers 200 or the heartbeat stops, and the heartbeat
+ * stopping is what starved the idle timer in the boot failure `app.js`'s
+ * `main()` documents at length.
+ *
+ * `readOccupancy` never throws — its own docstring is emphatic — so nothing is
+ * wrapped here. An unsafe session id, a torn sample and a killed writer all
+ * already land on one of the four named reasons.
+ */
+function pingOccupancy(ws: Workspace, url: URL): Occupancy | null {
+  const root = ws.projectRoot;
+  if (root === null) return null;
+  const session = url.searchParams.get('session');
+  if (session === null || session === '') return null;
+  return readOccupancy(root, session);
+}
+
+/**
  * The read routes, registered into the shared table `routes.ts` owns.
  *
  * Exported and idempotent so a test can ask what the table holds without
@@ -258,6 +290,47 @@ export function registerReadRoutes(): void {
   // holds to that — and it never refreshes anything. `SCREEN_INVALIDATION` and
   // `CHROME_INVALIDATION` remain the only things that decide what a change
   // makes stale; this hands them a fact they previously could not have.
+  //
+  // **AND IT CARRIES A THIRD NOW: `occupancy`** (`plan:walk seq:124`, and it is
+  // the same defect as `corpus` one row over).
+  //
+  // The strip's context percentage comes from the status-line tee, which
+  // `mycontext statusline` rewrites on Claude Code's per-message hook — and
+  // that command writes NO audit record of any kind. `CHROME_INVALIDATION`'s
+  // `session` row can therefore only declare `['injection']`, which is the half
+  // of that segment the log can speak for, and its own derivation says so in
+  // as many words. So the percentage filled at first paint and never moved
+  // again: the owner reported it as "the status bar refreshes but only when i
+  // reload the page". **A fact with no audit kind can never appear in a list of
+  // kinds** — this project's recurring defect, a hand-kept list that must agree
+  // with something derived, and the seventh time it has been measured here.
+  //
+  // The two mechanisms that would close it by force are both already ruled out
+  // BY MEASUREMENT rather than by preference. `fs.watch` loses every named
+  // event in a burst of ~20 files on this platform and missed a real item edit
+  // ten times out of ten (`core/corpus-drift.ts`). And making `statusline`
+  // append an audit row would be one record per assistant message — 5,207 rows
+  // of exactly that shape were deleted from this corpus for being noise.
+  //
+  // So it rides the request that is already being made, for the reason `corpus`
+  // does, and the case is stronger: a context window fills while a tab sits
+  // open in a way nothing on the audit stream can announce.
+  //
+  // **SESSION-SCOPED, so it is answered only when a session is named.** This is
+  // the one thing that makes it unlike `corpus` and `staleCode`, which are
+  // facts about the workspace and the process. `session` is absent on the boot
+  // heartbeat, and the honest answer there is `null` — "nobody asked", NOT an
+  // `unmeasurable` that would claim a reading was attempted and refused. The
+  // key is present either way, for the reason `git` is present either way on
+  // `/api/meta`.
+  //
+  // Measured 2026-08-31, Windows/Node 24: `readOccupancy` p50 0.32ms, p95
+  // 0.53ms (one `existsSync`, one small `readFileSync`, one `JSON.parse`) — a
+  // twentieth of the `measureCorpusDrift` sweep already on this request, and a
+  // FIFTEENTH of the 4.69ms p50 that a full `/api/watch/context` refill costs
+  // over a 360-injection session. That ratio is the whole point of putting it
+  // here: it is cheap enough to be asked on every heartbeat, so the expensive
+  // refill happens only on the ticks where the reading actually moved.
   registerRoute('GET', '/api/ping', {
     kind: 'json',
     handle: (ctx) => ({
@@ -266,6 +339,7 @@ export function registerReadRoutes(): void {
         ok: true,
         staleCode: ctx.code.isStale(),
         corpus: measureCorpusDrift(ctx.ws.projectRoot),
+        occupancy: pingOccupancy(ctx.ws, ctx.url),
       },
     }),
   });

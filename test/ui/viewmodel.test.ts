@@ -27,6 +27,9 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { AUDIT_KINDS } from '../../src/core/audit.ts';
+import {
+  CONTEXT_SAMPLE_FRESH_MS as SERVER_CONTEXT_SAMPLE_FRESH_MS,
+} from '../../src/core/context-occupancy.ts';
 
 /**
  * **How a TypeScript test imports an untyped browser module, and why not the
@@ -424,6 +427,31 @@ test('occupancyLevel places a figure in a band, and refuses to place a fossil', 
   // Nothing to level: no percentage, or no threshold to name a band against.
   assert.equal(occupancyLevel(null, 98, 0), null);
   assert.equal(occupancyLevel(60.1, null, 0), null);
+});
+
+/**
+ * **ONE FRESHNESS WINDOW, TWO LANGUAGES, AND THE MIRROR IS HELD** —
+ * `plan:walk seq:123`.
+ *
+ * The constant used to exist only in `lib/viewmodel.js`, which meant only the
+ * browser enforced it: `readOccupancy` handed `Stop` and `PreCompact` a
+ * confident percentage off the very 29-hour-old sample the chip above was
+ * refusing to colour. One product, two answers about one file, and the ONE that
+ * mattered — the ask that writes the handover before a compaction — was the one
+ * with no gate.
+ *
+ * `core/context-occupancy.ts` owns it now and the browser module restates it by
+ * name, the way `lib/live-invalidation.js` restates the server's
+ * `STREAM_POLL_MS`, because a browser ES module cannot import a `.ts` one.
+ * A restatement with nothing holding it is a copy that rots, so this is the
+ * thing holding it: the two are imported here and compared. It is deliberately
+ * an EQUALITY and not a range — the whole defect was the two halves disagreeing,
+ * and a range is a licence to disagree by a little.
+ */
+test('the freshness window the page enforces IS the one the server enforces', async () => {
+  const { CONTEXT_SAMPLE_FRESH_MS: browser } = await vm();
+  assert.equal(browser, SERVER_CONTEXT_SAMPLE_FRESH_MS,
+    'lib/viewmodel.js restates core/context-occupancy.ts by name; they have drifted apart');
 });
 
 /**

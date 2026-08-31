@@ -14,7 +14,7 @@ import { summaryState } from '../core/content-hash.ts';
 import { isSnapshot, snapshotText } from '../core/reference.ts';
 import { RATIONALE_NOT_INJECTED } from '../core/render-item.ts';
 import { checksum } from '../core/slug.ts';
-import { projectionMismatches } from '../core/tag-projection.ts';
+import { projectionMismatches, updatesFor } from '../core/tag-projection.ts';
 import { SUMMARY_MAX_CHARS } from '../core/validate.ts';
 import type { Item } from '../core/types.ts';
 import { chunkDocument } from '../ingest/chunk.ts';
@@ -1848,6 +1848,283 @@ export function checkBodyTruncation(root: string, items: Item[]): Finding[] {
   return findings;
 }
 
+/**
+ * List and blockquote scaffolding a line may open with before its first word.
+ * Stripped so "does this line OPEN with a shouted clause" is asked of the
+ * prose rather than of the Markdown wrapped around it.
+ */
+const LINE_SCAFFOLD = /^(?:[>\s*_•+-]|\d+[.)])+/;
+
+/** The leading run of shouted words on a line, with the punctuation between them. */
+const CAPS_RUN = /^[A-Z][A-Z'’]*(?:-[A-Z'’]+)*(?:[ ,;:.—'’-]+[A-Z][A-Z'’]*(?:-[A-Z'’]+)*)*/;
+
+/**
+ * Words that make a shouted clause conditional, hypothetical or negated, so
+ * the clause is a PLAN rather than a verdict: "DONE WHEN:", "UNTIL THIS IS
+ * FIXED", "THIS TASK IS NOT DONE AND MUST NOT BE CLOSED". These are English
+ * function words, not this project's vocabulary — nothing derived exists for
+ * them to fall out of step with.
+ *
+ * `NO` is deliberately absent. "THE QUESTION THIS TASK ASKED IS ANSWERED, AND
+ * THE ANSWER IS NO" is a verdict, and hedging on `NO` would drop it.
+ */
+const HEDGES = new Set([
+  'NOT', 'NOR', 'NEVER', 'UNTIL', 'UNLESS', 'WHEN', 'IF', 'WHETHER',
+  'CANNOT', 'MUST', 'WOULD', 'SHOULD', 'RATHER', 'BEFORE', 'ONCE',
+]);
+
+/**
+ * Closing verdicts that NO vocabulary in this project declares, so there is
+ * nothing to derive them from — see the docblock on `checkBodyAgreement` for
+ * why this list exists, what it is not, and why the check says so in its own
+ * output rather than leaving its reach implied by silence.
+ */
+const CLOSING_VERDICTS = new Set([
+  'RESOLVED', 'FIXED', 'CLOSED', 'ANSWERED', 'MOOT', 'WITHDRAWN',
+  'OBSOLETE', 'CANCELLED', 'CANCELED', 'REVERTED', 'RETRACTED',
+]);
+
+/**
+ * A body clause withdrawing something the item states. Two branches, and the
+ * difference decides what else the clause must carry (see `retracts`):
+ * `WITHDRAWN` announces itself, while "is wrong" / "was false" is the most
+ * ordinary thing a body can say ABOUT ITS SUBJECT and means nothing on its own
+ * — "the SNAPSHOT is stale" and "PACKS WAS WRONG" are the finding, not a
+ * retraction of it.
+ */
+const RETRACTION_ANNOUNCED =
+  /\bno longer (?:holds|true|the case|applies|stands)\b|\bwithdrawn by\b|\bretracted\b/i;
+const RETRACTION_PREDICATE =
+  /\b(?:is|was|are|were|has become|have become|turned out to be)\s+(?:now\s+|since\s+)?(?:wrong|false|stale|moot|obsolete)\b/i;
+
+/** The same clause pointing at THIS item's own title, premise, claim or ruling. */
+const SELF_REF =
+  /\b(?:the|this|that|its)\s+(?:title|premise|claim|ruling)\b|\bthis\s+(?:task|item|rule|note|lesson|requirement|decision|standard)(?:'s|’s)?\b/i;
+
+/**
+ * `<count> <noun>` in a title, so the body can be asked for the same count.
+ * The count may not be preceded by a digit or a dot: `v2.0 citations` and
+ * `pass 2: 13 keys` are a VERSION and a SEQUENCE, and reading either as a
+ * measurement produced two findings that said nothing.
+ */
+const TITLE_COUNT = /(?<![\dA-Za-z.-])(\d{1,5})\s+([A-Za-z][A-Za-z-]{3,})\b/g;
+
+function leadClauses(line: string): string[][] {
+  const m = CAPS_RUN.exec(line.replace(LINE_SCAFFOLD, ''));
+  if (m === null || m[0].length < 3) return [];
+  const out: string[][] = [];
+  for (const clause of m[0].split(/[.;:]/)) {
+    const words = clause.split(/[^A-Z'’-]+/).filter((w) => w.length > 0);
+    if (words.length === 0) continue;
+    if (words.some((w) => HEDGES.has(w))) continue;
+    out.push(words);
+  }
+  return out;
+}
+
+/** This item's value for `field`, whether it is a column or an extra. */
+function fieldValue(item: Item, field: string): string | null {
+  if (field === 'status') return item.status;
+  if (field === 'severity') return item.severity;
+  if (field === 'always') return String(item.always);
+  if (field === 'continuity') return String(item.continuity);
+  return Object.hasOwn(item.extra, field) ? item.extra[field] : null;
+}
+
+/**
+ * Every enumerated value this item's own category declares that it does NOT
+ * currently hold, keyed by the shouted form a body would write it in.
+ *
+ * Derived, with nothing hand-kept: `updatesFor` is the same merge of
+ * `TIER_UPDATES` and the category's own `updates` that `edit`, `help` and the
+ * tag projection read, so a status added to the type or a `state` value added
+ * to `config.json` arrives here with no edit to this file. Booleans and digits
+ * are skipped because "TRUE" and "4" are not words a body shouts a verdict in,
+ * and `true`/`false` in particular would collide with "THAT PREMISE WAS FALSE".
+ */
+function unheldValues(config: Config, item: Item): Map<string, { field: string; current: string }> {
+  const out = new Map<string, { field: string; current: string }>();
+  const updates = updatesFor(config, item.type);
+  for (const field of Object.keys(updates).sort()) {
+    const decl = updates[field];
+    if (decl.store !== 'field' || decl.values === undefined) continue;
+    const current = fieldValue(item, field);
+    if (current === null || current === '') continue;
+    for (const value of decl.values) {
+      if (value === current || value === 'true' || value === 'false') continue;
+      if (!/^[a-z]{4,}$/.test(value)) continue;
+      const key = value.toUpperCase();
+      if (!out.has(key)) out.set(key, { field, current });
+    }
+  }
+  return out;
+}
+
+/** Whether this item's own fields already say it is finished. */
+function alreadyClosed(item: Item): boolean {
+  if (item.status === 'superseded' || item.status === 'deprecated') return true;
+  return Object.hasOwn(item.extra, 'state') && item.extra.state === 'done';
+}
+
+function snippet(text: string, max: number = 64): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return JSON.stringify(flat.length > max ? `${flat.slice(0, max)}…` : flat);
+}
+
+/**
+ * **Does the body agree with the title and the fields above it?**
+ *
+ * Nothing asked that before. `doctor` checks checksums, projections, citations
+ * and scope; every one of those compares a field against something outside the
+ * item, and none of them reads the prose. Writing summaries for the whole
+ * corpus on 2026-08-26 forced somebody to read every body for the first time
+ * and turned up items whose own text closes them while the fields say they are
+ * open, titles asserting a defect the body withdraws, and one INJECTED rule
+ * whose title claims a parity its body had already given up — that one being
+ * fed to agents as governing truth.
+ *
+ * **Three signals, and only the first is fully derived.** Saying which is
+ * which is the point, not a caveat.
+ *
+ * 1. **A value the item does not hold.** `unheldValues` reads this item's own
+ *    declared field vocabularies through `updatesFor` — the same merge `edit`
+ *    and `help` read — so a body shouting `SUPERSEDED` on `status: active`, or
+ *    `DONE` on `state: todo`, is a disagreement between two things this corpus
+ *    already declares. Nothing is hand-kept: add a `state` value to
+ *    `config.json` and this follows it with no edit here.
+ * 2. **A closing verdict no vocabulary declares.** `RESOLVED`, `FIXED`,
+ *    `MOOT`, `ANSWERED` and the rest of `CLOSING_VERDICTS` are English, not
+ *    this project's words, and there is no derived list anywhere for them to
+ *    drift out of step with — which is what makes them a lexicon rather than
+ *    the duplicated-list defect this project has been bitten by. It is still
+ *    the part that can silently miss, so `body_review_limits` states the
+ *    reach of the whole check beside its findings, and says in as many words
+ *    that the count is a floor.
+ * 3. **The body retracting its own title.** `RETRACTION` + `SELF_REF` on one
+ *    sentence, and `TITLE_COUNT` for a count in the title the body re-measures.
+ *    Both compare the item against ITSELF; neither consults a list of items.
+ *
+ * **What makes it precise enough to be worth reading is the SHAPE, not the
+ * words.** A verdict in this corpus opens a line in capitals — the corpus's own
+ * emphasis convention — so only a clause at the head of a line is read, and a
+ * clause carrying a `HEDGES` word is a plan rather than a verdict and is
+ * dropped. That is what keeps `DONE WHEN:` (an acceptance criterion, on eight
+ * requirements here) and `UNTIL THIS IS FIXED` out of the report.
+ *
+ * **`info`, and it must never become an error.** The ruling and its reasoning
+ * are recorded on the check that reports it: the signal is inferential, a false
+ * positive on a gate stops the world over prose, and the remedy — moving a
+ * status or rewriting a title — is the owner's call. An error here would push
+ * whoever wanted a green run into editing exactly the two fields that are not
+ * theirs to edit.
+ *
+ * **One short finding per item.** The owner has already filed a task about a
+ * doctor message that repeats a long explanation with every finding; the
+ * standing limitation is stated ONCE, in `body_review_limits`, and never
+ * beside each item.
+ */
+export function checkBodyAgreement(items: Item[], config: Config): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const item of items) {
+    const body = item.body.trim();
+    if (body === '') continue;
+    const reasons: string[] = [];
+    const vocabulary = unheldValues(config, item);
+    const closed = alreadyClosed(item);
+    // Once per WORD, never once per line: "RESOLVED" shouted three times is
+    // one disagreement, not three.
+    const said = new Set<string>();
+
+    for (const line of body.split('\n')) {
+      for (const words of leadClauses(line)) {
+        for (const word of words) {
+          if (said.has(word)) continue;
+          const held = vocabulary.get(word);
+          if (held !== undefined) {
+            said.add(word);
+            reasons.push(`body shouts "${word}" while ${held.field} is "${held.current}".`);
+            continue;
+          }
+          if (!closed && CLOSING_VERDICTS.has(word)) {
+            said.add(word);
+            reasons.push(`body shouts the closing verdict "${word}" on an item still open.`);
+          }
+        }
+      }
+    }
+
+    // Split on the colon as well as the full stop: this corpus writes
+    // paragraph-long sentences with a colon in the middle, and without the
+    // colon "THE SECOND HALF OF THIS TASK … and both are wrong" reads as one
+    // clause in which a self-reference and a falsity claim about something
+    // else are neighbours.
+    for (const clause of body.split(/(?<=[.!?:])\s+|\n/)) {
+      const announced = RETRACTION_ANNOUNCED.test(clause);
+      const predicate = RETRACTION_PREDICATE.test(clause) && SELF_REF.test(clause);
+      if (!announced && !predicate) continue;
+      // An ANNOUNCED retraction still has to be about this item rather than
+      // quoted from elsewhere: either it names the item's own title/premise, or
+      // it is shouted, which is how this corpus marks a verdict on itself.
+      if (announced && !predicate && !SELF_REF.test(clause) && leadClauses(clause).length === 0) continue;
+      reasons.push(`body retracts its own premise: ${snippet(clause)}.`);
+      break;
+    }
+
+    TITLE_COUNT.lastIndex = 0;
+    let counted: RegExpExecArray | null;
+    while ((counted = TITLE_COUNT.exec(item.title)) !== null) {
+      if (counted[1] === '0' || counted[1] === '1') continue;
+      const stem = counted[2]!.replace(/s$/i, '');
+      const again = new RegExp(`(?<![\\dA-Za-z.-])(\\d{1,5})\\s+${stem}s?\\b`, 'gi');
+      const inBody = [...body.matchAll(again)].map((m) => m[1]!);
+      // Nothing is reported while the body ALSO states the title's own count:
+      // a body that says both is elaborating, not disagreeing.
+      if (inBody.length === 0 || inBody.includes(counted[1]!)) continue;
+      reasons.push(`title says ${counted[1]} ${counted[2]}; body says ${inBody[0]}.`);
+      break;
+    }
+
+    if (reasons.length === 0) continue;
+    const extra = reasons.length > 2 ? ` (+${reasons.length - 2} more)` : '';
+    findings.push({
+      level: 'info', code: 'body_disagrees_with_meta', item: item.id,
+      message:
+        `${reasons.slice(0, 2).join(' ')}${extra} Read the body against the title and the ` +
+        `fields; which of the two moves is the owner's call.`,
+    });
+  }
+
+  // The standing statement of reach, once per run and never beside a finding
+  // — the owner has already filed a task about a doctor message that repeats a
+  // long explanation with every finding.
+  //
+  // It rides WITH the findings rather than being emitted unconditionally, and
+  // that is a deliberate trade rather than an oversight. "A clean corpus's
+  // summary counts are exactly 0/0/0" is pinned in three test files
+  // (`doctor-cli-on-path`, `docs/fixture`, `docs/examples`) and is the contract
+  // that makes `doctor` usable in CI; a note nobody can ever clear is also the
+  // failure `checkCitationForm`'s own docblock refuses. The cost is real and is
+  // named here rather than hidden: on a corpus where this check finds nothing,
+  // it says nothing, and "nothing found" is still not "nothing present".
+  if (findings.length > 0) {
+    findings.push({
+      level: 'info', code: 'body_review_limits',
+      message:
+        `the ${findings.length} finding(s) above, out of ${items.length} item(s) read, are a ` +
+        `FLOOR and not a count. This check reads two shapes only: a shouted clause OPENING a ` +
+        `line, and a clause retracting the item's own title or premise. The field values it ` +
+        `checks against are derived from each item's own category, so they follow config; the ` +
+        `closing verdicts (RESOLVED, FIXED, CLOSED, ANSWERED, MOOT, …) are a listed lexicon, ` +
+        `because no vocabulary in this project declares them. A contradiction written in ` +
+        `ordinary sentence case, by implication, or in words not on that list is INVISIBLE ` +
+        `here — "none found" is not "none present".`,
+    });
+  }
+
+  return findings;
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
@@ -1855,6 +2132,7 @@ export function runChecks(opts: {
     () => checkIndexFreshness(opts.root, opts.dbPath),
     () => checkOrphanRelations(opts.items),
     () => checkBodyTruncation(opts.root, opts.items),
+    () => checkBodyAgreement(opts.items, opts.config),
     () => checkCitationForm(opts.repoRoot, opts.items),
     () => checkSourceDrift(opts.repoRoot, opts.items),
     () => checkDeadScopes(opts.repoRoot, opts.items, opts.config),

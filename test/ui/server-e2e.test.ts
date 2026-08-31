@@ -151,16 +151,23 @@ test('wrong token 403, missing header 401, bad Origin 403 — and no CORS header
     // the request. The CONTRACT is that the field is present and can say "not
     // known" — `test/ui/corpus-drift.test.ts` is where the three states are
     // held apart.
+    // `occupancy` (`plan:walk seq:124`) is the context-window reading, and it
+    // is the one field here that is SESSION-SCOPED: this request names no
+    // session, so `null` is the whole contract — "nobody asked", which is not
+    // any of the four `UnmeasurableWhy` reasons and must not be reported as
+    // one. That it is present and null with no session, and a reading with one,
+    // is held apart in `test/ui/context-live.test.ts`.
     const body = await good.json() as {
-      ok: boolean; staleCode: boolean; corpus: { drifted: boolean | null };
+      ok: boolean; staleCode: boolean; corpus: { drifted: boolean | null }; occupancy: unknown;
     };
-    assert.deepEqual(Object.keys(body).sort(), ['corpus', 'ok', 'staleCode']);
+    assert.deepEqual(Object.keys(body).sort(), ['corpus', 'occupancy', 'ok', 'staleCode']);
     assert.equal(body.ok, true);
     assert.equal(typeof body.staleCode, 'boolean');
     assert.ok(
       body.corpus.drifted === null || typeof body.corpus.drifted === 'boolean',
       'the heartbeat must always carry a corpus finding, even when it is "not known"',
     );
+    assert.equal(body.occupancy, null, 'a ping that names no session asked nothing');
   } finally { await h.stop(); removeTree(cwd); }
 });
 

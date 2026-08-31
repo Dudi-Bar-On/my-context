@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
 import { writeTee } from '../../src/core/statusline-tee.ts';
-import { occupancyStandDownLine, readOccupancy } from '../../src/core/context-occupancy.ts';
+import {
+  CONTEXT_SAMPLE_FRESH_MS, occupancyStandDownLine, readOccupancy,
+} from '../../src/core/context-occupancy.ts';
 
 /**
  * Every temp root this file makes, removed once at the end.
@@ -120,20 +122,101 @@ test('a real sample gives the percentage Claude Code itself reports', () => {
   assert.equal(Math.round(occupancy.percent), 98);
 });
 
+/* -------------------------------------------------------------------------- *
+ * THE FRESHNESS GATE — `plan:walk seq:123`.
+ *
+ * The reported case, verbatim: the strip showed 60.1% while the real occupancy
+ * was 100%, because the sample it drew had been received 29 hours earlier and
+ * nothing checked. The same fossil is why the `Stop` handover ask never fired —
+ * 60.1% is below any threshold, so the mechanism compared a dead number and
+ * stayed silent, which looks exactly like a mechanism that works.
+ *
+ * `writeTee`'s third parameter is the real writer's own `receivedAt`, so these
+ * fixtures age a sample the way the product does rather than by hand-building
+ * an envelope this module would then be tested against instead of the product.
+ * -------------------------------------------------------------------------- */
+
+/** A workspace whose one sample was tee'd `ageMs` ago. */
+function withAgedSample(ageMs: number): string {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-occ-'));
+  roots.push(root);
+  const at = new Date(Date.now() - ageMs).toISOString();
+  const result = writeTee(root, { session_id: 'sess-1', ...sample(60.1) }, at);
+  assert.deepEqual(result, { written: true }, 'the fixture was not written');
+  return root;
+}
+
+test('a 29-hour-old sample is stale, and is NEVER handed back as a percentage', () => {
+  const occupancy = readOccupancy(withAgedSample(29 * 60 * 60_000), 'sess-1');
+  assert.deepEqual(occupancy, { state: 'unmeasurable', why: 'stale' });
+});
+
+test('a sample inside the freshness window is still a reading, and carries its stamp', () => {
+  const occupancy = readOccupancy(withAgedSample(CONTEXT_SAMPLE_FRESH_MS - 60_000), 'sess-1');
+  if (occupancy.state !== 'known') assert.fail(`expected a known occupancy, got ${occupancy.why}`);
+  assert.equal(Math.round(occupancy.percent), 60);
+  assert.match(occupancy.receivedAt, /^\d{4}-\d{2}-\d{2}T/,
+    'the reading carries the moment it was taken, so a caller can tell a NEW sample from a redraw');
+});
+
+/**
+ * The gate is a boundary, and a boundary nobody can land on has an off-by-one
+ * in it. `>` on the age, so a sample exactly at the window is still fresh.
+ */
+test('the boundary is exact: at the window fresh, one millisecond past it stale', () => {
+  // A hair inside, to leave room for the milliseconds this test itself spends.
+  assert.equal(readOccupancy(withAgedSample(CONTEXT_SAMPLE_FRESH_MS - 2_000), 'sess-1').state, 'known');
+  assert.equal(readOccupancy(withAgedSample(CONTEXT_SAMPLE_FRESH_MS + 2_000), 'sess-1').state,
+    'unmeasurable');
+});
+
+/**
+ * **A sample that cannot be dated cannot be shown to be current.**
+ *
+ * `receivedAt` is this product's own envelope field, not Claude Code's, so an
+ * unparseable one means our writer produced something our reader cannot read.
+ * Falling through to `known` would restore the reported defect for the one case
+ * nobody would think to test.
+ */
+test('an undatable receivedAt is stale, not a reading', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-occ-'));
+  roots.push(root);
+  assert.deepEqual(writeTee(root, { session_id: 'sess-1', ...sample(60.1) }, 'not-a-date'),
+    { written: true });
+  assert.deepEqual(readOccupancy(root, 'sess-1'), { state: 'unmeasurable', why: 'stale' });
+});
+
+/**
+ * The three older reasons keep their exact meanings. A fossil that is ALSO
+ * unreadable is `unknown-shape`, because a schema break is the actionable half
+ * of it and "upgrade my_context" is a different errand from "the session is
+ * idle".
+ */
+test('the freshness gate does not swallow the three reasons that came before it', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-occ-'));
+  roots.push(root);
+  const long_ago = new Date(Date.now() - 29 * 60 * 60_000).toISOString();
+  assert.deepEqual(writeTee(root, { session_id: 'sess-1', context_window: 'not an object' }, long_ago),
+    { written: true });
+  assert.deepEqual(readOccupancy(root, 'sess-1'), { state: 'unmeasurable', why: 'unknown-shape' });
+  assert.deepEqual(readOccupancy(root, 'sess-never-sampled'), { state: 'unmeasurable', why: 'no-sample' });
+});
+
 test('every unmeasurable reason produces a line that NAMES the reason', () => {
-  for (const why of ['no-bridge', 'no-sample', 'unknown-shape'] as const) {
+  for (const why of ['no-bridge', 'no-sample', 'unknown-shape', 'stale'] as const) {
     assert.match(occupancyStandDownLine(why), /statusline|sample|shape/);
   }
 });
 
 /**
- * The three lines are three different things to tell a human, so they must not
- * be one line wearing three labels: a reader who is told "not installed" when
+ * The four lines are four different things to tell a human, so they must not
+ * be one line wearing four labels: a reader who is told "not installed" when
  * the bridge IS installed goes and installs it again.
  */
-test('the three stand-down lines are distinct, prefixed once, and one line each', () => {
-  const lines = (['no-bridge', 'no-sample', 'unknown-shape'] as const).map(occupancyStandDownLine);
-  assert.equal(new Set(lines).size, 3);
+test('the four stand-down lines are distinct, prefixed once, and one line each', () => {
+  const lines = (['no-bridge', 'no-sample', 'unknown-shape', 'stale'] as const)
+    .map(occupancyStandDownLine);
+  assert.equal(new Set(lines).size, 4);
   for (const line of lines) {
     assert.ok(line.startsWith('my_context: '), `missing the single prefix: ${line}`);
     assert.equal(line.match(/my_context:/gu)?.length, 1, `prefixed more than once: ${line}`);
@@ -144,4 +227,5 @@ test('the three stand-down lines are distinct, prefixed once, and one line each'
   assert.match(lines[0]!, /mycontext statusline install/);
   assert.doesNotMatch(lines[1]!, /statusline install/);
   assert.doesNotMatch(lines[2]!, /statusline install/);
+  assert.doesNotMatch(lines[3]!, /statusline install/);
 });

@@ -179,6 +179,20 @@ export function occupancyBands(threshold) {
  * The live corpus is the case that argues for it: its own sample reads 60.1%
  * and was received 29 hours ago. Levelled, that is a confident green about a
  * window that no longer exists.
+ *
+ * ── THE SERVER OWNS IT NOW, AND THIS RESTATES IT BY NAME ──────────────────
+ *
+ * `plan:walk seq:123`. This constant used to exist ONLY here, which meant only
+ * this page enforced it: `core/context-occupancy.ts` · `readOccupancy` handed
+ * `Stop` and `PreCompact` a confident percentage off the same 29-hour-old
+ * sample the chip below was refusing to colour. One product, two answers about
+ * one file. The declaration now lives beside the reading it gates —
+ * `core/context-occupancy.ts` · `export const CONTEXT_SAMPLE_FRESH_MS` — and
+ * this is a browser ES module that cannot import a `.ts` one, so the value is
+ * restated here by NAME with the original named beside it, exactly the way
+ * `lib/live-invalidation.js` · `export const STREAM_POLL_MS` restates the
+ * server's tail interval. `test/ui/viewmodel.test.ts` imports both and fails if
+ * they ever differ, so the mirror cannot rot in silence.
  */
 export const CONTEXT_SAMPLE_FRESH_MS = 15 * 60_000;
 

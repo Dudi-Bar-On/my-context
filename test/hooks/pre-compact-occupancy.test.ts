@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit } from '../../src/core/audit.ts';
+import { CONTEXT_SAMPLE_FRESH_MS } from '../../src/core/context-occupancy.ts';
 import { snapshotPath } from '../../src/core/ledger.ts';
 import { appendSeen } from '../../src/core/seen-file.ts';
 import { writeTee } from '../../src/core/statusline-tee.ts';
@@ -64,6 +65,12 @@ interface RowOptions {
   bridge?: boolean;
   /** Writes the sample for a DIFFERENT session — the `no-sample` case. */
   otherSessionOnly?: boolean;
+  /**
+   * Ages this session's sample past `CONTEXT_SAMPLE_FRESH_MS` — the `stale`
+   * case, added by `plan:walk seq:123`. A perfectly readable sample that this
+   * hook must NOT record as the occupancy the compaction fired at.
+   */
+  staleSample?: boolean;
   /** Ids to put in the seen file, so the row has real snapshot work to report. */
   seen?: string[];
   /** Squat on the snapshot path so the write fails and the failure row is written. */
@@ -122,7 +129,12 @@ function preCompactRow(options: RowOptions): Row {
   // `{ receivedAt, payload }` envelope stay `statusline-tee.ts`'s to decide.
   if (options.bridge !== false && options.percent !== undefined) {
     const session = options.otherSessionOnly === true ? 'some-other-session' : 's1';
-    const result = writeTee(root, { session_id: session, ...sampleAt(options.percent) });
+    // `writeTee`'s third argument is the real writer's own `receivedAt`, so an
+    // aged fixture ages the way the product's own samples age.
+    const receivedAt = options.staleSample === true
+      ? new Date(Date.now() - CONTEXT_SAMPLE_FRESH_MS - 60_000).toISOString()
+      : new Date().toISOString();
+    const result = writeTee(root, { session_id: session, ...sampleAt(options.percent) }, receivedAt);
     assert.deepEqual(result, { written: true }, 'the status-line fixture was not written');
   }
 
@@ -201,7 +213,7 @@ test('an unmeasurable occupancy is null, never zero and never a guess', () => {
     // three reasons it was. Not merely absent: a reader who finds neither the
     // field nor a reason cannot tell this row from one written before the value
     // existed, which is the failure `STD-absent-vs-zero` names.
-    assert.match(row.note, /occupancy unmeasurable \((no-bridge|no-sample|unknown-shape)\)/u);
+    assert.match(row.note, /occupancy unmeasurable \((no-bridge|no-sample|unknown-shape|stale)\)/u);
     assert.doesNotMatch(row.note, /occupancy 0/u);
   }
 });
@@ -218,11 +230,36 @@ test('the exact token counts travel beside the rounded percentage', () => {
   assert.match(row.note, /200000/u);
 });
 
-/** Each unmeasurable reason is named, because the three have three fixes. */
+/** Each unmeasurable reason is named, because the four have four fixes. */
 test('an unmeasurable occupancy says WHICH reason, not just that there is one', () => {
   assert.match(preCompactRow({ trigger: 'auto', bridge: false }).note, /no-bridge/u);
   assert.match(
     preCompactRow({ trigger: 'auto', percent: 50, otherSessionOnly: true }).note, /no-sample/u);
+  assert.match(preCompactRow({ trigger: 'auto', percent: 60.1, staleSample: true }).note, /stale/u);
+});
+
+/**
+ * **A FOSSIL IS NOT WHAT THE COMPACTION FIRED AT** — `plan:walk seq:123`.
+ *
+ * This row exists to stop the threshold being a guess: it records the occupancy
+ * at the moment the platform compacted. A sample received 29 hours ago is not
+ * that number, and writing it here would poison the very measurement the row was
+ * added for — worse than recording nothing, because a wrong number is used and
+ * an absent one is investigated.
+ *
+ * The reported case is this exact figure: the strip read 60.1% while the window
+ * was actually full. `occupancyPercent` must be `null` and the note must say
+ * `stale`, not 60.
+ */
+test('a 29-hour-old sample is recorded as unmeasurable, never as the percentage it says', () => {
+  const row = preCompactRow({ trigger: 'auto', percent: 60.1, staleSample: true });
+  assert.equal(row.occupancyPercent, null,
+    'a fossil recorded as a number is the defect this gate exists to prevent');
+  assert.match(row.note, /occupancy unmeasurable \(stale\)/u);
+  assert.doesNotMatch(row.note, /60/u);
+  // And the control: the same sample, fresh, IS recorded.
+  const fresh = preCompactRow({ trigger: 'auto', percent: 60.1 });
+  assert.equal(Math.round(fresh.occupancyPercent ?? -1), 60);
 });
 
 /**
