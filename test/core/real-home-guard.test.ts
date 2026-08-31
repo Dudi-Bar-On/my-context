@@ -98,7 +98,7 @@ test('a global-layer fixture written under a redirected HOME', () => {
  * contamination 17 times. This fixture is that developer: it creates the store,
  * rewrites it at the same length the way an eviction does, has a CHILD rewrite it
  * the way a second server would, and leaves behind the temp file a writer that
- * died mid-rename leaves (`core/ui-sessions.ts` · `const tmp = ...target}.tmp`; · ~206).
+ * died mid-rename leaves (`core/ui-sessions.ts` · `const tmp = ` · ~230).
  *
  * No backslash escape appears anywhere below: this string is a template literal,
  * so every escape in it is consumed HERE rather than reaching the fixture, and a
@@ -177,7 +177,16 @@ function runGuarded(fixture: string, env: Record<string, string>): GuardedRun {
   // "run() is being called recursively" and run NOTHING — a silent exit 0 that
   // would have made both assertions below vacuous. Removed, not overridden:
   // the value is a protocol version the child must not see at all.
-  const childEnv: Record<string, string | undefined> = { ...process.env, ...env };
+  // Every run below TRIPS the guard on purpose, and a trip is recorded in a
+  // run-scoped marker file so the rest of that run fails on it. Those markers
+  // belong to the fixture's throwaway workspace, not to the shared directory
+  // under %TEMP%: a marker left there by a probe would be honoured by a later
+  // real runner root that the OS happened to give the same pid.
+  const childEnv: Record<string, string | undefined> = {
+    ...process.env,
+    MYCONTEXT_GUARD_TRIP_DIR: path.join(path.dirname(fixture), 'guard-trips'),
+    ...env,
+  };
   delete childEnv['NODE_TEST_CONTEXT'];
   const result = spawnSync(
     process.execPath,
