@@ -723,7 +723,7 @@ test('/api/revisions: a staged revision arrives as a per-field diff; a human edi
     // Stage through the REAL staging path. Establish by executing (as Task 1
     // did): build the MutationContext the way test/core/revision*.test.ts
     // builds one, and stage a body change against the POSIX rule through the
-    // real stageRevision (read its input shape at revision.ts:906 when
+    // real stageRevision (read its input shape at `core/revision.ts` · `export function stageRevision(` · ~577 when
     // implementing) — so this test reads a log the product wrote, not one the
     // test invented. Proposed body: 'Use POSIX paths everywhere.'
     const fresh = apiRevisions(ws, new URL('http://x/api/revisions'));
@@ -1038,7 +1038,7 @@ import { STATUSES } from '../core/validate.ts';
 import { RELATION_TYPES } from '../core/vocabulary.ts';
 
 const SEARCH_PARAMS = ['text', 'type', 'tag', 'path', 'status', 'relation', 'limit'];
-const SEARCH_DEFAULT_LIMIT = 50; // the CLI's own cap (cli/commands/search.ts:61)
+const SEARCH_DEFAULT_LIMIT = 50; // the CLI's own cap (`cli/commands/search.ts` · `const DEFAULT_LIMIT = 50;` · ~68)
 
 export function apiSearch(ws: Workspace, url: URL): JsonResult {
   const bad = unknownParams(url, SEARCH_PARAMS);
@@ -1114,7 +1114,7 @@ export function apiGlob(ws: Workspace, url: URL): JsonResult {
   // matchesAnyGlob is CORRECT here and would be the documented defect one
   // question over: this asks "which files match this pattern" — a question
   // about the pattern being composed. "Which items govern this file" stays
-  // with matchesScope/injection() (select.ts:127-129 names the difference).
+  // with matchesScope/injection() (`core/select.ts` · `and consequently kept hiding unscoped` · ~398 names the difference).
   const matches = files.filter((f) => matchesAnyGlob(f, patterns));
   return {
     status: 200,
@@ -1122,7 +1122,7 @@ export function apiGlob(ws: Workspace, url: URL): JsonResult {
       patterns,
       total: matches.length,
       sample: matches.slice(0, GLOB_SAMPLE_CAP),
-      fileWalkTruncated: files.length >= 20_000, // listRepoFiles' own bound (doctor/checks.ts:43)
+      fileWalkTruncated: files.length >= 20_000, // listRepoFiles' own bound (`doctor/checks.ts` · `const FILE_LIMIT = 20_000;` · ~52)
     },
   };
 }
@@ -1337,7 +1337,7 @@ git commit -m "feat(ui): overlap detection at capture — a scored hint, compute
       meta: {                        // what the editor's controls are built from
         profiles: string[];          // Object.keys(PROFILES)
         tiers: ['normative', 'rationale'];
-        agentEdits: string[];        // AGENT_EDITS — declaration order is user-facing (config.ts:91-93)
+        agentEdits: string[];        // AGENT_EDITS — declaration order is user-facing (`core/config.ts` · `export const AGENT_EDITS: AgentEdits[] = ['allow', 'review'];` · ~153)
         scopePolicies: string[];     // SCOPE_POLICIES
         defaultBudgets: Budgets;
       };
@@ -1488,13 +1488,13 @@ import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 /**
  * The Configure read model (web-ui plan 2). Everything here VALIDATES and
  * PREVIEWS; nothing writes. The deny hook's own words are the reason
- * (pre-tool-use.ts:96-97): configuration changes to .my_context/config.json
+ * (`hooks/pre-tool-use.ts` · ``changes to `.my_context/config.json` are the user`` · ~118): configuration changes to .my_context/config.json
  * are the user's to make — so the editor produces the file for the user to
  * paste, and a UI that wrote it would be arguing with a rule this product
  * enforces against its own agent (spec §4, Configure).
  */
 
-/** Compile-time-pinned runtime list for the Tier union (types.ts:1) — no
+/** Compile-time-pinned runtime list for the Tier union (`core/types.ts` · `export type Tier = 'normative' | 'rationale';` · ~1) — no
  * runtime list exists anywhere; the Exclude check fails tsc if the union grows. */
 const TIERS = ['normative', 'rationale'] as const;
 type _TiersExhaustive = Exclude<Tier, (typeof TIERS)[number]> extends never ? true : never;
@@ -1506,7 +1506,7 @@ function configPath(ws: Workspace): string | null {
 }
 
 /** resolveConfig's Config, reshaped for JSON: the null-prototype categories
- * map (config.ts:334) becomes a sorted array. */
+ * map (`core/config.ts` · `const categories: Record<string, ResolvedCategory> = Object.create(null);` · ~1399) becomes a sorted array. */
 function serializable(config: Config): unknown {
   return {
     profile: config.profile,
@@ -1568,7 +1568,7 @@ const BUDGET_KEYS = Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[];
 
 /**
  * What resolveConfig would accept and silently NOT act on (verified against
- * config.ts:447-456 and the four keys :308-458 reads). These findings are the
+ * `core/config.ts` · `export function resolveConfig(raw: unknown): Config {` · ~1330 and the four keys it reads). These findings are the
  * EDITOR'S checks, not resolveConfig refusals, and the wording says which
  * silence each one names — the loader's leniency is shipped behaviour this
  * module must not misdescribe as validation.
@@ -1846,7 +1846,7 @@ export function apiConfigPreview(ws: Workspace, url: URL, body: unknown): JsonRe
       }
     }
 
-    // 2 + 3. Policy diffs per category, through the ONE lookups (config.ts:138, :160).
+    // 2 + 3. Policy diffs per category, through the ONE lookups (`core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~206, and `agentEditsFor` beside it).
     const categoryNames = [...new Set([
       ...Object.keys(current.categories), ...Object.keys(candidate.categories),
     ])].sort();
@@ -2212,7 +2212,7 @@ test('commandFor builds the exact argv for representative commands', async () =>
 
 test('every composed write command is matched by one of the fourteen deny rules (or is rebuild)', async () => {
   const { PALETTE } = await import('../../src/ui/public/lib/palette-defs.js');
-  // README.md:3967-3980, verbatim — the protection the composed-not-executed
+  // `README.md` · `| Command | What it does with no human in the loop |` · ~5371, verbatim — the protection the composed-not-executed
   // design exists to preserve. A write command the palette composes that NO
   // deny rule can match would be a gap in the user's recipe, surfaced here.
   const denyPrefixes = [

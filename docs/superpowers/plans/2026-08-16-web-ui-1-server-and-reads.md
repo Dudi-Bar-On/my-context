@@ -1871,7 +1871,7 @@ import { Store } from '../../src/core/store.ts';
 function open(): { ledger: Ledger; dir: string; close: () => void } {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-ledger-'));
   const dbPath = path.join(dir, '.index.db');
-  const store = Store.open(dbPath); // Ledger.open relies on Store.open first (ledger.ts:74-88)
+  const store = Store.open(dbPath); // Ledger.open relies on Store.open first (`core/ledger.ts` · `static open(dbPath: string, busyTimeoutMs = 3000): Ledger {` · ~135)
   const ledger = Ledger.open(dbPath);
   return { ledger, dir, close: () => { ledger.close(); store.close(); } };
 }
@@ -2321,7 +2321,7 @@ import type { JsonResult } from './routes.ts';
  * Ledger reads (spec §3's table). An endpoint here MAY NOT reimplement one.
  *
  * The server never rebuilds: the hook reads the store as-is
- * (pre-tool-use.ts:129-138), and "see exactly what Claude gets" means reading
+ * (`hooks/pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~202), and "see exactly what Claude gets" means reading
  * exactly what the hook reads. Staleness is doctor's index_stale finding,
  * surfaced by the status screen — never silently repaired here.
  */
@@ -2857,7 +2857,7 @@ export function apiStatus(ws: Workspace, url: URL): JsonResult {
   return withStores(ws, (store) => {
     const items = store.all();
     // The project-layer queue, via the ONE definition (select.ts reviewQueue) —
-    // never a raw draft tally; the difference is named, as status.ts:163 names it.
+    // never a raw draft tally; the difference is named, as `cli/commands/status.ts` · `export function reviewQueueDrafts(ctx: MutationContext): Item[] {` · ~77 names it.
     const queue = reviewQueue(items);
     const globalLayerDrafts = items.filter((i) => i.status === 'draft').length - queue.length;
     const findings = runChecks({
@@ -3156,7 +3156,7 @@ Expected: new tests FAIL.
 - [ ] **Step 3: Implement** (append to `src/ui/read-model.ts`; add imports: `matchesScope` from `select.ts`, `injection` from `../cli/commands/injection.ts`, `listRepoFiles` from `../doctor/checks.ts`, `helpTopic, HELP_TOPICS` from `../help/index.ts`, `scopePolicyFor` from `../core/config.ts`, `statSync` from `node:fs`)
 
 ```ts
-const FILE_WALK_LIMIT = 20_000; // listRepoFiles' own default bound (doctor/checks.ts:43)
+const FILE_WALK_LIMIT = 20_000; // listRepoFiles' own default bound (`doctor/checks.ts` · `const FILE_LIMIT = 20_000;` · ~52)
 
 export function apiCoverage(ws: Workspace, url: URL): JsonResult {
   const bad = unknownParams(url, []);
@@ -3167,8 +3167,8 @@ export function apiCoverage(ws: Workspace, url: URL): JsonResult {
     const items = store.all();
     // injection() composes isEligible + the normative-tier test +
     // emptyScopeInjection(scopePolicyFor(...)) in select's own order
-    // (cli/commands/injection.ts:42). NOT matchesAnyGlob — the defect
-    // select.ts:127-129 documents by name.
+    // (`cli/commands/injection.ts` · `export function injection(` · ~84). NOT matchesAnyGlob — the defect
+    // `core/select.ts` · `and consequently kept hiding unscoped` · ~398 documents by name.
     const decorated = items.map((item) => ({ item, verdict: injection(item, ws.config) }));
     const governing = decorated.filter((d) => d.verdict.injected && !d.item.always);
     const pinned = decorated.filter((d) => d.verdict.injected && d.item.always)
@@ -3330,7 +3330,7 @@ export function apiHelp(ws: Workspace, url: URL, params: { topic: string }): Jso
       }
       case 'capture': {
         // By file mtime, labelled as such in the UI: Item carries no creation
-        // timestamp (types.ts:33-58), and the ledger records injection, not
+        // timestamp (`core/types.ts` · `export interface Item {` · ~56), and the ledger records injection, not
         // capture — mtime is the only recency signal that exists.
         const recent = items
           .map((i) => {
@@ -5013,7 +5013,7 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
   const noOpen = hasFlag(args, 'no-open');
 
   // The server outlives this function: runCli returns, the CLI main sets
-  // process.exitCode without calling process.exit (cli/index.ts:761-762),
+  // process.exitCode without calling process.exit (`cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2)` · ~1231),
   // and the listening socket keeps the event loop alive until idle exit.
   startUiServer({ cwd, port, onExit: () => process.exit(0) })
     .then((running) => {

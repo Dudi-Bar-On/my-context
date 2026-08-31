@@ -440,7 +440,7 @@ Expected: FAIL — `pruned` is 0 (the filter skips `.seen.jsonl`: `ledger.ts` ·
 - [ ] **Step 3: Implement — one line in `pruneSnapshots`**
 
 ```ts
-// src/core/ledger.ts:357 — extend the filter:
+// `core/ledger.ts` · `export function pruneSnapshots(` · ~802 — extend the filter:
     if (!(entry.name.endsWith('.restore.json')
       || entry.name.endsWith('.seen.jsonl')
       || entry.name.includes('.tmp-'))) continue;
@@ -824,7 +824,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
       noteParts.push('seen file unreadable; restore dedupe skipped');
     }
     // ... indexRefs / injected / recordAudit exactly as the current code
-    // (inject.ts:255-304), including the restored tier's `at: snapshotCapturedAt` ...
+    // (`core/inject.ts` · `const indexRefs: InjectedRef[] = selection.index.normative.map(` · ~720), including the restored tier's `at: snapshotCapturedAt` ...
 
     // 5. THE SEEN-FILE APPEND (was: ledger.record / recordRestored). The
     // restored line carries the snapshot's capturedAt — the identity marker —
@@ -1383,7 +1383,7 @@ test('a corrupt index file: fallback fires and the file is NOT deleted by the ho
   const input = { session_id: 'sess-corrupt', tool_name: 'Read',
     tool_input: { file_path: 'src/app.ts' }, cwd };
   assert.notEqual(buildJitOutput(input, cwd, 'src/app.ts'), '');
-  // The self-heal stays on the WRITER path (store.ts:287-308): a hook must
+  // The self-heal stays on the WRITER path (`core/store.ts` · `static open(dbPath: string, profile: OpenProfile` · ~337): a hook must
   // never delete a database it cannot distinguish from a mid-write moment.
   assert.equal(readFileSync(ws.dbPath, 'utf8'), 'garbage, not a database');
 });
@@ -1425,10 +1425,11 @@ export function loadCorpusItems(ws: Workspace, errors: LoadError[] = []): Item[]
 }
 
 /**
- * The JS mirror of `store.activeInjectable` (store.ts:426-433): active
+ * The JS mirror of `store.activeInjectable` (`core/store.ts` · `activeInjectable(types: string[]): Item[] {` · ~532): active
  * status, enabled-normative type. Applied BEFORE select — not only to the
- * tiers — so the fallback's focus-report universe (buildFocusReport over
- * eligibleAll, select.ts:411-415) matches the DB path's pre-filtered one.
+ * tiers — so the fallback's focus-report universe
+ * (`core/select.ts` · `function buildFocusReport(` · ~928, run over eligibleAll)
+ * matches the DB path's pre-filtered one.
  * A fallback that fed select the unfiltered corpus would produce identical
  * INJECTIONS [R1] but different focus-disclosure COUNTS — the
  * disclosure-consistency defect the review caught (I3).
@@ -1536,7 +1537,7 @@ test('an UNAVAILABLE index skips the known filter: over-capture, disclosed, neve
   const result = buildRestoreSnapshot({ session_id: 'sess-pc2', cwd }, cwd);
   assert.notEqual(result, null);
   // Over-capture is the safe direction: select drops ids matching no live
-  // item at restore (select.ts:470-475).
+  // item at restore (`core/select.ts` · `restoreIds.has(i.id) && !alreadyChosen.has(i.id)` · ~1194).
   assert.deepEqual(result!.itemIds, ['CONST-a']);
   const note = readAudit(ws.projectRoot!)
     .filter((r) => r.op === 'pre-compact' && r.sessionId === 'sess-pc2').at(-1)?.note ?? '';
@@ -1571,7 +1572,7 @@ export function scanTranscriptIds(
 ): string[] {
   // `null` = no known-id filter: the index was unavailable at capture time.
   // Over-capture is the safe direction (a snapshot id matching no live item
-  // selects nothing at restore, select.ts:470-475), and the universe is
+  // selects nothing at restore, `core/select.ts` · `restoreIds.has(i.id) && !alreadyChosen.has(i.id)` · ~1194), and the universe is
   // bounded by the 8 MB tail and the strict id shape either way.
   if (!transcriptPath || (knownIds !== null && knownIds.size === 0)) return [];
   let text: string;
@@ -1618,7 +1619,7 @@ export function buildRestoreSnapshot(
 
     // known filter ← a best-effort READ-ONLY open: 0.2 ms under a held
     // write lock [P4], 0 failures in 18,300 contended trials [P6/P6b].
-    // Unavailable → skip the filter; over-capture is safe (select.ts:470-475).
+    // Unavailable → skip the filter; over-capture is safe (`core/select.ts` · `restoreIds.has(i.id) && !alreadyChosen.has(i.id)` · ~1194).
     let known: Set<string> | null = null;
     let store: Store | null = null;
     try {
@@ -1775,7 +1776,7 @@ export function checkCorpusSize(items: Item[]): Finding[] {
   }];
 }
 
-// in runChecks' array (checks.ts:722-732), add:
+// in runChecks' array (`doctor/checks.ts` · `export function runChecks(opts: {` · ~1765), add:
     () => checkCorpusSize(opts.items),
 ```
 

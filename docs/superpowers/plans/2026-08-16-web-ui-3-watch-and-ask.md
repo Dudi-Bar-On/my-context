@@ -2508,7 +2508,8 @@ import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 //
 // Corpus queries NEVER rebuild the index (plan 1 design decision 1: the
 // server reads what the hooks read). The CLI's `query` rebuilds first; this
-// surface does not, which makes the documented updated_at trap (query.ts:46)
+// surface does not, which makes the documented updated_at trap
+// (`cli/commands/query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query rebuilds the` · ~52)
 // STRICTER here — the Ask screen's caveat string says so.
 //
 // Audit queries never read the JSONL directly (spec §4 Ask): they read the

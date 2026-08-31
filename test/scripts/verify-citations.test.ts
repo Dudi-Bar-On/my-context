@@ -376,6 +376,79 @@ test('the summary always reports how many markers are in play', () => {
 });
 
 // ---------------------------------------------------------------------------
+// THE FENCE QUESTION. A fenced block is sometimes source waiting to be pasted
+// and sometimes a specimen of this very notation, and the script's answer is
+// that its INFO STRING decides — nothing else. Three things have to hold at
+// once or the answer is worthless: the fence does not hide a real citation, a
+// bare pointer inside a SOURCE fence is named, and the same pointer one step
+// outside that scope is left alone. The third is the specimen escape, and it is
+// the one that matters most: a sweep that "fixes" a specimen destroys the
+// documentation of the form.
+//
+// The control comes first for the usual reason. A script that never looked
+// inside a fence at all would pass the two silences below by being empty.
+// ---------------------------------------------------------------------------
+
+/** A `ts`-tagged fenced block, which is what a plan writes for code to paste. */
+const tsFence = (body: string): string => `\`\`\`ts\n${body}\n\`\`\`\n`;
+
+/** The same block with no info string, which is what a display is written as. */
+const bareFence = (body: string): string => `\`\`\`\n${body}\n\`\`\`\n`;
+
+test('the control: a citation inside a ```ts fence is READ, not skipped as code', () => {
+  run(tsFence(`// why: ${cite(PRESENT)} · ~2`), (p) => {
+    assert.equal(p.code, 0, p.out);
+    assert.match(p.out, /1 citation\(s\)/);
+    assert.match(p.out, /0 fault\(s\)/);
+  });
+});
+
+test('a BROKEN citation inside a ```ts fence is still reported — a fence is not a quotation mark', () => {
+  run(tsFence(`// why: ${cite(GONE)}`), (p) => {
+    assert.equal(p.code, 1, p.out);
+    assert.match(p.out, /BROKEN/);
+  });
+});
+
+test('a bare `file:line` pointer inside a ```ts fence is a fault, and fails the run', () => {
+  run(tsFence('// the filter lives at thing.ts:2 — extend it:'), (p) => {
+    assert.equal(p.code, 1, p.out);
+    assert.match(p.out, /^BARE .*probe\.md:2$/m, p.out);
+    assert.match(p.out, /thing\.ts:2/);
+    assert.match(p.out, /1 fault\(s\)/);
+  });
+});
+
+test('a line RANGE is the same fault — `thing.ts:2-4` carries no fragment either', () => {
+  run(tsFence('// see thing.ts:2-4'), (p) => {
+    assert.equal(p.code, 1, p.out);
+    assert.match(p.out, /^BARE/m);
+    assert.match(p.out, /thing\.ts:2-4/);
+  });
+});
+
+test('THE SPECIMEN ESCAPE: the identical pointer in an UNTAGGED fence is left alone', () => {
+  run(bareFence('the form this project refused: thing.ts:2'), (p) => {
+    assert.equal(p.code, 0, p.out);
+    assert.match(p.out, /0 fault\(s\)/);
+  });
+});
+
+test('a bare pointer in ordinary prose is NOT this fault — the scope is fences that become source', () => {
+  run('The filter lives at thing.ts:2, which the corpus writes this way.\n', (p) => {
+    assert.equal(p.code, 0, p.out);
+    assert.match(p.out, /0 fault\(s\)/);
+  });
+});
+
+test('the fence CLOSES: a pointer after the closing delimiter is prose again', () => {
+  run(`${tsFence('const a = 1;')}\nand thing.ts:2 names it.\n`, (p) => {
+    assert.equal(p.code, 0, p.out);
+    assert.match(p.out, /0 fault\(s\)/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // THE FRONT DOOR. `DOC_FILES` is two named files rather than a root, and both
 // halves of that choice need a test: a citation written in a README is CHECKED
 // like any other document's, and a README that stops existing STOPS THE RUN

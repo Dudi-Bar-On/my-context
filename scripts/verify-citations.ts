@@ -149,6 +149,65 @@
  * routes around it. The teeth still arrive the same way: repair the 40, flip
  * `--strict-source`.
  *
+ * **THE FENCE QUESTION: a citation inside a fenced code block is sometimes a
+ * pointer and sometimes a specimen of this very form.**
+ *
+ * This script has never tracked fences, and that is correct for the checked
+ * form: on 2026-08-31 two citations in the checked form sat inside ```ts
+ * fences in `web-ui-1`, both were read like any other line, and both resolved.
+ * A fence is not a quotation mark.
+ *
+ * What DID hide there is the refused form. Thirty-six bare `file.ts:123`
+ * pointers were living inside fences across the walked documents — the count
+ * `plan:rulings seq:33c` recorded as "about thirty" on 2026-08-21, measured
+ * again here — and they are invisible twice over. This script cannot read them
+ * (it must never learn `file:line`; `plan:walk seq:30` settled that with a
+ * measurement, and the reasoning is above). And the blocks they live in are
+ * **source in transit**: a ```ts block in a plan exists to be pasted into
+ * `src/`, where this script DOES walk comments — so the pointer arrives in the
+ * destination still unreadable, and the plan has manufactured exactly the
+ * silence the whole gate exists to end. Nine of the thirty-six were already
+ * wrong when they were read by hand.
+ *
+ * **So: when is a citation inside a fence a citation?** The fence does not
+ * decide it. What decides it is whether the block is source in transit, and
+ * the block says so itself, in its info string:
+ *
+ *   - **A fence tagged with a language this repo writes** (```ts, ```js, and
+ *     the spellings in `SOURCE_FENCE`) is source. Its comments become source
+ *     comments the moment someone pastes them, this gate reads them there, and
+ *     a pointer inside it is therefore a real pointer that must be written in
+ *     the checked form. `BARE` below is the fault that says so.
+ *   - **An untagged fence, or one tagged for prose,** is a display: a diagram,
+ *     a transcript, a rendered example. Nobody pastes it into a `.ts` file, and
+ *     `file.ts:123` inside one is text about a file rather than a claim this
+ *     gate can resolve. Seven such pointers sit in a §4.4 dataflow diagram in
+ *     `2026-08-16-never-miss-an-injection-design.md` and are deliberately left.
+ *
+ * **And that is also the specimen escape, which is why it is an info string
+ * and not a suppression list.** A document whose SUBJECT is this notation has
+ * to be able to print `file.ts:123` — to show the form that was refused, to
+ * document a fault — and any list-based exemption would let any file opt out.
+ * A specimen is not source in transit, so a specimen does not carry a language
+ * tag, and the discriminator that makes the check work is the same one that
+ * lets the check be escaped honestly. `SOURCE_EXEMPT` stays what it is: three
+ * exact paths, for the three files that must write MALFORMED citations in the
+ * checked form, which no info string can express.
+ *
+ * **The scope is narrow on purpose, and the narrowness is the ruling.** This
+ * fault does not fire on a bare pointer in ordinary prose. There are nineteen
+ * of those in these documents and 165 more in `.my_context/items/`, and a gate
+ * that went red on 184 findings nobody was asked to repair is a wall — the
+ * argument written out at `gated` below, for the same reason. Prose pointers
+ * are the corpus's `citation_form` doctor note and a documents decision; this
+ * one is a claim that is about to become source, and it lands at zero: the
+ * twenty-nine in language-tagged fences were converted on 2026-08-31, in the
+ * same change that added the check.
+ *
+ * **Markdown's own rule still wins inside the fence.** The block is read as
+ * Markdown, so the citation must fit on ONE line even though the same comment
+ * may legally wrap once it reaches `src/`. A plan may not pre-wrap it.
+ *
  * **AND THE TREE THIS DELIBERATELY DOES NOT WALK: `.my_context/items/`.**
  *
  * The standing request (`plan:walk seq:30`) is that this gate scan the corpus,
@@ -295,6 +354,44 @@ const SEARCH_ROOTS = ['src', 'test', 'scripts', 'docs', '.'];
  *
  * Note the asymmetry, which is deliberate: a file may be CITED in these
  * formats without being WALKED for citations of its own. See `SOURCE_ROOTS`.
+ *
+ * **WHAT A FRAGMENT MEANS IN AN `.html` FILE IS STILL OPEN**, and admitting the
+ * extension here did not settle it. `plan:rulings seq:47` is `state:todo`, and
+ * its own verdict says why this script may not settle it alone: the citation
+ * form is specified in `docs/superpowers/specs/2026-08-18-v2-decisions.md` §2,
+ * and widening which files may be cited changes THE FORM, which is a documents
+ * decision rather than a script one. Nothing below is in force. It is a
+ * measurement and a recommendation, recorded here beside the extension list it
+ * would govern so that whoever takes the decision does not have to re-measure.
+ *
+ * MEASURED 2026-08-31. Twenty-nine citations point into
+ * `docs/design/web-ui-mockup.html` — five thousand lines of markup and the
+ * most-cited artefact in the project. Two are broken, and the two are anchored
+ * the two most fragile ways available: one on a sentence inside an HTML
+ * comment, one on a run of markup spanning sibling elements. Both died without
+ * a design decision having changed — the comment was rewritten under
+ * `plan:repaint seq:3e`, the table row was re-exampled — which is the failure
+ * mode this form exists to distinguish FROM, not to reproduce.
+ *
+ * RECOMMENDED, for the decision to accept or refuse: that a fragment here be a
+ * DECLARATION rather than a rendering — a `data-*` key (`data-t="work.diffn"`,
+ * `data-p="capture"`), a CSS selector with its rule body, or a structural
+ * element's opening tag — and never visible copy, never prose inside an HTML or
+ * CSS comment, never a run of markup crossing sibling tags. The argument is
+ * that `strings-parity` and `styles-parity` already hold the first two shapes
+ * byte-identical between this file and the app, so a citation of that shape
+ * breaks when a design decision changes and at no other time; and that the
+ * corpus's own advice for `.ts` ("anchor on a key or an identifier, never on
+ * user-facing copy") is the same rule, which this file needs MORE than `src/`
+ * does because its copy is translated and repainted.
+ *
+ * AND THE STATUS CHANGE THE DECISION SHOULD WEIGH, which post-dates the task:
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap` (2026-08-26)
+ * retired the app-to-mockup direction. The mockup is HISTORY and a gap list
+ * rather than a specification the app must equal — so one available answer is
+ * that a citation into it is a quotation of the past and takes
+ * `<!-- historical-citation: … -->`, which this script already honours, rather
+ * than a pointer to be re-anchored at all.
  */
 const CITED_EXT = 'ts|js|mjs|cjs|md|json|html|css';
 
@@ -336,6 +433,32 @@ const CITED_FILE_AT_END = new RegExp(`\`[^\`\\n]+?\\.(?:${CITED_EXT})\`$`);
 /** A `~460` line hint at the start of the text to the right of a separator. */
 const HINT_AT_START = /^~\d/;
 
+/**
+ * A fenced block's delimiter, and the info string that says what is inside it.
+ * Markdown allows up to three leading spaces and a longer closing run than the
+ * opening one, and a closing fence carries no info string.
+ */
+const FENCE = /^[ \t]{0,3}(`{3,}|~{3,})[ \t]*([^\s`]*)/;
+
+/**
+ * The info strings that make a fenced block SOURCE IN TRANSIT rather than a
+ * display — see THE FENCE QUESTION at the top of this file. A block tagged this
+ * way exists to be pasted into a file of that language, where this script walks
+ * comments; a block tagged anything else, or nothing, is a diagram, a
+ * transcript, or a specimen of a notation, and is read by a person only.
+ */
+const SOURCE_FENCE = /^(?:ts|tsx|typescript|js|jsx|javascript|mjs|cjs)$/i;
+
+/**
+ * A bare `select.ts:123` or `select.ts:123-140` pointer — the form this script
+ * refuses to learn, found so it can be named rather than resolved. Backticks
+ * around the filename are optional because the corpus writes it both ways.
+ */
+const BARE_POINTER = new RegExp(
+  `\`?\\b([A-Za-z0-9_./-]+\\.(?:${CITED_EXT}))\`?:(\\d+(?:-\\d+)?)`,
+  'g',
+);
+
 interface Citation {
   doc: string;
   docLine: number;
@@ -370,13 +493,19 @@ interface Marker {
  * did not consume: a wrapped or malformed citation, which is the failure the
  * citation form was added to avoid.
  *
+ * `BARE` — a `file.ts:123` pointer inside a fenced block tagged as source, in a
+ * document this script walks. It is a claim about code, written in the one form
+ * this script may not learn, in a block that is about to BECOME code. See THE
+ * FENCE QUESTION at the top of this file for why the fence's info string is the
+ * whole of the test and why nothing narrower or wider is right.
+ *
  * One list, one counter, one exit code. A second reporting channel would be a
  * second place to stop reading.
  */
 interface Fault {
   doc: string;
   docLine: number;
-  label: 'MARKER' | 'UNREAD';
+  label: 'MARKER' | 'UNREAD' | 'BARE';
   raw: string;
   why: string;
 }
@@ -431,14 +560,20 @@ const isMarkdown = (name: string): boolean => name.endsWith('.md');
  *
  * `.html` and `.css` are deliberately NOT walked, and this is not an oversight
  * left for later. Measured the day this landed: the three such files in the
- * tree carry two citations between them and both resolve. The one file with any
- * content, `docs/design/web-ui-mockup.html`, sits under a GATED doc root, and
- * the comment-run join that lets a citation wrap (see `Segment`) knows the
- * slash-star and double-slash forms but not `<!-- -->`, so a wrapped citation
- * there would be read as a fault it is not. Two green citations are not worth
- * a walk that can only be
- * wrong; when the mockup starts carrying real citation weight, add it with the
- * HTML comment form and not before.
+ * tree carry two citations between them and both resolve. The comment-run join
+ * that lets a citation wrap (see `Segment`) knows the slash-star and
+ * double-slash forms but not `<!-- -->`, so a wrapped citation there would be
+ * read as a fault it is not. Two green citations are not worth a walk that can
+ * only be wrong; when the mockup starts carrying real citation weight, add it
+ * with the HTML comment form and not before.
+ *
+ * **And say plainly what an earlier draft of this paragraph got wrong**, since
+ * it was the load-bearing half of the claim: `docs/design/web-ui-mockup.html`
+ * is NOT covered by a doc root. `DOC_ROOTS` includes `docs/design`, but the
+ * walk over it accepts `isMarkdown` only, so the mockup is CITED by twenty-nine
+ * places and WALKED by nothing. That is still the right answer for the same two
+ * reasons above — it is not, as was written here, an answer something else was
+ * already providing.
  */
 const isSourceFile = (name: string): boolean =>
   /\.(?:ts|js|mjs|cjs)$/.test(name) && !name.endsWith('.d.ts');
@@ -746,12 +881,59 @@ function scanSeparators(
   }
 }
 
+/**
+ * Every bare `file.ts:123` on one line of a source-tagged fenced block.
+ *
+ * The whole judgement is made by the caller, which knows what fence the line is
+ * in; this only names what it finds. Nothing here tries to RESOLVE the pointer,
+ * and nothing here ever should — a line number proves the line exists and says
+ * nothing about what it says, which is the measurement `plan:walk seq:30` took
+ * (161 of 165 "verified", four detections) and the reason the form changed.
+ */
+function scanBarePointers(doc: string, seg: Segment, out: DocScan): void {
+  const line = seg.text;
+  BARE_POINTER.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = BARE_POINTER.exec(line)) !== null) {
+    out.faults.push({
+      doc,
+      docLine: lineAt(seg, m.index),
+      label: 'BARE',
+      raw: m[0]!,
+      why:
+        'a `file:line` pointer inside a fenced block tagged as source. The block is source in ' +
+        'transit — pasted into the tree, this comment is walked by this gate, and a line number ' +
+        'is unreadable to it there as it is here. Write the citation form: `file` · ' +
+        '`verbatim fragment` · ~line, on one line. If the block is a SPECIMEN of the refused ' +
+        'form rather than code, drop the language tag from its fence — a specimen is not source ' +
+        'in transit, and the tag is the only thing this check reads.',
+    });
+  }
+}
+
 function collect(doc: string, joinComments: boolean): DocScan {
   const text = readFileSync(doc, 'utf8');
   const rel = path.relative(REPO, doc).split(path.sep).join('/');
   const out: DocScan = { citations: [], markers: [], faults: [] };
+  // Fences are tracked in MARKDOWN only. Source is not fenced, and `segmentsOf`
+  // has joined its comment runs by the time anything gets here, so a line's
+  // identity as a fence delimiter is not a question that arises.
+  let fence: { mark: string; len: number; source: boolean } | null = null;
   for (const seg of segmentsOf(text.split(/\r?\n/), joinComments)) {
     const line = seg.text;
+    if (!joinComments) {
+      const fm = FENCE.exec(line);
+      if (fm !== null) {
+        const mark = fm[1]![0]!;
+        if (fence === null) {
+          fence = { mark, len: fm[1]!.length, source: SOURCE_FENCE.test(fm[2]!) };
+        } else if (mark === fence.mark && fm[1]!.length >= fence.len && fm[2] === '') {
+          fence = null;
+        }
+      } else if (fence !== null && fence.source) {
+        scanBarePointers(rel, seg, out);
+      }
+    }
     CITATION.lastIndex = 0;
     let m: RegExpExecArray | null;
     const spans: Array<[number, number]> = [];
