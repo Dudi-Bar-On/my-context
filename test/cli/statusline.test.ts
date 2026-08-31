@@ -39,8 +39,8 @@ const { runCli } = await import('../../src/cli/index.ts');
 const { recordAudit } = await import('../../src/core/audit.ts');
 const { classifyContext, readTee, writeTee } = await import('../../src/core/statusline-tee.ts');
 const { GLOBAL_DIR, resolveWorkspace } = await import('../../src/core/workspace.ts');
-const { myctxShare, myctxShareByRow, occupancyFromPayload, occupancyFromTee, statusLineText } =
-  await import('../../src/cli/commands/statusline.ts');
+const { ONE_LINE_ENV, myctxShare, myctxShareByRow, occupancyFromPayload, occupancyFromTee,
+  statusLineText } = await import('../../src/cli/commands/statusline.ts');
 const { LEVEL_GLYPH, NO_EXTRAS, SEP } =
   await import('../../src/cli/commands/statusline-powerline.ts');
 const { openProjection, queryProjection, syncProjection } =
@@ -158,6 +158,17 @@ function bar(...blocks: string[]): string {
 }
 
 /**
+ * The TWO-LINE bar the owner ruled for on 2026-08-31: identity, then
+ * everything that moves, joined by the newline Claude Code splits on.
+ *
+ * Composed from `bar` rather than spelled out, so a change to the caps or the
+ * separator moves both forms together.
+ */
+function bars(identity: string[], state: string[]): string {
+  return `${bar(...identity)}\n${bar(...state)}`;
+}
+
+/**
  * The four blocks the owner drew, and the states the last one takes.
  *
  * Rendered to a STRING and asserted on — nothing here installs anything, writes
@@ -177,6 +188,8 @@ test('statusLineText renders each state without ever inventing a number', () => 
     branch: 'campaign/my-context-test',
     threshold: 98,
     myctx: null,
+    focus: null,
+    lastAudit: null,
     myctxNote: null,
     teeNote: null,
   };
@@ -196,12 +209,12 @@ test('statusLineText renders each state without ever inventing a number', () => 
   // nearly due. So all four rows below carry the block, and what changes across
   // them is the number in it — 56.0 points of head-room at 42%, 4.6 at 93.4%,
   // and none at all at 99.2%, where the words take over.
-  assert.equal(at(42), bar(...head, '◆ ask 98 · +56.0', `${LEVEL_GLYPH.ok} ctx 42.0%`));
-  assert.equal(at(70), bar(...head, '◆ ask 98 · +28.0', `${LEVEL_GLYPH.warn} ctx 70.0%`));
+  assert.equal(at(42), bars(head, ['◆ ask 98 · +56.0', `${LEVEL_GLYPH.ok} ctx 42.0%`]));
+  assert.equal(at(70), bars(head, ['◆ ask 98 · +28.0', `${LEVEL_GLYPH.warn} ctx 70.0%`]));
   // 93.4% is past 88.2 — the ask approaching, at a threshold of 98 — so the
   // marker has gone gold beside the red fill. Two questions, two answers.
-  assert.equal(at(93.4), bar(...head, '◆ ask 98 · +4.6', `${LEVEL_GLYPH.crit} ctx 93.4%`));
-  assert.equal(at(99.2), bar(...head, '◆ handover due', `${LEVEL_GLYPH.crit} ctx 99.2%`));
+  assert.equal(at(93.4), bars(head, ['◆ ask 98 · +4.6', `${LEVEL_GLYPH.crit} ctx 93.4%`]));
+  assert.equal(at(99.2), bars(head, ['◆ handover due', `${LEVEL_GLYPH.crit} ctx 99.2%`]));
 
   // The reasons `readOccupancy` keeps apart stay apart here. Collapsing them
   // into one "unknown" is the whole failure that type exists to prevent, and
@@ -209,9 +222,9 @@ test('statusLineText renders each state without ever inventing a number', () => 
   const why = (w: UnmeasurableWhy): string => statusLineText(
     { ...base, occupancy: { state: 'unmeasurable' as const, why: w } }, false, null,
   );
-  assert.equal(why('no-bridge'), bar(...head, `${LEVEL_GLYPH.neutral} ctx — no bridge`));
-  assert.equal(why('no-sample'), bar(...head, `${LEVEL_GLYPH.neutral} ctx — no sample`));
-  assert.equal(why('unknown-shape'), bar(...head, `${LEVEL_GLYPH.neutral} ctx — unreadable`));
+  assert.equal(why('no-bridge'), bars(head, [`${LEVEL_GLYPH.neutral} ctx — no bridge`]));
+  assert.equal(why('no-sample'), bars(head, [`${LEVEL_GLYPH.neutral} ctx — no sample`]));
+  assert.equal(why('unknown-shape'), bars(head, [`${LEVEL_GLYPH.neutral} ctx — unreadable`]));
   assert.equal(
     new Set([why('no-bridge'), why('no-sample'), why('unknown-shape')]).size, 3,
     'three reasons, three sentences — a reader told "not installed" about a bridge that IS '
@@ -221,7 +234,7 @@ test('statusLineText renders each state without ever inventing a number', () => 
   // A FOSSIL SAYS `—` AND NEVER A NUMBER. A stale figure drawn as if fresh is
   // the defect that cost a missed handover at a full window while the strip
   // read 60.1%; the one thing this block must never do is look like a reading.
-  assert.equal(why('stale'), bar(...head, `${LEVEL_GLYPH.neutral} ctx — stale`));
+  assert.equal(why('stale'), bars(head, [`${LEVEL_GLYPH.neutral} ctx — stale`]));
   // The CTX block specifically, not the whole line — `Opus 4.5` has a digit in
   // it and the model block is entitled to one. What must carry no digit is the
   // block a reader reads as the occupancy.
@@ -283,6 +296,48 @@ test('a payload with no workspace behind it is classified the way the tee would 
  * `statusline-powerline.ts` · `buildSegments` for the full record of the
  * supersession. What this test pins is unchanged: both notes reach the line.
  */
+/**
+ * **THE WAY BACK TO ONE LINE, and it is a real rendering rather than a code
+ * path nobody has looked at.**
+ *
+ * The two-line form rests on a reading of ONE build's renderer. Two multi-line
+ * regressions are already on record — a second line vanishing on narrow
+ * terminals, and 2.1.80 truncating line 2 as though it were joined to line 1 —
+ * so a user who meets a third needs a way back that does not involve waiting
+ * for this project to ship. What they get is one line carrying EVERYTHING,
+ * never a second line quietly lost.
+ */
+test('MYCONTEXT_STATUSLINE_ONE_LINE folds the bar back to a single line, losing nothing', () => {
+  const base = {
+    ...NO_EXTRAS,
+    model: 'Opus 4.5', project: 'test_mycontext_plugin', branch: 'campaign/my-context-test',
+    threshold: 98,
+    occupancy: { state: 'known' as const, percent: 42, ageMs: 0 },
+    myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
+    focus: null,
+    lastAudit: null,
+    myctxNote: null, teeNote: null,
+  };
+  const two = statusLineText(base, false, null, {});
+  const one = statusLineText(base, false, null, { [ONE_LINE_ENV]: '1' });
+
+  assert.equal(two.split('\n').length, 2, 'two lines by default');
+  assert.equal(one.split('\n').length, 1, 'one line when the escape hatch is set');
+
+  // NOTHING IS LOST. Every block on either line of the two-line form is still
+  // on the single line — which is the whole claim the fallback makes.
+  for (const block of ['Opus 4.5', 'test_mycontext_plugin', 'campaign/my-context-test',
+    '◆ ask 98 · +56.0', 'ctx 42.0%', 'myctx 6.2k']) {
+    assert.ok(two.includes(block), `two-line form is missing ${block}`);
+    assert.ok(one.includes(block), `one-line fallback is missing ${block}`);
+  }
+
+  // An empty value is not a refusal — the same convention NO_COLOR follows,
+  // so a shell that exports an empty placeholder does not silently downgrade
+  // the bar for everyone using it.
+  assert.equal(statusLineText(base, false, null, { [ONE_LINE_ENV]: '' }).split('\n').length, 2);
+});
+
 test('a tee that did not land is disclosed beside a myctx share that did', () => {
   const line = statusLineText(
     {
@@ -293,16 +348,18 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       threshold: 98,
       occupancy: { state: 'known', percent: 23.5, ageMs: 0 },
       myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
+      focus: null,
+      lastAudit: null,
       myctxNote: null,
       teeNote: 'tee not written (disk full)',
     },
     false,
     null,
   );
-  assert.equal(line, bar(
-    'Opus 4.5', 'test_mycontext_plugin', 'campaign/my-context-test',
-    '◆ ask 98 · +74.5', `${LEVEL_GLYPH.ok} ctx 23.5%`,
-    'myctx 6.2k', 'tee not written (disk full)',
+  assert.equal(line, bars(
+    ['Opus 4.5', 'test_mycontext_plugin', 'campaign/my-context-test'],
+    ['◆ ask 98 · +74.5', `${LEVEL_GLYPH.ok} ctx 23.5%`,
+      'myctx 6.2k', 'tee not written (disk full)'],
   ));
 
   // `≥` and not a rounded-up guess: some records carry no estimate, so the
@@ -314,6 +371,8 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
         model: null, project: null, branch: null, threshold: 98,
         occupancy: { state: 'known', percent: 23.5, ageMs: 0 },
         myctx: { tokens: 6200, injections: 3, unrecorded: 2 },
+        focus: null,
+        lastAudit: null,
         myctxNote: null, teeNote: null,
       },
       false, null,
@@ -329,7 +388,9 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
         ...NO_EXTRAS,
         model: null, project: null, branch: null, threshold: 98,
         occupancy: { state: 'known', percent: 23.5, ageMs: 0 },
-        myctx: null, myctxNote: 'projection sync failed',
+        myctx: null,
+        focus: null,
+        lastAudit: null, myctxNote: 'projection sync failed',
         teeNote: 'tee not written (unsafe session id)',
       },
       false, null,
@@ -351,11 +412,13 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
         model: 'Opus 4.5', project: 'p', branch: 'b', threshold: 98,
         occupancy: { state: 'known', percent: 23.5, ageMs: 0 },
         myctx: { tokens: 0, injections: 0, unrecorded: 0 },
+        focus: null,
+        lastAudit: null,
         myctxNote: null, teeNote: null,
       },
       false, null,
     ),
-    bar('Opus 4.5', 'p', 'b', '◆ ask 98 · +74.5', `${LEVEL_GLYPH.ok} ctx 23.5%`),
+    bars(['Opus 4.5', 'p', 'b'], ['◆ ask 98 · +74.5', `${LEVEL_GLYPH.ok} ctx 23.5%`]),
   );
 });
 

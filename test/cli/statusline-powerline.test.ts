@@ -31,6 +31,7 @@ import {
   fillBands,
   contextSegment, displayWidth, fitSegments, freshMs, gitBranch, levelFor, modelSegment,
   payloadExtras, rateLimitSegment, renderPowerline, separatorFor, until, centreOffset,
+  buildLines, renderStatusLine, FOCUS_MAX, lastAuditSegment, since,
   type ModelModes, type PowerlineInput, type Segment,
 } from '../../src/cli/commands/statusline-powerline.ts';
 
@@ -73,6 +74,8 @@ function input(over: Partial<PowerlineInput>): PowerlineInput {
     occupancy: { state: 'known', percent: 42, ageMs: 0 },
     threshold: THRESHOLD,
     myctx: null,
+    focus: null,
+    lastAudit: null,
     myctxNote: null,
     teeNote: null,
     ...over,
@@ -595,6 +598,277 @@ test('with no room to centre, the bar starts at column 0 — the ruled fallback'
   assert.equal(centreOffset([{ text: 'x', ink: PALETTE['ok'] ?? { bg: 0, fg: 0 } }], 200), 0);
 });
 
+/* -------------------------------------------------------------------- *
+ * Two lines: identity above, everything that moves below.               *
+ * -------------------------------------------------------------------- */
+
+/**
+ * **CLAUDE CODE PREPENDS LINE 1'S ESCAPES TO LINE 2**, transcribed verbatim
+ * from the installed binary so this suite tests against what the product
+ * actually does rather than against what the docs say.
+ *
+ * Read 2026-08-31 from `claude` 2.1.248, byte offset 203009756:
+ *
+ * ```js
+ * var dYe = /\x1b\[[\d;]*m|\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+ * function vfe(d) {
+ *   let C = d.split("\n");
+ *   if (C.length === 1) return C;
+ *   let x = [C[0]], H = "";
+ *   for (let X = 1; X < C.length; X++) {
+ *     H += (C[X - 1].match(dYe) ?? []).join("");
+ *     x.push(H + C[X]);
+ *   }
+ *   return x;
+ * }
+ * ```
+ *
+ * EXTERNAL BEHAVIOUR: nothing here fails when Claude Code changes it. What it
+ * pins is OUR side of the contract — that our line 2 survives having 157
+ * characters of line 1's colour glued in front of it.
+ */
+const CC_ANSI = /\x1b\[[\d;]*m|\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+function claudeCodeSplit(out: string): string[] {
+  const parts = out.split('\n');
+  if (parts.length === 1) return parts;
+  const rendered = [parts[0] ?? ''];
+  let carried = '';
+  for (let i = 1; i < parts.length; i++) {
+    carried += (parts[i - 1]?.match(CC_ANSI) ?? []).join('');
+    rendered.push(carried + (parts[i] ?? ''));
+  }
+  return rendered;
+}
+
+test('the bar is two lines: identity above, everything that moves below', () => {
+  const { identity, state } = buildLines(input({
+    myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
+    costUsd: 0.42,
+    sevenDay: { usedPercent: 49, resetsAt: null },
+    fiveHour: { usedPercent: 12, resetsAt: null },
+  }), NOW);
+
+  // Line 1 is identity and NOTHING on it moves during a session.
+  assert.deepEqual(identity.map((seg) => seg.text),
+    ['Opus 5', 'test_mycontext_plugin', 'campaign/my-context-test']);
+  // Line 2 is the owner's order: the ask and the context figure first and
+  // adjacent, then the windows, then the share and the cost.
+  assert.deepEqual(state.map((seg) => seg.text), [
+    `${ASK_GLYPH} ask 98 · +56.0`,
+    `${LEVEL_GLYPH.ok} ctx 42.0%`,
+    `${LEVEL_GLYPH.ok} 7d 49%`,
+    `${LEVEL_GLYPH.ok} 5h 12%`,
+    'myctx 6.2k',
+    '$0.42',
+  ]);
+  // The anchor is on line 2, and line 1 has none — there is nothing on it to
+  // centre a bar on, and nothing on it that would justify moving.
+  assert.equal(identity.filter((seg) => seg.anchor === true).length, 0);
+  assert.equal(state.filter((seg) => seg.anchor === true).length, 1);
+});
+
+test('the one-line fallback contains exactly the two lines, concatenated', () => {
+  // The honest degradation: a build or a terminal that mishandles a second
+  // line gets ONE line carrying everything, never a second line silently lost.
+  // Derived by construction, and asserted so it stays derived.
+  for (const over of [
+    {},
+    { myctx: { tokens: 6200, injections: 3, unrecorded: 1 }, teeNote: 'tee not written (disk full)' },
+    { model: null, project: null, branch: null, threshold: null },
+    { occupancy: { state: 'unmeasurable' as const, why: 'no-bridge' as const } },
+  ]) {
+    const { identity, state } = buildLines(input(over), NOW);
+    assert.deepEqual(
+      buildSegments(input(over), NOW).map((s2) => s2.text),
+      [...identity, ...state].map((s2) => s2.text),
+      'the fallback is the two lines concatenated, so no block can exist in one and not the other',
+    );
+  }
+});
+
+test('each line is rendered whole, within the terminal, and is never wrapped', () => {
+  const { identity, state } = buildLines(input({
+    myctx: { tokens: 6200, injections: 3, unrecorded: 0 }, costUsd: 0.42,
+    sevenDay: { usedPercent: 49, resetsAt: null }, fiveHour: { usedPercent: 12, resetsAt: null },
+  }), NOW);
+
+  for (let columns = 200; columns >= 12; columns--) {
+    const out = renderStatusLine([identity, state], { colour: false, columns });
+    const rows = out.split('\n');
+    assert.equal(rows.length, 2, `expected two rows at ${columns} columns`);
+    for (const row of rows) {
+      assert.ok(
+        displayWidth(row) <= columns,
+        `at ${columns} columns a row is ${displayWidth(row)} wide: "${row}"`,
+      );
+    }
+    assert.match(rows[1] ?? '', /ctx /, `the context figure left line 2 at ${columns} columns`);
+  }
+});
+
+test('an empty line is dropped rather than drawn as a bare pair of caps', () => {
+  // A session with no model, no project and no branch has no identity line at
+  // all. What it must not have is a row containing two caps and nothing else.
+  const { identity, state } = buildLines(input({ model: null, project: null, branch: null }), NOW);
+  assert.equal(identity.length, 0);
+  const out = renderStatusLine([identity, state], { colour: false, columns: 200 });
+  assert.equal(out.split('\n').length, 1, 'one line, because there was only one line to draw');
+  assert.ok(!out.startsWith(`${CAP_LEFT} ${CAP_RIGHT}`));
+});
+
+/**
+ * **THE LEADING RESET IS LOAD-BEARING, and this is the test that says so.**
+ *
+ * Claude Code glues every escape from line 1 onto the front of line 2 — 157
+ * characters of it for an ordinary bar. The only thing that stops line 2 being
+ * painted in line 1's final colour is that our own line 2 OPENS with a reset,
+ * so the last escape to take effect before any visible cell is that reset.
+ *
+ * Measured at 91%, where the context block is `crit` and its background is
+ * red: without the leading reset the whole of line 2 would render on red.
+ */
+test('line 2 opens with a reset, so Claude Code’s carried escapes cannot paint it', () => {
+  const { identity, state } = buildLines(input({
+    occupancy: { state: 'known', percent: 91, ageMs: 0 },
+  }), NOW);
+  const out = renderStatusLine([identity, state], { colour: true, columns: 200 });
+
+  const rows = claudeCodeSplit(out);
+  assert.equal(rows.length, 2);
+
+  // Everything Claude Code prepended, and then our own line.
+  const carried = ((out.split('\n')[0] ?? '').match(CC_ANSI) ?? []).join('');
+  assert.ok(carried.length > 0, 'line 1 does carry escapes worth neutralising');
+  const ours = (rows[1] ?? '').slice(carried.length);
+  assert.ok(
+    ours.startsWith('\u001b[0m'),
+    'line 2 must reset before it draws anything, or it inherits line 1’s colour',
+  );
+
+  // And line 1 closes with a reset too, so nothing escapes the bar at all.
+  assert.ok((rows[0] ?? '').endsWith('\u001b[0m'));
+
+  // With colour off there is nothing to carry and nothing to reset.
+  const plain = renderStatusLine([identity, state], { colour: false, columns: 200 });
+  assert.ok(!plain.includes('\u001b'), 'never a raw escape into a pipe that said no');
+  assert.equal(plain.split('\n').length, 2);
+});
+
+/* -------------------------------------------------------------------- *
+ * Line 1's mycontext signals, and line 2's audit clock.                 *
+ * -------------------------------------------------------------------- */
+
+test('the session name is drawn only when it tells you something the project does not', () => {
+  const named = (sessionName: string | null, project: string | null): string[] =>
+    buildLines(input({ sessionName, project }), NOW).identity.map((seg) => seg.text);
+
+  assert.ok(named('my-context V2.0.0 Development', 'test_mycontext_plugin')
+    .includes('my-context V2.0.0 Development'), 'a distinct name is what tells two windows apart');
+  // Identical to the project: silent, because it restates a block already on
+  // the line and the columns are better spent on anything else.
+  assert.ok(!named('test_mycontext_plugin', 'test_mycontext_plugin')
+    .includes('test_mycontext_plugin ')); // the project block itself still stands
+  assert.equal(named('test_mycontext_plugin', 'test_mycontext_plugin').length,
+    named(null, 'test_mycontext_plugin').length, 'no extra block for a name that repeats');
+  // Case and surrounding space are not a difference.
+  assert.equal(named('  Test_MyContext_Plugin  ', 'test_mycontext_plugin').length,
+    named(null, 'test_mycontext_plugin').length);
+  // And an empty name is not a name.
+  assert.equal(named('   ', 'p').length, named(null, 'p').length);
+});
+
+test('the focus says what the session is FOR, and is capped so it cannot evict a ranked field', () => {
+  const withFocus = (focus: string | null): string[] =>
+    buildLines(input({ focus }), NOW).identity.map((seg) => seg.text);
+
+  assert.ok(withFocus('tags: plan:walk').includes('focus tags: plan:walk'));
+  assert.equal(withFocus(null).filter((t) => t.startsWith('focus')).length, 0);
+  assert.equal(withFocus('   ').filter((t) => t.startsWith('focus')).length, 0);
+
+  // Capped, and marked where it was cut. Truncated from the RIGHT — the
+  // opposite of the branch, because a focus reads as a phrase whose head
+  // identifies it while a branch's tail is what distinguishes it.
+  const long = 'tags: plan:walk seq:123 and a great deal more text than fits';
+  const drawn = withFocus(long).find((t) => t.startsWith('focus')) ?? '';
+  assert.ok(drawn.endsWith('…'), 'a cut focus says it was cut');
+  assert.equal(displayWidth(drawn), 'focus '.length + FOCUS_MAX);
+  assert.ok(long.startsWith(drawn.slice('focus '.length, -1)), 'the head is what survived');
+});
+
+/**
+ * **THE AUDIT CLOCK** — owner ruling, 2026-09-01. Is this machine still
+ * recording anything at all?
+ */
+test('the audit clock tells an empty log apart from a read that failed', () => {
+  const text = (last: Parameters<typeof lastAuditSegment>[0]): string | undefined =>
+    lastAuditSegment(last, NOW)?.text;
+
+  assert.equal(text({ state: 'known', op: 'jit', at: new Date(NOW - 120_000).toISOString() }),
+    'log jit ·2m');
+  // Two different facts, two different sentences. "Nothing has been recorded"
+  // is a measurement; "I could not tell" is not, and a bar that rendered them
+  // the same would make a broken projection look like a quiet machine.
+  assert.equal(text({ state: 'empty' }), 'log — nothing recorded');
+  assert.equal(text({ state: 'unreadable' }), 'log — unreadable');
+  assert.notEqual(text({ state: 'empty' }), text({ state: 'unreadable' }));
+  // A failed read is a fault and says so in the ink; an empty log is not.
+  assert.equal(lastAuditSegment({ state: 'unreadable' }, NOW)?.ink.bg, PALETTE['warn']?.bg);
+  assert.equal(lastAuditSegment({ state: 'empty' }, NOW)?.ink.bg, PALETTE['neutral']?.bg);
+  // No corpus at all: no block, the same meaning `myctx: null` carries.
+  assert.equal(lastAuditSegment(null, NOW), null);
+  // A stamp we wrote and cannot parse is not an age of zero.
+  assert.equal(text({ state: 'known', op: 'jit', at: 'not-a-date' }), 'log jit — undated');
+});
+
+/**
+ * **THE AGE IS COMPUTED AT RENDER TIME, AND THIS IS THE TEST THAT SAYS SO.**
+ *
+ * A duration frozen when the value was fetched is the fossil defect this
+ * product has shipped three times — a stale context sample drawn as live, a
+ * summary that went stale on a retitle, an injection count that spanned
+ * fourteen days. A field whose entire job is to age correctly is the last
+ * place to reintroduce it, so the same `LastAudit` is rendered at two
+ * different `now`s and the two must differ.
+ */
+test('the audit age moves with the clock rather than being frozen when it was fetched', () => {
+  const at = new Date(NOW).toISOString();
+  const last = { state: 'known' as const, op: 'jit', at };
+
+  assert.equal(lastAuditSegment(last, NOW)?.text, 'log jit ·now');
+  assert.equal(lastAuditSegment(last, NOW + 5 * 60_000)?.text, 'log jit ·5m');
+  assert.equal(lastAuditSegment(last, NOW + 3 * 3_600_000)?.text, 'log jit ·3h');
+  assert.equal(lastAuditSegment(last, NOW + 26 * 3_600_000)?.text, 'log jit ·1d2h');
+
+  // And through `buildLines`, which is what the renderer actually calls: the
+  // SAME input at two times produces two different lines.
+  const at2 = (now: number): string =>
+    buildLines(input({ lastAudit: last }), now).state.map((seg) => seg.text).join('|');
+  assert.notEqual(at2(NOW), at2(NOW + 90 * 60_000));
+
+  // A clock that has not moved is not a negative age.
+  assert.equal(since(new Date(NOW + 60_000).toISOString(), NOW), 'now');
+});
+
+test('an audit log that has gone quiet is MARKED, against the shared freshness constant', () => {
+  const fresh = freshMs();
+  assert.ok(fresh !== null, 'the shared module supplies the constant this derives from');
+  const at = (ageMs: number): string =>
+    new Date(NOW - ageMs).toISOString();
+
+  // Inside the window: neutral. Nothing is being claimed except the age.
+  assert.equal(
+    lastAuditSegment({ state: 'known', op: 'jit', at: at(fresh! - 60_000) }, NOW)?.ink.bg,
+    PALETTE['neutral']?.bg,
+  );
+  // Past it: warn. The threshold is NOT spelled here — it is
+  // `CONTEXT_SAMPLE_FRESH_MS`, the same constant that decides a context sample
+  // is too old to present as current, and it moves this with it.
+  assert.equal(
+    lastAuditSegment({ state: 'known', op: 'jit', at: at(fresh! + 60_000) }, NOW)?.ink.bg,
+    PALETTE['warn']?.bg,
+  );
+});
+
 test('a block given up for width leaves a mark, and two marks collapse into one', () => {
   const segments: Segment[] = [
     { text: 'Opus 5', ink: PALETTE['model'] ?? { bg: 0, fg: 0 } },
@@ -872,19 +1146,24 @@ test('the whole bar, from a real payload shape, with every group present', () =>
     occupancy: { state: 'known', percent: 42, ageMs: 0 },
     threshold: THRESHOLD,
     myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
+    focus: null,
+    lastAudit: null,
     myctxNote: null,
     teeNote: null,
   }, NOW), { colour: false, columns: null });
 
-  // The owner's 2026-08-31 layout, whole: identity left, the scale and the
-  // context figure at the middle, the disclosures and the windows right.
+  // **The ONE-LINE FALLBACK, whole.** Since the owner's two-line ruling this
+  // is `buildLines` concatenated — identity, then state in the owner's line-2
+  // order — and it is what a Claude Code build or a terminal that mishandles a
+  // second line receives. Asserting it here is what keeps the fallback a real
+  // rendering rather than a code path nobody has looked at.
   assert.equal(rendered, [
     `${CAP_LEFT} Opus 5 high think`, 'test_mycontext_plugin', 'campaign/my-context-test',
   ].join(` ${SEP} `)
     + ` ${SEP} ${ASK_GLYPH} ask 98 · +56.0`
     + ` ${SEP} ${LEVEL_GLYPH.ok} ctx 42.0%`
-    + ` ${SEP} myctx 6.2k ${SEP_THIN} $0.42 · warm 99.1%`
-    + ` ${SEP} ${LEVEL_GLYPH.ok} 7d 49% ·1d4h ${SEP_THIN} ${LEVEL_GLYPH.ok} 5h 12% ·3h12m ${CAP_RIGHT}`);
+    + ` ${SEP_THIN} ${LEVEL_GLYPH.ok} 7d 49% ·1d4h ${SEP_THIN} ${LEVEL_GLYPH.ok} 5h 12% ·3h12m`
+    + ` ${SEP} myctx 6.2k ${SEP_THIN} $0.42 · warm 99.1% ${CAP_RIGHT}`);
 });
 
 test('two blocks on the same ground are parted by the THIN separator, never an invisible one', () => {
@@ -924,6 +1203,8 @@ test('the line gives itself up in the order the owner ranked, not by width', () 
     occupancy: { state: 'known', percent: 42, ageMs: 0 },
     threshold: THRESHOLD,
     myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
+    focus: null,
+    lastAudit: null,
     myctxNote: null,
     teeNote: null,
   };

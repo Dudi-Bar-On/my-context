@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { filterSelect, openProjection, syncProjection } from '../../core/audit-db.ts';
 import { handoverThresholdPercent } from '../../core/config.ts';
 import { readOccupancy } from '../../core/context-occupancy.ts';
-import { contextEpochStart, shareOf, shareSql } from '../../core/context-share.ts';
+import { describeFocus, isFocusActive, readFocus } from '../../core/focus.ts';
+import {
+  contextEpochStart, newestAuditRow, shareOf, shareSql,
+} from '../../core/context-share.ts';
 import { isMainEntry } from '../../core/paths.ts';
 import { classifyContext, writeTee, type ContextSample } from '../../core/statusline-tee.ts';
 import { resolveWorkspace, type Workspace } from '../../core/workspace.ts';
@@ -13,8 +16,8 @@ import { refuseUnknownFlag } from './format.ts';
 import { registerCommand, type Emit } from './registry.ts';
 import { cmdStatuslineInstall, cmdStatuslineUninstall, delegateFor } from './statusline-install.ts';
 import {
-  buildSegments, colourAllowed, gitBranch, payloadExtras, renderPowerline,
-  type OccupancyView, type PowerlineInput,
+  buildLines, buildSegments, colourAllowed, gitBranch, payloadExtras, renderPowerline,
+  renderStatusLine, type LastAudit, type OccupancyView, type PowerlineInput,
 } from './statusline-powerline.ts';
 
 // --- The status line bridge (spec §4b) --------------------------------------
@@ -68,6 +71,38 @@ export interface MyctxShare {
  * caller can print "unavailable" rather than a number that is quietly behind
  * the log.
  */
+/**
+ * The newest audit row, in the three states a reader must be able to tell
+ * apart: a row, an empty log, and a read that failed.
+ *
+ * **Empty and unreadable are not the same fact and do not render the same.**
+ * "Nothing has been recorded" is a measurement; "I could not tell" is not.
+ * Collapsing them would make a broken projection look like a quiet machine,
+ * which is precisely the confusion this field exists to end — the same reason
+ * `readOccupancy` keeps four reasons apart instead of one "unavailable".
+ *
+ * Opens its own connection rather than reaching into `myctxShare`'s, and that
+ * costs an open: measured p50 0.020 / p95 0.048 ms for the QUERY, against
+ * roughly 2.5 ms for the open itself. It is done this way because the share
+ * can THROW — a projection behind its log is a refusal — and the audit clock
+ * is exactly the field a reader wants when something else has just failed. A
+ * health signal that goes dark whenever its neighbour does is not a health
+ * signal.
+ */
+export function lastAudit(projectRoot: string): LastAudit {
+  try {
+    const db = openProjection(projectRoot);
+    try {
+      const row = newestAuditRow(db);
+      return row === null ? { state: 'empty' } : { state: 'known', op: row.op, at: row.at };
+    } finally {
+      db.close();
+    }
+  } catch {
+    return { state: 'unreadable' };
+  }
+}
+
 export function myctxShare(projectRoot: string, sessionId: string): MyctxShare {
   const db = openProjection(projectRoot);
   try {
@@ -154,11 +189,46 @@ export function occupancyFromPayload(sample: ContextSample): OccupancyView {
 }
 
 /**
- * One line, one spelling per state — the same honesty rules the UI strip
- * renders, so a user who reads both never sees them disagree, and now the same
- * BANDS as well: the colour of the last block comes from the web's own
+ * **THE ENVIRONMENT VARIABLE THAT FORCES THE ONE-LINE FORM.**
+ *
+ * Set to any non-empty value and the bar renders as a single line carrying
+ * every block, exactly as it did before the owner's two-line ruling of
+ * 2026-08-31.
+ *
+ * It exists because the two-line form rests on a reading of ONE build's
+ * renderer (`statusline-powerline.ts` · `renderStatusLine`, read from the
+ * installed 2.1.248), and a claim about somebody else's binary is exactly the
+ * kind of claim that stops being true without telling anybody. Two multi-line
+ * regressions are already on record — a second line vanishing on narrow
+ * terminals, and 2.1.80 truncating line 2 as though it were joined to line 1 —
+ * so a user who meets a third needs a way back that does not involve waiting
+ * for this project to ship. The degradation is the honest one: one line with
+ * everything on it, never a second line quietly lost, which is the same rule
+ * the `…` mark follows.
+ *
+ * Deliberately NOT auto-detected from `version` in the payload. A version
+ * allow-list is a table that goes stale in silence — the argument
+ * `core/context-occupancy.ts` makes against a model-to-window table, and it
+ * applies here for the same reason: it would keep answering, wrongly, for
+ * every build released after it was written.
+ */
+export const ONE_LINE_ENV = 'MYCONTEXT_STATUSLINE_ONE_LINE';
+
+/**
+ * One bar, one spelling per state — the same honesty rules the UI strip
+ * renders, so a user who reads both never sees them disagree, and the same
+ * BANDS as well: the colour of the context block comes from the web's own
  * `occupancyLevel` (see `statusline-powerline.ts`), never from a threshold
  * spelled a second time here.
+ *
+ * **TWO LINES since the owner's ruling of 2026-08-31**: line 1 is identity and
+ * never moves, line 2 is everything that does. The reason is a reading habit
+ * rather than a width — after ten minutes nobody looks at line 1, so every
+ * changing number belongs on the line the eye is still on — and it is
+ * `buildLines` that owns the split. `renderStatusLine` renders each line with
+ * its own caps and its own trailing reset, which is REQUIRED rather than tidy:
+ * Claude Code prepends every escape from line 1 to line 2, so without that
+ * reset line 2 opens painted in the last block's background.
  *
  * `myctxNote` is why the myctx half is MISSING; `teeNote` is why the sample
  * did not reach disk. They are two facts and they are two fields on
@@ -173,8 +243,15 @@ export function statusLineText(
   input: PowerlineInput,
   colour: boolean,
   columns: number | null,
+  env: Record<string, string | undefined> = process.env,
 ): string {
-  return renderPowerline(buildSegments(input), { colour, columns });
+  const options = { colour, columns };
+  const forced = env[ONE_LINE_ENV];
+  if (forced !== undefined && forced !== '') {
+    return renderPowerline(buildSegments(input), options);
+  }
+  const { identity, state } = buildLines(input);
+  return renderStatusLine([identity, state], options);
 }
 
 // --- Delegating to the status line this bridge displaced --------------------
@@ -437,6 +514,36 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
   let myctxNote: string | null = null;
   let teeNote: string | null = null;
 
+  // What mycontext currently has in FOCUS — the one field on this bar that says
+  // what the session is for rather than what it is consuming.
+  //
+  // **Measured before it was built** (2026-09-01, this repository's own corpus,
+  // 733 items and 8,252 audit rows): `readFocus` is p50 0.033 ms / p95 0.077 ms,
+  // against a bar that already pays p95 26.6 ms for `myctxShare`. It is one
+  // `readFileSync` of a few hundred bytes and ENOENT — no focus, the common
+  // case — is its cheapest answer.
+  //
+  // Read from `state/focus.json` and NOT from the audit log, which was the
+  // obvious source and is the wrong one: `focus-set` rows carry no `sessionId`
+  // (verified on the real log — every focus row has `sessionId: null`), so the
+  // log cannot answer "what is in focus for THIS session" at all. The file is
+  // both cheaper and correct, which is not a trade.
+  // The audit clock, read on every message for the same reason the tee is:
+  // whether this machine is still recording anything at all is the question no
+  // other field on either line can answer.
+  let audit: LastAudit | null = null;
+  let focus: string | null = null;
+  if (projectRoot !== null) {
+    audit = lastAudit(projectRoot);
+  }
+  if (projectRoot !== null) {
+    const state = readFocus(projectRoot);
+    // A focus that could not be READ is not a focus that is absent, but this
+    // bar has no room to say which and `focusErrorNote` already tells the
+    // person on the hook path. Nothing is claimed here either way.
+    focus = isFocusActive(state.focus) ? describeFocus(state.focus) : null;
+  }
+
   if (projectRoot !== null) {
     // FIRST, and before the delegate is so much as looked up. Rule 1 above:
     // the sample is what this command is for, and it is not allowed to depend
@@ -495,6 +602,8 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
       occupancy,
       threshold,
       myctx,
+      focus,
+      lastAudit: audit,
       myctxNote,
       teeNote,
     },

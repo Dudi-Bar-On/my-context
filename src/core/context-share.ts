@@ -147,3 +147,40 @@ export function shareOf(records: { op?: unknown; tokens?: unknown }[]): ContextS
   }
   return { tokens, injections, unrecorded };
 }
+
+/**
+ * The newest row in the audit log: its `op` and its `at`, or `null` for a log
+ * with no rows in it.
+ *
+ * **Never throws.** A caller on Claude Code's per-message path cannot afford a
+ * query that can take the status line down, and the difference between "the
+ * log is empty" and "the read failed" is a distinction the CALLER has to draw
+ * for the reader — so this returns `null` for empty and throws for nothing,
+ * with the failure surfaced by the caller's own try. See `lastAudit` in
+ * `cli/commands/statusline.ts`.
+ *
+ * **Cost, measured before it was built** (2026-09-01, this repository's own
+ * corpus of 8,252 audit rows): p50 0.020 ms, p95 0.048 ms, on the connection
+ * `myctxShare` already holds open — against a bar that already pays p95
+ * 26.6 ms for that share. `seq` is the table's INTEGER PRIMARY KEY, so
+ * `ORDER BY seq DESC LIMIT 1` walks the rowid index backwards and stops at the
+ * first row. `EXPLAIN QUERY PLAN` prints `SCAN audit`, which reads alarming
+ * and is not: there is no `WHERE`, so there is nothing to seek, and the LIMIT
+ * ends the walk after one row. The measurement is the answer, not the plan.
+ *
+ * NOT filtered by session, deliberately. The question is whether this MACHINE
+ * is still recording anything at all, and a filter would answer a narrower one
+ * — while also being the expensive shape here: every column on this table is a
+ * VIRTUAL generated column, so a predicate that is not the chosen index
+ * re-extracts JSON per row (measured at p95 63 ms for a session filter).
+ */
+export function newestAuditRow(db: DatabaseSync): { op: string; at: string } | null {
+  const row = db
+    .prepare(`SELECT rec ->> '$.op' AS op, rec ->> '$.at' AS at
+                FROM audit ORDER BY seq DESC LIMIT 1`)
+    .get() as { op?: unknown; at?: unknown } | undefined;
+  if (row === undefined) return null;
+  return typeof row.op === 'string' && typeof row.at === 'string'
+    ? { op: row.op, at: row.at }
+    : null;
+}

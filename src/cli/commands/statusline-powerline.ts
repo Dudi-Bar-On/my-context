@@ -483,6 +483,17 @@ export interface PowerlineInput {
   /** `cost.total_cost_usd`. */
   costUsd: number | null;
   /**
+   * `session_name` — the name the user gave THIS window, straight off the
+   * payload we already parse. `null` when Claude Code sent none.
+   *
+   * Drawn only when it differs from the project name (`buildLines`), because
+   * a session called after its project restates a block already on the line.
+   * Its whole job is telling two windows apart when the model, the project and
+   * the branch are identical in both, which is the ordinary case for anyone
+   * running more than one.
+   */
+  sessionName: string | null;
+  /**
    * The share of this turn's input the cache served, DERIVED and not sent:
    * `cache_read_input_tokens` over the input total Claude Code itself
    * displays (`input + cache_creation + cache_read`, the same arithmetic
@@ -491,6 +502,21 @@ export interface PowerlineInput {
    */
   warmPercent: number | null;
   myctx: MyctxBlock | null;
+  /**
+   * What mycontext currently has in focus, already rendered to a phrase by
+   * `describeFocus`, or `null` for no focus.
+   *
+   * The one field on this bar that says what the session is FOR rather than
+   * what it is consuming — and after a compaction it answers the question a
+   * reader actually has, which is not "how full am I" but "where was I".
+   * Capped to `FOCUS_MAX` columns here; see there.
+   */
+  focus: string | null;
+  /**
+   * The newest audit row and when it was written, or `null` where there is
+   * no corpus to have a log -- the same meaning `myctx: null` carries.
+   */
+  lastAudit: LastAudit | null;
   /** Why the myctx half is MISSING. */
   myctxNote: string | null;
   /** Why the sample did not reach disk. Two facts, two fields — see below. */
@@ -523,17 +549,38 @@ export interface PowerlineInput {
  * nothing to say says so — once, by name, instead of five nulls at a time.
  */
 export const NO_EXTRAS: Pick<
-  PowerlineInput, 'modes' | 'fiveHour' | 'sevenDay' | 'costUsd' | 'warmPercent'
+  PowerlineInput, 'modes' | 'fiveHour' | 'sevenDay' | 'costUsd' | 'warmPercent' | 'sessionName'
 > = {
   modes: { effort: null, thinking: null, fastMode: null, exceeds200k: null },
   fiveHour: null,
   sevenDay: null,
   costUsd: null,
   warmPercent: null,
+  sessionName: null,
 };
 
 export const GIVE = {
   costCache: 10,
+  /**
+   * The two 2026-09-01 additions, ranked BELOW everything that was already
+   * here so that no existing block's position moved — the owner reviewed this
+   * table for the single-line bar and did not reopen it.
+   *
+   * Focus goes first of all and the session name second: both are worth having
+   * and neither is worth a block that says where you are. A window you cannot
+   * identify is still a window whose project and branch you can read.
+   */
+  focus: 4,
+  sessionName: 6,
+  /**
+   * Ranked with the other line-2 conveniences rather than above them. The
+   * block matters MOST exactly when it is stale -- which is when it also
+   * turns `warn` -- but a narrow terminal that has already given up the cost
+   * and the share is not a terminal that should start evicting the owner's
+   * ranked fields for a health signal. The hue does the shouting; the rank
+   * stays low.
+   */
+  lastAudit: 8,
   myctxShare: 20,
   project: 30,
   branch: 40,
@@ -544,6 +591,28 @@ export const GIVE = {
   fiveHour: 92,
   mark: 999,
 } as const;
+
+/**
+ * **HOW MANY COLUMNS A FOCUS PHRASE MAY OCCUPY.**
+ *
+ * A focus is user-authored — an item id, a tag expression, a path glob — and
+ * nothing bounds how long the user makes it. Unbounded, one long focus pushes
+ * line 1 past the terminal and `fitSegments` starts giving up the project and
+ * the branch to pay for it: a field nobody ranked would be evicting fields the
+ * owner did rank.
+ *
+ * Truncated from the RIGHT and marked, which is the opposite of the branch's
+ * rule and right for the opposite reason: a branch's distinguishing half is
+ * its tail (`campaign/my-context-test`), while a focus reads as a phrase and
+ * its head is what identifies it (`plan:walk seq:…`).
+ */
+export const FOCUS_MAX = 28;
+
+export function focusText(focus: string): string {
+  const trimmed = focus.trim();
+  const points = [...trimmed];
+  return points.length <= FOCUS_MAX ? trimmed : `${points.slice(0, FOCUS_MAX - 1).join('')}…`;
+}
 
 function fmtK(n: number): string {
   return `${(n / 1000).toFixed(1)}k`;
@@ -574,6 +643,106 @@ export function until(resetsAtSeconds: number | null, now: number): string | nul
   if (days > 0) return hours > 0 ? `${days}d${hours}h` : `${days}d`;
   if (hours > 0) return mins > 0 ? `${hours}h${mins}m` : `${hours}h`;
   return `${mins}m`;
+}
+
+/**
+ * **IS THIS MACHINE STILL RECORDING ANYTHING AT ALL** - owner ruling,
+ * 2026-09-01, replacing a narrower "are the hooks working" signal.
+ *
+ * The newest row in the audit log, and how long ago it was written. It is
+ * strictly larger than hook health -- hooks are one of the things that write
+ * rows -- and it is the question a reader can act on: a newest row three hours
+ * old, in a session somebody has been working in all evening, is a finding,
+ * and no other field on either line would reveal it.
+ *
+ * It is also the general instrument for this project's most repeated defect.
+ * A stale context sample presented as live; a spawner that stood down and
+ * stopped looking; an injection count that spanned fourteen days; a summary
+ * that went stale on a retitle -- every one of them is *something stopped
+ * being current and nothing said so*. A visible timestamp on the newest row is
+ * the one field that catches that class at the source rather than an instance
+ * at a time.
+ *
+ * **Three states, kept apart, and that is the point of the type.** An EMPTY
+ * log and a FAILED read are different facts: "nothing has been recorded" is a
+ * measurement, "I could not tell" is not, and a bar that renders them
+ * identically has destroyed the only difference that matters. This is
+ * `readOccupancy`'s distinguished-reasons precedent applied to a second
+ * mechanism (`core/context-occupancy.ts`).
+ */
+export type LastAudit =
+  | {
+    state: 'known';
+    /** The newest row's `op`, verbatim -- `subagent-stop`, `create`, `jit`. */
+    op: string;
+    /**
+     * The newest row's `at`, ISO-8601, PASSED THROUGH AND NEVER AGED HERE.
+     *
+     * The age is computed in `lastAuditSegment` from the `now` it is given,
+     * which is `buildLines`'s `now`, which is render time. A duration frozen
+     * when the value was fetched is the fossil defect this product has now
+     * shipped three times, and a field whose entire job is to age correctly is
+     * the last place to reintroduce it.
+     */
+    at: string;
+  }
+  | { state: 'empty' }
+  | { state: 'unreadable' };
+
+/**
+ * How long ago, at most two units: `4h12m`, `2m`, `now`.
+ *
+ * `until`'s mirror, deliberately the same shape and the same two-unit rule, so
+ * a reader who has learned a countdown on a rate-limit window reads this one
+ * without learning anything new. `null` for a stamp this code cannot parse --
+ * an unparseable date is not an age of zero.
+ */
+export function since(at: string, now: number): string | null {
+  const then = Date.parse(at);
+  if (!Number.isFinite(then)) return null;
+  const minutes = Math.floor(Math.max(0, now - then) / 60_000);
+  if (minutes < 1) return 'now';
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days > 0) return hours > 0 ? `${days}d${hours}h` : `${days}d`;
+  if (hours > 0) return mins > 0 ? `${hours}h${mins}m` : `${hours}h`;
+  return `${mins}m`;
+}
+
+/**
+ * The audit block: `log subagent-stop`, with its age, or a named absence.
+ *
+ * **The staleness mark is DERIVED, not chosen.** Past `CONTEXT_SAMPLE_FRESH_MS`
+ * -- `lib/viewmodel.js`'s own constant, the same one that decides a context
+ * sample is too old to present as current -- the block goes `warn`. Reusing it
+ * is the honest reading rather than a convenience: the constant answers "how
+ * long before a reading stops being evidence of a live session", and a log
+ * that has recorded nothing for that long is the same claim about the same
+ * session. No threshold is spelled here, and if that constant moves this moves
+ * with it.
+ */
+export function lastAuditSegment(last: LastAudit | null, now: number): Segment | null {
+  if (last === null) return null;
+  if (last.state === 'empty') {
+    return { text: 'log — nothing recorded', ink: INK.neutral, give: GIVE.lastAudit };
+  }
+  if (last.state === 'unreadable') {
+    return { text: 'log — unreadable', ink: INK.warn, give: GIVE.lastAudit };
+  }
+  const ago = since(last.at, now);
+  if (ago === null) {
+    // A stamp this product wrote and cannot parse. Not an age of zero, and not
+    // silence either: the row is there and its date is not readable.
+    return { text: `log ${last.op} — undated`, ink: INK.warn, give: GIVE.lastAudit };
+  }
+  const fresh = freshMs();
+  const stale = fresh !== null && now - Date.parse(last.at) > fresh;
+  return {
+    text: `log ${last.op} ·${ago}`,
+    ink: stale ? INK.warn : INK.neutral,
+    give: GIVE.lastAudit,
+  };
 }
 
 /**
@@ -723,7 +892,7 @@ export function modelSegment(model: string | null, modes: ModelModes): Segment |
  *    second comparison here would be a second chance to disagree with the
  *    strip about whether the ask is live.
  *
- * ── WHERE THE CONTEXT BLOCK SITS ────────────────────────────────────────────
+ * ── WHERE THE CONTEXT BLOCK SITS, AND HOW MANY LINES THERE ARE ─────────────
  *
  * **SUPERSEDED RULING, kept because it was a ruling and it was reasoned.**
  * Until 2026-08-31 this comment read:
@@ -732,65 +901,110 @@ export function modelSegment(model: string | null, modes: ModelModes): Segment |
  * > ruling is that the right end of the bar is what shifts as the window fills
  * > — a block after it would move the thing the eye is trained on.
  *
- * **That ruling is superseded by an owner ruling of 2026-08-31**, which places
- * the context block at the CENTRE of the line and distributes the rest around
- * it. Both halves of the reason it is superseded matter, and the second is why
- * it could be taken at all:
+ * **Superseded twice on 2026-08-31, and both steps are recorded** because the
+ * second only makes sense as an answer to what the first cost:
  *
- *   1. The owner ruled that the context figure is the most important
- *      information on the bar, and the centre — not the right end — is where
- *      the eye lands. The earlier ruling optimised for a stable landmark; the
- *      new one optimises for the landmark being where the eye already is.
- *   2. It COSTS NO FIELD. The owner's terminal is 200+ columns and a
- *      re-balanced centred bar needs about 203, so at the width this is
- *      actually read at, centring spends slack rather than blocks. The owner
- *      explicitly declined the alternative that bought the position by cutting
- *      a field. Below that width the line falls back to left-to-right and says
- *      so with the existing `…` mark (`renderPowerline`) — the layout
- *      degrades, never the content.
+ *   1. **Centre the context figure** (owner ruling). It is the most important
+ *      information on the bar and the centre is where the eye lands. Measured
+ *      afterwards, the bar needed 234 columns to actually centre — the ask
+ *      scale is a permanent ~19-cell block sitting left of the anchor — and
+ *      the owner's terminal is 200+, so at their real width it never centred.
+ *   2. **Split the bar across TWO LINES** (owner ruling, the live one). Line 1
+ *      is identity and never changes; line 2 is everything that moves. The
+ *      reason is a reading habit rather than a width: after ten minutes a
+ *      reader stops looking at line 1 at all, so every changing number belongs
+ *      on one line and motion never appears where the eye has learned that
+ *      nothing does. It also puts the ask and the context figure ADJACENT,
+ *      which is the comparison the owner actually performs — and it halves the
+ *      heavier side, which is what made centring reachable at a real width.
  *
- * There is ONE live ruling here (centre) and one dated record of the ruling it
- * replaced (last). A later reader who finds only the quotation above has found
- * history, not a second instruction.
+ * There is ONE live ruling here and a dated record of the two it replaced. A
+ * later reader who finds only the quotation above has found history, not a
+ * second instruction.
  *
- * So the order is a LEFT group, the anchor, and a RIGHT group. The ask sits
- * immediately left of the context figure because they are one question asked
- * twice — how full, and how far from the ask — and a block between them would
- * be read as belonging to neither.
+ * `buildSegments` is now DERIVED from `buildLines` rather than the other way
+ * round, so the one-line fallback cannot contain a different set of blocks
+ * from the two-line form: it is the same two groups, concatenated. A block
+ * added to either line appears in both spellings or in neither.
  */
-export function buildSegments(input: PowerlineInput, now: number = Date.now()): Segment[] {
-  const left: Segment[] = [];
-  const right: Segment[] = [];
+export interface StatusLines {
+  /**
+   * Line 1: who and where. Static for the whole session — the model and its
+   * modes, the project, the branch.
+   */
+  identity: Segment[];
+  /**
+   * Line 2: everything that moves. The ask scale, the context figure, the two
+   * rate-limit windows, the myctx share and the cost — in the owner's order,
+   * which puts the ask and the context figure first and adjacent.
+   */
+  state: Segment[];
+}
+
+export function buildLines(input: PowerlineInput, now: number = Date.now()): StatusLines {
+  const identity: Segment[] = [];
+  const state: Segment[] = [];
 
   const model = modelSegment(input.model, input.modes);
-  if (model !== null) left.push(model);
+  if (model !== null) identity.push(model);
 
   if (input.project !== null && input.project !== '') {
-    left.push({ text: input.project, ink: INK.project, give: GIVE.project });
+    identity.push({ text: input.project, ink: INK.project, give: GIVE.project });
   }
   if (input.branch !== null && input.branch !== '') {
-    left.push({ text: input.branch, ink: INK.branch, elidable: true, give: GIVE.branch });
+    identity.push({ text: input.branch, ink: INK.branch, elidable: true, give: GIVE.branch });
   }
 
-  // Immediately left of the anchor, and the last thing pushed to that side.
-  const ask = askSegment(input.occupancy, input.threshold);
-  if (ask !== null) left.push(ask);
+  // **Only when it differs from the project.** A session named after its
+  // project restates a block already two along, and the owner's instruction
+  // was explicit: this field exists to tell two windows apart, and a window it
+  // cannot distinguish is a window it should say nothing about. Compared
+  // trimmed and case-insensitively, because "My-Context" and "my-context" are
+  // the same answer to "which window is this".
+  const named = input.sessionName?.trim() ?? '';
+  const project = input.project?.trim() ?? '';
+  if (named !== '' && named.toLowerCase() !== project.toLowerCase()) {
+    identity.push({ text: named, ink: INK.project, give: GIVE.sessionName });
+  }
 
-  // ── everything below is drawn to the RIGHT of the context figure ──
+  // Focus last on line 1: it is the narrowest thing said there — the tool, the
+  // repository, the branch, this window, and finally what this window is FOR.
+  if (input.focus !== null && input.focus.trim() !== '') {
+    identity.push({
+      text: `focus ${focusText(input.focus)}`, ink: INK.neutral, give: GIVE.focus,
+    });
+  }
+
+  // ── line 2, in the owner's order ──
+  // The ask first and the context figure immediately after it: they are one
+  // question asked twice — how full, and how far from the ask — and putting a
+  // block between them would be read as belonging to neither.
+  const ask = askSegment(input.occupancy, input.threshold);
+  if (ask !== null) state.push(ask);
+  state.push(contextSegment(input.occupancy));
+
+  const seven = rateLimitSegment('7d', input.sevenDay, now, GIVE.sevenDay);
+  if (seven !== null) state.push(seven);
+  const five = rateLimitSegment('5h', input.fiveHour, now, GIVE.fiveHour);
+  if (five !== null) state.push(five);
+
   if (input.myctx !== null && input.myctx.injections > 0) {
     const approx = input.myctx.unrecorded > 0 ? '≥' : '';
-    right.push({
+    state.push({
       text: `myctx ${approx}${fmtK(input.myctx.tokens)}`,
       ink: INK.project,
       give: GIVE.myctxShare,
     });
   } else if (input.myctxNote !== null) {
-    right.push({
+    state.push({
       text: `myctx unavailable (${input.myctxNote})`, ink: INK.neutral, give: GIVE.notes,
     });
   }
+  // The two notes are DISCLOSURES and they belong with the state, not with the
+  // identity: a tee that stopped landing is news, and news goes on the line the
+  // reader is still looking at.
   if (input.teeNote !== null) {
-    right.push({ text: input.teeNote, ink: INK.warn, give: GIVE.notes });
+    state.push({ text: input.teeNote, ink: INK.warn, give: GIVE.notes });
   }
 
   // Cost and cache in one block: they are one question — what this turn is
@@ -801,19 +1015,33 @@ export function buildSegments(input: PowerlineInput, now: number = Date.now()): 
   const warm = input.warmPercent === null || !Number.isFinite(input.warmPercent)
     ? null : `warm ${input.warmPercent.toFixed(1)}%`;
   if (cost !== null || warm !== null) {
-    right.push({
+    state.push({
       text: [cost, warm].filter((part) => part !== null).join(' · '),
       ink: INK.project,
       give: GIVE.costCache,
     });
   }
 
-  const seven = rateLimitSegment('7d', input.sevenDay, now, GIVE.sevenDay);
-  if (seven !== null) right.push(seven);
-  const five = rateLimitSegment('5h', input.fiveHour, now, GIVE.fiveHour);
-  if (five !== null) right.push(five);
+  // Last, and on the line that moves, because it IS a clock. `now` is render
+  // time and the age is computed from it here -- never carried in aged.
+  const log = lastAuditSegment(input.lastAudit, now);
+  if (log !== null) state.push(log);
 
-  return [...left, contextSegment(input.occupancy), ...right];
+  return { identity, state };
+}
+
+/**
+ * The same blocks as ONE line — the fallback, and the whole of it.
+ *
+ * Derived by concatenation so it can never disagree with `buildLines` about
+ * what the bar contains. This is what a terminal or a Claude Code build that
+ * mishandles a second line gets: one line carrying everything, which is the
+ * honest degradation. A second line silently lost is the failure this project
+ * spends an `…` mark to avoid everywhere else.
+ */
+export function buildSegments(input: PowerlineInput, now: number = Date.now()): Segment[] {
+  const { identity, state } = buildLines(input, now);
+  return [...identity, ...state];
 }
 
 /**
@@ -833,6 +1061,7 @@ export function payloadExtras(payload: unknown): {
   sevenDay: RateLimit | null;
   costUsd: number | null;
   warmPercent: number | null;
+  sessionName: string | null;
 } {
   const num = (v: unknown): number | null =>
     typeof v === 'number' && Number.isFinite(v) ? v : null;
@@ -875,6 +1104,10 @@ export function payloadExtras(payload: unknown): {
     sevenDay: window(limits?.['seven_day']),
     costUsd: num(obj(p['cost'])?.['total_cost_usd']),
     warmPercent,
+    // Read here rather than beside the model, because it is a fact about the
+    // SESSION and not about the model: two windows on one model and one repo
+    // differ only by this.
+    sessionName: typeof p['session_name'] === 'string' ? p['session_name'] : null,
   };
 }
 
@@ -920,6 +1153,17 @@ export interface RenderOptions {
   colour: boolean;
   /** The terminal's width. `null` fits nothing and lets the line run. */
   columns: number | null;
+  /**
+   * Whether to indent so the anchor lands on the terminal's centre. Defaults
+   * to `true`, which is the ONE-LINE form — the shape the owner's centring
+   * ruling was about, and the only shape that has the problem it solves.
+   *
+   * `renderStatusLine` passes `false`. See its own note for why: on two lines
+   * the context figure is already second on a short line beside the ask, and
+   * centring line 2 while line 1 has no anchor to centre on would leave the
+   * pair with a ragged left edge — two rows that stop reading as one block.
+   */
+  centre?: boolean;
 }
 
 function widthOf(segments: Segment[]): number {
@@ -1099,8 +1343,10 @@ export function renderPowerline(segments: Segment[], options: RenderOptions): st
   }
 
   // Plain spaces, outside the caps and never painted, so the indent is blank
-  // terminal rather than a block. `''` when there is no room to centre.
-  const indent = ' '.repeat(centreOffset(fitted, options.columns));
+  // terminal rather than a block. `''` when there is no room to centre, and
+  // `''` throughout the two-line form, which does not centre at all.
+  const indent = options.centre === false
+    ? '' : ' '.repeat(centreOffset(fitted, options.columns));
 
   if (!options.colour) return `${indent}${CAP_LEFT}${body.join('')}${CAP_RIGHT}`;
   return (
@@ -1108,6 +1354,85 @@ export function renderPowerline(segments: Segment[], options: RenderOptions): st
     body.join('') +
     `${RESET}${CSI}38;5;${last.ink.bg}m${CAP_RIGHT}${RESET}`
   );
+}
+
+/**
+ * **THE TWO-LINE STATUS LINE, AND WHAT CLAUDE CODE ACTUALLY DOES WITH IT.**
+ *
+ * EXTERNAL BEHAVIOUR, marked as such exactly the way `core/statusline-tee.ts`
+ * marks its reading of the payload schema — established by READING THE
+ * INSTALLED BINARY, not from documentation, and dated because it dates the
+ * verification and is not a claim about any other build.
+ *
+ * Read on 2026-08-31 from the installed `claude` (self-reported `2.1.248`; the
+ * session that captured the payload this bar was tuned against reported
+ * `2.1.247`). The renderer is two functions and they say everything that
+ * matters:
+ *
+ * ```js
+ * var dYe = /\x1b\[[\d;]*m|\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+ * function vfe(d) {
+ *   let C = d.split("\n");
+ *   if (C.length === 1) return C;
+ *   let x = [C[0]], H = "";
+ *   for (let X = 1; X < C.length; X++) {
+ *     H += (C[X - 1].match(dYe) ?? []).join("");
+ *     x.push(H + C[X]);
+ *   }
+ *   return x;
+ * }
+ * // and, in the component:
+ * //   if (lines.length === 1) -> one <Text dimColor wrap="truncate">
+ * //   else -> <Box flexDirection="column">{lines.map(line =>
+ * //             <Text dimColor wrap="truncate">{line}</Text>)}</Box>
+ * ```
+ *
+ * Three facts follow, and each one decided something below:
+ *
+ *  1. **Multi-line is real.** The output is split on `\n` and rendered as a
+ *     column, one `Text` per line. Nothing concatenates them.
+ *  2. **Each line is truncated INDEPENDENTLY** — `wrap: "truncate"` sits on
+ *     every line's own `Text`. The 2.1.80 report of line 2 being truncated as
+ *     though it were joined to line 1 cannot happen on this build: there is no
+ *     join in this path.
+ *  3. **ANSI carries across lines, cumulatively, BY DESIGN.** `H` accumulates
+ *     every SGR and OSC-8 escape from every preceding line and prepends the
+ *     whole run to each later line. So line 2 does not start clean — it starts
+ *     wearing everything line 1 wore.
+ *
+ * Fact 3 is why each line is rendered with its own `renderPowerline` and
+ * therefore its own trailing `RESET`: the accumulated run that gets prepended
+ * to line 2 then ENDS in that reset, so the last escape to take effect is a
+ * reset and line 2 begins in the default colour. This is not a nicety — with
+ * no reset closing line 1, line 2 would open painted in the final block's
+ * background, which on a red `crit` context block is a solid red second line.
+ * The caller must not "optimise away" the reset at the end of a line.
+ *
+ * It also means the prepended run costs BYTES on line 2, though not columns:
+ * Ink measures display width with the escapes discarded. The width bound this
+ * renderer enforces is per line and is unchanged by the prefix.
+ */
+export function renderStatusLine(lines: Segment[][], options: RenderOptions): string {
+  // Empty lines are dropped rather than rendered as a bare pair of caps: a
+  // line with nothing on it is not a disclosure, it is a blank row of the
+  // user's transcript spent on nothing.
+  //
+  // **`centre: false`, and it is a judgement the report states rather than
+  // hides.** The owner's earlier ruling centred the context figure because it
+  // was buried at the right-hand end of a 185-column bar. The two-line ruling
+  // dissolves that: line 2 is about a hundred columns and the figure is its
+  // SECOND block, immediately beside the ask, in the half of the screen the
+  // reader is still watching. Prominence now comes from the grouping, which is
+  // what the centring was reaching for. Turning it on here would also indent
+  // line 2 while line 1 — which has no anchor — stayed flush left, leaving a
+  // ragged edge where the owner's own approved rendering shows two lines
+  // starting together. Centring remains live for the one-line fallback, which
+  // is the only shape that still has the problem it was ruled for.
+  return lines
+    .filter((line) => line.length > 0)
+    .map((line) => renderPowerline(line, { ...options, centre: false }))
+    .filter((line) => line !== '')
+    .join('\n');
 }
 
 /**
