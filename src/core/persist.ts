@@ -147,14 +147,22 @@ export function auditMutation(
  * as the no-op it is.
  */
 const AUDITED_FIELDS = [
-  'title', 'body', 'scope', 'tags', 'severity', 'always', 'status', 'extra',
+  // `summary` is here because it is CONTENT (`UPDATE_FIELD_POLICY`, trust.ts)
+  // and the audit log is what answers "what did this session do": a summary is
+  // the most quotable thing an item has, so a session that rewrote one and
+  // left no record of it is the gap this log exists to close. `summaryOf` is
+  // NOT here — it is derived from the item by `stampSummary` and never moves
+  // on its own, so recording it would name a second field for every change to
+  // the first.
+  'title', 'body', 'summary', 'scope', 'tags', 'severity', 'always', 'status', 'extra',
 ] as const;
 
 type AuditedSnapshot = Record<(typeof AUDITED_FIELDS)[number], unknown>;
 
 export function snapshotFields(item: Item): AuditedSnapshot {
   return {
-    title: item.title, body: item.body, scope: [...item.scope], tags: [...item.tags],
+    title: item.title, body: item.body, summary: item.summary,
+    scope: [...item.scope], tags: [...item.tags],
     severity: item.severity, always: item.always, status: item.status, extra: { ...item.extra },
   };
 }

@@ -142,7 +142,12 @@ import { markdownNodes } from '/screens/docs.js';
 // `receivedAt` at RENDER time, which is why that age is not a field on the
 // view — a number frozen at fetch time is the one thing that label must not
 // be.
-import { contextStrip, formatAge } from '/lib/viewmodel.js';
+// `occupancyLevel` bands the context percentage against the SERVED
+// `handoverThresholdPercent` (`plan:walk seq:117`) and `corpusDrift` is the
+// three-state table for `measureCorpusDrift`'s answer — both in the module
+// beside `contextStrip` and both unit-tested there, because a decision table
+// inside a DOM builder is a decision table no test can reach.
+import { contextStrip, corpusDrift, formatAge, occupancyBands, occupancyLevel } from '/lib/viewmodel.js';
 // The rail's Coverage-gaps badge counts the SAME directories the gaps table
 // lists, through the same function. See `paintRailCounts` for why the count is
 // derived here rather than served as a number by `/api/status`.
@@ -160,8 +165,13 @@ import { BOUND_CAP_LIST } from '/screens/parts.js';
 // screen, has no route, and is built once for the life of the page. Same file,
 // same shape, same gate; a separate export because that table is keyed by
 // SCREEN NAME and its gate fails on a key `app.js` routes no screen for.
+// `STREAM_POLL_MS` is the server's own tail interval, mirrored by name so the
+// Execute settle window can be derived from the two clocks that sit between a
+// record being appended and this page deciding what to do about it, rather than
+// from a number somebody liked. See `EXECUTE_SETTLED_WINDOW_MS`.
 import {
   CHROME_INVALIDATION, LIVE_INVALIDATION_DEBOUNCE_MS, SCREEN_INVALIDATION,
+  STREAM_POLL_MS,
 } from '/lib/live-invalidation.js';
 
 const SCREENS = {
@@ -466,6 +476,97 @@ const CODE_SKEW_KEY = 'ex.codeSkew';
 /** Any `/api` answer that carries `staleCode`. Anything else is ignored. */
 function noteCodeSkew(answer) {
   if (answer !== null && typeof answer === 'object' && answer.staleCode === true) showCodeSkew();
+}
+
+/* ══ THE CORPUS HAS MOVED AND THE LOG DID NOT SEE IT ══════════════════
+ *
+ * `measureCorpusDrift` landed on 2026-08-31 and `/api/ping` and `/api/meta`
+ * have carried its answer as `corpus` ever since. **Nothing drew it**, and its
+ * six string keys were already in both tables waiting.
+ *
+ * **THE PARALLEL HOOK TO `noteCodeSkew`, AND DELIBERATELY THE SAME SHAPE.**
+ * That function reads `staleCode` off ANY `/api` answer that carries one, so
+ * the disclosure rides both channels the server puts it on: `/api/meta` at
+ * first paint, which is the only one that reaches a tab in its first minute,
+ * and `/api/ping` on the heartbeat, which is the only one that reaches a tab
+ * open since the morning. `corpus` is served on exactly the same two requests
+ * for exactly the same reason (`server.ts`'s own comment: "a corpus drifts
+ * while a tab sits open in a way a server's own code cannot"), so it is read
+ * the same way rather than through a third channel that could disagree with
+ * the other two.
+ *
+ * Where it differs from `staleCode`: a skew raises a BANNER and is latched
+ * until dismissed, because the remedy is a restart the reader has to perform.
+ * Drift is ambient provenance — one chip in the corpus group of the strip,
+ * beside the item count it qualifies — because there is nothing to do about it
+ * except know, and a modal every time somebody saves a file in an editor is a
+ * modal that gets ignored.
+ *
+ * The value is REMEMBERED rather than re-fetched, so `CHROME_REFILL.corpus`
+ * refilling the count for a `mutation` does not blank a drift answer that came
+ * from a ping thirty seconds ago. `null` is the honest "nothing has answered
+ * yet", which `corpusDrift()` reports as `unknown` — not as `in-step`.
+ */
+let corpusDriftAnswer = null;
+
+/** Any `/api` answer that carries `corpus`. Anything else is ignored. */
+function noteCorpusDrift(answer) {
+  if (answer === null || typeof answer !== 'object') return;
+  if (answer.corpus === undefined) return;
+  corpusDriftAnswer = answer.corpus;
+  fillCorpusDrift();
+}
+
+/**
+ * Draw the drift chip from whatever last answered.
+ *
+ * Three states and no fourth, straight off `corpusDrift()`'s table — which is
+ * in `lib/viewmodel.js` and unit-tested there, because the one thing this must
+ * not do is turn `drifted: null` into "no". `core/corpus-drift.ts` is explicit:
+ * a sweep that hit its entry bound and found nothing answers `null` rather than
+ * `false`, because "nothing here" over the part that fit is not the question
+ * that was asked.
+ *
+ * One `replaceChildren` at the end and no clear first, the same as every other
+ * segment — see `fillItems` for why that matters now that segments have more
+ * than one caller.
+ */
+function fillCorpusDrift() {
+  const host = document.getElementById('corpusdrift');
+  if (host === null) return;
+  const view = corpusDrift(corpusDriftAnswer);
+  const chip = document.createElement('span');
+  if (view.state === 'drifted') {
+    chip.className = 'chip warn';
+    chip.dataset.g = '▲';
+    chip.dataset.k = 'strip.corpusDrifted';
+    // The age is the whole reason the endpoint answers `aheadByMs` at all:
+    // "an edit landed since you opened this tab" and "an edit landed last
+    // Tuesday" are different sentences and only the reader can tell which
+    // matters. `formatAge` is the strip's one spelling of a duration.
+    chip.append(...translate(table.strings, 'strip.corpusDrifted', {
+      age: view.aheadByMs === null ? '—' : formatAge(view.aheadByMs),
+    }));
+    chip.title = flat(table.strings, 'title.corpusDrifted');
+  } else if (view.state === 'in-step') {
+    // A MEASURED negative, drawn and named. `STD-a-measured-zero-is-drawn-and
+    // -named-an-unmeasured-thing-is` clause 1: the sweep ran, reached
+    // everything it meant to, and found nothing newer than the log — which is
+    // a finding, and a reader deciding whether to trust this page is entitled
+    // to it rather than to a silence they have to interpret.
+    chip.className = 'chip ok';
+    chip.dataset.g = '●';
+    chip.dataset.k = 'strip.corpusInStep';
+    chip.append(...translate(table.strings, 'strip.corpusInStep'));
+    chip.title = flat(table.strings, 'title.corpusInStep');
+  } else {
+    chip.className = 'chip unmeas';
+    chip.dataset.g = '◌';
+    chip.dataset.k = 'strip.corpusDriftUnknown';
+    chip.append(...translate(table.strings, 'strip.corpusDriftUnknown'));
+    chip.title = flat(table.strings, 'title.corpusDriftUnknown');
+  }
+  host.replaceChildren(chip);
 }
 
 function showCodeSkew() {
@@ -1274,30 +1375,160 @@ let liveScreenUnsub = null;
 /** The single in-flight debounce timer for the CURRENT screen's subscription. */
 let liveScreenTimer = null;
 /**
+ * **THE SINGLE SLOT, AND IT IS STILL SINGLE** — `plan:walk seq:116` moved
+ * where this affordance is DRAWN and changed nothing about how many of it
+ * there can be.
+ *
  * The refresh the shown affordance would perform if pressed, or `null` while
- * it is hidden. Read by the strip's one shared button (`renderChrome()`)
- * rather than captured per-screen, because the button is built once for the
- * life of the page and this is what changes on every route.
+ * it is hidden. ONE variable, for the reason it was always one: every screen's
+ * `render()` opens with `root.replaceChildren()` and six of them then await an
+ * endpoint and append, so two overlapping renders each clear an empty section
+ * and each append a whole screen — measured in a browser on 2026-08-29 as
+ * three hash writes in one turn drawing NINE `<h3>` where one render draws
+ * three. A second pending refresh is a second render, so there is one slot and
+ * taking it replaces whatever was in it.
+ *
+ * It is also still read at CLICK time rather than captured when the button is
+ * built, which is what lets the button be rebuilt per screen without the
+ * closure and the current route disagreeing.
  */
 let pendingScreenRefresh = null;
 
-/** Show the affordance; `onTake` is what pressing its control does. */
+/**
+ * **The affordance renders WITH THE SCREEN IT ACTS ON** — owner ruling
+ * 2026-08-31, *"move the refresh button to the screen"* (`plan:walk seq:116`).
+ *
+ * ── WHY IT MOVED ─────────────────────────────────────────────────────────
+ *
+ * It rendered at the end of the STATUS STRIP, whose every group refreshes
+ * itself silently and on its own (`CHROME_INVALIDATION`, every row `auto`), so
+ * a control sitting in that row reads as the strip's. The owner asked what it
+ * was for *"if the status bar should be ongoing refreshed"*. Its own message
+ * already answered — *"New activity for this screen"* — and the placement was
+ * saying something else, louder.
+ *
+ * ── WHERE IT WENT, AND WHY NOT INSIDE THE SECTION'S FLOW ─────────────────
+ *
+ * Into the `[data-p]` section it is about, as its FIRST child and
+ * `position:sticky` at the top of it. Two properties had to survive the move
+ * and both are load-bearing:
+ *
+ *   1. **It may not move the reader's place.** `DEC-a-refresh-keeps-the-reader
+ *      -s-place-or-it-asks` has an acceptance test that measures `.body`'s
+ *      scrollTop across a refresh, and `plan:walk seq:64` measured a refresh
+ *      discarding three of the owner's selections in one act. A block inserted
+ *      into the section's flow would push every row down by its own height the
+ *      instant it appeared. `position:sticky` with the section as containing
+ *      block takes it OUT of that: it overlays the first line of the screen
+ *      rather than displacing it, and `scrollTop` is untouched in both
+ *      directions.
+ *   2. **It may not be erased by the render it is offering.** Every screen's
+ *      `render()` opens with `root.replaceChildren()`, which would take this
+ *      with it. It is not appended once and left: it is INSERTED when shown and
+ *      REMOVED when hidden, and every path that re-renders (`act()` below,
+ *      `route()`, `teardownLiveScreen`) hides it first. So there is no moment
+ *      where a live affordance and a render are both touching the section.
+ *
+ * `#screenstale` keeps its ID, its `role="status"` and its `[hidden]`
+ * specificity fix — `#screenstale[hidden]{display:none}` in `styles.css`, which
+ * exists because `#screenstale{display:flex}` is an ID rule and outranks the
+ * user agent's `[hidden]` attribute selector. That defect shipped once already
+ * ("New activity for this screen." painted on every screen from boot, with a
+ * Refresh button offering to reload a screen that had not gone stale), and
+ * removing the element from the DOM when hidden does not make the rule
+ * redundant: the element is `hidden` for the frame between construction and
+ * insertion, and `showLiveFault`'s neighbour rule shares the selector list.
+ *
+ * `onTake` is what pressing its control does.
+ */
 function showLiveAffordance(onTake) {
   pendingScreenRefresh = onTake;
-  const el = document.getElementById('screenstale');
-  const sep = document.getElementById('screenstalesep');
-  if (el === null) return;
+  const body = document.getElementById('screen');
+  if (body === null) return;
+  const el = affordanceElement();
   el.hidden = false;
-  if (sep !== null) sep.hidden = false;
+  // **Into `.body` and NOT into the `[data-p]` section**, and the difference is
+  // measured. `.body` is `display:grid` with every screen in ONE cell, and this
+  // takes the same cell (`styles.css`), so it OVERLAYS the screen rather than
+  // displacing it. Inside the section it would be in normal flow: with the body
+  // scrolled to 300px, inserting a 58px affordance above the content moved
+  // `scrollTop` to 358 — the browser keeping the reader's place, correctly, over
+  // a change this control had no business making. `DEC-a-refresh-keeps-the-
+  // reader-s-place-or-it-asks`'s acceptance test caught it.
+  //
+  // `prepend`, so it is the first thing a screen reader reaches on the way in:
+  // it is a statement ABOUT this screen, and a statement placed after the
+  // content it qualifies is one a reader meets only if they read to the end.
+  body.prepend(el);
 }
 
-/** Hide it — pressed, or the reader navigated to a different screen. */
+/**
+ * Hide it — pressed, the reader navigated to a different screen, or the screen
+ * is about to be redrawn anyway.
+ *
+ * Removed from the DOM rather than merely hidden, because the section it sits
+ * in is about to be `replaceChildren()`-ed by whatever comes next and an
+ * element that survives that by accident is an element nobody owns.
+ */
 function hideLiveAffordance() {
   pendingScreenRefresh = null;
-  const el = document.getElementById('screenstale');
-  const sep = document.getElementById('screenstalesep');
-  if (el !== null) el.hidden = true;
-  if (sep !== null) sep.hidden = true;
+  if (screenStaleEl === null) return;
+  screenStaleEl.hidden = true;
+  screenStaleEl.remove();
+}
+
+/**
+ * The section the reader is looking at.
+ *
+ * **The router keeps every visited screen inside `#screen`, merely hidden**
+ * (`route()`'s own comment: the ones already visited stay in the DOM, exactly
+ * as the mockup keeps all 21). So this is scoped to the VISIBLE one — a
+ * `querySelector('[data-p]')` would find whichever screen was visited first and
+ * hand a run's outcome to a page nobody can see.
+ */
+function visibleSection() {
+  const body = document.getElementById('screen');
+  if (body === null) return null;
+  for (const section of body.querySelectorAll('[data-p]')) {
+    if (!section.hidden) return section;
+  }
+  return null;
+}
+
+/**
+ * The one affordance element, built on first use and reused ever after.
+ *
+ * ONE element for the whole page even though it is inserted into a different
+ * section on every route, and that is the same argument the single
+ * `pendingScreenRefresh` slot makes: one element cannot be in two sections at
+ * once, so "the affordance is showing on two screens" is not a state this can
+ * reach. `prepend` MOVES a node that is already in the document rather than
+ * copying it, so the move is the removal.
+ */
+let screenStaleEl = null;
+function affordanceElement() {
+  if (screenStaleEl !== null) return screenStaleEl;
+  const stale = document.createElement('p');
+  stale.id = 'screenstale';
+  stale.className = 'small';
+  stale.hidden = true;
+  // `role=status`: the one line names WHAT ARRIVED, and a reader away from the
+  // screen when it appears is exactly who an `aria-live` region is for — the
+  // same treatment `budgetSaveControl`'s own result region gets in `config.js`.
+  stale.setAttribute('role', 'status');
+  const staleMsg = document.createElement('span');
+  staleMsg.append(...translate(table.strings, 'live.screenStale'));
+  const staleBtn = document.createElement('button');
+  staleBtn.type = 'button';
+  staleBtn.className = 'icon';
+  staleBtn.append(...translate(table.strings, 'btn.refresh'));
+  // Reads `pendingScreenRefresh` at CLICK time, never captured here: this
+  // button is built once, for the life of the page, and which screen it
+  // refreshes changes on every route.
+  staleBtn.onclick = () => { pendingScreenRefresh?.(); };
+  stale.append(staleMsg, staleBtn);
+  screenStaleEl = stale;
+  return stale;
 }
 
 /**
@@ -1310,6 +1541,15 @@ function hideLiveAffordance() {
 function teardownLiveScreen() {
   if (liveScreenUnsub !== null) { liveScreenUnsub(); liveScreenUnsub = null; }
   if (liveScreenTimer !== null) { clearTimeout(liveScreenTimer); liveScreenTimer = null; }
+  // The same argument, for the Execute-driven refresh: `currentScreenRefresh`
+  // closes over the PREVIOUS screen's module and section, and running it after
+  // the reader has left would draw that screen into a section nobody is
+  // looking at. `route()` sets a new one through `setupLiveScreen`.
+  currentScreenRefresh = null;
+  // And the outcome of the last run this page started: it is a statement about
+  // a screen the reader has just left, and carrying it onto the next one would
+  // be an exit code beside content it says nothing about.
+  executeOutcome = null;
   hideLiveAffordance();
 }
 
@@ -1400,7 +1640,6 @@ async function renderScreen(mod, section) {
  */
 function setupLiveScreen(name, mod, section) {
   const decl = SCREEN_INVALIDATION[name];
-  if (decl === undefined || EXCLUDED_FROM_GENERIC_LIVE_REFRESH.has(name)) return;
 
   const act = () => {
     hideLiveAffordance();
@@ -1419,15 +1658,36 @@ function setupLiveScreen(name, mod, section) {
     // regardless of what the browser does mid-rebuild.
     const scrollHost = document.getElementById('screen');
     const savedScroll = scrollHost === null ? null : scrollHost.scrollTop;
-    void renderScreen(mod, section).then(() => {
+    return renderScreen(mod, section).then(() => {
       if (scrollHost !== null && savedScroll !== null) scrollHost.scrollTop = savedScroll;
+      // **After EVERY redraw, not only the first.** One Execute is three
+      // records — `execute`, the CLI's own `mutation`, `execute-done` — and the
+      // debounced subscription below redraws for them too. Without this the
+      // outcome was prepended by `noteExecuteSettled` and then wiped ~250ms
+      // later by the very frames the run had produced: measured in the
+      // `chromium` project on 2026-08-31, where the run reported `exit 0` and
+      // the screen then swallowed it. See `attachExecuteOutcome`.
+      attachExecuteOutcome();
     });
   };
+
+  // **Held for the Execute path, and held for EVERY screen** — including the
+  // ones with no `SCREEN_INVALIDATION` entry and `watch`, which are excluded
+  // from the generic stream subscription below and are not excluded from this.
+  // The two questions are different: "does a record off the stream make this
+  // screen stale" is a per-screen declaration, while "did the reader just
+  // change something through this app's own Execute control" is not a property
+  // of the screen at all. `watch` redraws its own rows incrementally and would
+  // be double-subscribed by the generic path; it is still a screen an Execute
+  // can be run from, and it still gets redrawn by one.
+  currentScreenRefresh = act;
+
+  if (decl === undefined || EXCLUDED_FROM_GENERIC_LIVE_REFRESH.has(name)) return;
 
   liveScreenUnsub = subscribeStream(decl.kinds, (event) => {
     if (event !== 'record') return;
     if (liveScreenTimer !== null) clearTimeout(liveScreenTimer);
-    liveScreenTimer = setTimeout(() => {
+    const again = () => {
       liveScreenTimer = null;
       // **`act()` calls the screen's OWN `render()` directly — never
       // `route()`.** `route()` opens with `closePane()`; calling it here
@@ -1437,10 +1697,245 @@ function setupLiveScreen(name, mod, section) {
       // the pane lives outside `section` entirely (`#pane` is its own grid
       // area) and `.body`'s scrollTop is untouched by rebuilding ONE
       // `[data-p]` child's contents.
-      if (decl.refresh === 'auto') act();
+      //
+      // **`executeSettled` is the second thing that makes a redraw safe, and
+      // it is not a weakening of `'ask'`** — `plan:walk seq:120`. `'ask'` is
+      // right and stays right for a change SOMEBODY ELSE made: `DEC-a-refresh
+      // -keeps-the-reader-s-place-or-it-asks` settles that and `plan:walk
+      // seq:64` measured a refresh discarding three of the owner's selections
+      // in one act. A change the reader just made THROUGH THIS APP'S OWN
+      // EXECUTE CONTROL is a different event. They pressed Run; they know what
+      // happened; asking "shall I refresh?" is the app pretending not to know
+      // something it does know, and a settled item still sitting in the queue
+      // is worse than a lost scroll position.
+      //
+      // These records ARE that act's own — the `execute` row, the CLI's own
+      // `mutation` row, and `execute-done` — arriving on the one connection
+      // within one debounce window of the run this page started. Without this
+      // branch the reader gets an affordance offering to show them the result
+      // of the thing they just did.
+      //
+      // **A run this page started is still going: decide nothing yet.** The
+      // `execute` row is written BEFORE the command runs, so this frame is the
+      // reader's own act announcing itself mid-flight. Redrawing here could
+      // show the item still in the queue — the reported symptom with extra
+      // steps — and asking is the app pretending not to know what it is doing.
+      // Re-armed rather than dropped, so the frame is not lost if the run ends
+      // without producing another one.
+      if (executeInFlight > 0) {
+        liveScreenTimer = setTimeout(again, LIVE_INVALIDATION_DEBOUNCE_MS);
+        return;
+      }
+      if (decl.refresh === 'auto' || executeSettled) act();
       else showLiveAffordance(act);
-    }, LIVE_INVALIDATION_DEBOUNCE_MS);
+    };
+    liveScreenTimer = setTimeout(again, LIVE_INVALIDATION_DEBOUNCE_MS);
   });
+}
+
+/* ══ AN ACTION TAKEN THROUGH EXECUTE REFRESHES THE SCREEN IT WAS TAKEN ON ══
+ *
+ * `plan:walk seq:120`. Owner report, 2026-08-31, after driving six review-queue
+ * drafts through Accept/Reject -> Execute on their own corpus: *"after pressing
+ * Run on a Review queue item, the item stays in the queue, the page does not
+ * refresh, and the gold count beside Review queue in the rail does not change."*
+ *
+ * Three separate causes, and this is where two of them are answered (the third,
+ * the rail, is `CHROME_REFILL`'s new `rail` row and the call below):
+ *
+ *   1. `work` is `refresh: 'ask'`, so even when it noticed it offered the
+ *      affordance instead of redrawing.
+ *   2. It might not notice at all: Accept and Reject run `review promote` /
+ *      `review discard`, which write `execution` rows (`execute`,
+ *      `execute-done`) alongside whatever `mutation` the CLI records for
+ *      itself, and `work` declares only `mutation`. Whether the stream woke it
+ *      depended on the ordering of two record kinds, one of which the row does
+ *      not declare.
+ *
+ * ── WHY THE TRIGGER IS THE POST RESOLVING, AND WHY THAT IS `execute-done` ──
+ *
+ * **Do not refresh before the write has landed.** Redrawing on `execute` would
+ * redraw the queue MID-FLIGHT and could show the item still there — the reported
+ * symptom with extra steps. `execute-done` is the row that says the run
+ * finished, and `src/ui/execute.ts`'s handler appends it at its step 6 and
+ * RETURNS at step 7: the response to `POST /api/execute` cannot be read by this
+ * page until `recordCompletion` has been called. So the resolution of that POST
+ * is the `execute-done` moment, observed on the connection that caused it —
+ * strictly after the run, with no dependence on stream ordering, stream
+ * latency, or a debounce that might fire between two frames of one act.
+ *
+ * ── IT GOES THROUGH THE SINGLE SLOT, NOT AROUND IT ────────────────────────
+ *
+ * `currentScreenRefresh` is the same `act` closure `setupLiveScreen` built for
+ * this screen, and `act` calls `renderScreen`, which is the WeakMap-keyed queue
+ * every render in this file goes through. Two overlapping renders on one
+ * section were measured drawing nine `<h3>` where one render draws three; an
+ * Execute-driven refresh is chained behind whatever is already rendering, like
+ * every other one. `act` also hides the affordance first, so a pending "new
+ * activity" from the same run is taken back by the redraw that answers it.
+ */
+let currentScreenRefresh = null;
+
+/**
+ * True for as long as records arriving on the stream are still plausibly this
+ * page's own Execute settling.
+ *
+ * A WINDOW rather than a latch consumed once, because one run is several
+ * frames — `ui/execute.ts` writes `execute` before the run and `execute-done`
+ * after it, and the CLI writes its own `mutation` in between — and they do not
+ * all arrive inside one debounce. Four debounce periods is the bound: long
+ * enough that the trailing frames of one act are recognised as that act, short
+ * enough that a change somebody else makes a moment later still ASKS, which is
+ * the distinction this whole feature turns on and must not flatten.
+ */
+let executeSettled = false;
+let executeSettledTimer = null;
+
+/**
+ * **A run this page started is IN FLIGHT** — between the reader answering the
+ * confirm and the POST coming back.
+ *
+ * It exists because the first record of the pair arrives during that gap.
+ * `ui/execute.ts` writes the `execute` row BEFORE it runs anything ("a run that
+ * cannot be recorded does not happen"), and the run itself is a child process
+ * that takes a second or two; the stream polls once a second and the screen
+ * subscription debounces for half of one. Measured in a browser on 2026-08-31:
+ * pressing Run raised *"New activity for this screen. Refresh"* about 1.5s in,
+ * over a change the reader was at that moment making, and then took it back
+ * when the run finished.
+ *
+ * So while this holds, the stream's timer is RE-ARMED rather than acted on:
+ * more frames of the same act are coming and the answer is not knowable yet.
+ * Never redrawn either — `plan:walk seq:120` is explicit that refreshing on
+ * `execute` could show the item still there, which is the reported symptom with
+ * extra steps.
+ */
+let executeInFlight = 0;
+
+/**
+ * How long after a run settles its own trailing frames may still arrive.
+ *
+ * DERIVED FROM THE TWO CLOCKS BETWEEN THE RECORD AND THIS PAGE, rather than
+ * picked: the server's tail polls at `STREAM_POLL_MS` (1000ms — sent to every
+ * client in the `hello` frame) and the screen subscription then debounces for
+ * `LIVE_INVALIDATION_DEBOUNCE_MS`. A record appended just before the response
+ * therefore reaches a decision up to one poll plus one debounce later. Doubled,
+ * because the pair is two records and the second is written after the first is
+ * already travelling.
+ *
+ * Too short and the reader is asked about their own act; too long and a change
+ * somebody ELSE makes moments later is redrawn without asking, which is the
+ * distinction this whole feature turns on. Three seconds is the shortest value
+ * that covers the measured path.
+ */
+const EXECUTE_SETTLED_WINDOW_MS = 2 * (STREAM_POLL_MS + LIVE_INVALIDATION_DEBOUNCE_MS);
+
+/**
+ * The result region of the run this page most recently started, held for as
+ * long as redraws caused by that run can still arrive.
+ *
+ * **A HOLDER RATHER THAN A ONE-SHOT RE-ATTACH, because one Execute is several
+ * redraws.** `report()` writes the exit code, the stderr and the audit note
+ * into a region that lives INSIDE the `[data-p]` section, and every redraw
+ * opens with `root.replaceChildren()` — so a node prepended once is detached
+ * again by the next frame of the same act. Measured on 2026-08-31: the promote
+ * reported `exit 0`, the outcome was prepended, and the `mutation` frame 250ms
+ * later took it away. Every redraw inside the settle window re-attaches it, and
+ * the window closing is what lets it go.
+ *
+ * Losing this matters more for a FAILED run than for a clean one: the reader
+ * would see the item still sitting in the queue and be told nothing about why.
+ *
+ * **HELD UNTIL THE READER LEAVES THE SCREEN OR RUNS SOMETHING ELSE, and NOT on
+ * the `executeSettled` window's timer.** It was on that timer for one round and
+ * the timer lost: the window is four debounce periods (1s), and one Execute on
+ * the Work screen produces TWO chained redraws whose two fetches together
+ * outlast it — measured in a browser on 2026-08-31, where the promote removed
+ * the row, moved the rail, and left no exit code anywhere on the page. The
+ * window governs a different question (may a redraw happen without asking) and
+ * borrowing it for this one made a visible fact depend on how fast two
+ * endpoints answered. A redraw of the SAME screen while the reader is still on
+ * it does not make "the run you just made here exited 0" any less true.
+ */
+let executeOutcome = null;
+
+/**
+ * Put the held outcome back at the top of the screen, where a statement about
+ * the act that produced this screen belongs.
+ *
+ * Idempotent, and safe to call after any render: it does nothing with no
+ * outcome held, and nothing when the node is already where it should be.
+ */
+function attachExecuteOutcome() {
+  if (executeOutcome === null) return;
+  const section = visibleSection();
+  if (section !== null && !section.contains(executeOutcome)) section.prepend(executeOutcome);
+}
+
+/**
+ * An Execute this page ran has finished. Redraw the screen it was run on, and
+ * move the rail with it.
+ *
+ * **Called by `lib/command-actions.js` and by nothing else, and that is a
+ * decision rather than a convenience.** That module owns the ONE
+ * confirm-and-run control in this product — every screen that offers Execute
+ * calls `commandActions` — so one call site reaches the Palette's runs,
+ * Doctor's repair and Work's Accept and Reject alike. The alternative
+ * considered was hooking `post()` itself, which is the door every Execute goes
+ * through; it was rejected because `screens/config.js` ALSO posts
+ * `/api/execute`, for the budget save, and that screen updates its own fields
+ * in place with a recorded reason not to reload — *"without a full-screen
+ * reload that would wipe the message just shown"*. A door-level hook would have
+ * overruled another screen's own decision from a place its author would never
+ * think to look.
+ *
+ * `outcomeNode` is the run's result region, carried across the redraw.
+ *
+ * A REFUSAL settles too, deliberately: `handleExecute` records the `execute`
+ * row before it runs anything and a non-zero exit is still a run that happened,
+ * so "the command failed" is not the same as "nothing changed", and a screen
+ * left showing the pre-run state after a partial write would be the same defect
+ * pointing the other way. What does NOT reach here is a request that never
+ * left the browser — `request()` throws before `fetch` when no credential is
+ * held, and there the screen is already showing what it should.
+ */
+function noteExecuteSettled(outcomeNode) {
+  if (executeInFlight > 0) executeInFlight -= 1;
+  executeSettled = true;
+  executeOutcome = outcomeNode ?? null;
+  if (executeSettledTimer !== null) clearTimeout(executeSettledTimer);
+  executeSettledTimer = setTimeout(() => {
+    executeSettledTimer = null;
+    executeSettled = false;
+  }, EXECUTE_SETTLED_WINDOW_MS);
+  // The screen, through the same single slot every other refresh goes through.
+  //
+  // **AND THE OUTCOME SURVIVES THE REDRAW.** `report()` writes the exit code,
+  // the stderr and the audit note into a region that lives INSIDE the section
+  // — so a refresh that merely redrew would take back the answer to "what did
+  // that do", which is worse for a NON-ZERO exit than for a clean one: the
+  // reader would see the item still in the queue and be told nothing about
+  // why. The node is re-attached at the TOP of the rebuilt screen, which is
+  // where a statement about the act that produced this screen belongs, and it
+  // is prepended whether or not it has content yet: it is built `hidden` and
+  // `say()` unhides it, so the order in which the refresh and `report()`
+  // finish cannot matter.
+  const done = currentScreenRefresh?.();
+  if (done !== undefined && done !== null && typeof done.then === 'function') {
+    void done.then(attachExecuteOutcome, attachExecuteOutcome);
+  } else {
+    // No screen refresh to wait for — a screen with no held `act`, or a test
+    // harness with no shell. The outcome still belongs on screen.
+    attachExecuteOutcome();
+  }
+  // **AND THE RAIL, IN THE SAME ACT.** `paintRailCounts()` was called from
+  // `route()` and from nowhere else, so the gold badge beside Review queue was
+  // correct exactly once per navigation and never moved again — a defect on its
+  // own, and the one the owner named second. It counts BOTH queues
+  // (`pendingRevisions.revisions + reviewQueue.drafts`, fixed 2026-08-30 after
+  // reading one made it say 0 with a draft on screen), and nothing here changes
+  // that: this calls the same function.
+  void paintRailCounts();
 }
 
 /* ══ LIVE INVALIDATION FOR THE SHELL'S OWN CHROME ══════════════════════════
@@ -1503,6 +1998,23 @@ const CHROME_REFILL = {
   // the key is what says somebody looked.
   audit: () => {},
   prov: () => { void fillProvenance(); },
+  // **THE RAIL'S COUNT BADGES, WHICH NOTHING EVER REFRESHED** — `plan:walk
+  // seq:120`, third of the three causes the owner's report has under it.
+  //
+  // `paintRailCounts()` was called from `route()` and from nowhere else, so the
+  // gold badge beside Review queue was right at the moment a screen was opened
+  // and never moved again. The strip's groups have refreshed live since
+  // `CHROME_INVALIDATION` landed and this table had no row for the rail at all
+  // — which is why the badge would still have been wrong even if the screen
+  // had redrawn perfectly.
+  //
+  // It is chrome by every test this table applies: no route, no reader state,
+  // built once, outlives every navigation. `['mutation']` because that is what
+  // moves all three numbers — `/api/status`'s health counts and both review
+  // queues, and `/api/coverage`'s tree — derived from the same endpoints the
+  // `status` screen row above derives its own `['mutation']` from, rather than
+  // re-derived differently for the same data.
+  rail: () => { void paintRailCounts(); },
 };
 
 /**
@@ -1745,7 +2257,7 @@ function renderChrome() {
   // renders against what the design of record declares. Without it a browser
   // test can only count anonymous spans, which is how forty missing segments
   // went a month without being noticed.
-  const group = (name, labelKey) => {
+  const group = (name, labelKey, into) => {
     const g = document.createElement('span');
     g.className = 'sgrp sgrp-' + name;
     const label = document.createElement('span');
@@ -1753,25 +2265,73 @@ function renderChrome() {
     label.dataset.k = labelKey;
     label.append(...translate(table.strings, labelKey));
     g.append(label);
-    strip.append(g);
+    into.append(g);
     return g;
   };
 
-  const repo = group('repo', 'strip.grp.repo');
-  const git = document.createElement('span');
-  git.className = 'gitstate';
-  git.id = 'gitstate';
-  repo.append(git);
-  strip.append(sep());
+  // ── THE REPO GROUP LIVES IN THE HEADER — `plan:walk seq:114`, owner ruling
+  // 2026-08-31. `index.html`'s own comment has described this header as
+  // "primitive 8: git where the avatar would have gone" since it was written,
+  // and then recorded that "that content is not wired here". It went into the
+  // STRIP instead, and measured at 1280px on 2026-08-31 it took 372.5px of the
+  // 906px the strip's four groups rendered into — 41% of a crowded row — while
+  // `#ctx`, the one figure the owner asked to be able to read, had 157px. The
+  // header measured 1,692px of nothing at 2304px wide and 668px at 1280.
+  //
+  // Built here rather than pasted into `index.html` for the reason the whole of
+  // this function is built in script: `index.html` carries no `data-t` scanner
+  // and every string it draws comes through `translate()`, so authored markup
+  // would ship English literals the א/A toggle could never reach.
+  //
+  // Inserted BEFORE `.topr`, which carries `margin-inline-start:auto` — so the
+  // pickers stay pinned to the far end and the git state fills the space
+  // between them and the wordmark, which is exactly the space that was empty.
+  // Rebuilt in place on a second `renderChrome()` (a pasted nonce redeeming)
+  // the same way the strip is: found by id, emptied, refilled.
+  const topbar = document.getElementById('topbar');
+  if (topbar !== null) {
+    document.getElementById('hdrrepo')?.remove();
+    const repo = group('repo', 'strip.grp.repo', topbar);
+    repo.id = 'hdrrepo';
+    const git = document.createElement('span');
+    git.className = 'gitstate';
+    git.id = 'gitstate';
+    repo.append(git);
+    // `group()` appended it at the END of the header; it belongs before the
+    // pickers, which carry `margin-inline-start:auto` and stay pinned to the
+    // far edge either way. Moved rather than built in place so `group()` keeps
+    // its one shape for all four provenance groups.
+    const pickers = topbar.querySelector('.topr');
+    if (pickers !== null) topbar.insertBefore(repo, pickers);
+  }
 
-  const corpus = group('corpus', 'strip.grp.corpus');
+  const corpus = group('corpus', 'strip.grp.corpus', strip);
   const count = document.createElement('span');
   count.className = 'corpusstate';
   count.id = 'stripitems';
-  corpus.append(count);
+  // ── AND WHETHER THE CORPUS MOVED WITHOUT THE LOG SEEING IT.
+  //
+  // `measureCorpusDrift` landed on 2026-08-31 and `/api/ping` and `/api/meta`
+  // have served its answer as `corpus` ever since; nothing drew it, and its six
+  // string keys were already sitting in both tables. Its own module says why the
+  // fact matters: everything live on this page comes from the audit log, and an
+  // item edited in an editor, by another tool, or by a branch switch appends
+  // NOTHING to that log — so the page can be drawing a corpus that has moved
+  // under it and say nothing at all.
+  //
+  // Its OWN element, beside the count rather than inside it, because the two
+  // have different sources and different refill triggers: the count is
+  // `/api/status` on a `mutation`, and the drift is whatever `/api/meta` or the
+  // once-a-minute `/api/ping` last answered. One `replaceChildren` per fact
+  // means a refill of either can never blank the other — `fillItems`' own
+  // header is the argument, applied one element along.
+  const drift = document.createElement('span');
+  drift.className = 'corpusdrift';
+  drift.id = 'corpusdrift';
+  corpus.append(count, drift);
   strip.append(sep());
 
-  const session = group('session', 'strip.grp.session');
+  const session = group('session', 'strip.grp.session', strip);
   const ctx = document.createElement('span');
   ctx.className = 'ctxstate';
   ctx.id = 'ctx';
@@ -1785,7 +2345,7 @@ function renderChrome() {
   // either way — the property is what the reader is owed, and hiding the
   // whole segment is how forty of forty-four came to be invisible — with an
   // em dash where the figure goes and ONE chip naming the state for both.
-  const audit = group('audit', 'strip.grp.audit');
+  const audit = group('audit', 'strip.grp.audit', strip);
   const auditState = document.createElement('span');
   auditState.className = 'auditstate';
   auditState.id = 'auditstate';
@@ -1815,48 +2375,28 @@ function renderChrome() {
   live.hidden = true;
   strip.append(liveSep, live);
 
-  // ── THE SCREEN-LIVE AFFORDANCE — one line and a control, never a
-  // permanent banner. Built here, in the footer strip, and NOT inside any
-  // `[data-p]` section: `.strip` is its own grid row, outside `.body`'s own
-  // scroll container (`.body{overflow-y:auto}`) and outside `#pane`'s grid
-  // area entirely, so showing or hiding it can never move `.body`'s
-  // scrollTop or touch the pane — the exact property
-  // `DEC-a-refresh-keeps-the-reader-s-place-or-it-asks`'s acceptance test
-  // measures. See "LIVE INVALIDATION" below for who shows and hides it.
-  const staleSep = document.createElement('span');
-  staleSep.className = 'sep';
-  staleSep.id = 'screenstalesep';
-  staleSep.hidden = true;
-  const stale = document.createElement('span');
-  stale.id = 'screenstale';
-  stale.hidden = true;
-  // `role=status`: the one line names WHAT ARRIVED, and a reader away from
-  // the strip when it appears is exactly who an `aria-live` region is for —
-  // the same treatment `budgetSaveControl`'s own result region gets in
-  // `config.js`.
-  stale.setAttribute('role', 'status');
-  const staleMsg = document.createElement('span');
-  staleMsg.append(...translate(table.strings, 'live.screenStale'));
-  const staleBtn = document.createElement('button');
-  staleBtn.type = 'button';
-  staleBtn.className = 'icon';
-  staleBtn.append(...translate(table.strings, 'btn.refresh'));
-  // Reads `pendingScreenRefresh` at CLICK time, never captured here: this
-  // button is built once, for the life of the page, and which screen it
-  // refreshes changes on every route.
-  staleBtn.onclick = () => { pendingScreenRefresh?.(); };
-  stale.append(staleMsg, staleBtn);
-  strip.append(staleSep, stale);
-
+  // ── THE SCREEN-LIVE AFFORDANCE IS NO LONGER BUILT HERE — `plan:walk
+  // seq:116`, owner ruling 2026-08-31: *"move the refresh button to the
+  // screen"*.
+  //
+  // The owner asked what a refresh button on the right of the status bar was
+  // for, *"if the status bar should be ongoing refreshed"*, and that question
+  // IS the defect. The strip refreshes itself silently — `CHROME_INVALIDATION`
+  // declares every group `auto` — and the control at the end of its row acts on
+  // THE SCREEN. Its own message said so all along (*"New activity for this
+  // screen. Refresh"*); the placement contradicted the wording, and the
+  // placement won. It is built by `showLiveAffordance` now, into the section it
+  // acts on. See that function for how the single-slot guarantee and
+  // `#screenstale`'s specificity fix both survive the move.
+  //
   // This function reruns on a live page — `installNonceRedemption()` calls it
   // a second time after a pasted nonce redeems in place — and `strip
   // .replaceChildren()` above would otherwise silently un-say a fault the
   // stream already reported. A fact the reader was already told must survive
-  // the chrome being rebuilt around it.
+  // the chrome being rebuilt around it. The affordance no longer needs the
+  // same treatment for the same reason it needed it before: it does not live
+  // in this subtree any more, so a rebuild here cannot reach it.
   if (liveEnded !== null) showLiveFault(liveEnded);
-  // Same reasoning, for the affordance: a rebuild mid-wait must not silently
-  // take back a "something arrived" the reader has not yet acted on.
-  if (pendingScreenRefresh !== null) { staleSep.hidden = false; stale.hidden = false; }
 }
 
 /** The id of the app's one live region. Written once, read by `announce()`. */
@@ -2025,23 +2565,15 @@ async function fillChrome() {
   const git = document.getElementById('gitstate');
   const count = document.getElementById('stripitems');
   if (git === null || count === null) return;
+  // **The drift chip is drawn at BOOT, before anything has answered.** Its
+  // source is a field on `/api/meta` and `/api/ping` rather than a call of its
+  // own, so without this the segment sits EMPTY until the first answer arrives
+  // — and empty is the one thing it may not be: a page that has not been told
+  // whether the corpus moved is not a page that measured nothing.
+  // `corpusDriftAnswer` is `null` here and `corpusDrift()` reports that as
+  // `unknown`, which draws "not known" and never "in step".
+  fillCorpusDrift();
   await Promise.all([fillGit(git), fillItems(count), fillProvenance()]);
-}
-
-/**
- * A branch name as the part a reader actually distinguishes branches by.
- *
- * `campaign/my-context-test` → `my-context-test`; `main` is unchanged, and so
- * is anything with no `/` in it. Split on the LAST separator rather than the
- * first, because git namespaces nest (`user/feature/thing`) and the leaf is
- * the name in every one of them.
- *
- * Display only. See its call site in `fillGit` for the measurement and the
- * ruling, and for why the upstream chip beside it keeps the full name.
- */
-function lastSegment(branch) {
-  const at = branch.lastIndexOf('/');
-  return at === -1 ? branch : branch.slice(at + 1);
 }
 
 /**
@@ -2114,6 +2646,12 @@ async function fillGit(git) {
     // the git branch, because everything below this line can `return` early on
     // a shape the strip cannot draw, and the skew is not the strip's fact.
     noteCodeSkew(meta);
+    // The first-paint half of the drift disclosure, on the same answer and
+    // beside the same call — see `noteCorpusDrift`. Before the git branch, for
+    // the identical reason `noteCodeSkew` is: everything below this line can
+    // `return` early on a shape the strip cannot draw, and neither of these
+    // facts is the git group's.
+    noteCorpusDrift(meta);
     const g = meta.git;
     // `branch` is checked BEFORE `detached`, because git-info.ts documents one
     // shape where both `branch === null` and `detached === false` hold — a HEAD
@@ -2122,42 +2660,42 @@ async function fillGit(git) {
     if (g === undefined || g === null) {
       parts.push(keyed('strip.notARepo', {}));
     } else if (typeof g.branch === 'string') {
-      // **The branch is drawn as its LAST PATH SEGMENT, and the full name goes
-      // in a `title`** — owner ruling, 2026-08-31. Measured on the live app at
-      // 1280px: the repo group took 724px of the strip, 309px of it this one
-      // segment, while `session` — the context figure the owner asked to be
-      // able to read — had 150px and `#ctx` inside it 81px. `.ctxstate` is the
-      // ONE flex item in the bar allowed to give way (`.strip>*{flex:0 0 auto}`
-      // against `.ctxstate{flex:1 1 auto}`), so every pixel the repo group takes
-      // comes out of exactly that figure.
+      // **THE BRANCH KEEPS ITS FULL NAME AGAIN, BECAUSE THE GROUP MOVED** —
+      // `plan:walk seq:114`, owner ruling 2026-08-31.
       //
-      // The owner accepted losing the ability to tell two campaign branches
-      // apart at a glance; the tooltip gives it back at no width, and it is the
-      // strip's own established channel for the explanation beside a value it
-      // has no room to spell — `stateChip()` puts `title.unread` there, and the
-      // design of record puts a `title` on `#gitstate` itself. Not forbidden
-      // here: the mockup draws no title on THIS segment, which is a silence and
-      // not a prohibition, and the container's own title is a click-to-cycle
-      // affordance the app does not build.
+      // It was shortened to its last path segment earlier the same day, and
+      // that ruling was entirely about WIDTH: measured in the strip, the repo
+      // group took 372.5px of the 906px the four groups rendered into at
+      // 1280px, while `#ctx` — the context figure the owner asked to be able to
+      // read — had 157px. `.ctxstate` was the one flex item in that bar allowed
+      // to give way, so every pixel the repo group took came out of exactly
+      // that figure, and the owner accepted losing the ability to tell two
+      // campaign branches apart at a glance to get it back.
       //
-      // The title is a raw value, deliberately NOT a key: it is the branch's
-      // own name, the same treatment `#sesslbl` gives a session id, and there
-      // is nothing in it to translate.
+      // That price is not owed any more. This group renders in the HEADER now,
+      // which measured 1,692px of nothing at 2304px wide and 668px at 1280, and
+      // where nothing else is competing for the space. `campaign/my-context-
+      // test` and `campaign/my-context-prod` are two different branches and a
+      // reader should not have to hover to find out which one they are on.
       //
-      // **The COMMIT is untouched.** `@ 4798e20` is how a reader tells which
-      // build a server is serving, and it is seven characters.
-      const shortBranch = lastSegment(g.branch);
+      // **The COMMIT stays seven characters** and is not a casualty of the same
+      // reasoning: `@ 4798e20` is how a reader tells which build a server is
+      // serving, seven characters is the length git itself prints, and a forty-
+      // character SHA would be the only thing in this row nobody reads. The
+      // full value goes in the `title`, which is the established channel for an
+      // explanation beside a value — `stateChip()` puts `title.unread` there and
+      // the design of record puts a `title` on `#gitstate` itself. A raw value,
+      // deliberately NOT a key: there is nothing in a SHA to translate.
+      const commit = String(g.commit ?? '');
       const segment = keyed('strip.branch',
-        { branch: shortBranch, commit: String(g.commit ?? '').slice(0, 7) });
+        { branch: g.branch, commit: commit.slice(0, 7) });
       // Only when something was actually dropped. A title repeating what is
       // already on screen is noise a screen reader reads out twice.
-      if (shortBranch !== g.branch) segment.title = g.branch;
+      if (commit.length > 7) segment.title = commit;
       parts.push(segment);
-      // **The chip keeps the FULL branch**, and that is not an oversight.
-      // `strip.inSync`/`strip.differs` say "in sync with origin/{branch}" — a
-      // REMOTE ref, which is a different string from the local branch's display
-      // name and is not this ruling's to shorten. Display-only means display
-      // only: nothing else in the product consumes the shortened form.
+      // The chip carries the full branch too, and always did: `strip.inSync`/
+      // `strip.differs` say "in sync with origin/{branch}" — a REMOTE ref, which
+      // is a different string from the local branch's display name.
       const key = g.upstream === 'in-sync' ? 'strip.inSync'
         : g.upstream === 'differs' ? 'strip.differs'
           : g.upstream === 'no-upstream' ? 'strip.noUpstream' : 'strip.unknownTip';
@@ -2339,7 +2877,212 @@ async function fillContext() {
     }
     parts.push(tail);
   }
+
+  // ── HOW MUCH RUNWAY IS LEFT — `plan:walk seq:117`, and the ONLY state it
+  // applies to is `known`, because it is a band around a percentage and the
+  // other four states have no percentage to band.
+  const levelChip = occupancyChip(view);
+  if (levelChip !== null) parts.push(levelChip);
+  // ── AND WHAT BECAME OF THE HANDOVER ASK — `plan:walk seq:118`. Drawn in
+  // EVERY state, including the ones with no context figure at all: whether the
+  // handover was written is a fact about this session, not about whether the
+  // status-line bridge is installed, and `ignored` is precisely the state a
+  // reader would never think to go and check for.
+  const handoverChip = handoverVerdictChip(view);
+  if (handoverChip !== null) parts.push(handoverChip);
   ctx.replaceChildren(...parts);
+}
+
+/**
+ * **THE OCCUPANCY BAND, AS A CHIP WITH A WORD IN IT** — `plan:walk seq:117`,
+ * owner ruling 2026-08-31.
+ *
+ * The context figure carried no colour at all, so a reader could see 60.1% and
+ * not see how much runway that left. Three things this had to be, and each of
+ * them ruled out an easier version:
+ *
+ *  1. **Derived from `handoverThresholdPercent`, never hard-coded.** The value
+ *     is configurable and `core/config.ts` names ONE place its 98 default is
+ *     applied; a constant in this file would be a second. It is served on
+ *     `/api/watch/context` and the bands come out of `occupancyBands()` in
+ *     `lib/viewmodel.js`, where the derivation and the two auto-compaction
+ *     records it was measured against are written down.
+ *  2. **Colour is never the only carrier.** The percentage stays a number in
+ *     the sentence beside this, and the state is a `.chip` — a WORD, a glyph,
+ *     and one of the five budgeted hues. That is `06-a11y.html`'s rule ("a
+ *     glyph AND a colour AND a name"), and it is the same treatment the four
+ *     group labels already get for the same reason: --gold and --ok measure
+ *     1.04:1 against each other and are one state to a dichromat, one grey on a
+ *     mono printer, and one system tone under forced-colors.
+ *  3. **A stale figure is NOT coloured as though it were live.** The strip
+ *     already discloses age — *"as of last response, 29h ago"* — and a fossil
+ *     rendered in confident red is worse than an uncoloured number.
+ *     `occupancyLevel` answers `'stale'` past `CONTEXT_SAMPLE_FRESH_MS` and
+ *     that draws the NEUTRAL chip, which is visibly not-a-level rather than a
+ *     level: `.chip.unmeas` spends `--dim` and carries `◌`, and it is the same
+ *     chip `strip.unread` and `strip.unmeasured` already wear.
+ *
+ * `null` when there is nothing to band: a state with no percentage, or a
+ * corpus with the handover feature switched off, where there is no ask and
+ * therefore no threshold to name a band against. Silence rather than a guess.
+ *
+ * No sixth hue (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-
+ * warn`): ok, warn and crit already exist, the neutral already exists, and
+ * every one of these `.chip.*` modifiers is in the mockup at the same value —
+ * which `test/ui/styles-parity.test.ts` checks in both directions.
+ */
+function occupancyChip(view) {
+  const threshold = view.handover.threshold;
+  const ageMs = view.receivedAt === null ? null : Math.max(0, Date.now() - Date.parse(view.receivedAt));
+  const level = view.state === 'known' ? occupancyLevel(view.pct, threshold, ageMs) : null;
+  if (level === null) return null;
+  const bands = occupancyBands(threshold);
+  const chip = document.createElement('span');
+  if (level === 'stale') {
+    chip.className = 'chip unmeas';
+    chip.dataset.g = '◌';
+    chip.dataset.k = 'strip.ctxLevelStale';
+    chip.append(...translate(table.strings, 'strip.ctxLevelStale'));
+    chip.title = flat(table.strings, 'title.ctxLevelStale');
+    return chip;
+  }
+  chip.className = 'chip ' + level;
+  // The title names BOTH boundaries and where they came from, because "warn"
+  // with no numbers is a colour a reader has to take on trust. One decimal
+  // place: 98 * 0.9 is 88.2, and rounding it to 88 would print a boundary the
+  // code does not use.
+  const subs = { warn: bands.warn.toFixed(1), threshold: String(threshold) };
+  // **Every key spelled in full, never composed from a prefix.**
+  // `test/ui/viewmodel.test.ts` reads the literal keys out of this file's own
+  // bytes and holds both string tables to them, and a key built with `+` is a
+  // key that gate cannot see — which is the whole point of it: `t()` throws on
+  // a missing key, so a typo blanks the strip rather than mislabelling a word.
+  if (level === 'crit') {
+    chip.dataset.g = '■';
+    chip.dataset.k = 'strip.ctxCrit';
+    chip.append(...translate(table.strings, 'strip.ctxCrit'));
+    chip.title = flat(table.strings, 'title.ctxCrit', subs);
+  } else if (level === 'warn') {
+    chip.dataset.g = '▲';
+    chip.dataset.k = 'strip.ctxWarn';
+    chip.append(...translate(table.strings, 'strip.ctxWarn'));
+    chip.title = flat(table.strings, 'title.ctxWarn', subs);
+  } else {
+    chip.dataset.g = '●';
+    chip.dataset.k = 'strip.ctxOk';
+    chip.append(...translate(table.strings, 'strip.ctxOk'));
+    chip.title = flat(table.strings, 'title.ctxOk', subs);
+  }
+  return chip;
+}
+
+/**
+ * **WHAT BECAME OF THE HANDOVER ASK** — `plan:walk seq:118`, owner ruling
+ * 2026-08-31: *show, beside the context figure, when the handover was
+ * automatically created or updated.*
+ *
+ * **The fact already existed, was durable, and nothing read it.** Every
+ * `pre-compact` record has carried `handoverAsk` since 2026-08-27 — read off
+ * the live audit log, `2026-08-29T04:22 auto 99.7147% handoverAsk: acted-on`,
+ * with the note naming both the ask time and the file's write time. The verdict
+ * was computed, written and kept, and the strip did not read it.
+ *
+ * **NOT RE-DERIVED HERE, AND THAT IS THE RULING.** `core/handover-ask.ts`
+ * computes it by comparing the latch's `askedAt` against the handover file's
+ * mtime, and its own header calls that comparison the whole feature: *the flag
+ * is not a claim, it is a comparison*. A browser can stat nothing, so it could
+ * only ever guess — and a second computation of one question is a second
+ * spelling, which is how facts come apart. The server answers on
+ * `/api/watch/context`; this draws what it was told.
+ *
+ * **Five states, and none of them silent:**
+ *
+ *   acted-on      ok      the mechanism worked, WITH WHEN — the value is
+ *                         knowing the handover is current, not merely that
+ *                         something happened once.
+ *   ignored       crit    the ask went out and the file was not written. THE
+ *                         ONE THAT MATTERS MOST, and the one a reader will
+ *                         never think to check for, so it is the loudest hue in
+ *                         the budget rather than a quieter `acted-on`. This
+ *                         project has already paid for the alternative once:
+ *                         the item held to be the continuity guarantee was
+ *                         delivered on no event at all, for weeks, while
+ *                         everyone believed the guarantee was in force —
+ *                         because a record said an ask went out, which reads
+ *                         exactly like the mechanism working.
+ *   not-asked     carry   configured, and this session has not crossed the
+ *                         threshold. A MEASURED not-yet (`STD-a-measured-zero-
+ *                         is-drawn-and-named-an-unmeasured-thing-is`), and not
+ *                         a warning — nothing is wrong, so it does not borrow
+ *                         a warning's voice. `--carry` is the continuity hue
+ *                         and this is the continuity mechanism.
+ *   off           neutral no `handover` key at all: the whole feature is off
+ *                         and silent, which is a DIFFERENT FACT from
+ *                         `not-asked` and is said rather than collapsed into
+ *                         it. One means nobody configured this; the other
+ *                         means somebody did and the moment never came.
+ *   unverifiable  neutral asked, and the comparison could not be made. Never
+ *                         folded into `ignored`: an accusation nothing supports
+ *                         is the same defect as a guarantee nothing supports.
+ *
+ * `verdict: null` draws nothing — the endpoint did not answer, or this is a
+ * cold session with no endpoint to ask. That is not `off`: "the feature is
+ * switched off" is something this page was told, and "nobody told us anything"
+ * is not.
+ */
+function handoverVerdictChip(view) {
+  const h = view.handover;
+  if (h.verdict === null) return null;
+  const chip = document.createElement('span');
+  const subs = {
+    path: h.path ?? '—',
+    asked: h.askedAt ?? '—',
+    written: h.writtenAt ?? '—',
+    threshold: h.threshold === null ? '—' : String(h.threshold),
+  };
+  if (h.verdict === 'acted-on') {
+    chip.className = 'chip ok';
+    chip.dataset.g = '●';
+    chip.dataset.k = 'strip.hoActed';
+    // WHEN, computed from `writtenAt` at RENDER time so it ticks — the same
+    // treatment, and for the same reason, as the "as of … ago" on the context
+    // sentence one element back. A handover written eight hours ago and one
+    // written eight seconds ago are different answers to "is it current".
+    const writtenMs = h.writtenAt === null ? NaN : Date.parse(h.writtenAt);
+    chip.append(...translate(table.strings, 'strip.hoActed', {
+      age: Number.isFinite(writtenMs) ? formatAge(Math.max(0, Date.now() - writtenMs)) : '—',
+    }));
+    chip.title = flat(table.strings, 'title.hoActed', subs);
+  } else if (h.verdict === 'ignored') {
+    chip.className = 'chip crit';
+    chip.dataset.g = '■';
+    chip.dataset.k = 'strip.hoIgnored';
+    chip.append(...translate(table.strings, 'strip.hoIgnored'));
+    chip.title = flat(table.strings, 'title.hoIgnored', subs);
+  } else if (h.verdict === 'not-asked') {
+    chip.className = 'chip carry';
+    chip.dataset.g = '◇';
+    chip.dataset.k = 'strip.hoNotAsked';
+    chip.append(...translate(table.strings, 'strip.hoNotAsked'));
+    chip.title = flat(table.strings, 'title.hoNotAsked', subs);
+  } else if (h.verdict === 'off') {
+    chip.className = 'chip unmeas';
+    chip.dataset.g = '◌';
+    chip.dataset.k = 'strip.hoOff';
+    chip.append(...translate(table.strings, 'strip.hoOff'));
+    chip.title = flat(table.strings, 'title.hoOff', subs);
+  } else {
+    // `unverifiable`, and anything a later build of the server adds. An
+    // unknown verdict is drawn as NOT KNOWN rather than dropped: a chip that
+    // vanishes for a state this page has not heard of is the silence every
+    // named state in this strip exists to end.
+    chip.className = 'chip unmeas';
+    chip.dataset.g = '◌';
+    chip.dataset.k = 'strip.hoUnknown';
+    chip.append(...translate(table.strings, 'strip.hoUnknown'));
+    chip.title = flat(table.strings, 'title.hoUnknown', subs);
+  }
+  return chip;
 }
 
 // --- The rail's count badges ------------------------------------------------
@@ -2710,6 +3453,18 @@ async function main() {
     // The same door with a body. Reaches the three POST routes no screen could
     // call before; it reads, validates and previews, and it writes nothing.
     post,
+    // **"The run this page started has finished"** (`plan:walk seq:120`).
+    // `lib/command-actions.js` calls it once `POST /api/execute` has settled and
+    // its outcome is drawn; the shell then redraws the screen the run was taken
+    // on, moves the rail's counts with it, and carries the outcome region
+    // across the redraw. See `noteExecuteSettled` for why this is a door a
+    // screen opens rather than a hook inside `post()`.
+    executeSettled: noteExecuteSettled,
+    // **"A run this page started is under way"**, said before the POST rather
+    // than after it. The pair's FIRST record is written before the command
+    // runs, so without this the reader is offered a refresh for the act they
+    // are in the middle of. See `executeInFlight`.
+    executeStarted: () => { executeInFlight += 1; },
     // The shell's ONE live connection, fanned out by record kind — never a
     // door onto a fresh connection of its own. See "THE SHARED LIVE STREAM"
     // and the header block above for the shape.
@@ -2765,7 +3520,10 @@ async function main() {
   // open since the morning. Still `.catch(() => {})`: a heartbeat that cannot
   // reach the server is `showExited()`'s business, raised by `api()` itself.
   stopHeartbeat = startHeartbeat(
-    document, () => api('/api/ping').then(noteCodeSkew).catch(() => {}), 60_000);
+    document, () => api('/api/ping').then((answer) => {
+      noteCodeSkew(answer);
+      noteCorpusDrift(answer);
+    }).catch(() => {}), 60_000);
   installNonceRedemption();
   // Installed here for the same reason as the two above: it is a document
   // listener that must survive a boot which fails. A pane wired after

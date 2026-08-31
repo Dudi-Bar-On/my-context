@@ -83,5 +83,14 @@ export function valueLines(field: RevisionField, value: RevisionValue | undefine
     const keys = Object.keys(extra).sort();
     return keys.length === 0 ? ['(no extra fields)'] : keys.map((key) => `${key}: ${extra[key]}`);
   }
+  // `summary` is one line by construction (`validateSummary` refuses a line
+  // break), and the empty string is the ABSENCE of a summary rather than an
+  // empty one — rendering it as a bare `-`/`+` would show a reader a blank line
+  // where the fact is "there is none", which is the same silent gap
+  // `(no tags)` and `(no extra fields)` above exist to close.
+  if (field === 'summary') {
+    const text = value as string;
+    return [text === '' ? '(no summary)' : text];
+  }
   return (value as string).split('\n');
 }

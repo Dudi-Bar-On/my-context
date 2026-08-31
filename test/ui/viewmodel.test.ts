@@ -80,6 +80,19 @@ interface Strip {
   receivedAt: string | null;
   myctx: { tokens: number; injections: number; unrecorded: number } | null;
   myctxError: string | null;
+  /**
+   * `plan:walk seq:118` — the served handover verdict, carried and never
+   * re-derived. `verdict: null` is "nobody told us", which is a different fact
+   * from the `'off'` the server sends when the feature is switched off.
+   */
+  handover: {
+    verdict: string | null;
+    path: string | null;
+    askedAt: string | null;
+    writtenAt: string | null;
+    /** `handoverThresholdPercent`, the number the occupancy bands are derived from. */
+    threshold: number | null;
+  };
 }
 
 interface StreamEvent {
@@ -98,6 +111,14 @@ interface ViewModelModule {
   dedupeKey: (record: unknown) => string;
   formatAge: (ms: number) => string;
   contextStrip: (body: unknown, isCold: boolean) => Strip;
+  /** `plan:walk seq:117` — the two boundaries, derived from a threshold. */
+  occupancyBands: (threshold: unknown) => { warn: number; crit: number } | null;
+  /** `plan:walk seq:117` — which band a live figure falls in, or `'stale'`, or nothing. */
+  occupancyLevel: (pct: unknown, threshold: unknown, ageMs: unknown) => string | null;
+  OCCUPANCY_WARN_FRACTION: number;
+  CONTEXT_SAMPLE_FRESH_MS: number;
+  /** `plan:walk seq:4` — the three states `measureCorpusDrift`'s answer can be in. */
+  corpusDrift: (corpus: unknown) => { state: string; aheadByMs: number | null };
   sparkline: (buckets: { total: number }[], width: number, height: number) => string;
   describeStreamEvent: (event: string, data: unknown) => StreamEvent;
   /** Task 17: the query grammar all three nav.inj selection screens share. */
@@ -342,6 +363,127 @@ test('contextStrip decides the five states', async () => {
   assert.deepEqual(known.myctx, { tokens: 6200, injections: 3, unrecorded: 1 });
   assert.equal(contextStrip({ sample: { receivedAt: 'x', model: null, version: null, context: { state: 'not-yet-known', usedTokens: null, windowSize: null, percent: null } }, mycontext: null, mycontextError: 'e' }, false).state, 'not-yet-known');
   assert.equal(contextStrip({ sample: { receivedAt: 'x', model: null, version: null, context: { state: 'unknown', usedTokens: null, windowSize: null, percent: null } }, mycontext: null, mycontextError: null }, false).state, 'unknown');
+});
+
+/**
+ * **The occupancy bands are DERIVED FROM THE THRESHOLD, and this is the test
+ * that makes "derived" mean something** — `plan:walk seq:117`, owner ruling
+ * 2026-08-31: *"Colour against `handoverThresholdPercent`, not a constant."*
+ *
+ * A test that only checked 88.2 and 98 would pass against a hard-coded pair of
+ * numbers, which is exactly what the ruling forbids. So the boundaries are
+ * checked AT TWO DIFFERENT THRESHOLDS: move the threshold and both boundaries
+ * move with it, proportionally, which a constant cannot do.
+ */
+test('occupancyBands are a fraction of the threshold, not a remembered pair of numbers', async () => {
+  const { occupancyBands, OCCUPANCY_WARN_FRACTION } = await vm();
+  // The live default: `handoverThresholdPercent()` resolves to 98 with nothing
+  // configured, and 98 * 0.9 is 88.2 — 9.8 points of runway before the ask,
+  // against the 1.75 that remain between the ask and the auto-compaction the
+  // audit log measured at 99.7147% and 99.809%.
+  assert.deepEqual(occupancyBands(98), { warn: 98 * OCCUPANCY_WARN_FRACTION, crit: 98 });
+  // A DIFFERENT threshold moves both. This is the assertion a constant fails.
+  assert.deepEqual(occupancyBands(80), { warn: 80 * OCCUPANCY_WARN_FRACTION, crit: 80 });
+  assert.equal(occupancyBands(80)!.warn, 72);
+  // With the handover feature off there is no ask, so there is no band to name
+  // against one. `null`, never a fallback constant.
+  assert.equal(occupancyBands(null), null);
+  assert.equal(occupancyBands(undefined), null);
+  assert.equal(occupancyBands(Number.NaN), null);
+});
+
+test('occupancyLevel places a figure in a band, and refuses to place a fossil', async () => {
+  const { occupancyLevel, CONTEXT_SAMPLE_FRESH_MS } = await vm();
+  // Either side of both boundaries at the served 98.
+  assert.equal(occupancyLevel(23.5, 98, 0), 'ok');
+  assert.equal(occupancyLevel(88.1, 98, 0), 'ok');
+  assert.equal(occupancyLevel(88.2, 98, 0), 'warn');
+  assert.equal(occupancyLevel(97.9, 98, 0), 'warn');
+  // ON the boundary is AT the ask, not one step below it: the ask fires here.
+  assert.equal(occupancyLevel(98, 98, 0), 'crit');
+  assert.equal(occupancyLevel(99.7147, 98, 0), 'crit');
+  // The bands move with the threshold here too, which is the same property
+  // `occupancyBands` above proves one level down: at a threshold of 80 the warn
+  // band opens at 72, so 75 — comfortably `ok` against 98 — is `warn` here.
+  assert.equal(occupancyLevel(70, 80, 0), 'ok');
+  assert.equal(occupancyLevel(75, 80, 0), 'warn');
+  assert.equal(occupancyLevel(75, 98, 0), 'ok', 'the same figure, a different threshold, a '
+    + 'different band — which is what "derived" means and what a constant cannot do');
+  assert.equal(occupancyLevel(80, 80, 0), 'crit');
+
+  // **A STALE FIGURE IS NOT LEVELLED.** The live corpus's own case: 60.1%,
+  // received 29 hours ago. Levelled, that is a confident green about a window
+  // that no longer exists.
+  assert.equal(occupancyLevel(60.1, 98, 29 * 3_600_000), 'stale');
+  assert.equal(occupancyLevel(99.9, 98, 29 * 3_600_000), 'stale',
+    'staleness beats the band — a fossil in confident red is the worst case, not an exception');
+  // The boundary itself, both sides.
+  assert.equal(occupancyLevel(60.1, 98, CONTEXT_SAMPLE_FRESH_MS), 'ok');
+  assert.equal(occupancyLevel(60.1, 98, CONTEXT_SAMPLE_FRESH_MS + 1), 'stale');
+
+  // Nothing to level: no percentage, or no threshold to name a band against.
+  assert.equal(occupancyLevel(null, 98, 0), null);
+  assert.equal(occupancyLevel(60.1, null, 0), null);
+});
+
+/**
+ * **`false` is a MEASUREMENT and `null` is not**, and this is the distinction
+ * the whole chip exists to keep. `core/corpus-drift.ts` answers `null` rather
+ * than `false` for a sweep that hit its entry bound and found nothing, because
+ * "nothing here" over the part that fit is not the question that was asked — so
+ * a surface drawing this must say "not known" and may never say "no".
+ */
+test('corpusDrift keeps not-known apart from nothing-changed', async () => {
+  const { corpusDrift } = await vm();
+  assert.deepEqual(corpusDrift({ drifted: false, aheadByMs: null, scanned: 42, truncated: false }),
+    { state: 'in-step', aheadByMs: null });
+  assert.deepEqual(corpusDrift({ drifted: true, aheadByMs: 240_000, scanned: 42, truncated: false }),
+    { state: 'drifted', aheadByMs: 240_000 });
+  // The truncated sweep, which `measureCorpusDrift` reports as `null` for
+  // exactly this reason.
+  assert.deepEqual(corpusDrift({ drifted: null, aheadByMs: null, scanned: 5000, truncated: true }),
+    { state: 'unknown', aheadByMs: null });
+  // And nothing served at all — an older server, or a call that has not
+  // answered yet. NOT `in-step`: a page nobody has told is not a page that
+  // measured nothing.
+  assert.deepEqual(corpusDrift(null), { state: 'unknown', aheadByMs: null });
+  assert.deepEqual(corpusDrift(undefined), { state: 'unknown', aheadByMs: null });
+  // A drift with no age is still a drift: the state is what the chip is about
+  // and the age is the disclosure beside it.
+  assert.deepEqual(corpusDrift({ drifted: true }), { state: 'drifted', aheadByMs: null });
+});
+
+/**
+ * **The handover verdict travels; it is never re-derived here** — `plan:walk
+ * seq:118`. `core/handover-ask.ts` computes it against the file's mtime and a
+ * browser can stat nothing, so what this checks is that the block is READ
+ * faithfully and that an absent one lands on a shape the caller draws nothing
+ * for — which is NOT the same as `off`.
+ */
+test('contextStrip carries the served handover verdict, and invents none', async () => {
+  const { contextStrip } = await vm();
+  const withHandover = contextStrip({
+    sample: { receivedAt: '2026-08-31T10:00:00.000Z', model: null, version: null,
+      context: { state: 'known', usedTokens: 47000, windowSize: 200000, percent: 23.5 } },
+    mycontext: null, mycontextError: null,
+    handover: {
+      verdict: 'ignored', path: 'reports/V2-HANDOVER.md',
+      askedAt: '2026-08-31T09:00:00.000Z', writtenAt: null, thresholdPercent: 98,
+    },
+  }, false);
+  assert.equal(withHandover.handover.verdict, 'ignored');
+  assert.equal(withHandover.handover.threshold, 98);
+  assert.equal(withHandover.handover.askedAt, '2026-08-31T09:00:00.000Z');
+
+  // A body from a server that predates the field. `verdict: null` is what the
+  // caller draws NOTHING for, and it is deliberately not `off`: "the feature is
+  // switched off" is something this page was told, and "nobody told us
+  // anything" is not.
+  const without = contextStrip({ sample: null, mycontext: null, mycontextError: null }, false);
+  assert.equal(without.handover.verdict, null);
+  assert.equal(without.handover.threshold, null);
+  // And a cold session, which has no endpoint to ask at all.
+  assert.equal(contextStrip(null, true).handover.verdict, null);
 });
 
 test('formatAge and sparkline', async () => {

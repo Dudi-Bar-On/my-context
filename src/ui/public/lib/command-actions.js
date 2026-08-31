@@ -504,13 +504,42 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
       go.disabled = true;
       dismiss();
       let outcome;
+      // Before the POST, not after it: `ui/execute.ts` appends the `execute`
+      // row BEFORE it runs anything, so the first record of the pair is already
+      // travelling down the stream while this awaits. Without this the shell
+      // offers the reader a refresh for the act they are in the middle of —
+      // measured in a browser on 2026-08-31, about 1.5s after Run was pressed.
+      ctx.executeStarted?.();
       try {
         outcome = await ctx.post('/api/execute', { id, values, nonce: answer.nonce });
       } catch (error) {
         say(errorNote(message(error)));
+        // The run may still have happened — a network failure reading the
+        // RESPONSE says nothing about whether the server ran the command — so
+        // the screen is refreshed here too. It settles on what is true rather
+        // than on what this browser managed to read back.
+        ctx.executeSettled?.(result);
         return;
       }
       report(ctx, say, outcome);
+      // ── **AND THE SCREEN IT WAS RUN ON REDRAWS** — `plan:walk seq:120`,
+      // owner report 2026-08-31: an item settled from the Review queue stayed
+      // in the queue and the rail's gold count never moved.
+      //
+      // AFTER `report`, never before: `report` is what writes the exit code and
+      // the stderr into `result`, and the shell carries THAT node across the
+      // redraw. Announcing the settle first would hand the shell an empty
+      // region and the reader would lose the answer to "what did that do".
+      //
+      // The shell owns what happens next, and deliberately: whether a screen
+      // may be rebuilt in place is `SCREEN_INVALIDATION`'s question and the
+      // rail is not this control's to repaint. This says WHAT HAPPENED — a run
+      // this page started, through this page's own approval boundary, has
+      // finished — and nothing about what should be redrawn because of it.
+      //
+      // `?.` because a screen rendered by a test harness has no shell, the same
+      // guard `announce()` carries for the same reason.
+      ctx.executeSettled?.(result);
     });
 
     confirm.hidden = false;

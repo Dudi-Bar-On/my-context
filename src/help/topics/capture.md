@@ -34,19 +34,29 @@ leave a warning — it makes a real corruption indistinguishable from your edit.
 The plugin's own `PreToolUse` hook denies you writes under `.my_context/` for
 this reason. The supported
 routes are `mycontext review promote`/`discard` for a draft's status, and
-`update_item` for an item's title, body, tags and extra fields.
+`update_item` for an item's title, body, summary, tags and extra fields.
 
 ## The human's CLI, and why it is not your route
 
 `mycontext add <category> "<title>" [--body "<why>"|--file <path>]
-[--note "<text>"] [--step "<text>"] [--scope "a/**,b/**"] [--tags "a,b"]
-[--severity hard|soft]
+[--note "<text>"] [--step "<text>"] [--summary "<text>"] [--scope "a/**,b/**"]
+[--tags "a,b"] [--severity hard|soft]
 [--extra key=value] [--yes]` is the user's capture command. `--scope` and
 `--tags` are comma-separated; `--body` goes through the same round-trip guards
 described above, so a body containing a `#` heading is refused there exactly as
 it is here. `--file` snapshots a file instead of taking text somebody typed,
 and `--extra key=value` names one category-specific field at a time and may be
 repeated — on `mycontext edit` as well.
+
+`--summary "<text>"` is one plain sentence saying what the item IS and why it
+matters, written for somebody who does NOT know this codebase: plain words
+rather than project vocabulary, no ids, no file paths, no measurements, and
+never how it was found. It is capped at 160 characters, the body keeps all the
+precision, and leaving it out is perfectly normal — nothing requires one. It is
+also recorded WITH the content it was written against, so a later edit to the
+body makes it measurably stale (`mycontext doctor` reports it, and `get_item`
+labels it) rather than quietly wrong. `mycontext edit <id> --summary=` removes
+one.
 
 `--note "<text>"` records a `[note]` observation and may be repeated, and that
 is the whole of what this CLI can say about observations. An observation under

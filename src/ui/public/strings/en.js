@@ -957,6 +957,39 @@ export const strings = {
   'title.corpusDrifted': 'An item file under {m:items/} is newer than the last thing the audit log recorded, so this page is drawing a corpus that has moved under it. Everything live here comes from the audit log, and an item edited in an editor, by another tool, or by a branch switch writes no record at all. Reload to read the corpus as it is now.',
   'title.corpusInStep': 'Nothing under {m:items/} is newer than the last recorded change — measured, not assumed. This page reflects changes made through mycontext and through a Claude Code session; a file edited any other way would show above as changed outside the log.',
   'title.corpusDriftUnknown': 'Whether anything changed outside the log could not be measured — there is no audit log to compare against yet, or the corpus could not be read. This is "not known" rather than "nothing changed".',
+  // ── THE CONTEXT OCCUPANCY, BANDED (plan:walk seq:117) ─────────────────
+  // Three bands, three existing hues, and a WORD in every one of them: the
+  // percentage stays a number beside the chip, so the state survives a
+  // dichromat, a monochrome printer and forced-colors, exactly as the four
+  // group labels do. The boundaries are DERIVED from the served
+  // `handoverThresholdPercent` and are never a constant here — see
+  // `lib/viewmodel.js`'s `occupancyBands` for the derivation and the two
+  // auto-compaction records it was measured against.
+  'strip.ctxOk': 'well below the handover ask',
+  'strip.ctxWarn': 'nearing the handover ask',
+  'strip.ctxCrit': 'at the handover ask',
+  'strip.ctxLevelStale': 'too old to place',
+  'title.ctxOk': 'This window is below {warn}%, comfortably under the {threshold}% the handover ask fires at. The bands are derived from that threshold rather than fixed: the warn band opens nine tenths of the way to it, so it moves when the threshold does.',
+  'title.ctxWarn': 'This window is at or past {warn}% and has not yet reached {threshold}%, where the handover ask fires. This is the room there is to act in — finish a thought, capture a lesson, write the handover deliberately. Claude Code compacts automatically at about 99.75%, so once the ask has gone out under two points of the window are left.',
+  'title.ctxCrit': 'This window is at or past {threshold}%, the threshold the handover ask fires at. Claude Code compacts automatically at about 99.75%, so what remains past this point is under two per cent of the window.',
+  'title.ctxLevelStale': 'This reading is more than fifteen minutes old, so it is shown WITHOUT a level. The status-line bridge rewrites it on every response, so a sample this old is not describing the window in front of you — and a fossil in a confident colour is worse than an uncoloured number.',
+  // ── WHAT BECAME OF THE HANDOVER ASK (plan:walk seq:118) ───────────────
+  // The verdict is computed by `core/handover-ask.ts` against the handover
+  // file's mtime and served on `/api/watch/context`; nothing here re-derives
+  // it. `ignored` is the state that matters most — the ask went out and the
+  // file was not written — and it is the one a reader would never think to
+  // check for, so it is drawn in the loudest hue the budget has rather than
+  // as a quieter `acted on`.
+  'strip.hoActed': 'handover written {age} ago',
+  'strip.hoIgnored': 'handover asked for and not written',
+  'strip.hoNotAsked': 'handover not yet asked',
+  'strip.hoOff': 'no handover configured',
+  'strip.hoUnknown': 'handover state not known',
+  'title.hoActed': 'The handover ask went out at {asked} and {path} was written at {written}, after it. The comparison is the whole flag: this is not a claim that an ask was sent, it is the observation that the file moved afterwards.',
+  'title.hoIgnored': 'The handover ask went out at {asked} and {path} has not been written since. The window this session is holding will be compacted or cleared with nothing carried across it. Nothing is broken and nothing will say so on its own — which is exactly why this is drawn.',
+  'title.hoNotAsked': 'A handover is configured at {path} and this session has not crossed the {threshold}% threshold, so it has never been asked to update it. A measured not-yet, not an absence.',
+  'title.hoOff': 'No handover is configured for this corpus, so none was ever promised and none was ever asked for. That is a different fact from a handover that was asked for and not written, and it is drawn rather than left blank.',
+  'title.hoUnknown': 'An ask was recorded but the comparison could not be made — the handover could not be examined, or the recorded time will not parse. This is "not known", never an accusation: a charge nothing supports is the same defect as a guarantee nothing supports.',
   'strip.unread': 'not read',
   'strip.unmeasured': 'not measured',
   'title.unread': 'The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again.',

@@ -153,7 +153,9 @@ export const DETAIL_FLAGS = ['full', 'short', 'summary', 'json'];
  * inside `allowed` would be the duplicate this module exists to remove —
  * the same reason `[...DETAIL_FLAGS, 'quiet']` below is still a spread.
  */
-const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'step', 'scope', 'tags', 'severity', 'extra'];
+const ADD_VALUE_FLAGS = [
+  'body', 'file', 'note', 'step', 'summary', 'scope', 'tags', 'severity', 'extra',
+];
 
 /**
  * The lifted specs, keyed by the command name the registry knows.
@@ -493,6 +495,24 @@ const LIMIT: FlagDeclaration = {
 };
 
 /** `--yes`, on the commands whose gate it answers. */
+/**
+ * `--summary`, declared ONCE and read by both `add` and `edit`.
+ *
+ * The two commands take the same field under the same bar, and the note is
+ * what a person reads before they write one — so a second wording of it here
+ * and in `edit-flags.ts` would be two answers to "what is a summary for", on
+ * the one field whose whole purpose is being read at a glance. `edit-flags.ts`
+ * imports this rather than restating it, and adds only the sentence that is
+ * true of `edit` alone: the empty value clears it.
+ */
+export const SUMMARY_FLAG: FlagDeclaration = {
+  format: 'one plain sentence, at most 160 characters',
+  example: 'A screen says it checked a session and found nothing, when it never checked at all.',
+  note: 'What this item is and why it matters, in plain words for somebody who does NOT know '
+    + 'this codebase - no ids, no file paths, no measurements, and never how it was found. '
+    + 'The body keeps all the precision. Absent is fine: nothing requires one.',
+};
+
 const YES: FlagDeclaration = {
   note: 'Answer the confirmation without a prompt. This is the approval boundary: anything '
     + 'holding a shell can type it, so a command that takes it can change what governs this '
@@ -757,6 +777,7 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       values: SEVERITIES,
       note: 'hard items are admitted to a budget before soft ones. Any other word is refused.',
     },
+    summary: SUMMARY_FLAG,
     extra: {
       format: 'key=value, one key per flag', example: 'directive=do',
       note: 'One category-specific field - a rule\'s directive, a requirement\'s kind. '

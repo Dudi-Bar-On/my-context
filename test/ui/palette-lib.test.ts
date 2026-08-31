@@ -509,7 +509,23 @@ const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
       + 'which of them to promote. It cannot be offered without --all and --pack, which are not '
       + 'offered, and offering it alone would compose a flag the command refuses.',
   },
+  add: {
+    summary: '--summary is a first-class field on every item as of the summary plan phase 1, and '
+      + 'both `add` and `edit` accept it. The palette does not offer it YET, and the reason is '
+      + 'lane rather than design: `src/ui/public/lib/palette-defs.js` belongs to the web shell, and '
+      + 'phase 1 deliberately reaches no screen — the field, its staleness mechanism and the '
+      + 'CLI/MCP surfaces are phase 1; every screen is phase 3. This row is an excuse with an '
+      + 'expiry: the `excused && offered` branch below fails the moment the palette adds it, so '
+      + 'phase 3 cannot leave this sentence standing over the opposite.',
+  },
   edit: {
+    summary: '--summary is a first-class field on every item as of the summary plan phase 1, and '
+      + 'both `add` and `edit` accept it. The palette does not offer it YET, and the reason is '
+      + 'lane rather than design: `src/ui/public/lib/palette-defs.js` belongs to the web shell, and '
+      + 'phase 1 deliberately reaches no screen — the field, its staleness mechanism and the '
+      + 'CLI/MCP surfaces are phase 1; every screen is phase 3. This row is an excuse with an '
+      + 'expiry: the `excused && offered` branch below fails the moment the palette adds it, so '
+      + 'phase 3 cannot leave this sentence standing over the opposite.',
     unlink: '--unlink <relation> <target> takes TWO operands. This model is one value per flag, '
       + 'so a def advertising it would compose `--unlink rel` and lose the target silently — '
       + 'the one failure the whole composed-and-shown design exists to prevent.',

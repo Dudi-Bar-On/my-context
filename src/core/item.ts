@@ -50,7 +50,8 @@ export function isValidObservationCategory(category: string): boolean {
 }
 
 const COMMON_KEYS = new Set([
-  'id', 'type', 'title', 'status', 'severity', 'always', 'continuity', 'scope', 'tags', 'origin',
+  'id', 'type', 'title', 'status', 'severity', 'always', 'continuity', 'summary', 'summary_of',
+  'scope', 'tags', 'origin',
   'source_file', 'source_anchor', 'source_checksum', 'valid_from', 'valid_until', 'checksum',
 ]);
 
@@ -452,6 +453,18 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
     // `=== true` and never a truthiness test, exactly as `always` above: an
     // item that predates this field carries no key at all and must read false.
     continuity: fm.continuity === true,
+    // `optString`, so an item that predates the field — every item in every
+    // corpus — reads `null`, which is `summaryState`'s `absent`. Nothing here
+    // validates the LENGTH: `SUMMARY_MAX_CHARS` is a write-boundary rule
+    // (validate.ts), and refusing to LOAD a file over the bound would make an
+    // item that is merely too wordy invisible, which is a heavier punishment
+    // than the defect. `doctor` reports an over-long summary on disk instead.
+    summary: optString(fm, rawBlock, 'summary'),
+    // Read even when `summary` is null, and never defaulted to anything: a
+    // basis with no summary is inert, and a summary with no basis must read as
+    // `unanchored` rather than as a summary written against nothing in
+    // particular. Both cases are `summaryState`'s to name, not this parser's.
+    summaryOf: optString(fm, rawBlock, 'summary_of'),
     scope: stringList(fm, 'scope'),
     tags: stringList(fm, 'tags'),
     origin: (optString(fm, rawBlock, 'origin') ?? 'human') as Origin,
@@ -496,6 +509,28 @@ export function computeItemChecksum(item: Item): string {
   // test/core/corpus-checksums.test.ts, which hashes this repository's own
   // committed corpus.
   if (item.continuity) shape.continuity = true;
+  // Added ONLY when the item HAS a summary, for the reason `continuity` above
+  // and `steps` below are conditional, and the reason is the same one a third
+  // time because it is the only reason that matters: this hash is RECORDED in
+  // every item's frontmatter, and an unconditional pair of keys would move the
+  // checksum of all 730 items in this corpus in one act — reddening `doctor`
+  // everywhere, destroying the stale-checksum signal that is the only evidence
+  // a file was altered outside my_context, and making `repair` the only way
+  // back. An item with no summary therefore hashes byte-identically to how it
+  // hashed before this field existed, by construction.
+  //
+  // **`summary_of` is hashed too, and not only `summary`.** The basis is what
+  // makes staleness a measurement; a basis excluded from the checksum is one a
+  // hand edit can rewrite to match, turning a stale summary into a "current"
+  // one with nothing reporting it. The two are written together
+  // (`stampSummary`, content-hash.ts) and are covered together.
+  //
+  // The key is `summary_of` and not `summaryOf` because every other key in
+  // this shape is the frontmatter spelling of its field.
+  if (item.summary !== null) {
+    shape.summary = item.summary;
+    shape.summary_of = item.summaryOf;
+  }
   // Added ONLY when there are steps, and the reason is compatibility rather
   // than tidiness: this hash is RECORDED in every item's frontmatter, and an
   // unconditional key would change it for every item in every corpus at once
@@ -534,6 +569,15 @@ export function renderItem(item: Item): string {
     // unconditional `continuity: false` line would add a line to every item
     // on the next write.
     ...(item.continuity ? { continuity: true } : {}),
+    // Emitted ONLY when there is a summary, for `continuity`'s reason directly
+    // above: an unconditional `summary: null` / `summary_of: null` pair would
+    // add two lines to all 730 items on the next write, which is the
+    // byte-identical round trip (`INV-markdown-is-the-source-of-truth`) broken
+    // for every item at once.
+    //
+    // Both keys move together, so a file never carries one without the other
+    // — `summaryState` reads that pair, and half of it is `unanchored`.
+    ...(item.summary === null ? {} : { summary: item.summary, summary_of: item.summaryOf }),
     scope: item.scope,
     tags: item.tags,
     origin: item.origin,

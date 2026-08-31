@@ -429,11 +429,23 @@ const SCREEN_SELECTORS = [
   // own task could claim that changing only the app "would make styles-parity
   // fail" when in fact nothing would have noticed. It would now.
   '.prov', '.prov b', '.provparts,.provproj', '.prov [hidden]',
+  // Added 2026-08-31 with `plan:walk seq:114`, which moved the repo provenance
+  // group out of the strip and into the header. `.gitstate` shows one of seven
+  // states and hides six, and `.chip` sets `display` — so the group needed the
+  // same `[hidden]` dodge in its new container that `.strip [hidden]` gives it
+  // in its old one. Listed here with the rule, per this file's standing brief.
+  '.hdr [hidden]',
   '.strip', '.strip .sep', '.strip [hidden]',
   '.gitstate,.ctxstate,.corpusstate,.auditstate', '.strip>*', '.ctxstate', '.ctxstate>span',
   // The provenance grouping itself: a colour per source AND a label word.
   '.sgrp', '.slab', '.sgrp-repo .slab', '.sgrp-corpus .slab',
   '.sgrp-session .slab', '.sgrp-audit .slab', '.sgrp-session',
+  // Added 2026-08-31 with the corpus group's drift chip (`plan:walk seq:4`
+  // drawn at last): a group that used to be a count and a noun now carries a
+  // sentence, so it needs a shrink factor, a floor, and a clipping box for
+  // the chip — measured at 900px, where without them the strip spilled 21px
+  // and the context group was squeezed to zero.
+  '.sgrp-corpus', '.corpusstate', '.corpusdrift', '.corpusdrift .chip', '.ctxstate>.chip',
   '.strip .m', '.chip.unmeas', '.chip.unmeas::before',
   // **`.chip.index`, the second neutral — added 2026-08-31 with the rule, per
   // this file's standing brief ("Extend that test with every block you add").**

@@ -3,11 +3,14 @@ import { mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { COMMAND_FLAGS } from '../core/command-flags.ts';
 import { resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
+import { summaryStalenessNote } from '../core/content-hash.ts';
 import { renderItem } from '../core/item.ts';
 import { scopeCell } from '../core/render-item.ts';
 import { createItem, type CreateInput, type MutationContext } from '../core/mutate.ts';
 import { scopeRequirementError } from '../core/trust.ts';
-import { normalizeSteps, SEVERITIES } from '../core/validate.ts';
+import {
+  normalizeSteps, normalizeSummary, validateSummary, SEVERITIES,
+} from '../core/validate.ts';
 import type { Severity } from '../core/types.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
@@ -33,7 +36,7 @@ import './commands/index.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './commands/context.ts';
 import { outcomeLines, reportOf } from './commands/pack.ts';
 import {
-  DETAIL_USAGE, col, detailLevel, emitJson, records, refuseUnknownFlag, table,
+  DETAIL_USAGE, col, detailLevel, emitJson, paragraph, records, refuseUnknownFlag, table,
   unknownFlag, wantsJson,
 } from './commands/format.ts';
 import {
@@ -464,8 +467,8 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
 
 const ADD_USAGE =
   'usage: mycontext add <category> <title> [--body <text>|--file <path>] [--note <text>] ' +
-  '[--step <text>] [--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] ' +
-  '[--extra key=value] [--yes]';
+  '[--step <text>] [--summary <text>] [--scope "a/**,b/**"] [--tags "a,b"] ' +
+  '[--severity hard|soft] [--extra key=value] [--yes]';
 
 /**
  * `--step`, in full, wherever `add`'s own help is printed.
@@ -709,6 +712,12 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     const scope = listValues(args, 'scope');
     const tags = listValues(args, 'tags');
     const severity = scalarFlag(args, 'severity');
+    // One plain sentence saying what the item is, for a reader who does not
+    // know this codebase — see `Item.summary` and `SUMMARY_MAX_CHARS`
+    // (validate.ts). `scalarFlag`, not `addValues`: a second `--summary` is a
+    // repeat of a single-valued field and is refused by `repeatedFlagError`
+    // rather than silently keeping one of the two.
+    const summary = scalarFlag(args, 'summary');
     // Refused rather than resolved by precedence. Both flags supply the body,
     // so honouring one would silently discard the other — and whichever way
     // the precedence fell, half the users who wrote both would get an item
@@ -722,6 +731,19 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
       );
     }
     if (body !== null) input.body = body;
+    // Validated HERE as well as inside `createItem`, which is where it is
+    // enforced for every surface, for the ordering `--severity` and `--step`
+    // are validated early for: without it a human is shown "create this item
+    // that governs the project?" and told only AFTER answering that the
+    // summary was over the bound. The duplication is of the CALL, not of the
+    // rule — `normalizeSummary`/`validateSummary` (validate.ts) own the
+    // wording and the bound, and the normalized value is deliberately
+    // discarded here because `createItem` re-derives it through the same
+    // functions.
+    if (summary !== null) {
+      validateSummary(normalizeSummary(summary));
+      input.summary = summary;
+    }
     // Every occurrence, in command-line order, so `--note a --note b` records
     // two observations rather than keeping the first and dropping the second
     // — the silent-drop failure `addValues` exists to close for every other
@@ -1030,6 +1052,20 @@ function cmdShow(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
   out(renderItem(item));
+  // **The one place a reader of an item meets its summary, so it is the one
+  // place staleness has to be said.**
+  //
+  // `renderItem` prints `summary:` and `summary_of:` as the two frontmatter
+  // lines they are, and a reader cannot hash the item in their head — so
+  // without this line a summary that stopped describing the item looks
+  // identical to one that still does. That is the failure the basis exists to
+  // prevent, appearing on the surface that matters most: a summary is the most
+  // quotable thing an item has and this is where it gets quoted from.
+  //
+  // Printed AFTER the item and never in place of it: nothing is withheld and
+  // nothing is redacted, exactly as a spilled item is named rather than hidden.
+  const staleness = summaryStalenessNote(item);
+  if (staleness !== null) { out(''); for (const line of paragraph(staleness)) out(line); }
   // F2: `show` found and printed the item it was asked for; an unrelated
   // load error is a warning, not a failure — see the comment in cmdAdd.
   emitLoadErrors(errors, out);
@@ -1193,7 +1229,7 @@ registerCommand({
   // wide and `col` would otherwise push every other summary out of line —
   // but it is here rather than nowhere: a banner that stops at `<title>`
   // is what let the CLI look title-only for three plans.
-  summary: 'create an item (--body|--file --scope --tags --severity --yes)',
+  summary: 'create an item (--body|--file --summary --scope --tags --severity --yes)',
   run: cmdAdd,
 });
 registerCommand({

@@ -380,6 +380,29 @@ export const SCREEN_INVALIDATION = {
 //            and it is written down for the reason the three static screens'
 //            `[]` is: on the day that aggregate lands this row is where its
 //            kinds go, and an absent key would read as nobody having looked.
+//   rail     the three `.cnt` badges beside Coverage gaps, Doctor and Review
+//            queue, painted by `paintRailCounts` from `/api/status` (the health
+//            counts, and `pendingRevisions.revisions + reviewQueue.drafts`) and
+//            `/api/coverage` (the gaps walk). Added 2026-08-31 with `plan:walk
+//            seq:120`, whose owner report is one sentence about three defects:
+//            `paintRailCounts()` was called from `route()` and from NOWHERE
+//            ELSE, so the gold count beside Review queue was correct at the
+//            moment a screen was opened and never moved again. The strip's
+//            groups had refreshed live since this table landed; this row is why
+//            the rail did not.
+//
+//            It belongs in THIS table and not the one above by every test that
+//            separates them: the rail has no route, `SCREENS` does not list it,
+//            `renderNav()` builds it once per language change rather than per
+//            visit, and it outlives every navigation. `['mutation']` is derived
+//            the way `corpus` above is — from the endpoints it reads. Both
+//            `/api/status`'s three counts and `/api/coverage`'s tree are
+//            functions of the items on disk, and the `status` SCREEN row lands
+//            on `['mutation']` for the identical dependency; this inherits that
+//            derivation rather than re-deriving it differently. `auto`, because
+//            a badge holds no reader state whatsoever: it is three characters
+//            of ambient count, and waiting to be pressed would leave the wrong
+//            number beside the screen the reader is deciding whether to open.
 //   prov     `#provproj`, filled by `fillProvenance` from `/api/watch/volume`
 //            — asked for its `projectionState` and not for its series. `'*'`,
 //            and the derivation is worth writing out because the obvious
@@ -458,6 +481,7 @@ export const CHROME_INVALIDATION = {
   session: { kinds: ['injection'], refresh: 'auto' },
   audit: { kinds: [], refresh: 'auto' },
   prov: { kinds: '*', refresh: 'auto' },
+  rail: { kinds: ['mutation'], refresh: 'auto' },
 };
 
 // ── THE DEBOUNCE, STATED RATHER THAN TUNED ─────────────────────────────────
@@ -495,3 +519,25 @@ export const CHROME_INVALIDATION = {
 // Each SUBSCRIPTION keeps its own timer — a per-group burst must not hold up
 // another group's refill — and every one of them counts to this.
 export const LIVE_INVALIDATION_DEBOUNCE_MS = 500;
+
+/**
+ * **The server's own tail interval, mirrored by NAME rather than imported.**
+ *
+ * `src/ui/watch-model.ts` declares `STREAM_POLL_MS = 1000` and sends it to
+ * every client in the `hello` frame; this file is a browser ES module and
+ * cannot import a `.ts` module, so the value is restated here the way
+ * `lib/command-actions.js` restates `EXECUTION_RESIDUAL`'s constant — by name,
+ * with the original named beside it.
+ *
+ * It exists here for ONE consumer: `app.js`'s `EXECUTE_SETTLED_WINDOW_MS`,
+ * which is how long after a run settles its own trailing records may still
+ * arrive. That is a function of exactly two clocks — this poll, and the debounce
+ * above — and a window derived from them moves when either moves, where a
+ * hand-picked number would silently stop covering the path the day the tail
+ * slowed down.
+ *
+ * A client that wants the REAL interval for a particular connection has it:
+ * `hello` carries `pollMs` and `describeStreamEvent` surfaces it. This is the
+ * default, which is what a window sized before any connection exists can use.
+ */
+export const STREAM_POLL_MS = 1000;

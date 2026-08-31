@@ -48,7 +48,7 @@ function task(extra: Record<string, string>, over: Partial<Item> = {}): Item {
   n++;
   return {
     id: `TASK-${extra.plan ?? 'p'}-${extra.seq ?? String(n)}`, type: 'task', title: `T${n}`,
-    status: 'active', severity: 'soft', always: false, continuity: false,
+    status: 'active', severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null,
     scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra,

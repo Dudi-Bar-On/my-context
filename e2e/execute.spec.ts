@@ -478,3 +478,247 @@ test("Doctor's repair reaches a confirm instead of refusing for want of a termin
   expect(text).toContain('--yes');
   await expect(confirm.locator('button', { hasText: 'Run it' })).toBeVisible();
 });
+
+/* ══ `plan:walk seq:120` — AN ITEM SETTLED THROUGH EXECUTE LEAVES THE QUEUE ══
+ *
+ * Owner report, 2026-08-31, after driving six review-queue drafts through
+ * Accept/Reject -> Execute on their own corpus: *"after pressing Run on a
+ * Review queue item, the item stays in the queue, the page does not refresh,
+ * and the gold count beside Review queue in the rail does not change."*
+ *
+ * Three causes, and this drives all three at once because the reader met them
+ * as one act:
+ *
+ *   1. `work` is `refresh: 'ask'`, so even when it noticed it OFFERED to
+ *      redraw rather than redrawing.
+ *   2. It might not notice: `review promote` writes `execution` rows the row
+ *      does not declare, alongside whatever `mutation` the CLI records for
+ *      itself, so whether the stream woke it depended on an ordering.
+ *   3. `paintRailCounts()` was called from `route()` and NOWHERE ELSE, and
+ *      `CHROME_REFILL` had no `rail` row — so the badge would have been wrong
+ *      even if the screen had redrawn perfectly.
+ *
+ * ── THIS ONE ACTUALLY MUTATES, SO IT GETS ITS OWN WORKSPACE ───────────────
+ *
+ * Same decision, same mechanism and the same reasoning as the `pin` test above:
+ * a disposable `mkdtemp` copy rather than a promise to restore the shared
+ * `.demo-corpus`, which every other spec in this parallel suite measures
+ * against. `review promote` moves an item from draft to governing and there is
+ * no cheap byte-identical undo for that.
+ *
+ * ── AND IT IS A REAL PROMOTE, NOT A REFUSAL ──────────────────────────────
+ *
+ * The test one file-section up deliberately drives a command this corpus
+ * answers with a REFUSAL, because it runs against the shared fixture. This one
+ * cannot: "the row is gone and the count moved" is a statement about a write
+ * that landed, and a refused command leaves the queue exactly as it was — which
+ * is indistinguishable from the defect. So the exit code is asserted clean
+ * BEFORE anything is concluded from the queue.
+ */
+base('an item settled through Execute leaves the queue, and the rail moves in the same act',
+  async ({ page }) => {
+    base.setTimeout(120_000);
+    const workspace = makeWriteWorkspace();
+    let harness: UiHarness | undefined;
+    try {
+      harness = await startUiChild(workspace.root);
+      const h = harness;
+      await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
+      await expect(
+        page.locator('.nav').first(),
+        'the isolated server never rendered a rail button — it probably has no token',
+      ).toBeVisible({ timeout: 15_000 });
+
+      await page.evaluate(() => { location.hash = '#/work'; });
+      const cards = page.locator(`${WORK} [data-queue="draft"]`);
+      await expect(
+        cards.first(),
+        'the Review queue drew no draft card — `.demo-corpus` may have been regenerated with its '
+        + 'review queue empty, which `mycontext review list` would say',
+      ).toBeVisible({ timeout: 15_000 });
+
+      // The state BEFORE, measured rather than assumed: both numbers are read
+      // off the running page, so a regenerated fixture with a different queue
+      // depth still measures the DIFFERENCE this test is about.
+      const railBadge = page.locator('.nav[data-s="work"] .cnt');
+      await expect(
+        railBadge,
+        'the rail must carry a Review-queue badge before this test can prove one moved',
+      ).toBeVisible({ timeout: 15_000 });
+      const cardsBefore = await cards.count();
+      const railBefore = Number(((await railBadge.textContent()) ?? '').trim());
+      expect(Number.isFinite(railBefore) && railBefore > 0,
+        `the rail badge read "${await railBadge.textContent()}" — this test needs a measured count, `
+        + 'and an em dash means the endpoint refused').toBe(true);
+
+      // Accept is the opening selection (`work.js`: "Accept is the opening
+      // selection rather than an empty one"), so this settles the first draft
+      // by PROMOTING it — no verdict click needed, and pressing one would only
+      // repaint the same command.
+      const card = cards.first();
+      const settledId = ((await card.locator('h3 .m').first().textContent()) ?? '').trim();
+      expect(settledId, 'the draft card must name the item it is about').not.toBe('');
+
+      await card.getByRole('button', { name: 'Execute', exact: true }).click();
+      await expect(
+        page.locator(`${WORK} .confirm div.cmd code`),
+        'the confirm must show the promote a person is about to run',
+      ).toContainText(`mycontext review promote ${settledId}`, { timeout: 15_000 });
+      await page.locator(`${WORK} .confirm`)
+        .getByRole('button', { name: 'Run it', exact: true }).click();
+      // **`${WORK} > .execresult` — a DIRECT child of the section**, which is
+      // where the shell re-attaches the run's outcome after the redraw. Two
+      // things at once, deliberately: the promote actually ran (a refused
+      // command leaves the queue exactly as it was, which is indistinguishable
+      // from the defect this test is about), AND the answer to "what did that
+      // do" survived the refresh that answered it. Every card carries its own
+      // `.cmdactions > .execresult`, so an unscoped selector here would be
+      // ambiguous — and after the redraw the card this one belonged to is gone.
+      await expect(
+        page.locator(`${WORK} > .execresult`),
+        'the promote must actually have run, and its outcome must survive the redraw it caused — '
+        + 'a screen that swallows the exit code is worse for a FAILED run than for a clean one',
+      ).toContainText('exit 0', { timeout: 30_000 });
+
+      // ── 1. THE ROW IS GONE, WITH NO MANUAL REFRESH. Nothing below presses
+      // anything: `expect` polls, and the only thing that can remove this row
+      // is the screen redrawing itself.
+      await expect(
+        cards,
+        'the settled draft is still in the queue. An action taken through the app\'s own Execute '
+        + 'control refreshes the screen it was taken on — the reader pressed Run, they know what '
+        + 'happened, and a settled item still sitting in the queue is worse than a lost scroll '
+        + 'position.',
+      ).toHaveCount(cardsBefore - 1, { timeout: 30_000 });
+      await expect(
+        page.locator(`${WORK} [data-queue="draft"] h3`).filter({ hasText: settledId }),
+        'the promoted item is still named on the screen',
+      ).toHaveCount(0);
+
+      // ── 2. AND THE RAIL MOVED IN THE SAME ACT. This is a defect on its own:
+      // `paintRailCounts()` had exactly one caller, `route()`, so the badge was
+      // right at the moment a screen was opened and never again.
+      await expect(
+        railBadge,
+        'the gold count beside Review queue did not move. It counts BOTH queues '
+        + '(`pendingRevisions.revisions + reviewQueue.drafts`, fixed 2026-08-30 after reading one '
+        + 'made it say 0 with a draft on screen), and whatever refreshes it keeps that.',
+      ).toHaveText(String(railBefore - 1), { timeout: 30_000 });
+
+      // ── 3. EXACTLY ONE RENDER ON THE SECTION. `screenHead` draws one `<h2>`
+      // per render, and every screen's `render()` opens with
+      // `root.replaceChildren()` while `drawDrafts` then awaits an endpoint and
+      // appends — so two overlapping renders each clear an already-empty
+      // section and each append a whole screen. Measured on 2026-08-29 as three
+      // hash writes drawing NINE `<h3>` where one render draws three. The
+      // Execute-driven refresh goes THROUGH the same single slot, not around
+      // it.
+      await expect(
+        page.locator(`${WORK} h2`),
+        'the work section holds more than one screen head, so two renders stacked in it',
+      ).toHaveCount(1);
+
+      // ── 4. AND THE READER WAS NOT ASKED ABOUT THEIR OWN ACT. `refresh: 'ask'`
+      // is right and stays right for a change somebody ELSE made; asking here
+      // is the app pretending not to know something it does know.
+      await expect(
+        page.locator('#screenstale'),
+        'the "new activity for this screen" affordance was raised for the reader\'s OWN Execute',
+      ).toBeHidden();
+    } finally {
+      if (harness !== undefined) await harness.stop();
+      // Best-effort, for the reason the `pin` test states: a Windows SQLite
+      // handle can outlive the child's own `exit` event by a beat.
+      try { rmSync(workspace.root, { recursive: true, force: true }); } catch { /* see above */ }
+    }
+  });
+
+/**
+ * **AND AN EXTERNAL CHANGE ON THE SAME SCREEN STILL ASKS** — the distinction
+ * `plan:walk seq:120` says must not be flattened, driven rather than reasoned
+ * about.
+ *
+ * `DEC-a-refresh-keeps-the-reader-s-place-or-it-asks` is settled and `plan:walk
+ * seq:64` measured a refresh discarding three of the owner's selections in one
+ * act. What changed on 2026-08-31 is narrower than that ruling: an action taken
+ * through THIS PAGE'S OWN Execute control is a different event from a record
+ * arriving on the stream. A fix that redrew on every `mutation` would have
+ * passed the test above and broken this one.
+ *
+ * The invalidation is raised the way `e2e/live-refresh.spec.ts` raises one —
+ * a second page against the same server, running a real command — so the record
+ * reaching the page under test genuinely comes from somewhere else.
+ */
+base('a change made somewhere else still offers the affordance rather than redrawing',
+  async ({ browser }) => {
+    base.setTimeout(120_000);
+    const workspace = makeWriteWorkspace();
+    let harness: UiHarness | undefined;
+    const context = await browser.newContext();
+    try {
+      harness = await startUiChild(workspace.root);
+      const h = harness;
+      const page = await context.newPage();
+      await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
+      await expect(page.locator('.nav').first()).toBeVisible({ timeout: 15_000 });
+      await page.evaluate(() => { location.hash = '#/work'; });
+      await expect(page.locator(`${WORK} [data-queue="draft"]`).first())
+        .toBeVisible({ timeout: 15_000 });
+      const before = await page.locator(`${WORK} [data-queue="draft"]`).count();
+
+      // Somebody ELSE settles a draft — the CLI, in the same workspace, which is
+      // exactly the case `refresh: 'ask'` exists for. This page did not do it
+      // and cannot know what the reader was in the middle of.
+      const listed = execFileSync(process.execPath, [CLI, 'review', 'list'], {
+        cwd: workspace.root, encoding: 'utf8', stdio: 'pipe',
+      });
+      const id = /\b([A-Z]+-[A-Za-z0-9-]+)\b/.exec(listed)?.[1];
+      expect(id, `\`review list\` named no draft to settle. Output: ${listed.slice(0, 400)}`)
+        .toBeDefined();
+      execFileSync(process.execPath, [CLI, 'review', 'promote', id!, '--yes'], {
+        cwd: workspace.root, encoding: 'utf8', stdio: 'pipe',
+      });
+
+      // The affordance appears, and the screen does NOT redraw itself until it
+      // is pressed. Both halves are the assertion: a page that redrew here would
+      // be the reader's place discarded by somebody else's write.
+      await expect(
+        page.locator('#screenstale'),
+        'an external change must OFFER a refresh — this is the ruling `plan:walk seq:64` measured '
+        + 'the cost of breaking',
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        page.locator(`${WORK} [data-queue="draft"]`),
+        'the screen redrew itself for a change the reader did not make',
+      ).toHaveCount(before);
+
+      // Pressed from its new home — `plan:walk seq:116` moved it out of the
+      // status strip and into the section it acts on, and the control still
+      // does what its own words say.
+      // **Inside `#screen`, over the screen it names — not in the status strip**
+      // (`plan:walk seq:116`). It takes the same grid cell as the `[data-p]`
+      // section so it overlays rather than displaces, which is why the scroll
+      // assertions in `e2e/live-refresh.spec.ts` still hold with it up.
+      await expect(
+        page.locator('#screen > #screenstale'),
+        'the affordance must render WITH the screen it acts on, not at the end of a status bar '
+        + 'whose every group refreshes itself silently — the placement contradicted the wording '
+        + '("New activity for this screen") and the wording lost',
+      ).toBeVisible();
+      await expect(
+        page.locator('#strip #screenstale'),
+        'and it must have LEFT the strip, not been duplicated into both',
+      ).toHaveCount(0);
+      await page.locator('#screenstale button').click();
+      await expect(
+        page.locator(`${WORK} [data-queue="draft"]`),
+        'pressing the affordance did not redraw the screen it named',
+      ).toHaveCount(before - 1, { timeout: 30_000 });
+      await expect(page.locator(`${WORK} h2`), 'two renders stacked in one section')
+        .toHaveCount(1);
+    } finally {
+      await context.close();
+      if (harness !== undefined) await harness.stop();
+      try { rmSync(workspace.root, { recursive: true, force: true }); } catch { /* see above */ }
+    }
+  });

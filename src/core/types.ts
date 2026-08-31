@@ -79,6 +79,69 @@ export interface Item {
    * an unconditional key would move every recorded checksum at once.
    */
   continuity: boolean;
+  /**
+   * **One plain sentence saying what this item is and why it matters, written
+   * for a reader who does not know this codebase.**
+   *
+   * The bar is the owner's: *simple and very readable from first sight*. That
+   * is stronger than short, and the difference is the whole point of the
+   * field. This corpus already produces short — titles have a median of 70
+   * characters, **202 of the 730 have grown past 80** and one reached 566 —
+   * and short is not what makes them hard to read. A real 120-character title:
+   *
+   *     the injected endpoint collapses a missing seen file into a measured
+   *     zero, so the screen says a file nobody opened was read
+   *
+   * ...against the summary of the same item:
+   *
+   *     A screen says it checked a session and found nothing, when in fact it
+   *     never checked at all.
+   *
+   * So: plain words rather than project vocabulary, no ids, no file paths, no
+   * measurements, and it says what the thing IS rather than how it was found.
+   * `body` (median 1,693 characters) keeps every bit of the precision; the
+   * summary is not a shorter body, it is the same claim said plainly.
+   * `SUMMARY_MAX_CHARS` (validate.ts) bounds it at one such sentence, and the
+   * bar and the bound are both argued there.
+   *
+   * People stretch the title today because there is nowhere else to put this,
+   * so the field is not a new layer — it is a slot already being improvised
+   * into.
+   *
+   * `null` means the item has none, and **absent is legal and stays legal**:
+   * every item in every corpus predates this field. Nothing requires one, no
+   * validator asks for one, and no reader may assume one.
+   *
+   * **Written to the frontmatter only when non-null**, and absent from
+   * `computeItemChecksum` unless non-null — `continuity`'s treatment, for
+   * `continuity`'s stated reason: an unconditional key would move every
+   * recorded checksum at once.
+   *
+   * **It is not injected.** `renderItemBlock` and `renderIndexLine`
+   * (render-item.ts) do not emit it, so `itemCost` does not charge for it and
+   * no tier's budget moves. That is a measurement, not a shrug — see
+   * `SUMMARY_BASIS` (content-hash.ts) for where the figures are recorded.
+   */
+  summary: string | null;
+  /**
+   * **The basis: what `summary` was written against**, so divergence is
+   * measured rather than assumed.
+   *
+   * A summary does not know the body moved, and a summary is the most quotable
+   * thing an item has — the one most likely to be trusted without checking. So
+   * the field is not one value: this holds `itemSummaryBasis(item)`
+   * (content-hash.ts) as of the write that set `summary`, and an edit that
+   * moves the summarised content makes the two disagree. `summaryState` reads
+   * that disagreement; `doctor` reports it; `mycontext show` and `get_item`
+   * say it beside the summary itself.
+   *
+   * Never a caller's value. Every write path stamps it through `stampSummary`,
+   * so a summary cannot be stored without the basis it was written against.
+   * `null` exactly when `summary` is null — except in a file a human wrote by
+   * hand, where a `summary:` with no `summary_of:` reads as `unanchored`,
+   * which is a stale summary and is reported as one.
+   */
+  summaryOf: string | null;
   scope: string[];
   tags: string[];
   origin: Origin;

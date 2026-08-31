@@ -55,6 +55,31 @@ function declaredStripKeys(): Set<string> {
   let block = html.slice(open, close);
   const demo = block.indexOf('class="small noprint"');
   if (demo !== -1) block = block.slice(0, demo);
+  const keys = new Set([...block.matchAll(/\sdata-t="([^"]+)"/g)].map((m) => m[1]!));
+  // **AND THE HEADER'S PROVENANCE GROUP, which is the same subject in a
+  // different row since `plan:walk seq:114`.** The repo group moved out of the
+  // strip on 2026-08-31, and reading only the footer after that would have
+  // QUIETLY SHRUNK this comparison by eight keys — every git state, plus the
+  // group's own label — so the test would have gone on passing while nothing
+  // checked whether the branch, the commit or the upstream chip were drawn at
+  // all. A gate that gets weaker when a thing moves is a gate that rewards
+  // moving it.
+  for (const key of declaredHeaderProvenanceKeys()) keys.add(key);
+  return keys;
+}
+
+/** Every key the design of record declares inside the HEADER's `.sgrp-repo`. */
+function declaredHeaderProvenanceKeys(): Set<string> {
+  const html = readFileSync(MOCKUP_PATH, 'utf8');
+  const open = html.indexOf('<span class="sgrp sgrp-repo">');
+  expect(open, 'the design of record must declare the repo provenance group').toBeGreaterThan(-1);
+  // Bounded at the PICKERS and not at `</header>`: `.topr` carries `top.focus`
+  // and `top.session`, which are the header's own controls and not provenance,
+  // and sweeping them in here would demand the strip draw two keys that belong
+  // to a dialog neither this file nor this app builds.
+  const close = html.indexOf('<div class="topr">', open);
+  expect(close, 'the repo group must sit inside the header, before the pickers').toBeGreaterThan(open);
+  const block = html.slice(open, close);
   return new Set([...block.matchAll(/\sdata-t="([^"]+)"/g)].map((m) => m[1]!));
 }
 
@@ -85,6 +110,8 @@ interface Scenario {
   readonly items?: number;
   /** `null` fulfils nothing and lets the real endpoint answer. */
   readonly context?: unknown;
+  /** The `corpus` block `/api/meta` and `/api/ping` both carry — the drift sweep. */
+  readonly corpus?: unknown;
   readonly sessions?: unknown;
   /** Endpoints that are made to fail, by path fragment. */
   readonly fail?: readonly string[];
@@ -97,53 +124,101 @@ const KNOWN_SAMPLE = (state: string, used: number | null, size: number | null, p
 });
 
 /**
+ * The handover block `/api/watch/context` serves (`plan:walk seq:118`).
+ *
+ * `thresholdPercent` is the number the occupancy bands are derived from, and 98
+ * is what `handoverThresholdPercent()` resolves to with nothing configured —
+ * the same value the live corpus is running on. It is passed as DATA here
+ * rather than hard-coded into an expectation below, so a fixture at a different
+ * threshold moves the boundaries the tests check with it.
+ */
+const HANDOVER = (verdict: string, extra: Record<string, unknown> = {}) => ({
+  verdict,
+  path: verdict === 'off' ? null : 'reports/V2-HANDOVER.md',
+  askedAt: null,
+  writtenAt: null,
+  thresholdPercent: verdict === 'off' ? null : 98,
+  ...extra,
+});
+
+/**
  * The states, chosen to reach every key exactly once between them rather than
  * to be exhaustive twice over — eight boots is already eight boots.
  */
 const SCENARIOS: readonly Scenario[] = [
   {
-    name: 'on a branch, in sync, context known, project-knowledge whole',
+    name: 'on a branch, in sync, context known and healthy, handover not yet asked',
     git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
     items: 43,
+    corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
     context: {
       session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
       mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+      handover: HANDOVER('not-asked'),
     },
   },
   {
-    name: 'differs from upstream, project-knowledge partial',
+    name: 'differs from upstream, project-knowledge partial, NEARING the ask, handover acted on',
     git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'differs' },
     items: 0,
+    corpus: { drifted: true, aheadByMs: 240_000, scanned: 12, truncated: false },
     context: {
-      session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+      session: 's', sample: KNOWN_SAMPLE('known', 182000, 200000, 91.0),
       mycontext: { tokens: 6200, injections: 3, unrecorded: 1 }, mycontextError: null,
+      handover: HANDOVER('acted-on', {
+        askedAt: new Date(Date.now() - 7_200_000).toISOString(),
+        writtenAt: new Date(Date.now() - 7_000_000).toISOString(),
+      }),
     },
   },
   {
-    name: 'no upstream, project-knowledge unavailable',
+    name: 'no upstream, project-knowledge unavailable, AT the ask, handover IGNORED',
     git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'no-upstream' },
     items: 1,
+    corpus: { drifted: null, aheadByMs: null, scanned: 5000, truncated: true },
     context: {
-      session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+      session: 's', sample: KNOWN_SAMPLE('known', 197000, 200000, 98.5),
       mycontext: null, mycontextError: 'the audit log could not be read',
+      handover: HANDOVER('ignored', { askedAt: new Date(Date.now() - 600_000).toISOString() }),
     },
   },
   {
-    name: 'local tip unreadable, context not yet known',
+    name: 'local tip unreadable, context not yet known, handover feature OFF',
     git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'unknown' },
     items: 2,
     context: {
       session: 's', sample: KNOWN_SAMPLE('not-yet-known', null, 200000, null),
       mycontext: null, mycontextError: 'no projection',
+      handover: HANDOVER('off'),
     },
   },
   {
-    name: 'detached HEAD, context unknown to this build',
+    name: 'detached HEAD, context unknown to this build, handover unverifiable',
     git: { detached: true, branch: null, commit: '7f3a91c9d2', upstream: 'unknown' },
     items: 3,
     context: {
       session: 's', sample: KNOWN_SAMPLE('unknown', null, null, null),
       mycontext: null, mycontextError: 'no projection',
+      handover: HANDOVER('unverifiable', { askedAt: 'not-a-date' }),
+    },
+  },
+  {
+    name: 'a sample too old to be levelled is drawn WITHOUT a level',
+    git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+    items: 7,
+    context: {
+      session: 's',
+      sample: {
+        // Twenty-nine hours, which is the age the LIVE corpus's own tee reads.
+        // Its occupancy is 60.1% — a comfortable green, about a window that no
+        // longer exists. `plan:walk seq:117`: do not colour a stale figure as
+        // though it were live.
+        receivedAt: new Date(Date.now() - 29 * 3_600_000).toISOString(),
+        model: 'Claude', version: '1.0.0',
+        context: { state: 'known', usedTokens: 120200, windowSize: 200000, percent: 60.1 },
+      },
+      mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+      handover: HANDOVER('not-asked'),
     },
   },
   {
@@ -174,7 +249,15 @@ async function boot(page: Page, s: Scenario): Promise<void> {
   if (s.git !== undefined) {
     await page.route('**/api/meta*', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ version: '1.0.2', git: s.git, staleCode: false }),
+      body: JSON.stringify({
+        version: '1.0.2', git: s.git, staleCode: false,
+        // `corpus` rides `/api/meta` at first paint and `/api/ping` on the
+        // heartbeat, both from `measureCorpusDrift`. Omitting it here is a
+        // scenario in its own right: the strip must then say NOT KNOWN, never
+        // "in step", because a page that has not been told is not a page that
+        // measured nothing.
+        ...(s.corpus === undefined ? {} : { corpus: s.corpus }),
+      }),
     }));
   }
   if (s.items !== undefined) {
@@ -204,14 +287,16 @@ async function boot(page: Page, s: Scenario): Promise<void> {
   // `renderChrome()`; the segments inside them arrive with their fetches. Wait
   // for the last one to land rather than for `load`, which fires while every
   // group is still empty.
-  await expect(page.locator('#strip .slab')).toHaveCount(4);
+  // THREE in the strip since `plan:walk seq:114`, and the fourth in the header.
+  await expect(page.locator('#strip .slab')).toHaveCount(3);
+  await expect(page.locator('#hdrrepo .slab')).toHaveCount(1);
   await expect(page.locator('#ctx [data-k]').first()).toBeVisible();
   await expect(page.locator('#gitstate [data-k]').first()).toBeVisible();
 }
 
 /** Every `data-k` the strip is currently drawing. */
 function drawn(page: Page): Promise<string[]> {
-  return page.evaluate(() => [...document.querySelectorAll('#strip [data-k]')]
+  return page.evaluate(() => [...document.querySelectorAll('#strip [data-k], #hdrrepo [data-k]')]
     .map((el) => (el as HTMLElement).dataset['k'] ?? ''));
 }
 
@@ -243,10 +328,15 @@ test('the strip draws every segment the design of record declares', async ({ app
 
 test('every provenance group is told apart by a WORD as well as by a colour', async ({ app }) => {
   const { page } = app;
-  const groups = await page.evaluate(() => [...document.querySelectorAll('#strip .slab')]
-    .map((el) => ({ text: (el.textContent ?? '').trim(), colour: getComputedStyle(el).color })));
+  const groups = await page.evaluate(() => [
+    ...document.querySelectorAll('#hdrrepo .slab, #strip .slab'),
+  ].map((el) => ({ text: (el.textContent ?? '').trim(), colour: getComputedStyle(el).color })));
 
-  expect(groups, 'the strip must carry the four provenance groups').toHaveLength(4);
+  // FOUR provenance groups, across TWO rows since `plan:walk seq:114` — the
+  // repo group is in the header and the other three are in the strip. The
+  // count is what it always was, because what moved is where a group is drawn
+  // and not how many there are.
+  expect(groups, 'the shell must carry the four provenance groups').toHaveLength(4);
   // Colour, because the owner asked for it: "use colors to diffrentiate
   // between properties".
   expect(new Set(groups.map((g) => g.colour)).size,
@@ -265,8 +355,9 @@ test('every provenance group is told apart by a WORD as well as by a colour', as
 test('the four group colours survive forced-colors as words, not as hues', async ({ app }) => {
   const { page } = app;
   await page.emulateMedia({ forcedColors: 'active' });
-  const words = await page.evaluate(() => [...document.querySelectorAll('#strip .slab')]
-    .map((el) => (el.textContent ?? '').trim()));
+  const words = await page.evaluate(() => [
+    ...document.querySelectorAll('#hdrrepo .slab, #strip .slab'),
+  ].map((el) => (el.textContent ?? '').trim()));
   await page.emulateMedia({ forcedColors: 'none' });
   expect(new Set(words).size,
     'forced-colors replaces every colour in the page with a system tone, so a bar differentiated '
@@ -502,7 +593,8 @@ test('every provenance group keeps a width, and the strip never spills', async (
         spill: strip.scrollWidth - strip.clientWidth,
       };
     });
-    expect(m.groups.length, `${size.width}px: four provenance groups`).toBe(4);
+    expect(m.groups.length, `${size.width}px: three provenance groups in the strip — the fourth `
+      + 'moved to the header on 2026-08-31 (`plan:walk seq:114`)').toBe(3);
     for (const g of m.groups) {
       expect(g.width, `${size.width}px: ${g.name} collapsed to nothing. A group squeezed to zero `
         + 'has removed the property from the strip as surely as never building it').toBeGreaterThan(20);
@@ -544,7 +636,12 @@ test('every control in the strip sits inside the strip, at any window height', a
       // Both are built hidden and shown by events this test cannot raise on
       // demand. Showing them by hand measures the layout, which is the thing
       // under test; what raises them is `live-refresh.spec.ts`'s business.
-      for (const id of ['livesep', 'livestate', 'screenstalesep', 'screenstale']) {
+      // `screenstale`/`screenstalesep` are NOT in this list any more: the
+      // screen-refresh affordance moved out of the strip on 2026-08-31
+      // (`plan:walk seq:116`, "move the refresh button to the screen") and its
+      // separator was deleted with it. `e2e/live-refresh.spec.ts` measures it
+      // in its new home, where it now belongs.
+      for (const id of ['livesep', 'livestate']) {
         (document.getElementById(id) as HTMLElement).hidden = false;
       }
       const live = document.getElementById('livestate')!;
@@ -564,7 +661,7 @@ test('every control in the strip sits inside the strip, at any window height', a
       }
       // Put them back, so nothing after this test inherits a state the page
       // never actually reached.
-      for (const id of ['livesep', 'livestate', 'screenstalesep', 'screenstale']) {
+      for (const id of ['livesep', 'livestate']) {
         (document.getElementById(id) as HTMLElement).hidden = true;
       }
       return bad;
@@ -575,4 +672,429 @@ test('every control in the strip sits inside the strip, at any window height', a
       + 'control with its bottom sliced off.').toEqual([]);
   }
   await page.setViewportSize({ width: 1280, height: 720 });
+});
+
+/* ══ `plan:walk seq:114` — THE REPO GROUP MOVED, AND THE WIDTHS SAY SO ═══ */
+
+/**
+ * **The rendered widths, not the markup's nesting** — which is what the task
+ * asks for in those words, and for a reason: the repo group could be nested
+ * inside the header and still be 372px of a 906px strip if the move were only
+ * a DOM edit. What the owner reported was a crowded row and an unreadable
+ * figure, and both of those are measurements.
+ *
+ * Measured on 2026-08-31, at the suite's pinned 1280px, over `.demo-corpus`:
+ *
+ *     before   repo 372.5 · corpus 136.4 · session 227.0 · audit 170.0
+ *              #ctx 157.4 · header empty 668.1
+ *     after    corpus 314.2 · session 347.1 · audit 170.0   (repo: 469.4, in the header)
+ *              #ctx 277.5 · header empty 198.7
+ *
+ * The assertions below are the PROPERTIES those numbers were taken to
+ * establish, not the numbers themselves — a test that remembers a width fails
+ * for the wrong reason the next time a branch is renamed.
+ */
+test('the repo group renders in the header, at full branch and SHA, and not in the strip',
+  async ({ app }) => {
+    const { page } = app;
+    await boot(page, {
+      name: 'a long branch name, in sync',
+      git: { branch: 'campaign/my-context-test', commit: '4945935abcdef0123456', upstream: 'in-sync' },
+      items: 43,
+      corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
+      context: {
+        session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+        mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+        handover: HANDOVER('not-asked'),
+      },
+    });
+
+    const m = await page.evaluate(() => {
+      const repo = document.getElementById('hdrrepo');
+      const header = document.getElementById('topbar')!;
+      const strip = document.getElementById('strip')!;
+      return {
+        inHeader: repo !== null && header.contains(repo),
+        inStrip: repo !== null && strip.contains(repo),
+        stripHasGit: strip.querySelector('#gitstate') !== null,
+        branchText: (document.querySelector('#gitstate [data-k="strip.branch"]')?.textContent ?? '').trim(),
+        headerSpill: header.scrollWidth - header.clientWidth,
+      };
+    });
+
+    expect(m.inHeader, 'the repo group must render in the header — `index.html`\'s own comment has '
+      + 'called this row "primitive 8: git where the avatar would have gone" since it was written')
+      .toBe(true);
+    expect(m.inStrip, 'and it must have LEFT the strip, not been duplicated into both').toBe(false);
+    expect(m.stripHasGit, 'the strip must no longer carry #gitstate').toBe(false);
+    // **The FULL branch name.** The ruling that shortened it to a last path
+    // segment earlier the same day was a ruling about the strip's width, and
+    // this row is not short of width — 1,692px of it was empty at 2304.
+    expect(m.branchText, 'the branch keeps its full name in the header: `campaign/my-context-test` '
+      + 'and `campaign/my-context-prod` are two branches and a reader should not have to hover')
+      .toContain('campaign/my-context-test');
+    // And the commit stays seven characters, which is the length git prints.
+    expect(m.branchText, 'the short SHA is what tells a reader which build is being served')
+      .toContain('4945935');
+    expect(m.branchText, 'a forty-character SHA would be the only thing in this row nobody reads')
+      .not.toContain('4945935abcdef0123456');
+    expect(m.headerSpill, 'the header must not overflow now that it carries the group').toBe(0);
+  });
+
+/**
+ * **The move pays the strip back, and the payment is what is asserted.**
+ *
+ * The task's own words: *"the strip's remaining groups are measured before and
+ * after and the context figure is legible"*. `#ctx` measured 157.4px at 1280px
+ * with the repo group in the row and 277.5px without it — and legibility is a
+ * property of the figure, not of a number this file remembers, so what is
+ * asserted is that the context group now holds MORE of the strip than any
+ * other, at every width the shell is measured at.
+ */
+test('with the repo group gone, the context figure holds the largest share of the strip',
+  async ({ app }) => {
+    const { page } = app;
+    // A KNOWN context, deliberately: over the bare fixture the session group is
+    // three words ("no status-line bridge") and would lose a width comparison to
+    // a group holding two em dashes, which would say nothing about whether the
+    // move paid. What is under test is the SHARE the live measurement gets when
+    // there IS one.
+    await boot(page, {
+      name: 'context known, for a width comparison that means something',
+      git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+      items: 43,
+      corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
+      context: {
+        session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+        mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+        handover: HANDOVER('not-asked'),
+      },
+    });
+    for (const size of [{ width: 1280, height: 720 }, { width: 1024, height: 640 },
+      { width: 900, height: 560 }, { width: 1920, height: 1080 }]) {
+      await page.setViewportSize(size);
+      const m = await page.evaluate(() => {
+        const strip = document.getElementById('strip')!;
+        const widths: Record<string, number> = {};
+        for (const g of strip.querySelectorAll('.sgrp')) {
+          widths[(g as HTMLElement).className.replace('sgrp sgrp-', '')] =
+            Math.round(g.getBoundingClientRect().width);
+        }
+        return {
+          widths,
+          ctx: Math.round((document.getElementById('ctx')?.getBoundingClientRect().width) ?? 0),
+          drift: Math.round((document.getElementById('corpusdrift')?.getBoundingClientRect().width) ?? 0),
+          spill: strip.scrollWidth - strip.clientWidth,
+        };
+      });
+      const label = `${size.width}px`;
+      expect(m.spill, `${label}: the strip is wider than the window it sits in`).toBeLessThanOrEqual(0);
+      expect(m.widths['session'], `${label}: the session group must be the widest in the strip — it `
+        + 'carries the live context measurement this product is about, and the repo group was moved '
+        + `out of this row to give it back the width. Measured: ${JSON.stringify(m.widths)}`)
+        .toBeGreaterThan(Math.max(m.widths['corpus'] ?? 0, m.widths['audit'] ?? 0));
+      expect(m.ctx, `${label}: #ctx collapsed`).toBeGreaterThan(100);
+      // The drift chip is a STATE, and a state squeezed to nothing has removed
+      // the property as surely as never drawing it — the same floor argument
+      // `.sgrp-audit`'s own 170px is written for.
+      expect(m.drift, `${label}: the corpus drift chip was squeezed to nothing`).toBeGreaterThan(20);
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+  });
+
+/* ══ `plan:walk seq:117` — THE OCCUPANCY BANDS, DRIVEN EITHER SIDE ═══════ */
+
+/**
+ * **Three occupancies either side of the boundaries, and the computed colour
+ * read off the page** — the task's own acceptance, in those words.
+ *
+ * The boundaries are `T` and `T * 0.9` where `T` is the SERVED
+ * `handoverThresholdPercent`. At the 98 this fixture serves that is 98 and
+ * 88.2, and the cases below straddle both: 23.5 and 88.1 are `ok`, 88.2 and
+ * 97.9 are `warn`, 98.0 and 99.7 are `crit`. 98.0 is on the boundary
+ * deliberately — a figure sitting exactly on the threshold is AT the ask, not
+ * one step below it.
+ *
+ * The hues are read as COMPUTED COLOUR and required to be three distinct
+ * values, rather than compared against three literal `rgb()` strings: what
+ * matters is that the three states are told apart, and pinning the literals
+ * would make this file fail on a palette change that broke nothing.
+ */
+const BANDS: readonly { pct: number; key: string; band: string }[] = [
+  { pct: 23.5, key: 'strip.ctxOk', band: 'ok' },
+  { pct: 88.1, key: 'strip.ctxOk', band: 'ok' },
+  { pct: 88.2, key: 'strip.ctxWarn', band: 'warn' },
+  { pct: 97.9, key: 'strip.ctxWarn', band: 'warn' },
+  { pct: 98.0, key: 'strip.ctxCrit', band: 'crit' },
+  { pct: 99.7, key: 'strip.ctxCrit', band: 'crit' },
+];
+
+test('the occupancy is banded against the SERVED threshold, and the bands move with it',
+  async ({ app }) => {
+    const { page } = app;
+    const colours = new Map<string, string>();
+    for (const { pct, key, band } of BANDS) {
+      await boot(page, {
+        name: `occupancy ${pct}%`,
+        git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+        items: 43,
+        corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
+        context: {
+          session: 's',
+          sample: KNOWN_SAMPLE('known', Math.round(200000 * pct / 100), 200000, pct),
+          mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+          handover: HANDOVER('not-asked'),
+        },
+      });
+      const m = await page.evaluate((k) => {
+        const el = document.querySelector(`#ctx [data-k="${k}"]`);
+        if (el === null) {
+          return {
+            found: false, colour: '', text: '', title: '',
+            drew: [...document.querySelectorAll('#ctx [data-k]')]
+              .map((e) => (e as HTMLElement).dataset['k']).join(', '),
+          };
+        }
+        return {
+          found: true,
+          colour: getComputedStyle(el).color,
+          text: (el.textContent ?? '').trim(),
+          title: (el as HTMLElement).title,
+          drew: '',
+        };
+      }, key);
+      expect(m.found, `${pct}% must draw ${key} — the boundaries are ${'98'} and 88.2 at the served `
+        + `threshold of 98. Drew: ${m.drew}`).toBe(true);
+      // **Colour is never the only carrier.** A word, in the chip, that
+      // survives a dichromat, a mono printer and forced-colors.
+      expect(m.text, `${pct}%: the band must be a WORD as well as a hue`).not.toBe('');
+      // And the numbers the band was derived from are one hover away, so
+      // "warn" is not a colour a reader has to take on trust.
+      expect(m.title, `${pct}%: the title must name the threshold the band came from`)
+        .toContain('98');
+      colours.set(band, m.colour);
+
+      // The percentage itself is STILL A NUMBER on screen beside the chip.
+      const sentence = await page.locator('#ctx [data-k="strip.ctx.known"]').textContent();
+      expect(sentence ?? '', `${pct}%: the percentage must stay a number — colour is an addition to `
+        + 'the reading, never a replacement for it').toContain(String(pct));
+    }
+    expect(new Set(colours.values()).size,
+      'the three bands must be three distinct computed colours — a band a reader cannot tell from '
+      + `its neighbour is a band that says nothing. Got: ${JSON.stringify([...colours])}`).toBe(3);
+  });
+
+/**
+ * **A stale figure is drawn WITHOUT a level**, and that is visibly not-a-level
+ * rather than a fourth level.
+ *
+ * `plan:walk seq:117`: *"Do not colour a stale figure as though it were live.
+ * The strip already discloses age — a fossil rendered in confident red is worse
+ * than an uncoloured number."* The fixture is the live corpus's own state: 60.1%
+ * received 29 hours ago, which would otherwise be a comfortable green about a
+ * window that no longer exists.
+ */
+test('a context sample too old to be current is drawn without a level', async ({ app }) => {
+  const { page } = app;
+  await boot(page, SCENARIOS.find((x) => x.name.includes('too old'))!);
+  const m = await page.evaluate(() => {
+    const stale = document.querySelector('#ctx [data-k="strip.ctxLevelStale"]');
+    const levels = ['strip.ctxOk', 'strip.ctxWarn', 'strip.ctxCrit']
+      .filter((k) => document.querySelector(`#ctx [data-k="${k}"]`) !== null);
+    const neutral = document.querySelector('#strip .chip.unmeas');
+    return {
+      staleDrawn: stale !== null,
+      levels,
+      staleColour: stale === null ? '' : getComputedStyle(stale).color,
+      neutralColour: neutral === null ? '' : getComputedStyle(neutral).color,
+      sentence: (document.querySelector('#ctx [data-k="strip.ctx.known"]')?.textContent ?? '').trim(),
+    };
+  });
+  expect(m.staleDrawn, 'a stale reading must SAY it is unplaced rather than going quiet — a blank '
+    + 'is indistinguishable from a failure to load').toBe(true);
+  expect(m.levels, 'a stale reading must carry no level at all').toEqual([]);
+  expect(m.staleColour, 'the unplaced state wears the strip\'s existing NEUTRAL, so it reads as '
+    + 'not-a-level rather than as a fourth level').toBe(m.neutralColour);
+  // The number and its age both stay: the reader is told what was measured and
+  // when, and only the LEVEL is withheld.
+  expect(m.sentence).toContain('60.1');
+  expect(m.sentence).toContain('ago');
+});
+
+/* ══ `plan:walk seq:118` — THE HANDOVER VERDICT, ALL FIVE STATES ═════════ */
+
+/**
+ * **A session driven into each state, rather than an assertion that the element
+ * exists** — the task's own acceptance, in those words.
+ *
+ * `ignored` is the one that matters most and the one a reader will never think
+ * to check for, so what is asserted about it is not merely that it is drawn but
+ * that it is VISIBLY DISTINCT from `acted-on` rather than a quieter version of
+ * it — different key, different word, different hue.
+ */
+const VERDICTS: readonly { verdict: string; key: string; extra?: Record<string, unknown> }[] = [
+  { verdict: 'acted-on', key: 'strip.hoActed', extra: {
+    askedAt: new Date(Date.now() - 7_200_000).toISOString(),
+    writtenAt: new Date(Date.now() - 7_000_000).toISOString(),
+  } },
+  { verdict: 'ignored', key: 'strip.hoIgnored', extra: {
+    askedAt: new Date(Date.now() - 600_000).toISOString(),
+  } },
+  { verdict: 'not-asked', key: 'strip.hoNotAsked' },
+  { verdict: 'off', key: 'strip.hoOff' },
+  { verdict: 'unverifiable', key: 'strip.hoUnknown' },
+];
+
+test('the strip draws the handover verdict it is SERVED, in every state', async ({ app }) => {
+  const { page } = app;
+  const seen = new Map<string, { colour: string; text: string }>();
+  for (const { verdict, key, extra } of VERDICTS) {
+    await boot(page, {
+      name: `handover ${verdict}`,
+      git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+      items: 43,
+      corpus: { drifted: false, aheadByMs: null, scanned: 12, truncated: false },
+      context: {
+        session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+        mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+        handover: HANDOVER(verdict, extra ?? {}),
+      },
+    });
+    const m = await page.evaluate((k) => {
+      const el = document.querySelector(`#ctx [data-k="${k}"]`);
+      return el === null
+        ? { found: false, colour: '', text: '', title: '' }
+        : {
+          found: true,
+          colour: getComputedStyle(el).color,
+          text: (el.textContent ?? '').trim(),
+          title: (el as HTMLElement).title,
+        };
+    }, key);
+    expect(m.found, `the served verdict "${verdict}" must draw ${key} — none of the five may be `
+      + 'silent, and `off` is a different fact from `not-asked` rather than a spelling of it')
+      .toBe(true);
+    expect(m.text, `${verdict}: the state must be a WORD, not a hue alone`).not.toBe('');
+    expect(m.title, `${verdict}: the chip owes the reader the reasoning behind it`).not.toBe('');
+    seen.set(verdict, { colour: m.colour, text: m.text });
+  }
+
+  const acted = seen.get('acted-on')!;
+  const ignored = seen.get('ignored')!;
+  expect(ignored.colour, '`ignored` must be VISIBLY DISTINCT from `acted-on` rather than a quieter '
+    + 'shade of it: it is the state a reader would never think to go and check for, and this '
+    + 'project has already paid once for a guarantee that read exactly like the mechanism working')
+    .not.toBe(acted.colour);
+  expect(ignored.text).not.toBe(acted.text);
+  // `off` and `not-asked` are the second pair that must not collapse: one means
+  // nobody configured this, the other means somebody did and the moment never
+  // came.
+  expect(seen.get('off')!.text).not.toBe(seen.get('not-asked')!.text);
+});
+
+/**
+ * **`acted-on` carries WHEN**, because the value of the state is knowing the
+ * handover is CURRENT — not that something happened to it once. Computed from
+ * the served `writtenAt` at render time, so it ticks, exactly as the "as of …
+ * ago" on the context sentence beside it does.
+ */
+test('the acted-on verdict says when the handover was written', async ({ app }) => {
+  const { page } = app;
+  await boot(page, {
+    name: 'handover acted on two hours ago',
+    git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+    items: 43,
+    context: {
+      session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+      mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+      handover: HANDOVER('acted-on', {
+        askedAt: new Date(Date.now() - 7_400_000).toISOString(),
+        writtenAt: new Date(Date.now() - 7_200_000).toISOString(),
+      }),
+    },
+  });
+  await expect(
+    page.locator('#ctx [data-k="strip.hoActed"]'),
+    'the handover is only useful if the reader can tell whether it is current, and "2h" is what '
+    + 'says so',
+  ).toContainText('2h');
+});
+
+/* ══ THE CORPUS DRIFT CHIP — THREE STATES, AND THE THIRD IS NOT "NO" ═════ */
+
+/**
+ * `measureCorpusDrift` landed on 2026-08-31 and both `/api/ping` and
+ * `/api/meta` served its answer; nothing drew it, and its six string keys sat
+ * in both tables. The third state is the load-bearing one: a truncated sweep
+ * that found nothing answers `drifted: null`, and a surface drawing that must
+ * say "not known" and may never say "no".
+ */
+const DRIFTS: readonly { name: string; corpus: unknown; key: string }[] = [
+  {
+    name: 'nothing under items/ is newer than the log',
+    corpus: { drifted: false, aheadByMs: null, scanned: 42, truncated: false },
+    key: 'strip.corpusInStep',
+  },
+  {
+    name: 'an item was edited outside the log four minutes ago',
+    corpus: { drifted: true, aheadByMs: 240_000, scanned: 42, truncated: false },
+    key: 'strip.corpusDrifted',
+  },
+  {
+    name: 'the sweep hit its bound and found nothing, which is NOT nothing',
+    corpus: { drifted: null, aheadByMs: null, scanned: 5000, truncated: true },
+    key: 'strip.corpusDriftUnknown',
+  },
+];
+
+test('the corpus group draws the drift the heartbeat measured, in all three states',
+  async ({ app }) => {
+    const { page } = app;
+    for (const { name, corpus, key } of DRIFTS) {
+      await boot(page, {
+        name,
+        git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+        items: 43,
+        corpus,
+        context: {
+          session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+          mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+          handover: HANDOVER('not-asked'),
+        },
+      });
+      await expect(
+        page.locator(`#corpusdrift [data-k="${key}"]`),
+        `${name}: the corpus group must draw ${key}`,
+      ).toBeVisible();
+      await expect(
+        page.locator('#corpusdrift .chip'),
+        `${name}: exactly one drift state at a time`,
+      ).toHaveCount(1);
+      const title = await page.locator('#corpusdrift .chip').getAttribute('title');
+      expect(title ?? '', `${name}: the chip owes the reader why`).not.toBe('');
+    }
+  });
+
+/**
+ * **A page nobody has told is NOT a page that measured nothing.**
+ *
+ * `/api/meta` answering without a `corpus` block at all — an older server, or a
+ * refusal — must leave the strip saying NOT KNOWN. Drawing "in step with the
+ * log" there would be the exact claim `core/corpus-drift.ts` refuses to make
+ * from a truncated sweep, made one layer up by a client instead.
+ */
+test('with nothing served, the drift chip says not known rather than in step', async ({ app }) => {
+  const { page } = app;
+  await boot(page, {
+    name: 'a server that carries no corpus block',
+    git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+    items: 43,
+    context: {
+      session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+      mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+      handover: HANDOVER('not-asked'),
+    },
+  });
+  await expect(page.locator('#corpusdrift [data-k="strip.corpusDriftUnknown"]')).toBeVisible();
+  await expect(page.locator('#corpusdrift [data-k="strip.corpusInStep"]')).toHaveCount(0);
 });

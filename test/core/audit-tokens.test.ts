@@ -34,7 +34,7 @@ const CONFIG = resolveConfig({});
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'CONST-a', type: 'constraint', title: 'A constraint', status: 'active',
-    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'body', steps: [], observations: [], relations: [],
@@ -54,7 +54,7 @@ function lineCost(i: Item): number {
 
 test('Selection.tokens is the sum the budget was charged: admitted blocks plus index lines', () => {
   const pinnedA = item({ id: 'CONST-a', always: true });
-  const pinnedB = item({ id: 'RULE-b', type: 'rule', title: 'A rule', always: true, continuity: false, body: 'Do it.' });
+  const pinnedB = item({ id: 'RULE-b', type: 'rule', title: 'A rule', always: true, continuity: false, summary: null, summaryOf: null, body: 'Do it.' });
   const indexed = item({ id: 'CONST-c', title: 'Only an index line' });
 
   const sel = select([pinnedA, pinnedB, indexed], { event: 'session-start' }, CONFIG);

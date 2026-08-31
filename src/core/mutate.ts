@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { type MutationOp } from './audit.ts';
 import { agentEditsFor, type Config, type ResolvedCategory } from './config.ts';
-import { contentHash, itemContentHash } from './content-hash.ts';
+import { contentHash, itemContentHash, stampSummary } from './content-hash.ts';
 import { parseItem } from './item.ts';
 import { normalizePosix } from './paths.ts';
 import {
@@ -31,9 +31,9 @@ import {
 } from './trust.ts';
 import type { Item, Observation, Origin, Relation, Severity, Status } from './types.ts';
 import {
-  normalizeObservations, normalizeSteps, validateBody, validateEnums, validateExplicitId,
-  validateExtra, validateObservationText, validateRelations, validateRelationTarget, validateScope,
-  validateTags, validateTitle,
+  normalizeObservations, normalizeSteps, normalizeSummary, validateBody, validateEnums,
+  validateExplicitId, validateExtra, validateObservationText, validateRelations,
+  validateRelationTarget, validateScope, validateSummary, validateTags, validateTitle,
 } from './validate.ts';
 
 export interface MutationContext {
@@ -79,6 +79,25 @@ export interface CreateInput {
    * here would have shipped a tier that could never deliver it.
    */
   continuity?: boolean;
+  /**
+   * **One plain sentence, readable by somebody who does not know this
+   * codebase** — plain words rather than project vocabulary, no ids, no file
+   * paths, no measurements, saying what the item IS and why it matters rather
+   * than how it was found. See `Item.summary` for the worked example and
+   * `SUMMARY_MAX_CHARS` (validate.ts) for the bar and the bound.
+   *
+   * Omitted, empty, or whitespace-only all mean the same thing and all store
+   * `null`: **absent is legal**, and it is what all 730 items in this corpus
+   * are. Nothing here generates one — the owner's constraint is no external
+   * API, and a CLI write cannot call a model, so a summary arrives only
+   * because a person or an agent wrote one through the ordinary capture path.
+   *
+   * The basis it is written against is NOT an input at any surface:
+   * `stampSummary` (content-hash.ts) computes it from the item this call
+   * actually builds, so a caller cannot claim a summary describes content it
+   * does not.
+   */
+  summary?: string;
   scope?: string[];
   tags?: string[];
   origin?: Origin;
@@ -302,6 +321,18 @@ export function createItem(
     input.extra ?? {},
   ).tags ?? input.tags ?? [];
   validateBody(body);
+  // Normalised ONCE, here, into the local `stampSummary` is handed below — the
+  // discipline `body`, `observations` and `steps` each get, for the same
+  // reason: the value validated and the value stored must be one string.
+  //
+  // `''` (and whitespace-only) collapses to `null` rather than being stored:
+  // `asString` (item.ts) reads an empty frontmatter scalar back as absent, so
+  // storing it would produce an item whose summary silently vanishes on the
+  // next read — the failure `validateExtra` refuses for an extra value, and
+  // the reason `--summary=` is the CLEAR spelling on `edit` rather than a
+  // second way of writing nothing.
+  const summary = normalizeSummary(input.summary ?? '');
+  validateSummary(summary);
   // Normalized ONCE, here, into a local both `contentHash` below and the
   // stored item read — the same discipline `body` gets just above, for the
   // same reason: hashing the raw text and storing the normalized text (or
@@ -365,7 +396,8 @@ export function createItem(
 
   const origin: Origin = input.origin ?? 'human';
   const status: Status = trustedStatus(origin, category.tier, input.status ?? 'active');
-  const buildItem = (itemId: string): Item => ({
+  const buildItem = (itemId: string): Item => {
+    const built: Item = {
     id: itemId,
     type: input.type,
     title,
@@ -373,6 +405,14 @@ export function createItem(
     severity: input.severity ?? 'soft',
     always: input.always ?? false,
     continuity: input.continuity ?? false,
+    // Both `null` here and then set together by `stampSummary` below, never
+    // assigned in this literal: the basis is a hash OF this item, so it cannot
+    // be computed until the item exists. Stamping afterwards is also what
+    // makes the basis describe the item that was actually written — title,
+    // body, steps, observations and extra as they landed — rather than
+    // whatever the caller passed.
+    summary: null,
+    summaryOf: null,
     scope: (input.scope ?? []).map((g) => normalizePosix(g)),
     tags,
     origin,
@@ -395,7 +435,12 @@ export function createItem(
     relations: input.relations ?? [],
     layer: 'project',
     filePath: `items/${input.type}/${itemId}.md`,
-  });
+    };
+    // AFTER every field is in place, so a capture that carries a body and a
+    // summary produces a summary that is `current` rather than one born stale.
+    stampSummary(built, summary === '' ? null : summary);
+    return built;
+  };
 
   const duplicateOf = (existing: Item): MutationResult => ({
     id: existing.id,
@@ -517,6 +562,30 @@ export interface UpdateInput {
   always?: boolean;
   /** Continuity-tier membership — see `Item.continuity` and `CreateInput.continuity`. */
   continuity?: boolean;
+  /**
+   * The item's summary — one plain sentence for a reader who does not know
+   * this codebase. See `Item.summary` and `CreateInput.summary` for the bar.
+   *
+   * **The empty string CLEARS it**, and absence leaves it alone: the two are
+   * different instructions, exactly as they are for `scope` at `mycontext
+   * edit` ("Absent (`null`) and empty (`--scope=`) are different instructions
+   * — the second one clears the field"). There is no `null` spelling, so this
+   * field stays a `string` and a staged revision can carry it like any other
+   * content field.
+   *
+   * **It is CONTENT** (`UPDATE_FIELD_POLICY`, trust.ts), so `agentEdits`
+   * governs it with no exception carved: on a category set to `review` an
+   * agent's summary write is STAGED as a pending revision for a human,
+   * alongside a title or body change, rather than applied.
+   *
+   * `summaryOf` is absent from this interface on purpose and there is no
+   * surface that sets it: it is stamped from the item AFTER this call's
+   * assignments land, so an edit that rewrites the body and the summary
+   * together yields a current summary, and one that rewrites only the body
+   * leaves the basis behind and the summary goes stale. That asymmetry IS the
+   * mechanism.
+   */
+  summary?: string;
   status?: Status;
   extra?: Record<string, string>;
   origin?: Origin;
@@ -571,6 +640,12 @@ export function updateItem(
   // `validateTags` (validate.ts).
   const title = input.title !== undefined ? input.title.trim() : undefined;
   const body = input.body !== undefined ? normalizeEol(input.body).trim() : undefined;
+  // Normalised up front with `title` and `body`, and validated with them
+  // below, for the ordering reason stated above: a summary over the bound is
+  // refused on its own terms, before any trust-boundary check and before
+  // anything can be staged, so every message downstream that says "nothing was
+  // changed" is true.
+  const summary = input.summary !== undefined ? normalizeSummary(input.summary) : undefined;
 
   validateEnums(input);
   if (input.extra !== undefined) validateExtra(input.extra);
@@ -593,6 +668,7 @@ export function updateItem(
     validateTitle(title);
   }
   if (body !== undefined) validateBody(body);
+  if (summary !== undefined) validateSummary(summary);
   if (input.scope !== undefined) validateScope(input.scope);
   // The edit half of `scopePolicy: 'required'` — see `scopeRequirementError`
   // for why removing the last glob is refused as well as capturing without
@@ -809,7 +885,7 @@ export function updateItem(
   // `agentEditsFor` fails closed to `review` for a category absent from
   // config — see its doc comment.
   if (origin !== 'human' && agentEditsFor(ctx.config, item.type) === 'review') {
-    const proposed = contentChange(item, update, title, body);
+    const proposed = contentChange(item, update, title, body, summary);
     if (proposed !== null) {
       // Nothing is dropped silently (`INV-nothing-is-dropped-silently`), and
       // nothing is applied by halves. A call that mixes a content change with
@@ -898,6 +974,22 @@ export function updateItem(
     stampValidUntil(item);
   }
   if (update.extra !== undefined) item.extra = { ...item.extra, ...update.extra };
+
+  // **LAST of the assignments, and the position is the mechanism.**
+  //
+  // `stampSummary` records the basis by hashing the item's summarised content
+  // as it stands, so it has to run after `title`, `body` and `extra` have
+  // already moved. An edit that rewrites the body AND supplies a new summary
+  // therefore lands a summary that is `current`; an edit that rewrites only
+  // the body does not reach this line at all, leaves the old basis in place,
+  // and the summary is measurably STALE from that moment.
+  //
+  // `''` clears — see `UpdateInput.summary`. Nothing here refreshes a basis on
+  // its own: a write that carries no summary must not touch either field, or
+  // every unrelated edit would silently re-bless a summary that no longer
+  // describes the item, which is the one outcome this whole field exists to
+  // make impossible.
+  if (summary !== undefined) stampSummary(item, summary === '' ? null : summary);
 
   const moved = movedFields(before, item);
   persist(ctx, item);

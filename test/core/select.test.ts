@@ -11,7 +11,7 @@ const CONFIG = resolveConfig({});
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'CONST-a', type: 'constraint', title: 'A constraint', status: 'active',
-    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'body', steps: [], observations: [], relations: [],
@@ -81,7 +81,7 @@ test('a project tier override makes a rationale category injectable', () => {
 
 test('pinned tier takes always:true regardless of scope', () => {
   const items = [
-    item({ id: 'CONST-pinned', always: true, continuity: false, scope: ['src/**'] }),
+    item({ id: 'CONST-pinned', always: true, continuity: false, summary: null, summaryOf: null, scope: ['src/**'] }),
     item({ id: 'CONST-plain', always: false }),
   ];
   // ctx.path deliberately does NOT match the pinned item's scope. Scope
@@ -95,8 +95,8 @@ test('pinned tier takes always:true regardless of scope', () => {
 test('over budget, hard severity wins and the rest spill', () => {
   const big = 'x'.repeat(4000); // ~1000 tokens each
   const items = [
-    item({ id: 'CONST-soft', always: true, continuity: false, severity: 'soft', body: big }),
-    item({ id: 'CONST-hard', always: true, continuity: false, severity: 'hard', body: big }),
+    item({ id: 'CONST-soft', always: true, continuity: false, summary: null, summaryOf: null, severity: 'soft', body: big }),
+    item({ id: 'CONST-hard', always: true, continuity: false, summary: null, summaryOf: null, severity: 'hard', body: big }),
   ];
   const cfg = resolveConfig({ budgets: { pinned: 1200 } });
   const sel = select(items, { event: 'session-start' }, cfg);
@@ -108,8 +108,8 @@ test('over budget, hard severity wins and the rest spill', () => {
 test('an item that spilled from full still appears in the index; an item admitted in full does not', () => {
   const big = 'x'.repeat(4000);
   const items = [
-    item({ id: 'CONST-a', always: true, continuity: false, severity: 'hard', body: big }),
-    item({ id: 'CONST-b', always: true, continuity: false, severity: 'soft', body: big }),
+    item({ id: 'CONST-a', always: true, continuity: false, summary: null, summaryOf: null, severity: 'hard', body: big }),
+    item({ id: 'CONST-b', always: true, continuity: false, summary: null, summaryOf: null, severity: 'soft', body: big }),
   ];
   const cfg = resolveConfig({ budgets: { pinned: 1200 } });
   const sel = select(items, { event: 'session-start' }, cfg);
@@ -134,8 +134,8 @@ test('a seen item does not consume budget and spill a fresh one', () => {
   const big = 'x'.repeat(4000); // ~1000 tokens each
   const cfg = resolveConfig({ budgets: { pinned: 1200 } });
   const sel = select([
-    item({ id: 'CONST-seen', always: true, continuity: false, severity: 'hard', body: big }),
-    item({ id: 'CONST-fresh', always: true, continuity: false, severity: 'soft', body: big }),
+    item({ id: 'CONST-seen', always: true, continuity: false, summary: null, summaryOf: null, severity: 'hard', body: big }),
+    item({ id: 'CONST-fresh', always: true, continuity: false, summary: null, summaryOf: null, severity: 'soft', body: big }),
   ], { event: 'session-start', seen: ['CONST-seen'] }, cfg);
 
   // CONST-seen sorts first on severity. If it were budgeted before being
@@ -153,9 +153,9 @@ test('fitToBudget is first-fit, not a strict priority prefix', () => {
   // 'B'/'A'/'C' with the default type/title.
   const cfg = resolveConfig({ budgets: { pinned: 1200 } });
   const items = [
-    item({ id: 'B', always: true, continuity: false, severity: 'hard', layer: 'project', body: 'x'.repeat(1161) }),
-    item({ id: 'A', always: true, continuity: false, severity: 'hard', layer: 'global', body: 'x'.repeat(3961) }),
-    item({ id: 'C', always: true, continuity: false, severity: 'soft', body: 'x'.repeat(3161) }),
+    item({ id: 'B', always: true, continuity: false, summary: null, summaryOf: null, severity: 'hard', layer: 'project', body: 'x'.repeat(1161) }),
+    item({ id: 'A', always: true, continuity: false, summary: null, summaryOf: null, severity: 'hard', layer: 'global', body: 'x'.repeat(3961) }),
+    item({ id: 'C', always: true, continuity: false, summary: null, summaryOf: null, severity: 'soft', body: 'x'.repeat(3161) }),
   ];
   const sel = select(items, { event: 'session-start' }, cfg);
   // B admits (used 300/1200). A would push used to 1300 > 1200, so it spills.
@@ -200,14 +200,14 @@ test('itemCost counts observations, not just body', () => {
   const cfg = resolveConfig({ budgets: { pinned: 1000 } });
 
   const withObservations = item({
-    id: 'CONST-a', always: true, continuity: false, severity: 'hard',
+    id: 'CONST-a', always: true, continuity: false, summary: null, summaryOf: null, severity: 'hard',
     observations: [{ category: 'note', text: bigObservation, tags: [], context: null }],
   });
   const selWith = select([withObservations], { event: 'session-start' }, cfg);
   assert.deepEqual(selWith.full, []);
   assert.deepEqual(selWith.spilled.map((s) => s.id), ['CONST-a']);
 
-  const withoutObservations = item({ id: 'CONST-a', always: true, continuity: false, severity: 'hard' });
+  const withoutObservations = item({ id: 'CONST-a', always: true, continuity: false, summary: null, summaryOf: null, severity: 'hard' });
   const selWithout = select([withoutObservations], { event: 'session-start' }, cfg);
   assert.deepEqual(selWithout.full.map((e) => e.item.id), ['CONST-a']);
 });
@@ -237,7 +237,7 @@ test('itemCost now accounts for scope (previously omitted): a huge scope list ca
   const cfg = resolveConfig({ budgets: { pinned: 200 } });
   const hugeScope = Array.from({ length: 60 }, (_, i) => `src/module-${i}/**`);
   const sel = select(
-    [item({ id: 'CONST-a', always: true, continuity: false, body: 'short', scope: hugeScope })],
+    [item({ id: 'CONST-a', always: true, continuity: false, summary: null, summaryOf: null, body: 'short', scope: hugeScope })],
     { event: 'session-start' }, cfg,
   );
   assert.deepEqual(sel.full, []);
@@ -246,7 +246,7 @@ test('itemCost now accounts for scope (previously omitted): a huge scope list ca
 
 test('itemCost matches the actual rendered cost of an item, including scope and observation tags/context', () => {
   const withEverything = item({
-    id: 'CONST-a', always: true, continuity: false, severity: 'hard',
+    id: 'CONST-a', always: true, continuity: false, summary: null, summaryOf: null, severity: 'hard',
     scope: ['src/**', 'lib/**'],
     observations: [{ category: 'limit', text: 'Never exceed 20', tags: ['db', 'perf'], context: 'under load' }],
   });
@@ -268,14 +268,14 @@ test('cross-module invariant: renderSelection never exceeds the enforced budgets
   const items: Item[] = [];
   for (let i = 0; i < 5; i++) {
     items.push(item({
-      id: `CONST-${i}`, always: true, continuity: false, severity: 'hard',
+      id: `CONST-${i}`, always: true, continuity: false, summary: null, summaryOf: null, severity: 'hard',
       body: 'x'.repeat(300),
       scope: ['src/**'], tags: ['db'],
       observations: [{ category: 'limit', text: 'x'.repeat(100), tags: ['db'], context: 'ctx' }],
     }));
   }
   for (let i = 0; i < 30; i++) {
-    items.push(item({ id: `CONST-idx-${i}`, always: false, continuity: false, title: `Constraint ${i}` }));
+    items.push(item({ id: `CONST-idx-${i}`, always: false, continuity: false, summary: null, summaryOf: null, title: `Constraint ${i}` }));
   }
   const sel = select(items, { event: 'session-start' }, cfg);
   const rendered = renderSelection(sel);

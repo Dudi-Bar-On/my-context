@@ -7,6 +7,21 @@ import {
 import { AuditTail } from '../core/audit-tail.ts';
 import type { TailBacklog } from '../core/audit-tail.ts';
 import { classifyContext, readTee, type ContextSample } from '../core/statusline-tee.ts';
+// **The handover verdict is READ here, never re-derived** (`plan:walk seq:118`).
+// `checkHandoverAsk` is the one implementation of "was the ask acted on" — it
+// compares the latch's `askedAt` against the handover file's mtime — and a
+// second computation in the browser would be a second spelling of one
+// question, which is how two facts come apart. So the SERVER answers and the
+// strip renders what it is told. Only the non-writing half of that module is
+// bound here; `writeLatch`, `resetAsksForWindow` and `discloseIgnoredAsk` are
+// named as writers in `test/ui/no-writes.test.ts` and stay out of `src/ui/`.
+import { checkHandoverAsk, type HandoverAskVerdict } from '../core/handover-ask.ts';
+// The ONE place the 98 default is applied (`core/config.ts`). The occupancy
+// bands the strip colours with are named against this number and are derived
+// from it in the client, so it travels beside the sample rather than being
+// re-spelled there — `plan:walk seq:117`: "Colour against
+// `handoverThresholdPercent`, not a constant."
+import { handoverThresholdPercent } from '../core/config.ts';
 import type { Workspace } from '../core/workspace.ts';
 import { badRequest, repeatedParams, unknownParams } from './read-model.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
@@ -276,6 +291,40 @@ export interface WatchContextBody {
   /** `null` whenever the projection could not answer — with `mycontextError` saying which state. */
   mycontext: { tokens: number; injections: number; unrecorded: number } | null;
   mycontextError: string | null;
+  /**
+   * **What became of this session's handover ask, and the threshold it was
+   * asked against** (`plan:walk seq:118`, `seq:117`).
+   *
+   * SERVED, never re-derived. `core/handover-ask.ts` computes the verdict by
+   * comparing the latch's `askedAt` with the handover file's mtime, and its own
+   * header calls that comparison the whole feature: *the flag is not a claim,
+   * it is a comparison*. A browser cannot make it — it can stat nothing — and a
+   * second implementation of one question is how two spellings of a fact come
+   * apart. So this endpoint carries the answer and the strip renders it.
+   *
+   * All five verdicts travel, including the two the reader most needs told
+   * apart: `ignored` (asked, and the file was not written — the silence this
+   * feature exists to end) and `off` (no `handover` key at all, so nothing was
+   * ever promised). Collapsing `off` into `not-asked` would make the strip say
+   * "the threshold has not been crossed" about a feature that has no threshold.
+   *
+   * `thresholdPercent` is `null` EXACTLY when the feature is off, and is
+   * otherwise `handoverThresholdPercent(handover)` — the one place
+   * `core/config.ts` applies its 98 default. The strip derives its occupancy
+   * bands from this number; it may not carry a constant of its own, and with
+   * the feature off there is no ask to name a band against.
+   */
+  handover: {
+    verdict: HandoverAskVerdict;
+    /** The handover path AS CONFIGURED, repo-relative, or `null` when the feature is off. */
+    path: string | null;
+    /** When the ask went out, ISO-8601, or `null` when none has. */
+    askedAt: string | null;
+    /** When the handover was last written, ISO-8601, or `null` when that is not known. */
+    writtenAt: string | null;
+    /** The threshold the ask fires at, or `null` when the feature is off. */
+    thresholdPercent: number | null;
+  };
 }
 
 /**
@@ -315,7 +364,25 @@ export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
   } else {
     mycontext = read.value;
   }
-  const body: WatchContextBody = { session, sample, mycontext, mycontextError };
+  // **The third half.** `checkHandoverAsk` never throws, for any filesystem
+  // outcome — its own docstring is emphatic about that — so it needs no `try`
+  // here and cannot cost this endpoint the two answers above. `ws.config
+  // .handover` is `HandoverConfig | null`, and `null` is the feature-off case
+  // the check itself reports as `off`.
+  const handoverConfig = ws.config.handover;
+  const ask = checkHandoverAsk(root, handoverConfig, session);
+  const handover = {
+    verdict: ask.verdict,
+    path: ask.path,
+    askedAt: ask.askedAt,
+    writtenAt: ask.writtenAt,
+    // The default is applied HERE and only here, by the function `config.ts`
+    // names as its single site. `null` when the feature is off, because a
+    // threshold for an ask that will never fire is a number with no meaning,
+    // and the strip must not colour against one.
+    thresholdPercent: handoverConfig === null ? null : handoverThresholdPercent(handoverConfig),
+  };
+  const body: WatchContextBody = { session, sample, mycontext, mycontextError, handover };
   return { status: 200, body };
 }
 

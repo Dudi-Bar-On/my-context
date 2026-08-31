@@ -2252,6 +2252,18 @@ Every `normative`-tier item:
 │            │           │                       │ --body "…" | --file    │ says. On a governing   │
 │            │           │                       │ <path>                 │ item this is gated and │
 │            │           │                       │                        │ previewed.             │
+│ summary    │ field     │ free text             │ mycontext edit <id>    │ One plain sentence     │
+│            │           │                       │ --summary "…"          │ saying what this item  │
+│            │           │                       │                        │ IS and why it matters, │
+│            │           │                       │                        │ for a reader who does  │
+│            │           │                       │                        │ NOT know this codebase │
+│            │           │                       │                        │ - plain words, no ids, │
+│            │           │                       │                        │ no paths, no numbers.  │
+│            │           │                       │                        │ Max 160 chars; the     │
+│            │           │                       │                        │ body keeps the         │
+│            │           │                       │                        │ precision.             │
+│            │           │                       │                        │ `--summary=` removes   │
+│            │           │                       │                        │ it.                    │
 │ scope      │ field     │ free text             │ mycontext edit <id>    │ The globs this         │
 │            │           │                       │ --scope "a/**,b/**"    │ governs. Empty means   │
 │            │           │                       │                        │ everywhere, unless the │
@@ -2377,7 +2389,7 @@ it is told back — the first words are that the edit did **not** take effect, b
 that thought otherwise would go on reasoning about text nothing is enforcing:
 
 ```text
-my_context: NOT applied — staged as revision REV-76627cb9f4c6 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
+my_context: NOT applied — staged as revision REV-9aae7cb2b817 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
 ```
 
 Nothing about the item has changed, and nothing will until you say so. `mycontext review
@@ -3546,14 +3558,15 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--body "<text>"` | the item's text — the paragraph Claude is given. On `add` it is mutually exclusive with `--file`, which supplies the body from a file instead | `add`, `edit` |
 | `--step "<text>"` | one step of a `procedure` — an operation performed once and then finished. Repeatable, in command-line order, and not comma-split, for the same reason `--note` is not: a step is a sentence. A repeatable operation is a `runbook`, which keeps its steps in its body instead. Steps cannot be edited or ticked through any command afterwards — correcting one means editing the Markdown and running `mycontext repair` | `add` |
 | `--note "<text>"` | add one `[note]` observation. Repeatable, in the order given, and not comma-split — an observation is a sentence, and sentences contain commas. It is where the *why* goes when the body came from a file rather than from you | `add` |
+| `--summary "<text>"` | one plain sentence saying what the item **is** and why it matters, written for a reader who does not know this codebase: plain words rather than project vocabulary, no ids, no file paths, no measurements, and never how it was found. At most 160 characters — the body keeps all the precision. It is recorded together with a hash of the content it was written against, so a later edit to the title, body, steps, observations or extra fields makes it **stale**, and `mycontext doctor`, `mycontext show` and `get_item` all say so rather than letting it be quoted as current. `mycontext edit <id> --summary=` removes one. Leaving it out is normal: nothing requires a summary <!-- `core/validate.ts` · `export const SUMMARY_MAX_CHARS = 160;` · ~333 --> | `add`, `edit` |
 | `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `edit`, `review promote`, `lesson-accept` |
 | `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection until a focus is set — `mycontext focus <tag>` narrows injection to the tags it names | `add`, `edit` |
 | `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused. `mycontext harden <id>` and `mycontext soften <id>` are the two settings under a shorter name | `add`, `edit`, `review promote`, `lesson-accept` |
 | `--always` | pin the item: inject it in full at every session start, whatever files you touch. `review promote --always` sets it while the item is still a draft; `mycontext edit --always` sets it, or `--always=false` clears it, at any point — behind the confirmation an item that already governs earns. `mycontext pin <id>` and `mycontext unpin <id>` are those two edits under a shorter name | `review promote`, `edit` |
-| `--continuity` | mark the item for the **continuity** tier: re-delivered at every session start and counted against the `continuity` budget rather than the pinned one. `--continuity=false` clears it. It is accepted on the rationale tier, unlike `--severity` and `--always`, because carrying a note forward is not a claim that it governs anything <!-- `core/edit-flags.ts` · `'title', 'body', 'scope', 'tags', 'severity', 'always', 'continuity', 'status', 'extra',` · ~60 --> | `edit` |
+| `--continuity` | mark the item for the **continuity** tier: re-delivered at every session start and counted against the `continuity` budget rather than the pinned one. `--continuity=false` clears it. It is accepted on the rationale tier, unlike `--severity` and `--always`, because carrying a note forward is not a claim that it governs anything <!-- `core/edit-flags.ts` · `'title', 'body', 'summary', 'scope', 'tags', 'severity', 'always', 'continuity', 'status',` · ~60 --> | `edit` |
 | `--title "<text>"` | replace a staged candidate's title with your own wording before the rule is created; on `edit`, the item's own title | `lesson-accept`, `edit` |
 | `--directive do\|dont` | whether the created rule prescribes or prohibits | `lesson-accept` |
-| `--extra key=value` | one category-specific field — a rule's `directive`, a requirement's `kind`. Repeatable, one key per flag, and the value is taken whole, commas included. It **merges**: a key you do not name keeps its value. There is no spelling that removes a key, because an empty value and an absent field are indistinguishable once written. It is content, so it carries the confirmation every content field carries — but not the before-and-after reach preview, which only `--scope`, `--always`, `--severity` and `--status` owe. That is the one asymmetry worth knowing, because `directive` is what decides whether a rule prohibits or prescribes. `mycontext add` takes it too, so a category-specific field can be set at the moment of capture <!-- `core/command-flags.ts` · `const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'step', 'scope', 'tags', 'severity', 'extra'];` · ~131 --> | `add`, `edit` |
+| `--extra key=value` | one category-specific field — a rule's `directive`, a requirement's `kind`. Repeatable, one key per flag, and the value is taken whole, commas included. It **merges**: a key you do not name keeps its value. There is no spelling that removes a key, because an empty value and an absent field are indistinguishable once written. It is content, so it carries the confirmation every content field carries — but not the before-and-after reach preview, which only `--scope`, `--always`, `--severity` and `--status` owe. That is the one asymmetry worth knowing, because `directive` is what decides whether a rule prohibits or prescribes. `mycontext add` takes it too, so a category-specific field can be set at the moment of capture <!-- `core/command-flags.ts` · `'body', 'file', 'note', 'step', 'summary', 'scope', 'tags', 'severity', 'extra',` · ~131 --> | `add`, `edit` |
 | `--status <name>` | on `edit`, move an item's lifecycle status: `active`, `draft`, `deprecated` or `validated`. `superseded` is **refused** here, because a retirement names its replacement and records it in both directions — that is `mycontext supersede`. On `search` and on `export` it filters by status instead | `edit`, `search`, `export` |
 | `--agent` | record the lesson with `origin: agent` instead of `origin: human`, which is the one claim a shell cannot truthfully make on its own. It adds no way to lie that the bare command did not already have — it adds the first way to be accurate — and `lesson` is rationale tier, so what it records governs nothing either way. `lesson-accept` refuses it **by name**, in every spelling: accepting a staged candidate creates a rule that governs this repository, and an agent spelling of a gate is the gate's absence | `lesson` |
 | `--by <id>` | names the replacement that takes over from the item being retired. **Required** — retirement without a successor is not offered | `supersede` |
@@ -3826,6 +3839,10 @@ the table. A type then adds only the names that are its own.
   The one-line name. Changing it does not change the id.
 - **`body`** — a field; free text; `mycontext edit <id> --body "…" | --file <path>`
   What the item actually says. On a governing item this is gated and previewed.
+- **`summary`** — a field; free text; `mycontext edit <id> --summary "…"`
+  One plain sentence saying what this item IS and why it matters, for a reader
+  who does NOT know this codebase - plain words, no ids, no paths, no numbers.
+  Max 160 chars; the body keeps the precision. `--summary=` removes it.
 - **`scope`** — a field; free text; `mycontext edit <id> --scope "a/**,b/**"`
   The globs this governs. Empty means everywhere, unless the category sets
   scopePolicy required.
@@ -3852,6 +3869,10 @@ the table. A type then adds only the names that are its own.
 - **`body`** — a field; free text; `mycontext edit <id> --body "…" | --file <path>`
   What the item actually says. Ungated on this tier — nothing governs before or
   after.
+- **`summary`** — a field; free text; `mycontext edit <id> --summary "…"`
+  One plain sentence saying what this item IS and why it matters, for a reader
+  who does NOT know this codebase - plain words, no ids, no paths, no numbers.
+  Max 160 chars; the body keeps the precision. `--summary=` removes it.
 - **`scope`** — a field; free text; `mycontext edit <id> --scope "a/**,b/**"`
   The globs this is about. Accepted on this tier, unlike severity and always.
 - **`tags`** — a tag; free text; `mycontext edit <id> --tags "a,b"`
@@ -5028,7 +5049,7 @@ my_context: updated RULE-never-log-customer-email (active).
 and under `review`, for the identical call:
 
 ```text
-my_context: NOT applied — staged as revision REV-76627cb9f4c6 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
+my_context: NOT applied — staged as revision REV-9aae7cb2b817 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
 ```
 
 **`allow` does not mean "agents may do anything to this category."** It widens what an agent

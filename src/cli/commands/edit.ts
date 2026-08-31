@@ -12,7 +12,9 @@ import {
   handWrittenProjectionError, projectFieldUpdate, updatableFor, updatesFor,
 } from '../../core/tag-projection.ts';
 import { inertFieldError, scopeRequirementError } from '../../core/trust.ts';
-import { SEVERITIES, STATUSES, updatableValueError, validateExtra } from '../../core/validate.ts';
+import {
+  SEVERITIES, STATUSES, normalizeSummary, updatableValueError, validateExtra, validateSummary,
+} from '../../core/validate.ts';
 import { scopeField } from '../../core/render-item.ts';
 import { extraFlag } from './registry.ts';
 import {
@@ -80,7 +82,8 @@ import {
 const { allowed: ALLOWED, values: VALUE_FLAGS } = EDIT_FLAGS;
 
 const USAGE =
-  `usage: mycontext edit <id> [--title "<text>"] [--body "<text>"] [--scope "a/**,b/**"]
+  `usage: mycontext edit <id> [--title "<text>"] [--body "<text>"] [--summary "<text>"]
+                        [--scope "a/**,b/**"]
                         [--tags "a,b"] [--severity hard|soft] [--always[=false]]
                         [--continuity[=false]]
                         [--status active|draft|deprecated|validated]
@@ -167,7 +170,13 @@ function undeclaredFlagError(config: Config, type: string, name: string): string
 type FieldClass = 'content' | 'reach' | 'force';
 
 const FIELD_CLASS: Record<string, FieldClass> = {
-  title: 'content', body: 'content', tags: 'content', extra: 'content',
+  // `summary` is CONTENT, not reach and not force: it changes what a reader is
+  // TOLD about the item and nothing about whether, where or how strongly the
+  // item is injected — `renderItemBlock` and `renderIndexLine` do not emit it
+  // at all. So it is previewed as a diff and gated exactly as a title or a
+  // body is, which is also what `UPDATE_FIELD_POLICY` (trust.ts) classifies it
+  // as; the two tables agree because they are answering the same question.
+  title: 'content', body: 'content', summary: 'content', tags: 'content', extra: 'content',
   // `relations` is REACH, and the classification is the whole gate on
   // `--unlink`. Removing a `blocks` or a `constrains` from a governing item
   // takes away part of what that item asserts about the rest of the corpus,
@@ -257,6 +266,15 @@ function changesOf(item: Item, patch: UpdateInput, scopeLabel: (globs: string[])
     addContent('title', item.title, patch.title);
   }
   if (patch.body !== undefined && patch.body !== item.body) addContent('body', item.body, patch.body);
+  // `item.summary ?? ''` on the "before" side, and `''` is what `--summary=`
+  // puts on the "after" side: absence is spelled as the empty string wherever
+  // a summary is compared or diffed (`RevisionChanges.summary`), and
+  // `valueLines` renders that as `(no summary)` rather than as a blank line.
+  // So both directions preview honestly — adding one to an item that has none,
+  // and removing the one it has.
+  if (patch.summary !== undefined && patch.summary !== (item.summary ?? '')) {
+    addContent('summary', item.summary ?? '', patch.summary);
+  }
   if (patch.tags !== undefined && !sameSet(patch.tags, item.tags)) {
     addContent('tags', item.tags, patch.tags);
   }
@@ -531,6 +549,7 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     const scope = listFlag(args, 'scope');
     const tags = listFlag(args, 'tags');
     const severity = flag(args, 'severity');
+    const summary = flag(args, 'summary');
     const status = flag(args, 'status');
     const always = boolFlag(args, 'always');
     const continuity = boolFlag(args, 'continuity');
@@ -576,6 +595,22 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     }
     if (title !== null) patch.title = title.trim();
     if (body !== null) patch.body = body;
+    // `--summary=` (empty) is the CLEAR and is deliberately not skipped here:
+    // absent (`null`) and empty are different instructions, exactly as they
+    // are for `--scope`. Validated before the preview and before the gate, on
+    // the same terms as `--severity` and `--status` below — `updateItem` would
+    // refuse an over-long summary anyway, but only after a human had been
+    // shown what the edit would do and asked to approve it.
+    if (summary !== null) {
+      const normalized = normalizeSummary(summary);
+      try {
+        validateSummary(normalized);
+      } catch (err) {
+        say(out, err instanceof Error ? err.message : String(err));
+        return 1;
+      }
+      patch.summary = normalized;
+    }
     if (scope !== null) patch.scope = scope;
     if (tags !== null) patch.tags = tags;
     if (always !== null) patch.always = always;
@@ -929,7 +964,7 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
 
 registerCommand({
   name: 'edit',
-  usage: 'edit <id> [--title|--body|--scope|--tags|--severity|--always|--continuity|--status|--extra]',
+  usage: 'edit <id> [--title|--body|--summary|--scope|--tags|--severity|--always|--continuity|--status|--extra]',
   summary: 'change an item, with a gate that scales to what the change can do',
   run: cmdEdit,
 });

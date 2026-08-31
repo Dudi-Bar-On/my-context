@@ -43,6 +43,19 @@ export const REVISION_PROTOCOL = 'my_context/revision@1';
 export interface RevisionChanges {
   title?: string;
   body?: string;
+  /**
+   * The proposed summary. `''` proposes REMOVING the item's summary — see
+   * `UpdateInput.summary` for why the clear is spelled that way rather than as
+   * a `null`: `RevisionValue` is `string | string[] | Record<string, string>`,
+   * and widening it so one field could carry a null would touch every
+   * comparison and every renderer of a diff for the sake of one spelling.
+   *
+   * The BASIS (`Item.summaryOf`) is deliberately not here. It is stamped from
+   * the item at the moment a revision is promoted (`updateItem`), so a summary
+   * a human approves is anchored to the text they approved it against — not to
+   * whatever the item said when an agent drafted it.
+   */
+  summary?: string;
   tags?: string[];
   /**
    * The `extra` keys this proposal MOVES, and only those. `updateItem` merges
@@ -288,7 +301,7 @@ export function pendingRevisionCounts(
  * `agentEdits` (spec §4), and a revision that could carry them would be a
  * route around that gate rather than a proposal about content.
  */
-export const REVISION_FIELDS = ['title', 'body', 'tags', 'extra'] as const;
+export const REVISION_FIELDS = ['title', 'body', 'summary', 'tags', 'extra'] as const;
 
 export type RevisionField = (typeof REVISION_FIELDS)[number];
 
@@ -353,6 +366,11 @@ export function valuesOf(item: Item, changes: RevisionChanges): RevisionChanges 
   const out: RevisionChanges = {};
   if (changes.title !== undefined) out.title = item.title;
   if (changes.body !== undefined) out.body = item.body;
+  // `?? ''` for the reason `RevisionChanges.summary` gives: absence is spelled
+  // as the empty string on this side, so a proposal that ADDS a summary to an
+  // item that has none has a base to diff against and a staleness comparison
+  // that means something.
+  if (changes.summary !== undefined) out.summary = item.summary ?? '';
   if (changes.tags !== undefined) out.tags = [...item.tags];
   if (changes.extra !== undefined) {
     const base: Record<string, string> = {};

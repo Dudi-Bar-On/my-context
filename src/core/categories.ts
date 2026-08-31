@@ -105,6 +105,7 @@ export const TIER_UPDATES: Record<Tier, CategoryUpdates> = {
   normative: {
     title: { store: 'field', command: 'mycontext edit <id> --title "…"', note: 'The one-line name. Changing it does not change the id.' },
     body: { store: 'field', command: 'mycontext edit <id> --body "…" | --file <path>', note: 'What the item actually says. On a governing item this is gated and previewed.' },
+    summary: { store: 'field', command: 'mycontext edit <id> --summary "…"', note: 'One plain sentence saying what this item IS and why it matters, for a reader who does NOT know this codebase - plain words, no ids, no paths, no numbers. Max 160 chars; the body keeps the precision. `--summary=` removes it.' },
     scope: { store: 'field', command: 'mycontext edit <id> --scope "a/**,b/**"', note: 'The globs this governs. Empty means everywhere, unless the category sets scopePolicy required.' },
     tags: { store: 'tag', command: 'mycontext edit <id> --tags "a,b"', note: 'REPLACES the whole list. Read the current tags back first or the others are dropped.' },
     status: { store: 'field', values: ['draft', 'active', 'validated', 'deprecated', 'superseded'], command: 'mycontext edit <id> --status <status>', note: 'Whether it governs. Moving a normative item into active or validated is gated and previewed.' },
@@ -115,6 +116,7 @@ export const TIER_UPDATES: Record<Tier, CategoryUpdates> = {
   rationale: {
     title: { store: 'field', command: 'mycontext edit <id> --title "…"', note: 'The one-line name. Changing it does not change the id.' },
     body: { store: 'field', command: 'mycontext edit <id> --body "…" | --file <path>', note: 'What the item actually says. Ungated on this tier — nothing governs before or after.' },
+    summary: { store: 'field', command: 'mycontext edit <id> --summary "…"', note: 'One plain sentence saying what this item IS and why it matters, for a reader who does NOT know this codebase - plain words, no ids, no paths, no numbers. Max 160 chars; the body keeps the precision. `--summary=` removes it.' },
     scope: { store: 'field', command: 'mycontext edit <id> --scope "a/**,b/**"', note: 'The globs this is about. Accepted on this tier, unlike severity and always.' },
     tags: { store: 'tag', command: 'mycontext edit <id> --tags "a,b"', note: 'REPLACES the whole list. Read the current tags back first or the others are dropped.' },
     status: { store: 'field', values: ['draft', 'active', 'validated', 'deprecated', 'superseded'], command: 'mycontext edit <id> --status <status>', note: 'Ungated on this tier: a rationale item governs nothing before or after.' },

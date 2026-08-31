@@ -60,7 +60,7 @@ function procedure(over: Partial<Item> = {}): Item {
 function stepless(over: Partial<Item> = {}): Item {
   return {
     id: 'CONST-a', type: 'constraint', title: 'Pool capped at 20', status: 'active',
-    severity: 'hard', always: true, continuity: false, scope: ['src/db/**'], tags: ['db'], origin: 'human',
+    severity: 'hard', always: true, continuity: false, summary: null, summaryOf: null, scope: ['src/db/**'], tags: ['db'], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'RDS permits 25.',

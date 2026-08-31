@@ -8,7 +8,7 @@ import type { Item } from '../../src/core/types.ts';
 function item(overrides: Partial<Item> = {}): Item {
   return {
     id: 'RULE-example', type: 'rule', title: 'Example', status: 'active',
-    severity: 'soft', always: false, continuity: false, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'Body text.', steps: [], observations: [], relations: [],

@@ -2382,6 +2382,18 @@ Every `normative`-tier item:
 │            │           │                       │ --body "…" | --file    │ says. On a governing   │
 │            │           │                       │ <path>                 │ item this is gated and │
 │            │           │                       │                        │ previewed.             │
+│ summary    │ field     │ free text             │ mycontext edit <id>    │ One plain sentence     │
+│            │           │                       │ --summary "…"          │ saying what this item  │
+│            │           │                       │                        │ IS and why it matters, │
+│            │           │                       │                        │ for a reader who does  │
+│            │           │                       │                        │ NOT know this codebase │
+│            │           │                       │                        │ - plain words, no ids, │
+│            │           │                       │                        │ no paths, no numbers.  │
+│            │           │                       │                        │ Max 160 chars; the     │
+│            │           │                       │                        │ body keeps the         │
+│            │           │                       │                        │ precision.             │
+│            │           │                       │                        │ `--summary=` removes   │
+│            │           │                       │                        │ it.                    │
 │ scope      │ field     │ free text             │ mycontext edit <id>    │ The globs this         │
 │            │           │                       │ --scope "a/**,b/**"    │ governs. Empty means   │
 │            │           │                       │                        │ everywhere, unless the │
@@ -2516,7 +2528,7 @@ current text. Read them as diffs with `mycontext review revisions`.
 </div>
 
 ```text
-my_context: NOT applied — staged as revision REV-76627cb9f4c6 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
+my_context: NOT applied — staged as revision REV-9aae7cb2b817 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
 ```
 
 <div dir="rtl">
@@ -3792,14 +3804,15 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--body "<text>"`</span> | הטקסט של הפריט — הפסקה ש-Claude מקבל. ב-<span dir="ltr">`add`</span> הוא סותר את <span dir="ltr">`--file`</span>, שמספק את הגוף מתוך קובץ | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--note "<text>"`</span> | מוסיף תצפית <span dir="ltr">`[note]`</span> אחת. ניתן לחזרה, בסדר שניתן, ואינו מפוצל בפסיקים — תצפית היא משפט, ובמשפטים יש פסיקים. שם נמצא ה*למה* כשהגוף הגיע מקובץ ולא מכם | <span dir="ltr">`add`</span> |
 | <span dir="ltr">`--step "<text>"`</span> | צעד אחד של <span dir="ltr">`procedure`</span> — פעולה שמבצעים פעם אחת ומסיימים. ניתן לחזרה, בסדר שורת הפקודה, ואינו מפוצל בפסיקים, מאותה סיבה ש-<span dir="ltr">`--note`</span> אינו: צעד הוא משפט. פעולה שחוזרת היא <span dir="ltr">`runbook`</span>, ששומרת את צעדיה בגוף. צעדים אינם ניתנים לעריכה או לסימון בשום פקודה אחר כך — תיקון אחד מהם משמעו עריכת ה-Markdown והרצת <span dir="ltr">`mycontext repair`</span> | <span dir="ltr">`add`</span> |
+| <span dir="ltr">`--summary "<text>"`</span> | משפט אחד פשוט שאומר מה הפריט **הוא** ולמה זה חשוב, כתוב לקורא שאינו מכיר את הקוד הזה: מילים פשוטות ולא אוצר מילים של הפרויקט, בלי מזהים, בלי נתיבי קבצים, בלי מדידות, ולעולם לא איך הדבר התגלה. עד 160 תווים — הגוף שומר את כל הדיוק. הוא נרשם יחד עם גיבוב של התוכן שכנגדו נכתב, ולכן עריכה מאוחרת של הכותרת, הגוף, הצעדים, התצפיות או השדות הנוספים הופכת אותו ל**מיושן**, ו-<span dir="ltr">`mycontext doctor`</span>, <span dir="ltr">`mycontext show`</span> ו-<span dir="ltr">`get_item`</span> אומרים זאת במקום להניח לצטט אותו כעדכני. <span dir="ltr">`mycontext edit <id> --summary=`</span> מוחק אותו. להשמיט אותו זה רגיל לגמרי: שום דבר אינו מחייב תקציר <!-- `core/validate.ts` · `export const SUMMARY_MAX_CHARS = 160;` · ~333 --> | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--scope "<globs>"`</span> | תבניות הקבצים שהפריט נצמד אליהן, מופרדות בפסיקים | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
 | <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה כל עוד לא הוגדר מיקוד — <span dir="ltr">`mycontext focus <tag>`</span> מצמצם את ההזרקה לתגיות שהוא נוקב בהן | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--severity hard\|soft`</span> | פריטי `hard` מתקבלים לתקציב לפני `soft`. כל מילה אחרת מסורבת. <span dir="ltr">`mycontext harden <id>`</span> ו-<span dir="ltr">`mycontext soften <id>`</span> הן שתי ההגדרות האלה בשם קצר יותר | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
 | <span dir="ltr">`--always`</span> | לנעוץ את הפריט: להזריק אותו במלואו בתחילת כל סשן, בלי קשר לקבצים. <span dir="ltr">`review promote --always`</span> קובעת אותו כל עוד הפריט טיוטה; <span dir="ltr">`mycontext edit --always`</span> קובעת אותו, ו-<span dir="ltr">`--always=false`</span> מנקה אותו, בכל שלב — מאחורי האישור שפריט ששולט כבר מזכה בו. <span dir="ltr">`mycontext pin <id>`</span> ו-<span dir="ltr">`mycontext unpin <id>`</span> הן שתי העריכות האלה בשם קצר יותר | <span dir="ltr">`review promote`, `edit`</span> |
-| <span dir="ltr">`--continuity`</span> | לסמן את הפריט לדרג ה**המשכיות**: הוא נמסר מחדש בתחילת כל סשן ונספר מול תקציב <span dir="ltr">`continuity`</span> ולא מול הנעוץ. <span dir="ltr">`--continuity=false`</span> מנקה אותו. הוא מתקבל גם בדרג הנימוקים, בניגוד ל-<span dir="ltr">`--severity`</span> ול-<span dir="ltr">`--always`</span>, מפני שנשיאת הערה קדימה אינה טענה שהיא שולטת במשהו <!-- `core/edit-flags.ts` · `'title', 'body', 'scope', 'tags', 'severity', 'always', 'continuity', 'status', 'extra',` · ~60 --> | `edit` |
+| <span dir="ltr">`--continuity`</span> | לסמן את הפריט לדרג ה**המשכיות**: הוא נמסר מחדש בתחילת כל סשן ונספר מול תקציב <span dir="ltr">`continuity`</span> ולא מול הנעוץ. <span dir="ltr">`--continuity=false`</span> מנקה אותו. הוא מתקבל גם בדרג הנימוקים, בניגוד ל-<span dir="ltr">`--severity`</span> ול-<span dir="ltr">`--always`</span>, מפני שנשיאת הערה קדימה אינה טענה שהיא שולטת במשהו <!-- `core/edit-flags.ts` · `'title', 'body', 'summary', 'scope', 'tags', 'severity', 'always', 'continuity', 'status',` · ~60 --> | `edit` |
 | <span dir="ltr">`--title "<text>"`</span> | להחליף את כותרת המועמד המבוים בניסוח שלך לפני שהכלל נוצר; ב-`edit`, הכותרת של הפריט עצמו | <span dir="ltr">`lesson-accept`, `edit`</span> |
 | <span dir="ltr">`--directive do\|dont`</span> | האם הכלל שנוצר מורה או אוסר | `lesson-accept` |
-| <span dir="ltr">`--extra key=value`</span> | שדה אחד ייחודי לקטגוריה — ה-<span dir="ltr">`directive`</span> של כלל, ה-<span dir="ltr">`kind`</span> של דרישה. ניתן לחזור עליו, מפתח אחד לכל דגל, והערך נלקח בשלמותו, פסיקים כלולים. הוא **ממזג**: מפתח שלא נקבתם בו שומר על ערכו. אין איות שמוחק מפתח, מפני שערך ריק ושדה נעדר אינם ניתנים להבחנה אחרי הכתיבה. הוא תוכן, ולכן הוא נושא את האישור שכל שדה תוכן נושא — אבל לא את תצוגת ההישג לפני ואחרי, שרק <span dir="ltr">`--scope`</span>, <span dir="ltr">`--always`</span>, <span dir="ltr">`--severity`</span> ו-<span dir="ltr">`--status`</span> חייבים. זו האסימטריה האחת שכדאי להכיר, מפני ש-<span dir="ltr">`directive`</span> הוא שקובע אם כלל אוסר או מורה. גם <span dir="ltr">`mycontext add`</span> מקבלת אותו, ולכן אפשר לקבוע שדה ייחודי לקטגוריה כבר ברגע הלכידה <!-- `core/command-flags.ts` · `const ADD_VALUE_FLAGS = ['body', 'file', 'note', 'step', 'scope', 'tags', 'severity', 'extra'];` · ~131 --> | <span dir="ltr">`add`, `edit`</span> |
+| <span dir="ltr">`--extra key=value`</span> | שדה אחד ייחודי לקטגוריה — ה-<span dir="ltr">`directive`</span> של כלל, ה-<span dir="ltr">`kind`</span> של דרישה. ניתן לחזור עליו, מפתח אחד לכל דגל, והערך נלקח בשלמותו, פסיקים כלולים. הוא **ממזג**: מפתח שלא נקבתם בו שומר על ערכו. אין איות שמוחק מפתח, מפני שערך ריק ושדה נעדר אינם ניתנים להבחנה אחרי הכתיבה. הוא תוכן, ולכן הוא נושא את האישור שכל שדה תוכן נושא — אבל לא את תצוגת ההישג לפני ואחרי, שרק <span dir="ltr">`--scope`</span>, <span dir="ltr">`--always`</span>, <span dir="ltr">`--severity`</span> ו-<span dir="ltr">`--status`</span> חייבים. זו האסימטריה האחת שכדאי להכיר, מפני ש-<span dir="ltr">`directive`</span> הוא שקובע אם כלל אוסר או מורה. גם <span dir="ltr">`mycontext add`</span> מקבלת אותו, ולכן אפשר לקבוע שדה ייחודי לקטגוריה כבר ברגע הלכידה <!-- `core/command-flags.ts` · `'body', 'file', 'note', 'step', 'summary', 'scope', 'tags', 'severity', 'extra',` · ~131 --> | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--status <name>`</span> | להזיז את סטטוס מחזור החיים של פריט: <span dir="ltr">`active`, `draft`, `deprecated`</span> או `validated`. `superseded` **מסורב** כאן, כי פרישה נוקבת במחליף שלה ורושמת אותו בשני הכיוונים — וזו <span dir="ltr">`mycontext supersede`</span>. ב-`search` וב-`export` הוא מסנן לפי סטטוס במקום | <span dir="ltr">`edit`, `search`, `export`</span> |
 | <span dir="ltr">`--agent`</span> | לרשום את הלקח עם <span dir="ltr">`origin: agent`</span> במקום <span dir="ltr">`origin: human`</span>, וזו הטענה האחת שמעטפת של מסוף אינה יכולה לטעון באמת בעצמה. הוא אינו מוסיף שום דרך לשקר שלא הייתה לפקודה החשופה ממילא — הוא מוסיף את הדרך הראשונה לדייק — ו-`lesson` הוא דרג נימוקים, ולכן מה שהוא רושם אינו שולט בדבר כך או כך. <span dir="ltr">`lesson-accept`</span> מסרבת לו **בשמו**, בכל איות: אישור מועמד מבוים יוצר כלל ששולט במאגר הזה, ואיות סוכן של שער הוא היעדרו של השער | `lesson` |
 | <span dir="ltr">`--by <id>`</span> | נוקב במחליף שתופס את מקומו של הפריט הפורש. **חובה** — פרישה בלי יורש אינה מוצעת | `supersede` |
@@ -4102,6 +4115,10 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
   The one-line name. Changing it does not change the id.
 - **`body`** — a field; free text; `mycontext edit <id> --body "…" | --file <path>`
   What the item actually says. On a governing item this is gated and previewed.
+- **`summary`** — a field; free text; `mycontext edit <id> --summary "…"`
+  One plain sentence saying what this item IS and why it matters, for a reader
+  who does NOT know this codebase - plain words, no ids, no paths, no numbers.
+  Max 160 chars; the body keeps the precision. `--summary=` removes it.
 - **`scope`** — a field; free text; `mycontext edit <id> --scope "a/**,b/**"`
   The globs this governs. Empty means everywhere, unless the category sets
   scopePolicy required.
@@ -4128,6 +4145,10 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 - **`body`** — a field; free text; `mycontext edit <id> --body "…" | --file <path>`
   What the item actually says. Ungated on this tier — nothing governs before or
   after.
+- **`summary`** — a field; free text; `mycontext edit <id> --summary "…"`
+  One plain sentence saying what this item IS and why it matters, for a reader
+  who does NOT know this codebase - plain words, no ids, no paths, no numbers.
+  Max 160 chars; the body keeps the precision. `--summary=` removes it.
 - **`scope`** — a field; free text; `mycontext edit <id> --scope "a/**,b/**"`
   The globs this is about. Accepted on this tier, unlike severity and always.
 - **`tags`** — a tag; free text; `mycontext edit <id> --tags "a,b"`
@@ -5443,7 +5464,7 @@ my_context: updated RULE-never-log-customer-email (active).
 </div>
 
 ```text
-my_context: NOT applied — staged as revision REV-76627cb9f4c6 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
+my_context: NOT applied — staged as revision REV-9aae7cb2b817 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
 ```
 
 <div dir="rtl">

@@ -101,19 +101,139 @@ export function formatAge(ms) {
   return `${Math.floor(h / 24)}d`;
 }
 
+/* ══ THE OCCUPANCY BANDS — DERIVED FROM THE THRESHOLD, NEVER FROM TASTE ════
+ *
+ * `plan:walk seq:117`. The context figure carried no colour at all, so a
+ * reader could see a percentage and not see how much runway was left.
+ *
+ * ── THE MEASUREMENT THAT SETTLES IT ───────────────────────────────
+ *
+ * Every `pre-compact` record carries `occupancyPercent` and `trigger`, and two
+ * automatic compactions stand on the live audit log:
+ *
+ *     2026-08-29  auto  99.7147%
+ *     2026-08-28  auto  99.809%
+ *
+ * So Claude Code's own auto-compaction fires at ~99.75%, and 98 — the value
+ * `handoverThresholdPercent()` resolves to when nothing is configured — IS
+ * reachable. That settles the standing concern recorded in `config.ts`. What it
+ * also says is why colouring AT the threshold would be useless: a bar that only
+ * leaves green at 98 gives a reader about 1.75 points of runway before the
+ * window is compacted out from under them, which is not enough to finish a
+ * thought, capture a lesson, or write a handover deliberately.
+ *
+ * ── SO THE WARN BAND OPENS A TENTH OF THE WINDOW BEFORE THE ASK ─────────
+ *
+ *     crit   pct >= T                    the ask fires here
+ *     warn   pct >= T * 0.9              approaching it, with room to act
+ *     ok     below that                  comfortably below the ask
+ *
+ * `T` is `handoverThresholdPercent`, SERVED by `/api/watch/context` and never
+ * spelled here: the value is configurable, `core/config.ts` names one place
+ * where its default is applied, and a constant in a browser would be a second
+ * one. At the current T = 98 the warn band opens at 88.2%, which is 9.8 points
+ * of runway — five and a half times the 1.75 a reader gets between the ask and
+ * the measured auto-compaction. Move the threshold to 80 and the warn band
+ * moves to 72 with it, which is the property that makes this derived rather
+ * than chosen.
+ *
+ * A FRACTION of the threshold rather than a fixed offset below it, because an
+ * offset is a second number with its own units: "eight points below" is
+ * arbitrary at T=98 and absurd at T=10, while "the last tenth of the way there"
+ * says the same thing at every T and cannot go negative.
+ *
+ * **Three levels, three existing hues — ok, warn, crit.** No sixth is invented
+ * (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`), and
+ * colour is never the only carrier: the caller draws a chip with a WORD in it
+ * and the percentage stays a number beside it.
+ */
+export const OCCUPANCY_WARN_FRACTION = 0.9;
+
+/**
+ * The two boundaries, in percentage points, for a threshold of `threshold`.
+ *
+ * `null` in, `null` out: with the handover feature off there is no ask, so
+ * there is no level to name a band against and the caller draws none.
+ */
+export function occupancyBands(threshold) {
+  if (typeof threshold !== 'number' || !Number.isFinite(threshold)) return null;
+  return { warn: threshold * OCCUPANCY_WARN_FRACTION, crit: threshold };
+}
+
+/**
+ * **How old a context sample may be and still be levelled.**
+ *
+ * `plan:walk seq:117`: *"Do not colour a stale figure as though it were live.
+ * The strip already discloses age — a fossil rendered in confident red is
+ * worse than an uncoloured number."*
+ *
+ * The tee this figure comes from is rewritten by `mycontext statusline` on
+ * Claude Code's own per-message hook, so in a session somebody is working in it
+ * is refreshed once per assistant response — seconds to a couple of minutes
+ * apart. Fifteen minutes is an order of magnitude past that: long enough that
+ * no ordinary pause between turns trips it, short enough that a session nobody
+ * is in stops being drawn as a live reading. It is not a claim about how long
+ * the number stays TRUE — nothing here can know that — it is the point past
+ * which this page may no longer present it as current.
+ *
+ * The live corpus is the case that argues for it: its own sample reads 60.1%
+ * and was received 29 hours ago. Levelled, that is a confident green about a
+ * window that no longer exists.
+ */
+export const CONTEXT_SAMPLE_FRESH_MS = 15 * 60_000;
+
+/**
+ * The band a live occupancy figure falls in — `'ok'`, `'warn'`, `'crit'` — or
+ * `'stale'` for a sample too old to be levelled, or `null` when there is
+ * nothing to level (no percentage, or no threshold to name bands against).
+ *
+ * `ageMs` is the caller's, computed from `receivedAt` at RENDER time for the
+ * same reason the "as of … ago" label is: a number frozen at fetch time is
+ * exactly what an age must not be.
+ *
+ * `>=` on both boundaries, so a figure sitting exactly on the threshold is AT
+ * the ask rather than one step below it.
+ */
+export function occupancyLevel(pct, threshold, ageMs) {
+  const bands = occupancyBands(threshold);
+  if (bands === null) return null;
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return null;
+  if (typeof ageMs === 'number' && Number.isFinite(ageMs) && ageMs > CONTEXT_SAMPLE_FRESH_MS) {
+    return 'stale';
+  }
+  if (pct >= bands.crit) return 'crit';
+  if (pct >= bands.warn) return 'warn';
+  return 'ok';
+}
+
 // The strip's decision table (spec §4b + §7): five states, each its own
 // rendering, never a number invented for a state that lacks one. `age` is
 // computed by the caller from receivedAt at render time so it ticks — it is
 // deliberately NOT a field here, because a number frozen at fetch time is the
 // one thing an "as of … ago" label must not be.
+//
+// **`handover` rides along, and it is the SERVER's** (`plan:walk seq:118`,
+// `seq:117`). Both the verdict and the threshold are read off the body and
+// neither is computed: `core/handover-ask.ts` owns the comparison and
+// `core/config.ts` owns the threshold's default. A body from a build that
+// predates the field lands on the same shape a feature-off corpus lands on,
+// which is the honest reading — this page cannot tell those two apart and does
+// not pretend to.
 export function contextStrip(body, isCold) {
+  const handover = handoverOf(isCold ? null : body);
   if (isCold || body === null) {
-    return { state: 'cold', pct: null, used: null, size: null, receivedAt: null, myctx: null, myctxError: null };
+    return {
+      state: 'cold', pct: null, used: null, size: null, receivedAt: null,
+      myctx: null, myctxError: null, handover,
+    };
   }
   const myctx = body.mycontext ?? null;
   const myctxError = body.mycontextError ?? null;
   if (body.sample === null) {
-    return { state: 'no-bridge', pct: null, used: null, size: null, receivedAt: null, myctx, myctxError };
+    return {
+      state: 'no-bridge', pct: null, used: null, size: null, receivedAt: null,
+      myctx, myctxError, handover,
+    };
   }
   const c = body.sample.context;
   return {
@@ -124,7 +244,58 @@ export function contextStrip(body, isCold) {
     receivedAt: body.sample.receivedAt,
     myctx,
     myctxError,
+    handover,
   };
+}
+
+/**
+ * The served handover block, read defensively and never re-derived.
+ *
+ * Every field is nullable and `verdict: null` is the one the caller draws
+ * nothing for — an endpoint that did not answer, or a cold session with no
+ * endpoint to ask. It is NOT `off`: "the feature is switched off" is a
+ * measurement this page was told, and "nobody asked" is not.
+ */
+function handoverOf(body) {
+  const h = body === null || body === undefined ? null : body.handover;
+  if (h === null || h === undefined || typeof h !== 'object') {
+    return { verdict: null, path: null, askedAt: null, writtenAt: null, threshold: null };
+  }
+  return {
+    verdict: typeof h.verdict === 'string' ? h.verdict : null,
+    path: h.path ?? null,
+    askedAt: h.askedAt ?? null,
+    writtenAt: h.writtenAt ?? null,
+    threshold: typeof h.thresholdPercent === 'number' ? h.thresholdPercent : null,
+  };
+}
+
+/* ══ THE CORPUS DRIFT CHIP ══════════════════════════════════════
+ *
+ * `measureCorpusDrift` landed on 2026-08-31 and `/api/ping` and `/api/meta`
+ * both serve its answer as `corpus`. Nothing drew it, and its six string keys
+ * were already sitting in both tables. This is the decision table for the three
+ * states its own `drifted: boolean | null` names, written here rather than as a
+ * branch inside a DOM builder so a unit test can reach every one of them.
+ *
+ * **`false` is a MEASUREMENT and `null` is not.** `core/corpus-drift.ts` is
+ * explicit: a truncated sweep that found nothing answers `null` rather than
+ * `false`, because "nothing here" over the part that fit is not the question
+ * that was asked. A surface drawing this must say "not known" and never "no"
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`).
+ */
+export function corpusDrift(corpus) {
+  if (corpus === null || corpus === undefined || typeof corpus !== 'object') {
+    return { state: 'unknown', aheadByMs: null };
+  }
+  if (corpus.drifted === true) {
+    return {
+      state: 'drifted',
+      aheadByMs: typeof corpus.aheadByMs === 'number' ? corpus.aheadByMs : null,
+    };
+  }
+  if (corpus.drifted === false) return { state: 'in-step', aheadByMs: null };
+  return { state: 'unknown', aheadByMs: null };
 }
 
 // One series from the volume endpoint's columns: the HEIGHT only. The

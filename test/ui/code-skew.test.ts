@@ -249,12 +249,43 @@ test('the live static read-through is UNCHANGED — the ruling, not a comment', 
 
 test('the shell reads staleCode from BOTH channels it has', () => {
   const app = source('ui', 'public', 'app.js');
-  assertMatches(app, /startHeartbeat\(\s*document, \(\) => api\('\/api\/ping'\)\.then\(noteCodeSkew\)/,
+  // **Loosened from the point-free `.then(noteCodeSkew)` to "the heartbeat's
+  // answer reaches it", on 2026-08-31, when `plan:walk seq:4`'s corpus-drift
+  // disclosure joined this request.** Both facts ride the heartbeat for the
+  // identical reason, so the handler is no longer a bare function reference —
+  // and pinning the exact old spelling would have made a SECOND disclosure
+  // arriving on the same channel read as the first one leaving. What this file
+  // is about is that the disclosure reaches a tab open since the morning, and
+  // that is what is asserted.
+  assertMatches(app, /api\('\/api\/ping'\)\.then\(\(answer\) => \{[\s\S]{0,200}?noteCodeSkew\(answer\);/,
     'the heartbeat must carry the disclosure: it is the only poll a morning tab makes');
+  assertMatches(app, /startHeartbeat\(\s*\n?\s*document, \(\) => api\('\/api\/ping'\)/,
+    'and it must still BE the heartbeat that carries it, not a poll of its own');
   assertMatches(app, /const meta = await api\('\/api\/meta'\);\n(?:\s*\/\/.*\n)*\s*noteCodeSkew\(meta\);/,
     'first paint must disclose too, without waiting up to a minute');
   assertMatches(app, /const CODE_SKEW_KEY = 'ex\.codeSkew';/,
     'the pending string key is named in the shell, not left to memory');
+});
+
+/**
+ * **The corpus-drift disclosure rides the SAME two channels, and that is not a
+ * coincidence for the next reader to re-derive.**
+ *
+ * `plan:walk seq:4` shipped `measureCorpusDrift` and put its answer on
+ * `/api/ping` and `/api/meta` — the two requests `staleCode` already used, for
+ * the argument `server.ts` writes out in full: the heartbeat is the only
+ * channel that reaches a tab open since the morning, and `/api/meta` is the
+ * only one that reaches a tab in its first minute. It then drew NOTHING, and
+ * that is the failure this asserts against — a field served on two channels
+ * and read on neither is indistinguishable from a field nobody added.
+ */
+test('the shell reads the corpus drift from BOTH channels it has', () => {
+  const app = source('ui', 'public', 'app.js');
+  assertMatches(app, /noteCorpusDrift\(answer\);/,
+    'the heartbeat must carry the drift too: a corpus moves while a tab sits open in a way a '
+    + "server's own code cannot");
+  assertMatches(app, /noteCorpusDrift\(meta\);/,
+    'first paint must disclose too, without waiting up to a minute for the first ping');
 });
 
 test('mycontext ui says at start that its code is frozen', () => {

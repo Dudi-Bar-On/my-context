@@ -41,7 +41,7 @@
  */
 import type { UpdatableName } from './categories.ts';
 import type { Config } from './config.ts';
-import type { FlagDeclaration, FlagDeclarations, FlagSpec } from './command-flags.ts';
+import { SUMMARY_FLAG, type FlagDeclaration, type FlagDeclarations, type FlagSpec } from './command-flags.ts';
 import { SEVERITIES, STATUSES } from './validate.ts';
 import { updatesFor } from './tag-projection.ts';
 
@@ -57,10 +57,10 @@ import { updatesFor } from './tag-projection.ts';
  */
 export const EDIT_FLAGS: FlagSpec = {
   allowed: [
-    'title', 'body', 'scope', 'tags', 'severity', 'always', 'continuity', 'status', 'extra',
-    'unlink', 'yes',
+    'title', 'body', 'summary', 'scope', 'tags', 'severity', 'always', 'continuity', 'status',
+    'extra', 'unlink', 'yes',
   ],
-  values: ['title', 'body', 'scope', 'tags', 'severity', 'status', 'extra'],
+  values: ['title', 'body', 'summary', 'scope', 'tags', 'severity', 'status', 'extra'],
 };
 
 /**
@@ -102,6 +102,18 @@ const BUILT_IN_DECLARATIONS: FlagDeclarations = {
     values: SEVERITIES,
     note: 'hard items are admitted to a budget before soft ones. `mycontext harden` and '
       + '`mycontext soften` are these two settings under a shorter name.',
+  },
+  summary: {
+    // `SUMMARY_FLAG`'s own `format` and `example` (command-flags.ts), because
+    // the field and the bar are identical on both commands and two wordings of
+    // "what is a summary for" is exactly the drift this table exists to stop.
+    // Only the NOTE is extended, with the one sentence that is true of `edit`
+    // and not of `add`: the empty value is the clear.
+    ...SUMMARY_FLAG,
+    note: `${SUMMARY_FLAG.note} \`--summary=\` with nothing after it REMOVES the summary; `
+      + 'omitting the flag leaves it alone. Writing one also records what it was written '
+      + 'against, so a later edit to the body makes it measurably stale rather than quietly '
+      + 'wrong.',
   },
   always: {
     note: 'Pin the item: inject it in full at every session start. `--always=false` clears it, '

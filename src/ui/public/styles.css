@@ -548,6 +548,13 @@ bdi{unicode-bidi:isolate}
    trap `.strip [hidden]` dodges below: a hidden child stays hidden only while
    nothing else sets its `display`, and this bar is a flex container. */
 .prov [hidden]{display:none}
+/* AND THE SAME RULE FOR THE HEADER, because the repo group moved into it
+   (`plan:walk seq:114`, owner ruling 2026-08-31). `.gitstate` shows one of
+   seven states and hides the other six; `.chip` sets `display`, which beats
+   the UA sheet's `[hidden]` at equal specificity, so without this every git
+   state would paint at once in the one row a reader looks at first. Carried
+   byte-for-byte from the mockup, which was edited first. */
+.hdr [hidden]{display:none}
 
 /* status strip
 
@@ -652,6 +659,40 @@ bdi{unicode-bidi:isolate}
    belongs at the end, where the live-stream fault and the refresh affordance
    already sit. */
 .sgrp-session{flex:0 1 auto;min-inline-size:0}
+/* THE CORPUS GROUP CAN GIVE WAY NOW, BECAUSE IT CARRIES A SENTENCE.
+   Until the drift chip landed (`plan:walk seq:4`, drawn 2026-08-31) this group
+   was a count and a five-letter noun and `flex:0 0 auto` cost nothing. With the
+   chip it measures 314px, and at 900px the strip spilled by 21px and squeezed
+   the context group to ZERO — the four-of-forty-four defect wearing a flexbox,
+   measured in a browser before this rule rather than after it.
+
+   Shrink factor 2: it yields FASTER than the live context measurement (1),
+   which is the number this product is about, and SLOWER than the audit group
+   (3), which holds two figures this read surface has no source for. Priority by
+   information density, the same ordering `.sgrp-audit` above is written for.
+
+   With a floor, because "yields" is not "disappears", and the floor is the
+   whole group and not just its number: 220px is the label plus the count
+   (120px, measured) plus the drift chip's own 88px. At a bare 120px floor the
+   chip measured ZERO at 900px - the state gone, the reader back to not knowing
+   the corpus can move under this page at all, which is the exact defect the
+   audit group's own 170px floor was written against one rule down. */
+.sgrp-corpus{flex:0 2 auto;min-inline-size:220px}
+/* And the squeeze lands on the CHIP'S SENTENCE and not on the count: the count
+   is a measured figure and a clipped one is a wrong one, while "corpus changed
+   outside the log" ellipsises and stays legible with its full text one hover
+   away — the same bound-AND-disclose treatment `.ctxstate>span` gets. */
+.corpusstate{flex:none}
+.corpusdrift{display:flex;align-items:center;flex:0 1 auto;min-inline-size:88px;overflow:hidden}
+.corpusdrift .chip{min-inline-size:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* AND THE CONTEXT GROUP'S OWN CHIPS ARE NOT SENTENCES, so they do not take the
+   sentence's line-height. `.ctxstate>span` is 1.9 because it is a CLIPPING BOX
+   around running text and the ink needed ~4px of clearance inside it; a chip is
+   a pill with 3px of its own block padding, and at 1.9 it measured 30.1px in a
+   38px row - 8px of clearance where the strip's own gate asks for at least 6,
+   and the corpus group's 34.1px was already past it. 1.3 keeps the ink clear of
+   its own overflow box and hands the row back 8px. */
+.ctxstate>.chip{line-height:1.3;flex:none}
 /* WHICH GROUP GIVES WAY, AND IN WHAT ORDER — measured at 1280px, not reasoned
    about. Before this rule the audit group was `flex:none` at its full natural
    width and the session group, the only shrinkable item left, was squeezed to
@@ -735,6 +776,40 @@ bdi{unicode-bidi:isolate}
    8px MORE. `e2e/strip.spec.ts` now measures every control in the strip
    against the strip, which is the assertion that would have caught it. */
 #screenstale,#livestate{display:flex;align-items:center;gap:var(--sp-2)}
+/* ── AND `#screenstale` NOW RENDERS WITH THE SCREEN IT ACTS ON — owner ruling
+   2026-08-31, `plan:walk seq:116`: "move the refresh button to the screen".
+   Still APP-ONLY; the design of record declares neither affordance, and this
+   rule is the layout the move needs rather than a look it invents.
+
+   **IT OVERLAYS THE SCREEN, IT DOES NOT DISPLACE IT, AND THAT IS MEASURED.**
+   `app.js` prepends this into `.body` (`#screen`), which is `display:grid` with
+   every `[data-p]` screen in ONE cell (`grid-column:1;grid-row:1`) so an
+   outgoing and an incoming screen crossfade in place. This takes THE SAME CELL,
+   so it stacks over the current screen and adds nothing to the flow.
+
+   The first attempt put it inside the section instead, in normal flow, and
+   `e2e/live-refresh.spec.ts`'s acceptance test for `DEC-a-refresh-keeps-the-
+   reader-s-place-or-it-asks` caught it immediately: with the body scrolled to
+   300px, inserting a 58px affordance above the content moved `scrollTop` to
+   358. The browser was RIGHT — that is scroll anchoring keeping the reader's
+   place — and the affordance was wrong to have a place in the flow at all. In
+   its own cell nothing moves in either direction.
+
+   `position:sticky` with `.body{overflow-y:auto}` as the scroll container, so
+   it stays visible while the reader scrolls the screen it is about; the grid
+   area spans the whole screen, which is the room it has to travel in.
+   `justify-self:start` and `inline-size:fit-content` so it is as wide as its
+   two items and not a banner across the screen — it is a qualification, not an
+   alert. The opaque `--panel` face and the border are what let it overlay text
+   legibly: without a background a sticky element sits transparently on top of
+   whatever scrolls under it, which is unreadable at exactly the moment it
+   matters. `z-index:4` clears the screens' own content and stays under `.hdr`
+   (5) and the exit banner (30). */
+#screenstale{grid-column:1;grid-row:1;align-self:start;justify-self:start;
+  position:sticky;inset-block-start:0;z-index:4;
+  inline-size:fit-content;max-inline-size:100%;background:var(--panel);
+  border:1px solid var(--edge-3);border-radius:var(--r-md);
+  padding-block:4px;padding-inline:var(--sp-2);color:var(--dim)}
 /* AND THE LAYOUT RULE ABOVE MUST NOT DEFEAT `hidden`, which is what it did for
    the first hours of its life. Both spans are BUILT hidden and unhidden only
    when there is something to say — a stream fault, or a record for the screen

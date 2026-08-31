@@ -146,6 +146,15 @@ export function updatableExtraError(
  * an `extra` field of the same name would silently overwrite it on disk. */
 const RESERVED_FRONTMATTER_KEYS = new Set([
   'id', 'type', 'title', 'status', 'severity', 'always', 'scope', 'tags', 'origin',
+  // Both, and both are required rather than tidy. `renderItem` writes `extra`
+  // AFTER the fixed keys (`for (const [key, value] of Object.entries(item.extra))
+  // fm[key] = value`), so an `extra.summary` would overwrite the field on disk
+  // and the NEXT `parseItem` would read it back as the item's summary — with
+  // the basis still describing the old one. `summary_of` is reserved for the
+  // same write, one field over. Measured on this corpus before reserving them:
+  // zero items carry either as an extra field, so nothing existing is refused
+  // by this addition.
+  'summary', 'summary_of',
   'source_file', 'source_anchor', 'source_checksum', 'valid_from', 'valid_until', 'checksum',
 ]);
 
@@ -252,6 +261,134 @@ export function validateTitle(title: string): void {
     `Markdown heading, so this would corrupt the file the next time it is written to disk. ` +
     `Keep the title on one line; put the rest in "body". See mycontext_help("capture").`,
   );
+}
+
+/**
+ * **The bar a summary has to clear, and the bound that enforces it.**
+ *
+ * ── THE BAR ────────────────────────────────────────────────────────────────
+ *
+ * The owner's requirement, in their words, is that a summary be **"simple and
+ * very readable from first sight"** — and that is a stronger bar than short.
+ * This corpus already produces short. Its titles have a median of 70
+ * characters and are routinely unreadable to anyone who does not already know
+ * the code. A real one, 120 characters and entirely precise:
+ *
+ *     the injected endpoint collapses a missing seen file into a measured
+ *     zero, so the screen says a file nobody opened was read
+ *
+ * Nothing is wrong with that sentence except that it can only be read by
+ * somebody who already knows what a seen file is, what a measured zero means
+ * here, and which screen. **Short and dense is the failure mode, not the
+ * remedy.** The summary of that same item is:
+ *
+ *     A screen says it checked a session and found nothing, when in fact it
+ *     never checked at all.
+ *
+ * So a summary is written **for a reader who does not know this codebase**:
+ *
+ *  - plain words, not project vocabulary;
+ *  - no ids, no file paths, no function names, no measurements;
+ *  - it says what the thing IS and why it matters, never how it was found;
+ *  - one sentence, taken in at a glance, without re-reading.
+ *
+ * The item's `body` remains the place for precision, and loses none of it.
+ * The summary is not a shorter body — it is the same claim said plainly.
+ *
+ * ── THE BOUND ──────────────────────────────────────────────────────────────
+ *
+ * *Why a bound at all.* `plan:walk seq:122` measured a `doctor` screen where
+ * 91% of the output was one paragraph printed sixty-one times. A summary is
+ * the most reproduced thing an item will have — it belongs beside the item on
+ * every list, every query hit and every report — so a summary that is itself a
+ * paragraph reproduces that defect exactly, in the field added to prevent it.
+ *
+ * *Why characters and not tokens.* There is no tokenizer here and there cannot
+ * be one: `CONST-zero-runtime-dependencies`. `estimateTokens` (select.ts) is
+ * chars÷4 and says of itself that it is "an approximation with error in both
+ * directions and not a bound", so it cannot gate a write. A character count is
+ * exact, is what the file actually stores, and is checkable on the hook path.
+ *
+ * *Why 160.* The number is reasoned from how much a person absorbs in one
+ * pass, NOT from what fits on a screen or in a budget — an earlier draft of
+ * this bound was 240, chosen because it is three lines at the CLI's
+ * 80-column layout budget and admits the first sentence of 94.8% of this
+ * corpus's bodies. Both of those are fit arguments, and fit is the wrong
+ * question: the 120-character title above fits everything and is unreadable.
+ *
+ * 160 characters is about twenty-five words — one plain sentence, two lines at
+ * 80 columns, which is the span an eye crosses without returning to the start.
+ * It is a little under twice the owner's worked example above (89 characters)
+ * and a little under twice this corpus's median first-sentence-of-body (90),
+ * so it has room for one sentence written plainly and no room for two written
+ * densely. The 138 of 730 body first-sentences that run past it are precisely
+ * the dense ones, which is the point: **the bound is tight enough that a
+ * writer has to choose plain words instead of squeezing in the precise ones.**
+ *
+ * *What the refusal means.* Per the owner's ruling: an item that cannot be
+ * summarised inside the bound is a finding, not a case for a larger bound —
+ * the item is carrying more than one claim and wants splitting. The message
+ * below says that, and says the bar, rather than only naming the number.
+ */
+export const SUMMARY_MAX_CHARS = 160;
+
+/**
+ * The one normalisation of a summary, so the value a caller is validated on,
+ * the value compared against the stored one, and the value written to disk are
+ * the same string — the "hash what you store" discipline `body`, `steps` and
+ * `observations` each get at `createItem`.
+ *
+ * `.trim()` and nothing else, deliberately: `validateTitle`'s treatment. A run
+ * of internal spaces is not collapsed, because a summary carrying one is
+ * strange but harmless and silently rewriting a person's sentence is not; a
+ * line break is not joined, because `validateSummary` refuses it outright
+ * rather than guessing where the sentence was meant to break.
+ *
+ * The empty string is the CLEAR spelling — `mycontext edit <id> --summary=`,
+ * `update_item({summary: ""})` — and normalises to `''` here so that both
+ * halves of the boundary (`contentChange`, `updateItem`) read the same value
+ * and neither has to know how the caller spelled "remove it".
+ */
+export function normalizeSummary(summary: string): string {
+  return summary.trim();
+}
+
+/**
+ * `summary` is written as one frontmatter scalar, and — unlike `title` — it is
+ * NOT also a Markdown heading, so the line-break refusal here is the
+ * single-line-format guard alone (`validateScope`/`validateTags`' reason), not
+ * `validateTitle`'s pair of reasons.
+ *
+ * Takes the ALREADY-NORMALIZED value; the empty string means "no summary" and
+ * is accepted here, because the callers that can be handed one
+ * (`updateItem`'s clear, `createItem`'s `--summary=`) turn it into `null`
+ * rather than storing it. Storing `''` would be the silent-vanish failure
+ * `validateExtra` refuses for an extra value: `asString` (item.ts) maps an
+ * empty scalar back to `null` on the next read.
+ */
+export function validateSummary(summary: string): void {
+  if (LINE_BREAK.test(summary)) {
+    throw new Error(
+      `my_context: "summary" contains a line break. It is written as one frontmatter line, so ` +
+      `this would corrupt the file the next time it is written to disk. A summary is one or two ` +
+      `sentences on a single line; anything that needs a second line belongs in "body". ` +
+      `See mycontext_help("capture").`,
+    );
+  }
+  if (summary.length > SUMMARY_MAX_CHARS) {
+    throw new Error(
+      `my_context: "summary" is ${summary.length} characters and the limit is ` +
+      `${SUMMARY_MAX_CHARS}. A summary is ONE PLAIN SENTENCE, written for somebody who does not ` +
+      `know this codebase: plain words rather than project vocabulary, no ids, no file paths, ` +
+      `no measurements, and it says what the thing is and why it matters rather than how it was ` +
+      `found. The precision belongs in "body", which keeps all of it. Nothing was written. ` +
+      `Shortening this by cutting words usually produces a denser sentence rather than a ` +
+      `readable one — say the same thing plainly instead. If the item cannot be said plainly in ` +
+      `${SUMMARY_MAX_CHARS} characters, that is a finding about the item rather than about the ` +
+      `limit: it is carrying more than one claim and wants splitting into items that each carry ` +
+      `one. See mycontext_help("capture").`,
+    );
+  }
 }
 
 /**

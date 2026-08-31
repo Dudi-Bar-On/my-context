@@ -40,7 +40,7 @@ function run(args: string[], cwd: string): { code: number; out: string } {
  * checksum and be reported as a corpus error instead of exercising the guard. */
 function globalItem(id: string, title: string): string {
   const item: Item = {
-    id, type: 'constraint', title, status: 'active', severity: 'soft', always: false, continuity: false,
+    id, type: 'constraint', title, status: 'active', severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null,
     scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: '',

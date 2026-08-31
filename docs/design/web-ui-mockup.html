@@ -795,6 +795,7 @@ details.help[open]>summary{margin-block-end:6px}
    trap `.strip [hidden]` dodges below: a hidden child stays hidden only while
    nothing else sets its `display`, and this bar is a flex container. */
 .prov [hidden]{display:none}
+.hdr [hidden]{display:none}
 
 /* status strip
 
@@ -899,6 +900,40 @@ details.help[open]>summary{margin-block-end:6px}
    belongs at the end, where the live-stream fault and the refresh affordance
    already sit. */
 .sgrp-session{flex:0 1 auto;min-inline-size:0}
+/* THE CORPUS GROUP CAN GIVE WAY NOW, BECAUSE IT CARRIES A SENTENCE.
+   Until the drift chip landed (`plan:walk seq:4`, drawn 2026-08-31) this group
+   was a count and a five-letter noun and `flex:0 0 auto` cost nothing. With the
+   chip it measures 314px, and at 900px the strip spilled by 21px and squeezed
+   the context group to ZERO — the four-of-forty-four defect wearing a flexbox,
+   measured in a browser before this rule rather than after it.
+
+   Shrink factor 2: it yields FASTER than the live context measurement (1),
+   which is the number this product is about, and SLOWER than the audit group
+   (3), which holds two figures this read surface has no source for. Priority by
+   information density, the same ordering `.sgrp-audit` above is written for.
+
+   With a floor, because "yields" is not "disappears", and the floor is the
+   whole group and not just its number: 220px is the label plus the count
+   (120px, measured) plus the drift chip's own 88px. At a bare 120px floor the
+   chip measured ZERO at 900px - the state gone, the reader back to not knowing
+   the corpus can move under this page at all, which is the exact defect the
+   audit group's own 170px floor was written against one rule down. */
+.sgrp-corpus{flex:0 2 auto;min-inline-size:220px}
+/* And the squeeze lands on the CHIP'S SENTENCE and not on the count: the count
+   is a measured figure and a clipped one is a wrong one, while "corpus changed
+   outside the log" ellipsises and stays legible with its full text one hover
+   away — the same bound-AND-disclose treatment `.ctxstate>span` gets. */
+.corpusstate{flex:none}
+.corpusdrift{display:flex;align-items:center;flex:0 1 auto;min-inline-size:88px;overflow:hidden}
+.corpusdrift .chip{min-inline-size:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* AND THE CONTEXT GROUP'S OWN CHIPS ARE NOT SENTENCES, so they do not take the
+   sentence's line-height. `.ctxstate>span` is 1.9 because it is a CLIPPING BOX
+   around running text and the ink needed ~4px of clearance inside it; a chip is
+   a pill with 3px of its own block padding, and at 1.9 it measured 30.1px in a
+   38px row - 8px of clearance where the strip's own gate asks for at least 6,
+   and the corpus group's 34.1px was already past it. 1.3 keeps the ink clear of
+   its own overflow box and hands the row back 8px. */
+.ctxstate>.chip{line-height:1.3;flex:none}
 /* WHICH GROUP GIVES WAY, AND IN WHAT ORDER — measured at 1280px, not reasoned
    about. Before this rule the audit group was `flex:none` at its full natural
    width and the session group, the only shrinkable item left, was squeezed to
@@ -1520,6 +1555,43 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 
   <header class="hdr">
     <div class="logo"><span class="mark"></span><b>mycontext</b></div>
+    <!-- PRIMITIVE 8 — "git where the avatar would have gone": branch, working
+         tree, and the commit the corpus was reconciled against. This header has
+         said so in its own comment since it was written, and the group was in
+         the STATUS STRIP instead, where it took 373 of the strip's 906 rendered
+         pixels at 1280 and crowded the one figure the owner asked to be able to
+         read. Owner ruling 2026-08-31 (`plan:walk seq:114`) moves it here, where
+         1,692px of this row was empty.
+
+         The move pays twice: in the header the branch keeps its FULL name — the
+         2026-08-31 ruling that shortened it to a last path segment was a ruling
+         about the strip's width, and that width is not this row's problem — and
+         654px go back to the strip's corpus, session and audit groups.
+
+         `.sgrp` and `.gitstate` are unchanged, because nothing about what the
+         group SAYS changed; only where it says it. `.hdr [hidden]` is the one
+         rule that had to follow it, for the reason `.strip [hidden]` exists:
+         these are flex containers, `.chip` sets `display`, and an author rule
+         beats the UA sheet's `[hidden]` at equal specificity, so without it all
+         seven git states would paint at once. -->
+    <!-- Seven states, not one: readGitInfo can report four upstream answers and
+         two head shapes, and /api/meta can fail to answer at all. A strip that
+         can only say "in sync" makes a claim about the repository the reader
+         cannot check. Click to cycle, as #ctx does. -->
+    <span class="sgrp sgrp-repo">
+      <span class="slab" data-t="strip.grp.repo">repo</span>
+      <span class="gitstate" id="gitstate" title="Click to cycle the seven git states the spec requires"
+        data-t-title="title.gitState">
+        <span data-t="strip.branch">branch <span class="m v" data-v="branch">main</span> @ <span class="m v" data-v="commit">7f3a91c</span></span>
+        <span data-t="strip.detached">detached HEAD @ <span class="m v" data-v="commit">7f3a91c</span></span>
+        <span class="chip ok" data-g="●" data-t="strip.inSync">in sync with origin/<span class="m v" data-v="branch">main</span></span>
+        <span class="chip warn" data-g="▲" data-t="strip.differs">differs from origin/<span class="m v" data-v="branch">main</span></span>
+        <span class="chip warn" data-g="▲" data-t="strip.noUpstream">no upstream</span>
+        <span class="chip warn" data-g="▲" data-t="strip.unknownTip">the local tip could not be read</span>
+        <span class="chip warn" data-g="▲" data-t="strip.notARepo">not a git repository</span>
+        <span class="chip unmeas" data-g="◌" data-t="strip.unread" title="The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again." data-t-title="title.unread">not read</span>
+      </span>
+    </span>
     <div class="topr">
       <button class="sel" id="focusbtn" aria-haspopup="dialog" aria-expanded="false">
         <span data-t="top.focus">focus</span> <b id="focuslbl">none</b>
@@ -2958,25 +3030,6 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
        who cannot tell those apart stops trusting the surface". Before this,
        the two live groups did exactly that, permanently and in silence. -->
   <footer class="strip">
-    <!-- Seven states, not one: readGitInfo can report four upstream answers and
-         two head shapes, and /api/meta can fail to answer at all. A strip that
-         can only say "in sync" makes a claim about the repository the reader
-         cannot check. Click to cycle, as #ctx does. -->
-    <span class="sgrp sgrp-repo">
-      <span class="slab" data-t="strip.grp.repo">repo</span>
-      <span class="gitstate" id="gitstate" title="Click to cycle the seven git states the spec requires"
-        data-t-title="title.gitState">
-        <span data-t="strip.branch">branch <span class="m v" data-v="branch">main</span> @ <span class="m v" data-v="commit">7f3a91c</span></span>
-        <span data-t="strip.detached">detached HEAD @ <span class="m v" data-v="commit">7f3a91c</span></span>
-        <span class="chip ok" data-g="●" data-t="strip.inSync">in sync with origin/<span class="m v" data-v="branch">main</span></span>
-        <span class="chip warn" data-g="▲" data-t="strip.differs">differs from origin/<span class="m v" data-v="branch">main</span></span>
-        <span class="chip warn" data-g="▲" data-t="strip.noUpstream">no upstream</span>
-        <span class="chip warn" data-g="▲" data-t="strip.unknownTip">the local tip could not be read</span>
-        <span class="chip warn" data-g="▲" data-t="strip.notARepo">not a git repository</span>
-        <span class="chip unmeas" data-g="◌" data-t="strip.unread" title="The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again." data-t-title="title.unread">not read</span>
-      </span>
-    </span>
-    <span class="sep"></span>
     <!-- The count and the state where it could not be read. A blank number
          beside the word "items" is the failure clause 3 names. -->
     <span class="sgrp sgrp-corpus">
@@ -2985,6 +3038,15 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         data-t-title="title.corpus">
         <span class="m v" id="itemsval" data-v="items">43</span> <span data-t="strip.items">items</span>
         <span class="chip unmeas" data-g="◌" data-t="strip.unread" title="The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again." data-t-title="title.unread">not read</span>
+        <!-- WHETHER THE CORPUS MOVED WITHOUT THE LOG SEEING IT. `measureCorpusDrift`
+             sweeps `items/` against the audit log's own mtime on the heartbeat, and
+             `/api/ping` and `/api/meta` have both served its answer since 2026-08-31.
+             Three states, and the third is load-bearing: `false` is a MEASUREMENT and
+             `null` is not — a truncated sweep that found nothing answers `null`, so
+             this may say "not known" and may never say "no". -->
+        <span class="chip warn" data-g="▲" data-t="strip.corpusDrifted" data-t-title="title.corpusDrifted" title="An item file under items/ is newer than the last thing the audit log recorded, so this page is drawing a corpus that has moved under it.">corpus changed outside the log — <span class="v" data-v="age">4m</span> ago</span>
+        <span class="chip ok" data-g="●" data-t="strip.corpusInStep" data-t-title="title.corpusInStep" title="Nothing under items/ is newer than the last recorded change — measured, not assumed.">in step with the log</span>
+        <span class="chip unmeas" data-g="◌" data-t="strip.corpusDriftUnknown" data-t-title="title.corpusDriftUnknown" title="Whether anything changed outside the log could not be measured. This is &quot;not known&quot; rather than &quot;nothing changed&quot;.">outside edits not known</span>
       </span>
     </span>
     <span class="sep"></span>
@@ -3008,6 +3070,36 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         <span class="small" data-t="strip.myctxPartial">≥<span class="v" data-v="tokens">6.2k</span> of it from project knowledge (<span class="v" data-v="injections">3</span> injections, <span class="v" data-v="unrecorded">1</span> not recorded)</span>
         <span class="small" data-t="strip.myctxUnavailable">project-knowledge share unavailable: <span class="v" data-v="error">the audit log could not be read</span></span>
         <span class="chip unmeas" data-g="◌" data-t="strip.unread" title="The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again." data-t-title="title.unread">not read</span>
+        <!-- HOW MUCH RUNWAY IS LEFT, IN A COLOUR AND IN A WORD (plan:walk seq:117).
+             The percentage above is a number and stays one; this says which BAND
+             that number is in. The bands are derived from `handoverThresholdPercent`
+             — served, never a constant in the client — and the warn band opens nine
+             tenths of the way to it, because a bar that only leaves green at the
+             threshold gives a reader under two points of runway: the live audit log
+             records automatic compactions at 99.7147% and 99.809%.
+
+             Three of the five budgeted hues and not a sixth, and the WORD is what
+             survives a dichromat, a mono printer and forced-colors. The fourth state
+             is not a level at all: a sample older than fifteen minutes is drawn
+             UNCOLOURED, because a fossil in confident red is worse than no colour. -->
+        <span class="chip ok" data-g="●" data-t="strip.ctxOk" data-t-title="title.ctxOk" title="This window is below 88.2%, comfortably under the 98% the handover ask fires at.">well below the handover ask</span>
+        <span class="chip warn" data-g="▲" data-t="strip.ctxWarn" data-t-title="title.ctxWarn" title="This window is at or past 88.2% and has not yet reached 98%, where the handover ask fires.">nearing the handover ask</span>
+        <span class="chip crit" data-g="■" data-t="strip.ctxCrit" data-t-title="title.ctxCrit" title="This window is at or past 98%, the threshold the handover ask fires at.">at the handover ask</span>
+        <span class="chip unmeas" data-g="◌" data-t="strip.ctxLevelStale" data-t-title="title.ctxLevelStale" title="This reading is more than fifteen minutes old, so it is shown without a level.">too old to place</span>
+        <!-- AND WHAT BECAME OF THE HANDOVER ASK (plan:walk seq:118). Every
+             `pre-compact` record has carried `handoverAsk` since 2026-08-27 — a
+             settled verdict, computed by `core/handover-ask.ts` against the file's
+             mtime — and no surface read it. Five states, because collapsing any two
+             of them loses the question: `ignored` is the one that matters most and
+             the one a reader would never think to check for, so it wears the loudest
+             hue in the budget rather than a quieter shade of `acted on`; and `off`
+             is a different fact from `not asked` — nothing promised, against
+             something promised whose moment has not come. -->
+        <span class="chip ok" data-g="●" data-t="strip.hoActed" data-t-title="title.hoActed" title="The handover ask went out and the file was written after it.">handover written <span class="v" data-v="age">2h</span> ago</span>
+        <span class="chip crit" data-g="■" data-t="strip.hoIgnored" data-t-title="title.hoIgnored" title="The ask went out and the handover has not been written since.">handover asked for and not written</span>
+        <span class="chip carry" data-g="◇" data-t="strip.hoNotAsked" data-t-title="title.hoNotAsked" title="A handover is configured and this session has not crossed the threshold.">handover not yet asked</span>
+        <span class="chip unmeas" data-g="◌" data-t="strip.hoOff" data-t-title="title.hoOff" title="No handover is configured for this corpus.">no handover configured</span>
+        <span class="chip unmeas" data-g="◌" data-t="strip.hoUnknown" data-t-title="title.hoUnknown" title="An ask was recorded but the comparison could not be made.">handover state not known</span>
       </span>
     </span>
     <span class="sep"></span>
@@ -4246,10 +4338,11 @@ $('#provproj').addEventListener('click',()=>{pji=(pji+1)%PROJSTATES.length;paint
 
    Toggled, never built: the strings live in the table under keys, which is the
    only place a string can be checked from. */
-const CTXSTATES=[['strip.ctx.known','strip.myctx'],
-                 ['strip.ctx.known','strip.myctxPartial'],
-                 ['strip.ctx.known','strip.myctxUnavailable'],
-                 ['strip.ctx.notYetKnown'],
+const CTXSTATES=[['strip.ctx.known','strip.myctx','strip.ctxOk','strip.hoNotAsked'],
+                 ['strip.ctx.known','strip.myctxPartial','strip.ctxWarn','strip.hoActed'],
+                 ['strip.ctx.known','strip.myctxUnavailable','strip.ctxCrit','strip.hoIgnored'],
+                 ['strip.ctx.known','strip.myctx','strip.ctxLevelStale','strip.hoUnknown'],
+                 ['strip.ctx.notYetKnown','strip.hoOff'],
                  ['strip.ctx.unknown'],
                  ['strip.ctx.noBridgeShort'],
                  ['strip.ctx.cold'],
@@ -4315,7 +4408,9 @@ function stripCycle(id, states){
   $('#'+id).addEventListener('click', () => { i = (i+1)%states.length; paint(); });
 }
 stripCycle('corpusstate', [
-  { on:['strip.items'], vals:{ itemsval:'43' } },
+  { on:['strip.items','strip.corpusInStep'], vals:{ itemsval:'43' } },
+  { on:['strip.items','strip.corpusDrifted'], vals:{ itemsval:'43' } },
+  { on:['strip.items','strip.corpusDriftUnknown'], vals:{ itemsval:'43' } },
   { on:['strip.items','strip.unread'], vals:{ itemsval:'—' } },
 ]);
 stripCycle('auditstate', [

@@ -7,6 +7,7 @@ import {
   focusReportLines, isFocusActive, readFocus, setFocus, unsetFocus,
   type Focus, type FocusAxes,
 } from '../core/focus.ts';
+import { summaryStalenessNote } from '../core/content-hash.ts';
 import { renderItem } from '../core/item.ts';
 import {
   createItem, supersedeItem, updateItem,
@@ -477,6 +478,7 @@ const SPECS: ToolSpec[] = [
       type: { ...S_STRING, description: 'Category — see mycontext_help("categories")' },
       title: { ...S_STRING, description: 'One sentence, the item as a claim' },
       body: { ...S_STRING, description: 'Why it holds' },
+      summary: { ...S_STRING, description: 'One PLAIN sentence, max 160 chars, for a reader who does not know this codebase: what it IS and why it matters. No ids, no paths, no measurements, never how it was found. Optional - the body keeps the precision' },
       scope: { ...S_STRINGS, description: 'Repo-relative globs — see mycontext_help("scope")' },
       tags: S_STRINGS,
       severity: { ...S_STRING, enum: SEVERITIES },
@@ -533,6 +535,7 @@ const SPECS: ToolSpec[] = [
         type: str(args, 'type', 'create_item'),
         title: str(args, 'title', 'create_item'),
         body: optStr(args, 'body'),
+        summary: optStr(args, 'summary'),
         scope: optList(args, 'scope'),
         tags: optList(args, 'tags'),
         severity: optEnum<Severity>(args, 'severity', SEVERITIES, 'capture'),
@@ -558,6 +561,16 @@ const SPECS: ToolSpec[] = [
       id: S_STRING,
       title: S_STRING,
       body: S_STRING,
+      // Content, like title and body, and the description says the one thing a
+      // caller cannot infer from the name: the empty string is how a summary
+      // is REMOVED. There is no null spelling — see `UpdateInput.summary`.
+      summary: {
+        ...S_STRING,
+        description:
+          'One PLAIN sentence, max 160 chars, for a reader who does not know this codebase: what it IS and why it matters. No ids, no paths, no measurements, never how it was found. Optional - the body keeps the precision. Content, so it is staged for ' +
+          'review on a governing normative item like title and body. Pass "" to remove ' +
+          'the existing summary',
+      },
       scope: { ...S_STRINGS, description: 'Refused on a governing normative item' },
       tags: S_STRINGS,
       severity: { ...S_STRING, enum: SEVERITIES, description: 'Refused on a governing normative item' },
@@ -579,6 +592,7 @@ const SPECS: ToolSpec[] = [
       id: str(args, 'id', 'update_item'),
       title: optStr(args, 'title'),
       body: optStr(args, 'body'),
+      summary: optStr(args, 'summary'),
       scope: optList(args, 'scope'),
       tags: optList(args, 'tags'),
       severity: optEnum<Severity>(args, 'severity', SEVERITIES, 'capture'),
@@ -700,7 +714,16 @@ const SPECS: ToolSpec[] = [
     run: (cwd, args) => withWorkspace(cwd, (ctx) => {
       const item = requireItem(ctx, str(args, 'id', 'get_item'));
       const notice = itemRevisionNotice(item.id, pendingRevisions(ctx));
-      return renderItem(item) + (notice ? `\n\n${notice}` : '');
+      // The same disclosure `mycontext show` prints, from the same function
+      // (content-hash.ts), and for a sharper reason on this surface: a model
+      // reading an item back is the caller most likely to quote its summary
+      // onward, and `renderItem` prints `summary:` and `summary_of:` as two
+      // frontmatter lines no reader can hash in their head. The summary is
+      // never withheld here — it is labelled.
+      const stale = summaryStalenessNote(item);
+      return renderItem(item)
+        + (stale ? `\n\n${stale}` : '')
+        + (notice ? `\n\n${notice}` : '');
     }),
   },
   {

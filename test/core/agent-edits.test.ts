@@ -201,8 +201,8 @@ test('reordered tags are not a content change and stage nothing', () => {
 
 /**
  * Both trust-boundary refusals end by naming what the caller MAY still do.
- * Before `agentEdits` existed they said flatly that title, body, tags and
- * extra are "still editable", which is only true under `allow`: under `review`
+ * Before `agentEdits` existed they said flatly that title, body, summary, tags
+ * and extra are "still editable", which is only true under `allow`: under `review`
  * the same call is accepted and STAGED. A caller told "editable" would go on
  * to reason about text that is not in force — the exact failure the staged
  * message exists to prevent, reintroduced through the refusal for a different
@@ -211,7 +211,7 @@ test('reordered tags are not a content change and stage nothing', () => {
 test('the guarded-field refusal says content is staged under review and editable under allow', () => {
   for (const [policy, expected, forbidden] of [
     ['review', /STAGED as a pending revision/, /tags and extra are still editable/],
-    ['allow', /Title, body, tags and extra are still editable/, /STAGED/],
+    ['allow', /Title, body, summary, tags and extra are still editable/, /STAGED/],
   ] as const) {
     const box = sandbox({ categories: { rule: { agentEdits: policy } } });
     try {

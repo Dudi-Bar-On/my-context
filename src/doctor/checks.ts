@@ -10,10 +10,12 @@ import {
 } from '../core/needs.ts';
 import { droppedBodyText } from '../core/item.ts';
 import { matchesAnyGlob, relPosix } from '../core/paths.ts';
+import { summaryState } from '../core/content-hash.ts';
 import { isSnapshot, snapshotText } from '../core/reference.ts';
 import { RATIONALE_NOT_INJECTED } from '../core/render-item.ts';
 import { checksum } from '../core/slug.ts';
 import { projectionMismatches } from '../core/tag-projection.ts';
+import { SUMMARY_MAX_CHARS } from '../core/validate.ts';
 import type { Item } from '../core/types.ts';
 import { chunkDocument } from '../ingest/chunk.ts';
 import { ingestDir, SESSION_PROTOCOL } from '../ingest/session.ts';
@@ -721,6 +723,90 @@ export function checkContinuity(items: Item[], config: Config): Finding[] {
       + 'answer is to shorten it: raising budgets.continuity relocates the spill rather than '
       + 'removing it, and a budget chosen against a document that keeps growing expires.',
   });
+  return findings;
+}
+
+/**
+ * **A summary that no longer describes its item, reported as a measurement
+ * rather than a suspicion.**
+ *
+ * A summary does not know the body moved, and it is the most quotable thing an
+ * item has — the one most likely to be repeated into a session and trusted
+ * without anybody opening the item. Five stale justifications were corrected in
+ * this codebase in three days; a stale summary is that failure with a shorter
+ * sentence and a wider audience.
+ *
+ * So `summaryOf` records what the summary was written against
+ * (`itemSummaryBasis`, content-hash.ts) and this compares the two. Nothing
+ * here guesses: a finding means the summarised content — title, body, steps,
+ * observations, extra — has a different hash than the one stored beside the
+ * summary. A change to scope, tags, `always` or a relation produces no finding,
+ * deliberately (see `SUMMARY_BASIS` for each exclusion and why).
+ *
+ * `warn`, not `error`: nothing is lost and nothing is corrupt — the summary is
+ * still on disk, still shown, still round-trips. What is wrong is that it may
+ * be believed, and the remedy is a person or an agent writing a new one.
+ *
+ * The two states are reported apart because their remedies differ. A `stale`
+ * summary was correct once and the content moved under it. An `unanchored` one
+ * carries no basis at all, which no write path in this product can produce —
+ * it means the file was edited by hand, so the summary may never have described
+ * the item, and rewriting the basis to match would be recording a claim nobody
+ * made.
+ *
+ * The OVER-LENGTH case is here too, and it is here rather than at load
+ * (`parseItem` deliberately does not measure it) for the reason
+ * `checkBodyTruncation` exists: a file already on disk that no validator ever
+ * saw must be reported, not refused, because refusing to load it would make an
+ * item invisible for being wordy.
+ */
+export function checkSummary(items: Item[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const item of items) {
+    if (item.summary === null) continue;
+
+    const state = summaryState(item);
+    if (state === 'unanchored') {
+      findings.push({
+        level: 'warn', code: 'summary_unanchored', item: item.id,
+        message:
+          `carries a summary with no "summary_of", so there is no record of what it was written ` +
+          `against and nothing can say whether it still describes this item. No command in this ` +
+          `product writes one without the other, so this file was edited by hand. Rewrite the ` +
+          `summary through \`mycontext edit ${item.id} --summary "<text>"\`, which stamps the ` +
+          `basis from the item as it stands; the basis is not repaired on its own, because ` +
+          `stamping it here would record that this summary was checked against this text when ` +
+          `nobody checked it.`,
+      });
+    } else if (state === 'stale') {
+      findings.push({
+        level: 'warn', code: 'summary_stale', item: item.id,
+        message:
+          `its summary is STALE: this item's title, body, steps, observations or extra fields ` +
+          `have changed since the summary was written, so the summary describes text that is no ` +
+          `longer here. It is still stored and still shown — nothing was dropped — but it is ` +
+          `drawn as stale wherever it appears, and it must not be quoted as though it described ` +
+          `this item. Write a new one with \`mycontext edit ${item.id} --summary "<text>"\` ` +
+          `(or update_item, which stages it for review on a category set to agentEdits ` +
+          `"review"); the basis is re-stamped by that write and by nothing else, so an edit to ` +
+          `the body alone will never quietly re-bless it.`,
+      });
+    }
+
+    if (item.summary.length > SUMMARY_MAX_CHARS) {
+      findings.push({
+        level: 'warn', code: 'summary_too_long', item: item.id,
+        message:
+          `its summary is ${item.summary.length} characters and the limit is ` +
+          `${SUMMARY_MAX_CHARS}. No write path accepts one this long, so it was written into ` +
+          `the file by hand. A summary is reproduced beside the item everywhere the item is ` +
+          `listed, so one that is itself a paragraph is a paragraph printed once per row. ` +
+          `Shorten it — and if this item cannot be said in ${SUMMARY_MAX_CHARS} characters, ` +
+          `that is a finding about the item rather than about the limit: it is carrying more ` +
+          `than one claim and wants splitting.`,
+      });
+    }
+  }
   return findings;
 }
 
@@ -1776,6 +1862,7 @@ export function runChecks(opts: {
     () => checkUnknownCategory(opts.items, opts.config),
     () => checkSkippedConfigKeys(opts.config),
     () => checkContinuity(opts.items, opts.config),
+    () => checkSummary(opts.items),
     () => checkPermissions(opts.root, accessSync, opts.repoRoot),
     () => checkSessionIdMismatch(opts.root),
     () => checkAuditSize(opts.root),

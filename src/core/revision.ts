@@ -13,7 +13,9 @@ import {
 } from './revision-log.ts';
 import type { Store } from './store.ts';
 import { tierOf } from './trust.ts';
-import { validateBody, validateExtra, validateTags, validateTitle } from './validate.ts';
+import {
+  normalizeSummary, validateBody, validateExtra, validateSummary, validateTags, validateTitle,
+} from './validate.ts';
 import { checksum } from './slug.ts';
 import { unknownIdError } from './teach.ts';
 import { normalizeEol } from './text.ts';
@@ -241,8 +243,22 @@ function revisionIdFor(itemId: string, base: RevisionChanges, changes: RevisionC
   return `REV-${checksum(JSON.stringify([itemId, canonical(base), canonical(changes)])).slice(0, 12)}`;
 }
 
-/** Fixed field order, so a value built here and the same value read back out of
- * JSON hash identically. */
+/**
+ * Fixed field order, so a value built here and the same value read back out of
+ * JSON hash identically.
+ *
+ * **A field ADDED to `REVISION_FIELDS` therefore changes every id this
+ * function derives**, because the array it hashes grows a slot. Stated rather
+ * than discovered: adding `summary` did exactly that. Nothing breaks and
+ * nothing is orphaned — a revision's id is RECORDED in `revisions.jsonl` when
+ * it is staged, and every reader takes it from there rather than re-deriving
+ * it, so pending, promoted and discarded revisions all keep the ids they were
+ * given. The only visible effect is the one this derivation buys in the first
+ * place: a proposal identical to one already pending, re-sent across the
+ * change, is staged as a second revision instead of being recognised as the
+ * duplicate it is. That is a one-time cost at the boundary, and it is not
+ * `computeItemChecksum` — no item's recorded checksum moves.
+ */
 function canonical(changes: RevisionChanges): unknown[] {
   return REVISION_FIELDS.map((field) => {
     const value = changes[field];
@@ -293,6 +309,19 @@ function normalizeChanges(item: Item, changes: RevisionChanges): RevisionChanges
     const body = normalizeEol(changes.body).trim();
     validateBody(body);
     if (body !== item.body) out.body = body;
+  }
+  if (changes.summary !== undefined) {
+    // Normalised and validated exactly as `updateItem` would, so a proposal
+    // this function accepts is one the promotion can actually write — the
+    // `INV-a-validator-that-gates-writes-must-be-a-complete` property, which
+    // is why the normalisation is the SAME function and not a second `.trim()`
+    // that agrees today.
+    const summary = normalizeSummary(changes.summary);
+    validateSummary(summary);
+    // `?? ''` for `valuesOf`'s reason: absence is the empty string here, so
+    // "propose removing the summary" is a real change and "propose the summary
+    // it already has" is an echo.
+    if (summary !== (item.summary ?? '')) out.summary = summary;
   }
   if (changes.tags !== undefined) {
     validateTags(changes.tags);
@@ -821,6 +850,7 @@ export function promoteRevision(
       id: itemId,
       ...(pending.changes.title === undefined ? {} : { title: pending.changes.title }),
       ...(pending.changes.body === undefined ? {} : { body: pending.changes.body }),
+      ...(pending.changes.summary === undefined ? {} : { summary: pending.changes.summary }),
       ...(pending.changes.tags === undefined ? {} : { tags: pending.changes.tags }),
       ...(pending.changes.extra === undefined ? {} : { extra: pending.changes.extra }),
       origin: 'human',

@@ -871,8 +871,8 @@ test('the create_item schema exposes exactly the extra fields the config declare
   // And nothing invented: every schema property is either a core create_item
   // field or a declared extra field.
   const core = new Set([
-    'type', 'title', 'body', 'scope', 'tags', 'severity', 'always', 'observations', 'steps',
-    'source_file', 'source_anchor',
+    'type', 'title', 'body', 'summary', 'scope', 'tags', 'severity', 'always', 'observations',
+    'steps', 'source_file', 'source_anchor',
   ]);
   for (const key of Object.keys(props)) {
     assert.ok(core.has(key) || declared.includes(key), `schema has undeclared property "${key}"`);

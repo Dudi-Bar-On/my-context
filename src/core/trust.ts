@@ -456,6 +456,12 @@ type FieldPolicy = 'content' | 'gated';
 export const UPDATE_FIELD_POLICY = {
   title: 'content',
   body: 'content',
+  // Content, and the ruling is explicit that no exception is carved for it: a
+  // summary write is an edit, so `agentEdits` routes it exactly as it routes a
+  // title or a body. On a category set to `review` an agent's proposed summary
+  // is STAGED for a human, which is what stops the most quotable field on an
+  // item from being the one field an agent can rewrite unreviewed.
+  summary: 'content',
   tags: 'content',
   extra: 'content',
   scope: 'gated',
@@ -502,6 +508,8 @@ interface NormalizedUpdate {
   input: UpdateInput;
   title: string | undefined;
   body: string | undefined;
+  /** `''` is the CLEAR instruction, not an absent one — see `UpdateInput.summary`. */
+  summary: string | undefined;
 }
 
 /**
@@ -521,6 +529,15 @@ const CONTENT_READERS: Record<
 > = {
   title: (item, u) => (u.title !== undefined && u.title !== item.title ? u.title : undefined),
   body: (item, u) => (u.body !== undefined && u.body !== item.body ? u.body : undefined),
+  // `item.summary ?? ''` because a revision carries strings, and the absence
+  // of a summary is spelled `''` on this side of the boundary (`RevisionValue`
+  // has no `null`). That makes both directions comparable and both stageable:
+  // proposing a summary for an item that has none, and proposing to remove one
+  // it has. An echo — the summary it already carries — is not a change, the
+  // same rule every other reader here applies.
+  summary: (item, u) => (
+    u.summary !== undefined && u.summary !== (item.summary ?? '') ? u.summary : undefined
+  ),
   tags: (item, u) => (
     u.input.tags !== undefined && !sameStringSet(u.input.tags, item.tags)
       ? [...u.input.tags]
@@ -575,8 +592,9 @@ const GATED_READERS: Record<GatedField, (item: Item, input: UpdateInput) => bool
  */
 export function contentChange(
   item: Item, input: UpdateInput, title: string | undefined, body: string | undefined,
+  summary: string | undefined,
 ): RevisionChanges | null {
-  const update: NormalizedUpdate = { input, title, body };
+  const update: NormalizedUpdate = { input, title, body, summary };
   const out: Record<string, RevisionValue> = {};
   for (const field of CONTENT_FIELDS) {
     const moved = CONTENT_READERS[field](item, update);
@@ -605,10 +623,10 @@ export function contentChange(
  */
 export function openContentPhrase(ctx: MutationContext, item: Item): string {
   if (agentEditsFor(ctx.config, item.type) !== 'review') {
-    return 'Title, body, tags and extra are still editable';
+    return 'Title, body, summary, tags and extra are still editable';
   }
   return (
-    `Title, body, tags and extra can still be changed here, but "${item.type}" is set to ` +
+    `Title, body, summary, tags and extra can still be changed here, but "${item.type}" is set to ` +
     `agentEdits: "review" in this project, so such a change is STAGED as a pending revision for ` +
     `a human rather than applied`
   );
@@ -621,7 +639,8 @@ export function stagedContentCaveat(ctx: MutationContext, item: Item): string {
   if (agentEditsFor(ctx.config, item.type) !== 'review') return '';
   return (
     ` Note that "${item.type}" is set to agentEdits: "review" in this project, so a change to ` +
-    `title, body, tags or extra is STAGED as a pending revision for a human rather than applied.`
+    `title, body, summary, tags or extra is STAGED as a pending revision for a human rather than ` +
+    `applied.`
   );
 }
 

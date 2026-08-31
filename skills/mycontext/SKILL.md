@@ -63,7 +63,7 @@ item it refuses, and that refusal is correct. Print the human's route —
 
 **Your edit to an item's text may not apply.** Under the category's
 `agentEdits` setting — `review` by default for every normative category —
-`update_item` **stages** a change to title, body, tags or extra as a pending revision
+`update_item` **stages** a change to title, body, summary, tags or extra as a pending revision
 instead of applying it: the item keeps governing its old text until a human
 promotes the change. The response says so in its first words. Read it, tell the
 user you staged something, and do not reason as if the new text is in force.
