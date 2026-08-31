@@ -186,10 +186,19 @@ test('a read command runs from the UI and the screen shows what it did', async (
   ).toHaveText('mycontext status');
 
   await page.locator(`${PALETTE} .confirm`).getByRole('button', { name: 'Run it', exact: true }).click();
+  // **`> .execresult`, a DIRECT child of the section, with room to reach it.**
+  // Since `plan:walk seq:120` an Execute REDRAWS the screen it was run on, and
+  // every screen's `render()` opens with `root.replaceChildren()` — so the
+  // result region `report()` has just filled is detached by that redraw and
+  // re-attached at the top of the rebuilt screen by the shell (`app.js`'s
+  // `attachExecuteOutcome`). Scoped to a DIRECT child so it names that node
+  // and not the empty one the rebuilt control brings with it, and given a real
+  // budget because it is now a fetch away rather than already on screen:
+  // measured timing out at the 5s default under a loaded parallel run.
   await expect(
-    page.locator(`${PALETTE} .execresult`),
-    '`status` must exit clean',
-  ).toContainText('exit 0');
+    page.locator(`${PALETTE} > .execresult`),
+    '`status` must exit clean, and its outcome must survive the redraw the run itself caused',
+  ).toContainText('exit 0', { timeout: 30_000 });
 });
 
 test('the run is in the audit stream, as one execution record', async ({ app }) => {
@@ -200,7 +209,17 @@ test('the run is in the audit stream, as one execution record', async ({ app }) 
   await composeStatusOnPalette(page);
   await page.locator(`${PALETTE} .cmdactions`).getByRole('button', { name: 'Execute', exact: true }).click();
   await page.locator(`${PALETTE} .confirm`).getByRole('button', { name: 'Run it', exact: true }).click();
-  await expect(page.locator(`${PALETTE} .execresult`)).toContainText('exit 0');
+  // **`> .execresult`, a DIRECT child of the section, with room to reach it.**
+  // Since `plan:walk seq:120` an Execute REDRAWS the screen it was run on, and
+  // every screen's `render()` opens with `root.replaceChildren()` — so the
+  // result region `report()` has just filled is detached by that redraw and
+  // re-attached at the top of the rebuilt screen by the shell (`app.js`'s
+  // `attachExecuteOutcome`). Scoped to a DIRECT child so it names that node
+  // and not the empty one the rebuilt control brings with it, and given a real
+  // budget because it is now a fetch away rather than already on screen:
+  // measured timing out at the 5s default under a loaded parallel run.
+  await expect(page.locator(`${PALETTE} > .execresult`))
+    .toContainText('exit 0', { timeout: 30_000 });
 
   // The audit projection that `/api/ask/audit` reads is never synced by a plain
   // write (`recordAudit` only appends the JSONL — `src/core/audit.ts`), so this
@@ -412,7 +431,17 @@ base('a boundary command shows every field that changes, before and after, and o
       await expect(page.locator(PALETTE).getByRole('cell', { name: 'always', exact: true })).toBeVisible();
 
       await page.locator(`${PALETTE} .confirm`).getByRole('button', { name: 'Run it', exact: true }).click();
-      await expect(page.locator(`${PALETTE} .execresult`)).toContainText('exit 0');
+      // **`> .execresult`, a DIRECT child of the section, with room to reach it.**
+      // Since `plan:walk seq:120` an Execute REDRAWS the screen it was run on, and
+      // every screen's `render()` opens with `root.replaceChildren()` — so the
+      // result region `report()` has just filled is detached by that redraw and
+      // re-attached at the top of the rebuilt screen by the shell (`app.js`'s
+      // `attachExecuteOutcome`). Scoped to a DIRECT child so it names that node
+      // and not the empty one the rebuilt control brings with it, and given a real
+      // budget because it is now a fetch away rather than already on screen:
+      // measured timing out at the 5s default under a loaded parallel run.
+      await expect(page.locator(`${PALETTE} > .execresult`))
+        .toContainText('exit 0', { timeout: 30_000 });
       // `always` again — this time the row survives into the RESULT only
       // indirectly: what proves the run and not merely the preview agreed is
       // reading the field back off disk.
