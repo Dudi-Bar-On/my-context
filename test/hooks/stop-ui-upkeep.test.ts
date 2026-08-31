@@ -56,6 +56,15 @@ import { removeTree } from '../helpers/tmp.ts';
 const NOW = 1_756_300_000_000;
 const PORT = 58888;
 
+/**
+ * The occupancy check, answered without touching a socket — see the same
+ * constant in `test/core/ui-server-upkeep.test.ts` for why it is not optional.
+ * `PORT` is a real port on the machine running the suite and the one the
+ * owner's own UI server uses, so the real check would make these tests answer
+ * differently depending on what else is running.
+ */
+const NOTHING_ON_THE_PORT = async (): Promise<boolean> => false;
+
 const bases: string[] = [];
 after(() => { for (const base of bases) removeTree(base); });
 
@@ -307,7 +316,9 @@ test('the ask is still latched once when an upkeep result is in hand', () => {
 test('it does not run in a subagent', async () => {
   const sb = sandbox({ port: PORT });
   const spawner = fakeSpawn();
-  const deps: UpkeepDeps = { globalRoot: sb.globalRoot, spawnFn: spawner.fn };
+  const deps: UpkeepDeps = {
+    globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+  };
   assert.equal(
     await stopUpkeep({ session_id: sb.session, cwd: sb.cwd, agent_id: 'agent-7' }, deps, NOW),
     null,
@@ -323,7 +334,8 @@ test('it does nothing outside a workspace', async () => {
   const spawner = fakeSpawn();
   assert.equal(
     await stopUpkeep({ session_id: 's', cwd: outside },
-      { globalRoot: path.join(outside, 'g'), spawnFn: spawner.fn }, NOW),
+      { globalRoot: path.join(outside, 'g'), spawnFn: spawner.fn,
+        portAcceptsFn: NOTHING_ON_THE_PORT }, NOW),
     null,
   );
   assert.equal(spawner.calls.length, 0);
@@ -334,7 +346,7 @@ test('an unconfigured workspace is off, and the spawn is never reached', async (
   const spawner = fakeSpawn();
   assert.deepEqual(
     await stopUpkeep({ session_id: sb.session, cwd: sb.cwd },
-      { globalRoot: sb.globalRoot, spawnFn: spawner.fn }, NOW),
+      { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT }, NOW),
     { did: 'nothing', why: 'off' },
   );
   assert.equal(spawner.calls.length, 0);
@@ -345,7 +357,7 @@ test('a configured workspace with nothing listening gets a spawn', async () => {
   const spawner = fakeSpawn();
   assert.deepEqual(
     await stopUpkeep({ session_id: sb.session, cwd: sb.cwd },
-      { globalRoot: sb.globalRoot, spawnFn: spawner.fn }, NOW),
+      { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT }, NOW),
     { did: 'spawned', port: PORT },
   );
   assert.equal(spawner.calls.length, 1);
@@ -355,7 +367,9 @@ test('a configured workspace with nothing listening gets a spawn', async () => {
 test('the stand-down is disclosed on stderr, on exactly the turn it happens', async () => {
   const sb = sandbox({ port: PORT });
   const spawner = fakeSpawn();
-  const deps: UpkeepDeps = { globalRoot: sb.globalRoot, spawnFn: spawner.fn };
+  const deps: UpkeepDeps = {
+    globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+  };
 
   let at = NOW;
   for (let i = 0; i < MAX_CONSECUTIVE_SPAWN_FAILURES; i += 1) {
@@ -391,7 +405,7 @@ test('a broken config turns the upkeep off; it does not take the turn boundary w
   const spawner = fakeSpawn();
   assert.equal(
     await stopUpkeep({ session_id: sb.session, cwd: sb.cwd },
-      { globalRoot: sb.globalRoot, spawnFn: spawner.fn }, NOW),
+      { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT }, NOW),
     null,
   );
   assert.equal(spawner.calls.length, 0);

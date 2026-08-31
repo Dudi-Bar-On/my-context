@@ -32,7 +32,7 @@ import { clearUiServerRecord, readUiServerRecord } from './ui-server-record.ts';
  * a quarter of a second means the port is not answering, and for this question
  * "not answering" and "not there" are the same answer.
  */
-const PROBE_TIMEOUT_MS = 250;
+export const PROBE_TIMEOUT_MS = 250;
 
 export type Liveness =
   /** A server is listening where the record said. */
@@ -68,7 +68,7 @@ export async function probeUiServer(
   }
 
   // Step 3: the port. THIS is the measurement; everything above it is a claim.
-  const listening = await connects(record.host, record.port, timeoutMs);
+  const listening = await portAccepts(record.host, record.port, timeoutMs);
   if (!listening) {
     clearUiServerRecord(globalRoot);
     return { state: 'dead', why: 'port', port: record.port };
@@ -90,8 +90,19 @@ export async function probeUiServer(
  * connecting are four different stories about one fact: nothing is serving
  * there. Distinguishing them would produce a `why` no caller could act on
  * differently.
+ *
+ * **Exported for `ui-server-upkeep.ts`, which asks it a different question than
+ * `probeUiServer` does**, and the difference is the whole of the 2026-08-31
+ * defect. `probeUiServer` aims this at the RECORD's address — "is the server we
+ * wrote down still there". The upkeep aims it at the CONFIGURED port — "would
+ * the server I am about to start be able to bind". With no record to aim at,
+ * the first question has no answer and the second one still does, and reading
+ * the first as though it answered the second is what let a port that was
+ * already serving be counted three times as a server that could not start.
  */
-function connects(host: string, port: number, timeoutMs: number): Promise<boolean> {
+export function portAccepts(
+  host: string, port: number, timeoutMs: number = PROBE_TIMEOUT_MS,
+): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;
     const done = (answer: boolean): void => {

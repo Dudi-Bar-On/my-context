@@ -40,7 +40,7 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, readdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -164,7 +164,8 @@ test('with ui.port absent nothing happens and NOTHING is written', async () => {
   const sb = sandbox();
   const spawner = fakeSpawn();
   assert.deepEqual(
-    await upkeepUiServer(sb.root, OFF, NOW, { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT }),
+    await upkeepUiServer(sb.root, OFF, NOW,
+      { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT }),
     { did: 'nothing', why: 'off' },
   );
   assert.equal(spawner.calls.length, 0);
@@ -224,7 +225,9 @@ test('a dead server is spawned back — once', async () => {
 
 test('the PROBE is floored at 60 seconds', async () => {
   const sb = sandbox();
-  const deps = { globalRoot: sb.globalRoot, spawnFn: fakeSpawn().fn, portAcceptsFn: NOTHING_ON_THE_PORT };
+  const deps = {
+    globalRoot: sb.globalRoot, spawnFn: fakeSpawn().fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+  };
   // Against a LIVE server, because `alive` is the one answer only a probe that
   // actually ran can produce. Told apart from a spawn floor's `too-soon`, which
   // is a different guard reading a different clock.
@@ -252,7 +255,9 @@ test('the PROBE is floored at 60 seconds', async () => {
 test('the SPAWN is floored at 5 minutes, separately from the probe', async () => {
   const sb = sandbox();
   const spawner = fakeSpawn();
-  const deps = { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT };
+  const deps = {
+    globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+  };
 
   assert.equal((await upkeepUiServer(sb.root, CONFIGURED, NOW, deps)).did, 'spawned');
   // A minute later the PROBE is due and runs; the SPAWN is not, and does not.
@@ -342,10 +347,12 @@ test('a successful probe resets the failure counter', async () => {
   // starts over and the spawns resume.
   let now = at + SPAWN_INTERVAL_MS + 1_000;
   assert.equal((await upkeepUiServer(sb.root, CONFIGURED, now,
-    { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT })).did, 'spawned');
+    { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT }))
+    .did, 'spawned');
   now += SPAWN_INTERVAL_MS + 1_000;
   assert.equal((await upkeepUiServer(sb.root, CONFIGURED, now,
-    { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT })).did, 'spawned',
+    { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT }))
+    .did, 'spawned',
   'a server that came back did not clear the failures counted before it did');
 });
 
@@ -407,4 +414,162 @@ test('a clock that went backwards does not freeze the mechanism', async () => {
     { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT });
   assert.notEqual(back.did === 'nothing' ? back.why : null, 'too-soon',
     'a clock that went backwards froze the upkeep until wall time caught up again');
+});
+
+/* ---------------------------------------------------------------------------
+ * The three states the state file has to tell apart.
+ *
+ * **This section is the 2026-08-31 defect.** On that day a reader opened
+ * `ui-server-upkeep.json`, saw `consecutiveSpawnFailures: 3, stoodDown: true`,
+ * concluded the owner's server had been down for two hours, told them so, and
+ * started a second server to "restore" it. A healthy server had been serving
+ * the configured port the whole time. The counter was not wrong — it was the
+ * only thing recorded, and a count cannot carry a cause.
+ *
+ * Everything below asserts a DISTINCTION rather than a value: two opposite
+ * situations must not produce the same file.
+ * ------------------------------------------------------------------------- */
+
+/** The state file as it stands, parsed. */
+function stateOf(root: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(upkeepStatePath(root), 'utf8')) as Record<string, unknown>;
+}
+
+/**
+ * A REAL listener on an ephemeral port, and no record anywhere — the shape of
+ * the incident: a server that is up and serving, and a probe with nothing to
+ * aim at, because the record write lost a race (`ui-server-record.ts` measured
+ * exactly that on 2026-08-28).
+ *
+ * Ephemeral rather than `PORT`, so the test binds a port nothing else can be
+ * on. A fixed number here would be a test that fails when the developer's own
+ * server is running — which is the failure it is written to prevent.
+ */
+async function occupiedPort(): Promise<{ port: number; close: () => Promise<void> }> {
+  const server = net.createServer((socket) => socket.end());
+  await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve); });
+  const { port } = server.address() as net.AddressInfo;
+  return {
+    port,
+    close: () => new Promise<void>((resolve) => { server.close(() => resolve()); }),
+  };
+}
+
+test('a port that is already serving is not a failed spawn, and says so', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const held = await occupiedPort();
+  try {
+    // No record, so the probe has nothing to aim at and answers `no-record`.
+    // The REAL occupancy check runs here — this is the one test that uses it.
+    assert.deepEqual(
+      await upkeepUiServer(sb.root, resolveConfig({ ui: { port: held.port } }), NOW,
+        { globalRoot: sb.globalRoot, spawnFn: spawner.fn }),
+      { did: 'nothing', why: 'port-already-serving' },
+      'a spawn was judged without asking whether anything was already on the port — which is '
+      + 'how a server that was serving perfectly got recorded three times as one that could '
+      + 'not start',
+    );
+    assert.equal(spawner.calls.length, 0,
+      'a process was started into a port that was already answering: its only possible outcome '
+      + 'is EADDRINUSE, and its only lasting effect is a failure counted against a live server');
+    assert.equal(stateOf(sb.root)['lastOutcome'], 'port-already-serving',
+      'the state file records the count and not the cause, which is the whole defect');
+    assert.equal(stateOf(sb.root)['consecutiveSpawnFailures'], 0);
+  } finally {
+    await held.close();
+  }
+});
+
+test('an occupied port NEVER stands the mechanism down, however long it lasts', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const held = await occupiedPort();
+  const config = resolveConfig({ ui: { port: held.port } });
+  try {
+    let at = NOW;
+    // Twice the threshold, so a mechanism that counted these would have given
+    // up twice over.
+    for (let i = 0; i < MAX_CONSECUTIVE_SPAWN_FAILURES * 2; i += 1) {
+      await upkeepUiServer(sb.root, config, at, { globalRoot: sb.globalRoot, spawnFn: spawner.fn });
+      at += SPAWN_INTERVAL_MS + 1_000;
+    }
+    assert.equal(stateOf(sb.root)['stoodDown'], false,
+      'the upkeep stood down over a port that was serving the owner the entire time — and a '
+      + 'stand-down is permanent, so that is a state a person has to come and delete by hand');
+    assert.equal(spawner.calls.length, 0);
+  } finally {
+    await held.close();
+  }
+});
+
+test('the two opposite situations do NOT produce the same state file', async () => {
+  // The genuine failure: nothing on the port, three spawns, three confirmations.
+  const broken = sandbox();
+  const spawner = fakeSpawn();
+  const at = await failingSpawns(broken, spawner, MAX_CONSECUTIVE_SPAWN_FAILURES);
+  await upkeepUiServer(broken.root, CONFIGURED, at,
+    { globalRoot: broken.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT });
+
+  // The healthy one: a port already serving, refused the same number of times.
+  const healthy = sandbox();
+  const quiet = fakeSpawn();
+  const held = await occupiedPort();
+  const config = resolveConfig({ ui: { port: held.port } });
+  try {
+    let now = NOW;
+    for (let i = 0; i <= MAX_CONSECUTIVE_SPAWN_FAILURES; i += 1) {
+      await upkeepUiServer(healthy.root, config, now,
+        { globalRoot: healthy.globalRoot, spawnFn: quiet.fn });
+      now += SPAWN_INTERVAL_MS + 1_000;
+    }
+  } finally {
+    await held.close();
+  }
+
+  assert.equal(stateOf(broken.root)['lastOutcome'], 'stood-down');
+  assert.equal(stateOf(healthy.root)['lastOutcome'], 'port-already-serving');
+  assert.notDeepEqual(
+    { ...stateOf(broken.root), lastProbeAt: 0, lastSpawnAt: 0 },
+    { ...stateOf(healthy.root), lastProbeAt: 0, lastSpawnAt: 0 },
+    'a server too broken to start and a port already serving happily wrote indistinguishable '
+    + 'state — that is the whole defect, and a reader acted on it',
+  );
+});
+
+test('a spawn refused by the floor is recorded as a policy refusal, not a failure', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const deps = {
+    globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+  };
+  await upkeepUiServer(sb.root, CONFIGURED, NOW, deps);
+  assert.equal(stateOf(sb.root)['lastOutcome'], 'spawned');
+
+  // A minute later: the probe is due, the spawn is not.
+  await upkeepUiServer(sb.root, CONFIGURED, NOW + PROBE_FLOOR_MS + 1_000, deps);
+  assert.equal(stateOf(sb.root)['lastOutcome'], 'too-soon',
+    'a spawn the mechanism itself declined to make was left looking like one that failed');
+});
+
+test('a lastOutcome this build does not know degrades to null, never to a guess', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const deps = {
+    globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+  };
+  await upkeepUiServer(sb.root, CONFIGURED, NOW, deps);
+  writeFileSync(upkeepStatePath(sb.root),
+    JSON.stringify({ ...stateOf(sb.root), lastOutcome: 'invented-by-a-later-build' }), 'utf8');
+  // Read back as null and simply replaced. Nothing downstream branches on a
+  // value it does not understand, which is `readUiServerRecord`'s posture.
+  await upkeepUiServer(sb.root, CONFIGURED, NOW + PROBE_FLOOR_MS + 1_000, deps);
+  assert.equal(stateOf(sb.root)['lastOutcome'], 'too-soon');
+});
+
+test('the stand-down line says the port was checked, in the sentence that claims it', () => {
+  const line = upkeepStandDownLine(MAX_CONSECUTIVE_SPAWN_FAILURES, path.join('X', '.my_context'));
+  assert.match(line, /not answering/u,
+    '"could not be started" was read once as an outage while a healthy server held the port; '
+    + 'the claim has to carry the condition under which it holds, in the same sentence');
 });

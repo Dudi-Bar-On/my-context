@@ -46,13 +46,48 @@
  *
  * It does not restart a server that is listening but wedged, and it does not
  * touch `--idle-ms`. Spec §7 for both.
+ *
+ * ── AN ABSENCE HAS A CAUSE, AND THE CAUSE IS A FIELD ───────────────────────
+ *
+ * Added 2026-08-31, after `consecutiveSpawnFailures: 3` with `stoodDown: true`
+ * was read as a two-hour outage that had not happened. It had not happened
+ * because those three spawns were refused by a port that was already serving —
+ * and NOTHING in the state file could tell that apart from a server too broken
+ * to start. `lastOutcome` is the field that now can, and `UpkeepOutcome` lists
+ * what it may say and why each value earns a name. The precedent is
+ * `readOccupancy`'s `UnmeasurableWhy`, chosen deliberately over a log line: this
+ * path rides `Stop`, so a log here is a line on every assistant turn.
+ *
+ * ── A STAND-DOWN IS STILL PERMANENT, AND THAT IS NOT DECIDED HERE ──────────
+ *
+ * `stoodDown` is written `true` and never written back to `false` by anything
+ * in this file. The guard for it also sits ahead of the probe, so a stood-down
+ * workspace stops probing, stops writing, and stops learning — a server that
+ * comes back is never noticed. The only exit is a person deleting the state
+ * file, which is what `upkeepStandDownLine` tells them to do.
+ *
+ * That is stated rather than changed. Whether a refusal should expire is a
+ * question about how much caution the owner wants, not a defect in the reading
+ * of the evidence, and the fix above removes the cause that made a permanent
+ * stand-down easy to reach by accident. See the report of 2026-08-31.
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Config } from './config.ts';
-import { probeUiServer } from './ui-server-probe.ts';
+import { portAccepts, probeUiServer } from './ui-server-probe.ts';
+
+/**
+ * The host the upkeep's occupancy check aims at.
+ *
+ * Not configurable, and not a guess: `src/ui/server.ts` REFUSES to bind
+ * anything but `127.0.0.1` (spec §2.1), and `startServer` below passes no
+ * `--host` at all. So the address a spawn would try to bind is known exactly,
+ * and asking whether that address already answers is a measurement rather than
+ * an inference.
+ */
+const SPAWN_HOST = '127.0.0.1';
 
 /**
  * How often the PROBE may run.
@@ -119,11 +154,64 @@ const STATE_FILE = 'ui-server-upkeep.json';
  * `{ did: 'nothing', why: 'stood-down' }` on every call after it. The caller
  * discloses on stderr, and a disclosure that repeats on every assistant turn is
  * a worse defect than the silence it replaced.
+ *
+ * `port-already-serving` is the 2026-08-31 addition and it is SILENT on stderr
+ * by design — see `UpkeepOutcome`. Nothing is wrong in that case, and a
+ * mechanism that speaks up to say nothing is wrong, on a path that rides every
+ * assistant turn, is the chattiness this module has refused since it was
+ * written. It is a field in the state file, not a line.
  */
 export type Upkeep =
-  | { did: 'nothing'; why: 'off' | 'disabled' | 'too-soon' | 'alive' | 'stood-down' }
+  | {
+    did: 'nothing';
+    why: 'off' | 'disabled' | 'too-soon' | 'alive' | 'stood-down' | 'port-already-serving';
+  }
   | { did: 'spawned'; port: number }
   | { did: 'stood-down'; failures: number };
+
+/**
+ * **What the last call concluded, written into the state file so that a reader
+ * of the file can tell three opposite situations apart.** This is the whole of
+ * the 2026-08-31 fix.
+ *
+ * The defect it repairs: `consecutiveSpawnFailures: 3` with `stoodDown: true`
+ * read EXACTLY the same whether the configured port was already serving happily
+ * or the server was broken and could not start. Those are opposite situations —
+ * one needs no action at all, the other needs someone woken up — and on
+ * 2026-08-31 a reader took the first for the second, reported a two-hour outage
+ * that had not happened, and started a redundant second server. The counter was
+ * not wrong. It was the only thing recorded, and a count cannot carry a cause.
+ *
+ * `readOccupancy`'s `UnmeasurableWhy` is the precedent and this is deliberately
+ * the same shape: **an absence has a cause, and the cause is a field, not a log
+ * line.** The upkeep path runs on every assistant turn, so a log is not
+ * available to it; a field costs one already-happening write.
+ *
+ *  - `alive`               a server answered where the record said. Nothing to do.
+ *  - `port-already-serving` no usable record, but the CONFIGURED port accepts a
+ *                          connection. A spawn cannot succeed and does not need
+ *                          to. **Not a failure**, and not counted as one.
+ *  - `spawned`             a spawn was attempted. Never that one is running —
+ *                          only the next probe learns that.
+ *  - `spawn-failed`        a spawn was attempted, the next probe found no
+ *                          server, AND the configured port was not answering
+ *                          either. This is the genuine failure.
+ *  - `stood-down`          `spawn-failed` reached the threshold. Someone is
+ *                          needed.
+ *  - `too-soon`            refused by policy — the spawn floor had not elapsed.
+ *
+ * `off` and `disabled` are absent on purpose and their absence is not a gap:
+ * both return before anything is read or written, so a workspace in either
+ * state has NO state file at all, which is itself unambiguous. Recording them
+ * would mean writing a file to say that nothing was written.
+ */
+export type UpkeepOutcome =
+  | 'alive'
+  | 'port-already-serving'
+  | 'spawned'
+  | 'spawn-failed'
+  | 'stood-down'
+  | 'too-soon';
 
 /**
  * The two seams a test needs and production never passes.
@@ -137,6 +225,15 @@ export type Upkeep =
 export interface UpkeepDeps {
   globalRoot?: string;
   spawnFn?: typeof spawn;
+  /**
+   * The occupancy check, injected for the same reason `spawnFn` is and one more
+   * that is specific to it: the real one connects to `config.ui.port` on this
+   * machine, and the suite's configured port is a REAL number a REAL server may
+   * be sitting on. A unit test that reaches a live socket is a test whose answer
+   * depends on what else the owner happens to be running — which is precisely
+   * the kind of hidden coupling `test/core/real-home-guard.test.ts` exists over.
+   */
+  portAcceptsFn?: (host: string, port: number) => Promise<boolean>;
 }
 
 /**
@@ -164,6 +261,16 @@ interface UpkeepState {
   spawnPending: boolean;
   consecutiveSpawnFailures: number;
   stoodDown: boolean;
+  /**
+   * What the last call that wrote this file concluded, or `null` for a file
+   * written by a build that predates the field.
+   *
+   * It needs no clock of its own: every path that sets it also sets
+   * `lastProbeAt` to the same `now`, so the outcome's timestamp is the one
+   * already on the line above it. A second timestamp would be a second thing to
+   * keep in step and a second thing to be wrong.
+   */
+  lastOutcome: UpkeepOutcome | null;
 }
 
 const FRESH: UpkeepState = {
@@ -172,7 +279,19 @@ const FRESH: UpkeepState = {
   spawnPending: false,
   consecutiveSpawnFailures: 0,
   stoodDown: false,
+  lastOutcome: null,
 };
+
+/**
+ * Read back by NAME rather than trusted, `readState`'s posture applied to the
+ * one field that is a union: a state file written by a newer build, or edited
+ * by hand, must not put a value into `lastOutcome` that no reader below
+ * understands. Anything unrecognised degrades to `null`, which says "this file
+ * does not record an outcome" — true, and the one answer that cannot mislead.
+ */
+const OUTCOMES: readonly UpkeepOutcome[] = [
+  'alive', 'port-already-serving', 'spawned', 'spawn-failed', 'stood-down', 'too-soon',
+];
 
 export function upkeepStatePath(root: string): string {
   return path.join(root, 'state', STATE_FILE);
@@ -188,6 +307,14 @@ export function upkeepStatePath(root: string): string {
  * and **how to turn the mechanism off and how to let it try again**, because a
  * refusal that does not say how to leave it is a refusal nobody can act on.
  *
+ * A fourth was added on 2026-08-31: **the condition under which the claim
+ * holds**, in the same sentence as the claim. "Could not be started" was read
+ * once as an outage when the truth was a port already serving, and the clause
+ * naming the occupancy check is what keeps the sentence from being read that
+ * way again. It is not decoration — `upkeepUiServer` measures the configured
+ * port before it counts any of these failures, so the clause is a report of
+ * something checked rather than a reassurance.
+ *
  * The file is named rather than described. `stoodDown` lives in per-workspace
  * state, so it outlives the session that set it — which is the safe direction
  * (a new session is not a human, and standing down again on the next session's
@@ -196,8 +323,10 @@ export function upkeepStatePath(root: string): string {
  */
 export function upkeepStandDownLine(failures: number, root: string): string {
   return (
-    `my_context: the web UI server could not be started ${failures} times in a row, so the ` +
-    'upkeep has stood down and will not try again on its own. Start it yourself with ' +
+    `my_context: the web UI server could not be started ${failures} times in a row — the ` +
+    'configured port was not answering on any of those attempts, so nothing was already ' +
+    'serving there — and the upkeep has stood down and will not try again on its own. ' +
+    'Start it yourself with ' +
     '`mycontext ui`, or remove `ui.port` from .my_context/config.json to turn the upkeep off ' +
     `(\`ui.enabled: false\` does the same without unsetting the port). Delete ` +
     `${upkeepStatePath(root)} to let it try again. Nothing else about this turn changed.\n`
@@ -229,6 +358,7 @@ function readState(root: string): UpkeepState {
     spawnPending: value.spawnPending === true,
     consecutiveSpawnFailures: num('consecutiveSpawnFailures') ?? 0,
     stoodDown: value.stoodDown === true,
+    lastOutcome: OUTCOMES.find((known) => known === value['lastOutcome']) ?? null,
   };
 }
 
@@ -318,7 +448,13 @@ function startServer(port: number, spawnFn: typeof spawn): void {
  * come before anything touches a disk, so an unconfigured workspace pays
  * nothing and — asserted in the tests — leaves nothing behind. `stood-down`
  * and the probe floor are one small state read. Only then a probe, only then
- * the spawn floor, and only then a process.
+ * the occupancy check, only then the spawn floor, and only then a process.
+ *
+ * **The occupancy check sits between the probe and the failure judgement**, and
+ * that position is the 2026-08-31 fix rather than an optimisation. See the
+ * comment at the branch itself: a probe that finds no record cannot tell a dead
+ * server from a live one whose record was lost, and judging a spawn failure
+ * without asking is how three correct refusals were recorded as three failures.
  *
  * `now` is passed in rather than read, so every interval is testable at its
  * boundary without a test sleeping through one.
@@ -347,18 +483,64 @@ export async function upkeepUiServer(
     // The counter resets on a SUCCESSFUL PROBE, not on a successful spawn:
     // spawning proves nothing (see `Upkeep`), and a server that came back is
     // the only evidence that whatever was wrong is no longer wrong.
-    writeState(root, { ...next, spawnPending: false, consecutiveSpawnFailures: 0 });
+    writeState(root, {
+      ...next, spawnPending: false, consecutiveSpawnFailures: 0, lastOutcome: 'alive',
+    });
     return { did: 'nothing', why: 'alive' };
+  }
+
+  // ── IS THE CONFIGURED PORT ALREADY SERVING? ────────────────────────────────
+  //
+  // **Before the failure is judged, not after**, and the order is the fix.
+  //
+  // The probe above answers one question — "is the server the RECORD names
+  // still there" — and it has no answer at all when there is no record. A
+  // server whose record write lost a race (`ui-server-record.ts` measured
+  // exactly that on 2026-08-28: one transient EPERM during a restart, and the
+  // record absent for the rest of that server's life) is alive, serving the
+  // owner, and invisible to `probeUiServer` forever.
+  //
+  // Aimed at `config.ui.port` because that is the port `startServer` would try
+  // to bind. If something answers there, the spawn's outcome is already known —
+  // `EADDRINUSE`, measured — so attempting it buys a dead process, and counting
+  // its death as a failure builds toward a stand-down that says a server could
+  // not be started when the truth is that one is already running.
+  //
+  // The cost is one loopback connect, on a path that has just paid for another
+  // one, at most once a minute. It is NOT paid by a workspace that has not
+  // opted in (both returns above precede it) and not by a healthy one (the
+  // `alive` return above precedes it too).
+  //
+  // A squatter that is not our server reaches here as well, and is answered the
+  // same way on purpose: the recorded outcome says the PORT is occupied, which
+  // is what was measured, and never that the server is healthy, which was not.
+  const accepts = deps.portAcceptsFn ?? portAccepts;
+  if (await accepts(SPAWN_HOST, port)) {
+    // Failures are reset, not merely left alone. Every one of them was counted
+    // against a spawn that could not have succeeded, so keeping them would be
+    // keeping a tally of a question nobody asked.
+    writeState(root, {
+      ...next,
+      spawnPending: false,
+      consecutiveSpawnFailures: 0,
+      lastOutcome: 'port-already-serving',
+    });
+    return { did: 'nothing', why: 'port-already-serving' };
   }
 
   // A spawn is judged HERE and nowhere else. `spawn` not throwing says only
   // that the process was created; a detached child that dies a second later
   // throws nothing at all, and that is exactly the failure this counter is for.
+  //
+  // Reaching this line means the configured port did NOT answer a moment ago,
+  // so `spawn-failed` now carries a condition it did not carry before: the
+  // spawn failed and nothing was in its way.
   if (next.spawnPending) {
     next.spawnPending = false;
     next.consecutiveSpawnFailures += 1;
+    next.lastOutcome = 'spawn-failed';
     if (next.consecutiveSpawnFailures >= MAX_CONSECUTIVE_SPAWN_FAILURES) {
-      writeState(root, { ...next, stoodDown: true });
+      writeState(root, { ...next, stoodDown: true, lastOutcome: 'stood-down' });
       return { did: 'stood-down', failures: next.consecutiveSpawnFailures };
     }
   }
@@ -368,11 +550,15 @@ export async function upkeepUiServer(
   // minute-by-minute spawn, and it is the whole reason the two intervals are
   // two constants.
   if (!due(next.lastSpawnAt, now, SPAWN_INTERVAL_MS)) {
-    writeState(root, next);
+    // `too-soon` overwrites `spawn-failed` above rather than hiding it: the
+    // failure it would hide is already counted in `consecutiveSpawnFailures`,
+    // and `lastOutcome` answers "what did the LAST call decide", not "what is
+    // the worst thing that has happened".
+    writeState(root, { ...next, lastOutcome: 'too-soon' });
     return { did: 'nothing', why: 'too-soon' };
   }
 
   startServer(port, deps.spawnFn ?? spawn);
-  writeState(root, { ...next, lastSpawnAt: now, spawnPending: true });
+  writeState(root, { ...next, lastSpawnAt: now, spawnPending: true, lastOutcome: 'spawned' });
   return { did: 'spawned', port };
 }
