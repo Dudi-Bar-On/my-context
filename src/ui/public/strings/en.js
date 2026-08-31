@@ -289,7 +289,7 @@ export const strings = {
   'gaps.r1': '{files} files, no item scopes here',
   'btn.compose': 'Compose',
   'gaps.r2': 'past the file limit',
-  'gaps.cat': 'category {m:open_question}',
+  'gaps.cat': 'category {mv:name}',
   'gaps.r3': 'empty',
   'gaps.note': '{b:Not examined} is a third state, never folded into "gap". A file the walk did not reach is not a file nothing governs.',
   // Budget simulator
@@ -589,6 +589,9 @@ export const strings = {
   'gr.h': 'Relations',
   'gr.v': 'an ego-graph, not a hairball',
   'gr.sub': 'One focused item, radius 1, deterministic layered layout, hard cap of 60 nodes with an explicit "+N more". No physics, no dependency.',
+  // The focus picker's label. Until it existed the ego graph was drawn around
+  // `items.items[0].id` and nothing chose it.
+  'gr.focus': 'The item at the centre',
   'gr.lfocus': 'focus',
   'gr.lmiss': 'target not in corpus',
   'gr.lsup': 'superseded',
@@ -771,8 +774,8 @@ export const strings = {
   'cfg.tokensn': 'tokens charged',
   // Procedures
   'pr.h': 'Procedures',
-  'pr.sub': 'An ordered set of steps performed {b:once} and then done — as against a rule, which is one instruction that applies every time. A rule is a single instruction; a procedure is a sequence. Decided; nothing implements it yet.',
-  'pr.states': 'Four states, and exactly one of them injects',
+  'pr.sub': 'An ordered set of steps performed {b:once} and then done — as against a rule, which is one instruction that applies every time. A rule is a single instruction; a procedure is a sequence. {b:Built, and this screen reports it.}',
+  'pr.states': 'Five states, and exactly one of them injects',
   'th.state': 'State',
   'pr.mean': 'Meaning',
   'pr.inj': 'Injection',
@@ -783,6 +786,9 @@ export const strings = {
   'pr.s3': 'you initiated it',
   'pr.full': 'in full, every session',
   'pr.s4': 'completed',
+  // The fifth stage. `STAGES` in `src/ui/proc-model.ts` has always had five and this
+  // table drew four; `pr.aband` names the state in prose three cards further down.
+  'pr.s5': 'you stopped it, and it is {m:superseded} rather than finished',
   'pr.why': '{b:Injecting only in {m:active} is the mechanism, not a sentence asking the model to wait.} A procedure the model holds in full is one it may begin following, so it is delivered only in the state you put it in deliberately. The failure this guards against is not the obvious one: it is a procedure left {m:active} forever, injecting in full long after the work finished.',
   'pr.item': '{mv:item}',
   'pr.steps': 'steps',
@@ -801,6 +807,21 @@ export const strings = {
   // qualifications in the endpoint's own words; this says what the card IS,
   // so it is no longer a `.card.pane` a reader meets with no title on it.
   'pr.disc': 'True whether or not a card above says so',
+  // The zero state. A corpus with no procedure drew the static half and said nothing
+  // about the live one, which `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+  // forbids: an empty corpus and a screen that failed looked identical.
+  'pr.empty': 'No procedure in this corpus. The lifecycle above is what one would be; nothing has been written yet.',
+  // ONE KEY PER DISCLOSURE CODE — the closed set `src/ui/proc-model.ts` serves
+  // (`DISCLOSURE_CODES`). `pr.d1` and `pr.d2` are the model's two CONSTANT sentences,
+  // verbatim, so an English reader sees the byte the endpoint sent. `pr.d3`-`pr.d5`
+  // are the three the model COMPOSES per corpus: the key carries the reason and the
+  // served sentence still follows it, because the ids, the step numbers and the
+  // category are in that sentence and nothing here could carry them.
+  'pr.d1': 'progress is recorded per workspace, not per session — two terminals on this workspace share one record set.',
+  'pr.d2': 'a ready procedure is not injected and not named in the index — the model does not learn it exists until {m:mycontext procedure activate} runs. Nothing is lost: it is a draft, and {m:mycontext procedure list} is where it is visible.',
+  'pr.d3': 'Progress records this build could not read are counted in neither direction, so every count above is of the records that parsed.',
+  'pr.d4': 'A tick written into an item’s Markdown is not a progress record: every box above is replayed from the audit log, and the two can disagree.',
+  'pr.d5': 'The list is empty because the {m:procedure} category is off in this config, not for want of procedures.',
   // Export / import
   'port.h': 'Export / import',
   'port.sub': '{b:Built, and this screen reports it.} It used to list five open questions; all five are answered now, so it lists the answers instead.',

@@ -30,63 +30,78 @@
  * picker, a sort control and a stage filter are all layouts the design of
  * record does not have, and `pr.` declares no string for any of them.
  *
- * **Zero procedures draws no procedure card and says nothing about it.** There
- * is no `pr.empty` in either table, so there is no sentence to write — the
- * call `gaps.js` and `work.js` both already make. What this screen must NOT do
- * is fall back to the mockup's own sample: `pr.item` is `{mv:item}`, a slot,
- * so drawing it would mean inventing `PROC-migrate-money-columns-to-integer-cents`
- * and offering `mycontext procedure done` on it from a copy button. An
- * invented id inside a `<code>` a copy button offers is the one thing this UI
- * must never produce.
+ * **Zero procedures is DRAWN AND NAMED since 2026-08-31.** It used to draw the
+ * static half and say nothing, on the ground that neither table declared a
+ * `pr.empty` — which made an empty corpus and a screen that failed look
+ * identical, the thing
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` forbids.
+ * `pr.empty` is that sentence now, in both tables, and it is drawn in the
+ * `.two` grid where the procedure cards would have been, so the zero occupies
+ * the place its non-zero does.
+ *
+ * **It is a MEASURED zero and it is never drawn over a refusal.** The empty
+ * card appears only when `/api/procedures` answered and answered with none; a
+ * list read that refused draws the refusal in that same slot, because a corpus
+ * with no procedures and a read that failed are opposite facts.
+ *
+ * What this screen must NOT do is fall back to the mockup's own sample:
+ * `pr.item` is `{mv:item}`, a slot, so drawing it would mean inventing
+ * `PROC-migrate-money-columns-to-integer-cents` and offering
+ * `mycontext procedure done` on it from a copy button. An invented id inside a
+ * `<code>` a copy button offers is the one thing this UI must never produce.
  *
  * ── THE CHIP IS THE REAL VERDICT, AND IT WILL DISAGREE WITH THE TABLE ─────
  *
  * The static table maps a STAGE to a chip. The card's chip is picked by the
  * REAL `injection` verdict the endpoint serves — the answer the hook itself
  * computes for this item under this config — so the two can disagree on
- * screen, and on a `ready` procedure they will.
+ * screen. Until 2026-08-31 a `ready` procedure was the guaranteed case; the
+ * table said so and was wrong.
  *
- * `pr.idx` puts *"index line only"* against the `ready` row. The shipped
- * selector does not do that: `isEligible`
+ * The `ready` row no longer disagrees with the chip — see FIVE ROWS, FIVE
+ * STAGES below — but the two remain different facts and a card can still
+ * differ from the table above it: the table maps a STAGE, and the chip is the
+ * verdict `injection()` computed for THIS item under THIS config, where a
+ * per-category tier or an `inert` scope policy moves it. The disclosure
+ * explaining any such gap is rendered at the foot of the screen either way.
+ *
+ * ── FIVE ROWS, FIVE STAGES ───────────────────────────────────────────────
+ *
+ * **The fifth row landed 2026-08-31, and the sentence above it moved in the
+ * same edit.** `STAGES` has always had five
+ * (`src/core/procedure-stage.ts` · `export const STAGES = ['proposed', 'ready', 'active', 'done', 'abandoned'] as const;` · ~57)
+ * and the fifth was never an invention of the code: `pr.aband`, on this very
+ * screen, says *"Abandoned rather than finished is `superseded`"*. The screen
+ * named the state in prose and had no row for it.
+ *
+ * **ONE ROW AND ONE SENTENCE, TOGETHER OR NOT AT ALL.** `pr.states` was *"Four
+ * states, and exactly one of them injects"*; a fifth row under a sentence that
+ * counts four is a screen disagreeing with itself in the space of two
+ * elements, which is why nothing was added while the count stood. It reads
+ * *"Five states, and exactly one of them injects"* now, in both tables, and
+ * the row that makes it true went in beside it. `pr.s5` is the meaning string
+ * the fifth row needed and neither table declared.
+ *
+ * **`pr.idx` came off the `ready` row in the same edit, because half of this
+ * would be worse than none.** The table said *"index line only"* against
+ * `ready`; `isEligible`
  * (`src/core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198)
  * admits `active` only, so a `ready` procedure reaches neither the injected
- * block nor an index line, and `injection()` returns `not injected (status
- * "proposed")`. The model serves BOTH — the CLI's sentence as the
- * `ready-is-not-injected` disclosure, and the true per-item verdict — and says
- * in its own words that *"IT IS THE MOCKUP THAT IS WRONG"*. **Nothing here
- * edits the table and nothing here quietly agrees with it**: the table is
- * drawn as designed, the card is drawn as measured, and the disclosure
- * explaining the gap is rendered underneath. A mockup change is the owner's
- * and needs a screenshot.
+ * block nor an index line, and the model says so in its own words — *"IT IS
+ * THE MOCKUP THAT IS WRONG"*. The row carries `pr.none` and the warn chip now,
+ * which is what the shipped selector does. Adding the fifth row while leaving
+ * that cell wrong would have left the screen contradicting itself in the same
+ * place with one more row of it.
  *
- * ── FOUR ROWS, FIVE STAGES ────────────────────────────────────────────────
+ * **THIS IS A DIVERGENCE FROM THE DESIGN OF RECORD AND IT IS DELIBERATE.** The
+ * mockup still draws four rows and still puts `pr.idx` on `ready`; it is
+ * HISTORY (`DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`) and
+ * nothing here edits it. `test/ui/proc-screen.test.ts` pins both halves against
+ * the mockup's own `<tr>`s so neither can drift unnoticed, and the WORDING of
+ * `pr.states` and `pr.s5` is unapproved copy drafted here and reported as such.
  *
- * `pr.states` is *"Four states, and exactly one of them injects"* and the
- * table draws four. There are five
- * (`src/ui/proc-model.ts` · `const STAGES = ['proposed', 'ready', 'active', 'done', 'abandoned'] as const;` · ~126),
- * and the fifth is not an invention: `pr.aband`, on this very screen, says
- * *"Abandoned rather than finished is `superseded`"*. So the screen already
- * knows the state exists and has no row for it.
- *
- * **No fifth row is added here, and the reason has CHANGED.** This paragraph
- * said the blocker was `test/ui/strings-parity.test.ts` failing "in the
- * direction that names it" on a `pr.` meaning string the design of record does
- * not declare. That direction was dropped on 2026-08-26 by
- * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`, so the gate
- * is not what stops it and has not been for days. Re-measured 2026-08-30
- * against the gate's own docstring.
- *
- * What stops it is the HEADING directly above the table. `pr.states` is *"Four
- * states, and exactly one of them injects"*, in both tables and in the design
- * of record, and a fifth row under a sentence that counts four is a screen
- * disagreeing with itself in the space of two elements. Correcting that
- * sentence is a change to the design of record, which is the owner's under
- * `DEC-claude-drafts-the-mockup-and-the-owner-approves` — one sentence and one
- * row, and they land together or not at all.
- *
- * What keeps the state from being dropped meanwhile is that the CARD prints the
- * stage as its own chip text: an abandoned procedure reads `abandoned` on
- * screen, in the CLI's own word, whether or not the table above it has a row.
+ * The stage was never dropped meanwhile: the CARD prints it as its own chip
+ * text, so an abandoned procedure has always read `abandoned` on screen.
  *
  * ── DISCLOSURES ARE RENDERED, IN THE SERVER'S OWN WORDS ───────────────────
  *
@@ -95,16 +110,41 @@
  * plainly that *"A screen that renders the rows and drops the disclosures has
  * re-created the silent drop they exist to end."*
  *
- * **`pr.` has a key for none of them, and it cannot: they are the server's
- * sentences, not the product's.** A disclosure is composed by
- * `src/ui/proc-model.ts` out of what this corpus actually holds, so there is
- * nothing fixed to key. They are rendered exactly the way this UI renders an
- * endpoint's `error` text — as it arrived, in the server's own words
+ * **`pr.` HAS A KEY PER CODE SINCE 2026-08-31, AND THE CODES ARE WHY IT CAN.**
+ * This paragraph said keying them was impossible because "a disclosure is
+ * composed out of what this corpus actually holds, so there is nothing fixed
+ * to key". That is true of the SENTENCES and false of the CODES: the set is
+ * closed and declared
+ * (`src/ui/proc-model.ts` · `const DISCLOSURE_CODES = [` · ~141), and the model
+ * says outright that the code travels beside the message so a client can
+ * branch on it "without matching on prose". `DISCLOSURE_KEY` below is that
+ * branch, and the five keys are `pr.d1`–`pr.d5`.
+ *
+ * **Two of the five are the model's own CONSTANTS and are keyed verbatim.**
+ * `progress-is-workspace-scoped` and `ready-is-not-injected` are frozen
+ * `Disclosure` values, byte-identical on every response, so `pr.d1` and `pr.d2`
+ * carry the endpoint's own sentence and an English reader sees what the
+ * endpoint sent. The Hebrew reader now sees it in Hebrew, which is the whole
+ * point: `ready-is-not-injected` is the sentence that explains this screen's
+ * own table, and a reader who could not read it was reading a table with no
+ * explanation attached.
+ *
+ * **Three of the five are COMPOSED, and the served sentence still renders.**
+ * `unreadable-progress-records`, `file-ticks-are-not-progress` and
+ * `category-disabled` name ids, step numbers and a category — facts no string
+ * table can carry — so the keyed sentence gives the REASON in the reader's
+ * language and the endpoint's own sentence follows it with the evidence,
+ * unedited, through the same treatment this UI gives an `error`
  * (`src/ui/public/screens/parts.js` · `export function errorNote(message, ctx = globalThis.myctx) {` · ~211).
- * The cost is that they stay English in the Hebrew UI; what has changed since
- * 2026-08-30 is that the CARD around them now says what they are (`pr.disc`),
- * so a reader is told they are the endpoint's qualifications rather than left
- * with a titled-nothing card of English.
+ * Nothing the server said is dropped, which is the whole reason the array
+ * exists.
+ *
+ * **A code this table does not know renders the server's sentence alone.** A
+ * sixth `DisclosureCode` added upstream reaches a reader unkeyed rather than
+ * not at all: the fallback is the old behaviour, kept exactly for that case.
+ *
+ * The CARD around them is named by `pr.disc`, so a reader is told these are
+ * the endpoint's qualifications rather than left with a titled-nothing card.
  *
  * The `error`/`warning` headings this used to be reported alongside are keyed
  * now (`doc.error`, `doc.warning`): they were the product's words all along,
@@ -148,8 +188,11 @@ import { commandActions } from '/lib/command-actions.js';
 import { el, errorNote, mono, num, spaced } from '/screens/parts.js';
 
 /**
- * The static state table, verbatim from
- * (`docs/design/web-ui-mockup.html` · `<tr><td class="m">ready</td><td class="small" data-t="pr.s2">you approved it</td>` · ~2108).
+ * The static state table, transcribed from
+ * (`docs/design/web-ui-mockup.html` · `<tr><td class="m">ready</td><td class="small" data-t="pr.s2">you approved it</td>` · ~2108)
+ * and DIVERGING from it in exactly two places, both recorded in this file's
+ * header: the `ready` row's verdict is `pr.none` where the mockup writes
+ * `pr.idx`, and there is a fifth row the mockup does not draw.
  *
  * The STAGE NAMES are literals and not keys, and that is the design of
  * record's own choice rather than an oversight here: it writes `<td class="m">
@@ -164,15 +207,21 @@ import { el, errorNote, mono, num, spaced } from '/screens/parts.js';
  * written once, in CSS, and this attribute only ever matters to a bare `.chip`
  * (`src/ui/public/styles.css` · `.chip::before{content:attr(data-g) " ";font-family:var(--mono)}` · ~542).
  *
- * Exported so `node --test` can hold all four rows against the mockup's own
+ * Exported so `node --test` can hold all five rows against the mockup's own
  * `<tr>`s — stage, meaning key, chip class, glyph and verdict key — without a
- * DOM. A table transcribed by hand needs a check that it was transcribed.
+ * DOM, and hold the two divergences AS divergences rather than letting either
+ * drift. A table transcribed by hand needs a check that it was transcribed.
  */
 export const STATE_ROWS = [
   { stage: 'proposed', meaning: 'pr.s1', chip: 'chip warn', glyph: '▲', verdict: 'pr.none' },
-  { stage: 'ready', meaning: 'pr.s2', chip: 'chip ok', glyph: '●', verdict: 'pr.idx' },
+  // `pr.none` and the warn chip, NOT the mockup's `pr.idx` and `chip ok`:
+  // `isEligible` admits `active` only, so a ready procedure reaches neither the
+  // injected block nor an index line.
+  { stage: 'ready', meaning: 'pr.s2', chip: 'chip warn', glyph: '▲', verdict: 'pr.none' },
   { stage: 'active', meaning: 'pr.s3', chip: 'chip gov', glyph: '◆', verdict: 'pr.full' },
   { stage: 'done', meaning: 'pr.s4', chip: 'chip warn', glyph: '▲', verdict: 'pr.none' },
+  // The fifth stage `STAGES` has always carried and this table never drew.
+  { stage: 'abandoned', meaning: 'pr.s5', chip: 'chip warn', glyph: '▲', verdict: 'pr.none' },
 ];
 
 /**
@@ -300,6 +349,45 @@ export function doneCommand(procedure) {
   const argv = doneArgv(procedure);
   return argv === null ? null : composeCommand(argv);
 }
+
+/**
+ * **One `pr.` key per disclosure CODE — the closed set the model declares**
+ * (`src/ui/proc-model.ts` · `const DISCLOSURE_CODES = [` · ~141).
+ *
+ * The model puts the code beside the message precisely so a client can branch
+ * on it "without matching on prose", and this is that branch. Exported so
+ * `node --test` can hold it against `DISCLOSURE_CODES` itself: a sixth code
+ * added upstream with no key here is a sentence that would reach a Hebrew
+ * reader in English, and the test says so rather than the screen finding out.
+ */
+export const DISCLOSURE_KEY = {
+  'progress-is-workspace-scoped': 'pr.d1',
+  'ready-is-not-injected': 'pr.d2',
+  'unreadable-progress-records': 'pr.d3',
+  'file-ticks-are-not-progress': 'pr.d4',
+  'category-disabled': 'pr.d5',
+};
+
+/**
+ * The three codes whose served sentence names something no string table can
+ * carry — ids, step numbers, a category name and whether it is declared or
+ * merely disabled.
+ *
+ * For these the keyed sentence is the REASON and the endpoint's own sentence
+ * is the EVIDENCE, and both are drawn. The other two are frozen `Disclosure`
+ * constants whose message is byte-identical on every response, so the key IS
+ * the sentence and drawing the served copy under it would say one thing twice.
+ *
+ * This is a client-side reading of the model and not a second source of truth:
+ * it decides only whether a second paragraph is drawn. Getting it wrong in the
+ * conservative direction repeats a sentence; there is no direction in which it
+ * drops one, because an unknown code falls through to the served message.
+ */
+export const DISCLOSURE_COMPOSED = new Set([
+  'unreadable-progress-records',
+  'file-ticks-are-not-progress',
+  'category-disabled',
+]);
 
 /**
  * Every disclosure the screen has been handed, in order, with duplicates
@@ -570,6 +658,27 @@ function procedureCard(ctx, summary, detail) {
 }
 
 /**
+ * **The measured zero.** One card in the `.two` grid, in the slot a procedure
+ * card would have filled, saying that this corpus holds no procedure.
+ *
+ * Drawn ONLY when the list route answered and answered with none. A read that
+ * refused draws its refusal in the same slot instead — see `render` — because
+ * "there are none" and "I could not ask" are opposite facts and this card
+ * asserts the first.
+ *
+ * No heading: `pr.` declares none for it, and a `<h3>` invented here would be
+ * a second sentence nobody wrote. The card is one paragraph, which is what
+ * `pr.empty` is.
+ */
+function emptyCard(ctx) {
+  const card = el('div', 'card pane');
+  const p = el('p', 'small');
+  p.append(...ctx.t('pr.empty'));
+  card.append(p);
+  return card;
+}
+
+/**
  * `pr.write` — the static right-hand card: who may tick a box, and what is not
  * relaxed.
  *
@@ -603,6 +712,23 @@ function writeCard(ctx) {
  * an empty screen rather than any card on it. The per-item ones name their own
  * id in their own text, so nothing is lost by moving them here.
  *
+ * **EACH SENTENCE IS KEYED BY ITS CODE since 2026-08-31.** Until then every
+ * one of them was rendered as the server sent it, so the five facts that
+ * explain this screen were English under `א` — including
+ * `ready-is-not-injected`, which is what explains the table a reader is
+ * looking straight at. `DISCLOSURE_KEY` maps the code to a `pr.` key and the
+ * keyed sentence is drawn in the reader's own language.
+ *
+ * **The served sentence is not dropped where it carries more than the key
+ * can.** For the three composed codes it follows the keyed one, unedited, in
+ * the server's own words — the ids, the step numbers and the category live
+ * there and nowhere else. For the two constant codes the key already IS the
+ * endpoint's sentence, so it is drawn once.
+ *
+ * **An unknown code renders the served message alone**, which is exactly what
+ * every code did before this: a `DisclosureCode` added upstream reaches the
+ * reader unkeyed rather than not at all.
+ *
  * **The card carries an `<h3>` since 2026-08-30, and did not before.** The
  * reason recorded here was that "a heading invented here would fail
  * `strings-parity` in the direction that names it" — the direction dropped on
@@ -623,9 +749,22 @@ function disclosureCard(ctx, messages) {
   const h = el('h3');
   h.append(...ctx.t('pr.disc'));
   card.append(h);
-  // The sentences themselves are the endpoint's, unedited: composed per corpus,
-  // so there is nothing fixed to key and nothing here that could be.
-  for (const entry of messages) card.append(el('p', 'small', entry.message));
+  for (const entry of messages) {
+    const key = DISCLOSURE_KEY[entry.code];
+    if (key === undefined) {
+      // A code no key covers. The served sentence, as it arrived — the
+      // behaviour every code had before the keys existed, kept for this one
+      // case so an upstream addition is unkeyed rather than unsaid.
+      card.append(el('p', 'small', entry.message));
+      continue;
+    }
+    const worded = el('p', 'small');
+    worded.append(...ctx.t(key));
+    card.append(worded);
+    // The endpoint's own sentence, where it carries the ids, counts or
+    // category the key cannot. Unedited, and in the server's words.
+    if (DISCLOSURE_COMPOSED.has(entry.code)) card.append(el('p', 'small', entry.message));
+  }
   return card;
 }
 
@@ -676,6 +815,10 @@ export async function render(root, ctx) {
     two.append(card);
   }
   summaries.forEach((summary, index) => two.append(procedureCard(ctx, summary, details[index])));
+  // A MEASURED zero: the list answered, and it answered with none. Not drawn
+  // beside a refusal — the refusal above already occupies that slot and says a
+  // different thing.
+  if (refusal === null && summaries.length === 0) two.append(emptyCard(ctx));
   two.append(writeCard(ctx));
   root.append(two);
 

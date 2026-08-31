@@ -8,9 +8,13 @@
  * builds an element or stands in a `document`. What it does test is everything
  * `screens/proc.js` DECIDES before it touches one:
  *
- *   - the four-row state table, held row for row against the mockup's own
+ *   - the five-row state table, held row for row against the mockup's own four
  *     `<tr>`s — stage, meaning key, chip class, glyph and verdict key — so a
- *     table transcribed by hand is checked to have been transcribed;
+ *     table transcribed by hand is checked to have been transcribed, and its
+ *     two DECLARED divergences from the design of record are pinned as
+ *     divergences rather than left to a diff;
+ *   - that every disclosure code the model serves has a `pr.` key, and that
+ *     the model's two frozen sentences are keyed verbatim rather than reworded;
  *   - which chip a REAL injection verdict earns (`injectionChip`), with the
  *     verdicts built by `injection()` itself rather than hand-written, and
  *     including the case where the answer disagrees with the table two inches
@@ -87,6 +91,8 @@ interface ProcModule {
   doneArgv: (procedure: unknown) => string[] | null;
   doneCommand: (procedure: unknown) => string | null;
   disclosureMessages: (groups: unknown[]) => Disclosure[];
+  DISCLOSURE_KEY: Record<string, string>;
+  DISCLOSURE_COMPOSED: Set<string>;
   render: (root: unknown, ctx: unknown) => Promise<void>;
 }
 
@@ -149,37 +155,118 @@ function mockupStateRows(): StateRow[] {
   return rows;
 }
 
-test('the four-state table is the mockup\'s, row for row — stage, meaning, chip, glyph, verdict', async () => {
+/**
+ * **The state table diverges from the design of record in exactly two places,
+ * and both are pinned here rather than left to a diff.**
+ *
+ * Until 2026-08-31 this asserted byte equality with the mockup's four rows. It
+ * cannot any more, and the reason is a ruling and not a convenience: `pr.states`
+ * counted four states while `STAGES` has five, and `pr.idx` put *"index line
+ * only"* against `ready` while `isEligible` admits `active` only. A screen
+ * cannot resolve either alone — a fifth row under a sentence saying "four" is a
+ * screen disagreeing with itself — so the sentence, the row and the cell moved
+ * together. The mockup is HISTORY
+ * (`DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`) and is not
+ * edited.
+ *
+ * So the assertion is now: the app's table is the mockup's table PLUS the two
+ * named divergences, and nothing else. Anything that drifts a third time fails.
+ * `DIVERGENCES` is the whole ledger, it is checked to be non-empty and exact,
+ * and it may only shrink — the day the owner corrects the mockup, an entry here
+ * stops being a divergence and this test says so rather than passing quietly.
+ */
+const DIVERGENCES = [
+  {
+    stage: 'ready',
+    why: 'the mockup puts pr.idx ("index line only") on the ready row; isEligible admits '
+      + 'active only, so a ready procedure reaches neither the injected block nor an index line',
+  },
+  {
+    stage: 'abandoned',
+    why: 'the mockup draws no row for the fifth stage, which STAGES has always carried and '
+      + 'pr.aband names in prose on this very screen',
+  },
+];
+
+test('the five-row state table is the mockup\'s, row for row, but for two named divergences', async () => {
   const { STATE_ROWS } = await procModule();
   const drawn = mockupStateRows();
 
   // A scanner that finds nothing reads exactly like a clean transcription.
   assert.equal(drawn.length, 4,
-    `the mockup scan found ${drawn.length} state row(s) in <section data-p="proc">; pr.states is `
-    + '"Four states, and exactly one of them injects" and the table has had four rows since it '
-    + 'was drawn. A different number means the extraction broke or the design of record moved.');
+    `the mockup scan found ${drawn.length} state row(s) in <section data-p="proc">; the design `
+    + 'of record has drawn four since it was written and is not edited by this project. A '
+    + 'different number means the extraction broke or the owner has moved the mockup — in '
+    + 'which case DIVERGENCES below is what changes with it.');
 
-  assert.deepEqual(STATE_ROWS, drawn,
-    'screens/proc.js draws a state table that is not the one the design of record draws. The '
-    + 'mockup is the specification: it changes first, and this transcription follows it.');
+  assert.equal(STATE_ROWS.length, 5,
+    'the app draws five rows: STAGES is proposed, ready, active, done, abandoned, and pr.states '
+    + 'now counts five to match');
+
+  // Every row the mockup draws that the app draws IDENTICALLY — the
+  // transcription, which is still most of the table and is still checked.
+  const diverging = new Set(DIVERGENCES.map((d) => d.stage));
+  assert.deepEqual(
+    STATE_ROWS.filter((row) => !diverging.has(row.stage)),
+    drawn.filter((row) => !diverging.has(row.stage)),
+    'screens/proc.js draws a state row that is neither the design of record\'s nor a declared '
+    + 'divergence. The mockup is the specification for every row not named in DIVERGENCES.',
+  );
+
+  // And the two divergences are exactly the rows that differ — no more.
+  const differs = STATE_ROWS.filter((row) => {
+    const original = drawn.find((d) => d.stage === row.stage);
+    return original === undefined || JSON.stringify(original) !== JSON.stringify(row);
+  }).map((row) => row.stage);
+  assert.deepEqual(differs.sort(), DIVERGENCES.map((d) => d.stage).sort(),
+    'the app\'s table differs from the design of record somewhere DIVERGENCES does not name. '
+    + 'Either the drift is a defect, or it is a decision that belongs in that ledger with its '
+    + 'reason.');
+
+  // The corrected cells, asserted by value so "diverges" cannot mean anything.
+  const ready = STATE_ROWS.find((row) => row.stage === 'ready');
+  assert.equal(ready?.verdict, 'pr.none',
+    'a ready procedure is not injected and is not named in the index — pr.idx would be the '
+    + 'mockup\'s claim transcribed rather than the shipped selector\'s behaviour');
+  assert.equal(ready?.chip, 'chip warn', 'the chip follows the verdict it wears');
+  const abandoned = STATE_ROWS.find((row) => row.stage === 'abandoned');
+  assert.equal(abandoned?.meaning, 'pr.s5', 'the fifth row needs a meaning string of its own');
+  assert.equal(abandoned?.verdict, 'pr.none', 'an abandoned procedure is not injected');
+});
+
+test('the state count in pr.states matches the number of rows drawn, in both languages', async () => {
+  // **The contradiction this whole change exists to end.** A row was never
+  // added while the heading counted four, and the heading may not drift back
+  // now that the row is there. Both tables, because a reader in either language
+  // is looking at the same five rows.
+  const { STATE_ROWS } = await procModule();
+  const en = await table('en');
+  const he = await table('he');
+  assert.equal(STATE_ROWS.length, 5);
+  assert.match(en['pr.states']!, /^Five states,/,
+    'pr.states counts the rows of the table it heads; five rows under "Four states" is the '
+    + 'screen disagreeing with itself in the space of two elements');
+  assert.ok(he['pr.states']!.startsWith('\u05d7\u05de\u05d9\u05e9\u05d4 '),
+    'the Hebrew heading counts five too — a translation left at "four" is the same '
+    + 'contradiction, shown to half the readers');
 });
 
 /**
- * **The `ready` row is WRONG and it is transcribed anyway.** Pinned here so
- * nobody quietly fixes it in the app.
+ * **The OTHER half of the `ready` divergence: the design of record still says
+ * the wrong thing, and this is what notices when it stops.**
  *
- * `pr.idx` puts "index line only" against `ready`; `isEligible` admits `active`
- * only, so a ready procedure reaches neither the injected block nor an index
- * line. `src/ui/proc-model.ts` says as much in its own words and serves the
- * CLI's sentence as the `ready-is-not-injected` disclosure. Correcting the
- * table here would be the app disagreeing with the design of record in
- * silence; a mockup change is the owner's and needs a screenshot
- * (`RULE-everything-in-the-mockup-gets-built-and-a-proposal-to-change`).
+ * `pr.idx` puts "index line only" against `ready` in the mockup; `isEligible`
+ * admits `active` only, so a ready procedure reaches neither the injected block
+ * nor an index line. `src/ui/proc-model.ts` says as much in its own words and
+ * serves the CLI's sentence as the `ready-is-not-injected` disclosure.
  *
- * The day the owner rules, this assertion is the one that has to move, and it
- * says so rather than passing quietly under a corrected table.
+ * The app stopped transcribing that cell on 2026-08-31 and the mockup was not
+ * edited, because it is history rather than behaviour. This test is what makes
+ * the divergence self-clearing: the day the owner corrects the mockup, it fails
+ * and the entry in `DIVERGENCES` comes out with it, rather than the ledger
+ * carrying a divergence that no longer exists.
  */
-test('the ready row still claims "index line only", which the shipped selector does not do', () => {
+test('the mockup still claims "index line only" on ready — the divergence is still live', () => {
   const ready = mockupStateRows().find((row) => row.stage === 'ready');
   assert.ok(ready !== undefined, 'the mockup no longer draws a `ready` row');
   assert.equal(ready.verdict, 'pr.idx',
@@ -430,6 +517,72 @@ test('every disclosure code the model can serve survives the screen\'s deduplica
     + 'the silent drop they exist to end.');
 });
 
+test('every disclosure code has a pr. key, and the constant two are keyed VERBATIM', async () => {
+  const { DISCLOSURE_KEY, DISCLOSURE_COMPOSED } = await procModule();
+  const codes = disclosureCodes();
+  const en = await table('en');
+  const he = await table('he');
+
+  // **Both directions.** A code with no key would reach a Hebrew reader in
+  // English — the defect this closes — and a key for a code the model cannot
+  // serve is a sentence that never renders.
+  assert.deepEqual(Object.keys(DISCLOSURE_KEY).sort(), [...codes].sort(),
+    'screens/proc.js keys a set of disclosure codes that is not the set src/ui/proc-model.ts '
+    + 'serves. A sixth code upstream needs a sixth key here, in both tables.');
+
+  for (const key of Object.values(DISCLOSURE_KEY)) {
+    assert.ok(key in en, `${key} is named by proc.js and missing from the English table`);
+    assert.ok(key in he, `${key} is named by proc.js and missing from the Hebrew table`);
+  }
+
+  // **The three composed codes are a SUBSET of the five**, and the two left
+  // over are the model's frozen constants. Getting this wrong in the
+  // conservative direction only repeats a sentence; there is no direction in
+  // which it drops one, because an unknown code renders the served message.
+  for (const code of DISCLOSURE_COMPOSED) {
+    assert.ok(codes.includes(code), `${code} is not a code the model serves`);
+  }
+  assert.deepEqual([...DISCLOSURE_COMPOSED].sort(), [
+    'category-disabled', 'file-ticks-are-not-progress', 'unreadable-progress-records',
+  ], 'these are the three sentences the model builds out of ids, counts and a category name — '
+    + 'the parts no string table can carry, which is why the served sentence is drawn under '
+    + 'the keyed one for exactly these');
+
+  // **The two constants are keyed VERBATIM**, so an English reader sees the
+  // byte the endpoint sent and the keyed rendering is a translation rather than
+  // a rewrite. Read out of the model's own source, not remembered.
+  const model = readFileSync(PROC_MODEL, 'utf8');
+  const literal = (name: string): string => {
+    const block = new RegExp(`const ${name}: Disclosure = \\{([\\s\\S]*?)\\n\\};`).exec(model);
+    assert.ok(block !== null, `src/ui/proc-model.ts no longer declares ${name}`);
+    return [...block[1]!.matchAll(/'((?:[^'\\]|\\.)*)'/g)]
+      .map((m) => m[1]!)
+      .filter((part) => part.includes(' '))
+      .join('');
+  };
+  // A scanner that finds nothing reads exactly like a clean match. Both
+  // sentences are long; an extractor that returned '' would pass every
+  // comparison below against a key that had also been emptied.
+  for (const name of ['WORKSPACE_SCOPE', 'READY_DISCLOSURE']) {
+    assert.ok(literal(name).length > 60,
+      `the extractor read ${literal(name).length} character(s) out of ${name} — it has been a `
+      + 'multi-sentence constant since the routes were written, so this is the pattern breaking '
+      + 'rather than the model changing');
+  }
+
+  // `{m:…}` is how this UI writes what the CLI writes with backticks: the
+  // markers are stripped, and what is left must be the model's sentence.
+  const unmarked = (value: string): string => value.replace(/\{m:([^}]*)\}/g, '$1');
+  assert.equal(unmarked(en[DISCLOSURE_KEY['progress-is-workspace-scoped']!]!),
+    literal('WORKSPACE_SCOPE'),
+    'pr.d1 is no longer the endpoint\'s own sentence. It is a frozen constant on every '
+    + 'response, so the key may translate it and may not reword it.');
+  assert.equal(unmarked(en[DISCLOSURE_KEY['ready-is-not-injected']!]!).replace(/`/g, ''),
+    literal('READY_DISCLOSURE').replace(/`/g, ''),
+    'pr.d2 is no longer the endpoint\'s own sentence — and it is the one that explains this '
+    + 'screen\'s own state table to the reader looking at it');
+});
+
 test('one sentence said twice renders once; two sentences under one code both render', async () => {
   const { disclosureMessages } = await procModule();
   const scope = { code: 'progress-is-workspace-scoped', message: 'progress is per workspace.' };
@@ -548,14 +701,15 @@ test('every pr. key the English table declares is placed by the screen, bar the 
   const declared = Object.keys(en).filter((key) => key.startsWith('pr.')).sort();
   const named = new Set(keysNamed().map((u) => u.key));
 
-  // 26 from the day this screen was drawn, 27 since 2026-08-30: `pr.disc` names
-  // the disclosure card, which carried no `<h3>` because this screen believed a
-  // heading the mockup does not declare would fail `strings-parity`. That
-  // direction was dropped on 2026-08-26 and the card was anonymous for the
-  // three days nobody re-read the gate.
-  assert.equal(declared.length, 27,
-    `the English table declares ${declared.length} pr. key(s); it has been 27 since pr.disc `
-    + 'landed. A new one is a new sentence on this screen and needs placing.');
+  // 26 from the day this screen was drawn, 27 since 2026-08-30 (`pr.disc`), 34
+  // since 2026-08-31. The seven are the whole of this round's copy: `pr.s5`,
+  // the fifth state's meaning string; `pr.empty`, the measured zero; and
+  // `pr.d1`-`pr.d5`, one per code in the closed set `src/ui/proc-model.ts`
+  // serves, which is what stopped five English sentences reaching a Hebrew
+  // reader untranslated.
+  assert.equal(declared.length, 34,
+    `the English table declares ${declared.length} pr. key(s); it has been 34 since the `
+    + 'disclosure keys landed. A new one is a new sentence on this screen and needs placing.');
   assert.deepEqual(declared.filter((key) => !named.has(key)), SAMPLE_STEP_KEYS,
     'these pr. keys are declared and drawn nowhere. Only the mockup\'s five sample steps may be '
     + 'in this list — every other key is a sentence of the design of record that silently does '

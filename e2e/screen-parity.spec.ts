@@ -290,7 +290,27 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'button', 'button.linkid.m', 'div.mini', 'i', 'i.g', 'i.u', 'i.x',
     'span.covn', 'span.nm', 'table', 'tbody', 'td', 'th', 'thead', 'tr',
   ],
-  gaps: ['button.icon', 'span.m', 'span.v', 'td', 'td.m', 'td.small'],
+  // **`td` and `td.small` LEFT on 2026-08-31, closed by the empty-CATEGORY
+  // rows** (`plan:walk seq:90`). They were DATA and not code: `gaps.cat` was
+  // `category {m:open_question}`, an `{m:…}` LITERAL, so the key could name the
+  // one category the mockup's demo row happens to show and there was no
+  // substitution for any other. It is `category {mv:name}` now and the rows are
+  // filled from `/api/help/categories`' `corpus.empty`, which answers NINE over
+  // this corpus (measured 2026-08-31 by calling `apiHelp` against
+  // `.demo-corpus` directly) — so this gate's own fixture closes them.
+  //
+  // **`span.m` did not close and it moved.** `lib/i18n.js` builds a `{mv:}` run
+  // as `span.m.v` — the same monospace isolation, carrying a VALUE — where the
+  // mockup froze one category's name into a bare `span.m`. No live corpus
+  // produces the mockup's form, and the mockup is history rather than
+  // behaviour (`DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`).
+  //
+  // The three that remain are the DIRECTORY row's: `button.icon` is its
+  // Compose control, `td.m` its `Where` cell and `span.v` the `{files}` count.
+  // Neither corpus has an ungoverned directory — see the paragraph above — so
+  // they are still data. `test/ui/gaps-screen.test.ts` builds all three from a
+  // body that HAS a gap, which is the proof this ledger cannot carry.
+  gaps: ['button.icon', 'span.m', 'span.v', 'td.m'],
   // The spill-ratio card landed, closing seven. `plan:walk seq:7` then landed
   // the sweep endpoint and, with it, the staircase and the ladder — nine more
   // close below. `div.readout` and its own `div.small` are the one thing that
@@ -619,8 +639,44 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // This corpus holds no `procedure` item at all, so the whole live half — one
   // card per procedure, its progress bar and its composed `procedure done` —
   // has nothing to draw. The static states table renders unconditionally.
+  //
+  // **`span.chip.ok` was ADDED on 2026-08-31 and it is the only entry this
+  // ledger has ever gained. It is REPORTED rather than absorbed.**
+  //
+  // The mockup draws exactly one `chip ok` in this section — the `ready` row's
+  // *"index line only"* verdict — and that claim is FALSE of the shipped
+  // product. `isEligible`
+  // (`src/core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198)
+  // admits `active` only, so a `ready` procedure reaches neither the injected
+  // block nor an index line; `src/ui/proc-model.ts` says *"IT IS THE MOCKUP
+  // THAT IS WRONG"* in its own words and serves the correction as the
+  // `ready-is-not-injected` disclosure. `plan:walk seq:96` ruled the sentence,
+  // the row and that cell must move together — a fifth row under a heading
+  // counting four is a screen disagreeing with itself, and adding the row while
+  // leaving the cell wrong is *"the screen contradicting itself in the same
+  // place, with one more row of it"*. So the row now carries `pr.none` and the
+  // warn chip, and the app's only `chip ok` on this screen went with it.
+  //
+  // **This is the same KIND of entry as `span.prop` and `span.verdict` two
+  // lines down**: a mockup element the app deliberately does not draw because
+  // the design of record is history rather than behaviour
+  // (`DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`). It is NOT
+  // a screen that was built without reading the mockup, which is the case this
+  // gate exists for. It closes the day the owner corrects the mockup's `ready`
+  // row, and `test/ui/proc-screen.test.ts`' *"the mockup still claims 'index
+  // line only' on ready"* is what fails on that day and forces this entry out.
+  //
+  // The chip CLASS is not dead code: `INJECTION_CHIP.index` still wears it on a
+  // procedure CARD whose real verdict is `gate === 'tier'`. This corpus holds
+  // no `procedure` item at all, so no card is drawn to carry it here.
+  //
+  // **Nothing else on this screen moved.** The zero state now DRAWS
+  // (`pr.empty`, `plan:walk seq:97`) and the five keyed disclosures landed with
+  // it, but both are built out of kinds this screen already draws
+  // (`div.card.pane`, `p.small`, `span.m`), so neither closes an entry nor
+  // opens one. Checked rather than assumed.
   proc: [
-    'b', 'button', 'code', 'div.bar', 'i', 'i.f', 'span', 'span.m.v',
+    'b', 'button', 'code', 'div.bar', 'i', 'i.f', 'span', 'span.chip.ok', 'span.m.v',
     'span.prop', 'span.v', 'span.verdict', 'div.cmd',
   ],
   // **EMPTY. The divergence is one CELL, and a cell is not a kind.**

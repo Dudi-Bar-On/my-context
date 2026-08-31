@@ -240,7 +240,9 @@ const browserModule = async <T>(...segments: string[]): Promise<T> =>
  * reaching for this to fill an ELEMENT is the bug". **This screen has no
  * attribute sink at all** — no `aria-label`, no `title`, no `<option>` — so
  * every call to `tFlat` from it is that bug, and the fake makes it a failure
- * rather than a review finding.
+ * rather than a review finding. The empty-category rows did not change that:
+ * `gaps.cat`'s `{mv:name}` is a substitution into an ELEMENT, which is `t()`'s
+ * job and the whole reason the key is not `{m:…}` any more.
  */
 async function context(api: (route: string) => Promise<unknown>): Promise<unknown> {
   const i18n = await browserModule<I18nModule>('lib', 'i18n.js');
@@ -263,11 +265,23 @@ interface CoverageBody {
   truncated: boolean;
 }
 
-/** Renders into a stand-in `<section>`, served the given `/api/coverage` body. */
-async function draw(body: CoverageBody): Promise<FakeElement> {
+/**
+ * Renders into a stand-in `<section>`, served a `/api/coverage` body and a
+ * `/api/help/categories` body.
+ *
+ * **TWO endpoints since 2026-08-31**, and the fake serves both rather than
+ * asserting there is only one: the directory rows are `coverage`'s and the
+ * empty-category rows are `help`'s, and this screen's own header says why they
+ * are fetched apart — a refusal on either may not cost the other its rows.
+ */
+async function draw(body: CoverageBody, empty: string[] = EMPTY_CATEGORIES): Promise<FakeElement> {
   return await drawFrom(async (route) => {
-    assert.equal(route, '/api/coverage', 'this screen reads one endpoint and no other');
-    return body;
+    if (route === '/api/coverage') return body;
+    assert.equal(route, '/api/help/categories',
+      'this screen reads /api/coverage and /api/help/categories, and no other');
+    // The route's real shape: `{ topic, markdown, corpus }`, and this screen
+    // reads exactly one field of it.
+    return { topic: 'categories', markdown: '', corpus: { counts: {}, empty } };
   });
 }
 
@@ -346,6 +360,24 @@ const WITH_GAPS_TRUNCATED: CoverageBody = { ...WITH_GAPS, truncated: true };
 const NOTHING_TO_DRAW: CoverageBody = { files: [], pinned: [], items: [], truncated: false };
 
 /**
+ * **`.demo-corpus`' own `corpus.empty`, measured 2026-08-31** by calling
+ * `apiHelp(resolveWorkspace('.demo-corpus'), …, { topic: 'categories' })`
+ * directly. Nine enabled categories hold nothing there; this project's own
+ * corpus answers fourteen. The task record measured sixteen and fifteen on
+ * 2026-08-23 — the demo corpus has been rebuilt since, and the number is a
+ * property of a corpus rather than of this screen.
+ *
+ * It matters that this is the REAL list rather than one invented here, because
+ * the `NOTHING_TO_DRAW` render below reproduces the browser gate's ledger and a
+ * fixture with no empty category would reproduce a ledger nobody will ever
+ * measure: there is no corpus on which every category is populated.
+ */
+const EMPTY_CATEGORIES = [
+  'pattern', 'non_goal', 'runbook', 'environment', 'adr', 'assumption', 'edge_case', 'risk',
+  'todo',
+];
+
+/**
  * **The ledger entry for `gaps` in `e2e/screen-parity.spec.ts`, restated.**
  *
  * Not imported: that file is a Playwright spec and importing it here would drag
@@ -356,7 +388,20 @@ const NOTHING_TO_DRAW: CoverageBody = { files: [], pinned: [], items: [], trunca
  */
 // `b` came OUT on 2026-08-25: the run grammar gained `{b:}` and `{i:}`, so a
 // string table can carry emphasis and the screen draws the bold it could not.
-const KNOWN_GAPS_GAPS = ['button.icon', 'span.m', 'span.v', 'td', 'td.m', 'td.small'];
+//
+// **`td` and `td.small` came out on 2026-08-31**, closed by the empty-category
+// rows. They were DATA — the loop that builds them had nothing to build from
+// over either corpus — and `corpus.empty` is never empty, so they draw now on
+// the very corpus the browser gate measures.
+//
+// **`span.m` did NOT close, and it moved rather than staying still.** The
+// mockup's demo row writes `<span class="m">open_question</span>`, a literal.
+// `gaps.cat` is `category {mv:name}` now, and `lib/i18n.js` builds a `{mv:}`
+// run as `span.m.v` — the same monospace isolation carrying a VALUE. So the
+// app draws `span.m.v` where the design of record froze one category's name
+// into a `span.m`, and this is the last kind on this screen that the mockup
+// draws and the app does not.
+const KNOWN_GAPS_GAPS = ['button.icon', 'span.m', 'span.v', 'td.m'];
 
 // ── The parser, checked before anything is measured with it ───────────────
 
@@ -375,16 +420,19 @@ test('given a gap to draw, the screen draws every kind the mockup does but the c
   const drawn = mockupKinds();
   const built = renderedKinds(root);
 
-  // **`span.m` is the one kind left, and it is a STRING-TABLE gap.** The
-  // mockup's third row shape is `<td data-t="gaps.cat">category <span
-  // class="m">open_question</span></td>`, and `gaps.cat` is
-  // `category {m:open_question}` — an `{m:…}` run is a LITERAL by `lib/i18n.js`'
-  // own grammar, so the key can name the one category the mockup's demo row
-  // happens to show and there is no substitution for the fifteen others this
-  // corpus actually has empty. `screens/gaps.js`' header states the fix
-  // (`gaps.cat` written as `category {mv:name}`, one word in the design of
-  // record); until it lands, drawing the row would either repeat one category's
-  // name for every row or drop the word that tells a category from a directory.
+  // **`span.m` is the one kind left, and it is the design of record's frozen
+  // sample rather than a missing feature.** The mockup's third row shape is
+  // `<td data-t="gaps.cat">category <span class="m">open_question</span></td>`,
+  // and `gaps.cat` WAS `category {m:open_question}` — an `{m:…}` run is a
+  // LITERAL by `lib/i18n.js`' own grammar, so the key could name the one
+  // category the mockup's demo row happens to show and there was no
+  // substitution for the others.
+  //
+  // It is `category {mv:name}` now and the rows draw, so the kind the app
+  // builds is `span.m.v`: the same monospace bidi isolation, around a VALUE.
+  // The mockup's `span.m` is what a frozen literal renders as and no live
+  // corpus will ever produce one here. The mockup is history and is not edited
+  // (`DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`).
   assert.deepEqual(
     drawn.filter((kind) => !built.includes(kind)), ['span.m'],
     'the only kind this screen may still be missing is the empty-category name',
@@ -420,7 +468,9 @@ test('every gap the view model names is drawn, in its order, and none is dropped
   // rather than three files, and `vendor` rather than `vendor/lib`.
   assert.deepEqual(expected, [{ path: 'src/workers', files: 3 }, { path: 'vendor', files: 1 }]);
 
-  const root = await draw(WITH_GAPS);
+  // No empty category, so the only rows are the directory ones this test is
+  // about. The category rows have their own test below.
+  const root = await draw(WITH_GAPS, []);
   const body = findOne(root, (node) => node.tag === 'tbody');
   assert.equal(body.children.length, expected.length, 'one row per gap, and no row without one');
   assert.deepEqual(
@@ -478,20 +528,26 @@ test('over a corpus with no ungoverned directory, the ledger entry is exactly wh
   const missing = mockupKinds().filter((kind) => !renderedKinds(root).includes(kind));
 
   // **This is `e2e/screen-parity.spec.ts`' `gaps` entry, reproduced in Node.**
-  // Five of the seven — `td`, `td.m`, `td.small`, `span.v`, `button.icon` — are
-  // drawn by the test above from the same code and a body that has a gap in it,
-  // so they are DATA. `span.m` is the string table. `b` is both at once: the
-  // mockup draws it twice, as `<b data-t="cov.k4">` in the not-examined row
-  // (which this screen renders when `truncated` is true, and no corpus here
-  // makes it true) and as a bold run INSIDE `gaps.note`, which `lib/i18n.js`'
-  // grammar has no marker for and no string table can carry.
+  // Three of the four — `td.m`, `span.v`, `button.icon` — are drawn by the test
+  // above from the same code and a body that has a gap in it, so they are DATA:
+  // they belong to the DIRECTORY row, and no corpus this project serves has an
+  // ungoverned directory. `span.m` is the mockup's frozen sample, explained
+  // above.
+  //
+  // `td` and `td.small` are NOT in this list any more, and the reason is the
+  // whole point of the change: they belong to the empty-CATEGORY row, and
+  // `corpus.empty` answers nine over this very corpus. Data closed them, on the
+  // fixture the browser gate measures rather than on a hypothetical one.
   //
   // When this list and the gate's disagree, one of them is stale. Change both.
   assert.deepEqual(missing, KNOWN_GAPS_GAPS);
 });
 
 test('no rows is drawn as the real markup with nothing in it, never as a sentence', async () => {
-  const root = await draw(NOTHING_TO_DRAW);
+  // No directory gap AND no empty category — the only shape in which this table
+  // is genuinely empty. Neither corpus this project serves produces it, which
+  // is exactly why it is constructed here.
+  const root = await draw(NOTHING_TO_DRAW, []);
   const built = renderedKinds(root);
   for (const kind of ['table', 'thead', 'tbody', 'tr', 'th']) {
     assert.ok(built.includes(kind), `${kind} is drawn whether or not there is a row`);
@@ -538,7 +594,7 @@ test('a truncated walk is disclosed in the mockup\'s own two keys', async () => 
 });
 
 test('the not-examined state is never a row in a table whose every row is a gap', async () => {
-  const root = await draw(WITH_GAPS_TRUNCATED);
+  const root = await draw(WITH_GAPS_TRUNCATED, []);
   const body = findOne(root, (node) => node.tag === 'tbody');
   assert.equal(body.children.length, 2, 'the two gaps, and no third row for the third state');
   assert.equal(
@@ -549,7 +605,7 @@ test('the not-examined state is never a row in a table whose every row is a gap'
 });
 
 test('a walk that did NOT stop short says nothing about a limit it never reached', async () => {
-  const root = await draw(WITH_GAPS);
+  const root = await draw(WITH_GAPS, []);
   assert.equal(
     findAll(root, (node) => textOf(node).includes('past the file limit')).length, 0,
     'truncated:false means the walk was complete — disclosing a limit anyway would be the '
@@ -557,12 +613,98 @@ test('a walk that did NOT stop short says nothing about a limit it never reached
   );
 });
 
+// ── The empty categories, which the string table could not name until now ─
+
+test('every empty category the endpoint serves gets a row, and the row says "category"', async () => {
+  const root = await draw(NOTHING_TO_DRAW);
+  const body = findOne(root, (node) => node.tag === 'tbody');
+  assert.equal(body.children.length, EMPTY_CATEGORIES.length,
+    'one row per empty category — the whole defect was a key that could name exactly one');
+
+  // **The word `category` is not decoration.** This table puts directories and
+  // categories in one `Where` column, and it is the only thing telling a reader
+  // which kind of thing a row is about. Dropping it and drawing the bare name
+  // was the workaround the task record forbids by name.
+  assert.deepEqual(
+    body.children.map((row) => textOf(row.children[0]!)),
+    EMPTY_CATEGORIES.map((name) => `category ${name}`),
+  );
+  assert.deepEqual(
+    body.children.map((row) => textOf(row.children[1]!)),
+    EMPTY_CATEGORIES.map(() => 'empty'),
+  );
+
+  // `Next` is the mockup's own empty cell: there is no command to compose for a
+  // category holding nothing, and a Compose button here would offer a control
+  // with nothing behind it.
+  assert.deepEqual(body.children.map((row) => textOf(row.children[2]!)), EMPTY_CATEGORIES.map(() => ''));
+});
+
+test('the category name is a {mv:} VALUE element, never a literal and never flattened', async () => {
+  const root = await draw(NOTHING_TO_DRAW, ['open_question']);
+  const where = findOne(root, (node) => node.tag === 'td' && node.className === ''
+    && textOf(node).startsWith('category'));
+  const slot = where.children.find((child) => child.tag === 'span');
+  assert.ok(slot !== undefined, 'the {mv:name} substitution must survive as an element');
+  // `m v` — the monospace, bidi-isolated VALUE run. `m` alone would be the
+  // literal form the key used to carry; `v` alone would lose `direction:ltr`
+  // and let a category name reorder inside RTL prose.
+  assert.equal(slot.className, 'm v');
+  assert.equal(slot.textContent, 'open_question');
+});
+
+test('one category name is never repeated across fifteen rows', async () => {
+  // The failure mode the literal form guaranteed: `{m:open_question}` is the
+  // same text in every language and in every row, so a screen that drew the
+  // rows with it would have named `open_question` nine times over the corpus
+  // the browser gate serves.
+  const root = await draw(NOTHING_TO_DRAW);
+  const names = findAll(root, (node) => node.className === 'm v').map(textOf);
+  assert.deepEqual(names, EMPTY_CATEGORIES);
+  assert.equal(new Set(names).size, names.length, 'every row names its own category');
+});
+
+test('a refused help route costs the category rows only, and says so', async () => {
+  const REFUSAL = 'no help topic "categories" — topics served here: scope, capture, workflow.';
+  const root = await drawFrom(async (route) => {
+    if (route === '/api/coverage') return WITH_GAPS;
+    throw new Error(REFUSAL);
+  });
+
+  // The directory rows are a different question answered by a different
+  // endpoint, and they survive.
+  const body = findOne(root, (node) => node.tag === 'tbody');
+  assert.equal(body.children.length, 2, 'the coverage rows are not lost to the help route');
+
+  // And the loss is NAMED. A table that merely got shorter would report "no
+  // category is empty", which is the opposite of what happened.
+  const note = findOne(root, (node) => kindOf(node.tag, node.className) === 'p.small.spill');
+  assert.equal(textOf(note), REFUSAL);
+});
+
+test('a 200 without corpus.empty is a refusal wearing a success status, and is said so', async () => {
+  const root = await drawFrom(async (route) => {
+    if (route === '/api/coverage') return NOTHING_TO_DRAW;
+    // The contract's own shape, minus the one field this screen reads.
+    return { topic: 'categories', markdown: '', corpus: { counts: {} } };
+  });
+  assert.equal(findOne(root, (node) => node.tag === 'tbody').children.length, 0);
+  const note = findOne(root, (node) => kindOf(node.tag, node.className) === 'p.small.spill');
+  assert.ok(textOf(note).includes('without corpus.empty'),
+    'an absence drawn as a full corpus is the silent drop this note exists to prevent');
+});
+
 // ── The refusal ───────────────────────────────────────────────────────────
 
 test('a refused endpoint is drawn in the server\'s own words, INSTEAD of the table', async () => {
   const REFUSAL = 'the index is out of date relative to the corpus, and this endpoint may not '
     + 'rebuild it. Run `mycontext reindex`';
-  const root = await drawFrom(async () => { throw new Error(REFUSAL); });
+  // `/api/coverage` refuses; the help route is never reached, because a screen
+  // with no table has nowhere to put a category row.
+  const root = await drawFrom(async (route) => {
+    assert.equal(route, '/api/coverage', 'the help route is not asked once coverage has refused');
+    throw new Error(REFUSAL);
+  });
 
   // `errorNote`'s own shape, carrying the endpoint's sentence as it arrived: no
   // string table declares a wording for this on any of these screens, and

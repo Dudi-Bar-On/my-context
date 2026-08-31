@@ -54,27 +54,41 @@
  *     left out; this discloses the flag that is already served, and a flag is
  *     not a count.
  *   - **The empty-CATEGORY rows** — *"category `open_question` — empty"*
- *     (`gaps.cat` + `gaps.r3`). **The data is served** and this screen fetches
- *     nothing for it, because the STRING cannot carry it: `gaps.cat` is
+ *     (`gaps.cat` + `gaps.r3`). **DRAWN SINCE 2026-08-31, and the fix was the
+ *     one word this file had been asking for.** `gaps.cat` was
  *     `category {m:open_question}` in English and `קטגוריה {m:open_question}` in
- *     Hebrew, and an `{m:…}` run is a LITERAL — `strings/en.js`' own grammar
- *     block says so, and `strings-parity.test.ts` holds the two `{m:…}`
- *     payloads identical for exactly that reason. That check is between the two
- *     TABLES and is untouched by the 2026-08-26 ruling, which dropped only the
- *     mockup-facing invented direction. So the key can name one category, the
- *     one the mockup's demo row happens to show, and there is no substitution
- *     for the others. Drawing the name alone in the `Where` cell would lose the
- *     word that tells a category apart from a directory, which is the whole
- *     content of that cell. **Needs one word changed in the design of record:
- *     `gaps.cat` written as `category {mv:name}`** — the value-slot form the
- *     tables already use for ids, paths and globs — after which
- *     `/api/help/categories`' `corpus.empty` fills it with no further work.
- *     Raised with a screenshot in this task's report; not worked around here.
- *     **Re-measured 2026-08-23**, by calling `apiHelp` directly: `corpus.empty`
+ *     Hebrew. An `{m:…}` run is a LITERAL — `strings/en.js`' own grammar block
+ *     says so, and `strings-parity.test.ts` holds the two payloads identical
+ *     for exactly that reason — so the key could name ONE category, the one the
+ *     mockup's demo row happens to show, and there was no substitution for the
+ *     others. It is `category {mv:name}` now, the value-slot form the tables
+ *     already use for ids, paths and globs, and `/api/help/categories`'
+ *     `corpus.empty` fills the rows.
+ *
+ *     **The blocker was a mockup edit and it stopped being one.** `{mv:name}`
+ *     went into the grammar under `plan:rulings seq:12` and the tables were
+ *     regenerated under `seq:15`; the mockup still writes the `{m:}` form and
+ *     is HISTORY under
+ *     `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`, so it is
+ *     not edited here. `strings-parity`'s surviving directions are unmoved: the
+ *     two tables carry the same `{mv:name}` slot and the same (now empty)
+ *     `{m:…}` list, and the mockup still declares the key.
+ *
+ *     **Measured 2026-08-23** by calling `apiHelp` directly: `corpus.empty`
  *     answers SIXTEEN categories over `.demo-corpus` and FIFTEEN over this
- *     project's own, `open_question` among them both. So the shape the string
- *     can name is one row, and the shape it cannot is fifteen — which is the
- *     whole argument against drawing the one and calling the table done.
+ *     project's own, `open_question` among them both — which is why drawing the
+ *     one the literal could name and calling the table done was never an
+ *     option.
+ *
+ *     **The bare name is still not drawn, and that was never the fallback.**
+ *     `gaps.cat` keeps the word *category* around the slot: this table puts
+ *     directories and categories in one `Where` column, and that word is the
+ *     only thing telling them apart.
+ *
+ *     **A second request, and a refusal costs the category rows alone.**
+ *     `/api/help/categories` is fetched beside `/api/coverage` rather than
+ *     inside its `try`, so a coverage answer with a help refusal still draws
+ *     every directory row and says what it lost, and the reverse holds too.
  *
  * **THE ROW SHAPE THAT *IS* SERVED STILL DRAWS NOTHING HERE, AND THAT IS THE
  * CORPUS RATHER THAN THE CODE.** Measured the same day by calling `apiCoverage`
@@ -87,13 +101,21 @@
  * unscoped under a `global`/`required` policy that every path is governed, and
  * `coverageGaps` only names a directory whose `governedCount` is zero.
  *
- * So `td.m`, `td.small`, `td`, `span.v` and `button.icon` sit in
- * `e2e/screen-parity.spec.ts`'s `gaps` entry as DATA, not as code. The loop
- * below builds all five and has since it was written; there is nothing on
- * either corpus for it to build them from. `test/ui/gaps-screen.test.ts`
- * renders them from a body that *does* hold a gap, which is the proof a ledger
- * measured over one corpus cannot carry — and it renders the empty body too, so
- * the ledger entry itself is pinned in Node rather than only in a browser.
+ * So `td.m`, `span.v` and `button.icon` sit in `e2e/screen-parity.spec.ts`'s
+ * `gaps` entry as DATA, not as code. The loop below builds all three and has
+ * since it was written; there is nothing on either corpus for it to build them
+ * from. `test/ui/gaps-screen.test.ts` renders them from a body that *does* hold
+ * a gap, which is the proof a ledger measured over one corpus cannot carry —
+ * and it renders the empty body too, so the ledger entry itself is pinned in
+ * Node rather than only in a browser.
+ *
+ * **`td`, `td.small` and `span.m` left that entry on 2026-08-31**, closed by
+ * the empty-category rows: every corpus this gate runs over has empty
+ * categories, so those three now draw on the fixture the ledger is measured
+ * against. `span.m` closes at one remove — `{mv:name}` renders `span.m.v`, the
+ * value form, where the mockup's frozen demo row writes a bare `span.m` around
+ * a literal. That is the kind the mockup draws and the app does not, and it is
+ * the only one left on this screen.
  *
  * The `Next` button is drawn and does nothing, exactly as the mockup's own is:
  * it has no handler there either, and the screen it must lead to — the Composer
@@ -119,6 +141,34 @@ export async function render(root, ctx) {
   } catch (error) {
     card.append(errorNote(error.message));
     return;
+  }
+
+  // The empty CATEGORIES, from the endpoint that already answers them
+  // (`read-model.ts` · `          empty: Object.values(ws.config.categories)` · ~2119).
+  //
+  // **Its own try, and its own refusal.** A help route that says no costs this
+  // table its category rows and nothing else: the directory rows above are a
+  // different question answered by a different endpoint, and losing them to
+  // this one would drop rows that were served. The refusal is drawn under the
+  // table rather than swallowed — an empty category list and a read that failed
+  // are opposite facts, and a table that just got shorter would report the
+  // first while the second is true.
+  let empty = [];
+  let helpRefusal = null;
+  try {
+    const help = await ctx.api('/api/help/categories');
+    const served = help === null || typeof help !== 'object' ? null : help.corpus;
+    // A 200 whose shape is not the contract is a refusal wearing a success
+    // status. Said so, rather than drawn as a corpus with no empty category —
+    // which is a real and different answer.
+    if (served === null || typeof served !== 'object' || !Array.isArray(served.empty)) {
+      helpRefusal = new Error('gaps: /api/help/categories answered 200 without corpus.empty — '
+        + 'the empty-category rows below would be an absence drawn as a full corpus');
+    } else {
+      empty = served.empty;
+    }
+  } catch (error) {
+    helpRefusal = error;
   }
 
   const table = el('table');
@@ -155,8 +205,35 @@ export async function render(root, ctx) {
     tbody.append(row);
   }
 
+  // **The empty-CATEGORY rows, after the directories.** `gaps.cat` carries the
+  // word *category* around the slot for the reason this file's header gives:
+  // the `Where` column holds both kinds, and the word is the only thing that
+  // tells them apart. The cell is a BARE `td`, which is what the mockup writes
+  // for this row — the name is a value inside the sentence, not the cell.
+  //
+  // `Next` is an empty `<td>`, again the mockup's: there is no command to
+  // compose for a category that holds nothing. A `Compose` button here would
+  // offer a control with nothing behind it, which is worse than the blank the
+  // design of record draws.
+  for (const category of empty) {
+    const row = el('tr');
+    const where = el('td');
+    // `{ name: category }` and not the shorthand: the slot-supply scanners in
+    // `viewmodel.test.ts` and `proc-screen.test.ts` read the argument object as
+    // TEXT and match `name:`, so a shorthand property is a slot they cannot see
+    // supplied — and an unsupplied slot is what t() throws on.
+    where.append(...ctx.t('gaps.cat', { name: category }));
+    const what = el('td', 'small');
+    what.append(...ctx.t('gaps.r3'));
+    row.append(where, what, el('td'));
+    tbody.append(row);
+  }
+
   table.append(thead, tbody);
   card.append(table);
+
+  // Named where the rows would have been, never left to a short table.
+  if (helpRefusal !== null) card.append(errorNote(helpRefusal.message));
 
   // The walk stopped short, and the table says so rather than leaving it to be
   // inferred from a short list of directories. `truncated` is the ONE fact

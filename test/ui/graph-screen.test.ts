@@ -419,6 +419,101 @@ test('the screen names every gr.* key the tables declare, and invents none', asy
   }
 });
 
+/* -------------------------------------------------------------------------- *
+ * The focus picker — `plan:walk seq:87`.
+ *
+ * The picker BUILDS elements, so most of what it is can only be seen in a
+ * browser: `e2e/graph-focus.spec.ts` drives it against the real fixture and is
+ * the authority on what it does. What is checkable here without a `document`
+ * is what the SOURCE commits to — that it is a read, that it is wired to the
+ * event a keyboard user does not fire on the way past, and that its label is a
+ * declared key rather than a literal.
+ * -------------------------------------------------------------------------- */
+
+test('the focus picker is a READ: a select, a change handler, and nothing that writes', () => {
+  // A `<select>` and a `<label>` for it. Without the `htmlFor` the label names
+  // nothing to a screen reader and the control is unlabelled in both languages.
+  assert.match(graphSource, /el\('select'\)/,
+    'the focus is chosen by a <select>; nothing else on this screen chooses it');
+  assert.match(graphSource, /\.htmlFor = 'egofocus'/,
+    'the label must name the select, or the picker is unlabelled to a screen reader');
+  assert.match(graphSource, /picker\.id = 'egofocus'/);
+
+  // **`change`, not `input`.** A `<select>` fires `input` on every arrow key
+  // while its list is open, so `input` would fetch one graph per keystroke on
+  // the way to the id the reader was walking towards.
+  assert.match(graphSource, /addEventListener\('change'/,
+    'the picker listens on change; input fires once per arrow key inside an open list');
+  assert.ok(!/addEventListener\('input'/.test(graphSource),
+    'an input listener on a <select> refetches on every keystroke through the list');
+
+  // **It writes nothing.** Choosing what to look at is a read, so there is no
+  // approval boundary here to cross — and building a compose-then-execute
+  // control for it would teach a reader that this screen can change their
+  // corpus. `ctx.api` is a GET-only surface on this screen and stays one.
+  for (const forbidden of ['commandActions', 'composeCommand', 'method:', 'POST']) {
+    assert.ok(!graphSource.includes(forbidden),
+      `graph.js names ${forbidden}: the focus picker is a READ and this screen still has no `
+      + 'write of any kind');
+  }
+});
+
+test('the picker is worded by a declared key, and the id inside it is isolated', () => {
+  // `gr.focus`, not a literal. The both-directions test above already holds it
+  // against both tables; this is the placement.
+  assert.match(graphSource, /ctx\.t\('gr\.focus'\)/,
+    'the picker label is a string-table key, not an English literal');
+
+  // **An `<option>` cannot hold a `<span>`**, so the bidi isolation every id on
+  // this screen gets from `.m` cannot be built out of elements here. `dir` is
+  // the attribute form of the same guarantee, and without it a list of ids
+  // reorders inside the RTL page.
+  assert.match(graphSource, /picker\.dir = 'ltr'/,
+    'an id list in a <select> under `א` needs dir="ltr" — .m cannot reach inside an <option>');
+
+  // Ids and never titles, which is `gr.note`'s rule for this whole screen held
+  // one element further out than the SVG.
+  assert.ok(!/option[\s\S]{0,120}\.title\b/.test(graphSource),
+    'an option carries the id alone: gr.note is "Nodes carry ids, not titles"');
+});
+
+test('the default focus is unchanged — the first item by id, and the same answer twice', () => {
+  assert.match(graphSource, /draw\(items\.items\[0\]\.id\)/,
+    'the picker opens on the first item by id, which is what this screen has always drawn: a '
+    + 'reader who touches nothing must see what they saw before');
+  // The radius is settled and is NOT offerable — `gr.sub` promises "radius 1"
+  // and `plan:walk seq:87` rules the question closed. A second picker here
+  // would need a second key, and neither table declares one. Counted rather
+  // than pattern-matched on a name: the file's own header discusses
+  // `graph.radius` by name to say it is deliberately absent.
+  assert.equal((graphSource.match(/el\('select'\)/g) ?? []).length, 1,
+    'this screen offers ONE control and it chooses the focus; radius stays the endpoint '
+    + 'default of 1, which is a separate question settled the other way');
+  assert.ok(!/ctx\.t\('gr\.radius'\)/.test(graphSource),
+    'no radius string is placed, because neither table declares one');
+  assert.match(graphSource, /const RADIUS = 1;/,
+    'the radius this screen asks for is a constant it names, and it is sent rather than '
+    + 'relied on so the readout states the horizon it actually asked for');
+});
+
+test('a focus change replaces the drawing and the readout, and never leaves a stale one', () => {
+  // The plate and the foot are emptied at the TOP of the redraw, before the
+  // fetch. A refetch that refuses must not leave the previous picture's
+  // `focus=…  nodes=…  omitted=…` underneath a refusal about a different id.
+  const draw = /const draw = async \(focus\) => \{([\s\S]*?)\n  \};/.exec(graphSource);
+  assert.ok(draw !== null, 'graph.js no longer redraws through a single `draw(focus)`');
+  const body = draw[1]!;
+  const clears = body.indexOf('box.replaceChildren()');
+  const footClears = body.indexOf('foot.replaceChildren()');
+  const fetches = body.indexOf('ctx.api(');
+  assert.ok(clears !== -1 && footClears !== -1 && fetches !== -1);
+  assert.ok(clears < fetches && footClears < fetches,
+    'the plate and the foot are cleared before the request, so a refusal cannot stand under '
+    + 'the previous focus\'s readout');
+  assert.match(body, /focus=\$\{encodeURIComponent\(focus\)\}/,
+    'the chosen id is what is asked for, and it is encoded');
+});
+
 test('no translated string is assigned, and every legend class is the mockup\'s', async () => {
   // Owner ruling A1: `ctx.t()` returns nodes and is APPENDED. A screen that
   // assigns one has flattened its `{m:}` runs into text.

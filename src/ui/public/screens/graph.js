@@ -37,22 +37,44 @@
  * x-coordinate into the reading direction so the glyphs stay upright, exactly
  * as the mockup's own restored views do.
  *
- * **WHAT THIS SCREEN DOES NOT DRAW, AND THE ONE QUESTION IT CANNOT ANSWER.**
+ * **WHO CHOOSES THE FOCUS — ANSWERED 2026-08-31, AND IT IS A READ.**
  * Every field the legend names is served — `focus` is the response's own,
  * `missing` is on the node, superseded is `status`, load-bearing is on the edge
  * and *"+N more"* is `omitted` — so nothing here is refused for want of data.
- * What the design of record does not say is **WHICH item the ego graph is drawn
- * around**: its Relations section has no picker, no `<select>` and no control of
- * any kind, and the header's own focus popup is a different thing entirely
- * (`focus.live` — `state/focus.json`, which narrows by tags, categories and
- * scope and names no item). The plan's Step 3 adds two pickers on
- * `graph.focus` / `graph.radius`, and no table declares either key. So the focus
- * is the first item by id — deterministic, and the same answer twice — and
- * choosing it is the open question this task's report raises. The radius stays
- * the endpoint's own default of 1, which is what `gr.sub` promises: *"One
- * focused item, radius 1"* — and is now SENT rather than relied on, so the
- * readout below can name the horizon it actually asked for instead of quoting
- * a default from memory.
+ * What was missing was the one thing the design of record does not say:
+ * **WHICH item the ego graph is drawn around.** The screen fetched `/api/items`
+ * and took element zero, so it could only ever draw one item's neighbourhood
+ * and which one was an accident of the list's order.
+ *
+ * **There is a picker now** — `gr.focus`, a `<label>` and a `<select>` of every
+ * id `/api/items` answers, above the plate. Changing it refetches
+ * `/api/graph?focus=…` and redraws the chart and the readout, and NOTHING
+ * ELSE: it writes nothing, composes nothing and confirms nothing, because
+ * choosing what to look at is a READ. There is no compose-then-execute control
+ * here and there is no approval boundary to cross, which is the same reason
+ * `coverage.js` needs none for its tree.
+ *
+ * **The default is unchanged and deliberately so.** The picker opens on the
+ * first item by id — the same answer twice, the same answer the screen has
+ * always given — so a reader who touches nothing sees what they saw before.
+ *
+ * **`gr.focus`, not the plan sketch's `graph.focus`.** Every string this screen
+ * names is in its own `gr.` namespace, and `test/ui/graph-screen.test.ts` holds
+ * *"the screen names every `gr.*` key the tables declare, and invents none"* in
+ * BOTH directions — a `graph.` key would sit outside the only gate that would
+ * ever notice it going unused or undeclared. The WORDING is unapproved copy
+ * drafted here and reported as such.
+ *
+ * **`graph.radius` is NOT declared, and that is the task's own ruling rather
+ * than an omission.** Radius stays the endpoint's default of 1, which is what
+ * `gr.sub` promises — *"One focused item, radius 1"* — and it is SENT rather
+ * than relied on, so the readout names the horizon it actually asked for
+ * instead of quoting a default from memory. A radius control is a second
+ * question and it is settled the other way.
+ *
+ * The header's own focus popup remains a different thing entirely
+ * (`focus.live` — `state/focus.json`, which narrows injection by tags,
+ * categories and scope and names no item at all).
  *
  * **EVERY DECISION IS IN `egoDrawing`, AND NOTHING IS DECIDED IN THE GLUE.**
  * Spec §6 names `screens/*.js` as the untested surface, so this file computes
@@ -112,7 +134,12 @@ export async function render(root, ctx) {
   const card = el('div', 'card pane');
   const box = el('div', 'plate');
   box.id = 'ego';
-  card.append(box, legend(ctx), spaced(note(ctx)));
+  // The readout and any refusal live in their own container so a focus change
+  // can replace exactly them. Rebuilding the whole card would rebuild the
+  // picker, and a `<select>` replaced mid-interaction takes the keyboard focus
+  // and the open list down with it.
+  const foot = el('div');
+  card.append(box, legend(ctx), spaced(note(ctx)), foot);
   root.append(card);
 
   let items;
@@ -123,36 +150,107 @@ export async function render(root, ctx) {
     return;
   }
   // A corpus with no items has no ego to draw and no error to report. The card,
-  // the legend and the note are the real markup; the plate holds nothing.
+  // the legend and the note are the real markup; the plate holds nothing. No
+  // picker either — an empty `<select>` is a control offering nothing.
   if (items.items.length === 0) return;
 
-  let data;
-  try {
-    data = await ctx.api(
-      `/api/graph?focus=${encodeURIComponent(items.items[0].id)}&radius=${RADIUS}`,
-    );
-  } catch (error) {
-    box.append(errorNote(error.message));
-    return;
-  }
+  /**
+   * Draw the ego graph around one id, replacing the plate and the foot.
+   *
+   * Every refusal lands in the PLATE, where the chart would have been, and the
+   * foot is emptied with it: a stale readout under a failed refetch would name
+   * a focus, a node count and an omitted count belonging to the previous
+   * picture, which is worse than no readout at all.
+   */
+  const draw = async (focus) => {
+    box.replaceChildren();
+    foot.replaceChildren();
+    let data;
+    try {
+      data = await ctx.api(
+        `/api/graph?focus=${encodeURIComponent(focus)}&radius=${RADIUS}`,
+      );
+    } catch (error) {
+      box.append(errorNote(error.message));
+      return;
+    }
 
-  // Mirroring is by PROJECTION, not by transform: `scale(-1,1)` would reverse
-  // the digits too. The page direction is `<html dir>`, which `applyLanguage`
-  // sets from the string table itself — a layout fact, not a translated one,
-  // and the one piece of the drawing that has to be read from the document.
-  const drawing = egoDrawing(data, document.documentElement.dir === 'rtl');
-  box.append(chart(ctx, drawing));
-  card.append(spaced(readout(data, drawing)));
-  // An endpoint no column holds is a response this layout cannot honour, and
-  // the one thing it must not do is quietly draw the rest. Reported in the
-  // refusal register the screen already uses for a server that said no.
-  const lost = drawing.undrawnEdges + drawing.undrawnNodes;
-  if (lost > 0) {
-    card.append(errorNote(
-      `${drawing.undrawnEdges} edge(s) and ${drawing.undrawnNodes} node(s) in this response ` +
-      'name an id the ego layout could not place, and are not in the drawing above',
-    ));
+    // Mirroring is by PROJECTION, not by transform: `scale(-1,1)` would reverse
+    // the digits too. The page direction is `<html dir>`, which `applyLanguage`
+    // sets from the string table itself — a layout fact, not a translated one,
+    // and the one piece of the drawing that has to be read from the document.
+    // Re-read per draw rather than closed over: the language can change between
+    // one focus and the next without this screen being rebuilt.
+    const drawing = egoDrawing(data, document.documentElement.dir === 'rtl');
+    box.append(chart(ctx, drawing));
+    foot.append(spaced(readout(data, drawing)));
+    // An endpoint no column holds is a response this layout cannot honour, and
+    // the one thing it must not do is quietly draw the rest. Reported in the
+    // refusal register the screen already uses for a server that said no.
+    const lost = drawing.undrawnEdges + drawing.undrawnNodes;
+    if (lost > 0) {
+      foot.append(errorNote(
+        `${drawing.undrawnEdges} edge(s) and ${drawing.undrawnNodes} node(s) in this response ` +
+        'name an id the ego layout could not place, and are not in the drawing above',
+      ));
+    }
+  };
+
+  // The picker goes ABOVE the plate, because it decides what the plate holds.
+  // The default is the first item by id — what this screen has always drawn.
+  card.insertBefore(focusPicker(ctx, items.items, draw), box);
+  await draw(items.items[0].id);
+}
+
+/**
+ * **The focus picker. It is a READ and it is built like one.**
+ *
+ * A `<label>` and a `<select>`, and nothing else: no compose block, no confirm,
+ * no Execute. Choosing which item to look at writes nothing, so there is no
+ * approval boundary here to cross and building one would teach a reader that
+ * this screen can change their corpus.
+ *
+ * **Every option is an id and nothing else**, which is `gr.note`'s rule for
+ * this whole screen — *"Nodes carry ids, not titles"* — held one element
+ * further out than the SVG. An `<option>` cannot hold a `<span>`, so the
+ * isolation an id needs inside RTL prose cannot be built out of elements here;
+ * `dir="ltr"` on the `<select>` is the attribute form of the same thing, and it
+ * is why the served `title` is not appended beside the id.
+ *
+ * **`change`, not `input`.** A `<select>` fires `input` on every keyboard
+ * arrow while the list is open, so `input` would fetch a graph per keystroke
+ * on the way to the id a reader was actually walking towards.
+ *
+ * The bar's layout is set through CSSOM: the server sends `style-src 'self'`
+ * with no `'unsafe-inline'`, so no `style` attribute can be written here — the
+ * constraint `parts.js` records for its own `spaced()`.
+ */
+function focusPicker(ctx, items, draw) {
+  const bar = el('div');
+  bar.style.setProperty('display', 'flex');
+  bar.style.setProperty('gap', '8px');
+  bar.style.setProperty('align-items', 'center');
+  bar.style.setProperty('flex-wrap', 'wrap');
+  bar.style.setProperty('margin-block-end', '8px');
+
+  const label = el('label', 'small');
+  label.htmlFor = 'egofocus';
+  label.append(...ctx.t('gr.focus'));
+
+  const picker = el('select');
+  picker.id = 'egofocus';
+  // An id is data, not prose. `.m`'s `direction:ltr` cannot reach inside an
+  // `<option>`, and this attribute is what keeps the list readable under `א`.
+  picker.dir = 'ltr';
+  for (const item of items) {
+    const option = el('option', null, item.id);
+    option.value = item.id;
+    picker.append(option);
   }
+  picker.addEventListener('change', () => { void draw(picker.value); });
+
+  bar.append(label, picker);
+  return bar;
 }
 
 /** `sv(tag, attrs)` — the mockup's own SVG factory, argument for argument. */
