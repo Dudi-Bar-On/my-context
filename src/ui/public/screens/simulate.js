@@ -1059,7 +1059,7 @@ export async function render(root, ctx) {
       return;
     }
     recLine.append(...ctx.t('sim.recn', {
-      tier, cost: num(priced.tokens), n: num(priced.n), set: num(set), need: num(need.threshold),
+      tier: tier, cost: num(priced.tokens), n: num(priced.n), set: num(set), need: num(need.threshold),
     }));
 
     // The ceiling, and it is the term that refuses. `window − the other four
@@ -1169,7 +1169,7 @@ export async function render(root, ctx) {
       const arriving = counts !== null ? counts.fits : (need === null ? 0 : need.count);
       fullLine.append(...ctx.t('sim.full', {
         used: num(win.used), win: num(win.size), free: num(free), total: num(total),
-        n: num(arriving), tier,
+        n: num(arriving), tier: tier,
       }));
     }
   }
@@ -1192,10 +1192,10 @@ export async function render(root, ctx) {
       setSimRange(tier, value);
       applyBound();
       said.replaceChildren(...ctx.t('sim.recRange', {
-        tier, value: num(value), max: num(Number(slider.max)),
+        tier: tier, value: num(value), max: num(Number(slider.max)),
       }));
     } else {
-      said.replaceChildren(...ctx.t('sim.recSet', { tier, value: num(value) }));
+      said.replaceChildren(...ctx.t('sim.recSet', { tier: tier, value: num(value) }));
     }
     slider.value = String(value);
     budgetVal.textContent = num(value);
