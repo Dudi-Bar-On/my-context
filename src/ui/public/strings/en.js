@@ -944,6 +944,19 @@ export const strings = {
   // STD-a-measured-zero-is-drawn-and-named, clause 3. "not read" is a call
   // that did not answer and is retryable; "not measured" is a figure this
   // read surface exposes no aggregate for, and retrying cannot help.
+  // Whether the corpus moved WITHOUT the audit log seeing it — a file edited in
+  // an editor, by another tool, or by a branch switch writes no record at all.
+  // Measured by an mtime sweep on the heartbeat rather than watched: `fs.watch`
+  // was measured on 2026-08-31 and misses EVERY file past a burst of ~20-50,
+  // collapsing to two events that name nothing. Three states, and the third is
+  // load-bearing: `Unknown` is not-known and is never inferred from a
+  // truncated sweep.
+  'strip.corpusDrifted': 'corpus changed outside the log — {age} ago',
+  'strip.corpusInStep': 'in step with the log',
+  'strip.corpusDriftUnknown': 'outside edits not known',
+  'title.corpusDrifted': 'An item file under {m:items/} is newer than the last thing the audit log recorded, so this page is drawing a corpus that has moved under it. Everything live here comes from the audit log, and an item edited in an editor, by another tool, or by a branch switch writes no record at all. Reload to read the corpus as it is now.',
+  'title.corpusInStep': 'Nothing under {m:items/} is newer than the last recorded change — measured, not assumed. This page reflects changes made through mycontext and through a Claude Code session; a file edited any other way would show above as changed outside the log.',
+  'title.corpusDriftUnknown': 'Whether anything changed outside the log could not be measured — there is no audit log to compare against yet, or the corpus could not be read. This is "not known" rather than "nothing changed".',
   'strip.unread': 'not read',
   'strip.unmeasured': 'not measured',
   'title.unread': 'The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again.',
