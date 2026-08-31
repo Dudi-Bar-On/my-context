@@ -282,3 +282,62 @@ export function classifyContext(payload: unknown): ContextSample {
   const percent = windowSize !== null && windowSize > 0 ? (usedTokens / windowSize) * 100 : null;
   return { state: 'known', usedTokens, windowSize, percent };
 }
+
+/**
+ * One of the account's rate-limit windows, or `null` for a window the payload
+ * did not carry in a shape this code recognises.
+ */
+export interface RateWindow {
+  /** `used_percentage`, verbatim. */
+  usedPercent: number;
+  /** `resets_at`, unix SECONDS — `null` when the payload carried none. */
+  resetsAt: number | null;
+}
+
+export interface RateLimits {
+  fiveHour: RateWindow | null;
+  sevenDay: RateWindow | null;
+}
+
+/**
+ * The account's five-hour and seven-day windows, out of the same stored payload
+ * `classifyContext` reads — **EXTERNAL SCHEMA, marked as such**, exactly as the
+ * `context_window` reading above is.
+ *
+ * `rate_limits: { five_hour: { used_percentage, resets_at }, seven_day: {…} }`
+ * is Claude Code's shape, verified against real captured payloads on this
+ * machine (`.my_context/.statusline/<session>.json`, 2026-08-31: five_hour 16%,
+ * seven_day 50%). No test here fails when Claude Code changes it; every
+ * unrecognised shape degrades to `null`, never to a number.
+ *
+ * **Absence is answered at three levels and every one of them is `null`, not
+ * zero.** `rate_limits` is optional; a window inside it can be missing on its
+ * own; and `used_percentage` can arrive as a shape this code will not read
+ * (`'12'` as a string is a real observed case in the powerline lane's own
+ * fixtures). A window nobody reported is not a window measured at 0%, and
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` asks for the
+ * measured zero to be drawn — not for an unmeasured one to be invented.
+ *
+ * `resets_at` is kept separately nullable: a percentage with no reset time is
+ * still worth drawing, and it is the caller's business whether to show a
+ * countdown it was given no end for.
+ */
+export function classifyRateLimits(payload: unknown): RateLimits {
+  const limits = (payload as { rate_limits?: unknown } | null)?.rate_limits;
+  if (limits === null || limits === undefined || typeof limits !== 'object') {
+    return { fiveHour: null, sevenDay: null };
+  }
+  const read = (key: string): RateWindow | null => {
+    const raw = (limits as Record<string, unknown>)[key];
+    if (raw === null || raw === undefined || typeof raw !== 'object') return null;
+    const window = raw as Record<string, unknown>;
+    const used = window['used_percentage'];
+    if (typeof used !== 'number' || !Number.isFinite(used)) return null;
+    const resets = window['resets_at'];
+    return {
+      usedPercent: used,
+      resetsAt: typeof resets === 'number' && Number.isFinite(resets) ? resets : null,
+    };
+  };
+  return { fiveHour: read('five_hour'), sevenDay: read('seven_day') };
+}

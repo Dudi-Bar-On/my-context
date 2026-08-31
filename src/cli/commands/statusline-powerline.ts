@@ -311,6 +311,17 @@ export interface Segment {
    */
   required?: boolean;
   /**
+   * `true` for the ONE block the line is centred on — the context figure, by
+   * the owner's ruling of 2026-08-31 (see `buildSegments`).
+   *
+   * Separate from `required` rather than folded into it, because they are two
+   * different claims about a block: `required` says "never give this up", and
+   * `anchor` says "put this in the middle". A second block could earn the
+   * first without earning the second, and a renderer that centred on
+   * "whatever is required" would silently start centring on it.
+   */
+  anchor?: boolean;
+  /**
    * The last-resort spelling of a REQUIRED block, for a terminal too narrow
    * for even that block: the context figure without its glyph, two cells
    * shorter. Used only after every optional block has already gone, and only
@@ -385,7 +396,7 @@ export function contextSegment(occ: OccupancyView): Segment {
   if (occ.state === 'unmeasurable') {
     return {
       text: `${LEVEL_GLYPH.neutral} ${UNMEASURABLE_TEXT[occ.why]}`,
-      ink: INK.neutral, required: true,
+      ink: INK.neutral, required: true, anchor: true,
     };
   }
   // ONE call answers both "how full" and "too old to say": `fillLevel` takes
@@ -396,7 +407,7 @@ export function contextSegment(occ: OccupancyView): Segment {
   const level = absoluteFillLevel(occ.percent, occ.ageMs);
   if (level === 'stale') {
     return {
-      text: `${LEVEL_GLYPH.neutral} ctx — stale`, ink: INK.neutral, required: true,
+      text: `${LEVEL_GLYPH.neutral} ctx — stale`, ink: INK.neutral, required: true, anchor: true,
     };
   }
   const glyph = level === null ? LEVEL_GLYPH.neutral : LEVEL_GLYPH[level];
@@ -406,6 +417,7 @@ export function contextSegment(occ: OccupancyView): Segment {
     terse: figure,
     ink: inkForLevel(level),
     required: true,
+    anchor: true,
   };
 }
 
@@ -597,40 +609,75 @@ export function rateLimitSegment(
 }
 
 /**
- * **HOW CLOSE THE HANDOVER ASK IS** — one gold marker, and the second of the
- * two questions this bar answers.
+ * **HOW FAR THE HANDOVER ASK IS** — the second of the two questions this bar
+ * answers, as a NUMBER.
  *
- * Derived from the threshold exactly as the web strip derives it: `levelFor`
- * is `occupancyLevel`, whose `warn` opens at `threshold * OCCUPANCY_WARN_FRACTION`
- * and whose `crit` IS the threshold. Nothing about the ask is decided here.
+ * ── OWNER RULING, 2026-08-31 ────────────────────────────────────────────────
  *
- *   below threshold * 0.9   silent — no block at all, no columns spent
- *   approaching             `◆ ask near`
- *   at or past it           `◆ handover due`, bold
+ * This block used to be SILENT below `threshold * OCCUPANCY_WARN_FRACTION`, so
+ * the bar answered "how far am I from the ask" only once the answer was
+ * "nearly there". The owner ruled that the distance is worth reading at any
+ * fill, and chose this rendering — "headroom" — over a drawn ruler, because it
+ * is the only candidate that is IDENTICAL in a mono terminal, with no Nerd
+ * Font, under `NO_COLOR`, in a screen reader, and pasted into a document. A
+ * number is not a picture and does not degrade like one.
  *
- * **Emphasis by WEIGHT and by WORDS, not by a second gold.** The ruling asks
- * for one gold marker in two strengths, and the hue budget is closed
- * (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`), so what
- * separates the two states is a different sentence and a bold weight — both of
- * which survive a mono terminal, a dichromatic reader and forced-colors, where
- * a lighter gold would be the same gold.
+ *   below the ask   `◆ ask 85 · +59.9`   the gap, in points of the window
+ *   approaching     `◆ ask 85 · +3.2`    same shape, smaller number
+ *   at or past it   `◆ handover due`     the number is spent; the words take over
+ *
+ * The distance is `threshold - percent` in percentage POINTS, at the same one
+ * decimal place the ctx block uses, so the two figures beside each other are
+ * read in the same units and subtract in the reader's head.
+ *
+ * **The band is still not decided here.** `levelFor` is `occupancyLevel`,
+ * whose `warn` opens at `threshold * OCCUPANCY_WARN_FRACTION` and whose `crit`
+ * IS the threshold. This function chooses no boundary; it only spells what the
+ * shared module answered.
+ *
+ * **GOLD IS STILL EARNED, AND THIS IS THE ONE JUDGEMENT INSIDE THE RULING.**
+ * The owner's three examples were given in plain text, so they fix the WORDS
+ * and not the hue. Gold means "your attention is wanted here"
+ * (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`), and a
+ * block that is gold on every bar at every fill — including a window at 25%
+ * with sixty points of head-room — is a hue that has stopped meaning anything
+ * by the time it is needed. So the WORDS appear at every fill, as ruled, and
+ * the gold arrives with the `warn` band: dim while there is nothing to act on,
+ * gold when the ask is approaching, gold and bold when it has fired. The
+ * marker glyph `◆` is present throughout, so nothing about the block's
+ * IDENTITY moves — only its urgency. This is flagged in the lane report as the
+ * one thing the owner may want to overrule with a word.
  *
  * `null` for a corpus with the handover feature off (no ask, so no distance to
  * it), for an unmeasurable window, and for a fossil: nothing is claimed about
  * proximity to an ask from a reading that is not current.
  */
 export function askSegment(occ: OccupancyView, threshold: number | null): Segment | null {
-  if (occ.state !== 'known') return null;
+  // Both refusals FIRST, and the threshold one is not merely a type guard: no
+  // configured ask means there is no distance to anything, and a headroom
+  // measured against a threshold nobody set would be a number invented here.
+  if (occ.state !== 'known' || threshold === null) return null;
   const level = levelFor(occ.percent, threshold, occ.ageMs);
+  // `stale` and `null` alike: a reading that cannot be banded cannot be
+  // subtracted from either. A fossil with sixty points of head-room is not
+  // reassurance, it is a stale claim wearing a plus sign.
+  if (level === null || level === 'stale') return null;
   if (level === 'crit') {
     return {
       text: `${ASK_GLYPH} handover due`, ink: INK.gold, bold: true, give: GIVE.handoverDue,
     };
   }
-  if (level === 'warn') {
-    return { text: `${ASK_GLYPH} ask near`, ink: INK.gold, give: GIVE.handoverDue };
-  }
-  return null;
+  // The threshold reads as configured — `85`, not `85.0` — while the DISTANCE
+  // always carries its decimal, because it is the figure that moves and a gap
+  // that shows `+3` for anything from 2.5 to 3.5 hides the last message before
+  // the ask.
+  const ask = Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1);
+  const headroom = threshold - occ.percent;
+  return {
+    text: `${ASK_GLYPH} ask ${ask} · +${headroom.toFixed(1)}`,
+    ink: level === 'warn' ? INK.gold : INK.neutral,
+    give: GIVE.handoverDue,
+  };
 }
 
 /** The ask marker. Gold, and never one of the fill glyphs. */
@@ -654,60 +701,96 @@ export function modelSegment(model: string | null, modes: ModelModes): Segment |
 }
 
 /**
- * The blocks, left to right, before anything is fitted to a width.
+ * The blocks, in order, before anything is fitted to a width.
  *
  * The four the owner drew are the spine. Everything else appears ONLY when it
  * has something to say, which is what keeps an ordinary session's bar exactly
  * as drawn while a session in trouble grows the blocks that say so:
  *
- *  - `myctx` is what mycontext put into this session, from the injection
- *    records' own frozen estimates. `≥` when some records carry no estimate,
- *    because the true share is at least this and the block says exactly that.
+ *  - `myctx` is what mycontext put into THIS window, from the injection
+ *    records' own frozen estimates, bounded to the current compaction epoch
+ *    and to the ops that reach this model (`core/context-share.ts`). `≥` when
+ *    some records carry no estimate, because the true share is at least this
+ *    and the block says exactly that.
  *  - `myctxNote` and `teeNote` are TWO fields and not one, because folding
  *    them drops whichever did not win: `writeTee` refuses an unsafe
  *    `session_id` while `myctxShare` answers for that same id perfectly well,
  *    so a single note shown only when the share is absent would print a
  *    confident myctx figure and never mention that the web UI is getting
  *    nothing.
- *  - `handover due` is DERIVED from the band and never decided again: `crit`
+ *  - the ask block is DERIVED from the band and never decided again: `crit`
  *    is `pct >= threshold`, which is the definition of the ask firing. A
  *    second comparison here would be a second chance to disagree with the
  *    strip about whether the ask is live.
  *
- * The context block stays LAST whatever else is present, because the owner's
- * ruling is that the right end of the bar is what shifts as the window fills —
- * a block after it would move the thing the eye is trained on.
+ * ── WHERE THE CONTEXT BLOCK SITS ────────────────────────────────────────────
+ *
+ * **SUPERSEDED RULING, kept because it was a ruling and it was reasoned.**
+ * Until 2026-08-31 this comment read:
+ *
+ * > The context block stays LAST whatever else is present, because the owner's
+ * > ruling is that the right end of the bar is what shifts as the window fills
+ * > — a block after it would move the thing the eye is trained on.
+ *
+ * **That ruling is superseded by an owner ruling of 2026-08-31**, which places
+ * the context block at the CENTRE of the line and distributes the rest around
+ * it. Both halves of the reason it is superseded matter, and the second is why
+ * it could be taken at all:
+ *
+ *   1. The owner ruled that the context figure is the most important
+ *      information on the bar, and the centre — not the right end — is where
+ *      the eye lands. The earlier ruling optimised for a stable landmark; the
+ *      new one optimises for the landmark being where the eye already is.
+ *   2. It COSTS NO FIELD. The owner's terminal is 200+ columns and a
+ *      re-balanced centred bar needs about 203, so at the width this is
+ *      actually read at, centring spends slack rather than blocks. The owner
+ *      explicitly declined the alternative that bought the position by cutting
+ *      a field. Below that width the line falls back to left-to-right and says
+ *      so with the existing `…` mark (`renderPowerline`) — the layout
+ *      degrades, never the content.
+ *
+ * There is ONE live ruling here (centre) and one dated record of the ruling it
+ * replaced (last). A later reader who finds only the quotation above has found
+ * history, not a second instruction.
+ *
+ * So the order is a LEFT group, the anchor, and a RIGHT group. The ask sits
+ * immediately left of the context figure because they are one question asked
+ * twice — how full, and how far from the ask — and a block between them would
+ * be read as belonging to neither.
  */
 export function buildSegments(input: PowerlineInput, now: number = Date.now()): Segment[] {
-  const segments: Segment[] = [];
+  const left: Segment[] = [];
+  const right: Segment[] = [];
 
   const model = modelSegment(input.model, input.modes);
-  if (model !== null) segments.push(model);
+  if (model !== null) left.push(model);
 
   if (input.project !== null && input.project !== '') {
-    segments.push({ text: input.project, ink: INK.project, give: GIVE.project });
+    left.push({ text: input.project, ink: INK.project, give: GIVE.project });
   }
   if (input.branch !== null && input.branch !== '') {
-    segments.push({ text: input.branch, ink: INK.branch, elidable: true, give: GIVE.branch });
+    left.push({ text: input.branch, ink: INK.branch, elidable: true, give: GIVE.branch });
   }
 
+  // Immediately left of the anchor, and the last thing pushed to that side.
   const ask = askSegment(input.occupancy, input.threshold);
-  if (ask !== null) segments.push(ask);
+  if (ask !== null) left.push(ask);
 
+  // ── everything below is drawn to the RIGHT of the context figure ──
   if (input.myctx !== null && input.myctx.injections > 0) {
     const approx = input.myctx.unrecorded > 0 ? '≥' : '';
-    segments.push({
+    right.push({
       text: `myctx ${approx}${fmtK(input.myctx.tokens)}`,
       ink: INK.project,
       give: GIVE.myctxShare,
     });
   } else if (input.myctxNote !== null) {
-    segments.push({
+    right.push({
       text: `myctx unavailable (${input.myctxNote})`, ink: INK.neutral, give: GIVE.notes,
     });
   }
   if (input.teeNote !== null) {
-    segments.push({ text: input.teeNote, ink: INK.warn, give: GIVE.notes });
+    right.push({ text: input.teeNote, ink: INK.warn, give: GIVE.notes });
   }
 
   // Cost and cache in one block: they are one question — what this turn is
@@ -718,7 +801,7 @@ export function buildSegments(input: PowerlineInput, now: number = Date.now()): 
   const warm = input.warmPercent === null || !Number.isFinite(input.warmPercent)
     ? null : `warm ${input.warmPercent.toFixed(1)}%`;
   if (cost !== null || warm !== null) {
-    segments.push({
+    right.push({
       text: [cost, warm].filter((part) => part !== null).join(' · '),
       ink: INK.project,
       give: GIVE.costCache,
@@ -726,12 +809,11 @@ export function buildSegments(input: PowerlineInput, now: number = Date.now()): 
   }
 
   const seven = rateLimitSegment('7d', input.sevenDay, now, GIVE.sevenDay);
-  if (seven !== null) segments.push(seven);
+  if (seven !== null) right.push(seven);
   const five = rateLimitSegment('5h', input.fiveHour, now, GIVE.fiveHour);
-  if (five !== null) segments.push(five);
+  if (five !== null) right.push(five);
 
-  segments.push(contextSegment(input.occupancy));
-  return segments;
+  return [...left, contextSegment(input.occupancy), ...right];
 }
 
 /**
@@ -925,11 +1007,64 @@ export function fitSegments(segments: Segment[], columns: number | null): Segmen
 }
 
 /**
+ * **HOW FAR THE BAR IS INDENTED SO THE ANCHOR LANDS ON CENTRE** — owner
+ * ruling, 2026-08-31, option (a): centre when it fits, left-to-right when it
+ * does not.
+ *
+ * Returns the number of PLAIN SPACES to put before the opening cap, which is
+ * `0` whenever the line cannot be centred without pushing its right edge off
+ * the terminal. The padding is unpainted and sits outside the bar, so it is
+ * blank terminal rather than a stretched block: a bar centred by widening a
+ * neutral spacer would read as a block nobody asked for.
+ *
+ * **Every refusal returns 0, and that IS the ruled fallback.** No width to
+ * centre in (`columns === null` — Claude Code's pipe does not always report
+ * one), no anchor among the blocks, or a line already as wide as the terminal:
+ * in each case the bar starts at column 0 and runs left to right exactly as it
+ * did before this ruling. Nothing is dropped to buy the position, which is the
+ * half of the ruling the owner was most explicit about — and anything the
+ * width DID cost has already been marked by `fitSegments`, which leaves an `…`
+ * behind. The layout degrades; the content does not.
+ *
+ * Computed from the fitted segments and never from the rendered string,
+ * because the rendered string carries ANSI escapes and counting cells through
+ * them is how an off-by-a-few indent becomes a wrapped line.
+ */
+export function centreOffset(fitted: Segment[], columns: number | null): number {
+  if (columns === null || columns <= 0) return 0;
+  const anchor = fitted.findIndex((seg) => seg.anchor === true);
+  if (anchor < 0) return 0;
+  const total = widthOf(fitted);
+  if (total >= columns) return 0;
+
+  // Walk to the anchor in the same units `widthOf` counts: one opening cap,
+  // then each block as ` text ` with one separator cell between neighbours.
+  let start = 1;
+  for (let i = 0; i < anchor; i++) {
+    const seg = fitted[i];
+    if (seg === undefined) continue;
+    start += displayWidth(seg.text) + 2 + 1;
+  }
+  const anchorSeg = fitted[anchor];
+  if (anchorSeg === undefined) return 0;
+  const midpoint = start + (displayWidth(anchorSeg.text) + 2) / 2;
+
+  // Clamped at both ends: never negative (that would be a left crop) and never
+  // so far right that the closing cap leaves the terminal (that would wrap,
+  // which is the one failure this renderer must not have).
+  const wanted = Math.round(columns / 2 - midpoint);
+  return Math.max(0, Math.min(wanted, columns - total));
+}
+
+/**
  * The finished line.
  *
  * With `colour: false` this emits the SAME TEXT and not one escape byte —
  * never a raw escape into a pipe, and never a different, poorer sentence
  * either. The blocks still read, because every one of them is a word.
+ *
+ * Indented so the context block lands on the terminal's centre when there is
+ * room for it — see `centreOffset`, which is also where the fallback lives.
  */
 export function renderPowerline(segments: Segment[], options: RenderOptions): string {
   const fitted = fitSegments(segments, options.columns);
@@ -958,12 +1093,18 @@ export function renderPowerline(segments: Segment[], options: RenderOptions): st
   const first = fitted[0];
   const last = fitted[fitted.length - 1];
   if (!capped || first === undefined || last === undefined) {
+    // Uncapped is the too-narrow floor, where `centreOffset` answers 0 anyway.
+    // Not centred, and asserted rather than assumed by the clamp there.
     return options.colour ? `${body.join('')}${RESET}` : body.join('');
   }
 
-  if (!options.colour) return `${CAP_LEFT}${body.join('')}${CAP_RIGHT}`;
+  // Plain spaces, outside the caps and never painted, so the indent is blank
+  // terminal rather than a block. `''` when there is no room to centre.
+  const indent = ' '.repeat(centreOffset(fitted, options.columns));
+
+  if (!options.colour) return `${indent}${CAP_LEFT}${body.join('')}${CAP_RIGHT}`;
   return (
-    `${RESET}${CSI}38;5;${first.ink.bg}m${CAP_LEFT}` +
+    `${indent}${RESET}${CSI}38;5;${first.ink.bg}m${CAP_LEFT}` +
     body.join('') +
     `${RESET}${CSI}38;5;${last.ink.bg}m${CAP_RIGHT}${RESET}`
   );
