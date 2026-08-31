@@ -435,6 +435,37 @@ export function isProductOwned(entry: string): boolean {
 }
 
 /**
+ * Entries a developer may legitimately ALREADY HAVE, but which no test run may
+ * create. Tolerated by the baseline check only; still an offence if one
+ * appears DURING a run.
+ *
+ * ── WHY THIS SET EXISTS AND WHY IT IS NOT `PRODUCT_OWNED_ENTRIES` ───────────
+ *
+ * `statusline-replaced.json` was deliberately excluded from the forgiven set
+ * on 2026-08-31, on the reasoning that the forgiven files come from a
+ * background server that genuinely races a suite, whereas this one "only ever
+ * comes from an explicit consented install". That reasoning was right, and it
+ * is exactly why the file appeared hours later: the owner consented to
+ * `mycontext statusline install --yes`, and the baseline check — added the
+ * same day to catch the leftover of an ACCIDENTAL install — then refused to
+ * let the suite start at all. Fifty document tests could not run because the
+ * product was correctly installed.
+ *
+ * The distinction the guard was missing is not who wrote the file but WHEN.
+ * A file already present when the run began is the developer's own state; a
+ * file that appears during the run is an escape. Only the second is this
+ * guard's business, and the during-run half is unchanged — `isProductOwned`
+ * still does not forgive this name, so a test that installs the status line
+ * still trips the run.
+ *
+ * It holds the user's previous `~/.claude/settings.json` and is their restore
+ * point, so it is never deleted here.
+ */
+const BASELINE_TOLERATED_ENTRIES: ReadonlySet<string> = Object.freeze(new Set([
+  'statusline-replaced.json',
+])) as ReadonlySet<string>;
+
+/**
  * The changes that are actually offences: everything the product does not own.
  *
  * The filter is applied HERE and not inside `diffTrees`, which stays a pure
@@ -830,7 +861,9 @@ function preexistingOffences(): string[] {
     const baseline = baselines.get(target.path);
     if (baseline === undefined) continue;
     const entries = [...baseline.keys()]
-      .filter((entry) => entry !== '.' && !isProductOwned(entry))
+      .filter((entry) => entry !== '.'
+        && !isProductOwned(entry)
+        && !BASELINE_TOLERATED_ENTRIES.has(entry))
       .sort((a, b) => a.localeCompare(b));
     if (entries.length === 0) continue;
     const report = describePreexisting(target.path, entries);
