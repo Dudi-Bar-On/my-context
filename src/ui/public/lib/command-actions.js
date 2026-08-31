@@ -272,8 +272,16 @@ function valueCell(isMono, fill) {
  * carries `$(…)` — and it disables COPY only, deliberately: a paste reaches a
  * shell, where the substitution is live, while an execution reaches `execFile`
  * with an argv array, where it is an ordinary literal.
+ *
+ * **`onCopied` is called when the clipboard write RESOLVES, and never on the
+ * click.** A screen drawing a state beside this control — `work.js`'s
+ * `.cmdstate` is the one — has to learn that a copy actually happened, and the
+ * only honest moment to learn it is the settlement of the promise. A click is
+ * a proxy for a copy: the write can be refused by permissions, by a page that
+ * is not focused, or by a browser with no clipboard at all, and a state
+ * flipped on click would say "copied" for every one of those.
  */
-export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false }) {
+export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false, onCopied }) {
   const root = el('div', 'cmdactions');
   const composed = composeCommand(argv);
 
@@ -295,11 +303,53 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
   copy.disabled = copyBlocked;
   root.append(copy);
 
+  /**
+   * **The copy, and the only two things it can end as.**
+   *
+   * Written once and shared by both branches below, because the branch is
+   * about whether a command may RUN and the acknowledgement is the same
+   * either way — a composition the catalogue cannot name is still copied, and
+   * a reader still has to be told whether it worked.
+   *
+   * `then(onOk, onFail)` rather than `.then().catch()`: a `catch` chained
+   * after the success handler would also swallow anything the success handler
+   * threw and report a working copy as a failed one.
+   *
+   * **What is announced is the SETTLEMENT, not the click.** This project has
+   * caught the proxy-instead-of-property mistake seven times, and a Copy
+   * button that says "Copied" from its own click handler is the eighth: the
+   * write is asynchronous and permission-gated, and the click is over long
+   * before the browser has decided.
+   */
+  const onCopyClick = (fail) => () => {
+    navigator.clipboard.writeText(composed).then(
+      () => {
+        // The keyed sentence goes to the ONE live region the shell owns; the
+        // screen's own state, if it draws one, is told separately. Nothing is
+        // written into the button: swapping its label for 1.5s — the mockup's
+        // handler, and `coverage.js`'s until this task — is a message a reader
+        // has to be looking at the button to receive, and this defect is
+        // precisely about the reader who is not.
+        ctx.announce?.(ctx.t('live.copied'));
+        onCopied?.();
+      },
+      (error) => {
+        // Assertive, and this is the interruption the ruling reserves for a
+        // failure: a reader who believes the line is on their clipboard will
+        // paste whatever WAS on it into a shell, and a polite queue can hold
+        // that news until after they have.
+        ctx.announce?.(ctx.t('live.copyFailed'), true);
+        // And the platform's own words stay on screen, unedited, for the
+        // reader who is looking — the announcement says WHAT happened, this
+        // says why, and neither is a substitute for the other.
+        fail(error);
+      },
+    );
+  };
+
   // Nothing composed outside the catalogue may run. Asserted, not assumed.
   if (typeof id !== 'string' || id === '') {
-    copy.addEventListener('click', () => {
-      navigator.clipboard.writeText(composed).catch((error) => root.append(errorNote(message(error))));
-    });
+    copy.addEventListener('click', onCopyClick((error) => root.append(errorNote(message(error)))));
     return root;
   }
 
@@ -338,9 +388,7 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
     confirm.hidden = true;
   };
 
-  copy.addEventListener('click', () => {
-    navigator.clipboard.writeText(composed).catch((error) => say(errorNote(message(error))));
-  });
+  copy.addEventListener('click', onCopyClick((error) => say(errorNote(message(error)))));
 
   exec.addEventListener('click', async () => {
     result.replaceChildren();

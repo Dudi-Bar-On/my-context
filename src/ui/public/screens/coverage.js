@@ -86,6 +86,14 @@ import {
   buildTree, coverageDot, coverageIsEmpty, treeRows,
 } from '/lib/viewmodel.js';
 import { composeCommand } from '/lib/command.js';
+// The ONE Copy control, adopted here on 2026-08-31. This screen was the ninth
+// hand-rolled clipboard site — it swapped the button's own label to `Copied` or
+// `Copy failed` for 1.5s, two English literals the string tables could not carry
+// and the only half of a pair `test/ui/screen-literals.test.ts` could see. A label
+// swap is also a message a reader has to be LOOKING at the button to receive,
+// which is the defect `plan:walk seq:31` is about; the shared control announces
+// the outcome in the shell's live region instead.
+import { commandActions } from '/lib/command-actions.js';
 import { el, errorNote, linkId, mono, screenHead, spaced } from '/screens/parts.js';
 
 /**
@@ -94,9 +102,8 @@ import { el, errorNote, linkId, mono, screenHead, spaced } from '/screens/parts.
  * --scope "src/**"`. `lib/command.js` never runs anything; a settlement is a
  * string the reader pastes into their own shell.
  */
-const EMPTY_COMMAND = composeCommand(
-  ['mycontext', 'add', 'constraint', '…', '--scope', 'src/**'],
-);
+const EMPTY_ARGV = ['mycontext', 'add', 'constraint', '…', '--scope', 'src/**'];
+const EMPTY_COMMAND = composeCommand(EMPTY_ARGV);
 
 /**
  * The mockup's `.tree button` indent, continued past the two depths its
@@ -456,30 +463,20 @@ function emptyView(ctx) {
   note.append(...ctx.t('cov.e2'));
 
   const cmd = el('div', 'cmd');
-  const code = el('code', null, EMPTY_COMMAND);
-  const copy = el('button');
-  copy.type = 'button';
-  copy.append(...ctx.t('btn.copy'));
-  // The mockup's `[data-copy]` handler AWAITS and CATCHES — its own comment
-  // records that an earlier pass "said 'Copied' regardless" — and swaps the
-  // label for 1.5s. Both label swaps are unkeyed `HEB ? … : …` ternaries in
-  // the mockup's script, so they are transcribed as its own English literals
-  // and raised in this task's report: keys first in the mockup, then in both
-  // tables. Saying nothing at all would be the worse defect — a copy that
-  // silently failed is the one outcome this button must not have.
-  copy.addEventListener('click', async () => {
-    const original = copy.textContent;
-    try {
-      await navigator.clipboard.writeText(EMPTY_COMMAND);
-      copy.textContent = 'Copied';
-    } catch {
-      copy.textContent = 'Copy failed';
-    }
-    setTimeout(() => { copy.replaceChildren(document.createTextNode(original)); }, 1500);
-  });
-  cmd.append(code, copy);
+  cmd.append(el('code', null, EMPTY_COMMAND));
 
-  box.append(headline, note, cmd);
+  // **`id: null`, so this gets Copy and no Execute, and that is the honest
+  // answer rather than a caution.** The design of record's empty-state line is
+  // `mycontext add constraint “…” --scope “src/**”` — a TEMPLATE with an ellipsis
+  // where the text goes. There is no catalogue entry the server could rebuild
+  // it from and nothing here a reader could sensibly run unedited, and the
+  // control's own rule is that nothing outside the catalogue may run.
+  //
+  // The button moves OUT of `div.cmd` and into the control's `div.cmdactions`
+  // beside it, which is where every other screen's is; the mockup draws it
+  // inside, and `.cmdactions button` carries its own background so the pair
+  // reads the same either way.
+  box.append(headline, note, cmd, commandActions({ argv: EMPTY_ARGV, id: null, ctx }));
   const wrap = el('div');
   wrap.id = 'covempty';
   wrap.append(box);

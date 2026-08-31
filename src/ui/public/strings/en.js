@@ -628,9 +628,24 @@ export const strings = {
   'work.moved': 'changed since staging',
   'work.blocked': 'promote refuses until re-based',
   'work.diffn': 'The proposed column is a word-level diff, not a second paragraph to compare by eye: additions are tinted, removals are struck, and both are real {m:<ins>} and {m:<del>} elements, so a screen reader announces the change without any added ARIA. The stale field carries a rule down its reading-start edge — the one physical offset in the sheet, and its mirror is written next to it rather than discovered later.',
+  // The Copy control's opening state, and the two the shell's live region
+  // announces. `state.uncopied` is drawn beside a composed command BEFORE
+  // anything is copied; `state.armed` below is what replaces it only when the
+  // clipboard promise RESOLVES. A refused write leaves this one in place.
+  'state.uncopied': 'not copied',
+  'live.copied': 'Copied to the clipboard.',
+  // Assertive, and it is the only assertive announcement in this product: a
+  // reader who believes the line is on their clipboard pastes whatever WAS on
+  // it into a shell, and a polite queue can hold that news until after they
+  // have.
+  'live.copyFailed': 'Copy failed. Nothing was written to the clipboard.',
   'state.armed': 'armed',
   'work.state': 'copied, not yet observed landing',
   'help.land': 'How you will know it worked',
+  // The sentence beside `state.uncopied`. It replaced one that said "copied,
+  // not yet observed landing" UNCONDITIONALLY, beside a command nobody had
+  // copied — a state claiming an act that had not happened.
+  'work.uncopied': 'the line is composed; nothing has been copied yet',
   'work.h1': '{b:Run it in your own shell.}',
   'work.h2': '{b:The receipt:} an audit record whose {m:op} is {mv:op}. Returning to this tab re-checks.',
   'work.h3': '{b:If the body moved first}, promote refuses and names both values — that refusal is the product working, not failing.',
@@ -915,8 +930,8 @@ export const strings = {
   'title.gitState': 'Click to cycle the seven git states the spec requires',
   'strip.branch': 'branch {mv:branch} @ {mv:commit}',
   'strip.detached': 'detached HEAD @ {mv:commit}',
-  'strip.inSync': 'in sync with origin/{mv:branch}',
-  'strip.differs': 'differs from origin/{mv:branch}',
+  'strip.inSync': 'in sync',
+  'strip.differs': 'differs from origin',
   'strip.noUpstream': 'no upstream',
   'strip.unknownTip': 'the local tip could not be read',
   'strip.notARepo': 'not a git repository',

@@ -544,10 +544,13 @@ test('every work. key the English table declares is placed by the screen', async
   // sentence of the design of record that silently does not render.
   assert.deepEqual(declared.filter((key) => !named.has(key)), [],
     'these work. keys are declared and drawn nowhere');
-  assert.equal(declared.length, 25,
-    `the English table declares ${declared.length} work. key(s); it has been 25 since the owner's `
-    + '2026-08-29 ruling put Accept and Reject on every card and gave the draft queue a section '
-    + 'of its own (13 before that). A new one is a new sentence on this screen and needs placing.');
+  assert.equal(declared.length, 26,
+    `the English table declares ${declared.length} work. key(s); it has been 26 since `
+    + '`plan:walk seq:31` gave `.cmdstate` an OPENING state — `work.uncopied`, the sentence '
+    + 'beside a command nobody has copied yet, which `work.state` ("copied, not yet observed '
+    + 'landing") had been standing in for unconditionally. 25 since the owner\'s 2026-08-29 '
+    + 'ruling put Accept and Reject on every card and gave the draft queue a section of its '
+    + 'own, 13 before that. A new one is a new sentence on this screen and needs placing.');
 });
 
 test('no translated string is assigned — t() returns nodes and they are appended (ruling A1)', async () => {

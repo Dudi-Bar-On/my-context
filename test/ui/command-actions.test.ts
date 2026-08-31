@@ -298,7 +298,7 @@ interface I18nModule {
 interface ActionsModule {
   commandActions: (spec: {
     argv: string[]; id: string | null; values?: Record<string, unknown>;
-    ctx: unknown; copyBlocked?: boolean;
+    ctx: unknown; copyBlocked?: boolean; onCopied?: () => void;
   }) => FakeElement;
   CONFIRM_ID_ARG: string;
 }
@@ -336,17 +336,40 @@ interface Wiring {
 }
 
 /**
+ * One thing said in the shell's ONE live region — the nodes, and whether the
+ * control asked for the interruption.
+ *
+ * Recorded as the RENDERED TEXT rather than as the key, deliberately. The key
+ * is what the control names; what a reader is told is what the table renders
+ * from it, and a test that asserted the key would pass over a key declared with
+ * the wrong sentence behind it.
+ */
+interface Said { text: string; urgent: boolean }
+
+/**
  * `ctx`, plus the call log every "nothing ran" assertion in this file reads.
  *
  * `tFlat` is NOT wired to throw here, unlike the screen tests': this control
  * has a real attribute sink — the confirm's accessible name — and ruling A1
  * names attributes as exactly what `tFlat` is for.
+ *
+ * `announce` is the shell's contract, stubbed to a log. In the browser it
+ * writes into the one `aria-live` region `renderChrome()` builds; here what
+ * matters is that the control reaches for it, with which sentence, and at which
+ * urgency. That the region EXISTS and that its content actually changes in a
+ * real browser is `e2e/announce.spec.ts`' assertion — a stub cannot prove a
+ * live region, and a test that only proved the stub was called would be exactly
+ * the proxy this task was filed about.
  */
-async function wire(wiring: Wiring): Promise<{ ctx: unknown; calls: Call[] }> {
+async function wire(wiring: Wiring): Promise<{ ctx: unknown; calls: Call[]; said: Said[] }> {
   const i18n = await browserModule<I18nModule>('lib', 'i18n.js');
   const en = (await browserModule<{ strings: Record<string, string> }>('strings', 'en.js')).strings;
   const calls: Call[] = [];
+  const said: Said[] = [];
   const ctx = {
+    announce: (nodes: FakeNode[], urgent = false): void => {
+      said.push({ text: nodes.map(textOf).join(''), urgent });
+    },
     t: (key: string, subs: Record<string, string | number> = {}) => i18n.t(en, key, subs, doc),
     tFlat: (key: string, subs: Record<string, string | number> = {}) => i18n.tFlat(en, key, subs),
     lang: wiring.lang,
@@ -372,7 +395,7 @@ async function wire(wiring: Wiring): Promise<{ ctx: unknown; calls: Call[] }> {
       return wiring.outcome ?? { id: 'doctor', argv: ['doctor'], exitCode: 0, durationMs: 3, stdout: '', stderr: '' };
     },
   };
-  return { ctx, calls };
+  return { ctx, calls, said };
 }
 
 const posts = (calls: Call[]): Call[] => calls.filter((c) => c.method === 'POST');
@@ -414,11 +437,12 @@ const RULE_X = {
 
 async function draw(spec: {
   argv: string[]; id: string | null; values?: Record<string, unknown>; copyBlocked?: boolean;
-}, wiring: Wiring = {}): Promise<{ root: FakeElement; calls: Call[] }> {
+  onCopied?: () => void;
+}, wiring: Wiring = {}): Promise<{ root: FakeElement; calls: Call[]; said: Said[] }> {
   const { commandActions } = await browserModule<ActionsModule>('lib', 'command-actions.js');
-  const { ctx, calls } = await wire(wiring);
+  const { ctx, calls, said } = await wire(wiring);
   const root = await withDocument(async () => commandActions({ ...spec, ctx }));
-  return { root, calls };
+  return { root, calls, said };
 }
 
 /* -------------------------------------------------------------------------- *
@@ -470,16 +494,120 @@ test('Copy still does what it always did — the composed string, verbatim', asy
   assert.deepEqual(posts(calls), [], 'copying is not running');
 });
 
-test('a copy that fails says so — success is silent, failure is loud', async () => {
+test('a copy that fails says so on screen — the platform\'s own words, unedited', async () => {
   clipboard.written.length = 0;
   clipboard.fail = 'clipboard write permission denied';
   const { root } = await draw({ argv: ['mycontext', 'doctor'], id: 'doctor' });
   await click(findButton(root, COPY));
   // The platform's own words, unedited — the treatment doctor.js settled on,
   // because neither string table can carry a "Copy failed" the mockup's own
-  // handler swaps in through an unkeyed ternary.
+  // handler swaps in through an unkeyed ternary. This is the sighted reader's
+  // half; the announcement below is the other, and neither replaces the other.
   assert.match(textOf(root), /permission denied/);
   clipboard.fail = null;
+});
+
+/* -------------------------------------------------------------------------- *
+ * The acknowledgement — plan:walk seq:31.
+ *
+ * **THE PROPERTY IS THE SETTLEMENT OF THE WRITE, NEVER THE CLICK.** Measured
+ * 2026-08-25 on `work`, `capture` and `doctor`: after a Copy click the button's
+ * label, its class list and its ARIA attributes were BYTE-IDENTICAL to before,
+ * and no element anywhere in the document had changed. A reader could not tell
+ * a successful copy from a click that missed.
+ *
+ * The repair that would have re-created the defect is a click handler that
+ * announces "Copied" and then writes. So both tests below drive the CLIPBOARD
+ * and read the announcement: one where the write resolves, one where it
+ * rejects, with the SAME click on the same button. A handler keyed to the click
+ * cannot tell those two apart, and would fail exactly one of them.
+ * -------------------------------------------------------------------------- */
+
+test('a copy that RESOLVES is announced, and it is the outcome that is announced', async () => {
+  clipboard.written.length = 0;
+  clipboard.fail = null;
+  let flipped = 0;
+  const { root, said } = await draw({
+    argv: ['mycontext', 'doctor'], id: 'doctor', onCopied: () => { flipped += 1; },
+  });
+
+  // Nothing is said before the button is pressed — a live region that already
+  // holds "Copied" at first paint announces a copy nobody made.
+  assert.deepEqual(said, [], 'the region must be silent until something has happened');
+
+  await click(findButton(root, COPY));
+
+  assert.deepEqual(clipboard.written, ['mycontext doctor'], 'the write itself still happens');
+  assert.deepEqual(said, [{ text: 'Copied to the clipboard.', urgent: false }],
+    'one polite sentence, said once, naming the OUTCOME. A success does not argue for '
+    + 'interrupting whatever a reader is already being told');
+  assert.equal(flipped, 1,
+    'the screen\'s own state is told too, and by the same settlement — `work.js` draws '
+    + '`.cmdstate` from this and drew "copied, not yet observed landing" unconditionally before it');
+});
+
+test('a copy that REJECTS is announced as a failure, and that one interrupts', async () => {
+  clipboard.written.length = 0;
+  // **How the write is made to reject.** `navigator` is a getter-only accessor
+  // on Node 24, so the stand-in is DEFINED over it (see `withDocument`), and its
+  // `clipboard.writeText` answers `Promise.reject(new Error(clipboard.fail))`
+  // whenever `fail` is set. The button is pressed exactly as in the test above:
+  // the only difference is what the platform promise does, which is the only
+  // difference a reader has either.
+  clipboard.fail = 'clipboard write permission denied';
+  let flipped = 0;
+  const { root, said } = await draw({
+    argv: ['mycontext', 'doctor'], id: 'doctor', onCopied: () => { flipped += 1; },
+  });
+  await click(findButton(root, COPY));
+
+  assert.deepEqual(clipboard.written, [], 'nothing reached the clipboard');
+  assert.deepEqual(
+    said,
+    [{ text: 'Copy failed. Nothing was written to the clipboard.', urgent: true }],
+    'the failure names what did NOT happen. Assertive is the one interruption the ruling '
+    + 'reserves for a failure, and this is why: a reader who believes the line is on their '
+    + 'clipboard pastes whatever WAS on it into a shell, and a polite queue can hold that '
+    + 'news until after they have',
+  );
+  assert.equal(flipped, 0,
+    'a refused write must not flip the screen\'s state — that is the same lie one layer down');
+  clipboard.fail = null;
+});
+
+test('the announcement is the SETTLEMENT and not the click — the two clicks differ', async () => {
+  // The one assertion that a click-keyed handler cannot pass. Same button, same
+  // press, two platform answers; if what is said were a function of the click,
+  // these two sentences would be identical.
+  clipboard.written.length = 0;
+  clipboard.fail = null;
+  const ok = await draw({ argv: ['mycontext', 'doctor'], id: 'doctor' });
+  await click(findButton(ok.root, COPY));
+
+  clipboard.fail = 'the document is not focused';
+  const bad = await draw({ argv: ['mycontext', 'doctor'], id: 'doctor' });
+  await click(findButton(bad.root, COPY));
+  clipboard.fail = null;
+
+  assert.equal(ok.said.length, 1);
+  assert.equal(bad.said.length, 1);
+  assert.notEqual(ok.said[0]?.text, bad.said[0]?.text,
+    'a Copy button that announces success on click has re-created the defect this task was '
+    + 'filed for — this project has caught proxy-instead-of-property seven times, and a click '
+    + 'is a proxy for a copy');
+});
+
+test('a composition outside the catalogue is acknowledged too — Copy alone still speaks', async () => {
+  // The `id: null` branch returns EARLY, before the confirm and the result
+  // region are built, and it used to carry its own second copy handler. One
+  // handler now serves both branches: a reader of the Composer's uncatalogued
+  // line is owed the same answer as a reader of the Review queue's.
+  clipboard.written.length = 0;
+  clipboard.fail = null;
+  const { root, said } = await draw({ argv: ['mycontext', 'whatever'], id: null });
+  assert.deepEqual(buttonLabels(root), [COPY]);
+  await click(findButton(root, COPY));
+  assert.deepEqual(said, [{ text: 'Copied to the clipboard.', urgent: false }]);
 });
 
 test('a blocked copy is refused at the button, and Execute is still offered', async () => {

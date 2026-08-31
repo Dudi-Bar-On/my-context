@@ -140,11 +140,14 @@ async function coverageModule(): Promise<CoverageModule> {
     rewritten += 1;
     return `${head}${pathToFileURL(path.join(PUBLIC, spec)).href}'`;
   });
-  assert.equal(rewritten, 3,
-    'expected coverage.js to import three browser modules (/lib/viewmodel.js, /lib/command.js, '
-    + `/screens/parts.js); the rewrite matched ${rewritten}. A specifier this pattern cannot see `
-    + 'is a module Node would resolve from the drive root, and the import below would fail for a '
-    + 'reason that reads like a missing file.');
+  assert.equal(rewritten, 4,
+    'expected coverage.js to import four browser modules (/lib/viewmodel.js, /lib/command.js, '
+    + '/lib/command-actions.js, /screens/parts.js); the rewrite matched '
+    + `${rewritten}. A specifier this pattern cannot see is a module Node would resolve from the `
+    + 'drive root, and the import below would fail for a reason that reads like a missing file. '
+    + 'The fourth arrived on 2026-08-31 with the shared Copy control: the empty view had the '
+    + 'ninth hand-rolled clipboard button in screens/, and it acknowledged a copy by swapping '
+    + 'its own label for 1.5s in two unkeyed English literals.');
   assert.ok(!/\bfrom\s+'\//.test(text),
     'a root-absolute specifier survived the rewrite — the module graph imported below would not '
     + 'be the one the browser runs');

@@ -88,6 +88,21 @@
 //                                    removed accumulates one per render.
 //                                    screens/preview.js is the worked example.
 //        ctx.navigate(hash)         sets location.hash (triggers the router).
+//        ctx.announce(nodes, urgent)
+//                                    Says one thing in the app's ONE live
+//                                    region, built by renderChrome() beside
+//                                    `#provparts`. `nodes` is what ctx.t()
+//                                    answers, never a string. `urgent` raises
+//                                    it from polite to assertive and is for a
+//                                    FAILURE only. Announce the OUTCOME — the
+//                                    clipboard write that RESOLVED, the run
+//                                    that answered — never the click that
+//                                    asked for it: a button that says
+//                                    "Copied" on click has re-created the
+//                                    defect this exists to fix. There is no
+//                                    second region and a screen may not build
+//                                    one; two collide and a reader hears
+//                                    neither.
 //
 //   A screen throwing during render() is NOT caught here — per spec §6 the
 //   DOM glue (this file and screens/*.js) is untested and deliberately so;
@@ -1705,7 +1720,7 @@ function renderChrome() {
     const proj = document.createElement('span');
     proj.className = 'provproj';
     proj.id = 'provproj';
-    prov.append(parts, proj);
+    prov.append(parts, proj, announceRegion());
     app.append(prov);
   }
 
@@ -1844,6 +1859,93 @@ function renderChrome() {
   if (pendingScreenRefresh !== null) { staleSep.hidden = false; stale.hidden = false; }
 }
 
+/** The id of the app's one live region. Written once, read by `announce()`. */
+const ANNOUNCE_ID = 'announce';
+
+/**
+ * **THE APP'S ONE LIVE REGION, AND THERE IS EXACTLY ONE.**
+ *
+ * Measured 2026-08-25 by `plan:review seq:5`:
+ * `document.querySelector('[aria-live]')` answered `null` on every screen, so
+ * no transient outcome in this product — not a copy, not a refresh, not an
+ * execution result — was ever announced. The Copy button that acknowledges
+ * nothing was one instance of that; the shell having no place to say anything
+ * was the defect underneath it.
+ *
+ * **Re-measured 2026-08-31, because that census has moved and the difference
+ * is the whole design.** Three `aria-live` regions have landed since, and none
+ * of them is this one: `screens/watch.js`' `#alive`, `screens/palette.js`'
+ * `#globcount` and `boundedList`'s paging line in `screens/parts.js`. All three
+ * are VISIBLE SENTENCES a sighted reader also gets, rewritten in place, two of
+ * them drawn by the design of record itself — content that happens to be live,
+ * not a place to put an outcome. What was still missing, and is what this
+ * builds, is a home for a transient outcome that has no visible home of its
+ * own: a copy that worked, and a copy that did not.
+ *
+ * **One, in the shell, and not one per screen.** A second region is how two
+ * announcements collide and a reader hears neither, and a screen module that
+ * created chrome outliving its own render would be taking the shell owner's
+ * decision. It is built beside `#provparts` for the same argument the
+ * provenance bar already makes for qualifications: one home, at shell level,
+ * for a thing every screen owes.
+ *
+ * **It is announced, not seen.** The design of record has no shell slot for
+ * this — its two `aria-live` regions (`#alive` on Watch, `#globcount` on the
+ * Composer) are per-screen content with their own copy, not a place to put a
+ * transient outcome — so drawing words into the 26px provenance band would be
+ * inventing visible chrome the owner has not approved. Hidden the ONE way a
+ * live region may be hidden: clipped to a pixel, never `display:none`,
+ * `visibility:hidden` or `[hidden]`, all three of which take it out of the
+ * accessibility tree and silence it. Through CSSOM because the server ships
+ * `style-src 'self'` and a `style=` attribute is refused outright — the same
+ * door `screens/coverage.js`'s legend swatch already goes through.
+ *
+ * **`aria-live` is set per announcement rather than baked in**, which is why
+ * this carries no `role`: `role="status"` would fix the politeness at polite
+ * and then be contradicted by the attribute. Polite is the default and covers
+ * every success. A FAILED copy is the one case that argues for interrupting —
+ * the reader believes a command is on their clipboard, and the next thing
+ * they do is paste something else into a shell, where the mistake is theirs to
+ * discover the hard way. `aria-atomic` because these are whole sentences and a
+ * reader who hears half of one has been told nothing.
+ */
+function announceRegion() {
+  const region = document.createElement('span');
+  region.className = 'announce';
+  region.id = ANNOUNCE_ID;
+  region.setAttribute('aria-live', 'polite');
+  region.setAttribute('aria-atomic', 'true');
+  // Absolute, so it is out of `.prov`'s flex flow entirely and cannot widen
+  // the bar or move what the bar already says. One pixel with the middle
+  // clipped away is the shape that stays in the accessibility tree.
+  region.style.setProperty('position', 'absolute');
+  region.style.setProperty('inline-size', '1px');
+  region.style.setProperty('block-size', '1px');
+  region.style.setProperty('overflow', 'hidden');
+  region.style.setProperty('clip-path', 'inset(50%)');
+  return region;
+}
+
+/**
+ * Say one thing, once, to whoever is listening rather than looking.
+ *
+ * `nodes` is what `ctx.t()` answers — Node[], never a string, for ruling A1's
+ * reason: a translated sentence carries `.m`/`.v` runs and a `textContent`
+ * assignment flattens them. `urgent` raises the region to `assertive`, and it
+ * is SET BEFORE the content: an assistive technology reads the politeness that
+ * is on the element at the moment the mutation lands, so writing the words
+ * first would announce them at the old level.
+ *
+ * A no-op when the shell has not been built — a screen rendered by a test
+ * harness has no chrome, and an announcement is not worth a thrown error.
+ */
+function announce(nodes, urgent = false) {
+  const region = document.getElementById(ANNOUNCE_ID);
+  if (region === null) return;
+  region.setAttribute('aria-live', urgent ? 'assertive' : 'polite');
+  region.replaceChildren(...nodes);
+}
+
 /**
  * A neutral chip naming a state, carrying its own glyph.
  *
@@ -1927,6 +2029,22 @@ async function fillChrome() {
 }
 
 /**
+ * A branch name as the part a reader actually distinguishes branches by.
+ *
+ * `campaign/my-context-test` → `my-context-test`; `main` is unchanged, and so
+ * is anything with no `/` in it. Split on the LAST separator rather than the
+ * first, because git namespaces nest (`user/feature/thing`) and the leaf is
+ * the name in every one of them.
+ *
+ * Display only. See its call site in `fillGit` for the measurement and the
+ * ruling, and for why the upstream chip beside it keeps the full name.
+ */
+function lastSegment(branch) {
+  const at = branch.lastIndexOf('/');
+  return at === -1 ? branch : branch.slice(at + 1);
+}
+
+/**
  * **How the audit projection stood when this page read it** — the shell's own
  * provenance, in the bar built for provenance.
  *
@@ -2004,8 +2122,42 @@ async function fillGit(git) {
     if (g === undefined || g === null) {
       parts.push(keyed('strip.notARepo', {}));
     } else if (typeof g.branch === 'string') {
-      parts.push(keyed('strip.branch',
-        { branch: g.branch, commit: String(g.commit ?? '').slice(0, 7) }));
+      // **The branch is drawn as its LAST PATH SEGMENT, and the full name goes
+      // in a `title`** — owner ruling, 2026-08-31. Measured on the live app at
+      // 1280px: the repo group took 724px of the strip, 309px of it this one
+      // segment, while `session` — the context figure the owner asked to be
+      // able to read — had 150px and `#ctx` inside it 81px. `.ctxstate` is the
+      // ONE flex item in the bar allowed to give way (`.strip>*{flex:0 0 auto}`
+      // against `.ctxstate{flex:1 1 auto}`), so every pixel the repo group takes
+      // comes out of exactly that figure.
+      //
+      // The owner accepted losing the ability to tell two campaign branches
+      // apart at a glance; the tooltip gives it back at no width, and it is the
+      // strip's own established channel for the explanation beside a value it
+      // has no room to spell — `stateChip()` puts `title.unread` there, and the
+      // design of record puts a `title` on `#gitstate` itself. Not forbidden
+      // here: the mockup draws no title on THIS segment, which is a silence and
+      // not a prohibition, and the container's own title is a click-to-cycle
+      // affordance the app does not build.
+      //
+      // The title is a raw value, deliberately NOT a key: it is the branch's
+      // own name, the same treatment `#sesslbl` gives a session id, and there
+      // is nothing in it to translate.
+      //
+      // **The COMMIT is untouched.** `@ 4798e20` is how a reader tells which
+      // build a server is serving, and it is seven characters.
+      const shortBranch = lastSegment(g.branch);
+      const segment = keyed('strip.branch',
+        { branch: shortBranch, commit: String(g.commit ?? '').slice(0, 7) });
+      // Only when something was actually dropped. A title repeating what is
+      // already on screen is noise a screen reader reads out twice.
+      if (shortBranch !== g.branch) segment.title = g.branch;
+      parts.push(segment);
+      // **The chip keeps the FULL branch**, and that is not an oversight.
+      // `strip.inSync`/`strip.differs` say "in sync with origin/{branch}" — a
+      // REMOTE ref, which is a different string from the local branch's display
+      // name and is not this ruling's to shorten. Display-only means display
+      // only: nothing else in the product consumes the shortened form.
       const key = g.upstream === 'in-sync' ? 'strip.inSync'
         : g.upstream === 'differs' ? 'strip.differs'
           : g.upstream === 'no-upstream' ? 'strip.noUpstream' : 'strip.unknownTip';
@@ -2589,6 +2741,10 @@ async function main() {
       };
     },
     navigate: (hash) => { location.hash = hash; },
+    // The app's ONE live region, reached through the shell contract rather
+    // than by any caller knowing its id. See `announceRegion()` above for why
+    // there is one and why it is not visible chrome.
+    announce,
   };
 
   // The two grid rows the shell always reserved and never filled. Drawn before

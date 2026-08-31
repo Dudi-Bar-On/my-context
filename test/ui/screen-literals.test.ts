@@ -327,16 +327,18 @@ const KNOWN_LITERALS: { file: string; text: string; verdict: Verdict; reason: st
     reason: 'The tail of the spill hint. Hebrew exists in the design of record '
       + '(— ולכן העודף אינו שמיש לאף פריט שנבחר.). Filed.',
   },
-  // ── coverage.js — not this task's file; reported, not touched ─────────
-  {
-    file: 'coverage.js',
-    text: 'Copy failed',
-    verdict: 'unkeyed',
-    reason: 'The copy button\'s failure state, in English under `א`. Its success state '
-      + '(`Copied`) is one word and falls below the prose line, so the pair is split by the '
-      + 'threshold and only half is listed — recorded here so the next reader fixes both. '
-      + 'Not this task\'s file (lane discipline); reported to the owner.',
-  },
+  // ── coverage.js — EMPTY, and it emptied on 2026-08-31 ─────────────────
+  //
+  // `'Copy failed'` is the second entry this ledger has lost to something
+  // other than a deletion, and it was not lost to a key. The literal was one
+  // half of a hand-rolled label swap — `Copied` for 1.5s, `Copy failed` for
+  // 1.5s — on the ninth clipboard site in `screens/`. `screens/coverage.js`
+  // draws the shared `commandActions` control now, which announces the
+  // OUTCOME of the write through `ctx.announce` in the shell's one live
+  // region (`plan:walk seq:31`). Both literals went with the swap; only this
+  // one was ever visible here, because `Copied` is one word and falls below
+  // the prose line. The entry recording that asymmetry is gone because the
+  // asymmetry is.
   // ── watch.js ──────────────────────────────────────────────────────────
   //
   // **`'regime change · '` LEFT this ledger on 2026-08-30, and it is the first

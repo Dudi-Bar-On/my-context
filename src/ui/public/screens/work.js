@@ -396,38 +396,73 @@ function diffTable(ctx) {
  * `<div>`: `.cmdactions button` carries its own background so the control does
  * not depend on which container it lands in.
  */
-function commandRow(ctx, plan) {
+function commandRow(ctx, plan, onCopied) {
   const block = document.createDocumentFragment();
   const box = el('div', 'cmd');
   box.append(el('code', null, composeCommand(plan.argv)));
   block.append(box, commandActions({
-    argv: plan.argv, id: plan.id, values: plan.values, ctx,
+    argv: plan.argv, id: plan.id, values: plan.values, ctx, onCopied,
   }));
   return block;
 }
 
 /**
- * `<div class="cmdstate">` — the armed chip and its sentence.
+ * `<div class="cmdstate">` — the state of THIS card's command, which until now
+ * was a sentence about a copy that had not happened.
  *
- * **Drawn unconditionally, as the design of record draws it, and that is still
- * an open question rather than a settled reading.** `work.state` is *"copied,
- * not yet observed landing"*, which describes the state AFTER a copy; the
- * mockup shows it beside a command nobody has copied yet, because a mockup
- * shows one state of every widget it carries. `state.armed` is the only
- * `state.*` key either table declares, so there is no second state to swap to
- * and no key with which to say "not yet copied". Raised again in this task's
- * report — the choice bar makes "armed" a better word than it was (a verdict
- * HAS been taken by the time this is read) and does not make it a true one.
+ * ── THE DEFECT, AND IT WAS THE STRING BEING TRUE OF THE WRONG MOMENT ───────
+ *
+ * `work.state` is *"copied, not yet observed landing"*, and it was drawn
+ * unconditionally — beside a command nobody had copied, from the first paint of
+ * every card. `plan:walk seq:81` reported it and could not repair it in lane:
+ * `state.armed` was the only `state.*` key either table declared, so there was
+ * no second state to swap to and no key with which to say the true thing. This
+ * task adds the two keys and the state behind them.
+ *
+ * **Two states, and the FIRST one is the opening state.** Before a copy the
+ * chip is `state.uncopied` on `.chip.unmeas` — the neutral face, not `--warn`'s
+ * — for exactly the argument `app.js`'s own `stateChip()` records: a thing that
+ * has simply not happened yet is not a warning, and a reader who learns that
+ * "not copied" looks like "armed" stops being able to read either. After the
+ * clipboard write RESOLVES it becomes the design of record's own `.chip.warn`
+ * `▲` `state.armed` / `work.state`, byte for byte.
+ *
+ * **`span.chip.warn` does not leave the screen by this.** `e2e/screen-parity.spec.ts`
+ * holds `work: []` — an exact ledger that may only shrink — and the mockup
+ * draws that kind twice in this section: here, and on the stale field's own
+ * chip, which `scripts/demo-corpus.ts` stages a revision specifically to
+ * produce. The second is what keeps the kind present in the opening state.
+ *
+ * **The flip is driven by the clipboard promise, not by the click.** `markCopied`
+ * is handed to `commandActions` as `onCopied` and is called when the write
+ * settles clean. A state flipped on click would say "copied" for a write the
+ * browser refused, which is the same lie one layer down from the one this task
+ * exists to end.
+ *
+ * Returns the box and the flip together, because the caller needs both and a
+ * second lookup by class is how the two come apart.
  */
 function commandState(ctx) {
   const box = el('div', 'cmdstate');
-  const chip = el('span', 'chip warn');
-  chip.dataset.g = '▲';
-  chip.append(...ctx.t('state.armed'));
-  const note = el('span', 'small');
-  note.append(...ctx.t('work.state'));
-  box.append(chip, note);
-  return box;
+
+  const paint = (copied) => {
+    box.replaceChildren();
+    // Two whole `el` calls rather than one carrying a ternary class. The class
+    // scan in `test/ui/work-screen.test.ts` reads this file's bytes for a
+    // literal class argument and pins the `chip warn` pair as a whole attribute
+    // value; a class assembled in an expression is invisible to it. The gate is
+    // right to insist — a chip that took `chip` without `warn` draws the wrong
+    // thing — so the code is written where the gate can read it.
+    const chip = copied ? el('span', 'chip warn') : el('span', 'chip unmeas');
+    chip.dataset.g = copied ? '▲' : '◌';
+    chip.append(...(copied ? ctx.t('state.armed') : ctx.t('state.uncopied')));
+    const note = el('span', 'small');
+    note.append(...(copied ? ctx.t('work.state') : ctx.t('work.uncopied')));
+    box.append(chip, note);
+  };
+
+  paint(false);
+  return { box, markCopied: () => paint(true) };
 }
 
 /**
@@ -525,8 +560,15 @@ function settlementBlock(ctx, kind, planFor) {
     }
     const outcome = el('p', 'small');
     outcome.append(...OUTCOME[kind][chosen](ctx));
+    // Built before the command row so the row can be handed the flip. Both
+    // belong to ONE verdict and are discarded together on the next press —
+    // a `.cmdstate` reading "copied" above a line the reader has just changed
+    // would be the screen saying one thing and running another, arriving from
+    // the side the confirm does not guard.
+    const state = commandState(ctx);
     body.append(
-      spaced(outcome), commandRow(ctx, plan), commandState(ctx), landingHelp(ctx, kind, spec),
+      spaced(outcome), commandRow(ctx, plan, state.markCopied), state.box,
+      landingHelp(ctx, kind, spec),
     );
   };
 
