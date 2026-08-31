@@ -135,6 +135,85 @@ test('the LEGACY SCALE :root block is byte-identical between the mockup and styl
 });
 
 /**
+ * ── THE HUE BUDGET, WHICH NOTHING WAS COMPARING AGAINST ────────────────────
+ *
+ * `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn` ratified
+ * five meaning hues and named, in the same ruling, why the record had drifted:
+ * *"there is no gate comparing the declared token set against the budget —
+ * which is why five hues shipped without anyone ruling on the fifth"*. The
+ * approved direction said four, the stylesheet shipped five, `--warn` was
+ * added back by implementation rather than by ruling, and the disagreement
+ * survived for four days across eight call sites because no test could see it.
+ *
+ * These two are that gate. The first pins the budget by NAME; the second pins
+ * what a chip may spend, which is the surface the budget is actually about.
+ *
+ * **A sixth hue is not forbidden here — it is made loud.** Adding one fails
+ * these two tests, and the correct response is an owner ruling that edits
+ * `BUDGET` in the same commit, exactly the paperwork the fifth hue never got.
+ */
+const BUDGET = ['gold', 'ok', 'carry', 'crit', 'warn'] as const;
+/** The decoration step a chip may spend INSTEAD of a meaning: `.index`, `.unmeas`. */
+const NEUTRAL = 'dim';
+
+test('the TOKENS block declares exactly the five budgeted meaning hues', () => {
+  // Content-addressed to the `--*bg` mixes rather than to a line number: a
+  // meaning hue is one the LEGACY SCALE block gives an opaque pill background
+  // to, which is what makes it usable as a chip in the first place. A sixth
+  // hue arriving with its own mix is caught here; one arriving WITHOUT a mix
+  // is caught by the chip test below.
+  for (const [label, css] of [['styles.css', stylesCss], ['mockup', MOCKUP_CSS]] as const) {
+    const legacy = rootBlockContaining(css, '--fs-00:', label);
+    const mixed = [...legacy.matchAll(/--([a-z0-9-]+)bg:color-mix\(in oklch, ?var\(--([a-z0-9-]+)\)/g)];
+    const named = mixed.map((m) => m[2]!);
+    assert.deepEqual([...named].sort(), [...BUDGET].sort(),
+      `${label}: the meaning hues with a chip background do not match the ruled budget of five. `
+      + 'If a hue was added, it needs an owner ruling and this list edited in the same commit — '
+      + 'that paperwork is exactly what --warn never got, and the direction document and the '
+      + `stylesheet then disagreed in silence. Found: ${JSON.stringify(named)}`);
+    for (const hue of BUDGET) {
+      const tokens = rootBlockContaining(css, '--ground:', label);
+      assert.match(tokens, new RegExp(`--${hue}:#[0-9a-f]{6}`),
+        `${label}: --${hue} is in the budget but the TOKENS block does not declare it`);
+    }
+  }
+});
+
+test('every chip modifier spends a budgeted hue or the neutral — in both files', () => {
+  // **This is the test that would have caught `.chip.index`.** That rule lived
+  // in styles.css as an unapproved proposal and in the mockup not at all, so
+  // the app drew a legible neutral chip and the design of record drew seven
+  // invisible ones — and every gate was green, because a rule that exists in
+  // only ONE file is invisible to a list of selectors that never names it.
+  // Comparing the SETS is what makes a whole missing rule a failure.
+  const allowed = new Set<string>([...BUDGET, NEUTRAL]);
+  const read = (css: string): Map<string, string> => {
+    const found = new Map<string, string>();
+    for (const m of css.matchAll(/^\.chip\.([a-z0-9-]+)\{([^}]*)\}/gm)) {
+      const colour = /(?:^|;)color:var\(--([a-z0-9-]+)\)/.exec(m[2]!)?.[1] ?? '(none)';
+      found.set(m[1]!, colour);
+    }
+    return found;
+  };
+  const shipped = read(stylesCss);
+  const mockup = read(MOCKUP_CSS);
+
+  assert.ok(shipped.size >= 6, `only ${shipped.size} chip modifiers found in styles.css — the `
+    + 'regex has stopped matching, so this test proves nothing');
+  assert.deepEqual([...shipped.keys()].sort(), [...mockup.keys()].sort(),
+    'the two files declare different sets of chip modifiers. A rule in one file and not the '
+    + 'other renders differently in the app and in the design of record while every byte-parity '
+    + 'check stays green, because a selector nobody listed is a selector nobody compares.');
+  for (const [name, colour] of shipped) {
+    assert.ok(allowed.has(colour),
+      `.chip.${name} spends --${colour}, which is neither one of the five budgeted meaning hues `
+      + `nor the neutral --${NEUTRAL}. Five is the budget; a sixth needs an owner ruling.`);
+    assert.equal(mockup.get(name), colour,
+      `.chip.${name} spends --${colour} in styles.css and --${mockup.get(name)} in the mockup`);
+  }
+});
+
+/**
  * Every primitive rule §3 names, plus §4's plate — the same ten selectors
  * `test/ui/primitives.test.ts` enumerates for the mockup alone. `.row`'s
  * `:hover`, its reduced-motion transition and its `[aria-pressed="true"]`
@@ -356,6 +435,19 @@ const SCREEN_SELECTORS = [
   '.sgrp', '.slab', '.sgrp-repo .slab', '.sgrp-corpus .slab',
   '.sgrp-session .slab', '.sgrp-audit .slab', '.sgrp-session',
   '.strip .m', '.chip.unmeas', '.chip.unmeas::before',
+  // **`.chip.index`, the second neutral — added 2026-08-31 with the rule, per
+  // this file's standing brief ("Extend that test with every block you add").**
+  //
+  // It is worth the sentence because it is the exact hole this file exists to
+  // close, and it sat open for eight days. `styles.css` carried the rule as a
+  // PROPOSAL, the mockup carried none, and `.chip.index` was in neither this
+  // list nor any other — so the app rendered a legible neutral chip, the design
+  // of record rendered SEVEN invisible ones (`rgb(11,12,17)` on `rgb(11,12,17)`,
+  // contrast 1.0, two on `preview` and five on `ask`), and every gate was green
+  // in both directions. A rule that exists in one file and not the other is
+  // invisible here unless its selector is named, which is what `plan:walk
+  // seq:15` says about the cascade and what this entry says about a whole rule.
+  '.chip.index',
   '.idkind', '.idslug', 'h2', 'button',
   ':where(button,a,input,select,summary):focus-visible',
   '[dir="rtl"] .icon-open', '[class^="icon-"]',

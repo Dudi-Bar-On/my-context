@@ -288,8 +288,33 @@
 .blk{font:14.5px/1.5 var(--mono);color:var(--ink);border-radius:4px}
 
 /* 6 — the chip. Base rule only: no border, no bare colour, so the four
-   .chip.gov/.ok/.warn/.crit modifier rules (a later task's) keep theirs. */
-.chip{font:700 11.5px/1 var(--mono);padding:3px 7px;border-radius:3px;color:#0b0c11}
+   .chip.gov/.ok/.warn/.crit modifier rules (a later task's) keep theirs.
+
+   **`color:#0b0c11` WAS HERE UNTIL 2026-08-31, and this comment was wrong
+   about it for nine days.** Both this comment and the primitives-section
+   comment in the mockup said the base rule set no bare colour; both were
+   contradicted by the very next line, and test/ui/primitives.test.ts machine-
+   checked only the absence of a `border` declaration, never a colour, which is
+   how they stayed wrong. The code is now what the comments already claimed.
+
+   It is the code that moved and not the comments, because a bare colour in a
+   BASE rule is the defect rather than the starting point: a chip's colour is
+   its MEANING class's to set, so an unclassed chip inherits the ink around it
+   instead of asserting a hue nothing asked it for. Near-black was the worst
+   possible thing to assert — `border:1px solid` in the second `.chip` rule
+   takes `currentColor`, so the one chip drawn with no modifier (the budget
+   ribbon's `index` tier) rendered near-black text inside a near-black border on
+   a near-black plate. Measured in a browser 2026-08-31, before: `rgb(11, 12,
+   17)` on `rgb(11, 12, 17)`, a contrast ratio of 1.0 — seven such chips in the
+   design of record, two on `preview` and five on `ask`. A label nobody can read
+   is a label that is not there.
+
+   Nothing regressed with the removal: all five meaning classes and both
+   neutrals (`.chip.index`, `.chip.unmeas`) set their own colour, and the print
+   register forces `#000` on paper. `e2e/chip-hue-authority.spec.ts` holds it
+   from the page rather than from this file — a stylesheet that reads correctly
+   is exactly what 113 grey chart marks looked like for six days. */
+.chip{font:700 11.5px/1 var(--mono);padding:3px 7px;border-radius:3px}
 
 /* ─── FOUNDATION — what the primitives need to be visible at all. Byte-
    identical to the mockup (~333-343); the ground is what glass has to admit,
@@ -667,6 +692,30 @@ bdi{unicode-bidi:isolate}
    its own glyph, so the state is still legible with no colour at all. */
 .chip.unmeas{color:var(--dim);border-color:var(--edge-3);background:var(--sink)}
 .chip.unmeas::before{content:"◌ "}
+/* THE INDEX TIER, and the audit table's Kind cell — the SECOND neutral, and
+   deliberately the same treatment as the first. Ruled 2026-08-31 under
+   `plan:repaint seq:3e` / `seq:13a`, closing `plan:screens seq:1s-c`.
+
+   Two things wear it. `TIERCHIP.index` is the one tier the ribbon gives no
+   meaning class, and `renderAsk`'s Kind cell writes `chip index` for a record
+   kind, of which there are seven — more than any hue budget can carry and none
+   of them a state. Both are the same fact: PRESENT, and quieter than the
+   things around it. Neither is a state, so neither may spend a meaning hue.
+
+   Neutral rather than a sixth colour, and it costs the budget nothing:
+   `--dim`/`--edge-3`/`--sink` are the decoration and structure steps, exactly
+   what `.chip.unmeas` above already spends and what `.cnt` spends for a count
+   that must be read and must not shout. The meaning budget stays at five —
+   gold, ok, carry, crit, warn (DEC-the-meaning-hue-budget-is-five-gold-ok-
+   carry-crit-and-warn).
+
+   It carries no `::before` of its own, so `.chip::before`'s `attr(data-g)`
+   supplies the glyph the call site asks for. That is `◇` for the index tier,
+   which `.chip.carry` also draws — the two are told apart by the WORD inside
+   the chip (`index` against `continuity`, `mutation` against a tier name), which
+   is the carrier that survives print and forced-colors. Colour is never the
+   only carrier here, and neither is shape. */
+.chip.index{color:var(--dim);border-color:var(--edge-3);background:var(--sink)}
 
 /* ── THE TWO SHELL-LEVEL AFFORDANCES IN THE STRIP — one LINE each, and they
    have to be told so. APP-ONLY: the design of record declares neither, which
@@ -1191,15 +1240,11 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
 .rung.after{opacity:.42}
 .rung .q{color:var(--dim);font-size:var(--fs-0)}
 
-/* ── PROPOSAL, NOT YET APPROVED: the index tier's chip is legible ─────────
-   `TIERCHIP.index` is the one tier with no modifier class, so its chip takes
-   only `.chip`, which sets `color:#0b0c11` and no background — near-black text
-   on a near-black panel, in the mockup and here alike. A label nobody can read
-   is a label that is not there.
-   Neutral rather than a new hue: the index tier is the quiet one, and `--dim`
-   on `--sink` is what `.cnt` already uses for a count that must be read and
-   must not shout. Awaiting the owner's look. */
-.chip.index{color:var(--dim);border-color:var(--edge-3);background:var(--sink)}
+/* `.chip.index` used to sit here, as a PROPOSAL NOT YET APPROVED. It is ruled
+   now (2026-08-31) and has moved up beside `.chip.unmeas`, the other neutral,
+   which is where a reader looking for "what does a chip with no meaning look
+   like" will find both answers in one place. It is also in the mockup now,
+   which it never was — so `test/ui/styles-parity.test.ts` holds it. */
 
 /* ── CARRIED: the four families the six unbuilt screens need ──────────
    Wave-1 scaffold, 2026-08-23. Carried AHEAD of the screens that consume

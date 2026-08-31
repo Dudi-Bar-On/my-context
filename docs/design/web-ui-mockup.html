@@ -376,8 +376,34 @@
 /* 6 — the chip. font-weight and font-family are the only base properties
    that can win against the legacy rule below (border, colour and
    line-height there are more specific or set only on the modifier classes),
-   so this base rule shifts shape without disturbing colour. */
-.chip{font:700 11.5px/1 var(--mono);padding:3px 7px;border-radius:3px;color:#0b0c11}
+   so this base rule shifts shape without disturbing colour.
+
+   **`color:#0b0c11` WAS HERE UNTIL 2026-08-31.** This comment and the
+   primitives-section comment above it ("it sets no `border` and no bare
+   `color`") both described a rule that did in fact set one, and they had said
+   so since the primitives landed. The code is now what they already claimed.
+
+   The colour went rather than the sentences, because a bare colour in a BASE
+   rule is the defect and not the starting point: a chip's colour belongs to its
+   MEANING class, so an unclassed chip inherits the ink around it instead of
+   asserting a hue nothing asked it for. Near-black was the worst thing it could
+   assert — the second `.chip` rule below sets `border:1px solid`, which takes
+   `currentColor` — so a chip with no modifier drew near-black text inside a
+   near-black border on a near-black plate. **Measured in a browser on
+   2026-08-31, in THIS file: seven such chips, every one of them at a contrast
+   ratio of 1.0** — `rgb(11, 12, 17)` on `rgb(11, 12, 17)`. Two on `preview`
+   (the budget ribbon's `index` tier) and five on `ask`, whose `renderAsk`
+   writes `chip index` for the Kind column against a `.chip.index` rule this
+   file did not have. Both are fixed here: the base rule stops asserting, and
+   `.chip.index` is declared below beside `.chip.unmeas`, the neutral it
+   matches.
+
+   This was a defect in the DESIGN OF RECORD, which is the one kind no parity
+   gate can report — `styles-parity` compares this file against `styles.css`
+   byte for byte and both carried the same bytes, so every gate was green over
+   a label nobody could read. `e2e/chip-hue-authority.spec.ts` measures this
+   file's own rendered chips for exactly that reason. */
+.chip{font:700 11.5px/1 var(--mono);padding:3px 7px;border-radius:3px}
 
 *{box-sizing:border-box}
 html,body{block-size:100%}
@@ -913,6 +939,30 @@ details.help[open]>summary{margin-block-end:6px}
    its own glyph, so the state is still legible with no colour at all. */
 .chip.unmeas{color:var(--dim);border-color:var(--edge-3);background:var(--sink)}
 .chip.unmeas::before{content:"◌ "}
+/* THE INDEX TIER, and the audit table's Kind cell — the SECOND neutral, and
+   deliberately the same treatment as the first. Ruled 2026-08-31 under
+   `plan:repaint seq:3e` / `seq:13a`, closing `plan:screens seq:1s-c`.
+
+   Two things wear it. `TIERCHIP.index` is the one tier the ribbon gives no
+   meaning class, and `renderAsk`'s Kind cell writes `chip index` for a record
+   kind, of which there are seven — more than any hue budget can carry and none
+   of them a state. Both are the same fact: PRESENT, and quieter than the
+   things around it. Neither is a state, so neither may spend a meaning hue.
+
+   Neutral rather than a sixth colour, and it costs the budget nothing:
+   `--dim`/`--edge-3`/`--sink` are the decoration and structure steps, exactly
+   what `.chip.unmeas` above already spends and what `.cnt` spends for a count
+   that must be read and must not shout. The meaning budget stays at five —
+   gold, ok, carry, crit, warn (DEC-the-meaning-hue-budget-is-five-gold-ok-
+   carry-crit-and-warn).
+
+   It carries no `::before` of its own, so `.chip::before`'s `attr(data-g)`
+   supplies the glyph the call site asks for. That is `◇` for the index tier,
+   which `.chip.carry` also draws — the two are told apart by the WORD inside
+   the chip (`index` against `continuity`, `mutation` against a tier name), which
+   is the carrier that survives print and forced-colors. Colour is never the
+   only carrier here, and neither is shape. */
+.chip.index{color:var(--dim);border-color:var(--edge-3);background:var(--sink)}
 
 .banner{position:fixed;inset:0;margin:auto;block-size:fit-content;
   inline-size:min(340px,calc(100vw - 2*var(--sp-4)));background:var(--critbg);
