@@ -85,12 +85,12 @@ export const strings = {
   'title.empty': 'Toggle the zero-data view',
   'aria.sesspop': 'Session',
   'sess.title': 'Session',
-  'sess.name': '{b:Names are optional.} An unnamed session keeps its id and prefix — nothing is guessed. Name it with {m:mycontext session name} or {m:/mycontext-session}.',
+  'sess.name': '{b:Names are optional.} An unnamed session still keeps its id and prefix. Name it with {m:mycontext session name} or {m:/mycontext-session}.',
   'sess.cold': 'Cold session',
   'sess.coldn': 'no seen set',
   'sess.coldhelp': 'What a brand new session would see for this file — never shown as the current session preview.',
   'sess.parent': 'Previews show the {b:parent thread}. A subagent has its own dedupe key, so its deliveries are not included.',
-  'sess.nocred': '{b:No credential on this page} — not the same as an empty corpus. It lives only in the URL fragment, so a bookmark, typed address, or reload cannot recover it. Run {m:mycontext ui --nonce} and open the printed link.',
+  'sess.nocred': '{b:No credential on this page} — not the same as an empty corpus. It lives only in the URL fragment, so a bookmark, typed address, or reload cannot recover it. Run {m:mycontext ui --nonce} and open the link it prints.',
   'aria.focuspop': 'Focus',
   'focus.title': 'Focus',
   'focus.live': 'The focus that is set',
@@ -137,7 +137,7 @@ export const strings = {
   'th.item': 'Item',
   'th.tier': 'Tier',
   'tier.carried': 'carried',
-  'preview.carried': '{b:{lines} index lines carried from session} {mv:session}. Shown here and in {m:mycontext context} the same way — an item you cannot see arriving is as much a defect as one silently dropped.',
+  'preview.carried': '{b:{lines} index lines carried from session} {mv:session}. Shown here and in {m:mycontext context} the same way — an item arriving unseen is as much a defect as one silently dropped.',
   // The other three clauses of the SAME disclosure, transcribed from the one
   // renderer that already composes it —
   // `core/render.ts` · `function renderCarried(carried: CarriedSummary | null): string {` · ~47
@@ -152,18 +152,18 @@ export const strings = {
   'index.carriedFetch': 'Fetch any of these with {m:mycontext show <id>}.',
   'preview.why': 'Why not — the first gate that failed',
   'aria.gatepick': 'Item',
-  'preview.whyn': 'Gates run in the order {m:select()} uses — eligible, tier, focus, scope, seen, budget. The first one that fails is the answer; rungs above it passed, rungs below were never reached. The fix maps to a stable code on {m:injection()}, not just to this text.',
+  'preview.whyn': 'Gates run in order: eligible, tier, focus, scope, seen, budget — as {m:select()} uses them. The first to fail is the answer: above passed, below never reached. The fix maps to a stable code on {m:injection()}.',
   // The picker's own disclosure. It holds ONE EXEMPLAR PER RUNG — the first
   // item by id that fails there — so it is stable against exactly the changes
   // a reader is trying to observe, which is what "cannot see changes to why
   // not" was reporting. Said rather than replaced: the rung a reader is
   // usually chasing is the budget, and every item that failed THAT now has a
   // list of its own below.
-  'preview.spec': 'The strip holds one {b:specimen} per gate — the first item by id that fails there — so it holds still while your selection moves. Every item that really spilled is named under {b:Not delivered} below. Each specimen carries {b:how many items fail with it}, and the ladder repeats that count for every gate, zero included.',
+  'preview.spec': 'The strip holds one {b:specimen} per gate — the first item that fails there — so it stays still as selection moves. Items that spilled are named under {b:Not delivered} below. Each specimen carries {b:how many items fail with it}, repeated per gate.',
   'preview.spill': 'Not delivered — every item that spilled, and what it cost',
-  'preview.spilln': 'One row per item in {m:Selection.spilled}, {b:whole across every tier this event ran}, in the order the selector tried them. First-fit is greedy, so the same costs in another order spill a different item. {b:band} says which pass offered it. An index line shows {b:—}, because per-line costs are served by no endpoint.',
+  'preview.spilln': 'One row per item in {m:Selection.spilled}, {b:whole across every tier this event ran}, in try order. First-fit is greedy: same costs in another order spill a different item. {b:band} names the pass. An index line shows {b:—}: no endpoint serves per-line costs.',
   'preview.ribbon': 'Budget ribbon — five tiers, and what fell out of each',
-  'preview.ribbonn': 'One segment per admitted item, sized by its real {m:itemCost}. Under each track, the {b:ghost lane} shows every spilled item at the width it would have taken, where the selector considered it. A wide ghost before a narrow fill is first-fit being honest. A tier this event never reached is drawn {b:absent} and named, because an empty track would claim it ran.',
+  'preview.ribbonn': 'One segment per admitted item, sized by {m:itemCost}. The {b:ghost lane} shows spilled items at the width they would take. A tier never reached is drawn {b:absent}, not blank, so it cannot look like it ran.',
   // ── The absent-tier ribbon, keyed ─────────────────────────────────────
   //
   // Added 2026-08-29. These two sentences shipped as ENGLISH LITERALS with no
@@ -181,18 +181,18 @@ export const strings = {
   // only a key.
   'preview.notrun': 'does not run on this event',
   'preview.notrunn': 'Absent, not empty — this event never reaches the tier at all.',
-  'preview.contover': '{b:Continuity overflow} — {n} continuity item(s) did not fit {m:budgets.continuity}: {mv:ids}, costing {mv:cost} against a budget of {mv:budget}. The continuity guarantee is NOT in force for this session. It is said here, in the injected block and as a doctor finding: a continuity item dropped in silence is the defect this tier exists to end.',
+  'preview.contover': '{b:Continuity overflow} — {n} continuity item(s) did not fit {m:budgets.continuity}: {mv:ids}, costing {mv:cost} against a budget of {mv:budget}. NOT in force this session — shown here, in the injected block, and as a doctor finding, so nothing drops silently.',
   // ── The warm/cold question, the `seen` gate, and the When column ───────
   //
   // Added 2026-08-29 with the fix for "Not delivered is not working". Three
   // groups, and each closes a hole the screen had been drawing a zero over.
   'preview.qwarmn': 'the seen set it has really been given',
-  'preview.qnote': '{b:Two questions, not two views.} The default is what the session above would be given now, seen set, focus and carry included — that is what {b:exactly what Claude gets} means. {b:Cold} answers what a brand-new window would get from the same corpus. The pressed control says which one you are reading.',
-  'preview.seen': '{b:Filtered before budgeting} — {n} item(s) hit the {m:seen} gate and were removed because this session already got them. This gate runs before any tier picks candidates, so it shows what was removed, not what would have arrived.',
-  'preview.seen0': 'Nothing was removed at the {m:seen} gate — none of the injectable corpus has reached this session yet. A cold preview always reads zero here, since a new window has been shown nothing.',
+  'preview.qnote': '{b:Two questions, not two views.} Default is what the session above gets now — seen set, focus and carry included — {b:exactly what Claude gets}. {b:Cold} answers what a brand-new window would get. Pressed control shows which you are reading.',
+  'preview.seen': '{b:Filtered before budgeting} — {n} item(s) hit the {m:seen} gate and were removed because this session already got them. This gate runs before any tier picks candidates, so it shows what was removed, not what would arrive.',
+  'preview.seen0': 'Nothing was removed at the {m:seen} gate — none of the injectable corpus has reached this session yet. A cold preview always reads zero here: a new window has been shown nothing.',
   'preview.spillNone': 'Everything that reached the budget gate fit — {n} candidate(s) went in, none spilled. A full budget, not an empty answer.',
-  'preview.spillUnreached': 'Nothing reached the budget gate. {n} item(s) were removed earlier, at {m:seen}, as already delivered — so no tier had a candidate left. This zero is {b:not} "nothing spilled".',
-  'preview.spillNoCand': 'Nothing reached the budget gate, and nothing was removed at {m:seen} either — no tier on this event had a candidate to offer. This zero is {b:not} "nothing spilled".',
+  'preview.spillUnreached': 'Nothing reached the budget gate. {n} item(s) were removed earlier, at {m:seen}, as already delivered, so no tier had a candidate left. This zero is {b:not} "nothing spilled".',
+  'preview.spillNoCand': 'Nothing reached the budget gate, and nothing was removed at {m:seen} either — no tier here had a candidate to offer. This zero is {b:not} "nothing spilled".',
   'preview.gseen': 'already delivered to this session, so filtered at the {m:seen} gate before any budget was checked',
   // ── What the path picker can and cannot do ─────────────────────────────
   //
@@ -210,9 +210,9 @@ export const strings = {
   // the control — a missing control is the same silence one step further on.
   // Every figure here is counted from `/api/items`' own `scope` field and
   // `/api/config`'s resolved `scopePolicy`; nothing is estimated.
-  'preview.scope': '{b:The path narrows the {m:jit} tier and nothing else, and only for items that declare a scope.} {b:{scoped} of {total}} items here do. The other {b:{unscoped}} carry {m:scope: []}, and under the {m:scopePolicy} in force an unscoped item is {b:unrestricted} — it matches every path — so the file above cannot change whether they are candidates.',
-  'preview.scopeinert': 'Of those unscoped items, {b:{inert}} belong to a category set to {m:scopePolicy: inert}. There, an unscoped item matches {b:no} path — so the file above cannot bring them in either.',
-  'preview.scopeunk': '{b:The path narrows the {m:jit} tier only, and only for items that declare a scope.} {b:How many items in this corpus declare one is unmeasured here} — the scope join did not answer, so this is left unstated rather than guessed: {mv:reason}.',
+  'preview.scope': '{b:The path narrows only the {m:jit} tier, only for items declaring a scope.} {b:{scoped} of {total}} do. The other {b:{unscoped}} carry {m:scope: []} — under {m:scopePolicy}, unscoped is {b:unrestricted}, matching every path, so the file above cannot change them.',
+  'preview.scopeinert': 'Of those unscoped items, {b:{inert}} belong to a category set to {m:scopePolicy: inert}. There, an unscoped item matches {b:no} path, so the file above cannot bring them in either.',
+  'preview.scopeunk': '{b:The path narrows only the {m:jit} tier, only for items that declare a scope.} {b:How many items in this corpus declare one is unmeasured here} — the scope join did not answer, so this stays unstated rather than guessed: {mv:reason}.',
   // ── Each rung's own population ─────────────────────────────────────────
   //
   // Added 2026-08-29. The picker offered three names over a corpus where 564
@@ -228,15 +228,15 @@ export const strings = {
   // count is the item-level half of a question the other half of which no
   // endpoint answers, and a bare `0` would claim this event's path excluded
   // nothing — the one thing nobody measured.
-  'preview.rungunk': '{b:{n} item(s) fail at this gate at the item level} — items with no scope under {m:scopePolicy: inert}. How many the event path excludes is {b:unmeasured}: the per-event {m:matchesScope} refusal has no endpoint, so dropped items are absent from this ladder, not counted on it. Not a zero — no list can be drawn here.',
+  'preview.rungunk': '{b:{n} item(s) fail at this gate at the item level} — no scope under {m:scopePolicy: inert}. How many the event path excludes is {b:unmeasured}: {m:matchesScope} has no endpoint, so dropped items are absent, not counted. Not a zero — no list can be drawn.',
   'preview.rungseen': '{b:{n} item(s) fail at this gate.} Each is named under {b:Filtered before budgeting}, in the {b:Not delivered} card below.',
   'preview.rungspill': '{b:{n} item(s) fail at this gate.} Each is named under {b:Not delivered} below, with the tier that dropped it and its cost.',
   'preview.rungopen': 'Every item stopped at {mv:gate}, by id. The strip above names the first; this is the rest.',
   'preview.pickn': 'first of {n}',
   'preview.pickunk': 'first of {n} measured',
-  'preview.when': '{b:The When on each row is the past, not this preview.} Nothing here is being injected as you read it. Each row carries the last time that item really was delivered or really did spill, from {m:audit_item.role} joined to {m:audit.at}, matched on the tier the row names. Two rows can be weeks apart and both be right.',
+  'preview.when': '{b:The When on each row is the past, not this preview.} Nothing here is injected now. Each row shows the last real delivery or spill, from {m:audit_item.role} joined to {m:audit.at}, matched on its tier. Rows can be weeks apart and both right.',
   'preview.whenoff': '{b:Delivery times unavailable} — {reason}',
-  'preview.whenabsent': '{b:Delivery times unavailable} — the audit projection has never been built here, so there is no record. {m:mycontext audit} builds it; a read surface cannot, since building it is a write.',
+  'preview.whenabsent': '{b:Delivery times unavailable} — the audit projection was never built here, so there is no record. {m:mycontext audit} builds it; a read surface cannot, since building it is a write.',
   'preview.whentrunc': 'The delivery-time answer was cut at {n} rows, so a row may read {b:never} where the log actually holds an older record.',
   'preview.lastinj': 'last delivered {mv:at} · {mv:tier}',
   'preview.neverinj': 'never delivered',
@@ -248,9 +248,9 @@ export const strings = {
   'cov.sub': 'Every path, coloured by what governs it, via {m:matchesScope} and {m:injection()} — never a bare glob match.',
   'cov.pin': 'Pinned — governs every path, independent of scope',
   'help.whyTree': 'Why these are not in the tree',
-  'cov.pinhelp': 'An {m:always:true} item governs every path. Colouring it per-path made a directory that {i:is} governed look like a gap. Hoisted here, "gap" means something true.',
+  'cov.pinhelp': 'An {m:always:true} item governs every path. Colouring it per-path made a directory that {i:is} governed look like a gap. Hoisted here, "gap" means something real.',
   'cov.tree': 'Repository',
-  'cov.magn': '{b:Magnitude}, not just a state: the bar shows governed / ungoverned / not-examined across files below it, and the count is {m:governed of total}. Dots alone could not say {i:how} dark a row was. The dot stays for monochrome; depth adds a {m:data-depth} step.',
+  'cov.magn': '{b:Magnitude}, not just a state: bar shows governed / ungoverned / not-examined, count {m:governed of total}. Dots alone could not say {i:how} dark a row was. Dot stays for monochrome; depth adds {m:data-depth}.',
   'cov.k1': 'scoped',
   'cov.k2': 'one item',
   'cov.k3': 'gap',
@@ -299,36 +299,36 @@ export const strings = {
   'sim.stair': 'Admission staircase — items admitted, per budget',
   'aria.tierBudget': 'Tier budget in tokens',
   'aria.tierpick': 'Tier',
-  'sim.stairn': 'The sweep is {b:exact, not sampled} — the selector re-runs at every cumulative candidate cost, so nothing between two rungs is invented. Per-item costs come from {m:itemCost}, exported by {m:select.ts} for this chart.',
+  'sim.stairn': 'The sweep is {b:exact, not sampled} — the selector re-runs at every cumulative candidate cost, so nothing between two rungs is invented. Per-item costs come from {m:itemCost}, exported by {m:select.ts}.',
   'sim.rangeh': 'Range maximum',
   'sim.rangebtn': 'Set range',
-  'sim.rangen': 'The slider explores a range; this sets the range. It is {b:a bound the simulator owns}, not a budget — nothing here writes {m:config.json}. It can never fall below the budget in force, and raising a budget past it, here or on Configure, raises this too. The injection preview uses the same range for its ribbon.',
+  'sim.rangen': 'The slider explores a range; this sets it. It is {b:a bound the simulator owns}, not a budget — nothing here writes {m:config.json}. Cannot fall below the budget in force; raising the budget raises this too. Preview uses the same range.',
   'sim.rangeset': 'Range maximum for {mv:tier} is now {max}.',
   'sim.rangebad': 'The range maximum must be a positive integer. Got {typed}. Nothing was changed.',
   'sim.thresh': 'Thresholds',
-  'sim.snap': 'The thumb moves in single tokens and lands where you put it; the ladder marks the rung that actually governs. Values between two rungs behave the same, so {offrung} decides what the rung below it decides. A red rung is an {b:eviction} — more budget, fewer items.',
+  'sim.snap': 'The thumb moves in single tokens; the ladder marks the rung that governs. Between two rungs, {offrung} follows the rung below. A red rung is an {b:eviction} — more budget, fewer items.',
   'sim.tier': 'Tier',
   'sim.budget': 'Budget',
   'sim.fits': 'Fits',
   'sim.spills': 'Spills',
-  'sim.chipn': 'The fits column is a {b:ratio}, not a count: "{fits} of {eligible}" shows how much of what was eligible arrived, and the chip flips at the boundary. The row for the tier you drag follows the slider.',
+  'sim.chipn': 'The fits column is a {b:ratio}, not a count: "{fits} of {eligible}" shows how much of what was eligible arrived; the chip flips at the boundary. The row for the tier you drag follows the slider.',
   // The ratio the fits chip draws, in the words `sim.chipn` above already
   // quotes — the mockup's own `' of '`, which used to reach the page as an
   // unkeyed English literal and now does not.
   'sim.fitsOf': '{fits} of {eligible}',
   'help.whyBudget': 'Why raising a budget can remove an item',
-  'sim.evict': '{m:fitToBudget} is {b:first-fit}: it keeps trying later items after one does not fit. A larger budget can admit a large item early and crowd out two smaller ones that used to both fit. "Spilled" is not a priority ranking.',
+  'sim.evict': '{m:fitToBudget} is {b:first-fit}: it keeps trying later items after one fails to fit. A larger budget can admit one large item early and crowd out two smaller ones. "Spilled" is not a priority ranking.',
   'sim.ratio': 'Selected, then not delivered',
-  'sim.ration': 'Delivered grows from the centre toward the reading start, spilled toward the reading end, both normalised to the largest count in the table. A long red half names {b:which budget is too small}, the question this simulator exists to answer. Both numbers come from {m:audit_item.role} through {m:topItems}.',
+  'sim.ration': 'Delivered grows toward reading start, spilled toward reading end, normalised to the largest count in the table. A long red half names {b:which budget is too small}. Both numbers come from {m:audit_item.role} through {m:topItems}.',
   // ── The question: this session, or a brand-new one (plan:walk seq:86) ────
   // The injection preview's precedent, carried to the second screen with the
   // same defect. Warm stays the default; cold is offered and LABELLED.
-  'sim.qnote': '{b:Two questions, not two views.} The default is what the session above would get now, with the {m:seen} set it has actually been handed. {b:Cold} answers what a brand-new window would get from the same corpus. Neither is shown as the other; the pressed control says which one you see.',
-  'sim.seen': '{b:Filtered before budgeting} — {n} item(s) were removed at the {m:seen} gate because this session already got them. That gate runs before any tier picks candidates, so a 0 of 0 below may mean this, not that nothing qualified. Ask the cold question to see what a new window would get.',
-  'sim.seen0': 'Nothing was removed at the {m:seen} gate, so an empty tier below means nothing qualified. A cold question always reads zero here — a new window has been shown nothing.',
+  'sim.qnote': '{b:Two questions, not two views.} Default is what the session above gets now, with the {m:seen} set it was handed. {b:Cold} answers what a brand-new window would get. Pressed control shows which one you see.',
+  'sim.seen': '{b:Filtered before budgeting} — {n} item(s) removed at the {m:seen} gate: already delivered this session. The gate runs before any tier picks candidates, so 0 of 0 below can mean this. Ask the cold question instead.',
+  'sim.seen0': 'Nothing was removed at the {m:seen} gate, so an empty tier below means nothing qualified. A cold question always reads zero — a new window has been shown nothing.',
   'sim.zeroSeen': 'everything it could have had was already delivered',
   'sim.zeroNone': 'nothing qualified for it',
-  'sim.stair0seen': 'No rung to draw. The {m:seen} gate removed {n} item(s) before this tier picked candidates, leaving none to admit — empty for a measured reason, not an unknown one.',
+  'sim.stair0seen': 'No rung to draw. The {m:seen} gate removed {n} item(s) before this tier picked candidates, leaving none to admit — empty for a measured reason, not unknown.',
   'sim.stair0none': 'No rung to draw: nothing qualified for this tier under the question being asked.',
   'sim.stairIndex': 'The {m:index} tier admits index LINES, not items, and no endpoint exposes per-line costs — nothing here to price. Absent, not empty.',
   'sim.stairNoPath': 'The {m:jit} tier is reached only by a {m:tool} event, which needs a file path — this repository walk offers none. Absent, not empty.',
@@ -356,15 +356,15 @@ export const strings = {
   'sim.recBad': 'A budget must be a positive integer written in digits. Got {typed}. Nothing was changed.',
   // ── Validation is against the whole window (plan:budget seq:3) ───────────
   'sim.winh': 'All five budgets, against the whole window',
-  'sim.winOk': '{total} tokens across all five tiers of a {win}-token window — {pct}% — leaving {left} tokens to work in, clearing the {res}% reserve this screen holds back.',
-  'sim.winTight': '{total} tokens across all five tiers of a {win}-token window — {pct}%. It fits, but leaves only {left} tokens to work in, under the {res}% reserve. Fitting while leaving nothing to work in is still wrong.',
-  'sim.winOver': '{total} tokens across all five tiers does not fit a {win}-token window: {over} tokens over. A budget that passes alone while the five together do not is exactly what this check catches.',
-  'sim.winNone': '{b:Not validated, and not guessed.} No context window has been measured for this session, so there is no ceiling to hold budgets to. {m:context_window_size} comes only from the Claude Code status line, and a model-to-window table once measured this machine wrong by 5x. Install the bridge with {m:mycontext statusline install}.',
+  'sim.winOk': '{total} tokens across all five tiers of a {win}-token window — {pct}% — leaving {left} tokens to work in, clearing the {res}% reserve.',
+  'sim.winTight': '{total} tokens across five tiers of a {win}-token window — {pct}%. It fits, but leaves only {left} tokens free, under the {res}% reserve. Fitting with nothing left to work in is still wrong.',
+  'sim.winOver': '{total} tokens across all five tiers does not fit a {win}-token window: {over} tokens over. A budget that passes alone while the five together fail is exactly what this check catches.',
+  'sim.winNone': '{b:Not validated, and not guessed.} No context window was measured this session — no ceiling for budgets. {m:context_window_size} comes only from the status line; a lookup table once measured this machine wrong by 5x. Install with {m:mycontext statusline install}.',
   // ── A full window is a state with a next step (plan:budget seq:4) ────────
-  'sim.full': '{b:This cannot take effect in the window you have now.} {used} of {win} tokens are in use, {free} are left, and the five budgets ask for {total}. Run {m:/compact} or {m:/clear} and the {n} {mv:tier} item(s) will arrive: budgets are read at session start. The value is set either way; only its effect waits.',
+  'sim.full': '{b:This cannot take effect now.} {used} of {win} tokens in use, {free} left; five budgets need {total}. Run {m:/compact} or {m:/clear} to admit the {n} {mv:tier} item(s) — budgets read at session start. Set either way; effect waits.',
   // ── An edited budget shows what it was (plan:budget seq:6) ───────────────
   'sim.restore': 'Restore the values in force',
-  'sim.wasn': '{b:The first number is the budget in force} — what {m:config.json} holds for this tier now — the second is the value being simulated. {b:Restore} puts everything back, and is enabled only when something changed.',
+  'sim.wasn': '{b:The first number is the budget in force} — what {m:config.json} holds for this tier now; the second is the value being simulated. {b:Restore} puts everything back, and is enabled only when something changed.',
   // Injected now
   'inj.h': 'Injected now',
   'inj.v': 'live, not hypothetical',
@@ -374,13 +374,13 @@ export const strings = {
   // Audit stream
   'watch.h': 'Audit stream',
   'watch.v': 'the only record of what spilled',
-  'watch.sub': 'Six record kinds: mutations, injections, hook actions, focus changes, access refusals, progress steps. A focus change is a {b:regime change} — drawn as a rule across the feed, not a row.',
+  'watch.sub': 'Six record kinds: mutations, injections, hook actions, focus changes, access refusals, progress steps. A focus change is a {b:regime change} — a rule across the feed, not a row.',
   // The regime rule's own label. `watch.sub` above already carries the phrase
   // in both languages; the ROW that draws the rule used to carry it as an
   // English literal in the module, which is the one place the language toggle
   // cannot reach.
   'watch.regime': 'regime change',
-  'watch.pulsen': '{b:Activity pulse} — one column per ten seconds, newest at the reading-end edge. Height is records in that column, colour is the kind. Time buckets are indexed by {m:idx_audit_at}.',
+  'watch.pulsen': '{b:Activity pulse} — one column per ten seconds, newest at the reading-end edge. Height is records in that column; colour is the kind. Buckets are indexed by {m:idx_audit_at}.',
   'aria.wfilters': 'Filter',
   'watch.all': 'All',
   'th.at': 'At',
@@ -403,7 +403,7 @@ export const strings = {
   'watch.tokens': '{tokens} estimated tokens, computed at injection time',
   'watch.tokensNotRecorded': 'tokens: not recorded — this record predates the field. Not zero.',
   'title.tokensNotRecorded': 'tokens not recorded',
-  'watch.voidn': 'A gold bar shows cost against the {budget}-token budget. Missing {m:tokens} draws a {b:hatched void}: the field is optional on {m:AuditRecord}, and records before 1.0.1 lack it.',
+  'watch.voidn': 'A gold bar shows cost against the {budget}-token budget. Missing {m:tokens} draws a {b:hatched void}: the field is optional on {m:AuditRecord}; records before 1.0.1 lack it.',
   // Ask
   'ask.h': 'Ask',
   'ask.v': 'filters, for people who do not write SQL',
@@ -431,17 +431,17 @@ export const strings = {
   'ask.opIs': 'is',
   'ask.opIsNot': 'is not',
   'ask.run': 'Run',
-  'ask.updatedAtTrap': '{m:updated_at} is {b:index write time}, not a content timestamp. This surface never rebuilds the index — rows are as the last hook or CLI run left them.',
+  'ask.updatedAtTrap': '{m:updated_at} is {b:index write time}, not a content timestamp. This surface never rebuilds the index: rows stay as the last hook or CLI run left them.',
   'ask.predefined': 'Predefined queries',
   'ask.predefined.ops': 'Operations by count',
   'ask.predefined.spilled': 'Most-spilled items',
   'ask.predefined.injected': 'Most-injected items',
   'ask.predefined.sessions': 'Sessions',
   'ask.sqlh': 'The query this composed',
-  'ask.sqlCaption': 'the SQL this answer ran. The final {m:LIMIT} binds one row more than the cap — that extra row is the truncation signal, dropped before display.',
-  'ask.sqln': '{b:Shown, never typed.} Composed from the fields above, values bound as parameters. {m:/api/ask} takes fields only, never the statement — no path from this box to the database.',
+  'ask.sqlCaption': 'the SQL this answer ran. The final {m:LIMIT} binds one row more than the cap — the extra row signals truncation, dropped before display.',
+  'ask.sqln': '{b:Shown, never typed.} Composed from the fields above, values bound as parameters. {m:/api/ask} takes fields only, never the statement — no path from here to the database.',
   'ask.whyq': 'Why there is no SQL box',
-  'ask.why': "{m:readOnly:true} still permits {m:VACUUM INTO '<any path>'} — a full db copy. A keyword scan blocks it but misses bracket or backtick identifiers. Removing the input removes it.",
+  'ask.why': "{m:readOnly:true} still permits {m:VACUUM INTO '<any path>'} — a full db copy. A keyword scan misses bracket or backtick identifiers. Removing the input removes it.",
   'ask.rows': '{rows} rows',
   'th.role': 'Role',
   'ask.truncated': 'capped at {rows} rows — more matched; raise the limit to see them',
@@ -532,15 +532,15 @@ export const strings = {
   'rail.cntNone': 'not measured — this screen’s endpoint refused',
   'ask.noRows': 'no rows matched',
   'ask.recallq': 'Why a search can return nothing',
-  'ask.recall1': 'Matching is literal: {m:search "silently drop"} misses "dropped silently". {b:A stemmer is decided} — only in {m:search}/{m:query_items}, not {m:select()}, so injection stays deterministic.',
-  'ask.recall2': '{b:The case is recall, not ranking.} {m:core/search.ts} decided against ranking, untouched here. A parity test ships with it: one naive swap dropped a query from {b:14 hits to 1}.',
+  'ask.recall1': 'Matching is literal: {m:search "silently drop"} misses "dropped silently". {b:A stemmer is decided} — only in {m:search}/{m:query_items}, not {m:select()}, keeping injection deterministic.',
+  'ask.recall2': '{b:The case is recall, not ranking.} {m:core/search.ts} decided against ranking here. A parity test ships with it: one naive swap dropped a query from {b:14 hits to 1}.',
   // Doctor
   'doc.h': 'Doctor',
   'doc.v': '"exit 1" loses the findings list',
   'doc.sub': 'Grouped by code, in three levels. Each row links its item; repair commands are composed, never run.',
   'doc.d1': 'its source document changed since the snapshot',
   'doc.d2': 'scope {mv:scope} matches no file',
-  'doc.d3': '{b:Zero files match any watched glob}, so the capture nudge never fires. The shipped defaults name three paths from one workflow; this repo has none.',
+  'doc.d3': '{b:Zero files match any watched glob}, so the capture nudge never fires. The shipped defaults name three paths from one workflow — this repo has none.',
   'doc.notice': 'notice',
   // The other two card headings. The mockup keys only `doc.notice` and
   // draws these two as literals; the app draws all three from the table, so
@@ -548,7 +548,7 @@ export const strings = {
   'doc.error': 'error',
   'doc.warning': 'warning',
   'doc.d4': 'a second cross-project knowledge store exists on this machine. {b:mycontext never reads or writes it}.',
-  'doc.d5': 'another plugin writes durable learnings here — the same kind as {m:lesson}, a second spelling with no shared ids. It is {b:watched}: edits nudge, a human decides.',
+  'doc.d5': 'another plugin writes durable learnings here — the same kind as {m:lesson}, a second spelling, no shared ids. It is {b:watched}: edits nudge, a human decides.',
   // **A finding with no composed command SAYS SO, and the screen counts them.**
   //
   // Owner, 2026-08-28, on a corpus whose two findings were `blocked_without_needs`
@@ -593,7 +593,7 @@ export const strings = {
   // Decay
   'dec.h': 'Decay',
   'dec.v': 'a chart, not a table — of sessions',
-  'dec.sub': 'Items not injected in the last N {b:sessions}. The unit is sessions, not weeks: the ledger keeps one row per session, item and tier, so a repeat inside one session collides and what it stores is a set of first-injections. The delivery history below is a different measurement from a different source.',
+  'dec.sub': 'Items not injected in the last N {b:sessions}, not weeks. The ledger keeps one row per session, item and tier — a repeat in one session collides, storing first-injections only. Delivery history below is a separate measurement.',
   'dec.comb': 'Recency comb — one tooth per item, never bucketed',
   'dec.warm': 'warm',
   'dec.cold': 'cold',
@@ -601,9 +601,9 @@ export const strings = {
   'dec.badpin': 'pinned {b:and} cold — a defect signal, not decay',
   'dec.unres': 'unrestricted — a breadth view over cold ∪ warm, never a third bucket',
   'help.whyCold': 'What "cold" does and does not mean',
-  'dec.help': 'The ledger records {b:injection}, not reading or reliance. A cold item may still govern — a cold {m:always:true} item is a bug in selection, not decay.',
+  'dec.help': 'The ledger records {b:injection}, not reading or reliance. A cold item can still govern — a cold {m:always:true} item is a selection bug, not decay.',
   'dec.heat': '90-day delivery, per item — delivered against spilled',
-  'dec.heatn': 'One cell per day. Intensity is how much was delivered, a {b:hatched} cell is a day the item was {b:spilled}, and an empty cell is a day nothing happened. This is the one view that tells quiet apart from chosen and thrown away. Its source is {m:audit_item.role} joined to {m:audit.at}, with the {m:since} and {m:until} filters.',
+  'dec.heatn': 'One cell per day. Intensity is delivery amount; {b:hatched} means {b:spilled} that day; empty means nothing happened — quiet, not chosen or thrown away. Source: {m:audit_item.role} joined to {m:audit.at}, filtered by {m:since}/{m:until}.',
   // Relations
   'gr.h': 'Relations',
   'gr.v': 'an ego-graph, not a hairball',
@@ -643,7 +643,7 @@ export const strings = {
   'gr.lbear': 'load-bearing',
   'gr.lref': 'referential',
   'gr.ldang': 'dangling',
-  'gr.note': 'Nodes carry {b:ids}, not titles, which keeps bidi-sensitive text out of the SVG. Each edge shows its {b:relation type}, and its line style shows severity: {m:isLoadBearing} classifies the vocabulary, so a dangling {m:relates_to} reads as noise and a dangling {m:constrains} as an alarm. Direction is the layout — the column says which way it points.',
+  'gr.note': 'Nodes carry {b:ids}, not titles — keeping bidi text out of the SVG. Each edge shows {b:relation type}; line style shows severity: {m:isLoadBearing} classifies it, so dangling {m:relates_to} reads as noise, dangling {m:constrains} as alarm. Column shows direction.',
   // Status
   'st.h': 'Status',
   'st.v': "a table is a terminal's home ground — a recorded exception",
@@ -672,10 +672,10 @@ export const strings = {
   'work.promoteDraft': '{b:Accept} promotes the draft: it becomes active and governs this project from the next session.',
   'work.discardDraft': '{b:Reject} discards the draft: retired unpromoted, it never governs, and the text is not deleted.',
   'work.promoteRev': '{b:Accept} promotes the revision: the proposed fields replace the text in force on the item above.',
-  'work.discardRev': '{b:Reject} discards the revision: the proposal is dropped and the item keeps its current text. This is the outcome a stale revision can still reach.',
+  'work.discardRev': '{b:Reject} discards the revision: the proposal is dropped and the item keeps its current text — the outcome a stale revision can still reach.',
   'work.moved': 'changed since staging',
   'work.blocked': 'promote refuses until re-based',
-  'work.diffn': 'The proposed column is a word-level diff, not a second paragraph to compare by eye: additions are tinted, removals are struck, and both are real {m:<ins>} and {m:<del>} elements, so a screen reader announces the change with no added ARIA.',
+  'work.diffn': 'The proposed column is a word-level diff, not a paragraph to compare by eye: additions are tinted, removals are struck, both real {m:<ins>} and {m:<del>} elements, so a screen reader announces the change with no added ARIA.',
   // The Copy control's opening state, and the two the shell's live region
   // announces. `state.uncopied` is drawn beside a composed command BEFORE
   // anything is copied; `state.armed` below is what replaces it only when the
@@ -714,10 +714,10 @@ export const strings = {
   'pal.v': 'real pickers and a live glob tester',
   'pal.sub': 'Builds a command from selections. Arguments show as chips, so shell syntax in a value is visible before it reaches your clipboard.',
   'pal.argv': 'Arguments',
-  'pal.block': '{b:Copy is blocked.} One argument has shell substitution syntax. Double-quoting does not neutralise {m:$(…)} — a POSIX shell still substitutes inside it.',
+  'pal.block': '{b:Copy is blocked.} One argument has shell substitution syntax; double-quoting does not neutralise {m:$(…)} in a POSIX shell.',
   'pal.glob': 'Glob tester',
   'pal.pattern': 'Scope pattern',
-  'pal.globn': 'Every file in the repository, with the matches {b:lit as you type}. A bare count — "{matches} files" — is one you cannot inspect, and an empty result and a nearly-empty one look identical until you can see which files. Matching uses the same {m:globToRegExp} cache the selector uses, over {m:listRepoFiles}.',
+  'pal.globn': 'Every file in the repository, matches {b:lit as you type}. A bare count — "{matches} files" — cannot be inspected: an empty and a near-empty result look the same until you see which files. Uses the {m:globToRegExp} cache, over {m:listRepoFiles}.',
   // Execute — the one Copy-and-Execute control (lib/command-actions.js).
   //
   // The RESIDUAL is deliberately not a key here. `src/ui/execute.ts` spells it
@@ -752,9 +752,9 @@ export const strings = {
   'cfg.parseErr': '{m:config.json} could not be parsed. The loader’s own message follows.',
   'cfg.resolveErr': '{m:config.json} parsed, and could not be resolved. The loader’s own message follows.',
   'cfg.effect': 'What changes',
-  'cfg.deltan': 'Each row is the {b:pair}: old value struck through, new value highlighted, tinted by direction. A lone {m:+1} chip shows direction but loses the pairing.',
+  'cfg.deltan': 'Each row is the {b:pair}: old value struck through, new value highlighted, tinted by direction. A lone {m:+1} chip loses the pairing.',
   'aria.scopepolicy': 'scopePolicy',
-  'cfg.spn': 'The border colour and count {b:are} the blast radius: how much of the corpus stops working. {m:inert} is the most destructive option. {m:scopePolicyFor} computes this exactly — items are named, not estimated.',
+  'cfg.spn': 'The border colour and count {b:are} the blast radius: how much of the corpus stops working. {m:inert} is the most destructive option. {m:scopePolicyFor} computes this exactly — items named, not estimated.',
   'cfg.apply': 'Apply this',
   // REWRITTEN 2026-08-27 — task `plan:budget seq:5`,
   // `DEC-the-ui-writes-budgets-and-the-simulator-always-meant-to`. The old
@@ -765,7 +765,7 @@ export const strings = {
   // cannot reach one — the deny hook still refuses every OTHER key in this
   // file, and still refuses an agent here. A person can, now, past the
   // confirm.
-  'cfg.nocmd': 'No {m:mycontext} command edits a budget, and no agent can — the hook says so verbatim: {i:"changes to {m:.my_context/config.json} are the user\'s to make — ask, do not edit."} A person can, behind a confirm showing every value first.',
+  'cfg.nocmd': 'No {m:mycontext} command edits a budget, and no agent can — the hook says so verbatim: {i:"changes to {m:.my_context/config.json} are the user\'s to make — ask, do not edit."} A person can, behind a confirm showing every value.',
   'btn.copypatch': 'Copy the patch',
   // The four Save/write strings the budgets form and its confirm draw. Not a
   // second `exec.*` set: `exec.btn`/`exec.h`/`exec.go` all say "Execute" /
@@ -779,20 +779,20 @@ export const strings = {
   'cfg.saveg': 'Write it',
   'cfg.saved': 'Written to {m:config.json}.',
   'cfg.watched': 'Watched documents',
-  'cfg.watchednote': '{m:init} writes what this repository actually has, not a fixed set of paths from one workflow. The list {b:replaces} and never merges — it never silently gains globs you did not add.',
+  'cfg.watchednote': '{m:init} writes what this repository actually has, not a fixed set of paths from one workflow. The list {b:replaces} and never merges — it never gains globs you did not add.',
   'cfg.h1': '{b:Budgets are written here}, past the confirm above. Every other key is yours to edit — the hook refuses an agent that tries.',
-  'cfg.h2': '{b:The receipt:} this screen re-reads {m:config.json} from disk every load, so returning shows the new value — or a {m:parseError} field if the JSON broke.',
+  'cfg.h2': '{b:The receipt:} this screen re-reads {m:config.json} from disk every load, so returning shows the new value, or a {m:parseError} field if the JSON broke.',
   // ── One pane per configuration subject — `plan:config seq:1`, 2026-08-29.
   // Four headings, four explanatory sentences, and the labels on the controls
   // inside them. Every value a control offers is a literal the loader accepts,
   // drawn untranslated on the control itself, so these sentences carry the
   // MEANING of each value and never a second vocabulary for it.
   'cfg.profile': 'Profile',
-  'cfg.profilen': 'Which category catalogue applies. {m:standard} ships every category; {m:minimal} is the smallest useful set. A left-out category is not disabled — it is absent, so its items are injected nowhere.',
+  'cfg.profilen': 'Which category catalogue applies. {m:standard} ships every category; {m:minimal} is the smallest useful set. A left-out category is not disabled, it is absent — its items are injected nowhere.',
   'cfg.inforce': 'In force now. Press the other to compose the change.',
   'cfg.budgetsn': 'The token ceiling per tier — the one value on this screen a person can write here, behind the confirm below.',
   'cfg.cats': 'Categories',
-  'cfg.catsn': 'One category at a time: its tier, what an empty scope means, whether an agent may edit it, and its two free-text fields. A change here goes {b:inside} the {m:categories} object, never as a new top-level key.',
+  'cfg.catsn': 'One category at a time: tier, what an empty scope means, whether an agent may edit it, and its two free-text fields. A change here goes {b:inside} the {m:categories} object, never as a new top-level key.',
   'cfg.catpick': 'Which category',
   'cfg.tier': 'Tier — {m:normative} injects in full; {m:rationale} only counts in the session index.',
   'cfg.policy': 'What an empty scope means: {m:global} is unrestricted, {m:required} refuses a capture without one, {m:inert} injects on no file.',
@@ -805,17 +805,17 @@ export const strings = {
   'cfg.blast0': 'No change — this is the configuration in force.',
   'cfg.blast0n': 'Nothing starts or stops governing, delivery does not move, and all {unchanged} items are unaffected.',
   'cfg.blasts': '{n} items stop being delivered at the start of a session',
-  'cfg.blastsn': 'They still govern but no longer fit. Counted by running {m:select} — the same selector the hook runs — twice over the same items: what would actually start spilling.',
+  'cfg.blastsn': 'They still govern but no longer fit. Counted by running {m:select}, the same selector the hook runs, twice over the same items — what would start spilling.',
   'cfg.blaste': '{n} items change who may edit them',
-  'cfg.blasten': 'Nothing starts or stops governing, and nothing stops being delivered — {m:agentEdits} decides who may write, not what is injected. Items are the ones {m:agentEditsFor} named, counted not estimated.',
+  'cfg.blasten': 'Nothing starts or stops governing, and nothing stops being delivered — {m:agentEdits} decides who may write, not what is injected. Items are the ones {m:agentEditsFor} named — counted, not estimated.',
   'cfg.blasta': '{n} more items are delivered at the start of a session',
   'cfg.blastan': 'Nothing stops governing or being delivered. Counted by running {m:select} twice over the same items and context.',
   'cfg.blastw': '{n} items start governing this project',
-  'cfg.blastwn': 'Nothing stops governing, and {unchanged} items are unaffected. Counted by running the same {m:injection} check twice, once per config — not estimated.',
+  'cfg.blastwn': 'Nothing stops governing, and {unchanged} items are unaffected. Counted by running {m:injection} twice, once per config — not estimated.',
   'cfg.blastc': '{n} items stop governing this project',
-  'cfg.blastcn': 'They keep existing but stop being injected; {unchanged} items are unaffected. Counted by running the same {m:injection} check twice, once per config — not estimated.',
+  'cfg.blastcn': 'They keep existing but stop being injected; {unchanged} items are unaffected. Counted by running {m:injection} twice, once per config — not estimated.',
   'cfg.blastu': 'Unmeasured — no endpoint answers what this key governs.',
-  'cfg.blastun': 'The preview runs {m:injection}, {m:scopePolicyFor}, {m:agentEditsFor} and {m:select}, and none of the four reads this key. A zero here would answer a question nobody asked, so no count is drawn.',
+  'cfg.blastun': 'The preview runs {m:injection}, {m:scopePolicyFor}, {m:agentEditsFor} and {m:select} — none reads this key. A zero here would answer a question nobody asked, so no count is drawn.',
   'cfg.unscoped': '{mv:policy} decides its reach: {n} unscoped {mv:cat} items, named and counted by the same lookup the selector runs.',
   'cfg.gov': 'governs',
   'cfg.notgov': 'does not govern',
@@ -836,10 +836,10 @@ export const strings = {
   'cfg.step4': 'Save the file, then run this to confirm the paste took. It re-reads {m:config.json} and names the file if it fails to load.',
   'cfg.step4b': 'Save the file. No {m:mycontext} command reads a budget back — return to this tab and the value above re-reads from disk.',
   'cfg.pl.newfile': 'The file does not exist yet. The block below is its entire contents, outer braces and all.',
-  'cfg.pl.newkey': 'Your file has no {mv:key} key yet. Paste the block inside the outermost braces as a new top-level entry, with a comma after the entry before it.',
+  'cfg.pl.newkey': 'Your file has no {mv:key} key yet. Paste the block inside the outermost braces as a new top-level entry, comma after the entry before it.',
   'cfg.pl.replacekey': 'Your file already sets {mv:key}. Replace that entire entry, key to closing brace, with the block below.',
-  'cfg.pl.newentry': 'Your file already has a {m:categories} object — paste {b:inside} it, never as a second top-level {m:categories} key, which would silently replace everything. Paste after {mv:last} and its comma.',
-  'cfg.pl.newentry0': 'Your file has an empty {m:categories} object. Paste this between its braces, {b:inside} the object — never as a second top-level {m:categories} key.',
+  'cfg.pl.newentry': 'Your file already has a {m:categories} object. Paste {b:inside} it, never as a second top-level {m:categories} key — that would silently replace everything. Paste after {mv:last} and its comma.',
+  'cfg.pl.newentry0': 'Your file has an empty {m:categories} object. Paste this between its braces, {b:inside} the object — never a second top-level {m:categories} key.',
   'cfg.pl.replaceentry': 'Your file already declares {mv:key}. Replace that entry inside the {m:categories} object, name to closing brace, with the block below.',
   // ── The category wizard — `plan:config seq:3`, 2026-09-01. ───────────────
   // Stepped rather than a form, because the ordering is real: the tier decides
@@ -848,15 +848,15 @@ export const strings = {
   // `GET /api/config`'s `meta`, so nothing here invents a value the loader
   // would refuse.
   'cfg.wiz': 'Create a category',
-  'cfg.wizn': 'A kind of item the catalogue does not ship. Every step offers only values the loader accepts, so nothing here can compose a refusal — the two free-text steps show the rule they are checked against.',
+  'cfg.wizn': 'A kind of item the catalogue does not ship. Every step offers only values the loader accepts, so nothing here can compose a refusal. The two free-text steps show the rule they are checked against.',
   'cfg.wizstep': 'Step {n} of {total}',
   'cfg.wizback': 'Back',
   'cfg.wiznext': 'Next',
-  'cfg.wizpending': 'Finish the flow first. The effect on this corpus is measured once the category is complete — the loader cannot be asked about one with no name or tier.',
-  'cfg.wz.name': 'The category name, lowercase, typed after {m:mycontext capture}. It becomes the item {m:type}, and cannot match one this configuration already has.',
+  'cfg.wizpending': 'Finish the flow first. The effect on this corpus is measured once the category is complete — the loader cannot check one with no name or tier.',
+  'cfg.wz.name': 'The category name, lowercase, typed after {m:mycontext capture}. It becomes the item {m:type} and cannot match one already configured.',
   'cfg.wz.namehint': 'decision',
-  'cfg.wz.prefix': 'The id prefix this category mints ids under — an id is {m:PREFIX-slug}, also used as the file name. Leave empty and the loader derives one from the name.',
-  'cfg.wz.desc': 'What this category is for, in one sentence, as the help will print it. Required — a custom category needs a tier and description, or the loader refuses it by name.',
+  'cfg.wz.prefix': 'The id prefix this category mints ids under — an id is {m:PREFIX-slug}, also the file name. Leave empty and the loader derives one from the name.',
+  'cfg.wz.desc': 'What this category is for, in one sentence, as the help will print it. Required: a custom category needs a tier and description, or the loader refuses it by name.',
   'cfg.wz.deschint': 'A choice made once, with the reasoning that made it.',
   'cfg.wz.extra': 'Extra frontmatter fields its items may carry, comma-separated. Leave empty for none.',
   'cfg.wz.extrahint': 'plan, seq, state',
@@ -878,7 +878,7 @@ export const strings = {
   'cfg.wz.resolved': 'What the loader makes of it, including every default it filled in — read back from {m:POST /api/config/check}, not predicted here.',
   // Procedures
   'pr.h': 'Procedures',
-  'pr.sub': 'An ordered set of steps performed {b:once} and then done — unlike a rule, one instruction that applies every time. {b:Built, and this screen reports it.}',
+  'pr.sub': 'An ordered set of steps performed {b:once} and then done — unlike a rule, which applies every time. {b:Built, and this screen reports it.}',
   'pr.states': 'Five states, and exactly one of them injects',
   'th.state': 'State',
   'pr.mean': 'Meaning',
@@ -893,7 +893,7 @@ export const strings = {
   // The fifth stage. `STAGES` in `src/ui/proc-model.ts` has always had five and this
   // table drew four; `pr.aband` names the state in prose three cards further down.
   'pr.s5': 'you stopped it, and it is {m:superseded} rather than finished',
-  'pr.why': '{b:Injecting only in {m:active} is the mechanism, not a sentence asking the model to wait.} A procedure the model holds in full is one it may begin following, so it is delivered only in the state you set deliberately. The real risk is not the obvious one: it is a procedure left {m:active} forever, injecting in full long after the work ended.',
+  'pr.why': '{b:Injecting only in {m:active} is the mechanism, not a request the model can ignore.} A procedure held in full may be followed, so delivered only when you set the state deliberately. Real risk: a procedure left {m:active} forever, injecting long after work ended.',
   'pr.item': '{mv:item}',
   'pr.steps': 'steps',
   'pr.k1': 'Add the integer column beside the decimal one',
@@ -901,11 +901,11 @@ export const strings = {
   'pr.k3': 'Switch reads to the integer column',
   'pr.k4': 'Switch writes, behind the flag',
   'pr.k5': 'Drop the decimal column',
-  'pr.md': 'Steps are a {m:## Steps} section in the Markdown, parsed like {m:## Observations}. {b:"{done} of {steps}" is counted, never stored}, so there is no second place to disagree.',
+  'pr.md': 'Steps are a {m:## Steps} section in the Markdown, parsed like {m:## Observations}. {b:"{done} of {steps}" is counted, never stored} — no second place to disagree.',
   'pr.write': 'Who may tick a box',
-  'pr.w1': '{m:mycontext procedure step} may flip {b:one checkbox}, matched by a strict pattern, and reach no other byte of the item. It skips the draft gate.',
-  'pr.w2': '{b:That is a distinction, not an exemption.} The gate stops an agent changing normative {i:content}; a checkbox is {i:progress}. Every flip is audited, so the relaxation is visible.',
-  'pr.w3': '{b:What is not relaxed:} the state. {m:active → done} stays yours. Ticking the last box does not close the procedure — it lets the agent {i:ask}.',
+  'pr.w1': '{m:mycontext procedure step} may flip {b:one checkbox}, matched by a strict pattern, touching no other byte of the item. It skips the draft gate.',
+  'pr.w2': '{b:That is a distinction, not an exemption.} The gate stops an agent changing normative {i:content}; a checkbox is {i:progress}. Every flip is audited, so this stays visible.',
+  'pr.w3': '{b:What is not relaxed:} the state. {m:active → done} stays yours. The last box does not close the procedure — it lets the agent {i:ask}.',
   'pr.aband': 'Abandoned rather than finished is {m:superseded} — the existing status already means exactly that.',
   // The disclosure card's heading. The card is the endpoint's own
   // qualifications in the endpoint's own words; this says what the card IS,
@@ -933,14 +933,14 @@ export const strings = {
   'port.yes': 'travels',
   'port.filtered': 'filtered',
   'port.no': 'rebuilt',
-  'port.hist': '{b:History travels, and it is filtered.} Mutations carry. Injections, hook actions, focus records, refusals, and procedure ticks do not. Imports land in {m:.audit/imported/}, so a receiver can tell witnessed from told.',
+  'port.hist': '{b:History travels, and it is filtered.} Mutations carry; injections, hook actions, focus records, refusals and procedure ticks do not. Imports land in {m:.audit/imported/}, so a receiver can tell witnessed from told.',
   'port.fmt': 'The format, in order of preference',
   'port.f1': 'A plain directory',
   'port.f1n': 'canonical. Readable, diffable, and needs no tool to open',
   'port.f2n': 'where git exists — carries real history, one file',
   'port.f3': 'Deterministic ZIP',
   'port.f3n': 'otherwise. Fixed order and fixed timestamps, so the same corpus is the same bytes',
-  'port.git': '{b:What it adds over git:} the corpus already lives in the repository, so this is for someone {i:not} sharing it — another workspace, team, or a machine with no common remote.',
+  'port.git': '{b:What it adds over git:} the corpus already lives in the repository; this is for someone {i:not} sharing it — another workspace, team, or a machine with no common remote.',
   'port.coll': 'On import — three buckets, and nothing applies unconfirmed',
   'th.bucket': 'Bucket',
   'th.example': 'Example',
@@ -949,15 +949,15 @@ export const strings = {
   'port.b3': 'identical',
   // Template packs
   'pk.h': 'Template packs',
-  'pk.sub': 'A pre-authored corpus someone published — "the regulated-industry flavour" — imported at {m:init} to start from an opinion, not an empty directory.',
+  'pk.sub': 'A pre-authored corpus someone published — "the regulated-industry flavour" — imported at {m:init}, so you start from an opinion, not empty.',
   'pk.trust': 'Where it lands, and why that differs',
   'pk.active': 'draft',
   'pk.draft': 'draft',
-  'pk.trustn': '{b:Both routes land the same way, and it is draft} — one importer sits behind both, and every item a pack brings in arrives as a proposal. An empty corpus is where an unreviewed opinion is hardest to notice, so the import asks rather than assumes. {b:There is no {m:--trust} flag}: a boundary a flag can override is not a boundary.',
+  'pk.trustn': '{b:Both routes land the same way, as draft} — every item a pack brings in arrives as a proposal. {b:There is no {m:--trust} flag}: a boundary a flag can override is not a boundary.',
   'pk.what': 'What a pack may carry',
   'pk.cats': 'category configuration',
   'pk.never': 'never',
-  'pk.line': 'The line, once: a pack carries what its author knows about the {b:domain}, never a setting describing {b:you} — budget or repo layout, which the author cannot see.',
+  'pk.line': 'The line, once: a pack carries what its author knows about the {b:domain}, never a setting describing {b:you} — budget or repo layout the author cannot see.',
   'pk.man': 'Integrity, described accurately',
   'pk.m1': 'Digest',
   'pk.m1n': 'full, per file, sorted',
@@ -967,11 +967,11 @@ export const strings = {
   'pk.m3n': 'a curated list in the docs. No registry, no re-fetch, no version check over the network',
   'pk.m4': 'Updating',
   'pk.m4n': 'import again; the three buckets show what changed',
-  'pk.theatre': '{b:What the digest does not prove.} A checksum proves files arrived intact, not that the author is trustworthy — it never gates activation. The item {m:checksum} field is a 16-hex drift truncation, unused here.',
+  'pk.theatre': '{b:What the digest does not prove.} A checksum proves files arrived intact, not that the author is trustworthy — it never gates activation. The {m:checksum} field is a 16-hex drift truncation, unused here.',
   // Documentation
   'dv.h': 'Documentation',
   'dv.v': 'cross-linked to your own corpus, which a docs site cannot do',
-  'dv.sub': 'The README in this repository, rendered here and addressed by heading ordinal, so one integer gives a deep link and a language switch to the same section.',
+  'dv.sub': 'The README in this repository, rendered here and addressed by heading ordinal — one integer gives a deep link and a language switch to the same section.',
   'dv.toc': 'Contents',
   'dv.t1': 'What this is',
   'dv.t2': 'Install',
@@ -980,7 +980,7 @@ export const strings = {
   'dv.t7': 'The trust boundary',
   'dv.parity': 'The EN/HE switch self-disables when the parity test is red — a mirror that has drifted is worse than none.',
   'dv.rendered': '§{ordinal} — {heading}',
-  'dv.mdnote': 'A hand-written subset renderer produces no HTML string, so nothing needs sanitising. Raw HTML, images and unknown URL schemes are {b:refused and shown as refusals}, not dropped silently.',
+  'dv.mdnote': 'A hand-written subset renderer produces no HTML string, so nothing needs sanitising. Raw HTML, images and unknown URL schemes are {b:refused and shown as refusals}, never dropped silently.',
   // The three refusals `dv.mdnote` promises, worded. The mockup builds them
   // inside its own script and keys none of them; drawn from here they are the
   // renderer's words in the reader's language, and the alt text and the link
@@ -1007,7 +1007,7 @@ export const strings = {
   'tu.j5': 'settle what is open',
   'tu.6': 'Ingest a document you already wrote',
   'tu.j6': 'I have a spec, not items',
-  'tu.gap': 'Hebrew is shown as {b:to write}, not as a language toggle that would silently fall back to English. The changelog already notes the tutorials have no parity test — this is that gap, drawn.',
+  'tu.gap': 'Hebrew is shown as {b:to write}, not a language toggle that would silently fall back to English. The changelog already notes tutorials have no parity test — this is that gap, drawn.',
   // Learn
   'ln.h': 'Learn',
   'ln.v': 'conditional pass — the corpus cross-links earn it',
@@ -1033,7 +1033,7 @@ export const strings = {
   'pane.gov': 'governs',
   'pane.file': 'file',
   'pane.hist': 'Delivered — twelve weeks',
-  'pane.histn': 'Twelve weekly buckets from the audit projection: hatched where the item {b:spilled} that week, grey where nothing was delivered. It answers "is this still alive", for {i:every} item.',
+  'pane.histn': 'Twelve weekly buckets from the audit projection: hatched where the item {b:spilled} that week, grey where nothing was delivered. It answers "is this still alive" for {i:every} item.',
   'pane.body': 'Body — as authored',
   // The label over the item summary — owner ruling 2026-09-01. It takes
   // `.welllabel`, the same register `pane.body` and `pane.hist` take, because the
@@ -1062,7 +1062,7 @@ export const strings = {
   'sum.stale': 'stale summary',
   'sum.unanchored': 'unanchored summary',
   'sum.staleNote': 'This item changed after the sentence above was written, so it describes text that is no longer here. Read the body, not the summary.',
-  'sum.unanchoredNote': 'The sentence above has no record of what it was written against, so nothing says whether it still describes this item. Read the body, not the summary.',
+  'sum.unanchoredNote': 'The sentence above has no record of what it was written against, so nothing says it still describes this item. Read the body, not the summary.',
   'sum.always': 'always injected',
   'sum.continuity': 'carries across sessions',
   'sum.agent': 'captured by an agent',
@@ -1257,7 +1257,7 @@ export const strings = {
   // what the short state discloses on demand; neither is dropped, which is
   // 05-dataviz.html's rule for a bounded thing — bound it, and disclose.
   'strip.ctx.noBridgeShort': 'no status-line bridge',
-  'strip.ctx.noBridge': 'showing only what mycontext injected — that is all this number is. The status line bridge is not installed; {m:mycontext statusline install} shows what installing would change, and asks.',
+  'strip.ctx.noBridge': 'showing only what mycontext injected — that is all this number is. The status line bridge is not installed; {m:mycontext statusline install} shows what installing would change, then asks.',
   'strip.ctx.cold': 'cold session — a hypothetical has no live context number',
   'strip.myctx': '{tokens} of it from project knowledge ({injections} injections)',
   'strip.myctxPartial': '≥{tokens} of it from project knowledge ({injections} injections, {unrecorded} not recorded)',
@@ -1296,7 +1296,7 @@ export const strings = {
   'ex.stale': 'Not connected. Refresh the page — if it stays this way, this browser has no credential, and the printed link is the way back.',
   // Code skew. NO value slots, deliberately: `app.js` calls translate() on this
   // key with no substitutions, and t() throws on one it cannot fill.
-  'ex.codeSkew': '{b:This page is newer than the server answering it.} Files under {m:src/ui/public/} reload every request, but server modules loaded at startup and stay fixed until restart. Restart it to catch up.',
+  'ex.codeSkew': '{b:This page is newer than the server answering it.} Files under {m:src/ui/public/} reload every request, but server modules load at startup and stay fixed until restart. Restart it to catch up.',
   'ex.ok': 'OK',
   // The one refusal frame every screen shares — `errorNote` in
   // `screens/parts.js`. The message inside it is the server's, the
