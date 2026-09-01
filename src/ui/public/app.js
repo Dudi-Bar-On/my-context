@@ -5223,20 +5223,33 @@ function rateLimitParts(view) {
     // NEUTRAL AT EVERY VALUE: the chip below said "limit near" once a window
     // crossed, and the percentages themselves never carried a colour at all.
     //
-    // **`fillLevel`, which is what the terminal bands them with**, and NOT
-    // `occupancyLevel` — which is what the chip below still used. That was a
-    // real divergence: `rateLimitSegment` colours a window on the ABSOLUTE
-    // bands, because a quota's own fullness has nothing to do with when a
-    // handover is due, and the chip here was banding the same numbers against
-    // the handover threshold. Two surfaces, two answers, one fact. One
-    // function now, and the boundaries are still declared once.
+    // A quota's own fullness has nothing to do with when a handover is due, so
+    // these are banded on the ABSOLUTE scale and never against the handover
+    // threshold — which is what `occupancyLevel` measures, and what the chip
+    // below wrongly used until this ruling.
     //
-    // Age 0: a rate-limit window arrives with the payload being read right
-    // now, so there is no such thing as a stale one — `fillLevel`'s `stale`
-    // branch is unreachable from here and is not pretended otherwise.
-    const level = fillLevel(window.usedPercent, 0);
-    span.className = 'small rlfig ' + (level === 'ok' || level === 'warn' || level === 'crit'
-      ? level : 'unmeas');
+    // No age argument: a rate-limit window arrives with the payload being read
+    // right now, so there is no such thing as a stale one. `usageLevelOf` is the
+    // pure form and has no `stale` branch to leave unreachable.
+    // **`usageLevelOf`, THE SAME FOUR BANDS THE TERMINAL USES** -- owner ruling,
+    // 2026-09-01: *"align to terminal"*.
+    //
+    // This read `fillLevel` (60/85) while the terminal's `rateLimitSegment` goes
+    // through `usedOfMaxSegment` -> `usageLevel` -> `usageLevelOf` (60/70/80),
+    // and the comment that used to sit here claimed the opposite in so many
+    // words: *"`fillLevel`, which is what the terminal bands them with"*. It was
+    // not. Between 80 and 85 percent the terminal called a window CRITICAL while
+    // this bar's verdict still said "limit near" -- one fact, two answers, which
+    // is the exact defect the two-surface bands exist to prevent.
+    //
+    // The FIGURE was never wrong: `bandUsage` below has always banded it with
+    // `usageLevelOf`, and the four-level rules beat `.rlfig.ok/.warn/.crit` by
+    // source order (see the note above `.uicon` in styles.css). Only the verdict
+    // read the older ramp, which is why the disagreement was visible in the chip
+    // and nowhere else. The three-band class is dropped here rather than
+    // recomputed: `bandUsage` adds the band, and `unmeas` when there is none.
+    const level = usageLevelOf(window.usedPercent);
+    span.className = 'small rlfig';
     span.dataset.k = key;
     span.dataset.f = field;
     span.append(...translate(table.strings, key, {
@@ -5271,12 +5284,21 @@ function rateLimitParts(view) {
     // so the reader can see for themselves how old the reading is.
     // The SAME band the figure beside it wears, and the same one the terminal
     // uses — see the note above. This read `occupancyLevel` against the
-    // handover threshold until 2026-09-01, which meant the chip and the
-    // terminal's block could disagree about one window.
-    // `crit` always overwrites, `warn` only claims an empty verdict, so the
-    // name that survives is always the name of the window the verdict is about.
-    if (level === 'crit') { worst = 'crit'; worstName = nameKey; }
-    else if (level === 'warn' && worst === null) { worst = 'warn'; worstName = nameKey; }
+    // handover threshold until 2026-09-01, then `fillLevel`'s 60/85, and now the
+    // 60/70/80 the terminal actually bands these windows with.
+    //
+    // **`caution` earns no chip, and that is the point of having four bands.**
+    // The verdict is the loud channel: it is a word on a bar that is mostly
+    // numbers, and one that appeared at 60% -- the very first pixel of the second
+    // band of four -- was crying wolf for a fifth of the range. The 60-70 band is
+    // not silent, it is drawn where a band belongs: on the FIGURE, in gold, with
+    // its own icon. The chip now speaks for `warning` and `critical`, which are
+    // the two the reader must act on.
+    //
+    // `critical` always overwrites, `warning` only claims an empty verdict, so
+    // the name that survives is always the window the verdict is about.
+    if (level === 'critical') { worst = 'crit'; worstName = nameKey; }
+    else if (level === 'warning' && worst === null) { worst = 'warn'; worstName = nameKey; }
   }
   if (worst !== null) {
     const chip = document.createElement('span');
