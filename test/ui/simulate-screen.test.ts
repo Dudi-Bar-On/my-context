@@ -1360,7 +1360,10 @@ test('the three offered values are derived, labelled with what they buy, and pre
   assert.match(flatText(grow!), /720/);
   assert.match(flatText(grow!), /20% headroom/);
   assert.match(flatText(ceiling!), /743,100/);
-  assert.match(flatText(ceiling!), /6,900 tokens and a 25% working reserve/);
+  // The WORDING moved when the on-screen texts were shortened (owner, 2026-09-01);
+  // what is pinned here has not: the label must still name BOTH subtractions, or a
+  // reader cannot tell where the ceiling came from.
+  assert.match(flatText(ceiling!), /6,900 tokens plus a 25% reserve/);
   // Every one of them is a value a reader can take, not a slogan.
   for (const button of [exact, grow, ceiling]) {
     assert.notEqual((button as unknown as { disabled: boolean }).disabled, true);
