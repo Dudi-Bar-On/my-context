@@ -153,7 +153,7 @@ test('the bar is always BAR_CELLS cells wide, whatever the figure', () => {
 });
 
 test('the bar is built from ONE constant pair, so the style is a one-line change', () => {
-  // The owner named `▓▓▓░░░` and `■■■□□□` and chose the first. Both characters
+  // The owner named `▰▰▰▱▱▱` and `■■■□□□` and chose the first. Both characters
   // come from this pair and nowhere else, which is what makes the other a
   // one-line change rather than a search across a renderer.
   assert.equal(displayWidth(BAR_FILL), 1, 'a fill cell is one column');
@@ -196,8 +196,8 @@ test('the four levels use four EXISTING tokens — no sixth hue was invented', (
   // `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn` forbids a
   // sixth. Every level's ink must be one of the inks this file already
   // declares, and the four must be distinct or the ramp has three steps.
-  const declared = Object.values(PALETTE).map((ink) => `${ink.bg}/${ink.fg}`);
-  const used = LEVELS.map((l) => `${LEVEL_INK[l].bg}/${LEVEL_INK[l].fg}`);
+  const declared = Object.values(PALETTE).map((ink) => ink.fg);
+  const used = LEVELS.map((l) => LEVEL_INK[l].fg);
   for (const ink of used) {
     assert.ok(declared.includes(ink), `${ink} is not one of the declared inks — a sixth hue`);
   }
@@ -208,11 +208,11 @@ test('the ask marker is no longer gold, because gold became the caution band', (
   // Owner ruling, 2026-09-01: one hue, one job. Gold went wholly to `caution`
   // and the `◆ ask` marker moved to `--carry`, so the two are not the same
   // colour one block apart on the same row.
-  assert.equal(LEVEL_INK.caution.bg, PALETTE['gold']?.bg, 'caution is gold');
+  assert.equal(LEVEL_INK.caution.fg, PALETTE['gold']?.fg, 'caution is gold');
   const due = askSegment(occ(90), 85);
   assert.match(due?.text ?? '', /handover due/);
-  assert.equal(due?.ink.bg, PALETTE['carry']?.bg, 'the ask marker is --carry');
-  assert.notEqual(due?.ink.bg, PALETTE['gold']?.bg, 'and it is NOT gold any more');
+  assert.equal(due?.ink.fg, PALETTE['carry']?.fg, 'the ask marker is --carry');
+  assert.notEqual(due?.ink.fg, PALETTE['gold']?.fg, 'and it is NOT gold any more');
 });
 
 /* ══ THE TREATMENT, ON EVERY USED-OF-MAXIMUM FIELD ════════════════════════ */
@@ -230,7 +230,8 @@ const INPUT: PowerlineInput = {
   occupancy: occ(65), threshold: 85,
   fiveHour: { usedPercent: 72, resetsAt: null },
   sevenDay: { usedPercent: 88, resetsAt: null },
-  costUsd: null, warmPercent: null,
+  costUsd: null,
+  elapsedMs: null, warmPercent: null,
   myctx: { tokens: 264_500, injections: 3, unrecorded: 0 },
   lastAudit: null, myctxNote: null, teeNote: null,
 };
@@ -254,7 +255,7 @@ test('the icon appears on every banded field and on no safe one', () => {
   for (const pct of [30, 65, 75, 90]) {
     const level = usageLevelOf(pct)!;
     const seg = usedOfMaxSegment({
-      field: 'context', label: 'ctx', percent: pct, counts: null, decimals: 1, suffix: '',
+      field: 'context', percent: pct, counts: null, decimals: 1, suffix: '',
     });
     if (level === 'safe') assert.ok(!/[\u{1F300}-\u{1FAFF}⚠]/u.test(seg.text), 'safe is quiet');
     else assert.ok(seg.text.startsWith(LEVEL_ICON[level]), `${pct}% should lead with ${level}'s icon`);
@@ -266,7 +267,7 @@ test('the two rate windows get icon, bar and percentage — and NO invented coun
   // no token count, no message count, no denominator at any level. `(59 / 100)`
   // would print one number twice wearing a slash and invent a maximum nobody
   // served. This is the honesty rule that kept the row inside the terminal.
-  const seg = rateLimitSegment('7d', { usedPercent: 88, resetsAt: null }, Date.now(), 90, 'rate-7d');
+  const seg = rateLimitSegment({ usedPercent: 88, resetsAt: null }, Date.now(), 90, 'rate-7d');
   assert.ok(seg !== null);
   assert.match(seg!.text, new RegExp(`[${BAR_FILL}${BAR_EMPTY}]{${BAR_CELLS}}`));
   assert.match(seg!.text, /88%/);
@@ -276,7 +277,7 @@ test('the two rate windows get icon, bar and percentage — and NO invented coun
 
 test('the context and ask fields DO carry counts, because they have a real maximum', () => {
   const ctx = contextSegment(occ(54.9));
-  assert.match(ctx.text, /\(549\.0k \/ 1\.0M\)/, 'real numerator, real denominator');
+  assert.ok(ctx.text.includes('(549,000 / 1,000,000)'), 'real numerator, real denominator');
   const ask = askSegment(occ(65), 85);
   // The maximum is the THRESHOLD, and both numbers are percentage points of
   // the window, so the pair reads in the same units as the ctx figure beside it.
@@ -286,14 +287,18 @@ test('the context and ask fields DO carry counts, because they have a real maxim
 
 test('myctx is banded against the window, and says nothing when there is no window', () => {
   const banded = usedOfMaxBlocks(INPUT).find((b) => b.field === 'myctx');
-  assert.match(banded?.text ?? '', /myctx .*26\.5% \(264\.5k \/ 1\.0M\)/);
+  // The NAME is a label now, so the field is `MYCTX` + its value rather than
+  // a value that spells its own name.
+  assert.equal(banded?.label, 'MYCTX');
+  assert.match(banded?.text ?? '', /26\.5% \(264,500 \/ 1,000,000\)/);
   // No measurable window means no maximum, so it falls back to the bare count
   // it always drew rather than switching denominators in silence.
   const blind = buildLines(
     { ...INPUT, occupancy: { state: 'unmeasurable', why: 'no-sample' } }, Date.now(),
   );
   const bare = [...blind.account].find((s) => s.field === 'myctx');
-  assert.equal(bare?.text, 'myctx 264.5k', 'no window, no percentage — and no invented one');
+  assert.equal(bare?.label, 'MYCTX');
+  assert.equal(bare?.text, '264.5k', 'no window, no percentage — and no invented one');
 });
 
 test('past the ask the words take over, and the figure never runs to 104%', () => {
@@ -312,20 +317,29 @@ test('a fossil keeps its number and loses its verdict', () => {
   // A reading too old to band is drawn without an icon and without a hue —
   // visibly not-a-verdict rather than a confident one.
   const fossil = usedOfMaxSegment({
-    field: 'context', label: 'ctx', percent: 95, counts: null, decimals: 1, suffix: '',
+    field: 'context', percent: 95, counts: null, decimals: 1, suffix: '',
     ageMs: 48 * 60 * 60 * 1000,
   });
   assert.ok(!fossil.text.startsWith(LEVEL_ICON.critical), 'a fossil gets no skull');
-  assert.equal(fossil.ink.bg, PALETTE['neutral']?.bg, 'and no band hue');
+  assert.equal(fossil.ink.fg, PALETTE['neutral']?.fg, 'and no band hue');
   assert.equal(fossil.blink, false);
   assert.match(fossil.text, /95\.0%/, 'the number itself is not withheld');
 });
 
 test('fmtCount reads in the register the counts are read in', () => {
-  assert.equal(fmtCount(549_009), '549.0k');
-  assert.equal(fmtCount(1_000_000), '1.0M');
-  assert.equal(fmtCount(200_000), '200.0k');
+  // FULL and grouped since the owner's reference settled it — `(90,000 /
+  // 200,000)`, never `(90.0k / 200.0k)`. `648,317` is a figure a reader can
+  // check against what Claude Code itself reports; `648.3k` is not.
+  assert.equal(fmtCount(549_009), '549,009');
+  assert.equal(fmtCount(1_000_000), '1,000,000');
+  assert.equal(fmtCount(200_000), '200,000');
   assert.equal(fmtCount(42), '42');
+  assert.equal(fmtCount(999), '999', 'no separator below a thousand');
+  assert.equal(fmtCount(1_000), '1,000', 'and one at exactly a thousand');
+  // Grouped by hand, never through `Intl`: a locale-dependent separator would
+  // render `648.317` on a de-DE machine and pass its tests on one developer's.
+  assert.ok(!fmtCount(1_234_567).includes('.'), 'the separator is a comma, always');
+  assert.equal(fmtCount(1_234_567), '1,234,567');
 });
 
 /* ══ BLINK: THE EXTRA, NEVER THE CARRIER ═════════════════════════════════ */
@@ -335,7 +349,7 @@ const CRIT: Segment[] = [{ text: 'x', ink: PALETTE['crit']!, bold: true, blink: 
 test('only a critical block blinks, and bold is what actually carries it', () => {
   for (const pct of [30, 65, 75, 90]) {
     const seg = usedOfMaxSegment({
-      field: 'context', label: 'ctx', percent: pct, counts: null, decimals: 1, suffix: '',
+      field: 'context', percent: pct, counts: null, decimals: 1, suffix: '',
     });
     const critical = usageLevelOf(pct) === 'critical';
     assert.equal(seg.blink, critical, `blink at ${pct}%`);
@@ -354,7 +368,14 @@ test('SGR 5 opens on the critical block and SGR 25 closes it on every other', ()
   ];
   const out = renderPowerline(mixed, { colour: true, columns: null });
   assert.equal((out.match(/\[5m/g) ?? []).length, 1, 'exactly one block opens the blink');
-  assert.equal((out.match(/\[25m/g) ?? []).length, 2, 'both later blocks close it');
+  // Every OTHER paint closes it, and since the frame went that includes the
+  // SEPARATORS — `joint()` paints too, so the rule between two fields can no
+  // longer inherit a blink from the field before it. Asserted as a PROPERTY
+  // rather than a count, because the count moves with the field count.
+  const opened = out.indexOf('[5m');
+  const closed = out.indexOf('[25m', opened);
+  assert.ok(closed > opened, 'nothing closed the blink after the critical field');
+  assert.ok(!out.slice(closed).includes('[5m'), 'the blink reopened later');
 });
 
 test('no line ever ENDS with the blink open', () => {
@@ -436,7 +457,7 @@ test('a narrow terminal falls back to the figure and still never wraps', () => {
       assert.ok(displayWidth(row) <= w,
         `at ${w} columns a row is ${displayWidth(row)} wide: ${row}`);
     }
-    assert.match(text, /ctx /, `the context block was given up at ${w} columns`);
+    assert.match(text, /42\.0%|65\.0%|WINDOW/, `the context block went at ${w} columns`);
   }
 });
 

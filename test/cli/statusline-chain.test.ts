@@ -27,7 +27,7 @@ import { removeTree } from '../helpers/tmp.ts';
 // between them — so the pattern spans the block rather than pinning one
 // spelling of it. What is being asserted here is that OUR line was printed
 // rather than a delegate's or a blank one, and that is unchanged.
-const OWN_LINE = /Opus 4\.5 [\s\S]*ctx [\s\S]*23\.5%/;
+const OWN_LINE = /Opus 4\.5[\s\S]*WINDOW [\s\S]*23\.5%/;
 
 /**
  * `mycontext statusline install` CHAINS rather than replaces (2026-08-27).
@@ -528,7 +528,7 @@ test('install says at install time that it cannot chain an unparseable command, 
     const result = bridge(dir, 'sess-unparseable');
     assert.equal(result.status, 0, result.stderr);
     assert.match(
-      result.stdout, /ctx [\s\S]*23\.5%/,
+      result.stdout, /WINDOW [\s\S]*23\.5%/,
       'an unparseable command must never be run — the bridge prints its own line instead',
     );
   } finally {

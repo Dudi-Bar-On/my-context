@@ -37,38 +37,73 @@ import {
 //     is disclosure.
 
 /**
- * The powerline separator, U+E0B0 — a filled right-pointing triangle in the
- * Nerd Font's private use area, NOT `▶` (U+25B6).
+ * **THE FIELD SEPARATOR — `│`, U+2502, and the whole of the frame.**
  *
- * The owner's terminal already renders these; the status line installed today
- * proves it. A terminal without the font shows a replacement box here, which
- * is why every block also carries readable text: a missing glyph costs the
- * separator, never the meaning.
+ * ── THE POWERLINE PRESENTATION IS GONE, 2026-09-01 ────────────────────────
+ *
+ * Owner: *"terminal statusline is still not what i requested, it has the old
+ * powerline design, also i wanted to use `▰▰▰▰▰▱▱▱▱▱ 45% (90,000 / 200,000)`
+ * and not as you implemented"*, against this reference:
+ *
+ *     Sonnet 4.5 │ my-project ▰▰▰▰▰▱▱▱▱▱ 45% (90,000 / 200,000) │ 1h 24m
+ *
+ * There is no powerline in it. So the end caps (U+2590 / U+258C), the filled
+ * arrow (U+E0B0), the outline chevron (U+E0B1) and every background fill are
+ * removed, and what is left is flat text with this glyph between fields.
+ *
+ * **What that buys, beyond matching the reference.** The old frame needed a
+ * Nerd Font for two private-use glyphs and a 256-colour terminal for the
+ * backgrounds; this needs neither. U+2502 is ordinary box-drawing, present in
+ * every font that draws a table, and the colour is now foreground ink on the
+ * text — which is what a terminal with no colour at all degrades to gracefully
+ * rather than losing a block's boundary with it.
+ *
+ * **One glyph, not two.** The owner's reference uses `│` between the model and
+ * the project and an ASCII `|` before the elapsed time. Two characters that
+ * differ by a hair in most fonts, in one line, is not a design — it is a
+ * keystroke, and rendering it faithfully would put a visible inconsistency on
+ * every bar forever. `│` throughout; flagged in the lane report so the owner
+ * can overrule it with a word if the distinction was meant.
  */
-export const SEP = '\ue0b0';
+export const FIELD_SEP = '│';
 
 /**
- * The THIN separator, U+E0B1 — an outline chevron rather than a filled one.
+ * **EVERY FIELD'S NAME, IN ONE TABLE — owner ruling, 2026-09-01.**
  *
- * Drawn between two blocks that share a background, where the solid `SEP`
- * would be painted in the colour it sits on and vanish: three green blocks in
- * a row rendered as one long green block with two invisible arrows in it,
- * which is what `7d 49%`, `5h 12%` and `ctx 42.0%` all being 'ok' looks like
- * on a calm day. This is the standard powerline answer to exactly that case,
- * and it keeps the block boundary visible without spending a second hue on it.
+ * *"i want a field name on the left of every info because it's not self
+ * explanatory"*, and then *"caps as name looks ok, use for both"*.
+ *
+ * **These are the web strip's own `strip.grp.*` names**, upper-cased the way
+ * the strip already renders them, so the two surfaces cannot drift on what a
+ * field is CALLED or on how it is written. Keyed by the parity `field` id, so
+ * a field added to the bar without a name here is a field the reader has to
+ * recognise — which is the complaint this table answers.
+ *
+ * Where a group holds ONE field the group's name is used (`MODEL`, `REPO`,
+ * `COST`, `AUDIT`, `SESSION`). Where it holds several, each field keeps its
+ * own (`ASK` and `WINDOW` inside the strip's `window` group; `7D` and `5H`
+ * inside `limits`) — a group name repeated on two fields would name neither.
+ * `BRANCH`, `FOCUS` and `ELAPSED` have no web counterpart and are named in
+ * the same register rather than in a second vocabulary.
  */
-export const SEP_THIN = '\ue0b1';
+export const FIELD_NAME: Record<string, string> = {
+  model: 'MODEL',
+  project: 'REPO',
+  branch: 'BRANCH',
+  'session-name': 'SESSION',
+  focus: 'FOCUS',
+  ask: 'ASK',
+  context: 'WINDOW',
+  'rate-7d': '7D',
+  'rate-5h': '5H',
+  myctx: 'MYCTX',
+  'cost-cache': 'COST',
+  'last-audit': 'AUDIT',
+  elapsed: 'ELAPSED',
+};
 
-/**
- * The end caps: a RIGHT half block to open, a LEFT half block to close.
- *
- * Painted in the adjacent block's own colour, so each one reads as that block
- * extended by half a cell rather than as a character sitting beside it. They
- * are ordinary Unicode (U+2590, U+258C), not private-use, so they survive a
- * terminal that has no Nerd Font.
- */
-export const CAP_LEFT = '▐';
-export const CAP_RIGHT = '▌';
+/** The separator with its spaces, which is how it is actually joined. */
+export const FIELD_JOIN = ` ${FIELD_SEP} `;
 
 /**
  * **WHERE THE BANDS COME FROM, AND WHY THE IMPORT LOOKS LIKE THIS.**
@@ -225,47 +260,96 @@ export function headroomFor(percent: number, threshold: number | null): number |
  * none of them, so one rule covers the set instead of three exceptions.
  */
 export interface Ink {
-  /** xterm-256 background index. */
-  bg: number;
-  /** xterm-256 foreground index. */
+  /**
+   * The xterm-256 index this field's TEXT is painted in.
+   *
+   * One index and not two, since the powerline frame went: there is no block
+   * behind the text any more, so there is no background to choose. `fg` is
+   * emitted as `38;5;N` and nothing emits `48;5;N` at all.
+   */
   fg: number;
 }
 
+/**
+ * **THE PALETTE, RE-DERIVED FOR FOREGROUND USE — 2026-09-01.**
+ *
+ * Dropping the powerline frame inverted every one of these. They used to be
+ * BACKGROUNDS with near-black text on them, and the contrast that mattered was
+ * black-on-hue; they are now the INK the text itself is drawn in, and the
+ * contrast that matters is hue-on-terminal.
+ *
+ * **That is not a re-tint, it is a different measurement, and two of them
+ * failed it.** Measured against a black terminal:
+ *
+ *     project  238  #444444   2.16:1   unreadable as text — REPOINTED to 252
+ *     branch   244  #808080   5.32:1   thin as text       — REPOINTED to 245
+ *     carry    104  #8787d7   6.48:1   legible            — REPOINTED to 111
+ *
+ * A background of 238 with white on it is a perfectly good block and a
+ * perfectly invisible sentence. Carrying the old indices across would have
+ * shipped a project name nobody could read, which is exactly the class of
+ * defect a frame change hides: nothing errors, the field is simply gone.
+ *
+ * The four MEANING hues needed no repointing — they were chosen light enough
+ * that black cleared 7:1 on them, and light-on-black is the same ratio the
+ * other way up. They keep their indices, so the band a figure falls in is the
+ * same colour it has been since the four levels landed.
+ */
 const INK = {
   /**
    * `--carry` — the web's #8b9ce6, at its nearest 256-colour neighbour.
    *
-   * ONE declaration, TWO uses, and that is deliberate. It was already the
-   * model block's tint, described here as "`--carry`'s neighbour"; since the
-   * owner's ruling of 2026-09-01 it is also the ASK MARKER's, because `gold`
-   * moved wholly to the `caution` band (`LEVEL_INK`). Naming it once is what
-   * stops the terminal growing two spellings of one web token.
+   * ONE declaration, TWO uses: the model block's tint, and — since gold moved
+   * wholly to the `caution` band (`LEVEL_INK`) — the ask marker's. Naming it
+   * once is what stops the terminal growing two spellings of one web token.
    *
-   * Black measures 6.48:1 on it — which clears WCAG AA's 4.5:1, and does NOT
-   * clear the 7:1 the three fill hues below clear. Stated with its condition
-   * rather than folded into their sentence
-   * (`STD-guarantee-claims-carry-their-condition-in-the-same-sentence`).
+   * **111 rather than 104 since the frame went.** As a background 104 was the
+   * nearer match; as TEXT it measures 6.48:1 against a black terminal while
+   * 111 measures 9.61:1 and is also the closer neighbour of `--carry` by ΔE
+   * (8.8 against 9.6). The old choice was right for the old job.
    */
-  carry: { bg: 104, fg: 16 },
-  /** The project block: dark grey, light text. */
-  project: { bg: 238, fg: 252 },
-  /** The branch block: mid grey. */
-  branch: { bg: 244, fg: 16 },
-  /** `--ok` — calm. */
-  ok: { bg: 115, fg: 16 },
-  /** `--warn` — amber, approaching the ask with room to act. */
-  warn: { bg: 173, fg: 16 },
-  /** `--crit` — the ask fires here. */
-  crit: { bg: 174, fg: 16 },
+  carry: { fg: 111 },
+  /** The project name. Light grey — 13.62:1, the brightest non-meaning ink. */
+  project: { fg: 252 },
+  /** The branch. Dimmer than the project on purpose, and still 6.08:1. */
+  branch: { fg: 245 },
+  /** `--ok` — calm. 12.37:1. */
+  ok: { fg: 115 },
+  /** `--warn` — amber, approaching the ask with room to act. 7.52:1. */
+  warn: { fg: 173 },
+  /** `--crit` — the window is nearly full. 7.70:1. */
+  crit: { fg: 174 },
   /**
-   * `--gold` — the ask. NOT a fill level: it answers the other question, and
-   * it is the hue this project already spends on "your attention is wanted
-   * here". No sixth colour is invented for it
+   * `--gold` — the `caution` band since the owner's ruling of 2026-09-01.
+   * 10.19:1. No sixth colour is invented
    * (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`).
    */
-  gold: { bg: 179, fg: 16 },
+  gold: { fg: 179 },
   /** `--dim` — NOT a level: stale, unmeasurable, or nothing to band against. */
-  neutral: { bg: 145, fg: 16 },
+  neutral: { fg: 145 },
+  /**
+   * **THE FIELD NAMES — `--ink`, the web's ordinary text white.**
+   *
+   * Owner ruling, 2026-09-01: *"the name could be in white and the field text
+   * coloured"*. That is the right way round, and it does something the four
+   * levels would otherwise have muddied: the NAME stays constant while only
+   * the VALUE changes colour as a field moves safe -> caution -> warning ->
+   * critical. A reader scanning the bar sees the names as fixed furniture and
+   * the colour as the thing that moves, which is the two-line identity/state
+   * split applied one level down, inside a single field.
+   *
+   * **Not a sixth meaning-hue, and that is the point of choosing white.**
+   * `DEC-the-meaning-hue-budget-is-five-...` governs the hues that MEAN
+   * something; white is the web's `--ink` (#f0eef6), the colour ordinary text
+   * already is, and it means nothing — which is exactly what a label should
+   * mean. Index 255 is its nearest neighbour (ΔE 4.2) at 18.10:1 on black.
+   *
+   * Deliberately NOT `neutral`/`--dim`: at 145 the names would be dimmer than
+   * several of the values they sit beside, and a label a reader has to hunt
+   * for is not a label. The separation that matters is name-versus-value, and
+   * white against a coloured figure gives it in the direction the owner asked.
+   */
+  label: { fg: 255 },
 } as const satisfies Record<string, Ink>;
 
 /** The palette, exported so a test can assert the four ctx states differ. */
@@ -461,18 +545,24 @@ export function usageLevel(pct: number, ageMs = 0): UsageLevel | 'stale' | null 
 /**
  * **THE BAR, AND THE ONE CONSTANT PAIR THAT CHOOSES ITS STYLE.**
  *
- * The owner named two they like — `▓▓▓░░░` and `■■■□□□` — and chose the first
- * to ship. Both characters live in this ONE exported pair so that switching to
- * the other, or to any of the generator's, is a one-line change rather than a
- * search-and-replace across a renderer.
+ * **`▰` and `▱` — U+25B0 and U+25B1, from the owner's own reference.**
  *
- * Ten cells, as the owner's reference rendering shows. Every character here is
- * one display cell — asserted by the width tests, not assumed — so the bar
- * costs exactly `BAR_CELLS` columns whatever the figure is, which is what lets
- * a reader compare two bars by eye without reading either number.
+ * The owner named `▓▓▓░░░` and `■■■□□□` as styles they liked in the abstract,
+ * and then wrote `▰▰▰▰▰▱▱▱▱▱` twice in the reference they actually drew. The
+ * drawn thing wins over the named thing: a style named in passing is a
+ * preference, a style written into a mock-up twice is a specification.
+ *
+ * This is the third pair these constants have held and the change cost one
+ * line each time, which is the whole reason they were extracted rather than
+ * inlined. Ten cells throughout, as every version of the reference shows.
+ *
+ * Every character here is one display cell — asserted by the width tests, not
+ * assumed — so the bar costs exactly `BAR_CELLS` columns whatever the figure
+ * is, which is what lets a reader compare two bars by eye without reading
+ * either number.
  */
-export const BAR_FILL = '▓';
-export const BAR_EMPTY = '░';
+export const BAR_FILL = '▰';
+export const BAR_EMPTY = '▱';
 export const BAR_CELLS = 10;
 
 /**
@@ -643,6 +733,48 @@ export interface Segment {
    */
   blink?: boolean;
   /**
+   * **THE FIELD'S NAME, drawn DIM to the left of its value.**
+   *
+   * ── OWNER RULING, 2026-09-01 ──────────────────────────────────────────────
+   *
+   * *"i want a field name on the left of every info because it's not self
+   * explanatory"*. The bar was inconsistent about this: `ask`, `ctx`, `7d`,
+   * `5h`, `myctx` and `log` carried names while the model, the project, the
+   * branch, the session name, the cost and the cache share were bare values a
+   * reader had to recognise. `$4093.42` and `99.7%` and `test_mycontext_plugin`
+   * do not say what they are naming.
+   *
+   * **THE NAMES ARE THE WEB STRIP'S OWN**, from `strip.grp.*` in both string
+   * tables — `model`, `repo`, `window`, `limits`, `corpus`, `session`,
+   * `cost`, `audit`. Two surfaces that disagree about what a thing is CALLED
+   * is the same defect class as two surfaces that disagree about what band it
+   * is in, and it matters more now that the web strip is being restyled to
+   * match this bar. Where a terminal field has no web counterpart the name is
+   * invented in the same register, never in a second vocabulary.
+   *
+   * **UPPERCASE, by owner ruling — *"caps as name looks ok, use for both"* —
+   * and on BOTH surfaces.** The strip already shouts these names; matching it
+   * means the terminal and the browser cannot drift on what a field is called
+   * OR on how it is written, which is the cheaper of the two available answers
+   * now that the strip is being restyled to match this bar.
+   *
+   * Caps cost no extra columns in a monospace terminal, but they are LOUDER
+   * than the value beside them, which is why the ink separation below is not
+   * optional decoration: it is what stops a name outshouting the number it
+   * names.
+   *
+   * **Drawn in `INK.label` — white — while the VALUE carries the colour**, by
+   * the owner's ruling of 2026-09-01. So the name is fixed furniture and the
+   * hue is the thing that moves as a field changes band. Under `NO_COLOR` that
+   * separation is gone and only word order and spacing are left, which is why
+   * the name is a single short word in FRONT and never a suffix or a bracket —
+   * and that mode is checked by rendering rather than assumed.
+   *
+   * The level icons are NOT labelled: they sit inside a field that already has
+   * a name, and naming the icon would name the same thing twice.
+   */
+  label?: string;
+  /**
    * **WHICH FIELD THIS BLOCK IS, as a stable id — the unit of parity.**
    *
    * The web strip and this bar diverged because each was specified separately
@@ -763,7 +895,6 @@ export function contextSegment(occ: OccupancyView): Segment {
   // function would be the defect it was ruled to prevent.
   return usedOfMaxSegment({
     field: 'context',
-    label: 'ctx',
     percent: occ.percent,
     // A real numerator and a real denominator, both carried on the payload
     // rather than reconstructed from the percentage.
@@ -799,8 +930,12 @@ export interface MyctxBlock {
 export interface UsedOfMax {
   /** The parity id — see `Segment.field`. Never a new one for this ruling. */
   field: string;
-  /** `ctx`, `ask`, `7d`, `5h`, `myctx`. A WORD, so the hue is never alone. */
-  label: string;
+  /**
+   * A qualifier that rides the NAME rather than the value — `≥` on the myctx
+   * share, where it says the numerator is a floor. Empty for every other
+   * field, which take their name from `FIELD_NAME` alone.
+   */
+  qualifier?: string;
   /** Used, as a percentage of the maximum. MAY exceed 100 — see `usageBar`. */
   percent: number;
   /**
@@ -849,12 +984,18 @@ export function usedOfMaxSegment(f: UsedOfMax): Segment {
   const lead = icon === '' ? '' : `${icon} `;
   const figure = `${f.percent.toFixed(f.decimals)}%`;
   const counts = f.counts === null ? '' : ` ${f.counts}`;
+  const name = `${FIELD_NAME[f.field] ?? f.field}${f.qualifier ?? ''}`;
   return {
-    text: `${lead}${f.label} ${usageBar(f.percent)} ${figure}${counts}${f.suffix}`,
-    // The floor a terminal too narrow for the picture falls back to: the label
+    // The NAME is a `label` and not part of the text, so it is painted dim
+    // while the value keeps its band's ink. The level icon leads the VALUE
+    // rather than the name — it is a fact about the figure, and the owner's
+    // ruling puts the name leftmost.
+    label: name,
+    text: `${lead}${usageBar(f.percent)} ${figure}${counts}${f.suffix}`,
+    // The floor a terminal too narrow for the picture falls back to: the name
     // and the number, which is what this field said before the ruling. The bar
     // and the counts are the decoration; the FIGURE is never shortened.
-    terse: `${f.label} ${figure}`,
+    terse: figure,
     ink: inkForUsage(level),
     bold: level === 'critical',
     blink: level === 'critical',
@@ -865,12 +1006,58 @@ export function usedOfMaxSegment(f: UsedOfMax): Segment {
   };
 }
 
-/** `549009` as `549.0k`, `1000000` as `1.0M` — the counts' own register. */
+/**
+ * `549009` as `549,009` — the count in FULL, grouped in threes.
+ *
+ * **Abbreviated until 2026-09-01, and the owner's reference settles it:**
+ * `(90,000 / 200,000)`, not `(90.0k / 200.0k)`. The abbreviation was chosen
+ * for width when five fields shared one row; the third row bought the columns
+ * back, so the reason to round is gone and the rounding with it. `648.3k` is
+ * also a number a reader cannot check against anything — `648,317` is the
+ * figure Claude Code itself reports.
+ *
+ * Grouped by hand rather than through `Intl.NumberFormat`, which is
+ * LOCALE-DEPENDENT: on a machine set to de-DE it would render `648.317`, and a
+ * status line that changes its punctuation with the user's regional settings
+ * is a status line whose tests pass on one developer's machine. The separator
+ * is a comma because the owner's reference uses one.
+ */
 export function fmtCount(n: number): string {
   if (!Number.isFinite(n)) return '?';
-  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(Math.round(n));
+  const whole = Math.round(Math.abs(n));
+  const grouped = String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return n < 0 ? `-${grouped}` : grouped;
+}
+
+/**
+ * How long this session has been running: `1h 24m`, `3m`, `2d 4h`.
+ *
+ * The `| 1h 24m` at the end of the owner's reference, from
+ * `cost.total_duration_ms` — a field the payload has always carried and
+ * nothing read until now.
+ *
+ * **Spaced `1h 24m`, and that differs from the countdowns' `·1d3h` on
+ * purpose-by-instruction rather than by judgement:** it is the spelling the
+ * owner drew. The two forms sit on different rows and play different parts —
+ * one is a bare elapsed clock, the others are qualifiers bolted to a field —
+ * but they are both two-unit durations and a single spelling would be tidier.
+ * Flagged in the lane report; `since` and `until` are one edit away from
+ * either answer.
+ *
+ * `null` for anything that cannot be a duration, which renders no field at
+ * all rather than `0m`: a session whose length the payload did not report is
+ * not a session zero minutes old.
+ */
+export function elapsed(ms: number | null): string | null {
+  if (ms === null || !Number.isFinite(ms) || ms < 0) return null;
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return 'now';
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  if (hours > 0) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  return `${mins}m`;
 }
 
 
@@ -899,6 +1086,11 @@ export interface PowerlineInput {
   sevenDay: RateLimit | null;
   /** `cost.total_cost_usd`. */
   costUsd: number | null;
+  /**
+   * `cost.total_duration_ms` — how long this session has been running, drawn
+   * as the `1h 24m` that closes the owner's reference bar.
+   */
+  elapsedMs: number | null;
   /**
    * `session_name` — the name the user gave THIS window, straight off the
    * payload we already parse. `null` when Claude Code sent none.
@@ -966,12 +1158,14 @@ export interface PowerlineInput {
  * nothing to say says so — once, by name, instead of five nulls at a time.
  */
 export const NO_EXTRAS: Pick<
-  PowerlineInput, 'modes' | 'fiveHour' | 'sevenDay' | 'costUsd' | 'warmPercent' | 'sessionName'
+  PowerlineInput,
+  'modes' | 'fiveHour' | 'sevenDay' | 'costUsd' | 'elapsedMs' | 'warmPercent' | 'sessionName'
 > = {
   modes: { effort: null, thinking: null, fastMode: null, exceeds200k: null },
   fiveHour: null,
   sevenDay: null,
   costUsd: null,
+  elapsedMs: null,
   warmPercent: null,
   sessionName: null,
 };
@@ -989,6 +1183,14 @@ export const GIVE = {
    */
   focus: 4,
   sessionName: 6,
+  /**
+   * Ranked with the line-3 conveniences. It is the field the owner's reference
+   * closes on, so it is drawn LAST and given up EARLY — those are not in
+   * tension: where a field sits is about reading order, and what it is worth
+   * is about which field a narrow terminal would rather lose. A session clock
+   * is pleasant; a rate window about to close is not recoverable elsewhere.
+   */
+  elapsed: 9,
   /**
    * Ranked with the other line-2 conveniences rather than above them. The
    * block matters MOST exactly when it is stale -- which is when it also
@@ -1143,12 +1345,14 @@ export function lastAuditSegment(last: LastAudit | null, now: number): Segment |
   if (last === null) return null;
   if (last.state === 'empty') {
     return {
-      text: 'log — nothing recorded', ink: INK.neutral, give: GIVE.lastAudit, field: 'last-audit',
+      text: '— nothing recorded', label: FIELD_NAME['last-audit'],
+      ink: INK.neutral, give: GIVE.lastAudit, field: 'last-audit',
     };
   }
   if (last.state === 'unreadable') {
     return {
-      text: 'log — unreadable', ink: INK.warn, give: GIVE.lastAudit, field: 'last-audit',
+      text: '— unreadable', label: FIELD_NAME['last-audit'],
+      ink: INK.warn, give: GIVE.lastAudit, field: 'last-audit',
     };
   }
   const ago = since(last.at, now);
@@ -1156,13 +1360,15 @@ export function lastAuditSegment(last: LastAudit | null, now: number): Segment |
     // A stamp this product wrote and cannot parse. Not an age of zero, and not
     // silence either: the row is there and its date is not readable.
     return {
-      text: `log ${last.op} — undated`, ink: INK.warn, give: GIVE.lastAudit, field: 'last-audit',
+      text: `${last.op} — undated`, label: FIELD_NAME['last-audit'],
+      ink: INK.warn, give: GIVE.lastAudit, field: 'last-audit',
     };
   }
   const fresh = freshMs();
   const stale = fresh !== null && now - Date.parse(last.at) > fresh;
   return {
-    text: `log ${last.op} ·${ago}`,
+    text: `${last.op} ·${ago}`,
+    label: FIELD_NAME['last-audit'],
     ink: stale ? INK.warn : INK.neutral,
     give: GIVE.lastAudit,
     field: 'last-audit',
@@ -1182,7 +1388,7 @@ export function lastAuditSegment(last: LastAudit | null, now: number): Segment |
  * percentage is a countdown to nothing in particular.
  */
 export function rateLimitSegment(
-  label: string, limit: RateLimit | null, now: number, give: number, field: string,
+  limit: RateLimit | null, now: number, give: number, field: string,
 ): Segment | null {
   if (limit === null || limit.usedPercent === null || !Number.isFinite(limit.usedPercent)) {
     return null;
@@ -1194,7 +1400,6 @@ export function rateLimitSegment(
   // is unreachable from here and is not pretended otherwise.
   return usedOfMaxSegment({
     field,
-    label,
     percent: limit.usedPercent,
     // **NO COUNTS, and that is the ruling's honest half rather than a gap.**
     // The payload carries `used_percentage` for these two windows and NOTHING
@@ -1286,6 +1491,11 @@ export function askSegment(occ: OccupancyView, threshold: number | null): Segmen
       // hue doing neither. Bold still carries the urgency, and bold is a
       // weight rather than a colour.
       text: `${ASK_GLYPH} handover due`,
+      // NAMED like every other field, by the owner's ruling: the words say
+      // what has happened, and the name still says which field it happened to.
+      // A single unnamed block on a bar where everything else is named is the
+      // inconsistency the ruling was about.
+      label: FIELD_NAME['ask'],
       ink: INK.carry, bold: true, give: GIVE.handoverDue, field: 'ask',
     };
   }
@@ -1341,7 +1551,6 @@ export function askSegment(occ: OccupancyView, threshold: number | null): Segmen
   const headroom = headroomFor(occ.percent, threshold);
   return usedOfMaxSegment({
     field: 'ask',
-    label: 'ask',
     percent: (occ.percent / threshold) * 100,
     counts: `(${occ.percent.toFixed(1)} / ${ask})`,
     decimals: 0,
@@ -1365,7 +1574,9 @@ export function modelSegment(model: string | null, modes: ModelModes): Segment |
   const name = model === null || model === '' ? null : model;
   if (name === null && flags.length === 0) return null;
   const text = [name, ...flags].filter((part) => part !== null).join(' ');
-  return { text, ink: INK.carry, give: GIVE.model, field: 'model' };
+  return {
+    text, label: FIELD_NAME['model'], ink: INK.carry, give: GIVE.model, field: 'model',
+  };
 }
 
 /**
@@ -1475,12 +1686,14 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
 
   if (input.project !== null && input.project !== '') {
     identity.push({
-      text: input.project, ink: INK.project, give: GIVE.project, field: 'project',
+      text: input.project, label: FIELD_NAME['project'],
+      ink: INK.project, give: GIVE.project, field: 'project',
     });
   }
   if (input.branch !== null && input.branch !== '') {
     identity.push({
-      text: input.branch, ink: INK.branch, elidable: true, give: GIVE.branch, field: 'branch',
+      text: input.branch, label: FIELD_NAME['branch'],
+      ink: INK.branch, elidable: true, give: GIVE.branch, field: 'branch',
     });
   }
 
@@ -1497,7 +1710,8 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   const named = distinctSessionName(input.sessionName, input.project);
   if (named !== null) {
     identity.push({
-      text: named, ink: INK.project, give: GIVE.sessionName, field: 'session-name',
+      text: named, label: FIELD_NAME['session-name'],
+      ink: INK.project, give: GIVE.sessionName, field: 'session-name',
     });
   }
 
@@ -1505,7 +1719,7 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   // repository, the branch, this window, and finally what this window is FOR.
   if (input.focus !== null && input.focus.trim() !== '') {
     identity.push({
-      text: `focus ${focusText(input.focus)}`,
+      text: focusText(input.focus), label: FIELD_NAME['focus'],
       ink: INK.neutral, give: GIVE.focus, field: 'focus',
     });
   }
@@ -1525,10 +1739,10 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   // wearing a regex. The web strip's `rateLimitParts` is written the same way,
   // with the same two ids.
   for (const w of [
-    { field: 'rate-7d', label: '7d', limit: input.sevenDay, give: GIVE.sevenDay },
-    { field: 'rate-5h', label: '5h', limit: input.fiveHour, give: GIVE.fiveHour },
+    { field: 'rate-7d', limit: input.sevenDay, give: GIVE.sevenDay },
+    { field: 'rate-5h', limit: input.fiveHour, give: GIVE.fiveHour },
   ]) {
-    const seg = rateLimitSegment(w.label, w.limit, now, w.give, w.field);
+    const seg = rateLimitSegment(w.limit, now, w.give, w.field);
     if (seg !== null) state.push(seg);
   }
 
@@ -1552,7 +1766,10 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
     if (win !== null && win > 0) {
       state.push(usedOfMaxSegment({
         field: 'myctx',
-        label: `myctx ${approx}`.trim(),
+        // The `≥` rides the NAME, because it qualifies the NUMERATOR: some
+        // injection records carry no frozen estimate, so the true share is at
+        // least this. A fact about the count, never about the bar.
+        qualifier: approx === '' ? undefined : ` ${approx}`,
         percent: (input.myctx.tokens / win) * 100,
         // `≥` rides the LABEL and not the counts, because it qualifies the
         // numerator: some injection records carry no frozen estimate, so the
@@ -1565,7 +1782,8 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
       }));
     } else {
       state.push({
-        text: `myctx ${approx}${fmtK(input.myctx.tokens)}`,
+        text: `${approx}${fmtK(input.myctx.tokens)}`,
+        label: FIELD_NAME['myctx'],
         ink: INK.project,
         give: GIVE.myctxShare,
         field: 'myctx',
@@ -1577,7 +1795,7 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
     // (`strip.myctx` and `strip.myctxUnavailable`), and a block that explains
     // why a field is missing is not a second field.
     state.push({
-      text: `myctx unavailable (${input.myctxNote})`,
+      text: `unavailable (${input.myctxNote})`, label: FIELD_NAME['myctx'],
       ink: INK.neutral, give: GIVE.notes, field: 'myctx',
     });
   }
@@ -1605,6 +1823,7 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   if (cost !== null || warm !== null) {
     state.push({
       text: [cost, warm].filter((part) => part !== null).join(' · '),
+      label: FIELD_NAME['cost-cache'],
       ink: INK.project,
       give: GIVE.costCache,
       field: 'cost-cache',
@@ -1615,6 +1834,19 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   // time and the age is computed from it here -- never carried in aged.
   const log = lastAuditSegment(input.lastAudit, now);
   if (log !== null) state.push(log);
+
+  // **HOW LONG THIS SESSION HAS RUN** — the `1h 24m` the owner's reference
+  // closes on, and the last field on the bar for the same reason it is last
+  // there. Absent when the payload carried no duration, which renders nothing
+  // rather than `0m`: a session whose length nobody reported is not one that
+  // has just started.
+  const ran = elapsed(input.elapsedMs);
+  if (ran !== null) {
+    state.push({
+      text: ran, label: FIELD_NAME['elapsed'],
+      ink: INK.neutral, give: GIVE.elapsed, field: 'elapsed',
+    });
+  }
 
   return { identity, window, account: state };
 }
@@ -1639,31 +1871,38 @@ export function buildSegments(input: PowerlineInput, now: number = Date.now()): 
 const CSI = '\u001b[';
 const RESET = `${CSI}0m`;
 
+/**
+ * The escapes that open one field. FOREGROUND ONLY since the frame went —
+ * `38;5;N` and never `48;5;N`, because there is no block behind the text to
+ * fill any more.
+ *
+ * `22m` and not `0m` to leave bold: a full reset would drop the colour set on
+ * the same escape and repaint every following field from scratch.
+ *
+ * **`25m` IS EMITTED ON EVERY NON-BLINKING FIELD, and that is a requirement
+ * rather than tidiness.** Fields are painted in sequence into one string, so
+ * an SGR 5 opened on the `critical` field stays open for every field after it:
+ * without this the rate windows, the cost and the audit clock would all blink
+ * because the context figure did. Three bytes a field, on a line nobody
+ * measures in bytes.
+ */
 function paint(ink: Ink, bold = false, blink = false): string {
-  // `22m` and not `0m` to leave bold: a full reset would drop the colours set
-  // on the same escape and repaint every following block from scratch.
-  //
-  // **`25m` IS EMITTED ON EVERY NON-BLINKING BLOCK, and that is a requirement
-  // rather than tidiness.** Blocks are painted in sequence into one string, so
-  // an SGR 5 opened on the `critical` block stays open for every block after
-  // it: without this the two rate windows, the cost and the audit clock would
-  // all blink because the context figure did. The cost is three bytes a block
-  // on a line nobody measures in bytes.
-  return `${CSI}${bold ? 1 : 22}m${CSI}${blink ? 5 : 25}m`
-    + `${CSI}38;5;${ink.fg}m${CSI}48;5;${ink.bg}m`;
+  return `${CSI}${bold ? 1 : 22}m${CSI}${blink ? 5 : 25}m${CSI}38;5;${ink.fg}m`;
 }
 
-/** Which separator goes between two blocks — thin when they share a ground. */
-export function separatorFor(left: Ink, right: Ink): string {
-  return left.bg === right.bg ? SEP_THIN : SEP;
-}
-
-/** The separator between two blocks: the LEFT block's colour, on the RIGHT block's. */
-function joint(left: Ink, right: Ink): string {
-  // A thin separator sits INSIDE one block rather than between two, so it is
-  // painted in that block's own foreground on that block's own ground.
-  if (left.bg === right.bg) return `${CSI}38;5;${left.fg}m${CSI}48;5;${left.bg}m${SEP_THIN}`;
-  return `${CSI}38;5;${left.bg}m${CSI}48;5;${right.bg}m${SEP}`;
+/**
+ * The separator between two fields, painted in the NEUTRAL ink.
+ *
+ * One colour for every joint, and deliberately not either neighbour's: a rule
+ * between two columns belongs to the table rather than to a column, and a
+ * separator that took the colour of the field before it would read as part of
+ * that field — which is exactly what the powerline arrow did, and it is why a
+ * calm bar used to need a second glyph to keep two same-coloured blocks apart.
+ * With the ink on the text there is no such case: the separator is dim, the
+ * fields are not, and the boundary is visible at every combination of bands.
+ */
+function joint(): string {
+  return `${CSI}22m${CSI}25m${CSI}38;5;${INK.neutral.fg}m${FIELD_JOIN}`;
 }
 
 /**
@@ -1753,11 +1992,26 @@ export interface RenderOptions {
   blink?: boolean;
 }
 
+/**
+ * What a row costs in columns.
+ *
+ * **The arithmetic changed with the frame, and the two changes pull opposite
+ * ways.** It used to be two caps, one separator per pair, and every block
+ * padded by a space on each side — `sum + 3n + 1`. It is now the fields plus
+ * ` │ ` between each pair — `sum + 3n − 3`, which is FOUR columns cheaper per
+ * row whatever the field count. Against that, the counts stopped being
+ * abbreviated and grew about six columns each. Both were measured rather than
+ * traded off on paper; see the lane report for the resulting widths.
+ */
+/** One field's columns: its name, a space, and its value. */
+export function segmentWidth(seg: Segment): number {
+  const named = seg.label === undefined ? 0 : displayWidth(seg.label) + 1;
+  return named + displayWidth(seg.text);
+}
+
 function widthOf(segments: Segment[]): number {
-  // Two caps, one separator between each pair, and each block padded by a
-  // space on either side.
-  let total = 2 + Math.max(0, segments.length - 1);
-  for (const seg of segments) total += displayWidth(seg.text) + 2;
+  let total = FIELD_JOIN.length * Math.max(0, segments.length - 1);
+  for (const seg of segments) total += segmentWidth(seg);
   return total;
 }
 
@@ -1785,6 +2039,9 @@ export function fitSegments(segments: Segment[], columns: number | null): Segmen
     const branch = current[branchIndex];
     if (branch !== undefined) {
       const points = [...branch.text];
+      // The label is not elided with the value: a branch shortened to `…test`
+      // still needs to say it is a branch, and the name is three cells against
+      // a value that can be forty.
       // `points.length` down to 0 kept: 0 leaves the bare `…`.
       for (let keep = points.length - 1; keep >= 0; keep--) {
         const elided = { ...branch, text: `…${points.slice(points.length - keep).join('')}` };
@@ -1834,6 +2091,28 @@ export function fitSegments(segments: Segment[], columns: number | null): Segmen
   if (widthOf(current) > columns) {
     current = current.map((seg) => (seg.terse === undefined ? seg : { ...seg, text: seg.terse }));
   }
+
+  // 4. **AND BELOW THAT, THE NAMES GO — the last thing given up, and only to
+  //    stop the line WRAPPING.**
+  //
+  // The owner's labels ruling puts a name on every field, and the terse floor
+  // is now `WINDOW 42.0%` (12 cells) where it used to be `ctx 42.0%` (9). At a
+  // terminal narrower than that the choice is between a row that wraps and a
+  // figure with nothing saying what it counts — and wrapping is the one
+  // failure this renderer must not have, because it costs the user a row of
+  // their transcript on every assistant message.
+  //
+  // So the name is the LAST thing given up rather than an exception to the
+  // ruling: it survives every width at which it fits, and it is dropped only
+  // where keeping it would break the guarantee the whole fitter exists for.
+  // The FIGURE is still never shortened.
+  if (widthOf(current) > columns) {
+    current = current.map((seg) => {
+      const { label, ...rest } = seg;
+      void label;
+      return rest;
+    });
+  }
   return current;
 }
 
@@ -1868,17 +2147,19 @@ export function centreOffset(fitted: Segment[], columns: number | null): number 
   const total = widthOf(fitted);
   if (total >= columns) return 0;
 
-  // Walk to the anchor in the same units `widthOf` counts: one opening cap,
-  // then each block as ` text ` with one separator cell between neighbours.
-  let start = 1;
+  // Walk to the anchor in the same units `widthOf` counts: each field's own
+  // text, with ` │ ` between neighbours. No caps and no padding since the
+  // frame went — and this had to move with `widthOf` or the indent would be
+  // computed in one geometry and applied in another.
+  let start = 0;
   for (let i = 0; i < anchor; i++) {
     const seg = fitted[i];
     if (seg === undefined) continue;
-    start += displayWidth(seg.text) + 2 + 1;
+    start += segmentWidth(seg) + FIELD_JOIN.length;
   }
   const anchorSeg = fitted[anchor];
   if (anchorSeg === undefined) return 0;
-  const midpoint = start + (displayWidth(anchorSeg.text) + 2) / 2;
+  const midpoint = start + segmentWidth(anchorSeg) / 2;
 
   // Clamped at both ends: never negative (that would be a left crop) and never
   // so far right that the closing cap leaves the terminal (that would wrap,
@@ -1901,50 +2182,47 @@ export function renderPowerline(segments: Segment[], options: RenderOptions): st
   const fitted = fitSegments(segments, options.columns);
   if (fitted.length === 0) return '';
 
-  // The one case the caps are dropped: a terminal too narrow for even the
-  // required blocks. Wrapping is the failure this must not have, and the caps
-  // are the two cells worth least.
-  const capped = options.columns === null || widthOf(fitted) <= options.columns;
-
   const body: string[] = [];
   for (let i = 0; i < fitted.length; i++) {
     const seg = fitted[i];
     if (seg === undefined) continue;
-    const next = fitted[i + 1];
     // Blink is gated three ways and every one of them is a refusal the user
-    // can cause: no colour at all, the opt-out, or a block that is not
+    // can cause: no colour at all, the opt-out, or a field that is not
     // `critical`. A bar rendered without escapes emits no SGR 5 either.
     const blink = seg.blink === true && options.blink !== false;
-    if (options.colour) body.push(paint(seg.ink, seg.bold === true, blink));
-    // The padding is what makes a block a block, and it goes with the caps:
-    // once the terminal is too narrow for even the required blocks, four
-    // cells of decoration are four cells not spent on the number.
-    body.push(capped ? ` ${seg.text} ` : seg.text);
-    if (next !== undefined) {
-      body.push(options.colour ? joint(seg.ink, next.ink) : separatorFor(seg.ink, next.ink));
+    // The NAME first and dim, then the value in its own ink. Two paints for
+    // one field, which is the whole mechanism: a bright label beside a bright
+    // number reads as two numbers.
+    if (seg.label !== undefined) {
+      if (options.colour) body.push(paint(INK.label));
+      body.push(`${seg.label} `);
     }
+    if (options.colour) body.push(paint(seg.ink, seg.bold === true, blink));
+    body.push(seg.text);
+    if (fitted[i + 1] !== undefined) body.push(options.colour ? joint() : FIELD_JOIN);
   }
 
-  const first = fitted[0];
-  const last = fitted[fitted.length - 1];
-  if (!capped || first === undefined || last === undefined) {
-    // Uncapped is the too-narrow floor, where `centreOffset` answers 0 anyway.
-    // Not centred, and asserted rather than assumed by the clamp there.
-    return options.colour ? `${body.join('')}${RESET}` : body.join('');
-  }
-
-  // Plain spaces, outside the caps and never painted, so the indent is blank
-  // terminal rather than a block. `''` when there is no room to centre, and
-  // `''` throughout the two-line form, which does not centre at all.
+  // Plain spaces, never painted, so the indent is blank terminal. `''` when
+  // there is no room to centre, and `''` throughout the multi-row form, which
+  // does not centre at all.
   const indent = options.centre === false
     ? '' : ' '.repeat(centreOffset(fitted, options.columns));
 
-  if (!options.colour) return `${indent}${CAP_LEFT}${body.join('')}${CAP_RIGHT}`;
-  return (
-    `${indent}${RESET}${CSI}38;5;${first.ink.bg}m${CAP_LEFT}` +
-    body.join('') +
-    `${RESET}${CSI}38;5;${last.ink.bg}m${CAP_RIGHT}${RESET}`
-  );
+  if (!options.colour) return `${indent}${body.join('')}`;
+  // **BOTH RESETS ARE LOAD-BEARING, and they answer the same hazard from two
+  // ends.** Claude Code accumulates every SGR from every preceding line and
+  // prepends the whole run to each later one (see `renderStatusLine`).
+  //
+  //   TRAILING — a row that ended mid-colour would paint the row below it, and
+  //   with the blink in play would set the whole next row blinking.
+  //   LEADING  — the row opens from a known state rather than from whatever
+  //   the accumulated run happens to end in. The trailing reset on the row
+  //   above already guarantees that today, which makes this one redundant
+  //   *given the other* — and that is exactly why it is kept: it makes each
+  //   row's own correctness local instead of conditional on its neighbour's.
+  //
+  // Neither may be "optimised away".
+  return `${indent}${RESET}${body.join('')}${RESET}`;
 }
 
 /**
