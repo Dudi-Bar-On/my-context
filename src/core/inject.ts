@@ -1,5 +1,6 @@
 import { recordAudit, type InjectedRef, type SpilledRef } from './audit.ts';
 import { resolveCarry, resolveSubagentCarry } from './continuity.ts';
+import { corpusRootLine, nestedCorpusNote, resolveCorpus } from './corpus-identity.ts';
 import { focusErrorNote, readFocus } from './focus.ts';
 import { readSnapshotMeta } from './ledger.ts';
 import { rebuildRoots } from './open-store.ts';
@@ -587,15 +588,69 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     } catch { /* the note is optional; the injection is not */ }
 
     const focusError = focusErrorNote(focusState.error);
-    // First of the notes: it is the only one that describes the DELIVERY of
-    // this injection rather than its content, and it changes how everything
-    // after it should be read.
+    /**
+     * **WHICH CORPUS this block came out of** (`core/corpus-identity.ts`).
+     *
+     * First of every note, ahead even of the parse-error line, because it is
+     * the only one that can make the entire block above it be about a different
+     * project. On 2026-08-27 subagents dispatched with a `cwd` inside
+     * `my-context/` were injected out of a nested 44-item corpus instead of the
+     * repository's 736-item one, and nothing on any channel named the root — so
+     * "this project has little recorded" and "this is not this project" looked
+     * identical.
+     *
+     * **The root is named on the SUBAGENT event and the loud note on every
+     * non-manual one, and both halves of that are derived rather than chosen
+     * per surface.** A subagent's working directory is picked by whoever
+     * dispatched it and is invisible to the person who will read its work, so
+     * that is precisely where the root can differ in silence and must be
+     * stated outright. A session start's `cwd` is the terminal the person is
+     * sitting in; the wrong-corpus block still fires there, because a corpus
+     * nested inside another is worth a paragraph wherever it is found, but a
+     * standing root line on every session would be noise bought for nothing.
+     *
+     * `manual` is excluded from both, and that is the one exclusion: `manual`
+     * IS the MCP path (see `sessionId` above), and `mcp/provenance.ts` already
+     * appends both disclosures to every tool result. Excluding it by event
+     * keeps one spelling per surface without a hand-kept list of callers —
+     * which is this project's most-repeated defect, and the reason
+     * `code-identity.ts` derives its file set instead of listing it.
+     *
+     * Its own try/catch, exactly as `revisionNote` above has one: this reads
+     * directories `buildInjection` does not otherwise touch, and an unreadable
+     * one must cost the note, never the injection.
+     */
+    const rendered = renderSelection(selection);
+    let corpusNote = '';
+    try {
+      if (!manual) {
+        const corpus = resolveCorpus(cwd);
+        // The root line is gated on the selection having rendered something,
+        // exactly as `SUBAGENT_PREAMBLE` below is and for the same reason: it
+        // is a statement ABOUT the block beneath it, and an empty corpus
+        // already returns '' from here — a subagent told nothing, rather than
+        // a subagent told nothing at length.
+        //
+        // The wrong-corpus block is NOT gated, and that asymmetry is the whole
+        // point. "This resolved to a nested corpus and it gave you nothing" is
+        // the single most useful sentence this function can emit, and gating it
+        // on the nested corpus having had something to say would silence it in
+        // exactly the case it was built for.
+        const root = corpusRootLine(corpus);
+        corpusNote = [
+          nestedCorpusNote(corpus),
+          subagent && rendered !== '' && root !== '' ? `_${root}_` : '',
+        ].filter((line) => line !== '').join('\n\n');
+      }
+    } catch { /* the note is optional; the injection is not */ }
+    // First of the notes that describe the DELIVERY of this injection rather
+    // than its content, and they are grouped because each one changes how
+    // everything after it should be read.
     const parseError = hookParseErrorNote(options.parseError);
     // Second of the delivery-shaped notes, and beside the first for that
     // reason: both describe how this block was produced rather than what is
     // in it, and both change how everything after them should be read.
     const cleared = clearNote === null ? '' : windowClearedNote(clearNote);
-    const rendered = renderSelection(selection);
     // **The provenance frame, and the fifth way the subagent event differs**
     // (plan Task 10; the other four are listed on `InjectionEvent`). It is
     // prepended HERE rather than inside the renderer because it is a fact
@@ -615,6 +670,7 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // charged to one.
     const output = (subagent && rendered !== '' ? `${SUBAGENT_PREAMBLE}\n\n` : '') +
       rendered +
+      (corpusNote ? `\n${corpusNote}\n` : '') +
       (parseError ? `\n${parseError}\n` : '') +
       (cleared ? `\n${cleared}\n` : '') +
       (focusError ? `\n${focusError}\n` : '') +

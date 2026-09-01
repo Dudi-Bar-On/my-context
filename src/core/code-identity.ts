@@ -158,6 +158,29 @@
  * failure: it is a measurement. A module the graph names and the disk does not
  * hold is stamped `gone`, in both stamps, so a deleted file reads as the change
  * it is. Every other error still propagates to the guard above.
+ *
+ * ── WHY THIS SITS IN `core/` AND NOT IN `ui/` ───────────────────────────────
+ *
+ * It was written for the web server and lived beside it, and on 2026-08-27 the
+ * SECOND long-lived process in this product hit the same defect at ten times
+ * the volume. The MCP server also loads its modules once and holds them; its
+ * `core/content-hash.ts` drifted from disk, and for an hour it reported
+ * `checksum mismatch` for **719 of 736 items**, each with the sentence "part of
+ * this item's text may already have been lost". The corpus was never damaged —
+ * a sweep with the on-disk code matched 736 of 736 — and a migration was
+ * planned against the reading before anyone thought to distrust the process
+ * that produced it. The web UI had documented that exact trap for a month; the
+ * MCP server had no such signal.
+ *
+ * So this module is not a UI concern, it is a property of any process in this
+ * repository that loads TypeScript once and answers questions for an hour. It
+ * moved rather than being copied, because two stamps that could disagree about
+ * what "stale" means is this project's most-repeated defect wearing a new hat.
+ * `src/mcp/provenance.ts` is the second caller, and it supplies only `entry` —
+ * `assets` is optional BECAUSE the MCP server has no asset half at all: it
+ * serves no files, so there is no second thing for its modules to disagree
+ * with, and a scope that invented one would stamp a directory the server never
+ * reads.
  */
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -175,8 +198,17 @@ import path from 'node:path';
 export interface CodeScope {
   /** The server's own module. The root of the import closure it can answer from. */
   readonly entry: string;
-  /** The directory `serveStatic` serves. Read through on every request, so always current. */
-  readonly assets: string;
+  /**
+   * The directory `serveStatic` serves. Read through on every request, so
+   * always current.
+   *
+   * **Absent means there is no asset half**, which is the MCP server's case and
+   * not a defaulting decision: it hands the client no files, so the only thing
+   * that can be stale about it is its own module graph. Omitting the key and
+   * passing an empty string are deliberately different — an empty string is a
+   * path, and `walk('')` reads the process's working directory.
+   */
+  readonly assets?: string;
 }
 
 export interface CodeIdentity {
@@ -311,7 +343,7 @@ function walk(root: string): string[] {
 function scopeFiles(scope: CodeScope): { files: string[]; read: Map<string, Buffer | null> } {
   const read = moduleGraph(scope.entry);
   const files = new Set<string>(read.keys());
-  for (const asset of walk(scope.assets)) files.add(asset);
+  if (scope.assets !== undefined) for (const asset of walk(scope.assets)) files.add(asset);
   return { files: [...files].sort(), read };
 }
 
@@ -401,8 +433,11 @@ export function stampCodeIdentity(scope: CodeScope): CodeIdentity {
         // The cheap ask: stat what the last derivation found, and re-walk the
         // asset directory so a file that APPEARED under it is seen without
         // reading anything. See the header for why the module half needs no
-        // re-derivation to be gated.
-        const probe = [...new Set([...lastProbe, ...walk(scope.assets)])].sort();
+        // re-derivation to be gated. A scope with no asset half (the MCP
+        // server) probes the last derivation alone, which is already sorted.
+        const probe = scope.assets === undefined
+          ? lastProbe
+          : [...new Set([...lastProbe, ...walk(scope.assets)])].sort();
         const stat = statStamp(probe);
         if (stat === lastStat) return lastAnswer;
         const found = scopeFiles(scope);

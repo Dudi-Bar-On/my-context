@@ -73,7 +73,7 @@ import { isMainEntry } from '../core/paths.ts';
 import { VERSION } from '../core/version.ts';
 import { liveWorkspace, repositoryRoot, type Workspace } from '../core/workspace.ts';
 import { registerAskRoutes } from './ask-model.ts';
-import { stampCodeIdentity, type CodeScope } from './code-identity.ts';
+import { stampCodeIdentity, type CodeScope } from '../core/code-identity.ts';
 import { registerCaptureRoutes } from './capture-model.ts';
 import { CLI_ENTRY, registerExecuteRoutes } from './execute.ts';
 import { ExecutionNonceStore } from './execute-nonce.ts';

@@ -15,6 +15,7 @@ import path from 'node:path';
 import { recordAudit } from '../../src/core/audit.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { splitProvenance } from '../../src/mcp/provenance.ts';
 import { createRegistry } from '../../src/mcp/tools.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -34,9 +35,14 @@ test('audit_log carries tokens verbatim and explains the absent-field reading', 
       at: '2026-08-15T10:00:00.000Z', injected: [{ id: 'RULE-a', tier: 'jit' }], tokens: 456,
     });
 
-    const text = createRegistry(cwd).call('audit_log', { kind: 'injection' });
-    assert.equal(typeof text, 'string');
-    const lines = (text as string).split('\n');
+    const raw = createRegistry(cwd).call('audit_log', { kind: 'injection' });
+    assert.equal(typeof raw, 'string');
+    // The provenance block that names the resolved corpus is an envelope, not
+    // a record — see `mcp/provenance.ts`. Every line after the preamble here
+    // is parsed as JSON, so it has to come off before the parse rather than
+    // be tolerated by it.
+    const text = splitProvenance(raw).answer;
+    const lines = text.split('\n');
 
     // The preamble defines the field and the absent-field reading, in words.
     assert.match(lines[0], /tokens/);

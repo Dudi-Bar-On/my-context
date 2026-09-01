@@ -443,7 +443,7 @@ function showDisconnected() {
  * what it was served; it cannot see what the server's modules were loaded from.
  * A page that merely noticed its own assets changing would announce a RESTART
  * as loudly as a skew. So the server answers — `staleCode`, derived from the
- * one `CodeIdentity` it stamped at start (`src/ui/code-identity.ts`) — and this
+ * one `CodeIdentity` it stamped at start (`src/core/code-identity.ts`) — and this
  * shell's whole job is to compare what it was told against what it is showing,
  * and to stop being silent.
  *

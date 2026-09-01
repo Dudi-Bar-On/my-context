@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { auditLogPath, readAudit, type AuditRecord } from '../../src/core/audit.ts';
+import { corpusRootLine, resolveCorpus } from '../../src/core/corpus-identity.ts';
 import { buildInjection } from '../../src/core/inject.ts';
 import { writeSnapshot } from '../../src/core/ledger.ts';
 import { SUBAGENT_PREAMBLE } from '../../src/core/render.ts';
@@ -107,7 +108,20 @@ test('the subagent selection is not the tool selection — both tiers are presen
   const sessionStart = buildInjection(cwd, { event: 'session-start', sessionId: 'other' });
   const frame = `${SUBAGENT_PREAMBLE}\n\n`;
   assert.ok(subagent.startsWith(frame), 'the subagent block does not open with its frame');
-  assert.equal(subagent.slice(frame.length), sessionStart);
+  // **The one line the subagent block carries and the session-start block does
+  // not**: the absolute corpus root it resolved (`core/corpus-identity.ts`).
+  // A subagent's working directory is chosen by whoever dispatched it and is
+  // invisible to the person who reads its work, so this is the injection whose
+  // corpus can differ in silence — which it did, on 2026-08-27, for every
+  // subagent dispatched into this repository's nested corpus. It is removed
+  // here rather than tolerated so the REST of the block is still compared byte
+  // for byte, which is what this test is about.
+  const rootLine = `\n_${corpusRootLine(resolveCorpus(cwd))}_\n`;
+  assert.ok(subagent.includes(rootLine),
+    `the subagent block must name the corpus it resolved:\n${subagent}`);
+  assert.equal(sessionStart.includes(rootLine), false,
+    'a session start carries no standing root line — its cwd is the terminal the person is in');
+  assert.equal(subagent.slice(frame.length).replace(rootLine, ''), sessionStart);
   assert.notEqual(sessionStart, '');
   removeTree(cwd);
 });

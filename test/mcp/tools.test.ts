@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
+import { splitProvenance } from '../../src/mcp/provenance.ts';
 import { TOOL_NAMES, createRegistry } from '../../src/mcp/tools.ts';
 import { RESERVED_TOOLS, toolDescriptions } from '../../src/help/index.ts';
 import { runCli } from '../../src/cli/index.ts';
@@ -442,7 +443,7 @@ test('list_drafts is newest first by valid_from, not alphabetical by id', () => 
   writeRawDraft(cwd, { id: 'CONST-aaa', title: 'Aaa item', validFrom: '2020-01-01' });
   writeRawDraft(cwd, { id: 'CONST-zzz', title: 'Zzz item', validFrom: '2026-01-01' });
 
-  const drafts = createRegistry(cwd).call('list_drafts', {});
+  const drafts = splitProvenance(createRegistry(cwd).call('list_drafts', {})).answer;
   const ids = drafts.split('\n').map((l) => l.split(' · ')[0]);
   assert.deepEqual(ids, ['CONST-zzz', 'CONST-aaa']);
   removeTree(cwd);
@@ -453,7 +454,7 @@ test('list_drafts ties on valid_from break by id ascending, for determinism', ()
   writeRawDraft(cwd, { id: 'CONST-bbb', title: 'Bbb item', validFrom: '2026-01-01' });
   writeRawDraft(cwd, { id: 'CONST-aaa', title: 'Aaa item', validFrom: '2026-01-01' });
 
-  const drafts = createRegistry(cwd).call('list_drafts', {});
+  const drafts = splitProvenance(createRegistry(cwd).call('list_drafts', {})).answer;
   const ids = drafts.split('\n').map((l) => l.split(' · ')[0]);
   assert.deepEqual(ids, ['CONST-aaa', 'CONST-bbb']);
   removeTree(cwd);
@@ -971,7 +972,15 @@ test('load_context injects the pinned item and never the draft', () => {
 
 test('load_context returns byte-for-byte what SessionStart would inject', () => {
   const cwd = corpus();
-  assert.equal(createRegistry(cwd).call('load_context', {}), buildSessionStartOutput(cwd));
+  // `.answer`, and the split is the point rather than a concession: the two
+  // paths must produce the same SELECTION, and the MCP surface additionally
+  // names the corpus it resolved on every result (`mcp/provenance.ts`). The
+  // hook has no such envelope because its own text carries the disclosure a
+  // hook needs. Asserted below rather than merely dropped, so the envelope
+  // cannot quietly stop appearing.
+  const { answer, provenance } = splitProvenance(createRegistry(cwd).call('load_context', {}));
+  assert.equal(answer, buildSessionStartOutput(cwd));
+  assert.equal(provenance, `my_context corpus: ${path.join(cwd, '.my_context')}.`);
   removeTree(cwd);
 });
 

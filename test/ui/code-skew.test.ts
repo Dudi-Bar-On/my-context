@@ -50,7 +50,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
-import { codeScope, stampCodeIdentity, type CodeScope } from '../../src/ui/code-identity.ts';
+import { codeScope, stampCodeIdentity, type CodeScope } from '../../src/core/code-identity.ts';
 import { TOKEN_HEADER } from '../../src/ui/security.ts';
 import { CODE_FREEZE_NOTICE, startUiServer, type RunningUiServer } from '../../src/ui/server.ts';
 // Pins the session store out of the real `~/.my-context`; see the module.

@@ -33,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { materializeDocFixture } from '../../scripts/doc-fixture.ts';
 import { scrubOutput } from '../../scripts/gen-doc-examples.ts';
 import { revisionDir } from '../../src/core/revision.ts';
+import { splitProvenance } from '../../src/mcp/provenance.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -121,7 +122,26 @@ async function callTool(cwd: string, args: Record<string, unknown>): Promise<str
   const text = result.result?.content?.[0]?.text;
   assert.ok(typeof text === 'string' && text.length > 0,
     `no text content came back: ${JSON.stringify(seen[seen.length - 1])}`);
-  return text;
+
+  // **The provenance envelope comes off, and it is checked on the way.**
+  //
+  // Every MCP result now ends with a block naming the corpus that produced it,
+  // and — when the process has gone behind disk — that its code is stale
+  // (`src/mcp/provenance.ts`). Neither belongs in a quoted documentation block:
+  // the corpus line is an absolute path on the machine that ran the test, and
+  // the stale line depends on whether somebody happened to be editing `src/`
+  // while the suite ran, which would make a byte-verbatim documentation
+  // assertion fail for a reason that has nothing to do with the documentation.
+  //
+  // It is asserted rather than merely discarded, because this is the only test
+  // in the suite that drives the REAL server over stdio — so it is the only
+  // place the envelope's presence can be pinned end to end at all.
+  const { answer, provenance } = splitProvenance(text);
+  assert.match(
+    provenance, /^my_context corpus: .*\.my_context\.$/,
+    'every MCP result must name the corpus root it resolved',
+  );
+  return answer;
 }
 
 /**

@@ -17,7 +17,7 @@
  */
 import type { ServerResponse } from 'node:http';
 import type { Workspace } from '../core/workspace.ts';
-import type { CodeIdentity } from './code-identity.ts';
+import type { CodeIdentity } from '../core/code-identity.ts';
 
 export interface ApiContext {
   ws: Workspace;

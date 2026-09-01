@@ -33,6 +33,8 @@ import type { Item, Observation, Origin, Severity, Status } from '../core/types.
 import { resolveWorkspace } from '../core/workspace.ts';
 import { exampleItem, helpTopic, toolDescriptions } from '../help/index.ts';
 import { INGEST_DOCUMENT_SCHEMA, runIngestDocument } from './tools/ingest.ts';
+import { toolResultProvenance } from './provenance.ts';
+import type { CodeIdentity } from '../core/code-identity.ts';
 import type { ToolDefinition, ToolRegistry } from './protocol.ts';
 
 const STATUSES = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
@@ -1113,7 +1115,22 @@ const SORTED = [...SPECS].sort((a, b) => a.name.localeCompare(b.name));
 
 export const TOOL_NAMES = SORTED.map((spec) => spec.name);
 
-export function createRegistry(cwd: string): ToolRegistry {
+/**
+ * `code` is the identity `src/mcp/server.ts` stamped at startup, or `null`.
+ *
+ * A PARAMETER rather than a module-level singleton stamped on import, for the
+ * reason `stampCodeIdentity` is called per server in the UI: `startedAt` must
+ * be the moment a reader can line up with the line their terminal printed, and
+ * a module-level stamp would date every registry in a process to whenever the
+ * first `import` happened. It also keeps the derivation honest — the entry is
+ * `server.ts`'s own `import.meta.filename`, so no path to this server is
+ * spelled anywhere.
+ *
+ * `null` is the default because most callers are not the long-lived process:
+ * every test builds a registry, and none of them is stale by construction. See
+ * `staleCodeNote` for why silence is the right answer there.
+ */
+export function createRegistry(cwd: string, code: CodeIdentity | null = null): ToolRegistry {
   const descriptions = toolDescriptions();
 
   const definitions: ToolDefinition[] = SORTED.map((spec) => {
@@ -1147,7 +1164,15 @@ export function createRegistry(cwd: string): ToolRegistry {
       // Before the handler, never after: a refusal has to happen while
       // nothing has been written.
       refuseUnknownArgs(spec, args);
-      return spec.run(cwd, args);
+      const result = spec.run(cwd, args);
+      // **Every result names the code and the corpus it came from.** Here,
+      // once, at the one boundary every tool call crosses — the same argument
+      // `refuseUnknownArgs` makes directly above: a per-tool footer is a list
+      // fourteen handlers have to remember, and the fifteenth ships without
+      // one. `provenance.ts` carries the reasoning; it never throws and it is
+      // one short line unless something is actually wrong.
+      const provenance = toolResultProvenance(cwd, code);
+      return provenance === '' ? result : `${result}\n\n${provenance}`;
     },
   };
 }

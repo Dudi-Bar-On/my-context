@@ -30,6 +30,7 @@ process.on('exit', () => { removeTree(HOME); });
 const { runCli } = await import('../../src/cli/index.ts');
 const { buildInjection } = await import('../../src/core/inject.ts');
 const { createRegistry } = await import('../../src/mcp/tools.ts');
+const { splitProvenance } = await import('../../src/mcp/provenance.ts');
 const { mergeLayers, reviewQueue, select } = await import('../../src/core/select.ts');
 const { resolveConfig } = await import('../../src/core/config.ts');
 type Item = import('../../src/core/types.ts').Item;
@@ -126,7 +127,11 @@ test('all four draft-count surfaces agree, and none of them counts a global-laye
     const bannerCount = Number(banner![1]);
 
     // Surface 2 — the MCP tool the agent is told is the review queue.
-    const listed = createRegistry(cwd).call('list_drafts', {});
+    // `.answer`: every MCP result now ends with a provenance block naming the
+    // corpus it resolved (`mcp/provenance.ts`). It is an envelope around the
+    // answer, not a row of the queue, and counting it as one would be this
+    // test's own version of the mistake that made a nested corpus invisible.
+    const listed = splitProvenance(createRegistry(cwd).call('list_drafts', {})).answer;
     const listedIds = listed.split('\n').map((l) => l.split(' · ')[0]);
     const mcpCount = listedIds.length;
 
