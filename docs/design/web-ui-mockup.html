@@ -958,7 +958,13 @@ details.help[open]>summary{margin-block-end:6px}
    descenders where it is wanted. Re-measured after: 8.9px above the ink and
    10.1px below it, at every size. */
 .strip{grid-area:strip;background:var(--panel);border-block-start:1px solid var(--rule);
-  display:grid;grid-template-rows:28px 38px;grid-auto-rows:38px;padding-inline:var(--sp-3);
+  /* **ROWS TIGHTENED, 2026-09-01.** The owner: "it looks better without
+     rectangles and also the spacing between the rows now could be decreased".
+     Those two go together — the outlines were what needed room around them, and
+     with them gone the 38px track was mostly air. A pill is 24px, so 28px
+     leaves 2px above and below: enough that rows do not touch, without the
+     gutter the rectangles used to earn. */
+  display:grid;grid-template-rows:24px 28px;grid-auto-rows:28px;padding-inline:var(--sp-3);
   padding-block:0 2px;font-size:var(--fs-strip);color:var(--dim)}
 .strip .sep{inline-size:1px;block-size:18px;background:var(--rule)}
 /* The git group shows one of six states; the rest are `hidden`. .chip sets
@@ -1448,7 +1454,14 @@ details.help[open]>summary{margin-block-end:6px}
      text sets the border, in the same declaration, for every field that exists
      today and every one added later. `--faint` remains the fallback only where
      nothing has set a colour at all. */
-  border:1px solid currentColor;background:none;
+  /* **RECTANGLES OFF — A TRIAL, 2026-09-01.** The owner asked to see the bar
+     without them: "remove the rectangles to see if the bar is more readable and
+     less loaded". `transparent` rather than `border:none` so the 1px of box
+     stays in the metrics and every pill keeps its 24px height and its spacing —
+     the layout does not move, only the outline stops being drawn, which is what
+     makes this a fair comparison rather than a different bar.
+     ONE EDIT BACK: `transparent` -> `currentColor`. */
+  border:1px solid transparent;background:none;
   /* `inline-flex` so a field's own children cannot stack and grow it: the
      injections pill holds a label and a figure, the audit pill a word and a
      clock, and as inline boxes each brought its own line box. One row, one
