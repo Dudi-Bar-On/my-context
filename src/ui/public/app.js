@@ -735,6 +735,7 @@ function paneEls() {
     spn: document.getElementById('panespn'),
     float: document.getElementById('panefloat'),
     summary: document.getElementById('panesummary'),
+    sumlab: document.getElementById('panesumlab'),
     stale: document.getElementById('panestale'),
     props: document.getElementById('paneprops'),
   };
@@ -834,6 +835,21 @@ function fillPaneSummary(els, item, state) {
   els.summary.textContent = text;
   els.summary.className = stale ? 'itemsum stale' : 'itemsum';
   els.summary.hidden = text === '';
+  // ── AND ITS LABEL, HIDDEN WITH IT — owner ruling 2026-09-01.
+  //
+  // The label carries no content of its own (`fillStaticText` writes it from
+  // `pane.summary` once per language), so the only thing to decide here is
+  // whether it is SHOWN, and the answer is exactly when the sentence under it
+  // is. A `.welllabel` standing over an absent summary is a heading for
+  // nothing — the empty-band defect `#prov` and the 26+30px strip band both
+  // already cost this shell — and 16 of the 733 items in this corpus carry no
+  // summary at all, so it is not a hypothetical case.
+  //
+  // Guarded rather than assumed present: `test/ui/pane-route.test.ts` drives
+  // this shell through a fake document built from a fixture, and a pane built
+  // before this element existed would otherwise throw here rather than draw an
+  // unlabelled summary.
+  if (els.sumlab !== null) els.sumlab.hidden = text === '';
 
   // The disclosure. Hidden whenever there is nothing to disclose, so a good
   // summary is never shadowed by an empty warning.
@@ -2635,18 +2651,24 @@ function renderChrome() {
   // as though the strip ended where its box said it did. That is not a
   // hypothetical: it is what one intermediate state of this very change did,
   // measured on the owner's page — a 64px box with 134px of content in it.
-  const identityRow = document.createElement('div');
-  identityRow.className = 'striprow striprow-identity';
-  const stateRow = document.createElement('div');
-  stateRow.className = 'striprow striprow-state';
-  strip.append(identityRow, stateRow);
-
-  const sep = (into) => {
-    const e = document.createElement('span');
-    e.className = 'sep';
-    if (into !== undefined) into.append(e);
-    return e;
-  };
+  // ── AND A THIRD ROW WHEN THE FIELDS NEED ONE — owner ruling 2026-09-01,
+  // *"on a screen with lower resolution the web status bar is somewhat
+  // truncated, could we dynamically set 3rd status bar row so fields could
+  // overflow dynamically to that line and not be truncated?"*
+  //
+  // **The rows are no longer built by appending as the groups are made.** Each
+  // subject collects its groups into a LIST, and `layoutStrip` turns the lists
+  // into rows — which is what lets the row count be decided by measurement
+  // instead of being fixed at two, and what keeps the separators right when a
+  // group moves (a `.sep` is drawn BETWEEN groups, so a group that changes rows
+  // changes which separators exist).
+  //
+  // The subject split survives exactly as the owner set it: a group is the
+  // atom, a group never leaves its subject, and a subject that outgrows one row
+  // gets a second one of its OWN immediately below it. Nothing spills by
+  // position, and no row ever mixes identity with state. `fitStrip` decides.
+  const identity = [];
+  const state = [];
 
   // One provenance group. The colour comes off `.sgrp-<name>` in the
   // stylesheet and the word comes out of the string table; `data-k` records
@@ -2662,7 +2684,10 @@ function renderChrome() {
     label.dataset.k = labelKey;
     label.append(...translate(table.strings, labelKey));
     g.append(label);
-    into.append(g);
+    // A LIST for the strip's own subjects, an ELEMENT for the header's repo
+    // group — which is the one caller that is not a strip row and has a
+    // position of its own to keep (before `.topr`).
+    if (Array.isArray(into)) into.push(g); else into.append(g);
     return g;
   };
 
@@ -2726,14 +2751,13 @@ function renderChrome() {
   // reverse a day-old ruling to gain nothing. `e2e/strip.spec.ts` already
   // reads the header group and this footer as ONE surface, and
   // `test/ui/strip-parity.test.ts` does the same.
-  const model = group('model', 'strip.grp.model', identityRow);
+  const model = group('model', 'strip.grp.model', identity);
   const modelState = document.createElement('span');
   modelState.className = 'modelstate';
   modelState.id = 'modelstate';
   model.append(modelState);
-  sep(identityRow);
 
-  const windowGrp = group('window', 'strip.grp.window', identityRow);
+  const windowGrp = group('window', 'strip.grp.window', identity);
   const windowState = document.createElement('span');
   windowState.className = 'windowstate';
   windowState.id = 'windowstate';
@@ -2760,8 +2784,7 @@ function renderChrome() {
   //
   // It is also, and this is a coincidence worth writing down rather than
   // relying on, one of the two groups that was clipping.
-  sep(identityRow);
-  const corpus = group('corpus', 'strip.grp.corpus', identityRow);
+  const corpus = group('corpus', 'strip.grp.corpus', identity);
   const count = document.createElement('span');
   count.className = 'corpusstate';
   count.id = 'stripitems';
@@ -2813,7 +2836,6 @@ function renderChrome() {
   notes.className = 'sprop';
   notes.id = 'corpusnotes';
   corpus.append(count, drift, notes);
-  sep(identityRow);
 
   // ── THE ACCOUNT'S QUOTA IS A DIFFERENT SUBJECT FROM THIS SESSION'S WINDOW,
   // and since 2026-09-01 it is a different GROUP — owner ruling, the second
@@ -2840,7 +2862,7 @@ function renderChrome() {
   // `test/ui/strip-parity.test.ts` compares is WHICH FACTS are on the bar,
   // never where or how they are drawn — a gate that asserted layout would fail
   // the first time one surface could do something the other cannot.
-  const limits = group('limits', 'strip.grp.limits', identityRow);
+  const limits = group('limits', 'strip.grp.limits', identity);
   const limitState = document.createElement('span');
   limitState.className = 'limitstate';
   limitState.id = 'limitstate';
@@ -2848,12 +2870,11 @@ function renderChrome() {
 
   // ══ LINE 2 — STATE ════════════════════════════════════════════════════
 
-  const session = group('session', 'strip.grp.session', stateRow);
+  const session = group('session', 'strip.grp.session', state);
   const ctx = document.createElement('span');
   ctx.className = 'ctxstate';
   ctx.id = 'ctx';
   session.append(ctx);
-  sep(stateRow);
 
   // ── WHAT THIS SESSION IS COSTING, AND HOW MUCH THE CACHE IS ABSORBING.
   //
@@ -2867,12 +2888,11 @@ function renderChrome() {
   // payload `/api/watch/context` already reads, and the warm share is derived
   // from the three token counts in the same payload by the same `payloadExtras`
   // the terminal parses it with.
-  const cost = group('cost', 'strip.grp.cost', stateRow);
+  const cost = group('cost', 'strip.grp.cost', state);
   const costState = document.createElement('span');
   costState.className = 'coststate';
   costState.id = 'coststate';
   cost.append(costState);
-  sep(stateRow);
 
   // ── THE AUDIT GROUP — two properties the reader is owed, and the one state
   // both are permanently in. Built here rather than in `fillChrome()` because
@@ -2881,7 +2901,7 @@ function renderChrome() {
   // either way — the property is what the reader is owed, and hiding the
   // whole segment is how forty of forty-four came to be invisible — with an
   // em dash where the figure goes and ONE chip naming the state for both.
-  const audit = group('audit', 'strip.grp.audit', stateRow);
+  const audit = group('audit', 'strip.grp.audit', state);
   const auditState = document.createElement('span');
   auditState.className = 'auditstate';
   auditState.id = 'auditstate';
@@ -2938,7 +2958,11 @@ function renderChrome() {
   const live = document.createElement('span');
   live.id = 'livestate';
   live.hidden = true;
-  stateRow.append(liveSep, live);
+  // The tail belongs to the END of the strip, wherever that ends up: it is the
+  // shared stream's fault and it is not a provenance group, so `layoutStrip`
+  // appends it after the last row's last group rather than binding it to the
+  // state row by name.
+  const tail = [liveSep, live];
 
   // ── THE SCREEN-LIVE AFFORDANCE IS NO LONGER BUILT HERE — `plan:walk
   // seq:116`, owner ruling 2026-08-31: *"move the refresh button to the
@@ -2961,7 +2985,303 @@ function renderChrome() {
   // the chrome being rebuilt around it. The affordance no longer needs the
   // same treatment for the same reason it needed it before: it does not live
   // in this subtree any more, so a rebuild here cannot reach it.
+  // -- THE ROWS THEMSELVES, MADE FROM THE LISTS AND THEN MEASURED.
+  stripPlan = { identity, state, tail };
+  fitStrip();
+  watchStripFit(strip);
+
   if (liveEnded !== null) showLiveFault(liveEnded);
+}
+
+/**
+ * The strip's contents as SUBJECTS rather than as rows — `{identity, state,
+ * tail}`, each an ordered list of elements. `null` until `renderChrome()` has
+ * run; `fitStrip()` is a no-op before that, and in a test harness that never
+ * built a shell.
+ */
+let stripPlan = null;
+
+/**
+ * **How much of a subject is being cut off, in pixels, right now.**
+ *
+ * Not an estimate of what the groups WOULD need. A natural-width estimate
+ * cannot be taken while flexbox is already squeezing them — every group would
+ * be measured at the width it had just been shrunk to — so what is asked here
+ * is the question the owner actually asked: *is anything truncated*. Every box
+ * in this subject that is scrolling its own content is one that is cutting text
+ * off, and the sum of what each cannot show is how much room the subject is
+ * short of.
+ *
+ * That number is directly comparable between the two subjects, which is what
+ * decides who gets the third row when both are short.
+ */
+function stripDeficit(subject) {
+  let short = 0;
+  for (const row of document.querySelectorAll('.striprow-' + subject)) {
+    for (const el of row.querySelectorAll('*')) {
+      if (el.clientWidth > 0 && el.scrollWidth > el.clientWidth) {
+        short += el.scrollWidth - el.clientWidth;
+      }
+    }
+  }
+  return short;
+}
+
+/**
+ * Below this, a subject is not "truncated", it is an ellipsis.
+ *
+ * **A whole row is 38px of the body, so it is spent for lost WORDS and not for
+ * lost pixels.** Measured at 1,440px on the live corpus: the identity row was
+ * three boxes short by 6px, 7px and 5px — eighteen pixels, under one character
+ * each, and every one of them already ellipsised AND disclosed by its own
+ * `title`. Buying that back with a fourth row would have cost 38px of the one
+ * elastic track in the shell to recover three characters, which is the trade
+ * the owner is on the other side of: the complaint is that fields are
+ * *truncated*, and a value whose last character is an ellipsis is not a field
+ * that has been cut off.
+ *
+ * Forty pixels is five to six characters at `--fs-strip` — a short word, the
+ * smallest unit whose loss actually costs a reader meaning. It is also the
+ * hysteresis that stops the bar adding and dropping a whole row as the context
+ * percentage ticks through a digit.
+ */
+const STRIP_SLACK = 40;
+
+/**
+ * Put the subjects into rows. `splits` maps each subject to how many of its
+ * groups sit on each of its rows — `{identity: [4], state: [1, 2]}` is one
+ * identity row of four groups over two state rows of one and two.
+ *
+ * **A subject's continuation rows sit immediately under its own first row**, so
+ * the reading order is never broken: identity, identity again, state — or
+ * identity, state, state again. A shared overflow row would put the end of line
+ * 1 below the whole of line 2, which is the "spilling by position" the owner
+ * ruled against. A group is never split and never changes subject.
+ *
+ * Separators are drawn HERE and not by whoever built the group, because a
+ * separator is a fact about two ADJACENT groups: the group that ends a row must
+ * not carry one, and the group that opens the next must not either.
+ */
+function layoutStrip(strip, splits) {
+  const rows = [];
+  const push = (subject, groups) => {
+    const row = document.createElement('div');
+    row.className = 'striprow striprow-' + subject;
+    groups.forEach((g, i) => {
+      if (i > 0) {
+        const bar = document.createElement('span');
+        bar.className = 'sep';
+        row.append(bar);
+      }
+      row.append(g);
+    });
+    rows.push(row);
+  };
+  for (const subject of ['identity', 'state']) {
+    const groups = stripPlan[subject];
+    let at = 0;
+    for (const take of splits[subject]) {
+      push(subject, groups.slice(at, at + take));
+      at += take;
+    }
+    if (at < groups.length) push(subject, groups.slice(at));
+  }
+  rows[rows.length - 1].append(...stripPlan.tail);
+  strip.replaceChildren(...rows);
+}
+
+/**
+ * Every way of dealing `n` groups into exactly `rows` rows, in order of
+ * FRONT-LOADED first — `[3,1]` before `[2,2]` before `[1,3]`.
+ *
+ * Front-loaded first because the bar reads top to bottom: what fits on the
+ * earlier row belongs on it, and a continuation row that is fuller than the row
+ * it continues reads as two rows rather than as one thing that ran on. The
+ * first composition that is not cut wins, so the order IS the preference.
+ */
+function stripCompositions(n, rows) {
+  if (rows === 1) return [[n]];
+  const out = [];
+  for (let head = n - rows + 1; head >= 1; head -= 1) {
+    for (const rest of stripCompositions(n - head, rows - 1)) out.push([head, ...rest]);
+  }
+  return out;
+}
+
+/**
+ * **THE CEILING, AND IT IS A NUMBER AN OWNER MAY WANT TO MOVE.**
+ *
+ * Rows are created because the content needs them, so nothing here decides that
+ * two or three is the right answer — the measurement does. What this decides is
+ * where growing the bar stops being the better trade: the strip is the shell's
+ * last grid row and every pixel of it comes out of `.app`'s one elastic track,
+ * so a bar free to grow without limit could eat the body it annotates. Four
+ * rows is ~145px, which is 20% of a 720px window and the point past which the
+ * bounded-and-disclosed ellipsis (every box here clips WITH a title) is the
+ * cheaper answer than another band of chrome.
+ *
+ * It is not a row count — three rows is simply what today's fields need at most
+ * widths — and a field set that grows will reach it sooner. Reported.
+ */
+const STRIP_MAX_ROWS = 4;
+
+/**
+ * **THE ROW COUNT IS MEASURED, NOT DECLARED** — owner ruling 2026-09-01.
+ *
+ * -- WHAT THE OWNER SAW, AND WHERE ----------------------------------------
+ *
+ * *"On a screen with lower resolution the web status bar is somewhat
+ * truncated, could we dynamically set 3rd status bar row so fields could
+ * overflow dynamically to that line and not be truncated?"*
+ *
+ * Measured in a browser against the live 733-item corpus, before anything
+ * moved: identity holds ~1,270px of content and state ~1,900-2,080px, so the
+ * two-row bar was clean at the owner's 2,273px and cutting below roughly
+ * 2,100px. At 1,600px four boxes on the state row were clipping; at 1,024px the
+ * window group on the identity row was showing 52px of a 331px value.
+ *
+ * -- IT GROWS, IT IS NOT RESERVED, AND THE COST IS WHY ---------------------
+ *
+ * The owner ruled once already that *a reserved slot beats a thing that appears
+ * and shifts content* — for the refresh affordance, a 37px control INSIDE a
+ * screen, where reserving it costs that screen 37px of one row. This is not
+ * that. A reserved extra strip row is 38px of the shell's ONE elastic track
+ * taken on every screen at every width, including the owner's own 2,273px where
+ * it is never needed — and it would be 38px of nothing, which is the empty-band
+ * defect this shell has already paid for twice (`#prov` at 26px saying nothing,
+ * and the 26+30px bare band across the bottom of every screen). A row that is
+ * always there and usually empty is worse than a row that appears when there is
+ * something to put in it.
+ *
+ * What that ruling was actually against is CONTENT THAT JUMPS while a reader is
+ * looking at it, and that is answered directly instead: `STRIP_SLACK` means a
+ * row is spent for real truncation and never for a digit, and the decision is a
+ * pure function of (content, width) — the same content at the same width always
+ * gets the same number of rows, so nothing oscillates.
+ *
+ * -- HOW IT DECIDES -------------------------------------------------------
+ *
+ * Always from ONE ROW PER SUBJECT, so the answer never depends on what the bar
+ * happened to be showing a moment ago. Then a row at a time, each one going to
+ * whichever subject is being cut MORE — measured, not preferred, so a field set
+ * that grows on either subject is served by the same rule. Within a subject the
+ * groups are dealt front-loaded first (`stripCompositions`), so a continuation
+ * row is never fuller than the row it continues.
+ *
+ * A row that does not actually reduce the cut is HANDED BACK rather than kept:
+ * a group whose own content is wider than the whole bar cannot be helped by
+ * moving it, and spending 38px to draw it in a different place is the worst of
+ * both answers.
+ *
+ * **Truncation stays the last resort.** When the ceiling is reached or another
+ * row would not help, what is over ellipsises exactly as it does today — every
+ * box here bounds AND discloses, so a cut is still readable one hover away.
+ *
+ * **Nothing here assumes a field width.** Everything is read off the rendered
+ * bar, so fields that gain a progress bar, an icon and a `used / max` count are
+ * answered by the same code taking more rows sooner, with no number to update.
+ *
+ * **This lays out several times on purpose, and synchronously.** Nothing paints
+ * between the trial layouts — they are one task — so a reader never sees the
+ * intermediate bars the measurement walks through.
+ */
+function fitStrip() {
+  const strip = document.getElementById('strip');
+  if (strip === null || stripPlan === null) return;
+  const splits = {
+    identity: [stripPlan.identity.length],
+    state: [stripPlan.state.length],
+  };
+  layoutStrip(strip, splits);
+
+  // A subject nothing further can be done for — one group per row already, or
+  // an extra row that measured no better. It stops being considered so the loop
+  // can go on serving the OTHER one instead of stopping at the worse of the two.
+  const stuck = new Set();
+  let rows = 2;
+  while (rows < STRIP_MAX_ROWS && stuck.size < 2) {
+    const cut = { identity: stripDeficit('identity'), state: stripDeficit('state') };
+    const open = ['identity', 'state'].filter((s) => !stuck.has(s) && cut[s] > STRIP_SLACK);
+    if (open.length === 0) break;
+    // The row goes to whoever is being cut MORE. Measured, never preferred.
+    const worst = open.reduce((a, b) => (cut[b] > cut[a] ? b : a));
+    // One group per row already: there is no further arrangement to try.
+    const want = splits[worst].length + 1;
+    if (want > stripPlan[worst].length) { stuck.add(worst); continue; }
+
+    let best = null;
+    let bestCut = cut[worst];
+    const was = splits[worst];
+    for (const comp of stripCompositions(stripPlan[worst].length, want)) {
+      splits[worst] = comp;
+      layoutStrip(strip, splits);
+      const now = stripDeficit(worst);
+      if (now <= STRIP_SLACK) { best = comp; bestCut = now; break; }
+      if (now < bestCut) { best = comp; bestCut = now; }
+    }
+    if (best === null) {
+      // The extra row bought nothing — a group whose own content is wider than
+      // the whole bar cannot be helped by moving it, and spending 38px to draw
+      // it somewhere else is the worst of both answers. Handed back.
+      splits[worst] = was;
+      layoutStrip(strip, splits);
+      stuck.add(worst);
+      continue;
+    }
+    splits[worst] = best;
+    layoutStrip(strip, splits);
+    rows += 1;
+    // NO EARLY EXIT ON `bestCut`. The subject just served being clean says
+    // nothing about the other one, and breaking here left the identity row cut
+    // at 1,024px while the state row had only just been given its second. The
+    // loop re-measures BOTH at the top, which is the only place that decision
+    // can be made correctly.
+  }
+}
+
+/**
+ * Re-fit when the bar's CONTENT or its WIDTH moves, and never otherwise.
+ *
+ * Both matter and neither implies the other: a window drag changes the width
+ * with the content untouched, and a refill changes the content — every group
+ * swaps its children in with one `replaceChildren` — with the width untouched.
+ * A `MutationObserver` over the subtree is the ONE wiring point that catches
+ * every refill without this function having to know which they are, which is
+ * what stops a segment added later from silently missing the fit.
+ *
+ * `takeRecords()` after the fit DISCARDS the mutations the fit itself just
+ * made. Without it every fit would queue another forever: a `MutationObserver`
+ * callback is a microtask, so it runs after this function has returned and a
+ * plain re-entrancy flag would already be false by the time it did.
+ *
+ * Coalesced to one fit per frame, because a refill lands as a burst of
+ * mutations and re-laying the bar out per record is work nobody sees.
+ */
+const STRIP_WATCHED = new WeakSet();
+
+function watchStripFit(strip) {
+  if (typeof MutationObserver !== 'function') return;
+  // ONCE PER STRIP. `renderChrome()` runs a second time when a pasted nonce
+  // redeems in place, and `#strip` is FOUND rather than rebuilt there — so a
+  // second call would leave two observers on one bar, both fitting it. Same
+  // shape and same reason as `setupLiveChrome`'s own once-ever guard.
+  if (STRIP_WATCHED.has(strip)) return;
+  STRIP_WATCHED.add(strip);
+  let queued = false;
+  const run = () => {
+    queued = false;
+    fitStrip();
+    watcher.takeRecords();
+  };
+  const queue = () => {
+    if (queued) return;
+    queued = true;
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+    else setTimeout(run, 0);
+  };
+  const watcher = new MutationObserver(queue);
+  watcher.observe(strip, { childList: true, subtree: true, characterData: true });
+  if (typeof ResizeObserver === 'function') new ResizeObserver(queue).observe(strip);
 }
 
 /** The id of the app's one live region. Written once, read by `announce()`. */
@@ -4627,8 +4947,9 @@ async function route() {
  * Fill every `[data-t]` element in the shipped shell from the string table.
  *
  * **This did not exist until 2026-08-25, and ten elements were quietly English
- * because of it.** `index.html` carries ten `data-t` attributes — the item
- * pane's six `<dl>` labels, `pane.body`, `pane.hist`, `pane.histn` and
+ * because of it.** `index.html` carried ten `data-t` attributes then and
+ * carries ELEVEN since 2026-09-01 — the item pane's six `<dl>` labels,
+ * `pane.summary`, `pane.body`, `pane.hist`, `pane.histn` and
  * `pane.well` — and the file's own comment says they "are translated in place
  * by i18n.js's applyStatic". THERE WAS NO `applyStatic`: `applyLanguage()`
  * sets `lang` and `dir` and nothing else, and nothing anywhere queried
@@ -4637,8 +4958,8 @@ async function route() {
  * builds everything else — rendered blank.
  *
  * No gate could see it. `strings-parity` compares the two tables against the
- * mockup's `data-t` SET, and all ten keys are present in all three; a key that
- * exists and is never rendered still matches.
+ * mockup's `data-t` SET, and every one of those keys is present in all three; a
+ * key that exists and is never rendered still matches.
  *
  * `translate()`, not `textContent`, because these keys carry `{b:}`/`{i:}`
  * emphasis and `{m:}` runs — `pane.histn` bolds *spilled* and italicises

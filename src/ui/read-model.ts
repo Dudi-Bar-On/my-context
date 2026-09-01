@@ -74,6 +74,12 @@ import {
 } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
 import { VERSION } from '../core/version.ts';
+// The one authority for the relation vocabulary. Imported rather than
+// re-listed; see `GraphBody.relationTypes` for why it is then served.
+import { RELATION_TYPES } from '../core/vocabulary.ts';
+// The one authority for which statuses count as retired. Imported, then served
+// on `/api/items` — see `ItemsBody.retiredStatuses`.
+import { RETIRED_STATUSES } from '../core/select.ts';
 import { listRepoFiles, runChecks, type Finding } from '../doctor/checks.ts';
 import { helpTopic, HELP_TOPICS } from '../help/index.ts';
 import type { Budgets, Config } from '../core/config.ts';
@@ -1064,7 +1070,34 @@ export interface StatusBody {
   };
   reviewQueue: { drafts: number; always: number; globalLayerDrafts: number };
   pendingRevisions: { revisions: number; items: number };
-  health: { errors: number; warnings: number; infos: number };
+  /**
+   * **The findings still OPEN, by level — and, separately, how many a person has
+   * already ruled on.**
+   *
+   * Owner, 2026-09-01: *"still the counter near the Doctor menu item is not
+   * refreshed when something is handled."* Measured before changing anything,
+   * because "not refreshed" has two readings and only one of them is a
+   * subscription: the rail IS subscribed (`CHROME_INVALIDATION.rail` declares
+   * `kinds: ['mutation']`, `refresh: 'auto'`), `mycontext ack` DOES write one
+   * (`acknowledgeFinding` -> `auditMutation` -> `recordAudit({kind:
+   * 'mutation'})`), and `CHROME_REFILL.rail` DOES re-run `paintRailCounts()`.
+   * The refill was firing and recomputing the same number, because this tally
+   * counted every finding `runChecks` returned including the ones already
+   * acknowledged. Nothing was stale; the number was answering a different
+   * question from the one a badge asks.
+   *
+   * A badge says *how much is waiting for you*. A finding a person has ruled on
+   * is not waiting for anyone, so it is not in `errors`/`warnings`/`infos` any
+   * more.
+   *
+   * **`acknowledged` is served beside them so nothing is dropped silently.** The
+   * ack mechanism was deliberately built not to be a silencer — the Doctor
+   * screen still draws an acknowledged finding, marked — and a tally that made
+   * them vanish with no count would undo that. A reader can still see how many
+   * were ruled on, and the two numbers together are the total `runChecks`
+   * returned.
+   */
+  health: { errors: number; warnings: number; infos: number; acknowledged: number };
 }
 
 /**
@@ -1145,9 +1178,13 @@ export function apiStatus(ws: Workspace, url: URL): JsonResult {
       },
       pendingRevisions: pendingRevisionCounts(pendingRevisionSummaries(root)),
       health: {
-        errors: findings.filter((f) => f.level === 'error').length,
-        warnings: findings.filter((f) => f.level === 'warn').length,
-        infos: findings.filter((f) => f.level === 'info').length,
+        // `acknowledged` is set by `markAcknowledged`, which `runChecks` calls
+        // after every check — so it is already on these findings and this is a
+        // filter rather than a second pass over the corpus.
+        errors: findings.filter((f) => f.level === 'error' && f.acknowledged !== true).length,
+        warnings: findings.filter((f) => f.level === 'warn' && f.acknowledged !== true).length,
+        infos: findings.filter((f) => f.level === 'info' && f.acknowledged !== true).length,
+        acknowledged: findings.filter((f) => f.acknowledged === true).length,
       },
     };
     return { status: 200, body };
@@ -1167,10 +1204,20 @@ export interface DoctorBody { findings: Finding[] }
  * and `doc.v` is this endpoint's whole reason for existing: *"a findings list
  * flattened to 'exit 1' is what a terminal loses"*.
  *
- * `Finding` is `{ level, code, message, item? }`, and `item` stays OPTIONAL:
- * `watched_docs_no_match` and `audit_log_size` name no item, and a `''` or a
- * `null` invented here would put an empty cell where the mockup draws an em
- * dash for the finding that names none.
+ * `Finding` is `{ level, code, message, item?, acknowledged? }`, and `item`
+ * stays OPTIONAL: `watched_docs_no_match` and `audit_log_size` name no item,
+ * and a `''` or a `null` invented here would put an empty cell where the mockup
+ * draws an em dash for the finding that names none.
+ *
+ * `acknowledged` arrives set by `markAcknowledged` (doctor/checks.ts) and is
+ * carried like every other field — verbatim, unfiltered. It means a PERSON read
+ * that finding on that item and ruled on it, against content the item still has
+ * (owner ruling 2026-08-27; `core/acknowledge.ts`). It is a MARK and never a
+ * filter: an acknowledged finding is in this array exactly as it was before,
+ * and a screen that dropped one would be doing what this endpoint's own first
+ * paragraph refuses. It is optional rather than `false`, so a client can tell
+ * "not acknowledged" from a field a stale build never populated; drawing it is
+ * the screen's business and is not done here.
  *
  * **The exit code is not here, and it is not an oversight.** `doctor`'s exit
  * code comes from `exitCode(findings, loadErrorCount)`
@@ -1410,6 +1457,54 @@ export interface ItemSummary {
    */
   summary: string | null;
   /**
+   * **How many relations touch this item, counting BOTH directions — or `null`
+   * where this endpoint did not measure it.**
+   *
+   * Owner ruling 2026-09-01: *"i see many relations that has only an item in
+   * the center of the screen, these are items without relations, they should at
+   * least be filtered or disabled because they make the selection list long
+   * without any added value"*. The Relations picker needs to know which items
+   * would draw a lone node, and this is the number that answers it without a
+   * second request: the screen already calls `/api/items` to build the picker.
+   *
+   * **BOTH DIRECTIONS, and that is not a detail.** `item.relations` is the
+   * OUTGOING list only, and `/api/graph` builds its adjacency by pushing every
+   * relation onto BOTH endpoints — so an item that names nobody but is named by
+   * somebody else draws a perfectly good ego graph with the arrows pointing
+   * inward. An out-degree test would hide exactly those, which is worse than
+   * the long list it was meant to fix. This counts what the graph would draw.
+   *
+   * **`null` is "not measured here", never "zero".** Only `/api/items` walks the
+   * whole store, so only `/api/items` can answer this; every other endpoint that
+   * emits an `ItemSummary` says `null` rather than a zero it did not take. A
+   * client that treated absent as zero would hide every item on a surface that
+   * simply never counted — the blank-is-a-failure defect this project already
+   * has a standard about.
+   */
+  relations: number | null;
+  /**
+   * **Which relation TYPES touch this item, both directions, sorted — or `null`
+   * where this endpoint did not measure it.**
+   *
+   * The degree above answers *does this item relate to anything at all*. This
+   * answers *does it relate to anything the reader is currently looking at*,
+   * and the owner ruled on 2026-09-01 that the Relations picker must ask the
+   * second: with only `derived_from` kept, an item whose two relations are both
+   * `refines` was still offered, and selecting it drew nothing. An item with
+   * relations of no kept type is, for that reader in that moment, exactly as
+   * empty as one with no relations at all.
+   *
+   * DISTINCT and sorted, because what the picker asks is set membership; a
+   * multiset would carry counts nobody reads. Both directions, for the reason
+   * `relations` is both directions — four items in this project's corpus have
+   * no outgoing relations and a non-zero degree, and an out-edge-only list
+   * would hide every one of them.
+   *
+   * `null` is "not measured here", never "no types": a client must not read an
+   * absent measurement as an empty set and filter everything away.
+   */
+  relationKinds: string[] | null;
+  /**
    * **Whether that summary still describes this item, MEASURED rather than
    * assumed** (`summaryState`, core/content-hash.ts).
    *
@@ -1425,14 +1520,55 @@ export interface ItemSummary {
   summaryState: SummaryState;
 }
 
-function itemSummary(item: Item, config: Config): ItemSummary {
+function itemSummary(
+  item: Item, config: Config, facts: RelationFacts | null = null,
+): ItemSummary {
   const verdict = injection(item, config);
   return {
     id: item.id, type: item.type, title: item.title, status: item.status,
     always: item.always, scope: item.scope,
     injected: verdict.injected, phrase: verdict.phrase, gate: verdict.gate,
     summary: item.summary, summaryState: summaryState(item),
+    // Defaulted to `null` rather than to 0/[], so a caller that has not counted
+    // says so instead of asserting an unmeasured zero. See `ItemSummary`.
+    relations: facts === null ? null : facts.degree,
+    relationKinds: facts === null ? null : facts.kinds,
   };
+}
+
+/** What one item's relations amount to, counted in both directions. */
+interface RelationFacts { degree: number; kinds: string[] }
+
+/**
+ * How many relations touch each item, counting BOTH directions.
+ *
+ * One walk of the store, the same shape `apiGraph` builds its adjacency with —
+ * every relation is pushed onto its source AND its target — so this number and
+ * the graph can never disagree about whether an item has anything to draw.
+ * Derived here rather than kept anywhere: a second list of "items with
+ * relations" is the hand-kept-list defect, and it would be this project's ninth
+ * measured instance.
+ */
+function relationDegrees(items: readonly Item[]): Map<string, RelationFacts> {
+  const facts = new Map<string, RelationFacts>();
+  const of = (id: string): RelationFacts => {
+    let entry = facts.get(id);
+    if (entry === undefined) { entry = { degree: 0, kinds: [] }; facts.set(id, entry); }
+    return entry;
+  };
+  const bump = (id: string, type: string): void => {
+    const entry = of(id);
+    entry.degree += 1;
+    if (!entry.kinds.includes(type)) entry.kinds.push(type);
+  };
+  for (const item of items) {
+    of(item.id);
+    for (const rel of item.relations) { bump(item.id, rel.type); bump(rel.target, rel.type); }
+  }
+  // Sorted so the list is stable between requests: an unordered set that
+  // reshuffled would make two identical corpora serve different bytes.
+  for (const entry of facts.values()) entry.kinds.sort();
+  return facts;
 }
 
 /**
@@ -1780,6 +1916,31 @@ export interface GraphBody {
   nodes: GraphNode[];
   edges: GraphEdge[];
   omitted: number;
+  /**
+   * **`RELATION_TYPES` ITSELF, served so the browser can offer a filter over it
+   * without owning a copy of it** — owner ruling 2026-09-01, *"i would allow
+   * some filters to relations to find interesting relations by type not just
+   * browsing all over the list"*.
+   *
+   * `core/vocabulary.ts` is the single authority and it is CLOSED on purpose —
+   * its own note is that an open one *"produces derives_from, derivedFrom and
+   * derived-from in one corpus"*. A browser `.js` module cannot import a core
+   * `.ts` module, and `screens/graph.js`' own header names re-listing the
+   * vocabulary in the client as *"the copied-rule defect this plan exists to
+   * prevent"*. Those two facts together are why the list travels on the wire:
+   * it is the only route from the one authority to the one consumer that does
+   * not create a second copy.
+   *
+   * Sent whole rather than reduced to the types this ego graph happens to
+   * contain. A filter offering only what is already on screen cannot express
+   * *"show me the blocks relations"* and answer *"there are none"* — and the
+   * distinction between a type with no edges here and a type that does not
+   * exist is exactly what a closed vocabulary is for.
+   *
+   * A ninth member of that array reaches the filter with no change to any UI
+   * file, which is the property being bought.
+   */
+  relationTypes: readonly string[];
 }
 
 /** One end of one relation, as the walk meets it from `other`'s side. */
@@ -1926,13 +2087,31 @@ export function apiGraph(ws: Workspace, url: URL): JsonResult {
       }),
       edges,
       omitted: omitted.size,
+      relationTypes: RELATION_TYPES,
     };
     return { status: 200, body };
   });
 }
 
 /** `GET /api/items`' body — the link target every screen resolves an id against. */
-export interface ItemsBody { items: ItemSummary[] }
+export interface ItemsBody {
+  items: ItemSummary[];
+  /**
+   * **`RETIRED_STATUSES` itself, served so a browser can apply it without
+   * owning a copy** — owner ruling 2026-09-01, on the Relations picker: a
+   * retired item is hidden from that list by default, with a control to show it.
+   *
+   * `core/select.ts` is the one authority and the set is CLOSED
+   * (`superseded`, `deprecated`, `validated`). A browser module cannot import a
+   * core one, so the set travels on the wire for exactly the reason
+   * `GraphBody.relationTypes` does: it is the only route from the single
+   * authority to the consumer that does not create a second copy, and a fourth
+   * member added there reaches the screen with no UI edit.
+   *
+   * Sorted, so two identical corpora serve identical bytes.
+   */
+  retiredStatuses: string[];
+}
 
 /**
  * `GET /api/items` — every item, sorted by id, each with its injection verdict.
@@ -1956,10 +2135,15 @@ export function apiItems(ws: Workspace, url: URL): JsonResult {
   const bad = unknownParams(url, []);
   if (bad) return badRequest(bad);
   return withStores(ws, (store): JsonResult => {
+    const items = store.all();
+    // ONE walk for the whole list, not one per item: a per-item count would be
+    // quadratic over a corpus this endpoint already returns whole.
+    const degree = relationDegrees(items);
     const body: ItemsBody = {
-      items: store.all()
-        .map((item) => itemSummary(item, ws.config))
+      items: items
+        .map((item) => itemSummary(item, ws.config, degree.get(item.id) ?? { degree: 0, kinds: [] }))
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      retiredStatuses: [...RETIRED_STATUSES].sort(),
     };
     return { status: 200, body };
   });

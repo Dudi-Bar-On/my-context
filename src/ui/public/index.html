@@ -217,6 +217,27 @@
          basis at all. Both mean the same thing to a reader: do not quote this as
          though it described the item. The sentence is shown, never hidden (nothing
          here is dropped silently) and never bare. -->
+    <!-- AND IT IS LABELLED — owner ruling 2026-09-01, drawn in the design of
+         record first and carried here.
+
+         The owner asked whether there was a "Summary" title over this block; there
+         was not, and the argument for leaving it bare was wrong in their own words:
+         *"body has a section BODY - AS AUTHORED, properties has labels on the left
+         for example type standard, status active"*. Every other block in this pane
+         announces itself and the summary was the odd one out.
+
+         `.welllabel` and NOT a new heading class: it is the register this pane
+         already spends on exactly this job (`pane.hist` over the sparkline,
+         `pane.body` over the well), so the pane gains a label rather than a new
+         KIND of label. The key is translated by `fillStaticText`'s `[data-t]` sweep
+         like the other nine in this file, so the א/A toggle reaches it.
+
+         `hidden` to start and hidden WITH the sentence: `summary` is optional on
+         `Item` and 16 items in this corpus carry none, so a label standing over an
+         absent summary would be a heading for nothing — which is the empty-band
+         defect this shell has already paid for twice. `fillPaneSummary` unhides the
+         two together. -->
+    <div class="welllabel" id="panesumlab" data-t="pane.summary" hidden>Summary</div>
     <p class="itemsum" id="panesummary" hidden></p>
     <p class="small summstale" id="panestale" hidden></p>
     <!-- The property chips — the owner's own ask, that the summary be shown "with

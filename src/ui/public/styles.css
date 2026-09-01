@@ -180,7 +180,30 @@
      Stroke widths are NOT in here, because they never moved: stroke-width 1,
      1.4, 1.5, 1.6, 2 and .8 are byte-identical across all three generations.
      Lines reading heavy was text growing around them. */
-  --fs-chart:10px; --fs-chart-mono:9.5px; --fs-chart-nid:9px; --fs-chart-rel:8px;
+  --fs-chart:10px; --fs-chart-mono:9.5px; --fs-chart-nid:9px; --fs-chart-rel:10px;
+  /* ── THE RELATION LABEL IS 10px SINCE 2026-09-01, AND THAT IS A RESTORATION
+     RATHER THAN A REVERSAL. Owner: *"relations - the relation text is small and
+     strings override each other so it is not readable, just a small fix"*.
+
+     8px was READ OUT OF 86c31ea/d263992 above and approved on 2026-08-28 —
+     but of what the owner was looking at THAT DAY, and that day the ego graph
+     was still being stretched. `e2e/chart-scale.spec.ts`' own measurement:
+     viewBox 900 rendered 1140, a factor of 1.267. A nominal 8px relation label
+     therefore drew at 10.1 CSS px on the screen the ruling was made against.
+
+     The 2026-08-29 scale bound made one viewBox unit one CSS pixel — correctly,
+     and it is what makes every token in this ramp mean what it says — and in
+     doing so it took this label from ~10.1px to 8px, a 21% cut nobody asked
+     for. 10px restores the size the ruling was actually made about, and it is
+     `--fs-chart`'s own step, so the relation word now reads at the size every
+     other chart label in the product already does rather than at a step below
+     the smallest one.
+
+     `--fs-chart-nid` (node ids) has exactly the same history — 9px approved at
+     1.267, drawing at 9px now where it drew at 11.4px then. It is NOT changed
+     here, because the owner named the relation text and not the ids, and
+     changing a second token on an argument they did not make would be taking
+     their decision. Raised in this task's report instead. */
 
   /* STRIP TYPE — the status strip's own ramp, and NOT a step of the scale
      above, for the same reason the chart ramp is not one.
@@ -379,7 +402,7 @@ bdi{unicode-bidi:isolate}
    report" rather than inventing the wrapper) — so this rule has nothing to
    grid until a shell task adds `<div class="app" id="app">`. See this task's
    own report for what that leaves stacked instead of side-by-side. */
-.app{display:grid;grid-template-rows:46px 1fr 26px 69px;grid-template-columns:214px 1fr;
+.app{display:grid;grid-template-rows:46px 1fr 26px auto;grid-template-columns:214px 1fr;
   block-size:100vh;grid-template-areas:"top top" "rail body" "prov prov" "strip strip"}
 /* ─── The item pane's width — the ONE custom property in this file the mockup
    does not declare, and the only reason it is not in the TOKENS block above:
@@ -593,7 +616,7 @@ bdi{unicode-bidi:isolate}
    descenders where it is wanted. Re-measured after: 8.9px above the ink and
    10.1px below it, at every size. */
 .strip{grid-area:strip;background:var(--panel);border-block-start:1px solid var(--rule);
-  display:grid;grid-template-rows:28px 38px;padding-inline:var(--sp-3);
+  display:grid;grid-template-rows:28px 38px;grid-auto-rows:38px;padding-inline:var(--sp-3);
   padding-block:0 2px;font-size:var(--fs-strip);color:var(--dim)}
 .strip .sep{inline-size:1px;block-size:18px;background:var(--rule)}
 /* The git group shows one of six states; the rest are `hidden`. .chip sets
@@ -1682,8 +1705,12 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
    stated height for the BARS and the plate's padding is the plate's business.
    The strip is now 26px of bars inside a 50px plate. `.spark` is used on
    exactly one element in each file. */
+/* AND IT SPANS ITS CARD - owner ruling 2026-09-01. Carried from the design of
+   record; the measurement and the argument are there and in this task's report.
+   In one line: the mark keeps its authored 7px and the free space becomes GAPS,
+   because the ruling is "more spacing between points, not bigger points". */
 .spark{display:flex;gap:2px;align-items:flex-end;block-size:26px;margin-block:5px;
-  box-sizing:content-box}
+  box-sizing:content-box;justify-content:space-between}
 .spark i{inline-size:7px;background:var(--gold);display:block;border-radius:1px;min-block-size:2px}
 .spark i.dead{background:var(--edge-3)}
 .spark i.sp{background:repeating-linear-gradient(45deg,var(--crit) 0 2px,transparent 2px 4px);
@@ -1961,6 +1988,20 @@ svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
 
 /* — ego graph: edge class carries severity, node style carries state — */
 svg.chart .node{fill:var(--panel);stroke:var(--edge-3);stroke-width:1}
+/* A NODE THAT OPENS THE PANE MUST LOOK LIKE ONE - owner ruling 2026-09-01.
+   `.nodehit` is the group `screens/graph.js` wraps an OPENABLE node in; a
+   missing node and the `+N more` count are not wrapped, so they get none of
+   this and nothing offers a door where there is not one.
+   Hover lifts the box rather than recolouring it, because every fill in this
+   chart already MEANS something (focus, missing, superseded, more) and a hover
+   colour would be a sixth state competing with five that carry information.
+   The focus ring is `--gold` and 2px: it has to be visible against `--panel`
+   inside the box and against `--plate` outside it, and `outline` does not
+   render on SVG in every engine, which is why it is a stroke. */
+svg.chart g.nodehit{cursor:pointer}
+svg.chart g.nodehit:hover .node{stroke:var(--ink);stroke-width:1.6}
+svg.chart g.nodehit:focus{outline:none}
+svg.chart g.nodehit:focus-visible .node{stroke:var(--gold);stroke-width:2}
 svg.chart .node.focus{fill:var(--goldbg);stroke:var(--gold);stroke-width:2}
 svg.chart .node.missing{fill:none;stroke:var(--crit);stroke-dasharray:3 2}
 svg.chart .node.superseded{fill:var(--sink);stroke:var(--faint)}

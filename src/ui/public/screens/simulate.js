@@ -93,7 +93,8 @@
  */
 import { selectQuery } from '/lib/viewmodel.js';
 import {
-  el, errorNote, mono, num, screenHead, setSimRange, simRangeFor, spaced,
+  chartSpan, el, errorNote, mono, num, screenHead, setSimRange, simRangeFor, spaced,
+  watchChartWidth,
 } from '/screens/parts.js';
 
 /** The mockup's five tracks, in its order. `select.ts`'s own tier names. */
@@ -274,6 +275,21 @@ function svText(attrs, text) {
 }
 
 /** The mockup's own chart box and pads (`renderStair`, mockup ~4068). */
+/**
+ * **THE FLOOR, NOT THE VALUE, SINCE 2026-09-01** — owner ruling, *"the graphics
+ * all over is condensed left after we changed it's scale, could we extend the x
+ * axis to the right but without breaking the proportion especially not the font
+ * just more spacing?"*
+ *
+ * Measured at the owner's own 2273px against the live corpus: this staircase
+ * rendered 560px inside a 1,714px plate and left 1,154px of its own card empty
+ * — 67% of it, the worst of the three fixed-viewBox charts. `drawStair` reads
+ * the span its plate actually has and `bx()` spreads the rungs across it. The
+ * type, the rung stroke, the callout turnarounds and `CHW` are untouched: one
+ * viewBox unit is still one CSS pixel, so every one of those numbers means the
+ * same thing at 1,714 units as it does at 560. `chartSpan` in
+ * `screens/parts.js` carries the measurement and the argument.
+ */
 const STAIR_W = 560;
 const STAIR_H = 200;
 const STAIR_PL = 32;
@@ -1215,9 +1231,21 @@ export async function render(root, ctx) {
    * that literal outright and a fixed axis under a variable bound would just
    * move the same lie to a different number.
    */
+  /** Guards the one re-entrant redraw at the foot of `drawStair`. */
+  let stairRedrawing = false;
+
   function drawStair() {
     stairPlate.replaceChildren();
     if (rungs === null) return;
+    // ── HOW WIDE, ASKED AT DRAW TIME RATHER THAN CLOSED OVER.
+    //
+    // This function is re-entered on every slider step, every tier change and
+    // every refetch, so reading the plate here means the staircase is drawn at
+    // the width the plate HAS rather than the width it had when the screen was
+    // built — and the observer installed further down only has to trigger a
+    // redraw, never to pass a number in. Never below the design of record's own
+    // 560: `STAIR_PL`/`STAIR_PR` and the foot are authored against it.
+    const stairW = Math.max(STAIR_W, chartSpan(stairPlate, STAIR_W));
     /* ── AN EMPTY STAIRCASE SAYS WHY IT IS EMPTY ────────────────────────────
        `plan:walk seq:86`: *"a reader sees a flat staircase and cannot tell
        whether the tiers are empty because nothing qualified or because
@@ -1246,19 +1274,19 @@ export async function render(root, ctx) {
     }
 
     const rtl = document.documentElement.dir === 'rtl';
-    const X = (u) => (rtl ? STAIR_W - u : u);
+    const X = (u) => (rtl ? stairW - u : u);
     const anchor = (a) => (rtl ? (a === 'start' ? 'end' : a === 'end' ? 'start' : a) : a);
 
     const cur = Number(slider.value);
     const def = budgets === null ? 0 : Number(budgets[tier] ?? 0);
     const maxB = Math.max(rungs[rungs.length - 1].threshold, cur, def, 1);
     const maxN = Math.max(...rungs.map((r) => r.count), 1);
-    const bx = (b) => STAIR_PL + (b / maxB) * (STAIR_W - STAIR_PL - STAIR_PR);
+    const bx = (b) => STAIR_PL + (b / maxB) * (stairW - STAIR_PL - STAIR_PR);
     const by = (n) => STAIR_H - STAIR_PB - (n / maxN) * (STAIR_H - STAIR_PT - STAIR_PB);
 
     const kids = [];
     kids.push(sv('line', {
-      class: 'axis', x1: X(STAIR_PL), y1: STAIR_H - STAIR_PB, x2: X(STAIR_W - STAIR_PR),
+      class: 'axis', x1: X(STAIR_PL), y1: STAIR_H - STAIR_PB, x2: X(stairW - STAIR_PR),
       y2: STAIR_H - STAIR_PB,
     }));
     kids.push(sv('line', {
@@ -1301,7 +1329,7 @@ export async function render(root, ctx) {
     const word = rtl ? EVICTION_HE : EVICTION_EN;
     const placed = placeLabels(
       evicts.map((e) => ({ x: bx(e.threshold), y: by(e.count) - 8, text: word, rank: e.drop })),
-      STAIR_PL, STAIR_W - STAIR_PR, 7, CALLOUTS,
+      STAIR_PL, stairW - STAIR_PR, 7, CALLOUTS,
     );
     for (const e of evicts) {
       kids.push(sv('circle', {
@@ -1343,7 +1371,7 @@ export async function render(root, ctx) {
     // at 16,000. Same turnaround rule the eviction callouts use, chosen in
     // UNMIRRORED coordinates and projected after.
     const nowU = bx(cur);
-    const nowOut = nowU + 5 + num(cur).length * CHW <= STAIR_W - STAIR_PR;
+    const nowOut = nowU + 5 + num(cur).length * CHW <= stairW - STAIR_PR;
     kids.push(svText(
       {
         x: X(nowOut ? nowU + 5 : nowU - 5), y: STAIR_PT + 9,
@@ -1354,7 +1382,7 @@ export async function render(root, ctx) {
     ));
 
     const svg = sv('svg', {
-      viewBox: `0 0 ${STAIR_W} ${STAIR_H + foot}`,
+      viewBox: `0 0 ${stairW} ${STAIR_H + foot}`,
       // `width`/`height` ARE THE CHART'S NATURAL SIZE, and they are load-bearing.
       // `svg.chart` says `max-inline-size:100%` and no longer `inline-size:100%`,
       // so the used width is this element's own INTRINSIC width — which is what
@@ -1363,7 +1391,7 @@ export async function render(root, ctx) {
       // falls back to 300x150. The mockup's `chart()` factory writes the same two
       // (mockup ~4193); `block-size:auto` in the stylesheet overrides the height
       // one on purpose, so the ratio is recomputed on the narrow-card case.
-      width: STAIR_W,
+      width: stairW,
       height: STAIR_H + foot,
       class: 'chart',
       role: 'img',
@@ -1374,6 +1402,23 @@ export async function render(root, ctx) {
     svg.style.setProperty('direction', 'ltr');
     for (const kid of kids) svg.append(kid);
     stairPlate.append(svg);
+
+    // ── AND IF DRAWING CHANGED THE ROOM, DRAW AGAIN — now, not next frame.
+    //
+    // A chart tall enough to put the page into a vertical scrollbar takes ~15px
+    // off its own plate by existing, so the width it was drawn at is no longer
+    // the width it is in and `rendered ÷ viewBox` stops being 1. Measured on the
+    // ego graph, whose 60-node case is 823px tall (`e2e/chart-scale.spec.ts`);
+    // the staircase's own height is fixed, so this is the cheap guard rather
+    // than the observed failure — but the guard is where the draw is.
+    //
+    // ONE retry, and re-entrant rather than a loop, because this function is the
+    // draw: `stairRedrawing` is what stops a width A that forces B and a width B
+    // that forces A from recursing forever.
+    if (!stairRedrawing && chartSpan(stairPlate, STAIR_W) !== stairW) {
+      stairRedrawing = true;
+      try { drawStair(); } finally { stairRedrawing = false; }
+    }
   }
 
   /**
@@ -1961,6 +2006,18 @@ export async function render(root, ctx) {
    * on `run()`/`runSweep()` is the same two lines `preview.js` now carries.
    */
   dropSessionListener = ctx.onSessionChange(() => { void run(); void runSweep(); });
+
+  // ── AND THE STAIRCASE FOLLOWS ITS PLATE'S WIDTH — owner ruling 2026-09-01.
+  //
+  // `drawStair` already reads the plate every time it runs, so a redraw is the
+  // only thing needed here and no width is passed in. The trigger is the PLATE
+  // and not `window`, because this card is narrowed by the item pane being
+  // dragged as well as by the viewport, and a `resize` listener would see the
+  // second and miss the first. `watchChartWidth` fires only when the measured
+  // span actually moves, so a height change — which every slider step causes,
+  // through the foot the staircase grows when it has omissions to disclose —
+  // costs one comparison and stops.
+  watchChartWidth(stairPlate, STAIR_W, drawStair);
 
   drawTierPick();
   drawQ();

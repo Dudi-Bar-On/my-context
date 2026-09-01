@@ -1845,7 +1845,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>77 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>39 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>40 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2099,7 +2099,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-39 commands. `mycontext help` prints the same list from the program itself, and
+40 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2487,6 +2487,7 @@ moves no count of what governs.
 |---|---|
 | `mycontext status` | counts, review queue, ingest progress, decay and health |
 | `mycontext doctor` | index freshness, orphans, drift, dead globs, permissions, session ids |
+| `mycontext ack <id> <code>` | record that a person has read one `doctor` finding on one item and ruled on it. The finding is still computed, still reported and still counted — it reports as **acknowledged** rather than open, which is the whole of what the verb does. The acknowledgement is stored on the item together with a hash of the content it was made against, so editing that item **lapses** it and the finding is open again; `--list` prints every finding on the item and whether each is acknowledged, lapsed or open, and `--clear` withdraws one. It refuses a code `doctor` is not currently reporting on that item, and it refuses any origin but a person: there is no MCP tool and no slash command, because an acknowledgement a machine wrote about itself is a report of what the machine has decided to stop mentioning |
 | `mycontext decay` | items that have not been injected lately |
 | `mycontext audit` | the run-time log: every mutation, and every injection by scope |
 | `mycontext focus` | narrow what gets injected, and report what that hides |
@@ -3558,7 +3559,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--body "<text>"` | the item's text — the paragraph Claude is given. On `add` it is mutually exclusive with `--file`, which supplies the body from a file instead | `add`, `edit` |
 | `--step "<text>"` | one step of a `procedure` — an operation performed once and then finished. Repeatable, in command-line order, and not comma-split, for the same reason `--note` is not: a step is a sentence. A repeatable operation is a `runbook`, which keeps its steps in its body instead. Steps cannot be edited or ticked through any command afterwards — correcting one means editing the Markdown and running `mycontext repair` | `add` |
 | `--note "<text>"` | add one `[note]` observation. Repeatable, in the order given, and not comma-split — an observation is a sentence, and sentences contain commas. It is where the *why* goes when the body came from a file rather than from you | `add` |
-| `--summary "<text>"` | one plain sentence saying what the item **is** and why it matters, written for a reader who does not know this codebase: plain words rather than project vocabulary, no ids, no file paths, no measurements, and never how it was found. At most 160 characters — the body keeps all the precision. It is recorded together with a hash of the content it was written against, so a later edit to the title, body, steps, observations or extra fields makes it **stale**, and `mycontext doctor`, `mycontext show` and `get_item` all say so rather than letting it be quoted as current. `mycontext edit <id> --summary=` removes one. Leaving it out is normal: nothing requires a summary <!-- `core/validate.ts` · `export const SUMMARY_MAX_CHARS = 160;` · ~333 --> | `add`, `edit` |
+| `--summary "<text>"` | one plain sentence saying what the item **is** and why it matters, written for a reader who does not know this codebase: plain words rather than project vocabulary, no ids, no file paths, no measurements, and never how it was found. At most 160 characters — the body keeps all the precision. It is recorded together with a hash of the content it was written against, so a later edit to the body, steps, observations or extra fields makes it **stale** (the title is deliberately not part of that basis — owner ruling 2026-08-27), and `mycontext doctor`, `mycontext show` and `get_item` all say so rather than letting it be quoted as current. `mycontext edit <id> --summary=` removes one. Leaving it out is normal: nothing requires a summary <!-- `core/validate.ts` · `export const SUMMARY_MAX_CHARS = 160;` · ~333 --> | `add`, `edit` |
 | `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `edit`, `review promote`, `lesson-accept` |
 | `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection until a focus is set — `mycontext focus <tag>` narrows injection to the tags it names | `add`, `edit` |
 | `--severity hard\|soft` | `hard` items are admitted to a budget before `soft` ones. Any other word is refused. `mycontext harden <id>` and `mycontext soften <id>` are the two settings under a shorter name | `add`, `edit`, `review promote`, `lesson-accept` |
@@ -5711,9 +5712,13 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 14 of the 39 CLI commands have none, each for a reason
+is **listed rather than discovered**. 15 of the 40 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
+- `ack` records that a **person** read a `doctor` finding and ruled on it, so a slash command
+  would be the one caller the write exists to exclude: `acknowledgeFinding` refuses every
+  origin but a human, and there is no MCP tool either. You read the finding out of
+  `mycontext doctor` and type the acknowledgement yourself.
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
 - `repair` is on the recommended deny list, and its preview is a page of consequences a
   person has to read. A slash command for it would be a prompt whose only honest content is
@@ -5960,7 +5965,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "14 of the 39 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "15 of the 40 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

@@ -194,7 +194,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 | …identical content is a no-op duplicate | `core/mutate.ts` · `      if (itemContentHash(existing) === hash) return duplicateOf(existing);` · ~429 |
 | …different content at the same id throws — which is why an **overwrite is `updateItem`'s job**, not the creator's | `core/mutate.ts` · `      throw occupiedError(input.id);` · ~430 |
 | The second write path, and the one the §6n.7 overwrite uses | `core/mutate.ts` · `export function updateItem(` · ~538 |
-| …whose `origin` is the **caller's claim about who is acting**, read for the gates and written into the audit record — it never becomes the item's stored `origin` | `core/mutate.ts` · `  const audited = auditMutation(ctx, auditOp, origin, item.id, { fields: moved });` · ~863 |
+| …whose `origin` is the **caller's claim about who is acting**, read for the gates and written into the audit record — it never becomes the item's stored `origin` | `core/mutate.ts` · `  const audited = auditMutation(ctx, auditOp, origin, item.id, {` · ~863 |
 | …a non-human origin is refused outright on a governing normative item's `scope`/`always`/`severity` | `core/mutate.ts` · `  if (origin !== 'human' && governsNormatively(ctx, item)) {` · ~659 |
 | …and a non-human origin's **content** edit is diverted into a staged revision by the category's policy | `core/mutate.ts` · `  if (origin !== 'human' && agentEditsFor(ctx.config, item.type) === 'review') {` · ~771 |
 | …and `UpdateInput` carries **no** `observations` and **no** `relations` | `core/mutate.ts` · `export interface UpdateInput {` · ~494 |

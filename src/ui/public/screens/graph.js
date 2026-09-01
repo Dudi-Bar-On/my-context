@@ -99,11 +99,22 @@
  * counted and reported as the defect it would be.
  */
 import { edgeClass, egoNodeClass, layoutGraph } from '/lib/viewmodel.js';
-import { el, errorNote, mono, screenHead, spaced } from '/screens/parts.js';
+import { el, errorNote, fitChart, mono, screenHead, spaced } from '/screens/parts.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
-/** The mockup's own chart box, node box and gutters, number for number. */
+/**
+ * The mockup's own chart box, node box and gutters, number for number.
+ *
+ * `W` IS THE FLOOR SINCE 2026-09-01, NOT THE VALUE — owner ruling, *"could we
+ * extend the x axis to the right … just more spacing"*. Measured at 2273px, a
+ * 900-unit ego graph rendered 900px inside a 1,973px plate and left 1,073px of
+ * that card empty. `egoDrawing` now takes the span its host actually has and
+ * spreads the SAME three 210px columns across it; the node box, the type
+ * labels and `--fs-chart` are untouched, because the extra room goes entirely
+ * into the gutters between columns. See `chartSpan` in `screens/parts.js` for
+ * the measurement and why widening the viewBox is not stretching it.
+ */
 const W = 900;
 const NH = 22;
 const NW = 210;
@@ -162,6 +173,34 @@ export async function render(root, ctx) {
    * a focus, a node count and an omitted count belonging to the previous
    * picture, which is worse than no readout at all.
    */
+  // ── THE FILTER'S STATE, AND WHY IT OUTLIVES ONE DRAW ─────────────────────
+  //
+  // A reader who has turned `relates_to` off is asking a question, not
+  // describing one item, so changing the focus must not silently answer a
+  // different question than the one on screen. The set therefore lives with the
+  // SCREEN and not with the response, and the control is built once.
+  //
+  // It starts EMPTY and is filled from the first response's `relationTypes`,
+  // which is how "all on by default" is expressed without this file knowing how
+  // many types there are.
+  const kept = new Set();
+  let filterBar = null;
+  // True once `/api/graph` has told us the vocabulary, which is what turns
+  // `kept` from "not asked yet" into "the reader kept nothing".
+  let typesKnown = false;
+  // Set by `render` once the picker exists; the type filter calls it so one
+  // function owns the list and the count that explains it.
+  let refilterPicker = () => {};
+  // ── THE RESPONSE THE FILTER ACTS ON, HELD RATHER THAN CLOSED OVER.
+  //
+  // The control is built ONCE, on the first response, and a toggle must repaint
+  // whatever is on screen NOW. Closing its callback over the response that
+  // happened to be in hand when it was built made a toggle redraw the graph of
+  // the item the reader had navigated AWAY from — measured, not reasoned: with
+  // the picker moved to a three-edge item, turning a type off and on again came
+  // back with zero edges, because "on again" repainted the first item.
+  let latest = null;
+
   const draw = async (focus) => {
     box.replaceChildren();
     foot.replaceChildren();
@@ -174,6 +213,59 @@ export async function render(root, ctx) {
       box.append(errorNote(error.message));
       return;
     }
+    // The vocabulary as the server sent it. Defaulted to an empty list rather
+    // than to a guess: a response without it draws no filter at all, which is
+    // the screen as it was, and is the honest reading of "this server does not
+    // offer the vocabulary" — never a list this file invented.
+    const types = Array.isArray(data.relationTypes) ? data.relationTypes : [];
+    latest = data;
+    if (filterBar === null && types.length > 0) {
+      for (const type of types) kept.add(type);
+      typesKnown = true;
+      filterBar = typeFilter(ctx, types, kept, () => {
+        // BOTH, and in this order: the drawing answers the question, and the
+        // picker stops offering items that would answer it with nothing.
+        if (latest !== null) paint(latest);
+        refilterPicker();
+      });
+      card.insertBefore(filterBar, box);
+      refilterPicker();
+    }
+    paint(data);
+  };
+
+  /**
+   * Draw one response through the filter — the only place the two meet.
+   *
+   * Separated from `draw` because toggling a type must NOT refetch: the answer
+   * is already here and the question being asked is about what to show of it.
+   * One request per focus, and none per toggle.
+   */
+  const paint = (data) => {
+    box.replaceChildren();
+    foot.replaceChildren();
+    // FILTERED HERE AND NOT IN THE LAYOUT. `egoDrawing` is a pure function of a
+    // response, and it stays one: what it receives is a response with fewer
+    // edges, which is a thing the server could equally have sent. The layout has
+    // no opinion about filtering and does not gain one.
+    const all = data.edges;
+    // ── "NOT ASKED YET" IS NOT "KEPT NOTHING", AND CONFLATING THEM DREW AN
+    //    EMPTY SCREEN. `kept` is empty in two completely different situations:
+    //    before any response has told us the vocabulary, and after a reader has
+    //    turned every type off. Treating the first as the second meant that on
+    //    any server whose `/api/graph` does not carry `relationTypes` — an older
+    //    one, or a fixture — this screen filtered every edge away and reported
+    //    "no relation of the types you kept" instead of drawing the graph.
+    //    Caught by `e2e/chart-scale.spec.ts`'s 60-node cap test, which serves
+    //    exactly such a body, rather than by reasoning about it.
+    //
+    //    `typesKnown` is the same distinction `qualifies` already makes for the
+    //    picker; this is the other half of it. With no vocabulary there is no
+    //    filter, so everything is shown and nothing is hidden.
+    const shown = !typesKnown ? all
+      : kept.size === 0 ? [] : all.filter((e) => kept.has(e.type));
+    const hidden = all.length - shown.length;
+    const view = { ...data, edges: shown };
 
     // Mirroring is by PROJECTION, not by transform: `scale(-1,1)` would reverse
     // the digits too. The page direction is `<html dir>`, which `applyLanguage`
@@ -181,9 +273,51 @@ export async function render(root, ctx) {
     // and the one piece of the drawing that has to be read from the document.
     // Re-read per draw rather than closed over: the language can change between
     // one focus and the next without this screen being rebuilt.
-    const drawing = egoDrawing(data, document.documentElement.dir === 'rtl');
-    box.append(chart(ctx, drawing));
-    foot.append(spaced(readout(data, drawing)));
+    const rtl = document.documentElement.dir === 'rtl';
+
+    // ── AN EMPTY RESULT SAYS WHY IT IS EMPTY ────────────────────────────────
+    //
+    // A filter that hides everything must not render an empty canvas, which
+    // reads as the screen being broken rather than as the reader having asked
+    // for nothing. The two empty cases are DIFFERENT facts and are said
+    // differently: an item with no relations at all is not a filter outcome, and
+    // telling a reader to "turn a type back on" would be advice that cannot
+    // help them.
+    if (shown.length === 0 && all.length > 0) {
+      const why = el('p', 'small');
+      why.append(...ctx.t('gr.filterEmpty', { n: String(hidden) }));
+      box.append(why);
+      foot.append(spaced(readout(data, { edges: [] }, hidden)));
+      return;
+    }
+    if (all.length === 0) {
+      const why = el('p', 'small');
+      why.append(...ctx.t('gr.filterNoRel'));
+      box.append(why);
+    }
+
+    // ── DRAWN AT THE PLATE'S OWN WIDTH, AND REDRAWN WHEN IT MOVES.
+    //
+    // `fitChart` measures `box`, calls this back with the span it found, and
+    // calls it again on every distinct width the plate takes afterwards — a
+    // window resize, or the item pane being dragged, both of which change this
+    // card without changing the viewport in a way a `resize` listener could
+    // see. The drawing is recomputed rather than the SVG rescaled: the whole
+    // point is that the type does not scale with the box.
+    fitChart(box, W, (span) => chart(ctx, egoDrawing(view, rtl, span)));
+    // The readout and the refusal below it are counts, not coordinates, so
+    // they are taken once from a drawing at the authored width. Nothing in
+    // either depends on how wide the plate is.
+    const drawing = egoDrawing(view, rtl);
+    // `data` and not `view`, deliberately: the readout states what the SERVER
+    // answered beside what is drawn, so `edges=` stays the true total and
+    // `filtered=` says how much of it is not on screen.
+    foot.append(spaced(readout(data, drawing, hidden)));
+    if (hidden > 0) {
+      const said = el('p', 'small');
+      said.append(...ctx.t('gr.filterHid', { n: String(hidden) }));
+      foot.append(said);
+    }
     // An endpoint no column holds is a response this layout cannot honour, and
     // the one thing it must not do is quietly draw the rest. Reported in the
     // refusal register the screen already uses for a server that said no.
@@ -198,8 +332,160 @@ export async function render(root, ctx) {
 
   // The picker goes ABOVE the plate, because it decides what the plate holds.
   // The default is the first item by id — what this screen has always drawn.
-  card.insertBefore(focusPicker(ctx, items.items, draw), box);
-  await draw(items.items[0].id);
+  // ── THE SPLIT, AND THE DEFAULT THAT FOLLOWS FROM IT ──────────────────────
+  //
+  // Computed HERE rather than inside the picker, because the first draw has to
+  // agree with what the picker is showing as selected. Opening on
+  // `items.items[0]` while the picker lists only related items put the `<select>`
+  // on its own first option and the chart on a different item entirely — a
+  // silent disagreement between a control and the thing it controls, caught by
+  // `e2e/graph-focus.spec.ts` rather than reasoned about.
+  //
+  // `related` first, falling back to the whole list: a corpus in which nothing
+  // relates to anything still opens on an item and draws its single node, which
+  // is the honest picture of that corpus rather than an empty card.
+  // An item qualifies when it has at least one relation of a type the reader
+  // has KEPT. `relationKinds === null` is "this server did not measure it", and
+  // an unmeasured item is offered — filtering on an absent measurement would
+  // empty the picker on a surface that never counted.
+  const qualifies = (item) => {
+    if (!Array.isArray(item.relationKinds)) return true;
+    if (item.relationKinds.length === 0) return false;
+    // Before the first response the vocabulary is unknown and `kept` is empty;
+    // an item with any relation at all qualifies until the types arrive.
+    if (kept.size === 0 && !typesKnown) return true;
+    return item.relationKinds.some((t) => kept.has(t));
+  };
+  // RETIRED IS THE SERVER'S CLOSED SET, NOT THREE NAMES WRITTEN HERE.
+  // `retiredStatuses` is `RETIRED_STATUSES` out of `core/select.ts` served on
+  // `/api/items`; a fourth member added there reaches this screen with no edit.
+  // An absent list means the server did not say, and nothing is treated as
+  // retired — never a guess at which statuses count.
+  const retired = new Set(Array.isArray(items.retiredStatuses) ? items.retiredStatuses : []);
+  const isRetired = (item) => retired.has(item.status);
+  const bar = focusPicker(ctx, items.items, qualifies, isRetired, draw);
+  refilterPicker = bar.refilter;
+  card.insertBefore(bar, box);
+  const first = items.items.find((i) => qualifies(i) && !isRetired(i))
+    ?? items.items.find(qualifies) ?? items.items[0];
+  await draw(first.id);
+}
+
+/**
+ * **The relation-type filter — the owner's *"find interesting relations by type
+ * not just browsing all over the list"*, 2026-09-01.**
+ *
+ * -- THE OPTIONS ARE NOT A LIST IN THIS FILE ------------------------------
+ *
+ * They are `body.relationTypes`, which is `RELATION_TYPES` out of
+ * `core/vocabulary.ts` served verbatim on `/api/graph`. This module's own header
+ * already names the alternative as the defect -- "re-listing the vocabulary in
+ * the client is the copied-rule defect this plan exists to prevent" -- and a
+ * hand-kept copy of a CLOSED vocabulary is what this project has been caught
+ * keeping more than once. A ninth member of that array appears here with no
+ * change to this file, to `styles.css` or to either string table.
+ *
+ * The type NAMES are therefore not translated, exactly as the relation labels
+ * on the edges are not: they are the vocabulary's own words, and inventing a
+ * Hebrew `derived_from` would be translating an identifier. Only the prose
+ * around them is keyed.
+ *
+ * -- MULTI-SELECT, ALL ON -------------------------------------------------
+ *
+ * The owner's phrase is "find interesting relations", which is SUBTRACTIVE: a
+ * reader knows which types are noise here and wants them gone, not one type at
+ * a time. Single-select answers a different question ("show me only the
+ * supersedes") and cannot express "everything except relates_to", which is the
+ * common case in a corpus where one type dominates. All on by default, so the
+ * screen opens on the whole picture and the filter is something a reader
+ * REACHES for rather than something they have to undo first.
+ *
+ * `aria-pressed` toggles rather than checkboxes, because `.segbar
+ * button[aria-pressed="true"]` is this design's existing shape for exactly this
+ * -- a row of sticky toggles -- and a new control kind would be a new thing to
+ * learn for no gain.
+ *
+ * -- AND IT RE-FILTERS THE PICKER, WHICH IS THE OWNER'S OWN CORRECTION ----
+ *
+ * This screen shipped an argument for the opposite — that the picker answers
+ * "does this item relate to anything at all", a fact about the corpus, and
+ * should hold still while the type filter answers a question about the view.
+ * The owner looked at the product and that argument was wrong: with only
+ * `derived_from` kept, `OPENQ-how-does-the-ui-reach-a-model-and-what-leaves-
+ * the-machine` was still offered, and choosing it drew nothing and reported two
+ * hidden relations. An item whose every relation is of a type the reader has
+ * turned OFF is, for that reader in that moment, exactly as empty as one with
+ * no relations — and it costs a line in a list whose length was the complaint,
+ * plus a wasted click to find out.
+ *
+ * So the picker's test is `at least one relation OF A KEPT TYPE`, re-run on
+ * every toggle, and the count line under it moves with the list rather than
+ * being computed once. A count that stops matching the list it explains is
+ * worse than no count.
+ *
+ * **The item in force is always offered, even when it stops qualifying.** The
+ * reader is looking at it; dropping it from the list would leave the `<select>`
+ * showing one item and the chart showing another, which is the disagreement
+ * `e2e/graph-focus.spec.ts` already caught once on this screen. It stays,
+ * the drawing says plainly that nothing of the kept types is in it, and the
+ * next choice is the reader's.
+ *
+ * -- IT FILTERS THE DRAWING, WHICH IS ALSO THE LIST -----------------------
+ *
+ * There is one list on this screen and it is the picture; the readout under it
+ * counts what the picture holds. Both move together, and the readout gains a
+ * `filtered=N` term whenever anything is hidden, so a number a reader quotes is
+ * never a total the view is not showing.
+ */
+function typeFilter(ctx, types, state, onChange) {
+  const wrap = el('div');
+  wrap.style.setProperty('display', 'flex');
+  wrap.style.setProperty('gap', '8px');
+  wrap.style.setProperty('align-items', 'center');
+  wrap.style.setProperty('flex-wrap', 'wrap');
+
+  const label = el('label', 'small');
+  label.append(...ctx.t('gr.filter'));
+  wrap.append(label);
+
+  const bar = el('div', 'segbar');
+  bar.id = 'egotypes';
+  const buttons = [];
+  const paint = () => {
+    for (const [type, button] of buttons) {
+      button.setAttribute('aria-pressed', state.has(type) ? 'true' : 'false');
+    }
+  };
+  for (const type of types) {
+    const button = el('button');
+    button.type = 'button';
+    button.dataset.type = type;
+    // The vocabulary's own word, as data: `mono` is what this product spends on
+    // an identifier everywhere else, and a relation type is one.
+    button.append(mono(type));
+    button.addEventListener('click', () => {
+      if (state.has(type)) state.delete(type); else state.add(type);
+      paint();
+      onChange();
+    });
+    buttons.push([type, button]);
+    bar.append(button);
+  }
+  // Two shortcuts, because clearing seven toggles to see one type is not a
+  // filter. `None` is legal and lands on the empty state, which SAYS what it is
+  // rather than drawing a blank card.
+  const all = el('button');
+  all.type = 'button';
+  all.append(...ctx.t('gr.filterAll'));
+  all.addEventListener('click', () => { for (const t of types) state.add(t); paint(); onChange(); });
+  const none = el('button');
+  none.type = 'button';
+  none.append(...ctx.t('gr.filterNone'));
+  none.addEventListener('click', () => { state.clear(); paint(); onChange(); });
+  bar.append(all, none);
+  paint();
+  wrap.append(bar);
+  return wrap;
 }
 
 /**
@@ -225,7 +511,7 @@ export async function render(root, ctx) {
  * with no `'unsafe-inline'`, so no `style` attribute can be written here — the
  * constraint `parts.js` records for its own `spaced()`.
  */
-function focusPicker(ctx, items, draw) {
+function focusPicker(ctx, items, qualifies, isRetired, draw) {
   const bar = el('div');
   bar.style.setProperty('display', 'flex');
   bar.style.setProperty('gap', '8px');
@@ -242,14 +528,116 @@ function focusPicker(ctx, items, draw) {
   // An id is data, not prose. `.m`'s `direction:ltr` cannot reach inside an
   // `<option>`, and this attribute is what keeps the list readable under `א`.
   picker.dir = 'ltr';
-  for (const item of items) {
-    const option = el('option', null, item.id);
-    option.value = item.id;
-    picker.append(option);
-  }
+  // ── ITEMS WITH NOTHING TO DRAW ARE NOT OFFERED, AND THE COUNT IS STATED ──
+  //
+  // Owner, 2026-09-01: *"i see many relations that has only an item in the
+  // centre of the screen, these are items without relations, they should at
+  // least be filtered or disabled because they make the selection list long
+  // without any added value"*. Measured on this corpus: 591 of 733 items have a
+  // degree of zero, so four fifths of the list led to a single node in an empty
+  // card. FILTERED rather than disabled, because a disabled row still costs a
+  // line in a list whose LENGTH is the complaint.
+  //
+  // **`relations` is BOTH directions**, counted by `/api/items` the same way
+  // `/api/graph` builds its adjacency — every relation pushed onto its source
+  // and its target. An out-degree test would have hidden every item that names
+  // nobody but is named by somebody, and each of those draws a perfectly good
+  // graph with the arrows pointing inward. Verified against the endpoint rather
+  // than assumed.
+  //
+  // **`null` is NOT zero.** A server that did not measure the degree says
+  // `null`, and an unmeasured item is OFFERED: hiding on an absent measurement
+  // would empty the picker on any surface that never counted, which is the
+  // blank-is-a-failure defect wearing a filter.
+  //
+  // **NOTHING IS DROPPED SILENTLY.** The count of what is not listed is drawn
+  // under the picker with a control that lists them anyway, so the picker is
+  // never quietly shorter than the corpus (`INV-nothing-is-dropped-silently`).
+  // ── TWO INDEPENDENT REASONS AN ITEM IS NOT LISTED, COUNTED SEPARATELY ────
+  //
+  // An item is offered when it has at least one relation of a KEPT TYPE and is
+  // not RETIRED. Both exclusions are reversible and each has its own count,
+  // because a reader who cannot tell which rule removed something cannot trust
+  // the list at all: one combined "N hidden" would be worse than either number
+  // alone. The retired count is of items that would OTHERWISE have been listed,
+  // so an item that is both retired and unrelated is counted once, under the
+  // reason a reader would hit first.
+  //
+  // The item in force is offered whatever either rule says — see the header on
+  // the type filter for why a control must never disagree with its own drawing.
+  let showAll = false;
+  let showRetired = false;
+  let hiddenUnrelated = 0;
+  let hiddenRetired = 0;
+  const fill = () => {
+    const held = picker.value;
+    const list = [];
+    hiddenUnrelated = 0;
+    hiddenRetired = 0;
+    for (const item of items) {
+      const ok = showAll || qualifies(item);
+      const retired = isRetired(item);
+      if (item.id === held || (ok && (showRetired || !retired))) { list.push(item); continue; }
+      if (!ok) hiddenUnrelated += 1; else hiddenRetired += 1;
+    }
+    picker.replaceChildren();
+    for (const item of list) {
+      // RETIRED IS VISIBLE WHEN IT IS SHOWN. An `<option>` holds no elements, so
+      // the chip every other screen would draw cannot be built here; the status
+      // WORD is appended instead, and it is the corpus's own vocabulary rather
+      // than a marker invented for this list — the same reason the relation
+      // types are drawn untranslated.
+      const label = isRetired(item) ? `${item.id} · ${item.status}` : item.id;
+      const option = el('option', null, label);
+      option.value = item.id;
+      picker.append(option);
+    }
+    // The selection survives the list changing under it. Without this a reader
+    // who toggled a type while looking at an item would be moved to a different
+    // one without asking, and the graph would follow.
+    if (held !== '' && [...picker.options].some((o) => o.value === held)) picker.value = held;
+  };
   picker.addEventListener('change', () => { void draw(picker.value); });
 
   bar.append(label, picker);
+
+  // The disclosure, and the way back. Hidden — not absent — when nothing is
+  // being held back, so the line appears and disappears with the fact rather
+  // than the bar changing shape.
+  const line = (countOf, textKey, showKey, hideKey, flip, state) => {
+    const p = el('p', 'small');
+    const button = el('button');
+    button.type = 'button';
+    button.addEventListener('click', () => { flip(); fill(); refresh(); });
+    const paint = () => {
+      p.replaceChildren();
+      // Hidden — not absent — when there is nothing to disclose, so the bar does
+      // not change shape as the counts move. A line saying "0 are not listed" is
+      // noise; a line that vanishes and reappears in a different place is worse.
+      p.hidden = countOf() === 0 && !state();
+      if (p.hidden) return;
+      p.append(...ctx.t(textKey, { n: String(countOf()) }));
+      p.append(document.createTextNode(' '));
+      button.replaceChildren(...ctx.t(state() ? hideKey : showKey));
+      p.append(button);
+    };
+    return { el: p, paint };
+  };
+  const unrelatedLine = line(
+    () => hiddenUnrelated, 'gr.lonely', 'gr.lonelyShow', 'gr.lonelyHide',
+    () => { showAll = !showAll; }, () => showAll,
+  );
+  const retiredLine = line(
+    () => hiddenRetired, 'gr.retired', 'gr.retiredShow', 'gr.retiredHide',
+    () => { showRetired = !showRetired; }, () => showRetired,
+  );
+  const refresh = () => { unrelatedLine.paint(); retiredLine.paint(); };
+  fill();
+  refresh();
+  bar.append(unrelatedLine.el, retiredLine.el);
+  // Handed back so the type filter can re-run the same two steps: one owner of
+  // the list, called from wherever the question changes.
+  bar.refilter = () => { fill(); refresh(); };
   return bar;
 }
 
@@ -281,9 +669,13 @@ function svText(attrs, text) {
  * and `edgeClass` turns the pair into the legend's three line styles here in
  * the browser without re-listing one word of that vocabulary.
  */
-export function egoDrawing(data, rtl = false) {
-  const X = (u) => (rtl ? W - u : u);
-  const px = (x, width) => (rtl ? W - x - width : x);
+export function egoDrawing(data, rtl = false, span = W) {
+  // Never narrower than the design of record's own box: three 210px node boxes
+  // plus their gutters do not fit in less, and below it the stylesheet's
+  // `max-inline-size:100%` shrinks the whole drawing as it always has.
+  const width = Math.max(W, span);
+  const X = (u) => (rtl ? width - u : u);
+  const px = (x, boxW) => (rtl ? width - x - boxW : x);
 
   const placed = layoutGraph(data.nodes, data.edges, data.focus);
   // `at` is the whole reason an edge can find its ends: `layoutGraph` answers
@@ -302,8 +694,8 @@ export function egoDrawing(data, rtl = false) {
   // One column is centred; two or more spread evenly across the box. At three
   // columns this is the mockup's own 8 / 345 / 682.
   const colX = (index) => (columns === 1
-    ? (W - NW) / 2
-    : MARGIN + index * ((W - NW - MARGIN * 2) / (columns - 1)));
+    ? (width - NW) / 2
+    : MARGIN + index * ((width - NW - MARGIN * 2) / (columns - 1)));
   const spread = (count, index) => {
     const gap = (height - H_PAD) / Math.max(count, 1);
     return 34 + gap * index + gap / 2;
@@ -359,6 +751,49 @@ export function egoDrawing(data, rtl = false) {
     });
   }
 
+  // ── TWO RELATIONS BETWEEN ONE PAIR ARE TWO LABELS AT ONE POINT ──────────
+  //
+  // Owner, 2026-09-01: *"the relation text is small and strings override each
+  // other so it is not readable"*. MEASURED, in a browser, by comparing bounding
+  // boxes rather than by looking: with `constrains`, `refines` and `relates_to`
+  // between one pair, three labels rendered at x=1199..1206, y=334 — the same
+  // point, one painted over the next. Four overlapping pairs in a five-edge
+  // drawing, ALL of them edge-label against edge-label; zero node-against-node
+  // and zero edge-against-node, which is what says this is a placement defect in
+  // `labelX`/`labelY` and not a density one.
+  //
+  // The cause is that both coordinates are functions of the two ENDPOINTS and
+  // of nothing else, so two edges that share a pair share a midpoint exactly.
+  // `RELATION_TYPES` is a closed vocabulary of eight and two items may
+  // legitimately be related in more than one way, so this is an ordinary corpus
+  // shape rather than a corner.
+  //
+  // **WIDENING THE CHART DOES NOT FIX IT, and that was measured before this was
+  // written**: identical coordinates stay identical at any span, and the same
+  // drawing produced the same four overlaps at the authored 900 and at the 1,363
+  // it spans now. The room the chart gained is real and is not the answer here.
+  //
+  // **NOTHING IS HIDDEN AND NOTHING IS DROPPED.** The labels are STACKED — the
+  // group is centred on the midpoint it shares, so it straddles its own edge the
+  // way one label did — rather than one of them being suppressed. A relation
+  // whose name silently disappears is worse than one that overlaps, because the
+  // reader cannot tell it is missing (`INV-nothing-is-dropped-silently`), and on
+  // a screen whose whole job is showing what relates to what it would be the
+  // defect wearing a fix.
+  const LABEL_LINE = 13;
+  const atPoint = new Map();
+  for (const edge of edges) {
+    const key = `${Math.round(edge.labelX)}:${Math.round(edge.labelY)}`;
+    const bucket = atPoint.get(key);
+    if (bucket === undefined) atPoint.set(key, [edge]); else bucket.push(edge);
+  }
+  for (const bucket of atPoint.values()) {
+    if (bucket.length === 1) continue;
+    bucket.forEach((edge, i) => {
+      edge.labelY += (i - (bucket.length - 1) / 2) * LABEL_LINE;
+    });
+  }
+
   const nodes = [];
   for (const p of placed) {
     // `layoutGraph` places the focus whether or not the response listed it, and
@@ -405,7 +840,7 @@ export function egoDrawing(data, rtl = false) {
     };
   }
 
-  return { width: W, height, columns, captions, edges, nodes, more, undrawnEdges, undrawnNodes };
+  return { width, height, columns, captions, edges, nodes, more, undrawnEdges, undrawnNodes };
 }
 
 /**
@@ -459,16 +894,69 @@ function chart(ctx, drawing) {
   }
 
   for (const node of [...drawing.nodes, ...(drawing.more === null ? [] : [drawing.more])]) {
-    svg.append(sv('rect', {
+    const rect = sv('rect', {
       class: node.cls, x: node.x, y: node.y, width: node.width, height: node.height, rx: 4,
-    }));
-    svg.append(svText(
+    });
+    const label = svText(
       {
         x: node.labelX, y: node.labelY, 'text-anchor': 'middle',
         class: node.cls === 'node more' ? 'nid more' : 'nid',
       },
       node.label,
-    ));
+    );
+
+    // ── A NODE OPENS THE ITEM PANE — owner ruling 2026-09-01, *"in relations
+    // screen allow to click on items to see their details as in other screens
+    // (in the pane)"*.
+    //
+    // **NOTHING IS REIMPLEMENTED HERE.** `installItemPane` (app.js) is a
+    // DOCUMENT-level delegated listener that opens the pane for the nearest
+    // `[data-id]` ancestor of whatever was clicked, and that attribute is the
+    // whole contract — it is how `linkId()` gets every other screen the pane for
+    // free. This screen draws SVG and had simply never opted in: `graph.js` uses
+    // `linkId` zero times and set `data-id` nowhere. So the fix is to carry the
+    // attribute, not to add a second way of opening a pane.
+    //
+    // **On a `<g>` and not on the rect**, because a click lands on whichever
+    // inner shape is under the pointer — the rect on its body, the `<text>` on
+    // its own glyphs — and `closest('[data-id]')` has to resolve from both. One
+    // group per node answers both with one attribute.
+    //
+    // **THE KEYBOARD IS NOT FREE and is the half that is not delegated.**
+    // `linkId()` returns a real `<button>`, so on every other screen an id is
+    // tabbable and answers Enter. An SVG `<g>` is neither, so it is given
+    // `tabindex`, `role="button"` and its own Enter/Space handler — otherwise
+    // Relations would be the one screen where items are mouse-only.
+    // `preventDefault` on Space because Space scrolls the page by default and a
+    // reader who activated a node did not ask to be moved down the document.
+    //
+    // **A MISSING NODE IS NOT A DOOR.** The server answers `missing: true` for a
+    // relation pointing at an item that is not in the corpus, and the legend
+    // names that state; opening the pane on it would fetch an id that is not
+    // there and draw an empty panel, which reads as the pane being broken rather
+    // than as the item being absent. The `+N more` node is not a door either —
+    // it is a COUNT and not an item, so there is nothing for a pane to show. Both
+    // are drawn exactly as before, with no cursor, no focus stop and no
+    // `data-id`, so the affordance is present exactly where it leads somewhere.
+    const openable = node.cls !== 'node more' && !node.cls.includes('missing');
+    if (!openable) {
+      svg.append(rect, label);
+      continue;
+    }
+    const hit = sv('g', {
+      class: 'nodehit', 'data-id': node.id, role: 'button', tabindex: '0',
+      // The accessible name is the id, which is what this screen draws and what
+      // the pane will open. An `aria-label` is an ATTRIBUTE and holds no
+      // element, so the full id goes here even where the drawn label is elided.
+      'aria-label': node.id,
+    });
+    hit.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      hit.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    hit.append(rect, label);
+    svg.append(hit);
   }
   return svg;
 }
@@ -493,11 +981,18 @@ function chart(ctx, drawing) {
  * and an id set loose in an RTL paragraph is the bidi defect this whole screen
  * keeps titles out of its SVG to avoid.
  */
-function readout(data, drawing) {
+function readout(data, drawing, hidden = 0) {
   const p = el('p', 'small');
+  // `edges` is what the SERVER answered and `drawn` is what this layout placed;
+  // `filtered` is the third number and it is STATED rather than folded into
+  // either. A filtered view restating the total as though it were the whole
+  // picture is the dishonest count the owner's ruling forbids — hiding is fine,
+  // hiding invisibly is not.
   p.append(mono(
     `focus=${data.focus} · radius=${RADIUS} · nodes=${data.nodes.length}` +
-    ` · edges=${data.edges.length} · drawn=${drawing.edges.length} · omitted=${data.omitted}`,
+    ` · edges=${data.edges.length} · drawn=${drawing.edges.length}` +
+    (hidden > 0 ? ` · filtered=${hidden}` : '') +
+    ` · omitted=${data.omitted}`,
   ));
   return p;
 }

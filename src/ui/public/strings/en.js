@@ -592,6 +592,24 @@ export const strings = {
   // The focus picker's label. Until it existed the ego graph was drawn around
   // `items.items[0].id` and nothing chose it.
   'gr.focus': 'The item at the centre',
+  // ── THE RELATION-TYPE FILTER (owner ruling 2026-09-01) ───────────────────
+  // The type NAMES are not here and never will be: they are `RELATION_TYPES`,
+  // a closed vocabulary in `core/vocabulary.ts` served on `/api/graph`, and a
+  // copy of them in a string table is the same defect as a copy of them in the
+  // screen. What is keyed is the prose AROUND them.
+  // ── THE PICKER HIDES THE UNRELATED, AND SAYS SO (owner ruling 2026-09-01)
+  'gr.lonely': '{n} item(s) have no relations of the types you kept and are not listed — each would draw a single node.',
+  'gr.lonelyShow': 'List them anyway',
+  'gr.retired': '{n} retired item(s) are not listed.',
+  'gr.retiredShow': 'List retired items',
+  'gr.retiredHide': 'Hide retired items',
+  'gr.lonelyHide': 'Hide them again',
+  'gr.filter': 'Relation types',
+  'gr.filterAll': 'All',
+  'gr.filterNone': 'None',
+  'gr.filterHid': '{n} relation(s) hidden by the type filter',
+  'gr.filterEmpty': 'No relation of the types you kept. {n} relation(s) are hidden — turn a type back on to see them.',
+  'gr.filterNoRel': 'This item has no relations at all, so there is nothing for the type filter to act on.',
   'gr.lfocus': 'focus',
   'gr.lmiss': 'target not in corpus',
   'gr.lsup': 'superseded',
@@ -990,6 +1008,11 @@ export const strings = {
   'pane.hist': 'Delivered — twelve weeks',
   'pane.histn': 'Twelve weekly buckets from the audit projection, hatched where the item was {b:spilled} that week and grey where nothing was delivered. It is the cheapest possible answer to "is this thing still alive", and the one history that belongs on {i:every} item rather than on a screen of its own.',
   'pane.body': 'Body — as authored',
+  // The label over the item summary — owner ruling 2026-09-01. It takes
+  // `.welllabel`, the same register `pane.body` and `pane.hist` take, because the
+  // ask was that the summary stop being the one unlabelled block in the pane and
+  // not that it gain a heading of its own kind.
+  'pane.summary': 'Summary',
   'pane.well': "Corpus text sits in a well and inside {m:<bdi>}. The product's own words never do — that is how you tell them apart.",
   // ── THE ITEM SUMMARY (2026-09-01, `plan:walk seq:119` phase 3) ───────────
   //

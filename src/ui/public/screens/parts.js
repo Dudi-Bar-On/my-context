@@ -146,6 +146,247 @@ export function spaced(e) {
   return e;
 }
 
+/* ══ HOW WIDE A CHART MAY DRAW — owner ruling 2026-09-01 ═══════════════════
+ *
+ * Owner, looking at the product: *"the graphics all over is condensed left
+ * after we changed it's scale, could we extend the x axis to the right but
+ * without breaking the proportion especially not the font just more spacing?"*
+ *
+ * ── WHAT WAS MEASURED, IN A BROWSER, BEFORE ANY NUMBER MOVED ──────────────
+ *
+ * Three fixed-viewBox charts, at the owner's own 2273px against the live
+ * 733-item corpus, each read with its own host plate:
+ *
+ *     staircase (simulate)  viewBox 560   rendered 560   plate 1714   1154px empty
+ *     ego graph (graph)     viewBox 900   rendered 900   plate 1973   1073px empty
+ *     recency comb (decay)  viewBox 900   rendered 900   plate 1958   1058px empty
+ *
+ * So between 54% and 67% of every chart's own card was blank, on the right,
+ * and the drawing sat squeezed into the left of it. The two CSS-drawn graphics
+ * were measured in the same pass and are NOT affected — `.hstrip` filled 1776
+ * of 1984 and `.ribbon .track` 1958 of 1958 — which is what identifies the
+ * cause as belonging to `svg.chart` and not to the cards.
+ *
+ * ── THE CAUSE, AND IT IS NOT A FONT SIZE ──────────────────────────────────
+ *
+ * `svg.chart` said `inline-size:100%` until 2026-08-29 and says
+ * `max-inline-size:100%` now, over `width`/`height` attributes each chart
+ * writes equal to its own viewBox. That change was correct and is not being
+ * reversed: it is what makes one viewBox unit one CSS pixel, so `--fs-chart`
+ * means ten pixels on every screen instead of being multiplied by 1.600 here
+ * and 1.267 there. But it left every chart at its AUTHORED width — 560 or 900
+ * — whatever the card gave it, and a 900-unit drawing in a 1958px card is a
+ * drawing with 1,058px of nothing beside it. The charts were not scaled down
+ * too far; they stopped being told how much room they had.
+ *
+ * **This is the third attempt on these graphics and the first that is not
+ * about type.** Two font-size fixes were made from arithmetic without opening
+ * the rendered page and both were wrong (`e2e/chart-scale.spec.ts`'s header
+ * keeps that ledger). Nothing here touches a font size, a stroke width or a
+ * node box: the ONLY thing that changes is how many units the x axis spans,
+ * which is exactly the owner's *"just more spacing"*.
+ *
+ * ── WHY WIDENING THE VIEWBOX IS THE ANSWER AND STRETCHING IT IS NOT ───────
+ *
+ * A stretch (`inline-size:100%` over a 900-unit box) multiplies the GEOMETRY
+ * and leaves the type alone, so the proportion between a label and the mark it
+ * names breaks — the defect of 2026-08-29. Widening the viewBox itself, with
+ * the `width` attribute kept equal to it, keeps the ratio at exactly 1:1: ten
+ * pixels of text stays ten pixels of text, a 210px node box stays 210px, and
+ * the extra room lands entirely in the gaps between the marks. That is
+ * distribution along x, not a zoom, and it is what `e2e/chart-scale.spec.ts`
+ * already asserts — that file's `scale` is `rendered ÷ viewBox` and stays 1.
+ *
+ * ── THE FLOOR IS THE AUTHORED WIDTH, AND THERE IS NO CEILING ──────────────
+ *
+ * Never NARROWER than the design of record's own number: each of these
+ * geometries reserves fixed gutters (the comb's 214px label column, the
+ * staircase's 26px foot, the graph's 210px node boxes) and a width below the
+ * authored one puts them on top of each other. Below it the stylesheet's
+ * `max-inline-size:100%` still shrinks the whole drawing as it does today,
+ * which is the one case where the factor is not 1 — and it can only ever be
+ * smaller, so a token never renders larger than the number it states.
+ *
+ * No upper bound, because the owner asked for the width to be USED and any cap
+ * would be a number nobody chose. Flagged in this task's report as the one
+ * thing here an owner may want to rule on after a look at a very wide monitor.
+ */
+
+/**
+ * How many viewBox units this chart may span inside `host`, given the width
+ * the design of record authored for it.
+ *
+ * **`clientWidth` MINUS the padding, and the subtraction is the whole of it.**
+ * `clientWidth` excludes the border and the scrollbar and INCLUDES the padding
+ * — `.plate` spends 12px on each side — so using it bare would size every chart
+ * 24px wider than the box it has to fit in, overflow the card by exactly that,
+ * and put the page into the horizontal scroll `e2e/chart-scale.spec.ts`
+ * forbids. `getBoundingClientRect()` is worse again: it adds the border back.
+ * Rounded DOWN, because a fractional overshoot is still an overshoot.
+ *
+ * A host that is not laid out yet answers 0 (detached, or `display:none`), and
+ * the authored width is the honest answer there rather than a chart one pixel
+ * wide.
+ */
+export function chartSpan(host, authored) {
+  if (host === null || host === undefined) return authored;
+  // A HOST WITH NO LAYOUT KEEPS THE WIDTH IT IS ALREADY DRAWN AT. A plate that
+  // is detached, or in a section on its way out, measures zero, and answering
+  // the authored floor there would collapse a chart that is merely not being
+  // looked at — then un-collapse it visibly when it came back. Reading the
+  // drawn viewBox makes a re-render of a hidden chart reproduce what was there.
+  // Measured on the design of record, which keeps every section in the document
+  // at once: its EN → HE → EN round trip came back with the off-screen charts at
+  // 900 where they had been 1,958.
+  if (host.clientWidth === 0) {
+    const drawn = drawnSpan(host);
+    return drawn > authored ? drawn : authored;
+  }
+  const pad = globalThis.getComputedStyle === undefined ? null : getComputedStyle(host);
+  const inset = pad === null ? 0
+    : (parseFloat(pad.paddingInlineStart) || 0) + (parseFloat(pad.paddingInlineEnd) || 0);
+  const avail = Math.floor(host.clientWidth - inset);
+  return Number.isFinite(avail) && avail > authored ? avail : authored;
+}
+
+/**
+ * Draw a chart into `host` at the width `host` actually has, and REDRAW it at
+ * the new width whenever `host` is resized.
+ *
+ * **Without the second half the first is a chart that is right once.** These
+ * screens draw on route entry and never again; a window resized afterwards —
+ * or a pane dragged wider, which `lib/pane-resize.js` does on the same page —
+ * would leave the drawing at the width it was born at, which is the defect
+ * being fixed wearing a different trigger.
+ *
+ * `ResizeObserver` on the HOST rather than on `window`, because the plate's
+ * width is decided by the card and the pane and not only by the viewport, and
+ * a `resize` listener would miss every one of those.
+ *
+ * **Guarded against the observer loop, which is not theoretical.** The callback
+ * replaces the host's child, and a child replacement that changed the host's
+ * width would call the callback again forever. It cannot change the width — a
+ * `.plate` is sized by its card — but a guard that costs one comparison is
+ * cheaper than trusting that, so a redraw happens only when the measured span
+ * actually MOVED. That also collapses the burst of callbacks a single drag
+ * produces into one redraw per distinct width.
+ *
+ * Nothing is torn down. The observer holds only the host, so when the screen is
+ * replaced and the host goes out of the document both are collected together;
+ * an observer on a detached element fires for nothing in the meantime.
+ */
+const CHART_DRAW = new WeakMap();
+
+export function fitChart(host, authored, draw) {
+  // ── ONE OBSERVER PER HOST, AND IT ALWAYS HOLDS THE NEWEST DRAW.
+  //
+  // A screen calls this again whenever its own data changes — `screens/graph.js`
+  // does it on every focus the picker offers — into the SAME plate. Installing
+  // a watcher per call would leave one live observer per focus ever chosen, all
+  // of them firing on one resize; keeping the FIRST watcher would leave it
+  // holding the first focus's data, so a resize would quietly redraw the graph
+  // the reader navigated away from. The registry answers both: the watcher is
+  // installed once and reads whatever draw was handed in last.
+  const first = !CHART_DRAW.has(host);
+  CHART_DRAW.set(host, draw);
+  paintChart(host, authored);
+  if (first) watchChartWidth(host, authored, () => paintChart(host, authored));
+}
+
+/**
+ * Draw, then check whether DRAWING changed the room, and settle it here rather
+ * than a frame later.
+ *
+ * **Measured, not defensive.** A 60-node ego graph is 823px tall; drawing it
+ * puts the page into a vertical scrollbar, which takes ~15px off its own plate
+ * — so a chart drawn at 980 units finds itself in a 965px box and renders at
+ * 0.985 instead of 1:1. `e2e/chart-scale.spec.ts` caught exactly that, because
+ * it measures the moment the chart appears. Leaving the correction to the
+ * `ResizeObserver` is a frame too late: for that frame the chart really is the
+ * wrong size, and a reader on a tall chart would see it settle.
+ *
+ * Bounded at three passes. Each pass either agrees with the last measurement
+ * and returns, or draws once more at the width it just found; a width A whose
+ * drawing forces width B and a width B whose drawing forces width A would
+ * otherwise spin, and a chart one pixel out is better than a hang.
+ */
+function paintChart(host, authored) {
+  let span = chartSpan(host, authored);
+  for (let pass = 0; pass < 3; pass += 1) {
+    host.replaceChildren(CHART_DRAW.get(host)(span));
+    const now = chartSpan(host, authored);
+    if (now === span) return;
+    span = now;
+  }
+}
+
+/**
+ * Call `redraw` whenever `host`'s CHART SPAN stops matching the chart that is
+ * drawn in it, and never otherwise.
+ *
+ * The half of `fitChart` that a screen redrawing its own chart for its own
+ * reasons needs on its own — `screens/simulate.js` rebuilds the staircase on
+ * every slider step, so it owns the draw and needs only the trigger.
+ *
+ * **THE COMPARISON IS AGAINST THE DRAWN VIEWBOX, NOT AGAINST A REMEMBERED
+ * NUMBER, and that is what makes the first paint correct.** Measured on the
+ * recency comb at 2273px: the plate was 1,973px wide when the chart was drawn,
+ * the 1,862-unit-tall chart then put the PAGE into a vertical scrollbar, and
+ * the plate came back 1,958px — so the chart was 15px wider than the box it
+ * was now in and `rendered ÷ viewBox` read 0.992 instead of 1. A watcher
+ * seeded with "the width I see now" is blind to exactly that, because by the
+ * time it looks, now is already the new width. Reading the viewBox asks the
+ * only question that matters — *is what is drawn the size of the room it is
+ * in* — and answers it the same way on the first callback as on the hundredth.
+ *
+ * The same comparison is the loop guard. The callback replaces the host's
+ * child, and a child replacement that changed the host's width would call the
+ * callback forever; here the redraw makes the two numbers equal by
+ * construction, so the second callback returns without doing anything. The
+ * oscillation check below covers the one shape that could still cycle — a
+ * width A whose drawing forces width B and a width B whose drawing forces
+ * width A — which nothing in this product does today (a chart's height is
+ * decided by its row count, never by its width) and which would be a hang
+ * rather than a glitch if it ever did.
+ *
+ * `ResizeObserver` on the HOST rather than on `window`, because a plate is
+ * narrowed by the item pane being dragged as well as by the viewport, and a
+ * `resize` listener would see the second and miss the first. It also fires
+ * once when observation begins, which is what corrects the first paint above.
+ *
+ * Nothing is torn down. The observer holds only the host, so when the screen is
+ * replaced and the host leaves the document both are collected together; an
+ * observer on a detached element fires for nothing in the meantime.
+ */
+export function watchChartWidth(host, authored, redraw) {
+  if (typeof ResizeObserver !== 'function') return;
+  // The two spans most recently drawn at, newest first. A span that comes back
+  // equal to the one BEFORE last is a cycle, not a resize, and the watcher
+  // stops rather than repainting between two widths forever.
+  let recent = [];
+  new ResizeObserver(() => {
+    // A HOST WITH NO LAYOUT IS NOT A RESIZE. A plate that is detached, or in a
+    // section on its way out, reports zero width, and `chartSpan` answers the
+    // authored floor for it — refitting to that would be undone the moment the
+    // host came back, which is a flip the cycle guard below would latch on.
+    if (host.clientWidth === 0) return;
+    const span = chartSpan(host, authored);
+    if (drawnSpan(host) === span) return;
+    if (recent[1] === span) return;
+    recent = [span, recent[0]];
+    redraw(span);
+  }).observe(host);
+}
+
+/** The width the chart currently in `host` was drawn at, or -1 if there is none. */
+function drawnSpan(host) {
+  const svg = host.querySelector('svg.chart');
+  if (svg === null) return -1;
+  const box = (svg.getAttribute('viewBox') ?? '').split(/\s+/);
+  const width = Number(box[2]);
+  return Number.isFinite(width) ? width : -1;
+}
+
 /**
  * `<div class="phd"><h2>…</h2><span class="verdict">✅ <span>…</span></span></div>`
  * followed by `<p class="psub">…</p>`, which is how all 21 screens open.

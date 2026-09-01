@@ -102,6 +102,11 @@ export const TOOL_PARITY: ToolParity[] = [
  * an entry with no reason and refuses a command that is missing from the list.
  */
 export const CLI_WITHOUT_SLASH: Record<string, string> = {
+  ack: 'Records that a PERSON read a doctor finding and ruled on it, so the acknowledgement is ' +
+    'only worth anything if a person made it. `acknowledgeFinding` (core/mutate.ts) refuses ' +
+    'every origin but `human`, and a slash command is a model typing the command - which is ' +
+    'the one caller this write exists to exclude. It is read out of `mycontext doctor` and ' +
+    'typed by the person who read it.',
   init: 'Creates the workspace. It is what you run before there is anything for a slash ' +
     'command to talk to, and the plugin\'s own SessionStart hook tells you to run it.',
   rebuild: 'Reconstructs the index from the Markdown. Every command that reads the corpus ' +

@@ -118,13 +118,25 @@
  * classification — cold, warm, unrestricted, never, pinned-and-cold — is read
  * off `/api/decay`'s report rather than recomputed from its parts.
  */
-import { el, errorNote, screenHead } from '/screens/parts.js';
+import { el, errorNote, fitChart, screenHead } from '/screens/parts.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
 /* ── The recency comb's geometry, from `renderComb` (mockup ~3779) ───────── */
 
-/** The mockup's chart box, its label gutter, its never-bucket gutter, its pads. */
+/**
+ * The mockup's chart box, its label gutter, its never-bucket gutter, its pads.
+ *
+ * `W` IS THE FLOOR SINCE 2026-09-01, NOT THE VALUE — owner ruling, *"could we
+ * extend the x axis to the right … just more spacing"*. Measured at 2273px
+ * against the live corpus, this comb rendered 900px inside a 1,958px plate and
+ * left 1,058px of the card empty. `drawCombChart` now takes the span its host
+ * actually has; the log axis `dx()` spreads across it, the 214px label gutter
+ * and the 92px never-box gutter keep their authored widths, and every font,
+ * radius and stroke is untouched — the extra room lands between the teeth,
+ * which is the whole of what was asked for. `chartSpan` in `screens/parts.js`
+ * carries the measurement.
+ */
 export const W = 900;
 const PL = 214;
 const PR = 92;
@@ -181,11 +193,19 @@ const BADPIN_W = 200;
  * empty space on this axis by construction: nothing is ever plotted between
  * the last tick and the never box.
  */
-export function badpinOutward(cx) {
-  return W - (cx + 9) >= BADPIN_W;
+export function badpinOutward(cx, width = W) {
+  return width - (cx + 9) >= BADPIN_W;
 }
-/** Left edge of the terminal "never" box, and its width. The mockup's `nx`/46. */
-const NEVER_X = W - PR + 16;
+/**
+ * Left edge of the terminal "never" box, and its width. The mockup's `nx`/46.
+ *
+ * A FUNCTION of the drawing's width since 2026-09-01, because the box is
+ * anchored to the FAR end of the axis and the far end moves now. `PR` is the
+ * gutter it sits in and does not change with the span, so the box keeps its
+ * authored 46 units and its authored distance from the edge — it is carried
+ * outward with the axis rather than stretched by it.
+ */
+const neverX = (width) => width - PR + 16;
 const NEVER_W = 46;
 
 /* ── The 90-day heatstrip, from `renderHeat` (mockup ~3837) ──────────────── */
@@ -337,7 +357,12 @@ async function drawComb(ctx, host) {
   const order = sessions.sessions.map((s) => s.sessionId);
   const { rows, unplaceable } = combRows(decay.report, decay.series, order);
   if (rows.length === 0) return;
-  host.append(drawCombChart(decay.report, rows, unplaceable, order.length));
+  // ── DRAWN AT THE PLATE'S OWN WIDTH, AND REDRAWN WHEN IT MOVES — owner
+  // ruling 2026-09-01. `fitChart` measures `host`, hands the span to the
+  // drawing and calls back on every distinct width the plate takes afterwards.
+  // The comb is recomputed rather than the SVG rescaled, which is the
+  // difference between more spacing and a zoom.
+  fitChart(host, W, (span) => drawCombChart(decay.report, rows, unplaceable, order.length, span));
 }
 
 /**
@@ -428,23 +453,29 @@ function svText(attrs, text) {
   return node;
 }
 
-function drawCombChart(report, rows, unplaceable, served) {
+function drawCombChart(report, rows, unplaceable, served, span = W) {
+  // Never narrower than the design of record's own box: the 214px label gutter
+  // and the 92px never-box gutter leave 594 units of axis at the authored
+  // width, and below it the stylesheet's `max-inline-size:100%` shrinks the
+  // whole drawing as it always has.
+  const width = Math.max(W, span);
+  const nx = neverX(width);
   // Mirroring is by PROJECTION, not by transform: `scale(-1,1)` would reverse
   // the digits too. The page direction is `<html dir>`, which `applyLanguage`
   // sets from the string table itself — a layout fact, not a translated one.
   const rtl = document.documentElement.dir === 'rtl';
-  const X = (u) => (rtl ? W - u : u);
+  const X = (u) => (rtl ? width - u : u);
   const anchor = (a) => (rtl ? (a === 'start' ? 'end' : a === 'end' ? 'start' : a) : a);
 
   const height = Math.max(H_MIN, PT + PB + rows.length * ROW);
-  const dx = (s) => PL + (Math.log10(1 + s) / Math.log10(1 + MAX_S)) * (W - PL - PR);
+  const dx = (s) => PL + (Math.log10(1 + s) / Math.log10(1 + MAX_S)) * (width - PL - PR);
   const kids = [];
 
   // The baseline, then one dashed vertical per tick. `.axis` is the mockup's
   // class and `--rule` is the token that class carries; both are written,
   // because the shell has the token and not (yet) the rule.
   kids.push(sv('line', {
-    class: 'axis', x1: X(PL), y1: height - PB, x2: X(W - PR), y2: height - PB,
+    class: 'axis', x1: X(PL), y1: height - PB, x2: X(width - PR), y2: height - PB,
     stroke: 'var(--rule)', 'stroke-width': 1,
   }));
   for (const [sessions, label] of combTicks(report.window)) {
@@ -483,13 +514,13 @@ function drawCombChart(report, rows, unplaceable, served) {
   // (`dec.never`): it is a different KIND of fact from an ordinal, so it gets
   // a box of its own off the end of the axis instead of a position on it.
   kids.push(sv('rect', {
-    class: 'never', x: X(NEVER_X) - (rtl ? NEVER_W : 0), y: PT - 6,
+    class: 'never', x: X(nx) - (rtl ? NEVER_W : 0), y: PT - 6,
     width: NEVER_W, height: height - PT - PB + 6, rx: 4,
     fill: 'var(--critbg)', stroke: 'var(--crit)', 'stroke-dasharray': '2 2',
   }));
   kids.push(svText(
     {
-      x: X(NEVER_X + NEVER_W / 2), y: height - PB + 13, 'text-anchor': 'middle',
+      x: X(nx + NEVER_W / 2), y: height - PB + 13, 'text-anchor': 'middle',
       class: 'crit',
     },
     NEVER,
@@ -523,7 +554,7 @@ function drawCombChart(report, rows, unplaceable, served) {
       ));
     }
     const bad = row.always && row.cold;
-    const cx = row.never ? NEVER_X + NEVER_W / 2 : dx(row.sessionsAgo);
+    const cx = row.never ? nx + NEVER_W / 2 : dx(row.sessionsAgo);
     // Warm is a solid disc, cold is a ring — `--gold` and `--warn` are close
     // enough in light mode that colour alone would not carry the distinction.
     kids.push(sv('circle', {
@@ -535,7 +566,7 @@ function drawCombChart(report, rows, unplaceable, served) {
     if (bad) {
       // The side is chosen in UNMIRRORED coordinates and then projected, so
       // RTL flips the whole decision with everything else on this chart.
-      const outward = badpinOutward(cx);
+      const outward = badpinOutward(cx, width);
       kids.push(svText(
         {
           x: X(outward ? cx + 9 : cx - 9), y: y + 3,
@@ -558,7 +589,7 @@ function drawCombChart(report, rows, unplaceable, served) {
   }
 
   const svg = sv('svg', {
-    viewBox: `0 0 ${W} ${height}`,
+    viewBox: `0 0 ${width} ${height}`,
     // `width`/`height` ARE THE CHART'S NATURAL SIZE, and they are load-bearing.
     // `svg.chart` says `max-inline-size:100%` and no longer `inline-size:100%`,
     // so the used width is this element's own INTRINSIC width — which is what
@@ -567,7 +598,7 @@ function drawCombChart(report, rows, unplaceable, served) {
     // falls back to 300x150. The mockup's `chart()` factory writes the same two
     // (mockup ~4193); `block-size:auto` in the stylesheet overrides the height
     // one on purpose, so the ratio is recomputed on the narrow-card case.
-    width: W,
+    width,
     height,
     class: 'chart',
     role: 'img',

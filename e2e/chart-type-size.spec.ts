@@ -16,7 +16,8 @@
  *   1. the chart ramp had been pulled up 2px by a PROSE repaint, because
  *      `svg.chart text` read `--fs-00`. Fixed at `seq:62` by giving charts
  *      their own tokens — `--fs-chart` 10px, `--fs-chart-mono` 9.5px,
- *      `--fs-chart-nid` 9px, `--fs-chart-rel` 8px.
+ *      `--fs-chart-nid` 9px, `--fs-chart-rel` 10px (8px until 2026-09-01 --
+ *      see the RAMP below for what moved it).
  *   2. `svg.chart{inline-size:100%}` then stretched each fixed viewBox by a
  *      DIFFERENT factor per screen — 1.600 on the staircase, 1.267 on the ego
  *      graph and the comb — while the text, being CSS px, did not stretch with
@@ -58,7 +59,23 @@ const SCREENS = ['decay', 'graph', 'simulate'] as const;
  * is expected at the mono size.
  */
 const RAMP: readonly (readonly [string, number])[] = [
-  ['rel', 8], ['nid', 9], ['mono', 9.5],
+  // ── `rel` MOVED 8 -> 10 ON 2026-09-01, AND IT IS A RESTORATION.
+  //
+  // Owner: "relations - the relation text is small and strings override each
+  // other so it is not readable". 8px was approved on 2026-08-28, but that day
+  // the ego graph was still stretched -- `e2e/chart-scale.spec.ts`' own
+  // measurement is viewBox 900 rendered 1140, a factor of 1.267 -- so a nominal
+  // 8px relation label was DRAWING at 10.1 CSS px on the screen the ruling was
+  // made against. The 2026-08-29 scale bound made one unit one pixel and, in
+  // doing so, took this label to a real 8px: a 21% cut nobody asked for. 10
+  // restores what was approved.
+  //
+  // It now coincides with `BASE`, and the token is kept separate anyway: the
+  // ramp exists so a prose repaint cannot drag chart type with it, and two
+  // tokens that happen to hold the same number are not one token. `--fs-chart-
+  // nid` has the identical history (9px approved at 1.267, drawing at 9px now)
+  // and is deliberately NOT moved -- the owner named the relation text.
+  ['rel', 10], ['nid', 9], ['mono', 9.5],
 ];
 const BASE = 10;
 

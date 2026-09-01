@@ -169,7 +169,30 @@
      Stroke widths are NOT in here, because they never moved: stroke-width 1,
      1.4, 1.5, 1.6, 2 and .8 are byte-identical across all three generations.
      Lines reading heavy was text growing around them. */
-  --fs-chart:10px; --fs-chart-mono:9.5px; --fs-chart-nid:9px; --fs-chart-rel:8px;
+  --fs-chart:10px; --fs-chart-mono:9.5px; --fs-chart-nid:9px; --fs-chart-rel:10px;
+  /* ── THE RELATION LABEL IS 10px SINCE 2026-09-01, AND THAT IS A RESTORATION
+     RATHER THAN A REVERSAL. Owner: *"relations - the relation text is small and
+     strings override each other so it is not readable, just a small fix"*.
+
+     8px was READ OUT OF 86c31ea/d263992 above and approved on 2026-08-28 —
+     but of what the owner was looking at THAT DAY, and that day the ego graph
+     was still being stretched. `e2e/chart-scale.spec.ts`' own measurement:
+     viewBox 900 rendered 1140, a factor of 1.267. A nominal 8px relation label
+     therefore drew at 10.1 CSS px on the screen the ruling was made against.
+
+     The 2026-08-29 scale bound made one viewBox unit one CSS pixel — correctly,
+     and it is what makes every token in this ramp mean what it says — and in
+     doing so it took this label from ~10.1px to 8px, a 21% cut nobody asked
+     for. 10px restores the size the ruling was actually made about, and it is
+     `--fs-chart`'s own step, so the relation word now reads at the size every
+     other chart label in the product already does rather than at a step below
+     the smallest one.
+
+     `--fs-chart-nid` (node ids) has exactly the same history — 9px approved at
+     1.267, drawing at 9px now where it drew at 11.4px then. It is NOT changed
+     here, because the owner named the relation text and not the ids, and
+     changing a second token on an argument they did not make would be taking
+     their decision. Raised in this task's report instead. */
 
   /* STRIP TYPE — the status strip's own ramp, and NOT a step of the scale
      above, for the same reason the chart ramp is not one.
@@ -468,7 +491,7 @@ button{font:inherit;color:inherit}
 body.sim-rt .gloss,body.sim-rt .gloss.float{background-image:none;box-shadow:none;border-color:var(--ink)}
 
 /* ═══ shell ═══ */
-.app{display:grid;grid-template-rows:46px 1fr 26px 69px;grid-template-columns:214px 1fr;
+.app{display:grid;grid-template-rows:46px 1fr 26px auto;grid-template-columns:214px 1fr;
   block-size:100vh;grid-template-areas:"top top" "rail body" "prov prov" "strip strip"}
 /* The item pane's width, 2026-08-27. DRAFTED BY CLAUDE, APPROVED BY THE OWNER
    the same day — the pen ruling of 2026-08-25 is that Claude drafts and the
@@ -889,7 +912,7 @@ details.help[open]>summary{margin-block-end:6px}
    descenders where it is wanted. Re-measured after: 8.9px above the ink and
    10.1px below it, at every size. */
 .strip{grid-area:strip;background:var(--panel);border-block-start:1px solid var(--rule);
-  display:grid;grid-template-rows:28px 38px;padding-inline:var(--sp-3);
+  display:grid;grid-template-rows:28px 38px;grid-auto-rows:38px;padding-inline:var(--sp-3);
   padding-block:0 2px;font-size:var(--fs-strip);color:var(--dim)}
 .strip .sep{inline-size:1px;block-size:18px;background:var(--rule)}
 /* The git group shows one of six states; the rest are `hidden`. .chip sets
@@ -1420,8 +1443,26 @@ svg.chart .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
 .heataxis{display:flex;justify-content:space-between;font-size:var(--fs-chart);color:var(--dim)}
 
 /* — per-item delivery sparkline, for the detail pane — */
+/* AND IT SPANS ITS CARD - owner ruling 2026-09-01, the same ruling the SVG
+   charts were widened under and the one surface it did not reach.
+
+   MEASURED in a browser at a 304px pane: twelve 7px bars with a 2px gap drew
+   106px of ink and left 185px of the card empty on the right - 61% of it. The
+   defect is the owner's "condensed left" exactly, but the CAUSE is not the one
+   the charts had: this graphic has no viewBox and no width attribute to widen.
+   It is a flex row whose MARK has a fixed `inline-size:7px`, so twelve of them
+   occupy 106px whatever the card is, and `justify-content` was `normal`, which
+   packs them at the start.
+
+   `space-between` and NOT `flex:1` on the bar. The owner's constraint is the
+   whole of the choice: *more spacing between points, not bigger points*. Growing
+   the bars would fill the same width by making every mark five times wider,
+   which is the zoom that was ruled out; distributing the free space as GAPS
+   moves the twelfth bar to the right edge and leaves every mark at the 7px the
+   design authored. There is no type on this graphic at all, so "the font does
+   not change" is satisfied by construction. */
 .spark{display:flex;gap:2px;align-items:flex-end;block-size:26px;margin-block:5px;
-  box-sizing:content-box}
+  box-sizing:content-box;justify-content:space-between}
 .spark i{inline-size:7px;background:var(--gold);display:block;border-radius:1px;min-block-size:2px}
 .spark i.dead{background:var(--edge-3)}
 .spark i.sp{background:repeating-linear-gradient(45deg,var(--crit) 0 2px,transparent 2px 4px);
@@ -1482,6 +1523,20 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
 
 /* — ego graph: edge class carries severity, node style carries state — */
 svg.chart .node{fill:var(--panel);stroke:var(--edge-3);stroke-width:1}
+/* A NODE THAT OPENS THE PANE MUST LOOK LIKE ONE - owner ruling 2026-09-01.
+   `.nodehit` is the group `screens/graph.js` wraps an OPENABLE node in; a
+   missing node and the `+N more` count are not wrapped, so they get none of
+   this and nothing offers a door where there is not one.
+   Hover lifts the box rather than recolouring it, because every fill in this
+   chart already MEANS something (focus, missing, superseded, more) and a hover
+   colour would be a sixth state competing with five that carry information.
+   The focus ring is `--gold` and 2px: it has to be visible against `--panel`
+   inside the box and against `--plate` outside it, and `outline` does not
+   render on SVG in every engine, which is why it is a stroke. */
+svg.chart g.nodehit{cursor:pointer}
+svg.chart g.nodehit:hover .node{stroke:var(--ink);stroke-width:1.6}
+svg.chart g.nodehit:focus{outline:none}
+svg.chart g.nodehit:focus-visible .node{stroke:var(--gold);stroke-width:2}
 svg.chart .node.focus{fill:var(--goldbg);stroke:var(--gold);stroke-width:2}
 svg.chart .node.missing{fill:none;stroke:var(--crit);stroke-dasharray:3 2}
 svg.chart .node.superseded{fill:var(--sink);stroke:var(--faint)}
@@ -2675,6 +2730,46 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     <p class="psub" data-t="gr.sub">One focused item, radius 1, deterministic layered layout, hard cap
       of 60 nodes with an explicit "+N more". No physics, no dependency.</p>
     <div class="card pane">
+      <!-- THE RELATION-TYPE FILTER - owner ruling 2026-09-01, "i would allow some
+           filters to relations to find interesting relations by type not just
+           browsing all over the list".
+
+           MULTI-SELECT, ALL ON. "Find interesting relations" is subtractive: the
+           reader knows which types are noise in THIS ego graph and wants them
+           gone, not one type at a time. Single-select cannot express "everything
+           except relates_to", which is the common case where one type dominates.
+           `.segbar` + `aria-pressed` because that is already this design's shape
+           for a row of sticky toggles.
+
+           THE OPTIONS ARE NOT AUTHORED, HERE OR IN THE APP. They are
+           `RELATION_TYPES` from `core/vocabulary.ts` - a CLOSED vocabulary whose
+           own note is that an open one "produces derives_from, derivedFrom and
+           derived-from in one corpus" - served on `/api/graph` as
+           `relationTypes`, because a browser module cannot import a core one and
+           re-listing the vocabulary in the client is the copied-rule defect
+           `screens/graph.js`' header already names. The eight below are what that
+           array holds TODAY, drawn so this file shows the control; a ninth member
+           appears in the app with no edit to any UI file, and this block is then
+           the only place that has to catch up.
+
+           The type NAMES are `.m` and carry no `data-t`, exactly as the relation
+           labels on the edges do: they are the vocabulary's own words, and a
+           Hebrew `derived_from` would be a translated identifier. -->
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-block-end:8px">
+        <label class="small" data-t="gr.filter">Relation types</label>
+        <div class="segbar" id="egotypes">
+          <button type="button" aria-pressed="true"><span class="m">derived_from</span></button>
+          <button type="button" aria-pressed="true"><span class="m">constrains</span></button>
+          <button type="button" aria-pressed="true"><span class="m">supersedes</span></button>
+          <button type="button" aria-pressed="true"><span class="m">blocks</span></button>
+          <button type="button" aria-pressed="true"><span class="m">mitigates</span></button>
+          <button type="button" aria-pressed="true"><span class="m">refines</span></button>
+          <button type="button" aria-pressed="true"><span class="m">relates_to</span></button>
+          <button type="button" aria-pressed="true"><span class="m">links_to</span></button>
+          <button type="button" data-t="gr.filterAll">All</button>
+          <button type="button" data-t="gr.filterNone">None</button>
+        </div>
+      </div>
       <div class="plate" id="ego"></div>
       <div class="legend">
         <span><i class="focusn"></i><span data-t="gr.lfocus">focus</span></span>
@@ -3206,6 +3301,15 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
          three elements start `hidden`, and only what has content is unhidden.
          `#panestale` is the staleness disclosure — a summary whose `summary_of` no
          longer matches the item is shown, and shown AS stale. -->
+    <!-- AND IT IS LABELLED, owner ruling 2026-09-01. Everything else in this pane
+         announces itself — the body has BODY — AS AUTHORED over it, the history has
+         DELIVERED — TWELVE WEEKS, the `<dl>` puts type/status/tier/scope in the
+         left column — and the summary was the one block a reader met bare. The
+         label is `.welllabel`, the register this pane already uses for exactly
+         this job, so the pane reads consistently rather than gaining a new kind
+         of heading. It is hidden with the sentence: a label over nothing is
+         worse than no label. -->
+    <div class="welllabel" id="panesumlab" data-t="pane.summary" hidden>Summary</div>
     <p class="itemsum" id="panesummary" hidden></p>
     <p class="small summstale" id="panestale" hidden></p>
     <div class="itemprops" id="paneprops" hidden></div>
@@ -3366,7 +3470,6 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <span class="chip unmeas" data-g="&#9676;" data-t="strip.unread" title="The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again." data-t-title="title.unread">not read</span>
         </span>
       </span>
-    </div>
       <span class="sep"></span>
       <!-- THE ACCOUNT'S QUOTA, WHICH IS NOT THIS SESSION'S WINDOW - owner
            ruling 2026-09-01, the second rebalance of the same evening.
@@ -4976,6 +5079,98 @@ function chart(W,H,kids,label){
   return s;
 }
 
+/* ── A CHART SPANS ITS HOST — owner ruling 2026-09-01 ────────────────────────
+   *"the graphics all over is condensed left after we changed it's scale, could
+   we extend the x axis to the right but without breaking the proportion
+   especially not the font just more spacing?"*
+
+   MEASURED at 2273px, both surfaces: every fixed-viewBox chart drew at the
+   width it was AUTHORED at — 560 for the staircase, 900 for the ego graph and
+   the comb — inside plates of 1,714 / 1,973 / 1,958, leaving between 54% and
+   67% of each card blank on the right. The 2026-08-29 bound is not the defect
+   and is not reversed: `max-inline-size:100%` over a `width` attribute is what
+   makes one viewBox unit one CSS pixel, so --fs-chart means ten pixels rather
+   than ten multiplied by whatever a card happened to be. What was missing is
+   that nothing ever told a chart how much room it had.
+
+   The answer is to widen the VIEWBOX and keep the `width` attribute equal to
+   it, which is what `chart()` above already does. The ratio stays exactly 1:1
+   — ten pixels of type stays ten pixels, a 210px node box stays 210px — and
+   every extra unit lands in the gaps between the marks. That is distribution
+   along x rather than a zoom, and it is why NO font size, stroke width or box
+   dimension moves for this.
+
+   THE AUTHORED WIDTH IS THE FLOOR. Each geometry reserves fixed gutters (the
+   comb's 214px label column, the staircase's 32/14 pads, the graph's 210px node
+   boxes); below the authored width they would sit on top of each other, and the
+   stylesheet's own `max-inline-size:100%` already shrinks the whole drawing
+   there, which is the one case where the factor is not 1 and it can only ever
+   be smaller.
+
+   `clientWidth` MINUS the padding: `clientWidth` excludes the border and the
+   scrollbar and INCLUDES the padding, and `.plate` spends 12px a side, so using
+   it bare would size every chart 24px past its own card. */
+function chartSpan(host,authored){
+  /* A HOST WITH NO LAYOUT KEEPS THE WIDTH IT IS ALREADY DRAWN AT.
+     Every section of this page stays in the document and only the active one is
+     shown, so a re-render triggered while a chart's own section is hidden -- a
+     language toggle taken from another screen, which re-runs all of them --
+     measures zero and would otherwise collapse that chart back to its authored
+     floor. Measured: `e2e/language.spec.ts`'s EN -> HE -> EN round trip caught
+     exactly that, because the English page came back with the off-screen charts
+     at 900 where they had been 1958. Reading the drawn viewBox makes a re-render
+     of a hidden chart reproduce what was there, which is what "restores the page
+     identically" means. */
+  if(host.clientWidth===0){
+    const svg=host.querySelector('svg.chart');
+    const drawn=svg?Number((svg.getAttribute('viewBox')||'').split(/\s+/)[2]):NaN;
+    return Number.isFinite(drawn)&&drawn>authored?drawn:authored;
+  }
+  const cs=getComputedStyle(host);
+  const inset=(parseFloat(cs.paddingInlineStart)||0)+(parseFloat(cs.paddingInlineEnd)||0);
+  const avail=Math.floor(host.clientWidth-inset);
+  return Number.isFinite(avail)&&avail>authored?avail:authored;
+}
+
+/* Re-render when the host's SPAN stops matching the chart drawn in it.
+
+   The comparison is against the DRAWN viewBox and not a remembered number, and
+   that is what makes the FIRST paint right: a tall chart put the page into a
+   vertical scrollbar after it was drawn, the plate came back 15px narrower, and
+   the chart was then wider than the box it was in — 0.992 instead of 1:1.
+   Reading the viewBox asks the only question that matters (is what is drawn the
+   size of the room it is in) and answers it the same way every time. It is also
+   the loop guard: the re-render makes the two equal, so the next callback
+   returns having done nothing. */
+const FITTED=new WeakSet();
+function fitChart(host,authored,render){
+  if(typeof ResizeObserver!=='function') return;
+  /* ONCE PER HOST. These renderers re-run on every language toggle and every
+     demo control, into the same `#ego`/`#comb`/`#stair`, and an observer per
+     call would leave one live watcher per render all firing on one resize. */
+  if(FITTED.has(host)) return;
+  FITTED.add(host);
+  /* The two spans most recently rendered at, newest first. A span that comes
+     back equal to the one BEFORE last is a cycle rather than a resize, and this
+     stops rather than repainting between two widths forever. */
+  let recent=[];
+  new ResizeObserver(()=>{
+    /* A HOST WITH NO LAYOUT IS NOT A RESIZE. Every section of this page stays
+       in the document and only the active one is shown, so a nav click reports
+       the outgoing plate at zero width — and re-rendering the chart at the
+       authored floor there would then have to be undone on the way back, which
+       is a flip the cycle guard below would latch on. Nothing is fitted to a
+       box that is not being laid out. */
+    if(host.clientWidth===0) return;
+    const svg=host.querySelector('svg.chart');
+    const drawn=svg?Number((svg.getAttribute('viewBox')||'').split(/\s+/)[2]):-1;
+    const span=chartSpan(host,authored);
+    if(drawn===span||recent[1]===span) return;
+    recent=[span,recent[0]];
+    render();
+  }).observe(host);
+}
+
 /* ── CHART DENSITY — thin the axis, annotate the notable, say what you dropped
    ───────────────────────────────────────────────────────────────────────────
    Every graphic in this file was drawn against a handful of hand-authored
@@ -5262,7 +5457,14 @@ const EGO={
 };
 function renderEgo(){
   const host=$('#ego'); if(!host) return;
-  const W=900,H=250,NW=210,NH=22,inX=8,fX=345,outX=682,fY=H/2+6;
+  /* 900 IS THE FLOOR, NOT THE VALUE — see `chartSpan`. The three columns are
+     spread across whatever this plate has; 8 / 345 / 682 is what that spread
+     answers at the authored 900, which is why those literals are gone rather
+     than kept beside a formula that reproduces them. The 210px node box and
+     every label on it are untouched: the room goes into the gutters. */
+  const W=chartSpan(host,900);
+  const H=250,NW=210,NH=22,MG=8;
+  const inX=MG,fX=(W-NW)/2,outX=W-NW-MG,fY=H/2+6;
   const k=[];
   const px=(x,w)=>HEB?W-x-w:x;
   const nodeAt=(x,y,id,cls)=>{
@@ -5277,6 +5479,7 @@ function renderEgo(){
     k.push(svtext({x:X(mx,W),y:(y1+y2)/2-5,'text-anchor':'middle',class:'rel'},rel));
   };
   const spread=(n,i)=>{const g=(H-56)/Math.max(n,1); return 34+g*i+g/2;};
+  fitChart(host,900,renderEgo);
   k.push(svtext({x:X(inX+NW/2,W),y:16,'text-anchor':'middle'},
     HEB?'מצביעים על המוקד':'these point at the focus'));
   k.push(svtext({x:X(fX+NW/2,W),y:16,'text-anchor':'middle'},HEB?'מוקד':'focus'));
@@ -5381,45 +5584,54 @@ const DECAY={window:20,sessionsRecorded:52,rows:[
 ]};
 function renderComb(){
   const host=$('#comb'); if(!host) return;
+  /* THE AUTHORED BOX, WHICH IS THE FLOOR AND NOT THE VALUE — see `chartSpan`.
+     `W` stays the design of record's own 900 and the drawing spans `SP`: the
+     214px label gutter and the 92px never-box gutter keep their authored widths
+     and the log axis between them spreads, so the teeth get more room rather
+     than bigger radii. Declared on one line because it IS the declaration this
+     file's geometry is read from — `test/ui/decay-screen.test.ts` holds
+     `screens/decay.js`'s own constants to these six numbers. */
   const W=900,H=210,PL=214,PR=92,PT=18,PB=30,maxS=60;
-  const dx=s=>PL+Math.log10(1+s)/Math.log10(1+maxS)*(W-PL-PR);
+  const SP=chartSpan(host,W);
+  fitChart(host,W,renderComb);
+  const dx=s=>PL+Math.log10(1+s)/Math.log10(1+maxS)*(SP-PL-PR);
   const k=[];
-  k.push(sv('line',{class:'axis',x1:X(PL,W),y1:H-PB,x2:X(W-PR,W),y2:H-PB}));
+  k.push(sv('line',{class:'axis',x1:X(PL,SP),y1:H-PB,x2:X(SP-PR,SP),y2:H-PB}));
   for(const [s,lab] of [[0,HEB?'השיחה הזו':'this session'],[1,'1'],[5,'5'],[20,'20'],[50,'50']]){
     const isWin=s===DECAY.window;
-    k.push(sv('line',{class:'axis',x1:X(dx(s),W),y1:PT-4,x2:X(dx(s),W),y2:H-PB,
+    k.push(sv('line',{class:'axis',x1:X(dx(s),SP),y1:PT-4,x2:X(dx(s),SP),y2:H-PB,
       'stroke-dasharray':'2 4',stroke:isWin?'var(--warn)':'var(--rule)'}));
     /* COLOUR IS A CLASS: a fill= on a <text> is a presentation attribute and
        loses to svg.chart text{fill:var(--dim)}, so every per-mark colour this
        comb used to write as an attribute rendered grey. */
-    k.push(svtext({x:X(dx(s),W),y:H-PB+13,'text-anchor':'middle',
+    k.push(svtext({x:X(dx(s),SP),y:H-PB+13,'text-anchor':'middle',
       ...(isWin?{class:'warn'}:{})},isWin?(HEB?'חלון 20':'window 20'):lab));
   }
-  k.push(svtext({x:X(dx(maxS)/1,W),y:H-PB+24,'text-anchor':'middle'},
+  k.push(svtext({x:X(dx(maxS)/1,SP),y:H-PB+24,'text-anchor':'middle'},
     HEB?'שיחות אחורה':'sessions ago'));
-  const nx=W-PR+16;
-  k.push(sv('rect',{class:'never',x:X(nx,W)-(HEB?46:0),y:PT-6,width:46,height:H-PT-PB+6,rx:4}));
-  k.push(svtext({x:X(nx+23,W),y:H-PB+13,'text-anchor':'middle',class:'crit'},
+  const nx=SP-PR+16;
+  k.push(sv('rect',{class:'never',x:X(nx,SP)-(HEB?46:0),y:PT-6,width:46,height:H-PT-PB+6,rx:4}));
+  k.push(svtext({x:X(nx+23,SP),y:H-PB+13,'text-anchor':'middle',class:'crit'},
     HEB?'מעולם':'never'));
   const rowH=(H-PT-PB)/DECAY.rows.length;
   DECAY.rows.forEach(([id,ses,always,unres],i)=>{
     const y=PT+rowH*i+rowH/2;
-    k.push(svtext({x:X(PL-8,W),y:y+3,'text-anchor':ANC('end'),class:'mono ink'},
+    k.push(svtext({x:X(PL-8,SP),y:y+3,'text-anchor':ANC('end'),class:'mono ink'},
       id.length>32?id.slice(0,31)+'…':id));
-    if(unres) k.push(svtext({x:X(4,W),y:y+3,'text-anchor':ANC('start')},'∀'));
+    if(unres) k.push(svtext({x:X(4,SP),y:y+3,'text-anchor':ANC('start')},'∀'));
     const cold = ses===null || ses>DECAY.window;
     const cx = ses===null ? nx+23 : dx(ses);
     const bad = always && cold;
     /* Warm is a solid disc, cold is a ring. --gold and --warn are close enough
        in light mode that colour alone would not carry the distinction. */
-    k.push(sv('circle',{cx:X(cx,W),cy:y,r:bad?5.5:4.2,
+    k.push(sv('circle',{cx:X(cx,SP),cy:y,r:bad?5.5:4.2,
       fill: ses===null?'var(--critbg)':cold?'var(--panel)':'var(--gold)',
       stroke: ses===null?'var(--crit)':bad?'var(--crit)':cold?'var(--warn)':'none',
       'stroke-width':bad?2:1.6}));
-    if(bad) k.push(svtext({x:X(cx,W)+(HEB?-9:9),y:y+3,'text-anchor':ANC('start'),
+    if(bad) k.push(svtext({x:X(cx,SP)+(HEB?-9:9),y:y+3,'text-anchor':ANC('start'),
       class:'crit'},HEB?'מוצמד ובכל זאת קר — הוא נשפך':'pinned, yet cold — it spilled'));
   });
-  host.replaceChildren(chart(W,H,k,HEB
+  host.replaceChildren(chart(SP,H,k,HEB
     ?'מסרק רעננות — שיחות מאז ההזרקה האחרונה, פריט לשורה, עם דלי נפרד ל"מעולם"'
     :'Recency comb: sessions since last injection, one row per item, with a separate never bucket'));
 
@@ -5565,7 +5777,12 @@ function sweep(tier){
 }
 function renderStair(){
   const host=$('#stair'); if(!host) return;
-  const W=560,H=200,PL=32,PR=14,PT=12,PB=26;
+  /* 560 IS THE FLOOR, NOT THE VALUE — see `chartSpan`. `bx()` below spreads the
+     rungs across whatever the plate gives; CHW, the type and the turnaround
+     rule are all figured at 1:1 and mean the same thing at any span. */
+  const W=chartSpan(host,560);
+  const H=200,PL=32,PR=14,PT=12,PB=26;
+  fitChart(host,560,renderStair);
   const data=sweep(SIM_TIER), maxN=Math.max(...data.map(d=>d.n),1);
   const bx=b=>PL+(b/12000)*(W-PL-PR), by=n=>H-PB-(n/maxN)*(H-PT-PB);
   const k=[];

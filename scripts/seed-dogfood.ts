@@ -763,7 +763,7 @@ function toItem(seed: Seed): Item {
     status: seed.status ?? 'active',
     severity: seed.severity ?? 'soft',
     always: seed.always ?? false,
-    continuity: false, summary: null, summaryOf: null, acknowledged: {},
+    continuity: false, summary: null, summaryOf: null, summaryWas: [], acknowledged: {},
     scope: seed.scope ?? [],
     tags: seed.tags ?? [],
     origin: 'human',

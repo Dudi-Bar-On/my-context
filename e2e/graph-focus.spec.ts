@@ -76,14 +76,65 @@ test.describe('the Relations focus picker', () => {
 
     const picker = page.locator('[data-p="graph"] select#egofocus');
     await expect(picker).toHaveCount(1);
-    // Every item in the corpus is offerable — the defect was that the focus was
-    // "an accident of the item list's order", and a picker over a subset would
-    // be the same accident with a control on it.
-    const options = await picker.locator('option').count();
-    expect(options).toBeGreaterThan(100);
 
-    // **The default is unchanged.** A reader who touches nothing sees what this
-    // screen has always drawn: `items.items[0].id`.
+    // ── EVERY ITEM IS REACHABLE. NOT EVERY ITEM IS LISTED. ──────────────────
+    //
+    // This read `expect(options).toBeGreaterThan(100)` until 2026-09-01, on the
+    // reasoning that "a picker over a subset would be the same accident with a
+    // control on it". The owner has since looked at the product and ruled the
+    // other way: *"i see many relations that has only an item in the center of
+    // the screen, these are items without relations, they should at least be
+    // filtered or disabled because they make the selection list long without any
+    // added value"*. In this project's own corpus that is 702 of 733 entries
+    // leading to a single node in an empty card.
+    //
+    // **The intent of the old assertion is kept and is what is asserted now.**
+    // What it was protecting is that no item becomes UNREACHABLE through a
+    // control that quietly offers less than the corpus holds — and that still
+    // holds, because the hidden ones are counted out loud under the picker and
+    // one click puts every one of them back. A shorter list is not the defect;
+    // a shorter list nobody is told about is, and that is the difference between
+    // this and the accident the old comment named.
+    const shown = await picker.locator('option').count();
+
+    // TWO reasons, TWO counts, TWO controls. An item is missing from this list
+    // because it has no relation of a kept type, or because it is retired, and a
+    // reader who cannot tell which cannot trust the list — so one combined "N
+    // hidden" is forbidden and both lines are asserted separately.
+    const unrelated = page.locator('[data-p="graph"] p.small')
+      .filter({ hasText: /have no relations of the types you kept/ });
+    const retired = page.locator('[data-p="graph"] p.small')
+      .filter({ hasText: /retired item\(s\) are not listed/ });
+    await expect(unrelated, 'the picker must SAY how many items it is not listing for want of a '
+      + 'relation of a kept type — INV-nothing-is-dropped-silently').toHaveCount(1);
+    await expect(retired, 'and how many it is not listing because they are retired, separately: '
+      + 'a combined count would make the list untrustworthy without saying why').toHaveCount(1);
+
+    // …and the way back for each, which is what makes an omission a disclosure
+    // rather than a loss. Retired first: it is the smaller set and its control
+    // must not disturb the other count.
+    await retired.locator('button').click();
+    await expect.poll(async () => picker.locator('option').count(),
+      { message: 'listing the retired items must add them to the picker' })
+      .toBeGreaterThan(shown);
+    await retired.locator('button').click();
+    await expect.poll(async () => picker.locator('option').count()).toBe(shown);
+
+    await unrelated.locator('button').click();
+    await expect.poll(async () => picker.locator('option').count(),
+      { message: 'listing the unrelated items must restore the full corpus to the picker' })
+      .toBeGreaterThan(shown);
+    expect(await picker.locator('option').count(),
+      'with nothing held back for want of a relation, the picker reaches the whole corpus')
+      .toBeGreaterThan(100);
+    await unrelated.locator('button').click();
+    await expect.poll(async () => picker.locator('option').count()).toBe(shown);
+
+    // **The default is unchanged**, and that is not luck: the screen opens on
+    // the first item the picker OFFERS, and this focus is the richest ego graph
+    // in the corpus, so it survives a filter that only removes items with no
+    // relations at all. A default the picker does not list would put the
+    // `<select>` on one item and the chart on another.
     await expect(picker).toHaveValue(DEFAULT_FOCUS);
     await expect(page.locator('[data-p="graph"] p.small').filter({ hasText: 'focus=' }))
       .toHaveText(new RegExp(`^focus=${DEFAULT_FOCUS} · radius=1 `));
