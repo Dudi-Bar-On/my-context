@@ -177,3 +177,26 @@ export function reaffirmSummary(item: Item): void {
  * enough to sit in a `note` column beside a discard reason.
  */
 export const SUMMARY_UNCHANGED_NOTE = 'summary-unchanged';
+
+/**
+ * What the audit row says when the summary was RE-AFFIRMED: the sentence the
+ * item already carried, passed back verbatim, on a write that re-stamped the
+ * basis (`summaryReaffirmed`, summary-gate.ts).
+ *
+ * **A second note rather than the first one reused, because it is a second
+ * assertion.** `summary-unchanged` says "this edit did not change what the item
+ * means" — a claim about the write, made in answer to a gate that write raised.
+ * `summary-reaffirmed` says "I read this item and this sentence still describes
+ * it" — a claim about the item, made unprompted. A log that spelled both the
+ * same way could not answer the one question either of them exists for: on
+ * which items has a person actually re-read the sentence, and on which did they
+ * only certify that an edit was mechanical.
+ *
+ * The two never appear on one row. They cannot both be asserted in one call —
+ * `summaryUnchangedRefusal` refuses `--summary` beside the hatch — and
+ * `updateItem` applies them as one `else if` chain for the same reason.
+ *
+ * Same shape as its sibling: hyphenated so it greps as one token, short enough
+ * for the `note` column.
+ */
+export const SUMMARY_REAFFIRMED_NOTE = 'summary-reaffirmed';

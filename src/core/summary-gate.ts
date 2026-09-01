@@ -36,6 +36,22 @@
  * is — the gate is the only thing that can PREVENT the case, doctor is the only
  * thing that can SEE the other one, and neither alone closes the hole.
  *
+ * ── AND THE WAY BACK OUT OF THAT CASE ───────────────────────────────────────
+ *
+ * A stale summary that is STILL CORRECT had no honest route to `current` until
+ * `summaryReaffirmed` below. All three doors were shut: the hatch is refused on
+ * an edit that raises no gate, `update_item` on a normative category stages
+ * rather than writes, and `mycontext edit --summary "<the same text>"` reported
+ * "nothing to change" — which was false, because the stamp had something to
+ * change even though no field of the item read differently afterwards. The only
+ * remaining move was to write a gratuitously different sentence, which is the
+ * dishonesty the summary standard exists to prevent.
+ *
+ * So the third door is opened rather than the first widened, and the reason is
+ * cost: the hatch is a flag and a flag can be typed over a whole corpus without
+ * a word being read, while a re-affirmation can only be spelled by reproducing
+ * the sentence. `summaryReaffirmed` says the rest.
+ *
  * **Every mechanical internal write.** A gate that blocked `repair`, a tag
  * projection, a promotion of a revision a human already approved, or a pack
  * import would be a regression: none of those callers is a person holding new
@@ -48,6 +64,7 @@
 import { itemSummaryBasis, type ContentShape } from './content-hash.ts';
 import { normalizePosix } from './paths.ts';
 import { normalizeEol } from './text.ts';
+import { normalizeSummary } from './validate.ts';
 import type { UpdateInput } from './mutate.ts';
 import type { Item } from './types.ts';
 
@@ -101,6 +118,63 @@ export function afterContent(item: Item, patch: UpdateInput): ContentShape {
  * the basis. An echo moves nothing and is not a change here either. */
 export function basisMoves(item: Item, patch: UpdateInput): boolean {
   return itemSummaryBasis(afterContent(item, patch)) !== itemSummaryBasis(item);
+}
+
+/**
+ * **Whether this write moves `summary_of` — the STAMP, not the content.**
+ *
+ * `basisMoves` compares the item's summarised content before against after;
+ * this compares the content after against the hash actually RECORDED beside
+ * the summary. On an item whose summary is `current` the two are the same
+ * question, which is why one function was enough until now. On a STALE item
+ * they are opposite answers: the content is standing still, so `basisMoves`
+ * says no, and the stamp is precisely the thing that would move.
+ *
+ * An `unanchored` summary (`summaryOf === null`) answers yes, because a hash is
+ * never null and writing one where there was none is the largest move there is.
+ */
+export function basisRestamped(item: Item, patch: UpdateInput): boolean {
+  return itemSummaryBasis(afterContent(item, patch)) !== item.summaryOf;
+}
+
+/**
+ * **A RE-AFFIRMATION: the sentence the item already carries, passed back
+ * deliberately, on a write that re-stamps the basis.**
+ *
+ * It is a different assertion from the escape hatch and the difference is the
+ * whole reason it is a separate predicate:
+ *
+ *  - `--summary-unchanged` says *"this EDIT did not change what the item
+ *    means"*. It is about the write, it is answering a gate the write raised,
+ *    and it costs one flag.
+ *  - A re-affirmation says *"I have read this ITEM and this sentence still
+ *    describes it"*. It is about the item, it answers nothing, and it costs
+ *    the sentence — you cannot pass a summary you have not read.
+ *
+ * **That cost is the guard, and it is why the hatch is not simply widened to
+ * cover the stale case.** A flag that cleared a stale summary could be typed
+ * over every warning in a corpus in one loop without a word being read; the
+ * only way to spell this act is to reproduce the sentence, which is the same
+ * keystrokes as writing a new one and carries the same claim. The guard is
+ * intrinsic rather than added, so there is no third clause to get wrong.
+ *
+ * `basisRestamped` rather than "the summary is stale" is what makes the
+ * predicate exact in both directions. An echo on a summary that is already
+ * `current`, with nothing else in the patch, moves nothing and is NOT a
+ * re-affirmation — it is the no-op `mycontext edit` has always reported as
+ * one. An echo alongside a body change IS one, on a current summary as much as
+ * on a stale one: the sentence stood while the text under it moved, which is
+ * the hatch's assertion arriving in the hatch's other spelling.
+ *
+ * Normalised through `normalizeSummary`, the same call `updateItem` makes
+ * before storing: a sentence that differs from the stored one only in
+ * surrounding whitespace is the stored one, and comparing raw input against a
+ * trimmed field would call it new text.
+ */
+export function summaryReaffirmed(item: Item, patch: UpdateInput): boolean {
+  if (item.summary === null || patch.summary === undefined) return false;
+  if (normalizeSummary(patch.summary) !== item.summary) return false;
+  return basisRestamped(item, patch);
 }
 
 /**
@@ -205,13 +279,29 @@ export function summaryUnchangedRefusal(
     );
   }
   if (!basisMoves(item, patch)) {
+    // The remedy names BOTH answers, because "the summary is stale" has two
+    // honest endings and the old sentence knew only one. Writing a different
+    // sentence is right when the sentence is wrong; when it is still correct,
+    // demanding a different one is a demand for a gratuitous rewrite, which is
+    // the dishonesty the summary standard exists to prevent. Passing the SAME
+    // sentence back is the second ending — see `summaryReaffirmed` for why that
+    // act is spelled with the sentence rather than with a flag, and why this
+    // clause therefore stays absolute.
+    const reaffirm = surface === 'edit'
+      ? `\`mycontext edit ${item.id} --summary "<the same sentence>"\``
+      : `update_item({ id: "${item.id}", summary: "<the same sentence>" })`;
     return (
       `my_context: ${hatch} answers the gate that asks for a new summary, and this edit does not ` +
       `raise it — nothing it changes is part of what a summary summarises (see the field table ` +
       `in content-hash.ts). Accepting it would re-stamp the basis on an edit that was never ` +
       `asked about, which on an already-stale summary would record that somebody checked this ` +
-      `sentence against this text when nobody did. Nothing was changed. If the summary IS stale, ` +
-      `write a new one: ${write}.`
+      `sentence against this text when nobody did. Nothing was changed. If the summary IS stale ` +
+      `and no longer correct, write a new one: ${write}. If it is stale and STILL CORRECT — the ` +
+      `text moved in a way the sentence already covers — read it against the item and pass it ` +
+      `back verbatim: ${reaffirm}. That is a RE-AFFIRMATION: it re-stamps the basis, changes no ` +
+      `word of the summary, and is recorded in the audit log as the assertion it is. It is ` +
+      `spelled with the sentence rather than with this flag on purpose — a flag could clear ` +
+      `every stale summary in a corpus without one of them being read.`
     );
   }
   return null;

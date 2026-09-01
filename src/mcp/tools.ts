@@ -586,7 +586,10 @@ const SPECS: ToolSpec[] = [
           'can write one; this is the answer for a typo, a reflow or a rewrapped paragraph. It ' +
           're-stamps what the summary was written against without new text, and the audit log ' +
           'records that nobody rewrote it. Refused beside "summary", on an item with no ' +
-          'summary, and on an edit that was never asked for one',
+          'summary, and on an edit that was never asked for one. It is NOT how an ALREADY-STALE ' +
+          'summary is cleared: if that sentence still describes the item, pass it back verbatim ' +
+          'as "summary" - a re-affirmation, which re-stamps the basis and is audited as one. ' +
+          'Never invent a different sentence just to clear a stale warning',
       },
       scope: { ...S_STRINGS, description: 'Refused on a governing normative item' },
       tags: S_STRINGS,

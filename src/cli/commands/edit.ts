@@ -12,8 +12,9 @@ import {
   handWrittenProjectionError, projectFieldUpdate, updatableFor, updatesFor,
 } from '../../core/tag-projection.ts';
 import {
-  summaryRequired, summaryRequiredRefusal, summaryUnchangedRefusal,
+  summaryReaffirmed, summaryRequired, summaryRequiredRefusal, summaryUnchangedRefusal,
 } from '../../core/summary-gate.ts';
+import { summaryState } from '../../core/content-hash.ts';
 import { inertFieldError, scopeRequirementError } from '../../core/trust.ts';
 import {
   SEVERITIES, STATUSES, normalizeSummary, updatableValueError, validateExtra, validateSummary,
@@ -180,6 +181,16 @@ const FIELD_CLASS: Record<string, FieldClass> = {
   // body is, which is also what `UPDATE_FIELD_POLICY` (trust.ts) classifies it
   // as; the two tables agree because they are answering the same question.
   title: 'content', body: 'content', summary: 'content', tags: 'content', extra: 'content',
+  // `summary_of` is the STAMP, and it is CONTENT for the same reason `summary`
+  // is: moving it is what takes the STALE marker off the sentence, and that
+  // marker is part of what a reader is told about the item — arguably the most
+  // load-bearing part, since it is the difference between a sentence that may
+  // be quoted and one that may not. It is here rather than absent because a
+  // re-affirmation moves it while moving no other field (`changesOf`), and a
+  // field class is what `gateFor` reads: filing it as reach or force would
+  // print the "what governs before and after" block over a change that governs
+  // nothing.
+  summary_of: 'content',
   // `relations` is REACH, and the classification is the whole gate on
   // `--unlink`. Removing a `blocks` or a `constrains` from a governing item
   // takes away part of what that item asserts about the rest of the corpus,
@@ -277,6 +288,25 @@ function changesOf(item: Item, patch: UpdateInput, scopeLabel: (globs: string[])
   // and removing the one it has.
   if (patch.summary !== undefined && patch.summary !== (item.summary ?? '')) {
     addContent('summary', item.summary ?? '', patch.summary);
+  }
+  // **The RE-AFFIRMATION, and it is the change this function used to miss.**
+  //
+  // Every case above asks "does this edit leave a FIELD OF THE ITEM reading
+  // differently?" — and for the summary the answer is no when the sentence is
+  // passed back verbatim. But the write still moves `summary_of`, which is what
+  // takes a stale summary back to current, so "nothing to change" below was a
+  // false report of a real change and the one honest way to clear a still-true
+  // stale summary was closed by it. See `summaryReaffirmed` (summary-gate.ts):
+  // it is exclusive with the diff above, because a summary is either the stored
+  // one or new text.
+  //
+  // Rendered as a labelled line rather than as a diff, because a diff of a
+  // sentence against itself shows the reader nothing and would suggest a
+  // rewrite that is not happening. The line says what actually moves: the
+  // basis, from whatever `mycontext show` and `doctor` have been calling it, to
+  // a re-affirmation of the sentence already on the item.
+  if (summaryReaffirmed(item, patch)) {
+    add('summary_of', summaryState(item), 're-affirmed, and the sentence is unchanged');
   }
   if (patch.tags !== undefined && !sameSet(patch.tags, item.tags)) {
     addContent('tags', item.tags, patch.tags);
@@ -891,7 +921,16 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
         // of "this text becomes that text", never a truncated one. Reach and
         // force are single values, so a diff of them would be three lines
         // saying what one says.
-        if (change.klass === 'content') {
+        //
+        // The branch reads `from` rather than `klass`, and the two used to be
+        // the same test: `addContent` is the only producer of a diffable pair
+        // and it is the only producer of a content change — until
+        // `summary_of`, which is content that moves no text and has no pair to
+        // diff. Keying on the pair itself asks the question the renderer
+        // actually has ("is there a before-and-after text here?") instead of a
+        // proxy for it, and every change built by `addContent` still takes the
+        // first branch exactly as before.
+        if (change.from !== undefined) {
           for (const line of fieldDiff(
             change.field as RevisionField, change.from, change.to,
           )) out(line);

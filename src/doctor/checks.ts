@@ -805,10 +805,17 @@ export function checkSummary(items: Item[]): Finding[] {
           `have changed since the summary was written, so the summary describes text that is no ` +
           `longer here. It is still stored and still shown — nothing was dropped — but it is ` +
           `drawn as stale wherever it appears, and it must not be quoted as though it described ` +
-          `this item. Write a new one with \`mycontext edit ${item.id} --summary "<text>"\` ` +
-          `(or update_item, which stages it for review on a category set to agentEdits ` +
-          `"review"); the basis is re-stamped by that write and by nothing else, so an edit to ` +
-          `the body alone will never quietly re-bless it.`,
+          `this item. Read the sentence against the body, and there are two honest endings. ` +
+          `If it no longer describes the item, write a new one: ` +
+          `\`mycontext edit ${item.id} --summary "<text>"\` (or update_item, which stages it for ` +
+          `review on a category set to agentEdits "review"). If it STILL describes the item — ` +
+          `the text moved in a way the sentence already covers — pass the same sentence back ` +
+          `verbatim: \`mycontext edit ${item.id} --summary "<the same sentence>"\`, which ` +
+          `re-stamps the basis, changes no word, and is recorded in the audit log as a ` +
+          `re-affirmation. Do NOT invent a different sentence to clear this warning; a ` +
+          `gratuitous rewrite is the dishonesty the summary standard exists to prevent. Either ` +
+          `way the basis is re-stamped by a write that carries the sentence and by nothing else, ` +
+          `so an edit to the body alone will never quietly re-bless it.`,
       });
     }
 

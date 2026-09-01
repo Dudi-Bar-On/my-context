@@ -31,8 +31,10 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { readAudit } from '../../src/core/audit.ts';
 import { summaryState } from '../../src/core/content-hash.ts';
-import { basisMoves, summaryRequired } from '../../src/core/summary-gate.ts';
-import { SUMMARY_UNCHANGED_NOTE } from '../../src/core/summary-history.ts';
+import { basisMoves, summaryReaffirmed, summaryRequired } from '../../src/core/summary-gate.ts';
+import {
+  SUMMARY_REAFFIRMED_NOTE, SUMMARY_UNCHANGED_NOTE,
+} from '../../src/core/summary-history.ts';
 import { createItem, updateItem } from '../../src/core/mutate.ts';
 import { promoteRevision } from '../../src/core/revision.ts';
 import type { Item } from '../../src/core/types.ts';
@@ -330,6 +332,135 @@ test('a stale summary cannot be blessed by the hatch — it must be rewritten', 
     const r = cli(box, ['edit', id, '--summary-unchanged', '--yes']);
     assert.equal(r.code, 1, 'the hatch must not be the way a stale summary goes green');
     assert.match(cli(box, ['show', id]).out, /STALE/, 'and it is still stale afterwards');
+    assert.match(r.flat, /pass it back verbatim/,
+      'and the refusal names the route that IS honest, because a refusal whose only remedy is ' +
+      '"write a different sentence" is a demand for a gratuitous rewrite when the sentence is ' +
+      'still correct');
+  } finally { box.dispose(); }
+});
+
+/* -------------------------------------------------------------------------- *
+ * THE RE-AFFIRMATION.
+ *
+ * A summary that is stale and STILL CORRECT had no honest way out: the hatch
+ * refuses it (above), `update_item` on a normative category stages rather than
+ * writes, and `edit --summary "<the same sentence>"` reported "nothing to
+ * change" — which was false. The stamp had something to change; no FIELD did.
+ *
+ * The act is spelled with the sentence rather than with a flag on purpose. A
+ * flag can be typed over every warning in a corpus without a word being read;
+ * reproducing the sentence costs the same keystrokes as writing a new one and
+ * carries the same claim, so the guard is intrinsic and there is no third
+ * clause to get wrong.
+ * -------------------------------------------------------------------------- */
+
+/** The item, its file hand-edited so the summary is genuinely stale — the case
+ * `summary_stale` exists for and the only one a re-affirmation is about. */
+function staleRule(box: Sandbox): string {
+  const id = rule(box, { summary: PLAIN });
+  const filePath = itemOf(box, id).filePath;
+  box.ctx.store.close();
+  const file = path.join(box.root, filePath);
+  writeFileSync(file, readFileSync(file, 'utf8').replace('outlive', 'outlast'));
+  return id;
+}
+
+test('the same sentence, passed back on a stale summary, re-stamps the basis', () => {
+  const box = sandbox();
+  try {
+    const id = staleRule(box);
+    assert.match(cli(box, ['show', id]).out, /STALE/);
+
+    const r = cli(box, ['edit', id, '--summary', PLAIN, '--yes']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.flat, /summary_of stale -> re-affirmed/,
+      'the preview says what actually moves — a diff of the sentence against itself would show ' +
+      'the reader nothing and suggest a rewrite that is not happening');
+
+    const shown = cli(box, ['show', id]).out;
+    assert.ok(shown.includes(PLAIN), 'not one word of the summary changed');
+    assert.doesNotMatch(shown, /STALE/, 'and that is the whole point: it is current again');
+    assert.doesNotMatch(shown, /^summary_was:/m,
+      'nothing was REPLACED, so nothing is recorded — the same rule the hatch is under');
+  } finally { box.dispose(); }
+});
+
+test('a re-affirmation is audited as itself, and not as the hatch', () => {
+  const box = sandbox();
+  try {
+    const id = staleRule(box);
+    assert.equal(cli(box, ['edit', id, '--summary', PLAIN, '--yes']).code, 0);
+
+    const rows = readAudit(box.root).filter((r) => r.itemId === id && r.op === 'update');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].note, SUMMARY_REAFFIRMED_NOTE,
+      '"I read this item and this sentence still describes it" is a different assertion from ' +
+      '"this edit did not change what the item means", and a log that spelled them the same ' +
+      'way could not answer either question');
+    assert.notEqual(rows[0].note, SUMMARY_UNCHANGED_NOTE);
+    assert.equal(rows[0].fields, undefined,
+      'no AUDITED_FIELD moved — `summaryOf` is deliberately not one — so the note is the ' +
+      'entire record of what happened, which is exactly why it has to exist');
+  } finally { box.dispose(); }
+});
+
+test('an echo on a summary that is already current is still the no-op it always was', () => {
+  // The narrowness of the fix, stated as a test. `summaryReaffirmed` asks
+  // whether the STAMP moves, not whether the summary is echoed: on a current
+  // summary with nothing else in the patch it does not, so the command reports
+  // the no-op rather than writing a re-affirmation of something nobody doubted.
+  const box = sandbox();
+  try {
+    const id = rule(box, { summary: PLAIN });
+    box.ctx.store.close();
+    const r = cli(box, ['edit', id, '--summary', PLAIN, '--yes']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.flat, /nothing to change/);
+    assert.match(r.flat, /Nothing was written/);
+    assert.equal(readAudit(box.root).filter((x) => x.itemId === id && x.op === 'update').length, 0,
+      'and nothing reached the audit log, because nothing reached the store');
+  } finally { box.dispose(); }
+});
+
+test('the same sentence beside a body change is the hatch\'s other spelling, and says so', () => {
+  // `--body X --summary "<the same sentence>"` answers the gate and asserts the
+  // sentence still holds — the identical claim `--summary-unchanged` makes,
+  // typed the long way. It must be recorded as a re-affirmation rather than
+  // passing as an ordinary summary write, or the log would say somebody wrote
+  // a new sentence when nobody did.
+  const box = sandbox();
+  try {
+    const id = rule(box, { summary: PLAIN });
+    box.ctx.store.close();
+    const r = cli(box, ['edit', id, '--body', 'Secrets in logs outlast the incident.',
+      '--summary', PLAIN, '--yes']);
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(cli(box, ['show', id]).out, /STALE/);
+
+    const rows = readAudit(box.root).filter((x) => x.itemId === id && x.op === 'update');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].note, SUMMARY_REAFFIRMED_NOTE);
+    assert.deepEqual(rows[0].fields, ['body'],
+      '`summary` did not move and the row must not say it did');
+  } finally { box.dispose(); }
+});
+
+test('the predicate is the stamp, not the sentence: three cases', () => {
+  const box = sandbox();
+  try {
+    const item = itemOf(box, rule(box, { summary: PLAIN }));
+    const asks = (patch: Record<string, unknown>): boolean =>
+      summaryReaffirmed(item, { id: item.id, ...patch });
+
+    assert.equal(asks({ summary: NEW }), false, 'new text is a rewrite, never a re-affirmation');
+    assert.equal(asks({ summary: PLAIN }), false,
+      'an echo that moves no stamp is a no-op — this item\'s summary is current');
+    assert.equal(asks({ summary: PLAIN, body: 'A different claim entirely.' }), true,
+      'the same echo becomes a re-affirmation the moment the text under it moves');
+    assert.equal(asks({ summary: `  ${PLAIN}  `, body: 'A different claim entirely.' }), true,
+      'normalised the way `updateItem` normalises, so surrounding whitespace is not new text');
+    assert.equal(asks({ body: 'A different claim entirely.' }), false,
+      'and a call that carries no summary at all asserts nothing');
   } finally { box.dispose(); }
 });
 
@@ -406,6 +537,64 @@ test('the hatch cannot be STAGED, and is refused rather than dropped', () => {
     );
     // And nothing WAS staged: the item is untouched and carries no revision.
     assert.doesNotMatch(registry.call('get_item', { id }), /Rewriten/);
+  } finally { box.dispose(); }
+});
+
+test('nor can a RE-AFFIRMATION be staged, and it used to walk straight past review', () => {
+  // The hole this test is the regression for: `contentChange` calls an echoed
+  // summary no change — correctly, there is no new TEXT to stage — so the call
+  // fell through the `review` branch with nothing staged and applied. That took
+  // the STALE marker off a governing item on an agent's word, under the one
+  // policy whose purpose is that it does not happen, and the audit row named no
+  // field and carried no note, so there was no evidence it had.
+  const box = sandbox({ categories: { lesson: { agentEdits: 'review' } } });
+  try {
+    const id = createItem(box.ctx, {
+      type: 'lesson', title: 'The check never ran', summary: PLAIN,
+      body: 'The endpoint reported a zero it had not measured.',
+      status: 'active', origin: 'human',
+    }).id;
+    // Stale, through the road no gate watches: a direct body write.
+    updateItem(box.ctx, { id, body: 'It reported nothing at all.', origin: 'human' });
+    assert.equal(summaryState(itemOf(box, id)), 'stale');
+    box.ctx.store.close();
+
+    const registry = createRegistry(box.cwd);
+    assert.throws(
+      () => registry.call('update_item', { id, summary: PLAIN }),
+      /nothing was staged/,
+    );
+    assert.throws(
+      () => registry.call('update_item', { id, summary: PLAIN }),
+      /mycontext edit .* --summary "<the same sentence>"/,
+      'and it names the human who can make the assertion, in the spelling they would type',
+    );
+    assert.match(registry.call('get_item', { id }), /STALE/,
+      'the marker is still there, which is the whole of the regression');
+  } finally { box.dispose(); }
+});
+
+test('on agentEdits "allow" a re-affirmation applies, and carries its own note', () => {
+  // `review` is what refuses it, not the assertion itself: where an agent's
+  // content edits apply, so does this one — with the record that says which
+  // assertion was made.
+  const box = sandbox({ categories: { lesson: { agentEdits: 'allow' } } });
+  try {
+    const id = createItem(box.ctx, {
+      type: 'lesson', title: 'The check never ran', summary: PLAIN,
+      body: 'The endpoint reported a zero it had not measured.',
+      status: 'active', origin: 'human',
+    }).id;
+    updateItem(box.ctx, { id, body: 'It reported nothing at all.', origin: 'human' });
+    assert.equal(summaryState(itemOf(box, id)), 'stale');
+    box.ctx.store.close();
+
+    const registry = createRegistry(box.cwd);
+    registry.call('update_item', { id, summary: PLAIN });
+    assert.doesNotMatch(registry.call('get_item', { id }), /STALE/);
+    const rows = readAudit(box.root)
+      .filter((r) => r.itemId === id && r.op === 'update' && r.origin === 'agent');
+    assert.equal(rows.at(-1)!.note, SUMMARY_REAFFIRMED_NOTE);
   } finally { box.dispose(); }
 });
 

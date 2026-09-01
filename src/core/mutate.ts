@@ -23,7 +23,10 @@ import { SUPERSEDED_BY } from './relations.ts';
 // entry points, not only under `node --test`.
 import { stageRevision, type RevisionChanges } from './revision.ts';
 import { makeId } from './slug.ts';
-import { reaffirmSummary, reviseSummary, SUMMARY_UNCHANGED_NOTE } from './summary-history.ts';
+import { summaryReaffirmed } from './summary-gate.ts';
+import {
+  reaffirmSummary, reviseSummary, SUMMARY_REAFFIRMED_NOTE, SUMMARY_UNCHANGED_NOTE,
+} from './summary-history.ts';
 import type { Store } from './store.ts';
 import { projectFieldUpdate, projectOntoTags } from './tag-projection.ts';
 import { enumError, missingFieldError } from './teach.ts';
@@ -622,7 +625,12 @@ export interface UpdateInput {
    * `summaryUnchangedRefusal`: it is refused alongside `summary`, refused on an
    * item that has no summary, and refused on an edit that does not raise the
    * gate at all — which is what stops it becoming a way to mark an
-   * already-stale summary current without reading it.
+   * already-stale summary current without reading it. A summary that is
+   * already stale AND still correct has its own route and it is not a flag:
+   * pass the same sentence back as `summary`, which re-stamps the basis and is
+   * audited as a re-affirmation (`summaryReaffirmed`, summary-gate.ts). The
+   * cost of typing the sentence is the guard, and it is why this clause does
+   * not need widening.
    *
    * Absent from `RevisionChanges` (revision.ts) and from `AUDITED_FIELDS`
    * (persist.ts), because it is an instruction about a write rather than a
@@ -928,6 +936,39 @@ export function updateItem(
   // `agentEditsFor` fails closed to `review` for a category absent from
   // config — see its doc comment.
   if (origin !== 'human' && agentEditsFor(ctx.config, item.type) === 'review') {
+    // **A RE-AFFIRMATION cannot be staged either, and it reached this branch
+    // disguised as nothing at all.**
+    //
+    // `contentChange` calls an echoed summary no change — correctly, because
+    // there is no new TEXT for a revision to carry. But an echo on a write that
+    // re-stamps the basis is not nothing: it moves the item from `stale` to
+    // `current` and takes the "do not quote this" banner off a governing item's
+    // most quotable sentence. With `proposed` null the call fell straight
+    // through to the apply below and did exactly that, on an agent's say-so,
+    // under a `review` policy whose whole point is that it does not happen —
+    // and the audit row named no field and carried no note, so there was no
+    // evidence it had.
+    //
+    // Refused, for `summaryUnchanged`'s reason immediately below and in its
+    // shape: the assertion is "I read this item and this sentence still
+    // describes it", a revision has nowhere to put it, and a human is the one
+    // who gets to make it about an item this project holds for human review.
+    if (summaryReaffirmed(item, update)) {
+      throw new Error(
+        `my_context: this call to update ${item.id} passes back the summary it already carries, ` +
+        `which is a RE-AFFIRMATION — "I have read this item and this sentence still describes ` +
+        `it" — and re-stamps what the summary was written against. "${item.type}" is set to ` +
+        `agentEdits: "review" in this project, so content here is held for a human, and a ` +
+        `staged revision has nowhere to carry that assertion: it carries new TEXT, and there is ` +
+        `no new text. Letting it through would take the STALE marker off ${item.id} on an ` +
+        `agent's word, which is the one thing "review" exists to prevent. Refused instead: ` +
+        `nothing was applied and nothing was staged, and ${item.id} is exactly as it was. If the ` +
+        `summary no longer describes the item, send a DIFFERENT sentence — that is stageable, ` +
+        `and it is held and promoted with the rest. If it still describes the item, say so to ` +
+        `the user, who can re-affirm it with \`mycontext edit ${item.id} --summary "<the same ` +
+        `sentence>"\`. See mycontext_help("capture").`,
+      );
+    }
     const proposed = contentChange(item, update, title, body, summary);
     if (proposed !== null) {
       // Nothing is dropped silently (`INV-nothing-is-dropped-silently`), and
@@ -1022,6 +1063,12 @@ export function updateItem(
   // what this call MOVED rather than what it carried — an echoed value is not
   // a change and must not appear in the audit record as one.
   const before = snapshotFields(item);
+  // Read here for the same reason and it is the same reason twice over: the
+  // predicate compares the summary this call carries against the one the item
+  // HAS and the basis it was stamped against, and both are about to be
+  // overwritten. Asked after the assignments it would answer about the item
+  // this write produced, which is always "current" and always an echo.
+  const reaffirmed = summaryReaffirmed(item, input);
 
   if (title !== undefined) item.title = title;
   if (body !== undefined) item.body = body;
@@ -1083,9 +1130,25 @@ export function updateItem(
     // `step 3` — and it cannot go in `fields`, which means "what this write
     // moved": `summary` did not move, and saying it did would make the audit
     // log disagree with the item's own history.
+    //
+    // **`summary-reaffirmed` is the sibling record, and it is a SECOND note
+    // rather than this one reused.** Both say "nobody wrote a new sentence",
+    // and they say it about different acts: the hatch certifies that an EDIT
+    // was mechanical, a re-affirmation certifies that somebody read the ITEM
+    // and found the sentence still true. One note for both would make the log
+    // unable to answer either question. They cannot co-occur — `summary` beside
+    // the hatch is refused at both authored surfaces — so the chain never has
+    // to choose between them. See `SUMMARY_REAFFIRMED_NOTE`.
+    //
+    // Here too `fields` is right to stay silent: a re-affirmation moves
+    // `summaryOf` alone, which `AUDITED_FIELDS` deliberately does not carry
+    // (persist.ts), so on a bare re-affirmation the row names no field and the
+    // note is the entire record of what happened. That is exactly why it has
+    // to exist: without it the row is indistinguishable from a write that did
+    // nothing.
     ...(input.summaryUnchanged === true && item.summary !== null
       ? { note: SUMMARY_UNCHANGED_NOTE }
-      : {}),
+      : reaffirmed ? { note: SUMMARY_REAFFIRMED_NOTE } : {}),
   });
 
   return {
