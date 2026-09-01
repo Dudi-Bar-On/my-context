@@ -1,14 +1,14 @@
 /**
  * `nav.ev` — **Doctor**, `<section data-p="doctor">` in the design of record.
- * `runChecks`' findings, kept whole: *"a findings list flattened to 'exit 1'
- * is what a terminal loses"* (`doc.v`).
+ * `runChecks`' findings, kept whole: *"'exit 1' loses the findings list"*
+ * (`doc.v`).
  *
  * **Three cards, one per LEVEL, each row carrying its code — the mockup's
  * arrangement, not the plan's.** The plan's Step 3 sketch builds one
  * `<section>` per CODE with a `<ul>` inside it; `<section data-p="doctor">`
  * builds `<div class="card pane">` per level — `error`, `warning`, `notice` —
  * each holding a `<table>` whose first cell is the code. Both readings satisfy
- * `doc.sub` (*"Grouped by finding code, three levels kept distinct"*), and the
+ * `doc.sub` (*"Grouped by code, in three levels"*), and the
  * mockup is the specification, so the levels are the cards and the grouping by
  * code is the ROW ORDER inside each one: `groupFindings` orders the codes
  * worst-first and this file walks that order three times, once per level.
@@ -80,6 +80,24 @@
  * data: `repairFor` already answers `null` at the one point where the fact is
  * known. What is new is that the fact is said. `noRepairChip` and `repairTally`
  * carry the owner report and the reasoning.
+ *
+ * **AND SINCE 2026-09-01 IT SAYS EACH THING ONCE.** Owner, three times in
+ * different clothes: *"go over every screen and simplify by using simple words
+ * to shorten texts on screen that most of them are long if not very long, it
+ * makes them tedious to read and actually user will not read them"*. Measured
+ * here rather than argued: 42,353 characters of message on this screen, 34,440
+ * of them the same paragraph re-printed per row. `sharedTail` moves the repeat
+ * under the table into one `details.help` per code. **Shortened words, never
+ * shortened facts** — every row keeps all of what is true of it alone, the
+ * removed prose is one click away and complete, and the two halves still join
+ * to the producer's message byte for byte.
+ *
+ * The four keyed sentences on this screen were shortened under the same rule:
+ * `doc.v`, `doc.sub`, `doc.zero` and `title.noRepair` each keep every
+ * distinction they drew — `doc.zero` is still a MEASURED zero and still says
+ * it was checked, and `title.noRepair` still says a person repairs this, still
+ * says why no command exists, and still says the absence is the state rather
+ * than a missing control.
  *
  * **A clean corpus draws three empty cards, not an empty screen.** Owner
  * ruling: empty renders the real markup with zero rows. A refusal is the other
@@ -303,13 +321,121 @@ export function messageRuns(message) {
   return runs;
 }
 
+/** The runs of one message, appended into `node`. One spelling for the cell and the note. */
+function appendMessage(node, message) {
+  for (const run of messageRuns(message)) {
+    node.append(run.mono ? mono(run.text) : document.createTextNode(run.text));
+  }
+  return node;
+}
+
 /** `<td class="small">` — the message, with its quoted literals isolated. */
 function messageCell(message) {
-  const cell = el('td', 'small');
-  for (const run of messageRuns(message)) {
-    cell.append(run.mono ? mono(run.text) : document.createTextNode(run.text));
+  return appendMessage(el('td', 'small'), message);
+}
+
+/**
+ * **The sentence every finding of one code repeats, found rather than listed.**
+ *
+ * Measured against this repo's own corpus on 2026-09-01: `/api/doctor` answers
+ * 73 findings carrying 42,353 characters of message, and 34,440 of those are
+ * the SAME paragraph drawn again. Thirty-four `citation_form` rows share a
+ * 943-character explanation of the citation form, word for word; thirty-six
+ * `body_disagrees_with_meta` rows share "Read the body against the title and
+ * the fields; which of the two moves is the owner's call." Eighty-one per cent
+ * of the text on this screen is a re-print, and the owner has reported the
+ * effect three times — most exactly as *"58,000 characters of near-identical
+ * paragraph"*.
+ *
+ * So the repeat is factored out and drawn ONCE per code, under the table it
+ * belongs to. Every row keeps the whole of what is TRUE OF IT ALONE and loses
+ * not one character of it; what leaves the row is only the part that was
+ * already on screen N times. The producer's words are still unedited and still
+ * complete on the screen — `row text + shared tail` is the message byte for
+ * byte, which is asserted rather than taken on trust.
+ *
+ * **The cut is the producer's own sentence boundary, never a character count.**
+ * The common suffix is computed backwards over the messages, then advanced to
+ * the first sentence break inside it, so the row keeps a finished sentence and
+ * the note begins with one. A truncation at N characters would cut mid-clause
+ * and would be a different sentence rather than a shorter one.
+ *
+ * Three guards, and each answers a way this could lie:
+ *   - two messages at least, or there is no repetition to factor;
+ *   - `SHARED_MIN` characters at least, so a shared full stop earns no
+ *     disclosure;
+ *   - every row must keep WORDS of its own, so two identical messages never
+ *     collapse into two blank rows and one note.
+ * Fail any of them and the answer is the empty string — the screen draws
+ * exactly what it drew before, which is the safe direction for a defect here.
+ */
+const SHARED_MIN = 60;
+
+/** One letter or one digit — what "the row still says something" means. */
+const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
+
+export function sharedTail(messages) {
+  if (messages.length < 2) return '';
+  let suffix = messages[0];
+  for (const message of messages.slice(1)) {
+    let same = 0;
+    while (same < suffix.length && same < message.length
+      && suffix[suffix.length - 1 - same] === message[message.length - 1 - same]) same += 1;
+    suffix = suffix.slice(suffix.length - same);
+    if (suffix === '') return '';
   }
-  return cell;
+  const boundary = /[.!?]\s+/.exec(suffix);
+  if (boundary === null) return '';
+  const tail = suffix.slice(boundary.index + boundary[0].length);
+  if (tail.length < SHARED_MIN) return '';
+  for (const message of messages) {
+    // WORDS of its own, not merely characters: a message whose whole first
+    // 'sentence' is the punctuation that opened it would pass a trim() and
+    // still leave a row saying '.' beside a note holding everything.
+    if (!LETTER_OR_DIGIT.test(message.slice(0, message.length - tail.length))) {
+      return '';
+    }
+  }
+  return tail;
+}
+
+/**
+ * One card's shared tails, by code, in the order the rows first asked — the
+ * same ordering rule `cardCommands` uses, and for the same reason: the reader
+ * meets the notes in the order the table introduced their codes.
+ */
+export function sharedNotes(rows) {
+  const byCode = new Map();
+  for (const row of rows) {
+    const held = byCode.get(row.code);
+    if (held === undefined) byCode.set(row.code, [row.message]);
+    else held.push(row.message);
+  }
+  const notes = new Map();
+  for (const [code, messages] of byCode) {
+    const text = sharedTail(messages);
+    if (text !== '') notes.set(code, { count: messages.length, text });
+  }
+  return notes;
+}
+
+/**
+ * `<details class="help"><summary>…<div class="helpbox">` — the disclosure the
+ * mockup already draws on Decay, holding the paragraph the rows stopped
+ * repeating
+ * (`docs/design/web-ui-mockup.html` · `<details class="help"><summary data-t="help.whyCold">` · ~2754).
+ *
+ * Closed by default and one click from open, which is the owner's own pattern:
+ * a short line on screen with the full body behind it. It is a SIBLING of the
+ * table rather than a row inside it — the note is about a code, not about any
+ * one finding, and a row spanning three columns to hold it would say otherwise.
+ */
+function sharedNoteBlock(ctx, code, note) {
+  const box = el('details', 'help');
+  const summary = el('summary');
+  summary.append(...ctx.t('doc.shared', { code: code, count: String(note.count) }));
+  box.append(summary, appendMessage(el('div', 'helpbox'), note.text));
+  return box;
 }
 
 /**
@@ -454,6 +580,10 @@ export async function render(root, ctx) {
     const table = el('table');
     const tbody = el('tbody');
     const rows = cardRows(groups, card.level);
+    // Computed once per card and read twice below: once to shorten each row,
+    // once to draw the note. Asking per row would recompute one suffix over
+    // thirty-four messages thirty-four times.
+    const notes = sharedNotes(rows);
 
     for (const row of rows) {
       const tr = el('tr');
@@ -466,7 +596,13 @@ export async function render(root, ctx) {
       const who = row.item === null ? el('td', 'small', '—') : el('td');
       if (row.item !== null) who.append(linkId(row.item, false));
 
-      const message = messageCell(row.message);
+      // The row keeps everything true of it alone; the shared remainder is
+      // drawn once under the table. `slice` and never a trim: the two halves
+      // must still join to the producer's message byte for byte.
+      const note = notes.get(row.code);
+      const message = messageCell(note === undefined
+        ? row.message
+        : row.message.slice(0, row.message.length - note.text.length));
       // The row says what it HAS. `repairFor` is asked once per row here and
       // again inside `cardCommands` below; that is two calls to a pure function
       // over four `if`s, and it keeps the chip and the `.cmd` block reading the
@@ -502,6 +638,8 @@ export async function render(root, ctx) {
       zero.append(...ctx.t('doc.zero'));
       pane.append(spaced(zero));
     }
+
+    for (const [code, note] of notes) pane.append(sharedNoteBlock(ctx, code, note));
 
     for (const repair of cardCommands(rows)) pane.append(commandRow(ctx, repair));
     root.append(pane);

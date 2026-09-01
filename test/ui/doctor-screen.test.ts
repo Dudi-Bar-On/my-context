@@ -23,7 +23,12 @@
  *     and that no class is invented that `<section data-p="doctor">` does not
  *     draw;
  *   - that the five `doc.d*` sample sentences are declared and deliberately
- *     unplaced, so a SIXTH cannot appear without somebody deciding about it.
+ *     unplaced, so a SIXTH cannot appear without somebody deciding about it;
+ *   - the sentence every finding of one code repeats, and the promise that
+ *     moving it changed nothing (`sharedTail`, `sharedNotes`) — the row's
+ *     remaining text plus the shared note is the producer's message byte for
+ *     byte, which is what makes "shortened words, never shortened facts"
+ *     checkable rather than claimed.
  *
  * ── HOW A BROWSER MODULE IS LOADED HERE, AND WHY NOT DIRECTLY ─────────────
  *
@@ -73,8 +78,12 @@ interface Row { code: string; item: string | null; message: string }
  */
 interface Repair { id: string | null; values: Record<string, unknown>; argv: string[] }
 
+interface SharedNote { count: number; text: string }
+
 interface DoctorModule {
   messageRuns: (message: unknown) => Run[];
+  sharedTail: (messages: string[]) => string;
+  sharedNotes: (rows: Row[]) => Map<string, SharedNote>;
   cardRows: (groups: Map<string, Finding[]>, level: string) => Row[];
   repairFor: (code: string, item: string | null) => Repair | null;
   cardCommands: (rows: Row[]) => Repair[];
@@ -721,3 +730,133 @@ test('the screen invents no class the mockup\'s own doctor section does not use'
   assert.ok(/\bmono\(/.test(doctorSource),
     'the screen isolates no literal at all — the message cell stopped using the `.m` run');
 });
+
+/* -------------------------------------------------------------------------- *
+ * sharedTail / sharedNotes — the repeat, said once.
+ *
+ * Owner, three times in different clothes: the screens are too long to read,
+ * and the doctor message "repeated a long explanation with every finding".
+ * Measured on this repo's own corpus 2026-09-01: 42,353 characters of message,
+ * 34,440 of them the same paragraph re-printed per row.
+ *
+ * The rule the whole change stands on is that NOTHING WAS DELETED. So the lead
+ * assertion here is the same shape as `messageRuns`' — the halves join back to
+ * the producer's bytes — and the rest are the three guards that stop this
+ * shortening anything it should not.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * TWO real `dead_scope` messages, from the real check, over a repository that
+ * genuinely has no files. Their first sentence names each item's own glob and
+ * everything after it is identical — which is the shape this whole feature is
+ * about, produced by the checker rather than typed here.
+ */
+function realDeadScopeMessages(): string[] {
+  const repoRoot = mkdtempSync(path.join(tmpdir(), 'myctx-doctor-'));
+  try {
+    const findings = checkDeadScopes(
+      repoRoot,
+      [
+        item({ id: 'CONST-migrations-run-forward-only', scope: ['src/db/**'] }),
+        item({ id: 'CONST-prices-are-integer-cents', scope: ['src/api/**'] }),
+      ],
+      resolveConfig({}),
+    );
+    assert.equal(findings.length, 2, 'a repository with no files must make both globs dead');
+    return findings.map((f) => f.message);
+  } finally {
+    removeTree(repoRoot);
+  }
+}
+
+test("the row and the shared note join back to the producer's message, byte for byte", async () => {
+  const { sharedTail } = await doctorModule();
+  const messages = realDeadScopeMessages();
+  const tail = sharedTail(messages);
+
+  assert.ok(tail.length > 100,
+    'two real dead_scope messages share a long explanation; a short answer means the suffix '
+    + `search stopped working, not that the checker got terse (got ${tail.length} chars)`);
+  for (const message of messages) {
+    const shown = message.slice(0, message.length - tail.length);
+    assert.equal(shown + tail, message,
+      'the screen shortened the WORDS and lost some of the FACTS. Everything the row stops '
+      + 'drawing must be exactly what the note draws once — nothing deleted, only moved.');
+    assert.ok(shown.trim() !== '', 'a row was left with nothing of its own to say');
+  }
+  // The half that DIFFERS stays in the row: each item still names its own glob.
+  const first = messages[0]!.slice(0, messages[0]!.length - tail.length);
+  const second = messages[1]!.slice(0, messages[1]!.length - tail.length);
+  assert.ok(first.includes('src/db/**'), 'the row lost the glob the finding is about');
+  assert.ok(second.includes('src/api/**'), 'the row lost the glob the finding is about');
+  // And the half that REPEATS leaves it.
+  assert.ok(!first.includes('unrestricted'),
+    'the repeated policy sentence is still in the row, so nothing was factored out at all');
+});
+
+test('the cut is a sentence boundary, so the row ends finished and the note starts clean',
+  async () => {
+    const { sharedTail } = await doctorModule();
+    const messages = realDeadScopeMessages();
+    const tail = sharedTail(messages);
+    assert.ok(/^[A-Z]/.test(tail),
+      `the shared note begins mid-sentence: ${JSON.stringify(tail.slice(0, 40))}. A cut at a `
+      + 'character count is a different sentence, not a shorter one.');
+    const shown = messages[0]!.slice(0, messages[0]!.length - tail.length);
+    assert.ok(/[.!?]\s*$/.test(shown),
+      `the row ends mid-sentence: ${JSON.stringify(shown.slice(-40))}`);
+  });
+
+test('sharedTail refuses every case where factoring would lose a distinction', async () => {
+  const { sharedTail } = await doctorModule();
+  const messages = realDeadScopeMessages();
+
+  assert.equal(sharedTail([messages[0]!]), '',
+    'one finding repeats nothing, so there is nothing to move — a disclosure over a single row '
+    + 'hides a fact and shortens nothing');
+  assert.equal(sharedTail([]), '', 'no findings, no note');
+  // Two IDENTICAL messages are still safe, and the guard is not what makes them safe:
+  // the cut is the FIRST sentence break, so each row keeps its opening sentence and only
+  // the rest repeats. The guard is the backstop for a checker that one day emits a
+  // message with nothing before that break.
+  const twice = sharedTail([messages[0]!, messages[0]!]);
+  assert.ok(messages[0]!.slice(0, messages[0]!.length - twice.length).trim() !== '',
+    'two identical messages left a blank row — the shortening ate a whole finding');
+  assert.equal(sharedTail(['. ' + 'x'.repeat(80), '. ' + 'x'.repeat(80)]), '',
+    'a message with nothing before its first sentence break would be moved out whole, leaving a row that says nothing at all');
+  assert.equal(sharedTail(['a is dead. Fix it.', 'b is dead. Fix it.']), '',
+    'a shared "Fix it." is not worth a disclosure: below SHARED_MIN the screen draws exactly '
+    + 'what it drew before');
+});
+
+test('sharedNotes groups by code, counts the rows, and keeps first-ask order', async () => {
+  const { sharedNotes, sharedTail } = await doctorModule();
+  const messages = realDeadScopeMessages();
+  const rows: Row[] = [
+    { code: 'dead_scope', item: 'CONST-migrations-run-forward-only', message: messages[0]! },
+    { code: 'index_stale', item: null, message: 'the index is older than the newest item file.' },
+    { code: 'dead_scope', item: 'CONST-prices-are-integer-cents', message: messages[1]! },
+  ];
+  const notes = sharedNotes(rows);
+
+  assert.deepEqual([...notes.keys()], ['dead_scope'],
+    'only a code whose rows actually repeat a sentence earns a note, and a code with one row '
+    + 'must earn none');
+  assert.equal(notes.get('dead_scope')!.count, 2,
+    'the summary tells the reader how many rows the note is the rest of');
+  assert.equal(notes.get('dead_scope')!.text, sharedTail(messages),
+    'the note and the row trimming must read the same decision, or the halves stop joining');
+});
+
+test("the screen draws the shared note in the mockup's own disclosure, and keys its summary",
+  () => {
+    assert.ok(/el\('details', 'help'\)/.test(doctorSource),
+      'the shared note invents a container instead of using `details.help`, the disclosure the '
+      + 'design of record already draws on Decay');
+    assert.ok(/el\('div', 'helpbox'\)/.test(doctorSource),
+      "the note body is not the mockup's `.helpbox`");
+    assert.ok(
+      /ctx\.t\('doc\.shared', \{ code: code, count: String\(note\.count\) \}\)/.test(doctorSource),
+      'the summary is unkeyed, or a slot is missing — an unsupplied {slot} throws at render '
+      + 'time, and a shorthand `{ code }` is invisible to the scan that checks slots are passed');
+  });

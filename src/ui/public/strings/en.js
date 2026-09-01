@@ -1105,13 +1105,21 @@ export const strings = {
   // last one. Neutral, never gold: gold is earned at the warn band and a
   // marker that is gold at every fill has stopped meaning anything by the time
   // it is needed.
-  'strip.ctxAsk': '{threshold} · +{headroom}',
+  'strip.ctxAsk': '{askPct}% ({pct} / {threshold}) ·+{headroom}',
   'title.ctxAsk': 'How far this window is from the handover ask, in points of the window. The threshold is the configured one and is served, never a constant in this page; the distance is the same subtraction the terminal bar makes, out of the same module. It goes quiet at the threshold, where the distance is spent and the gold marker takes over.',
   'strip.log': 'last {mv:op}, {age} ago',
   'strip.logQuiet': 'nothing logged for {age}',
   'strip.logEmpty': 'nothing recorded yet',
   'strip.logUnreadable': 'audit log unreadable',
+  'title.sessionName': 'The name this window was given, from `session_name` in the status-line payload. Drawn ONLY when it differs from the repository name, because a session called after its project restates a field already on the bar; its whole job is telling two windows apart when the model, the repo and the branch are identical in both.',
+  'title.focus': 'What this session has narrowed its loaded knowledge to, read from state/focus.json rather than from the audit log — every focus-set row in the log carries a null session id, so the log cannot answer it. Drawn even when there is no focus, because after a compaction the question is not how full the window is but where you were.',
+  'title.warm': 'How much of this turn’s input the cache served. DERIVED here, never served: cache reads over the input total the payload reports (fresh + cache-creation + cache-read), the same arithmetic the context figure divides by. No payload this project has captured carries a cache field of its own.',
+  'title.elapsed': 'How long this session has been running, from cost.total_duration_ms in the status-line payload. Wall-clock since the session opened, not time spent working — idle minutes count. A session whose length the payload did not report draws nothing rather than zero.',
+  'title.myctx': 'How much of this window my_context put there, against the window itself. Counted from the injection records’ own frozen estimates — bounded to the CURRENT compaction epoch and to operations that reach this model, so subagent injections delivered into other windows are not counted here. A ≥ means some records predate the estimate field and the true share is at least this.',
+  'title.modelModes': 'Modes that are NOT the ordinary case — effort, extended thinking, fast mode, a window past 200k. A mode at its default is not drawn, so this reports the presence of a state and never the absence of a field.',
   'title.log': 'When the audit log last moved, and what moved it. A watcher that stopped watching, a projection that stopped syncing and an injection count that spans a fortnight are all the same failure — something stopped being current and nothing said so — and a visible stamp on the newest row catches the class rather than an instance. Past the age at which a context sample stops being current, this turns amber; that boundary is the same constant, not a second one.',
+  'strip.grp.focus': 'focus',
+  'strip.grp.sessionName': 'session name',
   'strip.grp.ask': 'ask',
   'strip.grp.rate5': '5h',
   'strip.grp.rate7': '7d',

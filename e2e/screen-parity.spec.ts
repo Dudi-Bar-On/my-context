@@ -472,7 +472,26 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // the remedy block had nothing to draw. One staged `source_drift` closed all
   // three. The agent refused to close them by composing something for
   // `dead_scope`, because the mockup composes nothing for it either.
-  doctor: ['b', 'span.m.v', 'span.prop'],
+  //
+  // `span.m.v` came out on 2026-09-01, and the thing it stands for is built.
+  // The mockup draws one on this screen — the glob inside `doc.d2`, "scope
+  // <span class=\"m v\">src/billing/**</span> matches no file" — and until now
+  // nothing on the app's Doctor substituted a value into a translated string,
+  // so the screen had no `{mv:}` slot and drew no isolated mono value at all.
+  // The shared-note summary (`doc.shared`, "{mv:code} — the rest of the note,
+  // same on {count} rows") is one, and `e2e/bidi.spec.ts`'s whole argument is
+  // why that matters: a finding code inside RTL prose reorders unless it is
+  // isolated, and this screen now isolates one.
+  //
+  // **It is DATA-DEPENDENT in the same way `preview`'s `div.gh` is**, and that
+  // is recorded rather than hidden. The note is drawn only where two or more
+  // findings of ONE code share a sentence; on `.demo-corpus` that is the three
+  // `dead_scope` findings, which share their whole policy paragraph. A corpus
+  // answering fewer than two findings of any one code would draw no note, no
+  // `{mv:}` slot and no `span.m.v` — and this gate would then report a gap
+  // that is a property of the fixture, not of the screen. The durable fix is
+  // the fixture corpus the `watch` note above already tracks.
+  doctor: ['b', 'span.prop'],
   // 23 -> 15 on 2026-08-23: the recency comb and the 90-day heatstrip both
   // landed. What remains is almost entirely DATA — the heatstrip reads the
   // audit projection, which the read surface itself stales, so this screen

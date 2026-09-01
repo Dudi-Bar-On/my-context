@@ -501,8 +501,8 @@ for (const body of BODIES) {
     // telling every reader that a card with six errors in it found nothing.
     expect(
       drawn.map((c) => c.saysZero === 1),
-      'a level with no findings must NAME its zero — `doc.zero`, "Checked — nothing at this '
-      + 'level" — and a level with findings must not. A blank card headed `error` reads AS an '
+      'a level with no findings must NAME its zero — `doc.zero`, "Checked — none here" '
+      + '— and a level with findings must not. A blank card headed `error` reads AS an '
       + 'error (STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is), and a zero note '
       + 'over a populated table is the same lie in the other direction. Served: '
       + `${body.owed.join(' + ')}; drawn: ${drawn.map((c) => c.rows).join(' + ')}; said empty: `

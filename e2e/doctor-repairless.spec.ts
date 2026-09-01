@@ -130,8 +130,14 @@ test('every finding unrepairable: each row says so, and the screen counts them',
   // states use: two words on screen, the sentence in the attribute.
   const why = await chips.first().getAttribute('title');
   expect(why, 'the chip names a state and never explains it').toBeTruthy();
+  // Case-insensitive, and it is the SENTENCE that is pinned rather than its casing:
+  // `title.noRepair` was shortened on 2026-09-01 under
+  // STD-a-screen-line-says-the-fact-in-plain-words and now OPENS with the clause
+  // ("Repaired by a person, not a command: …"), which a case-sensitive substring
+  // read as the fact having been dropped. What must not change is that the
+  // explanation names a PERSON as the repair.
   expect(why, 'the explanation must say that a person is the repair, not that one is missing')
-    .toContain('repaired by a person');
+    .toMatch(/repaired by a person/i);
 
   // ── The screen states how many findings carry a repair. ──
   const tally = page.locator(`${screen} > p.small`).first();
