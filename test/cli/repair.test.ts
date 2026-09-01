@@ -463,3 +463,51 @@ test('hand edit plus repair --yes changes what governs, and leaves no evidence',
     }
   });
 });
+
+// ── checksum basis migration (Part D) ────────────────────────────────────────
+
+test(
+  'repair --yes migrates an item recorded under an OLDER checksum basis version, and a second run is a no-op',
+  () => {
+    withProject((cwd) => {
+      const root = path.join(cwd, '.my_context');
+      const file = writeGoodItem(root, 'CONST-migrate', 'constraint');
+      const text = readFileSync(file, 'utf8');
+      const m = /^checksum: ([0-9a-f]{16})$/m.exec(text);
+      assert.ok(m, 'fixture checksum must be in the current bare (version-1) format to begin with');
+      // Re-tag with a basis version this build does not compute — the HASH is
+      // left exactly as it was, so this is a migration mismatch (the recorded
+      // formula changed) rather than an alteration one (the content changed).
+      writeFileSync(file, text.replace(`checksum: ${m![1]}`, `checksum: "2:${m![1]}"`), 'utf8');
+
+      // doctor reports this as a MIGRATION, not corruption.
+      const before = run(['doctor'], cwd);
+      assert.equal(before.code, 0);
+      assert.match(before.out, /checksum_basis_migration/);
+
+      // repair still offers to re-stamp it: `needsRestamp` does not
+      // distinguish migration from alteration — both are "recorded disagrees
+      // with content", and re-stamping in the current format is the fix for
+      // either.
+      const dryRun = run(['repair'], cwd);
+      assert.match(dryRun.out, /1 project item\(s\) have a checksum that disagrees/);
+
+      const repaired = run(['repair', '--yes'], cwd);
+      assert.equal(repaired.code, 0);
+      assert.match(repaired.out, /re-stamped CONST-migrate/);
+
+      const after = readFileSync(file, 'utf8');
+      // Migrated to the CURRENT (version-1, untagged) format — no visible
+      // "<version>:" prefix, per `formatChecksum`'s treatment of version 1.
+      assert.match(after, /^checksum: [0-9a-f]{16}$/m);
+      assert.doesNotMatch(after, /^checksum: "\d+:/m);
+      assert.equal(run(['doctor'], cwd).code, 0);
+
+      // Re-running repair is a no-op: nothing is left to re-stamp, and the
+      // file is untouched.
+      const again = run(['repair'], cwd);
+      assert.match(again.out, /nothing to re-stamp/);
+      assert.equal(readFileSync(file, 'utf8'), after, 'a no-op run must not touch the file');
+    });
+  },
+);

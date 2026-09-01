@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseItem, renderItem } from '../../src/core/item.ts';
+import { formatChecksum, parseChecksumVersion, parseItem, renderItem } from '../../src/core/item.ts';
 
 const SAMPLE = `---
 id: CONST-pg-pool-cap
@@ -125,4 +125,77 @@ test('a CRLF item survives parse then render then parse identically', () => {
   const once = parseItem(crlf, 'x.md', 'project');
   const twice = parseItem(renderItem(once), 'x.md', 'project');
   assert.deepEqual(twice, once);
+});
+
+// ── checksum basis versioning (INV-markdown-is-the-source-of-truth) ─────────
+//
+// The RAW fixture below is written by hand, quote and all — not derived by
+// canonicalizing a parsed item — because that is what makes the byte-identity
+// assertion able to fail: a lossy transformation shared by `parseItem` and
+// `renderItem` would cancel out and pass a canonicalized fixture even if the
+// round trip were broken (RULE-never-weaken-byte-identity).
+
+// Written in the exact canonical layout `renderItem` emits — every
+// frontmatter key, in order, `scope`/`tags` as multi-line lists rather than
+// SAMPLE's hand-written inline forms above — so the byte-identity assertion
+// below is about the versioned `checksum:` value and nothing else. `SAMPLE`
+// itself is not in this shape (its `scope`/`tags` are quoted/inline), which
+// is why `renderItem(parseItem(SAMPLE))` is never compared against `SAMPLE`
+// directly anywhere in this file.
+const VERSIONED_CHECKSUM_FIXTURE = [
+  '---',
+  'id: CONST-versioned-checksum',
+  'type: constraint',
+  'title: Versioned checksum fixture',
+  'status: active',
+  'severity: hard',
+  'always: false',
+  'scope: []',
+  'tags: []',
+  'origin: human',
+  'source_file: null',
+  'source_anchor: null',
+  'source_checksum: null',
+  'valid_from: null',
+  'valid_until: null',
+  'checksum: "2:95013e190ed381f5"',
+  '---',
+  '',
+  '# Versioned checksum fixture',
+  '',
+  'Body text.',
+  '',
+].join('\n');
+
+test('a versioned checksum (basis > 1) round-trips byte-identically, raw fixture', () => {
+  const item = parseItem(VERSIONED_CHECKSUM_FIXTURE, 'x.md', 'project');
+  assert.equal(item.checksum, '2:95013e190ed381f5');
+  // `renderItem(parseItem(text))` compared against the raw literal itself,
+  // not against a re-serialization of `item` — the proof this invariant asks
+  // for is that the FILE survives unchanged, not merely that two parses agree.
+  assert.equal(renderItem(item), VERSIONED_CHECKSUM_FIXTURE);
+});
+
+test('parseChecksumVersion treats an untagged checksum as version 1', () => {
+  assert.deepEqual(parseChecksumVersion('deadbeefdeadbeef'), { version: 1, hash: 'deadbeefdeadbeef' });
+});
+
+test('parseChecksumVersion recovers a tagged checksum\'s version and hash', () => {
+  assert.deepEqual(parseChecksumVersion('2:deadbeefdeadbeef'), { version: 2, hash: 'deadbeefdeadbeef' });
+  assert.deepEqual(parseChecksumVersion('17:deadbeefdeadbeef'), { version: 17, hash: 'deadbeefdeadbeef' });
+});
+
+test('formatChecksum / parseChecksumVersion round-trip for version 1 and version 2+', () => {
+  for (const version of [1, 2, 3]) {
+    const formatted = formatChecksum(version, 'deadbeefdeadbeef');
+    assert.deepEqual(parseChecksumVersion(formatted), { version, hash: 'deadbeefdeadbeef' });
+  }
+});
+
+test('formatChecksum emits no visible tag for version 1', () => {
+  assert.equal(formatChecksum(1, 'deadbeefdeadbeef'), 'deadbeefdeadbeef');
+});
+
+test('formatChecksum tags version 2 and above with "<version>:"', () => {
+  assert.equal(formatChecksum(2, 'deadbeefdeadbeef'), '2:deadbeefdeadbeef');
 });

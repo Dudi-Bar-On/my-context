@@ -5,13 +5,35 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import type { Config } from './config.ts';
-import { computeItemChecksum, parseItem, renderItem } from './item.ts';
+import {
+  CHECKSUM_BASIS_VERSION, classifyChecksumMismatch, computeItemChecksum, parseChecksumVersion,
+  parseItem, renderItem,
+} from './item.ts';
 import { relPosix } from './paths.ts';
 import { sleepMs } from './sleep.ts';
 import type { Store } from './store.ts';
 import type { Item, Layer } from './types.ts';
 
-export interface LoadError { file: string; message: string }
+export interface LoadError {
+  file: string;
+  message: string;
+  /**
+   * Set to `'migration'` ONLY for a checksum mismatch whose recorded basis
+   * version differs from `CHECKSUM_BASIS_VERSION` (see
+   * `classifyChecksumMismatch`, item.ts) — a benign re-stamp `mycontext
+   * repair` clears, not evidence of altered or lost content. Absent for
+   * every other `LoadError`, including a same-version checksum mismatch,
+   * which stays the real alarm it always was.
+   *
+   * Read by `mycontext doctor` (`checksumMigrationFindings`,
+   * doctor/checks.ts) to report these as a MIGRATION finding rather than as
+   * corruption — every other caller of `loadLayer`/`openMutateContext`
+   * still receives and reports the (correctly-worded, non-alarming)
+   * migration message through the ordinary load-error path, so nothing is
+   * dropped silently for them either.
+   */
+  kind?: 'migration';
+}
 
 /**
  * The one line appended to a caller's output when the rebuild that preceded
@@ -156,14 +178,34 @@ export function loadLayer(
     if (item.checksum) {
       const expected = computeItemChecksum(item);
       if (expected !== item.checksum) {
-        errors.push({
-          file: rel,
-          message: `checksum mismatch for "${item.id}": recorded ${item.checksum}, content hashes ` +
-            `to ${expected}. What is known is only that the file's content no longer matches ` +
-            `the checksum recorded in it — an edit outside my_context is one cause, but so is ` +
-            `content my_context itself could not round-trip, in which case part of this item's ` +
-            `text may already have been lost. Compare it against git history before rewriting it.`,
-        });
+        // Two distinguishable causes for the SAME disagreement — see
+        // `classifyChecksumMismatch` (item.ts): the recorded formula
+        // changed (a migration, entirely benign) versus the content itself
+        // changed (the real alarm). Conflating them is what used to make
+        // every item on an old basis report the frightening — and, in that
+        // case, false — claim that text may have been lost.
+        if (classifyChecksumMismatch(item.checksum) === 'migration') {
+          const recordedVersion = parseChecksumVersion(item.checksum).version;
+          errors.push({
+            file: rel,
+            kind: 'migration',
+            message: `checksum mismatch for "${item.id}": recorded ${item.checksum} was computed ` +
+              `under checksum basis version ${recordedVersion}; this build computes basis version ` +
+              `${CHECKSUM_BASIS_VERSION}. This is a MIGRATION, not a content problem — the recorded ` +
+              `checksum was computed by an older formula, the content is not implicated, and it is ` +
+              `expected to disagree until re-stamped. Run \`mycontext repair\` to re-stamp it in the ` +
+              `current format.`,
+          });
+        } else {
+          errors.push({
+            file: rel,
+            message: `checksum mismatch for "${item.id}": recorded ${item.checksum}, content hashes ` +
+              `to ${expected}. What is known is only that the file's content no longer matches ` +
+              `the checksum recorded in it — an edit outside my_context is one cause, but so is ` +
+              `content my_context itself could not round-trip, in which case part of this item's ` +
+              `text may already have been lost. Compare it against git history before rewriting it.`,
+          });
+        }
       }
     }
 

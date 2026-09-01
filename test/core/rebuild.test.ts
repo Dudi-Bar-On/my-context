@@ -433,6 +433,54 @@ test('a checksum mismatch is reported as a LoadError, without making the item un
   removeTree(root);
 });
 
+test('a same-version checksum mismatch keeps today\'s wording, including the data-loss warning', () => {
+  const root = tempRoot();
+  mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+  writeFileSync(
+    path.join(root, 'items', 'constraint', 'CONST-a.md'),
+    ITEM.replace('checksum: f870bed1ef73aee8', 'checksum: 1111111111111111'),
+  );
+
+  const errors: LoadError[] = [];
+  loadLayer(root, 'project', errors);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].kind, undefined, 'a same-version (real) mismatch is not a migration');
+  assert.match(errors[0].message, /may already have been lost/);
+  assert.match(errors[0].message, /Compare it against git history/);
+
+  removeTree(root);
+});
+
+test(
+  'a checksum recorded under an OLDER basis version is a migration, not corruption — distinguishable wording',
+  () => {
+    const root = tempRoot();
+    mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
+    // Same hash, tagged with a basis version this build does not compute —
+    // the recorded value disagreeing is therefore EXPECTED, and says nothing
+    // about whether CONST-a's content moved.
+    writeFileSync(
+      path.join(root, 'items', 'constraint', 'CONST-a.md'),
+      ITEM.replace('checksum: f870bed1ef73aee8', 'checksum: "2:f870bed1ef73aee8"'),
+    );
+
+    const errors: LoadError[] = [];
+    const items = loadLayer(root, 'project', errors);
+    assert.equal(items.length, 1, 'the item is still indexed, exactly like any other checksum mismatch');
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0].kind, 'migration');
+    assert.match(errors[0].message, /checksum mismatch for "CONST-a"/);
+    assert.match(errors[0].message, /MIGRATION/);
+    assert.match(errors[0].message, /mycontext repair/);
+    // The one claim Part B forbids on this branch: it must never say or
+    // imply that text may have been lost.
+    assert.doesNotMatch(errors[0].message, /may.*(already )?(be )?lost/i);
+    assert.doesNotMatch(errors[0].message, /git history/);
+
+    removeTree(root);
+  },
+);
+
 test('an item with no checksum recorded is not flagged — nothing to verify against', () => {
   const root = tempRoot();
   mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });

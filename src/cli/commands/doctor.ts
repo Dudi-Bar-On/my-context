@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
-import { checkCliOnPath, runChecks, type Finding } from '../../doctor/checks.ts';
+import { checkCliOnPath, checksumMigrationFindings, runChecks, type Finding } from '../../doctor/checks.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
@@ -150,7 +150,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
 
-  const { ctx, errors } = openMutateContext(ws);
+  const { ctx, errors: rawErrors } = openMutateContext(ws);
   let items: Item[];
   try {
     // `ctx.store.all()` is the full, merged cross-layer item set (project +
@@ -178,13 +178,28 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
   // "Run `mycontext rebuild`" that a second `doctor` run would not repeat.
   ctx.store.close();
 
-  const findings = runChecks({
-    root: ws.projectRoot,
-    repoRoot: path.dirname(ws.projectRoot),
-    dbPath: ws.dbPath,
-    items,
-    config: ws.config,
-  });
+  // A checksum mismatch whose recorded basis version differs from
+  // `CHECKSUM_BASIS_VERSION` (item.ts) is a benign migration, not corruption
+  // — see `LoadError.kind` (rebuild.ts). Split those out of the load-error
+  // set BEFORE anything below counts `errors.length` toward "corpus load
+  // errors" or the exit code: `checksumMigrationFindings` turns them into
+  // `warn`-level findings instead, reported alongside every other finding
+  // rather than in the block that means "this corpus failed to load".
+  // Nothing is dropped either way — every migration mismatch still reaches
+  // the user, just not labelled as corruption.
+  const errors = rawErrors.filter((e) => e.kind !== 'migration');
+  const migrationFindings = checksumMigrationFindings(rawErrors);
+
+  const findings = [
+    ...runChecks({
+      root: ws.projectRoot,
+      repoRoot: path.dirname(ws.projectRoot),
+      dbPath: ws.dbPath,
+      items,
+      config: ws.config,
+    }),
+    ...migrationFindings,
+  ];
 
   // `checkCliOnPath` deliberately runs OUTSIDE `runChecks` — see the long
   // comment on `runChecks` itself for why: it answers a question about this

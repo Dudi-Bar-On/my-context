@@ -136,6 +136,40 @@ function newestMarkdownMtime(dir: string): number {
 }
 
 /**
+ * Turns the `'migration'`-kind `LoadError`s `loadLayer` produces (see
+ * `LoadError.kind`, rebuild.ts) into ordinary `warn`-level `Finding`s, so
+ * `mycontext doctor` can report a corpus sitting on an old checksum basis
+ * for what it is — a migration `mycontext repair` clears — rather than
+ * folding it into the `error`-level "corpus load errors" block that drives
+ * doctor's non-zero exit code (`exitCode`, cli/commands/doctor.ts).
+ *
+ * NOT part of `runChecks`: every other caller of that function (`ack`,
+ * `status`, the UI read-model) never sees `LoadError`s at all — it takes
+ * `items`, not `errors` — so folding this in there would require threading
+ * `errors` through every one of them for a distinction only `doctor` was
+ * asked to make. `doctor.ts` calls this directly, alongside `runChecks`,
+ * and nowhere else needs to.
+ *
+ * `item` is recovered from the message's own `"<id>"` rather than carried
+ * as a separate field on `LoadError` — the id is already there once, in the
+ * one place every reader of a `LoadError` already looks, and duplicating it
+ * is exactly the kind of second copy that drifts from the first.
+ */
+export function checksumMigrationFindings(errors: { file: string; message: string; kind?: string }[]): Finding[] {
+  return errors
+    .filter((e) => e.kind === 'migration')
+    .map((e) => {
+      const m = /checksum mismatch for "([^"]+)":/.exec(e.message);
+      return {
+        level: 'warn',
+        code: 'checksum_basis_migration',
+        item: m ? m[1] : undefined,
+        message: e.message,
+      };
+    });
+}
+
+/**
  * Index freshness compares against `.md` mtimes under `root/items` AND
  * `root/config.json` (folded in below) — but it does NOT see edits to a
  * neighboring global layer. The absence of an `index_stale` finding is

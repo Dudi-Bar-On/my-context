@@ -506,12 +506,106 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
 }
 
 /**
+ * **The checksum BASIS version this build computes against.** The one
+ * declaration `CHECKSUM_BASIS_VERSION` promises to be — every producer
+ * (`computeItemChecksum` below) and every consumer that has to tell "the
+ * recorded formula changed" apart from "the content changed" (`loadLayer` in
+ * rebuild.ts, `checksumMigrationFindings` in doctor/checks.ts) reads this
+ * constant rather than carrying its own copy of the number.
+ *
+ * **Why `1`.** Counted as the basis stands today: `computeItemChecksum`'s
+ * shape has grown fields over time (`continuity`, `summary`/`summary_of`,
+ * `summary_was`, `acknowledged`), but every one of them was added
+ * CONDITIONALLY, specifically so an item that predates the field hashes
+ * byte-identically to how it hashed before — see this function's own
+ * comments on each conditional key. No change to this formula has ever
+ * invalidated a recorded checksum, so there has only ever been ONE basis in
+ * this corpus's history, and every item in it is on that basis. `1` is
+ * therefore both "the current formula" and "what every existing item
+ * already is", which is exactly what `formatChecksum` below encodes: version
+ * 1 carries no visible tag at all.
+ *
+ * **What changes this number.** Only an edit to `computeItemChecksum` that
+ * is NOT of the conditional-key shape above — e.g. changing what an existing
+ * key hashes, reordering keys, or making a previously-conditional key
+ * unconditional. Bump it, update the golden value pinned by
+ * `test/core/checksum-basis.test.ts`, and run `mycontext repair` to migrate
+ * a real corpus. Skipping that migration does not corrupt anything by
+ * itself — every already-correct item still round-trips — but it leaves the
+ * whole corpus reporting a version mismatch that `repair` alone clears.
+ */
+export const CHECKSUM_BASIS_VERSION = 1;
+
+/**
+ * Renders `hash` tagged with the basis version it was computed under.
+ *
+ * Version 1 is untagged — `hash` alone — so every checksum this product has
+ * ever recorded parses as version 1 without a migration and without a new
+ * frontmatter field (a new field would itself move `computeItemChecksum`'s
+ * basis, needing its own migration — the thing this scheme exists to avoid
+ * doing again). Version 2 and above are prefixed `"<version>:<hash>"`. The
+ * colon makes the frontmatter value need quoting (`NEEDS_QUOTES` in
+ * frontmatter.ts matches `:`), which `emitScalar`/`unquote` already round-trip
+ * losslessly — proven raw-fixture-and-byte-identical by
+ * `test/core/item.test.ts`, not merely by canonicalized re-parsing.
+ */
+export function formatChecksum(version: number, hash: string): string {
+  return version === 1 ? hash : `${version}:${hash}`;
+}
+
+/**
+ * The inverse of `formatChecksum`: recovers the basis version a RECORDED
+ * checksum was computed under, and the hash itself. A value with no
+ * `"<version>:"` prefix is version 1 by definition — every item captured
+ * before this scheme existed, and every item this product has ever written,
+ * parses this way with no migration needed.
+ *
+ * The pattern requires at least one digit before the colon and at least one
+ * character after it, so a checksum that merely happens to look unusual is
+ * never misread as carrying a version tag it does not have — a 16-character
+ * lowercase-hex sha256 slice (`checksum` in slug.ts) can never itself match
+ * `^\d+:`, since hex digits never include `:`.
+ */
+export function parseChecksumVersion(recorded: string): { version: number; hash: string } {
+  const m = /^(\d+):(.+)$/.exec(recorded);
+  if (!m) return { version: 1, hash: recorded };
+  return { version: Number(m[1]), hash: m[2] };
+}
+
+/**
+ * Whether a RECORDED checksum disagreeing with a fresh hash of an item's
+ * content is a benign basis migration or the real alarm.
+ *
+ * - `'migration'` — the recorded value's own basis version differs from
+ *   `CHECKSUM_BASIS_VERSION`. The formula that produced it is not the one
+ *   running now, so a disagreement is EXPECTED and says nothing about
+ *   whether the content moved; `mycontext repair` re-stamps it in the
+ *   current format and that is the whole fix.
+ * - `'alteration'` — the recorded value's basis version matches, so the
+ *   same formula was used on both sides and still disagrees. That can only
+ *   mean the content itself changed (or was mangled) since the checksum was
+ *   recorded — the real, and only, case where data loss is a live
+ *   possibility.
+ *
+ * Callers that already know the two values disagree (`loadLayer` in
+ * rebuild.ts, `needsRestamp` in repair.ts) call this to choose which of the
+ * two messages to show; it does not itself check for disagreement.
+ */
+export function classifyChecksumMismatch(recorded: string): 'migration' | 'alteration' {
+  return parseChecksumVersion(recorded).version !== CHECKSUM_BASIS_VERSION ? 'migration' : 'alteration';
+}
+
+/**
  * Checksum over the semantic content only — never over the checksum field
  * itself.
  *
  * Built as an object rather than written as a literal for one reason: `steps`
  * has to be conditional. The hash is over `JSON.stringify`, so **key order is
  * identity** — every existing key keeps its existing position.
+ *
+ * The returned string is always tagged with `CHECKSUM_BASIS_VERSION` via
+ * `formatChecksum` — see that function and `CHECKSUM_BASIS_VERSION` itself
+ * for why version 1 renders with no visible tag at all.
  */
 export function computeItemChecksum(item: Item): string {
   const shape: Record<string, unknown> = {
@@ -604,7 +698,7 @@ export function computeItemChecksum(item: Item): string {
   if (item.steps.length > 0) shape.steps = item.steps;
   shape.observations = item.observations;
   shape.relations = item.relations;
-  return checksum(JSON.stringify(shape));
+  return formatChecksum(CHECKSUM_BASIS_VERSION, checksum(JSON.stringify(shape)));
 }
 
 function renderObservation(o: Observation): string {
