@@ -374,13 +374,13 @@ export const strings = {
   // Audit stream
   'watch.h': 'Audit stream',
   'watch.v': 'the only record of what spilled',
-  'watch.sub': 'Six record kinds — mutations, injections, hook actions, focus changes, access refusals and progress steps. A focus change is a {b:regime change}, drawn as a rule across the feed rather than as one row.',
+  'watch.sub': 'Six record kinds: mutations, injections, hook actions, focus changes, access refusals, progress steps. A focus change is a {b:regime change} — drawn as a rule across the feed, not a row.',
   // The regime rule's own label. `watch.sub` above already carries the phrase
   // in both languages; the ROW that draws the rule used to carry it as an
   // English literal in the module, which is the one place the language toggle
   // cannot reach.
   'watch.regime': 'regime change',
-  'watch.pulsen': '{b:Activity pulse} — one column per ten seconds, newest at the reading-end edge. Height is records in that column, colour is the record kind. It is the only thing that makes a live stream feel live, and the time buckets it needs are already indexed by {m:idx_audit_at}.',
+  'watch.pulsen': '{b:Activity pulse} — one column per ten seconds, newest at the reading-end edge. Height is records in that column, colour is the kind. Time buckets are indexed by {m:idx_audit_at}.',
   'aria.wfilters': 'Filter',
   'watch.all': 'All',
   'th.at': 'At',
@@ -395,7 +395,7 @@ export const strings = {
   // corpus holding 2,076. `watch.emptyLog` is the MEASURED empty and says so in
   // those words; `watch.streamWaiting` above is still the unmeasured one.
   'watch.historyLine': 'already in the log when you opened this',
-  'watch.backlogSome': 'The {shown} most recent records that were already in the log, replayed below the line. Earlier ones are in the log and are not on this stream.',
+  'watch.backlogSome': 'The {shown} most recent records already in the log, replayed below the line. Earlier ones are in the log but not on this stream.',
   'watch.backlogAll': 'All {shown} records that were already in the log, replayed below the line. Nothing was held back.',
   'watch.emptyLog': 'this corpus has no audit log at all — it was read to its beginning and holds nothing. A measured zero, not a filter and not a refusal.',
   'watch.delivered': '{delivered} delivered',
@@ -403,7 +403,7 @@ export const strings = {
   'watch.tokens': '{tokens} estimated tokens, computed at injection time',
   'watch.tokensNotRecorded': 'tokens: not recorded — this record predates the field. Not zero.',
   'title.tokensNotRecorded': 'tokens not recorded',
-  'watch.voidn': 'An injection row carries a gold bar of its cost against the {budget}-token budget. Where {m:tokens} is absent the row draws a {b:hatched void} and says so: the field is optional on {m:AuditRecord} and records written before 1.0.1 never had it. A zero-length bar would be a claim the record does not make.',
+  'watch.voidn': 'A gold bar shows cost against the {budget}-token budget. Missing {m:tokens} draws a {b:hatched void}: the field is optional on {m:AuditRecord}, and records before 1.0.1 lack it.',
   // Ask
   'ask.h': 'Ask',
   'ask.v': 'filters, for people who do not write SQL',
@@ -431,17 +431,17 @@ export const strings = {
   'ask.opIs': 'is',
   'ask.opIsNot': 'is not',
   'ask.run': 'Run',
-  'ask.updatedAtTrap': '{m:updated_at} is {b:index write time}, not a content timestamp — and this surface never rebuilds the index (it reads exactly what the hooks read), so rows are as the last hook or CLI run left them.',
+  'ask.updatedAtTrap': '{m:updated_at} is {b:index write time}, not a content timestamp. This surface never rebuilds the index — rows are as the last hook or CLI run left them.',
   'ask.predefined': 'Predefined queries',
   'ask.predefined.ops': 'Operations by count',
   'ask.predefined.spilled': 'Most-spilled items',
   'ask.predefined.injected': 'Most-injected items',
   'ask.predefined.sessions': 'Sessions',
   'ask.sqlh': 'The query this composed',
-  'ask.sqlCaption': 'the SQL this answer ran — shown so it teaches. The final {m:LIMIT} binds one row more than the cap: that extra row is the truncation signal, dropped before display.',
-  'ask.sqln': '{b:Shown, never typed.} The server composed this from the fields above and bound every value as a parameter; the text is here so the shape of the corpus is learnable, not so it can be edited. There is no path from this box back to the database — {m:/api/ask} accepts the fields, never the statement.',
+  'ask.sqlCaption': 'the SQL this answer ran. The final {m:LIMIT} binds one row more than the cap — that extra row is the truncation signal, dropped before display.',
+  'ask.sqln': '{b:Shown, never typed.} Composed from the fields above, values bound as parameters. {m:/api/ask} takes fields only, never the statement — no path from this box to the database.',
   'ask.whyq': 'Why there is no SQL box',
-  'ask.why': "A {m:readOnly:true} connection still permits {m:VACUUM INTO '<any path>'}, which writes a full copy of the database wherever the statement says. A keyword scan is what stops it, and that scan cannot see keywords inside backtick or bracket identifiers. Removing the input removes the problem.",
+  'ask.why': "{m:readOnly:true} still permits {m:VACUUM INTO '<any path>'} — a full db copy. A keyword scan blocks it but misses bracket or backtick identifiers. Removing the input removes it.",
   'ask.rows': '{rows} rows',
   'th.role': 'Role',
   'ask.truncated': 'capped at {rows} rows — more matched; raise the limit to see them',
@@ -532,23 +532,23 @@ export const strings = {
   'rail.cntNone': 'not measured — this screen’s endpoint refused',
   'ask.noRows': 'no rows matched',
   'ask.recallq': 'Why a search can return nothing',
-  'ask.recall1': 'Matching is literal today, so {m:search "silently drop"} finds nothing while the corpus says "dropped silently". {b:Full-text search with a stemmer is decided} — behind {m:search} and {m:query_items} only, never in {m:select()}, so what gets injected stays deterministic.',
-  'ask.recall2': '{b:The case is recall, not ranking.} That distinction is load-bearing: {m:core/search.ts} carries a written decision against ranking, and this does not touch it. It is also why the change ships with a parity test — measured, a naive swap took one query from {b:14 hits to 1}.',
+  'ask.recall1': 'Matching is literal: {m:search "silently drop"} misses "dropped silently". {b:A stemmer is decided} — only in {m:search}/{m:query_items}, not {m:select()}, so injection stays deterministic.',
+  'ask.recall2': '{b:The case is recall, not ranking.} {m:core/search.ts} decided against ranking, untouched here. A parity test ships with it: one naive swap dropped a query from {b:14 hits to 1}.',
   // Doctor
   'doc.h': 'Doctor',
   'doc.v': '"exit 1" loses the findings list',
   'doc.sub': 'Grouped by code, in three levels. Each row links its item; repair commands are composed, never run.',
   'doc.d1': 'its source document changed since the snapshot',
   'doc.d2': 'scope {mv:scope} matches no file',
-  'doc.d3': '{b:zero files match any watched glob}, so the capture nudge can never fire. The shipped defaults name three paths from one workflow; this repo has none of them.',
+  'doc.d3': '{b:Zero files match any watched glob}, so the capture nudge never fires. The shipped defaults name three paths from one workflow; this repo has none.',
   'doc.notice': 'notice',
   // The other two card headings. The mockup keys only `doc.notice` and
   // draws these two as literals; the app draws all three from the table, so
   // two of three headings are no longer English under Hebrew.
   'doc.error': 'error',
   'doc.warning': 'warning',
-  'doc.d4': 'a second cross-project knowledge store exists on this machine. {b:mycontext never reads or writes it} — reported so you learn it here rather than from a surprise.',
-  'doc.d5': 'another plugin writes durable learnings here — the same kind as {m:lesson}, in a second spelling with no shared ids. It is a {b:watched} path, so edits nudge and a human decides.',
+  'doc.d4': 'a second cross-project knowledge store exists on this machine. {b:mycontext never reads or writes it}.',
+  'doc.d5': 'another plugin writes durable learnings here — the same kind as {m:lesson}, a second spelling with no shared ids. It is {b:watched}: edits nudge, a human decides.',
   // **A finding with no composed command SAYS SO, and the screen counts them.**
   //
   // Owner, 2026-08-28, on a corpus whose two findings were `blocked_without_needs`
@@ -601,7 +601,7 @@ export const strings = {
   'dec.badpin': 'pinned {b:and} cold — a defect signal, not decay',
   'dec.unres': 'unrestricted — a breadth view over cold ∪ warm, never a third bucket',
   'help.whyCold': 'What "cold" does and does not mean',
-  'dec.help': 'The ledger records {b:injection}, not reading or reliance. A cold item may still be governing — and a cold {m:always:true} item is a bug in selection, not decay.',
+  'dec.help': 'The ledger records {b:injection}, not reading or reliance. A cold item may still govern — a cold {m:always:true} item is a bug in selection, not decay.',
   'dec.heat': '90-day delivery, per item — delivered against spilled',
   'dec.heatn': 'One cell per day. Intensity is how much was delivered, a {b:hatched} cell is a day the item was {b:spilled}, and an empty cell is a day nothing happened. This is the one view that tells quiet apart from chosen and thrown away. Its source is {m:audit_item.role} joined to {m:audit.at}, with the {m:since} and {m:until} filters.',
   // Relations
@@ -704,7 +704,7 @@ export const strings = {
   'cap.already': 'Already governing {mv:scope}',
   'cap.o1': 'invariant, normative',
   'cap.o2': 'standard, normative',
-  'cap.nosim': 'These are the items whose {b:scope matches}. No similarity or ranking is shown, because no similarity metric exists in this product — and inventing one here is how a mockup starts lying.',
+  'cap.nosim': 'These are the items whose {b:scope matches}. No similarity or ranking is shown, because no similarity metric exists in this product.',
   // `notGoverning` — served since the screen was built and drawn nowhere for
   // want of this key. It is the count the overlap check REMOVED: items whose
   // scope matches and which do not govern. A bare number would not be a fact.
@@ -712,9 +712,9 @@ export const strings = {
   // Composer
   'pal.h': 'Composer',
   'pal.v': 'real pickers and a live glob tester',
-  'pal.sub': 'Builds a command from selections. The argument list is shown as chips, so a value carrying shell syntax is visible before it reaches your clipboard.',
+  'pal.sub': 'Builds a command from selections. Arguments show as chips, so shell syntax in a value is visible before it reaches your clipboard.',
   'pal.argv': 'Arguments',
-  'pal.block': '{b:Copy is blocked.} One argument contains shell substitution syntax. Double-quoting does not neutralise {m:$(…)} — a POSIX shell still substitutes inside double quotes.',
+  'pal.block': '{b:Copy is blocked.} One argument has shell substitution syntax. Double-quoting does not neutralise {m:$(…)} — a POSIX shell still substitutes inside it.',
   'pal.glob': 'Glob tester',
   'pal.pattern': 'Scope pattern',
   'pal.globn': 'Every file in the repository, with the matches {b:lit as you type}. A bare count — "{matches} files" — is one you cannot inspect, and an empty result and a nearly-empty one look identical until you can see which files. Matching uses the same {m:globToRegExp} cache the selector uses, over {m:listRepoFiles}.',
@@ -878,7 +878,7 @@ export const strings = {
   'cfg.wz.resolved': 'What the loader makes of it, including every default it filled in — read back from {m:POST /api/config/check}, not predicted here.',
   // Procedures
   'pr.h': 'Procedures',
-  'pr.sub': 'An ordered set of steps performed {b:once} and then done — as against a rule, which is one instruction that applies every time. A rule is a single instruction; a procedure is a sequence. {b:Built, and this screen reports it.}',
+  'pr.sub': 'An ordered set of steps performed {b:once} and then done — unlike a rule, one instruction that applies every time. {b:Built, and this screen reports it.}',
   'pr.states': 'Five states, and exactly one of them injects',
   'th.state': 'State',
   'pr.mean': 'Meaning',
@@ -901,12 +901,12 @@ export const strings = {
   'pr.k3': 'Switch reads to the integer column',
   'pr.k4': 'Switch writes, behind the flag',
   'pr.k5': 'Drop the decimal column',
-  'pr.md': 'Steps are a {m:## Steps} section in the Markdown, parsed the way {m:## Observations} already is. {b:"{done} of {steps}" is counted, never stored} — there is no second place a procedure could disagree with itself.',
+  'pr.md': 'Steps are a {m:## Steps} section in the Markdown, parsed like {m:## Observations}. {b:"{done} of {steps}" is counted, never stored}, so there is no second place to disagree.',
   'pr.write': 'Who may tick a box',
-  'pr.w1': '{m:mycontext procedure step} may flip {b:one checkbox}, matched by a strict pattern, and may reach no other byte of the item. It does not go through the draft gate.',
-  'pr.w2': '{b:That is a distinction, not an exemption.} The gate exists to stop an agent changing normative {i:content}; a checkbox is {i:progress}. Every flip is audited, so the relaxation is visible rather than quiet.',
-  'pr.w3': '{b:What is not relaxed:} the state. {m:active → done} stays yours. Ticking the last box does not close the procedure — it lets the agent {i:ask}. An agent that can mark its own procedure done can declare victory.',
-  'pr.aband': 'Abandoned rather than finished is {m:superseded} — the existing status already means exactly that, and a fifth spelling of one idea is the defect this project has paid for four times.',
+  'pr.w1': '{m:mycontext procedure step} may flip {b:one checkbox}, matched by a strict pattern, and reach no other byte of the item. It skips the draft gate.',
+  'pr.w2': '{b:That is a distinction, not an exemption.} The gate stops an agent changing normative {i:content}; a checkbox is {i:progress}. Every flip is audited, so the relaxation is visible.',
+  'pr.w3': '{b:What is not relaxed:} the state. {m:active → done} stays yours. Ticking the last box does not close the procedure — it lets the agent {i:ask}.',
+  'pr.aband': 'Abandoned rather than finished is {m:superseded} — the existing status already means exactly that.',
   // The disclosure card's heading. The card is the endpoint's own
   // qualifications in the endpoint's own words; this says what the card IS,
   // so it is no longer a `.card.pane` a reader meets with no title on it.
@@ -949,7 +949,7 @@ export const strings = {
   'port.b3': 'identical',
   // Template packs
   'pk.h': 'Template packs',
-  'pk.sub': 'A pre-authored corpus someone published — "the regulated-industry flavour" — imported at {m:init} to start from an opinion instead of an empty directory.',
+  'pk.sub': 'A pre-authored corpus someone published — "the regulated-industry flavour" — imported at {m:init} to start from an opinion, not an empty directory.',
   'pk.trust': 'Where it lands, and why that differs',
   'pk.active': 'draft',
   'pk.draft': 'draft',
@@ -957,7 +957,7 @@ export const strings = {
   'pk.what': 'What a pack may carry',
   'pk.cats': 'category configuration',
   'pk.never': 'never',
-  'pk.line': 'The line, once: a pack carries what its author knows about the {b:domain}; never a setting that describes {b:you} — your context budget or your repository layout. The author cannot see either.',
+  'pk.line': 'The line, once: a pack carries what its author knows about the {b:domain}, never a setting describing {b:you} — budget or repo layout, which the author cannot see.',
   'pk.man': 'Integrity, described accurately',
   'pk.m1': 'Digest',
   'pk.m1n': 'full, per file, sorted',
@@ -967,11 +967,11 @@ export const strings = {
   'pk.m3n': 'a curated list in the docs. No registry, no re-fetch, no version check over the network',
   'pk.m4': 'Updating',
   'pk.m4n': 'import again; the three buckets show what changed',
-  'pk.theatre': '{b:What the digest does not prove.} A checksum a pack carries about itself is transit integrity — the files arrived intact. It is not evidence the author is trustworthy, and it never gates activation. The item {m:checksum} field is a 16-hex truncation for drift detection and is a different thing entirely; a pack manifest does not reuse it.',
+  'pk.theatre': '{b:What the digest does not prove.} A checksum proves files arrived intact, not that the author is trustworthy — it never gates activation. The item {m:checksum} field is a 16-hex drift truncation, unused here.',
   // Documentation
   'dv.h': 'Documentation',
   'dv.v': 'cross-linked to your own corpus, which a docs site cannot do',
-  'dv.sub': "The repository's own README, rendered here and addressed by heading ordinal — so one integer gives both a deep link and a language switch that lands on the same section.",
+  'dv.sub': 'The README in this repository, rendered here and addressed by heading ordinal, so one integer gives a deep link and a language switch to the same section.',
   'dv.toc': 'Contents',
   'dv.t1': 'What this is',
   'dv.t2': 'Install',
@@ -980,7 +980,7 @@ export const strings = {
   'dv.t7': 'The trust boundary',
   'dv.parity': 'The EN/HE switch self-disables when the parity test is red — a mirror that has drifted is worse than none.',
   'dv.rendered': '§{ordinal} — {heading}',
-  'dv.mdnote': 'Rendered by a hand-written subset renderer: no HTML string is ever produced, so there is nothing to sanitise. Raw HTML, images and unknown URL schemes are {b:refused and shown as refusals}, not silently dropped.',
+  'dv.mdnote': 'A hand-written subset renderer produces no HTML string, so nothing needs sanitising. Raw HTML, images and unknown URL schemes are {b:refused and shown as refusals}, not dropped silently.',
   // The three refusals `dv.mdnote` promises, worded. The mockup builds them
   // inside its own script and keys none of them; drawn from here they are the
   // renderer's words in the reader's language, and the alt text and the link
@@ -1007,7 +1007,7 @@ export const strings = {
   'tu.j5': 'settle what is open',
   'tu.6': 'Ingest a document you already wrote',
   'tu.j6': 'I have a spec, not items',
-  'tu.gap': 'Hebrew is shown as {b:to write} rather than as a language toggle that would silently fall back to English. The changelog already records that the tutorials have no parity test; this is that gap, drawn.',
+  'tu.gap': 'Hebrew is shown as {b:to write}, not as a language toggle that would silently fall back to English. The changelog already notes the tutorials have no parity test — this is that gap, drawn.',
   // Learn
   'ln.h': 'Learn',
   'ln.v': 'conditional pass — the corpus cross-links earn it',
@@ -1033,7 +1033,7 @@ export const strings = {
   'pane.gov': 'governs',
   'pane.file': 'file',
   'pane.hist': 'Delivered — twelve weeks',
-  'pane.histn': 'Twelve weekly buckets from the audit projection, hatched where the item was {b:spilled} that week and grey where nothing was delivered. It is the cheapest possible answer to "is this thing still alive", and the one history that belongs on {i:every} item rather than on a screen of its own.',
+  'pane.histn': 'Twelve weekly buckets from the audit projection: hatched where the item {b:spilled} that week, grey where nothing was delivered. It answers "is this still alive", for {i:every} item.',
   'pane.body': 'Body — as authored',
   // The label over the item summary — owner ruling 2026-09-01. It takes
   // `.welllabel`, the same register `pane.body` and `pane.hist` take, because the
@@ -1062,7 +1062,7 @@ export const strings = {
   'sum.stale': 'stale summary',
   'sum.unanchored': 'unanchored summary',
   'sum.staleNote': 'This item changed after the sentence above was written, so it describes text that is no longer here. Read the body, not the summary.',
-  'sum.unanchoredNote': 'The sentence above carries no record of what it was written against, so nothing can say whether it still describes this item. Read the body, not the summary.',
+  'sum.unanchoredNote': 'The sentence above has no record of what it was written against, so nothing says whether it still describes this item. Read the body, not the summary.',
   'sum.always': 'always injected',
   'sum.continuity': 'carries across sessions',
   'sum.agent': 'captured by an agent',
