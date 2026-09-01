@@ -225,4 +225,80 @@ test.describe('the Relations focus picker', () => {
     await expect(section.locator('p.small').filter({ hasText: 'focus=' }))
       .toHaveText(new RegExp(`^focus=${DEFAULT_FOCUS} `));
   });
+
+  /**
+   * **THE FILTER MUST REACH THE DRAWING AND NOT ONLY THE COUNT — 2026-09-01.**
+   *
+   * Measured at 2273px on the real corpus, with every relation type off: the
+   * readout said `drawn=0 · filtered=2` and the plate held both nodes anyway.
+   * The screen wrote its refusal into the plate CORRECTLY and synchronously —
+   * a snapshot taken in the same tick as the click had the sentence and no SVG
+   * — and then the drawing came back over it a frame later, because `fitChart`
+   * had registered a draw against the plate and its `ResizeObserver` restamped
+   * that registration when replacing the SVG with a sentence changed the
+   * plate's size. The readout survived only because it lives in a container no
+   * observer watches. The number and the picture disagreed about the same fact
+   * on the one screen whose whole job is showing what relates to what.
+   *
+   * **ONLY A BROWSER CAN HOLD THIS.** The repaint is a frame late, so a
+   * synchronous assertion passes against the defect — which is exactly how it
+   * shipped. `test/ui/graph-screen.test.ts` pins the structure that makes the
+   * repaint impossible (which host is width-watched); this pins the outcome,
+   * and it waits before it looks. `toHaveCount(0)` alone would be satisfied by
+   * the good frame before the bad one, so the absence is asserted AFTER a
+   * settle and then held across a second reading.
+   */
+  test('with every relation type off, the plate says so and draws nothing at all', async ({ app }) => {
+    const { page } = app;
+    await page.goto(`${page.url().split('#')[0]}#/graph`);
+    expect((await settleScreen(page, 'graph', { requires: 'svg.chart' })).settled).toBe(true);
+    const section = page.locator('[data-p="graph"]');
+    const picker = section.locator('select#egofocus');
+    const offered = await picker.locator('option').count();
+    expect(offered, 'the default state must offer items, or this test proves nothing')
+      .toBeGreaterThan(0);
+
+    await section.locator('#egotypes button').filter({ hasText: /^None$/ }).click();
+
+    // The refusal is there…
+    const said = section.locator('#ego p.small');
+    await expect(said, 'an all-off filter must SAY what happened where the chart was — an empty '
+      + 'plate reads as a broken screen').toHaveCount(1);
+
+    // …and the drawing is NOT, and still is not once every observer has had its
+    // frame. This is the assertion the defect fails.
+    await expect(section.locator('#ego svg.chart')).toHaveCount(0);
+    await page.waitForTimeout(750);
+    await expect(section.locator('#ego svg.chart'),
+      'the drawing came BACK after the plate was told there was nothing to draw — a stale '
+      + 'chart registration is being repainted over the refusal').toHaveCount(0);
+    await expect(section.locator('#ego [data-id]'),
+      'the plate still carries node ids: the filter reached the count and not the drawing')
+      .toHaveCount(0);
+
+    // **The readout is unchanged and remains the honest one.** `drawn=0` was
+    // always right; it is the picture that was wrong, and nothing here talks
+    // the number up to match an SVG.
+    await expect(section.locator('p.small').filter({ hasText: 'focus=' }))
+      .toHaveText(/· drawn=0 ·/);
+
+    // **The second half: the picker stops offering what it cannot draw.** It
+    // went on offering — and selecting — the item in force while the line
+    // beneath it said every item in the corpus was excluded.
+    await expect(picker.locator('option')).toHaveCount(0);
+    await expect(picker).toBeDisabled();
+
+    // And the way back is the one that was already there. `All` restores the
+    // list, the selection the reader had, and the drawing — in that order of
+    // importance: a restored list with a different item selected would be the
+    // control/drawing disagreement this suite already caught once.
+    await section.locator('#egotypes button').filter({ hasText: /^All$/ }).click();
+    expect((await settleScreen(page, 'graph', { requires: 'svg.chart' })).settled).toBe(true);
+    await expect(picker).toBeEnabled();
+    await expect(picker.locator('option')).toHaveCount(offered);
+    await expect(picker).toHaveValue(DEFAULT_FOCUS);
+    await expect(section.locator('#ego svg.chart')).toHaveCount(1);
+    await expect(section.locator('p.small').filter({ hasText: 'focus=' }))
+      .toHaveText(new RegExp(`^focus=${DEFAULT_FOCUS} `));
+  });
 });

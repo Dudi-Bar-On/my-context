@@ -497,14 +497,26 @@ test('an id longer than the mockup\'s truncation is cut the mockup\'s way', asyn
 test('the screen names every gr.* key the tables declare, and invents none', async () => {
   const en = readFileSync(path.join(PUBLIC, 'strings', 'en.js'), 'utf8');
   const he = readFileSync(path.join(PUBLIC, 'strings', 'he.js'), 'utf8');
+  // ── `[A-Za-z]`, NOT `[a-z]`, AND THAT IS A REPAIR RATHER THAN A TIDY-UP.
+  //
+  // This pattern read `gr\.[a-z]+` until 2026-09-01, which cannot match a
+  // camelCase key at all: `'gr.filterEmpty':` offers the pattern `gr.filter`
+  // and then needs `':` where the `E` is, so the match fails outright and the
+  // key was simply invisible. Twelve of the twenty-five keys this screen owns
+  // are camelCase — every one of the filter's and the picker's, which is to
+  // say every key with a count or a control in it — so the gate that is
+  // supposed to hold the two tables in step and catch a key nobody places was
+  // watching only half the namespace, and neither half was the half that
+  // moves. Measured after widening it: 25 declared in each table, 25 placed
+  // here, no key on either side of the comparison alone.
   const declared = (table: string): Set<string> => new Set(
-    [...table.matchAll(/^\s*'(gr\.[a-z]+)':/gm)].map((m) => m[1]!),
+    [...table.matchAll(/^\s*'(gr\.[A-Za-z]+)':/gm)].map((m) => m[1]!),
   );
   const enKeys = declared(en);
   assert.deepEqual([...enKeys].sort(), [...declared(he)].sort(),
     'the two string tables disagree about which gr.* keys exist');
 
-  const used = new Set([...graphSource.matchAll(/'(gr\.[a-z]+)'/g)].map((m) => m[1]!));
+  const used = new Set([...graphSource.matchAll(/'(gr\.[A-Za-z]+)'/g)].map((m) => m[1]!));
   for (const key of used) {
     assert.ok(enKeys.has(key), `graph.js names ${key}, which no table declares`);
   }
@@ -620,6 +632,147 @@ test('a focus change replaces the drawing and the readout, and never leaves a st
     + 'the previous focus\'s readout');
   assert.match(body, /focus=\$\{encodeURIComponent\(focus\)\}/,
     'the chosen id is what is asked for, and it is encoded');
+});
+
+/* -------------------------------------------------------------------------- *
+ * THE FILTER MUST REACH THE DRAWING AND NOT ONLY THE COUNT — 2026-09-01.
+ *
+ * Measured at 2273px on `DEC-foreign-store-never-leaves-the-repository-so-the-
+ * question-of` with every relation type turned off: the readout said
+ * `drawn=0 · filtered=2` and the plate held both nodes anyway. The screen wrote
+ * its refusal into the plate correctly and SYNCHRONOUSLY — verified in the
+ * browser, the sentence is there for one frame — and then the drawing came
+ * back over it, because `fitChart` had registered a draw against the plate and
+ * its `ResizeObserver` restamped that registration when replacing the SVG with
+ * a sentence changed the plate's size. The number and the picture disagreed
+ * about the same fact on the one screen whose whole job is showing what
+ * relates to what.
+ *
+ * **The browser owns the proof and `e2e/graph-focus.spec.ts` holds it**: a
+ * repaint one frame later is invisible to a `document`-less test, and this file
+ * does not grow a stand-in DOM to chase it (see this file's own header, and
+ * `work-screen.test.ts`'s rule). What is checkable HERE is the structural
+ * commitment that makes the repaint impossible — which host is width-watched,
+ * and that the plate is not it. A future edit that hands `box` back to
+ * `fitChart` fails here; one that breaks the timing fails there.
+ * -------------------------------------------------------------------------- */
+
+test('only the drawing is width-watched, and the plate that holds the sentence is not', () => {
+  // ONE `fitChart` HOST ON THIS SCREEN AND IT IS THE CANVAS. `fitChart` keeps
+  // a per-host registration and an observer that repaints it; a host that also
+  // carries the refusals will have those refusals repainted over.
+  const calls = [...graphSource.matchAll(/fitChart\(\s*([A-Za-z]+)/g)].map((m) => m[1]!);
+  assert.deepEqual(calls, ['canvas'],
+    'the chart is fitted into `canvas` and nothing else. Fitting the PLATE is the defect: '
+    + 'the plate also holds "no relation types are selected", and a registered draw is '
+    + 'restamped over whatever the plate is holding whenever the plate changes size');
+
+  // The canvas is created ONCE. A per-paint host would leave one live observer
+  // per toggle, which is the multiplication `parts.js` documents refusing.
+  assert.equal((graphSource.match(/const canvas = el\('div'\)/g) ?? []).length, 1,
+    'the chart host is created once for the screen, not once per paint');
+
+  // ATTACHED BEFORE IT IS MEASURED. `fitChart` measures its host synchronously,
+  // and a detached host measures zero — which is exactly what makes the empty
+  // state safe, and exactly what would collapse the drawing if the order slipped.
+  const paint = /const paint = \(data\) => \{([\s\S]*?)\n  \};/.exec(graphSource);
+  assert.ok(paint !== null, 'graph.js no longer paints one response through a single `paint`');
+  const body = paint[1]!;
+  const attaches = body.indexOf('box.append(canvas)');
+  const fits = body.indexOf('fitChart(');
+  assert.ok(attaches !== -1 && fits !== -1);
+  assert.ok(attaches < fits,
+    'the canvas is put into the plate before fitChart measures it; a detached host measures '
+    + 'zero and the chart would be drawn at its floor');
+
+  // And every refusal returns BEFORE the canvas is attached, so the plate that
+  // says "nothing to draw" is a plate with no chart host in it at all.
+  for (const sentence of ["ctx.t('gr.filterOff')", "ctx.t('gr.filterEmpty'"]) {
+    const said = body.indexOf(sentence);
+    assert.ok(said !== -1 && said < attaches,
+      `${sentence} is placed after the canvas is attached: a plate that says there is nothing `
+      + 'to draw must not still contain the thing that draws');
+  }
+});
+
+test('with no type kept the screen refuses in the CONTROL\'s words, not the corpus\'s', () => {
+  // ── THE JUDGEMENT, PINNED. `gr.filterEmpty` measures ONE ITEM against a
+  //    filter — "no relation of the types you kept" — and is undone by choosing
+  //    a different item. With nothing kept there is no measurement to make: no
+  //    relation anywhere is of a kept type, and only `All` undoes it. The two
+  //    facts get two sentences, and the all-off one is chosen FIRST so the
+  //    item-level sentence can never be shown for a corpus-wide cause.
+  const paint = /const paint = \(data\) => \{([\s\S]*?)\n  \};/.exec(graphSource)![1]!;
+  // The PLACEMENT and not the mention: both keys are discussed by name in the
+  // comment that explains why they are two keys, and an `indexOf` on the bare
+  // string would order the prose rather than the code.
+  const off = paint.indexOf("ctx.t('gr.filterOff')");
+  const empty = paint.indexOf("ctx.t('gr.filterEmpty'");
+  assert.ok(off !== -1 && empty !== -1, 'both empty-state sentences must be placed');
+  assert.ok(off < empty,
+    'the all-off sentence is decided before the item-level one, or a reader who kept no types '
+    + 'is told their ITEM has no relation of a kept type — true of every item at once, and '
+    + 'so a fact about the button they just pressed rather than about anything in the corpus');
+  assert.match(paint, /if \(nothingKept\(\)\) \{/,
+    'the all-off refusal is guarded by the one named fact, not by a second reading of kept.size');
+
+  // NOTHING IS DRAWN AT ALL — not even the lone focus node an item with no
+  // relations would otherwise get. A picture on a screen whose filter says it
+  // is holding everything back is the same contradiction in miniature.
+  const offBranch = paint.slice(off);
+  assert.ok(offBranch.slice(0, offBranch.indexOf('return;')).includes('readout(data, { edges: [] }'),
+    'the all-off branch states the readout it is actually showing — drawn=0 — and returns '
+    + 'before any drawing is attempted');
+
+  // The readout is NOT touched. The owner\'s ruling on this defect is that the
+  // instrument was right and the picture was wrong, so `drawn` stays the count
+  // of what this layout placed and is never talked up to match an SVG.
+  assert.match(graphSource, /drawn=\$\{drawing\.edges\.length\}/,
+    '`drawn=` is what the layout placed. A screen that reports the pre-filter figure to agree '
+    + 'with a stale drawing has fixed the instrument instead of the fault');
+});
+
+test('with no type kept the picker offers nothing, and says so with the count it already had', () => {
+  // ── THE SECOND HALF OF THE DEFECT. The picker\'s emptiness test WAS re-run on
+  //    every toggle — the count moved from 702 to 733 the moment `None` was
+  //    pressed — but the item already selected was exempt from it, so the
+  //    `<select>` went on offering and selecting an item while the line directly
+  //    beneath it said every item in the corpus was excluded.
+  //
+  //    That exemption exists to stop the control naming item A above a chart of
+  //    item B. With nothing kept there is no chart of anything, so it is spent.
+  assert.match(graphSource, /if \(nothingKept\(\)\) return false;/,
+    'no type kept means no item has a relation of a kept type — arithmetic on the empty set, '
+    + 'and it must outrank the unmeasured-item exemption below it');
+  assert.match(graphSource, /const inForceHere = item\.id === held && !nothingKept\(\);/,
+    'the item in force keeps its place only while there is a drawing for it to agree with');
+
+  // An empty `<select>` is a control offering nothing — this screen\'s own words
+  // for why an empty corpus gets no picker at all.
+  assert.match(graphSource, /picker\.disabled = picker\.options\.length === 0;/,
+    'a picker with nothing in it says so to a keyboard and a screen reader too');
+
+  // ── AND THE WAY BACK SURVIVES IT. `picker.value` on an emptied `<select>` is
+  //    the empty string, so a focus read back off the control would be lost the
+  //    moment the list emptied — and `All` would restore the list with the
+  //    picker on whatever id sorts first and the chart on the reader\'s own.
+  assert.match(graphSource, /let inForce = '';/,
+    'the focus in force is held by the picker, not read back off an emptiable <select>');
+  assert.match(graphSource, /const held = inForce;/,
+    'the list is refilled against the held focus, which is what makes `All` restore the '
+    + 'selection the reader had rather than the first id in the corpus');
+  assert.ok(!/const held = picker\.value;/.test(graphSource),
+    'reading the held focus off the <select> is the defect this replaces');
+
+  // NO SECOND ESCAPE HATCH. The owner\'s ruling: `List them anyway` already
+  // exists and is the way back; the all-off state re-words that line rather
+  // than growing a control beside it.
+  assert.match(graphSource, /nothingKept\(\) \? 'gr\.lonelyOff' : 'gr\.lonely'/,
+    'the disclosure line states the control\'s state when that is the reason, and keeps the '
+    + 'count and the button it already had');
+  assert.equal((graphSource.match(/'gr\.lonelyShow'/g) ?? []).length, 1,
+    'there is ONE "List them anyway", and the all-off state reuses it rather than building a '
+    + 'second escape hatch beside it');
 });
 
 test('no translated string is assigned, and every legend class is the mockup\'s', async () => {

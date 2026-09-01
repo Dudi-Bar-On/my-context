@@ -164,6 +164,34 @@ export async function render(root, ctx) {
   const card = el('div', 'card pane');
   const box = el('div', 'plate');
   box.id = 'ego';
+  // ── THE CHART HAS ITS OWN HOST INSIDE THE PLATE, AND THAT IS THE FIX FOR
+  //    A FILTER THAT REACHED THE COUNT AND NOT THE DRAWING ──────────────────
+  //
+  // Measured 2026-09-01 at 2273px on `DEC-foreign-store-never-leaves-the-
+  // repository-so-the-question-of`: with every relation type turned OFF the
+  // readout said `drawn=0 · filtered=2` and the plate held both nodes anyway.
+  // The screen was not drawing them — `paint` wrote its refusal into the plate
+  // and returned, and a frame later the drawing came BACK.
+  //
+  // `fitChart` registers a draw per HOST and installs one `ResizeObserver` on
+  // it that repaints whatever draw is registered. Nothing ever unregisters:
+  // replacing the SVG with a sentence changes the plate's size, which fires
+  // that observer, which restamps the last drawing it was given — the
+  // pre-filter one — over the sentence. The readout survived only because it
+  // lives in `foot`, which no observer watches. So the number and the picture
+  // disagreed about the same fact, and the number was the honest one.
+  //
+  // The plate now holds EITHER a drawing or a sentence, and only the drawing
+  // is width-watched: `canvas` is the chart's host and the plate is not. When
+  // there is nothing to draw the canvas is not in the document, an unattached
+  // host measures zero, and `watchChartWidth` returns without painting — so a
+  // stale registration cannot reach the plate at all. It is created ONCE and
+  // re-attached, never rebuilt, so there is still exactly one observer here.
+  //
+  // A bare `<div>`, deliberately: `.plate`'s padding is the plate's, this box
+  // takes none of its own, and `chartSpan` measures the same content width it
+  // measured before. No new rule, no mockup edit.
+  const canvas = el('div');
   // The readout and any refusal live in their own container so a focus change
   // can replace exactly them. Rebuilding the whole card would rebuild the
   // picker, and a `<select>` replaced mid-interaction takes the keyboard focus
@@ -207,6 +235,15 @@ export async function render(root, ctx) {
   // True once `/api/graph` has told us the vocabulary, which is what turns
   // `kept` from "not asked yet" into "the reader kept nothing".
   let typesKnown = false;
+  // ── "THE READER KEPT NOTHING" IS ONE FACT, NAMED ONCE ────────────────────
+  //
+  // Three places need it and each of them said it differently before: the
+  // drawing, the picker's own emptiness test, and the sentence each of those
+  // shows. It is a fact about the CONTROL — the reader pressed `None` — and
+  // not about the corpus, which is why the words below are chosen apart from
+  // the words for "this item has no relation of a kept type": one is undone by
+  // choosing another item, the other only by pressing `All`.
+  const nothingKept = () => typesKnown && kept.size === 0;
   // Set by `render` once the picker exists; the type filter calls it so one
   // function owns the list and the count that explains it.
   let refilterPicker = () => {};
@@ -282,7 +319,7 @@ export async function render(root, ctx) {
     //    picker; this is the other half of it. With no vocabulary there is no
     //    filter, so everything is shown and nothing is hidden.
     const shown = !typesKnown ? all
-      : kept.size === 0 ? [] : all.filter((e) => kept.has(e.type));
+      : nothingKept() ? [] : all.filter((e) => kept.has(e.type));
     const hidden = all.length - shown.length;
     const view = { ...data, edges: shown };
 
@@ -298,10 +335,43 @@ export async function render(root, ctx) {
     //
     // A filter that hides everything must not render an empty canvas, which
     // reads as the screen being broken rather than as the reader having asked
-    // for nothing. The two empty cases are DIFFERENT facts and are said
+    // for nothing. The empty cases are DIFFERENT facts and are said
     // differently: an item with no relations at all is not a filter outcome, and
     // telling a reader to "turn a type back on" would be advice that cannot
     // help them.
+    //
+    // **AND ALL-OFF IS A THIRD FACT, NOT THE FILTER OUTCOME WEARING A ZERO.**
+    // `gr.filterEmpty` says "no relation of the types you kept", which is a
+    // measurement of THIS ITEM against a filter — true of one item, false of
+    // the next, and undone by choosing another focus. With nothing kept there
+    // is no measurement left to make: no relation anywhere is of a kept type,
+    // for this item or any other, and the only thing that undoes it is the
+    // control the reader just pressed. Saying the first where the second is
+    // true would report a property of the corpus for a state of a button, and
+    // would send the reader hunting through the corpus for a graph that no
+    // item in it can produce. `gr.filterOff` names the button instead.
+    //
+    // It is checked FIRST and it carries no count, because it is true of every
+    // item at once and is the same sentence whether this item has two hidden
+    // relations or none. The number, when there is one, is the `gr.filterHid`
+    // line and the readout's own `filtered=` term — neither of which changes.
+    //
+    // NOTHING IS DRAWN, not even the lone focus node an item with no relations
+    // would otherwise get: a picture on a screen whose filter says it is
+    // holding everything back is the contradiction this branch exists to end,
+    // in miniature.
+    if (nothingKept()) {
+      const why = el('p', 'small');
+      why.append(...ctx.t('gr.filterOff'));
+      box.append(why);
+      foot.append(spaced(readout(data, { edges: [] }, hidden)));
+      if (hidden > 0) {
+        const said = el('p', 'small');
+        said.append(...ctx.t('gr.filterHid', { n: String(hidden) }));
+        foot.append(said);
+      }
+      return;
+    }
     if (shown.length === 0 && all.length > 0) {
       const why = el('p', 'small');
       why.append(...ctx.t('gr.filterEmpty', { n: String(hidden) }));
@@ -317,7 +387,13 @@ export async function render(root, ctx) {
 
     // ── DRAWN AT THE PLATE'S OWN WIDTH, AND REDRAWN WHEN IT MOVES.
     //
-    // `fitChart` measures `box`, calls this back with the span it found, and
+    // Into `canvas`, which is put back into the plate here and taken out of it
+    // by the refusals above — see the header on `canvas` for why the chart's
+    // host is not the plate itself. Attached BEFORE `fitChart`, because
+    // `fitChart` measures its host synchronously and a detached one measures
+    // zero.
+    //
+    // `fitChart` measures `canvas`, calls this back with the span it found, and
     // calls it again on every distinct width the plate takes afterwards — a
     // window resize, or the item pane being dragged, both of which change this
     // card without changing the viewport in a way a `resize` listener could
@@ -332,8 +408,9 @@ export async function render(root, ctx) {
     // straight through: `fitChart` clamps the plate's own width between them,
     // so a two-node graph draws at 563 units in the middle of a 1,348px plate
     // and a 60-node one takes every pixel the card has.
+    box.append(canvas);
     fitChart(
-      box, drawing.floor, (span) => chart(ctx, egoDrawing(view, rtl, span)), drawing.natural);
+      canvas, drawing.floor, (span) => chart(ctx, egoDrawing(view, rtl, span)), drawing.natural);
     // `data` and not `view`, deliberately: the readout states what the SERVER
     // answered beside what is drawn, so `edges=` stays the true total and
     // `filtered=` says how much of it is not on screen.
@@ -374,6 +451,15 @@ export async function render(root, ctx) {
   // an unmeasured item is offered — filtering on an absent measurement would
   // empty the picker on a surface that never counted.
   const qualifies = (item) => {
+    // ── NOTHING KEPT IS NOT A MEASUREMENT QUESTION, AND IT OUTRANKS THE ONE
+    //    BELOW. With no type kept, no relation of any item is of a kept type —
+    //    that is arithmetic on the empty set and it needs no `relationKinds` to
+    //    know it. The unmeasured-item exemption below exists so an absent
+    //    measurement cannot empty the picker; it must not be read as a licence
+    //    to offer items under a filter that excludes everything, which is how
+    //    the item in force went on being offered while the line beneath said
+    //    every item was excluded.
+    if (nothingKept()) return false;
     if (!Array.isArray(item.relationKinds)) return true;
     if (item.relationKinds.length === 0) return false;
     // Before the first response the vocabulary is unknown and `kept` is empty;
@@ -388,11 +474,16 @@ export async function render(root, ctx) {
   // retired — never a guess at which statuses count.
   const retired = new Set(Array.isArray(items.retiredStatuses) ? items.retiredStatuses : []);
   const isRetired = (item) => retired.has(item.status);
-  const bar = focusPicker(ctx, items.items, qualifies, isRetired, draw);
+  const bar = focusPicker(ctx, items.items, qualifies, isRetired, draw, nothingKept);
   refilterPicker = bar.refilter;
   card.insertBefore(bar, box);
   const first = items.items.find((i) => qualifies(i) && !isRetired(i))
     ?? items.items.find(qualifies) ?? items.items[0];
+  // The id the chart is drawn around, told to the picker rather than read back
+  // off it. A `<select>` that has been emptied — which all-off now does — has
+  // no value to read, and the focus in force has to survive that so pressing
+  // `All` brings the list back with the reader's own item still selected.
+  bar.hold(first.id);
   await draw(first.id);
 }
 
@@ -536,7 +627,7 @@ function typeFilter(ctx, types, state, onChange) {
  * with no `'unsafe-inline'`, so no `style` attribute can be written here — the
  * constraint `parts.js` records for its own `spaced()`.
  */
-function focusPicker(ctx, items, qualifies, isRetired, draw) {
+function focusPicker(ctx, items, qualifies, isRetired, draw, nothingKept) {
   const bar = el('div');
   bar.style.setProperty('display', 'flex');
   bar.style.setProperty('gap', '8px');
@@ -590,19 +681,39 @@ function focusPicker(ctx, items, qualifies, isRetired, draw) {
   //
   // The item in force is offered whatever either rule says — see the header on
   // the type filter for why a control must never disagree with its own drawing.
+  //
+  // ── EXCEPT WHEN THERE IS NO DRAWING TO AGREE WITH ────────────────────────
+  //
+  // That exemption is not a right the selected item has; it is the repair for
+  // one specific disagreement — a `<select>` naming item A above a chart of
+  // item B. With NO type kept there is no chart of anything: the plate holds a
+  // sentence, and the item in force went on being offered and selected while
+  // the line directly beneath it said every item in the corpus was excluded.
+  // The control contradicted its own caption instead of its own drawing, which
+  // is the same defect with a different victim. So the exemption is spent only
+  // where there is a drawing, and all-off empties the list honestly — the
+  // reader's own `List them anyway` is the way back, and `All` restores both
+  // the list and the selection (`inForce`).
   let showAll = false;
   let showRetired = false;
   let hiddenUnrelated = 0;
   let hiddenRetired = 0;
+  // The focus the chart is drawn around. NOT `picker.value`: the list can now
+  // be emptied under the reader, and a value read back off an empty `<select>`
+  // is the empty string — which would lose the focus and, when the list came
+  // back, put the picker on whatever id happened to sort first while the chart
+  // still drew the reader's. Held here instead, so the two cannot part.
+  let inForce = '';
   const fill = () => {
-    const held = picker.value;
+    const held = inForce;
     const list = [];
     hiddenUnrelated = 0;
     hiddenRetired = 0;
     for (const item of items) {
       const ok = showAll || qualifies(item);
       const retired = isRetired(item);
-      if (item.id === held || (ok && (showRetired || !retired))) { list.push(item); continue; }
+      const inForceHere = item.id === held && !nothingKept();
+      if (inForceHere || (ok && (showRetired || !retired))) { list.push(item); continue; }
       if (!ok) hiddenUnrelated += 1; else hiddenRetired += 1;
     }
     picker.replaceChildren();
@@ -621,8 +732,17 @@ function focusPicker(ctx, items, qualifies, isRetired, draw) {
     // who toggled a type while looking at an item would be moved to a different
     // one without asking, and the graph would follow.
     if (held !== '' && [...picker.options].some((o) => o.value === held)) picker.value = held;
+    // A `<select>` with nothing in it is a control offering nothing, which is
+    // the reason this screen draws no picker at all for an empty corpus. The
+    // same reasoning reaches the same answer here, and `disabled` says it to a
+    // keyboard and a screen reader as well as to the eye. It is the state of
+    // the list and nothing else, so it lifts the moment the list comes back.
+    picker.disabled = picker.options.length === 0;
   };
-  picker.addEventListener('change', () => { void draw(picker.value); });
+  picker.addEventListener('change', () => {
+    inForce = picker.value;
+    void draw(picker.value);
+  });
 
   bar.append(label, picker);
 
@@ -641,7 +761,12 @@ function focusPicker(ctx, items, qualifies, isRetired, draw) {
       // noise; a line that vanishes and reappears in a different place is worse.
       p.hidden = countOf() === 0 && !state();
       if (p.hidden) return;
-      p.append(...ctx.t(textKey, { n: String(countOf()) }));
+      // The key may be a CHOICE rather than a constant: the unrelated line says
+      // a different thing when the reason nothing qualifies is that the reader
+      // kept no types at all. Same count, same button, different fact — see
+      // `gr.lonelyOff`.
+      p.append(...ctx.t(typeof textKey === 'function' ? textKey() : textKey,
+        { n: String(countOf()) }));
       p.append(document.createTextNode(' '));
       button.replaceChildren(...ctx.t(state() ? hideKey : showKey));
       p.append(button);
@@ -649,7 +774,13 @@ function focusPicker(ctx, items, qualifies, isRetired, draw) {
     return { el: p, paint };
   };
   const unrelatedLine = line(
-    () => hiddenUnrelated, 'gr.lonely', 'gr.lonelyShow', 'gr.lonelyHide',
+    // `gr.lonely` reads "…have no relations of the types you kept … each would
+    // draw a single node", and with nothing kept both halves mislead: it is not
+    // a property these items turn out to have, and listing them would draw no
+    // node at all. `gr.lonelyOff` states the control's state and keeps the
+    // count, which is the one number that is still true either way.
+    () => hiddenUnrelated, () => (nothingKept() ? 'gr.lonelyOff' : 'gr.lonely'),
+    'gr.lonelyShow', 'gr.lonelyHide',
     () => { showAll = !showAll; }, () => showAll,
   );
   const retiredLine = line(
@@ -663,6 +794,10 @@ function focusPicker(ctx, items, qualifies, isRetired, draw) {
   // Handed back so the type filter can re-run the same two steps: one owner of
   // the list, called from wherever the question changes.
   bar.refilter = () => { fill(); refresh(); };
+  // And the one thing the picker cannot work out for itself: which id the chart
+  // is actually drawn around. `render` picks the opening focus before the first
+  // request, and every later one arrives through `change` above.
+  bar.hold = (id) => { inForce = id; fill(); refresh(); };
   return bar;
 }
 

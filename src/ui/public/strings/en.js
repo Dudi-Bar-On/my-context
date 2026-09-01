@@ -512,7 +512,7 @@ export const strings = {
   // `noSession` are DIFFERENT FACTS — a session that received nothing, and no
   // session being looked at — and `noSession` names the distinction out loud
   // rather than leaving a reader to infer it.
-  'doc.zero': 'Checked — nothing at this level.',
+  'doc.zero': 'Checked — none here.',
   'inj.zeroLines': 'This session was read and has received nothing yet.',
   'inj.noSession': 'No session is selected, so nothing was read — which is not the same as a session that received nothing.',
   // The THIRD zero, and until `InjectedBody.seen` was served there was no way
@@ -536,8 +536,8 @@ export const strings = {
   'ask.recall2': '{b:The case is recall, not ranking.} That distinction is load-bearing: {m:core/search.ts} carries a written decision against ranking, and this does not touch it. It is also why the change ships with a parity test — measured, a naive swap took one query from {b:14 hits to 1}.',
   // Doctor
   'doc.h': 'Doctor',
-  'doc.v': 'a findings list flattened to "exit 1" is what a terminal loses',
-  'doc.sub': 'Grouped by finding code, three levels kept distinct, each linked to the item it names and the command that repairs it — composed, not run.',
+  'doc.v': '"exit 1" loses the findings list',
+  'doc.sub': 'Grouped by code, in three levels. Each row links its item; repair commands are composed, never run.',
   'doc.d1': 'its source document changed since the snapshot',
   'doc.d2': 'scope {mv:scope} matches no file',
   'doc.d3': '{b:zero files match any watched glob}, so the capture nudge can never fire. The shipped defaults name three paths from one workflow; this repo has none of them.',
@@ -569,8 +569,27 @@ export const strings = {
   // not inflect. It is drawn at every count including zero — a measured zero is
   // drawn and named.
   'doc.norepair': 'no automated repair',
-  'title.noRepair': 'This finding is repaired by a person, not by a command: an edit to a file, or a decision only someone with the context can take. There is nothing for the screen to compose, so it offers nothing — and that is the state, not a missing control.',
+  'title.noRepair': 'Repaired by a person, not a command: a file edit, or a call only someone with the context can make. Nothing to compose, so nothing is offered — the state, not a missing control.',
   'doc.tally': 'findings: {findings} · with an automated repair: {repairs}',
+  // **THE REPEAT, SAID ONCE.** Measured 2026-09-01 against this repo's own
+  // corpus: 42,353 characters of `Finding.message` on the Doctor screen, of
+  // which 34,440 are the same paragraph re-printed — 34 `citation_form` rows
+  // carrying one 943-character explanation each, 36 `body_disagrees_with_meta`
+  // rows carrying one 91-character instruction each. The owner has reported
+  // that shape three times, once measured at "58,000 characters of
+  // near-identical paragraph".
+  //
+  // `sharedTail` finds the sentence they share and `doctor.js` draws it ONCE
+  // per code, in the mockup's own `details.help`, under the table. This is the
+  // summary of that disclosure and it says three things a reader needs before
+  // opening it: WHICH code it belongs to, that it is the REST of a note they
+  // have already begun reading, and how many rows it is the rest of. Nothing
+  // was deleted — `row text + this note` is the producer's message byte for
+  // byte — so the summary must not read as a hint that something was.
+  //
+  // `{mv:code}` and never `{code}`: a finding code is an identifier, and an
+  // identifier inside RTL prose reorders unless it is isolated.
+  'doc.shared': '{mv:code} — the rest of the note, same on {count} rows',
   // Decay
   'dec.h': 'Decay',
   'dec.v': 'a chart, not a table — of sessions',
@@ -609,6 +628,14 @@ export const strings = {
   'gr.filterNone': 'None',
   'gr.filterHid': '{n} relation(s) hidden by the type filter',
   'gr.filterEmpty': 'No relation of the types you kept. {n} relation(s) are hidden — turn a type back on to see them.',
+  // ── ALL-OFF IS A FACT ABOUT THE CONTROL, NOT ABOUT THE CORPUS ────────────
+  // `gr.filterEmpty` above measures ONE ITEM against a filter and is undone by
+  // choosing another item; these two are true of every item at once and are
+  // undone only by `All`. Said separately for that reason — a reader told "no
+  // relation of the types you kept" while nothing at all is kept would go
+  // looking for the item that does have one, and there is none.
+  'gr.filterOff': 'No relation type is selected, so there is nothing to draw — here or on any other item. Press All, or choose a type.',
+  'gr.lonelyOff': 'No relation type is selected, so no item has a relation of a kept type — {n} item(s) are not listed.',
   'gr.filterNoRel': 'This item has no relations at all, so there is nothing for the type filter to act on.',
   'gr.lfocus': 'focus',
   'gr.lmiss': 'target not in corpus',
@@ -1078,13 +1105,23 @@ export const strings = {
   // last one. Neutral, never gold: gold is earned at the warn band and a
   // marker that is gold at every fill has stopped meaning anything by the time
   // it is needed.
-  'strip.ctxAsk': 'ask {threshold} · +{headroom}',
+  'strip.ctxAsk': '{threshold} · +{headroom}',
   'title.ctxAsk': 'How far this window is from the handover ask, in points of the window. The threshold is the configured one and is served, never a constant in this page; the distance is the same subtraction the terminal bar makes, out of the same module. It goes quiet at the threshold, where the distance is spent and the gold marker takes over.',
   'strip.log': 'last {mv:op}, {age} ago',
   'strip.logQuiet': 'nothing logged for {age}',
   'strip.logEmpty': 'nothing recorded yet',
   'strip.logUnreadable': 'audit log unreadable',
   'title.log': 'When the audit log last moved, and what moved it. A watcher that stopped watching, a projection that stopped syncing and an injection count that spans a fortnight are all the same failure — something stopped being current and nothing said so — and a visible stamp on the newest row catches the class rather than an instance. Past the age at which a context sample stops being current, this turns amber; that boundary is the same constant, not a second one.',
+  'strip.grp.ask': 'ask',
+  'strip.grp.rate5': '5h',
+  'strip.grp.rate7': '7d',
+  'strip.grp.myctx': 'myctx',
+  'strip.grp.elapsed': 'elapsed',
+  'strip.grp.cache': 'cache',
+  'strip.elapsed': '{elapsed}',
+  'strip.level.caution': 'caution',
+  'strip.level.warning': 'warning',
+  'strip.level.critical': 'critical',
   'strip.grp.repo': 'repo',
   'strip.grp.corpus': 'corpus',
   'strip.grp.session': 'session',
@@ -1197,7 +1234,7 @@ export const strings = {
   'title.corpus': 'Click to cycle the item count and the state where it could not be read',
   'title.audit': 'Click to cycle the injections figure between measured, not measured and not read',
   'title.ctx': 'Click to cycle the context states, the three project-knowledge answers and the unread state',
-  'strip.ctx.known': 'context {pct}% ({used} of {size}) — as of last response, {age} ago',
+  'strip.ctx.known': '{pct}% ({used} / {size}) — as of last response, {age} ago',
   'strip.ctx.notYetKnown': 'context not yet known — no API call since the last compact',
   'strip.ctx.unknown': 'context unknown — this Claude Code build sends no {m:context_window}',
   // The state, in three words, because this is a status strip: drawn at full
@@ -1219,8 +1256,8 @@ export const strings = {
   // strip already tees to disk — no new source and no new call. The countdown
   // is half the field: a percentage with no reset time is alarming rather than
   // actionable, and `resets_at` is unix SECONDS.
-  'strip.rl5': '5h {mv:pct}% · {reset}',
-  'strip.rl7': '7d {mv:pct}% · {reset}',
+  'strip.rl5': '{mv:pct}% · {reset}',
+  'strip.rl7': '{mv:pct}% · {reset}',
   // Banded by `occupancyBands`/`occupancyLevel` — the SAME function the
   // handover proximity uses, never a second threshold set. Silent below the
   // warn band, for the reason the gold marker is silent there.
