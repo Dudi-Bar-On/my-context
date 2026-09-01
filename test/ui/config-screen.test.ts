@@ -135,6 +135,10 @@ interface ConfigScreen {
   verifyPlan: (name: string, values?: Record<string, string>) => {
     id: string; values: Record<string, string>; argv: string[];
   };
+  pastePlan: (
+    file: { exists: boolean; raw: unknown },
+    block: { key: string; value: unknown; entry?: string },
+  ) => { where: string; anchor: string; last: string | null; text: string };
 }
 
 const source = (): string => readFileSync(SCREEN, 'utf8');
@@ -357,11 +361,24 @@ test('the screen reaches the network only through ctx.api/ctx.post, and only on 
   assert.ok(code.includes('ctx.api(confirmPath('),
     'the budgets confirm must go through confirmPath, the same query shape /api/execute/confirm reads');
 
-  // The ONE write: `ctx.post('/api/execute'`, and only that literal path — a
-  // second literal POST target appearing here would mean a second write nobody
+  // **The literal POST targets, and the list is short on purpose.** A path
+  // appearing here that is not on this list would mean a second write nobody
   // ruled in, which is exactly what `no-writes.test.ts`'s RULED_WRITES guards
   // on the server side.
-  assert.deepEqual([...code.matchAll(/ctx\.post\('([^']+)'/g)].map((m) => m[1]), ['/api/execute']);
+  //
+  // `/api/config/check` JOINED it on 2026-09-01, and it is a READ: the verb is
+  // HTTP's, chosen because a candidate config does not fit in a query string,
+  // and `read-model-config.ts` says of itself that everything in it reads,
+  // validates and previews and nothing writes. `plan:config seq:3`'s category
+  // wizard is its one caller — `preview` answers what a change would DO and
+  // `check` answers what the loader MAKES of it, returning the resolved config,
+  // which is the answer a flow full of defaults needs and the one every other
+  // pane already has from `GET /api/config`.
+  //
+  // `/api/execute` is still the ONE write on this screen, and it is still only
+  // reachable through the budgets confirm above it.
+  assert.deepEqual([...code.matchAll(/ctx\.post\('([^']+)'/g)].map((m) => m[1]),
+    ['/api/execute', '/api/config/check']);
 
   // The preview POST, which is a READ. Its path is composed by `previewPath()`
   // — a template literal carrying the shared select grammar, so it cannot match
@@ -479,6 +496,97 @@ test('categoryEntry composes an entry INSIDE categories, merged over the raw fil
   assert.deepEqual(categoryEntry({ categories: [] }, 'rule', { tier: 'normative' }),
     { tier: 'normative' });
   assert.deepEqual(categoryEntry(null, 'rule', { tier: 'normative' }), { tier: 'normative' });
+});
+
+/**
+ * **`pastePlan` is the other half of that acceptance test, and the half that was
+ * wrong until 2026-09-01.**
+ *
+ * `categoryEntry` above composes the right ENTRY. Nothing decided where the
+ * entry went, so `composerPane` wrapped it in a top-level `"categories"` key
+ * unconditionally — and both corpora this product is developed against already
+ * have a populated `categories` object. `JSON.parse` does not refuse a
+ * duplicate key: the LAST one wins. A reader following the screen's own
+ * instruction would have silently dropped every other category override in
+ * their file, which is precisely the task's *"a hand-off that is right for an
+ * empty config and wrong for a populated one will be wrong for every real user,
+ * because every real user has a populated one."*
+ *
+ * Six placements, and the sentence a pane draws is chosen by `where`. What is
+ * asserted here is `where`, the ANCHOR the sentence names, and the indentation
+ * of the bytes — four spaces for an entry, two for a top-level key — because
+ * the indentation is a contract with a file rather than a styling choice.
+ */
+test('pastePlan puts a category entry INSIDE the object the file already has', async () => {
+  const { pastePlan } = await screen();
+
+  // The real shape: a file that already declares `categories`, holding
+  // entries. This is `.demo-corpus` and this repository's own config alike.
+  const populated = {
+    exists: true,
+    raw: { profile: 'standard', categories: { reference: {}, task: { prefix: 'TASK' } } },
+  };
+
+  // A category the object does not hold yet: an ENTRY, at four spaces, and
+  // `last` names the entry it goes after so "after a comma" points at something
+  // the reader can find in their own file.
+  assert.deepEqual(pastePlan(populated, { key: 'categories', value: { tier: 'normative' }, entry: 'decision' }), {
+    where: 'newentry',
+    anchor: 'categories.decision',
+    last: 'task',
+    text: '    "decision": {\n      "tier": "normative"\n    }',
+  });
+
+  // One it DOES hold is a replacement, not an addition, and the sentence has to
+  // say so — pasting a second `"task"` inside one object is the same
+  // last-one-wins silence one level down.
+  const held = pastePlan(populated, { key: 'categories', value: { prefix: 'JOB' }, entry: 'task' });
+  assert.equal(held.where, 'replaceentry');
+  assert.equal(held.anchor, 'categories.task');
+  assert.equal(held.text, '    "task": {\n      "prefix": "JOB"\n    }');
+
+  // An EMPTY `categories` object has no entry to go after, and the sentence for
+  // it must not invent one.
+  const empty = pastePlan({ exists: true, raw: { categories: {} } },
+    { key: 'categories', value: { tier: 'normative' }, entry: 'decision' });
+  assert.equal(empty.where, 'newentry0');
+  assert.equal(empty.last, null);
+
+  // A file with no `categories` key at all is the one branch where the top-level
+  // form is right — and it is the branch the old code was written for.
+  const bare = pastePlan({ exists: true, raw: { profile: 'standard' } },
+    { key: 'categories', value: { tier: 'normative' }, entry: 'decision' });
+  assert.equal(bare.where, 'newkey');
+  assert.equal(bare.text,
+    '  "categories": {\n    "decision": {\n      "tier": "normative"\n    }\n  }');
+
+  // The three flat subjects: present is a replacement, absent is an addition,
+  // and both are top-level blocks at two spaces.
+  assert.equal(pastePlan(populated, { key: 'profile', value: 'minimal' }).where, 'replacekey');
+  assert.equal(pastePlan(populated, { key: 'budgets', value: { jit: 8000 } }).where, 'newkey');
+  assert.equal(pastePlan(populated, { key: 'budgets', value: { jit: 8000 } }).text,
+    '  "budgets": {\n    "jit": 8000\n  }');
+  // A key the file sets to `null` is DECLARED — the reader has to replace it,
+  // not add a second one beside it.
+  assert.equal(pastePlan({ exists: true, raw: { budgets: null } },
+    { key: 'budgets', value: { jit: 8000 } }).where, 'replacekey');
+
+  // No file at all: the block is a DOCUMENT, outer braces included, because a
+  // fragment is not something a person can save as a new file.
+  const fresh = pastePlan({ exists: false, raw: null },
+    { key: 'categories', value: { tier: 'normative' }, entry: 'decision' });
+  assert.equal(fresh.where, 'newfile');
+  assert.equal(fresh.text,
+    '{\n  "categories": {\n    "decision": {\n      "tier": "normative"\n    }\n  }\n}');
+
+  // And the screen draws a sentence for every `where` this can return: a
+  // placement with no sentence renders an empty step, which reads as a
+  // hand-off that forgot to say where the block goes.
+  const code = codeLines();
+  for (const where of ['newfile', 'newkey', 'replacekey', 'newentry', 'newentry0', 'replaceentry']) {
+    assert.ok(code.includes(`'cfg.pl.${where}'`),
+      `pastePlan can return where: '${where}' and screens/config.js names no cfg.pl.${where}`);
+  }
 });
 
 /**

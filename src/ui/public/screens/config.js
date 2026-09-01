@@ -32,26 +32,36 @@
  *
  * `.my_context/config.json` is guarded by a deny hook and nothing on this
  * screen writes it — the hook's own words are `cfg.nocmd`'s: *"changes to
- * `.my_context/config.json` are the user's to make — ask, do not edit."* Each
- * pane therefore ends in a **settle step** with three parts and no fourth:
+ * `.my_context/config.json` are the user's to make — ask, do not edit."* **So
+ * this is a TEACHING surface, not an editing one, and a vague instruction here
+ * is the defect.** Each pane therefore ends in a **numbered hand-off** with
+ * four steps and no fifth (`plan:config seq:4`, built 2026-09-01):
  *
- *   1. the exact bytes, as a `<pre class="m">` block indented to be pasted
- *      INTO the object (`jsonBlock`), beside
- *   2. the ABSOLUTE path the endpoint reported — `config.path`, the file this
+ *   1. the ABSOLUTE path the endpoint reported — `config.path`, the file this
  *      server actually read, never the mockup's abbreviated
  *      `.my_context/config.json`, which is a guess for a workspace elsewhere
- *      on disk — and its Copy control, and
- *   3. ONE composed command line and the house's single Copy-and-Execute
+ *      on disk — with its own Copy control.
+ *   2. **WHERE in the file the block goes, given what the file already
+ *      contains.** `pastePlan` decides which of six placements this is and
+ *      `placementNote` draws that one's sentence. This step is the reason the
+ *      task exists and the reason it was wrong: until 2026-09-01 the Categories
+ *      pane composed a top-level `"categories"` key against files that already
+ *      had one, and `JSON.parse` resolves a duplicate key to the LAST one — so
+ *      following the screen would have silently dropped every other category
+ *      override in the reader's file. See `pastePlan`.
+ *   3. the exact bytes, as a `<pre class="m">` block indented for the placement
+ *      step 2 named (`jsonBlock`), copyable in one gesture.
+ *   4. ONE composed command line and the house's single Copy-and-Execute
  *      control, which is what turns a paste into a settled change: it is the
  *      command that CONFIRMS the edit took (`plan:config seq:4`: *"what to run
  *      afterwards to confirm it took"*).
  *
- * Part 3 is `screens/work.js`'s pattern exactly — `PALETTE` + `commandFor` +
+ * Step 4 is `screens/work.js`'s pattern exactly — `PALETTE` + `commandFor` +
  * `composeCommand` + `commandActions`, the same four pieces the Review queue
  * ships, so the line a reader sees and the argv the confirm rebuilds are one
  * computation rendered twice. `verifyPlan` is this file's `revisionPlan`.
  *
- * **Three panes compose a line and one deliberately does not.** No `mycontext`
+ * **Four panes compose a line and one deliberately does not.** No `mycontext`
  * command reads or writes a budget — that is `cfg.nocmd`, still true and still
  * on screen — so the Budgets pane composes NO command line, and drawing one
  * there would be a fake receipt for the one subject the CLI cannot report. What
@@ -61,7 +71,7 @@
  * /api/execute/confirm` / `POST /api/execute` pair every boundary command uses.
  * That is unchanged by this rewrite, down to the field-by-field confirm.
  *
- * The three lines, and why each one is the receipt for its own subject:
+ * The four lines, and why each one is the receipt for its own subject:
  *
  *   Profile     `mycontext status` — its first line prints `profile "<name>"`
  *               and the table under it is the per-category count the profile
@@ -76,6 +86,29 @@
  *               narrowly on purpose: nothing in the CLI PRINTS `watchedDocs`,
  *               and this file's report says so rather than implying doctor
  *               checks the globs.
+ *   Wizard      `mycontext list <the new category>` — the same receipt the
+ *               Categories pane takes, for the category the flow just defined.
+ *               An empty list is the right answer there and is still a receipt:
+ *               the category resolved, which is the only claim the paste made.
+ *
+ * ── THE CATEGORY WIZARD, `plan:config seq:3` ──────────────────────────────
+ *
+ * Built 2026-09-01 as the fifth pane. Stepped rather than a form because the
+ * ordering is real — the tier decides which `agentEdits` default sits under it,
+ * and a prefix collision is only knowable against the whole catalogue — and
+ * every step offers the legal values rather than expecting them to be known.
+ * `meta.updateStores`, `meta.defaultAgentEdits` and `meta.defaultScopePolicy`
+ * were added to `read-model-config.ts` in the same edit, DERIVED from
+ * `UPDATE_STORES`, `defaultAgentEdits` and `DEFAULT_SCOPE_POLICY` themselves —
+ * `plan:builder seq:2`'s rule, which that task cites: the values come from the
+ * same constants the parser enforces, so a vocabulary cannot be right in the
+ * wizard and wrong in the refusal. Its own docstring carries the rest.
+ *
+ * It is also the ONE caller `POST /api/config/check` has. `preview` answers
+ * what a change would DO and `check` answers what the loader MAKES of it,
+ * returning the resolved config to prove it — which is the answer a flow full
+ * of defaults needs and the one every other pane already has, because every
+ * other pane opens on a category the loader resolved and served.
  *
  * ── THE DELTA PLATE AND THE BLAST PANELS, WHICH WERE THE STANDOFF ─────────
  *
@@ -257,10 +290,99 @@ export function budgetRows(budgets, defaults) {
  * site, so nothing here needs escaping today — and a composer that hand-wrote
  * its own quotes would be the one place in this file that could emit invalid
  * JSON for a value it did not expect.
+ *
+ * **`indent` is the depth the block is pasted AT, and it defaults to the two
+ * spaces every caller wanted until 2026-09-01.** A category entry is pasted one
+ * level further in — inside the file's existing `categories` object rather than
+ * beside it — so it lands at four, and `pastePlan` below is the only thing that
+ * ever passes the argument. At `2` this composes byte-identical text to what it
+ * always did, which is what keeps the assertion against the mockup's own `<pre>`
+ * bytes meaningful.
  */
-export function jsonBlock(key, value) {
-  const body = JSON.stringify(value, null, 2).split('\n').join('\n  ');
-  return `  ${JSON.stringify(key)}: ${body}`;
+export function jsonBlock(key, value, indent = 2) {
+  const pad = ' '.repeat(indent);
+  const body = JSON.stringify(value, null, 2).split('\n').join(`\n${pad}`);
+  return `${pad}${JSON.stringify(key)}: ${body}`;
+}
+
+/**
+ * **WHERE the block goes in the file the reader actually has** — the question
+ * `plan:config seq:4` names as the acceptance test for the whole composer:
+ * *"the file already HAS a categories object, so the block is an entry inside
+ * it and not a top-level key — getting that wrong produces invalid JSON and a
+ * refusal that reads like the wizard was wrong."*
+ *
+ * **It was wrong here until 2026-09-01, and measurably so.** The Categories
+ * pane composed `  "categories": { "lesson": {…} }` unconditionally, and both
+ * corpora this product is developed against — the outer one and `.demo-corpus`
+ * — already have a populated `categories` object. `JSON.parse` does not refuse
+ * a duplicate key: the LAST one wins. So a reader who followed the screen's own
+ * instruction would have silently dropped every other category override in
+ * their file, including this repository's own `task` category with its eight
+ * extra fields and its five `updates` declarations. A hand-off that is right
+ * for an empty config and wrong for a populated one is wrong for every real
+ * user, because every real user has a populated one.
+ *
+ * Six placements, and the pane draws the sentence for the one it is in:
+ *
+ *   `newfile`       there is no file. The block is the whole of it, braces and
+ *                   all — the one case where the composed text is a document
+ *                   rather than a fragment.
+ *   `newkey`        the file has no such top-level key. Paste inside the
+ *                   outermost braces, after a comma.
+ *   `replacekey`    the file sets it already. Replace that entry whole.
+ *   `newentry`      the key is an object and the entry is not in it yet. The
+ *                   block is an entry INSIDE, at four spaces, and `last` names
+ *                   the entry it goes after so "after a comma" points at
+ *                   something the reader can find.
+ *   `newentry0`     the same, into an object with nothing in it, where there is
+ *                   no `last` to name and the sentence must not pretend there
+ *                   is.
+ *   `replaceentry`  the entry is already declared. Replace it whole.
+ *
+ * `file` is `GET /api/config`'s answer — `exists` and `raw` — never a guess
+ * about either. A file that does not parse never reaches here: `render` stops
+ * on `parseError` before a pane is built, because a placement computed against
+ * a `raw` of `null` would be an instruction about a file nobody can read.
+ */
+export function pastePlan(file, block) {
+  const raw = file && typeof file.raw === 'object' && file.raw !== null && !Array.isArray(file.raw)
+    ? file.raw
+    : {};
+  const { key, value, entry } = block;
+  if (file?.exists !== true) {
+    const whole = entry === undefined ? value : { [entry]: value };
+    return { where: 'newfile', anchor: key, last: null, text: `{\n${jsonBlock(key, whole)}\n}` };
+  }
+  const declared = Object.hasOwn(raw, key);
+  const holder = declared ? raw[key] : undefined;
+  const isMap = typeof holder === 'object' && holder !== null && !Array.isArray(holder);
+  if (entry !== undefined) {
+    // A `categories` key that is absent — or present as something that is not
+    // an object, which the loader refuses anyway — is a TOP-LEVEL paste
+    // carrying the entry inside it. That is the only branch where the entry
+    // form would be wrong, and it is the branch an empty config is in.
+    if (!isMap) {
+      return {
+        where: 'newkey', anchor: key, last: null, text: jsonBlock(key, { [entry]: value }),
+      };
+    }
+    const names = Object.keys(holder);
+    return {
+      where: Object.hasOwn(holder, entry)
+        ? 'replaceentry'
+        : (names.length === 0 ? 'newentry0' : 'newentry'),
+      anchor: `${key}.${entry}`,
+      last: names.length === 0 ? null : names[names.length - 1],
+      text: jsonBlock(entry, value, 4),
+    };
+  }
+  return {
+    where: declared ? 'replacekey' : 'newkey',
+    anchor: key,
+    last: null,
+    text: jsonBlock(key, value),
+  };
 }
 
 /**
@@ -472,6 +594,26 @@ function segbar(ariaLabel, values, chosen, pick) {
 }
 
 /**
+ * Step 2's sentence: WHERE this block goes, given what the file already
+ * contains — one of `pastePlan`'s six placements, drawn as the one it is in.
+ *
+ * **Six literal calls and not a lookup table**, and the reason is
+ * the one `composerPane`'s `spec` states: a key reached through a variable is
+ * invisible to `test/ui/config-screen.test.ts`'s scanner, which finds the keys
+ * this screen names by matching literal calls against its own bytes. A key
+ * missing from the Hebrew table throws at render time, in Hebrew only, which is
+ * the failure nobody sees until a reader reports a blank screen.
+ */
+function placementNote(ctx, plan) {
+  if (plan.where === 'newfile') return ctx.t('cfg.pl.newfile');
+  if (plan.where === 'replacekey') return ctx.t('cfg.pl.replacekey', { key: plan.anchor });
+  if (plan.where === 'replaceentry') return ctx.t('cfg.pl.replaceentry', { key: plan.anchor });
+  if (plan.where === 'newentry') return ctx.t('cfg.pl.newentry', { last: String(plan.last) });
+  if (plan.where === 'newentry0') return ctx.t('cfg.pl.newentry0');
+  return ctx.t('cfg.pl.newkey', { key: plan.anchor });
+}
+
+/**
  * A free-text field, with the value IN FORCE as its placeholder.
  *
  * That placeholder is the owner's requirement rather than a nicety: *"where
@@ -679,6 +821,27 @@ function budgetSaveControl(ctx, inputs) {
     const values = {};
     for (const [key, input] of Object.entries(inputs)) values[key] = input.value;
 
+    // **THE CONTROL IS DISARMED FOR THE DURATION, and it says so** — the same
+    // block `lib/command-actions.js` grew on 2026-09-01, carried here on the
+    // same day because this is the same GET behind a second button and a
+    // reader cannot be expected to know which surface they are on.
+    //
+    // The confirm GET is not a lookup. Since `plan:execute seq:5b` it DERIVES
+    // the effect by copying the whole corpus to a scratch directory and running
+    // the command there (`src/ui/execute-effect.ts` · `deriveEffect`), measured
+    // on `.demo-corpus` at 5.1s / 6.4s / 7.3s. Until this line existed all of
+    // that happened behind a button that changed in no way whatsoever, which is
+    // indistinguishable from a control that is broken — and an impatient second
+    // press started a SECOND full-corpus dry run and MINTED A SECOND NONCE on
+    // the one route this codebase calls the security boundary. One press, one
+    // mint.
+    //
+    // `exec.checking` rather than a Configure-specific key: it describes the
+    // GET, which is the same GET, and a second wording for one wait is how two
+    // surfaces come to describe the same seconds differently.
+    save.disabled = true;
+    say(...ctx.t('exec.checking'));
+
     // The nonce is minted HERE and nowhere else — by the GET that renders
     // this confirm — the same property `commandActions` states and the same
     // route that mints it: `src/ui/execute.ts`'s `handleConfirm`, whichever
@@ -689,7 +852,21 @@ function budgetSaveControl(ctx, inputs) {
     } catch (error) {
       say(errorNote(message(error)));
       return;
+    } finally {
+      // Re-armed on BOTH paths, and in a `finally` so a refusal is a state a
+      // reader can leave by pressing the button again rather than a control
+      // that stays dead until the screen is redrawn.
+      save.disabled = false;
     }
+
+    // The question the pending sentence asked has been answered, so it goes:
+    // left standing it would sit above the confirm still claiming to be
+    // checking, which is a screen saying one thing and meaning another — the
+    // same defect the blast panel exists to prevent, arriving in the status
+    // region. A refusal keeps its own sentence, because `say()` above replaced
+    // this one with the reason.
+    result.replaceChildren();
+    result.hidden = true;
 
     const items = viewsFromEffect(answer.effect ?? []);
     confirmBox.replaceChildren();
@@ -784,6 +961,11 @@ function budgetSaveControl(ctx, inputs) {
  *   `candidate`  the whole candidate config, or `null` for a subject whose
  *                reach no endpoint measures.
  *   `command`    the line the settle step offers, or `null`.
+ *   `pending`    optional: true while the pane's subject is not yet a thing the
+ *                loader could be asked about. Only the category wizard is ever
+ *                in that state, and while it is, the pane draws its reason and
+ *                nothing else — no steps about a block nobody could paste, and
+ *                no blast panel over a half-composed category.
  *   `plateId`    the mockup's own id for this plate, where it has one.
  *   `extra`      a node appended inside the blast panel (the scope-policy
  *                pane's unscoped-item count).
@@ -813,60 +995,133 @@ function composerPane(ctx, config, spec) {
 
   const applyHead = el('h3');
   applyHead.append(...ctx.t('cfg.apply'));
-  const pre = el('pre', 'm');
-  // The mockup's compose-and-copy row, with the ABSOLUTE path the endpoint
-  // reports rather than the abbreviated `.my_context/config.json`: `path` is
-  // the file this server actually read, and a workspace elsewhere on disk
-  // makes the abbreviation a guess.
-  //
-  // A copy that fails says so, in the platform's own words — the treatment
-  // `screens/doctor.js` established, for the reason it records: the mockup's
-  // own "Copied"/"Copy failed" label swap is an unkeyed ternary in its script,
-  // so neither string table can carry it, and inventing the two keys here
-  // would fail the parity check.
-  const cmd = el('div', 'cmd');
-  const code = el('code', null, config.path);
-  const copy = el('button');
-  copy.type = 'button';
-  copy.append(...ctx.t('btn.copypatch'));
-  cmd.append(code, copy);
-
-  const settle = el('div');
+  // **Four numbered steps, and the numbering is the information.** `plan:config
+  // seq:4`: *"DO, as numbered steps rather than prose: the absolute path,
+  // spelled out and copyable; WHERE in the file the block goes, given what the
+  // file already contains; the block itself, copyable in one gesture; and what
+  // to run afterwards to confirm it took."* An `<ol>` because these happen in
+  // an order and prose loses it — and because a reader who has done two of them
+  // needs to see which two.
+  const steps = el('ol', 'steps');
 
   let token = 0;
   let pasteText = '';
 
-  copy.addEventListener('click', () => {
-    // Composed and copied, never applied. The user's own editor is the only
-    // thing that ever writes this file — which is what keeps the deny hook's
-    // rule about `.my_context/config.json` true of this UI as well.
-    navigator.clipboard.writeText(pasteText).catch((error) => {
-      cmd.after(errorNote(message(error)));
+  const pasteButton = (label, text, host) => {
+    const button = el('button');
+    button.type = 'button';
+    button.append(...label());
+    button.addEventListener('click', () => {
+      // Composed and copied, never applied. The user's own editor is the only
+      // thing that ever writes this file — which is what keeps the deny hook's
+      // rule about `.my_context/config.json` true of this UI as well.
+      //
+      // A copy that fails says so, in the platform's own words — the treatment
+      // `screens/doctor.js` established, for the reason it records: the
+      // mockup's own "Copied"/"Copy failed" label swap is an unkeyed ternary in
+      // its script, so neither string table can carry it, and inventing the two
+      // keys here would fail the parity check.
+      navigator.clipboard.writeText(text()).catch((error) => {
+        host().after(errorNote(message(error)));
+      });
     });
-  });
+    return button;
+  };
 
   const paint = async () => {
-    const block = spec.block();
-    pasteText = jsonBlock(block.key, block.value);
-    pre.textContent = pasteText;
+    // **A pane whose subject is not yet complete says so and draws nothing
+    // else.** Only the category wizard is ever in this state; every other pane
+    // opens on a subject that already exists. Four steps about a block nobody
+    // could paste would be worse than no steps, and a blast panel over a
+    // half-composed category would be a measurement of a question the loader
+    // cannot be asked — which is the `unmeasured` face's job and not this one's,
+    // so the plate carries the sentence instead of a panel.
+    if (spec.pending && spec.pending()) {
+      pasteText = '';
+      steps.replaceChildren();
+      steps.hidden = true;
+      // **REMOVED, not `hidden`.** `.card>h3` sets `display:flex`, which is an
+      // AUTHOR rule and beats the UA's `[hidden]{display:none}` — the same
+      // defect `.cmd` had, recorded in `screen-parity`'s ledger: the attribute
+      // is set, nothing changes, and a heading sits over nothing. `.steps` sets
+      // no display of its own, so `hidden` is enough there.
+      applyHead.remove();
+      const waiting = el('p', 'small');
+      waiting.append(...ctx.t('cfg.wizpending'));
+      plate.replaceChildren(waiting);
+      return;
+    }
+    steps.hidden = false;
+    if (!applyHead.isConnected && steps.parentNode !== null) steps.before(applyHead);
 
-    // The composed line is rebuilt with the draft, because its ARGUMENT can
-    // move with the controls — `mycontext list <category>` names whichever
-    // category the pane is showing. Built inside a `try`: a pane that cannot
-    // compose its line still has a plate worth reading, and the refusal is
-    // drawn where the line would have been.
-    settle.replaceChildren();
-    if (spec.command !== null) {
-      try {
-        const plan = spec.command();
-        const box = el('div', 'cmd');
-        box.append(el('code', null, composeCommand(plan.argv)));
-        settle.append(box, commandActions({
-          argv: plan.argv, id: plan.id, values: plan.values, ctx,
-        }));
-      } catch (error) {
-        settle.append(errorNote(message(error)));
+    steps.replaceChildren();
+    const block = spec.block();
+    const plan = pastePlan(config, block);
+    pasteText = plan.text;
+
+    {
+      // ── Step 1: the file, spelled in full ────────────────────────────────
+      // The ABSOLUTE path the endpoint reports rather than the abbreviated
+      // `.my_context/config.json` the mockup draws: `path` is the file this
+      // server actually read, and a workspace elsewhere on disk makes the
+      // abbreviation a guess. Its own Copy, because a path a reader has to
+      // retype is a path they will mistype.
+      const openStep = el('li');
+      const openNote = el('p', 'small');
+      openNote.append(...(plan.where === 'newfile' ? ctx.t('cfg.step1new') : ctx.t('cfg.step1')));
+      const cmd = el('div', 'cmd');
+      cmd.append(
+        el('code', null, config.path),
+        pasteButton(() => ctx.t('btn.copypath'), () => config.path, () => cmd),
+      );
+      openStep.append(openNote, cmd);
+
+      // ── Step 2: WHERE, given what the file already contains ──────────────
+      const whereStep = el('li');
+      const whereNote = el('p', 'small');
+      whereNote.append(...placementNote(ctx, plan));
+      whereStep.append(whereNote);
+
+      // ── Step 3: the bytes, copyable in one gesture ───────────────────────
+      const blockStep = el('li');
+      const blockNote = el('p', 'small');
+      blockNote.append(...ctx.t('cfg.step3'));
+      const pre = el('pre', 'm', pasteText);
+      // `.cmd` and not `.cmdactions`: this is the mockup's own compose-and-copy
+      // row, minus the `<code>` — the bytes are the `<pre>` above it, which is
+      // too tall for one. `.cmd code` therefore stays at ONE per pane in step 1
+      // and one more in step 4, which is what `e2e/config-composer.spec.ts`
+      // addresses the path and the command line by.
+      const copyRow = el('div', 'cmd');
+      copyRow.append(
+        pasteButton(() => ctx.t('btn.copypatch'), () => pasteText, () => copyRow),
+      );
+      blockStep.append(blockNote, pre, copyRow);
+
+      // ── Step 4: what to run afterwards, which is what turns a paste into a
+      //    settled change. The line is rebuilt with the draft, because its
+      //    ARGUMENT can move with the controls — `mycontext list <category>`
+      //    names whichever category the pane is showing. Built inside a `try`:
+      //    a pane that cannot compose its line still has three steps worth
+      //    following, and the refusal is drawn where the line would have been.
+      const runStep = el('li');
+      const runNote = el('p', 'small');
+      runNote.append(...(spec.command === null ? ctx.t('cfg.step4b') : ctx.t('cfg.step4')));
+      runStep.append(runNote);
+      if (spec.command !== null) {
+        try {
+          const line = spec.command();
+          const box = el('div', 'cmd');
+          box.append(el('code', null, composeCommand(line.argv)));
+          runStep.append(box, commandActions({
+            argv: line.argv, id: line.id, values: line.values, ctx,
+          }));
+        } catch (error) {
+          runStep.append(errorNote(message(error)));
+        }
       }
+
+      steps.append(openStep, whereStep, blockStep, runStep);
     }
 
     const rows = valueDeltas(spec.base(), spec.values());
@@ -901,7 +1156,7 @@ function composerPane(ctx, config, spec) {
   };
 
   const controls = spec.controls(paint);
-  card.append(controls, effectHead, plate, applyHead, pre, cmd, settle);
+  card.append(controls, effectHead, plate, applyHead, steps);
   void paint();
   return card;
 }
@@ -1206,7 +1461,12 @@ export async function render(root, ctx) {
       values: () => Object.fromEntries(Object.keys(draft)
         .map((name) => [`categories.${chosen}.${name}`, draft[name]])
         .filter(([, value]) => value !== undefined)),
-      block: () => ({ key: 'categories', value: { [chosen]: categoryEntry(raw, chosen, draft) } }),
+      // `entry`, so `pastePlan` composes an entry INSIDE the file's existing
+      // `categories` object rather than a second top-level key beside it. That
+      // is `plan:config seq:4`'s acceptance test, and it was wrong here until
+      // 2026-09-01: this pane wrapped the entry in `{ categories: { … } }`
+      // unconditionally, against files that already had one.
+      block: () => ({ key: 'categories', value: categoryEntry(raw, chosen, draft), entry: chosen }),
       candidate: () => {
         const next = structuredClone(raw);
         const categories = next.categories && typeof next.categories === 'object'
@@ -1236,6 +1496,336 @@ export async function render(root, ctx) {
     });
     root.append(categoriesPane);
   }
+
+  // ── Pane 3b: Create a category — `plan:config seq:3` ─────────────────────
+  //
+  // *"A very structured way to create a new category with every detail
+  // possible selected by the user; a wizard is an option."* — owner, 2026-08-23.
+  //
+  // **A WIZARD RATHER THAN A FORM, and the task's argument survives scrutiny:**
+  // *"tier changes which other choices are legal, and a prefix that collides is
+  // only knowable against the whole catalogue."* Both are real here. The tier
+  // decides which `agentEdits` value the loader would fill in for a reader who
+  // never touches that step — `meta.defaultAgentEdits`, computed by
+  // `defaultAgentEdits` itself on the server — so step 6 opens pressed on a
+  // different position depending on what step 3 chose. And a prefix collision
+  // is a fact about the WHOLE resolved catalogue, not about the field: step 2
+  // is checked against every `prefix` `GET /api/config` served, which is the
+  // only place that list exists in this page.
+  //
+  // **Every step offers the legal values rather than expecting them to be
+  // known**, and every one of them is DERIVED — `plan:builder seq:2`'s rule,
+  // which this task cites: the values come from the same constants the parser
+  // enforces. `meta.tiers` is pinned to the `Tier` union at compile time,
+  // `meta.agentEdits` and `meta.scopePolicies` are `AGENT_EDITS`/
+  // `SCOPE_POLICIES` in declaration order, and `meta.updateStores` is the array
+  // `requireUpdatableName` validates `store` against. Nothing here spells a
+  // vocabulary a second time, so a vocabulary cannot be right in the wizard and
+  // wrong in the refusal.
+  //
+  // **The two free-text steps are checked here and the CHARACTER grammar is
+  // not.** Name and prefix collisions are computable from what was served;
+  // `requirePrefix`'s "1-12 letters or digits" is a regex in `core/config.ts`
+  // that is not exported, and restating it in a browser module would be exactly
+  // the second spelling this file refuses everywhere else. The candidate goes to
+  // `POST /api/config/preview`, which refuses an unloadable config with
+  // `resolveConfig`'s message VERBATIM, and the plate draws that refusal. So the
+  // rule is taught by the loader that owns it, in the loader's own words.
+  //
+  // **It composes; it does not write** — owner decision 2026-08-23, unchanged.
+  // It ends in the same four-step hand-off every other pane ends in, which is
+  // `plan:config seq:4` and is the reason these two tasks were built together.
+  const WIZ_STEPS = 8;
+  const wizPrefixes = new Map((resolved.categories ?? [])
+    .map((c) => [String(c.prefix ?? '').toUpperCase(), c.name]));
+  const wizNames = new Set(names);
+  const wizUpdateRow = () => ({ name: '', store: meta.updateStores[0], values: '', projectsTo: '', note: '' });
+  let wizAt = 0;
+  const wiz = {
+    name: '', prefix: '', tier: meta.tiers[0], description: '', extraFields: '',
+    agentEdits: null, scopePolicy: null, updates: [],
+  };
+  /** A comma-separated free-text field as the list the loader wants. */
+  const wizList = (text) => String(text).split(',').map((v) => v.trim()).filter((v) => v !== '');
+  const wizName = () => wiz.name.trim();
+  const wizPrefix = () => wiz.prefix.trim();
+  // The tier's default, PRESSED rather than assumed: a reader who never opens
+  // step 6 gets what the loader would have filled in, and can see that they did.
+  const wizEdits = () => (wiz.agentEdits ?? meta.defaultAgentEdits[wiz.tier]);
+  const wizPolicy = () => (wiz.scopePolicy ?? meta.defaultScopePolicy);
+  const wizUpdates = () => {
+    const out = {};
+    for (const row of wiz.updates) {
+      const name = row.name.trim();
+      if (name === '') continue;
+      const entry = { store: row.store };
+      const values = wizList(row.values);
+      if (values.length > 0) entry.values = values;
+      if (row.projectsTo.trim() !== '') entry.projectsTo = row.projectsTo.trim();
+      if (row.note.trim() !== '') entry.note = row.note.trim();
+      out[name] = entry;
+    }
+    return out;
+  };
+  /**
+   * The entry the file would gain. Only what the reader actually said: a key
+   * left alone is ABSENT rather than written at its default, for the same
+   * reason `categoryEntry` merges over the raw file rather than the resolved
+   * one — freezing today's defaults into a user's config opts them out of every
+   * future change to them, silently.
+   */
+  const wizValue = () => {
+    const value = { tier: wiz.tier, description: wiz.description.trim() };
+    if (wizPrefix() !== '') value.prefix = wizPrefix();
+    const extras = wizList(wiz.extraFields);
+    if (extras.length > 0) value.extraFields = extras;
+    if (wiz.agentEdits !== null) value.agentEdits = wiz.agentEdits;
+    if (wiz.scopePolicy !== null) value.scopePolicy = wiz.scopePolicy;
+    const updates = wizUpdates();
+    if (Object.keys(updates).length > 0) value.updates = updates;
+    return value;
+  };
+  const wizCandidate = () => {
+    const next = structuredClone(raw);
+    const categories = next.categories && typeof next.categories === 'object'
+      && !Array.isArray(next.categories) ? next.categories : {};
+    next.categories = { ...categories, [wizName()]: wizValue() };
+    return next;
+  };
+  // The two the LOADER requires of a custom category, and nothing else:
+  // `resolveConfig` refuses one that declares neither tier nor description by
+  // name. Everything past them has a default the loader fills in, which is why
+  // the flow can be finished from step 4 and the remaining steps are offers
+  // rather than gates.
+  const wizReady = () => wizName() !== '' && !wizNames.has(wizName())
+    && wiz.description.trim() !== '';
+
+  const wizardPane = composerPane(ctx, config, {
+    key: 'wizard',
+    head: () => ctx.t('cfg.wiz'),
+    note: () => ctx.t('cfg.wizn'),
+    plateId: null,
+    pending: () => !wizReady(),
+    controls: (paint) => {
+      const wrap = el('div');
+      const progress = el('p', 'small');
+      const body = el('div');
+      const refusal = el('p', 'small');
+      const receipt = el('div');
+      const bar = el('div', 'cmdactions');
+      const back = el('button');
+      back.type = 'button';
+      back.append(...ctx.t('cfg.wizback'));
+      const next = el('button');
+      next.type = 'button';
+      next.append(...ctx.t('cfg.wiznext'));
+      bar.append(back, next);
+
+      /**
+       * The step's own refusal, or null. It is what disables Next, so the flow
+       * cannot carry an illegal value forward and discover it four steps later
+       * — which is the whole of what "real ordering and cross-field validation"
+       * buys over a form.
+       */
+      const stop = () => {
+        if (wizAt === 0) {
+          if (wizName() === '') return () => ctx.t('cfg.wz.need');
+          if (wizNames.has(wizName())) return () => ctx.t('cfg.wz.taken', { name: wizName() });
+          return null;
+        }
+        if (wizAt === 1) {
+          const held = wizPrefixes.get(wizPrefix().toUpperCase());
+          if (wizPrefix() !== '' && held !== undefined) {
+            return () => ctx.t('cfg.wz.pfxtaken', { prefix: wizPrefix(), cat: held });
+          }
+          return null;
+        }
+        if (wizAt === 3 && wiz.description.trim() === '') return () => ctx.t('cfg.wz.need');
+        return null;
+      };
+
+      /**
+       * `POST /api/config/check` — the ONE caller this endpoint has, and the
+       * reason it is called here and nowhere else on this screen.
+       *
+       * `preview` answers what a change would DO; `check` answers what the
+       * loader MAKES of it, and returns the resolved config to prove it. That
+       * second answer is this flow's whole subject: a wizard that offers a
+       * default has to be able to show what the default resolved TO, and every
+       * other pane opens on a category the loader already resolved and served.
+       * It is a read — `read-model-config.ts` says of itself that everything in
+       * it reads, validates and previews and nothing writes — and
+       * `test/ui/no-writes.test.ts` holds the server's import graph to that.
+       */
+      // `token` for the same reason `composerPane`'s `paint` has one, and it was
+      // MEASURED missing: every step change asks again, and two answers in
+      // flight both cleared and both appended, so the receipt rendered twice on
+      // screen. An answer that arrives after a newer one was asked is discarded.
+      let receiptToken = 0;
+      const refreshReceipt = async () => {
+        const mine = ++receiptToken;
+        receipt.replaceChildren();
+        if (!wizReady()) return;
+        let answer;
+        try {
+          answer = await ctx.post('/api/config/check', { candidate: wizCandidate() });
+        } catch (error) {
+          if (mine !== receiptToken) return;
+          receipt.replaceChildren(errorNote(message(error)));
+          return;
+        }
+        if (mine !== receiptToken) return;
+        receipt.replaceChildren();
+        // `ok: false` is this endpoint's SUCCESS case — "no, and here is why",
+        // in `resolveConfig`'s own words, which is the same sentence the CLI
+        // prints. Drawn through `errorNote`, which words its own frame and says
+        // what it wraps is untranslated.
+        if (answer.ok !== true) {
+          receipt.append(errorNote(String(answer.error ?? '')));
+          return;
+        }
+        const entry = (answer.resolved?.categories ?? []).find((c) => c.name === wizName());
+        if (entry === undefined) return;
+        const note = el('p', 'small');
+        note.append(...ctx.t('cfg.wz.resolved'));
+        receipt.append(note, el('pre', 'm', JSON.stringify(entry, null, 2)));
+      };
+
+      const rebuild = () => {
+        progress.replaceChildren();
+        progress.append(...ctx.t('cfg.wizstep', {
+          n: String(wizAt + 1), total: String(WIZ_STEPS),
+        }));
+        body.replaceChildren();
+        const settle = (name) => (value) => { wiz[name] = value; rebuild(); void paint(); };
+        // One step on screen at a time. Each is its keyed instruction and its
+        // control, and the instruction says what the value is FOR — the owner's
+        // 2026-08-25 requirement for every free-text entry on this screen.
+        if (wizAt === 0) {
+          // The `aria-label` is the config KEY this step composes, spelled the
+          // way the other steps spell theirs — `name`, `prefix`, `description`,
+          // `extraFields` — so a reader hearing it hears the key they are about
+          // to paste. The sentence above the control is what says what it means.
+          body.append(field(ctx, 'cfg.wz.name', textField(
+            'name', ctx.tFlat('cfg.wz.namehint'), wiz.name, settle('name'))));
+        } else if (wizAt === 1) {
+          body.append(field(ctx, 'cfg.wz.prefix', textField(
+            'prefix', wizName().replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase(),
+            wiz.prefix, settle('prefix'))));
+        } else if (wizAt === 2) {
+          body.append(field(ctx, 'cfg.tier', segbar(
+            ctx.tFlat('cfg.tier'), meta.tiers, () => wiz.tier, settle('tier'))));
+        } else if (wizAt === 3) {
+          body.append(field(ctx, 'cfg.wz.desc', textField(
+            'description', ctx.tFlat('cfg.wz.deschint'), wiz.description, settle('description'))));
+        } else if (wizAt === 4) {
+          body.append(field(ctx, 'cfg.wz.extra', textField(
+            'extraFields', ctx.tFlat('cfg.wz.extrahint'), wiz.extraFields,
+            settle('extraFields'))));
+        } else if (wizAt === 5) {
+          body.append(field(ctx, 'cfg.agentedits', segbar(
+            ctx.tFlat('cfg.agentedits'), meta.agentEdits, wizEdits, settle('agentEdits'))));
+        } else if (wizAt === 6) {
+          body.append(field(ctx, 'cfg.policy', segbar(
+            ctx.tFlat('aria.scopepolicy'), meta.scopePolicies, wizPolicy,
+            settle('scopePolicy'))));
+        } else {
+          const head = el('p', 'small');
+          head.append(...ctx.t('cfg.wz.updates'));
+          body.append(spaced(head));
+          if (wiz.updates.length === 0) {
+            const none = el('p', 'small');
+            none.append(...ctx.t('cfg.wz.upnone'));
+            body.append(spaced(none));
+          }
+          wiz.updates.forEach((row, index) => {
+            const box = el('div');
+            const put = (name) => (value) => { row[name] = value; rebuild(); void paint(); };
+            box.append(
+              field(ctx, 'cfg.wz.upname', textField(
+                `updates[${index}].name`, ctx.tFlat('cfg.wz.upnamehint'), row.name, put('name'))),
+              field(ctx, 'cfg.wz.upstore', segbar(
+                ctx.tFlat('cfg.wz.upstore'), meta.updateStores, () => row.store, put('store'))),
+              field(ctx, 'cfg.wz.upvalues', textField(
+                `updates[${index}].values`, ctx.tFlat('cfg.wz.upvalueshint'), row.values,
+                put('values'))),
+              // `projectsTo` borrows the updatable name's own hint on purpose:
+              // the field it projects to is usually the field it is named
+              // after, and `state` is the measured case in this repository's
+              // own config. A second key holding the same word would be two
+              // spellings of one example.
+              field(ctx, 'cfg.wz.upprojects', textField(
+                `updates[${index}].projectsTo`, ctx.tFlat('cfg.wz.upnamehint'), row.projectsTo,
+                put('projectsTo'))),
+              field(ctx, 'cfg.wz.upnote', textField(
+                `updates[${index}].note`, ctx.tFlat('cfg.wz.upnotehint'), row.note, put('note'))),
+            );
+            const drop = el('div', 'cmdactions');
+            const remove = el('button');
+            remove.type = 'button';
+            remove.append(...ctx.t('cfg.wz.updrop'));
+            remove.addEventListener('click', () => {
+              wiz.updates.splice(index, 1);
+              rebuild();
+              void paint();
+            });
+            drop.append(remove);
+            box.append(drop);
+            body.append(box);
+          });
+          const addBar = el('div', 'cmdactions');
+          const add = el('button');
+          add.type = 'button';
+          add.append(...ctx.t('cfg.wz.upadd'));
+          add.addEventListener('click', () => {
+            wiz.updates.push(wizUpdateRow());
+            rebuild();
+            void paint();
+          });
+          addBar.append(add);
+          body.append(addBar);
+        }
+
+        const held = stop();
+        refusal.replaceChildren();
+        if (held !== null) refusal.append(...held());
+        back.disabled = wizAt === 0;
+        next.disabled = held !== null || wizAt === WIZ_STEPS - 1;
+        void refreshReceipt();
+      };
+
+      back.addEventListener('click', () => {
+        if (wizAt === 0) return;
+        wizAt -= 1;
+        rebuild();
+      });
+      next.addEventListener('click', () => {
+        if (wizAt >= WIZ_STEPS - 1 || stop() !== null) return;
+        wizAt += 1;
+        rebuild();
+      });
+
+      rebuild();
+      wrap.append(progress, body, refusal, bar, receipt);
+      return wrap;
+    },
+    // The FILE's own before-and-after for this subject, which for a category
+    // that does not exist yet is a single arrow-only row per field — the
+    // mockup's own treatment for a value that had no previous half.
+    base: () => ({}),
+    values: () => Object.fromEntries(Object.entries(wizValue())
+      .map(([name, value]) => [`categories.${wizName()}.${name}`,
+        typeof value === 'object' ? JSON.stringify(value) : value])),
+    block: () => ({ key: 'categories', value: wizValue(), entry: wizName() }),
+    candidate: () => wizCandidate(),
+    // The category this flow just defined, listed. It refuses BY NAME if the
+    // paste left it unresolvable, which is the acceptance test `plan:config
+    // seq:4` names — and on a category with no items yet, a clean empty list is
+    // the receipt that the definition itself loaded.
+    command: () => verifyPlan('list', { category: wizName() }),
+    extra: null,
+  });
+  root.append(wizardPane);
 
   // ── Pane 4: Watched documents ────────────────────────────────────────────
   //

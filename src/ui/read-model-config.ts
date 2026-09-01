@@ -20,8 +20,8 @@ import path from 'node:path';
 import { injection } from '../cli/commands/injection.ts';
 import { PROFILES } from '../core/categories.ts';
 import {
-  AGENT_EDITS, DEFAULT_BUDGETS, SCOPE_POLICIES, agentEditsFor, resolveConfig,
-  scopePolicyFor, skippedKeyNotice, type Config,
+  AGENT_EDITS, DEFAULT_BUDGETS, DEFAULT_SCOPE_POLICY, SCOPE_POLICIES, UPDATE_STORES, agentEditsFor,
+  defaultAgentEdits, resolveConfig, scopePolicyFor, skippedKeyNotice, type Config,
 } from '../core/config.ts';
 import { select, type GateCode } from '../core/select.ts';
 import type { Item, Tier } from '../core/types.ts';
@@ -105,6 +105,25 @@ const META = {
   agentEdits: AGENT_EDITS,
   scopePolicies: SCOPE_POLICIES,
   defaultBudgets: DEFAULT_BUDGETS,
+  // The `updates` vocabulary, added 2026-09-01 for `plan:config seq:3`'s
+  // category wizard — the one closed set on that flow this object did not
+  // already carry. `UPDATE_STORES` is the array `requireUpdatableName` itself
+  // validates against, passed through for the same reason `AGENT_EDITS` is: a
+  // picker built from a second spelling would offer a value the loader refuses
+  // the day either list moves.
+  updateStores: UPDATE_STORES,
+  // **The defaults a wizard must PRE-SELECT rather than leave blank**, and the
+  // reason they are computed here rather than written in the browser. The task
+  // states it: *"agentEdits and scopePolicy are closed vocabularies with
+  // defaults per tier"* — and `plan:builder seq:2`'s rule is DERIVE, DO NOT
+  // COPY. These call `defaultAgentEdits` itself, once per member of `TIERS`, so
+  // the segbar a reader sees pre-pressed is pressed on the value the loader
+  // would have filled in had they left the key out altogether. `scopePolicy`'s
+  // default is NOT tier-dependent — `DEFAULT_SCOPE_POLICY`'s own docstring says
+  // so — and is passed through flat rather than duplicated per tier, because a
+  // map with two identical values invites a reader to believe it can differ.
+  defaultAgentEdits: Object.fromEntries(TIERS.map((tier) => [tier, defaultAgentEdits(tier)])),
+  defaultScopePolicy: DEFAULT_SCOPE_POLICY,
 };
 
 /**

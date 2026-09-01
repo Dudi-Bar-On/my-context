@@ -335,6 +335,15 @@ test('a change to who may edit an item says so, in its own face', async ({ app }
  * `categories` object, so the block is an entry INSIDE it and not a top-level
  * key — getting that wrong produces invalid JSON and a refusal that reads like
  * the wizard was wrong."*
+ *
+ * **REWRITTEN 2026-09-01, because this test pinned the defect.** It asserted the
+ * block STARTED with `  "categories": {` — a top-level key — against a corpus
+ * whose `config.json` already has one. `JSON.parse` does not refuse a duplicate
+ * key: the last one wins, so following the screen would have silently replaced
+ * every category override in the file, and the `JSON.parse` check below passed
+ * over it because a duplicate key is not a syntax error. `pastePlan` decides the
+ * placement now, and what is asserted here is the placement the reader is
+ * actually in: an ENTRY, at four spaces, inside the object the file has.
  */
 test('the categories pane pastes an entry INSIDE categories, and it parses',
   async ({ app }) => {
@@ -346,14 +355,162 @@ test('the categories pane pastes an entry INSIDE categories, and it parses',
     const chosen = await page.locator(`${pane('categories')} select.path`).inputValue();
     const block = await page.locator(`${pane('categories')} pre.m`).textContent() ?? '';
 
-    expect(block.startsWith('  "categories": {'),
-      `the composed block is not a categories entry: ${JSON.stringify(block.slice(0, 60))}`)
+    // The four-space open IS the proof that this corpus has a `categories`
+    // object: `pastePlan` composes the entry form for no other file. On a config
+    // without one the right block is the top-level form and this assertion fails
+    // loudly, rather than the test checking a branch nobody is in.
+    expect(block.startsWith(`    "${chosen}": {`),
+      `the composed block is not an entry inside categories: ${JSON.stringify(block.slice(0, 60))}`)
       .toBe(true);
-    expect(block).toContain(`"${chosen}": {`);
+    expect(block, 'a second top-level "categories" key silently replaces every category already set')
+      .not.toContain('"categories"');
     expect(block).toContain('"scopePolicy": "inert"');
 
-    // It parses as the object it would be pasted into. A block that did not is
-    // the invalid-JSON failure the task names, caught here rather than by a
-    // person whose config stopped loading.
-    expect(() => JSON.parse(`{\n${block}\n}`) as unknown).not.toThrow();
+    // It parses INSIDE the object it would be pasted into — one level further in
+    // than a top-level block, which is the whole of the difference. A block that
+    // did not is the invalid-JSON failure the task names, caught here rather
+    // than by a person whose config stopped loading.
+    expect(() => JSON.parse(`{"categories":{\n${block}\n}}`) as unknown).not.toThrow();
+
+    // And the reader is TOLD that, in step 2 — the half of the hand-off that
+    // makes the block usable. A right block under no instruction is the failure
+    // `plan:config seq:4` was written about.
+    await expect(page.locator(`${pane('categories')} ol.steps li`)).toHaveCount(4);
+    await expect(page.locator(`${pane('categories')} ol.steps li`).nth(1))
+      .toContainText('categories');
+  });
+
+/**
+ * **The four numbered steps, `plan:config seq:4`.**
+ *
+ * *"DO, as numbered steps rather than prose: the absolute path, spelled out and
+ * copyable; WHERE in the file the block goes, given what the file already
+ * contains; the block itself, copyable in one gesture; and what to run
+ * afterwards to confirm it took."* Four `<li>` per pane, in that order, and the
+ * fourth carries the composed line everywhere a line exists.
+ */
+test('every pane hands the paste off in four numbered steps', async ({ app }) => {
+  const { page } = app;
+  await openConfigure(page);
+
+  for (const name of ['profile', 'categories', 'budgets', 'watched']) {
+    const steps = page.locator(`${pane(name)} ol.steps > li`);
+    await expect(steps, `the ${name} pane hands the paste off as prose, not as steps`)
+      .toHaveCount(4);
+    // Step 1 is the file, spelled in full, with its OWN copy control beside the
+    // one on the block — a path a reader has to retype is a path they mistype.
+    await expect(steps.nth(0).locator('.cmd code')).toContainText('config.json');
+    await expect(steps.nth(0).locator('.cmd button')).toBeVisible();
+    // Step 2 says nothing but WHERE. It carries no block and no command.
+    await expect(steps.nth(1).locator('pre.m')).toHaveCount(0);
+    // Step 3 is the bytes and one gesture to copy them.
+    await expect(steps.nth(2).locator('pre.m')).toHaveCount(1);
+    await expect(steps.nth(2).locator('.cmd button')).toBeVisible();
+  }
+
+  // Step 4 is the confirmation, and it is the step that turns a paste into a
+  // settled change. Budgets is the one pane with no line — `cfg.nocmd` — and
+  // its fourth step says so rather than being absent.
+  await expect(page.locator(`${pane('profile')} ol.steps > li`).nth(3).locator('code'))
+    .toHaveText('mycontext status');
+  await expect(page.locator(`${pane('budgets')} ol.steps > li`).nth(3).locator('code'))
+    .toHaveCount(0);
+});
+
+/**
+ * **The category wizard, `plan:config seq:3`.**
+ *
+ * *"A stepped flow ... every step offers the legal values rather than expecting
+ * them to be known."* What is driven here is the two things that make it a
+ * wizard rather than a form: it will not carry an illegal value forward, and a
+ * prefix collision is caught against the whole catalogue rather than against the
+ * field. It ends in the same four-step hand-off every other pane ends in.
+ */
+test('the category wizard refuses a name the catalogue already has, and hands off when complete',
+  async ({ app }) => {
+    const { page } = app;
+    await openConfigure(page);
+
+    const wizard = page.locator(pane('wizard'));
+    await expect(wizard, 'Configure has no category wizard — plan:config seq:3').toBeVisible();
+
+    // Before anything is typed the pane says why it is not measuring, and draws
+    // no steps at all: four steps about a block nobody could paste would be
+    // worse than none.
+    await expect(wizard.locator('ol.steps > li')).toHaveCount(0);
+    await expect(wizard.locator('.plate')).not.toBeEmpty();
+
+    const next = wizard.getByRole('button', { name: 'Next', exact: true });
+
+    /**
+     * **`fill` then `blur`, and the `blur` is the whole point.**
+     *
+     * Every free-text control on this screen settles on `change` and not on
+     * `input` — deliberately, and `textField` records the reason: the field's
+     * job is to compose a candidate and ask the server what it would do, and a
+     * preview per keystroke is a request storm answering questions nobody
+     * finished asking. Playwright's `fill` dispatches `input`; `change` is what
+     * a real reader produces by leaving the field, and `blur` is that.
+     *
+     * The first version of this test used `fill` alone. It passed its
+     * collision assertion and proved nothing: Next is disabled on an EMPTY
+     * name too, so an assertion that only checks `toBeDisabled` after a fill
+     * that never settled is green on a control nobody touched.
+     */
+    const settle = async (label: string, value: string): Promise<void> => {
+      const field = wizard.locator(`input[aria-label="${label}"]`);
+      await field.fill(value);
+      await field.blur();
+    };
+
+    // A name this configuration already has. The flow refuses to carry it
+    // forward — which is the cross-field check a form does at submit time, done
+    // at the step that can still be fixed. The REFUSAL is asserted as well as
+    // the disabled button, because "disabled" is also what an empty field
+    // looks like and the two must not be confusable.
+    const taken = await page.locator(`${pane('categories')} select.path`).inputValue();
+    await settle('name', taken);
+    await expect(wizard, `the wizard did not say why "${taken}" is refused`)
+      .toContainText('already a category in this configuration');
+    await expect(next, `the wizard let "${taken}" past step 1, and the catalogue already has it`)
+      .toBeDisabled();
+
+    // A fresh one is accepted, and the flow moves.
+    await settle('name', 'e2e-wizard-category');
+    await expect(next).toBeEnabled();
+    await next.click();
+
+    // Step 2 is the prefix, and a collision is a fact about the whole resolved
+    // catalogue rather than about the field. `TASK` is `task`'s prefix in this
+    // corpus's own config, and the refusal names the category it belongs to.
+    await settle('prefix', 'TASK');
+    await expect(wizard).toContainText('is already the prefix of');
+    await expect(next, 'the wizard let a colliding prefix past — two categories would mint one id')
+      .toBeDisabled();
+    await settle('prefix', 'E2EW');
+    await expect(next).toBeEnabled();
+
+    // Tier, then description — the two the loader REQUIRES of a custom
+    // category, and the pair that completes the flow.
+    await next.click();
+    await expect(wizard.locator('.segbar button[data-value="normative"]')).toBeVisible();
+    await next.click();
+    await settle('description', 'A category this end-to-end test defined.');
+
+    // And now the hand-off, the same four steps as every other pane, with the
+    // block placed INSIDE the object the file already has.
+    const steps = wizard.locator('ol.steps > li');
+    await expect(steps).toHaveCount(4);
+    const block = await steps.nth(2).locator('pre.m').textContent() ?? '';
+    expect(block.startsWith('    "e2e-wizard-category": {'),
+      `the wizard composed ${JSON.stringify(block.slice(0, 60))}`).toBe(true);
+    expect(block).toContain('"tier"');
+    expect(block).toContain('"description"');
+    expect(block).toContain('"prefix": "E2EW"');
+    expect(() => JSON.parse(`{"categories":{\n${block}\n}}`) as unknown).not.toThrow();
+
+    // The receipt is the same one the Categories pane takes: the category the
+    // flow just defined, listed.
+    await expect(steps.nth(3).locator('code'))
+      .toHaveText('mycontext list e2e-wizard-category');
   });
