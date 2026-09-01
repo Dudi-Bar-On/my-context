@@ -159,11 +159,11 @@ export const strings = {
   // not" was reporting. Said rather than replaced: the rung a reader is
   // usually chasing is the budget, and every item that failed THAT now has a
   // list of its own below.
-  'preview.spec': 'The strip holds one {b:specimen} per gate — the first item by id that fails there — so it holds still while your selection moves. Every item that really spilled is named under {b:Not delivered} below, in the order the selector considered it. Each specimen now carries {b:how many items fail with it}, and the ladder below carries that count for every gate — including the gates nothing fails at, which say zero rather than going blank.',
+  'preview.spec': 'The strip holds one {b:specimen} per gate — the first item by id that fails there — so it holds still while your selection moves. Every item that really spilled is named under {b:Not delivered} below. Each specimen carries {b:how many items fail with it}, and the ladder repeats that count for every gate, zero included.',
   'preview.spill': 'Not delivered — every item that spilled, and what it cost',
-  'preview.spilln': 'One row per item in {m:Selection.spilled}, {b:whole across every tier this event ran} — not the ribbon\'s per-tier split — in the selector\'s own candidate order, which is load-bearing: first-fit admits greedily, so the same three costs in a different order spill a different item. {b:band} appears where the tier offered its candidates in more than one: on a tool event band 1 is the items whose own globs name this path and band 2 is the items that match only by having no scope at all, so a scoped item displacing an unscoped one is visible rather than mysterious. An index line shows {b:—} instead of a cost: the index tier admits lines, and per-line costs are exposed by no endpoint, so the number is absent rather than invented.',
+  'preview.spilln': 'One row per item in {m:Selection.spilled}, {b:whole across every tier this event ran}, in the order the selector tried them. First-fit is greedy, so the same costs in another order spill a different item. {b:band} says which pass offered it. An index line shows {b:—}, because per-line costs are served by no endpoint.',
   'preview.ribbon': 'Budget ribbon — five tiers, and what fell out of each',
-  'preview.ribbonn': 'One segment per admitted item, sized by its real {m:itemCost}. Beneath each track is the {b:ghost lane}: every spilled item at the width it would have taken, in the position the selector considered it. A wide ghost followed by a narrow fill is first-fit being honest — drawing spills as a tail would misrepresent the algorithm. A tier this event never reaches is drawn as {b:absent}, hatched and named; an empty track would claim it ran and delivered nothing, which is a different fact. Follows the event selector above rather than adding a second one.',
+  'preview.ribbonn': 'One segment per admitted item, sized by its real {m:itemCost}. Under each track, the {b:ghost lane} shows every spilled item at the width it would have taken, where the selector considered it. A wide ghost before a narrow fill is first-fit being honest. A tier this event never reached is drawn {b:absent} and named, because an empty track would claim it ran.',
   // ── The absent-tier ribbon, keyed ─────────────────────────────────────
   //
   // Added 2026-08-29. These two sentences shipped as ENGLISH LITERALS with no
@@ -181,13 +181,13 @@ export const strings = {
   // only a key.
   'preview.notrun': 'does not run on this event',
   'preview.notrunn': 'Absent, not empty — this event never reaches the tier at all.',
-  'preview.contover': '{b:Continuity overflow} — {n} continuity item(s) did not fit {m:budgets.continuity}: {mv:ids}, costing {mv:cost} against a budget of {mv:budget}. The continuity guarantee is NOT in force for this session. It is said here, in the injected block itself and as a doctor finding, because a continuity item dropped in silence is the exact defect this tier exists to end.',
+  'preview.contover': '{b:Continuity overflow} — {n} continuity item(s) did not fit {m:budgets.continuity}: {mv:ids}, costing {mv:cost} against a budget of {mv:budget}. The continuity guarantee is NOT in force for this session. It is said here, in the injected block and as a doctor finding: a continuity item dropped in silence is the defect this tier exists to end.',
   // ── The warm/cold question, the `seen` gate, and the When column ───────
   //
   // Added 2026-08-29 with the fix for "Not delivered is not working". Three
   // groups, and each closes a hole the screen had been drawing a zero over.
   'preview.qwarmn': 'the seen set it has really been given',
-  'preview.qnote': '{b:Two questions, not two views.} The default is what the session above would be given now — seen set, focus and carry included, which is what {b:exactly what Claude gets} means. {b:Cold} answers what a brand-new window would get from the same corpus. Both are legitimate; neither is ever shown as the other, and the pressed control says which one you are reading.',
+  'preview.qnote': '{b:Two questions, not two views.} The default is what the session above would be given now, seen set, focus and carry included — that is what {b:exactly what Claude gets} means. {b:Cold} answers what a brand-new window would get from the same corpus. The pressed control says which one you are reading.',
   'preview.seen': '{b:Filtered before budgeting} — {n} item(s) reached the {m:seen} gate and were removed there, because this session has already been given them. Rung 5 runs before any tier picks its candidates, so this is what the gate removed and not what would otherwise have arrived.',
   'preview.seen0': 'Nothing was removed at the {m:seen} gate: none of the injectable corpus has been delivered to this session yet. A cold preview always reads zero here, because a brand-new window has been shown nothing.',
   'preview.spillNone': 'Everything that reached the budget gate fit — {n} candidate(s) went in and none spilled. That is a full budget, not an empty answer.',
@@ -210,7 +210,7 @@ export const strings = {
   // the control — a missing control is the same silence one step further on.
   // Every figure here is counted from `/api/items`' own `scope` field and
   // `/api/config`'s resolved `scopePolicy`; nothing is estimated.
-  'preview.scope': '{b:The path narrows the {m:jit} tier and nothing else, and it can only narrow items that declare a scope.} {b:{scoped} of {total}} items in this corpus do. The other {b:{unscoped}} carry {m:scope: []}, and under the {m:scopePolicy} in force for their categories an unscoped item is {b:unrestricted} — it matches every path — so changing the file above cannot change whether they are candidates.',
+  'preview.scope': '{b:The path narrows the {m:jit} tier and nothing else, and only for items that declare a scope.} {b:{scoped} of {total}} items here do. The other {b:{unscoped}} carry {m:scope: []}, and under the {m:scopePolicy} in force an unscoped item is {b:unrestricted} — it matches every path — so the file above cannot change whether they are candidates.',
   'preview.scopeinert': 'Of those unscoped items, {b:{inert}} belong to a category set to {m:scopePolicy: inert}, under which an item with no scope of its own matches {b:no} path at all — so the file above cannot bring them in either.',
   'preview.scopeunk': '{b:The path narrows the {m:jit} tier and nothing else, and it can only narrow items that declare a scope.} {b:How many of this corpus\'s items declare one is unmeasured here} — the scope join did not answer, so what the path can do on this corpus is left unstated rather than guessed at: {mv:reason}.',
   // ── Each rung's own population ─────────────────────────────────────────
@@ -234,7 +234,7 @@ export const strings = {
   'preview.rungopen': 'Every item stopped at {mv:gate}, by id — the strip above names the first of them, and this is the rest of what it stands for.',
   'preview.pickn': 'first of {n}',
   'preview.pickunk': 'first of {n} measured',
-  'preview.when': '{b:The When on each row is the past, not this preview.} A preview is a simulation: nothing here is being injected as you read it. Each row carries the last time that item really was delivered, or really did spill, from {m:audit_item.role} joined to {m:audit.at} — matched on the tier the row itself names, and naming the tier when only another one has a record. Two rows can be weeks apart and both be right.',
+  'preview.when': '{b:The When on each row is the past, not this preview.} Nothing here is being injected as you read it. Each row carries the last time that item really was delivered or really did spill, from {m:audit_item.role} joined to {m:audit.at}, matched on the tier the row names. Two rows can be weeks apart and both be right.',
   'preview.whenoff': '{b:Delivery times unavailable} — {reason}',
   'preview.whenabsent': '{b:Delivery times unavailable} — the audit projection has never been built in this workspace, so there is no record to read. {m:mycontext audit} builds it; a read surface may not, because building it is a write.',
   'preview.whentrunc': 'The delivery-time answer was cut at {n} rows, so a row may read {b:never} where the log holds an older record than the cut.',
@@ -319,7 +319,7 @@ export const strings = {
   'help.whyBudget': 'Why raising a budget can remove an item',
   'sim.evict': '{m:fitToBudget} is {b:first-fit}: it keeps trying later items after one does not fit. A larger budget admits a large item early, which can then crowd out two small ones that previously both fitted. "Spilled" is not a suffix of a priority list.',
   'sim.ratio': 'Selected, then not delivered',
-  'sim.ration': 'Delivered grows from the centre toward the reading start, spilled toward the reading end, both normalised to the largest count in the table. A long red half names {b:which budget is too small}, which is the question this simulator exists to answer. The two numbers come from {m:audit_item.role} through {m:topItems} — already exported, already indexed, called twice.',
+  'sim.ration': 'Delivered grows from the centre toward the reading start, spilled toward the reading end, both normalised to the largest count in the table. A long red half names {b:which budget is too small}, the question this simulator exists to answer. Both numbers come from {m:audit_item.role} through {m:topItems}.',
   // ── The question: this session, or a brand-new one (plan:walk seq:86) ────
   // The injection preview's precedent, carried to the second screen with the
   // same defect. Warm stays the default; cold is offered and LABELLED.
@@ -359,9 +359,9 @@ export const strings = {
   'sim.winOk': '{total} tokens across all five tiers, of a {win}-token window — {pct}% — leaving {left} tokens to work in, which clears the {res}% working reserve this screen holds back.',
   'sim.winTight': '{total} tokens across all five tiers, of a {win}-token window — {pct}%. It fits, and it leaves only {left} tokens to work in, under the {res}% working reserve. A budget that technically fits and leaves nothing to work in is still wrong.',
   'sim.winOver': '{total} tokens across all five tiers does not fit a {win}-token window: {over} tokens over. A single budget that passes on its own while the five together do not is the failure this check exists to catch.',
-  'sim.winNone': '{b:Not validated, and not guessed.} No context window has been measured for this session, so there is no ceiling to hold five budgets to. {m:context_window_size} comes from Claude Code’s status line and from nowhere else this product can reach, and a model-to-window table measured this machine wrong by 5x — so this screen names what is missing instead of accepting or rejecting numbers against a guess. Install the bridge with {m:mycontext statusline install}.',
+  'sim.winNone': '{b:Not validated, and not guessed.} No context window has been measured for this session, so there is no ceiling to hold budgets to. {m:context_window_size} comes only from the Claude Code status line, and a model-to-window table once measured this machine wrong by 5x. Install the bridge with {m:mycontext statusline install}.',
   // ── A full window is a state with a next step (plan:budget seq:4) ────────
-  'sim.full': '{b:This cannot take effect in the window you have now.} {used} of {win} tokens are already in use, {free} are left, and the five budgets ask for {total}. Run {m:/compact} or {m:/clear} and the {n} {mv:tier} item(s) will arrive — budgets are read at session start, so that is the moment a new value takes effect. The value is set either way; only its consequence is deferred.',
+  'sim.full': '{b:This cannot take effect in the window you have now.} {used} of {win} tokens are in use, {free} are left, and the five budgets ask for {total}. Run {m:/compact} or {m:/clear} and the {n} {mv:tier} item(s) will arrive: budgets are read at session start. The value is set either way; only its effect waits.',
   // ── An edited budget shows what it was (plan:budget seq:6) ───────────────
   'sim.restore': 'Restore the values in force',
   'sim.wasn': '{b:The first number is the budget in force} — what {m:config.json} holds for this tier right now — and the second is the value being simulated. {b:Restore} puts the slider and every range back to it, and is enabled only while something has changed.',
@@ -593,7 +593,7 @@ export const strings = {
   // Decay
   'dec.h': 'Decay',
   'dec.v': 'a chart, not a table — of sessions',
-  'dec.sub': 'Items not injected in the last N {b:sessions}. The unit is sessions, not weeks: the ledger holds one row per (session, item, tier) and a repeat injection inside one session collides, so what it stores is a set of first-injections, not an event stream — and an axis against a clock would be wrong here even where it would look better. The delivery history in the second card is a different measurement from a different source.',
+  'dec.sub': 'Items not injected in the last N {b:sessions}. The unit is sessions, not weeks: the ledger keeps one row per session, item and tier, so a repeat inside one session collides and what it stores is a set of first-injections. The delivery history below is a different measurement from a different source.',
   'dec.comb': 'Recency comb — one tooth per item, never bucketed',
   'dec.warm': 'warm',
   'dec.cold': 'cold',
@@ -603,7 +603,7 @@ export const strings = {
   'help.whyCold': 'What "cold" does and does not mean',
   'dec.help': 'The ledger records {b:injection}, not reading or reliance. A cold item may still be governing — and a cold {m:always:true} item is a bug in selection, not decay.',
   'dec.heat': '90-day delivery, per item — delivered against spilled',
-  'dec.heatn': 'One cell per day. Intensity is how much was delivered that day, a {b:hatched} cell is a day the item was {b:spilled}, and an empty cell is a day nothing happened — six quiet weeks are six weeks of empty cells and need no reading. This is the one view that separates "quiet" from "selected and thrown away repeatedly". Its source is not the ledger, which records deliveries only: it is {m:audit_item.role} joined to {m:audit.at}, both indexed, with the {m:since} / {m:until} filters that already ship.',
+  'dec.heatn': 'One cell per day. Intensity is how much was delivered, a {b:hatched} cell is a day the item was {b:spilled}, and an empty cell is a day nothing happened. This is the one view that tells quiet apart from chosen and thrown away. Its source is {m:audit_item.role} joined to {m:audit.at}, with the {m:since} and {m:until} filters.',
   // Relations
   'gr.h': 'Relations',
   'gr.v': 'an ego-graph, not a hairball',
@@ -643,7 +643,7 @@ export const strings = {
   'gr.lbear': 'load-bearing',
   'gr.lref': 'referential',
   'gr.ldang': 'dangling',
-  'gr.note': 'Nodes carry {b:ids}, not titles — which keeps bidi-sensitive text out of every SVG in the product. Every edge carries its {b:relation type} and its line style carries severity, because those are two different facts: {m:isLoadBearing} already classifies the vocabulary, so a dangling {m:relates_to} reads as noise and a dangling {m:constrains} reads as an alarm. Without that, a graph can only show breakage, never how much it matters — which is why the dangling edges need no separate table. Direction is the layout: the column decides which way the relation points, so nothing has to be simulated.',
+  'gr.note': 'Nodes carry {b:ids}, not titles, which keeps bidi-sensitive text out of the SVG. Each edge shows its {b:relation type}, and its line style shows severity: {m:isLoadBearing} classifies the vocabulary, so a dangling {m:relates_to} reads as noise and a dangling {m:constrains} as an alarm. Direction is the layout — the column says which way it points.',
   // Status
   'st.h': 'Status',
   'st.v': "a table is a terminal's home ground — a recorded exception",
@@ -675,7 +675,7 @@ export const strings = {
   'work.discardRev': '{b:Reject} discards the revision: the proposal is dropped and the item keeps every word it has now. This is the settlement a stale revision can still take.',
   'work.moved': 'changed since staging',
   'work.blocked': 'promote refuses until re-based',
-  'work.diffn': 'The proposed column is a word-level diff, not a second paragraph to compare by eye: additions are tinted, removals are struck, and both are real {m:<ins>} and {m:<del>} elements, so a screen reader announces the change without any added ARIA. The stale field carries a rule down its reading-start edge — the one physical offset in the sheet, and its mirror is written next to it rather than discovered later.',
+  'work.diffn': 'The proposed column is a word-level diff, not a second paragraph to compare by eye: additions are tinted, removals are struck, and both are real {m:<ins>} and {m:<del>} elements, so a screen reader announces the change with no added ARIA.',
   // The Copy control's opening state, and the two the shell's live region
   // announces. `state.uncopied` is drawn beside a composed command BEFORE
   // anything is copied; `state.armed` below is what replaces it only when the
@@ -717,7 +717,7 @@ export const strings = {
   'pal.block': '{b:Copy is blocked.} One argument contains shell substitution syntax. Double-quoting does not neutralise {m:$(…)} — a POSIX shell still substitutes inside double quotes.',
   'pal.glob': 'Glob tester',
   'pal.pattern': 'Scope pattern',
-  'pal.globn': 'Every file in the repository, with the matches {b:lit as you type}. A count on its own — "{matches} files" — is a count you cannot inspect, and a count you cannot inspect is a count you cannot trust: the empty result and the nearly-empty result look identical until you can see which files. Matching goes through the same {m:globToRegExp} cache the selector uses, over {m:listRepoFiles}.',
+  'pal.globn': 'Every file in the repository, with the matches {b:lit as you type}. A bare count — "{matches} files" — is one you cannot inspect, and an empty result and a nearly-empty one look identical until you can see which files. Matching uses the same {m:globToRegExp} cache the selector uses, over {m:listRepoFiles}.',
   // Execute — the one Copy-and-Execute control (lib/command-actions.js).
   //
   // The RESIDUAL is deliberately not a key here. `src/ui/execute.ts` spells it
@@ -893,7 +893,7 @@ export const strings = {
   // The fifth stage. `STAGES` in `src/ui/proc-model.ts` has always had five and this
   // table drew four; `pr.aband` names the state in prose three cards further down.
   'pr.s5': 'you stopped it, and it is {m:superseded} rather than finished',
-  'pr.why': '{b:Injecting only in {m:active} is the mechanism, not a sentence asking the model to wait.} A procedure the model holds in full is one it may begin following, so it is delivered only in the state you put it in deliberately. The failure this guards against is not the obvious one: it is a procedure left {m:active} forever, injecting in full long after the work finished.',
+  'pr.why': '{b:Injecting only in {m:active} is the mechanism, not a sentence asking the model to wait.} A procedure the model holds in full is one it may begin following, so it is delivered only in the state you set deliberately. The real risk is not the obvious one: it is a procedure left {m:active} forever, injecting in full long after the work ended.',
   'pr.item': '{mv:item}',
   'pr.steps': 'steps',
   'pr.k1': 'Add the integer column beside the decimal one',
@@ -953,7 +953,7 @@ export const strings = {
   'pk.trust': 'Where it lands, and why that differs',
   'pk.active': 'draft',
   'pk.draft': 'draft',
-  'pk.trustn': '{b:Both routes land the same way, and it is draft} — there is one importer behind them, and it writes every item a pack brings in as a proposal. Choosing a pack at init looks like the act of trust, but an empty corpus is exactly where an unreviewed opinion is hardest to notice, so the import asks rather than assumes. {b:There is no {m:--trust} flag}; a boundary a flag can override is not a boundary.',
+  'pk.trustn': '{b:Both routes land the same way, and it is draft} — one importer sits behind both, and every item a pack brings in arrives as a proposal. An empty corpus is where an unreviewed opinion is hardest to notice, so the import asks rather than assumes. {b:There is no {m:--trust} flag}: a boundary a flag can override is not a boundary.',
   'pk.what': 'What a pack may carry',
   'pk.cats': 'category configuration',
   'pk.never': 'never',
