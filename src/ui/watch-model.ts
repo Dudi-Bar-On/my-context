@@ -367,6 +367,17 @@ export interface WatchContextBody {
   sessionName: string | null;
   /** `cost.total_cost_usd`. */
   costUsd: number | null;
+  /**
+   * `cost.total_duration_ms` — how long this session has been running.
+   *
+   * Served since 2026-09-01 so the strip can draw the `ELAPSED` field the
+   * terminal already draws. It was the ONE field the terminal had and the
+   * strip lacked, which `test/ui/strip-parity.test.ts` and
+   * `e2e/strip.spec.ts` were both failing on: the ruling is that the strip is
+   * a superset, so the fix is to serve it here rather than to stop drawing it
+   * there.
+   */
+  elapsedMs: number | null;
   /** The share of this turn's input the cache served — DERIVED, never sent. */
   warmPercent: number | null;
   /**
@@ -495,6 +506,7 @@ export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
     modes: flags.length === 0 ? null : flags.join(' · '),
     sessionName: distinctSessionName(extras.sessionName, project),
     costUsd: extras.costUsd,
+    elapsedMs: extras.elapsedMs,
     warmPercent: extras.warmPercent,
     focus,
     lastAudit,

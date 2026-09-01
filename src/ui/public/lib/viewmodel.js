@@ -101,6 +101,37 @@ export function formatAge(ms) {
   return `${Math.floor(h / 24)}d`;
 }
 
+/**
+ * **HOW LONG UNTIL A RATE WINDOW RESETS — TWO UNITS, NOT ONE.**
+ *
+ * `formatAge` above answers "how old is this" and drops to a single unit on
+ * purpose: a sample's age is read at a glance and `23h` is precise enough to
+ * decide with. A countdown is not that. `23h` on a window that resets in
+ * twenty-three hours and fifty-five minutes is the same string as one that
+ * resets in twenty-three hours flat, and the owner reads this figure to decide
+ * whether to wait — so the minutes are the half that carries the decision.
+ *
+ * **This is the terminal's `until` rule, deliberately.** `statusline-powerline
+ * .ts` · `if (hours > 0) return mins > 0 ? \`${hours}h${mins}m\` : \`${hours}h\`;`
+ * answers the same question on the other surface, and the owner asked for this
+ * one to match it by name. Same two-unit ladder, same suppression of a zero
+ * second unit, so neither bar can say a thing the other does not.
+ *
+ * Days drop the minutes rather than printing three units: past a day the
+ * minutes stop changing the decision, and `1d4h` is what the terminal draws.
+ */
+export function untilReset(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return 'now';
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days > 0) return hours > 0 ? `${days}d${hours}h` : `${days}d`;
+  if (hours > 0) return mins > 0 ? `${hours}h${mins}m` : `${hours}h`;
+  return `${mins}m`;
+}
+
 /* ══ THE OCCUPANCY BANDS — DERIVED FROM THE THRESHOLD, NEVER FROM TASTE ════
  *
  * `plan:walk seq:117`. The context figure carried no colour at all, so a
@@ -309,6 +340,164 @@ export function fillLevel(pct, ageMs) {
   return 'ok';
 }
 
+/* ══ THE FOUR USED-OF-MAXIMUM LEVELS — ONE SCALE, BOTH SURFACES ════════════
+ *
+ * **LIFTED HERE FROM `cli/commands/statusline-powerline.ts` ON 2026-09-01**,
+ * verbatim: the three constants and `usageLevelOf` are character-for-character
+ * what that file carried for one phase, less four TypeScript annotations. The
+ * terminal now reads them back through the `import()` bridge it already uses
+ * for `fillLevel` and `occupancyLevel`, and its restatement is gone.
+ *
+ * ── THE RULING ─────────────────────────────────────────────────────────────
+ *
+ * Owner, 2026-09-01, after reviewing a published statusline generator: *"use
+ * our data and its visual ideas, the colours for the levels the icons"*, and —
+ * the half that is easy to under-read — *"use the same controls for every
+ * field that displays amount used from maximum available for context,
+ * handover, used 5h, used 7d etc"*. So this is not a context-bar feature. It
+ * is a treatment applied to EVERY used-of-maximum field on either surface, and
+ * the three-band ok/warn/crit split becomes FOUR:
+ *
+ *     safe       0-60    no icon    --ok      calm
+ *     caution   60-70    warning    --gold    worth knowing
+ *     warning   70-80    diamond    --warn    act soon
+ *     critical    80+    skull      --crit    act now
+ *
+ * ── WHY IT SPENT A PHASE IN THE CLI, AND WHY THAT IS OVER ─────────────────
+ *
+ * It belonged here from the day it was written. It could not land here first,
+ * because `fillLevel` answers `'ok' | 'warn' | 'crit' | 'stale' | null` and
+ * three places in `app.js` gated on exactly those names: extending the shared
+ * contract without its consumers would have sent the context figure and both
+ * rate chips grey, and — worse — `fillChip`'s `else` branch would have
+ * LABELLED a `caution` window "comfortable". Not a degradation; a false
+ * verdict on a surface, produced by a change confined to this file.
+ *
+ * So the terminal took the four levels alone for one phase, under a tripwire
+ * test that fails the moment this file declares any of these names. That test
+ * is `test/cli/statusline-levels.test.ts` · `TRIPWIRE`, it has fired, and the
+ * restatement it was guarding has been deleted. Nothing is duplicated now.
+ *
+ * ── AND `fillLevel` STAYS, WITH A JOB ─────────────────────────────────────
+ *
+ * `fillLevel` is not superseded by this and is not a second spelling of it.
+ * It answers a different question — the three-band ABSOLUTE fill, on the
+ * boundaries 60 and 85 — and it is what `ctxFigureLevel` and the `strip.fill*`
+ * chip still use to say "filling up" / "nearly full" in WORDS. The four levels
+ * are what a used-of-maximum FIGURE is banded by. Two questions, two
+ * functions, and the caution boundary is deliberately the same number in both:
+ * `test/ui/viewmodel.test.ts` pins `USAGE_CAUTION_PERCENT` equal to
+ * `CONTEXT_FILL_WARN_PERCENT`, so the web's 60 moving drags the other with it
+ * rather than parting from it in silence.
+ *
+ * `USAGE_CRITICAL_PERCENT` is 80 while `CONTEXT_FILL_CRIT_PERCENT` is 85 —
+ * that boundary MOVED, by the owner's table, and 80-85 is `critical` on the
+ * four-level scale where the three-band one calls it `crit` five points later.
+ * Written down because a boundary that moves in silence is exactly what the
+ * tripwire above existed to prevent.
+ */
+export const USAGE_CAUTION_PERCENT = 60;
+export const USAGE_WARNING_PERCENT = 70;
+export const USAGE_CRITICAL_PERCENT = 80;
+
+/**
+ * The band a used-of-maximum percentage falls in — pure, total, and the whole
+ * of the ruling's arithmetic.
+ *
+ * `>=` on every boundary, so a figure sitting exactly on 80 is `critical`
+ * rather than one step below it — the convention `fillLevel` already uses,
+ * kept identical so a reader who has learned one has learned both.
+ *
+ * `null` when there is no percentage to band. NOT clamped at 100: a field can
+ * genuinely exceed its maximum — a context percentage past the handover
+ * threshold does — and it is still `critical` there. Clamping belongs to the
+ * BAR, which has only ten cells, and never to the verdict.
+ */
+export function usageLevelOf(pct) {
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return null;
+  if (pct >= USAGE_CRITICAL_PERCENT) return 'critical';
+  if (pct >= USAGE_WARNING_PERCENT) return 'warning';
+  if (pct >= USAGE_CAUTION_PERCENT) return 'caution';
+  return 'safe';
+}
+
+/**
+ * **THE BAR, AND THE ONE CONSTANT PAIR THAT CHOOSES ITS STYLE.**
+ *
+ * The owner named `▓▓▓░░░` and `■■■□□□` as styles they liked in the abstract,
+ * then wrote `▰▰▰▰▰▱▱▱▱▱` twice in the reference they actually drew. The drawn
+ * thing wins over the named thing: a style named in passing is a preference, a
+ * style written into a mock-up twice is a specification.
+ *
+ * Ten cells, as every version of the reference shows. Shared with the terminal
+ * so a bar means the same number of cells on both surfaces — the strip draws
+ * it in a proportional font where the cells are not columns, but the FILLED
+ * COUNT is the fact, and that has to agree.
+ */
+export const BAR_FILL = '▰';
+export const BAR_EMPTY = '▱';
+export const BAR_CELLS = 10;
+
+/**
+ * `pct` drawn as `BAR_CELLS` cells.
+ *
+ * CLAMPED at both ends, and this is the one place clamping is right: a field
+ * past its maximum has no eleventh cell to fill and a negative percentage has
+ * no cell to empty. The VERDICT is not clamped — `usageLevelOf` still answers
+ * `critical` — and the NUMBER beside the bar is not clamped either, so nothing
+ * about the fact is lost at the picture's edge.
+ *
+ * Rounded rather than floored: a floor draws an empty bar for everything under
+ * 5%, and "almost none" and "none" are different facts. A non-finite figure
+ * draws an EMPTY bar rather than an empty string, so a bar is always the same
+ * width and two of them can be compared by eye.
+ */
+export function usageBar(pct) {
+  const exact = typeof pct === 'number' && Number.isFinite(pct) ? (pct / 100) * BAR_CELLS : 0;
+  const filled = Math.max(0, Math.min(BAR_CELLS, Math.round(exact)));
+  return BAR_FILL.repeat(filled) + BAR_EMPTY.repeat(BAR_CELLS - filled);
+}
+
+/**
+ * `549009` as `549.0k`, `1000000` as `1.0M` — the count ABBREVIATED.
+ *
+ * ── THE THIRD POSITION ON ONE QUESTION, AND THEY ALL HAD REASONS ──────────
+ *
+ * 1. Abbreviated (`tokenCount`'s `k`), because the strip was tight.
+ * 2. **Full and comma-grouped**, 2026-09-01: the owner's reference line read
+ *    `(90,000 / 200,000)`, and `648.3k` is a figure a reader cannot check
+ *    against anything while `648,317` is what Claude Code itself reports.
+ *    Width was not pressing at the time.
+ * 3. **LIVE — abbreviated again**, later the same day: *"in order to shorten
+ *    numbers you can change them to K and M"*.
+ *
+ * The reversal is coherent rather than a whim, and the reason is what changed
+ * between (2) and (3): every field on the bar has just become a bordered pill
+ * with its own padding, and abbreviation is the cheapest width to buy back.
+ * The digits were the least informative place to spend it — a reader glancing
+ * at a status bar is reading the BAR and the percentage, and the exact
+ * hundreds of a token count is not what that glance is for.
+ *
+ * ── THE ROUNDING IS A CHOICE, SO IT IS STATED ────────────────────────────
+ *
+ * ONE DECIMAL on both k and M. `999400` renders `999.4k`, not `999k`, so the
+ * abbreviation costs at most 50 tokens of displayed precision rather than the
+ * 400 a whole-thousands form would. `1000000` renders `1.0M` and not `1000.0k`
+ * — the unit changes at a million so the number stays under four digits.
+ *
+ * ONE FUNCTION FOR BOTH SURFACES. The terminal re-exports this rather than
+ * spelling it again, so the two bars cannot punctuate one number two ways —
+ * they were split on exactly this before phase 2 and it is not worth
+ * re-splitting them to save a call.
+ */
+export function fmtCount(n) {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '?';
+  const abs = Math.abs(n);
+  const body = abs >= 1_000_000 ? `${(abs / 1_000_000).toFixed(1)}M`
+    : abs >= 1_000 ? `${(abs / 1_000).toFixed(1)}k` : String(Math.round(abs));
+  return n < 0 ? `-${body}` : body;
+}
+
 /* ══ THE ACCOUNT'S TWO RATE-LIMIT WINDOWS ══════════════════════════════════
  *
  * Owner ruling, 2026-08-31. `rate_limits.five_hour` and `rate_limits.seven_day`
@@ -438,6 +627,10 @@ function identityOf(body) {
     focus: str(b.focus),
     focusRead: typeof b.focus === 'string' || b.focus === null,
     costUsd: num(b.costUsd),
+    // `cost.total_duration_ms`, served since 2026-09-01 so the strip can draw
+    // the ELAPSED field the terminal already drew — the one field that was
+    // failing `terminal ⊆ web` on both the unit and the browser parity gates.
+    elapsedMs: num(b.elapsedMs),
     warmPercent: num(b.warmPercent),
     lastAudit: log === null || typeof log.state !== 'string' ? null : {
       state: log.state,                  // 'known' | 'empty' | 'unreadable'

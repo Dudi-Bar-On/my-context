@@ -86,7 +86,53 @@
      and 5.41 against its own opaque chip pill (--warnbg, position-
      independent since both colours are opaque). Clears 4.5:1 everywhere
      sampled. */
-  --gold:#e8c368; --ok:#7cc0a0; --carry:#8b9ce6; --crit:#e08b8b; --warn:#c78f3d;
+  /* ── PALETTE TRIAL, 2026-09-01 — the published generator's four level
+     colours, adopted ON TRIAL by owner ruling. REVERTING IS THE ONE LINE
+     BELOW: restore the four values in the comment and the whole product
+     follows, because these tokens are the only place they are named.
+
+         WAS (ours)                  NOW (the generator's)
+         --ok    #7cc0a0             --ok    #22c55e
+         --gold  #e8c368             --gold  #eab308
+         --warn  #c78f3d             --warn  #f97316
+         --crit  #e08b8b             --crit  #ef4444
+
+     The FOUR EXISTING TOKENS are repointed rather than joined by a parallel
+     level palette: the budget stays at five, each hue keeps meaning exactly
+     one thing, and every surface that already spends them — the watch pulse,
+     decay's window, doctor's levels, the chips, both status bars — moves
+     together instead of disagreeing about what "warning" looks like.
+     `--carry` is untouched.
+
+     ── MEASURED BEFORE ADOPTION, as text on this strip's own ground ────────
+     Contrast on --panel #17171c, which is what the WINDOW and ASK fields sit
+     on now that their fills are gone:
+
+         level      ours              generator
+         safe       8.42:1            7.84:1   AA
+         caution   10.58:1            9.31:1   AA
+         warning    6.31:1            6.37:1   AA
+         critical   7.00:1            4.75:1   AA, and this is the one to watch
+
+     `#ef4444` clears AA by a quarter of a point. On `--panel-2` (#1d1d24) the
+     same colour measures 4.45:1 and FAILS — which is survivable only because
+     the two flattened fields sit on `--panel`; any level ink that lands on
+     the darker panel would not clear. Recorded so the next person moving a
+     banded field between grounds sees the number rather than rediscovering it.
+
+     ── AND THE SEPARATION IMPROVED, which was the other risk ───────────────
+     Adjacent-band ΔE76, ours against the generator's:
+
+         safe -> caution      51.7  ->  79.0
+         caution -> warning   20.1  ->  42.4
+         warning -> critical  41.5  ->  34.6
+
+     The worry was that `#f97316` orange would collapse toward `#ef4444` red
+     and leave four levels reading as three. It does not: the worst adjacent
+     pair improves from 20.1 to 34.6, against the ~10 at which two colours stop
+     being reliably told apart. On this measure the generator's ramp is the
+     better of the two. */
+  --gold:#eab308; --ok:#22c55e; --carry:#8b9ce6; --crit:#ef4444; --warn:#f97316;
   --ease:cubic-bezier(.23,1,.32,1);
   --dur-nav:180ms; --dur-act:200ms; --dur-link:280ms; --dur-retime:420ms;
 }
@@ -803,8 +849,37 @@ bdi{unicode-bidi:isolate}
 
    `.ctxstate>.ctxfig` and not `.ctxfig`: `.ctxstate>span` above is (0,1,1)
    and would otherwise win on line-height and font-size. */
-.ctxstate>.ctxfig{font-size:var(--fs-2);font-weight:700;line-height:1.5;
-  padding-block:1px;padding-inline:var(--sp-2);border:1px solid;
+/* ── THE FIGURE IS NORMAL TYPE AGAIN — owner ruling 2026-09-01 (later) ────
+   *"the bigger font in the status bar should be normalized like the other
+   fields in the bar"*.
+
+   **SUPERSEDED RULING, kept because it was a ruling and it was reasoned.**
+   Earlier the same day the owner asked to *"emphesize the context metrics by a
+   background and or bigger bolded font"*, and this rule was 16px/700 against
+   the bar's 14px/400, with a filled level background behind it.
+
+   **Why the reversal is coherent rather than taste changing its mind.** When
+   that ruling was made the figure had NO bar, NO level icon and NO counts —
+   size, weight and a fill were the only emphasis available to it. It now has a
+   ten-cell `▰▱` bar, a ⚠️🔶💀 level icon and a value coloured by its band, so
+   the emphasis is carried three ways over. Type that shouted as well would be
+   a fourth carrier of a fact already made three times, and a 16/700 figure
+   beside 14/400 neighbours reads as a DIFFERENT KIND of thing rather than a
+   more important one — which is the opposite of what the emphasis was for.
+
+   Size AND weight together, never half: normal size still bold would read as
+   an accident rather than as either decision.
+
+   `line-height` stays at 1.5 and the block padding stays, so the box this
+   occupies is unchanged and the 38px row is still decided by the largest
+   content in it rather than by whichever state the figure happens to be in.
+   The row cannot jitter as the session fills, which is what that height was
+   decided for. Measured after the change and reported in the lane note.
+
+   The border and fill went with the same ruling's sibling — see the ink note
+   below — so this is one flat field among flat fields. */
+.ctxstate>.ctxfig{font-size:inherit;font-weight:inherit;line-height:1.5;
+  padding-block:1px;padding-inline:var(--sp-2);border:1px solid var(--rule);
   border-radius:var(--r-sm);flex:0 1 auto}
 .ctxfig.ok{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
 .ctxfig.warn{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
@@ -813,6 +888,66 @@ bdi{unicode-bidi:isolate}
    old to place. Same box, no meaning hue — a fossil in confident red is
    worse than an uncoloured number. */
 .ctxfig.unmeas{color:var(--dim);border-color:var(--rule);background:var(--panel-2)}
+/* ── WINDOW AND ASK CARRY THEIR LEVEL AS INK, NOT AS A BLOCK ──────────────
+   Owner ruling 2026-09-01: *"the web status bar window and ask currently has
+   background that should be removed in order to look similar to the status
+   line at the terminal"*.
+
+   This is the same inversion the terminal made when the powerline frame came
+   off: the level moves from a filled box behind the text to the text itself.
+
+   **IT IS SPLIT FROM `.chip.*` RATHER THAN REPOINTING IT.** `.chip.ok/.warn/
+   .crit/.gov/.unmeas` are used on other screens for a different job, and the
+   owner named these two fields — so the strip gets its own class and the
+   shared rule is untouched. A repoint would have flattened every chip in the
+   product to answer a question about two fields.
+
+   **RE-MEASURED AS INK, because that is the hazard this exact move already
+   sprang once.** On the terminal the same inversion found two indices that
+   were fine as grounds and unreadable as text — one at 2.16:1 — and nothing
+   errored. `--okbg`/`--warnbg`/`--critbg` were chosen as GROUNDS and the ink
+   that sat on them was chosen against THOSE, not against `--panel`. Measured
+   here as foreground on `--panel` (#17171c), which is what the strip actually
+   sits on once the fill is gone: see the figures beside the level tokens in
+   the TOKENS block.
+
+   **THE LEVEL IS STILL CARRIED THREE WAYS.** With the ground gone the ink is
+   one carrier; the ICON (⚠️ 🔶 💀, with its `aria-label`) and the WORD in the
+   chip beside it are the other two — `06-a11y.html`'s rule, and the reason
+   this is safe under `forced-colors`, in print, and for a dichromat, where a
+   background often vanishes and ink can be overridden. */
+/* ── SUPERSEDED TWICE IN ONE DAY, AND BOTH ARE RECORDED ──────────────────
+   The live ruling is at the bottom; the two above it are history, not
+   instructions.
+
+   1. *"emphesize the context metrics by a background and or bigger bolded
+      font"* — a fill, 16px, weight 700.
+   2. *"the web status bar window and ask currently has background that should
+      be removed in order to look similar to the status line at the terminal"*,
+      then *"just without background (transparent) and it's text should not be
+      white only the ASK label"* — fill dropped, rectangle kept.
+
+   3. **LIVE — owner ruling 2026-09-01, later the same day.** The owner pointed
+      at the `in step with the log` chip, said it looks nice, and chose to
+      apply that treatment to every banded field. Measured, that chip is
+      `.chip.ok`: 12px / weight 700 / padding 3px 5px / radius 3px / text and
+      border in the level hue / TINTED FILL.
+
+   **The fill comes back, and asked directly the owner chose it** — shown that
+   the pill they liked has one while WINDOW and ASK had just been made
+   transparent on their own earlier instruction. The reason is what they
+   responded to: the fill is what makes each field read as a UNIT at a glance
+   on a bar where fields sit shoulder to shoulder. An outline alone does not.
+
+   What the transparent pass was RIGHT about survives: the label stays white
+   and only the value takes the hue. */
+/* The ask chip: its own class, so `.chip.unmeas`'s `--dim` never reaches the
+   value. Everything else — border, fill, geometry — comes from the shared
+   `.ufield.<band>` pill below, so the ask cannot drift from the other four. */
+/* The rectangle's hue follows the FOUR-level band, like the value inside it.
+   `.ctxfig.ok/.warn/.crit` above still set a border-colour from the older
+   three-band scale; these are later and more specific, so where a field is
+   banded on the four-level scale that scale is the one answer. */
 /* AND THE TWO RATE WINDOWS CARRY THEIR OWN BAND, since 2026-09-01. They were
    --dim at every value: the chip said "limit near" once one crossed, and the
    percentages never coloured at all. Banded by `fillLevel`, which is what the
@@ -824,6 +959,298 @@ bdi{unicode-bidi:isolate}
 .rlfig.warn{color:var(--warn)}
 .rlfig.crit{color:var(--crit)}
 .rlfig.unmeas{color:var(--dim)}
+
+/* ══ THE USED-OF-MAXIMUM FIELDS — one treatment, five fields ═══════════════
+   Owner ruling 2026-09-01, answered on the terminal first and mirrored here:
+   every field that expresses amount-used-out-of-a-maximum carries a NAME, a
+   level icon, a ten-cell bar and its figure. `bandUsage` in app.js builds it;
+   this styles it.
+
+   THE NAME IS WHITE AND THE VALUE CARRIES THE COLOUR — *"the name could be in
+   white and the field text coloured"*. That is the right way round and it does
+   something the four levels would otherwise have muddied: the name stays
+   constant while only the value changes hue as a field moves safe -> caution
+   -> warning -> critical, so the names read as fixed furniture and the colour
+   is the thing that moves.
+
+   NOT A SIXTH HUE. `--ink` is the colour ordinary text already is; it means
+   nothing, which is exactly what a label should mean
+   (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`).
+
+   CONTRAST RE-MEASURED FOR TEXT, not carried across. The terminal lane found
+   two of its indices were fine as backgrounds and unreadable as text — one
+   measured 2.16:1 inverted, and nothing errored. Measured here against both
+   grounds this strip uses, as TEXT: --ok 8.42/7.90:1, --gold 10.58/9.92:1,
+   --warn 6.31/5.92:1, --crit 7.00/6.57:1, --ink 15.54/14.57:1 on --panel and
+   --panel-2. All clear AA; the worst is --warn at 5.92:1. No repointing was
+   needed on this surface, which is a measurement and not an assumption.
+
+   UPPERCASE IN CSS, NEVER IN THE STRING. `strip.grp.session` is `'session'`;
+   the shouting is presentation, the same way the group headings already do it.
+   That keeps the string translatable and leaves Hebrew — which has no case —
+   rendering its own word untouched. */
+.ufield{display:inline-flex;align-items:baseline;gap:var(--sp-2);min-inline-size:0}
+.ulab{font-size:var(--fs-00);letter-spacing:.08em;text-transform:uppercase;
+  font-weight:700;color:var(--ink);flex:none}
+/* ── THREE REGISTERS, AND THE HEADING IS THE THIRD ──────────────────────
+   Owner ruling 2026-09-01: *"the colors of MODEL, LIMITS etc should be changed
+   to something more compatible, maybe all the categories should have the same
+   color"*, and then the intent — *"to distinguish them from field labels"*.
+
+       GROUP HEADING   dim, smaller, caps   what this box is about
+       FIELD LABEL     white, caps          a name
+       VALUE           level hue, or blue   the data
+
+   **The purpose is hierarchy, not compatibility.** A `SESSION` heading above a
+   `WINDOW` field label, both white and both caps, read as one kind of token
+   when one CONTAINS the other. One colour for all eight headings closes that
+   and answers the ask in the same move.
+
+   **NOT a meaning-hue.** A green or gold heading would claim a level for a
+   whole group, and groups do not have levels — their fields do. `--dim` is the
+   strip's own chrome register and spends nothing from the five.
+
+   **Dim AND smaller, because colour alone was not enough.** The test is
+   whether a reader can tell headings from labels WITHOUT reading the words; a
+   heading that is only dimmer still reads as a quieter label. Two signals cost
+   nothing from the palette and survive a reflow, where position — the only
+   other separator — stops being reliable. The field labels were NOT dimmed to
+   make room: the owner ruled those white on purpose.
+
+   Measured on `--panel`: `--dim` #a9a6b8 at 7.51:1, so quiet is not
+   invisible. */
+.strip .slab{text-transform:uppercase;letter-spacing:.08em;
+  font-size:var(--fs-000,10.5px);font-weight:600;color:var(--ink)}
+/* **BRIGHTER, on the owner's second look**: *"for the category color choose
+   something that is more alive, currently it looks very dimmed"*. `--dim` was
+   my recommendation and it was wrong in practice.
+
+   It is `--ink` — the same near-white the field labels use — and the
+   separation comes from SIZE and WEIGHT instead: 10.5px/600 against the
+   labels' 12px/700, plus the wider tracking. That keeps the palette clean and
+   spends nothing.
+
+   **NOT a hue, and that is a limit rather than a preference.** The owner
+   suggested yellow; `--gold` is the `caution` band, and a gold heading beside
+   a gold-banded value would make one hue mean two things on one bar — the
+   exact collision that already forced the ask marker off gold. Every other
+   meaning-hue is spoken for and `--carry` is the unlevelled-value ink. A
+   heading hue would be a SIXTH meaning-colour, which is an owner ruling and
+   not this lane's, so it is reported rather than taken. */
+/* The bar is one run of box-drawing glyphs. `--mono` so the ten cells are ten
+   equal widths — in the proportional face `▰` and `▱` differ and the bar would
+   change length as the figure moved, which is the one thing a bar must not do.
+   `letter-spacing:0` for the same reason. */
+.ubar{font-family:var(--mono);font-size:var(--fs-00);letter-spacing:0;
+  white-space:nowrap;flex:none}
+/* The icon inherits the run's font stack otherwise, which on Windows renders
+   the emoji at a different baseline from the text beside it. Given its own
+   line-height and a fixed size it sits on the same baseline in every band. */
+.uicon{font-size:var(--fs-00);line-height:1;flex:none}
+/* The band colours the FIELD, so it reaches the value whether that value is a
+   `.uval` span or the field's own text — the ask and the myctx share are
+   sentences built by the string table, not spans this code wraps. `.ulab` sets
+   `--ink` on itself and therefore keeps the name white against it.
+
+   These come after `.ctxfig.ok/.warn/.crit` and `.rlfig.*` on purpose and win
+   by source order at equal specificity: those are the older THREE-band scale,
+   and where a field is banded on the four-level scale that scale is the one
+   answer. Two rules would otherwise colour one element from two ramps. */
+/* SCOPED TO `.strip` for SPECIFICITY, not for reach. `.chip.unmeas` and
+   `.chip.gov` are two-class rules declared later in this file, and the ask
+   field wears one of them; at equal specificity they would win on source order
+   and the field would stay `--dim` whatever its band. `.strip .ufield.x` is
+   three and settles it by weight rather than by position, which is the stable
+   answer — a later edit that moves a rule cannot silently flip the colour of a
+   level. It is also true: these are strip fields. */
+/* THE PILL — `.chip.ok`'s own geometry, measured off the chip the owner
+   pointed at rather than re-invented: 12px, weight 700, 3px/5px padding, 3px
+   radius, a 1px border and a fill.
+
+   **EVERY FIELD, by rule.** The owner named fields to receive it in four
+   batches — the banded five, then COST/CACHE/AUDIT, then MODEL and the session
+   name, then CORPUS — which is every field on the bar. Written as one base
+   rule so a field added later is born a pill rather than discovered bare.
+
+   THE NEUTRAL REGISTER IS THE DEFAULT and the levels override it. A spend, a
+   cache ratio, a model name and a session's age have no safe/caution/warning/
+   critical, and colouring them in a meaning-hue would claim a verdict nobody
+   made — a cost chip in `--ok` green would read as "good". `--sink` and
+   `--edge-3` are the strip's existing unlevelled register, kept outside the
+   five meaning-hues for exactly this. */
+/* ── THE FILL: THIRD AND FINAL POSITION, 2026-09-01 ──────────────────────
+   Tinted, then transparent, then tinted, now TRANSPARENT for good. Not thrash:
+   each move was the owner looking at a rendered bar and reacting, which is the
+   only way this question can be answered. One live decision recorded here, so
+   the next reader finds one and not three.
+
+   **LIVE: *"just transparent background"*, and *"do it consistent for all
+   fields in the bar"*.** The label stays INSIDE the pill; the pill keeps its
+   border and loses its fill.
+
+   A near-white label on a tinted ground reads as sitting IN the surface — the
+   owner's *"the white labels looks like they are behind the colored
+   background"* — and that was visual weight, never paint order. With no tint
+   under it the cause is gone rather than compensated. No text-shadow and no
+   heavier weight: both muddy 12px/700 and neither survives print.
+
+   **The level is still carried FOUR ways** — border hue, value ink, icon, word
+   — and the BORDER survives `forced-colors` and print where a fill does not.
+   `--rule` for the neutral border rather than `--edge-3`: measured against
+   `--panel` the darker one is the likeliest to vanish, and an invisible border
+   on a transparent pill is no pill at all. */
+.strip .ufield{font-size:var(--fs-00);font-weight:700;
+  padding:3px 5px;border-radius:3px;border:1px solid var(--faint);
+  background:none;
+  /* **LINE-HEIGHT IS SET HERE, NOT INHERITED — and that is the whole of the
+     "not all the rectangles have the same size" fix.** Every pill already
+     shared its padding, font-size, weight, border-width and radius; the
+     variance was line-height alone, inherited from whichever ancestor a pill
+     happened to sit under (`.small`, the group wrappers), producing 24px, 26px
+     and 28px pills side by side.
+
+     `1.5` and not something tighter: the tallest content a pill can hold is
+     the ⚠️🔶💀 icons and the `▰▱` bar glyphs, both of which render above the
+     cap height of the text beside them. Chosen against those rather than
+     against plain text, so a pill WITH an icon measures the same as one
+     without instead of cropping the icon or growing past its neighbours.
+
+     Not `height` or `min-height`: those would paper over an inheritance
+     problem and break the moment a pill needs two lines. */
+  line-height:1.5}
+/* **AND IT HAS TO OUT-SPECIFY THE CHIP.** `.chip` sets `font: 700 11.5px/1
+   var(--mono)` — a SHORTHAND, so it resets line-height AND font-size in one
+   declaration — and `.linkid` and `.ctxfig` bring their own. Against those the
+   two-class rule above lost on some pills and won on others, which is how four
+   different heights (24/26/28/31px) appeared on elements whose padding, border
+   and radius were already identical. Three classes settles it by weight rather
+   than by source order, so a later edit cannot silently reopen it. */
+/* **KEYED ON `[data-f]`, WHICH IS "A FIELD", not on a class somebody
+   remembered to add.** The variance survived three passes because it was never
+   only line-height: `corpus-drift` was a `.chip`, `context` a `.ctxfig`,
+   `last-audit` a `.sprop`, and each brought its own font-size, line-height and
+   padding. Chasing them by class is the same losing game as chasing them by
+   name — the owner found seven that way.
+
+   `[data-f]` is the attribute that MEANS "this is a field", it is what the
+   parity tests already count, and it is what `e2e/strip-fields.spec.ts`
+   enumerates. Anything that is a field gets the pill's metrics, including a
+   field added next month that nobody thought to give a class. */
+.strip .sgrp [data-f]{font-size:11px;line-height:16px;font-weight:700;
+  padding:3px 5px;box-sizing:border-box;border-radius:3px;
+  /* **THE OUTLINE IS THE INK.** Owner, 2026-09-01: "every field that has text
+     content that is changing color according to state or status should set
+     it's rectangle color when the text color changes accordingly."
+
+     `currentColor` and not a table of level classes. A border keyed on classes
+     is a hand-kept list that must agree with something derived, and it had
+     already drifted: 16 of 20 pills disagreed with their own text, two of them
+     CONTRADICTORY -- `7D` drew warning ink inside a caution outline, `MYCTX` a
+     safe outline around unlevelled grey. A border claiming one level while the
+     text claims another is worse than a neutral one.
+
+     Keyed on `currentColor`, the outline cannot disagree: whatever sets the
+     text sets the border, in the same declaration, for every field that exists
+     today and every one added later. `--faint` remains the fallback only where
+     nothing has set a colour at all. */
+  border:1px solid currentColor;background:none;
+  /* `inline-flex` so a field's own children cannot stack and grow it: the
+     injections pill holds a label and a figure, the audit pill a word and a
+     clock, and as inline boxes each brought its own line box. One row, one
+     line-height, one height — 18px of line + 6px of padding + 2px of border =
+     26px, the same for every field whether it holds one child or three.
+     `align-items:center` keeps the emoji icons on the same optical line as the
+     text rather than sitting proud of it. */
+  display:inline-flex;align-items:center;gap:var(--sp-1);
+  /* Buttons bring their own UA metrics and two of these fields ARE buttons —
+     the doctor and review doors. Neutralised here so a door measures the same
+     as a figure. */
+  font-family:inherit;margin:0}
+/* Descendants inherit the pill's metrics rather than bringing their own. The
+   last three outliers (28/28/31px) were a button's UA font, a `.sprop` and a
+   nested figure, each contributing a taller line box from inside the pill. */
+.strip .sgrp [data-f] *{font-size:inherit;line-height:inherit;font-family:inherit}
+/* ── THREE REGISTERS, EACH DOING ONE JOB ─────────────────────────────────
+       white  "this is a NAME"     every label, always, uppercase
+       blue   "this is a FACT"     every unlevelled value
+       hue    "this is a VERDICT"  the four levels
+
+   **SUPERSEDED, and the reason is the two rulings meeting rather than either
+   being wrong.** Earlier today: *"make the text when it is not colored to be
+   white for better readability"*, so unlevelled values went white. But the
+   LABELS are white too, so on an unlevelled field the name and its value
+   became one ink and the distinction was lost. The owner corrected it:
+   *"change also the other content text color to blue or other color to
+   distinguish from it's label in white"*.
+
+   **`--carry`, and it is the rule rather than a convenience.** MODEL was
+   already going blue on the owner's earlier instruction, matching the
+   terminal's `INK.carry` — so blue was already the ink of an unlevelled field
+   here, and extending it makes MODEL the first case of a rule instead of an
+   exception. It spends no new hue: `--carry` is one of the five and its use
+   here is NEUTRAL IDENTITY, never severity. REPO, BRANCH, SESSION NAME, COST,
+   CACHE and ELAPSED are never good or bad, and a blue value must not be read
+   as a level.
+
+   CHROME STAYS DIM. Separators, `·` qualifiers and the bar's empty cells are
+   not `.uval`, so this reaches values only. Blueing them would lose the
+   distinction again in the other direction. */
+.strip .ufield .uval{color:var(--carry)}
+/* The per-level border rules that stood here are GONE, and their absence is
+   the fix. They set an outline from the field's LEVEL CLASS while the ink came
+   from the value, so the two could disagree — measured 2026-09-01: `7D` drew
+   warning ink inside a caution outline, `MYCTX` a safe outline around
+   unlevelled grey. `border:1px solid currentColor` above makes that
+   impossible: one declaration sets both, so a border cannot claim a level the
+   text does not. */
+/* MODEL takes the same blue on its BORDER and FILL as well, which is what the
+   owner asked for by name — its value is already blue by the rule above. */
+
+/* ── AND THE STRIP'S OWN CHIPS LOSE THEIR TINT TOO ───────────────────────
+   `in step with the log` is where this thread started — the owner pointed at
+   it, said it looked nice, and every field became a pill because of it. It
+   loses its fill as well: the consistency ruling outranks its origin, and the
+   owner has now seen both and chosen untinted. One tinted survivor would read
+   as a bug rather than a distinction.
+
+   **SCOPED TO `.strip`, which is the whole point of the selector.** `.chip.ok`
+   and its siblings are shared with Doctor, Watch, Decay and the item pane.
+   This is a STRIP ruling; de-tinting globally would change five screens nobody
+   asked about. */
+.strip .chip.ok,.strip .chip.warn,.strip .chip.crit,.strip .chip.gov,
+.strip .chip.unmeas,.strip .chip.index{background:none}
+.strip .ufield.safe .ubar,.strip .ufield.safe .uval{color:var(--ok)}
+.strip .ufield.caution .ubar,.strip .ufield.caution .uval{color:var(--gold)}
+.strip .ufield.warning .ubar,.strip .ufield.warning .uval{color:var(--warn)}
+.strip .ufield.critical .ubar,.strip .ufield.critical .uval{color:var(--crit)}
+
+/* ── THE FIELD ITSELF CARRIES THE COLOUR, SO THE OUTLINE CAN FOLLOW ──────
+   Owner, 2026-09-01: "MYCTX rectangle color according to it's text content
+   color too", and the general form of it one message earlier — every field
+   whose text changes with state must change its rectangle with it.
+
+   `border:1px solid currentColor` above makes the outline the ink, but
+   `currentColor` resolves against the FIELD, and the level hues were reaching
+   only the `.ubar` and `.uval` INSIDE it. So MYCTX drew a green bar and a green
+   figure inside a grey rectangle: the level had arrived at the contents and
+   not at the box.
+
+   These set it on the field, so one declaration feeds the bar, the figure and
+   the border alike. `.ulab` carries `color:var(--ink)` of its own, so the white
+   label is unaffected — the three registers hold: heading, white name, coloured
+   value, and now an outline that cannot disagree with the value.
+
+   NO BASE COLOUR IS SET HERE. An earlier revision put `--carry` on every field
+   so an unlevelled one would be blue in text and outline together; the owner
+   had not asked for that and it turned the whole bar blue. Reverted
+   2026-09-01. A field with no level keeps whatever ink it already had, and the
+   outline follows it by `currentColor` either way. */
+.strip .sgrp [data-f].safe{color:var(--ok)}
+.strip .sgrp [data-f].caution{color:var(--gold)}
+.strip .sgrp [data-f].warning{color:var(--warn)}
+.strip .sgrp [data-f].critical{color:var(--crit)}
+/* NOT a level, and visibly so: no percentage, or a sample too old to place. */
+.strip .ufield.unmeas .ubar,.strip .ufield.unmeas .uval{color:var(--dim)}
 /* The repository name in the header group, and the audit clock in the strip.
    Both ellipsise: a repo name and an op are user- and product-authored and
    nothing bounds their length. */

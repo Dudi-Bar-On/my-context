@@ -1093,31 +1093,30 @@ export const strings = {
   // not about a language: 'medium' effort is the default and is suppressed,
   // and a null is "the payload did not say", treated exactly as a default.
   'strip.modelModes': '{modes}',
-  'title.model': 'The model answering this session, and any mode that is not the ordinary case — effort, extended thinking, fast mode, or a window past 200k. A mode at its default is not drawn: this block reports the presence of a state, never the absence of a field.',
+  'title.model': 'The model answering this session, with any mode that is not the ordinary case.',
   'strip.sessionName': 'named {name}',
   'title.window': 'Which window this is, and what it is for. The name is drawn only when it differs from the project name — a session called after its project restates a block already on screen, and this field exists to tell two windows apart when the model, the project and the branch are identical in both.',
   'strip.focus': 'focus {mv:focus}',
   'strip.noFocus': 'no focus set',
   'strip.cost': '${usd}',
   'strip.warm': '{pct}% served from cache',
-  'title.cost': 'What this session has cost so far, and how much of the input the cache served. The share is DERIVED from the token counts in the same payload the context figure comes from — cache reads over the input total — because no payload this project has captured carries a cache field of its own.',
+  'title.cost': 'What this session has cost so far, across every turn since it started.',
   // The DISTANCE to the ask, which is a different fact from what became of the
   // last one. Neutral, never gold: gold is earned at the warn band and a
   // marker that is gold at every fill has stopped meaning anything by the time
   // it is needed.
   'strip.ctxAsk': '{askPct}% ({pct} / {threshold}) ·+{headroom}',
-  'title.ctxAsk': 'How far this window is from the handover ask, in points of the window. The threshold is the configured one and is served, never a constant in this page; the distance is the same subtraction the terminal bar makes, out of the same module. It goes quiet at the threshold, where the distance is spent and the gold marker takes over.',
   'strip.log': 'last {mv:op}, {age} ago',
   'strip.logQuiet': 'nothing logged for {age}',
   'strip.logEmpty': 'nothing recorded yet',
   'strip.logUnreadable': 'audit log unreadable',
-  'title.sessionName': 'The name this window was given, from `session_name` in the status-line payload. Drawn ONLY when it differs from the repository name, because a session called after its project restates a field already on the bar; its whole job is telling two windows apart when the model, the repo and the branch are identical in both.',
-  'title.focus': 'What this session has narrowed its loaded knowledge to, read from state/focus.json rather than from the audit log — every focus-set row in the log carries a null session id, so the log cannot answer it. Drawn even when there is no focus, because after a compaction the question is not how full the window is but where you were.',
-  'title.warm': 'How much of this turn’s input the cache served. DERIVED here, never served: cache reads over the input total the payload reports (fresh + cache-creation + cache-read), the same arithmetic the context figure divides by. No payload this project has captured carries a cache field of its own.',
-  'title.elapsed': 'How long this session has been running, from cost.total_duration_ms in the status-line payload. Wall-clock since the session opened, not time spent working — idle minutes count. A session whose length the payload did not report draws nothing rather than zero.',
+  'title.sessionName': 'The name this window was given. Shown only when it differs from the project, so several windows can be told apart.',
+  'title.focus': 'What this session has narrowed its knowledge to. Nothing focused means everything in scope is eligible.',
+  'title.warm': 'How much of the input on this turn the cache served. Worked out from the payload, not reported by it.',
+  'title.elapsed': 'How long this session has been running, in wall-clock time since its first turn.',
   'title.myctx': 'How much of this window my_context put there, against the window itself. Counted from the injection records’ own frozen estimates — bounded to the CURRENT compaction epoch and to operations that reach this model, so subagent injections delivered into other windows are not counted here. A ≥ means some records predate the estimate field and the true share is at least this.',
-  'title.modelModes': 'Modes that are NOT the ordinary case — effort, extended thinking, fast mode, a window past 200k. A mode at its default is not drawn, so this reports the presence of a state and never the absence of a field.',
-  'title.log': 'When the audit log last moved, and what moved it. A watcher that stopped watching, a projection that stopped syncing and an injection count that spans a fortnight are all the same failure — something stopped being current and nothing said so — and a visible stamp on the newest row catches the class rather than an instance. Past the age at which a context sample stops being current, this turns amber; that boundary is the same constant, not a second one.',
+  'title.modelModes': 'Modes that are not the default: effort, extended thinking, fast mode, or a larger window.',
+  'title.log': 'When the audit log last moved, and what moved it. If this stops advancing while you work, something has stopped recording.',
   'strip.grp.focus': 'focus',
   'strip.grp.sessionName': 'session name',
   'strip.grp.ask': 'ask',
@@ -1223,7 +1222,7 @@ export const strings = {
   // BUTTONS: the owner has twice reported doctor findings discovered late, and
   // a count that is not a door is half a count.
   'strip.doc': '{mv:count} doctor notices',
-  'title.doc': 'Every doctor finding at error or warning level, from the same tally the rail badge draws. It is served beside the item count on the one call this group already makes, so nothing here re-runs the checks. Opens Doctor.',
+  'title.doc': 'Doctor findings at error or warning level. Click to open them.',
   'strip.queue': '{mv:count} to rule on',
   'title.queue': 'Drafts in the project layer waiting to be promoted, plus revision proposals waiting for a verdict — the same two queues the rail badge counts. Drawn only when there is something in them. Opens the review queue.',
   // ── THE LABEL SAYS WHAT THE NUMBER IS, 2026-09-01. It said `injections
@@ -1238,7 +1237,11 @@ export const strings = {
   // still a wrong figure. It is also the bound the terminal bar's own share
   // uses, so the two surfaces cannot disagree about what they are counting.
   'strip.inj': 'injections this context',
-  'title.inj': 'How many times project knowledge was injected into this session since its last compaction. The same bound and the same aggregate the terminal status line uses, off the audit projection, so the two bars cannot disagree. Zero here means injection has not fired — it is a measurement, not an absence.',
+  'title.items': 'How many items the corpus holds, counted from the files rather than from the index.',
+  'title.ctxAsk': 'How far this window is from the handover ask, as a proportion of the way there. The threshold is CONFIGURABLE and currently {threshold}; the bar and the percentage are the window measured against it, and the +figure is the remaining distance in percentage POINTS of the window, not tokens. Banded at 60, 70 and 80 percent of the way to the ask. Past the ask this field stops showing a number and says handover due instead — the distance is spent and the action is the point.',
+  'title.rateWindow': 'How much of this rate-limit window the account has used, with the time until it resets. NO COUNTS: the status-line payload serves a percentage for these windows and no denominator at all — no token count, no message count — so a pair here would be a maximum nobody reported. Banded on the same absolute scale as every other used-of-maximum field: amber at 60, orange at 70, red at 80. A quota’s own fullness has nothing to do with when a handover is due, which is why these do not move with the handover threshold.',
+  'title.myctxBar': 'How much of THIS window my_context put there, against the window itself — the same denominator the context figure uses. Counted from the injection records’ own frozen estimates, bounded to the CURRENT compaction epoch and to operations that reach this model, so subagent-start injections delivered into other windows are excluded. Without those two bounds the figure would span a fortnight and several models. Banded at 60, 70 and 80 percent of the window.',
+  'title.inj': 'How many times project knowledge was added to this session since the last compaction — not a running total for the day.',
   'title.corpus': 'Click to cycle the item count and the state where it could not be read',
   'title.audit': 'Click to cycle the injections figure between measured, not measured and not read',
   'title.ctx': 'Click to cycle the context states, the three project-knowledge answers and the unread state',
@@ -1271,7 +1274,7 @@ export const strings = {
   // warn band, for the reason the gold marker is silent there.
   'strip.rlNear': 'limit near',
   'strip.rlAt': 'limit hit',
-  'title.rate': 'The account’s own rate-limit windows, read from the same status-line payload the context figure comes from. The band is the one occupancyBands computes from the configured handover threshold — there is no second threshold set here, because a hand-kept number that has to agree with a derived one is the defect this project has measured seven times.',
+  'title.rate': 'The usage windows on your account, not on this session. Shown only when one is close enough to matter.',
   'strip.rt': 'simulate reduced-transparency',
   // The provenance bar — one home for the qualifications every screen owes
   // The label was PAINTED, with its own `HEB ? … : …` ternary in the mockup's

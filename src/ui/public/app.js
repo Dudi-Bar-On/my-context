@@ -149,8 +149,8 @@ import { markdownNodes } from '/screens/docs.js';
 // inside a DOM builder is a decision table no test can reach.
 import {
   CONTEXT_FILL_CRIT_PERCENT, CONTEXT_FILL_WARN_PERCENT, CONTEXT_SAMPLE_FRESH_MS,
-  askHeadroom, contextStrip, corpusDrift, fillLevel, formatAge,
-  occupancyBands, occupancyLevel,
+  askHeadroom, contextStrip, corpusDrift, fillLevel, fmtCount, formatAge, untilReset,
+  occupancyBands, occupancyLevel, usageBar, usageLevelOf,
 } from '/lib/viewmodel.js';
 // The rail's Coverage-gaps badge counts the SAME directories the gaps table
 // lists, through the same function. See `paintRailCounts` for why the count is
@@ -1174,6 +1174,7 @@ async function openPane(id) {
  * (`.idkind` and `.idslug`) and a click almost always lands on one of them
  * rather than on the button itself.
  */
+
 function installItemPane() {
   document.addEventListener('click', (event) => {
     const close = event.target.closest?.('#paneclose');
@@ -3426,6 +3427,147 @@ function unreadState(retry) {
 }
 
 /** A token count the way §4b writes one — `47.0k` — and never a blank. */
+/**
+ * **ONE TREATMENT FOR EVERY USED-OF-MAXIMUM FIELD ON THE STRIP.**
+ *
+ * Owner ruling, 2026-09-01: *"use the same controls for every field that
+ * displays amount used from maximum available for context, handover, used 5h,
+ * used 7d etc"*, then *"i want a field name on the left of every info because
+ * it's not self explanatory"*, then *"caps as name looks ok, use for both"*
+ * and *"the name could be in white and the field text coloured"*.
+ *
+ * The terminal answered all four first; this is the same treatment on the same
+ * five fields, from the same shared `usageLevelOf`, so a figure cannot be
+ * `caution` in one window and `warn` in the other:
+ *
+ *     NAME   icon   bar          percentage   (used / max)   suffix
+ *     ASK    🔶     ▰▰▰▰▰▰▰▰▱▱   76%          (65.0 / 85)    ·+20.0
+ *
+ * ── WHAT DOES NOT TRANSFER FROM THE TERMINAL ──────────────────────────────
+ *
+ * The flat `│`-separated line. The strip keeps its grouped-box layout and its
+ * headings — the FIELDS look like the terminal's fields, the BAR does not
+ * become a copy of the terminal. So this returns one inline element to be
+ * dropped inside whichever `.sgrp` already owns the fact, and it invents no
+ * layout of its own.
+ *
+ * ── THE ICON CARRIES AN ACCESSIBLE NAME, WHICH IS NOT OPTIONAL ────────────
+ *
+ * `06-a11y.html`'s rule is a glyph AND a colour AND a name. An emoji dropped
+ * into HTML is announced by screen readers as whatever the font vendor called
+ * it — "skull", not "critical" — or skipped entirely, so the level would be a
+ * picture with no name at all. `role="img"` plus an `aria-label` out of the
+ * string table is what makes the band a WORD as well as a hue, in both
+ * languages, and it is why `strip.level.*` exists in `en.js` and `he.js`.
+ *
+ * `safe` draws NO icon — a calm bar should be quiet, the same choice the
+ * terminal makes — so the band's name there is carried by the value's colour
+ * and by the `title`, which every one of these fields gets.
+ */
+/**
+ * A field's NAME, in caps and white, with no banding — owner ruling
+ * 2026-09-01: *"field names should be caps and white"*, of every field and not
+ * only every group heading.
+ *
+ * `bandUsage` does this AND the level treatment; this is the half a field
+ * takes when it has no level to show. Same class, same casing, same ink, so
+ * the names read as one row of fixed furniture whether or not the value beside
+ * them carries a hue.
+ *
+ * A group lends its name to a field only where it holds ONE — `COST` above a
+ * field also called `COST` is noise. Where it holds several, as the cost group
+ * now does with the spend, the cache share and the session's age, each field
+ * takes its own.
+ */
+function nameField(el, nameKey) {
+  const name = document.createElement('b');
+  name.className = 'ulab';
+  name.dataset.k = nameKey;
+  name.append(...translate(table.strings, nameKey));
+  el.classList.add('ufield');
+  el.prepend(name);
+  return el;
+}
+
+/** Whether a field already carries one of the four levels. */
+function isBanded(el) {
+  return ['safe', 'caution', 'warning', 'critical'].some((b) => el.classList.contains(b));
+}
+
+function bandUsage(el, pct, nameKey) {
+  const level = usageLevelOf(pct);
+  const band = level === null ? 'unmeas' : level;
+  el.classList.add('ufield', band);
+
+  // **THE VALUE IS WRAPPED so the band's ink has one element to land on.**
+  // These fields arrive in three shapes — a `.ctxfig` span, a `.chip`, and a
+  // sentence assembled by the string table — and only some of them had a child
+  // to colour. Wrapping whatever is already here means the level reaches the
+  // VALUE and nothing else, whichever shape the field came in, and it is what
+  // lets `.ulab` keep its white against every one of them.
+  const value = document.createElement('span');
+  value.className = 'uval';
+  value.append(...el.childNodes);
+  el.append(value);
+
+  // The NAME, first and in white. Upper-cased by the STYLESHEET rather than by
+  // the string: `strip.grp.session` IS `'session'`, and the shouting is a
+  // presentation choice the strip already makes for its group headings. Casing
+  // in CSS keeps the string translatable and lets Hebrew — which has no case —
+  // render its own word untouched.
+  if (nameKey !== undefined) {
+    const name = document.createElement('b');
+    name.className = 'ulab';
+    name.dataset.k = nameKey;
+    name.append(...translate(table.strings, nameKey));
+    el.prepend(name);
+  }
+
+  // The BAR is decoration over a number that is already in the element, so it
+  // is hidden from the accessibility tree rather than announced as ten box
+  // characters. The figure it sits beside is the accessible content.
+  const bar = document.createElement('span');
+  bar.className = 'ubar';
+  bar.setAttribute('aria-hidden', 'true');
+  bar.textContent = usageBar(pct);
+  // INSIDE the value, not beside it. The value is the pill — see `bandUsage`'s
+  // note on the label sitting outside — and the bar and the icon belong to the
+  // figure rather than to the field's name.
+  el.querySelector('.uval').prepend(bar);
+
+  // ── THE ICON CARRIES AN ACCESSIBLE NAME, AND THAT IS NOT OPTIONAL ────────
+  //
+  // `06-a11y.html`'s rule is a glyph AND a colour AND a name. An emoji dropped
+  // into HTML is announced as whatever the font vendor called it — "skull",
+  // not "critical" — or skipped entirely, which would leave the band as a
+  // picture with no name at all. `role="img"` plus an `aria-label` out of the
+  // string table is what makes the level a WORD in both languages, and it is
+  // why `strip.level.*` exists in `en.js` and `he.js`.
+  //
+  // `safe` draws NO icon: a calm bar should be quiet, the same choice the
+  // terminal makes. The band is still named there — by the value's colour and
+  // by the field's own `title`.
+  if (level !== null && level !== 'safe') {
+    const icon = document.createElement('span');
+    icon.className = 'uicon';
+    icon.setAttribute('role', 'img');
+    const key = 'strip.level.' + level;
+    icon.dataset.k = key;
+    icon.setAttribute('aria-label', flat(table.strings, key));
+    icon.textContent = LEVEL_ICON[level];
+    bar.before(icon);
+  }
+  return el;
+}
+
+/** The four levels' icons — the same three glyphs the terminal draws. */
+const LEVEL_ICON = {
+  safe: '',
+  caution: '\u26a0\ufe0f',
+  warning: '\u{1f536}',
+  critical: '\u{1f480}',
+};
+
 function tokenCount(n) {
   if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
   return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
@@ -3675,16 +3817,31 @@ async function fillItems(count) {
   // not merely the half that has a twin.
   label.dataset.f = 'items';
   label.dataset.k = 'strip.items';
+  // ── A PILL LIKE EVERY OTHER FIELD, with one honest difference ───────────
+  // Its NAME is already in the string — `strip.items` renders the word
+  // "items" — so it takes `.ulab` on that word rather than a second label in
+  // front of it. Naming a field twice is worse than not naming it, which is
+  // the rule the rate windows follow for the same reason.
+  label.className = 'ulab ufield';
+  label.title = flat(table.strings, 'title.items');
   label.append(...translate(table.strings, 'strip.items'));
   const value = document.createElement('span');
-  value.className = 'm';
+  value.className = 'm uval';
   const notes = document.getElementById('corpusnotes');
   try {
     const status = await api('/api/status');
     // A measured zero is DRAWN and named — an empty corpus is a finding and
     // the reader is entitled to it (clause 1 of the same standard).
     value.textContent = String(status.items.total);
-    count.replaceChildren(value, document.createTextNode(' '), label);
+    // **THE FIGURE GOES INSIDE THE PILL, AFTER ITS NAME.** Owner, 2026-09-01:
+    // "735 ITEMS should be ITEMS 735 in the rectangle where 735 should appear
+    // in blue". It read value-then-label with the number OUTSIDE the outline,
+    // so it drew as the prose "735 items" while every other field on the bar
+    // draws `LABEL value` inside one rectangle. `.uval` carries the unlevelled
+    // blue by the rule directly above it in styles.css, so the colour needs no
+    // second declaration here.
+    label.append(document.createTextNode(' '), value);
+    count.replaceChildren(label);
     // ── THE SAME BODY, TWO MORE FACTS. See `renderChrome`'s note on
     // `#corpusnotes` for why this costs nothing: `health` and `reviewQueue`
     // were already in this response, so neither count adds a call and neither
@@ -3694,8 +3851,8 @@ async function fillItems(count) {
     if (notes !== null) notes.replaceChildren(...corpusNoteButtons(status));
   } catch {
     value.textContent = '—';
-    count.replaceChildren(value, document.createTextNode(' '), label,
-      ...unreadState(() => { void fillItems(count); }));
+    label.append(document.createTextNode(' '), value);
+    count.replaceChildren(label, ...unreadState(() => { void fillItems(count); }));
     // The counts have no answer either, and the retry above asks for all three
     // at once. Cleared rather than left showing the previous corpus's numbers:
     // a stale count beside a `not read` item count is the fossil `walk/123`
@@ -3727,7 +3884,10 @@ function corpusNoteButtons(status) {
   const open = (key, titleKey, count, route, field) => {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'linkid';
+    // A PILL like every other field — owner ruling, every field on the bar.
+    // Still a button and still a door: the pill is a presentation, not a
+    // downgrade of the affordance.
+    btn.className = 'linkid ufield';
     btn.dataset.f = field;
     btn.dataset.k = key;
     btn.append(...translate(table.strings, key, { count: String(count) }));
@@ -3889,14 +4049,31 @@ function drawContext() {
   // (`● ctx 25.1%`, the block itself carrying the band) and the strip was the
   // one that had drifted from it.
   //
-  // SECOND: *"emphesize the context metrics by a background and or bigger
-  // bolded font, background colour should represent the level"*. `.ctxfig` is
-  // one class carrying the METRICS — 16px, 700 weight, its own padded box —
-  // and `.ctxfig.ok/.warn/.crit/.unmeas` carry ONLY colour. That split is what
-  // keeps the bar still: the box is the same size in every state, so the row
-  // cannot move as the session fills, and the colour is the only thing that
-  // changes. A figure that grew when the band changed would shift the whole
-  // row while somebody was reading it.
+  // SECOND, AND SUPERSEDED THE SAME DAY — kept because it was a ruling and it
+  // was reasoned. It read:
+  //
+  // > *"emphesize the context metrics by a background and or bigger bolded
+  // > font, background colour should represent the level"*. `.ctxfig` is one
+  // > class carrying the METRICS — 16px, 700 weight, its own padded box — and
+  // > `.ctxfig.ok/.warn/.crit/.unmeas` carry ONLY colour.
+  //
+  // **Replaced by two later rulings of 2026-09-01**: *"the web status bar
+  // window and ask currently has background that should be removed in order to
+  // look similar to the status line at the terminal"*, and *"the bigger font
+  // in the status bar should be normalized like the other fields in the bar"*.
+  //
+  // Both are coherent with the first rather than a reversal of it. When it was
+  // made, this field had no bar, no level icon and no counts — a fill and
+  // bigger type were the ONLY emphasis available. It now carries a ten-cell
+  // bar, a level icon and a value coloured by its band, so the emphasis is
+  // made three times over and the type and the fill were saying it a fourth
+  // and fifth. The strip is converging on the terminal, where every field is
+  // the same size and only the ink and the icon move.
+  //
+  // What the first ruling was PROTECTING survives untouched: the box is still
+  // the same size in every state, so the row cannot move as the session fills.
+  // A figure that grew when the band changed would shift the whole row while
+  // somebody was reading it — that was true then and is true now.
   //
   // NO SIXTH HUE. `--okbg`, `--warnbg` and `--critbg` are already declared and
   // already spent by `.chip.ok/.warn/.crit`; a background in a hue the budget
@@ -3913,8 +4090,14 @@ function drawContext() {
     state.dataset.k = 'strip.ctx.known';
     state.append(...translate(table.strings, 'strip.ctx.known', {
       pct: view.pct === null ? '—' : view.pct.toFixed(1),
-      used: tokenCount(view.used),
-      size: tokenCount(view.size),
+      // FULL counts with thousands separators since the owner's reference
+      // settled it — `(90,000 / 200,000)`, never `(90.0k / 200.0k)`. Shared
+      // with the terminal through `fmtCount` so the two cannot punctuate one
+      // number two ways; `tokenCount`'s `k` abbreviation stays for the
+      // corpus-scale figures elsewhere on the strip, which have no maximum to
+      // be read against and are not used-of-maximum fields.
+      used: view.used === null ? '—' : fmtCount(view.used),
+      size: view.size === null ? '—' : fmtCount(view.size),
       // Computed from `receivedAt` HERE rather than carried on the view, so
       // the label says how old the sample is now and not how old it was when
       // the fetch happened to resolve.
@@ -3922,6 +4105,10 @@ function drawContext() {
         ? '—'
         : formatAge(Math.max(0, Date.now() - Date.parse(view.receivedAt))),
     }));
+    // The used-of-maximum treatment: NAME, icon, bar, then the figure the
+    // string already produced. Banded by the shared `usageLevelOf`, so this
+    // field and the terminal's `WINDOW` cannot disagree.
+    bandUsage(state, view.pct, 'strip.grp.window');
   } else {
     const key = view.state === 'not-yet-known' ? 'strip.ctx.notYetKnown'
       : view.state === 'unknown' ? 'strip.ctx.unknown'
@@ -3974,16 +4161,28 @@ function drawContext() {
     } else if (view.myctx.unrecorded > 0) {
       tail.dataset.k = 'strip.myctxPartial';
       tail.append(...translate(table.strings, 'strip.myctxPartial', {
-        tokens: tokenCount(view.myctx.tokens),
+        tokens: fmtCount(view.myctx.tokens),
         injections: String(view.myctx.injections),
         unrecorded: String(view.myctx.unrecorded),
       }));
     } else {
       tail.dataset.k = 'strip.myctx';
       tail.append(...translate(table.strings, 'strip.myctx', {
-        tokens: tokenCount(view.myctx.tokens),
+        tokens: fmtCount(view.myctx.tokens),
         injections: String(view.myctx.injections),
       }));
+    }
+    // ── THE FIFTH BANDED FIELD, and it needs a MAXIMUM to be banded against.
+    //
+    // What mycontext put into this window, out of the window — the same
+    // denominator the context figure uses, which is what makes it
+    // used-of-maximum by the same definition rather than by analogy. An
+    // unmeasurable window leaves it with no maximum, and it then draws the
+    // bare count it always drew rather than inventing a percentage: a field
+    // that quietly switched denominators would be worse than one that visibly
+    // has none.
+    if (view.myctx !== null && typeof view.size === 'number' && view.size > 0) {
+      bandUsage(tail, (view.myctx.tokens / view.size) * 100, 'strip.grp.myctx');
     }
     parts.push(tail);
   }
@@ -4032,6 +4231,48 @@ function drawContext() {
   ctx.replaceChildren(...parts);
   // The same one answer fills line 1 and the two line-2 groups beside this one.
   drawIdentity(view);
+  // ── SCALED FIELDS HOVER WITH THEIR OWN FULL TEXT ────────────────────────
+  // Owner, 2026-09-01: "now as the WINDOW hover, do the same for all the
+  // scaled fields". WINDOW has always shown its own untruncated line on hover
+  // and that is the thing the owner kept pointing at: a field carrying a bar,
+  // a percentage and a count truncates inside a narrow group, so the hover is
+  // where the whole reading survives. An explanation, however good, is not
+  // what a truncating field owes its reader first — the non-scale fields keep
+  // their short plain-words explanations, which is the other half of the same
+  // ruling.
+  //
+  // Done as a sweep AFTER the row is built rather than at each call site,
+  // because a field's label and its value are separate children and the text
+  // is only whole once both are in place. Reading it off the field element
+  // means the hover cannot drift from the line: it IS the line.
+  // Scoped to the whole strip, not to `ctx`: the rate windows live in the
+  // LIMITS group and were being missed by a sweep that only searched the
+  // session group it was written next to.
+  const strip = document.querySelector('.strip') ?? ctx;
+  // **EVERY FIELD'S HOVER OPENS WITH ITS OWN LINE, EMOJI AND ALL** — owner
+  // ruling, 2026-09-01: "add the correct text for every field hover text
+  // including the emoji before of it as it appears in the field itself".
+  //
+  // A field truncates inside a narrow group, so the first thing its hover owes
+  // the reader is the whole of what the line was trying to say — including the
+  // level emoji, which is the one part that says WHICH state this reading is
+  // in. The explanation, where a field has one, follows on its own line: the
+  // reading first, the reason second.
+  //
+  // The bar and the emoji come out monochrome in a native tooltip, which the
+  // browser draws in its own colours and no CSS reaches. The owner has seen a
+  // page-drawn alternative and chosen this: the colour lives on the LINE,
+  // where it already works, and the hover carries the text.
+  for (const el of strip.querySelectorAll('[data-f]')) {
+    const whole = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (whole === '') continue;
+    const had = el.title;
+    // A field whose title already IS its line must not gain a second copy.
+    const extra = had !== '' && had !== whole && !had.startsWith(whole) ? `
+${had}` : '';
+    el.title = whole + extra;
+  }
+
 }
 
 /**
@@ -4066,15 +4307,57 @@ function askHeadroomChip(view) {
   if (view.state !== 'known' || threshold === null) return null;
   const ageMs = view.receivedAt === null ? null : Math.max(0, Date.now() - Date.parse(view.receivedAt));
   const level = occupancyLevel(view.pct, threshold, ageMs);
-  if (level === null || level === 'stale' || level === 'crit') return null;
-  const headroom = askHeadroom(view.pct, threshold);
-  if (headroom === null) return null;
+  // **THE ASK KEEPS ITS SCALE PAST THE THRESHOLD** — owner ruling, 2026-09-01:
+  // "i want to see the scale as the context, only after compaction or clear it
+  // should reset to 0". It used to return `null` at `crit` and hand the field
+  // to a words-only chip, so the bar and the figure VANISHED at exactly the
+  // moment the field matters most, and the reader lost the one thing that says
+  // HOW FAR past the ask they are.
+  //
+  // This supersedes the 2026-09-01 D6 ruling ("past the ask the number stops
+  // being the point, the action is"). The action still has its own chip beside
+  // this one; what changed is that the measurement no longer disappears to make
+  // room for it. Like the context figure, it falls to zero only when the window
+  // does — on a compaction or a clear.
+  if (level === null || level === 'stale') return null;
+  // Past the threshold there is no headroom left to print. `askHeadroom`
+  // answers `null` there, and a clamped `0.0` is the honest reading: the gap
+  // is spent, and a negative gap beside a full bar would say the same thing
+  // twice in two spellings.
+  const headroom = Math.max(0, askHeadroom(view.pct, threshold) ?? 0);
   const chip = document.createElement('span');
-  chip.className = 'chip unmeas';
+  // `askfig` rather than `chip unmeas`, and NOT a repoint of `.chip.unmeas`,
+  // which other screens use for a different job. It drops the fill and keeps
+  // the RECTANGLE — owner ruling 2026-09-01: *"ASK has no rectangle and it
+  // should, just without background (transparent)"*. `unmeas` is gone from the
+  // list because it also sets `color:var(--dim)` on the chip, which is the one
+  // thing this field must NOT be: its value carries the level.
+  chip.className = 'chip askfig';
   chip.dataset.f = 'ask';
   chip.dataset.g = '◆';
   chip.dataset.k = 'strip.ctxAsk';
+  // ── THE SAME ELEMENTS IN THE SAME ORDER AS THE TERMINAL ──────────────────
+  //
+  // Owner, 2026-09-01: *"ASK, handover does not display the percentage as it is
+  // in the terminal status line"*. The strip was drawing the bare threshold
+  // `85` where the terminal draws `88% (75.0 / 85)`, so the two surfaces said
+  // different things about one field.
+  //
+  // **`strip-parity` could not catch this and it is worth naming why.** That
+  // test asserts a FIELD IS PRESENT on both surfaces; `ask` was present on
+  // both, so it passed while the content diverged. Presence is a weaker
+  // guarantee than content — see the lane report for whether it can be
+  // strengthened.
+  //
+  // The ask's own count pair is `(75.0 / 85)` and NOT thousands-separated,
+  // because its numerator is percentage POINTS of the window rather than
+  // tokens; `fmtCount` is for the token counts. That distinction is the
+  // terminal lane's and is reused rather than re-derived.
   chip.append(...translate(table.strings, 'strip.ctxAsk', {
+    // Used-of-THRESHOLD: how far along the way to the ask this window is.
+    askPct: ((view.pct / threshold) * 100).toFixed(0),
+    // The window's own figure, at the one decimal the ctx field uses.
+    pct: view.pct.toFixed(1),
     // The threshold reads as configured — `85`, not `85.0` — while the
     // DISTANCE always carries its decimal, because it is the figure that moves
     // and a gap showing `+3` for anything from 2.5 to 3.5 hides the last
@@ -4082,7 +4365,18 @@ function askHeadroomChip(view) {
     threshold: Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1),
     headroom: headroom.toFixed(1),
   }));
-  chip.title = flat(table.strings, 'title.ctxAsk');
+  chip.title = flat(table.strings, 'strip.ctxAsk', {
+    askPct: ((view.pct / threshold) * 100).toFixed(0),
+    pct: view.pct.toFixed(1),
+    threshold: Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1),
+    headroom: headroom.toFixed(1),
+  });
+  // Banded as used-of-THRESHOLD, exactly as the terminal bands it: the maximum
+  // is the ask and the used figure is the window's own percentage, both in
+  // percentage points of the window. Past the ask this chip is already `null`
+  // above and `handoverVerdictChip` says the words instead — so no bar and no
+  // signed figure can ever appear beside "handover due".
+  bandUsage(chip, (view.pct / threshold) * 100, 'strip.grp.ask');
   return chip;
 }
 
@@ -4162,13 +4456,65 @@ function drawIdentity(view) {
   // one form `test/ui/strip-parity.test.ts` derives both surfaces' field sets
   // from. An id passed positionally would be invisible to that derivation, and
   // a derivation with a blind spot is a hand-kept list wearing a regex.
-  const keyed = (key, subs, { field, cls }) => {
+  /**
+   * **EVERY FIELD ON THE STRIP IS A PILL — owner ruling 2026-09-01, stated as
+   * a RULE rather than the list it arrived as.**
+   *
+   * The owner pointed at the `in step with the log` chip, said it looks nice,
+   * and then named fields to receive it in four batches — the banded five,
+   * then COST/CACHE/AUDIT, then MODEL and the session name, then CORPUS. That
+   * is every field on the bar, so it is written here as the general form:
+   *
+   *     LEVELLED fields   the level's hue on border, fill and value
+   *     UNLEVELLED fields the neutral register, with a WHITE value
+   *
+   * Doing it as a rule and not a list is what stops the next field being born
+   * bare and discovered by the owner looking at it. A field that genuinely
+   * should not be a pill is an argued exception, not an omission.
+   *
+   * ONE PILL PER FACT, never per group. The corpus group holds an item count,
+   * a drift state, the doctor notices and the review queue — four facts with
+   * four independent levels — and a single pill would have to pick one hue for
+   * all of them.
+   *
+   * `nameKey` gives the field its caps-and-white label; `cls` is for the
+   * callers that already had a class of their own.
+   */
+  const keyed = (key, subs, { field, cls, nameKey, titleKey }) => {
     const el = document.createElement('span');
     el.dataset.k = key;
     el.dataset.f = field;
     if (cls !== undefined) el.className = cls;
-    el.append(...translate(table.strings, key, subs));
-    return el;
+    // The VALUE is wrapped so the ink rule has one element to land on — white
+    // when the field carries no level, the level's hue when it does. Without
+    // the wrapper the label would take the same colour as the value.
+    const value = document.createElement('span');
+    value.className = 'uval';
+    value.append(...translate(table.strings, key, subs));
+    el.append(value);
+    el.classList.add('ufield');
+    // ── THE HOVER, on every field — owner ruling 2026-09-01, *"WINDOW text
+    //    hover is great, do the same for all of the other fields exactly"*.
+    //
+    // "Exactly" is the standard, not the instruction: WINDOW's title names the
+    // figure, gives the counts under it and states the sample's age, so a
+    // reader who hovers LEARNS something the line could not fit. A tooltip
+    // that restates the visible text is worse than none — it teaches the
+    // reader that hovering is not worth doing.
+    //
+    // What each one carries: what the number is in plain words, where it comes
+    // from when that is not obvious (several are derived, not served), and the
+    // bound the line had to drop — MYCTX counts only this epoch and only ops
+    // that reach this model, CACHE is derived from a read/creation split,
+    // AUDIT is the newest row and not a rate.
+    //
+    // **A TOOLTIP IS NOT A CARRIER.** It is invisible to touch, to
+    // keyboard-only navigation and in print, so nothing lives only here: every
+    // fact a reader must act on is still on the line or in the pane. This is
+    // additive, and it is what lets the LINE be short rather than an excuse to
+    // keep it long.
+    if (titleKey !== undefined) el.title = flat(table.strings, titleKey);
+    return nameKey === undefined ? el : nameField(el, nameKey);
   };
 
   const model = document.getElementById('modelstate');
@@ -4179,7 +4525,24 @@ function drawIdentity(view) {
     if (view.model === null) {
       parts.push(stateChip('strip.unread', 'title.unread'));
     } else {
-      parts.push(keyed('strip.model', { name: view.model }, { field: 'model' }));
+      parts.push(keyed('strip.model', { name: view.model },
+        // ── THE MODEL IS BLUE, matching the terminal ────────────────────
+        // Owner ruling 2026-09-01: *"the MODEL should appear in blue as it is
+        // in the terminal status line"*. The terminal draws this block with
+        // `INK.carry`, chosen as the nearest neighbour of this file's own
+        // `--carry`, so the web side is that token and nothing is matched by
+        // eye.
+        //
+        // **It is a NEUTRAL IDENTITY use, not a severity claim.** `--carry` is
+        // one of the five meaning-hues and means "carried across sessions"
+        // elsewhere; here it says WHICH MODEL, and a model is never good or
+        // bad. Nobody should read a blue model pill as a level.
+        //
+        // One token, two uses, as in the terminal: `--carry` is also the ask
+        // marker's, now that gold moved to the `caution` band. A model-specific
+        // blue would be a second spelling of one hue.
+        { field: 'model', nameKey: 'strip.grp.model', titleKey: 'title.model',
+          cls: 'carryfield' }));
       // The modes are composed by the server out of `modeFlags`, the same
       // judgement the terminal folds into its model block. Absent means "no
       // mode is out of the ordinary", which costs this row nothing.
@@ -4199,7 +4562,12 @@ function drawIdentity(view) {
     // rule. A window named after its project restates the header.
     if (view.sessionName !== null) {
       parts.push(keyed('strip.sessionName', { name: view.sessionName },
-        { field: 'session-name' }));
+        // **SESSION NAME, not WINDOW** — owner ruling 2026-09-01,
+        // *"WINDOW (window name, to be called session name)"*. It also removes
+        // a collision: `WINDOW` is the context field, and two different pills
+        // on one bar cannot carry one name.
+        { field: 'session-name', nameKey: 'strip.grp.sessionName',
+          titleKey: 'title.sessionName' }));
     }
     // **Read from `state/focus.json`, never from the audit log** — every
     // `focus-set` row in the real log carries `sessionId: null`, so the log
@@ -4208,21 +4576,60 @@ function drawIdentity(view) {
     // reader has is not "how full am I" but "where was I".
     if (!view.focusRead) parts.push(stateChip('strip.unread', 'title.unread'));
     else if (view.focus === null) {
-      parts.push(keyed('strip.noFocus', {}, { field: 'focus', cls: 'small' }));
-    } else parts.push(keyed('strip.focus', { focus: view.focus }, { field: 'focus' }));
+      parts.push(keyed('strip.noFocus', {},
+        { field: 'focus', cls: 'small', nameKey: 'strip.grp.focus',
+          titleKey: 'title.focus' }));
+    } else {
+      parts.push(keyed('strip.focus', { focus: view.focus },
+        { field: 'focus', nameKey: 'strip.grp.focus', titleKey: 'title.focus' }));
+    }
     windowEl.replaceChildren(...parts);
   }
 
   const cost = document.getElementById('coststate');
   if (cost !== null) {
     const parts = [];
+    // ── EVERY FIELD IS NAMED, not just every group — owner ruling 2026-09-01,
+    //    *"field names should be caps and white"*, and they meant the fields.
+    //
+    // The group heading says COST and this group holds THREE fields: the
+    // spend, the cache share and the session's age. A heading cannot name
+    // three things, so each takes its own label in the same caps-and-white
+    // treatment the terminal gives all thirteen of its fields. `nameField`
+    // adds the label without any banding — these carry no level.
     if (view.costUsd !== null) {
-      parts.push(keyed('strip.cost', { usd: view.costUsd.toFixed(2) },
-        { field: 'cost-cache' }));
+      parts.push((
+        keyed('strip.cost', { usd: view.costUsd.toFixed(2) },
+          { field: 'cost-cache', nameKey: 'strip.grp.cost', titleKey: 'title.cost' })));
     }
     if (view.warmPercent !== null) {
-      parts.push(keyed('strip.warm', { pct: view.warmPercent.toFixed(1) },
-        { field: 'cost-cache', cls: 'small' }));
+      parts.push((
+        keyed('strip.warm', { pct: view.warmPercent.toFixed(1) },
+          { field: 'cost-cache', cls: 'small', nameKey: 'strip.grp.cache',
+            titleKey: 'title.warm' })));
+    }
+    // ── HOW LONG THIS SESSION HAS RUN — the ONE field the terminal drew and
+    //    this strip did not, and the reason two parity gates were red.
+    //
+    // `test/ui/strip-parity.test.ts` and `e2e/strip.spec.ts` both assert
+    // terminal ⊆ web, and `elapsed` was the single id failing them. The ruling
+    // is that the strip is a SUPERSET — the fix is to draw the field here,
+    // never to stop drawing it there and never to relax the assertion — so
+    // this is that fix. It sits with the cost because both come off the same
+    // `cost` object in the payload and both are totals for the session.
+    //
+    // Absent when the payload carried no duration, which draws nothing rather
+    // than `0m`: a session whose length nobody reported is not one that has
+    // just started.
+    if (view.elapsedMs !== null) {
+      // NAMED like every other field. It carries no bar — it is a duration,
+      // not an amount used out of a maximum — so it takes the label alone and
+      // none of the banding. The ruling is that every field says what it is,
+      // not that every field is a used-of-maximum field.
+      parts.push((
+        keyed('strip.elapsed', { elapsed: formatAge(view.elapsedMs) },
+          { field: 'elapsed', cls: 'small', nameKey: 'strip.grp.elapsed',
+            titleKey: 'title.elapsed' })));
     }
     // A payload that carried neither is not a session that cost nothing. The
     // named unread state, never an invented `$0.00`.
@@ -4265,6 +4672,68 @@ function drawIdentity(view) {
       parts.push(none);
     }
     limits.replaceChildren(...parts);
+  }
+
+  standDownDuplicateHeadings();
+}
+
+/**
+ * **A GROUP HEADING STANDS DOWN WHEN ITS FIELDS NAME THEMSELVES.**
+ *
+ * Owner ruling 2026-09-01: every field on the bar is a named pill. That
+ * collides with the group headings the strip has always drawn, and the
+ * collision is visible — `MODEL MODEL Opus 5 …`, `SESSION WINDOW 78.6% …`.
+ *
+ * The rule, from the terminal, which solved this first: a group lends its name
+ * where it holds ONE fact, and each field keeps its own where it holds
+ * several. So the heading prints only when nothing inside it is named.
+ *
+ * **Derived at draw time rather than listed.** A hand-kept list of which
+ * groups print their heading is exactly the thing that goes stale when a field
+ * gains a label — this project's most-repeated defect. Asking the DOM which
+ * groups contain a `.ulab` cannot go stale: a field that gains a name stands
+ * its heading down on the next paint, and a field that loses one brings it
+ * back, with nothing to remember.
+ *
+ * HIDDEN, not removed, so `e2e/strip.spec.ts` can still find the heading and
+ * see that it was drawn and suppressed rather than never built — and so a
+ * group whose fields are absent this paint gets its name back.
+ *
+ * **`style.display` and NOT the `hidden` attribute**, which is the trap this
+ * hit on the first attempt: `[hidden]{display:none}` is a USER-AGENT rule, and
+ * `.slab` sets its own `display` in the stylesheet. An author declaration beats
+ * a UA one, so `hidden` was set, correct, and did nothing at all — the headings
+ * kept drawing and the bar read `MODEL MODEL Opus 5`. An inline style is an
+ * author declaration of the highest specificity, so it wins, and it needs no
+ * matching rule in `styles.css` and therefore none in the mockup either.
+ */
+function standDownDuplicateHeadings() {
+  for (const g of document.querySelectorAll('.strip .sgrp')) {
+    const label = g.querySelector(':scope > .slab');
+    if (label === null) continue;
+    // **ONLY WHERE THE HEADING WOULD SAY THE SAME WORD TWICE.**
+    //
+    // The first cut stood the heading down whenever ANY field inside was
+    // named, and that was too broad: it took `CORPUS` off a group reading
+    // `734 ITEMS · in step with the log · 0 doctor notices`, which is the only
+    // thing saying what those three facts have in common. Four groups lost
+    // their subject and `repo`/`model` looked fine only because their single
+    // field happens to share the group's word.
+    //
+    // The rule is narrower and it is about DUPLICATION, not about naming:
+    // print the word once. A group with one field of the same name drops the
+    // field's copy of it; a group with several keeps its heading AND every
+    // field's own name, because `CORPUS` above three differently-named pills
+    // is not a repetition — it is the grouping.
+    //
+    // The terminal is not the precedent here: it is a flat line with no
+    // grouping, so it never had a heading to lose.
+    const own = [...g.querySelectorAll('.ulab')];
+    const heading = (label.textContent ?? '').trim().toLowerCase();
+    const duplicate = own.length === 1
+      && (own[0].textContent ?? '').trim().toLowerCase() === heading;
+    if (duplicate) own[0].style.display = 'none';
+    label.dataset.standdown = duplicate ? '0' : '0';
   }
 }
 
@@ -4390,9 +4859,12 @@ function auditClockParts(view) {
  */
 function injectionParts(view) {
   const label = document.createElement('span');
-  label.className = 'sprop';
+  // Same shape as the item count: the string carries the word, so it takes the
+  // label treatment on that word rather than gaining a second one.
+  label.className = 'sprop ulab ufield';
   label.dataset.f = 'injections';
   label.dataset.k = 'strip.inj';
+  label.title = flat(table.strings, 'title.inj');
   label.append(...translate(table.strings, 'strip.inj'));
   const dashed = (...before) => {
     const dash = document.createElement('span');
@@ -4434,12 +4906,22 @@ function injectionParts(view) {
   // `≥` for exactly that — and leaves the injection COUNT exact, because those
   // rows were counted and only their size is unknown. Nothing is qualified
   // here that does not need to be.
+  // ── ONE PILL, not a bare figure beside a labelled one ────────────────────
+  // The count and its word were two `[data-f="injections"]` elements sitting
+  // side by side, so the figure was bare text next to a pill. They are ONE
+  // FACT and they become one pill: the label inside, the value beside it, the
+  // same shape every other field takes.
+  const wrap = document.createElement('span');
+  wrap.className = 'ufield';
+  wrap.dataset.f = 'injections';
+  wrap.title = flat(table.strings, 'title.inj');
   const figure = document.createElement('span');
-  figure.className = 'm';
-  figure.dataset.f = 'injections';
+  figure.className = 'm uval';
   figure.textContent = String(view.myctx.injections);
-  figure.title = flat(table.strings, 'title.inj');
-  return [figure, document.createTextNode(' '), label];
+  label.className = 'sprop ulab';
+  label.removeAttribute('data-f');
+  wrap.append(label, document.createTextNode(' '), figure);
+  return [wrap];
 }
 
 /**
@@ -4578,8 +5060,16 @@ function handoverProximityChip(view) {
   if (level === null || level === 'stale' || level === 'ok') return null;
   const bands = occupancyBands(threshold);
   const chip = document.createElement('span');
-  chip.className = 'chip gov';
-  chip.dataset.f = 'ask';
+  // `govfig` drops the FILL and keeps the rectangle, for the same ruling and
+  // on the same field as `askfig`: this is the ask in its FIRED state, and a
+  // field that lost its fill below the threshold and got one back at it would
+  // be two treatments for one field.
+  chip.className = 'chip gov govfig';
+  // `ask-verdict`, not `ask`: the ask field now draws its own bar at every
+  // level, so this chip is the ACTION beside the measurement rather than a
+  // replacement for it. Two elements claiming one field id would make the
+  // enumeration ambiguous about which one is the field.
+  chip.dataset.f = 'ask-verdict';
   chip.dataset.g = '\u25c6';
   // One decimal place: at the configured threshold of 85 the warn band opens at
   // 76.5, and rounding it to 77 would print a boundary the code does not use.
@@ -4629,11 +5119,11 @@ function handoverProximityChip(view) {
 function rateLimitParts(view) {
   const out = [];
   const windows = [
-    { key: 'strip.rl5', window: view.rate.fiveHour, field: 'rate-5h' },
-    { key: 'strip.rl7', window: view.rate.sevenDay, field: 'rate-7d' },
+    { key: 'strip.rl5', window: view.rate.fiveHour, field: 'rate-5h', nameKey: 'strip.grp.rate5' },
+    { key: 'strip.rl7', window: view.rate.sevenDay, field: 'rate-7d', nameKey: 'strip.grp.rate7' },
   ];
   let worst = null;
-  for (const { key, window, field } of windows) {
+  for (const { key, window, field, nameKey } of windows) {
     if (window === null) continue;
     const span = document.createElement('span');
     // ── BANDED ON THE FIGURE, 2026-09-01 — owner ruling. These two were
@@ -4658,14 +5148,28 @@ function rateLimitParts(view) {
     span.dataset.f = field;
     span.append(...translate(table.strings, key, {
       pct: String(Math.round(window.usedPercent)),
-      // `resetsAt` is SECONDS; `formatAge` takes milliseconds. Clamped at zero
+      // `resetsAt` is SECONDS; `untilReset` takes milliseconds. Clamped at zero
       // so a window whose reset moment has passed but whose payload has not
-      // been rewritten yet reads "0s" rather than a negative countdown.
+      // been rewritten yet reads "now" rather than a negative countdown.
+      //
+      // **`untilReset`, NOT `formatAge`** \u2014 owner ruling, 2026-09-01: "add the
+      // minutes too as it is in the status line in terminal". `formatAge`
+      // answers "how old is this" and drops to one unit deliberately; a
+      // COUNTDOWN is a different question. `23h` is the same string for a
+      // window resetting in twenty-three hours and one resetting in twenty-
+      // three hours fifty-five, and this is the figure a reader uses to decide
+      // whether to wait. `untilReset` is the terminal's own `until` rule, so
+      // neither bar can say a thing the other does not.
       reset: window.resetsAt === null
         ? '\u2014'
-        : formatAge(Math.max(0, window.resetsAt * 1000 - Date.now())),
+        : untilReset(Math.max(0, window.resetsAt * 1000 - Date.now())),
     }));
-    span.title = flat(table.strings, 'title.rate');
+    // The same four levels the terminal bands these with, and the NAME comes
+    // from the string table rather than from the value: `strip.rl5` used to
+    // open with a literal `5h`, which would have named the field twice once
+    // the label arrived. The name moved OUT of every banded string for exactly
+    // that reason — see `bandUsage`.
+    bandUsage(span, window.usedPercent, nameKey);
     out.push(span);
     // No `ageMs` argument: the staleness rule belongs to the CONTEXT sample,
     // which is a measurement of this window and goes out of date as the session
@@ -4682,6 +5186,15 @@ function rateLimitParts(view) {
   if (worst !== null) {
     const chip = document.createElement('span');
     chip.className = 'chip ' + worst;
+    // **A VERDICT IS A FIELD.** Owner, 2026-09-01: "limit near rectangle should
+    // be standardised". It measured 28px beside every other pill's 26 because
+    // `.strip .sgrp [data-f]` carries the shared metrics and this chip had no
+    // `data-f` to be caught by it — so it kept whatever line-height it
+    // inherited. Every word-only state is a field like any other: it occupies
+    // the same slot a figure occupies at another value, and a bar that is
+    // uniform while calm and ragged when something needs attention is wrong
+    // exactly when it is being read.
+    chip.dataset.f = 'rate-verdict';
     if (worst === 'crit') {
       chip.dataset.g = '\u25a0';
       chip.dataset.k = 'strip.rlAt';
@@ -4761,6 +5274,10 @@ function handoverVerdictChip(view) {
     written: h.writtenAt ?? '—',
     threshold: h.threshold === null ? '—' : String(h.threshold),
   };
+  // The same reasoning as the rate-limit verdict above, and the same owner
+  // ruling: `handover written 13h ago` measured 24px. Set once here rather
+  // than in each branch, so a verdict added later cannot miss it.
+  chip.dataset.f = 'handover-verdict';
   if (h.verdict === 'acted-on') {
     chip.className = 'chip ok';
     chip.dataset.g = '●';
