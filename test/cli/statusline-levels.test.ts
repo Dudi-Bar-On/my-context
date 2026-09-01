@@ -439,3 +439,75 @@ test('a narrow terminal falls back to the figure and still never wraps', () => {
     assert.match(text, /ctx /, `the context block was given up at ${w} columns`);
   }
 });
+
+/* ══ THE HEADROOM — owner ruling, 2026-09-01, restoring 2026-08-31's ═══════ */
+
+test('the ask block prints the DISTANCE, not only the ratio it can be derived from', () => {
+  // The first cut of the used-of-maximum shape dropped this figure, on the
+  // reasoning that `(65.0 / 85)` carries both numbers and the gap is one
+  // subtraction away. The owner ruled it back: a distance a reader has to
+  // COMPUTE is not one they read at a glance. So the block carries all four.
+  const seg = askSegment(occ(65), 85);
+  assert.match(seg?.text ?? '', new RegExp(`[${BAR_FILL}${BAR_EMPTY}]{${BAR_CELLS}}`), 'the bar');
+  assert.match(seg?.text ?? '', /\b76%/, 'the proportion');
+  assert.match(seg?.text ?? '', /\(65\.0 \/ 85\)/, 'the counts');
+  assert.match(seg?.text ?? '', /·\+20\.0$/, 'and the gap, last and printed');
+});
+
+test('the gap is the threshold minus the fill, at one decimal, at every fill', () => {
+  // Derived from the shared subtraction rather than restated, so a change to
+  // `askHeadroom` moves the expectation with it instead of parting from it.
+  for (const [pct, threshold] of [[25.1, 85], [42, 98], [70, 98], [81.8, 85]] as const) {
+    const seg = askSegment(occ(pct), threshold);
+    assert.ok(seg !== null, `${pct} of ${threshold}`);
+    const gap = ` ·+${(threshold - pct).toFixed(1)}`;
+    assert.ok(seg!.text.endsWith(gap),
+      `${pct} of ${threshold}: expected to end with "${gap}", got "${seg!.text}"`);
+  }
+  // ONE decimal, always — this is the figure that MOVES, and `+3` for anything
+  // between 2.5 and 3.5 hides the last message before the ask.
+  assert.match(askSegment(occ(82), 85)?.text ?? '', /·\+3\.0$/);
+  assert.match(askSegment(occ(81.8), 85)?.text ?? '', /·\+3\.2$/);
+});
+
+test('the gap SHRINKS as the window fills — a figure that did not move would be a decoration', () => {
+  const gapAt = (pct: number): number => {
+    const m = /·\+(\d+\.\d+)$/.exec(askSegment(occ(pct), 98)?.text ?? '');
+    assert.ok(m !== null, `no gap printed at ${pct}%`);
+    return Number(m![1]);
+  };
+  let previous = Number.POSITIVE_INFINITY;
+  for (const pct of [10, 30, 50, 70, 90, 97]) {
+    const gap = gapAt(pct);
+    assert.ok(gap < previous, `the gap did not shrink from ${previous} at ${pct}%`);
+    previous = gap;
+  }
+});
+
+test('past the ask the WORD stands alone — no negative gap, no +0.0 beside it', () => {
+  // Two answers to one question is the failure this avoids: the words say the
+  // ask has fired, and a `+0.0` or a `-3.0` printed next to them would invite
+  // the reader to act on a number that is spent.
+  for (const pct of [85, 85.1, 90, 99.9]) {
+    const seg = askSegment(occ(pct), 85);
+    assert.equal(seg?.text, '◆ handover due', `at ${pct}% the block is words`);
+    assert.ok(!/[+-]\d/.test(seg?.text ?? ''), 'and it carries no signed figure at all');
+  }
+});
+
+test('the gap is silent where the whole block is — no ask, and no current reading', () => {
+  // Nothing is claimed about proximity to an ask that does not exist, or from
+  // a reading too old to present as current.
+  assert.equal(askSegment(occ(65), null), null, 'no threshold configured, no distance to it');
+  assert.equal(askSegment({ state: 'unmeasurable', why: 'no-sample' }, 85), null);
+  assert.equal(askSegment(occ(65, 48 * 60 * 60 * 1000), 85), null, 'a fossil claims no distance');
+});
+
+test('the gap is the only leading + on the bar, which is what marks it a distance', () => {
+  // `%` marks a proportion, `$` money, `·` a trailing qualifier. Nothing else
+  // wears a leading plus, so the token cannot be misread as a fourth ratio.
+  const { identity, window, account } = buildLines(INPUT, Date.now());
+  const plussed = [...identity, ...window, ...account]
+    .filter((s) => /\+/.test(s.text)).map((s) => s.field);
+  assert.deepEqual(plussed, ['ask'], 'some other block grew a + and now competes with the gap');
+});

@@ -1929,9 +1929,24 @@ test('/api/coverage answers the pre-paging bytes when no parameter is given', ()
         'invisible to them; a field leaving is what breaks them, and the digest below cannot ' +
         'tell the two apart');
     }
+    // ── MOVED 2026-09-01, AND THIS IS THE REASON THE HEADER ABOVE DEMANDS.
+    //
+    // `ItemSummary` gained `relations` — an item's relation DEGREE, counting
+    // both directions — and `relationKinds`, the distinct types that touch it,
+    // so the Relations picker can stop offering the 702 items in this project's
+    // own corpus that would draw a single node alone, and can re-test that
+    // against the reader's type filter (two owner rulings, same day). Only
+    // `/api/items` walks the whole store, so only `/api/items` can count them;
+    // `apiCoverage` emits the same summary shape and therefore carries both as
+    // `null`, which is the fields' own spelling of "not measured here" and never
+    // a zero or an empty set it did not take.
+    //
+    // A key ARRIVING is invisible to the four frozen screens — the assertion
+    // above is what holds the line that matters, that no key LEFT — and this
+    // digest is re-pinned rather than relaxed.
     assert.equal(
       createHash('sha256').update(JSON.stringify(body)).digest('hex'),
-      '94183c62aa691c211037e9adebdd7bb2fb912de08212d20ddcbd5dcd33f66338',
+      '04f02c3f6c77574e814b2b11061d81b54f92cde5767c785272742506415e2b50',
       'the bytes /api/coverage answers moved, and the only recorded reason for that is the ' +
       'summary fields of 2026-09-01. Re-pin this only with the reason written above it',
     );
@@ -2291,6 +2306,23 @@ test('/api/items carries every item with the injection verdict, sorted by id', (
     for (const summary of body.items) {
       const item = f.items.find((i) => i.id === summary.id)!;
       assert.deepEqual(summary, {
+        // `relations` is the item's DEGREE, counting relations in both
+        // directions, and it arrived on 2026-09-01 so the Relations picker can
+        // stop offering items that would draw a single node alone. Zero for
+        // every item here because this fixture declares no relations at all —
+        // which is the case that matters for the picker, since it is the one
+        // that gets filtered out. That the count also includes INBOUND
+        // relations is not provable from this fixture and is asserted in the
+        // browser instead (four items in the live corpus have no outgoing
+        // relations and a non-zero degree); a fixture that declares a relation
+        // would be the stronger home for it.
+        relations: 0,
+        // …and WHICH types touch it, distinct and sorted, for the picker's live
+        // test against the relation-type filter (owner ruling, same day): an
+        // item whose every relation is of a type the reader turned off is as
+        // empty, to them, as one with no relations. Empty here because this
+        // fixture declares none.
+        relationKinds: [],
         id: item.id, type: item.type, title: item.title, status: item.status,
         always: item.always, scope: item.scope,
         injected: injection(item, f.ws.config).injected,
@@ -2366,8 +2398,23 @@ test('both item endpoints report a stale summary as stale, never as current', ()
 
     // The body moves and the summary does not. Nothing refreshes the basis on
     // its own — that is the whole mechanism — so the two stop agreeing.
-    run(['edit', id, '--body', 'A completely different claim about something else. '.repeat(20),
-      '--yes']);
+    //
+    // Reached by a HAND EDIT rather than by `mycontext edit --body`, and the
+    // change of route is the owner's summary-follows-body ruling: that command
+    // now REFUSES a body change that carries no summary, so the only way a
+    // summary can still go stale is a file edited outside the tool — which
+    // markdown-as-source-of-truth explicitly permits and which is exactly the
+    // case these endpoints have to be able to report. `repair --yes` re-stamps
+    // the checksum the hand edit invalidated, so what is served afterwards is
+    // an item that is clean in every respect EXCEPT the sentence on it.
+    const file = path.join(f.dir, '.my_context', 'items', 'rule', `${id}.md`);
+    writeFileSync(
+      file,
+      readFileSync(file, 'utf8').replaceAll(
+        'Use POSIX separators everywhere.', 'A completely different claim about something else.',
+      ),
+    );
+    run(['repair', '--yes']);
     assert.deepEqual(stateOf(), { one: 'stale', list: 'stale' },
       'the content moved under the sentence and both endpoints must say so. A value that was '
       + 'true once, served as though it were true now, is the defect this field exists to stop');

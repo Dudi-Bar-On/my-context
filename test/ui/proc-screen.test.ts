@@ -283,7 +283,7 @@ test('the mockup still claims "index line only" on ready — the divergence is s
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'PROC-a', type: 'procedure', title: 'A procedure', status: 'active',
-    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, summaryWas: [], acknowledged: {}, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: 'body', steps: [], observations: [], relations: [],

@@ -526,6 +526,14 @@ const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
       + 'CLI/MCP surfaces are phase 1; every screen is phase 3. This row is an excuse with an '
       + 'expiry: the `excused && offered` branch below fails the moment the palette adds it, so '
       + 'phase 3 cannot leave this sentence standing over the opposite.',
+    'summary-unchanged': '--summary-unchanged is the escape hatch on the summary gate: an edit '
+      + 'that moves the body is refused without a new --summary, and this flag is how a person '
+      + 'says the edit does not change what the item MEANS. It is not offered for the same lane '
+      + 'reason --summary directly above is not — `palette-defs.js` belongs to the web shell — '
+      + 'and for one of its own: it is a switch that must be a DELIBERATE act, and a checkbox '
+      + 'sitting beside a body textarea is the least deliberate control there is. When the '
+      + 'palette does offer it, it belongs beside the refusal it answers rather than in the '
+      + 'flag list, and this row must move rather than stand over the opposite.',
     unlink: '--unlink <relation> <target> takes TWO operands. This model is one value per flag, '
       + 'so a def advertising it would compose `--unlink rel` and lose the target silently — '
       + 'the one failure the whole composed-and-shown design exists to prevent.',
@@ -747,6 +755,13 @@ const WITHHELD: Record<string, string> = {
  * browser test that drives it.
  */
 const UNCATALOGUED: Record<string, string> = {
+  ack: 'a WRITE, and a new one (owner ruling 2026-08-27, doctor findings become '
+    + 'acknowledgeable). `PALETTE` is a browser asset and `palette.js` builds the Composer '
+    + 'picker from it, so an entry is a UI change owed a mockup and a browser test rather than '
+    + 'something added in passing from the CLI side. Its refusal is also unlike every other row '
+    + 'here: `mycontext ack` accepts only a finding code `doctor` is CURRENTLY reporting on that '
+    + 'item, so a control that composed a usable line would have to be driven by the doctor read '
+    + 'model rather than by a flag declaration.',
   audit: 'a read with no execution path in this UI. `/api/audit` does not exist; the audit log '
     + 'reaches the browser through the Watch and Ask read models, which answer different '
     + 'questions.',

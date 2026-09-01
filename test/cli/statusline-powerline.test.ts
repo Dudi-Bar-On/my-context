@@ -319,8 +319,12 @@ test('the handover scale answers the distance as a number, at every fill', () =>
       const proportion = (pct / threshold) * 100;
       const icon = LEVEL_ICON[usageLevelOf(proportion)!];
       const lead = icon === '' ? '' : `${icon} `;
+      // The gap is printed too, since the owner ruled it back on 2026-09-01:
+      // the distance is worth reading at any fill, and a distance the reader
+      // has to compute is not one they read at a glance.
       return `${lead}ask ${usageBar(proportion)} ${proportion.toFixed(0)}% `
-        + `(${pct.toFixed(1)} / ${ask})`;
+        + `(${pct.toFixed(1)} / ${ask})`
+        + ` ·+${(threshold - pct).toFixed(1)}`;
     };
     assert.equal(marker(below, threshold)?.text, shape(below));
     assert.equal(marker(bands.warn, threshold)?.text, shape(bands.warn));
@@ -363,8 +367,8 @@ test('the handover scale answers the distance as a number, at every fill', () =>
   // THE OWNER'S OWN THREE EXAMPLES, at the threshold in force here — restated
   // in the shape the used-of-maximum ruling gives them. The FACTS are the ones
   // the owner picked: far below the ask, nearly at it, and past it.
-  assert.equal(marker(25.1, 85)?.text, 'ask ▓▓▓░░░░░░░ 30% (25.1 / 85)');
-  assert.equal(marker(81.8, 85)?.text, '💀 ask ▓▓▓▓▓▓▓▓▓▓ 96% (81.8 / 85)');
+  assert.equal(marker(25.1, 85)?.text, 'ask ▓▓▓░░░░░░░ 30% (25.1 / 85) ·+59.9');
+  assert.equal(marker(81.8, 85)?.text, '💀 ask ▓▓▓▓▓▓▓▓▓▓ 96% (81.8 / 85) ·+3.2');
   assert.equal(marker(91.0, 85)?.text, '◆ handover due');
 
   // THE EARLIER RULING'S EXAMPLE, still true and still worth pinning: the ask
@@ -375,15 +379,15 @@ test('the handover scale answers the distance as a number, at every fill', () =>
   // The same 80% is 82% of the way to a threshold of 98 and 94% of the way to
   // one of 85 — two different verdicts about the ask — while the FILL is the
   // same fact at both, which is the whole point of the pair.
-  assert.equal(marker(80, 98)?.text, '💀 ask ▓▓▓▓▓▓▓▓░░ 82% (80.0 / 98)');
-  assert.equal(marker(80, 85)?.text, '💀 ask ▓▓▓▓▓▓▓▓▓░ 94% (80.0 / 85)');
+  assert.equal(marker(80, 98)?.text, '💀 ask ▓▓▓▓▓▓▓▓░░ 82% (80.0 / 98) ·+18.0');
+  assert.equal(marker(80, 85)?.text, '💀 ask ▓▓▓▓▓▓▓▓▓░ 94% (80.0 / 85) ·+5.0');
   assert.notEqual(marker(80, 98)?.text, marker(80, 85)?.text, 'the ask moved with the threshold');
   assert.equal(ctxInk(80, 0, 98), ctxInk(80, 0, 85), 'and the fill did not');
 
   // A threshold that is not a whole number keeps its decimal, and the USED
   // figure always carries one. Both now live in the count pair, which is the
   // shape the used-of-maximum ruling gives every such field.
-  assert.equal(marker(80, 92.5)?.text, '💀 ask ▓▓▓▓▓▓▓▓▓░ 86% (80.0 / 92.5)');
+  assert.equal(marker(80, 92.5)?.text, '💀 ask ▓▓▓▓▓▓▓▓▓░ 86% (80.0 / 92.5) ·+12.5');
 
   // No ask configured, no distance to it. No claim about a window that cannot
   // be measured, and none about a fossil.
@@ -443,7 +447,7 @@ test('with colour off it is the same text and not one escape byte', () => {
   // it: both used-of-max fields carry a bar, a proportion and their counts,
   // and neither carries an icon because both are `safe` at 42%.
   assert.equal(plain, `${CAP_LEFT} Opus 5 ${SEP} test_mycontext_plugin ${SEP} `
-    + `campaign/my-context-test ${SEP} ask ${usageBar(42 / 98 * 100)} 43% (42.0 / 98) `
+    + `campaign/my-context-test ${SEP} ask ${usageBar(42 / 98 * 100)} 43% (42.0 / 98) ·+56.0 `
     // THIN, because both used-of-max blocks are `safe` here and therefore
     // share a background — the existing rule about two blocks on one ground,
     // reached by a new route.
@@ -469,17 +473,18 @@ test('colourAllowed refuses when the user says so, and does not refuse the one p
 });
 
 test('a narrow terminal elides the branch from the LEFT and never wraps', () => {
-  // 120 columns, and the number has moved TWICE for the same reason. It was 60
-  // until the handover scale added a permanent ~19-cell block, then 85; the
-  // used-of-maximum ruling of 2026-09-01 grew the ask and the context blocks
-  // from 16 and 11 cells to 30 and 36, so the one-line form is 133 wide and
-  // the band in which the branch is SHORTENED rather than given up whole now
-  // runs from about 130 down to about 110. Measured, not guessed — 85 is below
-  // the floor and the branch is dropped entirely there.
+  // 128 columns, and the number has moved THREE times for one reason: the
+  // blocks either side of the branch keep growing, so the band in which the
+  // branch is SHORTENED rather than given up whole keeps sliding right. It was
+  // 60, then 85 when the handover scale added a permanent ~19-cell block, then
+  // 120 when the used-of-maximum ruling grew the ask and context blocks, and
+  // 128 now that the owner ruled the headroom figure back onto the ask. The
+  // one-line form is 140 wide and the elide band runs from about 130 down to
+  // about 120. Measured each time, never guessed.
   //
   // The assertion is the one it has always been: the distinguishing tail is
   // the half worth keeping. Only the width it has to be measured at has moved.
-  const columns = 120;
+  const columns = 128;
   const narrow = line({}, false, columns);
   assert.ok(displayWidth(narrow) <= columns, `${displayWidth(narrow)} > ${columns}`);
   // The distinguishing TAIL survives; the leading `…` says a head was removed.
@@ -708,7 +713,7 @@ test('the bar is three lines: identity, this window, then the account', () => {
   // Line 2 is THIS WINDOW: the ask and the context figure, alone together,
   // which is the comparison the owner actually performs.
   assert.deepEqual(window.map((seg) => seg.text), [
-    'ask ▓▓▓▓░░░░░░ 43% (42.0 / 98)',
+    'ask ▓▓▓▓░░░░░░ 43% (42.0 / 98) ·+56.0',
     'ctx ▓▓▓▓░░░░░░ 42.0% (420.0k / 1.0M)',
   ]);
   // Line 3 is the ACCOUNT and the ledger: the two rate windows, the myctx
@@ -976,7 +981,7 @@ test('the blocks that have nothing to say are absent, and the ones that do are p
   );
   assert.equal(
     line({ model: null, project: null, branch: null }),
-    `${CAP_LEFT} ask ${usageBar(42 / 98 * 100)} 43% (42.0 / 98) `
+    `${CAP_LEFT} ask ${usageBar(42 / 98 * 100)} 43% (42.0 / 98) ·+56.0 `
       + `${SEP_THIN} ctx ${usageBar(42)} 42.0% (420.0k / 1.0M) ${CAP_RIGHT}`,
     'a configured ask always states its distance, even on an otherwise empty bar',
   );
@@ -1266,7 +1271,7 @@ test('the whole bar, from a real payload shape, with every group present', () =>
   assert.equal(rendered, [
     `${CAP_LEFT} Opus 5 high think`, 'test_mycontext_plugin', 'campaign/my-context-test',
   ].join(` ${SEP} `)
-    + ` ${SEP} ask ▓▓▓▓░░░░░░ 43% (42.0 / 98)`
+    + ` ${SEP} ask ▓▓▓▓░░░░░░ 43% (42.0 / 98) ·+56.0`
     + ` ${SEP_THIN} ctx ▓▓▓▓░░░░░░ 42.0% (420.0k / 1.0M)`
     + ` ${SEP_THIN} 7d ▓▓▓▓▓░░░░░ 49% ·1d4h ${SEP_THIN} 5h ▓░░░░░░░░░ 12% ·3h12m`
     + ` ${SEP_THIN} myctx ░░░░░░░░░░ 0.6% (6.2k / 1.0M)`
@@ -1323,20 +1328,22 @@ test('the line gives itself up in the order the owner ranked, not by width', () 
   // first, and keeps both windows until nothing but the context figure is left.
   //
   // **The WIDTHS moved and the RANKING did not.** The used-of-maximum ruling
-  // grew five blocks by twenty-odd cells each, so every rung of this ladder is
-  // reached at a wider terminal than it used to be. `GIVE` is untouched, which
-  // is what this test is actually about.
+  // grew five blocks by twenty-odd cells each, and the owner's headroom ruling
+  // added seven more to the ask, so every rung of this ladder is reached at a
+  // wider terminal than it used to be. `GIVE` has not been touched by either
+  // change, which is what this test is actually about — the ORDER the bar
+  // gives itself up in, never the widths at which it does.
   const D7 = '7d ▓▓▓▓▓░░░░░ 49% ·1d4h';
   const H5 = '5h ▓░░░░░░░░░ 12% ·3h12m';
   const MY = 'myctx ░░░░░░░░░░ 0.6% (6.2k / 1.0M)';
-  assert.ok(!at(180).includes('$0.42 · warm 99.1%'), 'cost and cache go first');
-  assert.ok(at(180).includes(D7));
-  assert.ok(!at(150).includes(MY), 'the share goes before the windows');
-  assert.ok(at(150).includes(H5));
-  assert.ok(!at(145).includes('test_mycontext_plugin'), 'the project name goes before the windows');
-  assert.ok(at(150).includes('Opus 5 high think'), 'the model outlives the project');
-  assert.ok(at(110).includes(D7), 'the windows are the last real blocks');
-  assert.ok(at(80).includes(H5), 'and the 5-hour window is the very last of them');
+  assert.ok(!at(195).includes('$0.42 · warm 99.1%'), 'cost and cache go first');
+  assert.ok(at(195).includes(D7));
+  assert.ok(!at(170).includes(MY), 'the share goes before the windows');
+  assert.ok(at(170).includes(H5));
+  assert.ok(!at(160).includes('test_mycontext_plugin'), 'the project name goes before the windows');
+  assert.ok(at(157).includes('Opus 5 high think'), 'the model outlives the project');
+  assert.ok(at(120).includes(D7), 'the windows are the last real blocks');
+  assert.ok(at(90).includes(H5), 'and the 5-hour window is the very last of them');
   // The context figure is no longer the last BLOCK — it is the anchor, with
   // the windows drawn to its right — so what is pinned is that it is still
   // there, which is the claim that mattered.

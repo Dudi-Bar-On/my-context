@@ -478,9 +478,23 @@ test('the picker is worded by a declared key, and the id inside it is isolated',
 });
 
 test('the default focus is unchanged — the first item by id, and the same answer twice', () => {
-  assert.match(graphSource, /draw\(items\.items\[0\]\.id\)/,
-    'the picker opens on the first item by id, which is what this screen has always drawn: a '
-    + 'reader who touches nothing must see what they saw before');
+  // ── THE DEFAULT IS THE FIRST ITEM THE PICKER OFFERS, SINCE 2026-09-01.
+  //
+  // This asserted `draw(items.items[0].id)` — the first item by id, full stop.
+  // The picker no longer lists every item (owner rulings of the same day: items
+  // with no relation of a kept type, and retired items, are held back with their
+  // counts stated), and opening on an item the picker does not list put the
+  // `<select>` on one id and the chart on another. So the screen opens on the
+  // first OFFERED item, which is still the first by id whenever that item
+  // qualifies — a reader who touches nothing on an ordinary corpus sees what
+  // they saw before, and on a corpus where the first id relates to nothing they
+  // see a graph instead of a lone node.
+  assert.match(graphSource, /await draw\(first\.id\)/,
+    'the screen must open on the first item the picker OFFERS, or the control and the drawing '
+    + 'disagree from the first paint');
+  assert.match(graphSource, /items\.items\.find\(qualifies\) \?\? items\.items\[0\]/,
+    'and "offered" must fall back to the whole list, so a corpus where nothing relates to '
+    + 'anything still opens on an item rather than on nothing');
   // The radius is settled and is NOT offerable — `gr.sub` promises "radius 1"
   // and `plan:walk seq:87` rules the question closed. A second picker here
   // would need a second key, and neither table declares one. Counted rather

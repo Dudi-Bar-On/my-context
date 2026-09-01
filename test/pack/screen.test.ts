@@ -187,7 +187,7 @@ function clean(): Item {
     status: 'active',
     severity: 'hard',
     always: false,
-    continuity: false, summary: null, summaryOf: null,
+    continuity: false, summary: null, summaryOf: null, summaryWas: [], acknowledged: {},
     scope: ['src/**'],
     tags: ['ops'],
     origin: 'human',

@@ -250,12 +250,12 @@ test('statusLineText renders each state without ever inventing a number', () => 
   // still collapses to WORDS once the ask has fired, because past the ask the
   // number stops being the point and the action is.
   assert.equal(at(42), bars(head, [
-    'ask ▓▓▓▓░░░░░░ 43% (42.0 / 98)', 'ctx ▓▓▓▓░░░░░░ 42.0% (420.0k / 1.0M)']));
+    'ask ▓▓▓▓░░░░░░ 43% (42.0 / 98) ·+56.0', 'ctx ▓▓▓▓░░░░░░ 42.0% (420.0k / 1.0M)']));
   assert.equal(at(70), bars(head, [
-    `${LEVEL_ICON.warning} ask ▓▓▓▓▓▓▓░░░ 71% (70.0 / 98)`,
+    `${LEVEL_ICON.warning} ask ▓▓▓▓▓▓▓░░░ 71% (70.0 / 98) ·+28.0`,
     `${LEVEL_ICON.warning} ctx ▓▓▓▓▓▓▓░░░ 70.0% (700.0k / 1.0M)`]));
   assert.equal(at(93.4), bars(head, [
-    `${LEVEL_ICON.critical} ask ▓▓▓▓▓▓▓▓▓▓ 95% (93.4 / 98)`,
+    `${LEVEL_ICON.critical} ask ▓▓▓▓▓▓▓▓▓▓ 95% (93.4 / 98) ·+4.6`,
     `${LEVEL_ICON.critical} ctx ▓▓▓▓▓▓▓▓▓░ 93.4% (934.0k / 1.0M)`]));
   assert.equal(at(99.2), bars(head, [
     '◆ handover due',
@@ -376,7 +376,7 @@ test('MYCONTEXT_STATUSLINE_ONE_LINE folds the bar back to a single line, losing 
   // NOTHING IS LOST. Every block on any row of the three-row form is still on
   // the single line — which is the whole claim the fallback makes.
   for (const block of ['Opus 4.5', 'test_mycontext_plugin', 'campaign/my-context-test',
-    'ask ▓▓▓▓░░░░░░ 43% (42.0 / 98)', 'ctx ▓▓▓▓░░░░░░ 42.0% (420.0k / 1.0M)',
+    'ask ▓▓▓▓░░░░░░ 43% (42.0 / 98) ·+56.0', 'ctx ▓▓▓▓░░░░░░ 42.0% (420.0k / 1.0M)',
     'myctx ░░░░░░░░░░ 0.6% (6.2k / 1.0M)']) {
     assert.ok(two.includes(block), `two-line form is missing ${block}`);
     assert.ok(one.includes(block), `one-line fallback is missing ${block}`);
@@ -410,7 +410,7 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
   );
   assert.equal(line, bars(
     ['Opus 4.5', 'test_mycontext_plugin', 'campaign/my-context-test'],
-    ['ask ▓▓░░░░░░░░ 24% (23.5 / 98)', 'ctx ▓▓░░░░░░░░ 23.5% (235.0k / 1.0M)'],
+    ['ask ▓▓░░░░░░░░ 24% (23.5 / 98) ·+74.5', 'ctx ▓▓░░░░░░░░ 23.5% (235.0k / 1.0M)'],
     // The account row: the banded share, and the disclosure that rides the
     // context field in its absent state.
     ['myctx ░░░░░░░░░░ 0.6% (6.2k / 1.0M)', 'tee not written (disk full)'],
@@ -434,7 +434,7 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
     // The `≥` rides the LABEL because it qualifies the NUMERATOR — some
     // injection records carry no frozen estimate, so the true share is at
     // least this — and that is a fact about the count, never about the bar.
-    bars(['ask ▓▓░░░░░░░░ 24% (23.5 / 98)', 'ctx ▓▓░░░░░░░░ 23.5% (235.0k / 1.0M)'],
+    bars(['ask ▓▓░░░░░░░░ 24% (23.5 / 98) ·+74.5', 'ctx ▓▓░░░░░░░░ 23.5% (235.0k / 1.0M)'],
       ['myctx ≥ ░░░░░░░░░░ 0.6% (6.2k / 1.0M)']),
   );
 
@@ -457,7 +457,7 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
     // news and news goes where the reader is still looking — never on the
     // identity row, and never crowding the window pair.
     bars(
-      ['ask ▓▓░░░░░░░░ 24% (23.5 / 98)',
+      ['ask ▓▓░░░░░░░░ 24% (23.5 / 98) ·+74.5',
         'ctx ▓▓░░░░░░░░ 23.5% (235.0k / 1.0M)'],
       ['myctx unavailable (projection sync failed)',
         'tee not written (unsafe session id)'],
@@ -480,7 +480,7 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       false, null,
     ),
     bars(['Opus 4.5', 'p', 'b'],
-      ['ask ▓▓░░░░░░░░ 24% (23.5 / 98)',
+      ['ask ▓▓░░░░░░░░ 24% (23.5 / 98) ·+74.5',
         'ctx ▓▓░░░░░░░░ 23.5% (235.0k / 1.0M)']),
   );
 });

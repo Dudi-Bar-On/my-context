@@ -23,6 +23,7 @@ import { SUPERSEDED_BY } from './relations.ts';
 // entry points, not only under `node --test`.
 import { stageRevision, type RevisionChanges } from './revision.ts';
 import { makeId } from './slug.ts';
+import { reaffirmSummary, reviseSummary, SUMMARY_UNCHANGED_NOTE } from './summary-history.ts';
 import type { Store } from './store.ts';
 import { projectFieldUpdate, projectOntoTags } from './tag-projection.ts';
 import { enumError, missingFieldError } from './teach.ts';
@@ -416,6 +417,12 @@ export function createItem(
     // whatever the caller passed.
     summary: null,
     summaryOf: null,
+    // Empty, and there is no input for it. A history entry records that a
+    // summary was REPLACED; an item being created has replaced nothing, and a
+    // caller that could declare one at capture would be declaring that this
+    // item used to say something before it existed. `reviseSummary`
+    // (summary-history.ts) is the only writer.
+    summaryWas: [],
     // Empty at creation, and there is no input for it. An acknowledgement is a
     // record that a PERSON read a doctor finding on an item that already
     // exists; a caller that could declare one at capture time would be
@@ -595,6 +602,33 @@ export interface UpdateInput {
    * mechanism.
    */
   summary?: string;
+  /**
+   * **The escape hatch: this edit does not change what the item means, so the
+   * summary it already carries still describes it.**
+   *
+   * The gate (`summary-gate.ts`) refuses an edit that moves the summarised
+   * content without a summary to go with it. A mechanical edit — a typo, a
+   * reflow, a rewrapped paragraph — genuinely does not need a rewritten
+   * sentence, and forcing one would teach writers to paste the old summary
+   * back, which is the same act with no record that it happened.
+   *
+   * So this says it in words instead. It re-stamps the basis from the item as
+   * the edit leaves it, WITHOUT new text and WITHOUT a history entry (nothing
+   * was replaced), and `updateItem` records it in the audit row so "nobody
+   * rewrote the summary" is visible rather than assumed.
+   *
+   * **It is never a default and it is not a general re-blessing tool.** Both
+   * constraints are enforced by the two surfaces that accept it, through
+   * `summaryUnchangedRefusal`: it is refused alongside `summary`, refused on an
+   * item that has no summary, and refused on an edit that does not raise the
+   * gate at all — which is what stops it becoming a way to mark an
+   * already-stale summary current without reading it.
+   *
+   * Absent from `RevisionChanges` (revision.ts) and from `AUDITED_FIELDS`
+   * (persist.ts), because it is an instruction about a write rather than a
+   * field of an item: there is nothing on disk for it to become.
+   */
+  summaryUnchanged?: boolean;
   status?: Status;
   extra?: Record<string, string>;
   origin?: Origin;
@@ -920,6 +954,33 @@ export function updateItem(
           `terms. See mycontext_help("capture").`,
         );
       }
+      // **The escape hatch cannot be staged, and dropping it silently is the
+      // one outcome that is not available.** `RevisionChanges` carries text —
+      // title, body, summary, tags, extra — and `summaryUnchanged` is not text
+      // but an assertion ABOUT this write: that the content moved and the
+      // sentence describing it did not. A revision has nowhere to put that, so
+      // letting the call through would stage the body, drop the assertion, and
+      // land a promoted body against a basis nobody re-stamped — a summary
+      // reading stale after a human approved a change that was said not to
+      // change what the item means, with no record anywhere of who said so.
+      //
+      // Refused rather than applied-anyway for `alsoMoved`'s reason directly
+      // above, and the remedy is the same shape: send the sentence. A summary
+      // IS stageable, so the call that carries one is held and promoted whole.
+      if (input.summaryUnchanged === true) {
+        throw new Error(
+          `my_context: this call to update ${item.id} says the summary is unchanged, and ` +
+          `"${item.type}" is set to agentEdits: "review" in this project — so the content ` +
+          `change (${fieldList(proposed)}) is held for a human to approve, and a staged ` +
+          `revision has nowhere to carry "the summary still describes this". The assertion ` +
+          `would be dropped and the promotion would land the new text under a summary nobody ` +
+          `re-stamped. Refused instead: nothing was applied and nothing was staged, and ` +
+          `${item.id} is exactly as it was. Send the change with a "summary" — a summary IS ` +
+          `stageable, so it is held and promoted together with the rest — or ask the user, who ` +
+          `can use \`mycontext edit ${item.id} --summary-unchanged\`. ` +
+          `See mycontext_help("capture").`,
+        );
+      }
       const result = stageRevision(ctx, item.id, proposed, origin);
       // Staging is itself an auditable act: it is the record that an agent
       // proposed a change to a governing item, which is exactly the kind of
@@ -998,11 +1059,34 @@ export function updateItem(
   // every unrelated edit would silently re-bless a summary that no longer
   // describes the item, which is the one outcome this whole field exists to
   // make impossible.
-  if (summary !== undefined) stampSummary(item, summary === '' ? null : summary);
+  if (summary !== undefined) reviseSummary(item, summary === '' ? null : summary, today());
+  // The escape hatch (`UpdateInput.summaryUnchanged`), and it is `else if`
+  // rather than a second statement: a call carrying both instructions is
+  // refused at the surfaces that accept them (`summaryUnchangedRefusal`), and
+  // an ordering here that silently preferred one would be a second, quieter
+  // answer to the question that refusal exists to ask.
+  //
+  // Guarded on there BEING a summary for the same reason: a re-stamp on an item
+  // with none would write `summaryOf` beside a null summary, which is a basis
+  // for nothing — half of the pair `summaryState` reads.
+  else if (input.summaryUnchanged === true && item.summary !== null) reaffirmSummary(item);
 
   const moved = movedFields(before, item);
   persist(ctx, item);
-  const audited = auditMutation(ctx, auditOp, origin, item.id, { fields: moved });
+  const audited = auditMutation(ctx, auditOp, origin, item.id, {
+    fields: moved,
+    // **The escape hatch's record.** The point of the flag is that a summary
+    // was NOT rewritten across an edit that changed what the item says, and an
+    // unrecorded exemption is indistinguishable from nobody having noticed. A
+    // `note` rather than a field, on `AUDIT_PROTOCOL`'s own terms — it is
+    // short, non-content and greppable, exactly like a discard reason or
+    // `step 3` — and it cannot go in `fields`, which means "what this write
+    // moved": `summary` did not move, and saying it did would make the audit
+    // log disagree with the item's own history.
+    ...(input.summaryUnchanged === true && item.summary !== null
+      ? { note: SUMMARY_UNCHANGED_NOTE }
+      : {}),
+  });
 
   return {
     id: item.id,

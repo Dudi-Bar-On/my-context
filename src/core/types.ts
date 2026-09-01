@@ -53,6 +53,27 @@ export interface Step {
   checked: boolean;
 }
 
+/**
+ * One summary this item USED to carry, and the date it stopped carrying it.
+ *
+ * Declared here beside `Observation`, `Relation` and `Step` rather than in
+ * `summary-history.ts`, for the reason those three are here: `types.ts` imports
+ * nothing, and a field of `Item` whose type lives in a module that imports
+ * `content-hash.ts` would put a type-only edge into every file that reads an
+ * item.
+ *
+ * `at` is a date, not a timestamp: the owner's ruling is that the history "does
+ * not take long space", and the hour a sentence was replaced answers no
+ * question anybody asks of it. `null` is the honest reading of an entry a
+ * person typed into the file without one — the entry is KEPT and re-rendered
+ * exactly as written rather than dropped or stamped with today, because
+ * markdown is the source of truth and byte-identity is the promise.
+ */
+export interface PreviousSummary {
+  at: string | null;
+  text: string;
+}
+
 export interface Item {
   id: string;
   type: string;
@@ -142,6 +163,47 @@ export interface Item {
    * which is a stale summary and is reported as one.
    */
   summaryOf: string | null;
+  /**
+   * **The summaries this item used to carry, newest first, capped at three.**
+   *
+   * Owner ruling: *"we could leave history of summaries that does not take long
+   * space and should not be injected."* Every clause of that sentence is a
+   * decision, and each is enforced somewhere different:
+   *
+   *  - **history** — an entry is appended by `reviseSummary` (summary-history.ts)
+   *    and by nothing else, at the one moment a summary is REPLACED. A cleared
+   *    summary is a replacement too; a re-stamp that leaves the text alone
+   *    (`--summary-unchanged`) is not, because nothing was replaced.
+   *  - **does not take long space** — `SUMMARY_HISTORY_MAX` is 3 and the oldest
+   *    drops off. Unbounded history in a file that must round-trip
+   *    byte-identically (`INV-markdown-is-the-source-of-truth`) is a slow leak,
+   *    and this field is the one part of an item that only ever grows.
+   *  - **should not be injected** — `renderItemBlock` and `renderIndexLine`
+   *    (render-item.ts) do not emit it, so `itemCost` does not charge for it and
+   *    no tier's budget moves. Pinned by test/core/summary-history.test.ts
+   *    rather than left to the budget to keep out: a history that quietly
+   *    started costing injection tokens would be worse than no history, because
+   *    what it costs tokens to say is what the item USED to say.
+   *
+   * **It is NOT part of `ContentShape`, and therefore not part of
+   * `itemSummaryBasis`.** That absence is load-bearing in exactly the way
+   * `summary`'s own absence from `ContentShape` is: appending to this list
+   * happens during the very write that sets the new summary, so a basis that
+   * covered it would be invalidated by the act of recording what it replaced —
+   * every summary born stale, and the field that exists to explain the
+   * staleness would be its cause. It is the trap `acknowledged` had to avoid
+   * for the same reason and one field further out.
+   *
+   * **Written to the frontmatter only when non-empty**, and absent from
+   * `computeItemChecksum` unless non-empty, for the reason `continuity`,
+   * `summary` and `acknowledged` are conditional: an unconditional key would
+   * move every recorded checksum in every corpus at once.
+   *
+   * Nothing is backfilled. Every item captured before this field existed has an
+   * empty history, which is the honest state — nothing was recorded, so there
+   * is nothing to record.
+   */
+  summaryWas: PreviousSummary[];
   /**
    * **Doctor findings a PERSON has ruled on, each anchored to the item as it
    * was when they ruled.** Keys are `Finding.code`; values are

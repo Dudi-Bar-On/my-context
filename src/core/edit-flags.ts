@@ -49,15 +49,26 @@ import { updatesFor } from './tag-projection.ts';
  * The flags `edit` spells itself, and therefore never derives.
  *
  * Moved out of `cli/commands/edit.ts` with the rest of the resolution, and it
- * is the ONE list in this module that is not derived from anything: these
- * eleven are what `cmdEdit`'s own code reads. The command binds them back
- * rather than keeping a copy, so a twelfth added there and not here would be
- * accepted by the parser and invisible to every builder — which is the exact
- * shape of drift this plan exists to end.
+ * is the ONE list in this module that is not derived from anything: these are
+ * what `cmdEdit`'s own code reads. The command binds them back rather than
+ * keeping a copy, so one added there and not here would be accepted by the
+ * parser and invisible to every builder — which is the exact shape of drift
+ * this plan exists to end.
+ *
+ * `summary-unchanged` is a SWITCH and is deliberately absent from `values`: it
+ * carries no text, and that is the whole of what it means. A builder that
+ * composed `--summary-unchanged "<something>"` would be offering to write the
+ * summary the flag exists to say nobody wrote.
  */
 export const EDIT_FLAGS: FlagSpec = {
   allowed: [
     'title', 'body', 'summary', 'scope', 'tags', 'severity', 'always', 'continuity', 'status',
+    // On its own line rather than folded into either neighbour: both of those
+    // lines are CITED verbatim by `README.md` and `docs/README.he.md`
+    // (`scripts/verify-citations.ts` matches the fragment as a substring of one
+    // line), and reflowing a list to add an entry is not a reason to break two
+    // documents.
+    'summary-unchanged',
     'extra', 'unlink', 'yes',
   ],
   values: ['title', 'body', 'summary', 'scope', 'tags', 'severity', 'status', 'extra'],
@@ -114,6 +125,15 @@ const BUILT_IN_DECLARATIONS: FlagDeclarations = {
       + 'omitting the flag leaves it alone. Writing one also records what it was written '
       + 'against, so a later edit to the body makes it measurably stale rather than quietly '
       + 'wrong.',
+  },
+  'summary-unchanged': {
+    note: 'Say that this edit does NOT change what the item means, so the summary it already '
+      + 'carries still describes it. An edit that moves the body, the steps, the observations '
+      + 'or the extra fields is refused without a new `--summary`, because nothing in this '
+      + 'product can write one for you; this is the answer for a typo, a reflow or a rewrapped '
+      + 'paragraph. It re-stamps what the summary was written against without new text, and the '
+      + 'audit row records that nobody rewrote it. It is refused beside `--summary`, on an item '
+      + 'with no summary, and on an edit that was never asked for one.',
   },
   always: {
     note: 'Pin the item: inject it in full at every session start. `--always=false` clears it, '

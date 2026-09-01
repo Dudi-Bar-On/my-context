@@ -1,4 +1,5 @@
 import { parseAcknowledged, renderAcknowledged } from './acknowledge.ts';
+import { parseSummaryWas, renderSummaryWas } from './summary-history.ts';
 import { parseFrontmatter, serializeFrontmatter, type FrontmatterValue } from './frontmatter.ts';
 import { checksum } from './slug.ts';
 import { validateLoadedId } from './vocabulary.ts';
@@ -52,7 +53,7 @@ export function isValidObservationCategory(category: string): boolean {
 
 const COMMON_KEYS = new Set([
   'id', 'type', 'title', 'status', 'severity', 'always', 'continuity', 'summary', 'summary_of',
-  'acknowledged', 'scope', 'tags', 'origin',
+  'summary_was', 'acknowledged', 'scope', 'tags', 'origin',
   'source_file', 'source_anchor', 'source_checksum', 'valid_from', 'valid_until', 'checksum',
 ]);
 
@@ -466,6 +467,18 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
     // `unanchored` rather than as a summary written against nothing in
     // particular. Both cases are `summaryState`'s to name, not this parser's.
     summaryOf: optString(fm, rawBlock, 'summary_of'),
+    // `[]` for every item that predates the field, which is every item in every
+    // corpus — and `[]` is "nothing has been replaced yet", which is the honest
+    // state rather than a missing one. Nothing is backfilled from anywhere:
+    // there is nowhere to backfill FROM (the audit log records that `summary`
+    // moved, never what it said), and inventing one would be recording a
+    // sentence nobody wrote.
+    //
+    // `parseSummaryWas` KEEPS an entry it cannot date rather than dropping it,
+    // which is the opposite of `parseAcknowledged` two lines down; its docblock
+    // argues why keeping is the safe direction for authored text and dropping
+    // is the safe direction for a hash.
+    summaryWas: parseSummaryWas(stringList(fm, 'summary_was')),
     // `{}` for every item that predates the field, which is every item in every
     // corpus — and `{}` is `acknowledgementState`'s `none`, so an item nobody
     // has ruled on reads exactly as it did before this field existed.
@@ -539,6 +552,25 @@ export function computeItemChecksum(item: Item): string {
     shape.summary = item.summary;
     shape.summary_of = item.summaryOf;
   }
+  // Added ONLY when the item has actually replaced a summary, for the reason
+  // `summary` directly above is conditional and stated once more because it is
+  // the only reason that matters: an unconditional key would move every
+  // recorded checksum in every corpus at once. No item in any corpus carries a
+  // history today, so every one of them hashes exactly as it did before this
+  // field existed, by construction.
+  //
+  // **It is covered rather than excluded**, on `acknowledged`'s argument
+  // directly below: the history is authored text stored in a file a person can
+  // edit, and a previous summary quietly rewritten — or deleted — is a claim
+  // about what this item used to say that nobody made. Covering it means such
+  // an edit leaves a stale checksum behind, which is what `doctor` and `repair`
+  // exist to notice.
+  //
+  // `renderSummaryWas` and not the array itself, because the stored shape is
+  // `{ at, text }` and the file's shape is one string per entry: hashing the
+  // objects would make the checksum depend on a key order no reader of the file
+  // can see.
+  if (item.summaryWas.length > 0) shape.summary_was = renderSummaryWas(item.summaryWas);
   // Added ONLY when a person has ruled on something, for the reason `summary`
   // directly above is conditional: an unconditional key would move every
   // recorded checksum in every corpus at once.
@@ -604,6 +636,21 @@ export function renderItem(item: Item): string {
     // Both keys move together, so a file never carries one without the other
     // — `summaryState` reads that pair, and half of it is `unanchored`.
     ...(item.summary === null ? {} : { summary: item.summary, summary_of: item.summaryOf }),
+    // Immediately after the summary it is the history OF, and emitted ONLY when
+    // the item has replaced one — `continuity`'s and `summary`'s reason again:
+    // an unconditional `summary_was: []` line would be added to every item in
+    // every corpus on the next write, which is
+    // `INV-markdown-is-the-source-of-truth`'s byte-identical round trip broken
+    // for all of them at once.
+    //
+    // NOT inside the `summary === null` guard above, unlike `summary_of`: a
+    // CLEARED summary is a replacement like any other, and an item whose
+    // summary was removed is precisely the one where a reader most needs to see
+    // what it used to say. The two keys above move as a pair because half of
+    // that pair is `unanchored`; this one is independent of both.
+    ...(item.summaryWas.length === 0
+      ? {}
+      : { summary_was: renderSummaryWas(item.summaryWas) }),
     // Emitted ONLY when a person has actually ruled on something, for
     // `continuity`'s and `summary`'s reason above: an unconditional
     // `acknowledged: []` line would add a line to every item in every corpus on

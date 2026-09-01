@@ -469,7 +469,23 @@ export const UPDATE_FIELD_POLICY = {
   continuity: 'gated',
   severity: 'gated',
   status: 'gated',
-} as const satisfies Record<Exclude<keyof UpdateInput, 'id' | 'origin'>, FieldPolicy>;
+  // `summaryUnchanged` is excluded alongside `id` and `origin`, and the
+  // exclusion is this table's own rule rather than an exemption from it: the
+  // header says "every field of `UpdateInput` that names ITEM DATA", and those
+  // three name none. `id` says which item, `origin` says who is asking, and
+  // `summaryUnchanged` says that this edit leaves the summary's text true —
+  // there is no value it can put on disk, nothing for a revision to carry and
+  // nothing for a guard to refuse, so classifying it `content` or `gated` would
+  // make both assertions below false about it.
+  //
+  // What DOES govern it is stricter than either class and lives at the two
+  // surfaces that accept it (`summaryUnchangedRefusal`, summary-gate.ts): it is
+  // refused beside `summary`, refused on an item with no summary, and refused
+  // on any edit that does not raise the gate — so it can never widen what an
+  // agent may change, only answer a question the gate asked.
+} as const satisfies Record<
+  Exclude<keyof UpdateInput, 'id' | 'origin' | 'summaryUnchanged'>, FieldPolicy
+>;
 
 type UpdateField = keyof typeof UPDATE_FIELD_POLICY;
 type FieldOfPolicy<P extends FieldPolicy> =

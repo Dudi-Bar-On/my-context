@@ -25,7 +25,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   SUMMARY_BASIS, itemSummaryBasis, stampSummary, summaryState, summaryStalenessNote,
@@ -445,7 +445,18 @@ test('an extra field named summary or summary_of is refused as the collision it 
 
 // --- the CLI ----------------------------------------------------------------
 
-test('mycontext add --summary writes one, and show discloses it once it goes stale', () => {
+/**
+ * **The gate and the net, in one test, because they are one ruling.**
+ *
+ * This used to reach `stale` by running `mycontext edit --body` with no
+ * summary. That route is now REFUSED (owner ruling: a summary follows its
+ * body), so the only way a summary can still go stale is the one the gate
+ * cannot see and the net exists for: a hand-edited `.md`, which
+ * markdown-as-source-of-truth explicitly permits. Both halves are asserted
+ * here — the refusal, and the staleness that survives it — because dropping
+ * either would leave the other looking like the whole mechanism.
+ */
+test('edit refuses a body change with no summary, and a HAND edit still goes stale', () => {
   const box = sandbox();
   try {
     const lines: string[] = [];
@@ -463,8 +474,19 @@ test('mycontext add --summary writes one, and show discloses it once it goes sta
     assert.doesNotMatch(lines.join('\n'), /STALE/, 'a current summary is not accused');
 
     lines.length = 0;
-    assert.equal(runCli(['edit', id, '--body', 'Rewritten.', '--yes'], box.cwd, out), 0,
-      lines.join('\n'));
+    assert.equal(runCli(['edit', id, '--body', 'Rewritten.', '--yes'], box.cwd, out), 1,
+      'a body change with no summary is refused, not applied and left stale');
+    const refusal = lines.join('\n');
+    assert.match(refusal, /Nothing was changed/);
+    assert.match(refusal, /screen says it checked/,
+      'the refusal shows what the summary currently says, so the writer can judge how much ' +
+      'of it has to move');
+
+    // The hand edit: the one route the gate cannot reach, and the reason
+    // `summary_stale` stays exactly as it is.
+    const file = path.join(box.root, 'items', 'rule', `${id}.md`);
+    writeFileSync(file, readFileSync(file, 'utf8').replace('Because they outlive', 'Rewritten by'));
+
     lines.length = 0;
     assert.equal(runCli(['show', id], box.cwd, out), 0);
     const shown = lines.join('\n');
@@ -548,9 +570,15 @@ test('create_item takes a summary, and get_item labels it once it goes stale', (
     assert.match(before, /^summary: /m, 'the summary is part of the item a model reads back');
     assert.doesNotMatch(before, /STALE/);
 
-    registry.call('update_item', {
-      id: 'LESSON-the-check-never-ran', body: 'Rewritten entirely.',
-    });
+    // A hand edit, for the reason the CLI test above gives: `update_item` with
+    // a body and no summary is now refused, so the only remaining route to a
+    // stale summary is a file edited outside the tool — which is exactly the
+    // case a model reading an item back most needs to be warned about, because
+    // nothing told it the file had moved.
+    const file = path.join(
+      box.root, 'items', 'lesson', 'LESSON-the-check-never-ran.md',
+    );
+    writeFileSync(file, readFileSync(file, 'utf8').replace('reported a zero', 'reported nothing'));
     const after = registry.call('get_item', { id: 'LESSON-the-check-never-ran' });
     assert.match(after, /^summary: /m, 'still shown — nothing is withheld');
     assert.match(after, /STALE/,

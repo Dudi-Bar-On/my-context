@@ -181,24 +181,21 @@ export function freshMs(): number | null {
  * `null` when the shared module did not load, which is the same degradation
  * every other reader of it takes: the block goes rather than being guessed.
  *
- * ── NOTHING IN THIS FILE CALLS IT TODAY, AND THAT IS STATED RATHER THAN
- *    HIDDEN BEHIND A COMMENT THAT IMPLIES OTHERWISE ────────────────────────
- *
- * `askSegment` drew `◆ ask 85 · +3.2` until the used-of-maximum ruling of
- * 2026-09-01 replaced that rendering with a bar, a proportion and the pair
- * `(81.8 / 85)` — from which a reader subtracts the same distance, in the same
- * units, without this function. It is KEPT rather than deleted for two
- * reasons, both checkable:
- *
- *   1. `loadBands` refuses a `viewmodel.js` that does not export
- *      `askHeadroom`, which is a contract check on the shared module's SHAPE
- *      and is worth having whether or not the terminal draws the number.
- *   2. The owner's ruling of 2026-08-31 — *"the distance is worth reading at
- *      any fill"* — was answered by a figure this bar no longer prints. The
- *      counts carry the same two numbers, so nothing is lost that cannot be
- *      recovered by arithmetic, but that IS a change to a ruled behaviour and
- *      it is flagged for the owner rather than quietly absorbed. If the answer
- *      is "put the number back", this is what puts it back.
+  * ── IT WENT UNCALLED FOR ONE REVIEW CYCLE, AND THE RECORD IS KEPT ──────
+  *
+  * The first cut of the used-of-maximum ruling replaced `◆ ask 85 · +3.2` with
+  * the count pair `(81.8 / 85)`, on the reasoning that both figures were there
+  * and the gap was one subtraction away — which left this function with no
+  * caller at all. That was reported to the owner as a change to a RULED
+  * behaviour rather than absorbed silently, and the owner ruled the number
+  * back the same day: a distance a reader has to compute is not one they read
+  * at a glance. `askSegment` calls it again, and the ask block now carries the
+  * bar, the proportion, the counts AND the gap.
+  *
+  * The episode is worth the eight lines it costs. A function that goes
+  * uncalled is usually deleted; this one was a ruled behaviour losing its last
+  * consumer, and the only thing that made that visible was saying so plainly
+  * in a comment instead of leaving it to be discovered.
  */
 export function headroomFor(percent: number, threshold: number | null): number | null {
   if (BANDS === null) return null;
@@ -1301,19 +1298,54 @@ export function askSegment(occ: OccupancyView, threshold: number | null): Segmen
   // immediately beside it and subtracts in the reader's head. This is the
   // shape the owner ruled every used-of-max field takes.
   //
-  // **What this replaced, said plainly:** until today the block drew
-  // `◆ ask 85 · +3.2` — the distance, as one number, by the owner's ruling of
-  // 2026-08-31. The pair above carries both figures the subtraction needs, so
-  // the distance is still readable, but it is no longer PRINTED. That is a
-  // change to a ruled behaviour; `headroomFor` is kept against the owner
-  // asking for the number back, and the lane report flags it.
+  // ── AND THE HEADROOM IS PRINTED BESIDE IT — owner ruling, 2026-09-01 ──────
+  //
+  // The first cut of this block dropped the printed distance, on the reasoning
+  // that `(65.0 / 85)` carries both figures and the gap is one subtraction
+  // away. That was flagged to the owner rather than absorbed, and the owner
+  // ruled the number back: the 2026-08-31 ruling is that *the distance to the
+  // ask is worth reading at any fill*, and a distance a reader has to COMPUTE
+  // is not one they read at a glance. So the block carries all four — bar,
+  // proportion, counts, and the gap.
+  //
+  // **`+` is what makes it a DISTANCE rather than a fourth ratio.** Nothing
+  // else on this bar wears a leading plus: `%` marks a proportion, `$` money,
+  // `·` a trailing qualifier. It is also the exact token the owner has been
+  // reading since 2026-08-31 — `+59.9`, `+3.2` — so it is recognised rather
+  // than learned, and it rides the `·` the countdown already uses because it
+  // is the same kind of thing: a qualifier after the figure, not part of it.
+  //
+  // **One decimal, always**, for the reason the superseded block gave and
+  // which has not changed: this is the figure that MOVES, and a gap showing
+  // `+3` for anything between 2.5 and 3.5 hides the last message before the
+  // ask. Percentage POINTS of the window — the same units as the count pair
+  // beside it and the ctx figure one block along.
+  //
+  // The subtraction is IMPORTED (`headroomFor`, and through it
+  // `lib/viewmodel.js`'s `askHeadroom`), never repeated here: the web strip
+  // draws the same distance, and two spellings of one arithmetic is how two
+  // surfaces come to disagree about one number.
+  //
+  // It appears at NO other fill state than this one. Past the ask the block is
+  // `◆ handover due` and returned above, so a negative gap or a `+0.0` can
+  // never be printed beside the words — that would be two answers to one
+  // question. With no threshold configured, and for a fossil, the whole block
+  // is already `null`: nothing is claimed about proximity to an ask that does
+  // not exist, or from a reading that is not current.
+  //
+  // `null` degrades to NO SUFFIX rather than to no block. Unreachable today —
+  // `headroomFor` answers `null` only when the shared module did not load, and
+  // `levelFor` has already returned `null` for that above — but losing the
+  // bar, the proportion and the counts because one trailing figure went
+  // missing would be the wrong trade if that ever stopped being true.
+  const headroom = headroomFor(occ.percent, threshold);
   return usedOfMaxSegment({
     field: 'ask',
     label: 'ask',
     percent: (occ.percent / threshold) * 100,
     counts: `(${occ.percent.toFixed(1)} / ${ask})`,
     decimals: 0,
-    suffix: '',
+    suffix: headroom === null ? '' : ` ·+${headroom.toFixed(1)}`,
     give: GIVE.handoverDue,
     ageMs: occ.ageMs,
   });

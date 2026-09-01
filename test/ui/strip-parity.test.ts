@@ -127,7 +127,7 @@ const FULL: PowerlineInput = {
   branch: 'campaign/my-context-test',
   sessionName: 'walk lane',
   focus: 'plan:walk seq:118',
-  occupancy: { state: 'known', percent: 25.1, ageMs: 1000 },
+  occupancy: { state: 'known', percent: 25.1, ageMs: 1000, usedTokens: Math.round((25.1) * 10_000), windowSize: 1_000_000 },
   threshold: 85,
   fiveHour: { usedPercent: 16, resetsAt: 1_800_000_000 },
   sevenDay: { usedPercent: 49, resetsAt: 1_800_000_000 },
@@ -148,8 +148,11 @@ const NOTED: PowerlineInput = {
 };
 
 function emitted(input: PowerlineInput): Segment[] {
-  const { identity, state } = buildLines(input, Date.now());
-  return [...identity, ...state];
+  // ALL THREE rows since the owner's three-row ruling of 2026-09-01. A group
+  // left out here would make every field on it invisible to the parity scan,
+  // which is the derivation quietly becoming a hand-kept list again.
+  const { identity, window, account } = buildLines(input, Date.now());
+  return [...identity, ...window, ...account];
 }
 
 const RENDERED: Segment[] = [...emitted(FULL), ...emitted(NOTED)];

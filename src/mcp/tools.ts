@@ -11,8 +11,11 @@ import { summaryStalenessNote } from '../core/content-hash.ts';
 import { renderItem } from '../core/item.ts';
 import {
   createItem, supersedeItem, updateItem,
-  type MutationContext,
+  type MutationContext, type UpdateInput,
 } from '../core/mutate.ts';
+import {
+  summaryRequired, summaryRequiredRefusal, summaryUnchangedRefusal,
+} from '../core/summary-gate.ts';
 import { linkItems } from '../core/relations.ts';
 import { extraFieldNames, resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
 import { buildInjection } from '../core/inject.ts';
@@ -571,6 +574,20 @@ const SPECS: ToolSpec[] = [
           'review on a governing normative item like title and body. Pass "" to remove ' +
           'the existing summary',
       },
+      // The escape hatch for the gate below, and the description says the one
+      // thing a caller cannot infer: it is an assertion about MEANING, not a
+      // way to skip a step. See `UpdateInput.summaryUnchanged`.
+      summary_unchanged: {
+        type: 'boolean',
+        description:
+          'Say that this edit does NOT change what the item means, so the summary it already ' +
+          'carries still describes it. An edit that moves the body, steps, observations or ' +
+          'extra fields is REFUSED without a new "summary", because nothing in this product ' +
+          'can write one; this is the answer for a typo, a reflow or a rewrapped paragraph. It ' +
+          're-stamps what the summary was written against without new text, and the audit log ' +
+          'records that nobody rewrote it. Refused beside "summary", on an item with no ' +
+          'summary, and on an edit that was never asked for one',
+      },
       scope: { ...S_STRINGS, description: 'Refused on a governing normative item' },
       tags: S_STRINGS,
       severity: { ...S_STRING, enum: SEVERITIES, description: 'Refused on a governing normative item' },
@@ -588,19 +605,52 @@ const SPECS: ToolSpec[] = [
           'it is staged for review on a governing normative item like title, body and tags',
       },
     }, ['id']),
-    run: (cwd, args) => withWorkspace(cwd, (ctx) => updateItem(ctx, {
-      id: str(args, 'id', 'update_item'),
-      title: optStr(args, 'title'),
-      body: optStr(args, 'body'),
-      summary: optStr(args, 'summary'),
-      scope: optList(args, 'scope'),
-      tags: optList(args, 'tags'),
-      severity: optEnum<Severity>(args, 'severity', SEVERITIES, 'capture'),
-      always: optBool(args, 'always'),
-      status: optEnum<Status>(args, 'status', STATUSES, 'workflow'),
-      extra: optExtra(args),
-      origin: 'agent',
-    }).message),
+    run: (cwd, args) => withWorkspace(cwd, (ctx) => {
+      const id = str(args, 'id', 'update_item');
+      const patch: UpdateInput = {
+        id,
+        title: optStr(args, 'title'),
+        body: optStr(args, 'body'),
+        summary: optStr(args, 'summary'),
+        summaryUnchanged: optBool(args, 'summary_unchanged') ?? undefined,
+        scope: optList(args, 'scope'),
+        tags: optList(args, 'tags'),
+        severity: optEnum<Severity>(args, 'severity', SEVERITIES, 'capture'),
+        always: optBool(args, 'always'),
+        status: optEnum<Status>(args, 'status', STATUSES, 'workflow'),
+        extra: optExtra(args),
+        origin: 'agent',
+      };
+      // **The summary gate, on the second of its two AUTHORED surfaces.**
+      //
+      // `mycontext edit` is the human one; this is the agent's, and the ruling
+      // applies here at least as hard: an agent rewriting a body is holding the
+      // new text in the same turn, and writing one plain sentence about it is
+      // the cheapest it will ever be. It also closes the staging path without
+      // touching it — on a category set to `agentEdits: "review"` the summary
+      // is staged WITH the body, so the promotion a human later approves lands
+      // both rather than landing a body against an old summary.
+      //
+      // It is applied HERE and not inside `updateItem`, and that placement is
+      // the whole of the caller audit: `updateItem` is the road every internal
+      // mechanical write drives down — a promoted revision, a pack import, a
+      // status change from `review promote`, `refresh_item`'s re-snapshot of a
+      // file — and none of those is a person holding new prose. A gate there
+      // would refuse them all.
+      //
+      // `ctx.store.get` rather than a second lookup helper: `updateItem` will
+      // refuse an unknown id in its own words a line later, so a null here just
+      // falls through to that refusal instead of growing a second one.
+      const item = ctx.store.get(id);
+      if (item) {
+        const hatchRefusal = summaryUnchangedRefusal(item, patch, 'update_item');
+        if (hatchRefusal) throw new Error(hatchRefusal);
+        if (summaryRequired(item, patch)) {
+          throw new Error(summaryRequiredRefusal(item, 'update_item'));
+        }
+      }
+      return updateItem(ctx, patch).message;
+    }),
   },
   {
     // The agent-facing half of `mycontext refresh`. It takes an id and NO
