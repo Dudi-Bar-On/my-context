@@ -1038,8 +1038,8 @@ details.help[open]>summary{margin-block-end:6px}
 .sgrp-session .slab{color:var(--ok)}
 .sgrp-audit .slab{color:var(--warn)}
 .sgrp-model .slab{color:var(--carry)}
-.sgrp-window .slab{color:var(--dim)}
-.sgrp-cost .slab{color:var(--dim)}
+.sgrp-window .slab{color:var(--ink)}
+.sgrp-cost .slab{color:var(--ink)}
 .sgrp-limits .slab{color:var(--carry)}
 /* The context group is still the one item allowed to give way. It is now
    wrapped in its provenance group, so the `flex:1 1 auto` that used to be
@@ -1320,8 +1320,24 @@ details.help[open]>summary{margin-block-end:6px}
 
    Measured on `--panel`: `--dim` #a9a6b8 at 7.51:1, so quiet is not
    invisible. */
+/* **NO COLOUR HERE, and that is the whole point of the rule.** This selector
+   is `(0,2,0)` -- exactly what `.sgrp-repo .slab` and its seven siblings above
+   measure -- and it sits LATER in the file, so a `color` declared here silently
+   beat all eight of them. Every slab inside the strip rendered one hue and only
+   the header's kept its own, which is why `e2e/strip.spec.ts` measured two
+   hues where it requires more than three.
+
+   The owner's ruling that put a colour here was *"for the category color choose
+   something that is more alive, currently it looks very dimmed"* -- a complaint
+   about `--dim`, not a request for uniformity. It is honoured above instead, by
+   lifting the two `--dim` groups (`window`, `cost`) to `--ink`: nothing is dim
+   any more, the five hues survive, and no sixth meaning-hue is spent
+   (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`).
+
+   Size and weight still do the separating -- 10.5px/600 against the labels'
+   12px/700, plus the wider tracking -- and they do it in every hue. */
 .strip .slab{text-transform:uppercase;letter-spacing:.08em;
-  font-size:var(--fs-000,10.5px);font-weight:600;color:var(--ink)}
+  font-size:var(--fs-000,10.5px);font-weight:600}
 /* **BRIGHTER, on the owner's second look**: *"for the category color choose
    something that is more alive, currently it looks very dimmed"*. `--dim` was
    my recommendation and it was wrong in practice.
@@ -1437,7 +1453,7 @@ details.help[open]>summary{margin-block-end:6px}
    parity tests already count, and it is what `e2e/strip-fields.spec.ts`
    enumerates. Anything that is a field gets the pill's metrics, including a
    field added next month that nobody thought to give a class. */
-.strip .sgrp [data-f]{font-size:11px;line-height:16px;font-weight:700;
+.strip .sgrp [data-f],.strip .sgrp .chip{font-size:11px;line-height:16px;font-weight:700;
   padding:3px 5px;box-sizing:border-box;border-radius:3px;
   /* **THE OUTLINE IS THE INK.** Owner, 2026-09-01: "every field that has text
      content that is changing color according to state or status should set
@@ -1601,6 +1617,13 @@ details.help[open]>summary{margin-block-end:6px}
 /* Stated, so an identifier in the strip cannot shrink back under the prose
    step `.m`'s .87em would hand it — see --fs-strip-mono. */
 .strip .m{font-size:var(--fs-strip-mono)}
+/* **THE OP IS THE BLUE ONE.** Owner, 2026-09-01: *"last subagent-stop under
+   audit at status bar should be in blue"*. The audit clock's string is
+   `last {mv:op}, {age} ago`, and `{mv:...}` already renders the op as its own
+   `.m` run -- so the op can be coloured without touching the age beside it, and
+   without a second string. `--carry` is the blue, and it is the same hue the
+   terminal already gives this row's neighbour (`INK.carry`). */
+.strip [data-f="last-audit"]:not(.warn) .m{color:var(--carry)}
 /* NOT MEASURED / NOT READ, drawn as a chip rather than left blank.
    STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is: "a blank is
    indistinguishable from a failure to load, and a reader who cannot tell
@@ -4157,7 +4180,7 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
              one that decides a context sample is too old to present as current
              - the block goes warn. No threshold is spelled here. -->
         <span class="sprop" data-t="strip.log">last <span class="m v" data-v="op">subagent-stop</span>, <span class="v" data-v="age">4m</span> ago</span>
-        <span class="chip warn" data-g="&#9650;" data-t="strip.logQuiet" data-t-title="title.log" title="Nothing has been appended to the audit log for longer than a context sample stays current.">nothing logged for <span class="v" data-v="age">3h20m</span></span>
+        <span class="chip warn" data-g="&#9650;" data-t="strip.logQuiet" data-t-title="title.log" title="Nothing has been appended to the audit log for longer than a context sample stays current.">last <span class="m v" data-v="op">subagent-stop</span>, <span class="v" data-v="age">3h20m</span> ago</span>
         <span class="sprop" data-t="strip.logEmpty">nothing recorded yet</span>
         <span class="chip warn" data-g="&#9650;" data-t="strip.logUnreadable" data-t-title="title.log" title="The audit projection could not be opened, so when the log last moved is unknown rather than never.">audit log unreadable</span>
       </span>

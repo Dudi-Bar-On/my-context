@@ -149,7 +149,7 @@ import { markdownNodes } from '/screens/docs.js';
 // inside a DOM builder is a decision table no test can reach.
 import {
   CONTEXT_FILL_CRIT_PERCENT, CONTEXT_FILL_WARN_PERCENT, CONTEXT_SAMPLE_FRESH_MS,
-  askHeadroom, contextStrip, corpusDrift, fillLevel, fmtCount, formatAge, untilReset,
+  askHeadroom, contextStrip, corpusDrift, fillLevel, fmtCount, formatAge, formatDuration,
   occupancyBands, occupancyLevel, usageBar, usageLevelOf,
 } from '/lib/viewmodel.js';
 // The rail's Coverage-gaps badge counts the SAME directories the gaps table
@@ -3213,14 +3213,40 @@ function fitStrip() {
 
     let best = null;
     let bestCut = cut[worst];
+    // **THE EVENEST ARRANGEMENT THAT FITS, not the first one that does.** Owner,
+    // 2026-09-01: *"it also should layout more balanced and evenly located in
+    // the rows"*.
+    //
+    // `stripCompositions` enumerates largest-first-row first -- five groups over
+    // two rows arrive as `[4,1]`, `[3,2]`, `[2,3]`, `[1,4]` -- and this loop used
+    // to BREAK on the first one under the slack. `[4,1]` clears the threshold, so
+    // the bar settled on four groups crowded onto one row and a single group
+    // alone on the next, and never looked at `[3,2]` sitting one step behind it.
+    //
+    // Fitting is a THRESHOLD, not a score: every arrangement under the slack is
+    // equally uncut, so among them the tie is broken by evenness rather than by
+    // enumeration order. Only when nothing fits does the smallest deficit win --
+    // there the number is a real measure of harm, and balance is not worth a cut
+    // word.
+    let fit = null;
+    const spread = (c) => [Math.max(...c), Math.max(...c) - Math.min(...c)];
+    const evener = (a, b) => {
+      const [aMax, aSpread] = spread(a);
+      const [bMax, bSpread] = spread(b);
+      return aMax !== bMax ? aMax < bMax : aSpread < bSpread;
+    };
     const was = splits[worst];
     for (const comp of stripCompositions(stripPlan[worst].length, want)) {
       splits[worst] = comp;
       layoutStrip(strip, splits);
       const now = stripDeficit(worst);
-      if (now <= STRIP_SLACK) { best = comp; bestCut = now; break; }
+      if (now <= STRIP_SLACK) {
+        if (fit === null || evener(comp, fit)) { fit = comp; bestCut = now; }
+        continue;
+      }
       if (now < bestCut) { best = comp; bestCut = now; }
     }
+    if (fit !== null) best = fit;
     if (best === null) {
       // The extra row bought nothing — a group whose own content is wider than
       // the whole bar cannot be helped by moving it, and spending 38px to draw
@@ -3283,6 +3309,31 @@ function watchStripFit(strip) {
   };
   const watcher = new MutationObserver(queue);
   watcher.observe(strip, { childList: true, subtree: true, characterData: true });
+  // ── AND WHEN THE WINDOW CHANGES SIZE — owner, 2026-09-01: *"the browsers sizes
+  //    changed and we need to fit the bar to the available space"*.
+  //
+  // A `MutationObserver` alone sees only the bar's own CONTENT. Every reason the
+  // strip needs refitting that comes from OUTSIDE it — the window resized, the
+  // rail opened, the zoom changed — mutated nothing in here and so raised
+  // nothing at all, and the arrangement stayed whatever the width at first paint
+  // had earned. A bar that fits at 2273px and is cut at 1280px was only ever one
+  // drag of a window edge away.
+  //
+  // **Width only.** Adding a row changes the strip's HEIGHT, and a height change
+  // is this observer watching its own tail — it would queue a fit, which adds a
+  // row, which queues a fit. The remembered width is what breaks that loop:
+  // nothing the fit itself does to the bar can change the width the shell gives
+  // it, so a width that has genuinely moved is always someone else's doing.
+  if (typeof ResizeObserver === 'function') {
+    let lastWidth = null;
+    const sizer = new ResizeObserver((entries) => {
+      const width = Math.round(entries[0]?.contentRect.width ?? 0);
+      if (width === lastWidth) return;
+      lastWidth = width;
+      queue();
+    });
+    sizer.observe(strip);
+  }
   if (typeof ResizeObserver === 'function') new ResizeObserver(queue).observe(strip);
 }
 
@@ -4621,19 +4672,35 @@ function drawIdentity(view) {
     // Absent when the payload carried no duration, which draws nothing rather
     // than `0m`: a session whose length nobody reported is not one that has
     // just started.
-    if (view.elapsedMs !== null) {
-      // NAMED like every other field. It carries no bar — it is a duration,
-      // not an amount used out of a maximum — so it takes the label alone and
-      // none of the banding. The ruling is that every field says what it is,
-      // not that every field is a used-of-maximum field.
-      parts.push((
-        keyed('strip.elapsed', { elapsed: formatAge(view.elapsedMs) },
-          { field: 'elapsed', cls: 'small', nameKey: 'strip.grp.elapsed',
-            titleKey: 'title.elapsed' })));
-    }
     // A payload that carried neither is not a session that cost nothing. The
-    // named unread state, never an invented `$0.00`.
+    // named unread state, never an invented `$0.00`. Checked BEFORE the elapsed
+    // field is pushed, so this group's unread state still means what it meant:
+    // a field that is always present would otherwise make it unreachable.
     if (parts.length === 0) parts.push(stateChip('strip.unread', 'title.unread'));
+    // ── HOW LONG THIS SESSION HAS RUN — ALWAYS DRAWN, and named when there is
+    //    nothing to draw.
+    //
+    // NAMED like every other field. It carries no bar — it is a duration, not
+    // an amount used out of a maximum — so it takes the label alone and none of
+    // the banding. The ruling is that every field says what it is, not that
+    // every field is a used-of-maximum field.
+    //
+    // It used to be drawn only when the payload reported a duration, which is
+    // why `e2e/strip.spec.ts`'s parity gate was red: `elapsed` was the ONE id
+    // the terminal drew and no scenario here ever reached. A field nobody can
+    // see in any state is not a field the strip draws, and the strip is a
+    // SUPERSET by the owner ruling of 2026-09-01. So the absent case is drawn
+    // and NAMED rather than skipped — `STD-a-measured-zero-is-drawn-and-named`,
+    // whose whole point is that a blank and a zero must not look alike.
+    //
+    // `formatDuration` and not `formatAge`, spaced, because the terminal spells
+    // this field `5d 8h` and `formatAge` rounded it to `5d`. Owner ruling,
+    // 2026-09-01: the same field carries the same value on both surfaces.
+    const ran = formatDuration(view.elapsedMs, ' ');
+    parts.push((
+      keyed('strip.elapsed', { elapsed: ran ?? '—' },
+        { field: 'elapsed', cls: ran === null ? 'small unmeas' : 'small',
+          nameKey: 'strip.grp.elapsed', titleKey: 'title.elapsed' })));
     cost.replaceChildren(...parts);
   }
 
@@ -4780,9 +4847,27 @@ function auditClockParts(view) {
   // silence either: the row is there and its date is not readable.
   if (!Number.isFinite(at)) return [keyed('strip.logUnreadable', {}, 'chip warn', '▲')];
   const ageMs = Math.max(0, Date.now() - at);
-  const age = formatAge(ageMs);
+  // `formatDuration`, matching the terminal's `since` exactly: this field is on
+  // both surfaces, so it carries the same value at the same resolution.
+  const age = formatDuration(ageMs);
+  // ── STALE SAYS THE SAME THING, IN A DIFFERENT COLOUR — owner ruling,
+  //    2026-09-01: *"terminal shows the last audit while the bar shows that
+  //    nothing was loged from"*, and then *"fix it to be exact as the terminal"*.
+  //
+  // This branch used to draw "nothing logged for 13h", which was FALSE wherever
+  // it appeared: a row that is thirteen hours old is a row that was logged. It
+  // also dropped the op — the one fact a reader wants most at exactly the moment
+  // the log has gone quiet — and it disagreed with the terminal, which keeps
+  // `SubagentStop ·13h45m` and moves only its INK: *"Blue while it is merely a
+  // fact; warn once it IS the finding."*
+  //
+  // So the words are now the same words, and the WARN CHIP plus the ▲ carry the
+  // whole of the warning. The key survives with the same sentence on purpose:
+  // the KEY is what distinguishes the state (colour, glyph, and the design of
+  // record's own segment ledger), the TEXT is the fact, and the fact did not
+  // change when it got old. `INV-nothing-is-dropped-silently`.
   if (ageMs > CONTEXT_SAMPLE_FRESH_MS) {
-    return [keyed('strip.logQuiet', { age }, 'chip warn', '▲')];
+    return [keyed('strip.logQuiet', { op: last.op, age }, 'chip warn', '▲')];
   }
   return [keyed('strip.log', { op: last.op, age }, 'sprop')];
 }
@@ -5123,6 +5208,14 @@ function rateLimitParts(view) {
     { key: 'strip.rl7', window: view.rate.sevenDay, field: 'rate-7d', nameKey: 'strip.grp.rate7' },
   ];
   let worst = null;
+  // **WHICH WINDOW EARNED THE VERDICT.** Owner, 2026-09-01: *"i think i
+  // understand the limit near just didn't remember it relates to the 7D usage,
+  // we should add a label or some other way to make user understand this
+  // field"*. The chip is a verdict over BOTH windows and said only "limit
+  // near", so a reader who had not just read the code could not tell whether
+  // the five-hour or the seven-day allowance was the one filling up -- and
+  // those two call for different actions. The name travels with the level.
+  let worstName = null;
   for (const { key, window, field, nameKey } of windows) {
     if (window === null) continue;
     const span = document.createElement('span');
@@ -5148,21 +5241,21 @@ function rateLimitParts(view) {
     span.dataset.f = field;
     span.append(...translate(table.strings, key, {
       pct: String(Math.round(window.usedPercent)),
-      // `resetsAt` is SECONDS; `untilReset` takes milliseconds. Clamped at zero
+      // `resetsAt` is SECONDS; `formatDuration` takes milliseconds. Clamped at zero
       // so a window whose reset moment has passed but whose payload has not
       // been rewritten yet reads "now" rather than a negative countdown.
       //
-      // **`untilReset`, NOT `formatAge`** \u2014 owner ruling, 2026-09-01: "add the
+      // **`formatDuration`, NOT `formatAge`** \u2014 owner ruling, 2026-09-01: "add the
       // minutes too as it is in the status line in terminal". `formatAge`
       // answers "how old is this" and drops to one unit deliberately; a
       // COUNTDOWN is a different question. `23h` is the same string for a
       // window resetting in twenty-three hours and one resetting in twenty-
       // three hours fifty-five, and this is the figure a reader uses to decide
-      // whether to wait. `untilReset` is the terminal's own `until` rule, so
+      // whether to wait. `formatDuration` is the terminal's own `until` rule, so
       // neither bar can say a thing the other does not.
       reset: window.resetsAt === null
         ? '\u2014'
-        : untilReset(Math.max(0, window.resetsAt * 1000 - Date.now())),
+        : formatDuration(Math.max(0, window.resetsAt * 1000 - Date.now())),
     }));
     // The same four levels the terminal bands these with, and the NAME comes
     // from the string table rather than from the value: `strip.rl5` used to
@@ -5180,8 +5273,10 @@ function rateLimitParts(view) {
     // uses — see the note above. This read `occupancyLevel` against the
     // handover threshold until 2026-09-01, which meant the chip and the
     // terminal's block could disagree about one window.
-    if (level === 'crit') worst = 'crit';
-    else if (level === 'warn' && worst === null) worst = 'warn';
+    // `crit` always overwrites, `warn` only claims an empty verdict, so the
+    // name that survives is always the name of the window the verdict is about.
+    if (level === 'crit') { worst = 'crit'; worstName = nameKey; }
+    else if (level === 'warn' && worst === null) { worst = 'warn'; worstName = nameKey; }
   }
   if (worst !== null) {
     const chip = document.createElement('span');
@@ -5195,14 +5290,17 @@ function rateLimitParts(view) {
     // uniform while calm and ragged when something needs attention is wrong
     // exactly when it is being read.
     chip.dataset.f = 'rate-verdict';
+    // `{mv:win}` in both tables, so the Latin `7d` stays isolated and monospaced
+    // inside the Hebrew sentence rather than reordering it.
+    const win = worstName === null ? '' : flat(table.strings, worstName);
     if (worst === 'crit') {
       chip.dataset.g = '\u25a0';
       chip.dataset.k = 'strip.rlAt';
-      chip.append(...translate(table.strings, 'strip.rlAt'));
+      chip.append(...translate(table.strings, 'strip.rlAt', { win }));
     } else {
       chip.dataset.g = '\u25b2';
       chip.dataset.k = 'strip.rlNear';
-      chip.append(...translate(table.strings, 'strip.rlNear'));
+      chip.append(...translate(table.strings, 'strip.rlNear', { win }));
     }
     chip.title = flat(table.strings, 'title.rate');
     out.push(chip);

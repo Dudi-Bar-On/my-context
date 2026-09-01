@@ -1025,15 +1025,7 @@ export function fmtCount(n: number): string {
  * not a session zero minutes old.
  */
 export function elapsed(ms: number | null): string | null {
-  if (ms === null || !Number.isFinite(ms) || ms < 0) return null;
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return 'now';
-  const days = Math.floor(minutes / 1440);
-  const hours = Math.floor((minutes % 1440) / 60);
-  const mins = minutes % 60;
-  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
-  if (hours > 0) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-  return `${mins}m`;
+  return ms === null ? null : formatDuration(ms, ' ');
 }
 
 
@@ -1214,6 +1206,44 @@ function fmtK(n: number): string {
 }
 
 /**
+ * **THE ONE SPELLING OF A DURATION ON THIS SURFACE**, and the twin of
+ * `formatDuration` in `src/ui/public/lib/viewmodel.js`.
+ *
+ * This arithmetic was written out THREE times in this file -- `until`, `since`
+ * and `elapsed` -- and a fourth time in `viewmodel.js`, which is why the web
+ * bar drew `5d` where this bar drew `5d 8h` for the same millisecond count.
+ * The doc that used to sit above `elapsed` already flagged it: *"a single
+ * spelling would be tidier ... `since` and `until` are one edit away from
+ * either answer."* The owner picked the answer on 2026-09-01: *"every field
+ * that is also displayed on the terminal status line should have exactly the
+ * same value in the web status bar full resolution"*.
+ *
+ * **Why a copy and not an import.** `viewmodel.js` is untyped JavaScript and
+ * `tsconfig.json` sets no `allowJs`, so a static import of it does not compile;
+ * the bands next door take the same file by DYNAMIC import behind a runtime
+ * arrival check for exactly that reason, and that machinery is async while
+ * these three are sync and unit-tested. So this stays a copy -- but a copy that
+ * `test/ui/duration-parity.test.ts` sweeps against `viewmodel.js`'s across
+ * boundaries and randomised spans, which is the difference between two copies
+ * PROVEN equal and four copies hoped equal.
+ *
+ * `sep` is the only permitted difference, because the owner drew both
+ * spellings: a bare elapsed clock reads `5d 8h`, a qualifier bolted to a field
+ * reads `1d3h`.
+ */
+function formatDuration(ms: number, sep = ''): string | null {
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return 'now';
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days > 0) return hours > 0 ? `${days}d${sep}${hours}h` : `${days}d`;
+  if (hours > 0) return mins > 0 ? `${hours}h${sep}${mins}m` : `${hours}h`;
+  return `${mins}m`;
+}
+
+/**
  * A countdown to a UNIX-SECONDS instant, at most two units wide: `1d4h`,
  * `3h12m`, `47m`, `now`.
  *
@@ -1228,16 +1258,7 @@ function fmtK(n: number): string {
  */
 export function until(resetsAtSeconds: number | null, now: number): string | null {
   if (resetsAtSeconds === null || !Number.isFinite(resetsAtSeconds)) return null;
-  const ms = resetsAtSeconds * 1000 - now;
-  if (ms < 0) return null;
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return 'now';
-  const days = Math.floor(minutes / 1440);
-  const hours = Math.floor((minutes % 1440) / 60);
-  const mins = minutes % 60;
-  if (days > 0) return hours > 0 ? `${days}d${hours}h` : `${days}d`;
-  if (hours > 0) return mins > 0 ? `${hours}h${mins}m` : `${hours}h`;
-  return `${mins}m`;
+  return formatDuration(resetsAtSeconds * 1000 - now);
 }
 
 /**
@@ -1295,14 +1316,7 @@ export type LastAudit =
 export function since(at: string, now: number): string | null {
   const then = Date.parse(at);
   if (!Number.isFinite(then)) return null;
-  const minutes = Math.floor(Math.max(0, now - then) / 60_000);
-  if (minutes < 1) return 'now';
-  const days = Math.floor(minutes / 1440);
-  const hours = Math.floor((minutes % 1440) / 60);
-  const mins = minutes % 60;
-  if (days > 0) return hours > 0 ? `${days}d${hours}h` : `${days}d`;
-  if (hours > 0) return mins > 0 ? `${hours}h${mins}m` : `${hours}h`;
-  return `${mins}m`;
+  return formatDuration(Math.max(0, now - then));
 }
 
 /**

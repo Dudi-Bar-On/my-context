@@ -91,6 +91,7 @@ interface FakeElement {
     getPropertyValue: (n: string) => string;
   };
   append: (...nodes: (FakeElement | string)[]) => void;
+  prepend: (...nodes: (FakeElement | string)[]) => void;
   replaceChildren: (...nodes: (FakeElement | string)[]) => void;
   remove: () => void;
   setAttribute: (name: string, value: string) => void;
@@ -140,6 +141,25 @@ function element(tag: string): FakeElement {
         el.parent = node;
         node.children.push(el);
       }
+    },
+    // **A GAP THIS STUB HAD, not a method the app newly needs.** `nameField`
+    // has prepended a field's label since labels were added; nothing in this
+    // harness had reached it, because the one field that got here was drawn
+    // behind a null guard. Making that field ALWAYS draw (owner ruling,
+    // 2026-09-01 -- the strip is a superset of the terminal) walked straight
+    // into the hole, with `el.prepend is not a function`.
+    //
+    // A fake DOM that silently lacks a method the real one has does not fail
+    // where it is incomplete; it fails wherever the app first happens to use
+    // it, which is why this surfaced in a pane test that has nothing to do with
+    // labels.
+    prepend: (...nodes: (FakeElement | string)[]): void => {
+      const built = nodes.map((child) => {
+        const el = typeof child === 'string' ? textNode(child) : child;
+        el.parent = node;
+        return el;
+      });
+      node.children.unshift(...built);
     },
     replaceChildren: (...nodes: (FakeElement | string)[]): void => {
       node.children.length = 0;

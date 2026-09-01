@@ -102,33 +102,38 @@ export function formatAge(ms) {
 }
 
 /**
- * **HOW LONG UNTIL A RATE WINDOW RESETS — TWO UNITS, NOT ONE.**
+ * **THE ONE SPELLING OF A DURATION, for both surfaces.** Owner ruling,
+ * 2026-09-01: *"every field that is also displayed on the terminal status line
+ * should have exactly the same value in the web status bar full resolution
+ * like hours and minutes"*.
  *
- * `formatAge` above answers "how old is this" and drops to a single unit on
- * purpose: a sample's age is read at a glance and `23h` is precise enough to
- * decide with. A countdown is not that. `23h` on a window that resets in
- * twenty-three hours and fifty-five minutes is the same string as one that
- * resets in twenty-three hours flat, and the owner reads this figure to decide
- * whether to wait — so the minutes are the half that carries the decision.
+ * There were FOUR copies of this arithmetic when that ruling landed --
+ * `elapsed`, `since` and `until` in `statusline-powerline.ts`, and
+ * `untilReset` here -- beside a fifth spelling, `formatAge`, that rounds to a
+ * SINGLE unit. That is why the strip drew `5d` where the terminal drew `5d 8h`
+ * for the same millisecond count: not a bug in either formatter, but the
+ * absence of one. Four hand-kept copies that must agree is the defect this
+ * project has now measured ten times.
  *
- * **This is the terminal's `until` rule, deliberately.** `statusline-powerline
- * .ts` · `if (hours > 0) return mins > 0 ? \`${hours}h${mins}m\` : \`${hours}h\`;`
- * answers the same question on the other surface, and the owner asked for this
- * one to match it by name. Same two-unit ladder, same suppression of a zero
- * second unit, so neither bar can say a thing the other does not.
+ * `sep` is the ONLY thing the two surfaces may differ on, because the owner
+ * drew both spellings: a bare elapsed clock reads `5d 8h`, a qualifier bolted
+ * to a field reads `1d3h`. Same value, same resolution, same boundaries -- one
+ * space. `test/ui/duration-parity.test.ts` sweeps both against each other, so
+ * the terminal's copy cannot drift from this one.
  *
- * Days drop the minutes rather than printing three units: past a day the
- * minutes stop changing the decision, and `1d4h` is what the terminal draws.
+ * `null` for anything that is not a duration, which draws an unmeasured field
+ * rather than `0m`: a length nobody reported is not a length of zero
+ * (`STD-a-measured-zero-is-drawn-and-named`).
  */
-export function untilReset(ms) {
+export function formatDuration(ms, sep = '') {
   if (!Number.isFinite(ms) || ms < 0) return null;
   const minutes = Math.floor(ms / 60_000);
   if (minutes < 1) return 'now';
   const days = Math.floor(minutes / 1440);
   const hours = Math.floor((minutes % 1440) / 60);
   const mins = minutes % 60;
-  if (days > 0) return hours > 0 ? `${days}d${hours}h` : `${days}d`;
-  if (hours > 0) return mins > 0 ? `${hours}h${mins}m` : `${hours}h`;
+  if (days > 0) return hours > 0 ? `${days}d${sep}${hours}h` : `${days}d`;
+  if (hours > 0) return mins > 0 ? `${hours}h${sep}${mins}m` : `${hours}h`;
   return `${mins}m`;
 }
 

@@ -1107,7 +1107,7 @@ export const strings = {
   // it is needed.
   'strip.ctxAsk': '{askPct}% ({pct} / {threshold}) ·+{headroom}',
   'strip.log': 'last {mv:op}, {age} ago',
-  'strip.logQuiet': 'nothing logged for {age}',
+  'strip.logQuiet': 'last {mv:op}, {age} ago',
   'strip.logEmpty': 'nothing recorded yet',
   'strip.logUnreadable': 'audit log unreadable',
   'title.sessionName': 'The name this window was given. Shown only when it differs from the project, so several windows can be told apart.',
@@ -1272,8 +1272,8 @@ export const strings = {
   // Banded by `occupancyBands`/`occupancyLevel` — the SAME function the
   // handover proximity uses, never a second threshold set. Silent below the
   // warn band, for the reason the gold marker is silent there.
-  'strip.rlNear': 'limit near',
-  'strip.rlAt': 'limit hit',
+  'strip.rlNear': '{mv:win} limit near',
+  'strip.rlAt': '{mv:win} limit hit',
   'title.rate': 'The usage windows on your account, not on this session. Shown only when one is close enough to matter.',
   'strip.rt': 'simulate reduced-transparency',
   // The provenance bar — one home for the qualifications every screen owes
