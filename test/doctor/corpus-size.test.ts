@@ -16,7 +16,7 @@ function fakeItems(n: number): Item[] {
 function fullItems(n: number): Item[] {
   return Array.from({ length: n }, (_, i): Item => ({
     id: `CONST-i${i}`, type: 'constraint', title: `C ${i}`, status: 'active',
-    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, acknowledged: {}, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: '', steps: [], observations: [], relations: [],

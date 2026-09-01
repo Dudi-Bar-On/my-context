@@ -146,7 +146,7 @@ function item(over: Partial<Item> = {}): Item {
     status: 'active',
     severity: 'soft',
     always: false,
-    continuity: false, summary: null, summaryOf: null,
+    continuity: false, summary: null, summaryOf: null, acknowledged: {},
     scope: [],
     tags: [],
     origin: 'human',

@@ -57,7 +57,7 @@ test('the quoted body survives validateBody and the render/parse round trip', ()
 
   const item: Item = {
     id: 'REF-x', type: 'reference', title: 'X', status: 'active', severity: 'soft',
-    always: false, continuity: false, summary: null, summaryOf: null, scope: [], tags: [], origin: 'human',
+    always: false, continuity: false, summary: null, summaryOf: null, acknowledged: {}, scope: [], tags: [], origin: 'human',
     sourceFile: 'docs/x.md', sourceAnchor: null, sourceChecksum: snapshotChecksum(HOSTILE),
     validFrom: '2026-08-16', validUntil: null, checksum: '', extra: {},
     body, steps: [], observations: [], relations: [], layer: 'project', filePath: 'items/reference/REF-x.md',

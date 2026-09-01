@@ -1,3 +1,4 @@
+import { parseAcknowledged, renderAcknowledged } from './acknowledge.ts';
 import { parseFrontmatter, serializeFrontmatter, type FrontmatterValue } from './frontmatter.ts';
 import { checksum } from './slug.ts';
 import { validateLoadedId } from './vocabulary.ts';
@@ -51,7 +52,7 @@ export function isValidObservationCategory(category: string): boolean {
 
 const COMMON_KEYS = new Set([
   'id', 'type', 'title', 'status', 'severity', 'always', 'continuity', 'summary', 'summary_of',
-  'scope', 'tags', 'origin',
+  'acknowledged', 'scope', 'tags', 'origin',
   'source_file', 'source_anchor', 'source_checksum', 'valid_from', 'valid_until', 'checksum',
 ]);
 
@@ -465,6 +466,13 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
     // `unanchored` rather than as a summary written against nothing in
     // particular. Both cases are `summaryState`'s to name, not this parser's.
     summaryOf: optString(fm, rawBlock, 'summary_of'),
+    // `{}` for every item that predates the field, which is every item in every
+    // corpus — and `{}` is `acknowledgementState`'s `none`, so an item nobody
+    // has ruled on reads exactly as it did before this field existed.
+    // `parseAcknowledged` drops an entry it cannot read rather than storing a
+    // broken one; its docblock argues why dropping is the SAFE direction here
+    // and nowhere else in this parser.
+    acknowledged: parseAcknowledged(stringList(fm, 'acknowledged')),
     scope: stringList(fm, 'scope'),
     tags: stringList(fm, 'tags'),
     origin: (optString(fm, rawBlock, 'origin') ?? 'human') as Origin,
@@ -531,6 +539,24 @@ export function computeItemChecksum(item: Item): string {
     shape.summary = item.summary;
     shape.summary_of = item.summaryOf;
   }
+  // Added ONLY when a person has ruled on something, for the reason `summary`
+  // directly above is conditional: an unconditional key would move every
+  // recorded checksum in every corpus at once.
+  //
+  // **It is covered rather than excluded, and the anchor is the reason.** An
+  // acknowledgement says a person read this content and settled the finding
+  // over it; that claim is exactly as forgeable by a hand edit as `summary_of`
+  // is, and for the same payoff — a `lapsed` acknowledgement typed back to the
+  // current hash reads as `current`, and a finding a person never saw reports
+  // as one they ruled on. Covering it means the forgery leaves a stale checksum
+  // behind, which is what `doctor` and `repair` exist to notice.
+  //
+  // `renderAcknowledged` and not the record itself, because the record's key
+  // order is insertion order — two items with the same two acknowledgements
+  // added in different orders must hash the same.
+  if (Object.keys(item.acknowledged).length > 0) {
+    shape.acknowledged = renderAcknowledged(item.acknowledged);
+  }
   // Added ONLY when there are steps, and the reason is compatibility rather
   // than tidiness: this hash is RECORDED in every item's frontmatter, and an
   // unconditional key would change it for every item in every corpus at once
@@ -578,6 +604,14 @@ export function renderItem(item: Item): string {
     // Both keys move together, so a file never carries one without the other
     // — `summaryState` reads that pair, and half of it is `unanchored`.
     ...(item.summary === null ? {} : { summary: item.summary, summary_of: item.summaryOf }),
+    // Emitted ONLY when a person has actually ruled on something, for
+    // `continuity`'s and `summary`'s reason above: an unconditional
+    // `acknowledged: []` line would add a line to every item in every corpus on
+    // the next write, which is `INV-markdown-is-the-source-of-truth`'s
+    // byte-identical round trip broken for all of them at once.
+    ...(Object.keys(item.acknowledged).length === 0
+      ? {}
+      : { acknowledged: renderAcknowledged(item.acknowledged) }),
     scope: item.scope,
     tags: item.tags,
     origin: item.origin,

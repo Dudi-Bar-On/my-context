@@ -983,7 +983,14 @@ test('the separator is the real powerline glyph and the caps are not private-use
   // a line that already fitted is not elided for arithmetic reasons.
   assert.equal(displayWidth('abc'), 3);
   assert.equal(displayWidth(SEP), 1);
-  assert.equal(displayWidth('🙂'), 1);
+  // **CORRECTED 2026-09-01, and it is a correction rather than a relaxation.**
+  // This line asserted 1 for an emoji, which pinned the undercount §8 measured:
+  // a pictograph renders in TWO cells, and counting it as one is what makes
+  // `fitSegments` fail to give up a block and let the line WRAP. The rule it
+  // was really protecting — that a NON-emoji astral character stays one column
+  // — is asserted directly below, where it belongs.
+  assert.equal(displayWidth('🙂'), 2, 'a pictograph is two cells');
+  assert.equal(displayWidth('𝐀'), 1, 'a non-emoji astral character is still one');
 });
 
 /* -------------------------------------------------------------------- *
@@ -1244,4 +1251,52 @@ test('the line gives itself up in the order the owner ranked, not by width', () 
     assert.ok(displayWidth(rendered) <= w, `${w} columns, ${displayWidth(rendered)} wide`);
     assert.match(rendered, /ctx 42\.0%/);
   }
+});
+
+/* ══ §8 — THE WIDTH ARITHMETIC, FIXED AND TESTED BEFORE THE ICONS ═══════════
+ *
+ * `displayWidth` counted code points until 2026-09-01, and its own note said
+ * that was deliberate because nothing on the bar was ever wider than one cell.
+ * The four-level treatment puts emoji on the bar and breaks that premise. The
+ * measured error was up to five cells on one row, landing in `fitSegments` and
+ * `centreOffset` — a line that gives up the wrong block, or gives up none and
+ * WRAPS, which this file names as the one failure this renderer must not have.
+ *
+ * These tests were written and run BEFORE the first icon reached a segment,
+ * which is the whole reason they are worth having: they pin the arithmetic
+ * rather than the appearance, so they would have failed on the old function.
+ */
+test('an emoji occupies TWO display cells, not one', () => {
+  // The three the levels actually use, and the two ranges that cover them.
+  assert.equal(displayWidth('\u{1F480}'), 2, '💀 U+1F480 renders two cells');
+  assert.equal(displayWidth('\u{1F536}'), 2, '🔶 U+1F536 renders two cells');
+  assert.equal(displayWidth('⚠️'), 2, '⚠️ is two cells, not three');
+  // U+FE0F is a MODIFIER on the character before it, so it is zero cells of
+  // its own. Counting it as one is what made `⚠️` come out right for the wrong
+  // reason, and right-by-luck stops being right on a different icon.
+  assert.equal(displayWidth('️'), 0, 'the variation selector is zero-width');
+  assert.equal(displayWidth('⚠'), 2, 'the bare symbol is already two');
+});
+
+test('the emoji rule does not touch anything the bar already drew', () => {
+  // Every character this renderer put on the line before the icons existed.
+  // A width rule that widened `SEP` or a box-drawing cell would elide branches
+  // that already fitted — the regression the ORIGINAL note was guarding.
+  for (const one of [SEP, SEP_THIN, CAP_LEFT, CAP_RIGHT, '…', '·', '$', 'a', '7']) {
+    assert.equal(displayWidth(one), 1, `${JSON.stringify(one)} is one cell`);
+  }
+  for (const glyph of Object.values(LEVEL_GLYPH)) {
+    assert.equal(displayWidth(glyph), 1, `the level glyph ${glyph} stays one cell`);
+  }
+  assert.equal(displayWidth(ASK_GLYPH), 1, 'the ask marker stays one cell');
+  assert.equal(displayWidth('campaign/my-context-test'), 24);
+  // An astral character that is NOT an emoji still counts as one, which is the
+  // property the original note was written to protect.
+  assert.equal(displayWidth('\u{1D400}'), 1, 'a mathematical capital A is not an emoji');
+});
+
+test('a mixed string adds up, and the old code-point count would not have', () => {
+  const text = '\u{1F480} ctx 54.9%';
+  assert.equal(displayWidth(text), 12);
+  assert.equal([...text].length, 11, 'the code-point count is the one that was wrong');
 });

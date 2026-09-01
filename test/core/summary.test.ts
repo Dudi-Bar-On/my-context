@@ -227,14 +227,26 @@ test('the staleness note is one wording, and says nothing when there is nothing 
 test('SUMMARY_BASIS classifies every content field, and the prose fields are the summarised set', () => {
   assert.deepEqual(
     Object.entries(SUMMARY_BASIS).filter(([, v]) => v === 'summarised').map(([k]) => k),
-    ['title', 'body', 'steps', 'observations', 'extra'],
-    'the summarised set is what the item ASSERTS. Adding a field here makes every recorded ' +
-    'basis in every corpus stale at once, so it is a deliberate act and not a tidy-up.',
+    ['body', 'steps', 'observations', 'extra'],
+    'the summarised set is what the item ASSERTS. Adding OR REMOVING a field here makes every ' +
+    'recorded basis in every corpus stale at once, so it is a deliberate act and not a ' +
+    'tidy-up. `title` left this set by owner ruling on 2026-08-27 and the corpus was migrated ' +
+    'by scripts/restamp-summary-basis.ts in the same act; the reasoning and the accepted risk ' +
+    'are on SUMMARY_BASIS itself.',
   );
 });
 
 test('pinning, re-tagging, re-scoping and retiring do NOT make a summary stale', () => {
   const moves: [string, UpdateInput][] = [
+    // OWNER RULING 2026-08-27, and it is the reason this row is here rather
+    // than in the stale-making test below: a summary is a plain sentence about
+    // what the item SAYS, and the title is a label ON the item, not part of
+    // what it says. Retitling
+    // `RULE-1-1-with-the-mockup-and-the-owner-says-when-it-is-done` to remove a
+    // claim its own body had already withdrawn flipped a word-for-word correct
+    // summary to `stale`, and nothing could clear it but rewriting a sentence
+    // with nothing wrong with it.
+    ['title', { id: '', title: 'Never log a customer email address' }],
     ['always', { id: '', always: true }],
     ['tags', { id: '', tags: ['v2', 'ui'] }],
     ['scope', { id: '', scope: ['src/**'] }],

@@ -216,8 +216,21 @@ export interface Ink {
 }
 
 const INK = {
-  /** The model block. `--carry`'s neighbour: this is identity, not a verdict. */
-  model: { bg: 104, fg: 16 },
+  /**
+   * `--carry` — the web's #8b9ce6, at its nearest 256-colour neighbour.
+   *
+   * ONE declaration, TWO uses, and that is deliberate. It was already the
+   * model block's tint, described here as "`--carry`'s neighbour"; since the
+   * owner's ruling of 2026-09-01 it is also the ASK MARKER's, because `gold`
+   * moved wholly to the `caution` band (`LEVEL_INK`). Naming it once is what
+   * stops the terminal growing two spellings of one web token.
+   *
+   * Black measures 6.48:1 on it — which clears WCAG AA's 4.5:1, and does NOT
+   * clear the 7:1 the three fill hues below clear. Stated with its condition
+   * rather than folded into their sentence
+   * (`STD-guarantee-claims-carry-their-condition-in-the-same-sentence`).
+   */
+  carry: { bg: 104, fg: 16 },
   /** The project block: dark grey, light text. */
   project: { bg: 238, fg: 252 },
   /** The branch block: mid grey. */
@@ -901,7 +914,7 @@ export function modelSegment(model: string | null, modes: ModelModes): Segment |
   const name = model === null || model === '' ? null : model;
   if (name === null && flags.length === 0) return null;
   const text = [name, ...flags].filter((part) => part !== null).join(' ');
-  return { text, ink: INK.model, give: GIVE.model, field: 'model' };
+  return { text, ink: INK.carry, give: GIVE.model, field: 'model' };
 }
 
 /**
@@ -1138,16 +1151,62 @@ function joint(left: Ink, right: Ink): string {
 }
 
 /**
- * Display columns, counted in CODE POINTS rather than UTF-16 units.
+ * Display columns, counted in CODE POINTS rather than UTF-16 units — **and
+ * emoji count TWO.**
  *
- * Not a full east-asian-width implementation, and deliberately not: everything
- * this renderer puts on the line is a model name, a directory basename, a
- * branch name or its own ASCII, and the two glyphs it adds (`SEP`, the caps)
- * occupy one cell each. What the count must never do is report an astral
- * character as two columns and elide a branch that already fitted.
+ * ── WHY THIS GREW A RULE, 2026-09-01 ───────────────────────────────────────
+ *
+ * Until the level icons this counted every code point as one cell, and its own
+ * note said that was deliberate: everything on the line was a model name, a
+ * directory basename, a branch name or ASCII, and `SEP` and the caps are one
+ * cell each. The four-level treatment breaks that premise by putting emoji on
+ * the bar, and the error is not academic — it was MEASURED before the icons
+ * were allowed anywhere near a segment:
+ *
+ *     💀  U+1F480          1 code point   renders 2 cells   undercount 1
+ *     🔶  U+1F536          1 code point   renders 2 cells   undercount 1
+ *     ⚠️  U+26A0 U+FE0F    2 code points  renders 2 cells   correct, by luck
+ *
+ * With five bandable fields that is up to five cells of error on one row, and
+ * it lands in exactly the two places that must not be wrong: `fitSegments`,
+ * which then gives up the wrong block or gives up none and lets the line WRAP,
+ * and `centreOffset`, which mis-indents the one-line fallback. Wrapping is
+ * named in this file as the one failure this renderer must not have, so the
+ * width rule was fixed and tested BEFORE the first icon reached a segment.
+ *
+ * ── WHAT IT IS AND IS NOT ──────────────────────────────────────────────────
+ *
+ * Still not a full east-asian-width table, and still deliberately not: this
+ * bar draws no CJK and a 40-kilobyte width table would be a runtime dependency
+ * in all but name (`CONST-zero-runtime-dependencies`). What it adds is the one
+ * class this renderer now actually emits — emoji — by the two ranges that
+ * cover every glyph in `LEVEL_ICON` and every neighbour anybody would swap in:
+ *
+ *   - U+FE0F, the emoji variation selector, is ZERO cells. It is a modifier on
+ *     the character before it, not a character. Counting it as one is what
+ *     made `⚠️` come out right for the wrong reason, and a rule that is right
+ *     by luck stops being right the moment somebody picks a different icon.
+ *   - U+1F300–U+1FAFF (the pictograph planes) and U+2600–U+27BF (the older
+ *     symbol block `⚠` itself lives in) are TWO cells.
+ *
+ * The residual inaccuracy is stated rather than hidden: a terminal that
+ * ignores U+FE0F renders `⚠️` in ONE cell and this over-counts it by one.
+ * Over-counting is the safe direction — it costs at worst one column of the
+ * line's width budget, while under-counting costs a wrapped row.
  */
 export function displayWidth(text: string): number {
-  return [...text].length;
+  let width = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0;
+    // A modifier, not a character. Zero cells of its own.
+    if (cp === 0xfe0f) continue;
+    if ((cp >= 0x1f300 && cp <= 0x1faff) || (cp >= 0x2600 && cp <= 0x27bf)) {
+      width += 2;
+      continue;
+    }
+    width += 1;
+  }
+  return width;
 }
 
 export interface RenderOptions {

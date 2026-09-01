@@ -69,7 +69,7 @@ function item(tags: string[], extra: Record<string, string> = {}): Item {
   return {
     id: 'TASK-probe', type: 'task', title: 'Probe', status: 'active', severity: 'soft',
     always: false, scope: [], tags, origin: 'human', sourceFile: null, sourceAnchor: null,
-    continuity: false, summary: null, summaryOf: null,
+    continuity: false, summary: null, summaryOf: null, acknowledged: {},
     sourceChecksum: null, validFrom: null, validUntil: null, checksum: 'x', extra,
     body: '', steps: [], observations: [], relations: [], layer: 'project',
     filePath: 'items/task/TASK-probe.md',

@@ -183,6 +183,19 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [];
   },
 
+  // `--list` is `ack`'s read-only success path: it runs the same `runChecks`
+  // the write path does and prints what is reported on the item, so the F2
+  // question — does an unrelated unparseable file make this command exit
+  // non-zero — is asked of exactly the code that would answer it wrong. The
+  // write path is not used here on purpose: it needs a finding to exist on the
+  // item, which is a different test's business (`ack` refuses a code doctor
+  // does not report), and F2 is about the load error and nothing else.
+  ack: (cwd) => {
+    const added = run(['add', 'constraint', 'An item to ack for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [constraintId(added.out), '--list'];
+  },
+
   show: (cwd) => {
     const added = run(['add', 'constraint', 'An item to show for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);

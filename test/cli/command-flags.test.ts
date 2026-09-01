@@ -110,6 +110,9 @@ const LIFTED_FROM: Record<string, string> = {
 const BORN_HERE: Record<string, string> = {
   ready: 'cli/commands/ready.ts — written after the lift, so its spec has never lived '
     + 'anywhere else.',
+  ack: 'cli/commands/ack.ts — the command itself is newer than this module (owner ruling '
+    + '2026-08-27, doctor findings become acknowledgeable), so its spec was authored here '
+    + 'and has never lived anywhere else.',
 };
 
 /**

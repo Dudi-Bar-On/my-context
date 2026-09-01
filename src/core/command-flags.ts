@@ -45,11 +45,11 @@
  *
  * ── WHAT IS HERE, AND WHAT IS DELIBERATELY NOT ─────────────────────────────
  *
- * MEASURED 2026-08-24 and corrected 2026-08-30, over the **39** commands the
- * CLI dispatches: 32 registered by `cli/commands/index.ts`'s column of
+ * MEASURED 2026-08-24 and corrected 2026-08-30, over the **40** commands the
+ * CLI dispatches: 33 registered by `cli/commands/index.ts`'s column of
  * side-effect imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 35 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   | 36 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
  *   |  0 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
  *   |  3 | take no flags at all — `show`, `rebuild`, `help`                   |
@@ -59,7 +59,7 @@
  * because they refused no unknown flag: a command with nothing to disagree
  * with cannot be checked, so nothing could tell a builder that the command it
  * had composed was wrong. They were given parsers rather than an exception,
- * and the row stays so that the partition still covers all 39 — and so that a
+ * and the row stays so that the partition still covers all 40 — and so that a
  * sixth command written the same way lands in a row that has a name.
  *
  * **This paragraph said 38, and 38 was neither number.** `COMMANDS` holds 32
@@ -75,7 +75,7 @@
  * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
  * the registered set, so a command cannot arrive and be silently uncounted.
  *
- * **30** of the 35 are here. Twenty-one arrived with the first lift, and they
+ * **31** of the 36 are here. Twenty-one arrived with the first lift, and they
  * are the ones whose spec was already a declarative constant over a FLAT
  * surface — one command, one flag set. The other four arrived with
  * `plan:builder seq:1b` and came out of `src/cli/index.ts` itself — the entry
@@ -166,6 +166,12 @@ const ADD_VALUE_FLAGS = [
  * the very commit that exists to remove one.
  */
 export const COMMAND_FLAGS: Record<string, FlagSpec> = {
+  /**
+   * Two bare switches and two positionals. `<id>` and `<code>` are operands
+   * rather than flags because they are the whole of what the command is about
+   * — the same shape `supersede <id>` and `show <id>` already have.
+   */
+  ack: { allowed: ['clear', 'list'], values: [] },
   /**
    * The nine value flags are the query surface; `items`/`sessions`/`files`
    * choose which projection is reported.
@@ -558,6 +564,17 @@ const WHEN = (edge: string): FlagDeclaration => ({
  * refuses is as much a defect as a flag nobody described.
  */
 export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
+  ack: {
+    clear: {
+      note: 'Withdraw an acknowledgement instead of making one. It is the only spelling that '
+        + 'accepts a code doctor is no longer reporting - an entry left behind by a retired '
+        + 'check has to be removable.',
+    },
+    list: {
+      note: 'Print every finding doctor reports on the item and whether each one is '
+        + 'acknowledged, lapsed or open, and change nothing. The code operand is not needed.',
+    },
+  },
   audit: {
     ...DETAIL,
     since: WHEN('The earliest record shown, inclusive'),

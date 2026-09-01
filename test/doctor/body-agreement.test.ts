@@ -50,7 +50,7 @@ const CONFIG = resolveConfig({
 function item(over: Partial<Item> = {}): Item {
   return {
     id: 'NOTE-a', type: 'note', title: 'A note', status: 'active',
-    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null,
+    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, acknowledged: {},
     scope: [], tags: [], origin: 'human', sourceFile: null, sourceAnchor: null,
     sourceChecksum: null, validFrom: null, validUntil: null, checksum: 'x', extra: {},
     body: '', steps: [], observations: [], relations: [],

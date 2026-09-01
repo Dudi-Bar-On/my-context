@@ -189,8 +189,6 @@ export function itemContentHash(item: Item): string {
  * delivered — none of which changes a word of what the summary would say.
  * Each entry's reason:
  *
- *  - **title** · summarised. The summary is the sentence the title was being
- *    stretched into; a retitled item says something else.
  *  - **body** · summarised. It is the thing being summarised.
  *  - **steps** · summarised. For a `procedure` the steps ARE the knowledge
  *    (`canonicalContent` above says so), so a summary of a procedure whose
@@ -201,6 +199,25 @@ export function itemContentHash(item: Item): string {
  *    a rule prohibits or prescribes — the plainest possible case of changing
  *    what the item says, and the reason `UPDATE_FIELD_POLICY` classifies it as
  *    content rather than bookkeeping.
+ *  - **title** · NOT summarised, by OWNER RULING 2026-08-27, and it is the one
+ *    entry in this table that was decided the other way first. The owner's
+ *    reasoning, in their words: *a summary is a plain sentence about what the
+ *    item SAYS; the title is a label ON the item, not part of what it says.*
+ *    The measurement behind the ruling: retitling
+ *    `RULE-1-1-with-the-mockup-and-the-owner-says-when-it-is-done` — an edit
+ *    that removed a claim the body had already withdrawn, and so made the item
+ *    MORE accurate — flipped a summary that is still word for word correct
+ *    into `stale`, and nothing could clear it except rewriting a sentence with
+ *    nothing wrong with it. With 717 of this corpus's 733 items now carrying a
+ *    summary, the old basis fired that way on every future retitle.
+ *
+ *    **The risk the owner accepted, stated rather than discovered:** a title
+ *    can carry real meaning, and one that changes what the item claims will now
+ *    move without flagging the summary. It is rare — a title is a label, and
+ *    the claim it labels lives in the body this hash still covers — and it is
+ *    not unwatched: `checkBodyAgreement` (doctor/checks.ts) reads the title
+ *    against the body and is the check that reports a title asserting something
+ *    its own body does not.
  *  - **type** · NOT summarised, and it is the only "no" that is not a
  *    judgement: `type` decides the id prefix and the file's directory and is
  *    fixed at creation (there is no retype — `checkUnknownCategory`, doctor),
@@ -231,7 +248,7 @@ type SummaryBasis = 'summarised' | 'unsummarised';
 
 export const SUMMARY_BASIS = {
   type: 'unsummarised',
-  title: 'summarised',
+  title: 'unsummarised',
   body: 'summarised',
   steps: 'summarised',
   severity: 'unsummarised',
@@ -252,6 +269,19 @@ export const SUMMARY_BASIS = {
  * every summary in the corpus stale. The order is authored here and nowhere
  * else; nothing sorts it, because a sort would silently absorb a reorder that
  * should have been a deliberate act.
+ *
+ * **Reclassifying a field does the same thing, and it has now been done once.**
+ * Moving `title` to `unsummarised` (owner ruling 2026-08-27, argued above)
+ * invalidated all 717 recorded bases in this corpus at once — every one of them
+ * would have read `stale` on the next `doctor` run. That is not a side effect
+ * to absorb quietly: it is a corpus migration, and it was done by
+ * `scripts/restamp-summary-basis.ts`, which re-stamps ONLY the items whose
+ * recorded basis still matches the OLD formula — i.e. the items whose
+ * summarised content is provably unmoved since the summary was written — and
+ * leaves every already-stale item exactly as stale as it was. Read that script
+ * before changing this table again; the rule it enforces is the one that
+ * matters, and it is short: a re-stamp may never turn a real stale into a false
+ * current.
  */
 const SUMMARISED_FIELDS = (Object.keys(SUMMARY_BASIS) as (keyof ContentShape)[])
   .filter((field) => SUMMARY_BASIS[field] === 'summarised');
@@ -337,7 +367,7 @@ export function summaryStalenessNote(item: Item): string | null {
     );
   }
   return (
-    `my_context: this item's summary is STALE — the title, body, steps, observations or extra ` +
+    `my_context: this item's summary is STALE — the body, steps, observations or extra ` +
     `fields have changed since it was written, so it describes text that is no longer here. It ` +
     `is shown rather than hidden because nothing here is dropped silently, but do not quote it ` +
     `as though it described this item. Read the body, and write a new summary with ` +

@@ -1,5 +1,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import {
+  acknowledgementState, clearAcknowledgement, stampAcknowledgement,
+} from './acknowledge.ts';
 import { type MutationOp } from './audit.ts';
 import { agentEditsFor, type Config, type ResolvedCategory } from './config.ts';
 import { contentHash, itemContentHash, stampSummary } from './content-hash.ts';
@@ -413,6 +416,12 @@ export function createItem(
     // whatever the caller passed.
     summary: null,
     summaryOf: null,
+    // Empty at creation, and there is no input for it. An acknowledgement is a
+    // record that a PERSON read a doctor finding on an item that already
+    // exists; a caller that could declare one at capture time would be
+    // declaring somebody had ruled on a finding nothing has yet computed.
+    // `mycontext ack` is the only writer — see `core/acknowledge.ts`.
+    acknowledged: {},
     scope: (input.scope ?? []).map((g) => normalizePosix(g)),
     tags,
     origin,
@@ -1002,6 +1011,126 @@ export function updateItem(
     filePath: item.filePath,
     message:
       `my_context: updated ${item.id} (${item.status}).${inertFieldNote(ctx, item)}${audited}`,
+  };
+}
+
+/** The code of a doctor finding, and the item it was reported on. */
+export interface AcknowledgeInput {
+  id: string;
+  /** `Finding.code` — `body_disagrees_with_meta`, `summary_stale`, and so on. */
+  code: string;
+  /** `false` withdraws an acknowledgement. Defaults to making one. */
+  on?: boolean;
+  /**
+   * Only `'human'` is accepted, and the refusal is the ruling itself: a
+   * finding is "distinguishable because a person looked", so an origin that is
+   * not a person has nothing to record. See `acknowledgeFinding`.
+   */
+  origin?: Origin;
+}
+
+/**
+ * A finding shape: lowercase, digits and underscores, which is what every
+ * `Finding.code` in `doctor/checks.ts` is.
+ *
+ * Checked here rather than against a list of the codes that exist, and the
+ * difference matters in both directions. A list would have to be imported from
+ * `doctor/`, which `core/` does not depend on and should not; and it would make
+ * this module refuse a code a check added yesterday. What the CLI does instead
+ * is stronger than either: it refuses a code that is not CURRENTLY REPORTED on
+ * this item, which is a fact about this corpus rather than about a list — see
+ * `cmdAck`.
+ */
+const FINDING_CODE = /^[a-z][a-z0-9_]*$/;
+
+/**
+ * **A person records having ruled on a doctor finding** (owner ruling
+ * 2026-08-27 — the mechanism, the anchor and the limits are all argued on
+ * `core/acknowledge.ts`).
+ *
+ * Its own entry point rather than a field on `UpdateInput`, and the separation
+ * is deliberate three times over. An acknowledgement is not content: it says
+ * nothing about what the item asserts, so it must not be staged as a revision,
+ * must not be routed by `agentEdits`, and must not be classified by
+ * `UPDATE_FIELD_POLICY` — whose `satisfies Record<keyof UpdateInput, …>` clause
+ * would have had to grow a row for a field that is neither `content` nor
+ * `gated`. It is also not `gated`: nothing about it changes what governs.
+ *
+ * **`origin: 'human'` is required, not defaulted-and-forgotten.** The ruling is
+ * that nothing is silenced by the machine, only by a person, and that sentence
+ * is only true if the write refuses the machine. There is deliberately no MCP
+ * tool for this; an agent that wants a finding settled has to get a person to
+ * settle it.
+ *
+ * The anchor is stamped LAST, after `requireWritableItem` has resolved the
+ * item, so it is taken over the content the person is actually looking at.
+ * Audited as an `update` carrying the one field it moves: a new `MutationOp`
+ * would renumber a vocabulary the CLI, the MCP tool enum and the UI all read
+ * from an appended-never-inserted list, for no gain — this IS an update to the
+ * item, and `fields: ['acknowledged']` says which one.
+ */
+export function acknowledgeFinding(ctx: MutationContext, input: AcknowledgeInput): MutationResult {
+  const origin: Origin = input.origin ?? 'human';
+  if (origin !== 'human') {
+    throw new Error(
+      `my_context: only a person can acknowledge a doctor finding, and this call carried ` +
+      `origin "${origin}". An acknowledgement records that somebody READ the finding and ruled ` +
+      `on it; a machine recording that about itself would turn the report into a report of what ` +
+      `the machine has decided to stop mentioning. Run \`mycontext ack ${input.id} ` +
+      `${input.code}\` as the person who read it.`,
+    );
+  }
+  if (!FINDING_CODE.test(input.code)) {
+    throw new Error(
+      `my_context: "${input.code}" is not a doctor finding code. A code is lowercase letters, ` +
+      `digits and underscores — "body_disagrees_with_meta", "summary_stale" — and is printed in ` +
+      `every line of \`mycontext doctor --full\`.`,
+    );
+  }
+
+  const item = requireWritableItem(ctx, input.id);
+  const on = input.on ?? true;
+  const before = acknowledgementState(item, input.code);
+
+  if (on) {
+    // Re-stamping a `lapsed` acknowledgement is a real change and lands as one:
+    // the person read the item again. Re-stamping a `current` one is a no-op on
+    // disk, and is reported as one rather than written — see the return below.
+    if (before === 'current') {
+      return {
+        id: item.id, created: false, status: item.status, filePath: item.filePath,
+        message:
+          `my_context: ${item.id} already acknowledges "${input.code}" against its current ` +
+          `content. Nothing was written.`,
+      };
+    }
+    stampAcknowledgement(item, input.code);
+  } else if (!clearAcknowledgement(item, input.code)) {
+    return {
+      id: item.id, created: false, status: item.status, filePath: item.filePath,
+      message:
+        `my_context: ${item.id} carries no acknowledgement of "${input.code}". Nothing was ` +
+        `written.`,
+    };
+  }
+
+  persist(ctx, item);
+  const audited = auditMutation(ctx, 'update', origin, item.id, { fields: ['acknowledged'] });
+  const what = on
+    ? (before === 'lapsed'
+      ? `re-acknowledged "${input.code}" (the previous ruling had lapsed — the item's content ` +
+        `had moved under it)`
+      : `acknowledged "${input.code}"`)
+    : `withdrew the acknowledgement of "${input.code}"`;
+  return {
+    id: item.id,
+    created: false,
+    status: item.status,
+    filePath: item.filePath,
+    message:
+      `my_context: ${item.id} ${what}. The finding is still reported and still counted — it is ` +
+      `reported as acknowledged. Editing the item's content lapses this, and the finding is ` +
+      `open again.${audited}`,
   };
 }
 

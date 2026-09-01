@@ -25,6 +25,68 @@ export function summarize(findings: Finding[]): { errors: number; warnings: numb
   };
 }
 
+/**
+ * **How many of the findings above a person has already ruled on.**
+ *
+ * Reported BESIDE the three level counts — on the line under them
+ * (`emitAcknowledged`) — and never subtracted from them. That arithmetic is the
+ * owner's ruling made visible: an acknowledged finding is still a finding,
+ * still counted, still there. The number says how much of the report is
+ * SETTLED, which is the question a person opening a long doctor run actually
+ * has; it does not shrink the report.
+ *
+ * `0` prints nothing, and `emitAcknowledged` says why.
+ */
+export function acknowledgedCount(findings: Finding[]): number {
+  return findings.filter((f) => f.acknowledged === true).length;
+}
+
+/**
+ * The one word that distinguishes an acknowledged finding, wherever a finding
+ * is printed. Every detail level shows it, because a state that is invisible
+ * at the level somebody actually reads is a state nobody can act on — and a
+ * reader who cannot tell the two apart is back where the ruling started.
+ */
+function mark(finding: Finding): string {
+  return finding.acknowledged === true ? '  [acknowledged]' : '';
+}
+
+/**
+ * **The acknowledged tally, on its own WRAPPED line under the summary — not
+ * appended to it.**
+ *
+ * The clause belongs beside the counts and it cannot live inside them, and the
+ * reason is arithmetic rather than taste. `summary` is emitted unwrapped by
+ * every detail level, and it is the exact line held by `every reporting command
+ * fits the layout budget at every detail level` (output.test.ts) — whose own
+ * comment records that the fixture "already sits near that budget before this
+ * note is even considered". `my_context doctor: 0 error(s), 5 warning(s), 102
+ * note(s) across 107 finding(s).` is 78 columns against a budget of 100, so a
+ * sentence saying what "acknowledged" means overruns it on any corpus where one
+ * exists.
+ *
+ * **And that overrun would be invisible to the test.** No fixture in this
+ * repository carries an acknowledgement, so `--summary` would measure clean
+ * forever while every real user with one read a wrapped-by-the-terminal line.
+ * A separate `paragraph` line is inside the budget by construction and says the
+ * whole thing rather than an abbreviation of it.
+ *
+ * Silent at zero — a clean corpus's summary block is pinned character for
+ * character in three test files, and a line nobody can ever clear is the
+ * failure `body_review_limits` and `checkCitationForm` both refuse.
+ */
+function emitAcknowledged(count: number, out: Emit): void {
+  if (count === 0) return;
+  for (const line of paragraph(
+    `${count} of the finding(s) above are ACKNOWLEDGED: a person read each one and ruled on ` +
+    `it. They are still reported and still counted in the numbers above — acknowledging a ` +
+    `finding distinguishes it, it does not silence it, and editing the item lapses the ` +
+    `acknowledgement so the finding is open again. \`mycontext ack <id> --list\` shows the ` +
+    `state per item.`,
+    'my_context: ', outputWidth(), '  ',
+  )) out(line);
+}
+
 const ORDER: Record<Finding['level'], number> = { error: 0, warn: 1, info: 2 };
 
 /**
@@ -176,6 +238,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
   const cliNote = cliError
     ? ` mycontext resolves to a DIFFERENT CLI on PATH (${cliError.code}) — see \`mycontext doctor --full\`.`
     : '';
+  const acknowledged = acknowledgedCount(findings);
   const summary =
     `my_context doctor: ${totalErrors} error(s), ${counts.warnings} warning(s), ` +
     `${counts.infos} note(s) across ${findings.length} finding(s).${loadErrorNote}${cliNote}`;
@@ -198,6 +261,12 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
       counts,
       loadErrorCount: errors.length,
       totalErrors,
+      // Carried explicitly, for the reason `totalErrors` is: a consumer must
+      // not have to re-derive from `findings` a number the text summary prints,
+      // and re-deriving is where two surfaces disagree. `counts` stays the
+      // level tally it has always been — an acknowledged finding is counted in
+      // it, exactly as it is counted in the text.
+      acknowledgedCount: acknowledged,
       exitCode: failed ? 1 : 0,
       findings,
       loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
@@ -215,6 +284,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
 
   if (detail === 'summary') {
     out(summary);
+    emitAcknowledged(acknowledged, out);
     emitLoadErrors(errors, out);
     return failed ? 1 : 0;
   }
@@ -237,10 +307,11 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
       ['finding', 'item', 'message'],
       [...findings]
         .sort((a, b) => ORDER[a.level] - ORDER[b.level] || a.code.localeCompare(b.code))
-        .map((f) => [`${f.level}  ${f.code}`, f.item ?? '-', f.message]),
+        .map((f) => [`${f.level}  ${f.code}${mark(f)}`, f.item ?? '-', f.message]),
     )) out(line);
     if (findings.length) out('');
     out(summary);
+    emitAcknowledged(acknowledged, out);
     emitLoadErrors(errors, out);
     emitCliPathFinding(cliFindings, out);
     return failed ? 1 : 0;
@@ -259,7 +330,12 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
   });
 
   for (const [code, bucket] of codes) {
-    out(`${code} (${bucket.length})  [${bucket[0].level}]`);
+    // The group heading carries how many of ITS OWN findings are settled, so a
+    // reader deciding which of eleven codes to open can see that one of them is
+    // entirely ruled on without expanding it. The bucket total is unchanged.
+    const settled = bucket.filter((f) => f.acknowledged === true).length;
+    const settledNote = settled ? `  ${settled} acknowledged` : '';
+    out(`${code} (${bucket.length})  [${bucket[0].level}]${settledNote}`);
     for (const finding of bucket) {
       // Wrapped to the layout budget, exactly as `status` and `decay` wrap
       // their own prose, and with a hanging indent so a message that takes
@@ -268,7 +344,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
       // with an id in front of it, so at the widest id this project can mint
       // the default level measured 513 columns against a budget of 100.
       for (const line of paragraph(
-        `${finding.item ? `${finding.item}: ` : ''}${finding.message}`,
+        `${finding.item ? `${finding.item}: ` : ''}${finding.acknowledged === true ? 'ACKNOWLEDGED — ' : ''}${finding.message}`,
         '  ', outputWidth(), '    ',
       )) out(line);
     }
@@ -276,6 +352,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
   }
 
   out(summary);
+  emitAcknowledged(acknowledged, out);
   emitLoadErrors(errors, out);
   emitCliPathFinding(cliFindings, out);
   return failed ? 1 : 0;

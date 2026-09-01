@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isAcknowledged } from '../core/acknowledge.ts';
 import { AUDIT_MAX_BYTES, AUDIT_REPORT_BYTES, auditDir, auditSize } from '../core/audit.ts';
 import { scopePolicyFor, skippedKeyNotice, type Config } from '../core/config.ts';
 import { isEligible, itemCost } from '../core/select.ts';
@@ -25,6 +26,22 @@ export interface Finding {
   code: string;
   message: string;
   item?: string;
+  /**
+   * **A person has ruled on this exact finding, on this item, against the
+   * content the item still has** (owner ruling 2026-08-27 — the whole argument
+   * is on `core/acknowledge.ts`).
+   *
+   * Set by `markAcknowledged` below, after every check has run, and never by a
+   * check: a check answers "is this true of the corpus", which does not change
+   * because somebody read the answer.
+   *
+   * **It is a MARK, not a filter.** The finding is still in `findings`, still
+   * in `counts`, and still contributes to the exit code exactly as its `level`
+   * always did. Absent (rather than `false`) when nobody has ruled, so a
+   * consumer can tell "not acknowledged" from a field that was never
+   * populated — the same choice `cliOnPath: null` makes in doctor's JSON.
+   */
+  acknowledged?: true;
 }
 
 /**
@@ -738,10 +755,12 @@ export function checkContinuity(items: Item[], config: Config): Finding[] {
  *
  * So `summaryOf` records what the summary was written against
  * (`itemSummaryBasis`, content-hash.ts) and this compares the two. Nothing
- * here guesses: a finding means the summarised content — title, body, steps,
+ * here guesses: a finding means the summarised content — body, steps,
  * observations, extra — has a different hash than the one stored beside the
- * summary. A change to scope, tags, `always` or a relation produces no finding,
- * deliberately (see `SUMMARY_BASIS` for each exclusion and why).
+ * summary. A change to the TITLE, scope, tags, `always` or a relation produces
+ * no finding, deliberately (see `SUMMARY_BASIS` for each exclusion and why;
+ * `title` is the owner's 2026-08-27 ruling and carries its accepted risk
+ * there).
  *
  * `warn`, not `error`: nothing is lost and nothing is corrupt — the summary is
  * still on disk, still shown, still round-trips. What is wrong is that it may
@@ -782,7 +801,7 @@ export function checkSummary(items: Item[]): Finding[] {
       findings.push({
         level: 'warn', code: 'summary_stale', item: item.id,
         message:
-          `its summary is STALE: this item's title, body, steps, observations or extra fields ` +
+          `its summary is STALE: this item's body, steps, observations or extra fields ` +
           `have changed since the summary was written, so the summary describes text that is no ` +
           `longer here. It is still stored and still shown — nothing was dropped — but it is ` +
           `drawn as stale wherever it appears, and it must not be quoted as though it described ` +
@@ -2125,6 +2144,41 @@ export function checkBodyAgreement(items: Item[], config: Config): Finding[] {
   return findings;
 }
 
+/**
+ * **Every finding a person has already ruled on, marked — and nothing else
+ * touched.**
+ *
+ * One pass, after all the checks, and that placement is the design. Twenty
+ * checks do not each need to remember that acknowledgement exists, a check
+ * written tomorrow is acknowledgeable the day it ships, and no check can be
+ * written that quietly declines to honour a ruling. `Finding.code` plus
+ * `Finding.item` is the whole key, which is exactly what a person types into
+ * `mycontext ack`.
+ *
+ * `isAcknowledged` is what decides, and it does the anchor comparison: a
+ * ruling made against content that has since moved is `lapsed` and marks
+ * nothing, so the finding is reported open again. That is the guarantee the
+ * feature stands on — see `core/acknowledge.ts`.
+ *
+ * A finding with no `item` (`body_review_limits`, `index_stale`, the corpus-wide
+ * notes) is never marked: there is nowhere to record a ruling on it, because
+ * the record lives on the item. An id no longer in the corpus is likewise not
+ * marked — `byId` is built from the items this run actually read.
+ *
+ * The array is mutated in place rather than rebuilt. A finding is an object
+ * every caller already holds by reference by the time this runs, and returning
+ * copies would leave `runChecks`' own `findings.push` results unmarked.
+ */
+export function markAcknowledged(findings: Finding[], items: Item[]): void {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  for (const finding of findings) {
+    if (finding.item === undefined) continue;
+    const item = byId.get(finding.item);
+    if (item === undefined) continue;
+    if (isAcknowledged(item, finding.code)) finding.acknowledged = true;
+  }
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
@@ -2163,5 +2217,10 @@ export function runChecks(opts: {
       });
     }
   }
+  // After every check, never inside one — see `markAcknowledged`. Nothing is
+  // removed here and no count moves; findings a person has ruled on are marked
+  // so a reporting surface can DISTINGUISH them, which is the whole of the
+  // owner's ruling and the whole of what this line does.
+  markAcknowledged(findings, opts.items);
   return findings;
 }

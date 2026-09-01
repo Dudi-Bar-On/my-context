@@ -142,6 +142,42 @@ export interface Item {
    * which is a stale summary and is reported as one.
    */
   summaryOf: string | null;
+  /**
+   * **Doctor findings a PERSON has ruled on, each anchored to the item as it
+   * was when they ruled.** Keys are `Finding.code`; values are
+   * `itemContentHash(item)` (content-hash.ts) at the moment of the
+   * acknowledgement.
+   *
+   * `doctor` reports several things that are worth a human's eye and that no
+   * edit to the item can ever clear — `checkBodyAgreement`'s retraction branch
+   * is the measured case: it fires on a body's own wording, so an item whose
+   * body genuinely does withdraw something reports forever, correctly, and the
+   * person who has already read it has no way to say so. The owner's ruling
+   * (2026-08-27) is that a person may record having looked. The finding is
+   * still computed, still reported and still counted; it is reported as
+   * ACKNOWLEDGED rather than open. Nothing is silenced by the machine — only
+   * distinguished by a person.
+   *
+   * **The value is the whole mechanism, and it is `summaryOf`'s mechanism.** An
+   * acknowledgement that outlives the thing it acknowledged is worse than none:
+   * it would certify a body nobody has read as one already judged. So what is
+   * stored is not a flag but the identity of the content that was ruled on, and
+   * `acknowledgementState` (acknowledge.ts) compares it against the item as it
+   * stands. Edit the body and the two disagree; the acknowledgement LAPSES and
+   * the finding is open again.
+   *
+   * WHO and WHEN are deliberately not here. `mycontext ack` writes through
+   * `auditMutation`, so the audit log already carries the origin and the
+   * timestamp of every acknowledgement — `REQ-changes-are-timestamped-and-audited`
+   * — and a second, unverifiable copy of both in the frontmatter is a claim a
+   * hand edit could forge.
+   *
+   * **Written to the frontmatter only when non-empty**, and absent from
+   * `computeItemChecksum` unless non-empty, for the reason `continuity` and
+   * `summary` above are conditional: an unconditional key would move every
+   * recorded checksum in every corpus at once.
+   */
+  acknowledged: Record<string, string>;
   scope: string[];
   tags: string[];
   origin: Origin;
