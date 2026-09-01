@@ -1162,7 +1162,7 @@ export const strings = {
   'strip.unread': 'not read',
   'strip.unmeasured': 'not measured',
   'title.unread': 'The server did not answer this call, so nothing here is a claim about the repository, the corpus or the session. Refresh asks again.',
-  'title.unmeasured': 'This read surface exposes no aggregate over the audit log, so the figure is unknown rather than zero. Refreshing cannot help; the endpoint has to exist first.',
+  'title.unmeasured': 'The call answered, and could not produce this figure: no audit projection has been built for this corpus, or reading it refused. Unknown, never zero — and a zero here would be the one claim this bar must not invent.',
   'title.gitState': 'Click to cycle the six git states the spec requires',
   'strip.branch': 'branch {mv:branch} @ {mv:commit}',
   'strip.detached': 'detached HEAD @ {mv:commit}',
@@ -1181,9 +1181,21 @@ export const strings = {
   'title.doc': 'Every doctor finding at error or warning level, from the same tally the rail badge draws. It is served beside the item count on the one call this group already makes, so nothing here re-runs the checks. Opens Doctor.',
   'strip.queue': '{mv:count} to rule on',
   'title.queue': 'Drafts in the project layer waiting to be promoted, plus revision proposals waiting for a verdict — the same two queues the rail badge counts. Drawn only when there is something in them. Opens the review queue.',
-  'strip.inj': 'injections today',
+  // ── THE LABEL SAYS WHAT THE NUMBER IS, 2026-09-01. It said `injections
+  // today` for four days with a permanent `not measured` chip under it. The
+  // figure that exists is `/api/watch/context`'s `mycontext.injections`,
+  // which `core/context-share.ts` bounds to the CURRENT CONTEXT EPOCH — what
+  // survived the last compaction — and not to a calendar day. A real "today"
+  // would mean 1,440 columns off `/api/watch/volume` on every page boot, past
+  // that endpoint's own cap, and would still be wrong by part of a minute
+  // because its window ends at `now` rather than on a midnight boundary. So
+  // the word moved to meet the number: a wrong word on a correct figure is
+  // still a wrong figure. It is also the bound the terminal bar's own share
+  // uses, so the two surfaces cannot disagree about what they are counting.
+  'strip.inj': 'injections this context',
+  'title.inj': 'How many times project knowledge was injected into this session since its last compaction. The same bound and the same aggregate the terminal status line uses, off the audit projection, so the two bars cannot disagree. Zero here means injection has not fired — it is a measurement, not an absence.',
   'title.corpus': 'Click to cycle the item count and the state where it could not be read',
-  'title.audit': 'Click to cycle the injections figure between measured and not measured',
+  'title.audit': 'Click to cycle the injections figure between measured, not measured and not read',
   'title.ctx': 'Click to cycle the context states, the three project-knowledge answers and the unread state',
   'strip.ctx.known': 'context {pct}% ({used} of {size}) — as of last response, {age} ago',
   'strip.ctx.notYetKnown': 'context not yet known — no API call since the last compact',

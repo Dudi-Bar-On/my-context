@@ -114,11 +114,30 @@ const NS = 'http://www.w3.org/2000/svg';
  * labels and `--fs-chart` are untouched, because the extra room goes entirely
  * into the gutters between columns. See `chartSpan` in `screens/parts.js` for
  * the measurement and why widening the viewBox is not stretching it.
+ *
+ * **AND SINCE LATER THE SAME DAY, `W` IS NOT THE FLOOR EITHER — see
+ * `minSpan`/`naturalSpan` below.** Taking the whole plate was right for a
+ * drawing that had something to put in it and wrong for one that did not: the
+ * owner's next reading, at the same 2273px on `DEC-foreign-store-never-leaves-
+ * the-repository-so-the-question-of`, was a TWO-node graph spanning 1,348
+ * units with its two 210px boxes pinned to opposite edges and 1,122px of
+ * nothing between them — 69% of the drawing empty, in the other direction from
+ * the defect the morning fixed. Both numbers below are now derived from this
+ * one, so the design of record still decides the proportion and the CONTENT
+ * decides how much of the plate is asked for.
  */
 const W = 900;
 const NH = 22;
 const NW = 210;
 const MARGIN = 8;
+/** The columns the design of record's own 900-unit box was drawn for. */
+const MOCKUP_COLUMNS = 3;
+/**
+ * The gap the mockup leaves between two node boxes — DERIVED from its own box
+ * rather than measured off it, so the two numbers cannot drift apart:
+ * `900 = 2·8 + 3·210 + 2·127`.
+ */
+const GUTTER = (W - MARGIN * 2 - MOCKUP_COLUMNS * NW) / (MOCKUP_COLUMNS - 1);
 /** The mockup's fixed height, kept as the FLOOR rather than as the value: it
  *  draws five nodes and the endpoint caps at sixty. */
 const H_MIN = 250;
@@ -304,11 +323,17 @@ export async function render(root, ctx) {
     // card without changing the viewport in a way a `resize` listener could
     // see. The drawing is recomputed rather than the SVG rescaled: the whole
     // point is that the type does not scale with the box.
-    fitChart(box, W, (span) => chart(ctx, egoDrawing(view, rtl, span)));
     // The readout and the refusal below it are counts, not coordinates, so
-    // they are taken once from a drawing at the authored width. Nothing in
-    // either depends on how wide the plate is.
+    // they are taken once from a drawing at its own floor. Nothing in either
+    // depends on how wide the plate is — and taking it FIRST is what lets the
+    // same layout answer how much plate this graph is asking for.
     const drawing = egoDrawing(view, rtl);
+    // `floor` and `natural` come out of the layout above and are handed
+    // straight through: `fitChart` clamps the plate's own width between them,
+    // so a two-node graph draws at 563 units in the middle of a 1,348px plate
+    // and a 60-node one takes every pixel the card has.
+    fitChart(
+      box, drawing.floor, (span) => chart(ctx, egoDrawing(view, rtl, span)), drawing.natural);
     // `data` and not `view`, deliberately: the readout states what the SERVER
     // answered beside what is drawn, so `edges=` stays the true total and
     // `filtered=` says how much of it is not on screen.
@@ -669,14 +694,7 @@ function svText(attrs, text) {
  * and `edgeClass` turns the pair into the legend's three line styles here in
  * the browser without re-listing one word of that vocabulary.
  */
-export function egoDrawing(data, rtl = false, span = W) {
-  // Never narrower than the design of record's own box: three 210px node boxes
-  // plus their gutters do not fit in less, and below it the stylesheet's
-  // `max-inline-size:100%` shrinks the whole drawing as it always has.
-  const width = Math.max(W, span);
-  const X = (u) => (rtl ? width - u : u);
-  const px = (x, boxW) => (rtl ? width - x - boxW : x);
-
+export function egoDrawing(data, rtl = false, span = 0) {
   const placed = layoutGraph(data.nodes, data.edges, data.focus);
   // `at` is the whole reason an edge can find its ends: `layoutGraph` answers
   // in ITS order, not the response's, so an edge's two ids are resolved
@@ -690,6 +708,38 @@ export function egoDrawing(data, rtl = false, span = W) {
   for (const p of placed) perColumn[p.x] += 1;
   if (data.omitted > 0) perColumn[columns - 1] += 1;
   const height = Math.max(H_MIN, H_PAD + Math.max(...perColumn) * ROW);
+
+  // ── HOW WIDE THIS PARTICULAR GRAPH ASKS TO BE ───────────────────────────
+  //
+  // `span` is the room the plate has (`chartSpan` in `screens/parts.js`); the
+  // two numbers here are what this DRAWING does with it, and both are
+  // functions of the content rather than of the container.
+  //
+  // The FLOOR is the mockup's own proportion at this graph's own column count.
+  // It reproduces 900 exactly at three columns — which is the number the design
+  // of record authored and `test/ui/graph-screen.test.ts` pins — and it is
+  // smaller at two and at one, because the argument for 900 was always "three
+  // 210px node boxes plus their gutters do not fit in less" and a graph with
+  // two columns is not carrying three boxes.
+  //
+  // The NATURAL width is the floor plus one pixel of gutter for every pixel the
+  // drawing has grown DOWNWARD past the mockup's own 250-unit box. That is the
+  // aspect argument, and it is the one thing extra x-room actually buys here:
+  // every edge is a bezier from a box in one column to a box in the next, so a
+  // drawing that grows to 836 units tall over a 127-unit gutter is a bundle of
+  // near-vertical S-curves that cross each other and bunch at both ends.
+  // Widening the gutter with the height keeps a run of edges readable at 60
+  // nodes and asks for nothing at 2 — which is the whole of the owner's report,
+  // stated as a rule instead of as a cap somebody chose.
+  //
+  // NOTHING HERE SCALES TYPE. `--fs-chart` is CSS pixels and the viewBox is
+  // held at 1:1 by `svg.chart{max-inline-size:100%}` and by the `width`
+  // attribute `chart()` writes; every number above is a distance between marks.
+  const floor = minSpan(columns);
+  const natural = naturalSpan(columns, height);
+  const width = Math.min(Math.max(floor, span), natural);
+  const X = (u) => (rtl ? width - u : u);
+  const px = (x, boxW) => (rtl ? width - x - boxW : x);
 
   // One column is centred; two or more spread evenly across the box. At three
   // columns this is the mockup's own 8 / 345 / 682.
@@ -840,7 +890,56 @@ export function egoDrawing(data, rtl = false, span = W) {
     };
   }
 
-  return { width, height, columns, captions, edges, nodes, more, undrawnEdges, undrawnNodes };
+  return {
+    width,
+    // The two bounds the caller hands straight back to `fitChart`, so the
+    // decision about how much plate this graph asks for is made HERE with the
+    // layout in hand and not in the glue — the rule this file's own header
+    // states about every other coordinate.
+    floor,
+    natural,
+    height,
+    columns,
+    captions,
+    edges,
+    nodes,
+    more,
+    undrawnEdges,
+    undrawnNodes,
+  };
+}
+
+/**
+ * The narrowest box this many columns can be drawn in without their node boxes
+ * touching — the mockup's own proportion, at this graph's own column count.
+ *
+ * At `MOCKUP_COLUMNS` this IS `W`, by construction rather than by coincidence:
+ * `GUTTER` is derived from `W` a few lines up, so the design of record decides
+ * the number and this decides how it generalises. A one-column graph — an item
+ * whose every relation was filtered out, which this screen draws rather than
+ * refusing — asks for 226 units and gets them.
+ */
+function minSpan(columns) {
+  return MARGIN * 2 + columns * NW + Math.max(columns - 1, 0) * GUTTER;
+}
+
+/**
+ * The widest box this drawing has any use for.
+ *
+ * One pixel of gutter per pixel of height past the mockup's own `H_MIN` box, so
+ * the drawing keeps roughly the shape the design of record drew as its row
+ * count climbs to the 60-node cap. Two worked examples, both measured against
+ * the live corpus below:
+ *
+ *     2 nodes, 2 columns, 250 tall    563 units      a fraction of the plate
+ *     60 nodes, 3 columns, 836 tall   2,072 units    more than any plate has
+ *
+ * There is deliberately no upper CAP here, only a natural width: a cap is a
+ * number nobody chose, and a graph whose natural width exceeds the plate is
+ * exactly the dense case the owner asked to have the room used for.
+ */
+function naturalSpan(columns, height) {
+  return minSpan(columns) + Math.max(columns - 1, 0) * Math.max(0, height - H_MIN);
 }
 
 /**

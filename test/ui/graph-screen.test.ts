@@ -75,7 +75,13 @@ interface DrawnNode {
   labelX: number; labelY: number; label: string;
 }
 interface Drawing {
-  width: number; height: number; columns: number;
+  /** The box laid out in: the span offered, clamped between the two below. */
+  width: number;
+  /** The narrowest box this column count fits in. */
+  floor: number;
+  /** The widest box this drawing has any use for. */
+  natural: number;
+  height: number; columns: number;
   captions: { depth: number; x: number; y: number }[];
   edges: DrawnEdge[];
   nodes: DrawnNode[];
@@ -90,7 +96,7 @@ interface Drawing {
  * rather than in a browser nobody is watching.
  */
 interface GraphModule {
-  egoDrawing: (data: GraphBody, rtl?: boolean) => Drawing;
+  egoDrawing: (data: GraphBody, rtl?: boolean, span?: number) => Drawing;
   render: (root: unknown, ctx: unknown) => Promise<void>;
 }
 
@@ -222,6 +228,78 @@ test('the ego graph is the mockup\'s own geometry, number for number', async () 
   assert.equal(drawing.more.label, '+2 more');
   assert.equal(drawing.more.x, 682);
   assert.equal(drawing.more.y + drawing.more.height / 2, 203.75);
+
+  // ── AND 900 IS NOW DERIVED FROM THAT GEOMETRY RATHER THAN COPIED.
+  //
+  // `2·8 + 3·210 + 2·127` — the margins, the three node boxes and the two
+  // gutters between them. The mockup's number is reproduced, not replaced,
+  // which is what makes every assertion above still the mockup's.
+  assert.equal(drawing.floor, 900, 'the design of record\'s own box, at its own column count');
+});
+
+/**
+ * **HOW MUCH PLATE A GRAPH ASKS FOR IS THE GRAPH'S QUESTION** — owner report,
+ * 2026-09-01: *"relations is better now but still not perfect."*
+ *
+ * The morning's fix let a chart span its whole plate, which was right for the
+ * staircase and wrong here. Measured in a browser at 2273px on
+ * `DEC-foreign-store-never-leaves-the-repository-so-the-question-of`: a TWO-node
+ * graph drew a 1,348-unit box with its two 210px boxes pinned to opposite edges
+ * and 1,122px of nothing between them — 69% of the drawing empty.
+ *
+ * Both bounds are asserted at both extremes, because a rule that only made the
+ * sparse case narrow would be the condensed-left defect coming back for the
+ * dense one.
+ */
+test('a sparse graph asks for a fraction of the plate and a dense one asks for all of it', async () => {
+  const { egoDrawing } = await graphModule();
+
+  // ── THE REPORTED CASE: one relation, two columns.
+  const sparseBody: GraphBody = {
+    focus: FOCUS,
+    nodes: [node(FOCUS), node(DEC)],
+    edges: [{ from: DEC, to: FOCUS, type: 'supersedes', dangling: false, loadBearing: true }],
+    omitted: 0,
+  };
+  const sparse = egoDrawing(sparseBody);
+  assert.equal(sparse.columns, 2);
+  // `2·8 + 2·210 + 1·127`. Two boxes and one gutter is not three boxes and two.
+  assert.equal(sparse.floor, 563);
+  assert.equal(sparse.natural, 563, 'a 250-unit-tall drawing has grown past nothing');
+  assert.equal(egoDrawing(sparseBody, false, 1973).width, 563,
+    'a 1,973px plate does not make a two-node graph 1,973 wide');
+  // The ratio the owner measured, on the other side of the fix: 420 units of
+  // node box in a 563-unit drawing is 74.6%, where it was 420 in 1,348 (31.2%).
+  const ink = sparse.nodes.reduce((sum, n) => sum + n.width, 0);
+  assert.equal(ink, 420);
+  assert.ok(ink / sparse.width > 0.7, `ink/drawing is ${(ink / sparse.width).toFixed(3)}`);
+
+  // ── AND THE OTHER EXTREME: the 60-node cap, which must still use the room.
+  const many: GraphBody = {
+    focus: FOCUS, nodes: [node(FOCUS)], edges: [], omitted: 147,
+  };
+  for (let i = 0; i < 59; i += 1) {
+    const id = `RULE-a-synthetic-neighbour-number-${String(i).padStart(3, '0')}`;
+    many.nodes.push(node(id));
+    const inbound = i % 2 === 0;
+    many.edges.push({
+      from: inbound ? id : FOCUS,
+      to: inbound ? FOCUS : id,
+      type: 'relates_to',
+      dangling: false,
+      loadBearing: false,
+    });
+  }
+  const dense = egoDrawing(many);
+  assert.equal(dense.columns, 3);
+  assert.equal(dense.floor, 900, 'the floor is the column count and nothing else');
+  assert.ok(dense.natural > 1973,
+    `a 60-node graph must be able to fill a 1,973px plate; it asks for ${dense.natural}`);
+  // Offered a plate, it takes the plate — this is the assertion that says the
+  // ceiling did not reintroduce the defect it was added beside.
+  assert.equal(egoDrawing(many, false, 1973).width, 1973);
+  // Offered more than it can use, it stops. No cap, only a natural width.
+  assert.equal(egoDrawing(many, false, 99_999).width, dense.natural);
 });
 
 test('every edge leaves its own node and arrives at its own target', async () => {
@@ -357,8 +435,24 @@ test('a focus with no relations draws one node, no edges, and nothing lost', asy
   assert.equal(drawing.more, null);
   assert.equal(drawing.undrawnEdges, 0);
   assert.equal(drawing.undrawnNodes, 0);
-  // One column is CENTRED rather than left at x=8 — `(W - NW) / 2`.
-  assert.equal(nodeAt(drawing, FOCUS).x, 345);
+  // ── ONE COLUMN IS ITS OWN WIDTH NOW, AND IS CENTRED BY THE STYLESHEET.
+  //
+  // This asserted `x === 345` — `(900 - 210) / 2`, the lone node centred inside
+  // the mockup's own 900-unit box. Since 2026-09-01 the box is derived from the
+  // COLUMN COUNT (`minSpan`), so a one-column drawing asks for 226 units and
+  // the node sits at the margin, and `svg.chart{margin-inline:auto}` centres
+  // the 226 inside the plate. The node ends up in the same place on screen — the
+  // middle of the card — by a rule that also works at two columns and at three,
+  // where the old one put a symmetric drawing left of centre in a wide card.
+  //
+  // Both halves are asserted, because `x === 8` alone would also be true of the
+  // defect: a lone node pinned to the left of a 900-unit box.
+  assert.equal(drawing.width, 226, 'one 210px box plus its two 8px margins, and nothing else');
+  assert.equal(nodeAt(drawing, FOCUS).x, 8);
+  assert.equal(
+    nodeAt(drawing, FOCUS).x + nodeAt(drawing, FOCUS).width, drawing.width - 8,
+    'and it is centred in that box: the same margin on both sides',
+  );
   assert.equal(drawing.captions.length, 1);
   assert.equal(drawing.captions[0]!.depth, 0, 'the lone column is the focus column');
 });

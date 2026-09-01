@@ -372,14 +372,15 @@ export const SCREEN_INVALIDATION = {
 //            — `injection` records and nothing else move that number.
 //            `['injection']`, for the half the stream can actually speak
 //            for.
-//   audit    `#auditstate` — injections today and the audit append p95, both
-//            permanently `strip.unmeasured` because no endpoint on this read
-//            surface exposes an aggregate over the audit log (`renderChrome`'s
-//            own header, in full). It is built by `renderChrome` and fetches
-//            nothing, so there is nothing a record could make stale. `[]`,
-//            and it is written down for the reason the three static screens'
-//            `[]` is: on the day that aggregate lands this row is where its
-//            kinds go, and an absent key would read as nobody having looked.
+//   audit    `#auditstate` and `#auditlog` — the injection count and the
+//            audit clock. Both were `[]` and one of them was permanently
+//            `strip.unmeasured`, on the reasoning that no endpoint on this
+//            read surface exposed an aggregate over the audit log. That was
+//            true of the clock until 2026-09-01 and was never true of the
+//            count: `/api/watch/context` had been serving
+//            `mycontext.injections` all along. Both are drawn from that one
+//            body now, so this row subscribes and shares the session group's
+//            call — see `CHROME_INVALIDATION` below for why the kinds are `*`.
 //   rail     the three `.cnt` badges beside Coverage gaps, Doctor and Review
 //            queue, painted by `paintRailCounts` from `/api/status` (the health
 //            counts, and `pendingRevisions.revisions + reviewQueue.drafts`) and
@@ -479,11 +480,11 @@ export const CHROME_INVALIDATION = {
   repo: { kinds: [], refresh: 'auto' },
   corpus: { kinds: ['mutation'], refresh: 'auto' },
   session: { kinds: ['injection'], refresh: 'auto' },
-  // `'*'` since 2026-09-01, when the group gained the audit clock. It was
-  // `[]` while the group's only content was `injections today`, which has no
-  // source on this read surface and is drawn named as unmeasured. The clock
-  // reports that the log moved, so every kind is its event; subscribing to a
-  // subset would be a clock that stops for the kinds nobody listed. It shares
+  // `'*'` since 2026-09-01, when the group gained the audit clock and, later
+  // the same day, a source for its injection count. It was `[]` while both
+  // were drawn as permanently unmeasured. The clock reports that the log
+  // moved, so every kind is its event; subscribing to a subset would be a
+  // clock that stops for the kinds nobody listed. It shares
   // the session group's one call, so this costs no second endpoint.
   audit: { kinds: '*', refresh: 'auto' },
   prov: { kinds: '*', refresh: 'auto' },

@@ -1332,7 +1332,7 @@ details.help[open]>summary{margin-block-end:6px}
    `inline-size`/`block-size` further down, it carries `preserveAspectRatio:
    none` on purpose, and it draws no text at all — there is no type on it for a
    scale factor to distort. */
-svg.chart{display:block;max-inline-size:100%;block-size:auto;overflow:visible}
+svg.chart{display:block;max-inline-size:100%;margin-inline:auto;block-size:auto;overflow:visible}
 svg.chart text{font-family:var(--sans);font-size:var(--fs-chart);fill:var(--dim)}
 svg.chart text.mono{font-family:var(--mono);font-size:var(--fs-chart-mono)}
 svg.chart text.ink{fill:var(--ink)}
@@ -3673,18 +3673,34 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
          header, which is where the mockup's 0.55 ms came from in the first
          place. Nothing on this bar was ever measuring it.
 
-         `injections today` STAYS, deliberately: it is the at-a-glance proof
-         that the one feature this product exists for is firing at all. It has
-         no source on the read surface either, so it is drawn NAMED AS
-         UNMEASURED rather than dropped — the treatment plan:port seq:6's "a
-         shorter TRUE bar" got wrong in one direction: true, and silent about
-         what it was not saying. -->
+         THE INJECTION COUNT STAYS, deliberately: it is the at-a-glance proof
+         that the one feature this product exists for is firing at all. It was
+         drawn NAMED AS UNMEASURED for four days because no read surface
+         exposed the figure — the treatment plan:port seq:6's "a shorter TRUE
+         bar" got wrong in one direction: true, and silent about what it was
+         not saying.
+
+         AND ON 2026-09-01 IT GAINED ITS SOURCE, which is why this group now
+         demonstrates a MEASURED figure beside the two absent states rather
+         than the absent state alone. /api/watch/context already served
+         `mycontext: {tokens, injections, unrecorded}` and the session group
+         already spent `tokens`; `injections` came down the same wire and was
+         discarded. No new endpoint and no new call.
+
+         THE LABEL MOVED TO MEET THE NUMBER. It read `injections today` and the
+         figure is not a calendar day: core/context-share.ts bounds it to the
+         current CONTEXT EPOCH — what survived the last compaction — which is
+         also the bound the terminal bar uses, so the two cannot disagree. A
+         real "today" would be 1,440 columns off /api/watch/volume on every
+         page boot, past that endpoint's own cap, and would still be wrong by
+         part of a minute. A wrong word on a correct figure is still a wrong
+         figure. -->
     <span class="sgrp sgrp-audit">
       <span class="slab" data-t="strip.grp.audit">audit</span>
-      <span class="auditstate" id="auditstate" title="Click to cycle the injections figure between measured and not measured"
+      <span class="auditstate" id="auditstate" title="Click to cycle the injections figure between measured, not measured and not read"
         data-t-title="title.audit">
-        <span class="chip unmeas" data-g="◌" data-t="strip.unmeasured" title="This read surface exposes no aggregate over the audit log, so the figure is unknown rather than zero. Refreshing cannot help; the endpoint has to exist first." data-t-title="title.unmeasured">not measured</span>
-        <span class="m v measured" id="injval" data-v="inj">128</span> <span class="sprop" data-t="strip.inj">injections today</span>
+        <span class="chip unmeas" data-g="◌" data-t="strip.unmeasured" title="The call answered, and could not produce this figure: no audit projection has been built for this corpus, or reading it refused. Unknown, never zero — and a zero here would be the one claim this bar must not invent." data-t-title="title.unmeasured">not measured</span>
+        <span class="m v measured" id="injval" data-v="inj">128</span> <span class="sprop" data-t="strip.inj">injections this context</span>
         <!-- AND WHEN THE LOG LAST MOVED - added 2026-09-01, from the terminal
              bar, whose own header calls this the one field that catches a whole
              CLASS of defect at the source: a watcher that stopped watching, a

@@ -1944,8 +1944,21 @@ del{background:var(--critbg);color:var(--dim);text-decoration:line-through;borde
    `.pulse svg` is deliberately left out of this: it sets its own
    `inline-size`/`block-size` further down, it carries `preserveAspectRatio:
    none` on purpose, and it draws no text at all — there is no type on it for a
-   scale factor to distort. */
-svg.chart{display:block;max-inline-size:100%;block-size:auto;overflow:visible}
+   scale factor to distort.
+
+   **`margin-inline:auto` — 2026-09-01, and it is a POSITION and not a size.**
+   A chart may now be narrower than its plate on purpose: `chartSpan` clamps
+   the plate's width to the width the DRAWING can use, so a two-node ego graph
+   asks for 563 units in a 1,348px card instead of pinning its two node boxes
+   to opposite edges with 1,122px of nothing between them (measured at 2273px,
+   69% of the drawing empty). A `display:block` element with an explicit width
+   sits hard against the inline start, and a symmetric drawing shoved into the
+   left of a wide card reads as a layout that failed rather than one that
+   chose — so it is centred, in the design of record first and here to match.
+   Nothing about the SIZE changes: the `width` attribute still equals the
+   viewBox and the ratio is still 1. The other two charts never take less than
+   their plate, so this is inert for them. */
+svg.chart{display:block;max-inline-size:100%;margin-inline:auto;block-size:auto;overflow:visible}
 
 /* **`.pulse svg` sits AFTER `svg.chart`, and moving it back is the defect.**
    Both selectors are specificity (0,1,1), so SOURCE ORDER decides, and a

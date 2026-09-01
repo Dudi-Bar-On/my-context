@@ -2555,23 +2555,33 @@ async function loadSessions() {
  *                      check of any kind. It asks now — see `fillContext()`.
  *   project-knowledge  the same endpoint's `mycontext` half: three answers,
  *                      one of them an error, all keyed.
- *   injections today   NO SOURCE ON THIS READ SURFACE. Derivable in principle
- *   audit append p95   by asking `/api/watch/volume` for every minute since
- *                      local midnight and summing `byKind.injection` — up to
- *                      1,440 columns on every page boot, which that
- *                      endpoint's own cap calls "where a request stops being
- *                      a pulse and starts being a scan"; and its window ends
- *                      at `now` rather than on a midnight boundary, so the
- *                      total would be off by part of a minute. Wrong by a
- *                      little, in a bar whose entire job is provenance, is
- *                      wrong. The p95 has no runtime source at all — the
- *                      mockup's 0.55 ms is a benchmark figure out of
- *                      `core/audit-db.ts`'s header, not something this server
- *                      measures. Both need a bounded aggregate on the read
- *                      surface, and until one exists they are DRAWN AND NAMED
- *                      AS UNMEASURED rather than dropped: `plan:port seq:6`'s
- *                      "a shorter TRUE bar" was true and silent about what it
- *                      was not saying, which clause 2 forbids.
+ *   injections today   NO SOURCE ON THIS READ SURFACE — for `today`. Counting
+ *                      a calendar day means asking `/api/watch/volume` for
+ *                      every minute since local midnight and summing
+ *                      `byKind.injection` — up to 1,440 columns on every page
+ *                      boot, which that endpoint's own cap calls "where a
+ *                      request stops being a pulse and starts being a scan";
+ *                      and its window ends at `now` rather than on a midnight
+ *                      boundary, so the total would be off by part of a
+ *                      minute. Wrong by a little, in a bar whose entire job is
+ *                      provenance, is wrong.
+ *
+ *                      **RESOLVED 2026-09-01 by changing the WORD.** The
+ *                      figure that does exist is `/api/watch/context`'s
+ *                      `mycontext.injections`, bounded to the current context
+ *                      epoch, already on this page and being discarded; the
+ *                      label now says `injections this context` and means it.
+ *                      See `injectionParts`. It was drawn NAMED AS UNMEASURED
+ *                      for the four days between, rather than dropped —
+ *                      `plan:port seq:6`'s "a shorter TRUE bar" was true and
+ *                      silent about what it was not saying, which clause 2
+ *                      forbids — and a label that stayed unmeasured any longer
+ *                      would have become the thing readers learn to skip.
+ *   audit append p95   CUT. No runtime source at all: the mockup's 0.55 ms is
+ *                      a benchmark figure out of `core/audit-db.ts`'s header,
+ *                      not something this server measures, and a latency
+ *                      diagnostic with no action attached does not earn a
+ *                      permanent place in the densest row this shell has.
  *
  * **Colour, and the word beside it.** Four provenance groups — repo, corpus,
  * session, audit — each carrying one of the five meaning colours AND a label
@@ -2894,18 +2904,9 @@ function renderChrome() {
   costState.id = 'coststate';
   cost.append(costState);
 
-  // ── THE AUDIT GROUP — two properties the reader is owed, and the one state
-  // both are permanently in. Built here rather than in `fillChrome()` because
-  // there is nothing to fetch: no endpoint on this read surface exposes an
-  // aggregate over the audit log (see the header). The LABELS are drawn
-  // either way — the property is what the reader is owed, and hiding the
-  // whole segment is how forty of forty-four came to be invisible — with an
-  // em dash where the figure goes and ONE chip naming the state for both.
-  const audit = group('audit', 'strip.grp.audit', state);
-  const auditState = document.createElement('span');
-  auditState.className = 'auditstate';
-  auditState.id = 'auditstate';
-  auditState.append(stateChip('strip.unmeasured', 'title.unmeasured'));
+  // ── THE AUDIT GROUP — two properties the reader is owed, and BOTH of them
+  // are measured now.
+  //
   // ── ONE FIGURE SINCE 2026-08-31, NOT TWO — owner ruling.
   //
   // `strip.append` (the audit append p95) and the `strip.meas` chip beside it
@@ -2917,26 +2918,26 @@ function renderChrome() {
   // still lives, beside `test/perf/audit-latency.perf.ts` which takes it. No
   // measurement was lost by this cut, because none was being made.
   //
-  // `injections today` stays, and the ruling was explicit that it stays: it is
+  // The injections figure stayed, on an explicit ruling that it stays: it is
   // the at-a-glance proof the one feature this product exists for is firing at
-  // all. It has no source on this read surface either, so it is drawn and
-  // NAMED as unmeasured rather than dropped.
-  for (const key of ['strip.inj']) {
-    const dash = document.createElement('span');
-    dash.className = 'm';
-    dash.textContent = '—';
-    const label = document.createElement('span');
-    label.className = 'sprop';
-    label.dataset.f = 'injections';
-    label.dataset.k = key;
-    label.append(...translate(table.strings, key));
-    auditState.append(dash, document.createTextNode(' '), label);
-  }
-  // ── AND WHEN THE LOG LAST MOVED, which is the one figure in this group that
-  // DOES have a source on the read surface — `newestAuditRow` over the audit
-  // projection `/api/watch/context` already opens. It is the field the group's
-  // header calls impossible, made possible by a different endpoint answering
-  // it; `injections today` above still has none and is still named unmeasured.
+  // all. **It stayed for four days as a label with a permanent `not measured`
+  // chip under it, and that is what is fixed on 2026-09-01** — the owner
+  // reported it twice. See `injectionParts` for where the number was already
+  // being computed and thrown away, and for why the LABEL moved to meet the
+  // number rather than the other way round.
+  //
+  // Built empty here and filled by `drawContext()` from `/api/watch/context`,
+  // which is what every other measured segment on this bar does. The 26px band
+  // must not jump when the answer lands, so the element exists from first
+  // paint; `fillContext`'s `unread()` names the group if the call fails.
+  const audit = group('audit', 'strip.grp.audit', state);
+  const auditState = document.createElement('span');
+  auditState.className = 'auditstate';
+  auditState.id = 'auditstate';
+  // ── AND WHEN THE LOG LAST MOVED, the group's other figure — `newestAuditRow`
+  // over the audit projection `/api/watch/context` already opens. It is the
+  // field this group's header once called impossible, made possible by a
+  // different endpoint answering it.
   //
   // Its own element beside the injections figure, for the reason `#corpusdrift`
   // is its own beside the count: two facts, two sources, two refill triggers,
@@ -3814,6 +3815,14 @@ async function fillContext() {
       const el = document.getElementById(id);
       if (el !== null) el.replaceChildren(...unreadState(retry));
     }
+    // **The injections figure is on this call too, since 2026-09-01.** It rides
+    // the same body as the five above (`mycontext.injections`), so it fails
+    // with them and must say so with them. It is drawn by its own builder
+    // rather than by `unreadState` because its LABEL has to survive every
+    // state — `e2e/strip.spec.ts` pins that the property stays named even when
+    // its number is not there.
+    const inj = document.getElementById('auditstate');
+    if (inj !== null) inj.replaceChildren(...injectionParts(null));
   };
   if (noCredential) { ctx.replaceChildren(...unreadState(retry)); unread(); return; }
 
@@ -4221,6 +4230,9 @@ function drawIdentity(view) {
     cost.replaceChildren(...parts);
   }
 
+  const injections = document.getElementById('auditstate');
+  if (injections !== null) injections.replaceChildren(...injectionParts(view));
+
   const log = document.getElementById('auditlog');
   if (log !== null) log.replaceChildren(...auditClockParts(view));
 
@@ -4304,6 +4316,130 @@ function auditClockParts(view) {
     return [keyed('strip.logQuiet', { age }, 'chip warn', '▲')];
   }
   return [keyed('strip.log', { op: last.op, age }, 'sprop')];
+}
+
+/**
+ * **HOW MANY TIMES PROJECT KNOWLEDGE WAS INJECTED INTO THIS SESSION** — the
+ * last `not measured` on the strip, 2026-09-01.
+ *
+ * ── WHAT WAS WRONG ─────────────────────────────────────────────────────────
+ *
+ * The audit group drew a label and a permanent `not measured` chip, and had
+ * since the strip refactor. That is the shape `strip.append` was CUT for the
+ * day before: a label promising a measurement nobody takes. The difference is
+ * that this one was KEPT by an explicit ruling — it is the at-a-glance proof
+ * that injection is firing at all — so it needed a SOURCE, not a removal.
+ *
+ * ── AND THE SOURCE WAS ALREADY IN THE ROOM ─────────────────────────────────
+ *
+ * `/api/watch/context` has been serving `mycontext: {tokens, injections,
+ * unrecorded}` since the project-knowledge share landed, and this page has been
+ * reading it: `contextStrip` puts it on `view.myctx` and the session group
+ * spends `tokens` in `strip.myctx`. `injections` came down the same wire, in
+ * the same object, and was used only inside that one sentence's parentheses.
+ * The terminal bar's lane found the same thing on its side the same morning —
+ * `myctxShare` returns the count and gates on `> 0`. **No new endpoint, no new
+ * call, no new query.** The one thing that changes is that a number already on
+ * the page is drawn where the label for it already was.
+ *
+ * ── THE LABEL MOVED TO MEET THE NUMBER ─────────────────────────────────────
+ *
+ * The label said `injections today`. The figure is not a calendar day and never
+ * could have been cheaply: `/api/watch/context` bounds the count to the current
+ * CONTEXT EPOCH — what survived the last compaction — and drops `subagent-start`
+ * records, both in `core/context-share.ts`, because the sentence beside it says
+ * "of IT", of the window whose fullness is drawn two groups over. Unbounded, on
+ * this repository's own corpus, that sum was 2.5x the bounded one.
+ *
+ * Counting a real "today" would mean asking `/api/watch/volume` for every
+ * minute since local midnight — up to 1,440 columns on every page boot, past
+ * that endpoint's own cap — and it would STILL be wrong by part of a minute,
+ * because its window ends at `now` and not on a midnight boundary. Wrong by a
+ * little, on a bar whose whole job is provenance, is wrong.
+ *
+ * So `strip.inj` reads `injections this context` and the number under it is
+ * exactly that. A wrong word on a correct figure is still a wrong figure, and
+ * the word is the half that was cheap to fix.
+ *
+ * ── A MEASURED ZERO IS `0`, AND AN UNMEASURED ONE IS NOT ───────────────────
+ *
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`. Three
+ * answers, and they are three different sentences:
+ *
+ *   `0`                a projection that was read and holds no injection for
+ *                      this session. Injection has not fired. That is the
+ *                      figure this field exists to show, and it is drawn.
+ *   `not read`         the endpoint did not answer. `fillContext`'s `unread()`
+ *                      owns that one and this function never sees it.
+ *   `not measured`     the endpoint answered and could not produce the count —
+ *                      no projection built for this corpus, or the read
+ *                      refused. `mycontextError` carries the reason and it
+ *                      becomes the chip's title, because the reason is a
+ *                      sentence and the bar has room for two words.
+ *
+ * A cold session is the fourth and it is `not measured` too: there is no
+ * session to count injections into, which is a thing nobody measured rather
+ * than a session that received none.
+ *
+ * **THE LABEL IS DRAWN IN EVERY ONE OF THEM, INCLUDING `not read`.** The
+ * property is what the reader is owed and hiding the whole segment is how forty
+ * of forty-four came to be invisible; `e2e/strip.spec.ts` pins it. That is why
+ * this function owns the unread rendering too instead of `fillContext`'s
+ * generic `unread()` — the generic one is a chip and a button with no name on
+ * it, which is right for a segment whose label lives outside it and wrong here.
+ */
+function injectionParts(view) {
+  const label = document.createElement('span');
+  label.className = 'sprop';
+  label.dataset.f = 'injections';
+  label.dataset.k = 'strip.inj';
+  label.append(...translate(table.strings, 'strip.inj'));
+  const dashed = (...before) => {
+    const dash = document.createElement('span');
+    dash.className = 'm';
+    dash.textContent = '—';
+    return [...before, dash, document.createTextNode(' '), label];
+  };
+
+  // The endpoint did not answer at all. A different sentence from "it answered
+  // and could not count".
+  //
+  // **NAMED HERE, RETRIED NEXT DOOR.** `unreadState` pairs its chip with a
+  // refresh button, and this is the one segment that must not take it: the
+  // audit clock sits in the SAME group, rides the SAME body, and already draws
+  // that button a few pixels away — `fillContext`'s own note is that "a retry
+  // in each is the same retry; they all ask this one function again". A second
+  // button for the same call, in the densest row this shell has, is width spent
+  // on nothing. Measured at 1280px with the call refusing: the audit group came
+  // to 552px with it and 390px without, against a strip that
+  // `e2e/strip.spec.ts` holds to a width budget group by group.
+  if (view === null) return dashed(stateChip('strip.unread', 'title.unread'));
+
+  // The unmeasured cases keep the em dash the segment has always drawn where
+  // the figure goes, so the label never sits alone with nothing in front of it.
+  if (view.myctx === null) {
+    const chip = stateChip('strip.unmeasured', 'title.unmeasured');
+    // The endpoint's own sentence when it has one — it names the corpus and the
+    // command that would build the projection, which is more use than the
+    // generic title and is the same reason `strip.myctxUnavailable` prints it.
+    if (typeof view.myctxError === 'string' && view.myctxError !== '') {
+      chip.title = view.myctxError;
+    }
+    return dashed(chip);
+  }
+
+  // **A COUNT WITH RECORDS BEHIND IT THAT CANNOT BE PRICED IS STILL AN EXACT
+  // COUNT.** `unrecorded` is injections logged before `tokens` existed on the
+  // record; it makes the TOKEN sum a lower bound — `strip.myctxPartial` says
+  // `≥` for exactly that — and leaves the injection COUNT exact, because those
+  // rows were counted and only their size is unknown. Nothing is qualified
+  // here that does not need to be.
+  const figure = document.createElement('span');
+  figure.className = 'm';
+  figure.dataset.f = 'injections';
+  figure.textContent = String(view.myctx.injections);
+  figure.title = flat(table.strings, 'title.inj');
+  return [figure, document.createTextNode(' '), label];
 }
 
 /**

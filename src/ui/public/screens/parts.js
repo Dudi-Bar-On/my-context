@@ -207,9 +207,41 @@ export function spaced(e) {
  * which is the one case where the factor is not 1 — and it can only ever be
  * smaller, so a token never renders larger than the number it states.
  *
- * No upper bound, because the owner asked for the width to be USED and any cap
- * would be a number nobody chose. Flagged in this task's report as the one
- * thing here an owner may want to rule on after a look at a very wide monitor.
+ * ── AND THE CEILING THE SAME DAY, BECAUSE THE OWNER LOOKED AGAIN ──────────
+ *
+ * *"relations is better now but still not perfect."* Measured at the same
+ * 2273px, focus `DEC-foreign-store-never-leaves-the-repository-so-the-question-
+ * of`, which has ONE drawn relation:
+ *
+ *     svg          viewBox 0 0 1348 250        width attr 1348
+ *     node 1       x 265   w 210               centre 370
+ *     node 2       x 1387  w 210               centre 1492
+ *     ink          420 of 1348 units           69% EMPTY
+ *
+ * Two node boxes pinned to opposite edges of a card with 1,122px of nothing
+ * between them. That is the morning's defect in the other direction, and it
+ * has the same cause read the other way round: a chart was told how much room
+ * it HAD and never asked how much it could USE.
+ *
+ * So `natural` joins `authored` here, and the span is the plate CLAMPED
+ * BETWEEN THEM — `max(authored, min(available, natural))`. `authored` is still
+ * the floor and still the number below which the geometry collides; `natural`
+ * is what the CONTENT can spend, and it is the drawing's own to compute
+ * because only the drawing knows its column count and its row count. The
+ * caller that supplies neither is unchanged: `natural` defaults to no ceiling,
+ * which is the staircase's and the comb's behaviour today and stays it —
+ * every rung and every tooth of those two is a distinct datum, so a wider box
+ * is more of the data on screen and the room is always worth having. An ego
+ * graph's three columns are three columns at any width.
+ *
+ * **A drawing narrower than its plate is CENTRED, and deliberately.**
+ * `svg.chart` gained `margin-inline:auto` — in the design of record first and
+ * in `styles.css` to match, which is the order every presentation change takes
+ * here. Left-aligned was the alternative and it is the wrong one: the ego
+ * graph's own geometry is symmetric about the focus column, so a symmetric
+ * drawing hard against the left of a wide card reads as a layout that failed
+ * rather than as one that chose. Centring is also the only option that does
+ * not move when the item pane is dragged.
  */
 
 /**
@@ -227,9 +259,19 @@ export function spaced(e) {
  * A host that is not laid out yet answers 0 (detached, or `display:none`), and
  * the authored width is the honest answer there rather than a chart one pixel
  * wide.
+ *
+ * **`natural` is the CEILING and it is the drawing's, not the container's** —
+ * the widest box this particular drawing has any use for, which only the
+ * drawing can compute because it is the one thing that knows its own content.
+ * Omitting it means "no ceiling", which is the answer for a chart whose every
+ * unit of width is another datum on screen: the staircase's rungs and the
+ * comb's teeth. The clamp is `max(authored, min(available, natural))`, so the
+ * floor still wins over a ceiling that somehow came in below it and neither
+ * bound can silently swap places with the other.
  */
-export function chartSpan(host, authored) {
-  if (host === null || host === undefined) return authored;
+export function chartSpan(host, authored, natural = Infinity) {
+  const capped = (span) => (span > natural ? Math.max(authored, natural) : span);
+  if (host === null || host === undefined) return capped(authored);
   // A HOST WITH NO LAYOUT KEEPS THE WIDTH IT IS ALREADY DRAWN AT. A plate that
   // is detached, or in a section on its way out, measures zero, and answering
   // the authored floor there would collapse a chart that is merely not being
@@ -240,13 +282,13 @@ export function chartSpan(host, authored) {
   // 900 where they had been 1,958.
   if (host.clientWidth === 0) {
     const drawn = drawnSpan(host);
-    return drawn > authored ? drawn : authored;
+    return capped(drawn > authored ? drawn : authored);
   }
   const pad = globalThis.getComputedStyle === undefined ? null : getComputedStyle(host);
   const inset = pad === null ? 0
     : (parseFloat(pad.paddingInlineStart) || 0) + (parseFloat(pad.paddingInlineEnd) || 0);
   const avail = Math.floor(host.clientWidth - inset);
-  return Number.isFinite(avail) && avail > authored ? avail : authored;
+  return capped(Number.isFinite(avail) && avail > authored ? avail : authored);
 }
 
 /**
@@ -277,7 +319,7 @@ export function chartSpan(host, authored) {
  */
 const CHART_DRAW = new WeakMap();
 
-export function fitChart(host, authored, draw) {
+export function fitChart(host, authored, draw, natural = Infinity) {
   // ── ONE OBSERVER PER HOST, AND IT ALWAYS HOLDS THE NEWEST DRAW.
   //
   // A screen calls this again whenever its own data changes — `screens/graph.js`
@@ -287,10 +329,26 @@ export function fitChart(host, authored, draw) {
   // holding the first focus's data, so a resize would quietly redraw the graph
   // the reader navigated away from. The registry answers both: the watcher is
   // installed once and reads whatever draw was handed in last.
+  //
+  // **THE TWO BOUNDS RIDE IN THE REGISTRY BESIDE THE DRAW, AND THAT IS NEW.**
+  // They used to be closed over by the watcher on its first call, which was
+  // harmless while `authored` was one constant per screen. It stopped being
+  // harmless the moment they became functions of the DATA: an ego graph's floor
+  // and natural width both move with its column and row count, so a watcher
+  // holding the first focus's bounds would resize the reader's current graph
+  // against a graph they left. Same registry, same reason, one entry.
   const first = !CHART_DRAW.has(host);
-  CHART_DRAW.set(host, draw);
-  paintChart(host, authored);
-  if (first) watchChartWidth(host, authored, () => paintChart(host, authored));
+  CHART_DRAW.set(host, { draw, authored, natural });
+  paintChart(host);
+  if (first) watchChartWidth(host, authored, () => paintChart(host));
+}
+
+/** The span `host`'s currently registered chart may take, bounds and all. */
+function fittedSpan(host, authored, natural) {
+  const held = CHART_DRAW.get(host);
+  return held === undefined
+    ? chartSpan(host, authored, natural)
+    : chartSpan(host, held.authored, held.natural);
 }
 
 /**
@@ -310,11 +368,11 @@ export function fitChart(host, authored, draw) {
  * drawing forces width B and a width B whose drawing forces width A would
  * otherwise spin, and a chart one pixel out is better than a hang.
  */
-function paintChart(host, authored) {
-  let span = chartSpan(host, authored);
+function paintChart(host) {
+  let span = fittedSpan(host);
   for (let pass = 0; pass < 3; pass += 1) {
-    host.replaceChildren(CHART_DRAW.get(host)(span));
-    const now = chartSpan(host, authored);
+    host.replaceChildren(CHART_DRAW.get(host).draw(span));
+    const now = fittedSpan(host);
     if (now === span) return;
     span = now;
   }
@@ -357,8 +415,13 @@ function paintChart(host, authored) {
  * Nothing is torn down. The observer holds only the host, so when the screen is
  * replaced and the host leaves the document both are collected together; an
  * observer on a detached element fires for nothing in the meantime.
+ *
+ * `natural` is the ceiling `chartSpan` documents, for a caller driving its own
+ * redraw. A host that `fitChart` registered ignores it and reads the bounds of
+ * whatever draw is registered NOW — see `fittedSpan`, and the note in
+ * `fitChart` about the focus a watcher would otherwise still be holding.
  */
-export function watchChartWidth(host, authored, redraw) {
+export function watchChartWidth(host, authored, redraw, natural = Infinity) {
   if (typeof ResizeObserver !== 'function') return;
   // The two spans most recently drawn at, newest first. A span that comes back
   // equal to the one BEFORE last is a cycle, not a resize, and the watcher
@@ -370,7 +433,10 @@ export function watchChartWidth(host, authored, redraw) {
     // authored floor for it — refitting to that would be undone the moment the
     // host came back, which is a flip the cycle guard below would latch on.
     if (host.clientWidth === 0) return;
-    const span = chartSpan(host, authored);
+    // `fittedSpan` and not `chartSpan`: when `fitChart` installed this watcher
+    // the bounds belong to whatever draw is registered NOW, not to the one that
+    // happened to be first. A caller driving its own redraw supplies its own.
+    const span = fittedSpan(host, authored, natural);
     if (drawnSpan(host) === span) return;
     if (recent[1] === span) return;
     recent = [span, recent[0]];

@@ -560,17 +560,34 @@ test('an unmeasured segment says so, and offers the call again', async ({ app })
       + 'blank wearing a label').toBeGreaterThan(0);
   }
 
-  // And the ONE figure that has no source at all is named as unmeasured rather
-  // than dropped — including its LABEL, so the property the reader is owed is
-  // on screen even while its number is not. It was two until 2026-08-31; the
-  // audit append p95 and its `measured` chip were cut by the owner's ruling as
-  // a developer diagnostic with no action attached, and `injections today` was
-  // kept by the same ruling as the at-a-glance proof the core feature fires.
+  // And the injections figure keeps its LABEL through the failure, so the
+  // property the reader is owed is on screen even while its number is not. It
+  // was two figures until 2026-08-31; the audit append p95 and its `measured`
+  // chip were cut by the owner's ruling as a developer diagnostic with no
+  // action attached, and the injection count was kept by the same ruling as the
+  // at-a-glance proof the core feature fires.
+  //
+  // **`strip.unread`, not `strip.unmeasured`, since 2026-09-01.** The figure
+  // gained its source that day — `/api/watch/context`'s `mycontext.injections`,
+  // which this test has just made refuse — so the honest state here is the one
+  // every other segment on that body is in: the call did not answer, and asking
+  // again can fix it. `strip.unmeasured` is now what a call that ANSWERED and
+  // could not count says, and there is no retry offered for that one because
+  // there is nothing a retry would change.
   const audit = ((await page.locator('#auditstate').textContent()) ?? '');
   expect(audit, 'the audit group must still name the injections property').toContain('injections');
   expect(audit, 'the audit append p95 was cut — it may not come back through a label')
     .not.toContain('p95');
-  expect(await page.locator('#auditstate [data-k="strip.unmeasured"]').count()).toBe(1);
+  expect(await page.locator('#auditstate [data-k="strip.unread"]').count(),
+    'the injections figure rides /api/watch/context and must name its state when that refuses')
+    .toBe(1);
+  // And the call is offered again — from the audit CLOCK beside it, which rides
+  // the same body and already draws the button. The figure deliberately does
+  // not draw a second one: it is the same retry, and the row is the densest in
+  // the shell. Asserted on the GROUP for that reason, not on the segment.
+  expect(await page.locator('.sgrp-audit button').count(),
+    'the audit group must offer the call again somewhere — one button for one call')
+    .toBeGreaterThan(0);
 });
 
 test('the strip renders at its own type step, and the app matches the design of record', async ({ page }) => {

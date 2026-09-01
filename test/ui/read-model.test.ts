@@ -1341,13 +1341,34 @@ test('/api/status is `status --json`\'s document, composed from the same functio
     // whole. Computed here from `runChecks` itself rather than restated: the
     // claim is composition, and a hard-coded `2` would pass just as well if
     // the endpoint stopped calling the checker at all.
+    //
+    // ── THE THREE LEVELS COUNT ONLY WHAT IS STILL OPEN, SINCE 2026-09-01.
+    //
+    // Owner: *"still the counter near the Doctor menu item is not refreshed
+    // when something is handled."* Diagnosed before changing anything: the rail
+    // IS subscribed and `mycontext ack` DOES write a `mutation`, so the refill
+    // was firing and recomputing the same number — because this tally counted
+    // findings a person had already ruled on. A badge says how much is WAITING,
+    // and an acknowledged finding is not waiting for anyone.
+    //
+    // `acknowledged` is served beside them so nothing is dropped silently, and
+    // the four numbers are asserted to SUM to what the checker returned — the
+    // property that stops the split from losing a finding between the two.
     const findings = checksFor(ws, items);
     assert.deepEqual(body.health, {
-      errors: findings.filter((x) => x.level === 'error').length,
-      warnings: findings.filter((x) => x.level === 'warn').length,
-      infos: findings.filter((x) => x.level === 'info').length,
+      errors: findings.filter((x) => x.level === 'error' && x.acknowledged !== true).length,
+      warnings: findings.filter((x) => x.level === 'warn' && x.acknowledged !== true).length,
+      infos: findings.filter((x) => x.level === 'info' && x.acknowledged !== true).length,
+      acknowledged: findings.filter((x) => x.acknowledged === true).length,
     });
-    assert.deepEqual(body.health, { errors: 1, warnings: 2, infos: 1 },
+    assert.equal(
+      body.health.errors + body.health.warnings + body.health.infos + body.health.acknowledged,
+      findings.length,
+      'every finding the checker returned is in exactly one of the four numbers: a split that '
+      + 'lost one would make the badge quietly under-report, which is the defect this whole '
+      + 'change is against',
+    );
+    assert.deepEqual(body.health, { errors: 1, warnings: 2, infos: 1, acknowledged: 0 },
       'all three levels are non-zero, so no field of the tally can be a hard-coded 0');
     assert.equal(
       body.health.errors + body.health.warnings + body.health.infos, findings.length,

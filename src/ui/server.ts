@@ -73,7 +73,7 @@ import { isMainEntry } from '../core/paths.ts';
 import { VERSION } from '../core/version.ts';
 import { liveWorkspace, repositoryRoot, type Workspace } from '../core/workspace.ts';
 import { registerAskRoutes } from './ask-model.ts';
-import { stampCodeIdentity } from './code-identity.ts';
+import { stampCodeIdentity, type CodeScope } from './code-identity.ts';
 import { registerCaptureRoutes } from './capture-model.ts';
 import { CLI_ENTRY, registerExecuteRoutes } from './execute.ts';
 import { ExecutionNonceStore } from './execute-nonce.ts';
@@ -171,14 +171,18 @@ export interface UiServerOptions {
   /** Test-only override for handoff nonce ttl; production callers omit it. */
   nonceTtlMs?: number;
   /**
-   * The directory whose contents decide whether this process is running stale
-   * code — `src/`, defaulted by `code-identity.ts` from where these modules
-   * were loaded. A caller supplies it only to point the measurement at a tree
-   * it can safely change under a running server, which is how
-   * `test/ui/code-skew.test.ts` drives the disclosure without editing the tree
-   * every other test in the suite is reading.
+   * The pair whose contents decide whether this process is running stale code:
+   * this server's own module, and the directory it serves. Defaulted below from
+   * `import.meta.filename` and `PUBLIC_DIR` — the file names ITSELF, and the
+   * constant `serveStatic` is already called with — so neither half is a path
+   * anybody typed and neither can drift from what the server actually loads.
+   *
+   * A caller supplies it only to point the measurement at a tree it can safely
+   * change under a running server, which is how `test/ui/code-skew.test.ts`
+   * drives the disclosure without editing the tree every other test in the
+   * suite is reading.
    */
-  codeRoot?: string;
+  code?: CodeScope;
   /**
    * Told when a file in the GLOBAL directory could not be read or written,
    * with a sentence naming the file and what it costs. Not an error: the server
@@ -612,8 +616,16 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
    * `src/ui/public/` live from disk on every request. Stamped HERE, next to
    * `live`, because the two are read as a pair by whoever comes looking: one
    * says the config is current, the other says whether the code still is.
+   *
+   * **The scope is this module and the directory it serves, and both are read
+   * off values this file already holds.** It used to be the whole `src/` tree,
+   * which meant a lane editing `src/cli/commands/statusline-powerline.ts` told
+   * every open web page to restart a server that had never loaded it. See
+   * `code-identity.ts` for the measurement and for why the set is derived by
+   * walking imports rather than by excluding siblings by name.
    */
-  const code = stampCodeIdentity(options.codeRoot);
+  const code = stampCodeIdentity(
+    options.code ?? { entry: import.meta.filename, assets: PUBLIC_DIR });
   if (boot.projectRoot === null) {
     throw new Error('mycontext ui: no workspace here. Run `mycontext init` first.');
   }

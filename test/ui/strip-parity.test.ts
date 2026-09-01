@@ -132,6 +132,9 @@ const FULL: PowerlineInput = {
   fiveHour: { usedPercent: 16, resetsAt: 1_800_000_000 },
   sevenDay: { usedPercent: 49, resetsAt: 1_800_000_000 },
   costUsd: 4.62,
+  // NON-NULL, so the field it draws is actually reached: the fixture's whole
+  // job is that every declared input produces a block the comparison can see.
+  elapsedMs: 5_040_000,
   warmPercent: 91.4,
   myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
   lastAudit: { state: 'known', op: 'subagent-stop', at: new Date().toISOString() },
