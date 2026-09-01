@@ -1939,6 +1939,13 @@ export interface GraphBody {
    *
    * A ninth member of that array reaches the filter with no change to any UI
    * file, which is the property being bought.
+   *
+   * **It is the vocabulary PLUS whatever the corpus actually holds**, because
+   * the two are not the same list and were being conflated. `RELATION_TYPES` is
+   * a WRITE GATE — `superseded_by` is kept out of it so it cannot be forged
+   * through `linkItems`, and only `supersedeItem` may write one. Serving that
+   * gate as the display list made every `superseded_by` edge permanently
+   * undrawable. See the construction site for the item that exposed it.
    */
   relationTypes: readonly string[];
 }
@@ -2087,7 +2094,35 @@ export function apiGraph(ws: Workspace, url: URL): JsonResult {
       }),
       edges,
       omitted: omitted.size,
-      relationTypes: RELATION_TYPES,
+      // ── THE WRITE GATE IS NOT THE DISPLAY VOCABULARY ──────────────────
+      //
+      // This served `RELATION_TYPES` alone, and `RELATION_TYPES` deliberately
+      // EXCLUDES `superseded_by`: it is the whole gate on `linkItems`, so a name
+      // absent from it cannot be forged through the link surfaces. That omission
+      // is load-bearing and stays.
+      //
+      // But `supersedeItem` writes `superseded_by` onto the retiree, and nine
+      // items in this corpus carry one. The screen filters with
+      // `kept.has(e.type)` over the types served here, so an edge of a type that
+      // never appears in this list can never be in `kept` and is therefore
+      // PERMANENTLY undrawable — counted as hidden, in every state of the
+      // filter, with no control that brings it back.
+      //
+      // `OPENQ-how-does-the-ui-reach-a-model-and-what-leaves-the-machine` is the
+      // item the owner reported: its ONLY relation is `superseded_by`, so it
+      // reported "no relation of the types you kept" whatever the reader kept.
+      // The picker's re-filter fixed what that looked like; this is what it was.
+      //
+      // So: the closed vocabulary FIRST, in its authored order, then any type the
+      // corpus actually contains that the vocabulary does not name — sorted, so
+      // two identical corpora serve identical bytes. Derived, so a mirror-only
+      // edge type invented later reaches the filter with no UI edit, and without
+      // widening the gate that stops it being forged.
+      relationTypes: [
+        ...RELATION_TYPES,
+        ...[...new Set(items.flatMap((item) => item.relations.map((rel) => rel.type))
+          .filter((type) => !RELATION_TYPES.includes(type)))].sort(),
+      ],
     };
     return { status: 200, body };
   });

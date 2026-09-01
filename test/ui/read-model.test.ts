@@ -52,6 +52,7 @@ import { resolveWorkspace, type Workspace } from '../../src/core/workspace.ts';
 import { Store } from '../../src/core/store.ts';
 import { Ledger, LedgerUninitializedError } from '../../src/core/ledger.ts';
 import { isLoadBearing, readFocus } from '../../src/core/focus.ts';
+import { RELATION_TYPES } from '../../src/core/vocabulary.ts';
 import { recordAudit } from '../../src/core/audit.ts';
 import { resolveCarry } from '../../src/core/continuity.ts';
 import { computeDecay } from '../../src/core/decay.ts';
@@ -2223,6 +2224,47 @@ test('/api/graph walks both directions, keeps dangling edges, and classifies sev
       'radius defaults to 1');
     assert.notDeepEqual(json(body), json(two),
       'non-vacuity: radius 2 must be a different graph, or the default proves nothing');
+  } finally { f.done(); }
+});
+
+/**
+ * **THE FILTER OFFERS WHAT THE CORPUS HOLDS, not only what may be WRITTEN.**
+ *
+ * `RELATION_TYPES` is a write gate: `superseded_by` is deliberately absent so it
+ * cannot be forged through `linkItems`, and only `supersedeItem` may write one.
+ * That omission is load-bearing and is asserted below rather than assumed.
+ *
+ * Serving that gate as the graph's DISPLAY vocabulary conflated two different
+ * lists. The screen filters with `kept.has(edge.type)` over the types served, so
+ * an edge whose type is never offered can never be in the kept set: it is
+ * permanently undrawable, counted as hidden in every state of the filter, with no
+ * control that brings it back.
+ *
+ * Nine items in the dogfooding corpus carry one, and the owner reported the
+ * symptom on `OPENQ-how-does-the-ui-reach-a-model-and-what-leaves-the-machine`,
+ * whose ONLY relation is `superseded_by` — so it answered "no relation of the
+ * types you kept" whatever the reader kept. Nothing tested this, which is how a
+ * whole relation type stayed invisible.
+ */
+test('/api/graph serves a relation type the write gate excludes but the corpus holds', () => {
+  const f = fixture();
+  try {
+    const ws = relate(f, [{ from: A, type: 'superseded_by', to: B }]);
+    const body = apiGraph(ws, url('graph', `focus=${A}&radius=1`)).body as GraphBody;
+
+    assert.ok(!RELATION_TYPES.includes('superseded_by'),
+      'non-vacuity: this test says nothing unless the write gate really does exclude it');
+    assert.ok(body.edges.some((e) => e.type === 'superseded_by'),
+      'non-vacuity: the fixture must actually carry the edge');
+
+    assert.ok(body.relationTypes.includes('superseded_by'),
+      'an edge of a type the filter never offers can never be kept, and is therefore '
+      + 'undrawable in every state of the filter');
+    assert.deepEqual(body.relationTypes.slice(0, RELATION_TYPES.length), [...RELATION_TYPES],
+      'the closed vocabulary leads, in its authored order — the filter buttons do not '
+      + 'reshuffle because a corpus grew an edge');
+    assert.deepEqual(body.relationTypes, [...new Set(body.relationTypes)],
+      'a type offered twice would draw two buttons for one filter');
   } finally { f.done(); }
 });
 
