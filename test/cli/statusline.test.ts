@@ -41,7 +41,7 @@ const { classifyContext, readTee, writeTee } = await import('../../src/core/stat
 const { GLOBAL_DIR, resolveWorkspace } = await import('../../src/core/workspace.ts');
 const { ONE_LINE_ENV, myctxShare, myctxShareByRow, occupancyFromPayload, occupancyFromTee,
   statusLineText } = await import('../../src/cli/commands/statusline.ts');
-const { LEVEL_GLYPH, NO_EXTRAS, SEP } =
+const { LEVEL_GLYPH, LEVEL_ICON, LEVEL_INK, NO_EXTRAS, SEP, separatorFor, usageLevelOf } =
   await import('../../src/cli/commands/statusline-powerline.ts');
 const { openProjection, queryProjection, syncProjection } =
   await import('../../src/core/audit-db.ts');
@@ -152,20 +152,59 @@ function payload(sessionId: string, projectDir: string): Record<string, unknown>
  * copy-paste renders as nothing at all, and a test that pasted it would either
  * assert against an empty string it could not see or fail with two identical
  * looking values. Composing it means the assertions below read as blocks.
+ *
+ * **AND IT PICKS THE THIN SEPARATOR THE WAY THE RENDERER DOES.** Two blocks
+ * that share a background are parted by U+E0B1, because the solid one would be
+ * painted in the colour it sits on and vanish. That rule is old; what is new
+ * since the used-of-maximum ruling is how OFTEN it fires — five fields can now
+ * be one band at once, so a calm bar is mostly thin separators. The helper
+ * derives it from the blocks rather than restating a hand-kept list of which
+ * pairs are adjacent, using the same `separatorFor` the renderer calls.
  */
 function bar(...blocks: string[]): string {
-  return `▐ ${blocks.join(` ${SEP} `)} ▌`;
+  const joined = blocks.map((block, i) => {
+    if (i === blocks.length - 1) return block;
+    const here = inkOf(block);
+    const next = inkOf(blocks[i + 1]!);
+    return `${block} ${separatorFor(here, next)} `;
+  }).join('');
+  return `▐ ${joined} ▌`;
 }
 
 /**
- * The TWO-LINE bar the owner ruled for on 2026-08-31: identity, then
- * everything that moves, joined by the newline Claude Code splits on.
+ * The ink a rendered block text would carry — derived by asking the module,
+ * never by a table here. Only the used-of-max fields can share a ground, so
+ * only they need banding; everything else keeps its own fixed hue and the
+ * default is a distinct one so unrelated blocks always get the solid arrow.
+ */
+function inkOf(text: string): { bg: number; fg: number } {
+  const pct = /(\d+(?:\.\d+)?)%/.exec(text);
+  if (pct === null || !/(^|\s)(ask|ctx|7d|5h|myctx) /.test(text)) {
+    // A block that is not used-of-max keeps its own fixed hue, and no two of
+    // them share one, so the SOLID arrow is always right between them. Keyed
+    // on the whole text rather than its length — 'p' and 'b' are both one
+    // character and are the project and the branch, which are two hues.
+    let h = 0;
+    for (const ch of text) h = (h * 31 + ch.codePointAt(0)!) % 100_000;
+    return { bg: -1 - h, fg: 0 };
+  }
+  const level = usageLevelOf(Number(pct[1]));
+  return level === null ? { bg: -1, fg: 0 } : LEVEL_INK[level];
+}
+
+/**
+ * The bar as ROWS, joined by the newline Claude Code splits on.
+ *
+ * Two rows under the owner's 2026-08-31 ruling; THREE since the
+ * used-of-maximum ruling of 2026-09-01 gave the ask and the context figure a
+ * row of their own. Variadic rather than fixed at two, so a caller with
+ * nothing to say on the account row simply passes two.
  *
  * Composed from `bar` rather than spelled out, so a change to the caps or the
- * separator moves both forms together.
+ * separator moves every form together.
  */
-function bars(identity: string[], state: string[]): string {
-  return `${bar(...identity)}\n${bar(...state)}`;
+function bars(...rows: string[][]): string {
+  return rows.map((row) => bar(...row)).join('\n');
 }
 
 /**
@@ -194,7 +233,7 @@ test('statusLineText renders each state without ever inventing a number', () => 
     teeNote: null,
   };
   const at = (percent: number): string => statusLineText(
-    { ...base, occupancy: { state: 'known' as const, percent, ageMs: 0 } }, false, null,
+    { ...base, occupancy: { state: 'known' as const, percent, ageMs: 0, usedTokens: Math.round(percent * 10_000), windowSize: 1_000_000 } }, false, null,
   );
   const head = ['Opus 4.5', 'test_mycontext_plugin', 'campaign/my-context-test'];
 
@@ -205,16 +244,22 @@ test('statusLineText renders each state without ever inventing a number', () => 
   // they do not move when the handover threshold does.
   //
   // The ASK is the other question, and since the owner's 2026-08-31 ruling it
-  // answers at EVERY fill as a distance rather than falling silent until it is
-  // nearly due. So all four rows below carry the block, and what changes across
-  // them is the number in it — 56.0 points of head-room at 42%, 4.6 at 93.4%,
-  // and none at all at 99.2%, where the words take over.
-  assert.equal(at(42), bars(head, ['◆ ask 98 · +56.0', `${LEVEL_GLYPH.ok} ctx 42.0%`]));
-  assert.equal(at(70), bars(head, ['◆ ask 98 · +28.0', `${LEVEL_GLYPH.warn} ctx 70.0%`]));
-  // 93.4% is past 88.2 — the ask approaching, at a threshold of 98 — so the
-  // marker has gone gold beside the red fill. Two questions, two answers.
-  assert.equal(at(93.4), bars(head, ['◆ ask 98 · +4.6', `${LEVEL_GLYPH.crit} ctx 93.4%`]));
-  assert.equal(at(99.2), bars(head, ['◆ handover due', `${LEVEL_GLYPH.crit} ctx 99.2%`]));
+  // answers at EVERY fill rather than falling silent until it is nearly due.
+  // Since the used-of-maximum ruling of 2026-09-01 it answers in the same four
+  // controls every such field uses, with the threshold as its maximum — and it
+  // still collapses to WORDS once the ask has fired, because past the ask the
+  // number stops being the point and the action is.
+  assert.equal(at(42), bars(head, [
+    'ask ▓▓▓▓░░░░░░ 43% (42.0 / 98)', 'ctx ▓▓▓▓░░░░░░ 42.0% (420.0k / 1.0M)']));
+  assert.equal(at(70), bars(head, [
+    `${LEVEL_ICON.warning} ask ▓▓▓▓▓▓▓░░░ 71% (70.0 / 98)`,
+    `${LEVEL_ICON.warning} ctx ▓▓▓▓▓▓▓░░░ 70.0% (700.0k / 1.0M)`]));
+  assert.equal(at(93.4), bars(head, [
+    `${LEVEL_ICON.critical} ask ▓▓▓▓▓▓▓▓▓▓ 95% (93.4 / 98)`,
+    `${LEVEL_ICON.critical} ctx ▓▓▓▓▓▓▓▓▓░ 93.4% (934.0k / 1.0M)`]));
+  assert.equal(at(99.2), bars(head, [
+    '◆ handover due',
+    `${LEVEL_ICON.critical} ctx ▓▓▓▓▓▓▓▓▓▓ 99.2% (992.0k / 1.0M)`]));
 
   // The reasons `readOccupancy` keeps apart stay apart here. Collapsing them
   // into one "unknown" is the whole failure that type exists to prevent, and
@@ -255,7 +300,11 @@ test('statusLineText renders each state without ever inventing a number', () => 
 test('a payload with no workspace behind it is classified the way the tee would be', () => {
   assert.deepEqual(
     occupancyFromPayload(classifyContext(payload('s', '/repo'))),
-    { state: 'known', percent: 23.5, ageMs: 0 },
+    // The two numbers the percentage came FROM, carried rather than
+    // reconstructed: the bar draws `(47.0k / 200.0k)` beside the figure since
+    // the used-of-maximum ruling, and a numerator back-derived from a rounded
+    // percentage would be a worse number than the one already in hand.
+    { state: 'known', percent: 23.5, ageMs: 0, usedTokens: 47_000, windowSize: 200_000 },
   );
   assert.deepEqual(
     occupancyFromPayload({
@@ -312,7 +361,7 @@ test('MYCONTEXT_STATUSLINE_ONE_LINE folds the bar back to a single line, losing 
     ...NO_EXTRAS,
     model: 'Opus 4.5', project: 'test_mycontext_plugin', branch: 'campaign/my-context-test',
     threshold: 98,
-    occupancy: { state: 'known' as const, percent: 42, ageMs: 0 },
+    occupancy: { state: 'known' as const, percent: 42, ageMs: 0, usedTokens: 420_000, windowSize: 1_000_000 },
     myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
     focus: null,
     lastAudit: null,
@@ -321,13 +370,14 @@ test('MYCONTEXT_STATUSLINE_ONE_LINE folds the bar back to a single line, losing 
   const two = statusLineText(base, false, null, {});
   const one = statusLineText(base, false, null, { [ONE_LINE_ENV]: '1' });
 
-  assert.equal(two.split('\n').length, 2, 'two lines by default');
+  assert.equal(two.split('\n').length, 3, 'three rows by default since 2026-09-01');
   assert.equal(one.split('\n').length, 1, 'one line when the escape hatch is set');
 
-  // NOTHING IS LOST. Every block on either line of the two-line form is still
-  // on the single line — which is the whole claim the fallback makes.
+  // NOTHING IS LOST. Every block on any row of the three-row form is still on
+  // the single line — which is the whole claim the fallback makes.
   for (const block of ['Opus 4.5', 'test_mycontext_plugin', 'campaign/my-context-test',
-    '◆ ask 98 · +56.0', 'ctx 42.0%', 'myctx 6.2k']) {
+    'ask ▓▓▓▓░░░░░░ 43% (42.0 / 98)', 'ctx ▓▓▓▓░░░░░░ 42.0% (420.0k / 1.0M)',
+    'myctx ░░░░░░░░░░ 0.6% (6.2k / 1.0M)']) {
     assert.ok(two.includes(block), `two-line form is missing ${block}`);
     assert.ok(one.includes(block), `one-line fallback is missing ${block}`);
   }
@@ -335,7 +385,9 @@ test('MYCONTEXT_STATUSLINE_ONE_LINE folds the bar back to a single line, losing 
   // An empty value is not a refusal — the same convention NO_COLOR follows,
   // so a shell that exports an empty placeholder does not silently downgrade
   // the bar for everyone using it.
-  assert.equal(statusLineText(base, false, null, { [ONE_LINE_ENV]: '' }).split('\n').length, 2);
+  assert.equal(
+    statusLineText(base, false, null, { [ONE_LINE_ENV]: '' }).split('\n').length, 3,
+  );
 });
 
 test('a tee that did not land is disclosed beside a myctx share that did', () => {
@@ -346,7 +398,7 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       project: 'test_mycontext_plugin',
       branch: 'campaign/my-context-test',
       threshold: 98,
-      occupancy: { state: 'known', percent: 23.5, ageMs: 0 },
+      occupancy: { state: 'known', percent: 23.5, ageMs: 0, usedTokens: Math.round((23.5) * 10_000), windowSize: 1_000_000 },
       myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
       focus: null,
       lastAudit: null,
@@ -358,8 +410,10 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
   );
   assert.equal(line, bars(
     ['Opus 4.5', 'test_mycontext_plugin', 'campaign/my-context-test'],
-    ['◆ ask 98 · +74.5', `${LEVEL_GLYPH.ok} ctx 23.5%`,
-      'myctx 6.2k', 'tee not written (disk full)'],
+    ['ask ▓▓░░░░░░░░ 24% (23.5 / 98)', 'ctx ▓▓░░░░░░░░ 23.5% (235.0k / 1.0M)'],
+    // The account row: the banded share, and the disclosure that rides the
+    // context field in its absent state.
+    ['myctx ░░░░░░░░░░ 0.6% (6.2k / 1.0M)', 'tee not written (disk full)'],
   ));
 
   // `≥` and not a rounded-up guess: some records carry no estimate, so the
@@ -369,7 +423,7 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       {
         ...NO_EXTRAS,
         model: null, project: null, branch: null, threshold: 98,
-        occupancy: { state: 'known', percent: 23.5, ageMs: 0 },
+        occupancy: { state: 'known', percent: 23.5, ageMs: 0, usedTokens: Math.round((23.5) * 10_000), windowSize: 1_000_000 },
         myctx: { tokens: 6200, injections: 3, unrecorded: 2 },
         focus: null,
         lastAudit: null,
@@ -377,7 +431,11 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       },
       false, null,
     ),
-    bar('◆ ask 98 · +74.5', `${LEVEL_GLYPH.ok} ctx 23.5%`, 'myctx ≥6.2k'),
+    // The `≥` rides the LABEL because it qualifies the NUMERATOR — some
+    // injection records carry no frozen estimate, so the true share is at
+    // least this — and that is a fact about the count, never about the bar.
+    bars(['ask ▓▓░░░░░░░░ 24% (23.5 / 98)', 'ctx ▓▓░░░░░░░░ 23.5% (235.0k / 1.0M)'],
+      ['myctx ≥ ░░░░░░░░░░ 0.6% (6.2k / 1.0M)']),
   );
 
   // Two notes, two fields: a share that could not be computed is named, and
@@ -387,7 +445,7 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       {
         ...NO_EXTRAS,
         model: null, project: null, branch: null, threshold: 98,
-        occupancy: { state: 'known', percent: 23.5, ageMs: 0 },
+        occupancy: { state: 'known', percent: 23.5, ageMs: 0, usedTokens: Math.round((23.5) * 10_000), windowSize: 1_000_000 },
         myctx: null,
         focus: null,
         lastAudit: null, myctxNote: 'projection sync failed',
@@ -395,11 +453,14 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       },
       false, null,
     ),
-    bar(
-      '◆ ask 98 · +74.5',
-      `${LEVEL_GLYPH.ok} ctx 23.5%`,
-      'myctx unavailable (projection sync failed)',
-      'tee not written (unsafe session id)',
+    // Both notes ride the ACCOUNT row, because a tee that stopped landing is
+    // news and news goes where the reader is still looking — never on the
+    // identity row, and never crowding the window pair.
+    bars(
+      ['ask ▓▓░░░░░░░░ 24% (23.5 / 98)',
+        'ctx ▓▓░░░░░░░░ 23.5% (235.0k / 1.0M)'],
+      ['myctx unavailable (projection sync failed)',
+        'tee not written (unsafe session id)'],
     ),
   );
 
@@ -410,7 +471,7 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       {
         ...NO_EXTRAS,
         model: 'Opus 4.5', project: 'p', branch: 'b', threshold: 98,
-        occupancy: { state: 'known', percent: 23.5, ageMs: 0 },
+        occupancy: { state: 'known', percent: 23.5, ageMs: 0, usedTokens: Math.round((23.5) * 10_000), windowSize: 1_000_000 },
         myctx: { tokens: 0, injections: 0, unrecorded: 0 },
         focus: null,
         lastAudit: null,
@@ -418,7 +479,9 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       },
       false, null,
     ),
-    bars(['Opus 4.5', 'p', 'b'], ['◆ ask 98 · +74.5', `${LEVEL_GLYPH.ok} ctx 23.5%`]),
+    bars(['Opus 4.5', 'p', 'b'],
+      ['ask ▓▓░░░░░░░░ 24% (23.5 / 98)',
+        'ctx ▓▓░░░░░░░░ 23.5% (235.0k / 1.0M)']),
   );
 });
 
@@ -557,14 +620,18 @@ test('two sessions in one workspace are each told their OWN context figure', () 
     // repeated, because the report rested on its second pass: "with the tee
     // files definitely present, printed the same figure again for both".
     for (const pass of [1, 2]) {
-      assert.match(line(at('sess-low', 18000)), /ctx 12\.5%/, `pass ${pass}: the low session`);
-      assert.match(line(at('sess-high', 179000)), /ctx 93\.0%/, `pass ${pass}: the high session`);
+      assert.match(line(at('sess-low', 18000)), /ctx .*12\.5%/, `pass ${pass}: the low session`);
+      assert.match(line(at('sess-high', 179000)), /ctx .*93\.0%/, `pass ${pass}: the high session`);
     }
 
     // And the band MOVES with it, which the report says can never be observed:
     // the low session is `ok` and the high one is not.
-    assert.ok(line(at('sess-low', 18000)).includes(`${LEVEL_GLYPH.ok} ctx 12.5%`));
-    assert.ok(!line(at('sess-high', 179000)).includes(`${LEVEL_GLYPH.ok} ctx 93.0%`));
+    // The low session is `safe` and carries no icon; the high one is banded
+    // and carries one. FOUR levels since 2026-09-01, so the assertion is about
+    // WHETHER an icon is there rather than which of two glyphs it is.
+    assert.ok(line(at('sess-low', 18000)).includes('ctx ▓░░░░░░░░░ 12.5%'));
+    assert.ok(line(at('sess-high', 179000)).includes(`${LEVEL_ICON.critical} ctx `));
+    assert.ok(!line(at('sess-low', 18000)).includes(LEVEL_ICON.critical));
 
     // **The read, asked directly, with the OTHER session's sample the newer of
     // the two on disk.** The command above cannot show this on its own: it
@@ -605,7 +672,7 @@ test('the context figure comes from `current_usage`, never from `used_percentage
     for (const pct of [22, 65, 80, 93]) {
       assert.match(
         line((cw) => { cw.used_percentage = pct; cw.remaining_percentage = 100 - pct; }),
-        /ctx 23\.5%/,
+        /ctx .*23\.5%/,
         `used_percentage ${pct} changes nothing, because nothing reads it`,
       );
     }
@@ -617,7 +684,7 @@ test('the context figure comes from `current_usage`, never from `used_percentage
           cache_read_input_tokens: 179000, output_tokens: 9000,
         };
       }),
-      /ctx 93\.0%/,
+      /ctx .*93\.0%/,
     );
   } finally {
     removeTree(dir);
@@ -693,7 +760,7 @@ test('the command tees the payload keyed by session and prints the line (spawned
     // key on `isTTY` alone (a status line coloured only when nobody is looking
     // at it is not a coloured status line).
     assert.match(result.stdout, /Opus 4\.5 /);
-    assert.match(result.stdout, /ctx 23\.5% /);
+    assert.match(result.stdout, /ctx .*23\.5%/);
     assert.ok(result.stdout.includes('▐'), 'the opening cap is on the line');
     assert.ok(result.stdout.includes('▌'), 'the closing cap is on the line');
     assert.ok(result.stdout.includes(SEP), 'the powerline separator U+E0B0 is on the line');
@@ -709,7 +776,7 @@ test('the command tees the payload keyed by session and prints the line (spawned
     });
     assert.equal(plain.status, 0, plain.stderr);
     assert.ok(!plain.stdout.includes('\u001b'), 'never a raw escape into a pipe that said no');
-    assert.match(plain.stdout, /ctx 23\.5% /);
+    assert.match(plain.stdout, /ctx .*23\.5%/);
     assert.ok(plain.stdout.includes(SEP), 'the same text, and the glyphs are text');
     const tee = readTee(path.join(dir, '.my_context'), 'sess-e2e');
     assert.equal((tee?.payload as { session_id?: string } | undefined)?.session_id, 'sess-e2e');

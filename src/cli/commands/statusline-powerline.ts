@@ -175,11 +175,30 @@ export function freshMs(): number | null {
  * **How far the ask is, in points of the window — the web's own subtraction.**
  *
  * Reached through the same bridge the bands are, and for the same reason: the
- * strip draws this distance beside the same gold marker, and a second
+ * strip draws this distance beside its own marker, and a second
  * `threshold - percent` written here would be a second spelling of one number.
  *
  * `null` when the shared module did not load, which is the same degradation
  * every other reader of it takes: the block goes rather than being guessed.
+ *
+ * ── NOTHING IN THIS FILE CALLS IT TODAY, AND THAT IS STATED RATHER THAN
+ *    HIDDEN BEHIND A COMMENT THAT IMPLIES OTHERWISE ────────────────────────
+ *
+ * `askSegment` drew `◆ ask 85 · +3.2` until the used-of-maximum ruling of
+ * 2026-09-01 replaced that rendering with a bar, a proportion and the pair
+ * `(81.8 / 85)` — from which a reader subtracts the same distance, in the same
+ * units, without this function. It is KEPT rather than deleted for two
+ * reasons, both checkable:
+ *
+ *   1. `loadBands` refuses a `viewmodel.js` that does not export
+ *      `askHeadroom`, which is a contract check on the shared module's SHAPE
+ *      and is worth having whether or not the terminal draws the number.
+ *   2. The owner's ruling of 2026-08-31 — *"the distance is worth reading at
+ *      any fill"* — was answered by a figure this bar no longer prints. The
+ *      counts carry the same two numbers, so nothing is lost that cannot be
+ *      recovered by arithmetic, but that IS a change to a ruled behaviour and
+ *      it is flagged for the owner rather than quietly absorbed. If the answer
+ *      is "put the number back", this is what puts it back.
  */
 export function headroomFor(percent: number, threshold: number | null): number | null {
   if (BANDS === null) return null;
@@ -319,6 +338,238 @@ export function absoluteFillLevel(percent: number, ageMs = 0): 'ok' | 'warn' | '
   return null;
 }
 
+/* ╔═══════════════════════════════════════════════════════════════════════╗
+ * ║  PHASE 2 · LIFT THIS BLOCK INTO `src/ui/public/lib/viewmodel.js`       ║
+ * ╚═══════════════════════════════════════════════════════════════════════╝
+ *
+ * **THIS IS A DELIBERATE, DATED, TEMPORARY SEAM. Read the whole note before
+ * touching it, and do not "tidy" it by declaring these numbers anywhere else.**
+ *
+ * ── THE RULING ─────────────────────────────────────────────────────────────
+ *
+ * Owner, 2026-09-01, after reviewing a published statusline generator: *"use
+ * our data and its visual ideas, the colours for the levels the icons"*, and —
+ * the half that is easy to under-read — *"use the same controls for every
+ * field that displays amount used from maximum available for context,
+ * handover, used 5h, used 7d etc"*. So this is not a context-bar feature. It
+ * is a treatment applied to EVERY used-of-maximum field on the bar, and the
+ * three-band ok/warn/crit split becomes FOUR:
+ *
+ *     safe       0-60    no icon    --ok      calm
+ *     caution   60-70    warning    --gold    worth knowing
+ *     warning   70-80    diamond    --warn    act soon
+ *     critical    80+    skull      --crit    act now
+ *
+ * ── WHY IT IS HERE AND NOT IN viewmodel.js, WHICH IS WHERE IT BELONGS ──────
+ *
+ * It belongs in `lib/viewmodel.js`, beside `fillLevel`, and it will be moved
+ * there. It is here for one measured reason: `fillLevel` currently answers
+ * `'ok' | 'warn' | 'crit' | 'stale' | null`, and THREE places in
+ * `src/ui/public/app.js` gate on exactly those names —
+ *
+ *   `ctxFigureLevel`   `… ? level : 'unmeas'`   -> context figure goes GREY
+ *   `rateLimitParts`   the same ternary         -> both rate chips go GREY
+ *   `fillChip`         `if crit / else if warn / else` -> falls into the ELSE,
+ *                      taking an undeclared CSS class and appending
+ *                      `strip.fillOk` — so a window in the new `caution` band
+ *                      would be LABELLED "comfortable" on the web.
+ *
+ * The third is not a degradation, it is a FALSE VERDICT ON A SURFACE, produced
+ * by a change confined entirely to `viewmodel.js`. Extending the shared
+ * contract therefore cannot land without its consumers, their four CSS
+ * modifiers, and a fourth `strip.fill*` / `title.fill*` pair in BOTH string
+ * tables — files owned by another lane on the day this was written.
+ *
+ * ── SO: PHASE 1 IS THE TERMINAL, PHASE 2 IS THE CONTRACT ───────────────────
+ *
+ * Phase 1 (this) puts the four levels on the terminal bar only. Phase 2 moves
+ * the three constants and `usageLevelOf` below into `viewmodel.js` VERBATIM —
+ * the lift drops four TypeScript annotations and changes not one character of
+ * logic — repoints this file at them through the existing `BANDS` bridge, and
+ * updates the three `app.js` consumers in the same step.
+ *
+ * **The window between the phases is a KNOWN divergence, not a hidden one.**
+ * For its duration the terminal bands a used-of-max figure in four levels and
+ * the web strip bands the context figure in three. That is the defect class
+ * this project has measured eight times, so it is (a) dated, (b) bounded to
+ * one named phase, and (c) held by `test/cli/statusline-levels.test.ts`'s
+ * TRIPWIRE, which fails the moment `viewmodel.js` gains any of these three
+ * names — that is, the moment phase 2 begins — so the restatement cannot
+ * outlive its own reason for existing (`INV-nothing-is-dropped-silently`).
+ */
+
+/**
+ * The three boundaries, in percentage points of whatever maximum the field is
+ * measured against. ABSOLUTE, and never derived from the handover threshold —
+ * that is `occupancyLevel`'s job and it answers a different question.
+ *
+ * `USAGE_CAUTION_PERCENT` is 60, which is `CONTEXT_FILL_WARN_PERCENT`'s value
+ * today; the two are pinned equal BY TEST rather than assumed, so the web's 60
+ * moving drags this one's assertion with it instead of parting silently.
+ *
+ * `USAGE_CRITICAL_PERCENT` is 80 while `CONTEXT_FILL_CRIT_PERCENT` is 85 —
+ * this boundary MOVED, by the owner's table, and 80-85 is banded `critical`
+ * here where the old scale called it `crit` only five points later. Written
+ * down because a boundary that moves in silence is the exact thing the block
+ * above exists to prevent.
+ */
+export const USAGE_CAUTION_PERCENT = 60;
+export const USAGE_WARNING_PERCENT = 70;
+export const USAGE_CRITICAL_PERCENT = 80;
+
+/** The four bands, safest first. Ordered, because the order is the meaning. */
+export type UsageLevel = 'safe' | 'caution' | 'warning' | 'critical';
+
+/**
+ * The band a used-of-maximum percentage falls in — pure, total, and the whole
+ * of the ruling's arithmetic.
+ *
+ * `>=` on every boundary, so a figure sitting exactly on 80 is `critical`
+ * rather than one step below it — the convention `fillLevel` already uses,
+ * kept identical so a reader who has learned one has learned both.
+ *
+ * `null` when there is no percentage to band. NOT clamped at 100: a field can
+ * genuinely exceed its maximum — a context percentage past the handover
+ * threshold does — and it is still `critical` there. Clamping belongs to the
+ * BAR, which has only ten cells, and never to the verdict.
+ */
+export function usageLevelOf(pct: number): UsageLevel | null {
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return null;
+  if (pct >= USAGE_CRITICAL_PERCENT) return 'critical';
+  if (pct >= USAGE_WARNING_PERCENT) return 'warning';
+  if (pct >= USAGE_CAUTION_PERCENT) return 'caution';
+  return 'safe';
+}
+
+/* ╚══════════════ END OF THE BLOCK PHASE 2 LIFTS ═════════════════════════╝ */
+
+/**
+ * The band, with the SHARED staleness refusal applied on top.
+ *
+ * `usageLevelOf` is pure and knows nothing about time; this wrapper adds the
+ * one thing the terminal must not decide for itself — how old a sample may be
+ * and still be banded — and it reads that from the web's own
+ * `CONTEXT_SAMPLE_FRESH_MS` through `freshMs()`, exactly as `fillLevel` does.
+ * No freshness number is spelled in this file.
+ *
+ * `'stale'` for a fossil and `null` for nothing-to-band; the caller draws the
+ * neutral block for both, which is visibly not-a-level rather than a guess.
+ */
+export function usageLevel(pct: number, ageMs = 0): UsageLevel | 'stale' | null {
+  const fresh = freshMs();
+  if (fresh !== null && Number.isFinite(ageMs) && ageMs > fresh) return 'stale';
+  return usageLevelOf(pct);
+}
+
+/**
+ * **THE BAR, AND THE ONE CONSTANT PAIR THAT CHOOSES ITS STYLE.**
+ *
+ * The owner named two they like — `▓▓▓░░░` and `■■■□□□` — and chose the first
+ * to ship. Both characters live in this ONE exported pair so that switching to
+ * the other, or to any of the generator's, is a one-line change rather than a
+ * search-and-replace across a renderer.
+ *
+ * Ten cells, as the owner's reference rendering shows. Every character here is
+ * one display cell — asserted by the width tests, not assumed — so the bar
+ * costs exactly `BAR_CELLS` columns whatever the figure is, which is what lets
+ * a reader compare two bars by eye without reading either number.
+ */
+export const BAR_FILL = '▓';
+export const BAR_EMPTY = '░';
+export const BAR_CELLS = 10;
+
+/**
+ * `pct` drawn as `BAR_CELLS` cells.
+ *
+ * CLAMPED at both ends, and this is the one place clamping is right: a field
+ * past its maximum — a context figure past the handover threshold — has no
+ * eleventh cell to fill, and a negative percentage has no cell to empty. The
+ * VERDICT is not clamped (`usageLevelOf` still answers `critical`) and the
+ * NUMBER beside the bar is not clamped either, so nothing about the fact is
+ * lost at the picture's edge.
+ *
+ * Rounded to the nearest cell rather than floored: a floor draws an empty bar
+ * for everything under 5%, and "almost none" and "none" are different facts
+ * (`STD-a-measured-zero-is-drawn-and-named`, in the register of a picture).
+ */
+export function usageBar(pct: number): string {
+  // **A NON-FINITE FIGURE DRAWS AN EMPTY BAR, NOT AN EMPTY STRING.** Caught by
+  // its own test rather than in the field: `Math.round(NaN)` is NaN, both
+  // clamps pass it straight through, and `repeat(NaN)` is `''` — so the block
+  // would have rendered ZERO cells wide where every other block renders ten,
+  // and the one thing this bar guarantees is that a bar is always the same
+  // width so two of them can be compared by eye. There is no figure to draw,
+  // so the picture is empty; the LEVEL beside it is `null` and therefore
+  // carries no icon and no hue, which is what says the reading is missing.
+  const exact = Number.isFinite(pct) ? (pct / 100) * BAR_CELLS : 0;
+  const filled = Math.max(0, Math.min(BAR_CELLS, Math.round(exact)));
+  return BAR_FILL.repeat(filled) + BAR_EMPTY.repeat(BAR_CELLS - filled);
+}
+
+/**
+ * **THE LEVEL ICON — the generator's visual idea, on our data.**
+ *
+ * `safe` carries NO icon, which is the generator's own choice and the right
+ * one: a calm bar should be quiet, and an icon on every field at every value
+ * is an icon that has stopped meaning anything by the time it is needed —
+ * the argument this file already makes about gold, in a second currency.
+ *
+ * Each icon is TWO display cells and `displayWidth` knows it. That rule was
+ * fixed and tested BEFORE this table was allowed to exist, because five
+ * fields' worth of undercount is a wrapped line, and wrapping is the one
+ * failure this renderer must not have.
+ */
+export const LEVEL_ICON = {
+  safe: '',
+  caution: '\u26a0\ufe0f',
+  warning: '\u{1f536}',
+  critical: '\u{1f480}',
+} as const satisfies Record<UsageLevel, string>;
+
+/**
+ * **THE FOUR LEVELS' INK — mapped onto EXISTING tokens, no sixth hue.**
+ *
+ * `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn` assigns all
+ * five meaning hues and forbids a sixth. Four levels need green, yellow,
+ * orange and red, and the five already contain them:
+ *
+ *     safe      --ok    #7cc0a0   xterm 115   black on it  12.37:1
+ *     caution   --gold  #e8c368   xterm 179                10.19:1
+ *     warning   --warn  #c78f3d   xterm 173                 7.52:1
+ *     critical  --crit  #e08b8b   xterm 174                 7.70:1
+ *
+ * **Adjacent-band separation, measured rather than eyeballed (CIE76 ΔE):**
+ *
+ *     safe    -> caution     terminal 51.6    web 51.7
+ *     caution -> warning     terminal 26.4    web 20.1
+ *     warning -> critical    terminal 21.6    web 41.5
+ *
+ * The worst pair is 20.1, comfortably above the ~10 at which two colours stop
+ * being reliably told apart, so the ramp reads as four steps on both surfaces
+ * rather than as three and a near-miss. That table is the justification the
+ * owner asked to have recorded here.
+ *
+ * **AND IT COST THE ASK MARKER ITS HUE — owner ruling, 2026-09-01, not a side
+ * effect.** `--gold` is the only unspent yellow, so `caution` needs it; gold
+ * also meant "your attention is wanted here — a REQUEST, not a severity" and
+ * sat on the `◆ ask` marker one block along on the same row. One hue on two
+ * adjacent jobs is a hue doing neither, so the ask marker moved to `--carry`
+ * (`INK.carry`). Each hue now has exactly one job, the budget of five is
+ * untouched, and no sixth was invented.
+ */
+export const LEVEL_INK = {
+  safe: INK.ok,
+  caution: INK.gold,
+  warning: INK.warn,
+  critical: INK.crit,
+} as const satisfies Record<UsageLevel, Ink>;
+
+function inkForUsage(level: UsageLevel | 'stale' | null): Ink {
+  // 'stale' and null alike: neutral. Neither is a band, and drawing either one
+  // in a band's hue is the defect that state exists to prevent.
+  return level === null || level === 'stale' ? INK.neutral : LEVEL_INK[level];
+}
+
 /**
  * The glyph each level carries, so the hue is never the only carrier.
  *
@@ -371,8 +622,29 @@ export interface Segment {
    * the ask" and "past the ask" can differ without a sixth hue: weight is not
    * a colour, and it survives a mono terminal and a forced-colors mode where a
    * second gold would not.
+   *
+   * Since 2026-09-01 it is also the CARRIER of the `critical` level, with the
+   * blink as the extra — see `blink` immediately below.
    */
   bold?: boolean;
+  /**
+   * **BLINK — the owner asked for it, and it is never the carrier.**
+   *
+   * Set only on a `critical` block. SGR 5 is ignored outright by Windows
+   * Terminal, by VS Code's integrated terminal and by iTerm2's default
+   * profile, which is most of this bar's likely audience, so a level that
+   * depended on it would be a level that usually did not render. It does not
+   * depend on it: `critical` is told from `warning` by its ICON (💀 against
+   * 🔶), by its HUE (ΔE 21.6 in the terminal), and by `bold`, which is a
+   * weight rather than a colour and survives a mono terminal and a
+   * forced-colors mode. The blink is the fourth carrier, not the first.
+   *
+   * Suppressed entirely by `MYCONTEXT_STATUSLINE_NO_BLINK` and by
+   * `colour: false`. WCAG 2.2.2 asks that blinking content be stoppable, and
+   * an escape is an escape: a bar rendered without colour emits no SGR 5
+   * either.
+   */
+  blink?: boolean;
   /**
    * **WHICH FIELD THIS BLOCK IS, as a stable id — the unit of parity.**
    *
@@ -428,7 +700,21 @@ export const ELLIPSIS_SEGMENT: Segment = { text: '…', ink: INK.neutral, give: 
  * installed goes and installs it a second time.
  */
 export type OccupancyView =
-  | { state: 'known'; percent: number; ageMs: number }
+  | {
+    state: 'known';
+    percent: number;
+    ageMs: number;
+    /**
+     * The two numbers the percentage was computed FROM, carried rather than
+     * re-derived — since the owner's used-of-maximum ruling of 2026-09-01 the
+     * bar draws `(549.0k / 1.0M)` beside the figure, and `percent/100 *
+     * windowSize` would be a rounded reconstruction of a number this product
+     * already has exactly. `core/context-occupancy.ts`'s `Occupancy` has
+     * carried both on its known branch all along.
+     */
+    usedTokens: number;
+    windowSize: number;
+  }
   | { state: 'unmeasurable'; why: UnmeasurableWhy };
 
 /** The short phrase each unmeasurable reason gets, kept distinct on purpose. */
@@ -472,22 +758,122 @@ export function contextSegment(occ: OccupancyView): Segment {
       ink: INK.neutral, required: true, anchor: true, field: 'context',
     };
   }
-  const glyph = level === null ? LEVEL_GLYPH.neutral : LEVEL_GLYPH[level];
-  const figure = `ctx ${occ.percent.toFixed(1)}%`;
-  return {
-    text: `${glyph} ${figure}`,
-    terse: figure,
-    ink: inkForLevel(level),
+  // **Since 2026-09-01 this is ONE CALL to the shared used-of-maximum
+  // renderer**, and the only things that still make it different from the four
+  // other fields are that it is `required` and that it is the `anchor`. The
+  // band, the bar, the icon and the counts are not decided here — that is the
+  // whole point of the ruling, and a second spelling of any of them in this
+  // function would be the defect it was ruled to prevent.
+  return usedOfMaxSegment({
+    field: 'context',
+    label: 'ctx',
+    percent: occ.percent,
+    // A real numerator and a real denominator, both carried on the payload
+    // rather than reconstructed from the percentage.
+    counts: `(${fmtCount(occ.usedTokens)} / ${fmtCount(occ.windowSize)})`,
+    decimals: 1,
+    suffix: '',
     required: true,
     anchor: true,
-    field: 'context',
-  };
+    ageMs: occ.ageMs,
+  });
 }
 
 export interface MyctxBlock {
   tokens: number;
   injections: number;
   unrecorded: number;
+}
+
+/**
+ * **ONE RENDERER FOR EVERY USED-OF-MAXIMUM FIELD** — owner ruling, 2026-09-01.
+ *
+ * The ruling that was easy to under-read: *"use the same controls for every
+ * field that displays amount used from maximum available for context,
+ * handover, used 5h, used 7d etc"*. So the treatment is not written five
+ * times with five chances to drift — it is written HERE, once, and the five
+ * fields differ only in the data they hand it.
+ *
+ * Each field renders as the owner's reference shape:
+ *
+ *     icon · label · bar · percentage · (used / max) · suffix
+ *      💀     ctx    ▓▓▓▓▓▓▓▓▓░  88.0%  (880.0k / 1.0M)
+ */
+export interface UsedOfMax {
+  /** The parity id — see `Segment.field`. Never a new one for this ruling. */
+  field: string;
+  /** `ctx`, `ask`, `7d`, `5h`, `myctx`. A WORD, so the hue is never alone. */
+  label: string;
+  /** Used, as a percentage of the maximum. MAY exceed 100 — see `usageBar`. */
+  percent: number;
+  /**
+   * `(used / max)` — **or `null` where no real maximum exists**, which is not
+   * a shortcut but the honest half of the ruling. The rate-limit windows carry
+   * `used_percentage` and nothing else: no token count, no message count, no
+   * denominator of any kind. `(59 / 100)` would print one number twice wearing
+   * a slash and invent a maximum nobody served, so those two fields get the
+   * icon, the bar and the percentage, and no counts. The owner was told which
+   * fields this affects and why before it shipped.
+   */
+  counts: string | null;
+  /** How many decimals the percentage carries. */
+  decimals: number;
+  /** A countdown or other trailing phrase, already spaced. Usually `''`. */
+  suffix: string;
+  /**
+   * Where this field sits in the order the line gives itself up — `GIVE`.
+   * ABSENT for a `required` block, because `GIVE`'s own rule is that the
+   * context figure is never given up and therefore appears in no rank.
+   */
+  give?: number;
+  required?: boolean;
+  anchor?: boolean;
+  /** Age of the reading, for the shared staleness refusal. 0 for live data. */
+  ageMs?: number;
+}
+
+/**
+ * The one block every used-of-maximum field is drawn as.
+ *
+ * **Colour is never the only carrier**, which is why this returns text and not
+ * just an ink: the block reads `💀 ctx ▓▓▓▓▓▓▓▓▓░ 88.0% (880.0k / 1.0M)` in a
+ * mono terminal, under `NO_COLOR`, in a screen reader and pasted into a
+ * document. Take the hue away and every fact is still on the line — the icon,
+ * the picture, the number and the two counts.
+ *
+ * A reading too old to band, or one that cannot be banded at all, keeps its
+ * bar and its number and loses its ICON and its HUE: it is visibly
+ * not-a-verdict rather than a quiet one, exactly as `fillLevel`'s `stale` is
+ * treated everywhere else in this file.
+ */
+export function usedOfMaxSegment(f: UsedOfMax): Segment {
+  const level = usageLevel(f.percent, f.ageMs ?? 0);
+  const icon = level === null || level === 'stale' ? '' : LEVEL_ICON[level];
+  const lead = icon === '' ? '' : `${icon} `;
+  const figure = `${f.percent.toFixed(f.decimals)}%`;
+  const counts = f.counts === null ? '' : ` ${f.counts}`;
+  return {
+    text: `${lead}${f.label} ${usageBar(f.percent)} ${figure}${counts}${f.suffix}`,
+    // The floor a terminal too narrow for the picture falls back to: the label
+    // and the number, which is what this field said before the ruling. The bar
+    // and the counts are the decoration; the FIGURE is never shortened.
+    terse: `${f.label} ${figure}`,
+    ink: inkForUsage(level),
+    bold: level === 'critical',
+    blink: level === 'critical',
+    ...(f.give === undefined ? {} : { give: f.give }),
+    field: f.field,
+    ...(f.required === true ? { required: true } : {}),
+    ...(f.anchor === true ? { anchor: true } : {}),
+  };
+}
+
+/** `549009` as `549.0k`, `1000000` as `1.0M` — the counts' own register. */
+export function fmtCount(n: number): string {
+  if (!Number.isFinite(n)) return '?';
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(Math.round(n));
 }
 
 
@@ -806,17 +1192,25 @@ export function rateLimitSegment(
   }
   const left = until(limit.resetsAt, now);
   const countdown = left === null ? '' : ` ·${left}`;
-  // Age 0: a rate-limit window arrives with the payload that is being read
-  // right now, so there is no such thing as a stale one. The `'stale'` branch
-  // of `fillLevel` is unreachable from here and is not pretended otherwise.
-  const level = absoluteFillLevel(limit.usedPercent, 0);
-  const glyph = level === null || level === 'stale' ? LEVEL_GLYPH.neutral : LEVEL_GLYPH[level];
-  return {
-    text: `${glyph} ${label} ${limit.usedPercent.toFixed(0)}%${countdown}`,
-    ink: inkForLevel(level),
-    give,
+  // Age 0: a rate-limit window arrives with the payload being read right now,
+  // so there is no such thing as a stale one. `usageLevel`'s `'stale'` branch
+  // is unreachable from here and is not pretended otherwise.
+  return usedOfMaxSegment({
     field,
-  };
+    label,
+    percent: limit.usedPercent,
+    // **NO COUNTS, and that is the ruling's honest half rather than a gap.**
+    // The payload carries `used_percentage` for these two windows and NOTHING
+    // else — no token count, no message count, no denominator at any level.
+    // `(59 / 100)` would print one number twice wearing a slash and invent a
+    // maximum nobody served, which is a worse failure than an absent pair. The
+    // icon, the bar and the percentage all apply honestly, and all appear.
+    counts: null,
+    decimals: 0,
+    suffix: countdown,
+    give,
+    ageMs: 0,
+  });
 }
 
 /**
@@ -870,34 +1264,59 @@ export function askSegment(occ: OccupancyView, threshold: number | null): Segmen
   if (occ.state !== 'known' || threshold === null) return null;
   const level = levelFor(occ.percent, threshold, occ.ageMs);
   // `stale` and `null` alike: a reading that cannot be banded cannot be
-  // subtracted from either. A fossil with sixty points of head-room is not
-  // reassurance, it is a stale claim wearing a plus sign.
+  // measured against the ask either. A fossil with sixty points of head-room
+  // is not reassurance, it is a stale claim wearing a plus sign.
   if (level === null || level === 'stale') return null;
+
+  // ── PAST THE ASK, THE WORDS TAKE OVER — owner ruling, 2026-09-01 ──────────
+  //
+  // Asked whether this block should run on past its maximum as
+  // `💀 ask ▓▓▓▓▓▓▓▓▓▓ 104% (88.0 / 85)`, the owner ruled that it should NOT:
+  // *past the ask the number stops being the point, the action is.* So the
+  // field is banded and barred all the way UP to the threshold and becomes
+  // words at it — which is also the one place on this bar where a used-of-max
+  // field would have had to draw a bar with no eleventh cell and a percentage
+  // over 100.
+  //
+  // The condition is `occupancyLevel`'s `crit`, which IS `pct >= threshold`,
+  // imported rather than re-compared: "has the ask fired" is one question with
+  // one answer, and a second comparison here would be a second chance to
+  // disagree with the strip about it.
   if (level === 'crit') {
     return {
+      // **`--carry`, not gold, since 2026-09-01.** Gold moved wholly to the
+      // `caution` band (`LEVEL_INK`), and one hue on two adjacent jobs is a
+      // hue doing neither. Bold still carries the urgency, and bold is a
+      // weight rather than a colour.
       text: `${ASK_GLYPH} handover due`,
-      ink: INK.gold, bold: true, give: GIVE.handoverDue, field: 'ask',
+      ink: INK.carry, bold: true, give: GIVE.handoverDue, field: 'ask',
     };
   }
-  // The threshold reads as configured — `85`, not `85.0` — while the DISTANCE
-  // always carries its decimal, because it is the figure that moves and a gap
-  // that shows `+3` for anything from 2.5 to 3.5 hides the last message before
-  // the ask.
+
+  // The threshold reads as CONFIGURED — `85`, not `85.0`.
   const ask = Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1);
-  // **The subtraction is IMPORTED, not repeated.** `askHeadroom` lives in
-  // `lib/viewmodel.js` beside `occupancyBands`, and the web strip draws the
-  // same distance beside the same gold marker. Two spellings of one arithmetic
-  // is how two surfaces come to disagree about one number — the defect this
-  // whole file already avoids for the BANDS, applied to the figure they band.
-  // `null` only where this function has already returned.
-  const headroom = headroomFor(occ.percent, threshold);
-  if (headroom === null) return null;
-  return {
-    text: `${ASK_GLYPH} ask ${ask} · +${headroom.toFixed(1)}`,
-    ink: level === 'warn' ? INK.gold : INK.neutral,
-    give: GIVE.handoverDue,
+  // **THE ASK AS USED-OF-MAXIMUM.** The maximum is the threshold and the used
+  // figure is the window's own percentage — both already in percentage points
+  // of the window — so `(65.0 / 85)` reads in the same units as the ctx figure
+  // immediately beside it and subtracts in the reader's head. This is the
+  // shape the owner ruled every used-of-max field takes.
+  //
+  // **What this replaced, said plainly:** until today the block drew
+  // `◆ ask 85 · +3.2` — the distance, as one number, by the owner's ruling of
+  // 2026-08-31. The pair above carries both figures the subtraction needs, so
+  // the distance is still readable, but it is no longer PRINTED. That is a
+  // change to a ruled behaviour; `headroomFor` is kept against the owner
+  // asking for the number back, and the lane report flags it.
+  return usedOfMaxSegment({
     field: 'ask',
-  };
+    label: 'ask',
+    percent: (occ.percent / threshold) * 100,
+    counts: `(${occ.percent.toFixed(1)} / ${ask})`,
+    decimals: 0,
+    suffix: '',
+    give: GIVE.handoverDue,
+    ageMs: occ.ageMs,
+  });
 }
 
 /** The ask marker. Gold, and never one of the fill glyphs. */
@@ -978,19 +1397,45 @@ export function modelSegment(model: string | null, modes: ModelModes): Segment |
 export interface StatusLines {
   /**
    * Line 1: who and where. Static for the whole session — the model and its
-   * modes, the project, the branch.
+   * modes, the project, the branch, the session name, the focus.
    */
   identity: Segment[];
   /**
-   * Line 2: everything that moves. The ask scale, the context figure, the two
-   * rate-limit windows, the myctx share and the cost — in the owner's order,
-   * which puts the ask and the context figure first and adjacent.
+   * **LINE 2: THIS WINDOW.** The ask and the context figure, and nothing else.
+   *
+   * ── WHY A THIRD ROW EXISTS AT ALL — owner ruling, 2026-09-01 ─────────────
+   *
+   * It was not assumed, it was MEASURED and then asked for. The four-level
+   * treatment adds an icon, a ten-cell bar, a percentage and a count pair to
+   * every used-of-maximum field, and the single line-2 those five fields would
+   * have shared came to **215 columns** against a terminal of about 200. The
+   * standing instruction for that case is *"if there is no room on the
+   * terminal, ask me what to cut"*, so the measurement went back with four
+   * options and the owner chose the row over the cut: nothing is truncated,
+   * no field is dropped, and no count is invented to make the arithmetic work.
+   *
+   * The split is not merely "the first two that fit". These two answer ONE
+   * question asked twice — how full is the window, and how far is the ask —
+   * and they are the two fields a reader acts on. Alone on their own row at
+   * ~80 columns they are read as a pair, which is the comparison the owner
+   * actually performs.
    */
-  state: Segment[];
+  window: Segment[];
+  /**
+   * **LINE 3: THE ACCOUNT AND THE LEDGER.** The two rate-limit windows, the
+   * myctx share, the cost and cache, and the audit clock.
+   *
+   * Everything here is true of the account or of the session's history rather
+   * than of the context window in front of the reader. It moves, so it does
+   * not belong on line 1; it is not what the reader acts on this turn, so it
+   * does not belong beside the ask.
+   */
+  account: Segment[];
 }
 
 export function buildLines(input: PowerlineInput, now: number = Date.now()): StatusLines {
   const identity: Segment[] = [];
+  const window: Segment[] = [];
   const state: Segment[] = [];
 
   const model = modelSegment(input.model, input.modes);
@@ -1038,8 +1483,8 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   // question asked twice — how full, and how far from the ask — and putting a
   // block between them would be read as belonging to neither.
   const ask = askSegment(input.occupancy, input.threshold);
-  if (ask !== null) state.push(ask);
-  state.push(contextSegment(input.occupancy));
+  if (ask !== null) window.push(ask);
+  window.push(contextSegment(input.occupancy));
 
   // **Written as a table so each window's FIELD ID is a `field:` property.**
   // That is the one form `test/ui/strip-parity.test.ts` derives both surfaces'
@@ -1057,12 +1502,43 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
 
   if (input.myctx !== null && input.myctx.injections > 0) {
     const approx = input.myctx.unrecorded > 0 ? '≥' : '';
-    state.push({
-      text: `myctx ${approx}${fmtK(input.myctx.tokens)}`,
-      ink: INK.project,
-      give: GIVE.myctxShare,
-      field: 'myctx',
-    });
+    // ── THE FIFTH USED-OF-MAXIMUM FIELD — owner ruling, 2026-09-01 ──────────
+    //
+    // This block was a bare count and it is genuinely used-of-max by the same
+    // definition as the context figure and against the SAME denominator: what
+    // mycontext put into this window, out of the window. Asked whether it
+    // qualified, the owner ruled that it does, so it takes the identical
+    // treatment rather than sitting beside four banded fields as the one
+    // number nobody banded.
+    //
+    // **It needs the window to be measurable, and says so when it is not.**
+    // The denominator IS `occupancy.windowSize`, so an unmeasurable window
+    // leaves this field with no maximum — and it then draws the bare count it
+    // always drew rather than inventing a percentage. A field that quietly
+    // switched denominators would be worse than one that visibly has none.
+    const win = input.occupancy.state === 'known' ? input.occupancy.windowSize : null;
+    if (win !== null && win > 0) {
+      state.push(usedOfMaxSegment({
+        field: 'myctx',
+        label: `myctx ${approx}`.trim(),
+        percent: (input.myctx.tokens / win) * 100,
+        // `≥` rides the LABEL and not the counts, because it qualifies the
+        // numerator: some injection records carry no frozen estimate, so the
+        // true share is at least this. The counts stay a plain pair.
+        counts: `(${fmtCount(input.myctx.tokens)} / ${fmtCount(win)})`,
+        decimals: 1,
+        suffix: '',
+        give: GIVE.myctxShare,
+        ageMs: 0,
+      }));
+    } else {
+      state.push({
+        text: `myctx ${approx}${fmtK(input.myctx.tokens)}`,
+        ink: INK.project,
+        give: GIVE.myctxShare,
+        field: 'myctx',
+      });
+    }
   } else if (input.myctxNote !== null) {
     // The SAME field id as the share above, in its absent state — see
     // `Segment.field`. The strip draws exactly this pairing already
@@ -1108,7 +1584,7 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   const log = lastAuditSegment(input.lastAudit, now);
   if (log !== null) state.push(log);
 
-  return { identity, state };
+  return { identity, window, account: state };
 }
 
 /**
@@ -1121,8 +1597,8 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
  * spends an `…` mark to avoid everywhere else.
  */
 export function buildSegments(input: PowerlineInput, now: number = Date.now()): Segment[] {
-  const { identity, state } = buildLines(input, now);
-  return [...identity, ...state];
+  const { identity, window, account } = buildLines(input, now);
+  return [...identity, ...window, ...account];
 }
 
 
@@ -1131,10 +1607,18 @@ export function buildSegments(input: PowerlineInput, now: number = Date.now()): 
 const CSI = '\u001b[';
 const RESET = `${CSI}0m`;
 
-function paint(ink: Ink, bold = false): string {
+function paint(ink: Ink, bold = false, blink = false): string {
   // `22m` and not `0m` to leave bold: a full reset would drop the colours set
   // on the same escape and repaint every following block from scratch.
-  return `${CSI}${bold ? 1 : 22}m${CSI}38;5;${ink.fg}m${CSI}48;5;${ink.bg}m`;
+  //
+  // **`25m` IS EMITTED ON EVERY NON-BLINKING BLOCK, and that is a requirement
+  // rather than tidiness.** Blocks are painted in sequence into one string, so
+  // an SGR 5 opened on the `critical` block stays open for every block after
+  // it: without this the two rate windows, the cost and the audit clock would
+  // all blink because the context figure did. The cost is three bytes a block
+  // on a line nobody measures in bytes.
+  return `${CSI}${bold ? 1 : 22}m${CSI}${blink ? 5 : 25}m`
+    + `${CSI}38;5;${ink.fg}m${CSI}48;5;${ink.bg}m`;
 }
 
 /** Which separator goes between two blocks — thin when they share a ground. */
@@ -1225,6 +1709,16 @@ export interface RenderOptions {
    * pair with a ragged left edge — two rows that stop reading as one block.
    */
   centre?: boolean;
+  /**
+   * Whether a `critical` block may carry SGR 5. Defaults to `true`.
+   *
+   * `false` is what `MYCONTEXT_STATUSLINE_NO_BLINK` reaches (see
+   * `statusline.ts` · `NO_BLINK_ENV`), and it costs the bar NOTHING that
+   * matters: `critical` is still told from `warning` by its icon, its hue and
+   * its bold weight. WCAG 2.2.2 asks that blinking content be stoppable, and
+   * this is how it stops.
+   */
+  blink?: boolean;
 }
 
 function widthOf(segments: Segment[]): number {
@@ -1385,7 +1879,11 @@ export function renderPowerline(segments: Segment[], options: RenderOptions): st
     const seg = fitted[i];
     if (seg === undefined) continue;
     const next = fitted[i + 1];
-    if (options.colour) body.push(paint(seg.ink, seg.bold === true));
+    // Blink is gated three ways and every one of them is a refusal the user
+    // can cause: no colour at all, the opt-out, or a block that is not
+    // `critical`. A bar rendered without escapes emits no SGR 5 either.
+    const blink = seg.blink === true && options.blink !== false;
+    if (options.colour) body.push(paint(seg.ink, seg.bold === true, blink));
     // The padding is what makes a block a block, and it goes with the caps:
     // once the terminal is too narrow for even the required blocks, four
     // cells of decoration are four cells not spent on the number.

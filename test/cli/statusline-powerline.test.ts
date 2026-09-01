@@ -26,7 +26,8 @@ import { removeTree } from '../helpers/tmp.ts';
 import {
   ASK_GLYPH, CAP_LEFT, CAP_RIGHT,
   DEFAULT_EFFORT, ELLIPSIS_SEGMENT, GIVE, LEVEL_GLYPH, LEVEL_SOURCE, NO_EXTRAS,
-  PALETTE, SEP, SEP_THIN,
+  PALETTE, SEP, SEP_THIN, LEVEL_ICON, usageBar, usageLevelOf,
+  USAGE_CAUTION_PERCENT, USAGE_CRITICAL_PERCENT, USAGE_WARNING_PERCENT,
   absoluteFillLevel, askSegment, bandsAreDerived, bandsFor, buildSegments, colourAllowed,
   fillBands,
   contextSegment, displayWidth, fitSegments, freshMs, gitBranch, levelFor, modelSegment,
@@ -71,7 +72,7 @@ function input(over: Partial<PowerlineInput>): PowerlineInput {
     model: 'Opus 5',
     project: 'test_mycontext_plugin',
     branch: 'campaign/my-context-test',
-    occupancy: { state: 'known', percent: 42, ageMs: 0 },
+    occupancy: { state: 'known', percent: 42, ageMs: 0, usedTokens: Math.round((42) * 10_000), windowSize: 1_000_000 },
     threshold: THRESHOLD,
     myctx: null,
     focus: null,
@@ -94,7 +95,7 @@ function line(over: Partial<PowerlineInput>, colour = false, columns: number | n
  * not move this, and a signature that could not take it could not say so.
  */
 function ctxInk(percent: number, ageMs = 0, _threshold: number | null = THRESHOLD): number {
-  return contextSegment({ state: 'known', percent, ageMs }).ink.bg;
+  return contextSegment({ state: 'known', percent, ageMs, usedTokens: Math.round(percent * 10_000), windowSize: 1_000_000 }).ink.bg;
 }
 
 /* -------------------------------------------------------------------- *
@@ -228,31 +229,44 @@ test('the fill is absolute — the same verdict whatever anybody configured', ()
   }
 });
 
-test('the context block changes colour as the window fills, and carries a glyph too', () => {
-  const ok = ctxInk(FILL_WARN - 0.1);
-  const warn = ctxInk(FILL_WARN);
-  const crit = ctxInk(FILL_CRIT);
+test('the context block changes colour as the window fills, and carries an icon too', () => {
+  // ── FOUR BANDS SINCE THE OWNER'S RULING OF 2026-09-01, not three ──────────
+  // This test used to read `FILL_WARN`/`FILL_CRIT` — the web's absolute pair —
+  // because the block had two boundaries. The used-of-maximum ruling gives it
+  // three, and they are `USAGE_*`'s until phase 2 moves them to viewmodel.js.
+  const safe = ctxInk(USAGE_CAUTION_PERCENT - 0.1);
+  const caution = ctxInk(USAGE_CAUTION_PERCENT);
+  const warning = ctxInk(USAGE_WARNING_PERCENT);
+  const critical = ctxInk(USAGE_CRITICAL_PERCENT);
   const stale = contextSegment({ state: 'unmeasurable', why: 'stale' }).ink.bg;
 
-  assert.equal(new Set([ok, warn, crit, stale]).size, 4, 'four states, four hues');
-  assert.equal(ok, PALETTE['ok']?.bg);
-  assert.equal(warn, PALETTE['warn']?.bg);
-  assert.equal(crit, PALETTE['crit']?.bg);
+  assert.equal(new Set([safe, caution, warning, critical, stale]).size, 5,
+    'five states, five hues — four bands and the one that is not a band');
+  assert.equal(safe, PALETTE['ok']?.bg);
+  assert.equal(caution, PALETTE['gold']?.bg);
+  assert.equal(warning, PALETTE['warn']?.bg);
+  assert.equal(critical, PALETTE['crit']?.bg);
   assert.equal(stale, PALETTE['neutral']?.bg);
 
   // A glyph AND a colour AND a name, the web strip's own rule and its own four
   // glyphs. Colour is never the only carrier: --warn and --crit are one state
   // to a dichromat and one grey on a mono terminal.
-  const text = (percent: number): string =>
-    contextSegment({ state: 'known', percent, ageMs: 0 }).text;
-  assert.match(text(10), new RegExp(`^${LEVEL_GLYPH.ok} ctx `));
-  assert.match(text(70), new RegExp(`^${LEVEL_GLYPH.warn} ctx `));
-  assert.match(text(90), new RegExp(`^${LEVEL_GLYPH.crit} ctx `));
+  const text = (percent: number): string => contextSegment({
+    state: 'known', percent, ageMs: 0,
+    usedTokens: Math.round(percent * 10_000), windowSize: 1_000_000,
+  }).text;
+  // An ICON and a colour and a name. `safe` carries no icon on purpose — a
+  // calm bar is quiet — so the carrier there is the word and the number, which
+  // are present at every level.
+  assert.ok(text(10).startsWith('ctx '), 'safe is quiet');
+  assert.ok(text(65).startsWith(`${LEVEL_ICON.caution} ctx `));
+  assert.ok(text(75).startsWith(`${LEVEL_ICON.warning} ctx `));
+  assert.ok(text(90).startsWith(`${LEVEL_ICON.critical} ctx `));
   assert.match(
     contextSegment({ state: 'unmeasurable', why: 'stale' }).text,
     new RegExp(`^${LEVEL_GLYPH.neutral} ctx `),
   );
-  assert.equal(new Set(Object.values(LEVEL_GLYPH)).size, 4, 'four glyphs, all different');
+  assert.equal(new Set(Object.values(LEVEL_ICON)).size, 4, 'four icons, all different');
 
   // The other blocks do not move with it: ONE block changes as the window
   // fills and the rest are untouched. Until 2026-08-31 that block was the last
@@ -268,10 +282,10 @@ test('the context block changes colour as the window fills, and carries a glyph 
   const notAnchor = (segs: Segment[]): Segment[] => segs.filter((seg) => seg.anchor !== true);
   const anchorOf = (segs: Segment[]): Segment | undefined => segs.find((seg) => seg.anchor === true);
   const calm = buildSegments(input({
-    occupancy: { state: 'known', percent: 10, ageMs: 0 }, threshold: null,
+    occupancy: { state: 'known', percent: 10, ageMs: 0, usedTokens: Math.round((10) * 10_000), windowSize: 1_000_000 }, threshold: null,
   }));
   const near = buildSegments(input({
-    occupancy: { state: 'known', percent: 70, ageMs: 0 }, threshold: null,
+    occupancy: { state: 'known', percent: 70, ageMs: 0, usedTokens: Math.round((70) * 10_000), windowSize: 1_000_000 }, threshold: null,
   }));
   assert.deepEqual(notAnchor(calm), notAnchor(near));
   assert.notDeepEqual(anchorOf(calm), anchorOf(near));
@@ -287,50 +301,70 @@ test('the context block changes colour as the window fills, and carries a glyph 
  */
 test('the handover scale answers the distance as a number, at every fill', () => {
   const marker = (percent: number, threshold: number | null): Segment | null =>
-    askSegment({ state: 'known', percent, ageMs: 0 }, threshold);
+    askSegment({ state: 'known', percent, ageMs: 0, usedTokens: Math.round(percent * 10_000), windowSize: 1_000_000 }, threshold);
 
   for (const threshold of [98, 85, 50]) {
     const bands = web.occupancyBands(threshold);
     assert.ok(bands !== null);
-    // BELOW the approach it is no longer silent — it states the gap. This is
-    // the line the ruling moved, and it is asserted at the exact boundary the
-    // old contract went quiet at.
+    // ── SUPERSEDED SHAPE, 2026-09-01 ──────────────────────────────────────
+    // This block drew the gap as `◆ ask 98 · +56.0` until the owner ruled that
+    // every used-of-maximum field takes the same four controls. The maximum
+    // here is the THRESHOLD, so the block now draws the same fact as a bar and
+    // a proportion, with the two figures in the count pair. What has NOT
+    // changed is the ruling this test was written for: the distance is
+    // readable at every fill, and it is a NUMBER rather than a picture alone.
     const below = bands.warn - 0.1;
-    assert.equal(
-      marker(below, threshold)?.text,
-      `${ASK_GLYPH} ask ${threshold} · +${(threshold - below).toFixed(1)}`,
-    );
-    assert.equal(
-      marker(bands.warn, threshold)?.text,
-      `${ASK_GLYPH} ask ${threshold} · +${(threshold - bands.warn).toFixed(1)}`,
-    );
+    const shape = (pct: number): string => {
+      const ask = Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1);
+      const proportion = (pct / threshold) * 100;
+      const icon = LEVEL_ICON[usageLevelOf(proportion)!];
+      const lead = icon === '' ? '' : `${icon} `;
+      return `${lead}ask ${usageBar(proportion)} ${proportion.toFixed(0)}% `
+        + `(${pct.toFixed(1)} / ${ask})`;
+    };
+    assert.equal(marker(below, threshold)?.text, shape(below));
+    assert.equal(marker(bands.warn, threshold)?.text, shape(bands.warn));
+    // AT the ask the words take over, and they are still the owner's words.
     assert.equal(marker(bands.crit, threshold)?.text, `${ASK_GLYPH} handover due`);
 
-    // The gap SHRINKS as the window fills, and it is the figure that carries
-    // that — a scale whose number did not move would be a decoration.
-    assert.equal(marker(threshold - 40, threshold)?.text, `${ASK_GLYPH} ask ${threshold} · +40.0`);
-    assert.equal(marker(threshold - 2, threshold)?.text, `${ASK_GLYPH} ask ${threshold} · +2.0`);
+    // The DISTANCE still shrinks as the window fills and is still carried by a
+    // figure — it is now the count pair and the proportion that carry it, and
+    // both still move. A scale whose numbers did not move would be a
+    // decoration, which is what this assertion has always been about.
+    assert.equal(marker(threshold - 40, threshold)?.text, shape(threshold - 40));
+    assert.equal(marker(threshold - 2, threshold)?.text, shape(threshold - 2));
+    const gap = (pct: number): string => marker(pct, threshold)!.text;
+    assert.notEqual(gap(threshold - 40), gap(threshold - 2), 'the block did not move');
 
-    // ONE gold, EARNED. Dim while there is nothing to act on; gold as the ask
-    // approaches; gold and bold once it has fired. Words and weight carry the
-    // last step, never a second hue — a second gold is the same gold to a mono
-    // terminal and to a printer.
-    assert.equal(marker(below, threshold)?.ink.bg, PALETTE['neutral']?.bg);
-    assert.equal(marker(bands.warn, threshold)?.ink.bg, PALETTE['gold']?.bg);
-    assert.equal(marker(bands.crit, threshold)?.ink.bg, PALETTE['gold']?.bg);
-    assert.notEqual(marker(below, threshold)?.bold, true);
-    assert.notEqual(marker(bands.warn, threshold)?.bold, true);
+    // ── THE HUE MOVED, 2026-09-01, AND THE RULE DID NOT ────────────────────
+    // Gold went wholly to the `caution` BAND, so this block is no longer gold
+    // at any fill; it takes its band's ink below the ask like every other
+    // used-of-max field, and `--carry` once the ask has fired. What is
+    // unchanged is the rule the old assertion protected: the urgency is
+    // carried by WORDS and WEIGHT at the last step, never by a second hue.
+    assert.equal(marker(bands.crit, threshold)?.ink.bg, PALETTE['carry']?.bg);
+    assert.notEqual(marker(bands.crit, threshold)?.ink.bg, PALETTE['gold']?.bg);
+    // `below` sits a tenth of a point under the approach band, which as a
+    // PROPORTION of the threshold is 89.9% — `critical` on the used-of-max
+    // scale, so it is bold like every other critical block. What the old
+    // assertion was protecting is that bold is EARNED rather than worn at
+    // every fill, and that is asserted on a genuinely calm figure instead.
+    assert.notEqual(marker(threshold * 0.3, threshold)?.bold, true);
     assert.equal(marker(bands.crit, threshold)?.bold, true);
-    // The marker glyph never leaves, so the block's identity does not move
-    // with its urgency.
-    for (const pct of [below, bands.warn, bands.crit]) {
-      assert.ok(marker(pct, threshold)?.text.startsWith(ASK_GLYPH));
+    // The marker glyph survives on the one state that still spends words on
+    // itself; below the ask the block's identity is its LABEL, which is the
+    // same job done by the same means as every other used-of-max field.
+    assert.ok(marker(bands.crit, threshold)?.text.startsWith(ASK_GLYPH));
+    for (const pct of [below, bands.warn]) {
+      assert.match(marker(pct, threshold)?.text ?? '', /(^|\s)ask /);
     }
   }
 
-  // THE OWNER'S OWN THREE EXAMPLES, verbatim, at the threshold in force here.
-  assert.equal(marker(25.1, 85)?.text, '◆ ask 85 · +59.9');
-  assert.equal(marker(81.8, 85)?.text, '◆ ask 85 · +3.2');
+  // THE OWNER'S OWN THREE EXAMPLES, at the threshold in force here — restated
+  // in the shape the used-of-maximum ruling gives them. The FACTS are the ones
+  // the owner picked: far below the ask, nearly at it, and past it.
+  assert.equal(marker(25.1, 85)?.text, 'ask ▓▓▓░░░░░░░ 30% (25.1 / 85)');
+  assert.equal(marker(81.8, 85)?.text, '💀 ask ▓▓▓▓▓▓▓▓▓▓ 96% (81.8 / 85)');
   assert.equal(marker(91.0, 85)?.text, '◆ handover due');
 
   // THE EARLIER RULING'S EXAMPLE, still true and still worth pinning: the ask
@@ -338,21 +372,25 @@ test('the handover scale answers the distance as a number, at every fill', () =>
   // while the fill is already amber; at 85 the same 80% is approaching. The
   // fill does not move with the threshold, and now the DISTANCE says so in
   // numbers rather than by falling silent.
-  assert.equal(marker(80, 98)?.text, `${ASK_GLYPH} ask 98 · +18.0`);
-  assert.equal(marker(80, 98)?.ink.bg, PALETTE['neutral']?.bg, 'not near at 98');
-  assert.equal(marker(80, 85)?.ink.bg, PALETTE['gold']?.bg, 'near at 85');
-  assert.equal(ctxInk(80, 0, 98), ctxInk(80, 0, 85));
+  // The same 80% is 82% of the way to a threshold of 98 and 94% of the way to
+  // one of 85 — two different verdicts about the ask — while the FILL is the
+  // same fact at both, which is the whole point of the pair.
+  assert.equal(marker(80, 98)?.text, '💀 ask ▓▓▓▓▓▓▓▓░░ 82% (80.0 / 98)');
+  assert.equal(marker(80, 85)?.text, '💀 ask ▓▓▓▓▓▓▓▓▓░ 94% (80.0 / 85)');
+  assert.notEqual(marker(80, 98)?.text, marker(80, 85)?.text, 'the ask moved with the threshold');
+  assert.equal(ctxInk(80, 0, 98), ctxInk(80, 0, 85), 'and the fill did not');
 
-  // A threshold that is not a whole number keeps its decimal, and the gap
-  // always carries one.
-  assert.equal(marker(80, 92.5)?.text, `${ASK_GLYPH} ask 92.5 · +12.5`);
+  // A threshold that is not a whole number keeps its decimal, and the USED
+  // figure always carries one. Both now live in the count pair, which is the
+  // shape the used-of-maximum ruling gives every such field.
+  assert.equal(marker(80, 92.5)?.text, '💀 ask ▓▓▓▓▓▓▓▓▓░ 86% (80.0 / 92.5)');
 
   // No ask configured, no distance to it. No claim about a window that cannot
   // be measured, and none about a fossil.
   assert.equal(marker(100, null), null);
   assert.equal(askSegment({ state: 'unmeasurable', why: 'no-sample' }, 98), null);
   assert.equal(
-    askSegment({ state: 'known', percent: 100, ageMs: web.CONTEXT_SAMPLE_FRESH_MS + 1 }, 98),
+    askSegment({ state: 'known', percent: 100, ageMs: web.CONTEXT_SAMPLE_FRESH_MS + 1, usedTokens: Math.round((100) * 10_000), windowSize: 1_000_000 }, 98),
     null,
   );
 
@@ -401,9 +439,15 @@ test('with colour off it is the same text and not one escape byte', () => {
   // "The same text": strip the escapes from the coloured form and the two are
   // the same line. A degradation that also drops a fact is not a degradation.
   assert.equal(coloured.replaceAll(/\u001b\[[0-9;]*m/g, ''), plain);
+  // The whole line, verbatim, in the shape the used-of-maximum ruling gives
+  // it: both used-of-max fields carry a bar, a proportion and their counts,
+  // and neither carries an icon because both are `safe` at 42%.
   assert.equal(plain, `${CAP_LEFT} Opus 5 ${SEP} test_mycontext_plugin ${SEP} `
-    + `campaign/my-context-test ${SEP} ${ASK_GLYPH} ask 98 · +56.0 `
-    + `${SEP} ${LEVEL_GLYPH.ok} ctx 42.0% ${CAP_RIGHT}`);
+    + `campaign/my-context-test ${SEP} ask ${usageBar(42 / 98 * 100)} 43% (42.0 / 98) `
+    // THIN, because both used-of-max blocks are `safe` here and therefore
+    // share a background — the existing rule about two blocks on one ground,
+    // reached by a new route.
+    + `${SEP_THIN} ctx ${usageBar(42)} 42.0% (420.0k / 1.0M) ${CAP_RIGHT}`);
 });
 
 test('colourAllowed refuses when the user says so, and does not refuse the one pipe that renders', () => {
@@ -425,18 +469,22 @@ test('colourAllowed refuses when the user says so, and does not refuse the one p
 });
 
 test('a narrow terminal elides the branch from the LEFT and never wraps', () => {
-  // 85 columns, not 60: the handover scale the owner added on 2026-08-31 is a
-  // permanent ~19-cell block, so the width at which the branch is SHORTENED
-  // rather than given up entirely moved up with it. The assertion is the same
-  // one — the distinguishing tail is the half worth keeping — measured where
-  // eliding is what actually happens. Below this the branch is given up whole
-  // and the `…` says so, which the ladder test covers.
-  const columns = 85;
+  // 120 columns, and the number has moved TWICE for the same reason. It was 60
+  // until the handover scale added a permanent ~19-cell block, then 85; the
+  // used-of-maximum ruling of 2026-09-01 grew the ask and the context blocks
+  // from 16 and 11 cells to 30 and 36, so the one-line form is 133 wide and
+  // the band in which the branch is SHORTENED rather than given up whole now
+  // runs from about 130 down to about 110. Measured, not guessed — 85 is below
+  // the floor and the branch is dropped entirely there.
+  //
+  // The assertion is the one it has always been: the distinguishing tail is
+  // the half worth keeping. Only the width it has to be measured at has moved.
+  const columns = 120;
   const narrow = line({}, false, columns);
   assert.ok(displayWidth(narrow) <= columns, `${displayWidth(narrow)} > ${columns}`);
   // The distinguishing TAIL survives; the leading `…` says a head was removed.
   assert.match(narrow, /…[^ ]*-test /, 'the distinguishing TAIL is what survived');
-  assert.match(narrow, /ctx 42\.0%/);
+  assert.match(narrow, /ctx .*42\.0%/);
 
   // Every width from very wide to very narrow: the line never exceeds the
   // terminal, and the context block never goes. A bar that wraps costs the
@@ -447,7 +495,7 @@ test('a narrow terminal elides the branch from the LEFT and never wraps', () => 
       displayWidth(rendered) <= w,
       `at ${w} columns the line is ${displayWidth(rendered)} wide: "${rendered}"`,
     );
-    assert.match(rendered, /ctx 42\.0%/, `the context block was given up at ${w} columns`);
+    assert.match(rendered, /ctx .*42\.0%/, `the context block was given up at ${w} columns`);
   }
 });
 
@@ -470,7 +518,7 @@ function centredInput(): PowerlineInput {
     model: 'Opus 5',
     project: 'proj',
     branch: 'main',
-    occupancy: { state: 'known', percent: 42, ageMs: 0 },
+    occupancy: { state: 'known', percent: 42, ageMs: 0, usedTokens: Math.round((42) * 10_000), windowSize: 1_000_000 },
     threshold: 98,
     myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
     costUsd: 0.42,
@@ -547,7 +595,7 @@ test('centring never costs a block — the same width shows the same blocks eith
       );
     }
     assert.ok(displayWidth(rendered) <= columns, `at ${columns} the line is ${displayWidth(rendered)} wide`);
-    assert.match(rendered, /ctx 42\.0%/, `the context figure went at ${columns} columns`);
+    assert.match(rendered, /ctx .*42\.0%/, `the context figure went at ${columns} columns`);
   }
 });
 
@@ -640,8 +688,14 @@ function claudeCodeSplit(out: string): string[] {
   return rendered;
 }
 
-test('the bar is two lines: identity above, everything that moves below', () => {
-  const { identity, state } = buildLines(input({
+test('the bar is three lines: identity, this window, then the account', () => {
+  // ── THREE SINCE 2026-09-01, and the third row was MEASURED into existence ──
+  // The used-of-maximum ruling adds an icon, a ten-cell bar, a percentage and
+  // a count pair to five fields. One row carrying all five came to 215 columns
+  // against a terminal of about 200, so the measurement went back with options
+  // and the owner chose the row over the cut: nothing truncated, no field
+  // dropped, no count invented to make the arithmetic work.
+  const { identity, window, account } = buildLines(input({
     myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
     costUsd: 0.42,
     sevenDay: { usedPercent: 49, resetsAt: null },
@@ -651,23 +705,28 @@ test('the bar is two lines: identity above, everything that moves below', () => 
   // Line 1 is identity and NOTHING on it moves during a session.
   assert.deepEqual(identity.map((seg) => seg.text),
     ['Opus 5', 'test_mycontext_plugin', 'campaign/my-context-test']);
-  // Line 2 is the owner's order: the ask and the context figure first and
-  // adjacent, then the windows, then the share and the cost.
-  assert.deepEqual(state.map((seg) => seg.text), [
-    `${ASK_GLYPH} ask 98 · +56.0`,
-    `${LEVEL_GLYPH.ok} ctx 42.0%`,
-    `${LEVEL_GLYPH.ok} 7d 49%`,
-    `${LEVEL_GLYPH.ok} 5h 12%`,
-    'myctx 6.2k',
+  // Line 2 is THIS WINDOW: the ask and the context figure, alone together,
+  // which is the comparison the owner actually performs.
+  assert.deepEqual(window.map((seg) => seg.text), [
+    'ask ▓▓▓▓░░░░░░ 43% (42.0 / 98)',
+    'ctx ▓▓▓▓░░░░░░ 42.0% (420.0k / 1.0M)',
+  ]);
+  // Line 3 is the ACCOUNT and the ledger: the two rate windows, the myctx
+  // share — banded since the owner's ruling — and the cost.
+  assert.deepEqual(account.map((seg) => seg.text), [
+    '7d ▓▓▓▓▓░░░░░ 49%',
+    '5h ▓░░░░░░░░░ 12%',
+    'myctx ░░░░░░░░░░ 0.6% (6.2k / 1.0M)',
     '$0.42',
   ]);
-  // The anchor is on line 2, and line 1 has none — there is nothing on it to
-  // centre a bar on, and nothing on it that would justify moving.
+  // The anchor is on the WINDOW row, and neither other row has one — there is
+  // nothing on them to centre a bar on.
   assert.equal(identity.filter((seg) => seg.anchor === true).length, 0);
-  assert.equal(state.filter((seg) => seg.anchor === true).length, 1);
+  assert.equal(account.filter((seg) => seg.anchor === true).length, 0);
+  assert.equal(window.filter((seg) => seg.anchor === true).length, 1);
 });
 
-test('the one-line fallback contains exactly the two lines, concatenated', () => {
+test('the one-line fallback contains exactly the three rows, concatenated', () => {
   // The honest degradation: a build or a terminal that mishandles a second
   // line gets ONE line carrying everything, never a second line silently lost.
   // Derived by construction, and asserted so it stays derived.
@@ -677,39 +736,40 @@ test('the one-line fallback contains exactly the two lines, concatenated', () =>
     { model: null, project: null, branch: null, threshold: null },
     { occupancy: { state: 'unmeasurable' as const, why: 'no-bridge' as const } },
   ]) {
-    const { identity, state } = buildLines(input(over), NOW);
+    const { identity, window, account } = buildLines(input(over), NOW);
     assert.deepEqual(
       buildSegments(input(over), NOW).map((s2) => s2.text),
-      [...identity, ...state].map((s2) => s2.text),
-      'the fallback is the two lines concatenated, so no block can exist in one and not the other',
+      [...identity, ...window, ...account].map((s2) => s2.text),
+      'the fallback is the three rows concatenated, so no block can exist in one and not the other',
     );
   }
 });
 
 test('each line is rendered whole, within the terminal, and is never wrapped', () => {
-  const { identity, state } = buildLines(input({
+  const { identity, window, account } = buildLines(input({
     myctx: { tokens: 6200, injections: 3, unrecorded: 0 }, costUsd: 0.42,
     sevenDay: { usedPercent: 49, resetsAt: null }, fiveHour: { usedPercent: 12, resetsAt: null },
   }), NOW);
 
   for (let columns = 200; columns >= 12; columns--) {
-    const out = renderStatusLine([identity, state], { colour: false, columns });
+    const out = renderStatusLine([identity, window, account], { colour: false, columns });
     const rows = out.split('\n');
-    assert.equal(rows.length, 2, `expected two rows at ${columns} columns`);
+    assert.equal(rows.length, 3, `expected three rows at ${columns} columns`);
     for (const row of rows) {
       assert.ok(
         displayWidth(row) <= columns,
         `at ${columns} columns a row is ${displayWidth(row)} wide: "${row}"`,
       );
     }
-    assert.match(rows[1] ?? '', /ctx /, `the context figure left line 2 at ${columns} columns`);
+    // The context figure is on the WINDOW row, which is row 2 of three.
+    assert.match(rows[1] ?? '', /ctx /, `the context figure left its row at ${columns} columns`);
   }
 });
 
 test('an empty line is dropped rather than drawn as a bare pair of caps', () => {
   // A session with no model, no project and no branch has no identity line at
   // all. What it must not have is a row containing two caps and nothing else.
-  const { identity, state } = buildLines(input({ model: null, project: null, branch: null }), NOW);
+  const { identity, account: state } = buildLines(input({ model: null, project: null, branch: null }), NOW);
   assert.equal(identity.length, 0);
   const out = renderStatusLine([identity, state], { colour: false, columns: 200 });
   assert.equal(out.split('\n').length, 1, 'one line, because there was only one line to draw');
@@ -728,13 +788,18 @@ test('an empty line is dropped rather than drawn as a bare pair of caps', () => 
  * red: without the leading reset the whole of line 2 would render on red.
  */
 test('line 2 opens with a reset, so Claude Code’s carried escapes cannot paint it', () => {
-  const { identity, state } = buildLines(input({
-    occupancy: { state: 'known', percent: 91, ageMs: 0 },
+  const { identity, window, account } = buildLines(input({
+    occupancy: {
+      state: 'known', percent: 91, ageMs: 0, usedTokens: 910_000, windowSize: 1_000_000,
+    },
+    // A block on the account row, so all THREE rows exist and the carried-
+    // escape behaviour is exercised across both seams rather than one.
+    sevenDay: { usedPercent: 49, resetsAt: null },
   }), NOW);
-  const out = renderStatusLine([identity, state], { colour: true, columns: 200 });
+  const out = renderStatusLine([identity, window, account], { colour: true, columns: 200 });
 
   const rows = claudeCodeSplit(out);
-  assert.equal(rows.length, 2);
+  assert.equal(rows.length, 3);
 
   // Everything Claude Code prepended, and then our own line.
   const carried = ((out.split('\n')[0] ?? '').match(CC_ANSI) ?? []).join('');
@@ -749,9 +814,9 @@ test('line 2 opens with a reset, so Claude Code’s carried escapes cannot paint
   assert.ok((rows[0] ?? '').endsWith('\u001b[0m'));
 
   // With colour off there is nothing to carry and nothing to reset.
-  const plain = renderStatusLine([identity, state], { colour: false, columns: 200 });
+  const plain = renderStatusLine([identity, window, account], { colour: false, columns: 200 });
   assert.ok(!plain.includes('\u001b'), 'never a raw escape into a pipe that said no');
-  assert.equal(plain.split('\n').length, 2);
+  assert.equal(plain.split('\n').length, 3);
 });
 
 /* -------------------------------------------------------------------- *
@@ -842,7 +907,7 @@ test('the audit age moves with the clock rather than being frozen when it was fe
   // And through `buildLines`, which is what the renderer actually calls: the
   // SAME input at two times produces two different lines.
   const at2 = (now: number): string =>
-    buildLines(input({ lastAudit: last }), now).state.map((seg) => seg.text).join('|');
+    buildLines(input({ lastAudit: last }), now).account.map((seg) => seg.text).join('|');
   assert.notEqual(at2(NOW), at2(NOW + 90 * 60_000));
 
   // A clock that has not moved is not a negative age.
@@ -890,6 +955,9 @@ test('a block given up for width leaves a mark, and two marks collapse into one'
       `two adjacent marks: ${fitted.map((s) => s.text).join('|')}`,
     );
   }
+  // The TERSE floor: the label and the number, which is exactly what this
+  // field said before the used-of-maximum ruling. The bar and the counts are
+  // the decoration a too-narrow terminal gives up; the FIGURE never is.
   assert.equal(fitted.at(-1)?.text, 'ctx 42.0%');
   // Nothing is fitted when there is no width to fit to.
   assert.deepEqual(fitSegments(segments, null), segments);
@@ -903,18 +971,26 @@ test('the blocks that have nothing to say are absent, and the ones that do are p
     // the owner's ruling, and that is asserted on the next line rather than
     // hidden by choosing an input that avoids it.
     line({ model: null, project: null, branch: null, threshold: null }),
-    `${CAP_LEFT} ${LEVEL_GLYPH.ok} ctx 42.0% ${CAP_RIGHT}`,
+    `${CAP_LEFT} ctx ${usageBar(42)} 42.0% (420.0k / 1.0M) ${CAP_RIGHT}`,
     'a session with no model, no project and no branch is one block, not three empty ones',
   );
   assert.equal(
     line({ model: null, project: null, branch: null }),
-    `${CAP_LEFT} ${ASK_GLYPH} ask 98 · +56.0 ${SEP} ${LEVEL_GLYPH.ok} ctx 42.0% ${CAP_RIGHT}`,
+    `${CAP_LEFT} ask ${usageBar(42 / 98 * 100)} 43% (42.0 / 98) `
+      + `${SEP_THIN} ctx ${usageBar(42)} 42.0% (420.0k / 1.0M) ${CAP_RIGHT}`,
     'a configured ask always states its distance, even on an otherwise empty bar',
   );
   assert.match(line({ teeNote: 'tee not written (disk full)' }), /tee not written \(disk full\)/);
   assert.match(line({ myctxNote: 'projection sync failed' }), /myctx unavailable/);
-  assert.match(line({ myctx: { tokens: 6200, injections: 3, unrecorded: 0 } }), /myctx 6\.2k/);
-  assert.match(line({ myctx: { tokens: 6200, injections: 3, unrecorded: 2 } }), /myctx ≥6\.2k/);
+  // **THE FIFTH USED-OF-MAX FIELD since 2026-09-01.** The share is banded
+  // against the window it went into, so it draws a bar and a proportion beside
+  // its counts. The `≥` still rides the label, because it qualifies the
+  // NUMERATOR — some injection records carry no frozen estimate, so the true
+  // share is at least this — and that is a fact about the count, not the bar.
+  assert.match(line({ myctx: { tokens: 6200, injections: 3, unrecorded: 0 } }),
+    /myctx [░▓]{10} 0\.6% \(6\.2k \/ 1\.0M\)/);
+  assert.match(line({ myctx: { tokens: 6200, injections: 3, unrecorded: 2 } }),
+    /myctx ≥ [░▓]{10} 0\.6% \(6\.2k \/ 1\.0M\)/);
   // **SUPERSEDED CLAIM, restated to the ruling that replaced it.** This used
   // to assert "the context block is LAST whatever else is disclosed". Since
   // the owner centred it on 2026-08-31 it is the ANCHOR, with the disclosures
@@ -928,11 +1004,13 @@ test('the blocks that have nothing to say are absent, and the ones that do are p
   const anchorAt = busy.findIndex((seg) => seg.anchor === true);
   assert.ok(anchorAt >= 0, 'the bar always has an anchor');
   assert.equal(busy.filter((seg) => seg.anchor === true).length, 1, 'and only one');
-  assert.match(busy[anchorAt]?.text ?? '', / ctx /);
+  assert.equal(busy[anchorAt]?.field, 'context', 'the anchor IS the context block');
+  assert.match(busy[anchorAt]?.text ?? '', /(^|\s)ctx /);
   assert.ok(anchorAt > 0, 'the identity blocks are to its left');
   assert.ok(anchorAt < busy.length - 1, 'the disclosures are to its right');
-  // The ask rides immediately left of it: they are one question asked twice.
-  assert.ok(busy[anchorAt - 1]?.text.startsWith(ASK_GLYPH));
+  // The ask rides immediately left of it: they are one question asked twice,
+  // and the three-row ruling of 2026-09-01 put them alone on a row together.
+  assert.equal(busy[anchorAt - 1]?.field, 'ask');
 });
 
 /* -------------------------------------------------------------------- *
@@ -1072,14 +1150,31 @@ test('a rate-limit window is banded by the SAME function the context fill is', (
   const ink = (pct: number): number | undefined =>
     rateLimitSegment('7d', { usedPercent: pct, resetsAt: null }, NOW, GIVE.sevenDay, 'rate-7d')?.ink.bg;
 
-  assert.equal(ink(FILL_WARN - 0.1), PALETTE['ok']?.bg);
-  assert.equal(ink(FILL_WARN), PALETTE['warn']?.bg);
-  assert.equal(ink(FILL_CRIT), PALETTE['crit']?.bg);
+  // FOUR bands since 2026-09-01, and the point of the assertion is unchanged:
+  // the rate windows are banded by the SAME function the context figure is, so
+  // there is exactly one place in this product where a used-of-max percentage
+  // becomes a colour.
+  assert.equal(ink(USAGE_CAUTION_PERCENT - 0.1), PALETTE['ok']?.bg);
+  assert.equal(ink(USAGE_CAUTION_PERCENT), PALETTE['gold']?.bg);
+  assert.equal(ink(USAGE_WARNING_PERCENT), PALETTE['warn']?.bg);
+  assert.equal(ink(USAGE_CRITICAL_PERCENT), PALETTE['crit']?.bg);
+  assert.equal(ink(USAGE_CAUTION_PERCENT), contextSegment({
+    state: 'known', percent: USAGE_CAUTION_PERCENT, ageMs: 0,
+    usedTokens: 600_000, windowSize: 1_000_000,
+  }).ink.bg, 'one function, one colour, two fields');
 
-  // A glyph too, the same four, for the same reason.
+  // The full treatment, for the same reason the context figure gets it: the
+  // owner ruled that every used-of-maximum field takes the SAME controls. A
+  // bar and a percentage at 49%, and no icon, because 49% is `safe` and a calm
+  // bar is quiet.
   assert.equal(
     rateLimitSegment('7d', { usedPercent: 49, resetsAt: null }, NOW, 0, 'rate-7d')?.text,
-    `${LEVEL_GLYPH.ok} 7d 49%`,
+    '7d ▓▓▓▓▓░░░░░ 49%',
+  );
+  // And the icon arrives with the band, on the same field.
+  assert.equal(
+    rateLimitSegment('7d', { usedPercent: 88, resetsAt: null }, NOW, 0, 'rate-7d')?.text,
+    `${LEVEL_ICON.critical} 7d ${usageBar(88)} 88%`,
   );
   // A window with no percentage is not a block. A countdown to nothing in
   // particular is not worth a column.
@@ -1150,7 +1245,7 @@ test('the whole bar, from a real payload shape, with every group present', () =>
     model: 'Opus 5',
     project: 'test_mycontext_plugin',
     branch: 'campaign/my-context-test',
-    occupancy: { state: 'known', percent: 42, ageMs: 0 },
+    occupancy: { state: 'known', percent: 42, ageMs: 0, usedTokens: Math.round((42) * 10_000), windowSize: 1_000_000 },
     threshold: THRESHOLD,
     myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
     focus: null,
@@ -1159,18 +1254,23 @@ test('the whole bar, from a real payload shape, with every group present', () =>
     teeNote: null,
   }, NOW), { colour: false, columns: null });
 
-  // **The ONE-LINE FALLBACK, whole.** Since the owner's two-line ruling this
-  // is `buildLines` concatenated — identity, then state in the owner's line-2
-  // order — and it is what a Claude Code build or a terminal that mishandles a
-  // second line receives. Asserting it here is what keeps the fallback a real
-  // rendering rather than a code path nobody has looked at.
+  // **The ONE-LINE FALLBACK, whole.** Since the owner's three-row ruling of
+  // 2026-09-01 this is `buildLines` concatenated — identity, then the window
+  // pair, then the account — and it is what a Claude Code build or a terminal
+  // that mishandles extra lines receives. Asserting it whole is what keeps the
+  // fallback a real rendering rather than a code path nobody has looked at.
+  //
+  // Every used-of-max field here is `safe`, so they share a ground and the
+  // separators between them are THIN — the existing rule, reached by a new
+  // route now that five fields can be one colour at once.
   assert.equal(rendered, [
     `${CAP_LEFT} Opus 5 high think`, 'test_mycontext_plugin', 'campaign/my-context-test',
   ].join(` ${SEP} `)
-    + ` ${SEP} ${ASK_GLYPH} ask 98 · +56.0`
-    + ` ${SEP} ${LEVEL_GLYPH.ok} ctx 42.0%`
-    + ` ${SEP_THIN} ${LEVEL_GLYPH.ok} 7d 49% ·1d4h ${SEP_THIN} ${LEVEL_GLYPH.ok} 5h 12% ·3h12m`
-    + ` ${SEP} myctx 6.2k ${SEP_THIN} $0.42 · warm 99.1% ${CAP_RIGHT}`);
+    + ` ${SEP} ask ▓▓▓▓░░░░░░ 43% (42.0 / 98)`
+    + ` ${SEP_THIN} ctx ▓▓▓▓░░░░░░ 42.0% (420.0k / 1.0M)`
+    + ` ${SEP_THIN} 7d ▓▓▓▓▓░░░░░ 49% ·1d4h ${SEP_THIN} 5h ▓░░░░░░░░░ 12% ·3h12m`
+    + ` ${SEP_THIN} myctx ░░░░░░░░░░ 0.6% (6.2k / 1.0M)`
+    + ` ${SEP} $0.42 · warm 99.1% ${CAP_RIGHT}`);
 });
 
 test('two blocks on the same ground are parted by the THIN separator, never an invisible one', () => {
@@ -1207,7 +1307,7 @@ test('the line gives itself up in the order the owner ranked, not by width', () 
     model: 'Opus 5',
     project: 'test_mycontext_plugin',
     branch: 'campaign/my-context-test',
-    occupancy: { state: 'known', percent: 42, ageMs: 0 },
+    occupancy: { state: 'known', percent: 42, ageMs: 0, usedTokens: Math.round((42) * 10_000), windowSize: 1_000_000 },
     threshold: THRESHOLD,
     myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
     focus: null,
@@ -1221,20 +1321,32 @@ test('the line gives itself up in the order the owner ranked, not by width', () 
   // Widest-first would give up `test_mycontext_plugin` and then the rate-limit
   // windows long before the model name. Rank-first gives up cost and cache
   // first, and keeps both windows until nothing but the context figure is left.
-  assert.ok(!at(120).includes('$0.42 · warm 99.1%'), 'cost and cache go first');
-  assert.ok(at(120).includes(`${LEVEL_GLYPH.ok} 7d 49% ·1d4h`));
-  assert.ok(!at(100).includes('myctx 6.2k'), 'the share goes before the windows');
-  assert.ok(at(100).includes(`${LEVEL_GLYPH.ok} 5h 12% ·3h12m`));
-  assert.ok(!at(100).includes('test_mycontext_plugin'), 'the project name goes before the windows');
-  assert.ok(at(95).includes('Opus 5 high think'), 'the model outlives the project');
-  assert.ok(at(60).includes(`${LEVEL_GLYPH.ok} 7d 49% ·1d4h`), 'the windows are the last real blocks');
-  assert.ok(at(60).includes(`${LEVEL_GLYPH.ok} 5h 12% ·3h12m`));
+  //
+  // **The WIDTHS moved and the RANKING did not.** The used-of-maximum ruling
+  // grew five blocks by twenty-odd cells each, so every rung of this ladder is
+  // reached at a wider terminal than it used to be. `GIVE` is untouched, which
+  // is what this test is actually about.
+  const D7 = '7d ▓▓▓▓▓░░░░░ 49% ·1d4h';
+  const H5 = '5h ▓░░░░░░░░░ 12% ·3h12m';
+  const MY = 'myctx ░░░░░░░░░░ 0.6% (6.2k / 1.0M)';
+  assert.ok(!at(180).includes('$0.42 · warm 99.1%'), 'cost and cache go first');
+  assert.ok(at(180).includes(D7));
+  assert.ok(!at(150).includes(MY), 'the share goes before the windows');
+  assert.ok(at(150).includes(H5));
+  assert.ok(!at(145).includes('test_mycontext_plugin'), 'the project name goes before the windows');
+  assert.ok(at(150).includes('Opus 5 high think'), 'the model outlives the project');
+  assert.ok(at(110).includes(D7), 'the windows are the last real blocks');
+  assert.ok(at(80).includes(H5), 'and the 5-hour window is the very last of them');
   // The context figure is no longer the last BLOCK — it is the anchor, with
   // the windows drawn to its right — so what is pinned is that it is still
   // there, which is the claim that mattered.
-  assert.ok(at(40).includes(`${LEVEL_GLYPH.ok} ctx 42.0%`));
+  // Below the width of the drawn block the context figure falls back to its
+  // TERSE spelling — the label and the number, which is exactly what it said
+  // before the used-of-maximum ruling. The bar and the counts are decoration;
+  // the FIGURE is never shortened.
+  assert.ok(at(45).some((t) => t.startsWith('ctx ')));
   assert.deepEqual(
-    at(16), [`${LEVEL_GLYPH.ok} ctx 42.0%`],
+    at(16), ['ctx 42.0%'],
     'the context figure is the one thing never given up',
   );
   // Below the width of its own block it gives up the GLYPH and keeps the
@@ -1249,7 +1361,7 @@ test('the line gives itself up in the order the owner ranked, not by width', () 
       colour: false, columns: w,
     });
     assert.ok(displayWidth(rendered) <= w, `${w} columns, ${displayWidth(rendered)} wide`);
-    assert.match(rendered, /ctx 42\.0%/);
+    assert.match(rendered, /ctx .*42\.0%/);
   }
 });
 

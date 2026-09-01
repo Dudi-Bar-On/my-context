@@ -43,7 +43,7 @@ function run(args: string[], cwd: string): { code: number; out: string } {
  * the layer guard. */
 function globalItem(id: string, title: string): void {
   const item: Item = {
-    id, type: 'constraint', title, status: 'active', severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, acknowledged: {},
+    id, type: 'constraint', title, status: 'active', severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, summaryWas: [], acknowledged: {},
     scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: '2026-01-01', validUntil: null, checksum: '',

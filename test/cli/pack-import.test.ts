@@ -182,7 +182,7 @@ function item(over: Partial<Item> = {}): Item {
     status: 'active',
     severity: 'soft',
     always: false,
-    continuity: false, summary: null, summaryOf: null, acknowledged: {},
+    continuity: false, summary: null, summaryOf: null, summaryWas: [], acknowledged: {},
     scope: [],
     tags: [],
     origin: 'human',

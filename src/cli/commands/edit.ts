@@ -11,6 +11,9 @@ import {
 import {
   handWrittenProjectionError, projectFieldUpdate, updatableFor, updatesFor,
 } from '../../core/tag-projection.ts';
+import {
+  summaryRequired, summaryRequiredRefusal, summaryUnchangedRefusal,
+} from '../../core/summary-gate.ts';
 import { inertFieldError, scopeRequirementError } from '../../core/trust.ts';
 import {
   SEVERITIES, STATUSES, normalizeSummary, updatableValueError, validateExtra, validateSummary,
@@ -83,7 +86,7 @@ const { allowed: ALLOWED, values: VALUE_FLAGS } = EDIT_FLAGS;
 
 const USAGE =
   `usage: mycontext edit <id> [--title "<text>"] [--body "<text>"] [--summary "<text>"]
-                        [--scope "a/**,b/**"]
+                        [--summary-unchanged] [--scope "a/**,b/**"]
                         [--tags "a,b"] [--severity hard|soft] [--always[=false]]
                         [--continuity[=false]]
                         [--status active|draft|deprecated|validated]
@@ -553,6 +556,13 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     const status = flag(args, 'status');
     const always = boolFlag(args, 'always');
     const continuity = boolFlag(args, 'continuity');
+    // The escape hatch (`UpdateInput.summaryUnchanged`). `boolFlag`, like
+    // `--always` and `--continuity`, so `--summary-unchanged=false` is the same
+    // "no" as leaving it off and a repeat with two different values is refused
+    // in `boolFlag`'s own words. Only `true` is carried into the patch: `false`
+    // asserts nothing, and putting it there would make the "nothing to edit"
+    // count below treat a decline as a field.
+    const summaryUnchanged = boolFlag(args, 'summary-unchanged');
     const extraFields = extraFlag(args);
     // The declared flags, read with the same `flag` helper as everything else
     // so a repeat is refused in `repeatedFlagError`'s words rather than in a
@@ -611,6 +621,7 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
       }
       patch.summary = normalized;
     }
+    if (summaryUnchanged === true) patch.summaryUnchanged = true;
     if (scope !== null) patch.scope = scope;
     if (tags !== null) patch.tags = tags;
     if (always !== null) patch.always = always;
@@ -813,6 +824,26 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
       const refusal = retirementEdgeRefusal(relation)
         ?? missingRelationRefusal(item, relation, target);
       if (refusal) { say(out, refusal); return 1; }
+    }
+
+    // **The summary gate**, and it is the LAST refusal because it is the only
+    // one that has to see the patch as it will finally be written: the tag
+    // projection above can add an `extra` key the caller never typed, and
+    // `extra` is summarised content. Asking before that would let a projected
+    // field move the basis behind the gate's back.
+    //
+    // Placed before the preview like every refusal above it, for the reason
+    // stated at `item.layer`: a refusal must never be preceded by "about to
+    // edit", and both sentences below end in "nothing was changed".
+    //
+    // The hatch's own refusals go FIRST, so a call that passes `--summary` and
+    // `--summary-unchanged` together is told about the contradiction rather
+    // than being waved through by the summary it carries.
+    const hatchRefusal = summaryUnchangedRefusal(item, patch, 'edit');
+    if (hatchRefusal) { say(out, hatchRefusal); return 1; }
+    if (summaryRequired(item, patch)) {
+      say(out, summaryRequiredRefusal(item, 'edit'));
+      return 1;
     }
 
     const scopeLabel = (globs: string[]): string =>

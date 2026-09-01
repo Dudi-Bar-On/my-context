@@ -166,7 +166,17 @@ export function occupancyFromTee(projectRoot: string, sessionId: string, now: nu
   // date: anything reaching this line has been shown to be current, and
   // inventing a staleness on top of that would grey out a live reading.
   const ageMs = Number.isFinite(at) ? Math.max(0, now - at) : 0;
-  return { state: 'known', percent: occ.percent, ageMs };
+  // `usedTokens` and `windowSize` are `readOccupancy`'s own, passed straight
+  // through: the bar draws `(549.0k / 1.0M)` beside the figure since the
+  // owner's used-of-maximum ruling, and reconstructing a numerator from a
+  // rounded percentage would be a worse number than the one already in hand.
+  return {
+    state: 'known',
+    percent: occ.percent,
+    ageMs,
+    usedTokens: occ.usedTokens,
+    windowSize: occ.windowSize,
+  };
 }
 
 /**
@@ -181,8 +191,23 @@ export function occupancyFromTee(projectRoot: string, sessionId: string, now: nu
  * Claude Code binary over nothing.
  */
 export function occupancyFromPayload(sample: ContextSample): OccupancyView {
+  if (sample.state === 'known' && sample.percent !== null
+      && sample.usedTokens !== null && sample.windowSize !== null) {
+    return {
+      state: 'known',
+      percent: sample.percent,
+      ageMs: 0,
+      usedTokens: sample.usedTokens,
+      windowSize: sample.windowSize,
+    };
+  }
+  // A sample carrying a percentage but not the two numbers it came from is a
+  // shape this code cannot read — the same verdict, and the same reason, that
+  // `classifyContext` gives a `current_usage` it does not recognise. It is not
+  // downgraded to a percentage-only known state, because the bar would then
+  // have a figure and no counts and no way to say why.
   if (sample.state === 'known' && sample.percent !== null) {
-    return { state: 'known', percent: sample.percent, ageMs: 0 };
+    return { state: 'unmeasurable', why: 'unknown-shape' };
   }
   if (sample.state === 'not-yet-known') return { state: 'unmeasurable', why: 'no-sample' };
   return { state: 'unmeasurable', why: 'unknown-shape' };
@@ -215,6 +240,28 @@ export function occupancyFromPayload(sample: ContextSample): OccupancyView {
 export const ONE_LINE_ENV = 'MYCONTEXT_STATUSLINE_ONE_LINE';
 
 /**
+ * **THE ENVIRONMENT VARIABLE THAT STOPS THE BLINK.**
+ *
+ * Set to any non-empty value and a `critical` block is painted without SGR 5.
+ * It loses nothing that carries meaning: the level is still told by its 💀
+ * icon, by its hue, and by its BOLD weight, which is the carrier — the blink
+ * was always the fourth signal and never the first
+ * (`statusline-powerline.ts` · `blink?: boolean`).
+ *
+ * It exists because the owner asked for the blink and WCAG 2.2.2 asks that
+ * blinking content be stoppable, and those are both true at once. Deliberately
+ * shaped like `ONE_LINE_ENV` — same prefix, same "set it to anything" rule —
+ * because a user who has learned one of these has learned the other, and a
+ * second convention would be a second thing to look up.
+ *
+ * Not auto-detected from `TERM`: a terminal that ignores SGR 5 already
+ * degrades correctly by ignoring it, and an allow-list of terminals that
+ * honour it is exactly the table that goes stale in silence — the argument
+ * this file already makes against a version allow-list one constant above.
+ */
+export const NO_BLINK_ENV = 'MYCONTEXT_STATUSLINE_NO_BLINK';
+
+/**
  * One bar, one spelling per state — the same honesty rules the UI strip
  * renders, so a user who reads both never sees them disagree, and the same
  * BANDS as well: the colour of the context block comes from the web's own
@@ -245,13 +292,21 @@ export function statusLineText(
   columns: number | null,
   env: Record<string, string | undefined> = process.env,
 ): string {
-  const options = { colour, columns };
+  const noBlink = env[NO_BLINK_ENV];
+  const options = {
+    colour,
+    columns,
+    blink: !(typeof noBlink === 'string' && noBlink !== ''),
+  };
   const forced = env[ONE_LINE_ENV];
   if (forced !== undefined && forced !== '') {
     return renderPowerline(buildSegments(input), options);
   }
-  const { identity, state } = buildLines(input);
-  return renderStatusLine([identity, state], options);
+  // **THREE lines since the owner's ruling of 2026-09-01.** `renderStatusLine`
+  // drops any group that is empty, so a session with no ask and no context
+  // still renders two rows rather than a blank one.
+  const { identity, window, account } = buildLines(input);
+  return renderStatusLine([identity, window, account], options);
 }
 
 // --- Delegating to the status line this bridge displaced --------------------

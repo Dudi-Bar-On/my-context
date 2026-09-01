@@ -214,7 +214,7 @@ const CEILING_MS = perfCeiling(500);
 function lesson(i: number): Item {
   return {
     id: `LESSON-${i}`, type: 'lesson', title: `Lesson number ${i}`, status: 'active',
-    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, summaryWas: [], acknowledged: {}, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: '', extra: {},
     body: 'A body of roughly forty characters.', steps: [], observations: [], relations: [],
@@ -234,7 +234,7 @@ function lesson(i: number): Item {
 function constraintItem(i: number): Item {
   return {
     id: `CONST-${i}`, type: 'constraint', title: `Constraint number ${i}`, status: 'active',
-    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, scope: [], tags: [], origin: 'human',
+    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, summaryWas: [], acknowledged: {}, scope: [], tags: [], origin: 'human',
     sourceFile: null, sourceAnchor: null, sourceChecksum: null,
     validFrom: null, validUntil: null, checksum: '', extra: {},
     body: 'A body of roughly forty characters.', steps: [], observations: [], relations: [],

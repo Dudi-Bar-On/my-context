@@ -1,0 +1,441 @@
+/**
+ * **THE FOUR LEVELS, THE BAR, THE ICONS, AND THE SEAM THAT MUST NOT SURVIVE.**
+ *
+ * Owner ruling, 2026-09-01: every field on the bar that expresses *amount used
+ * out of a maximum* takes one identical treatment — a level icon, a ten-cell
+ * bar, a percentage and a count pair — banded into four levels rather than
+ * three. This file holds the arithmetic of that ruling, the honesty rules that
+ * decided where it does NOT apply, and the tripwire on the phase-2 lift.
+ *
+ * **What it deliberately does not test:** appearance. Nothing here asserts that
+ * a bar "looks right"; it asserts widths, boundaries, distinctness and the
+ * three ways the treatment degrades. The rendering itself is verified by
+ * driving real captured payloads through the command, which is a thing a test
+ * cannot do for you.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import {
+  BAR_CELLS, BAR_EMPTY, BAR_FILL, LEVEL_ICON, LEVEL_INK, PALETTE,
+  USAGE_CAUTION_PERCENT, USAGE_CRITICAL_PERCENT, USAGE_WARNING_PERCENT,
+  askSegment, buildLines, buildSegments, contextSegment, displayWidth, fmtCount, rateLimitSegment,
+  renderPowerline, renderStatusLine, usageBar, usageLevelOf, usedOfMaxSegment,
+  type OccupancyView, type PowerlineInput, type Segment, type UsageLevel,
+} from '../../src/cli/commands/statusline-powerline.ts';
+import { NO_BLINK_ENV, ONE_LINE_ENV, statusLineText } from '../../src/cli/commands/statusline.ts';
+
+const VIEWMODEL = path.join(
+  import.meta.dirname, '..', '..', 'src', 'ui', 'public', 'lib', 'viewmodel.js',
+);
+const web = await import(new URL(`file://${VIEWMODEL.split(path.sep).join('/')}`).href) as {
+  CONTEXT_FILL_WARN_PERCENT: number;
+  CONTEXT_FILL_CRIT_PERCENT: number;
+};
+
+const LEVELS: UsageLevel[] = ['safe', 'caution', 'warning', 'critical'];
+
+function occ(percent: number, ageMs = 0): OccupancyView {
+  return {
+    state: 'known',
+    percent,
+    ageMs,
+    usedTokens: Math.round(percent * 10_000),
+    windowSize: 1_000_000,
+  };
+}
+
+/* ══ THE BANDS ═════════════════════════════════════════════════════════════ */
+
+test('four bands, and the boundary belongs to the band above it', () => {
+  // `>=` on every boundary, the same convention `fillLevel` already uses, so a
+  // reader who has learned one has learned both. A figure sitting exactly on
+  // 80 is `critical` and not one step below it.
+  assert.equal(usageLevelOf(0), 'safe');
+  assert.equal(usageLevelOf(USAGE_CAUTION_PERCENT - 0.1), 'safe');
+  assert.equal(usageLevelOf(USAGE_CAUTION_PERCENT), 'caution');
+  assert.equal(usageLevelOf(USAGE_WARNING_PERCENT - 0.1), 'caution');
+  assert.equal(usageLevelOf(USAGE_WARNING_PERCENT), 'warning');
+  assert.equal(usageLevelOf(USAGE_CRITICAL_PERCENT - 0.1), 'warning');
+  assert.equal(usageLevelOf(USAGE_CRITICAL_PERCENT), 'critical');
+});
+
+test('the bands are ordered, and nothing sits between two of them', () => {
+  const seen = new Set<string>();
+  let previous = 0;
+  for (let pct = 0; pct <= 130; pct += 0.1) {
+    const level = usageLevelOf(pct);
+    assert.ok(level !== null, `no band at ${pct}`);
+    const rank = LEVELS.indexOf(level!);
+    assert.ok(rank >= previous, `the band went BACKWARDS at ${pct}: ${level}`);
+    previous = rank;
+    seen.add(level!);
+  }
+  assert.deepEqual([...seen].sort(), [...LEVELS].sort(), 'all four bands are reachable');
+});
+
+test('a figure past its maximum is critical, and is NOT clamped to 100', () => {
+  // A context percentage past the handover threshold genuinely exceeds its
+  // maximum. Clamping belongs to the BAR, which has ten cells; the verdict has
+  // no such limit and inventing one would make 104% and 100% the same fact.
+  assert.equal(usageLevelOf(100), 'critical');
+  assert.equal(usageLevelOf(104), 'critical');
+  assert.equal(usageLevelOf(1000), 'critical');
+});
+
+test('nothing to band answers null rather than a guessed safe', () => {
+  assert.equal(usageLevelOf(Number.NaN), null);
+  assert.equal(usageLevelOf(Number.POSITIVE_INFINITY), null);
+  assert.equal(usageLevelOf('40' as unknown as number), null);
+});
+
+/* ══ THE SHARED CONTRACT, AND THE TRIPWIRE ON THE PHASE-2 LIFT ════════════ */
+
+test('the caution boundary equals the web fill-warn boundary it stands beside', () => {
+  // 60 in two places for the length of one phase. PINNED rather than assumed,
+  // so the web's 60 moving fails here instead of parting in silence.
+  assert.equal(USAGE_CAUTION_PERCENT, web.CONTEXT_FILL_WARN_PERCENT,
+    'the terminal caution band and the web fill-warn band have parted');
+});
+
+test('the critical boundary MOVED, and the move is recorded rather than silent', () => {
+  // The owner's table puts `critical` at 80; the old absolute scale put `crit`
+  // at 85. 80-85 is banded one step higher than it used to be, on purpose.
+  // Asserted so that nobody later "fixes" the difference by aligning them.
+  assert.equal(USAGE_CRITICAL_PERCENT, 80);
+  assert.equal(web.CONTEXT_FILL_CRIT_PERCENT, 85);
+  assert.notEqual(USAGE_CRITICAL_PERCENT, web.CONTEXT_FILL_CRIT_PERCENT);
+});
+
+test('TRIPWIRE: the moment viewmodel.js declares these names, LIFT THE BLOCK', () => {
+  // ── READ THIS BEFORE MAKING IT PASS ──────────────────────────────────────
+  //
+  // The four-level constants and `usageLevelOf` live in
+  // `statusline-powerline.ts` for ONE phase, because extending `fillLevel`'s
+  // return set without its three `app.js` consumers would send the context
+  // figure and both rate chips grey and would LABEL a `caution` window
+  // "comfortable" — a false verdict on a surface.
+  //
+  // Phase 2 moves them into `viewmodel.js` and updates those consumers in the
+  // same step. This test fails the moment that move begins, which is exactly
+  // when the restatement in the terminal must be deleted and replaced by a
+  // read through the existing `BANDS` bridge.
+  //
+  // **Do not silence this by renaming anything.** The correct way to make it
+  // pass is to finish the lift.
+  const source = readFileSync(VIEWMODEL, 'utf8');
+  // ── THE VACUITY FLOOR ────────────────────────────────────────
+  // A tripwire that has stopped reading its file passes forever and silently,
+  // which is this project's most-repeated failure mode wearing a new hat. So
+  // the scan is first shown to SEE something: names that are in viewmodel.js
+  // today and would only leave it if the file had been gutted.
+  for (const present of ['CONTEXT_FILL_WARN_PERCENT', 'fillLevel', 'occupancyLevel']) {
+    assert.ok(source.includes(present),
+      `the tripwire cannot see ${present} in viewmodel.js, so it is reading the `
+      + 'wrong file or nothing at all — every assertion below it is vacuous');
+  }
+  for (const name of ['USAGE_CAUTION_PERCENT', 'USAGE_WARNING_PERCENT',
+    'USAGE_CRITICAL_PERCENT', 'usageLevelOf']) {
+    assert.ok(!source.includes(name),
+      `viewmodel.js now declares \`${name}\`, so phase 2 has begun: delete the `
+      + 'restatement in statusline-powerline.ts and read this through `BANDS` instead');
+  }
+});
+
+/* ══ THE BAR ══════════════════════════════════════════════════════════════ */
+
+test('the bar is always BAR_CELLS cells wide, whatever the figure', () => {
+  for (const pct of [-50, 0, 0.4, 5, 45, 99.9, 100, 104, 1000, Number.NaN]) {
+    const bar = usageBar(pct);
+    assert.equal(displayWidth(bar), BAR_CELLS, `"${bar}" at ${pct}`);
+  }
+});
+
+test('the bar is built from ONE constant pair, so the style is a one-line change', () => {
+  // The owner named `▓▓▓░░░` and `■■■□□□` and chose the first. Both characters
+  // come from this pair and nowhere else, which is what makes the other a
+  // one-line change rather than a search across a renderer.
+  assert.equal(displayWidth(BAR_FILL), 1, 'a fill cell is one column');
+  assert.equal(displayWidth(BAR_EMPTY), 1, 'an empty cell is one column');
+  assert.notEqual(BAR_FILL, BAR_EMPTY);
+  for (const pct of [0, 17, 50, 83, 100]) {
+    const bar = usageBar(pct);
+    assert.equal([...bar].filter((c) => c !== BAR_FILL && c !== BAR_EMPTY).length, 0,
+      `"${bar}" contains a character from neither constant`);
+  }
+});
+
+test('the bar rounds rather than floors, so "almost none" is not drawn as "none"', () => {
+  assert.equal(usageBar(0), BAR_EMPTY.repeat(BAR_CELLS));
+  assert.equal(usageBar(6), BAR_FILL + BAR_EMPTY.repeat(BAR_CELLS - 1));
+  assert.equal(usageBar(100), BAR_FILL.repeat(BAR_CELLS));
+  // Clamped at both ends: no eleventh cell to fill, no cell below zero to empty.
+  assert.equal(usageBar(140), BAR_FILL.repeat(BAR_CELLS));
+  assert.equal(usageBar(-20), BAR_EMPTY.repeat(BAR_CELLS));
+});
+
+/* ══ THE ICONS AND THE HUES ═══════════════════════════════════════════════ */
+
+test('every icon is two display cells, and safe carries none', () => {
+  // The width rule was fixed BEFORE these existed (§8). Five fields' worth of
+  // undercount is a wrapped line, and wrapping is the one failure the renderer
+  // must not have.
+  assert.equal(LEVEL_ICON.safe, '', 'a calm bar is quiet');
+  for (const level of ['caution', 'warning', 'critical'] as const) {
+    assert.equal(displayWidth(LEVEL_ICON[level]), 2, `${level}'s icon is two cells`);
+  }
+});
+
+test('the icons are all different, so the hue is never the only carrier', () => {
+  const drawn = LEVELS.map((l) => LEVEL_ICON[l]);
+  assert.equal(new Set(drawn).size, drawn.length, 'two levels share an icon');
+});
+
+test('the four levels use four EXISTING tokens — no sixth hue was invented', () => {
+  // `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn` forbids a
+  // sixth. Every level's ink must be one of the inks this file already
+  // declares, and the four must be distinct or the ramp has three steps.
+  const declared = Object.values(PALETTE).map((ink) => `${ink.bg}/${ink.fg}`);
+  const used = LEVELS.map((l) => `${LEVEL_INK[l].bg}/${LEVEL_INK[l].fg}`);
+  for (const ink of used) {
+    assert.ok(declared.includes(ink), `${ink} is not one of the declared inks — a sixth hue`);
+  }
+  assert.equal(new Set(used).size, 4, 'two levels share a hue');
+});
+
+test('the ask marker is no longer gold, because gold became the caution band', () => {
+  // Owner ruling, 2026-09-01: one hue, one job. Gold went wholly to `caution`
+  // and the `◆ ask` marker moved to `--carry`, so the two are not the same
+  // colour one block apart on the same row.
+  assert.equal(LEVEL_INK.caution.bg, PALETTE['gold']?.bg, 'caution is gold');
+  const due = askSegment(occ(90), 85);
+  assert.match(due?.text ?? '', /handover due/);
+  assert.equal(due?.ink.bg, PALETTE['carry']?.bg, 'the ask marker is --carry');
+  assert.notEqual(due?.ink.bg, PALETTE['gold']?.bg, 'and it is NOT gold any more');
+});
+
+/* ══ THE TREATMENT, ON EVERY USED-OF-MAXIMUM FIELD ════════════════════════ */
+
+/** Every used-of-max block on a bar built from one input. */
+function usedOfMaxBlocks(input: PowerlineInput): Segment[] {
+  const { window, account } = buildLines(input, Date.now());
+  const ids = new Set(['ask', 'context', 'rate-7d', 'rate-5h', 'myctx']);
+  return [...window, ...account].filter((s) => s.field !== undefined && ids.has(s.field));
+}
+
+const INPUT: PowerlineInput = {
+  model: 'Opus 5', modes: { effort: null, thinking: null, fastMode: null, exceeds200k: null },
+  project: 'my-context', branch: 'main', sessionName: null, focus: null,
+  occupancy: occ(65), threshold: 85,
+  fiveHour: { usedPercent: 72, resetsAt: null },
+  sevenDay: { usedPercent: 88, resetsAt: null },
+  costUsd: null, warmPercent: null,
+  myctx: { tokens: 264_500, injections: 3, unrecorded: 0 },
+  lastAudit: null, myctxNote: null, teeNote: null,
+};
+
+test('ALL FIVE used-of-maximum fields get the identical treatment', () => {
+  // The half of the ruling that was easy to under-read: *"use the same
+  // controls for every field that displays amount used from maximum
+  // available"*. Derived from what `buildLines` actually emits, so a field
+  // that quietly stopped taking the treatment fails here by name.
+  const blocks = usedOfMaxBlocks(INPUT);
+  assert.deepEqual(blocks.map((b) => b.field).sort(),
+    ['ask', 'context', 'myctx', 'rate-5h', 'rate-7d']);
+  for (const b of blocks) {
+    assert.match(b.text, new RegExp(`[${BAR_FILL}${BAR_EMPTY}]{${BAR_CELLS}}`),
+      `${b.field} draws no bar: "${b.text}"`);
+    assert.match(b.text, /\d+(\.\d+)?%/, `${b.field} draws no percentage: "${b.text}"`);
+  }
+});
+
+test('the icon appears on every banded field and on no safe one', () => {
+  for (const pct of [30, 65, 75, 90]) {
+    const level = usageLevelOf(pct)!;
+    const seg = usedOfMaxSegment({
+      field: 'context', label: 'ctx', percent: pct, counts: null, decimals: 1, suffix: '',
+    });
+    if (level === 'safe') assert.ok(!/[\u{1F300}-\u{1FAFF}⚠]/u.test(seg.text), 'safe is quiet');
+    else assert.ok(seg.text.startsWith(LEVEL_ICON[level]), `${pct}% should lead with ${level}'s icon`);
+  }
+});
+
+test('the two rate windows get icon, bar and percentage — and NO invented counts', () => {
+  // The payload carries `used_percentage` for these windows and nothing else:
+  // no token count, no message count, no denominator at any level. `(59 / 100)`
+  // would print one number twice wearing a slash and invent a maximum nobody
+  // served. This is the honesty rule that kept the row inside the terminal.
+  const seg = rateLimitSegment('7d', { usedPercent: 88, resetsAt: null }, Date.now(), 90, 'rate-7d');
+  assert.ok(seg !== null);
+  assert.match(seg!.text, new RegExp(`[${BAR_FILL}${BAR_EMPTY}]{${BAR_CELLS}}`));
+  assert.match(seg!.text, /88%/);
+  assert.ok(seg!.text.startsWith(LEVEL_ICON.critical), 'still banded and still iconned');
+  assert.ok(!seg!.text.includes('/'), `a count pair was invented: "${seg!.text}"`);
+});
+
+test('the context and ask fields DO carry counts, because they have a real maximum', () => {
+  const ctx = contextSegment(occ(54.9));
+  assert.match(ctx.text, /\(549\.0k \/ 1\.0M\)/, 'real numerator, real denominator');
+  const ask = askSegment(occ(65), 85);
+  // The maximum is the THRESHOLD, and both numbers are percentage points of
+  // the window, so the pair reads in the same units as the ctx figure beside it.
+  assert.match(ask?.text ?? '', /\(65\.0 \/ 85\)/);
+  assert.match(ask?.text ?? '', /\b76%/, '65 of 85 is 76% of the way to the ask');
+});
+
+test('myctx is banded against the window, and says nothing when there is no window', () => {
+  const banded = usedOfMaxBlocks(INPUT).find((b) => b.field === 'myctx');
+  assert.match(banded?.text ?? '', /myctx .*26\.5% \(264\.5k \/ 1\.0M\)/);
+  // No measurable window means no maximum, so it falls back to the bare count
+  // it always drew rather than switching denominators in silence.
+  const blind = buildLines(
+    { ...INPUT, occupancy: { state: 'unmeasurable', why: 'no-sample' } }, Date.now(),
+  );
+  const bare = [...blind.account].find((s) => s.field === 'myctx');
+  assert.equal(bare?.text, 'myctx 264.5k', 'no window, no percentage — and no invented one');
+});
+
+test('past the ask the words take over, and the figure never runs to 104%', () => {
+  // Owner ruling, 2026-09-01: *past the ask the number stops being the point,
+  // the action is.* Banded and barred up to the threshold, words at it.
+  const below = askSegment(occ(75), 85);
+  assert.match(below?.text ?? '', new RegExp(`[${BAR_FILL}${BAR_EMPTY}]{${BAR_CELLS}}`));
+  for (const pct of [85, 88, 99]) {
+    const at = askSegment(occ(pct), 85);
+    assert.equal(at?.text, '◆ handover due', `${pct}% should be words, not a bar`);
+    assert.ok(!/%/.test(at?.text ?? ''), 'and it carries no percentage at all');
+  }
+});
+
+test('a fossil keeps its number and loses its verdict', () => {
+  // A reading too old to band is drawn without an icon and without a hue —
+  // visibly not-a-verdict rather than a confident one.
+  const fossil = usedOfMaxSegment({
+    field: 'context', label: 'ctx', percent: 95, counts: null, decimals: 1, suffix: '',
+    ageMs: 48 * 60 * 60 * 1000,
+  });
+  assert.ok(!fossil.text.startsWith(LEVEL_ICON.critical), 'a fossil gets no skull');
+  assert.equal(fossil.ink.bg, PALETTE['neutral']?.bg, 'and no band hue');
+  assert.equal(fossil.blink, false);
+  assert.match(fossil.text, /95\.0%/, 'the number itself is not withheld');
+});
+
+test('fmtCount reads in the register the counts are read in', () => {
+  assert.equal(fmtCount(549_009), '549.0k');
+  assert.equal(fmtCount(1_000_000), '1.0M');
+  assert.equal(fmtCount(200_000), '200.0k');
+  assert.equal(fmtCount(42), '42');
+});
+
+/* ══ BLINK: THE EXTRA, NEVER THE CARRIER ═════════════════════════════════ */
+
+const CRIT: Segment[] = [{ text: 'x', ink: PALETTE['crit']!, bold: true, blink: true }];
+
+test('only a critical block blinks, and bold is what actually carries it', () => {
+  for (const pct of [30, 65, 75, 90]) {
+    const seg = usedOfMaxSegment({
+      field: 'context', label: 'ctx', percent: pct, counts: null, decimals: 1, suffix: '',
+    });
+    const critical = usageLevelOf(pct) === 'critical';
+    assert.equal(seg.blink, critical, `blink at ${pct}%`);
+    assert.equal(seg.bold, critical, `bold at ${pct}% — the carrier, not the blink`);
+  }
+});
+
+test('SGR 5 opens on the critical block and SGR 25 closes it on every other', () => {
+  // **A REQUIREMENT, not tidiness.** Blocks are painted in sequence into one
+  // string, so a blink opened on the critical block stays open for every block
+  // after it unless each one closes it.
+  const mixed: Segment[] = [
+    { text: 'crit', ink: PALETTE['crit']!, blink: true, bold: true },
+    { text: 'calm', ink: PALETTE['ok']! },
+    { text: 'also', ink: PALETTE['carry']! },
+  ];
+  const out = renderPowerline(mixed, { colour: true, columns: null });
+  assert.equal((out.match(/\[5m/g) ?? []).length, 1, 'exactly one block opens the blink');
+  assert.equal((out.match(/\[25m/g) ?? []).length, 2, 'both later blocks close it');
+});
+
+test('no line ever ENDS with the blink open', () => {
+  // Claude Code prepends every SGR from line 1 to line 2 cumulatively, so a
+  // blink left open at end-of-line makes the whole next line blink.
+  const rendered = renderStatusLine([CRIT, [{ text: 'y', ink: PALETTE['ok']! }]],
+    { colour: true, columns: null });
+  for (const line of rendered.split('\n')) {
+    const last = [...line.matchAll(/\[(5|25|0)m/g)].pop();
+    assert.ok(last !== undefined && last[1] !== '5',
+      `this line ends with the blink still open: ${JSON.stringify(line)}`);
+  }
+});
+
+test('the opt-out removes the escape and costs the level nothing that carries', () => {
+  const on = renderPowerline(CRIT, { colour: true, columns: null });
+  const off = renderPowerline(CRIT, { colour: true, columns: null, blink: false });
+  assert.match(on, /\[5m/);
+  assert.ok(!/\[5m/.test(off), 'the opt-out emits no SGR 5');
+  assert.match(off, /\[1m/, 'and bold — the actual carrier — survives it');
+  // The env var reaches it, shaped like the one-line switch it follows.
+  const env = { [NO_BLINK_ENV]: '1' };
+  const text = statusLineText(INPUT, true, null, env);
+  assert.ok(!/\[5m/.test(text), `${NO_BLINK_ENV} did not reach the renderer`);
+});
+
+test('colour: false emits no blink either — an escape is an escape', () => {
+  const plain = renderPowerline(CRIT, { colour: false, columns: null });
+  assert.ok(!//.test(plain), 'not one escape byte, blink included');
+});
+
+/* ══ THE THIRD ROW ════════════════════════════════════════════════════════ */
+
+test('the bar is THREE groups, and the window pair has its own row', () => {
+  const { identity, window, account } = buildLines(INPUT, Date.now());
+  assert.deepEqual(window.map((s) => s.field), ['ask', 'context'],
+    'line 2 is the ask and the context figure, read as a pair and nothing else');
+  assert.ok(identity.length > 0 && account.length > 0);
+  for (const field of ['rate-7d', 'rate-5h', 'myctx']) {
+    assert.ok(account.some((s) => s.field === field), `${field} belongs to the account row`);
+  }
+});
+
+test('every row fits the owner’s terminal, at every level, with the icons on', () => {
+  // The measurement that bought the third row: one line-2 carrying all five
+  // treated fields came to 215 columns against a terminal of about 200.
+  for (const pct of [45, 65, 75, 88]) {
+    const text = statusLineText({ ...INPUT, occupancy: occ(pct) }, false, null, {});
+    const rows = text.split('\n');
+    assert.equal(rows.length, 3, `three rows at ${pct}%`);
+    for (const row of rows) {
+      assert.ok(displayWidth(row) <= 200,
+        `at ${pct}% a row is ${displayWidth(row)} columns: ${row}`);
+    }
+  }
+});
+
+test('the one-line fallback still carries every field the three rows do', () => {
+  // `buildSegments` is DERIVED from `buildLines` by concatenation, so the
+  // fallback cannot contain a different set of blocks from the three-row form.
+  // Compared as FIELDS rather than as text fragments: the two spellings are
+  // entitled to differ in separators and padding, and never in what they say.
+  const { identity, window, account } = buildLines(INPUT, Date.now());
+  const rows = [...identity, ...window, ...account].map((seg) => seg.field);
+  const flat = buildSegments(INPUT, Date.now()).map((seg) => seg.field);
+  assert.deepEqual(flat, rows, 'the one-line form and the three-row form disagree');
+  const one = statusLineText(INPUT, false, null, { [ONE_LINE_ENV]: '1' });
+  assert.equal(one.split('\n').length, 1, 'the fallback is one line');
+  assert.equal(statusLineText(INPUT, false, null, {}).split('\n').length, 3);
+});
+
+test('a narrow terminal falls back to the figure and still never wraps', () => {
+  // The floor: the label and the number, which is what these fields said
+  // before the ruling. The bar and the counts are the decoration; the FIGURE
+  // is never shortened.
+  for (let w = 200; w >= 12; w--) {
+    const text = statusLineText(INPUT, false, w, {});
+    for (const row of text.split('\n')) {
+      assert.ok(displayWidth(row) <= w,
+        `at ${w} columns a row is ${displayWidth(row)} wide: ${row}`);
+    }
+    assert.match(text, /ctx /, `the context block was given up at ${w} columns`);
+  }
+});
