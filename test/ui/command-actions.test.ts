@@ -274,6 +274,23 @@ function findButtonMaybe(root: FakeNode, label: string): FakeElement | null {
   return all.length === 0 ? null : (all[0] as FakeElement);
 }
 
+/**
+ * Press a button and DO NOT wait for its handler to settle.
+ *
+ * `click` below awaits every listener, which is right for a control whose whole
+ * answer has arrived — and blind to the state a reader actually spends seconds
+ * looking at. This returns the handler's promise instead, so a test can assert
+ * what the control shows WHILE its request is in flight, then await it.
+ */
+function press(node: FakeElement): Promise<void> {
+  assert.equal(node.disabled, false, `${kindOf(node)} is disabled; a click would do nothing`);
+  const listeners = node.listeners['click'] ?? [];
+  assert.ok(listeners.length > 0, `${kindOf(node)} has no click listener`);
+  return withDocument(async () => {
+    for (const listener of listeners) await listener({});
+  });
+}
+
 /** Click a button the way a mouse or a keyboard would — its own listener. */
 async function click(node: FakeElement): Promise<void> {
   assert.equal(node.disabled, false, `${kindOf(node)} is disabled; a click would do nothing`);
@@ -321,6 +338,17 @@ interface Wiring {
    * rather than the catalogue's not-found one.
    */
   confirmError?: string;
+  /**
+   * Held open, so the IN-FLIGHT state can be observed.
+   *
+   * The confirm GET is not a lookup — it copies the corpus and runs the command
+   * against the copy (`src/ui/execute-effect.ts`), measured at 5.1–7.3s on
+   * `.demo-corpus`. Every other test in this file wires an answer that arrives
+   * in the same microtask, which is precisely why nothing here could see the
+   * seconds a real reader spends. Awaited before the answer is returned, so a
+   * test can assert what the control looks like while a person is waiting.
+   */
+  confirmGate?: Promise<unknown>;
   /** What `GET /api/item/:id` answers, by id. A missing id throws, as the route 404s. */
   items?: Record<string, Record<string, unknown>>;
   /** What `POST /api/execute` answers. */
@@ -376,6 +404,7 @@ async function wire(wiring: Wiring): Promise<{ ctx: unknown; calls: Call[]; said
     api: async (route: string): Promise<unknown> => {
       calls.push({ method: 'GET', path: route });
       if (route.startsWith('/api/execute/confirm')) {
+        if (wiring.confirmGate !== undefined) await wiring.confirmGate;
         if (wiring.confirmError !== undefined) throw new Error(wiring.confirmError);
         if (wiring.confirm === null || wiring.confirm === undefined) {
           throw new Error('no command named "nope" is in the catalogue');
@@ -652,6 +681,72 @@ test('Execute opens a confirm and runs NOTHING — the first click POSTs nothing
     + 'are the same thing, which is the one property the whole route exists to keep');
   assert.deepEqual(posts(calls), [],
     'a POST on the first click would make the confirm a receipt rather than a gate');
+});
+
+/**
+ * **THE SECONDS BETWEEN THE PRESS AND THE CONFIRM — 2026-09-01.**
+ *
+ * The confirm GET is a dry run, not a lookup: it copies the corpus and runs the
+ * command against the copy (`src/ui/execute-effect.ts`), measured at 5.1–7.3s
+ * on `.demo-corpus`. Nothing in this file could see that, because every other
+ * wiring here answers in the same microtask — so the control spent those
+ * seconds unchanged, and `e2e/execute.spec.ts:256` went red reporting the
+ * control's entire visible state as `"CopyExecute"`: a request in flight and a
+ * broken button look exactly alike.
+ *
+ * Two properties, and the second is the one with teeth. Execute stayed LIVE for
+ * the whole wait, so a second press started a second full-corpus dry run and
+ * minted a second nonce on the route this file calls the security boundary.
+ */
+test('while the confirm is in flight the control SAYS SO, and Execute is disarmed', async () => {
+  let release = (): void => {};
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const { root, calls } = await draw(
+    { argv: ['mycontext', 'doctor'], id: 'doctor' },
+    { confirm: DOCTOR_CONFIRM, confirmGate: gate },
+  );
+  const en = (await browserModule<{ strings: Record<string, string> }>('strings', 'en.js')).strings;
+  const exec = findButton(root, EXEC);
+
+  // Pressed and NOT awaited — the whole point is the state part-way through.
+  const inFlight = press(exec);
+  await Promise.resolve();
+
+  const waiting = findOne(root, 'div.execresult');
+  assert.equal(waiting.hidden, false,
+    'a reader who pressed Execute must be told the wait exists; five seconds of an unchanged '
+    + 'control is indistinguishable from a control that did nothing');
+  assert.equal(textOf(waiting).trim(), en['exec.checking']!.trim(),
+    'the waiting sentence is the string table\'s, not one spelled in the module');
+  assert.equal(exec.disabled, true,
+    'Execute must be disarmed while its own request is in flight: a second press is a second '
+    + 'dry run and a SECOND NONCE minted on the approval boundary');
+  assert.equal(calls.length, 1, 'exactly one confirm GET has been made');
+
+  release();
+  await inFlight;
+
+  assert.equal(exec.disabled, false, 'the button must come back — the wait ended');
+  assert.equal(findOne(root, 'div.execresult').hidden, true,
+    'the waiting sentence is CLEARED by the answer; left standing above the confirm it would '
+    + 'still be claiming to be checking');
+  assert.equal(findOne(root, 'div.confirm').hidden, false, 'and the confirm it waited for is up');
+});
+
+test('a refused confirm replaces the waiting sentence and re-arms Execute', async () => {
+  const { root } = await draw(
+    { argv: ['mycontext', 'nope'], id: 'nope' }, { confirm: null },
+  );
+  const exec = findButton(root, EXEC);
+  await click(exec);
+
+  const shown = textOf(findOne(root, 'div.execresult'));
+  assert.match(shown, /is in the catalogue/, 'the server\'s refusal, in its own words');
+  assert.ok(!shown.includes('takes a few seconds'),
+    'the reason REPLACES the waiting sentence rather than stacking under it');
+  assert.equal(exec.disabled, false,
+    'a refusal is a state to leave: a control that stays dead until the screen is redrawn '
+    + 'turns one refused command into a dead screen');
 });
 
 test('the confirm SHOWS THE SERVER\'S argv, not the string the client composed', async () => {

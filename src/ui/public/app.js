@@ -734,7 +734,158 @@ function paneEls() {
     spark: document.getElementById('panespark'),
     spn: document.getElementById('panespn'),
     float: document.getElementById('panefloat'),
+    summary: document.getElementById('panesummary'),
+    stale: document.getElementById('panestale'),
+    props: document.getElementById('paneprops'),
   };
+}
+
+/**
+ * **The summary, its staleness disclosure and its property chips — the three
+ * elements above the `<dl>`, filled or hidden together.**
+ *
+ * ── WHAT THIS CLOSES ───────────────────────────────────────────────────────
+ *
+ * `plan:walk seq:119` phase 3, filed and never built. Every active item in this
+ * corpus carries a `summary` — one plain sentence saying what it IS, written
+ * for a reader who does not know this codebase — and no screen in the product
+ * drew it. A reader had to read the body, which is the thing a summary exists
+ * to spare them.
+ *
+ * ── ABSENT IS ABSENT ───────────────────────────────────────────────────────
+ *
+ * `summary` is optional on `Item` and always will be: every corpus predates the
+ * field, and the sixteen superseded and deprecated items in this project's own
+ * corpus carry none. So `null` hides all three elements rather than drawing an
+ * empty paragraph, a blank line or a dash. Every path through here sets
+ * `hidden` explicitly on every element, because the pane is REUSED — a second
+ * item's summary must never sit under a first item's id.
+ *
+ * ── A STALE SUMMARY IS SHOWN, AND SHOWN AS STALE ───────────────────────────
+ *
+ * `summaryOf` records the content the summary was written against; when the
+ * item moves under it, the two disagree and the server's `summaryState` reads
+ * `stale` (or `unanchored`, for a summary hand-edited into a file with no basis
+ * at all). Both mean one thing to a reader: do not quote this as though it
+ * described the item.
+ *
+ * It is still DRAWN — nothing in this product is dropped silently — through
+ * three carriers, because one is not enough. A `.chip.warn` says the word; the
+ * note under it says the sentence; the rule down the summary's leading edge is
+ * the thing a reader notices first and the only one that would not survive
+ * print or a monochrome screen. That ordering is deliberate: colour is never
+ * the only carrier of a state here.
+ *
+ * The WORDING is this app's, in the reader's language, rather than
+ * `summaryStalenessNote`'s. That function is one English paragraph shared by
+ * `mycontext show`, `get_item` and `doctor` — three English surfaces — and
+ * piping it here would put an English paragraph into the Hebrew UI, which is
+ * the defect the provenance bar already recorded costing every screen in the
+ * product. The FACT is measured in exactly one place (`summaryState`,
+ * core/content-hash.ts, called by the server); only the sentence is local.
+ *
+ * ── WHICH PROPERTIES EARN A CHIP ───────────────────────────────────────────
+ *
+ * The owner's ask is the summary "with the properties that complement the
+ * knowledge and understanding" — which is not every field, and the six the
+ * `<dl>` already carries two lines below (type, status, tier, scope, governs,
+ * file) are exactly the ones that would be noise here. The rule is: **a
+ * property earns a chip when it changes whether a reader should act on the
+ * sentence they just read, and is not already stated in this same block.**
+ *
+ *   `always`      — this item governs every session regardless of scope. It is
+ *                   the strongest claim an item can make about itself and the
+ *                   `<dl>` does not carry it at all. 26 of 733 here.
+ *   `continuity`  — it is carried ACROSS sessions. Same argument; also absent
+ *                   from the `<dl>`.
+ *   `origin`      — `agent` only. An item captured by something other than a
+ *                   person is a different kind of claim from one a person
+ *                   wrote, and this project's own rule is that it does not
+ *                   govern until a person promotes it. 36 of 733.
+ *   `validUntil`  — an item whose truth has a stated END. Drawn in the warn
+ *                   register because a reader acting on a summary needs to know
+ *                   the item is on a clock; 17 of 733 carry one.
+ *   `extra.*`     — the CATEGORY-SPECIFIC fields, and this is what makes the
+ *                   chip set per-item-type without a table of types here: a
+ *                   `rule` carries `directive`, a `requirement` carries `kind`,
+ *                   a `risk` carries `likelihood` and `impact`. Whatever the
+ *                   config gives the category is what appears.
+ *
+ * **Not chipped, and each for a reason rather than by omission.** The `<dl>`'s
+ * six, because they are eight pixels away. `tags`, because a tag is a
+ * PROJECTION axis rather than a property of the claim — 709 of 733 items carry
+ * some, so chipping them would bury the four above in a wall of grey. And
+ * `severity`, because it is the `<dl>`'s `tier` row already.
+ *
+ * **No new chip modifier is spent.** `gov`, `carry`, `warn` and the neutral
+ * `index` are the existing registers and they mean here exactly what they mean
+ * everywhere else; the hue budget is five plus a neutral and a sixth needs an
+ * owner ruling, not a display task. Every chip carries a word AND a glyph, so
+ * none of them says anything in colour alone.
+ */
+function fillPaneSummary(els, item, state) {
+  if (els.summary === null || els.stale === null || els.props === null) return;
+  const stale = state === 'stale' || state === 'unanchored';
+
+  // The sentence. `textContent` because a summary is CORPUS text — never
+  // markdown, never nodes this app composed — and the same reason `#panebody`
+  // goes through one renderer rather than through `innerHTML`.
+  const text = typeof item.summary === 'string' ? item.summary : '';
+  els.summary.textContent = text;
+  els.summary.className = stale ? 'itemsum stale' : 'itemsum';
+  els.summary.hidden = text === '';
+
+  // The disclosure. Hidden whenever there is nothing to disclose, so a good
+  // summary is never shadowed by an empty warning.
+  els.stale.replaceChildren();
+  els.stale.hidden = !(stale && text !== '');
+  if (stale && text !== '') {
+    els.stale.append(...translate(
+      table.strings, state === 'unanchored' ? 'sum.unanchoredNote' : 'sum.staleNote',
+    ));
+  }
+
+  // The chips.
+  els.props.replaceChildren();
+  // Counted rather than read back off the host: `childElementCount` is a real
+  // DOM property and the fake document `test/ui/pane-route.test.ts` drives this
+  // shell through does not have one, so reading it there would yield `undefined`
+  // and leave an EMPTY chip strip unhidden — visible in a browser, invisible to
+  // the test. A local count is the same answer in both.
+  let chips = 0;
+  const chip = (cls, glyph, nodes) => {
+    const span = document.createElement('span');
+    span.className = cls;
+    span.dataset.g = glyph;
+    span.append(...nodes);
+    els.props.append(span);
+    chips += 1;
+  };
+  // FIRST, because it qualifies everything after it: a reader who is about to
+  // trust four properties should learn in the same glance that the sentence
+  // above them may no longer describe the item.
+  if (stale && text !== '') {
+    chip('chip warn', '▲', translate(
+      table.strings, state === 'unanchored' ? 'sum.unanchored' : 'sum.stale',
+    ));
+  }
+  if (item.always === true) chip('chip gov', '◆', translate(table.strings, 'sum.always'));
+  if (item.continuity === true) chip('chip carry', '◇', translate(table.strings, 'sum.continuity'));
+  if (item.origin === 'agent') chip('chip index', '◇', translate(table.strings, 'sum.agent'));
+  if (typeof item.validUntil === 'string' && item.validUntil !== '') {
+    chip('chip warn', '▲', translate(table.strings, 'sum.until', { until: item.validUntil }));
+  }
+  // The category's own fields, in the order the item carries them. Both halves
+  // are CORPUS text — `directive: dont`, `likelihood: high` — so they are text
+  // nodes rather than a translated key: this app does not know what a category
+  // may name, and inventing an English label for a value the project chose
+  // would be translating somebody else's vocabulary.
+  const extra = item.extra !== null && typeof item.extra === 'object' ? item.extra : {};
+  for (const [key, value] of Object.entries(extra)) {
+    if (typeof value !== 'string' || value === '') continue;
+    chip('chip index', '◇', [document.createTextNode(`${key}: ${value}`)]);
+  }
+  els.props.hidden = chips === 0;
 }
 
 /**
@@ -901,6 +1052,15 @@ async function openPane(id) {
   els.body.replaceChildren();
   els.spark?.replaceChildren();
   if (els.spn !== null) els.spn.textContent = '';
+  // **The summary block goes DOWN, not to a holding dash.** The `<dl>` above
+  // shows `…` while the fetch is in flight because six labelled rows with
+  // nothing beside them read as broken; a summary has no label, so an ellipsis
+  // there would be indistinguishable from an item whose summary is the word
+  // "…". Hidden is the honest holding state, and it is also the state an item
+  // with no summary ends in — one fewer shape to get wrong.
+  if (els.summary !== null) { els.summary.hidden = true; els.summary.textContent = ''; }
+  if (els.stale !== null) { els.stale.hidden = true; els.stale.replaceChildren(); }
+  if (els.props !== null) { els.props.hidden = true; els.props.replaceChildren(); }
 
   let data;
   try {
@@ -930,6 +1090,20 @@ async function openPane(id) {
   els.scope.textContent = Array.isArray(item.scope) && item.scope.length > 0
     ? item.scope.join(', ')
     : '—';
+  // **Before the `<dl>`, because it is what the reader came for.** The six rows
+  // below answer *does this apply to me*; the summary answers *what is this*,
+  // and the second question is not worth asking until the first has an answer.
+  //
+  // `data.summaryState` is the SERVER's measurement and is never re-derived
+  // here: it is a checksum over the item's canonicalised summarised fields
+  // (`itemSummaryBasis`), and a browser-side copy would be a second
+  // implementation of the identity the whole corpus is keyed on. A response
+  // that somehow carries no verdict is treated as UNANCHORED rather than as
+  // current — the direction that discloses.
+  const hasSummary = typeof item.summary === 'string' && item.summary !== '';
+  fillPaneSummary(els, item, hasSummary
+    ? (typeof data.summaryState === 'string' ? data.summaryState : 'unanchored')
+    : 'absent');
   els.gov.textContent = data.injection?.phrase ?? '—';
   // `filePath`, the item's OWN file — which is what the design of record shows
   // in this row (`items/constraint/CONST-postgres-pool-capped-at-20.md`).

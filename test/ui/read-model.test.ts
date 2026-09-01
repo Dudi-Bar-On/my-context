@@ -47,6 +47,7 @@ import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { injection } from '../../src/cli/commands/injection.ts';
 import { scopePolicyFor } from '../../src/core/config.ts';
+import { summaryState } from '../../src/core/content-hash.ts';
 import { resolveWorkspace, type Workspace } from '../../src/core/workspace.ts';
 import { Store } from '../../src/core/store.ts';
 import { Ledger, LedgerUninitializedError } from '../../src/core/ledger.ts';
@@ -1889,7 +1890,29 @@ test('/api/coverage discloses a walk that stopped at COVERAGE_FILE_LIMIT', () =>
  * differently: the key list catches an added or reordered field with a
  * readable message, and the digest catches a changed VALUE the key list cannot
  * see.
+ *
+ * ── RE-BASED ONCE, 2026-09-01, AND ONLY THE DIGEST ────────────────────────
+ *
+ * `plan:walk seq:119` phase 3 put `summary` and `summaryState` on
+ * `ItemSummary`, the ONE item shape this endpoint and `/api/items` share —
+ * `apiCoverage` "serves the superset rather than a second near-copy of it",
+ * and splitting the two to keep a digest still would have created exactly the
+ * two-spellings-of-one-row defect that comment refuses. So the bytes moved on
+ * purpose, and the digest below is the post-change body's.
+ *
+ * **A re-pinned digest asserts only that the code is what it is, which is why
+ * it is no longer the only assertion here.** `PRE_SUMMARY_ITEM_KEYS` is what
+ * the frozen screens actually read, pinned by NAME: the change that had to stay
+ * impossible is a field DISAPPEARING from an item, and a digest could never
+ * tell that apart from a field arriving. Adding a key is invisible to a JS
+ * reader of these entries; removing one is what breaks four screens.
+ *
+ * The next change to these bytes gets the same treatment: state what moved
+ * them, or leave them alone.
  */
+const PRE_SUMMARY_ITEM_KEYS = [
+  'always', 'gate', 'id', 'injected', 'phrase', 'scope', 'status', 'title', 'type',
+];
 test('/api/coverage answers the pre-paging bytes when no parameter is given', () => {
   const { f, ws } = coverageFixture();
   try {
@@ -1899,10 +1922,18 @@ test('/api/coverage answers the pre-paging bytes when no parameter is given', ()
     assert.ok(!Object.hasOwn(body, 'page'),
       'the disclosure block is opt-in: a caller that asked for no page is told about no page, ' +
       'because a key appearing unasked changes the answer four frozen screens parse');
+    for (const entry of body.items) {
+      const keys = Object.keys(entry);
+      assert.deepEqual(PRE_SUMMARY_ITEM_KEYS.filter((k) => !keys.includes(k)), [],
+        'an item entry lost a field the four frozen screens read. A field ARRIVING here is ' +
+        'invisible to them; a field leaving is what breaks them, and the digest below cannot ' +
+        'tell the two apart');
+    }
     assert.equal(
       createHash('sha256').update(JSON.stringify(body)).digest('hex'),
-      '0e9cad50727ff958611c2376e7bb6f5703ea2a4fa31e78422cd82b084b1a149b',
-      'byte-for-byte what /api/coverage answered before it could page',
+      '94183c62aa691c211037e9adebdd7bb2fb912de08212d20ddcbd5dcd33f66338',
+      'the bytes /api/coverage answers moved, and the only recorded reason for that is the ' +
+      'summary fields of 2026-09-01. Re-pin this only with the reason written above it',
     );
   } finally { f.done(); }
 });
@@ -2265,8 +2296,21 @@ test('/api/items carries every item with the injection verdict, sorted by id', (
         injected: injection(item, f.ws.config).injected,
         phrase: injection(item, f.ws.config).phrase,
         gate: injection(item, f.ws.config).gate,
+        // The summary and the VERDICT on it, together — `plan:walk seq:119`
+        // phase 3. They travel as a pair because the one thing a summary
+        // display may not do is present a stale sentence as a current one, and
+        // `summaryOf` is a checksum no client can evaluate. This fixture's four
+        // items carry no summary, so both fields read the absent case: `null`
+        // and `absent`, which `summaryState` keeps in step by construction.
+        summary: item.summary,
+        summaryState: summaryState(item),
       });
     }
+    // Non-vacuity for the pair above: `deepEqual` against a value taken from the
+    // same item would pass if BOTH sides were wrong the same way, so the absent
+    // case is asserted outright.
+    assert.deepEqual(body.items.map((i) => i.summaryState), ['absent', 'absent', 'absent', 'absent'],
+      'no fixture item has a summary, so every row must say so — never a missing field');
     // Non-vacuity: the four rows must not be four copies of one verdict.
     assert.equal(new Set(body.items.map((i) => i.phrase)).size, 3,
       'pinned, scoped and rationale are three phrases; the two src/** rules share the third');
@@ -2274,6 +2318,68 @@ test('/api/items carries every item with the injection verdict, sorted by id', (
     // three rows cleared the ladder, and the rationale one binds at rung 2.
     assert.deepEqual(body.items.filter((i) => i.gate !== 'passed').map((i) => i.gate), ['tier'],
       'only the rationale row fails a gate, and the gate it fails is the tier gate');
+  } finally { f.done(); }
+});
+
+/**
+ * **A summary the item has outgrown is SERVED, and served as stale.**
+ *
+ * This is the assertion the whole summary carry exists for. `/api/item/:id` has
+ * carried `summary` and `summaryOf` since the field existed — they are fields on
+ * `Item`, and this endpoint serves the whole item — so a pane could always have
+ * DRAWN the sentence. What it could never do is say whether the sentence was
+ * still true: `summaryOf` is a checksum over the item's canonicalised summarised
+ * content, and a client holding it has nothing to compare it against.
+ *
+ * So the endpoints answer the VERDICT, and both of them answer it, because a
+ * summary described as current on one screen and stale on the next is the drift
+ * this repository keeps finding. Three states are exercised here and the middle
+ * one is the point: absent, current, and current-then-stale after an edit that
+ * moves the body out from under the sentence.
+ */
+test('both item endpoints report a stale summary as stale, never as current', () => {
+  const f = fixture();
+  const run = (args: string[]): void => {
+    assert.equal(runCli(args, f.dir, () => {}), 0, `command failed: ${args.join(' ')}`);
+  };
+  try {
+    const id = 'RULE-always-use-posix-paths';
+    const stateOf = (): { one: string; list: string } => ({
+      one: (apiItem(f.ws, url('item', ''), { id }).body as ItemBody).summaryState,
+      list: (apiItems(f.ws, url('items', '')).body as ItemsBody)
+        .items.find((i) => i.id === id)!.summaryState,
+    });
+
+    assert.deepEqual(stateOf(), { one: 'absent', list: 'absent' },
+      'an item with no summary is ABSENT on both endpoints — never an empty string, which a '
+      + 'screen would draw as a blank line under the title');
+
+    run(['edit', id, '--summary', 'Paths are written one way so a glob can match them.', '--yes']);
+    assert.deepEqual(stateOf(), { one: 'current', list: 'current' },
+      '`stampSummary` writes the text and the basis together, so a summary is CURRENT the '
+      + 'instant it is written — a summary born stale would make the state useless');
+    assert.equal(
+      (apiItem(f.ws, url('item', ''), { id }).body as ItemBody).item.summary,
+      'Paths are written one way so a glob can match them.',
+      'the sentence itself is on the wire, not merely a verdict about it',
+    );
+
+    // The body moves and the summary does not. Nothing refreshes the basis on
+    // its own — that is the whole mechanism — so the two stop agreeing.
+    run(['edit', id, '--body', 'A completely different claim about something else. '.repeat(20),
+      '--yes']);
+    assert.deepEqual(stateOf(), { one: 'stale', list: 'stale' },
+      'the content moved under the sentence and both endpoints must say so. A value that was '
+      + 'true once, served as though it were true now, is the defect this field exists to stop');
+
+    // And the sentence is still THERE. Nothing here is dropped silently: a
+    // stale summary is drawn as stale, never withheld.
+    assert.equal(
+      (apiItem(f.ws, url('item', ''), { id }).body as ItemBody).item.summary,
+      'Paths are written one way so a glob can match them.',
+      'a stale summary is still served — INV-nothing-is-dropped-silently. It is DISCLOSED as '
+      + 'stale, not hidden',
+    );
   } finally { f.done(); }
 });
 

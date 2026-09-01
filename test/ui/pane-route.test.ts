@@ -404,7 +404,25 @@ interface Harness {
   pane: () => FakeElement;
   paneId: () => string;
   paneBody: () => FakeElement;
+  /** Any element of the shell, by id — for the pane's summary block. */
+  el: (id: string) => FakeElement;
 }
+
+/**
+ * The four summary shapes, keyed by the id a test opens — everything else about
+ * the payload is the same, so a test names one id and gets exactly one variable.
+ *
+ * `SUM-none` is the case that must render as ABSENT: `summary` is optional on
+ * `Item`, and the sixteen superseded and deprecated items in this project's own
+ * corpus carry none. `SUM-stale` and `SUM-unanch` are the two states in which
+ * the sentence is still SERVED and must not be read as current.
+ */
+const SUMMARY_CASES: Record<string, { summary: string | null; summaryState: string }> = {
+  'SUM-none': { summary: null, summaryState: 'absent' },
+  'SUM-current': { summary: 'A plain sentence saying what this is.', summaryState: 'current' },
+  'SUM-stale': { summary: 'A plain sentence saying what this WAS.', summaryState: 'stale' },
+  'SUM-unanch': { summary: 'A sentence with no basis behind it.', summaryState: 'unanchored' },
+};
 
 /** The item every test opens. One shape, answered for whatever id is asked. */
 const itemPayload = (id: string): unknown => ({
@@ -417,8 +435,17 @@ const itemPayload = (id: string): unknown => ({
     scope: ['src/'],
     filePath: `items/rule/${id}.md`,
     body: 'A body long enough to be a paragraph.',
+    always: id === 'SUM-current',
+    continuity: false,
+    origin: 'human',
+    validUntil: null,
+    extra: id === 'SUM-current' ? { directive: 'do' } : {},
+    ...(SUMMARY_CASES[id] === undefined ? {} : { summary: SUMMARY_CASES[id]!.summary }),
   },
   injection: { phrase: 'governs every session' },
+  ...(SUMMARY_CASES[id] === undefined
+    ? {}
+    : { summaryState: SUMMARY_CASES[id]!.summaryState }),
 });
 
 /** `null` history: the ABSENT projection, which the pane says rather than draws. */
@@ -630,6 +657,7 @@ async function boot(): Promise<Harness> {
       pane: (): FakeElement => byId('pane'),
       paneId: (): string => byId('paneid').textContent,
       paneBody: (): FakeElement => byId('panebody'),
+      el: (id: string): FakeElement => byId(id),
     };
   })();
   return await booted;
@@ -654,6 +682,146 @@ test('the harness really opens the pane: a delegated click fills it and widens t
   assert.equal(ui.paneId(), 'RULE-x');
   assert.equal(ui.paneBody().children.length, 1, 'the item body is rendered into #panebody');
   assert.equal(ui.paneBody().children[0]?.tag, 'bdi', 'corpus text sits inside <bdi> — pane.well');
+});
+
+/**
+ * The text of a node and everything under it.
+ *
+ * `FakeElement.textContent` is a plain FIELD, so it holds only what was
+ * assigned directly — and every translated string in the shell arrives as
+ * appended NODES, never as an assigned string (owner ruling A1: `t()` returns
+ * Node[] for every key, because a string cannot carry the `.m` isolation an
+ * identifier needs). Reading the field alone therefore reports `''` for exactly
+ * the sentences these tests are about.
+ */
+function textOf(node: FakeElement): string {
+  return node.children.length === 0
+    ? node.textContent
+    : node.children.map(textOf).join('');
+}
+
+/* ── THE SUMMARY, `plan:walk seq:119` phase 3 ──────────────────────────────
+ *
+ * Every active item in this corpus carries a `summary` — one plain sentence
+ * saying what it IS — and until 2026-09-01 no screen in the product drew one.
+ * These four tests are the four states that display has to get right, and the
+ * middle two are the ones with teeth: a summary the item has outgrown is still
+ * shown (nothing here is dropped silently) and must never be shown as current.
+ */
+
+test('the pane draws the item summary, and draws it ABOVE the six <dl> facts', async () => {
+  const ui = await boot();
+  await ui.goTo('#/coverage');
+  await ui.openItem('SUM-current');
+
+  assert.equal(ui.el('panesummary').hidden, false, 'the summary is on screen');
+  assert.equal(ui.el('panesummary').textContent, 'A plain sentence saying what this is.');
+  assert.equal(ui.el('panesummary').className, 'itemsum',
+    'a CURRENT summary carries no staleness class — the rule down its edge would be a lie');
+  assert.equal(ui.el('panestale').hidden, true,
+    'nothing to disclose, so no empty warning beside a perfectly good summary');
+
+  // Where the block SITS is asserted separately, against the markup — this
+  // harness seeds every id flat under one `<body>`, so its child order is the
+  // harness's and not the shell's.
+
+  // The chips: `always` and the category's own `directive`. Not the six the
+  // `<dl>` already carries eight pixels below — see `fillPaneSummary`.
+  const chips = ui.el('paneprops');
+  assert.equal(chips.hidden, false);
+  assert.deepEqual(chips.children.map((c) => c.className), ['chip gov', 'chip index'],
+    'always earns the gov register and the category field the neutral one; no new hue is spent');
+  assert.deepEqual(chips.children.map((c) => c.dataset.g), ['◆', '◇'],
+    'every chip carries a glyph as well as a word — colour is never the only carrier');
+  assert.equal(textOf(chips.children[1]!), 'directive: do',
+    'a category field is CORPUS text on both sides, never a key this app invented a label for');
+});
+
+/**
+ * **The summary block is ABOVE the `<dl>`, in the shipped shell AND in the
+ * design of record — asserted on the markup, because that is where the order
+ * lives.**
+ *
+ * The `<dl>`'s six rows (type, status, tier, scope, governs, file) answer *does
+ * this apply to me*. The summary answers *what is this*, and the second question
+ * is not worth asking until the first has an answer — which is why "above the
+ * body" was not enough and the block went above the facts as well.
+ *
+ * Both files, because presentation changes go into the mockup first: a block
+ * moved in one and not the other is how a design of record stops being one.
+ */
+test('the summary block sits above the <dl>, in index.html and in the mockup alike', () => {
+  const MOCKUP = path.join(REPO, 'docs', 'design', 'web-ui-mockup.html');
+  for (const [label, file] of [
+    ['index.html', path.join(PUBLIC, 'index.html')],
+    ['the mockup', MOCKUP],
+  ] as const) {
+    const html = readFileSync(file, 'utf8');
+    const pane = html.indexOf('<aside class="pane" id="pane"');
+    assert.notEqual(pane, -1, `${label}: no item pane to place the summary in`);
+    const after = (needle: string): number => {
+      const at = html.indexOf(needle, pane);
+      assert.notEqual(at, -1, `${label}: the pane does not contain ${needle}`);
+      return at;
+    };
+    const title = after('id="panetitle"');
+    const summary = after('id="panesummary"');
+    const stale = after('id="panestale"');
+    const props = after('id="paneprops"');
+    // The `<dl>` that OPENS the definition list, not the two words `<dl>` in
+    // the comment above the summary block — which is exactly what a bare
+    // `indexOf('<dl>')` finds, and it finds it in the wrong place.
+    const dl = html.slice(pane).search(/<dl>\s*<dt/) + pane;
+    assert.ok(dl > pane, `${label}: the pane has no <dl><dt> to place the summary above`);
+    assert.ok(title < summary, `${label}: the title comes first`);
+    assert.ok(summary < stale, `${label}: the disclosure sits under the sentence it is about`);
+    assert.ok(stale < props, `${label}: then the chips`);
+    assert.ok(props < dl, `${label}: and all of it above the six <dl> facts`);
+  }
+});
+
+test('an item with no summary draws no summary — absent is absent, not an empty line', async () => {
+  const ui = await boot();
+  await ui.goTo('#/coverage');
+  await ui.openItem('SUM-none');
+
+  assert.equal(ui.el('panesummary').hidden, true, 'no box, no blank line, no dash');
+  assert.equal(ui.el('panesummary').textContent, '');
+  assert.equal(ui.el('panestale').hidden, true);
+  assert.equal(ui.el('paneprops').hidden, true,
+    'and no empty chip strip either: this item earns none of the four');
+});
+
+test('a STALE summary is shown, and shown as stale — in three carriers, not one', async () => {
+  const ui = await boot();
+  await ui.goTo('#/coverage');
+  await ui.openItem('SUM-stale');
+
+  assert.equal(ui.el('panesummary').hidden, false,
+    'the sentence is still drawn — INV-nothing-is-dropped-silently');
+  assert.equal(ui.el('panesummary').textContent, 'A plain sentence saying what this WAS.');
+  assert.equal(ui.el('panesummary').className, 'itemsum stale', 'carrier 1: the rule down its edge');
+  assert.equal(ui.el('panestale').hidden, false, 'carrier 2: the sentence saying what happened');
+  assert.match(textOf(ui.el('panestale')), /changed after/,
+    'and it says the item MOVED, which is the fact — not merely that something is wrong');
+  const chips = ui.el('paneprops');
+  assert.equal(chips.children[0]?.className, 'chip warn',
+    'carrier 3: the word, FIRST, because it qualifies every chip after it');
+  assert.equal(textOf(chips.children[0]!), 'stale summary');
+});
+
+test('a summary with no basis at all reads as unanchored, never as current', async () => {
+  const ui = await boot();
+  await ui.goTo('#/coverage');
+  await ui.openItem('SUM-unanch');
+
+  // `unanchored` is unreachable through any write path in this product and is
+  // reachable by hand-editing a file — which is exactly the case that must not
+  // read as current. It is a stale summary with a different reason, and it is
+  // told apart from `stale` here so a reader learns which one they have.
+  assert.equal(ui.el('panesummary').className, 'itemsum stale');
+  assert.equal(textOf(ui.el('paneprops').children[0]!), 'unanchored summary');
+  assert.match(textOf(ui.el('panestale')), /no record of what it was written against/);
 });
 
 test('navigating away CLOSES the pane, and the grid goes back to two columns', async () => {

@@ -285,11 +285,30 @@ test("Review queue's Execute confirms honestly, even for a revision the corpus r
     // not a confirm dialog with a "Run it" button; it is the CLI's own refusal,
     // inline. `mutate.ts` names the state `STALE` and the CLI's sentence uses
     // the word.
+    // **15s, MEASURED — and the measurement is why this line went red.**
+    //
+    // The default is 5s, and this is not a wait for a repaint: the confirm GET
+    // derives the effect by copying the whole corpus to a scratch directory and
+    // running `review promote-revision` there (`src/ui/execute-effect.ts`).
+    // Timed directly against `.demo-corpus` (804 files, 15 MB) on 2026-09-01,
+    // three runs: 5.1s / 6.4s / 7.3s — copy 1.8–2.5s, child 2.7–2.8s, the
+    // snapshots and the scratch removal ~2s. So the refusal this asserts could
+    // not arrive inside the budget it was given, and `--repeat-each=3
+    // --workers=1` failed 6 of 6 across both browser projects: not contention,
+    // an assertion whose budget was written for an interaction that is a
+    // multi-second server round trip.
+    //
+    // Same reasoning and same number as every other post-fetch assertion in
+    // this file. The seconds themselves are now LEGIBLE rather than blank —
+    // `commandActions` says it is checking and disarms Execute for the wait
+    // (`src/ui/public/lib/command-actions.js`, "THE WAIT IS SAID OUT LOUD"),
+    // which is the product half of this fix: this line used to fail reporting
+    // the control's entire visible state as "CopyExecute".
     await expect(
       actions,
       'a stale revision must be refused rather than confirmed — the confirm\'s own dry run '
       + 'promotes the same argv the real run would and gets the same refusal',
-    ).toContainText('STALE');
+    ).toContainText('STALE', { timeout: 15_000 });
     await expect(
       actions.locator('.confirm'),
       'a refused confirm must mint no nonce and offer no way to run it anyway',

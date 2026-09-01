@@ -746,6 +746,73 @@ export async function render(root, ctx) {
   }
 
   /**
+   * `id -> ItemSummary`, rebuilt each `draw` from the corpus this pass was
+   * handed. `null` until the first draw.
+   */
+  let byId = null;
+
+  /**
+   * **The summary line under a delivered row** — `plan:walk seq:119` phase 3.
+   *
+   * ── WHY A ROW NEEDS ONE ────────────────────────────────────────────────────
+   *
+   * This list is the closest thing the product has to an item browser, and
+   * until now every row in it read `CONST-zero-runtime-dependencies ◆ pinned`
+   * — an id, a tier and nothing a person could act on without clicking through
+   * to the pane. The summary is the one field written to be read at a glance,
+   * so it is the line that makes the list scannable. One line, ellipsised: a
+   * row that grew to three would stop being a row.
+   *
+   * ── IT COMES FROM `/api/items`, NOT FROM `/api/select` ─────────────────────
+   *
+   * `/api/select` carries the whole `Item`, so `entry.item.summary` is right
+   * there — and it is the wrong source, because that response carries no
+   * VERDICT on the summary. `summaryOf` is a checksum; a client holding it
+   * cannot compute the basis to compare it against, so a row drawn from
+   * `/api/select` alone could print a stale sentence and would have no way to
+   * know. `/api/items` answers `summaryState` beside `summary`, measured by the
+   * server, and this screen already fetches it for the gate ladder — so the
+   * honest source costs nothing.
+   *
+   * Adding `summaryState` to `/api/select` was the alternative and is refused:
+   * that endpoint is `select()`'s serialization AND NOTHING ELSE (design
+   * decision 7), and §6's parity test depends on it being exactly that.
+   *
+   * ── A STALE SUMMARY IS STILL DRAWN ─────────────────────────────────────────
+   *
+   * With its own `.chip.warn` on the row's first line, where nothing ellipsises
+   * it, and the sentence itself in the warn colour below. Hiding it would be a
+   * silent drop; printing it bare would be the defect this whole codebase keeps
+   * finding — a value that was true once, shown as though it were true now. The
+   * chip's WORD is the carrier; the colour is the second channel, never the
+   * only one.
+   *
+   * An item with no summary — every superseded and deprecated one, and any item
+   * older than the field — gets no line and no `hassum`, so the row is exactly
+   * the row it was before this existed.
+   */
+  function addRowSummary(row, id) {
+    const record = byId === null ? undefined : byId.get(id);
+    if (record === undefined) return;
+    const text = typeof record.summary === 'string' ? record.summary : '';
+    if (text === '') return;
+    const state = record.summaryState;
+    const stale = state === 'stale' || state === 'unanchored';
+    if (stale) {
+      const chip = el('span', 'chip warn');
+      chip.dataset.g = '▲';
+      chip.append(...ctx.t(state === 'unanchored' ? 'sum.unanchored' : 'sum.stale'));
+      row.append(chip);
+    }
+    // `.rowsum` carries `order:1`, so it lands last on the row however late the
+    // When run is appended — `fillWhen` decorates these rows in place after the
+    // audit read returns, and DOM order alone would put the time on a third
+    // line under the summary.
+    row.append(el('span', stale ? 'rowsum stale' : 'rowsum', text));
+    row.classList.add('hassum');
+  }
+
+  /**
    * The corpus split by whether an item declares a scope, and the policy in
    * force for the ones that do not — `/api/help/scope`'s `corpus`, fetched ONCE
    * and cached like `/api/items`, and for the same reason: it is a fact about
@@ -1219,6 +1286,11 @@ export async function render(root, ctx) {
     // previous pass's nodes are gone, and filling one of them would write into
     // a screen nobody is looking at.
     whenTargets = [];
+    // The summary lookup, rebuilt from the corpus THIS pass was handed rather
+    // than from `items` directly — the two are the same array today, and a
+    // draw that read around its own argument is how the ladder and the rows
+    // end up describing two different corpora.
+    byId = new Map((corpus ?? []).map((entry) => [entry.id, entry]));
     // `Delivered` — the three numbers `preview.cap` words. `used` is
     // `Selection.tokens`, the figure the budget decisions were actually made
     // against and which the selector computed rather than a client re-derived;
@@ -1292,6 +1364,10 @@ export async function render(root, ctx) {
       // in the reader's own language; getting this wrong would put a stale
       // reading on the one screen that promises *exactly what Claude gets*.
       whenSlot(row, 'injected', entry.item.id, entry.tier);
+      // The summary, and it is the last thing appended for the same reason it
+      // is drawn at all: the id says WHICH item, the tier says how it got here,
+      // and this says what it is. See `addRowSummary`.
+      addRowSummary(row, entry.item.id);
       return row;
     }, { cap: BOUND_CAP_LIST, order: 'admitted', displayOnly: true });
     delivered.append(rows, deliveredBound);
@@ -1499,6 +1575,11 @@ export async function render(root, ctx) {
       // treatment the ghost lane gives it, and never parsed for the figures
       // above.
       row.title = spill.reason;
+      // **The same line the Delivered list gets, and this half needs it more.**
+      // The reader's question here is *why did this not arrive* — and before
+      // they can care about the answer they have to know what "this" was. The
+      // id and the tier do not tell them. See `addRowSummary`.
+      addRowSummary(row, spill.id);
       return row;
     }, { cap: BOUND_CAP_LIST, order: 'considered' });
     card.append(bound);

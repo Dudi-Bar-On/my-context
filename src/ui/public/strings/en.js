@@ -680,6 +680,11 @@ export const strings = {
   // duplicated into the browser is a sentence that gets reworded on one side
   // only — and this is the one sentence a security boundary is made of.
   'exec.btn': 'Execute',
+  // The confirm GET runs the command against a copy of the corpus before it
+  // will show anything, which is seconds rather than milliseconds — measured
+  // 5.1–7.3s on `.demo-corpus`. This is what stands there meanwhile, so a wait
+  // reads as a wait rather than as a control that did nothing.
+  'exec.checking': 'Checking what this command changes — it is run against a copy of the corpus first, which takes a few seconds.',
   'exec.h': 'Run this command?',
   'exec.go': 'Run it',
   'exec.cancel': 'Cancel',
@@ -772,6 +777,60 @@ export const strings = {
   'cfg.delivered': 'items delivered at session start',
   'cfg.spilledn': 'items spilled',
   'cfg.tokensn': 'tokens charged',
+  // ── The paste hand-off — `plan:config seq:4`, 2026-09-01. ────────────────
+  // Composing the right bytes and leaving a person holding them is half a
+  // hand-off. Four numbered steps: the file, WHERE in it, the block, and what
+  // to run afterwards. Step 2 is derived from what the file already contains —
+  // the six `cfg.pl.*` sentences below are the six placements a block can have,
+  // and picking the wrong one is the failure the task names as its acceptance
+  // test.
+  'cfg.step1': 'Open this file in your own editor. It is the file this server read, spelled in full — not an abbreviation of one somewhere else on disk.',
+  'cfg.step1new': 'Create this file. It does not exist yet, so the block below is the whole of it — outer braces included.',
+  'btn.copypath': 'Copy the path',
+  'cfg.step3': 'Paste this. It is already indented for where it goes, so it lands aligned with the entries around it.',
+  'cfg.step4': 'Save the file, then run this to confirm the paste took. It re-reads {m:config.json} and refuses by name if the file no longer loads.',
+  'cfg.step4b': 'Save the file. No {m:mycontext} command reads a budget back, so there is nothing to run — return to this tab and the value above is re-read from disk.',
+  'cfg.pl.newfile': 'The file does not exist yet. The block below is its entire contents, outer braces and all.',
+  'cfg.pl.newkey': 'Your file has no {mv:key} key yet. Paste the block below inside the outermost braces, as a new top-level entry — and put a comma after the entry before it.',
+  'cfg.pl.replacekey': 'Your file already sets {mv:key}. Replace that whole entry — from its key to its closing brace — with the block below.',
+  'cfg.pl.newentry': 'Your file already has a {m:categories} object, so this is an entry {b:inside} it and never a second top-level {m:categories} key — a second one silently replaces every category you already set. Paste it between that object’s braces, after {mv:last} and its comma.',
+  'cfg.pl.newentry0': 'Your file has a {m:categories} object and nothing in it. Paste this between its braces — an entry {b:inside} the object, never a second top-level {m:categories} key.',
+  'cfg.pl.replaceentry': 'Your file already declares {mv:key}. Replace that entry inside the {m:categories} object — from its name to its closing brace — with the block below.',
+  // ── The category wizard — `plan:config seq:3`, 2026-09-01. ───────────────
+  // Stepped rather than a form, because the ordering is real: the tier decides
+  // which `agentEdits` default sits under it, and a prefix collision is only
+  // knowable against the whole catalogue. Every closed vocabulary is served by
+  // `GET /api/config`'s `meta`, so nothing here invents a value the loader
+  // would refuse.
+  'cfg.wiz': 'Create a category',
+  'cfg.wizn': 'A kind of item the catalogue does not ship. Every step below offers the values the loader accepts, so nothing here can compose a refusal — and the two free-text steps carry the rule they are checked against.',
+  'cfg.wizstep': 'Step {n} of {total}',
+  'cfg.wizback': 'Back',
+  'cfg.wiznext': 'Next',
+  'cfg.wizpending': 'Finish the flow. What this would do to this corpus is measured once the category is complete — a category with no name and no tier is not something the loader can be asked about.',
+  'cfg.wz.name': 'The category name, lowercase, as it is typed after {m:mycontext capture}. It is the item’s {m:type} and cannot be one this configuration already has.',
+  'cfg.wz.namehint': 'decision',
+  'cfg.wz.prefix': 'The id prefix this category mints ids under — an id is {m:PREFIX-slug} and is also the item’s file name. Leave it empty and the loader derives one from the name.',
+  'cfg.wz.desc': 'What this category is for, in one sentence, as the help will print it. Required: a custom category must declare a tier and a description or the loader refuses it by name.',
+  'cfg.wz.deschint': 'A choice made once, with the reasoning that made it.',
+  'cfg.wz.extra': 'The category-specific frontmatter fields its items may carry, comma-separated. Leave empty to declare none.',
+  'cfg.wz.extrahint': 'plan, seq, state',
+  'cfg.wz.updates': 'What may be CHANGED on one of its items, beyond what the tier already declares. A category may declare none.',
+  'cfg.wz.upname': 'The updatable name — the word a person types to change it.',
+  'cfg.wz.upnamehint': 'state',
+  'cfg.wz.upstore': 'Where the value lives.',
+  'cfg.wz.upvalues': 'Its legal values, comma-separated. Leave empty for free text.',
+  'cfg.wz.upvalueshint': 'todo, doing, done',
+  'cfg.wz.upprojects': 'The field or tag prefix it projects to. Optional.',
+  'cfg.wz.upnote': 'One sentence saying what it is for. Optional.',
+  'cfg.wz.upnotehint': 'Where this task is.',
+  'cfg.wz.upadd': 'Add another',
+  'cfg.wz.updrop': 'Remove',
+  'cfg.wz.upnone': 'None declared, which is a declaration rather than a gap: this category adds nothing of its own, and its tier still declares the general rules.',
+  'cfg.wz.taken': '{mv:name} is already a category in this configuration. This flow defines a NEW one — to change that one, use the Categories pane above.',
+  'cfg.wz.pfxtaken': '{mv:prefix} is already the prefix of {mv:cat}. Two categories minting ids under one prefix make ids nobody can tell apart.',
+  'cfg.wz.need': 'This step needs a value before the next one.',
+  'cfg.wz.resolved': 'What the loader makes of it — every default it filled in for a choice left alone, read back from {m:POST /api/config/check} rather than predicted here.',
   // Procedures
   'pr.h': 'Procedures',
   'pr.sub': 'An ordered set of steps performed {b:once} and then done — as against a rule, which is one instruction that applies every time. A rule is a single instruction; a procedure is a sequence. {b:Built, and this screen reports it.}',
@@ -932,6 +991,32 @@ export const strings = {
   'pane.histn': 'Twelve weekly buckets from the audit projection, hatched where the item was {b:spilled} that week and grey where nothing was delivered. It is the cheapest possible answer to "is this thing still alive", and the one history that belongs on {i:every} item rather than on a screen of its own.',
   'pane.body': 'Body — as authored',
   'pane.well': "Corpus text sits in a well and inside {m:<bdi>}. The product's own words never do — that is how you tell them apart.",
+  // ── THE ITEM SUMMARY (2026-09-01, `plan:walk seq:119` phase 3) ───────────
+  //
+  // Two of these say a summary can no longer be trusted, and they are the app's
+  // OWN wording rather than `summaryStalenessNote`'s. That function is one
+  // English paragraph shared by `mycontext show`, `get_item` and `doctor`;
+  // reusing it here would put English prose into the Hebrew UI, which is the
+  // defect the provenance bar above already records costing every screen in
+  // this product. The FACT is measured in exactly one place — `summaryState`,
+  // core/content-hash.ts — and each surface says it in its reader's language.
+  //
+  // `sum.stale` and `sum.unanchored` are chip words and are deliberately two
+  // or three: a chip carries its state in a WORD as well as a hue, and a chip
+  // that needed a sentence would not be a chip.
+  //
+  // The four property words are the chips beside the summary. Each names a
+  // property that changes whether a reader should act on the sentence they
+  // just read and that the `<dl>` below does not carry — the argument is in
+  // `fillPaneSummary` (app.js), against every field that did NOT earn one.
+  'sum.stale': 'stale summary',
+  'sum.unanchored': 'unanchored summary',
+  'sum.staleNote': 'This item changed after the sentence above was written, so it describes text that is no longer here. Read the body, not the summary.',
+  'sum.unanchoredNote': 'The sentence above carries no record of what it was written against, so nothing can say whether it still describes this item. Read the body, not the summary.',
+  'sum.always': 'always injected',
+  'sum.continuity': 'carries across sessions',
+  'sum.agent': 'captured by an agent',
+  'sum.until': 'valid until {mv:until}',
   'aria.prov': 'Provenance',
   // The four provenance-group labels. Colour says where a number came from
   // and these say it a second time, because colour alone fails a dichromat,

@@ -53,6 +53,7 @@ import { statSync } from 'node:fs';
 import path from 'node:path';
 import { injection, type InjectionVerdict } from '../cli/commands/injection.ts';
 import { scopePolicyFor } from '../core/config.ts';
+import { summaryState, type SummaryState } from '../core/content-hash.ts';
 import { resolveCarry } from '../core/continuity.ts';
 import { computeDecay, type DecayReport } from '../core/decay.ts';
 import {
@@ -1397,6 +1398,31 @@ export interface ItemSummary {
   injected: boolean;
   phrase: string;
   gate: GateCode;
+  /**
+   * **The item's own one-sentence summary, or `null` when it has none** — the
+   * field that makes a list of ids readable without opening each one.
+   *
+   * `null` is a real answer and not a placeholder: `summary` is optional on
+   * `Item`, every item in every corpus predates the field, and the sixteen
+   * superseded and deprecated items in this project's own corpus carry none.
+   * A client draws absent as ABSENT — no empty line, no blank box — which is
+   * why the field is nullable here rather than defaulted to `''`.
+   */
+  summary: string | null;
+  /**
+   * **Whether that summary still describes this item, MEASURED rather than
+   * assumed** (`summaryState`, core/content-hash.ts).
+   *
+   * It travels beside `summary` and is never optional, because the one thing a
+   * summary display may not do is present a stale sentence as a current one —
+   * *"a value that was true once, shown as though it were true now"*. A client
+   * cannot compute this: it is a checksum over the canonicalised summarised
+   * fields (`itemSummaryBasis`), and re-deriving it in the browser would be a
+   * second implementation of the identity the whole corpus is keyed on.
+   *
+   * `absent` exactly when `summary === null`, so the two can never disagree.
+   */
+  summaryState: SummaryState;
 }
 
 function itemSummary(item: Item, config: Config): ItemSummary {
@@ -1405,6 +1431,7 @@ function itemSummary(item: Item, config: Config): ItemSummary {
     id: item.id, type: item.type, title: item.title, status: item.status,
     always: item.always, scope: item.scope,
     injected: verdict.injected, phrase: verdict.phrase, gate: verdict.gate,
+    summary: item.summary, summaryState: summaryState(item),
   };
 }
 
@@ -1959,6 +1986,25 @@ export interface ItemBody {
   injection: InjectionVerdict;
   ledger: LedgerPresence;
   usage: Usage | null;
+  /**
+   * **Whether `item.summary` still describes `item`** — the one fact about the
+   * summary that the raw item cannot carry.
+   *
+   * `item` here is the whole `Item`, so `summary` and `summaryOf` have been on
+   * this response since the field existed. What was NOT on it is the verdict:
+   * `summaryOf` is a checksum, and a client holding it has no way to compute
+   * the basis to compare it against. So the pane could have drawn the sentence
+   * at any time and could never have said whether it was still true — which is
+   * the one way this field must not be drawn.
+   *
+   * Computed here rather than sent as a note, because the WORDING is the
+   * client's: this UI is bilingual and `summaryStalenessNote` is one English
+   * paragraph written for `mycontext show`, `get_item` and `doctor`. Sending it
+   * would put English prose into the Hebrew UI, which is the defect the
+   * provenance bar already recorded. The FACT is measured in one place — here,
+   * by `summaryState` — and each surface says it in its reader's language.
+   */
+  summaryState: SummaryState;
 }
 
 /**
@@ -1997,6 +2043,7 @@ export function apiItem(ws: Workspace, url: URL, params: { id: string }): JsonRe
       injection: injection(item, ws.config),
       ledger: ledgerPresence(ledger),
       usage: ledger === null ? null : ledger.usage(item.id),
+      summaryState: summaryState(item),
     };
     return { status: 200, body };
   });

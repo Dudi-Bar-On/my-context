@@ -186,6 +186,44 @@
       <button class="icon" id="paneclose" aria-label="Close" data-t-aria="aria.paneclose">✕</button>
     </div>
     <p class="small" id="panetitle"></p>
+
+    <!-- THE SUMMARY, AND IT SITS HERE ON PURPOSE — docs/design/web-ui-mockup.html,
+         the same three elements in the same order.
+
+         `plan:walk seq:119` phase 3, filed and never built. Every active item in
+         this corpus carries a `summary` — one plain sentence saying what the item
+         IS, for a reader who does not know this codebase — and until now no screen
+         in the product drew it. The owner's bar for it is "simple and very readable
+         from first sight", and the whole point is that a reader understands the item
+         WITHOUT reading its body.
+
+         ABOVE the `<dl>`, not merely above the body. The brief asks for "the first
+         thing read", and the `<dl>` is six rows of type/status/tier/scope/governs/
+         file — machine facts that answer "does this apply to me" and are worth
+         nothing to a reader who does not yet know what the item says. So the order
+         is: what it is (id), what it is called (title), WHAT IT MEANS (summary),
+         then the facts, then the body it spares you.
+
+         All three start `hidden`, and that is the absent case rather than a loading
+         state. `summary` is optional on `Item` — every corpus predates it, and the
+         superseded and deprecated items were never given one — so an item with none
+         must render as an item with none: no empty box, no blank line, no dash.
+         app.js unhides exactly what it has something to put in.
+
+         `#panestale` is the disclosure, and it is NOT decoration. `summary_of`
+         records the content the summary was written against; when the item moves
+         under it the two disagree and `summaryState` (core/content-hash.ts) reads
+         `stale` — or `unanchored`, for a summary hand-edited into a file with no
+         basis at all. Both mean the same thing to a reader: do not quote this as
+         though it described the item. The sentence is shown, never hidden (nothing
+         here is dropped silently) and never bare. -->
+    <p class="itemsum" id="panesummary" hidden></p>
+    <p class="small summstale" id="panestale" hidden></p>
+    <!-- The property chips — the owner's own ask, that the summary be shown "with
+         the properties that complement the knowledge and understanding". Filled by
+         app.js's paneProps(); which properties earn one, and why, is argued there. -->
+    <div class="itemprops" id="paneprops" hidden></div>
+
     <dl>
       <dt data-t="pane.type">type</dt><dd class="m" id="panetype"></dd>
       <dt data-t="pane.status">status</dt><dd class="m" id="panestatus"></dd>

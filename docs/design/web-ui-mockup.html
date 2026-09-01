@@ -690,6 +690,36 @@ tr:last-child td{border-block-end:0}
    than changing .small itself, which is correctly dim in dozens of other
    captions across the app. */
 #panetitle{color:var(--ink)}
+/* ── THE ITEM SUMMARY — plan:walk seq:119 phase 3 ──────────────────────────
+   One plain sentence saying what an item IS, written for a reader who does not
+   know this codebase. It sits above the `<dl>` in the detail pane and under the
+   id in a list, and it is the one piece of corpus text in this product set in
+   the SANS face: everything around it — the id, the six `<dl>` values, the row
+   chips — is mono, and a summary in mono reads as machine output rather than as
+   the sentence it is.
+
+   `.itemsum.stale` and `.rowsum.stale` are the SECOND channel of the staleness
+   disclosure and never the only one. A summary whose `summary_of` no longer
+   matches its item is still shown — nothing here is dropped silently — but it
+   may not be shown as though it were current, so the word arrives with it: the
+   pane draws `#panestale` and a `.chip.warn`, and a row draws its own chip. The
+   rule and the colour are what a reader notices; the word is what survives
+   print, `forced-colors` and a monochrome screen.
+
+   `.itemprops` is a flex row and so needs its own `[hidden]`: the UA's
+   `[hidden]{display:none}` loses to any author rule that sets `display`, which
+   is the same reason `#pane[hidden]` is written out above. An item with no
+   properties worth a chip draws NO empty strip. */
+.itemsum{margin:0 0 var(--sp-2);font:var(--fs-1)/1.5 var(--sans);color:var(--ink)}
+.itemsum.stale{padding-inline-start:var(--sp-2);border-inline-start:2px solid var(--warn)}
+.summstale{margin:0 0 var(--sp-2);color:var(--warn)}
+.itemprops{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 var(--sp-2)}
+.itemprops[hidden]{display:none}
+.row.hassum{flex-wrap:wrap}
+.rowsum{order:1;flex-basis:100%;min-inline-size:0;margin-block-start:4px;text-align:start;
+  font:var(--fs-0)/1.45 var(--sans);color:var(--dim);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rowsum.stale{color:var(--warn)}
 .measured{color:var(--gold);font-weight:700}
 
 /* R4 — help in place. A disclosure under the control, not a tooltip:
@@ -715,6 +745,13 @@ details.help[open]>summary{margin-block-end:6px}
   padding-block:3px;padding-inline:var(--sp-2);font-size:var(--fs-0);cursor:pointer;flex:none}
 .cmd button:hover{border-color:var(--gold);color:var(--gold)}
 .cmdstate{display:flex;gap:6px;align-items:center;font-size:var(--fs-0);margin-block-start:5px}
+
+/* the paste hand-off — numbered, because "open the file, put it HERE, then run
+   this" is an ordered instruction and prose loses the order. `padding-inline-
+   start` rather than `padding-left` so the markers sit on the correct side in
+   Hebrew. */
+.steps{margin:var(--sp-2) 0 0;padding-inline-start:22px}
+.steps li{margin-block-end:var(--sp-3)}
 
 /* budget bar */
 .bar{block-size:9px;border-radius:5px;background:var(--sink);overflow:hidden;display:flex;
@@ -2819,6 +2856,17 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
         budget, and an agent still cannot — the deny hook says so in those words: <i>"changes to
         <span class="m">.my_context/config.json</span> are the user's to make — ask, do not edit."</i>
         A person can, here, behind a confirm that shows every value before it is written.</p>
+      <ol class="steps">
+        <li><p class="small" data-t="cfg.step1">Open this file in your own editor. It is the file
+          this server read, spelled in full &mdash; not an abbreviation of one somewhere else on
+          disk.</p>
+          <div class="cmd"><code>.my_context/config.json</code>
+            <button data-t="btn.copypath">Copy the path</button></div></li>
+        <li><p class="small" data-t="cfg.pl.replacekey">Your file already sets <span class="m v"
+          >budgets</span>. Replace that whole entry &mdash; from its key to its closing brace
+          &mdash; with the block below.</p></li>
+        <li><p class="small" data-t="cfg.step3">Paste this. It is already indented for where it
+          goes, so it lands aligned with the entries around it.</p>
       <pre class="m">  "budgets": {
     "pinned": 6000,
 -   "jit": 6000,
@@ -2826,8 +2874,12 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
     "restored": 8000,
     "index": 1200
   }</pre>
-      <div class="cmd"><code>.my_context/config.json</code>
-        <button data-copy data-t="btn.copypatch">Copy the patch</button></div>
+          <div class="cmd">
+            <button data-copy data-t="btn.copypatch">Copy the patch</button></div></li>
+        <li><p class="small" data-t="cfg.step4b">Save the file. No <span class="m">mycontext</span>
+          command reads a budget back, so there is nothing to run &mdash; return to this tab and
+          the value above is re-read from disk.</p></li>
+      </ol>
       <h3 style="margin-block-start:14px" data-t="cfg.watched">Watched documents</h3>
       <p class="small"><span data-t="cfg.watchednote"><span class="m">init</span> writes what this
         repository actually has, rather than shipping three paths from one workflow that match
@@ -2850,6 +2902,31 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
             the new value — or a <span class="m">parseError</span> field if the JSON broke.</span>
         </div>
       </details>
+    </div>
+
+    <!-- A WIZARD RATHER THAN A FORM, and the reason is ordering: the tier a
+         reader picks decides which agentEdits default is legal beneath it, and
+         a prefix that collides is only knowable against the whole catalogue.
+         One step is on screen at a time; each offers the legal values rather
+         than expecting them to be known. -->
+    <div class="card pane">
+      <h3 data-t="cfg.wiz">Create a category</h3>
+      <p class="small" data-t="cfg.wizn">A kind of item the catalogue does not ship. Every step
+        below offers the values the loader accepts, so nothing here can compose a refusal — and
+        the two free-text steps carry the rule they are checked against.</p>
+      <p class="small" data-t="cfg.wizstep">Step 3 of 8</p>
+      <p class="small" data-t="cfg.tier">Tier — <span class="m">normative</span> is injected in
+        full, <span class="m">rationale</span> is counted in the session index and nothing
+        more.</p>
+      <div class="segbar" role="group" aria-label="tier">
+        <button aria-pressed="true">normative</button>
+        <button aria-pressed="false">rationale</button>
+      </div>
+      <div class="cmd">
+        <button data-t="cfg.wizback">Back</button>
+        <button data-t="cfg.wiznext">Next</button>
+      </div>
+      <div class="plate"></div>
     </div>
   </section>
 
@@ -3121,6 +3198,18 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       <button class="icon" id="paneclose" aria-label="Close" data-t-aria="aria.paneclose">✕</button>
     </div>
     <p class="small" id="panetitle"></p>
+
+    <!-- THE SUMMARY — plan:walk seq:119 phase 3, drawn here first and then built.
+         One plain sentence saying what the item IS, above the `<dl>` because it is
+         the first thing a reader needs and the six machine facts below are worth
+         nothing until they know what the item says. Absent renders as absent: all
+         three elements start `hidden`, and only what has content is unhidden.
+         `#panestale` is the staleness disclosure — a summary whose `summary_of` no
+         longer matches the item is shown, and shown AS stale. -->
+    <p class="itemsum" id="panesummary" hidden></p>
+    <p class="small summstale" id="panestale" hidden></p>
+    <div class="itemprops" id="paneprops" hidden></div>
+
     <dl>
       <dt data-t="pane.type">type</dt><dd class="m" id="panetype"></dd>
       <dt data-t="pane.status">status</dt><dd class="m" id="panestatus"></dd>

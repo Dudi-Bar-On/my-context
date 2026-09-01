@@ -304,6 +304,15 @@ const SCREEN_SELECTORS = [
   // renders against what the mockup declares, so a whole element the app never
   // built is invisible to it in both directions.
   '#pane', '#pane[hidden]', '#pane h3', '#pane dl', '#pane dt', '#panetitle',
+  // **The item summary, added 2026-09-01 with the block it styles** — this
+  // file's standing brief, "extend that test with every block you add", and
+  // the reason the block was written into the mockup first rather than into
+  // the stylesheet alone. `plan:walk seq:119` phase 3: the summary is the
+  // field that lets a reader understand an item without reading its body, and
+  // `.itemsum.stale` / `.rowsum.stale` are the disclosure that stops a summary
+  // the item has outgrown from being read as a current one.
+  '.itemsum', '.itemsum.stale', '.summstale',
+  '.itemprops', '.itemprops[hidden]', '.row.hassum', '.rowsum', '.rowsum.stale',
   // The audit stream's own seven (ui3 Task 11, mockup ~907-923). Added with
   // the carry, per this file's own standing brief — "Extend that test with
   // every block you add" — so the pulse, the token bar, the not-recorded void
@@ -371,6 +380,14 @@ const SCREEN_SELECTORS = [
   '.delta', '.delta .was', '.delta .will', '.delta .arrow',
   '.delta.gain', '.delta.loss',
   '.blast', '.blast.warn', '.blast.crit', '.blast b',
+  // **Configure's paste hand-off, carried 2026-09-01 (`plan:config seq:4`),
+  // and it went into the mockup FIRST.** The task's own words are *"as numbered
+  // steps rather than prose"*: the four steps happen in an order — open the
+  // file, put the block HERE, paste it, run this to confirm — and prose loses
+  // the order the moment a reader is halfway through it. Two rules, and both
+  // are logical rather than physical: `padding-inline-start` puts the markers
+  // on the correct side in Hebrew, which `padding-left` would not.
+  '.steps', '.steps li',
   // Wave-2 pre-work, 2026-08-23: the graphics the eight gap screens draw,
   // carried ahead of them because these screens already exist and open — an
   // agent building a heat map has to be able to look at one. Derived from

@@ -1348,6 +1348,13 @@ body>svg[aria-hidden="true"]{display:none}
 .cmd button:hover{border-color:var(--gold);color:var(--gold)}
 .cmdstate{display:flex;gap:6px;align-items:center;font-size:var(--fs-0);margin-block-start:5px}
 
+/* the paste hand-off — numbered, because "open the file, put it HERE, then run
+   this" is an ordered instruction and prose loses the order. `padding-inline-
+   start` rather than `padding-left` so the markers sit on the correct side in
+   Hebrew. */
+.steps{margin:var(--sp-2) 0 0;padding-inline-start:22px}
+.steps li{margin-block-end:var(--sp-3)}
+
 /* ── Execute: the one Copy-and-Execute control, and the confirm ────────────
    `lib/command-actions.js`, spec §3.2/§3.3/§6.1/§6.3. New selectors only —
    `styles-parity` holds every selector in its SCREEN_SELECTORS list
@@ -1568,6 +1575,36 @@ tr.regime .rw{display:flex;gap:9px;align-items:center}
   font-size:var(--fs-0);margin:var(--sp-2) 0}
 #pane dt{color:var(--dim)} #pane dd{margin:0}
 #panetitle{color:var(--ink)}
+/* ── THE ITEM SUMMARY — plan:walk seq:119 phase 3 ──────────────────────────
+   One plain sentence saying what an item IS, written for a reader who does not
+   know this codebase. It sits above the `<dl>` in the detail pane and under the
+   id in a list, and it is the one piece of corpus text in this product set in
+   the SANS face: everything around it — the id, the six `<dl>` values, the row
+   chips — is mono, and a summary in mono reads as machine output rather than as
+   the sentence it is.
+
+   `.itemsum.stale` and `.rowsum.stale` are the SECOND channel of the staleness
+   disclosure and never the only one. A summary whose `summary_of` no longer
+   matches its item is still shown — nothing here is dropped silently — but it
+   may not be shown as though it were current, so the word arrives with it: the
+   pane draws `#panestale` and a `.chip.warn`, and a row draws its own chip. The
+   rule and the colour are what a reader notices; the word is what survives
+   print, `forced-colors` and a monochrome screen.
+
+   `.itemprops` is a flex row and so needs its own `[hidden]`: the UA's
+   `[hidden]{display:none}` loses to any author rule that sets `display`, which
+   is the same reason `#pane[hidden]` is written out above. An item with no
+   properties worth a chip draws NO empty strip. */
+.itemsum{margin:0 0 var(--sp-2);font:var(--fs-1)/1.5 var(--sans);color:var(--ink)}
+.itemsum.stale{padding-inline-start:var(--sp-2);border-inline-start:2px solid var(--warn)}
+.summstale{margin:0 0 var(--sp-2);color:var(--warn)}
+.itemprops{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 var(--sp-2)}
+.itemprops[hidden]{display:none}
+.row.hassum{flex-wrap:wrap}
+.rowsum{order:1;flex-basis:100%;min-inline-size:0;margin-block-start:4px;text-align:start;
+  font:var(--fs-0)/1.45 var(--sans);color:var(--dim);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rowsum.stale{color:var(--warn)}
 
 .md{font-size:var(--fs-1);line-height:1.6}
 .md h1,.md h2,.md h3{font-size:var(--fs-2);margin:var(--sp-3) 0 var(--sp-1)}

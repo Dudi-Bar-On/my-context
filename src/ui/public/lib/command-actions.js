@@ -395,6 +395,43 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
     result.hidden = true;
     dismiss();
 
+    /**
+     * **THE WAIT IS SAID OUT LOUD, AND THE BUTTON IS DISARMED FOR ITS
+     * DURATION** — found 2026-09-01 from a red `e2e/execute.spec.ts:256`.
+     *
+     * The confirm GET is not a lookup. Since `plan:execute seq:5b` it DERIVES
+     * the effect by copying the whole corpus to a scratch directory and running
+     * the command there (`src/ui/execute-effect.ts` · `deriveEffect`), and that
+     * costs real seconds. Measured on `.demo-corpus` (804 files, 15 MB) on the
+     * owner's machine, `review promote-revision`, three runs:
+     *
+     *     total 5.1s / 6.4s / 7.3s   =  copy 1.8–2.5s
+     *                                +  child 2.7–2.8s
+     *                                +  snapshot/scan/rm ~1.8–2.1s
+     *
+     * Until this block existed, ALL of that happened behind a control that
+     * changed in no way whatsoever: no pending state, no disabled button,
+     * nothing in the result region. A reader pressed Execute and watched five
+     * to nine seconds of nothing, which is indistinguishable from a control
+     * that is broken — and `e2e/execute.spec.ts:256` recorded exactly that
+     * indistinguishability, failing with `Received string: "CopyExecute"` on a
+     * page where the request was simply still in flight.
+     *
+     * The disable is not decoration either. Execute stayed live for the whole
+     * wait, so an impatient second press started a SECOND full-corpus dry run
+     * and minted a SECOND nonce — on the one route this file calls "the
+     * security boundary", and the one whose whole design is that a nonce is
+     * minted by the GET that renders the confirm. One press, one mint.
+     *
+     * The sentence goes into `result`, which already carries `role="status"`,
+     * so a reader who is not watching the button is told as well as shown — the
+     * same standard the copy announcement is held to a few lines above. And it
+     * is CLEARED rather than left standing: on the answer, by the reset below;
+     * on a refusal, by the `say()` that replaces it with the reason.
+     */
+    exec.disabled = true;
+    say(...ctx.t('exec.checking'));
+
     // The nonce is minted HERE and nowhere else — by the GET that renders the
     // confirm — so a page that never rendered one cannot spend one.
     let answer;
@@ -403,7 +440,19 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
     } catch (error) {
       say(errorNote(message(error)));
       return;
+    } finally {
+      // Re-armed on BOTH paths, and in a `finally` so a refusal is a state a
+      // reader can leave by pressing the button again rather than a control
+      // that stays dead until the screen is redrawn.
+      exec.disabled = false;
     }
+
+    // The question the pending sentence asked has been answered, so it goes:
+    // left standing it would sit above the confirm still claiming to be
+    // checking, which is the same class of false statement as the blank the
+    // `exec.nochange` branch below exists to replace.
+    result.replaceChildren();
+    result.hidden = true;
 
     // **The SERVER's boundary flag, not the catalogue's copy of it.** Both are
     // derived from the same measurement, and consulting the client's would be a
