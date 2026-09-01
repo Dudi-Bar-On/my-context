@@ -152,13 +152,32 @@ interface BandModule {
   CONTEXT_FILL_WARN_PERCENT: number;
   CONTEXT_FILL_CRIT_PERCENT: number;
   CONTEXT_SAMPLE_FRESH_MS: number;
+  /**
+   * The FOUR used-of-maximum levels, and the bar and count formatter that
+   * present them. Lifted here from this file in phase 2, 2026-09-01 — see
+   * `usageLevelOf` below for what that seam was and why it closed.
+   */
+  usageLevelOf: (pct: unknown) => string | null;
+  USAGE_CAUTION_PERCENT: number;
+  USAGE_WARNING_PERCENT: number;
+  USAGE_CRITICAL_PERCENT: number;
+  usageBar: (pct: unknown) => string;
+  BAR_FILL: string;
+  BAR_EMPTY: string;
+  BAR_CELLS: number;
+  fmtCount: (n: unknown) => string;
 }
 
 async function loadBands(): Promise<BandModule | null> {
   try {
     const mod = (await import(LEVEL_SOURCE)) as Partial<BandModule>;
     if (typeof mod.occupancyLevel !== 'function' || typeof mod.occupancyBands !== 'function'
-        || typeof mod.fillLevel !== 'function' || typeof mod.askHeadroom !== 'function') {
+        || typeof mod.fillLevel !== 'function' || typeof mod.askHeadroom !== 'function'
+        // The phase-2 arrivals are checked here too, so a `viewmodel.js` that
+        // predates the lift is refused as a shape rather than answering
+        // `undefined` four calls later.
+        || typeof mod.usageLevelOf !== 'function' || typeof mod.usageBar !== 'function'
+        || typeof mod.fmtCount !== 'function') {
       return null;
     }
     return mod as BandModule;
@@ -273,6 +292,35 @@ export interface Ink {
 /**
  * **THE PALETTE, RE-DERIVED FOR FOREGROUND USE — 2026-09-01.**
  *
+ * ── PALETTE TRIAL, 2026-09-01: the generator's four level colours ─────────
+ *
+ * Adopted ON TRIAL by owner ruling, in lockstep with `styles.css` — if the two
+ * surfaces held different hues for one level they would disagree about what
+ * `warning` looks like, which is the defect the shared band function exists to
+ * prevent, one layer up. **Reverting is these four numbers:**
+ *
+ *     level      WAS  (ours)                NOW  (generator, approximated)
+ *     safe       115  #87d7af  12.37:1      41   #00d75f  10.89:1   want #22c55e
+ *     caution    179  #d7af5f  10.19:1      178  #d7af00  10.02:1   want #eab308
+ *     warning    173  #d7875f   7.52:1      166  #d75f00   5.53:1   want #f97316
+ *     critical   174  #d78787   7.70:1      203  #ff5f5f   7.05:1   want #ef4444
+ *
+ * **THE APPROXIMATION IS THE COST OF 256 COLOURS AND IT IS STATED, NOT HIDDEN.**
+ * ΔE76 from the web's exact hex to the nearest xterm index: safe 11.1, caution
+ * 7.2, warning 10.4, critical 10.1. Every one of those is a visible shift —
+ * roughly the distance at which two colours become tellable apart — so the two
+ * surfaces are near neighbours here rather than the same colour, which is the
+ * same honest approximation this table has always been. What must agree between
+ * them is WHICH BAND a number is in, and that is derived from one function, not
+ * chosen here. `#22c55e` is the loosest fit, as the cube's greens are sparse.
+ *
+ * **Contrast on a black terminal moved, and one figure moved down.** `warning`
+ * goes 7.52:1 -> 5.53:1. It still clears WCAG AA's 4.5:1 comfortably and it is
+ * still not the only carrier — the icon and the label carry the level too — but
+ * it is the lowest number on this bar and worth knowing before the trial is
+ * made permanent. Adjacent-band separation improved: the worst pair goes from
+ * ΔE 21.6 to 36.0.
+ *
  * Dropping the powerline frame inverted every one of these. They used to be
  * BACKGROUNDS with near-black text on them, and the contrast that mattered was
  * black-on-hue; they are now the INK the text itself is drawn in, and the
@@ -309,22 +357,41 @@ const INK = {
    * (8.8 against 9.6). The old choice was right for the old job.
    */
   carry: { fg: 111 },
-  /** The project name. Light grey — 13.62:1, the brightest non-meaning ink. */
-  project: { fg: 252 },
-  /** The branch. Dimmer than the project on purpose, and still 6.08:1. */
-  branch: { fg: 245 },
-  /** `--ok` — calm. 12.37:1. */
-  ok: { fg: 115 },
-  /** `--warn` — amber, approaching the ask with room to act. 7.52:1. */
-  warn: { fg: 173 },
-  /** `--crit` — the window is nearly full. 7.70:1. */
-  crit: { fg: 174 },
+  /**
+   * The project and the branch — `--carry`, the same blue the strip gives
+   * every unlevelled value since the owner's ruling of 2026-09-01.
+   *
+   * They were greys (252 and 245). The strip's rule is that white means a
+   * NAME, blue means a FACT and the four hues mean a VERDICT; leaving these
+   * grey here would have the two surfaces disagreeing about a register the
+   * owner had just set, which is the drift the shared band function exists to
+   * prevent one layer up. NEUTRAL IDENTITY, never severity: a repository is
+   * not good or bad.
+   *
+   * The distinction the two greys carried — the branch dimmer than the project
+   * — is not lost, it moves: the LABELS `REPO` and `BRANCH` say which is which
+   * in words, which they did not before the labels ruling.
+   *
+   * **The numbers, since the move makes one of them dimmer.** 252 measured
+   * 13.62:1 on black and 245 measured 6.08:1; 111 measures 9.61:1. So the
+   * project name is dimmer than it was and the branch is brighter, and the
+   * brightest non-meaning ink on the bar is now the LABEL rather than a value
+   * — which is the right way round once white means "this is a name".
+   */
+  project: { fg: 111 },
+  branch: { fg: 111 },
+  /** `--ok` — calm. The generator's #22c55e at its nearest neighbour. 10.89:1. */
+  ok: { fg: 41 },
+  /** `--warn` — orange, approaching the ask with room to act. #f97316. 5.53:1. */
+  warn: { fg: 166 },
+  /** `--crit` — the window is nearly full. #ef4444. 7.05:1. */
+  crit: { fg: 203 },
   /**
    * `--gold` — the `caution` band since the owner's ruling of 2026-09-01.
    * 10.19:1. No sixth colour is invented
    * (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`).
    */
-  gold: { fg: 179 },
+  gold: { fg: 178 },
   /** `--dim` — NOT a level: stale, unmeasurable, or nothing to band against. */
   neutral: { fg: 145 },
   /**
@@ -419,110 +486,56 @@ export function absoluteFillLevel(percent: number, ageMs = 0): 'ok' | 'warn' | '
   return null;
 }
 
-/* ╔═══════════════════════════════════════════════════════════════════════╗
- * ║  PHASE 2 · LIFT THIS BLOCK INTO `src/ui/public/lib/viewmodel.js`       ║
- * ╚═══════════════════════════════════════════════════════════════════════╝
+/* ══ THE FOUR USED-OF-MAXIMUM LEVELS — READ, NEVER RESTATED ═══════════════
  *
- * **THIS IS A DELIBERATE, DATED, TEMPORARY SEAM. Read the whole note before
- * touching it, and do not "tidy" it by declaring these numbers anywhere else.**
+ * **PHASE 2 LANDED ON 2026-09-01 AND THIS IS WHAT IS LEFT OF THE SEAM.**
  *
- * ── THE RULING ─────────────────────────────────────────────────────────────
+ * The three boundaries and the banding function lived here for exactly one
+ * phase, fenced and dated, because extending `fillLevel`'s return set without
+ * its `app.js` consumers would have sent the web strip's context figure and
+ * both rate chips grey and LABELLED a `caution` window "comfortable" — a false
+ * verdict on a surface, produced by a change confined to one file.
  *
- * Owner, 2026-09-01, after reviewing a published statusline generator: *"use
- * our data and its visual ideas, the colours for the levels the icons"*, and —
- * the half that is easy to under-read — *"use the same controls for every
- * field that displays amount used from maximum available for context,
- * handover, used 5h, used 7d etc"*. So this is not a context-bar feature. It
- * is a treatment applied to EVERY used-of-maximum field on the bar, and the
- * three-band ok/warn/crit split becomes FOUR:
+ * They now live in `src/ui/public/lib/viewmodel.js` beside `fillLevel`, both
+ * surfaces read them from there, and `test/cli/statusline-levels.test.ts`'s
+ * TRIPWIRE — which failed the moment that file declared them — is what made
+ * the move impossible to forget. There is no copy of 60, 70 or 80 in this
+ * file and no copy of the comparison either.
  *
- *     safe       0-60    no icon    --ok      calm
- *     caution   60-70    warning    --gold    worth knowing
- *     warning   70-80    diamond    --warn    act soon
- *     critical    80+    skull      --crit    act now
- *
- * ── WHY IT IS HERE AND NOT IN viewmodel.js, WHICH IS WHERE IT BELONGS ──────
- *
- * It belongs in `lib/viewmodel.js`, beside `fillLevel`, and it will be moved
- * there. It is here for one measured reason: `fillLevel` currently answers
- * `'ok' | 'warn' | 'crit' | 'stale' | null`, and THREE places in
- * `src/ui/public/app.js` gate on exactly those names —
- *
- *   `ctxFigureLevel`   `… ? level : 'unmeas'`   -> context figure goes GREY
- *   `rateLimitParts`   the same ternary         -> both rate chips go GREY
- *   `fillChip`         `if crit / else if warn / else` -> falls into the ELSE,
- *                      taking an undeclared CSS class and appending
- *                      `strip.fillOk` — so a window in the new `caution` band
- *                      would be LABELLED "comfortable" on the web.
- *
- * The third is not a degradation, it is a FALSE VERDICT ON A SURFACE, produced
- * by a change confined entirely to `viewmodel.js`. Extending the shared
- * contract therefore cannot land without its consumers, their four CSS
- * modifiers, and a fourth `strip.fill*` / `title.fill*` pair in BOTH string
- * tables — files owned by another lane on the day this was written.
- *
- * ── SO: PHASE 1 IS THE TERMINAL, PHASE 2 IS THE CONTRACT ───────────────────
- *
- * Phase 1 (this) puts the four levels on the terminal bar only. Phase 2 moves
- * the three constants and `usageLevelOf` below into `viewmodel.js` VERBATIM —
- * the lift drops four TypeScript annotations and changes not one character of
- * logic — repoints this file at them through the existing `BANDS` bridge, and
- * updates the three `app.js` consumers in the same step.
- *
- * **The window between the phases is a KNOWN divergence, not a hidden one.**
- * For its duration the terminal bands a used-of-max figure in four levels and
- * the web strip bands the context figure in three. That is the defect class
- * this project has measured eight times, so it is (a) dated, (b) bounded to
- * one named phase, and (c) held by `test/cli/statusline-levels.test.ts`'s
- * TRIPWIRE, which fails the moment `viewmodel.js` gains any of these three
- * names — that is, the moment phase 2 begins — so the restatement cannot
- * outlive its own reason for existing (`INV-nothing-is-dropped-silently`).
+ * The bar characters and the count formatter moved with them, for the same
+ * reason and to the same place: a bar whose filled-cell count differed between
+ * the terminal and the browser would be two answers to one number.
  */
-
-/**
- * The three boundaries, in percentage points of whatever maximum the field is
- * measured against. ABSOLUTE, and never derived from the handover threshold —
- * that is `occupancyLevel`'s job and it answers a different question.
- *
- * `USAGE_CAUTION_PERCENT` is 60, which is `CONTEXT_FILL_WARN_PERCENT`'s value
- * today; the two are pinned equal BY TEST rather than assumed, so the web's 60
- * moving drags this one's assertion with it instead of parting silently.
- *
- * `USAGE_CRITICAL_PERCENT` is 80 while `CONTEXT_FILL_CRIT_PERCENT` is 85 —
- * this boundary MOVED, by the owner's table, and 80-85 is banded `critical`
- * here where the old scale called it `crit` only five points later. Written
- * down because a boundary that moves in silence is the exact thing the block
- * above exists to prevent.
- */
-export const USAGE_CAUTION_PERCENT = 60;
-export const USAGE_WARNING_PERCENT = 70;
-export const USAGE_CRITICAL_PERCENT = 80;
 
 /** The four bands, safest first. Ordered, because the order is the meaning. */
 export type UsageLevel = 'safe' | 'caution' | 'warning' | 'critical';
 
 /**
- * The band a used-of-maximum percentage falls in — pure, total, and the whole
- * of the ruling's arithmetic.
+ * The band a used-of-maximum percentage falls in — the web's own
+ * `usageLevelOf`, through the same bridge the other bands come through.
  *
- * `>=` on every boundary, so a figure sitting exactly on 80 is `critical`
- * rather than one step below it — the convention `fillLevel` already uses,
- * kept identical so a reader who has learned one has learned both.
- *
- * `null` when there is no percentage to band. NOT clamped at 100: a field can
- * genuinely exceed its maximum — a context percentage past the handover
- * threshold does — and it is still `critical` there. Clamping belongs to the
- * BAR, which has only ten cells, and never to the verdict.
+ * `null` when there is nothing to band OR when the shared module did not load,
+ * which is the degradation every other reader of it takes: the caller draws
+ * the neutral block rather than guessing a green.
  */
 export function usageLevelOf(pct: number): UsageLevel | null {
-  if (typeof pct !== 'number' || !Number.isFinite(pct)) return null;
-  if (pct >= USAGE_CRITICAL_PERCENT) return 'critical';
-  if (pct >= USAGE_WARNING_PERCENT) return 'warning';
-  if (pct >= USAGE_CAUTION_PERCENT) return 'caution';
-  return 'safe';
+  if (BANDS === null) return null;
+  const level = BANDS.usageLevelOf(pct);
+  if (level === 'safe' || level === 'caution' || level === 'warning' || level === 'critical') {
+    return level;
+  }
+  return null;
 }
 
-/* ╚══════════════ END OF THE BLOCK PHASE 2 LIFTS ═════════════════════════╝ */
+/** The three boundaries, for anything that wants to name them. `null` when the shared module did not load. */
+export function usageBands(): { caution: number; warning: number; critical: number } | null {
+  return BANDS === null ? null : {
+    caution: BANDS.USAGE_CAUTION_PERCENT,
+    warning: BANDS.USAGE_WARNING_PERCENT,
+    critical: BANDS.USAGE_CRITICAL_PERCENT,
+  };
+}
+
 
 /**
  * The band, with the SHARED staleness refusal applied on top.
@@ -543,51 +556,25 @@ export function usageLevel(pct: number, ageMs = 0): UsageLevel | 'stale' | null 
 }
 
 /**
- * **THE BAR, AND THE ONE CONSTANT PAIR THAT CHOOSES ITS STYLE.**
+ * **THE BAR — the web's `usageBar`, `BAR_FILL` and `BAR_EMPTY`, re-exported.**
  *
- * **`▰` and `▱` — U+25B0 and U+25B1, from the owner's own reference.**
+ * The owner named `▓▓▓░░░` and `■■■□□□` in the abstract, then wrote
+ * `▰▰▰▰▰▱▱▱▱▱` twice in the reference they drew; the drawn thing won. The
+ * characters moved into `lib/viewmodel.js` with the levels in phase 2, so a
+ * bar's FILLED COUNT is one fact on both surfaces rather than two that happen
+ * to match. Ten cells, and every character one display column — asserted by
+ * the width tests, not assumed.
  *
- * The owner named `▓▓▓░░░` and `■■■□□□` as styles they liked in the abstract,
- * and then wrote `▰▰▰▰▰▱▱▱▱▱` twice in the reference they actually drew. The
- * drawn thing wins over the named thing: a style named in passing is a
- * preference, a style written into a mock-up twice is a specification.
- *
- * This is the third pair these constants have held and the change cost one
- * line each time, which is the whole reason they were extracted rather than
- * inlined. Ten cells throughout, as every version of the reference shows.
- *
- * Every character here is one display cell — asserted by the width tests, not
- * assumed — so the bar costs exactly `BAR_CELLS` columns whatever the figure
- * is, which is what lets a reader compare two bars by eye without reading
- * either number.
+ * `null`-safe fallbacks: if the shared module did not load, the terminal draws
+ * an unfilled bar of the right width rather than an empty string, because a
+ * bar that is sometimes zero cells wide breaks every alignment on the row.
  */
-export const BAR_FILL = '▰';
-export const BAR_EMPTY = '▱';
-export const BAR_CELLS = 10;
+export const BAR_FILL: string = BANDS?.BAR_FILL ?? '▰';
+export const BAR_EMPTY: string = BANDS?.BAR_EMPTY ?? '▱';
+export const BAR_CELLS: number = BANDS?.BAR_CELLS ?? 10;
 
-/**
- * `pct` drawn as `BAR_CELLS` cells.
- *
- * CLAMPED at both ends, and this is the one place clamping is right: a field
- * past its maximum — a context figure past the handover threshold — has no
- * eleventh cell to fill, and a negative percentage has no cell to empty. The
- * VERDICT is not clamped (`usageLevelOf` still answers `critical`) and the
- * NUMBER beside the bar is not clamped either, so nothing about the fact is
- * lost at the picture's edge.
- *
- * Rounded to the nearest cell rather than floored: a floor draws an empty bar
- * for everything under 5%, and "almost none" and "none" are different facts
- * (`STD-a-measured-zero-is-drawn-and-named`, in the register of a picture).
- */
 export function usageBar(pct: number): string {
-  // **A NON-FINITE FIGURE DRAWS AN EMPTY BAR, NOT AN EMPTY STRING.** Caught by
-  // its own test rather than in the field: `Math.round(NaN)` is NaN, both
-  // clamps pass it straight through, and `repeat(NaN)` is `''` — so the block
-  // would have rendered ZERO cells wide where every other block renders ten,
-  // and the one thing this bar guarantees is that a bar is always the same
-  // width so two of them can be compared by eye. There is no figure to draw,
-  // so the picture is empty; the LEVEL beside it is `null` and therefore
-  // carries no icon and no hue, which is what says the reading is missing.
+  if (BANDS !== null) return BANDS.usageBar(pct);
   const exact = Number.isFinite(pct) ? (pct / 100) * BAR_CELLS : 0;
   const filled = Math.max(0, Math.min(BAR_CELLS, Math.round(exact)));
   return BAR_FILL.repeat(filled) + BAR_EMPTY.repeat(BAR_CELLS - filled);
@@ -1007,26 +994,15 @@ export function usedOfMaxSegment(f: UsedOfMax): Segment {
 }
 
 /**
- * `549009` as `549,009` — the count in FULL, grouped in threes.
+ * `549009` as `549,009` — the web's own `fmtCount`, re-exported.
  *
- * **Abbreviated until 2026-09-01, and the owner's reference settles it:**
- * `(90,000 / 200,000)`, not `(90.0k / 200.0k)`. The abbreviation was chosen
- * for width when five fields shared one row; the third row bought the columns
- * back, so the reason to round is gone and the rounding with it. `648.3k` is
- * also a number a reader cannot check against anything — `648,317` is the
- * figure Claude Code itself reports.
- *
- * Grouped by hand rather than through `Intl.NumberFormat`, which is
- * LOCALE-DEPENDENT: on a machine set to de-DE it would render `648.317`, and a
- * status line that changes its punctuation with the user's regional settings
- * is a status line whose tests pass on one developer's machine. The separator
- * is a comma because the owner's reference uses one.
+ * Owner's reference: `(90,000 / 200,000)`, not `(90.0k / 200.0k)`. It moved
+ * into `lib/viewmodel.js` with the levels in phase 2 so the two surfaces
+ * cannot punctuate one number two ways. `'?'` when the shared module did not
+ * load, which is visibly not-a-number rather than a wrong one.
  */
 export function fmtCount(n: number): string {
-  if (!Number.isFinite(n)) return '?';
-  const whole = Math.round(Math.abs(n));
-  const grouped = String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return n < 0 ? `-${grouped}` : grouped;
+  return BANDS === null ? '?' : BANDS.fmtCount(n);
 }
 
 /**
@@ -1369,7 +1345,8 @@ export function lastAuditSegment(last: LastAudit | null, now: number): Segment |
   return {
     text: `${last.op} ·${ago}`,
     label: FIELD_NAME['last-audit'],
-    ink: stale ? INK.warn : INK.neutral,
+    // Blue while it is merely a fact; `warn` once it IS the finding.
+    ink: stale ? INK.warn : INK.carry,
     give: GIVE.lastAudit,
     field: 'last-audit',
   };
@@ -1711,7 +1688,7 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   if (named !== null) {
     identity.push({
       text: named, label: FIELD_NAME['session-name'],
-      ink: INK.project, give: GIVE.sessionName, field: 'session-name',
+      ink: INK.carry, give: GIVE.sessionName, field: 'session-name',
     });
   }
 
@@ -1720,7 +1697,9 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   if (input.focus !== null && input.focus.trim() !== '') {
     identity.push({
       text: focusText(input.focus), label: FIELD_NAME['focus'],
-      ink: INK.neutral, give: GIVE.focus, field: 'focus',
+      // An unlevelled VALUE, so `--carry` and not `--dim`: dim means "no
+      // verdict here" and is reserved for stale and unmeasurable states.
+      ink: INK.carry, give: GIVE.focus, field: 'focus',
     });
   }
 
@@ -1784,7 +1763,7 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
       state.push({
         text: `${approx}${fmtK(input.myctx.tokens)}`,
         label: FIELD_NAME['myctx'],
-        ink: INK.project,
+        ink: INK.carry,
         give: GIVE.myctxShare,
         field: 'myctx',
       });
@@ -1824,7 +1803,7 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
     state.push({
       text: [cost, warm].filter((part) => part !== null).join(' · '),
       label: FIELD_NAME['cost-cache'],
-      ink: INK.project,
+      ink: INK.carry,
       give: GIVE.costCache,
       field: 'cost-cache',
     });
@@ -1844,7 +1823,7 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   if (ran !== null) {
     state.push({
       text: ran, label: FIELD_NAME['elapsed'],
-      ink: INK.neutral, give: GIVE.elapsed, field: 'elapsed',
+      ink: INK.carry, give: GIVE.elapsed, field: 'elapsed',
     });
   }
 

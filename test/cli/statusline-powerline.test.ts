@@ -27,11 +27,11 @@ import {
   ASK_GLYPH, FIELD_JOIN, FIELD_SEP,
   DEFAULT_EFFORT, ELLIPSIS_SEGMENT, GIVE, LEVEL_GLYPH, LEVEL_SOURCE, NO_EXTRAS,
   PALETTE, LEVEL_ICON, usageBar, usageLevelOf,
-  USAGE_CAUTION_PERCENT, USAGE_CRITICAL_PERCENT, USAGE_WARNING_PERCENT,
   absoluteFillLevel, askSegment, bandsAreDerived, bandsFor, buildSegments, colourAllowed,
   fillBands,
   contextSegment, displayWidth, fitSegments, freshMs, gitBranch, levelFor, modelSegment,
   payloadExtras, rateLimitSegment, renderPowerline, until, centreOffset, segmentWidth,
+  usageBands,
   BAR_FILL,
   buildLines, renderStatusLine, FOCUS_MAX, lastAuditSegment, since,
   type ModelModes, type PowerlineInput, type Segment,
@@ -235,10 +235,10 @@ test('the context block changes colour as the window fills, and carries an icon 
   // This test used to read `FILL_WARN`/`FILL_CRIT` — the web's absolute pair —
   // because the block had two boundaries. The used-of-maximum ruling gives it
   // three, and they are `USAGE_*`'s until phase 2 moves them to viewmodel.js.
-  const safe = ctxInk(USAGE_CAUTION_PERCENT - 0.1);
-  const caution = ctxInk(USAGE_CAUTION_PERCENT);
-  const warning = ctxInk(USAGE_WARNING_PERCENT);
-  const critical = ctxInk(USAGE_CRITICAL_PERCENT);
+  const safe = ctxInk(BANDS.caution - 0.1);
+  const caution = ctxInk(BANDS.caution);
+  const warning = ctxInk(BANDS.warning);
+  const critical = ctxInk(BANDS.critical);
   const stale = contextSegment({ state: 'unmeasurable', why: 'stale' }).ink.fg;
 
   assert.equal(new Set([safe, caution, warning, critical, stale]).size, 5,
@@ -452,7 +452,7 @@ test('with colour off it is the same text and not one escape byte', () => {
   assert.equal(plain, ['MODEL Opus 5', 'REPO test_mycontext_plugin',
     'BRANCH campaign/my-context-test',
     `ASK ${usageBar(42 / 98 * 100)} 43% (42.0 / 98) ·+56.0`,
-    `WINDOW ${usageBar(42)} 42.0% (420,000 / 1,000,000)`,
+    `WINDOW ${usageBar(42)} 42.0% (420.0k / 1.0M)`,
   ].join(FIELD_JOIN));
 });
 
@@ -720,14 +720,14 @@ test('the bar is three lines: identity, this window, then the account', () => {
   // which is the comparison the owner actually performs.
   assert.deepEqual(window.map((seg) => `${seg.label} ${seg.text}`), [
     'ASK ▰▰▰▰▱▱▱▱▱▱ 43% (42.0 / 98) ·+56.0',
-    'WINDOW ▰▰▰▰▱▱▱▱▱▱ 42.0% (420,000 / 1,000,000)',
+    'WINDOW ▰▰▰▰▱▱▱▱▱▱ 42.0% (420.0k / 1.0M)',
   ]);
   // Line 3 is the ACCOUNT and the ledger: the two rate windows, the myctx
   // share — banded since the owner's ruling — and the cost.
   assert.deepEqual(account.map((seg) => `${seg.label} ${seg.text}`), [
     '7D ▰▰▰▰▰▱▱▱▱▱ 49%',
     '5H ▰▱▱▱▱▱▱▱▱▱ 12%',
-    'MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6,200 / 1,000,000)',
+    'MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)',
     'COST $0.42',
   ]);
   // The anchor is on the WINDOW row, and neither other row has one — there is
@@ -936,10 +936,13 @@ test('an audit log that has gone quiet is MARKED, against the shared freshness c
   const at = (ageMs: number): string =>
     new Date(NOW - ageMs).toISOString();
 
-  // Inside the window: neutral. Nothing is being claimed except the age.
+  // Inside the window: `--carry`, the blue every UNLEVELLED VALUE wears since
+  // the owner's ruling of 2026-09-01. Nothing is being claimed except the age,
+  // and blue is this bar's spelling of "a fact, not a verdict" — `--dim` is
+  // reserved for the states that are NOT a level at all.
   assert.equal(
     lastAuditSegment({ state: 'known', op: 'jit', at: at(fresh! - 60_000) }, NOW)?.ink.fg,
-    PALETTE['neutral']?.fg,
+    PALETTE['carry']?.fg,
   );
   // Past it: warn. The threshold is NOT spelled here — it is
   // `CONTEXT_SAMPLE_FRESH_MS`, the same constant that decides a context sample
@@ -987,13 +990,13 @@ test('the blocks that have nothing to say are absent, and the ones that do are p
     // the owner's ruling, and that is asserted on the next line rather than
     // hidden by choosing an input that avoids it.
     line({ model: null, project: null, branch: null, threshold: null }),
-    `WINDOW ${usageBar(42)} 42.0% (420,000 / 1,000,000)`,
+    `WINDOW ${usageBar(42)} 42.0% (420.0k / 1.0M)`,
     'a session with no model, no project and no branch is one block, not three empty ones',
   );
   assert.equal(
     line({ model: null, project: null, branch: null }),
     `ASK ${usageBar(42 / 98 * 100)} 43% (42.0 / 98) ·+56.0`
-      + `${FIELD_JOIN}WINDOW ${usageBar(42)} 42.0% (420,000 / 1,000,000)`,
+      + `${FIELD_JOIN}WINDOW ${usageBar(42)} 42.0% (420.0k / 1.0M)`,
     'a configured ask always states its distance, even on an otherwise empty bar',
   );
   assert.match(line({ teeNote: 'tee not written (disk full)' }), /tee not written \(disk full\)/);
@@ -1004,9 +1007,9 @@ test('the blocks that have nothing to say are absent, and the ones that do are p
   // NUMERATOR — some injection records carry no frozen estimate, so the true
   // share is at least this — and that is a fact about the count, not the bar.
   assert.match(line({ myctx: { tokens: 6200, injections: 3, unrecorded: 0 } }),
-    /MYCTX [▱▰]{10} 0\.6% \(6,200 \/ 1,000,000\)/);
+    /MYCTX [▱▰]{10} 0\.6% \(6\.2k \/ 1\.0M\)/);
   assert.match(line({ myctx: { tokens: 6200, injections: 3, unrecorded: 2 } }),
-    /MYCTX ≥ [▱▰]{10} 0\.6% \(6,200 \/ 1,000,000\)/);
+    /MYCTX ≥ [▱▰]{10} 0\.6% \(6\.2k \/ 1\.0M\)/);
   // **SUPERSEDED CLAIM, restated to the ruling that replaced it.** This used
   // to assert "the context block is LAST whatever else is disclosed". Since
   // the owner centred it on 2026-08-31 it is the ANCHOR, with the disclosures
@@ -1097,6 +1100,15 @@ test('the separator is the real powerline glyph and the caps are not private-use
  * -------------------------------------------------------------------- */
 
 /** A payload shaped as build 2.1.239 sends it, with every optional group present. */
+/**
+ * The four-level boundaries, READ from the shared module rather than typed
+ * here. They moved into `lib/viewmodel.js` in phase 2 (2026-09-01); a literal
+ * in a test is the same defect as a literal in the renderer, one step further
+ * from where anyone would look for it.
+ */
+const BANDS = usageBands()!;
+assert.ok(BANDS !== null, 'the shared band module did not load');
+
 const NOW = Date.UTC(2026, 7, 31, 12, 0, 0);
 function fullPayload(): Record<string, unknown> {
   return {
@@ -1175,12 +1187,12 @@ test('a rate-limit window is banded by the SAME function the context fill is', (
   // the rate windows are banded by the SAME function the context figure is, so
   // there is exactly one place in this product where a used-of-max percentage
   // becomes a colour.
-  assert.equal(ink(USAGE_CAUTION_PERCENT - 0.1), PALETTE['ok']?.fg);
-  assert.equal(ink(USAGE_CAUTION_PERCENT), PALETTE['gold']?.fg);
-  assert.equal(ink(USAGE_WARNING_PERCENT), PALETTE['warn']?.fg);
-  assert.equal(ink(USAGE_CRITICAL_PERCENT), PALETTE['crit']?.fg);
-  assert.equal(ink(USAGE_CAUTION_PERCENT), contextSegment({
-    state: 'known', percent: USAGE_CAUTION_PERCENT, ageMs: 0,
+  assert.equal(ink(BANDS.caution - 0.1), PALETTE['ok']?.fg);
+  assert.equal(ink(BANDS.caution), PALETTE['gold']?.fg);
+  assert.equal(ink(BANDS.warning), PALETTE['warn']?.fg);
+  assert.equal(ink(BANDS.critical), PALETTE['crit']?.fg);
+  assert.equal(ink(BANDS.caution), contextSegment({
+    state: 'known', percent: BANDS.caution, ageMs: 0,
     usedTokens: 600_000, windowSize: 1_000_000,
   }).ink.fg, 'one function, one colour, two fields');
 
@@ -1288,10 +1300,10 @@ test('the whole bar, from a real payload shape, with every group present', () =>
     'MODEL Opus 5 high think', 'REPO test_mycontext_plugin',
     'BRANCH campaign/my-context-test',
     'ASK ▰▰▰▰▱▱▱▱▱▱ 43% (42.0 / 98) ·+56.0',
-    'WINDOW ▰▰▰▰▱▱▱▱▱▱ 42.0% (420,000 / 1,000,000)',
+    'WINDOW ▰▰▰▰▱▱▱▱▱▱ 42.0% (420.0k / 1.0M)',
     '7D ▰▰▰▰▰▱▱▱▱▱ 49% ·1d4h',
     '5H ▰▱▱▱▱▱▱▱▱▱ 12% ·3h12m',
-    'MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6,200 / 1,000,000)',
+    'MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)',
     'COST $0.42 · warm 99.1%',
     // The elapsed clock the owner's reference closes on. `total_duration_ms`
     // is 1000 in this payload, which is under a minute and therefore `now`.
@@ -1371,7 +1383,7 @@ test('the line gives itself up in the order the owner ranked, not by width', () 
   // gives itself up in, never the widths at which it does.
   const D7 = '7D ▰▰▰▰▰▱▱▱▱▱ 49% ·1d4h';
   const H5 = '5H ▰▱▱▱▱▱▱▱▱▱ 12% ·3h12m';
-  const MY = 'MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6,200 / 1,000,000)';
+  const MY = 'MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)';
   assert.ok(!at(195).includes('COST $0.42 · warm 99.1%'), 'cost and cache go first');
   assert.ok(at(195).includes(D7));
   assert.ok(!at(170).includes(MY), 'the share goes before the windows');

@@ -414,6 +414,15 @@ export function payloadExtras(payload: unknown): {
   fiveHour: RateLimit | null;
   sevenDay: RateLimit | null;
   costUsd: number | null;
+  /**
+   * `cost.total_duration_ms` — how long this session has been running.
+   *
+   * Read from the object this function already opens for the spend, and read
+   * only since 2026-09-01: the owner's reference for the restyled bar ends
+   * `… │ 1h 24m`, and this is the field it comes from. It has been in every
+   * captured payload all along; nothing had asked for it.
+   */
+  elapsedMs: number | null;
   warmPercent: number | null;
   sessionName: string | null;
 } {
@@ -457,6 +466,7 @@ export function payloadExtras(payload: unknown): {
     fiveHour: window(limits?.['five_hour']),
     sevenDay: window(limits?.['seven_day']),
     costUsd: num(obj(p['cost'])?.['total_cost_usd']),
+    elapsedMs: num(obj(p['cost'])?.['total_duration_ms']),
     warmPercent,
     // Read here rather than beside the model, because it is a fact about the
     // SESSION and not about the model: two windows on one model and one repo

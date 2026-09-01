@@ -18,14 +18,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  BAR_CELLS, BAR_EMPTY, BAR_FILL, LEVEL_ICON, LEVEL_INK, PALETTE,
-  USAGE_CAUTION_PERCENT, USAGE_CRITICAL_PERCENT, USAGE_WARNING_PERCENT,
+  BAR_CELLS, BAR_EMPTY, BAR_FILL, LEVEL_ICON, LEVEL_INK, PALETTE, usageBands,
   askSegment, buildLines, buildSegments, contextSegment, displayWidth, fmtCount, rateLimitSegment,
   renderPowerline, renderStatusLine, usageBar, usageLevelOf, usedOfMaxSegment,
   type OccupancyView, type PowerlineInput, type Segment, type UsageLevel,
 } from '../../src/cli/commands/statusline-powerline.ts';
 import { NO_BLINK_ENV, ONE_LINE_ENV, statusLineText } from '../../src/cli/commands/statusline.ts';
 
+const TERMINAL = path.join(
+  import.meta.dirname, '..', '..', 'src', 'cli', 'commands', 'statusline-powerline.ts',
+);
 const VIEWMODEL = path.join(
   import.meta.dirname, '..', '..', 'src', 'ui', 'public', 'lib', 'viewmodel.js',
 );
@@ -33,6 +35,20 @@ const web = await import(new URL(`file://${VIEWMODEL.split(path.sep).join('/')}`
   CONTEXT_FILL_WARN_PERCENT: number;
   CONTEXT_FILL_CRIT_PERCENT: number;
 };
+
+/**
+ * The four-level boundaries, READ from the shared module rather than typed
+ * here. They moved into `lib/viewmodel.js` in phase 2 (2026-09-01); a literal
+ * in a test is the same defect as a literal in the renderer, one step further
+ * from where anyone would look for it.
+ */
+const BANDS = usageBands()!;
+assert.ok(BANDS !== null, 'the shared band module did not load');
+
+/** Source with comments removed, so a name in prose is not read as a declaration. */
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
+}
 
 const LEVELS: UsageLevel[] = ['safe', 'caution', 'warning', 'critical'];
 
@@ -53,12 +69,12 @@ test('four bands, and the boundary belongs to the band above it', () => {
   // reader who has learned one has learned both. A figure sitting exactly on
   // 80 is `critical` and not one step below it.
   assert.equal(usageLevelOf(0), 'safe');
-  assert.equal(usageLevelOf(USAGE_CAUTION_PERCENT - 0.1), 'safe');
-  assert.equal(usageLevelOf(USAGE_CAUTION_PERCENT), 'caution');
-  assert.equal(usageLevelOf(USAGE_WARNING_PERCENT - 0.1), 'caution');
-  assert.equal(usageLevelOf(USAGE_WARNING_PERCENT), 'warning');
-  assert.equal(usageLevelOf(USAGE_CRITICAL_PERCENT - 0.1), 'warning');
-  assert.equal(usageLevelOf(USAGE_CRITICAL_PERCENT), 'critical');
+  assert.equal(usageLevelOf(BANDS.caution - 0.1), 'safe');
+  assert.equal(usageLevelOf(BANDS.caution), 'caution');
+  assert.equal(usageLevelOf(BANDS.warning - 0.1), 'caution');
+  assert.equal(usageLevelOf(BANDS.warning), 'warning');
+  assert.equal(usageLevelOf(BANDS.critical - 0.1), 'warning');
+  assert.equal(usageLevelOf(BANDS.critical), 'critical');
 });
 
 test('the bands are ordered, and nothing sits between two of them', () => {
@@ -95,7 +111,7 @@ test('nothing to band answers null rather than a guessed safe', () => {
 test('the caution boundary equals the web fill-warn boundary it stands beside', () => {
   // 60 in two places for the length of one phase. PINNED rather than assumed,
   // so the web's 60 moving fails here instead of parting in silence.
-  assert.equal(USAGE_CAUTION_PERCENT, web.CONTEXT_FILL_WARN_PERCENT,
+  assert.equal(BANDS.caution, web.CONTEXT_FILL_WARN_PERCENT,
     'the terminal caution band and the web fill-warn band have parted');
 });
 
@@ -103,44 +119,43 @@ test('the critical boundary MOVED, and the move is recorded rather than silent',
   // The owner's table puts `critical` at 80; the old absolute scale put `crit`
   // at 85. 80-85 is banded one step higher than it used to be, on purpose.
   // Asserted so that nobody later "fixes" the difference by aligning them.
-  assert.equal(USAGE_CRITICAL_PERCENT, 80);
+  assert.equal(BANDS.critical, 80);
   assert.equal(web.CONTEXT_FILL_CRIT_PERCENT, 85);
-  assert.notEqual(USAGE_CRITICAL_PERCENT, web.CONTEXT_FILL_CRIT_PERCENT);
+  assert.notEqual(BANDS.critical, web.CONTEXT_FILL_CRIT_PERCENT);
 });
 
-test('TRIPWIRE: the moment viewmodel.js declares these names, LIFT THE BLOCK', () => {
-  // ── READ THIS BEFORE MAKING IT PASS ──────────────────────────────────────
+test('the four levels belong to the WEB now — the phase-2 lift, tripwire fired', () => {
+  // ── THIS TEST USED TO BE A TRIPWIRE, AND IT WENT OFF ─────────────────────
   //
-  // The four-level constants and `usageLevelOf` live in
-  // `statusline-powerline.ts` for ONE phase, because extending `fillLevel`'s
-  // return set without its three `app.js` consumers would send the context
-  // figure and both rate chips grey and would LABEL a `caution` window
-  // "comfortable" — a false verdict on a surface.
+  // Until 2026-09-01 it asserted that `viewmodel.js` did NOT declare these
+  // names, because the three boundaries and `usageLevelOf` were restated in
+  // `statusline-powerline.ts` for exactly one phase. Extending `fillLevel`'s
+  // return set without its `app.js` consumers would have greyed the strip's
+  // context figure and both rate chips and LABELLED a `caution` window
+  // "comfortable" — a false verdict on a surface — so the terminal took the
+  // four levels alone while the web caught up.
   //
-  // Phase 2 moves them into `viewmodel.js` and updates those consumers in the
-  // same step. This test fails the moment that move begins, which is exactly
-  // when the restatement in the terminal must be deleted and replaced by a
-  // read through the existing `BANDS` bridge.
-  //
-  // **Do not silence this by renaming anything.** The correct way to make it
-  // pass is to finish the lift.
+  // The web has caught up. The tripwire failed, as written, the moment
+  // `viewmodel.js` gained the names; the restatement it was guarding has been
+  // deleted; and what it turns into is the assertion that keeps the lift
+  // honest — the names are THERE, and they are not ALSO here.
   const source = readFileSync(VIEWMODEL, 'utf8');
-  // ── THE VACUITY FLOOR ────────────────────────────────────────
-  // A tripwire that has stopped reading its file passes forever and silently,
-  // which is this project's most-repeated failure mode wearing a new hat. So
-  // the scan is first shown to SEE something: names that are in viewmodel.js
-  // today and would only leave it if the file had been gutted.
-  for (const present of ['CONTEXT_FILL_WARN_PERCENT', 'fillLevel', 'occupancyLevel']) {
-    assert.ok(source.includes(present),
-      `the tripwire cannot see ${present} in viewmodel.js, so it is reading the `
-      + 'wrong file or nothing at all — every assertion below it is vacuous');
-  }
   for (const name of ['USAGE_CAUTION_PERCENT', 'USAGE_WARNING_PERCENT',
-    'USAGE_CRITICAL_PERCENT', 'usageLevelOf']) {
-    assert.ok(!source.includes(name),
-      `viewmodel.js now declares \`${name}\`, so phase 2 has begun: delete the `
-      + 'restatement in statusline-powerline.ts and read this through `BANDS` instead');
+    'USAGE_CRITICAL_PERCENT', 'usageLevelOf', 'usageBar', 'fmtCount']) {
+    assert.ok(source.includes(name), `viewmodel.js must declare \`${name}\` after the lift`);
   }
+  // ── AND NOT A SECOND COPY IN THE TERMINAL ────────────────────────────────
+  // The restatement is what the tripwire existed to end, so its absence is
+  // asserted rather than assumed: no boundary literal, and no comparison
+  // against one, may reappear in the CLI module.
+  const cli = stripComments(readFileSync(TERMINAL, 'utf8'));
+  for (const literal of ['USAGE_CAUTION_PERCENT =', 'USAGE_WARNING_PERCENT =',
+    'USAGE_CRITICAL_PERCENT =']) {
+    assert.ok(!cli.includes(literal),
+      `the CLI declares ${literal} again — the lift is meant to have removed it`);
+  }
+  assert.doesNotMatch(cli, />=\s*(60|70|80)/,
+    'a four-level boundary is compared against a literal in the CLI again');
 });
 
 /* ══ THE BAR ══════════════════════════════════════════════════════════════ */
@@ -277,7 +292,7 @@ test('the two rate windows get icon, bar and percentage — and NO invented coun
 
 test('the context and ask fields DO carry counts, because they have a real maximum', () => {
   const ctx = contextSegment(occ(54.9));
-  assert.ok(ctx.text.includes('(549,000 / 1,000,000)'), 'real numerator, real denominator');
+  assert.ok(ctx.text.includes('(549.0k / 1.0M)'), 'real numerator, real denominator');
   const ask = askSegment(occ(65), 85);
   // The maximum is the THRESHOLD, and both numbers are percentage points of
   // the window, so the pair reads in the same units as the ctx figure beside it.
@@ -290,7 +305,7 @@ test('myctx is banded against the window, and says nothing when there is no wind
   // The NAME is a label now, so the field is `MYCTX` + its value rather than
   // a value that spells its own name.
   assert.equal(banded?.label, 'MYCTX');
-  assert.match(banded?.text ?? '', /26\.5% \(264,500 \/ 1,000,000\)/);
+  assert.match(banded?.text ?? '', /26\.5% \(264\.5k \/ 1\.0M\)/);
   // No measurable window means no maximum, so it falls back to the bare count
   // it always drew rather than switching denominators in silence.
   const blind = buildLines(
@@ -327,19 +342,23 @@ test('a fossil keeps its number and loses its verdict', () => {
 });
 
 test('fmtCount reads in the register the counts are read in', () => {
-  // FULL and grouped since the owner's reference settled it — `(90,000 /
-  // 200,000)`, never `(90.0k / 200.0k)`. `648,317` is a figure a reader can
-  // check against what Claude Code itself reports; `648.3k` is not.
-  assert.equal(fmtCount(549_009), '549,009');
-  assert.equal(fmtCount(1_000_000), '1,000,000');
-  assert.equal(fmtCount(200_000), '200,000');
+  // ABBREVIATED, by the owner's ruling of 2026-09-01 (later): *"in order to
+  // shorten numbers you can change them to K and M"*. That reversed the
+  // full-and-comma-grouped form adopted a few hours earlier, and the reason
+  // moved with it — every field is a bordered pill now and the digits were the
+  // cheapest width to give back. See `fmtCount` for the whole history.
+  assert.equal(fmtCount(549_009), '549.0k');
+  assert.equal(fmtCount(1_000_000), '1.0M');
+  assert.equal(fmtCount(200_000), '200.0k');
   assert.equal(fmtCount(42), '42');
-  assert.equal(fmtCount(999), '999', 'no separator below a thousand');
-  assert.equal(fmtCount(1_000), '1,000', 'and one at exactly a thousand');
-  // Grouped by hand, never through `Intl`: a locale-dependent separator would
-  // render `648.317` on a de-DE machine and pass its tests on one developer's.
-  assert.ok(!fmtCount(1_234_567).includes('.'), 'the separator is a comma, always');
-  assert.equal(fmtCount(1_234_567), '1,234,567');
+  assert.equal(fmtCount(999), '999', 'no unit below a thousand');
+  assert.equal(fmtCount(1_000), '1.0k', 'and one at exactly a thousand');
+  // ONE DECIMAL on both units, and it is a stated choice rather than an
+  // accident: `999,400` keeps its 999.4k rather than rounding to a whole
+  // `999k`, so the abbreviation costs at most ~50 tokens of shown precision.
+  assert.equal(fmtCount(999_400), '999.4k');
+  // The unit changes at a million so the number never runs past four digits.
+  assert.equal(fmtCount(1_234_567), '1.2M');
 });
 
 /* ══ BLINK: THE EXTRA, NEVER THE CARRIER ═════════════════════════════════ */
