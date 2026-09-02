@@ -538,9 +538,28 @@ test('every provenance group is told apart by a WORD as well as by a colour', as
   expect(new Set(groups.map((g) => g.colour)).size,
     'the provenance groups must be coloured by source, in more than one hue').toBeGreaterThan(3);
   // AND a word, one per group, because colour alone is not a channel.
+  //
+  // ── AGAINST `groups.length`, NOT AGAINST THE MOCKUP'S COUNT (2026-09-02).
+  //
+  // This read `.toBe(expected)`, where `expected` is the frozen design of
+  // record's group count plus one. That made it a second pin on a file that
+  // may not be edited — the owner's ruling of 2026-09-02, *"some app features
+  // could not appear in the mockup because they are newer than it and it's ok
+  // and normal"* — so a group the app gained failed here with the only green
+  // route being an edit to a frozen file. The count assertion four lines up
+  // was converted to a floor that day; this one was missed, and the app's
+  // seventh strip group found it.
+  //
+  // **It is STRONGER as written now, not weaker.** The property this test is
+  // named for is that no two groups share a word, and comparing the distinct
+  // count against the ACTUAL number of groups says exactly that — at any
+  // number of groups, including numbers the mockup never knew about. The old
+  // form only caught a collision by arithmetic coincidence, and stopped
+  // catching it the moment the two counts diverged for any other reason.
   expect(new Set(groups.map((g) => g.text)).size,
-    'every provenance group needs its own label — 06-a11y.html: "a glyph AND a colour AND a '
-    + 'name in the accessible string"').toBe(expected);
+    'two provenance groups are drawing the same label — 06-a11y.html: "a glyph AND a colour AND '
+    + 'a name in the accessible string", and a name shared by two groups names neither')
+    .toBe(groups.length);
   for (const g of groups) expect(g.text, 'a group label may not be empty').not.toBe('');
 });
 
@@ -551,10 +570,17 @@ test('the group colours survive forced-colors as words, not as hues', async ({ a
     ...document.querySelectorAll('#hdrrepo .slab, #strip .slab'),
   ].map((el) => (el.textContent ?? '').trim()));
   await page.emulateMedia({ forcedColors: 'none' });
+  // A FLOOR on how many groups there are, and EQUALITY on their distinctness —
+  // the same split as the test above, and for the same 2026-09-02 ruling: the
+  // mockup is frozen, so the app may draw more groups than it declares, and
+  // what must hold at any number is that no two of them wear one word.
+  expect(words.length, 'the shell must carry every provenance group the design declares, the '
+    + "header's repo group included; it may carry more")
+    .toBeGreaterThanOrEqual(declaredStripGroups() + 1);
   expect(new Set(words).size,
     'forced-colors replaces every colour in the page with a system tone, so a bar differentiated '
-    + 'by colour ALONE becomes one colour. The words are what is left, and there must be one per '
-    + 'group.').toBe(declaredStripGroups() + 1);
+    + 'by colour ALONE becomes one colour. The words are what is left, and no two groups may '
+    + 'share one.').toBe(words.length);
 });
 
 test('an unmeasured segment says so, and offers the call again', async ({ app }) => {
@@ -898,10 +924,18 @@ test('every provenance group keeps a width, and the strip never spills', async (
         spill: strip.scrollWidth - strip.clientWidth,
       };
     });
+    // A FLOOR, not an equality — owner ruling 2026-09-02, the same one that
+    // unpinned the two counts at the top of this file and the third one above.
+    // The design of record is frozen; the app may go beyond it. What this
+    // sweep is actually for is the two assertions under it: no group squeezed
+    // to nothing, and no strip wider than its window. Those hold at any number
+    // of groups, and a count equality here only ever decided WHICH FILE had to
+    // be edited to go green.
     expect(m.groups.length, `${size.width}px: every provenance group the design of record `
-      + 'declares inside the footer — DERIVED, because the count went from three to seven '
-      + 'in one evening and a remembered number fails for the wrong reason each time')
-      .toBe(declaredStripGroups());
+      + 'declares inside the footer must be drawn — DERIVED, because the count went from three '
+      + 'to seven in one evening and a remembered number fails for the wrong reason each time; '
+      + 'the app may draw more')
+      .toBeGreaterThanOrEqual(declaredStripGroups());
     for (const g of m.groups) {
       expect(g.width, `${size.width}px: ${g.name} collapsed to nothing. A group squeezed to zero `
         + 'has removed the property from the strip as surely as never building it').toBeGreaterThan(20);

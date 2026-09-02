@@ -809,6 +809,43 @@ bdi{unicode-bidi:isolate}
 .sgrp-window .slab{color:var(--ink)}
 .sgrp-cost .slab{color:var(--ink)}
 .sgrp-limits .slab{color:var(--carry)}
+/* WHERE the session is, and which corpus it got (2026-09-02). `--carry`, with
+   the other IDENTITY groups: a working directory and a corpus root say WHICH,
+   never how good — the verdict, when there is one, is on the corpus field
+   itself, which turns `warn` and grows a ▲ rather than repainting its heading.
+   No sixth hue is spent
+   (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`). */
+.sgrp-where .slab{color:var(--carry)}
+/* A floor, so the group does not collapse to its label while the two paths
+   ellipsise to nothing, and a modest one: the QUIET spelling is `CWD . CORPUS .`
+   and the alarm's extra width is bought by ellipsising rather than by holding
+   210px open on every screen at every width. Measured at 1280px, where five
+   identity groups share the row and a bigger floor here pushes one of the
+   others under the 20px that `e2e/strip.spec.ts` calls collapsed-to-nothing. */
+.sgrp-where{flex:0 2 auto;min-inline-size:120px}
+/* AND IT CLIPS RATHER THAN WRAPS, which is the same treatment `.auditstate`,
+   `.modelstate` and `.coststate` all carry and is not cosmetic. A span with no
+   `display` of its own lets its pills WRAP to a second line inside a row whose
+   height is fixed, and the row then clips them — which reads to a browser as
+   no horizontal overflow at all, so `fitStrip` measures a deficit of zero and
+   never deals the group onto another row. Clipping is what makes the overflow
+   MEASURABLE, and it is what turns "this bar is cut off" into "this bar grew a
+   row". */
+.wherestate{display:flex;align-items:center;gap:var(--sp-3);min-inline-size:0;overflow:hidden}
+/* A DATE AND TWO PATHS MAY NOT BREAK ACROSS TWO LINES.
+   Every other value on this bar is a number, a bar of blocks or a short word,
+   and none of them contains a space a browser would choose to break at.
+   `02/09/2026, 17:06` and `./my-context — 44 items, 759 above` both do, and a
+   pill that wraps is a 40px pill in a row built for 26 — measured as a 4px
+   overhang at 1280x720 by `e2e/strip.spec.ts`, which is a clipped control and
+   not a tall one.
+   Bounded AND disclosed: the ellipsis is what the width costs, and every one of
+   these three fields carries its whole line — and, for the two paths, the
+   absolute path as well — in its own `title`. */
+.strip [data-f="clock"] .uval,
+.strip [data-f="cwd"] .uval,
+.strip [data-f="corpus-root"] .uval{
+  min-inline-size:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* The context group is still the one item allowed to give way. It is now
    wrapped in its provenance group, so the `flex:1 1 auto` that used to be
    enough on .ctxstate has to sit on the group that IS the child of .strip —

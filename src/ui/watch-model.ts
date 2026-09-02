@@ -1,4 +1,5 @@
 import type { ServerResponse } from 'node:http';
+import { resolveCorpus } from '../core/corpus-identity.ts';
 import { AUDIT_KINDS, type AuditKind, type AuditRecord } from '../core/audit.ts';
 import {
   openProjectionReadOnlyChecked, queryProjection, topItems,
@@ -388,6 +389,52 @@ export interface WatchContextBody {
   focus: string | null;
   /** When the audit log last moved, in its three distinguished states. */
   lastAudit: LastAuditRead;
+  /**
+   * ── WHERE THE SESSION IS, AND WHICH CORPUS THAT GOT IT (2026-09-02).
+   *
+   * Three more fields the terminal bar draws and this strip did not, added the
+   * day the owner asked for them on BOTH surfaces. `terminal ⊆ web` is the
+   * standing ruling, so they are served here rather than drawn only there.
+   *
+   * **NO NEW READ FOR THE FIRST TWO.** `cwd` and `projectDir` come off the
+   * payload `readTee` already opened, through the same `payloadExtras` the
+   * terminal parses it with — one reader for an external schema.
+   *
+   * **AND ONE UPWARD WALK FOR THE THIRD**, which is `resolveCorpus`: a handful
+   * of `existsSync` calls up the tree, no directory read and no parse in the
+   * ordinary case. Its `nesting` block — the enclosing root and both item
+   * counts — is populated ONLY when the walk stopped at a nested corpus, which
+   * is the alarm; the two recursive `items/` counts are paid there and nowhere
+   * else.
+   */
+  /** `cwd` — where the session is NOW, absolute. The one that moves. */
+  cwd: string | null;
+  /** `workspace.project_dir` — where it was LAUNCHED. The anchor; it does not move. */
+  projectDir: string | null;
+  /**
+   * **WHICH CORPUS `cwd` RESOLVES TO — and whether that is the alarm.**
+   *
+   * Resolved from the SESSION'S `cwd` and not from `ws.projectRoot`, and the
+   * difference is the whole field. This server resolved its own corpus from
+   * wherever `mycontext ui` was run; the session's HOOKS resolve theirs by
+   * walking up from wherever they are run. When those disagree, the bar is
+   * reading one corpus while the session writes to another — which is the
+   * failure the owner reported twice on 2026-09-02 and which nothing anywhere
+   * named.
+   *
+   * `nesting` is `null` in the ordinary case and carries BOTH item counts in
+   * the alarm one, because the outage this comes from was somebody reading
+   * "44 items" as a sparse project rather than as A DIFFERENT CORPUS.
+   * `core/corpus-identity.ts` makes that argument at length and is the one
+   * resolver both surfaces call.
+   *
+   * `null` when the payload carried no `cwd` to walk up from — an unread
+   * state, which the client names and never draws as "no corpus".
+   */
+  corpusRoot: {
+    root: string | null;
+    nesting: { enclosing: string; items: number; enclosingItems: number } | null;
+  } | null;
 }
 
 /**
@@ -499,6 +546,25 @@ export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
   // is answered as no focus here for the reason it is there: this bar has no
   // room to say which, and `focusErrorNote` already tells the story on the
   // surface that does.
+  // ── AND WHICH CORPUS THE SESSION'S OWN DIRECTORY RESOLVES TO. One resolver,
+  // `core/corpus-identity.ts`', shared with `mycontext statusline` and with the
+  // MCP provenance footer: two resolvers that could disagree about which
+  // corpus is in play would be a particularly bad version of the defect this
+  // field exists to expose. `overridden` is not served — it is a fact about
+  // how the MCP server was told to resolve, and this bar has no room for it.
+  //
+  // Never a throw. A tree this cannot walk is not a reason to refuse an
+  // endpoint that four other fields ride on.
+  let corpusRoot: WatchContextBody['corpusRoot'] = null;
+  try {
+    if (extras.cwd !== null) {
+      const resolved = resolveCorpus(extras.cwd);
+      corpusRoot = { root: resolved.root, nesting: resolved.nesting };
+    }
+  } catch {
+    corpusRoot = null;
+  }
+
   const focusState = readFocus(root);
   const focus = isFocusActive(focusState.focus) ? describeFocus(focusState.focus) : null;
   const body: WatchContextBody = {
@@ -510,6 +576,9 @@ export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
     warmPercent: extras.warmPercent,
     focus,
     lastAudit,
+    cwd: extras.cwd,
+    projectDir: extras.projectDir,
+    corpusRoot,
   };
   return { status: 200, body };
 }

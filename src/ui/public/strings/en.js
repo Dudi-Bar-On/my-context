@@ -1131,6 +1131,36 @@ export const strings = {
   'strip.level.caution': 'caution',
   'strip.level.warning': 'warning',
   'strip.level.critical': 'critical',
+  // ── WHERE THIS SESSION IS, WHICH CORPUS IT GOT, AND AS OF WHEN ──────────
+  //
+  // Owner request, 2026-09-02. A stray `cd` twice moved a session into
+  // `my-context/`, which silently switched every hook onto the nested 44-item
+  // corpus instead of the real 759-item one, and nothing on either bar said
+  // so. The directory is the CAUSE and the corpus is the EFFECT; both are
+  // drawn, because a reader who sees only the directory still has to know that
+  // `my-context/` holds a corpus of its own before it means anything.
+  //
+  // Both paths are drawn RELATIVE to the directory the session was launched
+  // in, so the ordinary session reads `.` in one column and the broken one
+  // reads `./my-context` — a shape change, not a diff two long paths apart.
+  // The whole absolute path is on the hover; `relDir` in `lib/viewmodel.js`
+  // carries the argument for all of it.
+  'strip.grp.where': 'where',
+  'strip.grp.cwd': 'cwd',
+  'strip.grp.corpusRoot': 'corpus',
+  'strip.grp.clock': 'clock',
+  'strip.cwd': '{mv:dir}',
+  'strip.cwdUnknown': 'not reported',
+  'strip.corpusRoot': '{mv:dir}',
+  // THE ALARM, and both counts are the point of it: the outage this comes from
+  // was reading "44 items" as a project with little in it rather than as a
+  // DIFFERENT corpus.
+  'strip.corpusRootNested': '{mv:dir} — {items} items, {enclosing} above',
+  'strip.corpusRootNone': 'no corpus here',
+  'strip.clock': '{mv:stamp}',
+  'title.cwd': 'Where this session is working right now, relative to the directory it was launched in. A single dot means it has not moved. Anything else means a command changed the working directory — which also changes which corpus the hooks resolve, so check the corpus field beside this one.',
+  'title.corpusRoot': 'Which corpus this session’s working directory resolves to, relative to the directory the session was launched in. The corpus is found by walking up from the working directory and stopping at the first .my_context, so the directory decides which one it gets. A warning here means the walk stopped at a nested corpus while another one stands higher up the same tree: the smaller item count is A DIFFERENT CORPUS, not a project with little recorded in it.',
+  'title.clock': 'When this bar was last drawn. The web strip repaints on its own cycle, so this is close to the current time; the terminal status line is drawn only when Claude Code sends a message, so the same field there tells you how stale that line is.',
   'strip.grp.repo': 'repo',
   'strip.grp.corpus': 'corpus',
   'strip.grp.session': 'session',

@@ -189,6 +189,15 @@ import {
   CONTEXT_FILL_CRIT_PERCENT, CONTEXT_FILL_WARN_PERCENT, CONTEXT_SAMPLE_FRESH_MS,
   askHeadroom, contextStrip, corpusDrift, fillLevel, fmtCount, formatAge, formatDuration,
   occupancyBands, occupancyLevel, usageBar, usageLevelOf,
+  // ── AND THE THREE THE 2026-09-02 FIELDS ARE DRAWN WITH.
+  //
+  // `wallStamp` is the wall clock's ONE spelling and `relDir`/`corpusDir`
+  // are the ONE abbreviation both bars draw a directory with. They live beside
+  // `formatDuration` for the same reason it does: the terminal reaches every
+  // one of them through its dynamic-import bridge, so there is one
+  // implementation of each rather than a copy per surface — see `relDir`'s own
+  // header for why the abbreviation is relative and what it buys.
+  corpusDir, relDir, wallStamp,
 } from '/lib/viewmodel.js';
 // The rail's Coverage-gaps badge counts the SAME directories the gaps table
 // lists, through the same function. See `paintRailCounts` for why the count is
@@ -3259,6 +3268,33 @@ function renderChrome() {
   notes.id = 'corpusnotes';
   corpus.append(count, drift, notes);
 
+  // ── WHERE THIS SESSION IS, AND WHICH CORPUS IT GOT — owner request,
+  // 2026-09-02, and the coordinator's ruling the same day that BOTH are drawn
+  // rather than one standing in for the other.
+  //
+  // ── WHY ITS OWN GROUP, AND NOT INSIDE `corpus` ─────────────────────────
+  //
+  // The obvious home was the corpus group one along, and it is the wrong one
+  // twice over. That group's subject is what is IN the corpus — an item count,
+  // whether the files moved under the log, how many doctor findings stand,
+  // what is waiting to be ruled on — while these two say WHICH corpus all of
+  // that was counted from, which is a fact one level up. And it would have put
+  // a field named CORPUS under a heading reading CORPUS, which is the exact
+  // noise `standDownDuplicateHeadings` exists to remove and which that
+  // function cannot remove here, because the group would then hold five names
+  // rather than one.
+  //
+  // IDENTITY and not STATE, so it sits on row 1: these do not move on the
+  // per-message clock row 2 runs at, and the day one of them moves is the day
+  // it is the most important thing on the bar. The strip's own fitter deals
+  // the groups across rows by measurement, so a seventh group costs no
+  // hand-kept layout.
+  const where = group('where', 'strip.grp.where', identity);
+  const whereState = document.createElement('span');
+  whereState.className = 'wherestate';
+  whereState.id = 'wherestate';
+  where.append(whereState);
+
   // ── THE ACCOUNT'S QUOTA IS A DIFFERENT SUBJECT FROM THIS SESSION'S WINDOW,
   // and since 2026-09-01 it is a different GROUP — owner ruling, the second
   // rebalance of the same evening.
@@ -5135,11 +5171,84 @@ function drawIdentity(view) {
     cost.replaceChildren(...parts);
   }
 
+  // ── WHERE THIS SESSION IS, AND WHICH CORPUS THAT GOT IT (2026-09-02).
+  //
+  // **BOTH FIELDS ARE ALWAYS DRAWN, and named when there is nothing to draw.**
+  // That is the `elapsed` lesson applied before it costs anything: a field
+  // drawn only when its value is present is a field no scenario reaches, which
+  // is what left `elapsed` failing both parity gates for a day. It is also
+  // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` — a blank
+  // is indistinguishable from a failure to load, and on THESE two fields the
+  // blank would be indistinguishable from "you have not moved", which is the
+  // one sentence they exist to be able to deny.
+  //
+  // The paths are abbreviated by `relDir`/`corpusDir`, the same two functions
+  // the terminal reaches through its dynamic-import bridge — so the two bars
+  // cannot spell one abbreviation two ways. The whole absolute path survives
+  // in the field's hover, which `drawContext`'s closing sweep composes from
+  // the line and which `title.cwd` explains under it.
+  const whereEl = document.getElementById('wherestate');
+  if (whereEl !== null) {
+    const parts = [];
+    const dir = relDir(view.cwd, view.projectDir);
+    parts.push(dir === null
+      ? keyed('strip.cwdUnknown', {},
+        { field: 'cwd', cls: 'small unmeas', nameKey: 'strip.grp.cwd', titleKey: 'title.cwd' })
+      : keyed('strip.cwd', { dir },
+        { field: 'cwd', nameKey: 'strip.grp.cwd', titleKey: 'title.cwd' }));
+    parts.push(corpusRootField(view, keyed));
+    // **AND THE ABSOLUTE PATHS ON THE HOVER, under the explanation.** The line
+    // is a comparison and the hover is where the whole reading survives — the
+    // rule `drawContext`'s sweep already applies to every scaled field. It is
+    // set here rather than there because only this function has the absolute
+    // path: the sweep composes a title out of the LINE, and the line is
+    // deliberately the abbreviation.
+    if (view.cwd !== null) parts[0].title += '\n' + view.cwd;
+    if (view.corpusRoot?.root != null) parts[1].title += '\n' + view.corpusRoot.root;
+    whereEl.replaceChildren(...parts);
+  }
+
   const injections = document.getElementById('auditstate');
   if (injections !== null) injections.replaceChildren(...injectionParts(view));
 
   const log = document.getElementById('auditlog');
-  if (log !== null) log.replaceChildren(...auditClockParts(view));
+  if (log !== null) {
+    const parts = auditClockParts(view);
+    // ── AND AS OF WHEN — owner request, 2026-09-02.
+    //
+    // **Beside the audit clock deliberately.** That field says how LONG AGO
+    // the log last moved; this one says as of WHEN, and the pair is what turns
+    // a relative age into an absolute instant a reader can hold against a log
+    // line, a commit or their own memory. Either alone is half the sentence.
+    //
+    // **IT TICKS, AND IT ADDS NO TIMER.** `drawContext()` already re-renders
+    // on the ping cycle — every sixty seconds, whether or not the occupancy
+    // moved (`noteOccupancy`) — and `formatAge`, `formatDuration` and the
+    // occupancy chip are all computed at draw time for exactly this reason. A
+    // stamp to the MINUTE is therefore live to within its own resolution off
+    // the timer that is already running, and a second timer for one field
+    // would be a second thing to stop when the page idles.
+    //
+    // **THE TERMINAL CANNOT DO THIS AND MUST NOT PRETEND TO.** Claude Code
+    // draws the status line on demand, once per assistant message; it has no
+    // way to repaint between them. So the same field there is the instant that
+    // line was DRAWN, which is genuinely the more useful reading on a surface
+    // that goes stale — it says how old everything else on the row is. The two
+    // will therefore disagree, by up to one assistant message, AND THAT IS
+    // CORRECT: they report the same fact — when this bar was last painted —
+    // measured on two surfaces that paint on different triggers. The owner's
+    // "same value on both surfaces" ruling is about fields whose value is a
+    // measurement of the same thing, and it is honoured here where it can be:
+    // one spelling, one resolution, one function (`wallStamp`). A future
+    // parity gate that demanded equal SECONDS would be demanding that the
+    // terminal tick. See `stamp()` in `cli/commands/statusline-powerline.ts`,
+    // which carries the same note from the other side.
+    const at = wallStamp(Date.now());
+    parts.push(keyed('strip.clock', { stamp: at ?? '—' },
+      { field: 'clock', cls: at === null ? 'small unmeas' : 'small',
+        nameKey: 'strip.grp.clock', titleKey: 'title.clock' }));
+    log.replaceChildren(...parts);
+  }
 
   // The account's quota, in its own group on line 1. Silent when the payload
   // carried no window — absence is silence here and never a placeholder, for
@@ -5173,6 +5282,68 @@ function drawIdentity(view) {
   }
 
   standDownDuplicateHeadings();
+}
+
+/**
+ * **WHICH CORPUS THE SESSION'S DIRECTORY RESOLVED TO — and the alarm.**
+ *
+ * ── THE INTERESTING STATE IS DISAGREEMENT, NOT THE PATH ────────────────────
+ *
+ * A corpus resolved from a directory inside a project is normal and
+ * unremarkable, and a bar that spent forty-six columns saying so on every
+ * paint would have taught its reader to stop looking at it long before the day
+ * it mattered. What is NOT ordinary is a walk that stopped at a NESTED corpus
+ * while another stands higher up the same tree: that is the shape of the
+ * failure the owner reported twice on 2026-09-02, and it is the ONE state this
+ * field raises its voice for.
+ *
+ *     CORPUS .                                       the ordinary case
+ *     CORPUS ▲ ./my-context — 44 items, 759 above    the alarm
+ *
+ * **THE COUNTS RIDE THE ALARM AND THEY ARE THE POINT.** The outage this comes
+ * from was not somebody misreading a path — it was reading "44 items" as a
+ * project with little recorded in it rather than as A DIFFERENT CORPUS.
+ * `nestedCorpusNote` prints both numbers for exactly that reason and this is
+ * that disclosure at bar width.
+ *
+ * **The judgement is the SERVER'S and is not re-derived here.** Whether the
+ * walk stopped early is `core/corpus-identity.ts`', made against a filesystem
+ * a browser cannot see, and it is the same function `mycontext statusline` and
+ * every MCP tool result call. A second implementation of "is this the wrong
+ * corpus" would be a particularly bad version of the defect the field exposes.
+ *
+ * **Colour is never the only carrier.** `▲` and the two counts say it with no
+ * hue at all, which is `06-a11y.html`'s rule and what keeps the field legible
+ * under forced-colors and to a reader who cannot tell amber from blue.
+ *
+ * Four states and each is named: the alarm, the ordinary root, a session that
+ * resolved to NO corpus (a measurement), and a server that did not say (an
+ * unread state). The last two are different sentences and are drawn as two.
+ */
+function corpusRootField(view, keyed) {
+  const opts = {
+    field: 'corpus-root', nameKey: 'strip.grp.corpusRoot', titleKey: 'title.corpusRoot',
+  };
+  const resolved = view.corpusRoot;
+  if (resolved === null) {
+    return keyed('strip.unread', {}, { ...opts, cls: 'small unmeas' });
+  }
+  if (resolved.root === null) {
+    return keyed('strip.corpusRootNone', {}, { ...opts, cls: 'small unmeas' });
+  }
+  const dir = corpusDir(resolved.root, view.projectDir);
+  if (dir === null) {
+    return keyed('strip.unread', {}, { ...opts, cls: 'small unmeas' });
+  }
+  const nesting = resolved.nesting;
+  if (nesting === null || nesting.items === null || nesting.enclosingItems === null) {
+    return keyed('strip.corpusRoot', { dir }, opts);
+  }
+  const el = keyed('strip.corpusRootNested', {
+    dir, items: String(nesting.items), enclosing: String(nesting.enclosingItems),
+  }, { ...opts, cls: 'chip warn' });
+  el.dataset.g = '▲';
+  return el;
 }
 
 /**

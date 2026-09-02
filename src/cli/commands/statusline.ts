@@ -8,6 +8,7 @@ import { describeFocus, isFocusActive, readFocus } from '../../core/focus.ts';
 import {
   contextEpochStart, newestAuditRow, shareOf, shareSql,
 } from '../../core/context-share.ts';
+import { resolveCorpus, type CorpusResolution } from '../../core/corpus-identity.ts';
 import { isMainEntry } from '../../core/paths.ts';
 import { classifyContext, writeTee, type ContextSample } from '../../core/statusline-tee.ts';
 import { resolveWorkspace, type Workspace } from '../../core/workspace.ts';
@@ -291,6 +292,15 @@ export function statusLineText(
   colour: boolean,
   columns: number | null,
   env: Record<string, string | undefined> = process.env,
+  /**
+   * Render time, and it is a PARAMETER since 2026-09-02 for the reason
+   * `buildLines`' already was: the bar now carries a wall clock, so a caller
+   * that asserts the line verbatim would otherwise be racing the minute
+   * boundary. `buildLines` and `buildSegments` both take one and both
+   * defaulted to `Date.now()` independently, which meant the two rows of one
+   * render could straddle a second; passing one instant down also fixes that.
+   */
+  now: number = Date.now(),
 ): string {
   const noBlink = env[NO_BLINK_ENV];
   const options = {
@@ -300,12 +310,12 @@ export function statusLineText(
   };
   const forced = env[ONE_LINE_ENV];
   if (forced !== undefined && forced !== '') {
-    return renderPowerline(buildSegments(input), options);
+    return renderPowerline(buildSegments(input, now), options);
   }
   // **THREE lines since the owner's ruling of 2026-09-01.** `renderStatusLine`
   // drops any group that is empty, so a session with no ask and no context
   // still renders two rows rather than a blank one.
-  const { identity, window, account } = buildLines(input);
+  const { identity, window, account } = buildLines(input, now);
   return renderStatusLine([identity, window, account], options);
 }
 
@@ -559,6 +569,43 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
     projectRoot = null;
   }
 
+  // ── WHICH CORPUS THE SESSION'S OWN DIRECTORY RESOLVES TO — owner request,
+  //    2026-09-02.
+  //
+  // **From `extras.cwd` and NOT from `sessionCwd`, and the difference is the
+  // entire field.** `sessionCwd` above prefers `workspace.project_dir`, on
+  // purpose, so a tee can never land in another project's `.statusline/`. The
+  // HOOKS have no such preference: they resolve by walking up from wherever
+  // they were run, which is `cwd`. When the two disagree, the bar this command
+  // prints is reading one corpus while the session's hooks are writing to
+  // another — the failure the owner reported twice on 2026-09-02, and the one
+  // no field on either bar could show.
+  //
+  // **One resolver, and it is the one the MCP surface already uses.**
+  // `resolveCorpus` is `core/corpus-identity.ts`'s, called by
+  // `toolResultProvenance` on every tool result since 2026-08-27. Two
+  // resolvers that could disagree about which corpus is in play would be a
+  // particularly bad version of the defect this is here to expose.
+  //
+  // **What it costs on a per-message path.** The ordinary case is ONE upward
+  // `existsSync` walk for the root plus one more to the filesystem root
+  // looking for an enclosing corpus — a handful of stats, no directory read,
+  // no parse. The recursive `items/` counts inside `nesting` are taken ONLY
+  // when a nested corpus was actually found, which is the alarm state: the one
+  // state where a person is about to make a decision on this line, and where
+  // reading "44" as a sparse project rather than as a different corpus is the
+  // whole mistake.
+  //
+  // Never a throw. A tree this cannot walk is not a reason to blank the user's
+  // status line, which is the rule the `resolveWorkspace` call above follows.
+  const extras = payloadExtras(payload);
+  let corpus: CorpusResolution | null = null;
+  try {
+    if (extras.cwd !== null) corpus = resolveCorpus(extras.cwd);
+  } catch {
+    corpus = null;
+  }
+
   const sample = classifyContext(payload);
   const model =
     typeof p?.model?.display_name === 'string' ? p.model.display_name
@@ -640,10 +687,11 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
   // NO_PAYLOAD and never reaches here, so the pipe that gets escapes is always
   // one that asked for them. See `colourAllowed`.
   // Everything else the payload carries that this bar draws: the model modes,
-  // the two rate-limit windows, the cost, and the cache ratio DERIVED from the
-  // same three token counts the occupancy is. Read off `payload`, the parsed
-  // bytes Claude Code sent, and every field is absent-tolerant.
-  const extras = payloadExtras(payload);
+  // the two rate-limit windows, the cost, the cache ratio DERIVED from the same
+  // three token counts the occupancy is, and the two directories. Read off
+  // `payload`, the parsed bytes Claude Code sent, and every field is
+  // absent-tolerant. `extras` is taken ONCE, near the top, because the corpus
+  // resolution needs `cwd` before this point — one parse, one object.
 
   const ownLine = statusLineText(
     {
@@ -661,6 +709,7 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
       lastAudit: audit,
       myctxNote,
       teeNote,
+      corpus,
     },
     colourAllowed(process.env, process.stdout.isTTY === true, true),
     typeof process.stdout.columns === 'number' ? process.stdout.columns : null,

@@ -41,7 +41,7 @@ const { classifyContext, readTee, writeTee } = await import('../../src/core/stat
 const { GLOBAL_DIR, resolveWorkspace } = await import('../../src/core/workspace.ts');
 const { ONE_LINE_ENV, myctxShare, myctxShareByRow, occupancyFromPayload, occupancyFromTee,
   statusLineText } = await import('../../src/cli/commands/statusline.ts');
-const { FIELD_JOIN, LEVEL_GLYPH, LEVEL_ICON, NO_EXTRAS } =
+const { FIELD_JOIN, LEVEL_GLYPH, LEVEL_ICON, NO_EXTRAS, stamp } =
   await import('../../src/cli/commands/statusline-powerline.ts');
 const { openProjection, queryProjection, syncProjection } =
   await import('../../src/core/audit-db.ts');
@@ -175,6 +175,38 @@ function bar(...blocks: string[]): string {
  * Composed from `bar` rather than spelled out, so a change to the caps or the
  * separator moves every form together.
  */
+/**
+ * **A FIXED RENDER INSTANT, since the bar gained a wall CLOCK on 2026-09-02.**
+ *
+ * Every verbatim expectation below would otherwise race the minute boundary,
+ * which is a flake that shows up once an hour on somebody else's machine. The
+ * clock's own spelling is never written out here — `stamp(AT)` quotes it
+ * through the same accessor the bar draws it with, so this file goes on
+ * pinning WHICH FIELDS the line carries while `lib/viewmodel.js` keeps owning
+ * the format.
+ */
+const AT = Date.UTC(2026, 7, 31, 12, 0, 0);
+const CLOCK = `CLOCK ${stamp(AT)}`;
+
+/**
+ * `bars` for a render whose ACCOUNT ROW IS OTHERWISE EMPTY.
+ *
+ * The wall clock is the last FIELD of the account row, not a row of its own —
+ * so it is only a row of its own where nothing else is on that row, which is
+ * every input below that carries no share, no cost and no rate window. The
+ * three expectations that DO have an account row write `CLOCK` inside it,
+ * where it actually renders.
+ *
+ * That distinction cannot be read off the number of rows a caller passes —
+ * `bars([ask, window], [myctx])` and `bars(identity, [ask, window])` are both
+ * two — which is why this helper is deliberately narrow rather than clever.
+ * `renderStatusLine` drops an empty group, and this group is no longer ever
+ * empty.
+ */
+function barsAt(...rows: string[][]): string {
+  return bars(...rows, [CLOCK]);
+}
+
 function bars(...rows: string[][]): string {
   return rows.map((row) => bar(...row)).join('\n');
 }
@@ -202,10 +234,11 @@ test('statusLineText renders each state without ever inventing a number', () => 
     focus: null,
     lastAudit: null,
     myctxNote: null,
-    teeNote: null,
+    teeNote: null, corpus: null,
   };
   const at = (percent: number): string => statusLineText(
     { ...base, occupancy: { state: 'known' as const, percent, ageMs: 0, usedTokens: Math.round(percent * 10_000), windowSize: 1_000_000 } }, false, null,
+    process.env, AT,
   );
   const head = ['MODEL Opus 4.5', 'REPO test_mycontext_plugin', 'BRANCH campaign/my-context-test'];
 
@@ -221,15 +254,15 @@ test('statusLineText renders each state without ever inventing a number', () => 
   // controls every such field uses, with the threshold as its maximum — and it
   // still collapses to WORDS once the ask has fired, because past the ask the
   // number stops being the point and the action is.
-  assert.equal(at(42), bars(head, [
+  assert.equal(at(42), barsAt(head, [
     'ASK ▰▰▰▰▱▱▱▱▱▱ 43% (42.0 / 98) ·+56.0', 'WINDOW ▰▰▰▰▱▱▱▱▱▱ 42.0% (420.0k / 1.0M)']));
-  assert.equal(at(70), bars(head, [
+  assert.equal(at(70), barsAt(head, [
     `ASK ${LEVEL_ICON.warning} ▰▰▰▰▰▰▰▱▱▱ 71% (70.0 / 98) ·+28.0`,
     `WINDOW ${LEVEL_ICON.warning} ▰▰▰▰▰▰▰▱▱▱ 70.0% (700.0k / 1.0M)`]));
-  assert.equal(at(93.4), bars(head, [
+  assert.equal(at(93.4), barsAt(head, [
     `ASK ${LEVEL_ICON.critical} ▰▰▰▰▰▰▰▰▰▰ 95% (93.4 / 98) ·+4.6`,
     `WINDOW ${LEVEL_ICON.critical} ▰▰▰▰▰▰▰▰▰▱ 93.4% (934.0k / 1.0M)`]));
-  assert.equal(at(99.2), bars(head, [
+  assert.equal(at(99.2), barsAt(head, [
     'ASK ◆ handover due',
     `WINDOW ${LEVEL_ICON.critical} ▰▰▰▰▰▰▰▰▰▰ 99.2% (992.0k / 1.0M)`]));
 
@@ -238,10 +271,11 @@ test('statusLineText renders each state without ever inventing a number', () => 
   // the status line is where a person reads the answer.
   const why = (w: UnmeasurableWhy): string => statusLineText(
     { ...base, occupancy: { state: 'unmeasurable' as const, why: w } }, false, null,
+    process.env, AT,
   );
-  assert.equal(why('no-bridge'), bars(head, [`${LEVEL_GLYPH.neutral} ctx — no bridge`]));
-  assert.equal(why('no-sample'), bars(head, [`${LEVEL_GLYPH.neutral} ctx — no sample`]));
-  assert.equal(why('unknown-shape'), bars(head, [`${LEVEL_GLYPH.neutral} ctx — unreadable`]));
+  assert.equal(why('no-bridge'), barsAt(head, [`${LEVEL_GLYPH.neutral} ctx — no bridge`]));
+  assert.equal(why('no-sample'), barsAt(head, [`${LEVEL_GLYPH.neutral} ctx — no sample`]));
+  assert.equal(why('unknown-shape'), barsAt(head, [`${LEVEL_GLYPH.neutral} ctx — unreadable`]));
   assert.equal(
     new Set([why('no-bridge'), why('no-sample'), why('unknown-shape')]).size, 3,
     'three reasons, three sentences — a reader told "not installed" about a bridge that IS '
@@ -251,11 +285,16 @@ test('statusLineText renders each state without ever inventing a number', () => 
   // A FOSSIL SAYS `—` AND NEVER A NUMBER. A stale figure drawn as if fresh is
   // the defect that cost a missed handover at a full window while the strip
   // read 60.1%; the one thing this block must never do is look like a reading.
-  assert.equal(why('stale'), bars(head, [`${LEVEL_GLYPH.neutral} ctx — stale`]));
+  assert.equal(why('stale'), barsAt(head, [`${LEVEL_GLYPH.neutral} ctx — stale`]));
   // The CTX block specifically, not the whole line — `Opus 4.5` has a digit in
   // it and the model block is entitled to one. What must carry no digit is the
   // block a reader reads as the occupancy.
-  const staleCtx = why('stale').split(FIELD_JOIN).at(-1);
+  // The WINDOW row, then its last field. This used to take the last field of
+  // the whole rendering, which worked only while the account row was empty:
+  // the clock is on that row now and `31/08/2026` is nine digits that have
+  // nothing to do with the occupancy. Row 2 by name, because row 2 is where
+  // the context block is by `buildLines`' own split.
+  const staleCtx = why('stale').split('\n')[1]?.split(FIELD_JOIN).at(-1);
   assert.doesNotMatch(staleCtx ?? '', /[0-9]/);
 });
 
@@ -337,10 +376,10 @@ test('MYCONTEXT_STATUSLINE_ONE_LINE folds the bar back to a single line, losing 
     myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
     focus: null,
     lastAudit: null,
-    myctxNote: null, teeNote: null,
+    myctxNote: null, teeNote: null, corpus: null,
   };
-  const two = statusLineText(base, false, null, {});
-  const one = statusLineText(base, false, null, { [ONE_LINE_ENV]: '1' });
+  const two = statusLineText(base, false, null, {}, AT);
+  const one = statusLineText(base, false, null, { [ONE_LINE_ENV]: '1' }, AT);
 
   assert.equal(two.split('\n').length, 3, 'three rows by default since 2026-09-01');
   assert.equal(one.split('\n').length, 1, 'one line when the escape hatch is set');
@@ -358,7 +397,7 @@ test('MYCONTEXT_STATUSLINE_ONE_LINE folds the bar back to a single line, losing 
   // so a shell that exports an empty placeholder does not silently downgrade
   // the bar for everyone using it.
   assert.equal(
-    statusLineText(base, false, null, { [ONE_LINE_ENV]: '' }).split('\n').length, 3,
+    statusLineText(base, false, null, { [ONE_LINE_ENV]: '' }, AT).split('\n').length, 3,
   );
 });
 
@@ -375,17 +414,19 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       focus: null,
       lastAudit: null,
       myctxNote: null,
-      teeNote: 'WINDOW tee not written (disk full)',
+      teeNote: 'WINDOW tee not written (disk full)', corpus: null,
     },
     false,
     null,
+    process.env,
+    AT,
   );
   assert.equal(line, bars(
     ['MODEL Opus 4.5', 'REPO test_mycontext_plugin', 'BRANCH campaign/my-context-test'],
     ['ASK ▰▰▱▱▱▱▱▱▱▱ 24% (23.5 / 98) ·+74.5', 'WINDOW ▰▰▱▱▱▱▱▱▱▱ 23.5% (235.0k / 1.0M)'],
     // The account row: the banded share, and the disclosure that rides the
     // context field in its absent state.
-    ['MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)', 'WINDOW tee not written (disk full)'],
+    ['MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)', 'WINDOW tee not written (disk full)', CLOCK],
   ));
 
   // `≥` and not a rounded-up guess: some records carry no estimate, so the
@@ -399,15 +440,15 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
         myctx: { tokens: 6200, injections: 3, unrecorded: 2 },
         focus: null,
         lastAudit: null,
-        myctxNote: null, teeNote: null,
+        myctxNote: null, teeNote: null, corpus: null,
       },
-      false, null,
+      false, null, process.env, AT,
     ),
     // The `≥` rides the LABEL because it qualifies the NUMERATOR — some
     // injection records carry no frozen estimate, so the true share is at
     // least this — and that is a fact about the count, never about the bar.
     bars(['ASK ▰▰▱▱▱▱▱▱▱▱ 24% (23.5 / 98) ·+74.5', 'WINDOW ▰▰▱▱▱▱▱▱▱▱ 23.5% (235.0k / 1.0M)'],
-      ['MYCTX ≥ ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)']),
+      ['MYCTX ≥ ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)', CLOCK]),
   );
 
   // Two notes, two fields: a share that could not be computed is named, and
@@ -421,9 +462,9 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
         myctx: null,
         focus: null,
         lastAudit: null, myctxNote: 'projection sync failed',
-        teeNote: 'WINDOW tee not written (unsafe session id)',
+        teeNote: 'WINDOW tee not written (unsafe session id)', corpus: null,
       },
-      false, null,
+      false, null, process.env, AT,
     ),
     // Both notes ride the ACCOUNT row, because a tee that stopped landing is
     // news and news goes where the reader is still looking — never on the
@@ -432,7 +473,7 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
       ['ASK ▰▰▱▱▱▱▱▱▱▱ 24% (23.5 / 98) ·+74.5',
         'WINDOW ▰▰▱▱▱▱▱▱▱▱ 23.5% (235.0k / 1.0M)'],
       ['MYCTX unavailable (projection sync failed)',
-        'WINDOW tee not written (unsafe session id)'],
+        'WINDOW tee not written (unsafe session id)', CLOCK],
     ),
   );
 
@@ -447,11 +488,13 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
         myctx: { tokens: 0, injections: 0, unrecorded: 0 },
         focus: null,
         lastAudit: null,
-        myctxNote: null, teeNote: null,
+        myctxNote: null, teeNote: null, corpus: null,
       },
-      false, null,
+      false, null, process.env, AT,
     ),
-    bars(['MODEL Opus 4.5', 'REPO p', 'BRANCH b'],
+    // The account row is otherwise empty here — no share, no cost, no windows
+    // — so the clock IS that row, which is what `barsAt` adds.
+    barsAt(['MODEL Opus 4.5', 'REPO p', 'BRANCH b'],
       ['ASK ▰▰▱▱▱▱▱▱▱▱ 24% (23.5 / 98) ·+74.5',
         'WINDOW ▰▰▱▱▱▱▱▱▱▱ 23.5% (235.0k / 1.0M)']),
   );

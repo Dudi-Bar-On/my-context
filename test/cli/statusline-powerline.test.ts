@@ -33,7 +33,7 @@ import {
   payloadExtras, rateLimitSegment, renderPowerline, until, centreOffset, segmentWidth,
   usageBands,
   BAR_FILL,
-  buildLines, renderStatusLine, FOCUS_MAX, lastAuditSegment, since,
+  buildLines, renderStatusLine, FOCUS_MAX, lastAuditSegment, since, stamp,
   type ModelModes, type PowerlineInput, type Segment,
 } from '../../src/cli/commands/statusline-powerline.ts';
 
@@ -79,13 +79,24 @@ function input(over: Partial<PowerlineInput>): PowerlineInput {
     focus: null,
     lastAudit: null,
     myctxNote: null,
-    teeNote: null,
+    teeNote: null, corpus: null,
     ...over,
   };
 }
 
+/**
+ * **A FIXED `now`, since the bar gained a wall CLOCK on 2026-09-02.**
+ *
+ * Every verbatim expectation in this file would otherwise be a race against
+ * the minute boundary. `NOW` is declared further down and read by name by
+ * several tests, so it is not moved; this is the same instant under a name the
+ * helper can see, and `stamp(AT)` is what the expectations quote — never a
+ * date written out here, which would pin the FORMAT in a second place.
+ */
+const AT = Date.UTC(2026, 7, 31, 12, 0, 0);
+
 function line(over: Partial<PowerlineInput>, colour = false, columns: number | null = null): string {
-  return renderPowerline(buildSegments(input(over)), { colour, columns });
+  return renderPowerline(buildSegments(input(over), AT), { colour, columns });
 }
 
 /**
@@ -453,6 +464,11 @@ test('with colour off it is the same text and not one escape byte', () => {
     'BRANCH campaign/my-context-test',
     `ASK ${usageBar(42 / 98 * 100)} 43% (42.0 / 98) ·+56.0`,
     `WINDOW ${usageBar(42)} 42.0% (420.0k / 1.0M)`,
+    // The wall clock closes the bar since 2026-09-02, and it is quoted through
+    // `stamp` rather than written out: this file asserts WHICH FIELDS the line
+    // carries, and pinning the date's spelling here would put `wallStamp`'s
+    // decision in a second place.
+    `CLOCK ${stamp(AT)}`,
   ].join(FIELD_JOIN));
 });
 
@@ -486,7 +502,11 @@ test('a narrow terminal elides the branch from the LEFT and never wraps', () => 
   //
   // The assertion is the one it has always been: the distinguishing tail is
   // the half worth keeping. Only the width it has to be measured at has moved.
-  const columns = 150;
+  // 168 since the wall clock landed on 2026-09-02: the one-line form grew by
+  // its 23 cells, so the band in which the branch is SHORTENED rather than
+  // given up whole slid right by exactly that. Measured, as every previous
+  // move of this number was.
+  const columns = 168;
   const narrow = line({}, false, columns);
   assert.ok(displayWidth(narrow) <= columns, `${displayWidth(narrow)} > ${columns}`);
   // The distinguishing TAIL survives; the leading `…` says a head was removed.
@@ -729,6 +749,9 @@ test('the bar is three lines: identity, this window, then the account', () => {
     '5H ▰▱▱▱▱▱▱▱▱▱ 12%',
     'MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)',
     'COST $0.42',
+    // Last of all, and on the row that moves, because it IS a clock — the same
+    // placement the audit clock has and for the same reason.
+    `CLOCK ${stamp(NOW)}`,
   ]);
   // The anchor is on the WINDOW row, and neither other row has one — there is
   // nothing on them to centre a bar on.
@@ -990,13 +1013,14 @@ test('the blocks that have nothing to say are absent, and the ones that do are p
     // the owner's ruling, and that is asserted on the next line rather than
     // hidden by choosing an input that avoids it.
     line({ model: null, project: null, branch: null, threshold: null }),
-    `WINDOW ${usageBar(42)} 42.0% (420.0k / 1.0M)`,
+    `WINDOW ${usageBar(42)} 42.0% (420.0k / 1.0M)${FIELD_JOIN}CLOCK ${stamp(AT)}`,
     'a session with no model, no project and no branch is one block, not three empty ones',
   );
   assert.equal(
     line({ model: null, project: null, branch: null }),
     `ASK ${usageBar(42 / 98 * 100)} 43% (42.0 / 98) ·+56.0`
-      + `${FIELD_JOIN}WINDOW ${usageBar(42)} 42.0% (420.0k / 1.0M)`,
+      + `${FIELD_JOIN}WINDOW ${usageBar(42)} 42.0% (420.0k / 1.0M)`
+      + `${FIELD_JOIN}CLOCK ${stamp(AT)}`,
     'a configured ask always states its distance, even on an otherwise empty bar',
   );
   assert.match(line({ teeNote: 'tee not written (disk full)' }), /tee not written \(disk full\)/);
@@ -1284,7 +1308,7 @@ test('the whole bar, from a real payload shape, with every group present', () =>
     focus: null,
     lastAudit: null,
     myctxNote: null,
-    teeNote: null,
+    teeNote: null, corpus: null,
   }, NOW), { colour: false, columns: null });
 
   // **The ONE-LINE FALLBACK, whole.** Since the owner's three-row ruling of
@@ -1308,6 +1332,15 @@ test('the whole bar, from a real payload shape, with every group present', () =>
     // The elapsed clock the owner's reference closes on. `total_duration_ms`
     // is 1000 in this payload, which is under a minute and therefore `now`.
     'ELAPSED now',
+    // And the wall clock, which is the field that says how stale all of the
+    // above is on a surface that cannot repaint itself.
+    `CLOCK ${stamp(NOW)}`,
+    // NO `CWD` AND NO `CORPUS`, and that is the assertion rather than an
+    // omission: this payload carries no `cwd`, so there is no directory to
+    // draw and no corpus resolved from one. A bar that invented `.` there
+    // would be claiming the session had not moved from a directory nobody
+    // named. Their present states are reached by `test/ui/strip-parity.test.ts`
+    // and by the fixtures in `test/cli/statusline.test.ts`.
   ].join(FIELD_JOIN));
 });
 
@@ -1363,7 +1396,7 @@ test('the line gives itself up in the order the owner ranked, not by width', () 
     focus: null,
     lastAudit: null,
     myctxNote: null,
-    teeNote: null,
+    teeNote: null, corpus: null,
   };
   // Compared as RENDERED fields — name and value — since the owner's labels
   // ruling moved the name out of the value and into its own property.

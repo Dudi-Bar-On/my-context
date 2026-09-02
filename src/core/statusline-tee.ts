@@ -425,12 +425,41 @@ export function payloadExtras(payload: unknown): {
   elapsedMs: number | null;
   warmPercent: number | null;
   sessionName: string | null;
+  /**
+   * **`cwd` — WHERE THE SESSION IS NOW, and the one of the three candidates
+   * that MOVES** (owner request, 2026-09-02).
+   *
+   * The payload carries three directories and they are identical in every
+   * ordinary session: `cwd`, `workspace.current_dir` and
+   * `workspace.project_dir`. That is exactly why the choice between them is
+   * the whole of this field: THEY DIVERGE PRECISELY WHEN IT MATTERS.
+   *
+   * `project_dir` is the directory Claude Code was LAUNCHED in and it does not
+   * move for the life of the session — so a field drawn from it could never
+   * show the defect it was asked for, which is a stray `cd` moving the session
+   * into a subdirectory and silently switching every hook onto a nested
+   * corpus. It is read below as the ANCHOR, which is the job it is right for.
+   *
+   * `cwd` and `workspace.current_dir` carry the same value; `cwd` is the
+   * top-level field, is present in every payload shape this bridge has seen,
+   * and is what `cmdStatusline` already reads for its workspace fallback.
+   * `current_dir` is taken only if `cwd` is absent, so a payload that stops
+   * carrying one of them still answers.
+   */
+  cwd: string | null;
+  /**
+   * `workspace.project_dir` — where the session was LAUNCHED, which does not
+   * move. Read as the anchor `cwd` is drawn relative to, and never as the
+   * working directory itself: see above.
+   */
+  projectDir: string | null;
 } {
   const num = (v: unknown): number | null =>
     typeof v === 'number' && Number.isFinite(v) ? v : null;
   const bool = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null);
   const obj = (v: unknown): Record<string, unknown> | null =>
     typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null;
+  const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
 
   const p = obj(payload) ?? {};
   const effortLevel = obj(p['effort'])?.['level'];
@@ -472,6 +501,13 @@ export function payloadExtras(payload: unknown): {
     // SESSION and not about the model: two windows on one model and one repo
     // differ only by this.
     sessionName: typeof p['session_name'] === 'string' ? p['session_name'] : null,
+    // Read HERE, in the one payload parser, rather than at either bar: the
+    // terminal and the web strip both draw these and a second reader for the
+    // browser would be a second spelling of an EXTERNAL schema — this
+    // project's most-repeated defect, in the one place where the thing being
+    // agreed with is not ours.
+    cwd: str(p['cwd']) ?? str(obj(p['workspace'])?.['current_dir']),
+    projectDir: str(obj(p['workspace'])?.['project_dir']),
   };
 }
 

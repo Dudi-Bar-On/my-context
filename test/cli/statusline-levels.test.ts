@@ -248,7 +248,8 @@ const INPUT: PowerlineInput = {
   costUsd: null,
   elapsedMs: null, warmPercent: null,
   myctx: { tokens: 264_500, injections: 3, unrecorded: 0 },
-  lastAudit: null, myctxNote: null, teeNote: null,
+  lastAudit: null, myctxNote: null, teeNote: null, corpus: null,
+  cwd: null, projectDir: null,
 };
 
 test('ALL FIVE used-of-maximum fields get the identical treatment', () => {

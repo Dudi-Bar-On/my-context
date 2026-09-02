@@ -5,6 +5,8 @@ import {
   distinctSessionName, modeFlags,
   type ModelModes, type RateLimit,
 } from '../../core/statusline-tee.ts';
+import type { CorpusResolution } from '../../core/corpus-identity.ts';
+import { DIR_NAME } from '../../core/workspace.ts';
 
 // --- The status line, as powerline blocks -----------------------------------
 //
@@ -100,6 +102,13 @@ export const FIELD_NAME: Record<string, string> = {
   'cost-cache': 'COST',
   'last-audit': 'AUDIT',
   elapsed: 'ELAPSED',
+  // The three the owner asked for on 2026-09-02. `CWD` and `CLOCK` have no
+  // web counterpart to borrow a name from and are named in the same register;
+  // `CORPUS` is the strip's own `strip.grp.corpus`, and the strip's new field
+  // takes the same word so the two surfaces cannot drift on what it is called.
+  cwd: 'CWD',
+  'corpus-root': 'CORPUS',
+  clock: 'CLOCK',
 };
 
 /** The separator with its spaces, which is how it is actually joined. */
@@ -166,6 +175,24 @@ interface BandModule {
   BAR_EMPTY: string;
   BAR_CELLS: number;
   fmtCount: (n: unknown) => string;
+  /**
+   * The three that arrived with the owner's 2026-09-02 request — the wall
+   * clock's spelling, and the abbreviation both directory fields are drawn
+   * with. They come across the SAME bridge the bands do, for the same reason:
+   * the strip draws these fields from this module directly, and a second
+   * implementation on this side would be two spellings of one abbreviation
+   * that a reader would have to notice disagreeing.
+   *
+   * That is a real improvement on the duration precedent one file over:
+   * `formatDuration` is a COPY here pinned by `test/ui/duration-parity.test.ts`
+   * because it must be synchronous and unit-testable, while these three are
+   * only ever called from `buildLines`, which runs long after the top-level
+   * `await` below has resolved. So there is nothing to pin — there is one
+   * implementation.
+   */
+  wallStamp: (ms: unknown) => string | null;
+  relDir: (dir: unknown, anchor: unknown) => string | null;
+  corpusDir: (root: unknown, anchor: unknown, dirName?: string) => string | null;
 }
 
 async function loadBands(): Promise<BandModule | null> {
@@ -177,7 +204,12 @@ async function loadBands(): Promise<BandModule | null> {
         // predates the lift is refused as a shape rather than answering
         // `undefined` four calls later.
         || typeof mod.usageLevelOf !== 'function' || typeof mod.usageBar !== 'function'
-        || typeof mod.fmtCount !== 'function') {
+        || typeof mod.fmtCount !== 'function'
+        // And the 2026-09-02 arrivals, checked here for the same reason: a
+        // `viewmodel.js` that predates them is refused as a SHAPE rather than
+        // answering `undefined` three calls later, in the middle of a field.
+        || typeof mod.wallStamp !== 'function' || typeof mod.relDir !== 'function'
+        || typeof mod.corpusDir !== 'function') {
       return null;
     }
     return mod as BandModule;
@@ -1006,6 +1038,54 @@ export function fmtCount(n: number): string {
 }
 
 /**
+ * **THE DATE AND TIME — and it is honestly a RENDER STAMP, not a clock.**
+ *
+ * ── THE TWO SURFACES CANNOT BEHAVE THE SAME HERE, AND SAYING SO IS THE
+ *    FIELD'S WHOLE VALUE ─────────────────────────────────────────────────
+ *
+ * A terminal status line is drawn ON DEMAND: Claude Code runs this command
+ * once per assistant message and displays whatever it printed until the next
+ * one. **It cannot tick.** So a "current time" here is a fiction the moment it
+ * is drawn, and what this field actually reports is WHEN THIS LINE WAS DRAWN —
+ * which is the more useful of the two facts anyway, because it tells a reader
+ * how stale everything ELSE on the bar is. A bar showing `ctx 90.3%` beside a
+ * stamp forty minutes old is a bar to stop trusting, and nothing else on it
+ * says so.
+ *
+ * The web strip CAN tick, and it does — `drawContext()` re-renders on the ping
+ * cycle and computes this at draw time, exactly as it already computes
+ * `formatAge` and `formatDuration` there. So the two surfaces WILL disagree,
+ * by up to one assistant message on the terminal side.
+ *
+ * **THAT DISAGREEMENT IS CORRECT AND A FUTURE PARITY GATE MUST NOT READ IT AS
+ * A DEFECT.** The owner's ruling of 2026-09-01 — *"every field that is also
+ * displayed on the terminal status line should have exactly the same value in
+ * the web status bar"* — is about a field whose VALUE is a measurement of the
+ * same thing: `5d 8h` of elapsed session is `5d 8h` on both bars or one of
+ * them is wrong. This field's value is a measurement of WHEN THE SURFACE LAST
+ * PAINTED, and the two surfaces paint on different triggers. They agree on
+ * MEANING — "this bar is current as of …" — and they agree, exactly, on the
+ * spelling and the resolution, which is what `wallStamp` is for. A gate that
+ * demanded equal SECONDS here would be demanding the terminal tick.
+ *
+ * `null` when the shared module did not load, which draws no field at all
+ * rather than a date this file spelled for itself.
+ */
+export function stamp(now: number): string | null {
+  return BANDS === null ? null : BANDS.wallStamp(now);
+}
+
+/** A directory relative to the launch directory — the web's own `relDir`. */
+export function relDir(dir: string | null, anchor: string | null): string | null {
+  return BANDS === null ? null : BANDS.relDir(dir, anchor);
+}
+
+/** A corpus root relative to the launch directory — the web's own `corpusDir`. */
+export function corpusDir(root: string | null, anchor: string | null): string | null {
+  return BANDS === null ? null : BANDS.corpusDir(root, anchor, DIR_NAME);
+}
+
+/**
  * How long this session has been running: `1h 24m`, `3m`, `2d 4h`.
  *
  * The `| 1h 24m` at the end of the owner's reference, from
@@ -1098,6 +1178,57 @@ export interface PowerlineInput {
   myctxNote: string | null;
   /** Why the sample did not reach disk. Two facts, two fields — see below. */
   teeNote: string | null;
+  /**
+   * **WHERE THIS SESSION IS RUNNING NOW** — `cwd` off the payload, absolute.
+   *
+   * Owner, 2026-09-02: *"Twice today a stray `cd` moved the session's working
+   * directory into `my-context/`, which silently switched every hook onto a
+   * nested 44-item corpus instead of the real 759-item one. It went unnoticed
+   * for minutes."* Nothing on either bar said where the session was, so
+   * nothing could say that it had moved.
+   *
+   * Absolute here and ABBREVIATED at the draw — see `relDir`, which is where
+   * the argument for the abbreviation lives.
+   */
+  cwd: string | null;
+  /**
+   * `workspace.project_dir` — where the session was LAUNCHED. It does not
+   * move, so it is the ANCHOR the two directory fields are drawn against and
+   * never a field of its own: a constant on a status bar is furniture.
+   */
+  projectDir: string | null;
+  /**
+   * **WHICH CORPUS THE SESSION'S DIRECTORY ACTUALLY RESOLVES TO**, and whether
+   * that resolution is the alarm.
+   *
+   * ── WHY THE CORPUS IS DRAWN AND NOT ONLY THE DIRECTORY ──────────────────
+   *
+   * The directory is the CAUSE; the corpus is the EFFECT, and the effect is
+   * what changed behaviour. A reader who sees `CWD ./my-context` still has to
+   * know that `my-context/` holds a corpus of its own before that means
+   * anything; a reader who sees `CORPUS ./my-context — 44 items, 759 above`
+   * needs to know nothing. The MCP server has printed exactly this on every
+   * tool result since 2026-08-27 (`src/mcp/provenance.ts`) and this is the
+   * same disclosure on the surface that is always visible.
+   *
+   * **Resolved from `cwd` and not from the workspace this command already
+   * built**, and that difference IS the field. `cmdStatusline` resolves its
+   * workspace from `project_dir` first, deliberately, so a tee can never land
+   * in another project's `.statusline/`. The HOOKS resolve theirs by walking
+   * up from wherever they are RUN. When those two answers differ, the bar is
+   * reading one corpus while the session is writing to another — which is the
+   * failure, stated.
+   *
+   * **No second resolver.** This is `core/corpus-identity.ts`'s own
+   * `resolveCorpus`, the same function `toolResultProvenance` calls, carrying
+   * its own `nesting` block — the enclosing root and both item counts, taken
+   * by its own walk. Two resolvers that could disagree about which corpus is
+   * in play would be a particularly bad version of the defect this field
+   * exists to expose.
+   *
+   * `null` when nothing resolved it — no session directory to walk up from.
+   */
+  corpus: CorpusResolution | null;
 }
 
 /**
@@ -1128,6 +1259,7 @@ export interface PowerlineInput {
 export const NO_EXTRAS: Pick<
   PowerlineInput,
   'modes' | 'fiveHour' | 'sevenDay' | 'costUsd' | 'elapsedMs' | 'warmPercent' | 'sessionName'
+  | 'cwd' | 'projectDir'
 > = {
   modes: { effort: null, thinking: null, fastMode: null, exceeds200k: null },
   fiveHour: null,
@@ -1136,6 +1268,8 @@ export const NO_EXTRAS: Pick<
   elapsedMs: null,
   warmPercent: null,
   sessionName: null,
+  cwd: null,
+  projectDir: null,
 };
 
 export const GIVE = {
@@ -1176,6 +1310,36 @@ export const GIVE = {
   notes: 80,
   sevenDay: 90,
   fiveHour: 92,
+  /**
+   * **THE TWO 2026-09-02 ADDITIONS RANK ABOVE EVERY OTHER REAL BLOCK, and
+   * that is a claim worth arguing rather than a slot that was free.**
+   *
+   * Every other field on this bar is a MEASUREMENT. These two say WHICH
+   * PROJECT the measurements were taken from. If the corpus is the wrong one,
+   * the myctx share, the audit clock and the focus are all correct readings of
+   * a project the reader is not working on — and there is nothing else on the
+   * bar that could reveal it. A rate window outranked by this is still true
+   * whichever corpus is loaded; a rate window is a fact about the account.
+   *
+   * They also cost almost nothing to keep. In the ordinary case they are
+   * `CWD .` and `CORPUS .` — nineteen columns including their labels and
+   * separators — because `relDir` draws them relative to the launch
+   * directory. A field that is cheap when quiet and loud when it is not has
+   * earned a high rank on width alone.
+   *
+   * The corpus above the directory, because the corpus is the effect: given
+   * one block, a reader would rather be told which corpus is in play than
+   * which directory caused it.
+   */
+  cwd: 94,
+  corpusRoot: 95,
+  /**
+   * Ranked with the line-3 conveniences, beside `elapsed`. Knowing when the
+   * bar was drawn is worth having and is not worth a field that says which
+   * corpus drew it — and a reader whose terminal is too narrow for this one
+   * still has a wall clock on their own machine.
+   */
+  clock: 7,
   mark: 999,
 } as const;
 
@@ -1688,6 +1852,35 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
     });
   }
 
+  // ── WHERE THE SESSION IS, AND WHICH CORPUS THAT GOT IT — owner request,
+  //    2026-09-02, and the coordinator's ruling the same day that BOTH are
+  //    drawn rather than one standing in for the other.
+  //
+  // Line 1 because they are IDENTITY: they do not move on the per-message
+  // clock line 2 runs on, and when they do move that IS the news. Immediately
+  // after the branch, so the row reads outward in one direction — the tool,
+  // the repository, the branch, the directory inside it, and the corpus that
+  // directory resolved to.
+  //
+  // Both are drawn relative to the launch directory, so the ordinary session
+  // spends nineteen columns on the pair and the broken one spends more. See
+  // `relDir` in `lib/viewmodel.js` for why that is the abbreviation and not a
+  // truncated absolute path.
+  const where = relDir(input.cwd, input.projectDir);
+  if (where !== null) {
+    identity.push({
+      text: where, label: FIELD_NAME['cwd'],
+      // Unlevelled identity, so `--carry` and not a hue: a working directory
+      // is not good or bad. The VERDICT about it, when there is one, is the
+      // corpus block immediately after — which is the right place for it,
+      // because a directory that has moved is only a problem if the corpus
+      // moved with it.
+      ink: INK.carry, give: GIVE.cwd, field: 'cwd',
+    });
+  }
+  const corpus = corpusSegment(input.corpus, input.projectDir);
+  if (corpus !== null) identity.push(corpus);
+
   // **Only when it differs from the project.** A session named after its
   // project restates a block already two along, and the owner's instruction
   // was explicit: this field exists to tell two windows apart, and a window it
@@ -1841,7 +2034,90 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
     });
   }
 
+  // **WHEN THIS LINE WAS DRAWN** — last of all, on the row that moves, for the
+  // same reason the audit clock is on it: it IS a clock. `now` is render time
+  // and is never carried in aged.
+  //
+  // Beside `AUDIT`, deliberately: that field says how LONG AGO the log last
+  // moved and this one says as of WHEN, and the pair is what turns a relative
+  // age into an absolute instant a reader can compare against anything else.
+  const at = stamp(now);
+  if (at !== null) {
+    state.push({
+      text: at, label: FIELD_NAME['clock'],
+      ink: INK.carry, give: GIVE.clock, field: 'clock',
+    });
+  }
+
   return { identity, window, account: state };
+}
+
+/**
+ * **WHICH CORPUS THIS SESSION'S DIRECTORY RESOLVED TO — and the alarm.**
+ *
+ * ── THE INTERESTING STATE IS DISAGREEMENT, NOT THE PATH ─────────────────────
+ *
+ * A corpus resolved from a directory that sits inside a project is normal and
+ * unremarkable, and a bar that spent forty-six columns saying so every message
+ * would have taught its reader to stop looking at it long before the day it
+ * mattered. What is NOT ordinary is a walk that stopped at a NESTED corpus
+ * while another one stands higher up the same tree: that is the shape of the
+ * failure the owner reported twice on 2026-09-02, and `resolveCorpus` already
+ * detects and describes it for the MCP surface.
+ *
+ * So this block has two spellings and they are deliberately unalike:
+ *
+ *     CORPUS .                                  the ordinary case, one column
+ *     CORPUS ▲ ./my-context — 44 items, 759 above   the alarm
+ *
+ * **THE COUNTS RIDE THE ALARM, AND THEY ARE THE POINT.** The outage this all
+ * comes from was not somebody misreading a path — it was reading "44 items" as
+ * a project with little recorded in it rather than as A DIFFERENT CORPUS.
+ * `nestedCorpusNote` prints both numbers for exactly that reason and this is
+ * the same disclosure at bar width. They cost two recursive `items/` walks,
+ * paid ONLY in the alarm state, which is the state where a person is about to
+ * make a decision on this line.
+ *
+ * **The hue is `warn` and it is not the carrier.** The glyph `▲`, the word
+ * `items`, the two numbers and the changed SHAPE of the value all say it
+ * without any colour at all — `src/ui/public/06-a11y.html`'s rule, and what
+ * makes `renderPowerline({ colour: false })` a real degradation here.
+ *
+ * `null` for no resolution at all, and a NAMED `none` for a session that
+ * resolved to no corpus: those are different sentences
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`), and only
+ * the first is silence.
+ */
+export function corpusSegment(
+  resolution: CorpusResolution | null, anchor: string | null,
+): Segment | null {
+  if (resolution === null) return null;
+  const label = FIELD_NAME['corpus-root'];
+  if (resolution.root === null) {
+    return {
+      text: 'none', label, ink: INK.neutral, give: GIVE.corpusRoot, field: 'corpus-root',
+    };
+  }
+  const where = corpusDir(resolution.root, anchor);
+  // The shared module did not load, so there is no abbreviation to draw and
+  // this file may not spell one of its own. Silence, exactly as `fmtCount`
+  // answers `'?'` rather than punctuating a number for itself.
+  if (where === null) return null;
+  const nesting = resolution.nesting;
+  if (nesting === null) {
+    return {
+      text: where, label, ink: INK.carry, give: GIVE.corpusRoot, field: 'corpus-root',
+    };
+  }
+  return {
+    text: `${LEVEL_GLYPH.warn} ${where} — ${nesting.items} items, ${nesting.enclosingItems} above`,
+    // The last-resort spelling for a terminal too narrow for the disclosure:
+    // the glyph and the path, which is still an alarm and still says which
+    // corpus. The COUNTS are the explanation and the explanation is what a
+    // narrow terminal gives up — never the fact that something is wrong.
+    terse: `${LEVEL_GLYPH.warn} ${where}`,
+    label, ink: INK.warn, give: GIVE.corpusRoot, field: 'corpus-root',
+  };
 }
 
 /**

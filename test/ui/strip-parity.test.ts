@@ -140,6 +140,15 @@ const FULL: PowerlineInput = {
   lastAudit: { state: 'known', op: 'subagent-stop', at: new Date().toISOString() },
   myctxNote: null,
   teeNote: null,
+  // The ORDINARY directory case: the session is where it was launched, and the
+  // corpus it resolves to is the launch directory's own. Both fields render
+  // their quiet spelling here; `NOTED` below carries the alarm, so the two
+  // fixtures between them reach every branch `corpusSegment` has.
+  cwd: '/repo/test_mycontext_plugin',
+  projectDir: '/repo/test_mycontext_plugin',
+  corpus: {
+    root: '/repo/test_mycontext_plugin/.my_context', overridden: false, nesting: null,
+  },
 };
 
 /** The same payload with the two NOTES present instead of what they qualify. */
@@ -148,6 +157,21 @@ const NOTED: PowerlineInput = {
   myctx: null,
   myctxNote: 'the audit projection has not been built',
   teeNote: 'tee not written (unsafe session id)',
+  // ── AND THE CORPUS ALARM, which is the state the field was added for.
+  //
+  // The session has moved into a subdirectory that holds a corpus of its own,
+  // so the walk stopped early and every hook is writing somewhere the bar is
+  // not reading. It rides this fixture rather than `FULL` for the reason the
+  // two notes do: one payload cannot be in two states at once, and the pair is
+  // what reaches both.
+  cwd: '/repo/test_mycontext_plugin/my-context',
+  corpus: {
+    root: '/repo/test_mycontext_plugin/my-context/.my_context',
+    overridden: false,
+    nesting: {
+      enclosing: '/repo/test_mycontext_plugin/.my_context', items: 44, enclosingItems: 759,
+    },
+  },
 };
 
 function emitted(input: PowerlineInput): Segment[] {

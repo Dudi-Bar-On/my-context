@@ -838,6 +838,23 @@ export const strings = {
   'strip.level.caution': 'זהירות',
   'strip.level.warning': 'אזהרה',
   'strip.level.critical': 'קריטי',
+  // The three fields of 2026-09-02 — see the English table for the defect they
+  // exist for. The two paths are LATIN and go inside `{mv:…}` for the reason
+  // every identifier on this bar does: a path is a neutral run to the bidi
+  // algorithm and would lay itself out backwards inside Hebrew prose.
+  'strip.grp.where': 'היכן',
+  'strip.grp.cwd': 'תיקייה',
+  'strip.grp.corpusRoot': 'קורפוס',
+  'strip.grp.clock': 'שעון',
+  'strip.cwd': '{mv:dir}',
+  'strip.cwdUnknown': 'לא דווח',
+  'strip.corpusRoot': '{mv:dir}',
+  'strip.corpusRootNested': '{mv:dir} — {items} פריטים, {enclosing} מעל',
+  'strip.corpusRootNone': 'אין כאן קורפוס',
+  'strip.clock': '{mv:stamp}',
+  'title.cwd': 'היכן הסשן עובד כרגע, ביחס לתיקייה שממנה הופעל. נקודה בודדת פירושה שלא זז. כל דבר אחר פירושו שפקודה שינתה את תיקיית העבודה — מה שמשנה גם באיזה קורפוס ההוקים משתמשים, אז בדקו את שדה הקורפוס שלצידו.',
+  'title.corpusRoot': 'לאיזה קורפוס מתרגמת תיקיית העבודה של הסשן, ביחס לתיקייה שממנה הופעל הסשן. הקורפוס נמצא בהליכה כלפי מעלה מתיקיית העבודה ועצירה ב‑.my_context הראשון, כך שהתיקייה היא שקובעת איזה מהם יתקבל. אזהרה כאן פירושה שההליכה נעצרה בקורפוס מקונן בעוד שקיים אחר גבוה יותר באותו עץ: מספר הפריטים הקטן הוא קורפוס אחר, ולא פרויקט שנרשם בו מעט.',
+  'title.clock': 'מתי השורה הזו צוירה לאחרונה. סרגל הרשת מצייר את עצמו מחדש במחזור משלו, ולכן זה קרוב לשעה הנוכחית; שורת המצב בטרמינל מצוירת רק כאשר Claude Code שולח הודעה, ולכן אותו שדה שם אומר כמה השורה הזו ישנה.',
   'strip.grp.repo': 'מאגר',
   'strip.grp.corpus': 'קורפוס',
   'strip.grp.session': 'שיחה',

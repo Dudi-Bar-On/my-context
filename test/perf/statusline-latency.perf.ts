@@ -234,7 +234,7 @@ test('the formatting itself is not where the time goes', () => {
     ...NO_EXTRAS,
     model: 'Opus 4.5', project: 'my-context', branch: 'master',
     occupancy: occupancyFromPayload(sample), threshold: 98,
-    myctx: share, focus: null, lastAudit: null, myctxNote: null, teeNote: null,
+    myctx: share, focus: null, lastAudit: null, myctxNote: null, teeNote: null, corpus: null,
   };
   const measured = measure(() => { statusLineText(input, true, 120); });
   console.log(`  statusLineText  p95 ${measured.toFixed(3)} ms`);

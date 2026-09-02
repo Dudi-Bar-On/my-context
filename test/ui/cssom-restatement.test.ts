@@ -75,7 +75,7 @@ test('every hole this check has is printed rather than silently passed', () => {
   // against it. If this list grows, the checker is seeing less than it reports.
   assert.deepEqual(
     report.unjudged.map((u) => `${u.file}:${u.line}`),
-    ['src/ui/public/screens/parts.js:145'],
+    ['src/ui/public/screens/parts.js:158'],
     'the set of writes this checker cannot judge has changed; read the report and decide '
     + 'whether the checker should learn the shape or the code should not use it',
   );

@@ -27,6 +27,8 @@
  * only ever with LOGICAL properties.
  */
 
+import { wallStamp } from '../lib/viewmodel.js';
+
 /** `el(tag, cls, txt)` — the mockup's own factory, argument for argument. */
 export function el(tag, cls, txt) {
   const e = document.createElement(tag);
@@ -134,10 +136,21 @@ export function clockOf(at) {
 export function stampOf(at) {
   const when = instantOf(at);
   if (when === null) return String(at);
-  return when.toLocaleString('en-GB', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-    hour12: false,
-  });
+  // ── AND SINCE 2026-09-02 THE FORMAT ITSELF LIVES ONE DIRECTORY UP.
+  //
+  // The status bar gained a wall CLOCK field on both surfaces, and the
+  // terminal half of it is TypeScript — which cannot statically import this
+  // untyped browser module, but already reaches `lib/viewmodel.js` through a
+  // dynamic-import bridge for the occupancy bands. So the `en-GB`, 24-hour,
+  // day-first spelling this function settled moved there as `wallStamp`, and
+  // this call is what stops it becoming the fourth copy of one decision — the
+  // exact regression the task that wrote this function existed to end.
+  //
+  // The PARSE GUARD stays here, and that division is the point: `instantOf` is
+  // about whether an AUDIT RECORD's stamp may be reformatted at all, which is
+  // a fact about this product's own log; `wallStamp` is about how an instant
+  // is spelled, which is a fact about the interface.
+  return wallStamp(when.getTime()) ?? String(at);
 }
 
 /** The mockup's `style="margin-block-start:8px"`, without the attribute. */

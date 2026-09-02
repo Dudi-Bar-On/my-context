@@ -137,6 +137,146 @@ export function formatDuration(ms, sep = '') {
   return `${mins}m`;
 }
 
+/**
+ * **THE ONE SPELLING OF A WALL-CLOCK INSTANT, for both surfaces** — owner
+ * request, 2026-09-02: the working directory and the date and time on the
+ * terminal status line AND on the web strip.
+ *
+ * `02/09/2026, 16:52`. The FORMAT is not invented here: `screens/parts.js`'
+ * `stampOf` settled it on 2026-08-31 for the injection preview's `When`
+ * column, and this is that decision moved one directory up so a TypeScript
+ * caller can reach it through the same dynamic-import bridge the bands take.
+ * `parts.js` now calls this rather than keeping its own copy — the whole point
+ * of the task that produced `stampOf` was that one instant had three
+ * spellings, and answering a fourth surface with a fourth copy would undo it.
+ *
+ * **`en-GB` is a FORMAT choice and not a language one**, exactly as `num()`
+ * argues for `en-US`: it is the 24-hour, day-first spelling in both UI
+ * languages, and a clock that changed shape with the interface language would
+ * be a second thing to reconcile for no reader's benefit. Hebrew needs the
+ * isolated run around the value, which is `{mv:…}`'s job at the call site, not
+ * a different calendar.
+ *
+ * **To the MINUTE and not to the second.** A status bar is read at a glance
+ * and repainted on a cycle; a seconds field would change on every paint and
+ * draw the eye to the one number on the bar that never means anything.
+ * `clockOf` keeps seconds because an audit burst lands ten rows inside one
+ * second, which is a property of that table and not of this bar.
+ *
+ * **LOCAL time, deliberately.** The reader is comparing this against their own
+ * wall clock — "is this line current?" — not against a log line from another
+ * machine, and `Intl` resolves the running machine's zone. The audit stamps
+ * that ARE evidence keep their own treatment in `parts.js`.
+ *
+ * `null` for anything that is not an instant, which draws a named unmeasured
+ * field rather than a wrong date.
+ */
+export function wallStamp(ms) {
+  const when = typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms) : null;
+  if (when === null || Number.isNaN(when.getTime())) return null;
+  return when.toLocaleString('en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    hour12: false,
+  });
+}
+
+/**
+ * **WHERE A DIRECTORY IS, RELATIVE TO THE ONE THE SESSION WAS LAUNCHED IN** —
+ * the abbreviation both bars draw the working directory and the corpus root
+ * with, written once here for the reason `formatDuration` is.
+ *
+ * ── WHY RELATIVE, AND WHY TO *THIS* ANCHOR ────────────────────────────────
+ *
+ * The field exists because a stray `cd` twice moved a session into
+ * `my-context/` and silently switched every hook onto the nested 44-item
+ * corpus. So what the reader needs on the bar is not a path — it is THE ANSWER
+ * TO "HAVE I MOVED?", and the thing that answers it is the difference between
+ * where the session is now and where it was launched.
+ *
+ * Claude Code's payload carries both, and they are the two candidates that
+ * look identical today: `cwd` MOVES and `workspace.project_dir` DOES NOT.
+ * Drawn against each other they read `.` for the whole of an ordinary session
+ * and `./my-context` the instant the defect happens — a SHAPE CHANGE, visible
+ * at a glance, in five columns. An absolute
+ * `D:\Users\UserC\source\repos\test_mycontext_plugin` is forty-six columns of
+ * a bar already ~145 wide, it repeats the `REPO` field's whole value, and it
+ * makes the reader compare two long strings character by character to find a
+ * difference in the tail — which is the failure this field exists to end, not
+ * to perform.
+ *
+ * ── THE THREE ANSWERS ─────────────────────────────────────────────────────
+ *
+ *     `.`               the session is where it was launched — the ordinary case
+ *     `./my-context`    it has moved BELOW the launch directory — the defect
+ *     `…/repos/other`   somewhere else entirely, so the last two segments
+ *
+ * The third is the owner's "last segment or two", and it is what an anchor
+ * cannot describe: a directory outside the launch tree has no relative form
+ * shorter than the absolute one. It carries a leading `…` so it can never be
+ * misread as relative — `INV-nothing-is-dropped-silently`.
+ *
+ * Separators are normalised to `/`. The relative form is not a path anybody
+ * will paste; it is a comparison, and one spelling means a Windows session and
+ * a POSIX one draw the same shape for the same fact. **THE FULL PATH IS NOT
+ * LOST**: the strip carries it in the field's hover (`drawContext`'s closing
+ * sweep) and the terminal carries the corpus's absolute root in the alarm
+ * state, which is the state where a path is a thing to act on.
+ *
+ * `null` for a directory that was not reported, which the caller draws as a
+ * named unmeasured field and never as `.` — "I do not know where this session
+ * is" and "it is where it started" are different sentences.
+ */
+export function relDir(dir, anchor) {
+  if (typeof dir !== 'string' || dir === '') return null;
+  const norm = (p) => p.replaceAll('\\', '/').replace(/\/+$/, '');
+  const d = norm(dir);
+  const a = typeof anchor === 'string' && anchor !== '' ? norm(anchor) : null;
+  if (a !== null) {
+    // Case-insensitively, because Windows resolves `D:\Users` and `d:\users` to
+    // one directory and a comparison that called them different would raise the
+    // alarm on a session that has not moved. A FALSE ALARM ON THIS FIELD IS
+    // WORSE THAN NO FIELD: its whole worth is that it is normally quiet.
+    if (d.toLowerCase() === a.toLowerCase()) return '.';
+    const prefix = a + '/';
+    if (d.toLowerCase().startsWith(prefix.toLowerCase())) return './' + d.slice(prefix.length);
+  }
+  const parts = d.split('/').filter((part) => part !== '');
+  if (parts.length <= 2) return d;
+  return '…/' + parts.slice(-2).join('/');
+}
+
+/**
+ * **WHICH CORPUS A DIRECTORY RESOLVED TO, abbreviated the same way.**
+ *
+ * A corpus root always ends in the corpus directory's name, and that suffix is
+ * identical on every corpus this product has ever resolved — it carries no
+ * information and it costs eleven columns. So what is drawn is THE DIRECTORY
+ * THAT HOLDS the corpus, through `relDir`, which puts it in the same
+ * vocabulary as the working directory beside it: two fields, one shape, and a
+ * reader who has learned to read one has learned to read the other.
+ *
+ * That is also what makes the alarm legible rather than a diff. `CWD .` beside
+ * `CORPUS .` is a session reading the corpus it was launched in; `CWD
+ * ./my-context` beside `CORPUS ./my-context` is the failure, and the two
+ * fields say it in the same three characters.
+ *
+ * `dirName` is a parameter and not a constant because the name belongs to
+ * `core/workspace.ts` (`DIR_NAME`) and a browser module may not hold a second
+ * spelling of it. The default is what every caller passes today; the terminal
+ * passes the real one.
+ *
+ * `null` when there is no corpus, which the caller names rather than blanks.
+ */
+export function corpusDir(root, anchor, dirName = '.my_context') {
+  if (typeof root !== 'string' || root === '') return null;
+  const norm = root.replaceAll('\\', '/').replace(/\/+$/, '');
+  const tail = '/' + dirName;
+  const holder = norm.toLowerCase().endsWith(tail.toLowerCase())
+    ? norm.slice(0, -tail.length)
+    : norm;
+  return relDir(holder, anchor);
+}
+
 /* ══ THE OCCUPANCY BANDS — DERIVED FROM THE THRESHOLD, NEVER FROM TASTE ════
  *
  * `plan:walk seq:117`. The context figure carried no colour at all, so a
@@ -642,6 +782,34 @@ function identityOf(body) {
       op: str(log.op),
       at: str(log.at),
     },
+    // ── WHERE THE SESSION IS, AND WHICH CORPUS THAT GOT IT (2026-09-02).
+    //
+    // Both directories arrive absolute and are ABBREVIATED at the draw, by
+    // `relDir`/`corpusDir` above — the same two functions the terminal reaches
+    // through its dynamic-import bridge, so the two bars cannot spell one
+    // abbreviation two ways. Kept absolute here because the strip's hover
+    // carries the whole path and a view that had already truncated could not.
+    cwd: str(b.cwd),
+    projectDir: str(b.projectDir),
+    // The alarm, read defensively and never re-derived: whether the walk
+    // stopped at a nested corpus is `core/corpus-identity.ts`' judgement, made
+    // with a filesystem a browser cannot see. `null` is "the server did not
+    // say" and a `root` of `null` inside it is "there is no corpus" — two
+    // different sentences, and the caller draws them as two.
+    corpusRoot: b.corpusRoot === null || b.corpusRoot === undefined
+      || typeof b.corpusRoot !== 'object'
+      ? null
+      : {
+        root: str(b.corpusRoot.root),
+        nesting: b.corpusRoot.nesting === null || b.corpusRoot.nesting === undefined
+          || typeof b.corpusRoot.nesting !== 'object'
+          ? null
+          : {
+            enclosing: str(b.corpusRoot.nesting.enclosing),
+            items: num(b.corpusRoot.nesting.items),
+            enclosingItems: num(b.corpusRoot.nesting.enclosingItems),
+          },
+      },
   };
 }
 
