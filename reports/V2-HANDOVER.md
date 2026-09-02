@@ -63,6 +63,89 @@ thing standing where an import cannot.
   threshold, not a score — among arrangements that fit, evenness now breaks the tie;
   smallest deficit still wins when nothing fits.
 
+### EVERYTHING STILL OWED, AND WHERE IT LIVES
+
+Read this with `mycontext ready` open beside it. **513 active task items are in the
+corpus and travel with it** -- they are not listed here and do not need to be.
+What follows is the work that lives ONLY in conversation, which is the only work
+a move can lose.
+
+**Nothing below is speculative. Every line was approved by the owner in words.**
+
+#### A -- the MCP/CLI surface audit, remainder
+
+1. `audit_log.actor` has FOUR hardcoded copies of a list that must agree with
+   `ORIGINS`. Derive it; do not keep the copies in step by hand.
+2. `query_items.type` and `focus_context.categories` carry NO description in
+   their schemas -- a caller cannot learn what to pass without reading source.
+3. `--idle-ms` says 15 minutes in one place and the README says 8 hours. One is
+   wrong and nobody knows which without measuring.
+
+#### B -- approved in full, unbuilt
+
+4. **The backlink query.** Nothing anywhere answers "what points AT this item",
+   though `relationDegrees` and `apiGraph` both already compute it. Shape agreed:
+   `direction: in | out | both`.
+5. **`ready` and `doctor` as MCP tools.** Both exist as CLI commands only, so an
+   agent cannot ask what is ready or whether the corpus is healthy.
+6. **A REVERSE parity declaration.** Gates assert every MCP tool has a CLI
+   command; nothing asserts a CLI command has a tool, so a command can ship
+   agent-invisible and no gate notices.
+7. **`create_item` `extra` for PROJECT-DEFINED fields.** Built-in fields are
+   already flattened by `extraFieldSchema(DEFAULT_CONFIG)`; the gap is fields a
+   project defines for itself.
+8. **`{{FLAG_REFERENCE}}` in `cli.md`**, so CLI syntax is findable without a
+   refusal sending the reader to source.
+
+#### Four rulings the owner made, still unbuilt
+
+9. `task.verified_on` **with its doctor check** -- the field alone repeats the
+   dead-field defect it exists to end.
+10. Retire `task.progress` and `task.last_change`.
+11. `--yes` on `mycontext focus`, so the focus dialog can Execute.
+12. Consumers for all three dead fields: `open_question.blocks`,
+    `assumption.validate_by` / `validated_on`, `reference.source_file`. A field
+    nothing reads is a field that is silently wrong.
+
+#### Also ruled, also owed
+
+13. **`rulings/20` widened**: a config writer with DELETE (custom categories
+    only -- shipped ones are never deletable), DISABLE for shipped ones, `--yes`
+    for Execute, backup-before-write, and an item-count warning before a change
+    that touches many items.
+14. **The focus tag-picker with counts** -- a generated checkbox list showing how
+    many items each tag would include, so nobody has to remember tag names.
+15. **The hover-help pass** -- `TASK-no-screen-has-hover-or-click-help-and-most-buttons-carry`.
+    Measured: ~35 buttons, ~6 with any hover text.
+16. **Research parts 3 and 4**, never delivered: the category-by-relation
+    mapping, and help for every category with worked examples. Parts 1 and 2
+    (find the missing categories and relations) shipped as the 29 categories and
+    the relation vocabulary.
+
+#### The merge, mid-flight
+
+17. **42 of the 44 remain.** Summaries for all 42 are WRITTEN and owner-reviewed
+    in `reports/merge/2026-09-03-42-summaries.md`; the four retired items were
+    redone in the present tense on the owner's ruling, so `status` carries the
+    retirement rather than the prose.
+18. **`add` now carries observation kinds and `valid_from`**, which was the
+    blocker -- the migration can proceed through the real write path.
+19. **Five evidenced stale lines** in that same report, migrating verbatim,
+    awaiting the owner's ruling afterwards.
+20. **`DEC-focus-discloses-and-allows` must be SUPERSEDED** by
+    `DEC-a-focus-may-not-hide-a-pinned-item` once both are in one corpus.
+21. **The six orphan relation types remain undecided**, and the framing matters:
+    `enforces`/`enforced_by` and `produced`/`discovered_by` are INVERSE PAIRS,
+    and this project already ruled that inverses are derived, not stored. Ask
+    about pairs, not about one name at a time.
+
+#### Two housekeeping items the relocation created
+
+22. `scripts/check-needs-cycles.ts` can NOW be wired as `npm run check:*`.
+23. `test_mycontext_plugin/` still holds a STALE 761-item corpus copy. Any
+    session started there silently gets it. Delete it once the new home has been
+    worked in -- deliberately, not by accident.
+
 ### THE RELOCATION, 2026-09-03 -- THIS IS NOW THE WORKSPACE
 
 `repos/my-context/` is the single home: plugin code, the corpus, `reports/`,
