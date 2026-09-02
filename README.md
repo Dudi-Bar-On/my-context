@@ -3239,14 +3239,53 @@ command line; what appears in the URL is a **one-shot nonce in the fragment**, t
 `POST /api/handoff` for the token itself and dead thereafter. A request without the header is
 `401` before any route handler runs.
 
-**It is ephemeral, and it does not come back.** The server exits on its own after eight idle
-hours by default — `--idle-ms` moves that in either direction, bounded at a day — where idle
-means no `/api` request other than a stream. **An open stream is deliberately not activity**:
-a Watch tab left running cannot hold the process open. What does hold it open is a page you
-can actually see, which heartbeats once a minute while visible and stops when the window goes
-to the background. When the server does exit, the page says so in a banner and **never
-reconnects** — silent reconnection would be the daemon this design refuses, under another
-name.
+**It is ephemeral, and by default it does not come back.** The server exits on its own after
+eight idle hours by default — `--idle-ms` moves that in either direction, bounded at a day —
+where idle means no `/api` request other than a stream. **An open stream is deliberately not
+activity**: a Watch tab left running cannot hold the process open. What does hold it open is
+a page you can actually see, which heartbeats once a minute while visible and stops when the
+window goes to the background. When the server does exit, the page says so in a banner and
+**never reconnects** — silent reconnection would be the daemon this design refuses, under
+another name.
+
+**Naming a port is how you ask for one that does come back, and nothing at all happens until
+you do.** `ui.port` in `.my_context/config.json` is the opt-in: with the key absent no file is
+written, no port is probed and no process is started, because a plugin does not run a
+background server on a machine that never asked for one. Set it to a whole number from 1 to
+65535 and the `Stop` hook — which already runs at the end of every assistant turn — checks
+that port, at most once a minute, and starts a replacement when nothing answers. **A server
+that dies is therefore back within a minute**, or within one turn where turns run longer than
+that. The replacement is started with `--no-open`: no hook opens a browser, ever. `0` is
+refused along with the out-of-range values rather than read as "any free port" — the only
+reader of this key is a hook, which has nowhere to hand you a URL, and a port nobody chose is
+a URL nobody can bookmark. The `--port` flag still wins when you pass it; `ui.port` is the
+fallback, and it is what the hook uses, having no command line to read.
+
+The restart is rate-limited separately from the check: **at most one spawn attempt every five
+minutes**, and after three consecutive failures the workspace stands down and says so once on
+stderr, naming the port and how to switch it off. Checking carries on regardless, so the
+first turn on which a server does answer lifts the stand-down by itself.
+
+**`ui.enabled` is the off switch, and since 2026-08-27 it decides something.** It is opt-out
+— absent means yes, and only an explicit `false` is a refusal — and until that date it was
+validated, displayed, and enforced by nothing. Now `"enabled": false` refuses `mycontext ui`
+before anything binds, naming the key and the file it is in, and it turns the upkeep above
+off **without unsetting the port you configured**. The two keys are two halves of one
+question: `ui.port` says *where*, `ui.enabled` says *whether*, and neither is derivable from
+the other.
+
+```json
+{ "ui": { "port": 58888 } }
+```
+
+**A tab you already had open survives the restart.** The replacement server honours the
+credentials this installation has already issued: `ui-sessions.json` keeps `sha256(token)`
+for the last sixty-four of them, thirty days each, under the global directory rather than
+inside any corpus. It is a digest and never a token, so the file is not a credential even on
+a platform that ignores the permission mode it was written with. A page left open across a
+restart on the same port therefore recovers on a plain reload, instead of being locked out
+until you paste a fresh nonce from the terminal. That store is not new machinery — it is
+`ui-sessions.json` behaving as built, now with a second caller.
 
 **The screens** are grouped in the rail four ways, and `mycontext ui` itself is the honest
 list — it is still growing, so an enumeration here would be stale before it was useful:
@@ -3680,7 +3719,7 @@ server and an editor setting rather than an item, which is why they are here rat
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--port <n>` | the loopback port to serve on. The address is not a flag at all: it is `127.0.0.1` and a request to bind anything else is refused at startup rather than warned about | `ui` |
+| `--port <n>` | the loopback port to serve on. The address is not a flag at all: it is `127.0.0.1` and a request to bind anything else is refused at startup rather than warned about. Absent, the port falls back to `ui.port` in `.my_context/config.json`; given, the flag wins over it | `ui` |
 | `--no-open` | print the URL instead of launching a browser — what you want when the shell is not on the machine you are reading from | `ui` |
 | `--idle-ms <n>` | how long an untouched server waits before exiting, in milliseconds. The default is eight hours and the ceiling is a day; a value that is not a positive finite number, or one above the ceiling, is refused rather than replaced by the default | `ui` |
 | `--nonce` | mint a fresh one-shot handoff nonce from a server that is **already running**, and print its URL, instead of starting a second one. It is a switch, it takes no value, and it is mutually exclusive with the other three — passing it beside them is refused rather than silently ignored <!-- `core/command-flags.ts` · `ui: { allowed: ['port', 'no-open', 'idle-ms', 'nonce'], values: ['port', 'idle-ms'] },` · ~168 --> | `ui` |
@@ -5562,7 +5601,7 @@ the command that calls it: mint a fresh one-shot handoff nonce from a server tha
 **already running**, instead of restarting one. It exists because the alternative was worse.
 A browser tab that loses its token has exactly one way back — a nonce — and a nonce used to
 be printed only when a server **starts**. Recovering one locked-out tab meant restarting the
-server, which mints a new token and evicts the oldest of the eight digests
+server, which mints a new token and evicts the oldest of the sixty-four digests
 `ui-sessions.json` remembers; a restart that rescues one tab could lock out a different one.
 `--nonce` breaks that cycle and prints the same one-line URL the start path prints.
 
