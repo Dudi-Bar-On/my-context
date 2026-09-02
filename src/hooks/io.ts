@@ -490,6 +490,39 @@ export function hookContext(event: HookEventName, text: string): string {
 }
 
 /**
+ * **The strongest thing a hook can say on an event it cannot stop.**
+ *
+ * `decision` and `reason` are TOP-LEVEL fields of the platform's generic hook
+ * output schema — read off build 2.1.258's own validator, which declares
+ * `decision:ee(["approve","block"]).optional(), reason:i().describe("Explanation
+ * for the decision").optional()` beside `continue`, `stopReason` and
+ * `systemMessage`, outside the per-event `hookSpecificOutput` union. So every
+ * event may return it; what differs is what the event's CONSUMER does with the
+ * result.
+ *
+ * What `block` produces is one object: the platform turns
+ * `{decision:'block', reason}` into `blockingError:{blockingError: reason,
+ * command}` (`case"block":F.permissionBehavior="deny",F.blockingError={...}`),
+ * which is byte-for-byte what a hook exiting 2 with that text on stderr
+ * produces. The two spellings converge, and this is the one that keeps the
+ * process exiting 0 — so the whole file stays under `INV-hooks-fail-open`'s
+ * "empty output and exit 0" shape, and stderr stays free for the copy the
+ * human reads.
+ *
+ * **It is not a veto anywhere it is used here, and no caller may read it as
+ * one.** On `PreToolUse` a `blockingError` becomes a permission denial; on
+ * `SubagentStart` the consumer reads exactly three fields off each hook result
+ * — `message`, `blockingError`, `additionalContexts` — and pushes the
+ * `blockingError` into the new subagent's opening messages as a
+ * `hook_non_blocking_error` attachment. The dispatch is not aborted, and
+ * `preventContinuation` (what `continue:false` sets) is not read at that site
+ * at all. `subagent-start.ts` documents what it does with that fact.
+ */
+export function hookBlockDecision(reason: string): string {
+  return JSON.stringify({ decision: 'block', reason });
+}
+
+/**
  * Kept as a wrapper rather than replaced at its call sites: `pre-tool-use.ts`
  * imports it and `test/hooks/pre-tool-use-jit.test.ts` reads the envelope it
  * produces, and none of that has anything to do with this task.

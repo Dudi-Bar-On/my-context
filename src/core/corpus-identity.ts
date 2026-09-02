@@ -195,6 +195,46 @@ export function corpusRootLine(resolution: CorpusResolution): string {
 }
 
 /**
+ * The two corpora, side by side, one per line with its count.
+ *
+ * **Extracted rather than copied**, and the reason is the defect one level up:
+ * `hooks/subagent-start.ts` REFUSES a dispatch on this signal and its refusal
+ * has to put the same two paths and the same two numbers on the page. Two
+ * spellings of that comparison would be two places for a count to drift, a
+ * path to be labelled the wrong way round, or one surface to keep saying "44"
+ * after the other learned to say "44 item files" — and the whole point of the
+ * pair of numbers is that a reader trusts them enough to act.
+ *
+ * Only the comparison lives here. The sentence around it is the caller's,
+ * because the note DISCLOSES and the refusal ACTS, and those two need
+ * different sentences either side of the same fact.
+ */
+export function nestedCorpusComparison(resolution: CorpusResolution): string {
+  const { root, nesting } = resolution;
+  if (root === null || nesting === null) return '';
+  return [
+    `  used      ${root} — ${countPhrase(nesting.items)}`,
+    `  enclosing ${nesting.enclosing} — ${countPhrase(nesting.enclosingItems)}`,
+  ].join('\n');
+}
+
+/**
+ * The two ways out, and there are exactly two: run from the enclosing
+ * directory, or name the corpus with `CORPUS_DIR_ENV`.
+ *
+ * Extracted for `nestedCorpusComparison`'s reason. The lead-in stays with the
+ * caller — the note offers these two, the refusal requires one of them — so
+ * what lives here is only the clause carrying the paths, which is the half
+ * that would rot if it were written twice.
+ */
+export function nestedCorpusWaysOut(resolution: CorpusResolution): string {
+  const { nesting } = resolution;
+  if (nesting === null) return '';
+  return `run from ${path.dirname(nesting.enclosing)} or set ` +
+    `${CORPUS_DIR_ENV}=${nesting.enclosing}`;
+}
+
+/**
  * The loud one: this is a NESTED corpus and there is another above it.
  *
  * Every clause here is load-bearing. It names both roots so the reader can see
@@ -203,6 +243,11 @@ export function corpusRootLine(resolution: CorpusResolution): string {
  * that ended the walk, because that is the thing the reader actually controls;
  * and both ways to change it. It ends by saying nothing was blocked or
  * overridden, so a reader who MEANT the nested corpus can stop reading.
+ *
+ * **It still decides nothing, and that is still right for THIS surface.** The
+ * one place that now acts on the same signal is `hooks/subagent-start.ts`, and
+ * it acts by withholding its own injection — not by switching corpora, which
+ * the header above rules out for every caller including that one.
  */
 export function nestedCorpusNote(resolution: CorpusResolution): string {
   const { root, nesting } = resolution;
@@ -210,14 +255,12 @@ export function nestedCorpusNote(resolution: CorpusResolution): string {
   return [
     'my_context: WRONG CORPUS? This resolved to a NESTED corpus, and there is another one ' +
     'higher up the same tree.',
-    `  used      ${root} — ${countPhrase(nesting.items)}`,
-    `  enclosing ${nesting.enclosing} — ${countPhrase(nesting.enclosingItems)}`,
+    nestedCorpusComparison(resolution),
     'The corpus is found by walking up from the working directory and stopping at the first ' +
     `\`${DIR_NAME}\`, so the directory this ran in decided which one it got: ` +
     `${path.dirname(root)} holds its own, and the walk stopped there. Read the smaller number ` +
     'as A DIFFERENT CORPUS, not as a project with little recorded in it.',
     'Nothing was blocked and nothing was overridden. If the nested corpus is the one you ' +
-    `meant, ignore this. If it is not, run from ${path.dirname(nesting.enclosing)} or set ` +
-    `${CORPUS_DIR_ENV}=${nesting.enclosing}.`,
+    `meant, ignore this. If it is not, ${nestedCorpusWaysOut(resolution)}.`,
   ].join('\n');
 }
