@@ -82,11 +82,13 @@
  * whose cause never resolves still needs a person.
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Config } from './config.ts';
-import { portAccepts, probeUiServer } from './ui-server-probe.ts';
+import {
+  askServerFreshness, portAccepts, probeUiServer, type Freshness,
+} from './ui-server-probe.ts';
 
 /**
  * The host the upkeep's occupancy check aims at.
@@ -170,6 +172,15 @@ const STATE_FILE = 'ui-server-upkeep.json';
  * discloses on stderr, and a disclosure that repeats on every assistant turn is
  * a worse defect than the silence it replaced.
  *
+ * `restarted` is the 2026-09-02 addition and it is a SEPARATE variant from
+ * `spawned` rather than a flag on it. The two are opposite situations wearing
+ * one word: `spawned` means nothing was answering and one was started;
+ * `restarted` means a server WAS answering, said its own modules were behind
+ * the disk, and was replaced. A log in which those read alike is a log in
+ * which a restart is a restart nobody can explain later — which is the
+ * 2026-08-31 defect one row up, and the reason `upkeepNote` in `hooks/stop.ts`
+ * writes a different clause for each.
+ *
  * `port-already-serving` is the 2026-08-31 addition and it is SILENT on stderr
  * by design — see `UpkeepOutcome`. Nothing is wrong in that case, and a
  * mechanism that speaks up to say nothing is wrong, on a path that rides every
@@ -184,7 +195,8 @@ export type Upkeep =
       | 'port-already-serving' | 'stood-down-lifted';
   }
   | { did: 'spawned'; port: number }
-  | { did: 'stood-down'; failures: number };
+  | { did: 'restarted'; port: number }
+  | { did: 'stood-down'; why: 'spawn' | 'stale'; failures: number };
 
 /**
  * **What the last call concluded, written into the state file so that a reader
@@ -213,8 +225,22 @@ export type Upkeep =
  *  - `spawn-failed`        a spawn was attempted, the next probe found no
  *                          server, AND the configured port was not answering
  *                          either. This is the genuine failure.
+ *  - `restarted-stale`     a server ANSWERED, reported `staleCode: true` on its
+ *                          own `/api/meta`, and was stopped and started again.
+ *  - `restart-failed`      a restart was attempted and the server that answers
+ *                          STILL reports stale code. The attempt did not take —
+ *                          the opposite cause from `spawn-failed`, because here
+ *                          something is very much serving the port.
  *  - `stood-down`          `spawn-failed` reached the threshold. No spawn will
  *                          be attempted; the probe keeps running.
+ *  - `stood-down-stale`    `restart-failed` reached the threshold. Its own value
+ *                          because the two stand-downs make opposite claims: one
+ *                          says nothing would start, the other says something is
+ *                          serving and will not be replaced. `upkeepStandDownLine`
+ *                          says a different sentence for each, and a file that
+ *                          recorded them alike would send a reader to look for an
+ *                          outage that is not happening — the 2026-08-31 defect
+ *                          exactly, reintroduced by a shared name.
  *  - `stood-down-lifted`   a server was SEEN while stood down, so the refusal
  *                          ended. Written on the one call that ends it.
  *  - `too-soon`            refused by policy — the spawn floor had not elapsed.
@@ -229,7 +255,10 @@ export type UpkeepOutcome =
   | 'port-already-serving'
   | 'spawned'
   | 'spawn-failed'
+  | 'restarted-stale'
+  | 'restart-failed'
   | 'stood-down'
+  | 'stood-down-stale'
   | 'stood-down-lifted'
   | 'too-soon';
 
@@ -254,6 +283,23 @@ export interface UpkeepDeps {
    * the kind of hidden coupling `test/core/real-home-guard.test.ts` exists over.
    */
   portAcceptsFn?: (host: string, port: number) => Promise<boolean>;
+  /**
+   * The freshness ask, injected for `portAcceptsFn`'s reason and one more: the
+   * real one performs a THREE-REQUEST credential exchange against a live HTTP
+   * server (`askServerFreshness`, `ui-server-probe.ts`), and a unit test has no
+   * such server to answer it. Every existing test leaves it unset and gets
+   * `unknown` from the real function against its own bare socket, which is the
+   * same "leave it alone" answer it had before this seam existed.
+   */
+  freshnessFn?: (url: string) => Promise<Freshness>;
+  /**
+   * How a stale server is stopped. `process.kill` in production, and injected
+   * here because a test's liveness record names `process.pid` — the suite's own
+   * process. `stopServer` refuses that pid outright as well; a seam and a guard,
+   * because signalling the wrong process is the one failure in this file that
+   * cannot be undone by the next probe.
+   */
+  killFn?: (pid: number, signal: NodeJS.Signals) => void;
 }
 
 /**
@@ -282,6 +328,34 @@ interface UpkeepState {
   consecutiveSpawnFailures: number;
   stoodDown: boolean;
   /**
+   * When the FRESHNESS question was last put to a server that answered, or
+   * `null` for a workspace that has never asked it.
+   *
+   * **A third clock, and it is a third clock for the reason the first two are
+   * two.** It is not the probe's: the probe is a socket connect costing
+   * microseconds, and this is a three-request credential exchange whose first
+   * step — `POST /api/nonce` — writes a `nonce-minted` audit row every time it
+   * runs, because a credential coming into existence is a security event
+   * (`recordNonceMint`, `src/ui/security.ts`). Asking on every probe would put
+   * sixty of those rows an hour into a corpus from which 5,207 rows of
+   * per-message noise were once deleted for being noise.
+   *
+   * And it is not the spawn's, even though it is floored at the same
+   * `SPAWN_INTERVAL_MS`: `lastSpawnAt` moves only when something is started, so
+   * a healthy fresh server would leave it still and the ask would run every
+   * minute anyway. The bound wanted is on the ASKING, so the clock has to move
+   * whenever the question is put — which is what this field records, in both
+   * directions of the answer.
+   *
+   * **The interval is `SPAWN_INTERVAL_MS` and it is reused rather than
+   * invented**, because the bound has an argument already: there is no point
+   * asking a question more often than the answer could be acted on, and a
+   * restart is a spawn, so the answer can be acted on at most once every five
+   * minutes. One credential exchange and one audit row per workspace per five
+   * minutes is the whole standing cost of this feature.
+   */
+  lastFreshnessAt: number | null;
+  /**
    * What the last call that wrote this file concluded, or `null` for a file
    * written by a build that predates the field.
    *
@@ -299,6 +373,7 @@ const FRESH: UpkeepState = {
   spawnPending: false,
   consecutiveSpawnFailures: 0,
   stoodDown: false,
+  lastFreshnessAt: null,
   lastOutcome: null,
 };
 
@@ -311,7 +386,8 @@ const FRESH: UpkeepState = {
  */
 const OUTCOMES: readonly UpkeepOutcome[] = [
   'alive', 'port-already-serving', 'spawned', 'spawn-failed',
-  'stood-down', 'stood-down-lifted', 'too-soon',
+  'restarted-stale', 'restart-failed',
+  'stood-down', 'stood-down-stale', 'stood-down-lifted', 'too-soon',
 ];
 
 export function upkeepStatePath(root: string): string {
@@ -350,14 +426,28 @@ export function upkeepStatePath(root: string): string {
  * first turn would be the loop this avoids) but only while the way out is
  * written down here.
  */
-export function upkeepStandDownLine(failures: number, root: string): string {
+export function upkeepStandDownLine(
+  failures: number, root: string, why: 'spawn' | 'stale' = 'spawn',
+): string {
+  // **Two causes, two claims, and neither sentence may be said about the other
+  // cause.** The 2026-08-31 defect was a reading that inferred an outage from a
+  // count; a line saying "could not be started" about a server that is up and
+  // serving stale code would force the same reading, this time in the product's
+  // own words. The condition each claim holds under travels in the same sentence
+  // as the claim, which is the standing rule here.
+  const cause = why === 'stale'
+    ? 'the web UI server was serving code older than the files on disk and could not be ' +
+      `replaced ${failures} times in a row — it kept answering, and it kept reporting itself ` +
+      'stale after every attempt, so the port is being served and it is the REPLACEMENT that ' +
+      'failed'
+    : `the web UI server could not be started ${failures} times in a row — the ` +
+      'configured port was not answering on any of those attempts, so nothing was already ' +
+      'serving there';
   return (
-    `my_context: the web UI server could not be started ${failures} times in a row — the ` +
-    'configured port was not answering on any of those attempts, so nothing was already ' +
-    'serving there — and the upkeep has stood down: it will not START one on its own again, ' +
-    'though it keeps checking and will resume by itself if a server turns up on that port. ' +
-    'To get one now, start it yourself with `mycontext ui`; to turn the upkeep off, remove ' +
-    '`ui.port` from .my_context/config.json ' +
+    `my_context: ${cause} — and the upkeep has stood down: it will not START one on its own ` +
+    'again, though it keeps checking and will resume by itself if a server turns up on that ' +
+    'port. To get one now, start it yourself with `mycontext ui`; to turn the upkeep off, ' +
+    'remove `ui.port` from .my_context/config.json ' +
     `(\`ui.enabled: false\` does the same without unsetting the port). Delete ` +
     `${upkeepStatePath(root)} to make it start trying again without one. ` +
     'Nothing else about this turn changed.\n'
@@ -389,6 +479,7 @@ function readState(root: string): UpkeepState {
     spawnPending: value.spawnPending === true,
     consecutiveSpawnFailures: num('consecutiveSpawnFailures') ?? 0,
     stoodDown: value.stoodDown === true,
+    lastFreshnessAt: num('lastFreshnessAt'),
     lastOutcome: OUTCOMES.find((known) => known === value['lastOutcome']) ?? null,
   };
 }
@@ -451,23 +542,76 @@ function due(last: number | null, now: number, interval: number): boolean {
  * and an `EventEmitter` with no `'error'` listener rethrows it as an uncaught
  * exception — which here would take down the hook the platform is waiting on.
  *
+ * **`cwd` decides WHICH CORPUS the new server serves, and passing it is the
+ * 2026-09-02 correction.** A UI server resolves its workspace from its working
+ * directory, and a detached child inherits the hook's. That was harmless while
+ * this function only ever put back a server that was ABSENT — there was no
+ * previous corpus to disagree with. A restart has one, and measured on
+ * 2026-09-02 the replacement came up serving a nested corpus of 44 items in
+ * place of the 760-item one the server it replaced had been serving: every
+ * answer correct, every answer about the wrong repository, and nothing on the
+ * page saying so. `restartStaleServer` therefore passes the workspace out of
+ * the liveness record — the directory the server being replaced named for
+ * itself — and the cold path passes `undefined`, which is the inheritance it
+ * always had.
+ *
+ * A recorded workspace that is no longer a directory is not passed: `spawn`
+ * refuses an absent `cwd` outright, and refusing forever is worse than starting
+ * a server somewhere the caller can at least see.
+ *
  * Nothing is reported back, and a synchronous throw is swallowed, because
  * nothing this function could learn would be trustworthy: a `pid` says libuv
  * accepted the exec, not that a server bound the port. **The next probe is the
  * only witness**, and treating a throw differently from a silent death would be
  * two failure paths for one fact.
  */
-function startServer(port: number, spawnFn: typeof spawn): void {
+function startServer(port: number, spawnFn: typeof spawn, cwd?: string): void {
   try {
     const child = spawnFn(
       process.execPath,
       [CLI_ENTRY, 'ui', '--port', String(port), '--no-open'],
-      { detached: true, stdio: 'ignore' },
+      cwd !== undefined && existsSync(cwd)
+        ? { detached: true, stdio: 'ignore', cwd }
+        : { detached: true, stdio: 'ignore' },
     );
     child.on('error', () => { /* the next probe is the answer; see above */ });
     child.unref();
   } catch {
     /* recorded as an attempt either way, so the floor still holds */
+  }
+}
+
+/**
+ * End the server that answered, so its replacement can have the port.
+ *
+ * **`SIGTERM` and nothing cleverer.** The UI server installs no handler for it,
+ * so the process ends at once and the listening socket goes with it — which is
+ * what makes the spawn on the next line able to bind. There is no shutdown
+ * endpoint to call instead, and adding one would be a second way to stop a
+ * server for a mechanism that already has the pid its own probe just proved
+ * alive.
+ *
+ * **It refuses this process's own pid, and that guard is not theoretical.** The
+ * liveness record is a file any test may write, and `test/core/ui-server-upkeep
+ * .test.ts` writes one naming `process.pid` — the suite's own process — because
+ * until now nothing ever signalled what the record named. Every other mistake
+ * in this file is undone by the next probe; this one would take down the
+ * process the platform is waiting on, so it is refused here as well as injected
+ * around in the tests.
+ *
+ * A failure is swallowed for `startServer`'s reason and one of its own: `ESRCH`
+ * means the process is already gone, which is the goal state rather than an
+ * error, and `EPERM` means it belongs to another user and no retry will change
+ * that. **The next probe is the only witness** either way — if the old server
+ * survives, it answers the next freshness ask still stale, and that is the
+ * failure the counter is for.
+ */
+function stopServer(pid: number, killFn: (pid: number, signal: NodeJS.Signals) => void): void {
+  if (pid === process.pid) return;
+  try {
+    killFn(pid, 'SIGTERM');
+  } catch {
+    /* already gone, or not ours to signal; the next probe settles which */
   }
 }
 
@@ -479,6 +623,19 @@ function startServer(port: number, spawnFn: typeof spawn): void {
  * record's server answered) and `port-already-serving` (no usable record, but
  * the configured port answered) are two different proofs of the same fact, and
  * two copies of the lift would be two places for the lift to drift.
+ *
+ * ── A STALE SERVER DOES NOT REACH HERE, AND THAT IS THE 2026-09-02 RULING ──
+ *
+ * Since staleness became something this module acts on, "a server answered" is
+ * no longer the same fact as "the situation ended". A server that answers and
+ * reports its own modules behind the disk is EXACTLY the situation a stale
+ * stand-down was declared over, so letting it through here would lift a refusal
+ * on the strength of the thing the refusal was about — and the next call would
+ * try again, fail again, count to three again, and lift again, forever. The
+ * caller therefore routes a stale server to `restartStaleServer` and never
+ * here; what reaches this function is a server that is fresh, or one whose
+ * freshness could not be measured, and both of those are the old fact
+ * unchanged.
  *
  * ── WHY A LIFT IS SAFE, WHICH IS NOT THE SAME AS SAYING IT IS HARMLESS ─────
  *
@@ -531,6 +688,100 @@ function recordServerSeen(
 }
 
 /**
+ * A server answered, said its own code was stale, and this is what is done
+ * about it: **stop it and start the current one, under exactly the guards a
+ * cold spawn passes.**
+ *
+ * ── WHY A RESTART IS SAFE HERE WITHOUT ASKING ANYBODY ──────────────────────
+ *
+ * `plan:upkeep seq:6` measured it: an already-open tab survives a restart,
+ * because the new server reads `ui-sessions.json` before it binds and honours
+ * the digests of tokens earlier runs issued. So the owner's tab reconnects on
+ * its own, and a confirmation step would be a question with one answer asked on
+ * a hook nobody is looking at. What the owner loses is nothing; what they were
+ * losing before this branch existed is a page served by code sixteen minutes
+ * behind the disk.
+ *
+ * ── THE GUARDS ARE THE SPAWN'S GUARDS, IN THE SPAWN'S ORDER ────────────────
+ *
+ * A restart IS a spawn — a process is started against the configured port — so
+ * every argument `SPAWN_INTERVAL_MS` and `MAX_CONSECUTIVE_SPAWN_FAILURES` make
+ * applies unchanged, and they are applied in the same sequence
+ * `upkeepUiServer` applies them in below: stand-down, then the judgement of the
+ * outstanding attempt, then the spawn floor, then a process. Written as a
+ * separate function rather than folded into that path because the two differ in
+ * what they must do FIRST — this one has a server to stop — and a shared body
+ * with a flag through it would be one reader's guess away from stopping a
+ * server on the cold path.
+ *
+ * ── WHAT COUNTS AS A FAILED RESTART, AND WHY IT IS NOT `spawn-failed` ──────
+ *
+ * The cold path judges its outstanding spawn by "nothing is serving". That
+ * judgement cannot be reached here: something IS serving — it just answered.
+ * The evidence that a restart did not take is that the server answering STILL
+ * reports itself stale, which is precisely the state this function is entered
+ * in, so an attempt outstanding when we arrive is an attempt that failed. The
+ * cause is the opposite of `spawn-failed`'s and it is recorded as its own
+ * value, for the reason `port-already-serving` is: a count cannot carry a
+ * cause, and two opposite situations that write the same file are how a reader
+ * reported an outage that was not happening.
+ *
+ * The one way this can be pessimistic is worth naming rather than hiding: an
+ * editor that saves a file in the seconds between the restart and the next
+ * probe makes the NEW server stale too, and that reads here as a restart that
+ * did not take. It costs one count out of three, the next quiet interval clears
+ * it — `recordServerSeen` resets on any fresh answer — and the alternative,
+ * believing a restart that plainly did not produce current code, is the failure
+ * that has no floor at all.
+ */
+function restartStaleServer(
+  root: string,
+  next: UpkeepState,
+  port: number,
+  server: { pid: number; workspace: string },
+  now: number,
+  deps: UpkeepDeps,
+): Upkeep {
+  // The stand-down, first, exactly as below. A stale server that will not be
+  // replaced is left alone and said so about; the probe and the ask keep
+  // running, so a server that comes back FRESH still lifts this through
+  // `recordServerSeen`.
+  if (next.stoodDown) {
+    writeState(root, { ...next, lastOutcome: 'stood-down' });
+    return { did: 'nothing', why: 'stood-down' };
+  }
+
+  if (next.spawnPending) {
+    next.spawnPending = false;
+    next.consecutiveSpawnFailures += 1;
+    next.lastOutcome = 'restart-failed';
+    if (next.consecutiveSpawnFailures >= MAX_CONSECUTIVE_SPAWN_FAILURES) {
+      writeState(root, { ...next, stoodDown: true, lastOutcome: 'stood-down-stale' });
+      return { did: 'stood-down', why: 'stale', failures: next.consecutiveSpawnFailures };
+    }
+  }
+
+  // The SPAWN floor, on the spawn's own clock. A stale server is a bad server
+  // and it is still a server: replacing it every minute would be the process
+  // storm this floor exists to prevent, bought for a page that is merely out of
+  // date rather than absent.
+  if (!due(next.lastSpawnAt, now, SPAWN_INTERVAL_MS)) {
+    writeState(root, { ...next, lastOutcome: 'too-soon' });
+    return { did: 'nothing', why: 'too-soon' };
+  }
+
+  // Stop, then start. The old process holds the port, so a spawn without the
+  // stop can only ever answer EADDRINUSE — the same measurement that put the
+  // occupancy check below where it is.
+  stopServer(server.pid, deps.killFn ?? process.kill);
+  startServer(port, deps.spawnFn ?? spawn, server.workspace);
+  writeState(root, {
+    ...next, lastSpawnAt: now, spawnPending: true, lastOutcome: 'restarted-stale',
+  });
+  return { did: 'restarted', port };
+}
+
+/**
  * Probe, and put the server back if it is gone.
  *
  * **The guards are ordered by cost, cheapest first**, and the order is load
@@ -575,7 +826,47 @@ export async function upkeepUiServer(
   const liveness = await probeUiServer(deps.globalRoot);
   const next: UpkeepState = { ...state, lastProbeAt: now };
 
-  if (liveness.state === 'alive') return recordServerSeen(root, next, 'alive');
+  if (liveness.state === 'alive') {
+    // ── IS WHAT ANSWERED STILL THE CODE ON DISK? ────────────────────────────
+    //
+    // **The defect this branch exists for, measured 2026-09-02**: the running
+    // server started at 16:12:39, the last commit to its own modules landed at
+    // 16:28:26 — sixteen minutes LATER — and this function, probing it every
+    // minute, left it alone every time. `PROBE_FLOOR_MS` and
+    // `SPAWN_INTERVAL_MS` govern whether to probe and whether to spawn when
+    // nothing answers; neither of them, and nothing else here, ever asked
+    // whether what answered was current.
+    //
+    // **The answer is fetched, never derived.** `src/ui/server.ts` already
+    // serves `staleCode` on `/api/meta` from the one `CodeIdentity` that
+    // process stamped at startup, and that same field is what raises the
+    // code-skew banner in an open tab. Stamping a second identity here would be
+    // two stamps that can disagree about what "stale" means — this repository's
+    // most-repeated defect — so the server that answered is ASKED, over the
+    // credential exchange `askServerFreshness` documents in full.
+    //
+    // **Floored on its own clock**, because the ask is not free: its first step
+    // mints a credential and writes an audit row for it. See `lastFreshnessAt`
+    // for why the floor is `SPAWN_INTERVAL_MS` and why it is a third clock
+    // rather than either of the two above. The floor advances whenever the
+    // question is PUT, not when it is answered a particular way — a server that
+    // keeps answering `fresh` must not be asked every minute either.
+    if (due(state.lastFreshnessAt, now, SPAWN_INTERVAL_MS)) {
+      next.lastFreshnessAt = now;
+      const ask = deps.freshnessFn ?? askServerFreshness;
+      // `liveness.url` — the address the probe just PROVED answers, not one
+      // rebuilt from `config.ui.port`. The record and the config can name
+      // different ports (this module deliberately does not compare them), and
+      // asking one server about another's code is worse than not asking.
+      if (await ask(liveness.url) === 'stale') {
+        return restartStaleServer(root, next, port, liveness, now, deps);
+      }
+      // `fresh` and `unknown` are one answer here, and `Freshness` says why: a
+      // question that went unanswered is not evidence of a skew, and restarting
+      // on it would buy a new outage to disclose an old one.
+    }
+    return recordServerSeen(root, next, 'alive');
+  }
 
   // ── IS THE CONFIGURED PORT ALREADY SERVING? ────────────────────────────────
   //
@@ -639,7 +930,7 @@ export async function upkeepUiServer(
     next.lastOutcome = 'spawn-failed';
     if (next.consecutiveSpawnFailures >= MAX_CONSECUTIVE_SPAWN_FAILURES) {
       writeState(root, { ...next, stoodDown: true, lastOutcome: 'stood-down' });
-      return { did: 'stood-down', failures: next.consecutiveSpawnFailures };
+      return { did: 'stood-down', why: 'spawn', failures: next.consecutiveSpawnFailures };
     }
   }
 

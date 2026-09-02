@@ -213,7 +213,7 @@ test('a spawn is recorded in the note, with the port it went to', () => {
 
 test('a stand-down is recorded in the note, with the count that caused it', () => {
   const sb = sandbox({ port: PORT });
-  const note = runStop(sb, { did: 'stood-down', failures: 3 }).rows[0].note ?? '';
+  const note = runStop(sb, { did: 'stood-down', why: 'spawn', failures: 3 }).rows[0].note ?? '';
   assert.match(note, /stood down/iu);
   assert.match(note, /3/u);
 });
@@ -234,7 +234,7 @@ test('the upkeep never writes to stdout — the envelope stays the handover ask\
   assert.equal(runStop(sb, { did: 'spawned', port: PORT }).stdout, '',
     'the upkeep spoke to the MODEL. Stop\'s additionalContext was ruled open for ONE purpose ' +
     'and a second use needs its own ruling, not a second caller');
-  assert.equal(runStop(sb, { did: 'stood-down', failures: 3 }).stdout, '');
+  assert.equal(runStop(sb, { did: 'stood-down', why: 'spawn', failures: 3 }).stdout, '');
 });
 
 test('with no upkeep result the note is exactly what it has always been', () => {
@@ -379,7 +379,8 @@ test('the stand-down is disclosed on stderr, on exactly the turn it happens', as
 
   const said = await capturingStderr(async () => {
     const result = await stopUpkeep({ session_id: sb.session, cwd: sb.cwd }, deps, at);
-    assert.deepEqual(result, { did: 'stood-down', failures: MAX_CONSECUTIVE_SPAWN_FAILURES });
+    assert.deepEqual(result,
+      { did: 'stood-down', why: 'spawn', failures: MAX_CONSECUTIVE_SPAWN_FAILURES });
   });
   assert.match(said, /^my_context: /u);
   assert.match(said, /ui\.port/u);
@@ -452,9 +453,51 @@ test('observeStop never throws on an upkeep result it was handed', () => {
   for (const upkeep of [
     null,
     { did: 'spawned', port: PORT },
-    { did: 'stood-down', failures: 3 },
+    { did: 'stood-down', why: 'spawn', failures: 3 },
     { did: 'nothing', why: 'alive' },
   ] as (Upkeep | null)[]) {
     assert.notEqual(observeStop({ session_id: sb.session, cwd: sb.cwd }, sb.root, upkeep), null);
   }
+});
+/* ---------------------------------------------------------------------------
+ * A restart is not a spawn, and the log has to say which one happened.
+ *
+ * `plan:upkeep`, 2026-09-02. The upkeep can now replace a server that ANSWERS
+ * — one whose own `/api/meta` reports `staleCode: true` — and that is a
+ * different event from putting one back where nothing was answering at all. A
+ * row that reported them alike would be a restart nobody could explain
+ * afterwards, which is the same defect `lastOutcome` was added for one layer
+ * down: a count, or a word, that cannot carry a cause.
+ * ------------------------------------------------------------------------- */
+
+test('a restart is recorded in the note, and never as a spawn', () => {
+  const sb = sandbox({ port: PORT });
+  const restart = runStop(sb, { did: 'restarted', port: PORT }).rows[0].note ?? '';
+  assert.match(restart, /stale/iu,
+    'the row says a server was touched and not why — "stale" is the whole reason a server ' +
+    'that was answering was taken away from whoever had it open');
+  assert.match(restart, new RegExp(String(PORT), 'u'));
+
+  const cold = sandbox({ port: PORT });
+  const spawned = runStop(cold, { did: 'spawned', port: PORT }).rows[0].note ?? '';
+  assert.notEqual(restart, spawned,
+    'a server replaced because its code was old and a server started because none was there ' +
+    'wrote the same clause — a log line nobody can act on later');
+  assert.doesNotMatch(spawned, /stale/iu);
+});
+
+test('a stale stand-down says which stand-down it was, in the note and on stderr', async () => {
+  const sb = sandbox({ port: PORT });
+  const note = runStop(sb, {
+    did: 'stood-down', why: 'stale', failures: MAX_CONSECUTIVE_SPAWN_FAILURES,
+  }).rows[0].note ?? '';
+  assert.match(note, /stale/iu);
+  assert.match(note, /stood down/iu);
+
+  const spawnNote = runStop(sandbox({ port: PORT }), {
+    did: 'stood-down', why: 'spawn', failures: MAX_CONSECUTIVE_SPAWN_FAILURES,
+  }).rows[0].note ?? '';
+  assert.notEqual(note, spawnNote,
+    'the two stand-downs make opposite claims about whether anything is serving the port, and ' +
+    'the log recorded them identically');
 });

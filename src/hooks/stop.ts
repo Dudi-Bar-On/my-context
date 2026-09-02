@@ -339,8 +339,16 @@ function handoverAsk(
  * appends on every one of them would put a per-minute liveness report in the
  * one log line that says where an exchange ended — and `observe.ts`'s header
  * has already ruled that a record-only hook which records everything is a hook
- * that makes the log unreadable. What is left is the two events a human would
- * want to find later: a server being put back, and the mechanism giving up.
+ * that makes the log unreadable. What is left is the events a human would want
+ * to find later: a server being put back, a server being REPLACED because it
+ * was serving code older than the disk, and the mechanism giving up.
+ *
+ * **A restart gets its own clause and not the spawn's** (2026-09-02). The two
+ * describe opposite situations — nothing was answering, versus something was
+ * answering and was wrong — and a row that reported them alike would be a
+ * restart nobody could explain afterwards. The clause names the reason in the
+ * same breath as the act, so the log line is readable without the state file
+ * beside it.
  *
  * It goes in the NOTE and never in `context`. `Stop`'s envelope was opened for
  * exactly one purpose under
@@ -354,8 +362,15 @@ export function upkeepNote(upkeep: Upkeep | null): string {
   if (upkeep.did === 'spawned') {
     return `; no UI server was answering, so one was started on port ${upkeep.port}`;
   }
+  if (upkeep.did === 'restarted') {
+    return `; the UI server on port ${upkeep.port} reported its own code stale, so it was `
+      + 'stopped and started again';
+  }
   if (upkeep.did === 'stood-down') {
-    return `; the UI server upkeep stood down after ${upkeep.failures} failed spawns`;
+    const after = upkeep.why === 'stale'
+      ? `${upkeep.failures} restarts that left it still serving stale code`
+      : `${upkeep.failures} failed spawns`;
+    return `; the UI server upkeep stood down after ${after}`;
   }
   return '';
 }
@@ -458,7 +473,7 @@ export async function stopUpkeep(
 
     const upkeep = await upkeepUiServer(root, config, now, deps);
     if (upkeep.did === 'stood-down') {
-      process.stderr.write(upkeepStandDownLine(upkeep.failures, root));
+      process.stderr.write(upkeepStandDownLine(upkeep.failures, root, upkeep.why));
     }
     return upkeep;
   } catch {

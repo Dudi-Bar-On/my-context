@@ -45,6 +45,7 @@ import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { resolveConfig, type Config } from '../../src/core/config.ts';
+import type { Freshness } from '../../src/core/ui-server-probe.ts';
 import { writeUiServerRecord } from '../../src/core/ui-server-record.ts';
 import {
   MAX_CONSECUTIVE_SPAWN_FAILURES, PROBE_FLOOR_MS, SPAWN_INTERVAL_MS,
@@ -140,18 +141,25 @@ function fakeSpawn(): FakeSpawn {
  * server is the normal case rather than the exotic one, and it is exactly what
  * the probe has to disbelieve.
  */
-async function serverAt(globalRoot: string): Promise<() => Promise<void>> {
-  const server = net.createServer((socket) => socket.end());
+async function serverAt(
+  globalRoot: string, pid: number = process.pid, workspace = 'D:\\repo',
+): Promise<() => Promise<void>> {
+  // `destroy` and not `end`: since the upkeep may now SPEAK to a server that
+  // answers — the freshness ask — this fixture receives bytes rather than only
+  // a connect-and-hang-up. A half-closed socket left by `end()` is one this
+  // server's own `close()` then waits on for the life of the process, and it
+  // hung this file for a minute on 2026-09-02 before the cause was found.
+  const server = net.createServer((socket) => socket.destroy());
   await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve); });
   const { port } = server.address() as net.AddressInfo;
   writeUiServerRecord({
     version: 1,
-    pid: process.pid,
+    pid,
     host: '127.0.0.1',
     port,
     url: `http://127.0.0.1:${port}/`,
     startedAt: NOW,
-    workspace: 'D:\\repo',
+    workspace,
   }, globalRoot);
   return () => new Promise<void>((resolve) => { server.close(() => resolve()); });
 }
@@ -301,7 +309,7 @@ test('three failed spawns stand the mechanism down while nothing is serving', as
   assert.deepEqual(
     await upkeepUiServer(sb.root, CONFIGURED, at,
       { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT }),
-    { did: 'stood-down', failures: MAX_CONSECUTIVE_SPAWN_FAILURES },
+    { did: 'stood-down', why: 'spawn', failures: MAX_CONSECUTIVE_SPAWN_FAILURES },
   );
   assert.equal(spawner.calls.length, MAX_CONSECUTIVE_SPAWN_FAILURES,
     'a fourth spawn was attempted on the very turn the mechanism gave up');
@@ -595,7 +603,7 @@ async function stoodDownAt(sb: Sandbox, spawner: FakeSpawn): Promise<number> {
   const at = await failingSpawns(sb, spawner, MAX_CONSECUTIVE_SPAWN_FAILURES);
   const gave = await upkeepUiServer(sb.root, CONFIGURED, at,
     { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT });
-  assert.deepEqual(gave, { did: 'stood-down', failures: MAX_CONSECUTIVE_SPAWN_FAILURES });
+  assert.deepEqual(gave, { did: 'stood-down', why: 'spawn', failures: MAX_CONSECUTIVE_SPAWN_FAILURES });
   assert.equal(stateOf(sb.root)['stoodDown'], true);
   return at + PROBE_FLOOR_MS + 1_000;
 }
@@ -754,4 +762,430 @@ test('the stand-down line says the refusal can end without a person', () => {
     + 'need to touch');
   assert.match(line, /ui-server-upkeep\.json/u,
     'the file is still the way out when nothing ever turns up, and the line still has to name it');
+});
+/* ---------------------------------------------------------------------------
+ * A server that answers and is nonetheless WRONG.
+ *
+ * **This section is the 2026-09-02 defect.** The running server started at
+ * 16:12:39; the last commit to its own modules landed at 16:28:26, sixteen
+ * minutes LATER; and this mechanism, probing it every single minute, left it
+ * alone every single time. `PROBE_FLOOR_MS` bounds how often the question "is
+ * something listening" is asked and `SPAWN_INTERVAL_MS` bounds what is done
+ * when nothing is — and neither of them, and nothing else in the module, ever
+ * asked whether what answered was the code on disk. The owner restarted Claude
+ * Code and was served the old modules; the web page's own code-skew banner had
+ * been saying so, to a tab nobody had open.
+ *
+ * The answer was already being SERVED the whole time: `staleCode` on
+ * `/api/meta`, off the one `CodeIdentity` the server stamps at startup. So
+ * nothing here derives freshness — every test below hands the upkeep the answer
+ * a server would have given, which is exactly the seam production uses.
+ * ------------------------------------------------------------------------- */
+
+/** A server's answer about its own code, and a record of having been asked. */
+interface FakeFreshness {
+  /** The URLs the question was put to, in order. One entry per ask. */
+  asks: string[];
+  fn: (url: string) => Promise<Freshness>;
+}
+
+function answering(answer: Freshness): FakeFreshness {
+  const fake: FakeFreshness = { asks: [], fn: null as unknown as FakeFreshness['fn'] };
+  fake.fn = async (url: string): Promise<Freshness> => {
+    fake.asks.push(url);
+    return answer;
+  };
+  return fake;
+}
+
+/**
+ * A stand-in for `process.kill`, and it is not optional in any test that can
+ * reach the restart path.
+ *
+ * The real one would signal whatever pid the liveness record names, and this
+ * suite writes records naming `process.pid` and `process.ppid` — the process
+ * running the tests and the one that started it. `stopServer` refuses its own
+ * pid on top of this, but a guard and a seam are two different protections and
+ * the one that keeps the suite alive is this one.
+ */
+interface FakeKill {
+  signalled: { pid: number; signal: string }[];
+  fn: (pid: number, signal: NodeJS.Signals) => void;
+}
+
+function fakeKill(): FakeKill {
+  const fake: FakeKill = { signalled: [], fn: null as unknown as FakeKill['fn'] };
+  fake.fn = (pid: number, signal: NodeJS.Signals): void => {
+    fake.signalled.push({ pid, signal });
+  };
+  return fake;
+}
+
+test('a server that answers and reports itself FRESH is left alone', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const kill = fakeKill();
+  const fresh = answering('fresh');
+  const close = await serverAt(sb.globalRoot);
+  try {
+    assert.deepEqual(
+      await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+        globalRoot: sb.globalRoot,
+        spawnFn: spawner.fn,
+        portAcceptsFn: NOTHING_ON_THE_PORT,
+        freshnessFn: fresh.fn,
+        killFn: kill.fn,
+      }),
+      { did: 'nothing', why: 'alive' },
+    );
+    assert.equal(fresh.asks.length, 1, 'the question was not put to a server that could answer it');
+    assert.equal(spawner.calls.length, 0,
+      'a server that is current was replaced anyway — a restart nobody needed is an outage ' +
+      'bought for nothing, and this path rides every assistant turn');
+    assert.equal(kill.signalled.length, 0);
+    assert.equal(stateOf(sb.root)['lastOutcome'], 'alive');
+  } finally {
+    await close();
+  }
+});
+
+test('a server that answers and reports itself STALE is stopped and started again', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const kill = fakeKill();
+  const stale = answering('stale');
+  // `process.ppid` and not `process.pid`: the record has to name a LIVE process
+  // — `probeUiServer` disproves a dead pid before it ever reaches the port — and
+  // it must not name this one, or `stopServer`'s self-guard would answer the
+  // question this test is asking. Nothing is actually signalled; `kill.fn` is.
+  const close = await serverAt(sb.globalRoot, process.ppid);
+  try {
+    assert.deepEqual(
+      await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+        globalRoot: sb.globalRoot,
+        spawnFn: spawner.fn,
+        portAcceptsFn: NOTHING_ON_THE_PORT,
+        freshnessFn: stale.fn,
+        killFn: kill.fn,
+      }),
+      { did: 'restarted', port: PORT },
+      'a server that answered a probe and then told the mechanism its own modules were behind ' +
+      'the disk was left running — which is the whole defect: liveness was the only question ' +
+      'ever asked, and the answer to the other one was already being served',
+    );
+    assert.deepEqual(kill.signalled, [{ pid: process.ppid, signal: 'SIGTERM' }],
+      'the stale server was not stopped, so the spawn on the next line can only ever answer ' +
+      'EADDRINUSE — the port is held by the process being replaced');
+    assert.equal(spawner.calls.length, 1);
+    assert.deepEqual(spawner.calls[0].args.slice(1),
+      ['ui', '--port', String(PORT), '--no-open'],
+      'the replacement is not the same command the cold spawn starts');
+  } finally {
+    await close();
+  }
+});
+
+test('a restart is not recorded as a spawn — the log can tell them apart', async () => {
+  const restarted = sandbox();
+  const cold = sandbox();
+  const spawner = fakeSpawn();
+  const kill = fakeKill();
+  const close = await serverAt(restarted.globalRoot, process.ppid);
+  try {
+    await upkeepUiServer(restarted.root, CONFIGURED, NOW, {
+      globalRoot: restarted.globalRoot,
+      spawnFn: spawner.fn,
+      portAcceptsFn: NOTHING_ON_THE_PORT,
+      freshnessFn: answering('stale').fn,
+      killFn: kill.fn,
+    });
+  } finally {
+    await close();
+  }
+  await upkeepUiServer(cold.root, CONFIGURED, NOW,
+    { globalRoot: cold.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT });
+
+  assert.equal(stateOf(restarted.root)['lastOutcome'], 'restarted-stale');
+  assert.equal(stateOf(cold.root)['lastOutcome'], 'spawned',
+    'a server that was answering and was replaced, and a port where nothing was answering at ' +
+    'all, wrote the same word — and a restart that looks identical to a spawn in the log is a ' +
+    'restart nobody can explain later');
+});
+
+test('a freshness question that went unanswered is not read as a skew', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const kill = fakeKill();
+  const close = await serverAt(sb.globalRoot, process.ppid);
+  try {
+    assert.deepEqual(
+      await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+        globalRoot: sb.globalRoot,
+        spawnFn: spawner.fn,
+        portAcceptsFn: NOTHING_ON_THE_PORT,
+        freshnessFn: answering('unknown').fn,
+        killFn: kill.fn,
+      }),
+      { did: 'nothing', why: 'alive' },
+      'a question that could not be answered was treated as a yes — a refused connection, a ' +
+      'timeout and a body that would not parse are not evidence of anything, and restarting ' +
+      'on one buys a new outage to disclose an old one',
+    );
+    assert.equal(spawner.calls.length, 0);
+    assert.equal(kill.signalled.length, 0);
+  } finally {
+    await close();
+  }
+});
+
+test('the question is put to the address the probe PROVED, not to the configured port', async () => {
+  const sb = sandbox();
+  const asked = answering('fresh');
+  // The record's port is ephemeral and is deliberately NOT `config.ui.port` —
+  // this module does not compare the two, and asking one server about another
+  // server's code would be worse than not asking at all.
+  const close = await serverAt(sb.globalRoot, process.ppid);
+  try {
+    await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+      globalRoot: sb.globalRoot,
+      spawnFn: fakeSpawn().fn,
+      portAcceptsFn: NOTHING_ON_THE_PORT,
+      freshnessFn: asked.fn,
+      killFn: fakeKill().fn,
+    });
+    assert.equal(asked.asks.length, 1);
+    assert.doesNotMatch(asked.asks[0] as string, new RegExp(String(PORT), 'u'),
+      'the freshness question went to the CONFIGURED port rather than to the server the probe ' +
+      'had just proved answers — the record and the config can name different ports, and this ' +
+      'module says so in as many words');
+  } finally {
+    await close();
+  }
+});
+
+test('the credential exchange is floored, so it does not run on every probe', async () => {
+  const sb = sandbox();
+  const asked = answering('fresh');
+  const deps = {
+    globalRoot: sb.globalRoot,
+    spawnFn: fakeSpawn().fn,
+    portAcceptsFn: NOTHING_ON_THE_PORT,
+    freshnessFn: asked.fn,
+    killFn: fakeKill().fn,
+  };
+  const close = await serverAt(sb.globalRoot, process.ppid);
+  try {
+    await upkeepUiServer(sb.root, CONFIGURED, NOW, deps);
+    assert.equal(asked.asks.length, 1);
+
+    await upkeepUiServer(sb.root, CONFIGURED, NOW + PROBE_FLOOR_MS + 1_000, deps);
+    assert.equal(asked.asks.length, 1,
+      'the ask ran again a minute later. Its first step MINTS A CREDENTIAL and writes an audit ' +
+      'row for it, so an unfloored ask is sixty security records an hour in a corpus 5,207 ' +
+      'rows of per-message noise were once deleted from');
+
+    await upkeepUiServer(sb.root, CONFIGURED, NOW + SPAWN_INTERVAL_MS + 1_000, deps);
+    assert.equal(asked.asks.length, 2,
+      'the ask never came round again — a floor that never lifts is the mechanism switched off');
+  } finally {
+    await close();
+  }
+});
+
+test('a stale restart is refused by the SPAWN floor, exactly as a cold spawn is', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const stale = answering('stale');
+  const deps = {
+    globalRoot: sb.globalRoot,
+    spawnFn: spawner.fn,
+    portAcceptsFn: NOTHING_ON_THE_PORT,
+    freshnessFn: stale.fn,
+    killFn: fakeKill().fn,
+  };
+  const close = await serverAt(sb.globalRoot, process.ppid);
+  try {
+    assert.equal((await upkeepUiServer(sb.root, CONFIGURED, NOW, deps)).did, 'restarted');
+    assert.equal(spawner.calls.length, 1);
+
+    // The ask's floor and the spawn's floor are two clocks. Rewinding only the
+    // ask's makes the question due while the spawn is not, which is the one
+    // arrangement in which the SPAWN floor is what refuses — a test that let
+    // both floors refuse together could not say which one did.
+    writeFileSync(upkeepStatePath(sb.root), JSON.stringify({
+      ...stateOf(sb.root), lastFreshnessAt: NOW - SPAWN_INTERVAL_MS - 1,
+    }), 'utf8');
+
+    assert.deepEqual(
+      await upkeepUiServer(sb.root, CONFIGURED, NOW + PROBE_FLOOR_MS + 1_000, deps),
+      { did: 'nothing', why: 'too-soon' },
+    );
+    assert.equal(spawner.calls.length, 1,
+      'a stale server was replaced inside the 5-minute spawn floor. A restart IS a spawn — it ' +
+      'starts a process against the configured port — and a bad server is still a server: ' +
+      'replacing one every minute is the storm the floor exists to prevent');
+  } finally {
+    await close();
+  }
+});
+
+test('three restarts that leave it stale stand the mechanism down', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const deps = {
+    globalRoot: sb.globalRoot,
+    spawnFn: spawner.fn,
+    portAcceptsFn: NOTHING_ON_THE_PORT,
+    freshnessFn: answering('stale').fn,
+    killFn: fakeKill().fn,
+  };
+  const close = await serverAt(sb.globalRoot, process.ppid);
+  try {
+    let at = NOW;
+    for (let i = 0; i < MAX_CONSECUTIVE_SPAWN_FAILURES; i += 1) {
+      assert.equal((await upkeepUiServer(sb.root, CONFIGURED, at, deps)).did, 'restarted');
+      at += SPAWN_INTERVAL_MS + 1_000;
+    }
+    assert.equal(spawner.calls.length, MAX_CONSECUTIVE_SPAWN_FAILURES);
+
+    assert.deepEqual(await upkeepUiServer(sb.root, CONFIGURED, at, deps),
+      { did: 'stood-down', why: 'stale', failures: MAX_CONSECUTIVE_SPAWN_FAILURES },
+      'a stale server that cannot be replaced was replaced again, and again, forever — the ' +
+      'stand-down is what turns a refusal into a state instead of a loop');
+    assert.equal(stateOf(sb.root)['lastOutcome'], 'stood-down-stale',
+      'the two stand-downs make opposite claims — one that nothing would start, one that ' +
+      'something is serving and will not be replaced — and a reader who cannot tell them ' +
+      'apart goes looking for an outage that is not happening');
+
+    at += SPAWN_INTERVAL_MS + 1_000;
+    assert.deepEqual(await upkeepUiServer(sb.root, CONFIGURED, at, deps),
+      { did: 'nothing', why: 'stood-down' });
+    assert.equal(spawner.calls.length, MAX_CONSECUTIVE_SPAWN_FAILURES,
+      'a stood-down workspace restarted a stale server. The probe is what was un-gated; ' +
+      'starting a process is the thing the refusal exists to prevent');
+  } finally {
+    await close();
+  }
+});
+
+test('a server that comes back FRESH clears the restarts counted against it', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const base = {
+    globalRoot: sb.globalRoot,
+    spawnFn: spawner.fn,
+    portAcceptsFn: NOTHING_ON_THE_PORT,
+    killFn: fakeKill().fn,
+  };
+  const close = await serverAt(sb.globalRoot, process.ppid);
+  try {
+    let at = NOW;
+    // Two restarts that did not take: one short of standing down.
+    for (let i = 0; i < MAX_CONSECUTIVE_SPAWN_FAILURES - 1; i += 1) {
+      await upkeepUiServer(sb.root, CONFIGURED, at, { ...base, freshnessFn: answering('stale').fn });
+      at += SPAWN_INTERVAL_MS + 1_000;
+    }
+    assert.equal(stateOf(sb.root)['consecutiveSpawnFailures'], MAX_CONSECUTIVE_SPAWN_FAILURES - 2);
+
+    await upkeepUiServer(sb.root, CONFIGURED, at, { ...base, freshnessFn: answering('fresh').fn });
+    assert.equal(stateOf(sb.root)['consecutiveSpawnFailures'], 0,
+      'a restart that plainly worked did not clear the ones that did not — the counter would ' +
+      'then reach three across restarts with a healthy server between them');
+    assert.equal(stateOf(sb.root)['lastOutcome'], 'alive');
+  } finally {
+    await close();
+  }
+});
+
+test('the upkeep never signals the process it is running in', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const kill = fakeKill();
+  // The record names THIS process, which is what every fixture in this file
+  // wrote before the upkeep could signal anything. `stopServer` refuses it.
+  const close = await serverAt(sb.globalRoot, process.pid);
+  try {
+    assert.deepEqual(
+      await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+        globalRoot: sb.globalRoot,
+        spawnFn: spawner.fn,
+        portAcceptsFn: NOTHING_ON_THE_PORT,
+        freshnessFn: answering('stale').fn,
+        killFn: kill.fn,
+      }),
+      { did: 'restarted', port: PORT },
+    );
+    assert.deepEqual(kill.signalled, [],
+      'the upkeep signalled its own pid. Every other mistake in that module is undone by the ' +
+      'next probe; this one takes down the process the platform is waiting on');
+  } finally {
+    await close();
+  }
+});
+
+test('the stale stand-down line does not claim nothing was serving', () => {
+  const root = path.join('X', '.my_context');
+  const stale = upkeepStandDownLine(MAX_CONSECUTIVE_SPAWN_FAILURES, root, 'stale');
+  assert.match(stale, /kept answering/u);
+  assert.doesNotMatch(stale, /not answering on any of those attempts/u,
+    '"the configured port was not answering" was said about a server that was answering the ' +
+    'whole time — the exact reading that reported a two-hour outage which had not happened, ' +
+    'this time printed by the product itself');
+  assert.match(stale, /ui-server-upkeep\.json/u,
+    'the way out of a refusal has to be named whichever refusal it is');
+
+  const spawn = upkeepStandDownLine(MAX_CONSECUTIVE_SPAWN_FAILURES, root, 'spawn');
+  assert.match(spawn, /not answering/u);
+  assert.notEqual(stale, spawn,
+    'two opposite causes said the same sentence, which is the defect one layer up wearing the ' +
+    'disclosure as a hat');
+  assert.equal(upkeepStandDownLine(MAX_CONSECUTIVE_SPAWN_FAILURES, root), spawn,
+    'the default changed the sentence every existing caller was getting');
+});
+
+test('the replacement is started in the workspace the old server named', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  // A directory that EXISTS, because `startServer` refuses to hand `spawn` a
+  // `cwd` that is not there — `spawn` rejects an absent one outright, and a
+  // restart that can never succeed is worse than one that lands somewhere the
+  // caller can see.
+  const close = await serverAt(sb.globalRoot, process.ppid, tmpdir());
+  try {
+    await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+      globalRoot: sb.globalRoot,
+      spawnFn: spawner.fn,
+      portAcceptsFn: NOTHING_ON_THE_PORT,
+      freshnessFn: answering('stale').fn,
+      killFn: fakeKill().fn,
+    });
+    assert.equal(spawner.calls.length, 1);
+    assert.equal(spawner.calls[0].options.cwd, tmpdir(),
+      'the replacement inherited the HOOK\'s working directory instead of the one the server ' +
+      'it replaced named for itself. A UI server serves the corpus its cwd resolves to: ' +
+      'measured 2026-09-02, a restart came back serving 44 items where the server it replaced ' +
+      'had been serving 760, answering every question correctly about the wrong repository');
+  } finally {
+    await close();
+  }
+});
+
+test('a workspace that is no longer there is not passed to spawn', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const close = await serverAt(sb.globalRoot, process.ppid, path.join('D:', 'gone-a-year-ago'));
+  try {
+    await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+      globalRoot: sb.globalRoot,
+      spawnFn: spawner.fn,
+      portAcceptsFn: NOTHING_ON_THE_PORT,
+      freshnessFn: answering('stale').fn,
+      killFn: fakeKill().fn,
+    });
+    assert.deepEqual(spawner.calls[0].options, { detached: true, stdio: 'ignore' },
+      'a cwd that does not exist was handed to spawn, which refuses it — so the restart could ' +
+      'never succeed, and it would fail the same way on every attempt until the stand-down');
+  } finally {
+    await close();
+  }
 });
