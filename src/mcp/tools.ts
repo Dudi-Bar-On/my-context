@@ -18,6 +18,7 @@ import {
   summaryRequiredRefusal, summaryUnchangedRefusal,
 } from '../core/summary-gate.ts';
 import { linkItems } from '../core/relations.ts';
+import { RELATION_TYPES } from '../core/vocabulary.ts';
 import { extraFieldNames, resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
 import { buildInjection } from '../core/inject.ts';
 import { openRebuiltStore } from '../core/open-store.ts';
@@ -776,7 +777,31 @@ const SPECS: ToolSpec[] = [
     schema: object({
       from: S_STRING,
       to: S_STRING,
-      relation: { ...S_STRING, description: 'See mycontext_help("workflow")' },
+      // **The enum IS the vocabulary, stated where the caller reads it.** This
+      // was a bare string with `description: 'See mycontext_help("workflow")'`,
+      // and the document it pointed at held a HAND-TYPED table that had gone
+      // stale: on 2026-09-02 `RELATION_TYPES` went from eight names to twelve
+      // and the table stayed at nine, so this tool accepted four values that
+      // nothing an agent could read ever named. `RELATION_TYPES` here is that
+      // list itself, so `mycontext_help("tools")` — which renders every
+      // property's enum from the live `tools/list` schemas — prints the
+      // vocabulary automatically and can never fall behind it again.
+      //
+      // `supersedes` is a member and is nonetheless refused by `linkItems`
+      // by name, so it is listed AND excepted in the same breath rather than
+      // filtered out: an enum that omitted it would make a client reject the
+      // call generically, and what `linkItems` throws instead is the
+      // paragraph that names which item gets retired and which command to
+      // use. Losing that refusal to a schema check would cost more than the
+      // eleventh name is worth.
+      relation: {
+        ...S_STRING,
+        enum: RELATION_TYPES,
+        description:
+          'Stored on "from" and not symmetric. "supersedes" (and "superseded_by", which is not '
+          + 'in this list at all) assert a lifecycle change and are refused here — use '
+          + 'supersede_item. See mycontext_help("workflow") for what each one means',
+      },
     }, ['from', 'to', 'relation']),
     // `origin: 'agent'` gates nothing here — `linkItems` does not branch on it
     // — but it is what makes the audit log's "who" true for an edge a model

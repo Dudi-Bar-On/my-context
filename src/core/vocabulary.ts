@@ -47,36 +47,81 @@
  * else is on disk — and `mycontext search --relation` and `GET /api/search`
  * now read the same way. Nothing about that widens what may be WRITTEN.
  *
- * ── THE FOUR ADDED 2026-09-02, AND WHY EACH IS ITS OWN NAME ───────────────
+ * ── WHAT EACH ONE MEANS ───────────────────────────────────────────────────
  *
- * - `depends_on` — this item's correctness rests on that one; if that falls,
- *   re-examine this. The direction is dependent → premise. Distinct from
- *   `blocks`, which is a lifecycle gate on WORK, where this is a standing
- *   claim about CORRECTNESS. It was already in `RELATION_CLASSIFICATION` and
- *   already on disk in this corpus; adding it here is the enum catching up
- *   with an edge the corpus has carried since before the enum closed.
- * - `caused_by` — the thing this item describes was produced by the thing
- *   that one describes. Causation IN THE WORLD, as against `derived_from`'s
- *   provenance of the ARTEFACT: a rule is `derived_from` a lesson because
- *   someone wrote it out of that lesson; an outage is `caused_by` a
- *   deployment because the deployment made it happen.
- * - `conflicts_with` — both stand and they pull opposite ways. The ONE
- *   symmetric member, and symmetry here is a fact about the RELATION, never a
- *   licence to store the mirror: see `relations.ts`, and `apiGraph`'s
- *   bidirectional walk, which needs no stored inverse to traverse either way.
- * - `amends` — extends the target without replacing it, and the target stays
- *   active. Distinct from `refines`, which NARROWS what the target says, and
- *   from `supersedes`, which retires it.
+ * In `RELATION_MEANINGS` below, one sentence per name, and NOT in this
+ * comment. That prose is what a caller actually needs and it used to live in
+ * a hand-typed table in `help/topics/workflow.md`; on 2026-09-02 the
+ * vocabulary went from eight names to twelve and that table still listed
+ * nine. It is data here so the table can be generated from it, and so a name
+ * added without its sentence fails rather than shipping unexplained.
+ *
+ * The four added on 2026-09-02 are `depends_on`, `caused_by`,
+ * `conflicts_with` and `amends`. `depends_on` was already in
+ * `RELATION_CLASSIFICATION` and already on disk in this corpus, so adding it
+ * was the enum catching up with an edge the corpus has carried since before
+ * the enum closed; the other three were new.
  *
  * No inverse of any of these is a member. An inverse is DERIVED on traversal
  * or rendered as a phrase ("blocked by" for an inbound `blocks`); storing one
- * would create a second edge to keep in sync with the first.
+ * would create a second edge to keep in sync with the first. That is why
+ * `conflicts_with`, the one symmetric member, still stores no mirror: see
+ * `relations.ts`, and `apiGraph`'s bidirectional walk, which needs no stored
+ * inverse to traverse either way.
  */
 export const RELATION_TYPES = [
   'derived_from', 'constrains', 'supersedes', 'blocks',
   'mitigates', 'refines', 'relates_to', 'links_to',
   'depends_on', 'caused_by', 'conflicts_with', 'amends',
 ];
+
+/**
+ * What each relation MEANS and when to reach for it — the prose an enum
+ * cannot carry, keyed by the name it describes.
+ *
+ * **This exists so that no hand-typed copy of the vocabulary does.**
+ * `mycontext help workflow` renders its relation table from this map and
+ * `RELATION_TYPES` together (`help/index.ts` · `relationTable`), and that
+ * renderer THROWS when the two disagree in either direction — a name in
+ * `RELATION_TYPES` with no sentence here, or a sentence here for a name that
+ * is not in the vocabulary. So the failure a new relation type causes is
+ * "help/index.ts refuses to render the workflow topic", named in the message,
+ * rather than a table that quietly lists one fewer name than the tool accepts.
+ * `test/help/relation-vocabulary.test.ts` holds both directions.
+ *
+ * ONE LINE EACH, AND NO `|`: every sentence is rendered into a GFM table
+ * cell, where a literal pipe ends the cell. `relationTable` refuses one.
+ */
+export const RELATION_MEANINGS: Record<string, string> = {
+  derived_from:
+    'This item came out of that one — a rule from a lesson, a constraint from an ADR. '
+    + 'Provenance of the ARTEFACT, where `caused_by` is causation in the world',
+  constrains: 'This item limits what that one may do',
+  supersedes:
+    'This item replaces that one. Written by `supersede_item`, which sets the retired '
+    + 'item\'s status in the same breath; `link_items` refuses it — see below',
+  blocks:
+    'That item cannot be settled until this one is — a lifecycle gate on WORK, mainly '
+    + 'for `open_question`, where `depends_on` is a standing claim about correctness',
+  mitigates: 'This item reduces that risk',
+  refines:
+    'This item makes that one more specific — it NARROWS what the target says, where '
+    + '`amends` adds to it',
+  relates_to: 'Weak association, when nothing more precise fits',
+  links_to: 'A bare mention',
+  depends_on:
+    'This item\'s correctness rests on that one; if the target falls, re-examine this. '
+    + 'The direction is dependent → premise',
+  caused_by:
+    'The thing this item describes was produced by the thing that one describes — an '
+    + 'outage is `caused_by` a deployment because the deployment made it happen',
+  conflicts_with:
+    'Both stand and they pull opposite ways. The one symmetric member, and the mirror '
+    + 'is never stored: it is derived on traversal',
+  amends:
+    'This item extends the target without replacing it, and the target stays active — '
+    + 'where `refines` narrows it and `supersedes` retires it',
+};
 
 /**
  * An id is not only a key. `createItem` turns an explicit `input.id` straight

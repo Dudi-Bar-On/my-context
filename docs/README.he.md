@@ -3132,8 +3132,9 @@ mycontext focus --relations              אילו קשרים נחשבים נוש
 
 <span dir="ltr">`mycontext focus --relations`</span> מדפיס את הסיווג. **נושא-משקל** אומר
 שהסתרת הקצה הרחוק משאירה את ההנחיה של הפריט הגלוי חלקית או ניתנת לפעולה שגויה: `blocks`,
-`unblocks`, `depends_on`, `constrains`, `answers`, `enforces`, `enforced_by`, `refines`.
-**התייחסותי** אומר שלא: `derived_from`, `relates_to`, `links_to`, `discovered_by`,
+`unblocks`, `depends_on`, `constrains`, `answers`, `enforces`, `enforced_by`, `refines`,
+`conflicts_with`, `amends`.
+**התייחסותי** אומר שלא: `derived_from`, `caused_by`, `relates_to`, `links_to`, `discovered_by`,
 `produced`, `mitigates`, `supersedes`, `superseded_by` — כלל שאומר
 <span dir="ltr">`derived_from LESSON-x`</span> עומד בזכות עצמו. סוג קשר שאינו בטבלה נחשב
 נושא-משקל, כך שקשת לא מוכרת מדווחת ביתר ולא מוחמצת.

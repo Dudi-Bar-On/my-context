@@ -28,6 +28,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { TOOL_NAMES } from '../../src/mcp/tools.ts';
 import { CATEGORIES, PROFILES } from '../../src/core/categories.ts';
+import { RELATION_CLASSIFICATION } from '../../src/core/focus.ts';
 import { NOT_COUNTED, UNGATED, approvalBoundary } from '../helpers/approval-boundary.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -790,5 +791,67 @@ test('both documents state the real number of hooks in prose', () => {
       `${doc.relative} counts the hooks as ${found.join(', ')}; the manifest registers ` +
       `${total} ("${expected}").`,
     );
+  }
+});
+
+/**
+ * **Both documents' relation-classification rosters, held to
+ * `RELATION_CLASSIFICATION` itself.**
+ *
+ * Not a count, but the same failure and the same remedy. These two lists are a
+ * hand-typed copy of a declaration in `core/focus.ts`, and they went stale the
+ * moment the relation vocabulary grew: `conflicts_with` and `amends` were
+ * classified load-bearing and `caused_by` referential on 2026-09-02, and both
+ * READMEs still named eight and eight. A reader counting on the paragraph
+ * would have concluded those three edges were the "unfamiliar" kind the last
+ * sentence describes — over-reported by focus — which is the opposite of what
+ * the program does with two of them.
+ *
+ * The names are the whole content of the claim, so they are compared as SETS
+ * against the declaration rather than as a substring search: a list that names
+ * every real type AND one that does not exist passes a "is each one
+ * mentioned?" check perfectly.
+ *
+ * Order is not asserted. The prose reads in declaration order today and that
+ * is worth keeping, but a reordering is not a wrong claim about the program
+ * and this test is for wrong claims.
+ */
+test('both documents classify exactly the relations RELATION_CLASSIFICATION does', () => {
+  const bucket = (kind: 'load-bearing' | 'referential'): string[] =>
+    Object.keys(RELATION_CLASSIFICATION).filter((t) => RELATION_CLASSIFICATION[t] === kind).sort();
+
+  // The paragraph runs from the sentence naming the two words to the em dash
+  // that ends the roster, in both languages: the English "**Load-bearing**"
+  // and "**Referential**", the Hebrew "**נושא-משקל**" and "**התייחסותי**".
+  const PATTERNS: Record<string, RegExp> = {
+    'README.md': /\*\*Load-bearing\*\*[\s\S]*?\*\*Referential\*\* means it does not:([\s\S]*?)—/u,
+    [path.join('docs', 'README.he.md')]:
+      /\*\*נושא-משקל\*\*[\s\S]*?\*\*התייחסותי\*\* אומר שלא:([\s\S]*?)—/u,
+  };
+  const LOAD_BEARING: Record<string, RegExp> = {
+    'README.md': /wrongly actionable:([\s\S]*?)\*\*Referential\*\*/u,
+    [path.join('docs', 'README.he.md')]: /לפעולה שגויה:([\s\S]*?)\*\*התייחסותי\*\*/u,
+  };
+
+  const names = (text: string): string[] =>
+    [...text.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]).sort();
+
+  for (const doc of documents) {
+    for (const [kind, patterns] of [
+      ['load-bearing', LOAD_BEARING], ['referential', PATTERNS],
+    ] as const) {
+      const match = patterns[doc.relative].exec(doc.text);
+      assert.ok(
+        match,
+        `${doc.relative} no longer carries the ${kind} roster where this test looks for it. ` +
+        `If the wording changed, update the pattern; do not delete it — the list is a copy ` +
+        `of core/focus.ts and this is the only thing holding the two together.`,
+      );
+      assert.deepEqual(
+        names(match[1]), bucket(kind),
+        `${doc.relative} lists the wrong ${kind} relations. RELATION_CLASSIFICATION ` +
+        `(core/focus.ts) is what \`mycontext focus --relations\` actually prints.`,
+      );
+    }
   }
 });

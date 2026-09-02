@@ -10,6 +10,7 @@ import { computeItemChecksum, renderItem } from '../core/item.ts';
 import { snapshotBody, snapshotChecksum, snapshotText } from '../core/reference.ts';
 import { makeId } from '../core/slug.ts';
 import { COMMANDS, type CommandDef } from '../cli/commands/registry.ts';
+import { RELATION_MEANINGS, RELATION_TYPES } from '../core/vocabulary.ts';
 import { HELP_TOPICS, enumError, type HelpTopic } from '../core/teach.ts';
 import type { Item } from '../core/types.ts';
 import { createRegistry } from '../mcp/tools.ts';
@@ -386,6 +387,73 @@ export function commandList(commands: Map<string, CommandDef> = COMMANDS): strin
 }
 
 /* -------------------------------------------------------------------------- *
+ * The `workflow` topic's one generated section.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * `{{RELATION_TABLE}}` — the relation vocabulary, generated from
+ * `RELATION_TYPES` and `RELATION_MEANINGS` (core/vocabulary.ts).
+ *
+ * **Generated, not written, and the defect it ends is on the record.** A
+ * hand-typed table of nine rows stood here until 2026-09-02, and it stayed at
+ * nine on the day the vocabulary went to twelve — so `link_items` accepted
+ * four names that the one document it pointed a caller at did not mention.
+ * That is `commandList`'s failure and `toolReference`'s failure, one surface
+ * over, and the fix is the same one: read the declaration.
+ *
+ * A TABLE rather than the list the other sections use, which is where this
+ * departs from them. Their reason is a literal `|` inside a `usage` string or
+ * an argument description; a relation name is `[a-z_]+` and a meaning is one
+ * sentence this project writes, so the hazard is avoidable rather than
+ * inherent — and it is REFUSED below rather than assumed away.
+ *
+ * The two disagreeing is a refusal, not a shrug, and that is the whole
+ * guarantee: `RELATION_MEANINGS` is the only place a relation's sentence
+ * lives, so a name added to the vocabulary without one cannot reach a reader
+ * as a blank cell — it stops the topic from rendering, here and in
+ * `mycontext_help("workflow")`, with the missing name in the message.
+ *
+ * Both arguments are injectable for the reason `commandList`'s `commands` is:
+ * a test has to render this from lists it controls, and no test may write to
+ * `src/`.
+ */
+export function relationTable(
+  types: string[] = RELATION_TYPES,
+  meanings: Record<string, string> = RELATION_MEANINGS,
+): string {
+  const missing = types.filter((t) => !Object.hasOwn(meanings, t));
+  const extra = Object.keys(meanings).filter((t) => !types.includes(t));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      'my_context: the "workflow" topic\'s relation table is generated from RELATION_TYPES and ' +
+      'RELATION_MEANINGS (core/vocabulary.ts) together, and they disagree' +
+      (missing.length > 0
+        ? `. In RELATION_TYPES with no meaning: ${missing.join(', ')} — write one sentence for ` +
+          'each in RELATION_MEANINGS. link_items already accepts them, so until then the ' +
+          'vocabulary a caller can read is smaller than the one it can write'
+        : '') +
+      (extra.length > 0
+        ? `. In RELATION_MEANINGS but not in the vocabulary: ${extra.join(', ')} — link_items ` +
+          'refuses these, so documenting them would advertise a value no caller can use'
+        : '') +
+      '.',
+    );
+  }
+  const piped = types.filter((t) => meanings[t].includes('|'));
+  if (piped.length > 0) {
+    throw new Error(
+      `my_context: the relation meaning for ${piped.join(', ')} contains a "|", which ends a ` +
+      'cell in the GFM table this renders into — the row would break in both READMEs and in ' +
+      '`mycontext help workflow`. Reword it without the pipe.',
+    );
+  }
+  return [
+    '| Relation | Meaning |', '|---|---|',
+    ...types.map((t) => `| \`${t}\` | ${meanings[t]} |`),
+  ].join('\n');
+}
+
+/* -------------------------------------------------------------------------- *
  * The `tools` topic's three generated sections.
  * -------------------------------------------------------------------------- */
 
@@ -677,6 +745,7 @@ function expand(text: string, token: string, value: string): string {
  */
 const GENERATED: Record<string, () => string> = {
   '{{COMMAND_LIST}}': () => commandList(),
+  '{{RELATION_TABLE}}': () => relationTable(),
   '{{TIER_UPDATES}}': () => tierUpdateList(),
   '{{TOOL_REFERENCE}}': () => toolReference(),
   '{{TOOL_PARITY_TABLE}}': () => toolParityTable(),

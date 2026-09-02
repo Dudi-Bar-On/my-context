@@ -2939,9 +2939,10 @@ it will tell you, in the injected block itself, that it did.
 `mycontext focus --relations` prints the classification. **Load-bearing** means hiding the
 far end leaves the visible item's own instruction incomplete or wrongly actionable:
 `blocks`, `unblocks`, `depends_on`, `constrains`, `answers`, `enforces`, `enforced_by`,
-`refines`. **Referential** means it does not: `derived_from`, `relates_to`, `links_to`,
-`discovered_by`, `produced`, `mitigates`, `supersedes`, `superseded_by` — a rule that says
-`derived_from LESSON-x` still stands on its own. A relation type the table does not list
+`refines`, `conflicts_with`, `amends`. **Referential** means it does not: `derived_from`,
+`caused_by`, `relates_to`, `links_to`, `discovered_by`, `produced`, `mitigates`,
+`supersedes`, `superseded_by` — a rule that says `derived_from LESSON-x` still stands on
+its own. A relation type the table does not list
 counts as load-bearing, so an unfamiliar edge is over-reported rather than missed.
 
 ##### What it will not hide, and what it does not touch

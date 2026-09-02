@@ -15,27 +15,31 @@ which leave a trail.
 ## Relations
 
 Relations live in the Markdown file, so they survive a rebuild and merge like
-text. The vocabulary is closed:
+text. The vocabulary is closed, and this table is the whole of it — it is
+generated from the same list `link_items` gates on, so it cannot list fewer
+names than the tool accepts:
 
-| Relation | Meaning |
-|---|---|
-| `derived_from` | This item came out of that one — a rule from a lesson, a constraint from an ADR |
-| `constrains` | This item limits what that one may do |
-| `supersedes` | This item replaces that one; written automatically by supersede_item |
-| `superseded_by` | That item replaced this one; the mirror of `supersedes`, written automatically by supersede_item onto the item being retired. Not available to link_items — see below |
-| `blocks` | That item cannot be settled until this one is — mainly for open_question |
-| `mitigates` | This item reduces that risk |
-| `refines` | This item makes that one more specific |
-| `relates_to` | Weak association, when nothing more precise fits |
-| `links_to` | A bare mention |
+{{RELATION_TABLE}}
+
+`link_items` declares that list as its `relation` argument's enum, so
+`mycontext help tools` prints it too, from the schema the MCP server actually
+advertises.
 
 A relation may point at an item that does not exist yet. It resolves when that
 item is created.
 
-Neither retirement relation can be added with `link_items`. Both assert a
-lifecycle change, and `link_items` never touches `status` — writing one by hand
-would leave a file claiming a supersession that never happened. `supersede_item`
-writes both directions itself, and it is the only thing that does.
+There is one more relation on disk that is not in the table: `superseded_by`,
+the mirror of `supersedes`, written automatically by `supersede_item` onto the
+item being retired. It is deliberately not in the vocabulary at all, because
+that vocabulary is the whole gate on `link_items` — a name absent from it
+cannot be written through the link surfaces.
+
+Neither retirement relation can be added with `link_items`: `superseded_by`
+because it is not in the vocabulary, and `supersedes` — which is — because
+`link_items` refuses it by name. Both assert a lifecycle change, and
+`link_items` never touches `status`, so writing one by hand would leave a file
+claiming a supersession that never happened. `supersede_item` writes both
+directions itself, and it is the only thing that does.
 
 An answered `open_question` is the common case: set it `superseded` and point it
 at whatever answered it. That is one `supersede_item(id: <the question>, by:
