@@ -521,12 +521,23 @@ test('render draws every kind the mockup draws, and the bold run among them', as
     'a kind the mockup draws is missing from the render. This list used to hold `b` for a '
     + 'grammar limit that no longer exists, so a name here now is a real gap.');
 
-  // The other direction, which `screen-parity.spec.ts` does not check and
-  // nothing else would ever say out loud. `td.small` is the em dash cell: the
-  // mockup writes all five value cells as `td.m` because it invents a sample
-  // number for the two rows this server cannot count, and the app draws the
-  // design's mark for "no value here" instead. A divergence, recorded.
-  assert.deepEqual(built.filter((kind) => !drawn.includes(kind)), ['td.small']);
+  // **THE OTHER DIRECTION IS NO LONGER ASSERTED — owner's ruling, 2026-09-02.**
+  // *"Some app features could not appear in the mockup because they are newer
+  // than it and it's ok and normal"*, and the mockup is a frozen reference that
+  // is read and never written. This was an EXACT ledger of the kinds the app
+  // draws and the design of record does not, so any new element on this screen
+  // failed here until someone wrote it down — and with the mockup frozen the
+  // only other green route was editing a file that may not be edited.
+  //
+  // LOST: nothing counts what this screen draws beyond the design of record.
+  // KEPT: the gap direction, asserted above, and by `e2e/screen-parity.spec.ts`.
+  //
+  // The divergence it recorded stays as prose, because it is still true and
+  // still worth knowing: `td.small` is the em dash cell — the mockup writes all
+  // five value cells as `td.m` because it invents a sample number for the two
+  // rows this server cannot count, and the app draws the design's own mark for
+  // "no value here" instead.
+  void 'td.small';
 
   // The verdict glyph, read out of the mockup rather than copied here. Status
   // is one of only two screens in the rail that open ⚠️ instead of ✅ — a

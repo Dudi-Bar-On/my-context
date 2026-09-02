@@ -767,14 +767,26 @@ test('the pane draws the item summary, and draws it ABOVE the six <dl> facts', a
  * is not worth asking until the first has an answer — which is why "above the
  * body" was not enough and the block went above the facts as well.
  *
- * Both files, because presentation changes go into the mockup first: a block
- * moved in one and not the other is how a design of record stops being one.
+ * **index.html ALONE since the owner's ruling of 2026-09-02.** This walked the
+ * mockup too, on the premise stated here until today — *"presentation changes
+ * go into the mockup first: a block moved in one and not the other is how a
+ * design of record stops being one"*. The owner has ruled the mockup a frozen
+ * reference: it is read, never written, and the app is free to move without it.
+ * An ORDER asserted over both files is lockstep by another name — reorder the
+ * pane in the app for a good reason and the only green route is editing a file
+ * that may not be edited.
+ *
+ * LOST: nothing compares the pane's block order against the design of record
+ * any more. The two may diverge, deliberately and silently.
+ *
+ * KEPT: the whole of the ordering rule on the file that ships. The reasoning
+ * above — the summary answers *what is this*, which is not worth asking until
+ * *does this apply to me* has an answer — is a rule about the app, and it is
+ * still enforced on the app.
  */
-test('the summary block sits above the <dl>, in index.html and in the mockup alike', () => {
-  const MOCKUP = path.join(REPO, 'docs', 'design', 'web-ui-mockup.html');
+test('the summary block sits above the <dl> in index.html', () => {
   for (const [label, file] of [
     ['index.html', path.join(PUBLIC, 'index.html')],
-    ['the mockup', MOCKUP],
   ] as const) {
     const html = readFileSync(file, 'utf8');
     const pane = html.indexOf('<aside class="pane" id="pane"');

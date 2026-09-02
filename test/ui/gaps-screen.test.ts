@@ -448,11 +448,21 @@ test('given a gap to draw, the screen draws every kind the mockup does but the c
   // works on KINDS rather than bare class tokens, so a kind passes only when
   // every class in it has a rule; a bare tag the mockup never draws still
   // fails, and so does `div.typo`.
+  //
+  // **A CLASSLESS kind stopped being a finding on 2026-09-02** (owner: *"some
+  // app features could not appear in the mockup because they are newer than it
+  // and it's ok and normal"*, and the mockup is frozen). `classes.length === 0`
+  // used to report a bare `<hr>`, `<ul>` or `<p>` the design of record has no
+  // counterpart for — an app-only element, which is exactly the direction the
+  // ruling makes normal, and one with no green route but editing a file that
+  // may not be edited. LOST: nothing notices a bare semantic tag this screen
+  // adds. KEPT, and it is what the check was for: a CLASS with no rule
+  // anywhere — `div.typo` — is still a typo and still fails.
   const styled = styledClasses();
   const invented = built.filter((kind) => {
     if (drawn.includes(kind)) return false;
     const classes = kind.split('.').slice(1);
-    return classes.length === 0 || !classes.every((c) => styled.has(c));
+    return classes.length > 0 && !classes.every((c) => styled.has(c));
   });
   assert.deepEqual(
     invented, [],

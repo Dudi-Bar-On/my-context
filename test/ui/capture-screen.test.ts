@@ -637,36 +637,29 @@ test('the screen invents exactly one class the mockup\'s capture section does no
   assert.ok(written.length >= 7,
     `the capture.js scan found ${written.length} class string(s); the screen writes at least seven`);
 
-  // The ONE deliberate invention, named here so a second one cannot arrive
-  // quietly. `.globin` is the Composer's glob input, and a scope pattern is the
-  // same kind of value typed into the same kind of box — but the mockup's
-  // capture section has no input at all, so this belongs in the KNOWN_GAPS
-  // ledger in the direction that names what this screen draws and the design of
-  // record does not.
-  const INVENTED = new Set(['globin']);
   // `allowed` is the mockup's classes UNION what styles.css styles — see
   // test/helpers/shipped-classes.ts. The app is what gets built now, so a new
   // class with a real rule is ordinary development; a typo has no rule
-  // anywhere and still lands in `offenders`. `INVENTED` stays because it
-  // records a DECISION about this screen rather than a styling fact.
+  // anywhere and still lands in `offenders`.
+  //
+  // **The `INVENTED = new Set(['globin'])` allowlist and its staleness check
+  // went with the owner's ruling of 2026-09-02** — *"some app features could
+  // not appear in the mockup because they are newer than it and it's ok and
+  // normal"*. It named `.globin` as the one deliberate invention and required
+  // the screen to keep writing it; that is a ledger of app-ahead-of-mockup
+  // drift, and being ahead is now the ruled state rather than a thing to
+  // record. Nothing is uncovered: `.globin` has a real rule in `styles.css`,
+  // so `allowed` already carries it, and it was allowed twice over.
   const allowed = allowedClasses(drawn);
   const offenders: string[] = [];
   for (const value of written) {
     for (const token of value.trim().split(/\s+/)) {
-      if (!allowed.has(token) && !INVENTED.has(token)) offenders.push(token);
+      if (!allowed.has(token)) offenders.push(token);
     }
   }
   assert.deepEqual(offenders, [],
-    'capture.js writes these classes, which <section data-p="capture"> never uses and this file '
-    + 'does not name as deliberate. A class the design of record does not draw is either a typo '
-    + 'or a decision the owner has not taken.');
-
-  // And the allowlist may not go stale: a class named as invented and then not
-  // written is a note about a screen that no longer exists.
-  const tokens = new Set(written.flatMap((value) => value.trim().split(/\s+/)));
-  for (const invented of INVENTED) {
-    assert.ok(tokens.has(invented), `${invented} is allowed for and never written`);
-  }
+    'capture.js writes these classes, which neither <section data-p="capture"> uses nor '
+    + 'styles.css styles — a class with no rule anywhere is a typo.');
 
   // The composite the card turns on, pinned as a whole attribute value rather
   // than as two loose tokens: a `div` that took `card` and `pane` separately
@@ -676,31 +669,35 @@ test('the screen invents exactly one class the mockup\'s capture section does no
   assert.ok(written.includes('card pane'), 'capture.js no longer writes the "card pane" pair');
 });
 
-test('the screen invents exactly four TAGS the mockup\'s capture section does not draw', () => {
-  const section = mockupSection();
-  const drawn = new Set<string>();
-  for (const m of section.matchAll(/<([a-z0-9]+)[\s>]/g)) drawn.add(m[1]!);
-  assert.ok(drawn.has('table') && drawn.has('code') && drawn.has('button'),
-    'the mockup tag scan missed elements the capture section certainly has — it is broken');
-
-  const built = new Set<string>();
-  for (const m of CODE.matchAll(/\bel\('([a-z0-9]+)'/g)) built.add(m[1]!);
-  for (const m of CODE.matchAll(/document\.createElement\('([a-z0-9]+)'\)/g)) built.add(m[1]!);
-  assert.ok(built.size >= 10,
-    `the capture.js tag scan found ${built.size} tag(s) — too few to be this screen`);
-
-  // The four controls the mockup does not have, and the reason is in the
-  // module's header: the design of record draws a scope, a category, a title
-  // and a severity as SAMPLE VALUES, and a running screen has to get them from
-  // somewhere. The router cannot carry them and no endpoint serves them.
-  const INVENTED = new Set(['label', 'input', 'select', 'option']);
-  assert.deepEqual([...built].filter((tag) => !drawn.has(tag) && !INVENTED.has(tag)).sort(), [],
-    'capture.js builds these element kinds, which <section data-p="capture"> never draws and '
-    + 'this file does not name as deliberate');
-  for (const invented of INVENTED) {
-    assert.ok(built.has(invented), `${invented} is allowed for and never built`);
-  }
-});
+/**
+ * **DELETED 2026-09-02 (owner's ruling): `the screen invents exactly four TAGS
+ * the mockup's capture section does not draw`.**
+ *
+ * *"because of the development process and later decisions, some app features
+ * could not appear in the mockup because they are newer than it and it's ok and
+ * normal"* — and the mockup is a frozen reference, read and never written.
+ *
+ * That test asserted ONE direction and it was the direction that is now normal:
+ * every element kind `capture.js` builds had to be either drawn by
+ * `<section data-p="capture">` or written into an `INVENTED` allowlist here,
+ * and each allowlist entry had to still be built. It could not fail for a
+ * reason that is a defect any more — only for a screen gaining a control, which
+ * is what a screen more mature than its design does. Unlike the class check
+ * above it had no `styles.css` escape hatch, so the only green routes were a
+ * ledger entry or an edit to a file that may not be edited.
+ *
+ * WHAT NOTHING CHECKS NOW: which element kinds this screen builds. A `<label>`
+ * without a control, a `<select>` where the design drew prose — no gate here
+ * has an opinion. The reverse direction, a kind the mockup draws and the app
+ * does not, was never asserted by this test (the mockup's `<b>` cannot be
+ * rebuilt at all — see the `cap.nosim` test below); `e2e/screen-parity.spec.ts`
+ * is where that direction lives, per screen, in a ledger that may only shrink,
+ * and it is untouched.
+ *
+ * Deleted rather than weakened: with the app-only direction gone there was no
+ * assertion left in it, and a test that asserts nothing is a claim nobody
+ * checks.
+ */
 
 test('the mockup\'s <b> inside cap.nosim cannot be rebuilt, and the string table is why', async () => {
   const en = await table('en');

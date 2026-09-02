@@ -1,7 +1,46 @@
 /**
+ * ══ UNPINNED BY THE OWNER'S RULING OF 2026-09-02 ═══════════════════════════
+ *
+ * *"i told you not to change the mockup" · "only our app" · "it should stay as
+ * reference"* — `docs/design/web-ui-mockup.html` is a FROZEN REFERENCE. It is
+ * read, never written. The owner then chose, from three options: **freeze the
+ * mockup, and unpin the CSS coupling — `styles-parity` stops asserting
+ * equality and becomes one-directional.** That supersedes the instruction
+ * carried in this file's own header below and in several task bodies, that the
+ * mockup is the design of record and must move first.
+ *
+ * Byte identity is a TWO-DIRECTIONAL claim: it fails when styles.css moves as
+ * loudly as when the mockup does, and while the mockup cannot move, the only
+ * ways to go green are to revert the app or to edit a frozen file. So every
+ * `assert.equal(shipped, mockup)` below is gone.
+ *
+ * **What is LOST**, said plainly rather than left to be discovered: nothing
+ * now compares a VALUE in `styles.css` against the design of record. A token
+ * repainted, a radius, a spacing step, a chip's colour, a duration, a
+ * `grid-template-areas` re-cut — all of it can drift from the mockup silently
+ * and deliberately, and that drift is the ruling's intent, not a hole in it.
+ *
+ * **What REMAINS**, and it is most of what this file historically caught: the
+ * mockup is now a FLOOR on the app's rule SET. Every selector the design of
+ * record declares must still be declared in `styles.css`, non-empty. Read the
+ * entries in `SCREEN_SELECTORS` below — `.chip.index` invisible for eight
+ * days, `#pane` styled in one file and unbuilt in the other, `svg.chart`
+ * painting every node a black slab, `.linkid` falling back to UA chrome on
+ * four screens, `.md h4` styling a tag the renderer cannot emit. Every one of
+ * those was a rule that DID NOT EXIST, not a rule whose bytes had drifted. A
+ * presence floor still catches all of them, and it lets the app move.
+ *
+ * The budget gates — the five meaning hues, what a chip may spend, the
+ * `@font-face` resolution, the nine vendored weights, `index.html`'s nesting
+ * and its sprite's missing `style=` — constrain `styles.css`/`index.html`
+ * ALONE and are untouched.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
  * **`styles.css` and the mockup's `:root` tokens, primitive rules, and now
- * the screen-level rules the `nav.inj` screens actually render, held to byte
- * identity.** Plan Task 16 Step 4b started this file in the shape of
+ * the screen-level rules the `nav.inj` screens actually render.** (Held to
+ * byte identity until 2026-09-02 — see the ruling above.) Plan Task 16 Step 4b
+ * started this file in the shape of
  * `test/ui/strings-parity.test.ts`: a token or a rule edited in one file and
  * not the other fails here instead of drifting silently — the exact failure
  * the retired two-palette placeholder this file replaces already caused once
@@ -116,23 +155,41 @@ function ruleAtNth(css: string, selector: string, n: number, label: string): str
   return matches[n]![0];
 }
 
-test('the TOKENS :root block is byte-identical between the mockup and styles.css', () => {
-  const mockup = rootBlockContaining(MOCKUP_CSS, '--ground:', 'mockup');
-  const shipped = rootBlockContaining(stylesCss, '--ground:', 'styles.css');
-  assert.equal(shipped, mockup);
-});
+/**
+ * The custom-property NAMES a `:root{…}` block declares, in declaration order.
+ * Names, never values: the ruling of 2026-09-02 frees every VALUE in
+ * `styles.css` to move away from the design of record.
+ */
+function declaredTokens(block: string): string[] {
+  return [...block.matchAll(/(--[a-z0-9-]+):/g)].map((m) => m[1]!);
+}
 
-test('the sans/mono :root block is byte-identical between the mockup and styles.css', () => {
-  const mockup = rootBlockContaining(MOCKUP_CSS, '--sans:', 'mockup');
-  const shipped = rootBlockContaining(stylesCss, '--sans:', 'styles.css');
-  assert.equal(shipped, mockup);
-});
-
-test('the LEGACY SCALE :root block is byte-identical between the mockup and styles.css', () => {
-  const mockup = rootBlockContaining(MOCKUP_CSS, '--fs-00:', 'mockup');
-  const shipped = rootBlockContaining(stylesCss, '--fs-00:', 'styles.css');
-  assert.equal(shipped, mockup);
-});
+/**
+ * **One-directional since the owner's ruling of 2026-09-02.** These three
+ * asserted `assert.equal(shipped, mockup)` and now assert only that no token
+ * the design of record declares has DISAPPEARED from `styles.css`.
+ *
+ * Lost: every token VALUE. `--ground` may be repainted, `--fs-2` re-stepped,
+ * `--dur-act` retimed, and nothing here will say so.
+ *
+ * Kept: a token deleted or renamed in `styles.css` while `var(--it)` is still
+ * spent somewhere still fails — which is the failure that has an invisible
+ * symptom (an unresolved `var()` falls back to nothing at all), where a
+ * changed value has a visible one.
+ */
+for (const [label, marker] of [
+  ['TOKENS', '--ground:'], ['sans/mono', '--sans:'], ['LEGACY SCALE', '--fs-00:'],
+] as const) {
+  test(`styles.css declares every token the mockup's ${label} :root block does (values are free to differ — owner's ruling, 2026-09-02)`, () => {
+    const mockup = declaredTokens(rootBlockContaining(MOCKUP_CSS, marker, 'mockup'));
+    const shipped = new Set(declaredTokens(rootBlockContaining(stylesCss, marker, 'styles.css')));
+    assert.ok(mockup.length > 0, `${label}: the mockup's block declares no token — the extraction is broken`);
+    assert.deepEqual(mockup.filter((t) => !shipped.has(t)), [],
+      `${label}: declared by the design of record and no longer declared by styles.css. `
+      + 'Values may drift (the mockup is a frozen reference since 2026-09-02); a token that '
+      + 'stops existing leaves every var() that spends it resolving to nothing.');
+  });
+}
 
 /**
  * ── THE HUE BUDGET, WHICH NOTHING WAS COMPARING AGAINST ────────────────────
@@ -162,7 +219,15 @@ test('the TOKENS block declares exactly the five budgeted meaning hues', () => {
   // to, which is what makes it usable as a chip in the first place. A sixth
   // hue arriving with its own mix is caught here; one arriving WITHOUT a mix
   // is caught by the chip test below.
-  for (const [label, css] of [['styles.css', stylesCss], ['mockup', MOCKUP_CSS]] as const) {
+  // **styles.css ALONE since the owner's ruling of 2026-09-02.** This loop ran
+  // over the mockup too. It must not: the budget is edited by an owner ruling,
+  // and the day a sixth hue is ruled in, the mockup — frozen, and still
+  // carrying five — would fail this and the only way green would be to edit a
+  // file that may not be edited. Nothing is lost by dropping it: the mockup is
+  // read-only, so its hue set cannot change, and this gate exists to police
+  // what SHIPS. (`e2e/chip-hue-authority.spec.ts` still measures the mockup's
+  // own chips in a browser, which is the check that found a defect in it.)
+  for (const [label, css] of [['styles.css', stylesCss]] as const) {
     const legacy = rootBlockContaining(css, '--fs-00:', label);
     const mixed = [...legacy.matchAll(/--([a-z0-9-]+)bg:color-mix\(in oklch, ?var\(--([a-z0-9-]+)\)/g)];
     const named = mixed.map((m) => m[2]!);
@@ -200,17 +265,30 @@ test('every chip modifier spends a budgeted hue or the neutral — in both files
 
   assert.ok(shipped.size >= 6, `only ${shipped.size} chip modifiers found in styles.css — the `
     + 'regex has stopped matching, so this test proves nothing');
-  assert.deepEqual([...shipped.keys()].sort(), [...mockup.keys()].sort(),
-    'the two files declare different sets of chip modifiers. A rule in one file and not the '
-    + 'other renders differently in the app and in the design of record while every byte-parity '
-    + 'check stays green, because a selector nobody listed is a selector nobody compares.');
+  // **ONE-DIRECTIONAL SINCE THE OWNER'S RULING OF 2026-09-02.** This was a SET
+  // EQUALITY — a modifier in either file and not the other failed — plus a
+  // per-name colour equality. Both made the app's chip vocabulary and its
+  // palette hostages of a file that may no longer be edited.
+  //
+  // LOST: a NEW `.chip.something` in the app is no longer news, and a chip that
+  // changes which hue it spends is no longer news either. The design of record
+  // and the app may draw the same chip in different colours, silently.
+  //
+  // KEPT, and it is both halves that ever caught anything: the budget (a chip
+  // may still only spend one of the five ruled hues or the neutral — a sixth
+  // needs an owner ruling and an edit to BUDGET above), and the mockup as a
+  // FLOOR (a modifier the design of record declares may not simply vanish from
+  // styles.css — that direction is `.chip.index`'s own lesson, seven invisible
+  // chips drawn by a rule that existed in only one file).
   for (const [name, colour] of shipped) {
     assert.ok(allowed.has(colour),
       `.chip.${name} spends --${colour}, which is neither one of the five budgeted meaning hues `
       + `nor the neutral --${NEUTRAL}. Five is the budget; a sixth needs an owner ruling.`);
-    assert.equal(mockup.get(name), colour,
-      `.chip.${name} spends --${colour} in styles.css and --${mockup.get(name)} in the mockup`);
   }
+  assert.deepEqual([...mockup.keys()].filter((name) => !shipped.has(name)).sort(), [],
+    'the design of record declares these chip modifiers and styles.css no longer does. The app '
+    + 'may ADD a chip (the mockup is a frozen reference since 2026-09-02); it may not silently '
+    + 'stop styling one the design draws.');
 });
 
 /**
@@ -235,21 +313,78 @@ const PRIMITIVE_SELECTORS = [
   '.chip',
 ];
 
+/**
+ * **THE FLOOR, and it replaces byte identity — owner's ruling, 2026-09-02.**
+ *
+ * Every selector in the two lists is one the design of record declares. What
+ * is asserted is that `styles.css` declares it too, with a non-empty body.
+ * What is no longer asserted is that the two bodies are the same bytes.
+ *
+ * Lost: every declared VALUE. A colour, a radius, a spacing step, a border, a
+ * `grid-template-areas` re-cut — the app may move any of them away from the
+ * design of record and nothing here will report it.
+ *
+ * Kept: the rule EXISTING. Read the entries in `SCREEN_SELECTORS` — every
+ * anecdote written into that list is a rule that was ABSENT from one file
+ * (`.chip.index`, `#pane`, `svg.chart`, `.gloss`, `.md h4`, `.prov`,
+ * `.strip`), never a rule whose bytes had drifted. An absent rule has no
+ * visible symptom in review — a black slab, a UA-chrome button, a chip at
+ * 1.0:1 contrast — and that is the half worth keeping.
+ */
+function assertDeclared(selector: string): void {
+  // `ruleAt` asserts the rule is FOUND, line-anchored, which is the coverage
+  // this replaced byte identity with.
+  const shipped = ruleAt(stylesCss, selector, 'styles.css');
+  // An EMPTY body is a rule that styles nothing — except where the design of
+  // record declares it empty on purpose, which four of the primitives are:
+  // `.scene{}` is the documented "not here" marker for perspective, and
+  // `.pair`/`.plane.l`/`.plane.r` were emptied together when the owner ruled
+  // the scene flat on 2026-08-22 (`test/ui/primitives.test.ts` holds that
+  // shape against the mockup, and `.scene` must stay empty rather than vanish).
+  // So the mockup's own body decides whether empty is allowed — the reference
+  // reading of "colours and styles" the owner kept it for, not a byte match.
+  const emptyIsIntended = new RegExp(`^${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\{\\}`, 'm').test(MOCKUP_CSS);
+  if (emptyIsIntended) return;
+  assert.ok(shipped.length > `${selector}{}`.length,
+    `styles.css declares ${selector} with an empty body, and the design of record declares it `
+    + 'with a real one — a rule that styles nothing is the same as no rule at all');
+}
+
+/**
+ * Whether the design of record pins this selector too — reported in the
+ * failure message, never asserted.
+ *
+ * **This is the half that had to stop being an assertion.** These lists carry
+ * this file's standing brief, "extend that test with every block you add", and
+ * under the old rule every block added to `styles.css` went into the mockup
+ * first. The app is free to add rules the mockup lacks now (owner, 2026-09-02),
+ * so requiring a mockup counterpart here would put the block back: the first
+ * dialog rule listed below would fail against a file that may not be edited.
+ */
+function mockupPins(selector: string): boolean {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped}\\{`, 'm').test(MOCKUP_CSS);
+}
+
 for (const selector of PRIMITIVE_SELECTORS) {
-  test(`primitive rule ${selector} is byte-identical between the mockup and styles.css`, () => {
-    const mockup = ruleAt(MOCKUP_CSS, selector, 'mockup');
-    const shipped = ruleAt(stylesCss, selector, 'styles.css');
-    assert.equal(shipped, mockup);
+  test(`primitive rule ${selector} is declared in styles.css (the mockup is a floor, not a mirror — owner's ruling, 2026-09-02)`, () => {
+    assert.ok(mockupPins(selector),
+      `${selector} is listed as a PRIMITIVE the design of record pins, and the mockup no longer `
+      + 'declares it — an app-only rule belongs in SCREEN_SELECTORS, not here');
+    assertDeclared(selector);
   });
 }
 
-test('the row\'s reduced-motion transition block is byte-identical', () => {
-  const re = /@media \(prefers-reduced-motion:no-preference\)\{\s*\.row\{[^}]*\}\s*\}/;
-  const mockup = re.exec(MOCKUP_CSS)?.[0];
-  const shipped = re.exec(stylesCss)?.[0];
-  assert.ok(mockup !== undefined, 'mockup: .row\'s reduced-motion media block not found');
-  assert.ok(shipped !== undefined, 'styles.css: .row\'s reduced-motion media block not found');
-  assert.equal(shipped, mockup);
+test('the row still has a reduced-motion transition block of its own (bytes no longer pinned to the mockup — owner\'s ruling, 2026-09-02)', () => {
+  // Was byte-identical to the mockup's copy. Now: the guard must still EXIST
+  // in styles.css, because `primitives.test.ts` proves the same shape about the
+  // mockup and the point of the rule is that the unconditional `.row` stays
+  // static. The transition's own duration and easing are free to move.
+  const shipped = /@media \(prefers-reduced-motion:no-preference\)\{\s*\.row\{[^}]*transition:[^}]*\}\s*\}/.exec(stylesCss)?.[0];
+  assert.ok(shipped !== undefined,
+    'styles.css: .row\'s transition must live inside a prefers-reduced-motion:no-preference block');
+  assert.doesNotMatch(ruleAt(stylesCss, '.row', 'styles.css'), /transition:/,
+    'the unconditional .row rule must stay static — a transition there defeats the guard above');
 });
 
 /**
@@ -289,6 +424,19 @@ const SCREEN_SELECTORS = [
   // coverage and 12 on injected, measured. The mockup carried the same gap and
   // was fixed in the same commit, so these stay byte-identical.
   '.linkid', '.linkid:hover',
+  // **The title-bar popovers, added 2026-09-02 with the dialogs they style** —
+  // `#sesspop` and `#focuspop`, and this file's standing brief ("extend that
+  // test with every block you add").
+  //
+  // Nine selectors, and every one of them is the item pane's lesson repeating:
+  // `.gloss` and `.gloss.float` are named by this stylesheet's own R5 comment
+  // as still-used card material, the tokens they spend were carried across on
+  // day one, and the RULES were never carried at all — invisible in both
+  // directions for exactly as long as no element in the app wore the class.
+  // The same held for `.aside`. A parity list measures what it names.
+  '.gloss', '.gloss.float', '.aside',
+  '.pop', '.pop[hidden]', '.pop h3', '.pop .row', '.pop .row:hover',
+  '.pop .row[aria-selected="true"]', '.pop hr',
   // **The item detail pane, added 2026-08-23 with the element it styles.**
   //
   // These were absent for a reason worth recording, because it is how a
@@ -505,41 +653,43 @@ const SCREEN_SELECTORS = [
 ];
 
 for (const selector of SCREEN_SELECTORS) {
-  test(`screen-level rule ${selector} is byte-identical between the mockup and styles.css`, () => {
-    const mockup = ruleAt(MOCKUP_CSS, selector, 'mockup');
-    const shipped = ruleAt(stylesCss, selector, 'styles.css');
-    assert.equal(shipped, mockup);
+  test(`screen-level rule ${selector} is declared in styles.css (the mockup is a floor, not a mirror — owner's ruling, 2026-09-02)`, () => {
+    // `mockupPins()` is READ and not asserted — see its own comment. A rule the
+    // design of record pins may not vanish from styles.css; a rule the app
+    // added on its own is welcome here and needs no counterpart.
+    assertDeclared(selector);
   });
 }
 
-test('the SECOND .pair rule (the two-plane scene\'s own grid, not the perspective primitive) is byte-identical', () => {
-  const mockup = ruleAtNth(MOCKUP_CSS, '.pair', 1, 'mockup');
-  const shipped = ruleAtNth(stylesCss, '.pair', 1, 'styles.css');
-  assert.equal(shipped, mockup);
+test('the SECOND .pair rule (the two-plane scene\'s own grid, not the perspective primitive) is still declared', () => {
+  // Was byte-identical to the mockup's. Kept as a presence check because the
+  // two `.pair` declarations do different jobs and a merge would silently drop
+  // one of them — `ruleAt` takes the FIRST match, so the loop above cannot see
+  // the second at all.
+  assert.ok(ruleAtNth(stylesCss, '.pair', 1, 'styles.css').length > '.pair{}'.length,
+    'styles.css must still declare the scene grid as its own rule');
 });
 
-test('the SECOND .chip rule (border/size/line-height, not the font-weight primitive) is byte-identical', () => {
-  const mockup = ruleAtNth(MOCKUP_CSS, '.chip', 1, 'mockup');
-  const shipped = ruleAtNth(stylesCss, '.chip', 1, 'styles.css');
-  assert.equal(shipped, mockup);
+test('the SECOND .chip rule (border/size/line-height, not the font-weight primitive) is still declared', () => {
+  assert.ok(ruleAtNth(stylesCss, '.chip', 1, 'styles.css').length > '.chip{}'.length,
+    'styles.css must still declare the chip\'s box as its own rule — see the .pair note above');
 });
 
-test('the .pair responsive media block is byte-identical', () => {
-  const re = /@media \(max-width:1000px\)\{\.pair\{grid-template-columns:1fr\}\}/;
-  const mockup = re.exec(MOCKUP_CSS)?.[0];
-  const shipped = re.exec(stylesCss)?.[0];
-  assert.ok(mockup !== undefined, 'mockup: .pair responsive media block not found');
-  assert.ok(shipped !== undefined, 'styles.css: .pair responsive media block not found');
-  assert.equal(shipped, mockup);
+test('the .pair still collapses to one column under a width media query', () => {
+  // Was byte-identical to the mockup's copy, breakpoint included. The
+  // breakpoint is now the app's to choose; that it COLLAPSES is the invariant —
+  // two planes side by side on a narrow window is the horizontal scroll
+  // `e2e/app-layout.spec.ts` forbids.
+  assert.match(stylesCss, /@media \(max-width:\d+px\)\{\.pair\{grid-template-columns:1fr\}\}/,
+    'styles.css: .pair must still collapse to a single column at some max-width');
 });
 
-test('the .lit.linked .blk reduced-motion transition block is byte-identical', () => {
-  const re = /@media \(prefers-reduced-motion:no-preference\)\{\s*\n\s*\.lit\.linked \.blk\{transition:opacity var\(--dur-act\) var\(--ease\)\}\s*\n\}/;
-  const mockup = re.exec(MOCKUP_CSS)?.[0];
-  const shipped = re.exec(stylesCss)?.[0];
-  assert.ok(mockup !== undefined, 'mockup: .lit.linked .blk transition media block not found');
-  assert.ok(shipped !== undefined, 'styles.css: .lit.linked .blk transition media block not found');
-  assert.equal(shipped, mockup);
+test('the .lit.linked .blk transition still lives under the reduced-motion guard', () => {
+  // Was byte-identical to the mockup's copy, `var(--dur-act)` and `var(--ease)`
+  // included. What survives is the GUARD: an unconditional transition here
+  // animates for a reader who asked for no motion.
+  assert.match(stylesCss, /@media \(prefers-reduced-motion:no-preference\)\{\s*\n\s*\.lit\.linked \.blk\{transition:[^}]*\}\s*\n\}/,
+    'styles.css: .lit.linked .blk\'s transition must sit inside a prefers-reduced-motion guard');
 });
 
 /**
@@ -551,33 +701,31 @@ test('the .lit.linked .blk reduced-motion transition block is byte-identical', (
  * file records that against its own copy; what must not happen is one of them
  * fixing it and the declaration drifting.
  */
-test('the .track .seg retiming media block is byte-identical', () => {
-  const re = /@media \(prefers-reduced-motion:no-preference\)\{\s*\n\s*\.track \.seg\{transition:inline-size var\(--dur-retime\) var\(--ease\)\}\s*\n\}/;
-  const mockup = re.exec(MOCKUP_CSS)?.[0];
-  const shipped = re.exec(stylesCss)?.[0];
-  assert.ok(mockup !== undefined, 'mockup: .track .seg retiming media block not found');
-  assert.ok(shipped !== undefined, 'styles.css: .track .seg retiming media block not found');
-  assert.equal(shipped, mockup);
+test('the .track .seg retiming still lives under the reduced-motion guard', () => {
+  // Byte identity with the mockup's copy dropped by the owner's ruling of
+  // 2026-09-02; the guard is what is kept, for the reason above it.
+  assert.match(stylesCss, /@media \(prefers-reduced-motion:no-preference\)\{\s*\n\s*\.track \.seg\{transition:[^}]*\}\s*\n\}/,
+    'styles.css: .track .seg\'s retiming must sit inside a prefers-reduced-motion guard');
 });
 
-test('the parity checks above are not vacuous — every extracted block is non-empty', () => {
-  // A regex that silently matched "" would make every assert.equal above
-  // pass by comparing two empty strings. Guarded once, for all of them.
-  const tokens = rootBlockContaining(stylesCss, '--ground:', 'styles.css');
-  const sansMono = rootBlockContaining(stylesCss, '--sans:', 'styles.css');
-  const legacy = rootBlockContaining(stylesCss, '--fs-00:', 'styles.css');
-  assert.ok(tokens.length > 200, 'the TOKENS block is suspiciously short');
-  assert.ok(sansMono.length > 20, 'the sans/mono block is suspiciously short');
-  assert.ok(legacy.length > 200, 'the LEGACY SCALE block is suspiciously short');
-  for (const selector of PRIMITIVE_SELECTORS) {
-    assert.ok(ruleAt(stylesCss, selector, 'styles.css').length > 5, `${selector} body is suspiciously short`);
-  }
-  for (const selector of SCREEN_SELECTORS) {
-    assert.ok(ruleAt(stylesCss, selector, 'styles.css').length > 5, `${selector} body is suspiciously short`);
-  }
-  assert.ok(ruleAtNth(stylesCss, '.pair', 1, 'styles.css').length > 5, 'the second .pair rule is suspiciously short');
-  assert.ok(ruleAtNth(stylesCss, '.chip', 1, 'styles.css').length > 5, 'the second .chip rule is suspiciously short');
-});
+/**
+ * **DELETED 2026-09-02 (owner's ruling): `the parity checks above are not
+ * vacuous — every extracted block is non-empty`.**
+ *
+ * Its whole subject was the byte comparisons: a regex that silently matched
+ * `""` would have made every `assert.equal(shipped, mockup)` above pass by
+ * comparing two empty strings, so one test swept all of them and asserted the
+ * extractions were real. There are no byte comparisons left, and the risk it
+ * named cannot happen to a check that never compares two things.
+ *
+ * Nothing is uncovered by its going: `assertDeclared()` now carries the
+ * non-empty assertion PER SELECTOR (a stronger placement — it names the
+ * offending rule instead of a sweep), the two `ruleAtNth` tests carry their
+ * own, and the token-coverage tests assert the mockup's `:root` blocks yield
+ * tokens before comparing anything. Deleted rather than left standing, because
+ * a test whose name promises to guard a comparison that no longer exists is a
+ * claim nobody can check.
+ */
 
 /**
  * **Reversed from Task 16's own test.** `.lit.linked` and `.linkid` used to
@@ -636,8 +784,9 @@ test('the nine vendored weights styles.css declares match what static.ts can now
  * indistinguishable from "loaded correctly but blank". Found by inspecting a
  * real screenshot, not by reading the CSS.
  *
- * **The six `<symbol>` bodies are checked byte-identical; the wrapping
- * `<svg>` tag is not**, for the same reason `styles.css`'s own `@font-face`
+ * **The six `<symbol>` ids are checked present; their bodies are NOT compared
+ * (owner's ruling, 2026-09-02 — see this file's header). The wrapping `<svg>`
+ * tag was never compared either**, for the same reason `styles.css`'s own `@font-face`
  * `url()` paths aren't: the mockup's tag carries `style="display:none"`,
  * which the server's CSP refused outright when it read `style-src 'self'` —
  * index.html's own comment on the sprite and styles.css's `body>svg[aria-
@@ -645,7 +794,7 @@ test('the nine vendored weights styles.css declares match what static.ts can now
  * `aria-hidden="true">` onward (present in both, unlike the differing tag
  * before it) through the six symbols to `</svg>`.
  */
-test('index.html\'s icon sprite symbols are byte-identical to the mockup\'s (the wrapping tag is not — see below)', () => {
+test('index.html defines every icon symbol the mockup does (the path data is no longer compared — owner\'s ruling, 2026-09-02)', () => {
   const start = 'aria-hidden="true">';
   const end = '</svg>';
   function spriteFrom(html: string, label: string): string {
@@ -663,7 +812,27 @@ test('index.html\'s icon sprite symbols are byte-identical to the mockup\'s (the
   }
   const mockup = spriteFrom(mockupHtml, 'mockup');
   const shipped = spriteFrom(indexHtml, 'index.html');
-  assert.equal(shipped, mockup);
+  // **ONE-DIRECTIONAL SINCE THE OWNER'S RULING OF 2026-09-02.** This asserted
+  // `assert.equal(shipped, mockup)` over the whole six-symbol slice.
+  //
+  // LOST: the PATH DATA. A glyph redrawn in `index.html` — a different `d`, a
+  // different stroke width, a different viewBox — no longer has to be redrawn
+  // in the design of record, and nothing reports the divergence.
+  //
+  // KEPT: the link. Every symbol the design of record defines must still be
+  // defined in `index.html`, and the six §6 glyphs by name — which is the whole
+  // of what this test was written for. `screens/parts.js`'s `openIcon()` emits
+  // `<use href="#i-open">`, and a `<use>` pointing at a symbol nobody defined
+  // renders an empty 16x16 box, indistinguishable from "loaded and blank".
+  const defined = (svg: string): Set<string> =>
+    new Set([...svg.matchAll(/<symbol id="(i-[a-z-]+)"/g)].map((m) => m[1]!));
+  const inMockup = defined(mockup);
+  assert.ok(inMockup.size >= 6, `the mockup's sprite defines ${inMockup.size} symbol(s) — the extraction is broken`);
+  const inShipped = defined(shipped);
+  assert.deepEqual([...inMockup].filter((id) => !inShipped.has(id)).sort(), [],
+    'the design of record defines these symbols and index.html no longer does — every <use> '
+    + 'reaching for one renders an empty box. index.html may define MORE (the mockup is a frozen '
+    + 'reference since 2026-09-02); it may not define fewer.');
   assert.ok(shipped.length > 500, 'the sprite is suspiciously short — six symbols expected');
   for (const id of ['i-refresh', 'i-copy', 'i-open', 'i-confirm', 'i-search', 'i-add']) {
     assert.match(shipped, new RegExp(`id="${id}"`), `sprite is missing #${id}`);

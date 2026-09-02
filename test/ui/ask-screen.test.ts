@@ -902,7 +902,23 @@ const FRESH = async (route: string): Promise<unknown> => {
   throw new Error(`the screen asked for ${route}, which this fixture does not serve`);
 };
 
-test('render draws every kind the mockup draws, and invents only what it means to', async () => {
+/**
+ * **ONE-DIRECTIONAL SINCE THE OWNER'S RULING OF 2026-09-02.** *"some app
+ * features could not appear in the mockup because they are newer than it and
+ * it's ok and normal"*, and the mockup is a frozen reference that is read and
+ * never written. The second assertion in this test was an EXACT ledger of the
+ * kinds this screen draws and the design of record does not — so every new
+ * element on this screen failed here until someone wrote it down, and the
+ * alternative green route was editing a file that may not be edited.
+ *
+ * LOST: nothing counts what this screen draws beyond the design of record. The
+ * prose below recorded that `div.bound` and `button.linkid.m` are deliberate;
+ * a THIRD app-only kind now arrives silently, deliberate or not.
+ *
+ * KEPT: the gap direction, which is what the mockup is kept for — a kind the
+ * design of record draws and this screen does not still fails, by name.
+ */
+test('render draws every kind the mockup draws (kinds it adds are normal — owner\'s ruling, 2026-09-02)', async () => {
   const root = await draw(FRESH);
   const drawn = mockupKinds();
   const built = renderedKinds(root);
@@ -917,7 +933,10 @@ test('render draws every kind the mockup draws, and invents only what it means t
     'a kind the mockup draws is missing from the render — emphasis is carryable now, so a '
     + 'name here is a real gap rather than the grammar limit this list used to hold');
 
-  // **ONE kind this screen draws that the mockup does not, and it was two.**
+  // **The app-only ledger below is no longer asserted (owner's ruling,
+  // 2026-09-02) — it is kept as the record of two deliberate decisions, and
+  // `void`ed so it cannot rot into a claim nobody checks.**
+  //
   // `button.linkid.m` is what every id on every shipped screen is — the mockup
   // draws a bare `span.m` in the item cell and the app-wide convention is the
   // button that reaches the item pane.
@@ -938,8 +957,7 @@ test('render draws every kind the mockup draws, and invents only what it means t
   // times. The two genuinely new PRESENTATION decisions — the labelled cap
   // select and the fourth `#qstate` sentence — are in the mockup, and neither
   // adds a kind.
-  assert.deepEqual(built.filter((kind) => !drawn.includes(kind)),
-    ['button.linkid.m', 'div.bound']);
+  void ['button.linkid.m', 'div.bound'];
 });
 
 /** Every text run under a node, flattened — what a reader of that cell sees. */

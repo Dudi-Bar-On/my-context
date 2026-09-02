@@ -386,7 +386,20 @@ async function boot(page: Page, s: Scenario): Promise<void> {
   // from the mockup rather than pinned here, for the reason every other number
   // in this file is: a test that remembers a number fails for the wrong reason
   // the next time the design of record gains a group.
-  await expect(page.locator('#strip .slab')).toHaveCount(declaredStripGroups());
+  // **A FLOOR SINCE THE OWNER'S RULING OF 2026-09-02, not an equality.** This
+  // read `toHaveCount(declaredStripGroups())`: the strip had to draw exactly as
+  // many provenance groups as the frozen mockup declares, so the app gaining a
+  // group failed here and the only green route was editing a file that may not
+  // be edited. *"Some app features could not appear in the mockup because they
+  // are newer than it and it's ok and normal."* It still waits for the last
+  // group to land, and it still fails if a group the design of record declares
+  // never arrives.
+  await expect
+    .poll(() => page.locator('#strip .slab').count(), {
+      message: 'the strip must draw at least every provenance group the design of record '
+        + 'declares; it may draw more',
+    })
+    .toBeGreaterThanOrEqual(declaredStripGroups());
   await expect(page.locator('#hdrrepo .slab')).toHaveCount(1);
   await expect(page.locator('#ctx [data-k]').first()).toBeVisible();
   await expect(page.locator('#gitstate [data-k]').first()).toBeVisible();
@@ -512,9 +525,12 @@ test('every provenance group is told apart by a WORD as well as by a colour', as
   //
   // The COUNT is derived — from the design of record's own slabs — for the
   // reason every other number in this file is derived.
+  // A FLOOR since the owner's ruling of 2026-09-02, for the reason given at the
+  // other count above: this was `toHaveLength(declaredStripGroups() + 1)`, and
+  // an exact count against a frozen file makes a new group a failure.
   const expected = declaredStripGroups() + 1;
-  expect(groups, 'the shell must carry every provenance group the design declares, the '
-    + "header's repo group included").toHaveLength(expected);
+  expect(groups.length, 'the shell must carry every provenance group the design declares, the '
+    + "header's repo group included; it may carry more").toBeGreaterThanOrEqual(expected);
   // Colour, because the owner asked for it: "use colors to diffrentiate
   // between properties". More than one, and never one for the whole bar — a
   // bar whose entire job is provenance rendered in a single colour makes a
@@ -633,10 +649,20 @@ test('the app draws the strip at exactly the size the design of record does', as
     strip: getComputedStyle(document.querySelector('#strip')!).fontSize,
     token: getComputedStyle(document.documentElement).getPropertyValue('--fs-strip').trim(),
   }));
-  const declaredToken = /--fs-strip:([^;]+);/.exec(readFileSync(MOCKUP_PATH, 'utf8'))?.[1]?.trim();
-  expect(declaredToken, 'the mockup must declare --fs-strip').toBe('14px');
-  expect(shipped.token, 'styles.css and the mockup carry one token, held byte-identical by '
-    + 'test/ui/styles-parity.test.ts — this is the rendered half of that').toBe(declaredToken);
+  // **PINNED TO THE OWNER'S RULING, NOT TO THE MOCKUP, SINCE 2026-09-02.** This
+  // read the token out of `docs/design/web-ui-mockup.html` and asserted the
+  // app's equalled it — and `styles-parity` no longer holds the two files
+  // byte-identical, because the mockup is a frozen reference the app may not be
+  // required to edit. Reading it here would put the coupling back one file
+  // along: a later size ruling would fail against a file that cannot change.
+  //
+  // Nothing is lost. The number was never the mockup's — it is the owner's, and
+  // the range below is the ruling itself: "the font should be bigger to be
+  // readable" at 13px, and "the status lines font is too big" at 15px. 14px is
+  // the value between them. The assertion is now made directly against the
+  // shipped stylesheet, which is the file that decides what a reader sees.
+  expect(shipped.token, 'the strip must keep its own type token — --fs-0 IS 13px, which is what '
+    + 'the strip used to point at and what the owner could not read').toBe('14px');
   expect(shipped.strip, 'the strip must render at its own token, not at the prose step').toBe('14px');
 });
 

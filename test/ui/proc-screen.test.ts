@@ -188,7 +188,30 @@ const DIVERGENCES = [
   },
 ];
 
-test('the five-row state table is the mockup\'s, row for row, but for two named divergences', async () => {
+/**
+ * **ONE-DIRECTIONAL SINCE THE OWNER'S RULING OF 2026-09-02.**
+ *
+ * *"because of the development process and later decisions, some app features
+ * could not appear in the mockup because they are newer than it and it's ok and
+ * normal"* — and `docs/design/web-ui-mockup.html` is a frozen reference, read
+ * and never written.
+ *
+ * Two assertions went with that. The first compared the app's non-divergent
+ * rows to the mockup's BY VALUE; the second required `DIVERGENCES` to name
+ * EXACTLY the rows that differ. Both made ordinary development — a row's
+ * wording improved, a verdict corrected — a failure that demanded either a
+ * ledger entry or an edit to a file that may not be edited.
+ *
+ * LOST: nothing now checks that the app TRANSCRIBES the design of record's
+ * state table. The two tables may drift, cell by cell, in silence. `pr.states`
+ * saying one thing while the rows say another is still caught (below, and by
+ * the string-key tests); the rows agreeing with the MOCKUP is not.
+ *
+ * KEPT: the direction the mockup is kept for — a stage the design of record
+ * draws and the app does not is still a gap, and still fails. `DIVERGENCES`
+ * survives as the record of WHY two rows differ, no longer as a gate.
+ */
+test('every state row the mockup draws is a stage the app draws (the app may differ and may add — owner\'s ruling, 2026-09-02)', async () => {
   const { STATE_ROWS } = await procModule();
   const drawn = mockupStateRows();
 
@@ -203,25 +226,17 @@ test('the five-row state table is the mockup\'s, row for row, but for two named 
     'the app draws five rows: STAGES is proposed, ready, active, done, abandoned, and pr.states '
     + 'now counts five to match');
 
-  // Every row the mockup draws that the app draws IDENTICALLY — the
-  // transcription, which is still most of the table and is still checked.
-  const diverging = new Set(DIVERGENCES.map((d) => d.stage));
+  // **THE ONE DIRECTION THAT SURVIVES: every stage the design of record draws
+  // is a stage the app draws.** A row the mockup has and the app lacks is the
+  // gap the mockup is kept to show. A row the app has and the mockup lacks
+  // (`abandoned`), or a cell the app words differently (`ready`), is ordinary
+  // development and is no longer a finding — see this test's own docblock.
+  const built = new Set(STATE_ROWS.map((row) => row.stage));
   assert.deepEqual(
-    STATE_ROWS.filter((row) => !diverging.has(row.stage)),
-    drawn.filter((row) => !diverging.has(row.stage)),
-    'screens/proc.js draws a state row that is neither the design of record\'s nor a declared '
-    + 'divergence. The mockup is the specification for every row not named in DIVERGENCES.',
+    drawn.map((row) => row.stage).filter((stage) => !built.has(stage)), [],
+    'the design of record draws a state row this screen does not. Known and accepted cell-level '
+    + `divergences, which are NOT checked here: ${DIVERGENCES.map((d) => `${d.stage} — ${d.why}`).join(' | ')}`,
   );
-
-  // And the two divergences are exactly the rows that differ — no more.
-  const differs = STATE_ROWS.filter((row) => {
-    const original = drawn.find((d) => d.stage === row.stage);
-    return original === undefined || JSON.stringify(original) !== JSON.stringify(row);
-  }).map((row) => row.stage);
-  assert.deepEqual(differs.sort(), DIVERGENCES.map((d) => d.stage).sort(),
-    'the app\'s table differs from the design of record somewhere DIVERGENCES does not name. '
-    + 'Either the drift is a defect, or it is a decision that belongs in that ledger with its '
-    + 'reason.');
 
   // The corrected cells, asserted by value so "diverges" cannot mean anything.
   const ready = STATE_ROWS.find((row) => row.stage === 'ready');

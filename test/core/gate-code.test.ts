@@ -209,17 +209,41 @@ test('the code and the sentence cannot disagree, over every item × config here'
  * is the second spelling that lets a screen and a read model drift apart,
  * which is the defect the whole feature is written against.
  *
- * When this fails, the mockup and the codes have diverged. The fix is to bring
- * them into line, in that direction: the mockup is the specification.
+ * **ONE-DIRECTIONAL SINCE THE OWNER'S RULING OF 2026-09-02.**
+ *
+ * *"i told you not to change the mockup" · "it should stay as reference"* —
+ * `docs/design/web-ui-mockup.html` is a frozen reference now, read and never
+ * written, and it is kept as a GUIDE to what is not built yet and a REFERENCE
+ * for colours and styles. The paragraph above used to end *"the fix is to bring
+ * them into line, in that direction: the mockup is the specification"*, and
+ * that direction no longer exists: `assert.equal(drawn.length,
+ * GATE_LADDER.length)` failed as loudly when `select()` GAINED a gate as when
+ * the chart lost one, and the only green route from a seventh gate would have
+ * been editing a file that may not be edited.
+ *
+ * LOST: a rung the design of record draws and the ladder does not name is no
+ * longer caught by the count — it is now caught only at the index it occupies,
+ * which is the same failure for every rung the chart actually draws, and no
+ * failure at all for a hypothetical seventh drawn rung the ladder lacks. That
+ * last case is the whole of the loss, and the mockup cannot gain a rung.
+ *
+ * KEPT: the vocabulary. Every rung the chart draws must still be named, at its
+ * own index, by the code in that position — the check that stops a screen and
+ * the read model drifting apart, which is what the feature was written for. The
+ * ladder may now grow BEYOND what the chart drew, which is exactly the "not
+ * implemented in the design yet" direction the mockup is kept for.
  */
-test('the six codes are the six rungs the mockup draws, in the mockup\'s order', () => {
+test('every rung the mockup draws is named by the code in its position (the ladder may exceed it — owner\'s ruling, 2026-09-02)', () => {
   const html = readFileSync(MOCKUP, 'utf8');
   const table = /const GATES=\[([\s\S]*?)\n\];/.exec(html);
   assert.ok(table, 'the mockup must still declare a GATES table for this to check against');
   const drawn = [...table[1]!.matchAll(/\n\s*\['([^']+)'/g)].map((m) => m[1]!);
-  assert.equal(drawn.length, GATE_LADDER.length,
-    `the mockup draws ${drawn.length} rungs and the ladder has ${GATE_LADDER.length}`);
-  for (let i = 0; i < GATE_LADDER.length; i++) {
+  assert.ok(drawn.length > 0, 'the GATES table parsed to no rungs at all — the extraction is broken, '
+    + 'and an empty list would make the comparison below pass while saying nothing');
+  assert.ok(drawn.length <= GATE_LADDER.length,
+    `the mockup draws ${drawn.length} rungs and the ladder names only ${GATE_LADDER.length} — the `
+    + 'design of record is a floor, so a rung it draws must have a code');
+  for (let i = 0; i < drawn.length; i++) {
     assert.ok(drawn[i]!.includes(GATE_LADDER[i]!),
       `rung ${i + 1}: the mockup draws "${drawn[i]}" where the code is "${GATE_LADDER[i]}"`);
   }
