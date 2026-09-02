@@ -720,8 +720,11 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     status: { values: STATUSES, note: 'Only items in this lifecycle status.' },
     relation: {
       values: RELATION_TYPES,
-      note: 'Only items on this side of a relation. The vocabulary is closed deliberately: an '
-        + 'open one produces derives_from, derivedFrom and derived-from in one corpus.',
+      note: 'Only items on this side of a relation. These are the types that may be WRITTEN, and '
+        + 'the vocabulary is closed deliberately: an open one produces derives_from, derivedFrom '
+        + 'and derived-from in one corpus. As a READ filter it is a floor rather than the whole '
+        + 'answer - search also accepts any type your corpus actually carries, superseded_by '
+        + 'included, which only mycontext supersede can write.',
     },
     limit: LIMIT,
   },

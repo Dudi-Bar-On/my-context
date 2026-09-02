@@ -2,6 +2,40 @@ import type { Config } from './config.ts';
 import { normalizePosix } from './paths.ts';
 import { matchesScope } from './select.ts';
 import type { Item, Status } from './types.ts';
+import { RELATION_TYPES } from './vocabulary.ts';
+
+/**
+ * **What a READ filter may ask about: the write vocabulary, plus whatever the
+ * corpus actually holds.**
+ *
+ * `RELATION_TYPES` is a WRITE gate — it is the whole of what stops
+ * `link_items` forging a `superseded_by` edge, and `superseded_by` is
+ * deliberately absent from it for that reason. Validating a read filter
+ * against it therefore refuses a question about an edge type the corpus really
+ * carries: measured on this project's own corpus, `mycontext search --relation
+ * superseded_by` was refused while NINE items carried exactly that edge, so
+ * nine real relations were unsearchable from every query surface at once.
+ *
+ * `apiGraph` (`ui/read-model.ts`) hit the same class first and fixed it the
+ * same way — serve the closed vocabulary in its authored order, then any type
+ * on disk the vocabulary does not name, sorted — and this is that answer
+ * lifted so the three surfaces share ONE implementation rather than three
+ * agreeing copies. A read filter must accept any type that can appear on disk;
+ * nothing here widens what may be written.
+ *
+ * Sorted after the vocabulary rather than merged into it, so two identical
+ * corpora produce identical bytes and the closed vocabulary keeps the order it
+ * was authored in — the order every select and refusal message shows.
+ */
+export function searchableRelationTypes(items: Item[]): string[] {
+  const extra = new Set<string>();
+  for (const item of items) {
+    for (const relation of item.relations) {
+      if (!RELATION_TYPES.includes(relation.type)) extra.add(relation.type);
+    }
+  }
+  return [...RELATION_TYPES, ...[...extra].sort()];
+}
 
 /**
  * The corpus filter behind BOTH `query_items` (the model's tool) and

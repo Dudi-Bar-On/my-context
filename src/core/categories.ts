@@ -67,7 +67,7 @@ export interface UpdatableName {
 /**
  * A category's own updatable surface, by name. Empty is a real answer.
  *
- * Two places produce one: the catalogue below, for the twenty-five shipped
+ * Two places produce one: the catalogue below, for the twenty-nine shipped
  * categories, and `.my_context/config.json`, for the ones a person defines —
  * "custom categories are created by humen and it should be written in a way a
  * user could edit and define it in the config" (owner, 2026-08-23). The loader
@@ -85,11 +85,11 @@ export type CategoryUpdates = Readonly<Record<string, UpdatableName>>;
  * REQ-every-category-declares-what-may-be-updated-on-its-items-and names this
  * as a constraint on the design rather than a convenience: "Most update rules
  * belong to the TIER, not the category… Declaring those per category would put
- * 23 copies of one fact in the catalogue. Tier declares the general rules; a
+ * 27 copies of one fact in the catalogue. Tier declares the general rules; a
  * category declares only what is genuinely its own."
  *
  * So `CATEGORIES[x].updates` below carries a category's OWN names and nothing
- * else, and every one of the 25 shipped categories is silent about `title`,
+ * else, and every one of the 29 shipped categories is silent about `title`,
  * `status` and the rest — because this table already said it.
  *
  * **The two tiers differ in exactly two entries, and the difference is read off
@@ -139,7 +139,7 @@ export interface CategoryDef {
    *
    * Every category has one, and `{}` is a real declaration rather than a gap:
    * it says this category adds nothing of its own, which is true of nineteen of
-   * the twenty-five shipped ones. What it must never be is absent — a category
+   * the twenty-nine shipped ones. What it must never be is absent — a category
    * that cannot describe its own updates teaches nobody anything, which is the
    * sentence the requirement opens with.
    */
@@ -236,6 +236,72 @@ export const CATEGORIES: Record<string, CategoryDef> = {
   // (`defaultAgentEdits('normative')` is `review`).
   known_issue:   def('known_issue', 'KNOWN', 'normative', true,
     'Broken, flaky or a dead end right now; do not spend effort on it'),
+  // NORMATIVE, and it has to be: an exception is read at exactly the moment
+  // the item it waives is being applied, so it must arrive by the same route
+  // and against the same budget. On the rationale tier it would reach a
+  // session as a digit in a count while the rule it carves out of arrived in
+  // full — the reader would be told the rule and not told that it does not
+  // apply here, which is worse than not recording the exception at all. It is
+  // the `known_issue` argument, on the one category whose whole content is
+  // "the thing you are about to obey has a hole in it".
+  //
+  // `waives` names ONE normative item, and the id is the point. A carve-out
+  // from "our rules generally" is not an exception; it is a different rule,
+  // and it should be written as one. `until` is a DATE for the same reason
+  // `assumption` carries `validate_by`: a carve-out with no end is an
+  // amendment nobody argued for, and this project already has the shape for a
+  // change that is meant to last — the `amends` relation, on an item that
+  // says what the new reading is.
+  exception:     def('exception', 'EXC', 'normative', true,
+    'A scoped, dated carve-out from a named normative item, and the reason it was granted',
+    ['waives', 'until', 'granted_by', 'reason'], {
+      waives: {
+        store: 'field',
+        note: 'The id of the ONE normative item this carves out of. A carve-out from the rules in general is not an exception — it is a different rule, and it belongs in the category for one.',
+      },
+      until: {
+        store: 'field',
+        note: 'The date the carve-out expires, as YYYY-MM-DD. An exception with no end date is a permanent change to the rule, made without anybody deciding to make one.',
+      },
+      granted_by: {
+        store: 'field',
+        note: 'Who granted it. A person, not a role: an exception is somebody choosing to carry a risk, and the record has to say who.',
+      },
+      reason: {
+        store: 'field',
+        note: 'Why it was granted — the circumstance that made the rule the wrong answer here. It is what a reader needs in order to tell whether that circumstance still holds.',
+      },
+    }),
+  // NORMATIVE, and for what the tier DOES rather than by analogy: a contract
+  // is a promise this project has made to somebody outside it, so work that
+  // would break it is wrong in exactly the sense the normative tier means.
+  // `constraint` is its nearest neighbour and the two are separate because
+  // they answer different questions at the moment somebody goes to change
+  // something. A constraint says what the limit IS; a contract says WHO IS
+  // HOLDING YOU TO IT and what breaking it would cost them, which is the half
+  // a person needs in order to decide whether the break is worth negotiating.
+  contract:      def('contract', 'CONTRACT', 'normative', true,
+    'A surface other parties depend on, and what changing it costs',
+    ['consumers', 'stability', 'breaking'], {
+      consumers: {
+        store: 'field',
+        note: 'Who depends on this surface, named. A contract with no named consumer is a design note: nobody can be asked whether a change to it is acceptable.',
+      },
+      // NO closed `values`, and the restraint is the one `requirement.kind`
+      // states. The familiar triple (experimental / stable / frozen) is an
+      // inference from other projects, and an inference is not an
+      // attestation: nothing in this build has ever written a stability
+      // value, so declaring a vocabulary here would enforce a rule against
+      // items nobody has seen.
+      stability: {
+        store: 'field',
+        note: 'How much this surface may still move. Nothing constrains the value today — say it in whatever words the consumers above would recognise.',
+      },
+      breaking: {
+        store: 'field',
+        note: 'What counts as a breaking change to this surface, and what it would cost the consumers named above. It is the sentence that makes the promise checkable.',
+      },
+    }),
 
   adr:           def('adr', 'ADR', 'rationale', true,
     'Formal decision record, MADR shape'),
@@ -273,6 +339,34 @@ export const CATEGORIES: Record<string, CategoryDef> = {
         note: 'How much it would harm. The shipped example uses `high`; nothing constrains the value today.',
       },
     }),
+  // RATIONALE, and the tier decides itself: a measurement is a FACT ABOUT A
+  // MOMENT, never an instruction. Nothing an agent does is wrong because a
+  // number was once measured — what would be wrong is acting on a stale one,
+  // and the four fields exist so that a reader can tell. `method` and
+  // `revision` are what make the number re-takeable; `measured_on` is what
+  // makes it datable. A measurement carrying none of them is an assertion
+  // wearing a digit, which is the shape this corpus has already been burnt by:
+  // four statements in its own design of record were measured false in a week.
+  measurement:   def('measurement', 'MEAS', 'rationale', true,
+    'A number, how it was obtained and when, so a later reader can tell whether it still holds',
+    ['method', 'measured_on', 'subject', 'revision'], {
+      method: {
+        store: 'field',
+        note: 'How the number was obtained, precisely enough that somebody else could take it again and get the same one. A method nobody can repeat makes the number unfalsifiable.',
+      },
+      measured_on: {
+        store: 'field',
+        note: 'The date it was taken, as YYYY-MM-DD. It is what turns a number into a number AS OF a moment, which is the only kind that can go stale honestly.',
+      },
+      subject: {
+        store: 'field',
+        note: 'What was measured — the corpus, the file, the command, the population. Two measurements of different subjects are not a trend.',
+      },
+      revision: {
+        store: 'field',
+        note: 'The revision of the thing measured: a commit, a tag, a version. It is what a later reader compares against to decide whether re-taking the number is worth the effort.',
+      },
+    }),
   // RATIONALE, and the tier is the trust boundary rather than a taxonomy
   // judgement. A reference's body is a snapshot of a file, so if the category
   // were normative, whoever can edit that file — an agent included — would
@@ -308,6 +402,49 @@ export const CATEGORIES: Record<string, CategoryDef> = {
   // care about is exactly the failure the tier boundary exists to prevent. The
   // views that DO need them (`ready`, `plan`, `doctor`) query the store
   // directly and never go through `select`.
+  // **A PLAN IS NOT A TASK**, and the separation is enforced by the fields the
+  // category declares rather than by its name. `isWorkCategory`
+  // (core/needs.ts) answers "does this category plan work?" by asking for
+  // `plan`, `seq` and `state` TOGETHER — a body of work, a position inside
+  // it, and where that position has got to. A `plan` carries `state` and
+  // neither of the other two, so it is not a work category: it never appears
+  // in `mycontext ready`, it is never a `needs` target, and none of doctor's
+  // three task checks reads it. That is correct and deliberate. A plan is the
+  // CONTAINER — `task.plan` names it — and the things that can be picked up,
+  // waited on and finished are the tasks inside it.
+  //
+  // So `state` here does not mean what `task.state` means, and it carries no
+  // closed vocabulary for the reason `requirement.kind` and `risk.likelihood`
+  // carry none: borrowing `todo/doing/blocked/done` from `task` would be an
+  // inference from a neighbour rather than anything this build attests, and it
+  // would invite exactly the collapse this comment exists to prevent.
+  // `done_when` is the field that actually finishes a plan — a stated
+  // condition, checkable by somebody who did not write it — and `wave` is the
+  // ordering ACROSS plans, the same idea `task.seq` is one level down.
+  //
+  // RATIONALE, like `task`, and by the same argument: a plan is reasoning
+  // about work, not a rule the work must satisfy. Nothing an agent does is
+  // wrong because a plan exists.
+  plan:          def('plan', 'PLAN', 'rationale', true,
+    'A named body of work: its goal, the order it is taken in, and the condition that finishes it',
+    ['goal', 'done_when', 'wave', 'state'], {
+      goal: {
+        store: 'field',
+        note: 'What this body of work is for, in one sentence — the thing that would be true afterwards and is not true now.',
+      },
+      done_when: {
+        store: 'field',
+        note: 'The condition that finishes it, stated so that somebody who did not write the plan can check it. "When the tasks are done" is not one: it says nothing the task states do not already say.',
+      },
+      wave: {
+        store: 'field',
+        note: 'Which wave this plan is taken in — the ordering ACROSS plans, as `seq` is the ordering across the tasks within one.',
+      },
+      state: {
+        store: 'field',
+        note: 'Where the plan as a whole has got to. It is NOT `task.state`, and it carries no closed vocabulary: a plan is not a unit of work, it never appears in `mycontext ready`, and nothing computes this from the tasks inside it.',
+      },
+    }),
   task:          def('task', 'TASK', 'rationale', true,
     'A unit of planned work, tracked to completion. Its plan, sequence, state and progress live in extra fields; the body is what the task actually requires.',
     ['plan', 'seq', 'state', 'progress', 'source', 'last_change', 'priority', 'needs'], {
@@ -373,7 +510,7 @@ export type ProfileName = 'minimal' | 'standard';
  * that shipped switched off because each duplicated a clearer sibling — so
  * `full` was, in practice, the name for "including the three nobody should
  * enable". Phase 3 removed all three, and the two names have resolved to the
- * same catalogue ever since — twenty categories then, twenty-five now, every
+ * same catalogue ever since — twenty categories then, twenty-nine now, every
  * one of them enabled by default. Two profile names that are synonyms, one of
  * which a user has to be told means nothing different.
  *

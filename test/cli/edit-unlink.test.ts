@@ -178,9 +178,14 @@ test('a relation from outside RELATION_TYPES can still be removed', () => {
     run(['add', '--summary-omitted', 'constraint', 'The pool is capped at twenty', '--yes'], cwd);
     const id = 'CONST-the-pool-is-capped-at-twenty';
     const file = path.join(cwd, '.my_context', 'items', 'constraint', `${id}.md`);
+    // `depends_on` stood here until 2026-09-02, when it was adopted into
+    // `RELATION_TYPES` — and that is the argument for the name below rather
+    // than another plausible one. This test's whole subject is an edge the
+    // WRITE gate refuses; an exemplar that a later widening can move inside
+    // the gate turns it green while testing nothing.
     writeFileSync(
       file,
-      readFileSync(file, 'utf8').trimEnd() + '\n\n## Relations\n- depends_on [[REQ-gone]]\n',
+      readFileSync(file, 'utf8').trimEnd() + '\n\n## Relations\n- not_a_relation [[REQ-gone]]\n',
       'utf8',
     );
     run(['repair', '--yes'], cwd);
@@ -188,13 +193,13 @@ test('a relation from outside RELATION_TYPES can still be removed', () => {
     // Not writable through `link_items` — the check that keeps this test
     // honest about which direction the vocabulary rule runs in.
     assert.throws(
-      () => createRegistry(cwd).call('link_items', { from: id, to: 'REQ-gone', relation: 'depends_on' }),
-      /depends_on/,
+      () => createRegistry(cwd).call('link_items', { from: id, to: 'REQ-gone', relation: 'not_a_relation' }),
+      /not_a_relation/,
     );
 
-    const { code, out } = run(['edit', id, '--unlink', 'depends_on', 'REQ-gone', '--yes'], cwd);
+    const { code, out } = run(['edit', id, '--unlink', 'not_a_relation', 'REQ-gone', '--yes'], cwd);
     assert.equal(code, 0, out);
-    assert.doesNotMatch(itemFile(cwd, 'constraint', id), /depends_on/);
+    assert.doesNotMatch(itemFile(cwd, 'constraint', id), /not_a_relation/);
   });
 });
 

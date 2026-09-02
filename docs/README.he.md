@@ -789,6 +789,15 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "contract",
+      "description": "A surface other parties depend on, and what changing it costs",
+      "extraFields": [
+        "consumers",
+        "stability",
+        "breaking"
+      ]
+    },
+    {
       "name": "decision",
       "description": "Lightweight decision not warranting a full ADR",
       "extraFields": []
@@ -802,6 +811,16 @@ built, it is meant as a boundary.
       "name": "environment",
       "description": "How the environments differ: what production does that local does not",
       "extraFields": []
+    },
+    {
+      "name": "exception",
+      "description": "A scoped, dated carve-out from a named normative item, and the reason it was granted",
+      "extraFields": [
+        "waives",
+        "until",
+        "granted_by",
+        "reason"
+      ]
     },
     {
       "name": "glossary",
@@ -829,6 +848,16 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "measurement",
+      "description": "A number, how it was obtained and when, so a later reader can tell whether it still holds",
+      "extraFields": [
+        "method",
+        "measured_on",
+        "subject",
+        "revision"
+      ]
+    },
+    {
       "name": "non_goal",
       "description": "Explicit prohibition on building something",
       "extraFields": []
@@ -849,6 +878,16 @@ built, it is meant as a boundary.
       "name": "pattern",
       "description": "Reusable solution, or an anti-pattern to avoid",
       "extraFields": []
+    },
+    {
+      "name": "plan",
+      "description": "A named body of work: its goal, the order it is taken in, and the condition that finishes it",
+      "extraFields": [
+        "goal",
+        "done_when",
+        "wave",
+        "state"
+      ]
     },
     {
       "name": "procedure",
@@ -1961,7 +2000,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>79 פקודות סלאש"]
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>87 פקודות סלאש"]
   U --> CL["<b>mycontext …</b><br/>40 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>ארבעה-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
@@ -2088,11 +2127,13 @@ my_context: זה הרגע שבו Claude Code הורג את התהליך. אף א
 `/mycontext:add-pattern`, `/mycontext:add-glossary`, `/mycontext:add-instruction`,
 `/mycontext:add-non-goal`, `/mycontext:add-open-question`, `/mycontext:add-runbook`,
 `/mycontext:add-procedure`, `/mycontext:add-environment`,
-`/mycontext:add-known-issue`</span>. אלה של הנימוקים נוחתות
+`/mycontext:add-known-issue`, `/mycontext:add-exception`,
+`/mycontext:add-contract`</span>. אלה של הנימוקים נוחתות
 פעילות, מפני שנימוקים לעולם אינם מוזרקים ולכן אינם יכולים לכוון שום דבר בשקט:
 <span dir="ltr">`/mycontext:add-adr`, `/mycontext:add-decision`, `/mycontext:add-lesson`,
 `/mycontext:add-tradeoff`, `/mycontext:add-assumption`, `/mycontext:add-edge-case`,
-`/mycontext:add-risk`, `/mycontext:add-reference`, `/mycontext:add-todo`,
+`/mycontext:add-risk`, `/mycontext:add-measurement`, `/mycontext:add-reference`,
+`/mycontext:add-plan`, `/mycontext:add-task`, `/mycontext:add-todo`,
 `/mycontext:add-note`</span>.
 
 `known_issue` יושבת בדרג הנורמטיבי אף שהיא נקראת כעובדה בהווה ולא כהוראה — שם היא
@@ -2136,7 +2177,9 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 `/mycontext:list-procedure`, `/mycontext:list-environment`, `/mycontext:list-adr`,
 `/mycontext:list-decision`, `/mycontext:list-lesson`, `/mycontext:list-tradeoff`,
 `/mycontext:list-assumption`, `/mycontext:list-edge-case`,
-`/mycontext:list-risk`, `/mycontext:list-known-issue`, `/mycontext:list-reference`,
+`/mycontext:list-risk`, `/mycontext:list-known-issue`, `/mycontext:list-exception`,
+`/mycontext:list-contract`, `/mycontext:list-measurement`, `/mycontext:list-reference`,
+`/mycontext:list-plan`,
 `/mycontext:list-todo`, `/mycontext:list-note`</span>. כל אחת מקבלת את אותם דגלי פירוט כמו שורת הפקודה.
 
 <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן: היא מזריקה את הפריטים
@@ -2217,7 +2260,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 50 היום — ועוד 28 שאינן לפי קטגוריה:
+קטגוריה **מופעלת** — 58 היום — ועוד 28 שאינן לפי קטגוריה:
 <span dir="ltr">`add`, `search`, `show`, `todo`, `doctor`, `decay`, `query`, `status`, `audit`,
 `focus`, `ui`, `review`, `promote`, `discard`, `procedure`, `inbox-promote`, `edit`, `pin`, `unpin`,
 `harden`,
@@ -2228,7 +2271,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 מכובה אינה יכולה לשמור פקודה שתסורב אחר כך. <span dir="ltr">`add`</span> נוצרת מכלום, וזו
 כל הנקודה שלה — היא זו ששורדת קטגוריה שהמחולל מעולם לא ראה.
 
-כל 78 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 86 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -4050,7 +4093,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 ### `profile` — אילו קטגוריות קיימות בכלל
 
-שני פרופילים: `minimal` (8 קטגוריות) ו-`standard` (כל ה-25, ברירת המחדל) — ראו
+שני פרופילים: `minimal` (8 קטגוריות) ו-`standard` (כל ה-29, ברירת המחדל) — ראו
 [מה ההבדל קונה](#שני-הפרופילים-והאחד-שהוסר). פרופיל קובע אילו קטגוריות **מופעלות**. שם
 פרופיל לא מוכר הוא שגיאה בזמן טעינה, לא נסיגה שקטה — וזה כולל את `full`, שהיה פרופיל שלישי
 עד שהקטגוריות שבשבילן הוא היה קיים הוסרו.
@@ -4082,7 +4125,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 מראה של המקור האנגלי שהפקודה מדפיסה — והמחולל הוא שבוחר את המקור לפי המסמך
 (<span dir="ltr">`MYCONTEXT_DOC_LOCALE=he`</span>). **הגוש שלמטה הוא הפלט האמיתי של הפקודה
 הזאת מול פרויקט הדוגמה, מהמקור העברי, עם המרה אחת ומוגדרת שהוחלה עליו כדי שיוצג כראוי
-כאן**: הטבלה של 25 הקטגוריות שהפרופיל `standard` מפעיל, לפי סדר הדרגים, ואחריה ערך אחד לכל
+כאן**: הטבלה של 29 הקטגוריות שהפרופיל `standard` מפעיל, לפי סדר הדרגים, ואחריה ערך אחד לכל
 סוג — למה הוא משמש, ומול איזה סוג הוא מתבלבל לרוב, עם המבחן שמפריד ביניהם. הפרוזה של המקור
 העברי היא עברית; העובדות שמכונה יכולה לבדוק — הסוג, הדרג, קידומת המזהה — מודפסות מהקטלוג
 שבקוד בשתי השפות, ו-<span dir="ltr">`test/help/categories-he.test.ts`</span> מפיל את חבילת
@@ -4095,7 +4138,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 על ידי הרצת הפקודה והחלת אותו כלל (`toDocumentMarkdown`), כך ש-`npm run gen:docs` מייצר אותו
 מחדש; ו-`test/docs/examples.test.ts` מריץ את הפקודה שוב ומחיל את אותו כלל מאותה פונקציה בכל
 הרצת בדיקות, כך שגוש שפיגר אחרי הקטלוג מפיל את חבילת הבדיקות. הכותרות מקופלות ולא נשמרות
-משום שהן הכותרות של *הכלי*, לא סעיפים של המסמך הזה: לו נכתבו ככותרות, הן היו מוסיפות 29
+משום שהן הכותרות של *הכלי*, לא סעיפים של המסמך הזה: לו נכתבו ככותרות, הן היו מוסיפות 33
 ערכים למתאר של המסמך שתוכן העניינים שלו אינו מקשר אליהם.
 
 הוא מודפס כאן במלואו ולא מקופל. ההשוואות הן החלק במסמך שקובע לרוב תחת איזה סוג עובדה
@@ -4140,7 +4183,9 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | סוג | דרג | קידומת מזהה | למה משמש |
 |---|---|---|---|
 | `constraint` | normative | `CONST-` | מגבלה שאינה נתונה למשא ומתן: תקציב, סטאק, רגולציה, SLA |
+| `contract` | normative | `CONTRACT-` | משטח שגורמים אחרים תלויים בו, ומה עולה לשנות אותו |
 | `environment` | normative | `ENV-` | במה הסביבות נבדלות: מה production עושה ש-local אינו עושה |
+| `exception` | normative | `EXC-` | פטור תחום ומתוארך מפריט נורמטיבי מפורש בשמו, והנימוק שבגללו ניתן |
 | `glossary` | normative | `GLOSS-` | שפה אחידה: המונח המוסכם, והמונחים שאין להשתמש בהם |
 | `instruction` | normative | `INSTR-` | מכתיב את תהליך העבודה של הסוכן, לא את התוצר |
 | `invariant` | normative | `INV-` | תנאי שחייב להתקיים בכל רגע במהלך הריצה |
@@ -4158,7 +4203,9 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | `decision` | rationale | `DEC-` | החלטה קלת-משקל שאינה מצדיקה ADR מלא |
 | `edge_case` | rationale | `EDGE-` | מקרה קצה; לעיתים קרובות שווה קידום |
 | `lesson` | rationale | `LESSON-` | מה שנלמד; חומר הגלם לכללים שנגזרים ממנו |
+| `measurement` | rationale | `MEAS-` | מספר, כיצד הושג ומתי, כך שקורא עתידי יוכל להכריע אם הוא עדיין תקף |
 | `note` | rationale | `NOTE-` | כל דבר שעלה במהלך הפיתוח ואסור שיאבד |
+| `plan` | rationale | `PLAN-` | גוף עבודה מוגדר בשם: המטרה שלו, הסדר שבו הוא נלקח, והתנאי שמסיים אותו |
 | `reference` | rationale | `REF-` | תצלום מצב של קובץ, שמקורו מתועד כך ש-doctor מדווח על סחיפה |
 | `risk` | rationale | `RISK-` | עלול להתרחש, ויזיק אם יתרחש |
 | `task` | rationale | `TASK-` | יחידת עבודה מתוכננת, שנעקבת עד להשלמתה. התוכנית, הרצף, המצב וההתקדמות חיים בשדות נוספים; הגוף הוא מה שהמשימה דורשת בפועל. |
@@ -4240,6 +4287,35 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
   a governance tier and never consults isNormative, so a reference can carry
   it.
 
+**`contract`** — the `normative` rules above, and 3 of its own:
+
+- **`consumers`** — a field; free text; `mycontext edit <id> --extra consumers=<value>`
+  Who depends on this surface, named. A contract with no named consumer is a
+  design note: nobody can be asked whether a change to it is acceptable.
+- **`stability`** — a field; free text; `mycontext edit <id> --extra stability=<value>`
+  How much this surface may still move. Nothing constrains the value today —
+  say it in whatever words the consumers above would recognise.
+- **`breaking`** — a field; free text; `mycontext edit <id> --extra breaking=<value>`
+  What counts as a breaking change to this surface, and what it would cost the
+  consumers named above. It is the sentence that makes the promise checkable.
+
+**`exception`** — the `normative` rules above, and 4 of its own:
+
+- **`waives`** — a field; free text; `mycontext edit <id> --extra waives=<value>`
+  The id of the ONE normative item this carves out of. A carve-out from the
+  rules in general is not an exception — it is a different rule, and it belongs
+  in the category for one.
+- **`until`** — a field; free text; `mycontext edit <id> --extra until=<value>`
+  The date the carve-out expires, as YYYY-MM-DD. An exception with no end date
+  is a permanent change to the rule, made without anybody deciding to make one.
+- **`granted_by`** — a field; free text; `mycontext edit <id> --extra granted_by=<value>`
+  Who granted it. A person, not a role: an exception is somebody choosing to
+  carry a risk, and the record has to say who.
+- **`reason`** — a field; free text; `mycontext edit <id> --extra reason=<value>`
+  Why it was granted — the circumstance that made the rule the wrong answer
+  here. It is what a reader needs in order to tell whether that circumstance
+  still holds.
+
 **`open_question`** — the `normative` rules above, and 1 of its own:
 
 - **`blocks`** — a field; free text; `mycontext edit <id> --extra blocks=<value>`
@@ -4266,6 +4342,40 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 - **`validated_on`** — a field; free text; `mycontext edit <id> --extra validated_on=<value>`
   The date it was actually checked, as YYYY-MM-DD. Absent means it has not
   been.
+
+**`measurement`** — the `rationale` rules above, and 4 of its own:
+
+- **`method`** — a field; free text; `mycontext edit <id> --extra method=<value>`
+  How the number was obtained, precisely enough that somebody else could take
+  it again and get the same one. A method nobody can repeat makes the number
+  unfalsifiable.
+- **`measured_on`** — a field; free text; `mycontext edit <id> --extra measured_on=<value>`
+  The date it was taken, as YYYY-MM-DD. It is what turns a number into a number
+  AS OF a moment, which is the only kind that can go stale honestly.
+- **`subject`** — a field; free text; `mycontext edit <id> --extra subject=<value>`
+  What was measured — the corpus, the file, the command, the population. Two
+  measurements of different subjects are not a trend.
+- **`revision`** — a field; free text; `mycontext edit <id> --extra revision=<value>`
+  The revision of the thing measured: a commit, a tag, a version. It is what a
+  later reader compares against to decide whether re-taking the number is worth
+  the effort.
+
+**`plan`** — the `rationale` rules above, and 4 of its own:
+
+- **`goal`** — a field; free text; `mycontext edit <id> --extra goal=<value>`
+  What this body of work is for, in one sentence — the thing that would be true
+  afterwards and is not true now.
+- **`done_when`** — a field; free text; `mycontext edit <id> --extra done_when=<value>`
+  The condition that finishes it, stated so that somebody who did not write the
+  plan can check it. "When the tasks are done" is not one: it says nothing the
+  task states do not already say.
+- **`wave`** — a field; free text; `mycontext edit <id> --extra wave=<value>`
+  Which wave this plan is taken in — the ordering ACROSS plans, as `seq` is the
+  ordering across the tasks within one.
+- **`state`** — a field; free text; `mycontext edit <id> --extra state=<value>`
+  Where the plan as a whole has got to. It is NOT `task.state`, and it carries
+  no closed vocabulary: a plan is not a unit of work, it never appears in
+  `mycontext ready`, and nothing computes this from the tasks inside it.
 
 **`risk`** — the `rationale` rules above, and 2 of its own:
 
@@ -4332,6 +4442,17 @@ constraint.
 בלי תלויות"); non_goal מוציא מן הכלל את הדבר עצמו ("אנחנו לא בונים סנכרון
 לא-מקוון").
 
+**`contract`**
+
+משטח שגורמים אחרים תלויים בו, ומה עולה לשנות אותו. `consumers` מונה את מי
+שאוחז בכם, `stability` אומר כמה המשטח עוד רשאי לזוז, ו-`breaking` אומר מה
+ייחשב שבירה ומה זה יעלה להם. contract בלי צרכן מפורש בשם הוא הערת עיצוב: אין
+את מי לשאול אם השינוי מקובל.
+
+**השכן הקרוב: `constraint`.** אילוץ אומר מהי המגבלה; contract אומר *מי אוחז
+בכם בה* ומה שבירתה תעלה לו — החצי שאדם זקוק לו כדי להכריע אם שווה לנהל משא ומתן
+על השבירה.
+
 **`environment`**
 
 במה הסביבות נבדלות — מה production עושה ש-local אינו עושה, והיכן staging מלמד
@@ -4343,6 +4464,22 @@ constraint.
 הוא הבדל ולא מגבלה ("local מדמה את ה-API של התשלומים, staging קורא לו במצב
 בדיקה, production קורא לו באמת"). אם השמטת המילים "ב-production" או "מקומית"
 משאירה את המשפט נכון, זהו constraint.
+
+**`exception`**
+
+פטור תחום ומתוארך מפריט נורמטיבי אחד ומפורש בשמו, והנימוק שבגללו ניתן.
+`waives` מונה את הפריט, `until` הוא התאריך שבו הפטור פג, `granted_by` הוא
+האדם שהעניק אותו, ו-`reason` הוא הנסיבה שבגללה הפריט שנפטר הוא התשובה הלא
+נכונה כאן — וזה מה שקורא עתידי צריך כדי להכריע אם הנסיבה עדיין מתקיימת.
+
+שני החצאים נדרשים בפועל. פטור מ"הכללים שלנו בכלל" אינו exception אלא כלל אחר;
+ופטור בלי תאריך סיום הוא שינוי קבוע של הפריט שנפטר, שנעשה בלי שאיש החליט
+לעשותו.
+
+**השכן הקרוב: `rule`.** rule אומר מה חייב להתקיים; exception אומר היכן, לכמה
+זמן ובסמכות מי הוא אינו מתקיים. הוא נורמטיבי מאותה סיבה שהכלל נורמטיבי: הוא
+חייב להגיע באותו סשן שבו הכלל מגיע, אחרת הקורא מקבל את הכלל ולא מקבל את העובדה
+שהוא אינו חל כאן.
 
 **`glossary`**
 
@@ -4543,6 +4680,36 @@ done`</span> מפסיק את ההזרקה — וזה מה שהופך את "מת�
 **השכן הקרוב: `rule`.** lesson הוא מה שקרה; rule הוא מה שחייב להתקיים מעתה.
 לכדו את הלקח — אדם מקדם אותו, או מקבל מועמד שנגזר ממנו.
 
+**`measurement`**
+
+מספר, כיצד הושג ומתי, כך שקורא עתידי יוכל להכריע אם הוא עדיין תקף. `method`
+הוא איך המדידה נלקחה — בדיוק מספיק כדי שמישהו אחר יוכל לקחת אותה שוב —
+`subject` הוא מה נמדד, `revision` היא הגרסה או הקומיט שכנגדם נמדד, ו-
+`measured_on` הוא התאריך.
+
+ארבעת אלה הם מה שמבדיל מדידה ממספר בתוך משפט. נתון בלי method אי אפשר לקחת שוב
+ואי אפשר להפריך; נתון בלי תאריך אינו יכול להתיישן ביושר, ולכן ממשיכים לצטט אותו
+הרבה אחרי שחדל להיות נכון.
+
+**השכן הקרוב: `assumption`.** assumption היא הנחה שנשענים עליה ושטרם נבדקה;
+measurement היא הבדיקה, עם התוצאה כתובה. להנחה יש התאריך שעד אליו חובה לאמת
+אותה, ולמדידה התאריך שבו נלקחה.
+
+**`plan`**
+
+גוף עבודה מוגדר בשם: ה-`goal` שלו, ה-`wave` שבו הוא נלקח, ותנאי ה-`done_when`
+שמסיים אותו. `state` אומר לאן הגיעה התוכנית כולה; בשונה מזה של task אין לו
+אוצר מילים סגור, ואיש אינו מחשב אותו מן המשימות שבתוכו.
+
+תוכנית היא מיכל ולעולם לא יחידת עבודה. היא אינה מופיעה ב-`mycontext ready`, איש
+אינו יכול להצהיר ש-`needs` אותה, ואף אחת משלוש בדיקות המשימות של doctor אינה
+קוראת אותה — כולן מבקשות `plan`, `seq` ו-`state` יחד, וזה מה שיש למשימה ואין
+לתוכנית.
+
+**השכן הקרוב: `task`.** `task.plan` מונה את התוכנית שאליה המשימה שייכת, ושם
+השניים נפגשים: התוכנית אומרת לשם מה העבודה ומתי היא נגמרת, והמשימות הן הדברים
+שאפשר באמת להרים ולסיים. כתבו את התוכנית פעם אחת; כתבו משימה לכל חלק בה.
+
 **`reference`**
 
 קובץ שאתם רוצים בקורפוס — מפת דרכים, יומן התקדמות, runbook, מפרט. לכדו אותו עם
@@ -4677,6 +4844,24 @@ RDS permits 25 connections; 5 are reserved for migrations and the admin console.
 
 <div dir="rtl">
 
+**`contract`**
+
+</div>
+
+<!-- example: examples contract --short -->
+```text
+id: CONTRACT-the-v1-invoices-payload-keeps-its-field-names-and-their
+title: The /v1/invoices payload keeps its field names and their meanings
+consumers: Acme Reconciliation, Northwind Payouts, our own iOS client
+stability: frozen until v2
+breaking: Renaming or removing a field, or changing a currency unit
+
+Fields may be ADDED. Renaming or removing one breaks the partners silently — their parsers do not error, they mis-post money.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
 **`environment`**
 
 </div>
@@ -4689,6 +4874,24 @@ title: Staging talks to the real Stripe API, local does not
 Local: the Stripe CLI mock. Staging: the real API with test keys.
 Production: the real API with live keys, and the only place retries happen.
 A signature bug therefore looks fine in local and staging, and only bites live.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`exception`**
+
+</div>
+
+<!-- example: examples exception --short -->
+```text
+id: EXC-the-legacy-importer-is-exempt-from-the-repository-layer
+title: The legacy importer is exempt from the repository-layer standard
+waives: STD-queries-go-through-a-repository
+until: 2026-12-31
+granted_by: Dana Weiss
+
+It is deleted with the old ingest service in Q4, so rewriting its queries now is work thrown away; nothing else may take this exemption.
 ```
 <!-- /example -->
 
@@ -4969,6 +5172,42 @@ Two deploys ran migrations concurrently and left the schema half-applied.
 
 <div dir="rtl">
 
+**`measurement`**
+
+</div>
+
+<!-- example: examples measurement --short -->
+```text
+id: MEAS-the-webhook-dispatcher-handles-1-900-events-a-minute-before
+title: The webhook dispatcher handles 1,900 events a minute before it queues
+method: k6 run load/webhooks.js, 5 minutes, staging, one dispatcher process
+revision: v2.4.1
+measured_on: 2026-08-30
+
+Taken to settle whether the backoff work needs a second worker. It does not: the observed peak is 480 a minute, so the headroom is about 4x.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
+**`plan`**
+
+</div>
+
+<!-- example: examples plan --short -->
+```text
+id: PLAN-harden-the-billing-webhook-path
+title: Harden the billing webhook path
+goal: No event is lost when a partner is down for under an hour
+done_when: A 30-minute partner outage replays end to end in staging, zero events dropped
+state: in progress
+
+Retry, then dead-letter, then replay — each is useless without the one before it, which is why this is one plan and not three unrelated tasks.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
 **`reference`**
 
 </div>
@@ -5070,7 +5309,7 @@ Noticed while debugging something else; not characterised yet. If it turns out t
 
 <div dir="rtl">
 
-אלה כל הקטגוריות שבקטלוג — עשרים וחמישה פריטים לדוגמה, עשרים וחמישה סוגים, ואף אחד מהם אינו נשאר בלי
+אלה כל הקטגוריות שבקטלוג — עשרים ותשעה פריטים לדוגמה, עשרים ותשעה סוגים, ואף אחד מהם אינו נשאר בלי
 דוגמה כתובה. קטגוריה ש[אתם מגדירים בעצמכם](#קטגוריות-שאתם-מגדירים-בעצמכם) היא המקרה היחיד
 שבו <span dir="ltr">`mycontext examples`</span> אינו יכול להשיב בתוכן אמיתי, והוא אומר זאת
 במפורש במקום להמציא אחד.
@@ -5279,7 +5518,7 @@ query`</span> שולף אותה. מכיוון שהיא נורמטיבית היא
 שהארגומנט הראשון שלה הוא הקטגוריה בדיוק כדי ששם שהתוסף מעולם לא נשלח איתו יוכל להיות אחד.
 
 זו הנקודה שכדאי לקחת מהפרק הזה: **my_context הוא תשתית לכל אוצר מילים נורמטיבי שיש
-לפרויקט שלכם בפועל**, ולא רשימה קבועה של עשרים וחמישה שמות עצם. אם התחום שלכם חושב במונחי בקרות
+לפרויקט שלכם בפועל**, ולא רשימה קבועה של עשרים ותשעה שמות עצם. אם התחום שלכם חושב במונחי בקרות
 אבטחה או יעדי רמת שירות, הצהירו עליהם ותייקו אותם ככאלה במקום תחת הקטגוריה המובנית הקרובה
 ביותר — `type` נקבע ברגע היצירה, ולכן פריט שתויק לא נכון נשאר לא נכון.
 
@@ -5379,8 +5618,8 @@ my_context: create_item does not take "control_id". It accepts: type, title, bod
 
 ### שני הפרופילים, והאחד שהוסר
 
-הקטלוג מחזיק **25** קטגוריות, ו-`standard` — מה ש-<span dir="ltr">`mycontext init`</span>
-כותב — מפעיל את כל **25**. שום קטגוריה אינה נשלחת כבויה.
+הקטלוג מחזיק **29** קטגוריות, ו-`standard` — מה ש-<span dir="ltr">`mycontext init`</span>
+כותב — מפעיל את כל **29**. שום קטגוריה אינה נשלחת כבויה.
 
 לא תמיד זה היה כך. שלוש קטגוריות — <span dir="ltr">`policy`, `postmortem`,
 `taxonomy`</span> — נשלחו מושבתות מפני שכל אחת מהן שכפלה קטגוריה שכבר הייתה מופעלת:
@@ -6372,7 +6611,7 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 פקודת סלאש מספק טקסט מציין מקום בשורת הארגומנטים, ואין בתוסף דבר שיציב תפריט על
 <span dir="ltr">`--severity`</span>.
 
-**בדרך של שמות.** 25 פקודות ה-<span dir="ltr">`/mycontext:add-<type>`</span> ו-25 פקודות
+**בדרך של שמות.** 29 פקודות ה-<span dir="ltr">`/mycontext:add-<type>`</span> ו-29 פקודות
 ה-<span dir="ltr">`/mycontext:list-<type>`</span> *הן* בורר הקטגוריה, וזו הסיבה שהן
 מיוצרות לכל קטגוריה במקום לקבל ארגומנט <span dir="ltr">`<type>`</span>; ההשלמה האוטומטית
 מסננת את הרשימה תוך כדי הקלדה. <span dir="ltr">`/mycontext:add`</span> מקבלת את הארגומנט

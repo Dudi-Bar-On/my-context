@@ -1115,10 +1115,24 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  * is what replaces an item the user wrote, and that `--yes` alone does not
  * reach it, is what stops the file being read as a licence for the safe half.
  * Nothing already here was trimmed to buy the space back.
+ *
+ * **6120 -> 6250, and every one of the 130 characters is a category NAME.**
+ * The catalogue went 25 -> 29 on 2026-09-02 (`exception`, `contract`,
+ * `measurement`, `plan`), and the tier bullets in this file are held to the
+ * resolved config by set equality — `the skill branches on tier rather than
+ * claiming everything lands as a draft`, above. So the four names are not
+ * optional prose that could be summarised away: a category missing from its
+ * bullet is a category the model is told nothing about, and a category on the
+ * WRONG bullet is the model told an agent capture lands active when it lands
+ * as a draft. No clause was added with them — this raise buys names and
+ * nothing else — and nothing already here was trimmed to buy the space back,
+ * the same conclusion every raise from 4000 onwards reached.
+ *
+ * Headroom is ~50 characters, as at every previous raise.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 6120, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 6250, `SKILL.md is ${text.length} chars`);
 });
 
 /**

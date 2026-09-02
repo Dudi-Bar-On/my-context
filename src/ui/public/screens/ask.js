@@ -858,7 +858,7 @@ export async function render(root, ctx) {
   //     statuses again.
   //
   // **What no browser-reachable endpoint serves at all:** `AUDIT_OPS` (19
-  // members), `ORIGINS`, `STATUSES`, `LAYERS` and the 24 categories of
+  // members), `ORIGINS`, `STATUSES`, `LAYERS` and the 29 categories of
   // `core/categories.ts`. `AUDIT_KINDS` is served only through a projection
   // read, which refuses when the projection is stale. So on a corpus whose
   // audit history is empty or whose projection is behind, the audit tab can

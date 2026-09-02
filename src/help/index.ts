@@ -264,8 +264,8 @@ export function tierUpdateList(): string {
  * that absence is the check that the data path is the only path.
  *
  * The categories that declare nothing are named in one line rather than given
- * a block each. Nineteen of the twenty-five shipped ones are silent, and
- * nineteen blocks saying "nothing of its own" would bury the five that are
+ * a block each. Nineteen of the twenty-nine shipped ones are silent, and
+ * nineteen blocks saying "nothing of its own" would bury the ten that are
  * not — but leaving them out entirely would leave a reader unable to tell "no
  * declaration" from "not rendered", which is the distinction the whole
  * requirement is about.
@@ -945,6 +945,29 @@ const SEEDS: Record<string, Seed> = {
     extra: { likelihood: 'medium', impact: 'high' },
     relations: [{ type: 'mitigates', target: 'CONST-import-batch-size' }],
   },
+  // The specimen answers the question the category exists for: is this number
+  // still true? It can only be answered from `method`, `subject`, `revision`
+  // and `measured_on` together, so all four are populated — a measurement
+  // missing any one of them is the "assertion wearing a digit" the catalogue
+  // entry warns about.
+  measurement: {
+    title: 'The webhook dispatcher handles 1,900 events a minute before it queues',
+    body:
+      'Taken to settle whether the backoff work needs a second worker. It does not: the '
+      + 'observed peak is 480 a minute, so the headroom is about 4x.',
+    scope: ['src/billing/webhooks/**'],
+    tags: ['billing', 'performance'],
+    // THREE of the four. `method` and `revision` are what let somebody take
+    // the number again and know what they are comparing against, and
+    // `measured_on` is what lets it go stale honestly. `subject` is carried by
+    // the scope here — the same three-of-many cut `task` makes, on the same
+    // seven-line budget.
+    extra: {
+      method: 'k6 run load/webhooks.js, 5 minutes, staging, one dispatcher process',
+      revision: 'v2.4.1',
+      measured_on: '2026-08-30',
+    },
+  },
   reference: {
     title: 'Billing roadmap',
     // The body is what `docs/billing-roadmap.md` said when it was captured —
@@ -962,6 +985,45 @@ const SEEDS: Record<string, Seed> = {
       { category: 'why', text: 'The dates move; the ordering has not, and it decides what is safe to build against', tags: [], context: null },
       { category: 'staleness', text: 'Run mycontext doctor after pulling; source_drift means the file moved on and this snapshot did not', tags: [], context: null },
     ],
+  },
+  // The four fields together, because a specimen missing one teaches the
+  // shape without the discipline: `waives` names ONE item, `until` is a real
+  // date rather than "when we get to it", `granted_by` is a person, and
+  // `reason` is the circumstance a later reader has to re-check.
+  exception: {
+    title: 'The legacy importer is exempt from the repository-layer standard',
+    body:
+      'It is deleted with the old ingest service in Q4, so rewriting its queries now is work '
+      + 'thrown away; nothing else may take this exemption.',
+    scope: ['src/import/legacy/**'],
+    tags: ['import'],
+    // THREE of the four, on the seven-line budget: `waives` names what is
+    // carved out of, `until` is the end date without which this is a
+    // permanent change nobody decided on, and `granted_by` is who is
+    // answerable. `reason` is in the body here, where the specimen has room
+    // to show what a usable one reads like.
+    extra: {
+      waives: 'STD-queries-go-through-a-repository',
+      until: '2026-12-31',
+      granted_by: 'Dana Weiss',
+    },
+  },
+  // `consumers` is NAMED rather than described ("some partners") — the field
+  // exists so that a person deciding on a break knows who to go and ask, and a
+  // specimen that showed a vague value would teach the version of the category
+  // that cannot answer that question.
+  contract: {
+    title: 'The /v1/invoices payload keeps its field names and their meanings',
+    body:
+      'Fields may be ADDED. Renaming or removing one breaks the partners silently — their '
+      + 'parsers do not error, they mis-post money.',
+    scope: ['src/api/v1/invoices/**'],
+    tags: ['billing', 'api'],
+    extra: {
+      consumers: 'Acme Reconciliation, Northwind Payouts, our own iOS client',
+      stability: 'frozen until v2',
+      breaking: 'Renaming or removing a field, or changing a currency unit',
+    },
   },
   known_issue: {
     title: 'The Stripe sandbox declines 3DS test cards at random',
@@ -983,6 +1045,32 @@ const SEEDS: Record<string, Seed> = {
   // is also the specimen that does NOT trip `blocked_without_needs`. `seq`,
   // `priority`, `progress`, `source` and `last_change` are described in the
   // categories topic, which is where a list of fields belongs.
+  // The CONTAINER of the `task` specimen below, and deliberately adjacent to
+  // it: the task carries `plan: 'billing'` and this is what that names. The
+  // pair is what teaches the boundary — the plan says what the work is for and
+  // when it is finished, the task is the thing that can be picked up.
+  //
+  // `done_when` is written as a condition somebody else could check, because
+  // the field is worthless otherwise: "when the tasks are done" says nothing
+  // the task states do not already say.
+  plan: {
+    title: 'Harden the billing webhook path',
+    body:
+      'Retry, then dead-letter, then replay — each is useless without the one before it, '
+      + 'which is why this is one plan and not three unrelated tasks.',
+    scope: ['src/billing/webhooks/**'],
+    tags: ['billing', 'reliability'],
+    // `goal`, `done_when` and `state`; `wave` is described in the categories
+    // topic, which is where a list of fields belongs. `done_when` is written
+    // as a condition somebody who did not write the plan could check, because
+    // a specimen showing "when the tasks are done" would teach the version of
+    // the field that says nothing.
+    extra: {
+      goal: 'No event is lost when a partner is down for under an hour',
+      done_when: 'A 30-minute partner outage replays end to end in staging, zero events dropped',
+      state: 'in progress',
+    },
+  },
   task: {
     title: 'Add backoff to the webhook dispatcher',
     body:

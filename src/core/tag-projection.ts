@@ -117,8 +117,8 @@ export interface Projection {
  * rules, overlaid with the category's OWN.
  *
  * The two tables are merged HERE rather than in config.ts because
- * `TIER_UPDATES` declares the general rules once — 24 categories would
- * otherwise carry 24 copies of one fact — while `ResolvedCategory.updates`
+ * `TIER_UPDATES` declares the general rules once — 29 categories would
+ * otherwise carry 29 copies of one fact — while `ResolvedCategory.updates`
  * carries only what is genuinely the category's own. A category's own entry
  * WINS on a name collision: a category that redeclares `status` means to narrow
  * it, the way the `rationale` tier already narrows `severity` to `['soft']`.

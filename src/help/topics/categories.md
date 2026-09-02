@@ -73,6 +73,18 @@ enough reason, it is a `standard` and not a constraint.
 ("must run on Node 24 with no dependencies"); a non_goal excludes the thing
 itself ("we are not building offline sync").
 
+### `contract`
+
+A surface other parties depend on, and what changing it costs. `consumers` names
+who is holding you to it, `stability` says how much it may still move, and
+`breaking` says what would count as a break and what it would cost them. A
+contract with no named consumer is a design note: nobody can be asked whether a
+change to it is acceptable.
+
+**Nearest neighbour: `constraint`.** A constraint says what the limit *is*; a
+contract says *who is holding you to it* and what breaking it costs them — the
+half a person needs in order to decide whether the break is worth negotiating.
+
 ### `environment`
 
 How the environments differ — what production does that local does not, and
@@ -86,6 +98,23 @@ conditional on *where the code runs*, and its content is a difference rather
 than a limit ("local mocks the payment API, staging calls it in test mode,
 production calls it live"). If removing the words "in production" or "locally"
 leaves the sentence still true, it is a constraint.
+
+### `exception`
+
+A scoped, dated carve-out from one named normative item, and the reason it was
+granted. `waives` names the item, `until` is the date it expires, `granted_by`
+is the person who granted it, and `reason` is the circumstance that made the
+waived item the wrong answer here — which is what a later reader needs in order
+to tell whether that circumstance still holds.
+
+Both halves are required in practice. A carve-out from "our rules generally" is
+not an exception but a different rule; and one with no end date is a permanent
+change to the item it waives, made without anybody deciding to make one.
+
+**Nearest neighbour: `rule`.** A rule says what must hold; an exception says
+where, for how long and on whose authority it does not. It is normative for the
+same reason the rule is: it has to arrive in the same session the rule does, or
+the reader is told the rule and not told it does not apply here.
 
 ### `glossary`
 
@@ -317,6 +346,40 @@ fresh and before anyone knows what the rule should say.
 **Nearest neighbour: `rule`.** A lesson is what happened; a rule is what must
 now hold. Capture the lesson — a human promotes it, or accepts a candidate
 derived from it.
+
+### `measurement`
+
+A number, how it was obtained and when, so a later reader can tell whether it
+still holds. `method` is how it was taken — precisely enough that somebody else
+could take it again — `subject` is what was measured, `revision` is the commit
+or version it was taken against, and `measured_on` is the date.
+
+Those four are what separate a measurement from a number in a sentence. A figure
+with no method cannot be re-taken and cannot be falsified; one with no date
+cannot go stale honestly, so it keeps being quoted long after it stopped being
+true.
+
+**Nearest neighbour: `assumption`.** An assumption is a premise being relied on
+and not yet checked; a measurement is the check, with the result written down. An
+assumption carries the date by which it must be verified, a measurement the date
+on which it was.
+
+### `plan`
+
+A named body of work: its `goal`, the `wave` it is taken in, and the
+`done_when` condition that finishes it. `state` says where the plan as a whole
+has got to; unlike a task's, it carries no closed vocabulary and nothing computes
+it from the tasks inside.
+
+A plan is a container and never a unit of work. It does not appear in
+`mycontext ready`, nothing can declare that it `needs` one, and none of doctor's
+task checks reads it — those all ask for `plan`, `seq` and `state` together,
+which is what a task has and a plan does not.
+
+**Nearest neighbour: `task`.** `task.plan` names the plan a task belongs to, so
+the two meet at that field: the plan says what the work is for and when it is
+finished, the tasks are the things that can actually be picked up and completed.
+Write the plan once; write a task for each piece of it.
 
 ### `reference`
 

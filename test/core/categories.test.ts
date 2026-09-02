@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CATEGORIES, PROFILES } from '../../src/core/categories.ts';
 
-test('there are 25 categories', () => {
-  assert.equal(Object.keys(CATEGORIES).length, 25);
+test('there are 29 categories', () => {
+  assert.equal(Object.keys(CATEGORIES).length, 29);
 });
 
 test('prefixes are unique and uppercase', () => {
@@ -67,7 +67,7 @@ test('the three removed categories are gone from the catalogue', () => {
 
 test('profiles have the documented sizes', () => {
   assert.equal(PROFILES.minimal.length, 8);
-  assert.equal(PROFILES.standard.length, 25);
+  assert.equal(PROFILES.standard.length, 29);
 });
 
 test('every profile entry names a real category', () => {
@@ -80,9 +80,70 @@ test('requirement declares the kind field', () => {
   assert.deepEqual(CATEGORIES.requirement.extraFields, ['kind']);
 });
 
+/**
+ * The 2026-09-02 four, each pinned to the fields it was ruled to carry.
+ *
+ * The extra fields ARE the category here — an `exception` with no `until` is a
+ * permanent change to the item it waives, a `measurement` with no `method`
+ * cannot be re-taken, a `contract` with no `consumers` is a design note. A
+ * field silently dropped from one of these lists would leave the category's
+ * name meaning something weaker than the ruling gave it, with every other test
+ * in this suite green.
+ */
+test('the four categories added in 2026-09-02 declare exactly their ruled fields', () => {
+  assert.deepEqual(CATEGORIES.measurement.extraFields,
+    ['method', 'measured_on', 'subject', 'revision']);
+  assert.deepEqual(CATEGORIES.plan.extraFields, ['goal', 'done_when', 'wave', 'state']);
+  assert.deepEqual(CATEGORIES.exception.extraFields, ['waives', 'until', 'granted_by', 'reason']);
+  assert.deepEqual(CATEGORIES.contract.extraFields, ['consumers', 'stability', 'breaking']);
+});
+
+/**
+ * Every one of those sixteen fields is DECLARED — what it stores, and a
+ * sentence a person reads.
+ *
+ * `test/core/category-updates-completeness.test.ts` already holds the general
+ * rule ("a category with fields of its own must say something about them"),
+ * and it is asserted here as well for the same reason `requirement` above is:
+ * that file checks a property over the whole catalogue, this one records what
+ * these four were ruled to be. A declaration is the only thing `mycontext help
+ * categories` and `mycontext examples` can render, so an undeclared field is
+ * a field nobody is ever told about.
+ */
+test('every field the four new categories declare has an update declaration', () => {
+  for (const name of ['measurement', 'plan', 'exception', 'contract']) {
+    const category = CATEGORIES[name];
+    for (const field of category.extraFields) {
+      const declared = category.updates[field];
+      assert.ok(declared, `${name}.${field} has no update declaration`);
+      assert.equal(declared.store, 'field', `${name}.${field} must be a field, not a tag`);
+      assert.ok(declared.note.length > 20, `${name}.${field}'s note teaches nothing`);
+    }
+  }
+});
+
+/**
+ * **`plan.state` carries no closed vocabulary, and that is a decision rather
+ * than an omission.**
+ *
+ * `task.state` is closed at `todo/doing/blocked/done` because the corpus
+ * attests those four. Borrowing them for `plan` would be an inference from a
+ * neighbour — the restraint `requirement.kind` and `risk.likelihood` both
+ * state — and worse, it would invite the collapse the plan/task boundary
+ * exists to prevent: a plan whose state vocabulary is a task's reads as a task.
+ */
+test('plan.state is deliberately open where task.state is closed', () => {
+  assert.deepEqual(CATEGORIES.task.updates.state.values, ['todo', 'doing', 'blocked', 'done']);
+  assert.equal(CATEGORIES.plan.updates.state.values, undefined);
+  // And it does not project to the `state:` tag `task` generates, which would
+  // make one tag mean two different things across two categories.
+  assert.equal(CATEGORIES.plan.updates.state.projectsTo, undefined);
+  assert.equal(CATEGORIES.task.updates.state.projectsTo, 'state');
+});
+
 // A silent tier flip (e.g. `lesson` promoted to normative) would start
 // injecting the whole rationale corpus in full text on every session. This
-// table pins (name, prefix, tier, defaultEnabled) for all 25 categories so
+// table pins (name, prefix, tier, defaultEnabled) for all 29 categories so
 // such a change cannot land unnoticed.
 test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
   const table = Object.values(CATEGORIES).map((c) => [c.name, c.prefix, c.tier, c.defaultEnabled]);
@@ -112,6 +173,17 @@ test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
     // The category exists to stop an agent chasing something already known to
     // be broken, and it cannot do that from a place the agent never reads.
     ['known_issue', 'KNOWN', 'normative', true],
+    // NORMATIVE, and the tier is the whole of what makes an exception work: it
+    // is read at the moment the item it waives is being applied, so it must
+    // arrive by the same route. On the rationale tier the rule would be
+    // injected in full and the carve-out from it would arrive as a digit in a
+    // count — the reader told the rule and not told it does not apply here.
+    ['exception', 'EXC', 'normative', true],
+    // NORMATIVE, because a contract is a promise made to somebody outside this
+    // project and work that breaks it is wrong in the sense the tier means.
+    // `CONTRACT` and not `CONTR`: the short form is one letter from `CONST`,
+    // and an id prefix that is easy to misread is a prefix that gets misread.
+    ['contract', 'CONTRACT', 'normative', true],
     ['adr', 'ADR', 'rationale', true],
     ['decision', 'DEC', 'rationale', true],
     ['lesson', 'LESSON', 'rationale', true],
@@ -119,12 +191,26 @@ test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
     ['assumption', 'ASSUME', 'rationale', true],
     ['edge_case', 'EDGE', 'rationale', true],
     ['risk', 'RISK', 'rationale', true],
+    // RATIONALE, and it decides itself: a measurement is a fact about a
+    // moment, never an instruction. Nothing an agent does is wrong because a
+    // number was once taken — acting on a STALE one would be, which is what
+    // `method`, `measured_on`, `subject` and `revision` exist to let a reader
+    // judge.
+    ['measurement', 'MEAS', 'rationale', true],
     // Rationale, and the tier is the trust boundary rather than a taxonomy
     // judgement: a reference's body is a snapshot of a file, so a NORMATIVE
     // one would let whoever can edit that file change what governs this
     // project. A retiering is the user's call and the machinery honours it;
     // what must not happen silently is the catalogue shipping it that way.
     ['reference', 'REF', 'rationale', true],
+    // RATIONALE, beside `task` and NOT the same thing as one. `isWorkCategory`
+    // (core/needs.ts) asks for `plan`, `seq` and `state` together; a `plan`
+    // declares `state` and neither of the other two, so it is not a work
+    // category — it never reaches `mycontext ready`, is never a `needs`
+    // target, and none of doctor's task checks reads it. `plan-is-not-a-work-`
+    // `item` in test/core/needs.test.ts pins that, because the two names are
+    // one letter of config away from being confused.
+    ['plan', 'PLAN', 'rationale', true],
     // RATIONALE, and it is the tier that keeps `ready` usable. A task is
     // reasoning ABOUT work rather than a rule the work must satisfy, so it
     // governs nothing; promoting it to normative would inject every open task

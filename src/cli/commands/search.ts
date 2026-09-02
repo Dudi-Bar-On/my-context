@@ -1,10 +1,11 @@
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { scopePolicyFor } from '../../core/config.ts';
 import type { LoadError } from '../../core/rebuild.ts';
-import { RELATION_TYPES } from '../../core/vocabulary.ts';
 import { STATUSES } from '../../core/validate.ts';
 import { scopeCell } from '../../core/render-item.ts';
-import { anyFilterSet, filterItems, type ItemFilters } from '../../core/search.ts';
+import {
+  anyFilterSet, filterItems, searchableRelationTypes, type ItemFilters,
+} from '../../core/search.ts';
 import { enumError } from '../../core/teach.ts';
 import type { Item, Status } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
@@ -108,11 +109,10 @@ function cmdSearch(ws: Workspace, args: string[], out: Emit): number {
       say(out, enumError('status', status, [...STATUSES], 'workflow'));
       return 1;
     }
+    // Validated LATER, against the corpus — see the refusal below the store
+    // read. It cannot be checked here: the answer depends on what is on disk,
+    // and the store is not open yet.
     const relation = flag(args, 'relation');
-    if (relation !== null && !RELATION_TYPES.includes(relation)) {
-      say(out, enumError('relation', relation, RELATION_TYPES, 'workflow'));
-      return 1;
-    }
 
     filters = {
       text: text ?? positional[0] ?? null,
@@ -151,6 +151,27 @@ function cmdSearch(ws: Workspace, args: string[], out: Emit): number {
   const { ctx, errors } = openMutateContext(ws);
   const all = ctx.store.all();
   ctx.store.close();
+
+  // **A READ FILTER IS VALIDATED AGAINST THE CORPUS, NOT AGAINST THE WRITE
+  // GATE.** This refused every type outside `RELATION_TYPES`, and
+  // `superseded_by` is deliberately outside it — the omission is what stops
+  // `link_items` forging a retirement — so `--relation superseded_by` was
+  // refused while nine items in this corpus carried that exact edge. A filter
+  // that cannot name half the graph is not a filter. `searchableRelationTypes`
+  // (core/search.ts) is the one implementation, shared with /api/search and
+  // with the graph endpoint that stated the rule first.
+  //
+  // Still refused, and deliberately: a type NOTHING carries is a typo, and
+  // answering it with "0 item(s) match" is the silent-empty-answer failure the
+  // `--type` check below exists to prevent, on the adjacent flag.
+  if (filters.relation !== null && filters.relation !== undefined) {
+    const askable = searchableRelationTypes(all);
+    if (!askable.includes(filters.relation)) {
+      say(out, enumError('relation', filters.relation, askable, 'workflow'));
+      emitLoadErrors(errors, out);
+      return 1;
+    }
+  }
 
   // A type filter that names no category and matches no stored item is a typo,
   // and answering it with "0 item(s)" is indistinguishable from "you have

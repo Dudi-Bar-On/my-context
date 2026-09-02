@@ -117,6 +117,11 @@ test('the closed vocabulary is unchanged by the move', async () => {
   assert.deepEqual(RELATION_TYPES, [
     'derived_from', 'constrains', 'supersedes', 'blocks',
     'mitigates', 'refines', 'relates_to', 'links_to',
+    // Owner ruling 2026-09-02. `depends_on` was already in the corpus and in
+    // `RELATION_CLASSIFICATION`; the other three are new names. `links_to` was
+    // reviewed in the same ruling and RETAINED, so the vocabulary went 8 → 12
+    // rather than 8 → 11.
+    'depends_on', 'caused_by', 'conflicts_with', 'amends',
   ]);
   assert.equal(
     RELATION_TYPES.includes('superseded_by'), false,

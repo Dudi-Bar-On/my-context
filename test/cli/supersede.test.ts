@@ -368,6 +368,42 @@ test('supersede is idempotent through the CLI', () => {
 });
 
 /**
+ * **A DIFFERENT replacement is not idempotent, it is a second successor**, and
+ * that is the case the idempotent path above does not cover: it matches only
+ * when the forward and back edges both exist for the SAME pair, so retiring an
+ * already-retired item in favour of another one fell through and appended a
+ * second `superseded_by`.
+ *
+ * Refused BEFORE the preview, like every other refusal this command makes. A
+ * refusal that follows "about to supersede:" reads as a report of something
+ * that then did not happen — the ordering `retirementEdgeRefusal` and
+ * `globalLayerRefusal` are both exported to preserve.
+ */
+test('superseding an already-retired item with a DIFFERENT replacement is refused, before any preview', () => {
+  withProject((cwd) => {
+    const { old, next } = pair(cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 30', '--scope', 'src/db/**', '--yes'], cwd);
+    const third = 'CONST-pool-capped-at-30';
+
+    assert.equal(run(['supersede', old, '--by', next, '--yes'], cwd).code, 0);
+    const second = run(['supersede', old, '--by', third, '--yes'], cwd);
+
+    assert.equal(second.code, 1, second.out);
+    assert.match(second.out, new RegExp(`already superseded by ${next}`));
+    // The remedy names the chain rather than an unlink the CLI refuses.
+    assert.match(second.out, new RegExp(`supersede ${next} by ${third}`));
+    assert.doesNotMatch(second.out, /about to supersede/,
+      'the refusal must precede the preview, not follow it');
+
+    // One back-edge, still the first one, and the third item untouched.
+    const retired = itemFile(cwd, 'constraint', old);
+    assert.equal(retired.match(/- superseded_by /g)?.length, 1);
+    assert.match(retired, new RegExp(`- superseded_by \\[\\[${next}\\]\\]`));
+    assert.doesNotMatch(itemFile(cwd, 'constraint', third), /supersedes/);
+  });
+});
+
+/**
  * After the write, the retired item must be gone from the injected set and
  * still present in the corpus — "nothing is deleted" is the promise the
  * command's own message makes, so it is checked rather than asserted only in

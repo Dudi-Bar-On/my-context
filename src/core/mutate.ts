@@ -13,7 +13,7 @@ import {
   snapshotFields, movedFields, stampValidUntil, today,
 } from './persist.ts';
 import { isItemExistsError } from './rebuild.ts';
-import { SUPERSEDED_BY } from './relations.ts';
+import { existingSuccessorRefusal, SUPERSEDED_BY } from './relations.ts';
 // `revision.ts` imports `updateItem` back out of this module, so this edge
 // closes a cycle. It resolves under ESM because both sides only ever CALL
 // each other's hoisted `function` declarations, never read a binding while
@@ -1454,6 +1454,39 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
       message: `my_context: ${retired.id} is already superseded by ${replacement.id}.`,
     };
   }
+
+  // ── AT MOST ONE `superseded_by`, AND THE RETURN ABOVE IS NOT THAT GUARD ──
+  //
+  // It fires only when `alreadyWired && backWired` — both halves, for the SAME
+  // pair. Superseding an already-retired item with a DIFFERENT replacement
+  // matches neither flag, so it fell straight through and APPENDED a second
+  // `superseded_by` to an item that already had one. The file then asserts two
+  // successors: the graph draws both, a reader of the retired item is offered
+  // two answers to "what replaced this", and nothing in the product can say
+  // which is current. That edge is the ONLY route from a retired item to its
+  // replacement — `STD-answered-questions-are-superseded` is why it is
+  // written at all — so an ambiguous one costs as much as a missing one.
+  //
+  // REFUSED rather than repaired, and the refusal names the successor already
+  // recorded. Re-pointing a retirement is a decision about what replaced what,
+  // and this call has no way to take it: nothing in the input distinguishes
+  // "the earlier record was wrong" from "there is a newer replacement", and
+  // those want opposite outcomes.
+  //
+  // `supersedes` is deliberately NOT capped the same way, and the asymmetry is
+  // the truth about retirement rather than an oversight: ONE replacement
+  // legitimately retires SEVERAL items — a rule that answers four open
+  // questions is the ordinary case — so a cap on that side would refuse real
+  // supersessions. The cardinality belongs on the RETIREE, where the question
+  // "what replaced this?" has exactly one answer.
+  //
+  // The remedy offered is the only true one. `mycontext edit --unlink` refuses
+  // both retirement edges by name (`retirementEdgeRefusal`, core/relations.ts),
+  // so the recorded edge cannot simply be taken off; what CAN be done, and what
+  // models the situation correctly, is to retire the recorded successor by the
+  // new one, leaving a chain a reader can follow end to end.
+  const successorRefusal = existingSuccessorRefusal(retired, replacement.id);
+  if (successorRefusal !== null) throw new Error(successorRefusal);
 
   // Content is never removed — only the lifecycle fields move (spec §10)
   // and this one relation is ADDED. The retiree's own relations, body and

@@ -15,7 +15,7 @@ What the user typed: $ARGUMENTS
    the user picks one. It is closed on purpose: an open one produces `derived_from`,
    `derivedFrom` and `derived-from` in one corpus, and then no query finds all three.
 
-       1. derived_from   2. constrains   3. supersedes   4. blocks   5. mitigates   6. refines   7. relates_to   8. links_to
+       1. derived_from   2. constrains   3. supersedes   4. blocks   5. mitigates   6. refines   7. relates_to   8. links_to   9. depends_on   10. caused_by   11. conflicts_with   12. amends
 
 3. Call the `link_items` tool on the `mycontext` MCP server with `from`, `to` and
    `relation`. Report what it says in one line.

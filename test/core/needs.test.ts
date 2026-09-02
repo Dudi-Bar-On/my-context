@@ -92,6 +92,36 @@ test('isWorkCategory asks the config for plan, seq and state — not for the nam
   assert.equal(isWorkCategory(CONFIG_WITHOUT_NEEDS, 'task'), true);
 });
 
+/**
+ * **A PLAN IS NOT A TASK**, asserted against the SHIPPED catalogue rather than
+ * against a fixture config.
+ *
+ * The `plan` category (2026-09-02) carries a `state` extra field, which is
+ * the one field it shares with `task` and the one that could plausibly make
+ * `isWorkCategory` say yes. It says no, because the question is asked of all
+ * THREE fields — a body of work, a position inside it, and where that position
+ * has got to — and a plan is the container rather than a position in one.
+ *
+ * Asserted over every category the default config enables, not only `plan`,
+ * because the failure this guards against is not "plan specifically": it is a
+ * category acquiring `plan`/`seq`/`state` by accident and quietly joining
+ * `mycontext ready`, the `needs` graph and all three of doctor's task
+ * checks. `task` is the only member, and a second one should be a decision
+ * somebody takes rather than a diff nobody reads.
+ */
+test('task is the only work category the shipped catalogue has — a plan is not one', () => {
+  const shipped = resolveConfig({});
+  const work = Object.keys(shipped.categories).filter((t) => isWorkCategory(shipped, t));
+  assert.deepEqual(work, ['task']);
+
+  // Spelled out for the one that shares a field name with `task`, so the
+  // failure message names it rather than a list.
+  assert.equal(isWorkCategory(shipped, 'plan'), false,
+    'a plan declares `state` and neither `plan` nor `seq`; it is the container, not the work');
+  assert.ok(shipped.categories.plan.extraFields.includes('state'));
+  assert.equal(shipped.categories.plan.extraFields.includes('seq'), false);
+});
+
 test('taskKey needs both halves and taskState lowercases', () => {
   assert.equal(taskKey(task({ plan: 'Walk', seq: '8' })), 'walk/8');
   assert.equal(taskKey(task({ plan: 'walk' })), null);

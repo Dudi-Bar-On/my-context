@@ -1,6 +1,7 @@
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { supersedeItem, type MutationContext } from '../../core/mutate.ts';
 import { globalLayerRefusal } from '../../core/persist.ts';
+import { existingSuccessorRefusal } from '../../core/relations.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
@@ -97,6 +98,17 @@ function cmdSupersede(ws: Workspace, args: string[], out: Emit): number {
         out(globalLayerRefusal(item.id));
         return 1;
       }
+    }
+
+    // An item records exactly one successor, and this refusal has to land
+    // here rather than inside `supersedeItem`: the preview below announces
+    // "about to supersede" and names the replacement, and a person must not
+    // read that and then be told it was never going to happen. Same wording as
+    // the write path, imported rather than copied.
+    const successorRefusal = existingSuccessorRefusal(retired, replacement.id);
+    if (successorRefusal !== null) {
+      out(successorRefusal);
+      return 1;
     }
 
     const retiredInjection = injection(retired, ws.config);

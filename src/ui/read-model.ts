@@ -84,7 +84,7 @@ import { readTee } from '../core/statusline-tee.ts';
 import { VERSION } from '../core/version.ts';
 // The one authority for the relation vocabulary. Imported rather than
 // re-listed; see `GraphBody.relationTypes` for why it is then served.
-import { RELATION_TYPES } from '../core/vocabulary.ts';
+import { searchableRelationTypes } from '../core/search.ts';
 // The one authority for which statuses count as retired. Imported, then served
 // on `/api/items` — see `ItemsBody.retiredStatuses`.
 import { RETIRED_STATUSES } from '../core/select.ts';
@@ -2000,8 +2000,10 @@ export interface GraphBody {
    * distinction between a type with no edges here and a type that does not
    * exist is exactly what a closed vocabulary is for.
    *
-   * A ninth member of that array reaches the filter with no change to any UI
-   * file, which is the property being bought.
+   * A thirteenth member of that array reaches the filter with no change to any
+   * UI file, which is the property being bought — and four landed on
+   * 2026-09-02 (`depends_on`, `caused_by`, `conflicts_with`, `amends`)
+   * without one being touched.
    *
    * **It is the vocabulary PLUS whatever the corpus actually holds**, because
    * the two are not the same list and were being conflated. `RELATION_TYPES` is
@@ -2181,11 +2183,13 @@ export function apiGraph(ws: Workspace, url: URL): JsonResult {
       // two identical corpora serve identical bytes. Derived, so a mirror-only
       // edge type invented later reaches the filter with no UI edit, and without
       // widening the gate that stops it being forged.
-      relationTypes: [
-        ...RELATION_TYPES,
-        ...[...new Set(items.flatMap((item) => item.relations.map((rel) => rel.type))
-          .filter((type) => !RELATION_TYPES.includes(type)))].sort(),
-      ],
+      //
+      // The computation itself moved to `searchableRelationTypes`
+      // (core/search.ts) when `mycontext search --relation` and /api/search
+      // were found to have the same defect this comment describes. It is the
+      // same rule — a READ surface accepts what is on disk — and three
+      // agreeing copies of it is how the next one drifts.
+      relationTypes: searchableRelationTypes(items),
     };
     return { status: 200, body };
   });

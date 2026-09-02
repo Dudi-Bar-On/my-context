@@ -298,6 +298,92 @@ test('supersede writes the superseded_by back-reference onto the retired item', 
 });
 
 /**
+ * **An item records exactly ONE successor, and the idempotent early return was
+ * never the guard that said so.** This is the test that fails without the fix.
+ *
+ * That return fires only when the forward edge AND the back edge exist for the
+ * SAME pair. Superseding an already-retired item with a DIFFERENT replacement
+ * matched neither flag and fell through to `retired.relations.push`, so the
+ * file ended up asserting two successors — and `superseded_by` is the only
+ * route from a retired item back to what replaced it, so two answers is as
+ * useless as none.
+ */
+test('superseding an already-superseded item with a different replacement is refused', () => {
+  const s = sandbox();
+  const question = createItem(s.ctx, { type: 'open_question', title: 'Shard by tenant or region' });
+  const first = createItem(s.ctx, { type: 'decision', title: 'Shard by tenant' });
+  const second = createItem(s.ctx, { type: 'decision', title: 'Shard by region after all' });
+
+  supersedeItem(s.ctx, { id: question.id, by: first.id });
+
+  let text = '';
+  try {
+    supersedeItem(s.ctx, { id: question.id, by: second.id });
+    assert.fail('a second, different successor was accepted');
+  } catch (err) {
+    text = (err as Error).message;
+  }
+  // The refusal NAMES the successor already recorded — without it the reader
+  // is told "no" and not told what to look at.
+  assert.match(text, new RegExp(`already superseded by ${first.id}`));
+  assert.match(text, new RegExp(`supersede ${first.id} by ${second.id}`));
+
+  // Refused AND not written: one back-edge, still pointing at the first.
+  assert.deepEqual(s.ctx.store.get(question.id)?.relations, [
+    { type: 'superseded_by', target: first.id },
+  ]);
+  // And nothing was written to the would-be replacement either.
+  assert.deepEqual(s.ctx.store.get(second.id)?.relations, []);
+  // On disk too, because the file is the source of truth.
+  const text2 = readFileSync(path.join(s.root, ...question.filePath.split('/')), 'utf8');
+  assert.equal((text2.match(/- superseded_by /g) ?? []).length, 1);
+  s.dispose();
+});
+
+/**
+ * The same pair, repeated, still returns the idempotent answer. Without this
+ * the refusal above could have been written as "already superseded, full
+ * stop", which would break the repair path `backWired` exists for.
+ */
+test('superseding by the SAME replacement again is still the idempotent no-op', () => {
+  const s = sandbox();
+  const question = createItem(s.ctx, { type: 'open_question', title: 'Shard by tenant or region' });
+  const answer = createItem(s.ctx, { type: 'decision', title: 'Shard by tenant' });
+  supersedeItem(s.ctx, { id: question.id, by: answer.id });
+
+  const again = supersedeItem(s.ctx, { id: question.id, by: answer.id });
+  assert.match(again.message, /is already superseded by/);
+  assert.deepEqual(s.ctx.store.get(question.id)?.relations, [
+    { type: 'superseded_by', target: answer.id },
+  ]);
+  s.dispose();
+});
+
+/**
+ * **`supersedes` is deliberately NOT capped, and the asymmetry is the truth
+ * about retirement rather than an oversight.** One replacement legitimately
+ * retires several items — a decision that answers four open questions is the
+ * ordinary case — so a cap on the replacement's side would refuse real work.
+ * The cardinality belongs on the RETIREE, where "what replaced this?" has
+ * exactly one answer.
+ */
+test('one replacement may retire many items: supersedes is not capped', () => {
+  const s = sandbox();
+  const answer = createItem(s.ctx, { type: 'decision', title: 'Shard by tenant' });
+  const q1 = createItem(s.ctx, { type: 'open_question', title: 'Shard by tenant or region' });
+  const q2 = createItem(s.ctx, { type: 'open_question', title: 'One database or many' });
+
+  supersedeItem(s.ctx, { id: q1.id, by: answer.id });
+  supersedeItem(s.ctx, { id: q2.id, by: answer.id });
+
+  assert.deepEqual(s.ctx.store.get(answer.id)?.relations, [
+    { type: 'supersedes', target: q1.id },
+    { type: 'supersedes', target: q2.id },
+  ]);
+  s.dispose();
+});
+
+/**
  * The door NOT used. `superseded_by` is written only inside `supersedeItem`;
  * it is deliberately absent from `RELATION_TYPES` because that list is the
  * whole gate on `linkItems`, which is agent-reachable through the
@@ -475,6 +561,36 @@ test('linkItems adds a typed relation', () => {
     { type: 'derived_from', target: b.id },
   ]);
   s.dispose();
+});
+
+/**
+ * **The four adopted on 2026-09-02, exercised through the gate that admits
+ * them.** `RELATION_TYPES` is the whole of what `linkItems` checks, so a name
+ * added to the list and nowhere else is a name that has never been written —
+ * this is `derived_from`'s own coverage above, applied to each of them.
+ *
+ * `conflicts_with` is the one SYMMETRIC member, and it is asserted here that
+ * the mirror is NOT stored. Symmetry is a fact about what the edge MEANS, and
+ * writing both halves would create a second edge to keep in step with the
+ * first — inverse traversal needs no stored inverse, which `apiGraph`'s
+ * bidirectional walk already demonstrates.
+ */
+test('linkItems writes each relation adopted in 2026-09-02, and stores no mirror', () => {
+  for (const relation of ['depends_on', 'caused_by', 'conflicts_with', 'amends']) {
+    const s = sandbox();
+    const a = createItem(s.ctx, { type: 'rule', title: 'A rule' });
+    const b = createItem(s.ctx, { type: 'lesson', title: 'A lesson' });
+    linkItems(s.ctx, { from: a.id, to: b.id, relation });
+
+    assert.deepEqual(s.ctx.store.get(a.id)?.relations, [{ type: relation, target: b.id }], relation);
+    assert.deepEqual(s.ctx.store.get(b.id)?.relations, [], `${relation} stored a mirror edge`);
+
+    // It survives the file, not only the index — an edge that lived in SQLite
+    // alone would vanish on the next rebuild.
+    const text = readFileSync(path.join(s.root, ...a.filePath.split('/')), 'utf8');
+    assert.match(text, new RegExp(`- ${relation} \\[\\[${b.id}\\]\\]`), relation);
+    s.dispose();
+  }
 });
 
 test('linkItems is idempotent', () => {

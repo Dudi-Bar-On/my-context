@@ -215,12 +215,49 @@ test('every relation the enum allows is classified, and the table is a strict su
   const beyond = Object.keys(RELATION_CLASSIFICATION).filter((t) => !RELATION_TYPES.includes(t));
   assert.deepEqual(
     beyond.toSorted(),
-    ['answers', 'depends_on', 'discovered_by', 'enforced_by', 'enforces', 'produced',
+    // SEVEN, not eight. `depends_on` was one of them until 2026-09-02, when
+    // the owner adopted it into `RELATION_TYPES` along with `caused_by`,
+    // `conflicts_with` and `amends` — so the enum caught up with one edge the
+    // corpus already carried and the other seven orphans were deliberately
+    // LEFT, as a separate job. They are still classifiable and still
+    // unwritable through `link_items`.
+    ['answers', 'discovered_by', 'enforced_by', 'enforces', 'produced',
       'superseded_by', 'unblocks'],
     'the classification covers relation types this corpus carries that `link_items` would ' +
     'refuse. If that list changed, the enum and the corpus moved — say which, and update ' +
     'both READMEs, rather than editing this assertion to match.',
   );
+});
+
+/**
+ * The four adopted on 2026-09-02, each pinned to the side of the line it was
+ * ruled onto. The loop above only asserts that a member IS classified; which
+ * side it falls on is the decision, and it changes what focus discloses.
+ *
+ * "Load-bearing" is narrower than "related": it means hiding the far end
+ * leaves the visible item's own instruction incomplete or wrongly actionable.
+ *
+ *  - `depends_on`   — the visible item's correctness rests on the hidden one.
+ *  - `conflicts_with` — the whole content of the edge is that something
+ *                       contradicts what is on screen; hide it and the item
+ *                       reads as settled. Symmetric, so it is load-bearing
+ *                       from either end — which is exactly why no mirror needs
+ *                       storing: `danglingEdges` reports a hidden `from` too.
+ *  - `amends`       — the target stays ACTIVE and this item adds to it, so on
+ *                      its own an amendment does not say what the rule now is.
+ *  - `caused_by`    — referential, and beside `derived_from` on purpose: a
+ *                      known issue is just as broken with its cause off screen.
+ *                      Hiding it costs an explanation, not correctness.
+ */
+test('the relations added in 2026-09-02 are classified on the ruled side of the line', () => {
+  assert.equal(RELATION_CLASSIFICATION.depends_on, 'load-bearing');
+  assert.equal(RELATION_CLASSIFICATION.conflicts_with, 'load-bearing');
+  assert.equal(RELATION_CLASSIFICATION.amends, 'load-bearing');
+  assert.equal(RELATION_CLASSIFICATION.caused_by, 'referential');
+  assert.equal(isLoadBearing('caused_by'), false);
+  for (const type of ['depends_on', 'conflicts_with', 'amends']) {
+    assert.equal(isLoadBearing(type), true, type);
+  }
 });
 
 test('the relation table names both classes and the default for an unlisted one', () => {

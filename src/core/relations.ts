@@ -223,6 +223,48 @@ export function retirementEdgeRefusal(relation: string): string | null {
 }
 
 /**
+ * "That item already has a successor" — the refusal, or null when it does not.
+ *
+ * **An item records exactly ONE `superseded_by`.** That edge is the only route
+ * from a retired item back to what replaced it, so a second one leaves "what
+ * replaced this?" with two answers and nothing able to say which is current —
+ * as useless as none, and harder to notice.
+ *
+ * `supersedeItem`'s idempotent early return is NOT this guard: it fires only
+ * when the forward and back edges both exist for the SAME pair, so retiring an
+ * already-retired item in favour of a DIFFERENT replacement matched neither
+ * flag and appended a second back-edge.
+ *
+ * Exported for the ordering reason `retirementEdgeRefusal` and
+ * `globalLayerRefusal` document: `mycontext supersede` prints a preview and
+ * asks a human to confirm before it writes, and a refusal thrown from inside
+ * the write would land AFTER the preview — a person shown what a command will
+ * do, asked to approve it, and only then told it was never going to happen.
+ * One wording, two call sites, so the surfaces cannot drift.
+ *
+ * `supersedes` is deliberately not capped the same way: one replacement
+ * legitimately retires several items, so the cardinality belongs on the side
+ * where the question has one answer.
+ */
+export function existingSuccessorRefusal(retired: Item, replacementId: string): string | null {
+  const other = retired.relations.find(
+    (r) => r.type === SUPERSEDED_BY && r.target !== replacementId,
+  );
+  if (other === undefined) return null;
+  return (
+    `my_context: ${retired.id} is already superseded by ${other.target}, and an item records ` +
+    `exactly one successor. That edge is the only route from a retired item back to what ` +
+    `replaced it, so a second one would leave "what replaced ${retired.id}?" with two answers ` +
+    `and nothing able to say which is current. Nothing was written. If ${replacementId} is what ` +
+    `now stands, supersede ${other.target} by ${replacementId} instead — the chain ` +
+    `${retired.id} → ${other.target} → ${replacementId} stays followable, and each link records ` +
+    `one retirement. The recorded edge cannot be removed instead: \`edit --unlink\` refuses ` +
+    `"${SUPERSEDED_BY}" by name, because an item marked retired with no successor is a ` +
+    `retirement this system does not offer. See mycontext_help("workflow").`
+  );
+}
+
+/**
  * "That relation is not on this item" — the refusal, or null when it is.
  *
  * An unlink that matched nothing and reported success would be the

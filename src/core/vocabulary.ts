@@ -38,10 +38,44 @@
  * that omission is load-bearing rather than an oversight: `RELATION_TYPES` is
  * the whole gate on `linkItems`, so a name absent from this list cannot be
  * forged through the link surfaces.
+ *
+ * **This is a WRITE gate and never a read filter** (owner ruling, 2026-09-02).
+ * A query surface that validates `--relation` against this list refuses the
+ * nine `superseded_by` edges this corpus actually holds, which is a filter
+ * that cannot ask about half the graph. `apiGraph` (`ui/read-model.ts`) was
+ * the first surface to state the rule — serve this vocabulary, then whatever
+ * else is on disk — and `mycontext search --relation` and `GET /api/search`
+ * now read the same way. Nothing about that widens what may be WRITTEN.
+ *
+ * ── THE FOUR ADDED 2026-09-02, AND WHY EACH IS ITS OWN NAME ───────────────
+ *
+ * - `depends_on` — this item's correctness rests on that one; if that falls,
+ *   re-examine this. The direction is dependent → premise. Distinct from
+ *   `blocks`, which is a lifecycle gate on WORK, where this is a standing
+ *   claim about CORRECTNESS. It was already in `RELATION_CLASSIFICATION` and
+ *   already on disk in this corpus; adding it here is the enum catching up
+ *   with an edge the corpus has carried since before the enum closed.
+ * - `caused_by` — the thing this item describes was produced by the thing
+ *   that one describes. Causation IN THE WORLD, as against `derived_from`'s
+ *   provenance of the ARTEFACT: a rule is `derived_from` a lesson because
+ *   someone wrote it out of that lesson; an outage is `caused_by` a
+ *   deployment because the deployment made it happen.
+ * - `conflicts_with` — both stand and they pull opposite ways. The ONE
+ *   symmetric member, and symmetry here is a fact about the RELATION, never a
+ *   licence to store the mirror: see `relations.ts`, and `apiGraph`'s
+ *   bidirectional walk, which needs no stored inverse to traverse either way.
+ * - `amends` — extends the target without replacing it, and the target stays
+ *   active. Distinct from `refines`, which NARROWS what the target says, and
+ *   from `supersedes`, which retires it.
+ *
+ * No inverse of any of these is a member. An inverse is DERIVED on traversal
+ * or rendered as a phrase ("blocked by" for an inbound `blocks`); storing one
+ * would create a second edge to keep in sync with the first.
  */
 export const RELATION_TYPES = [
   'derived_from', 'constrains', 'supersedes', 'blocks',
   'mitigates', 'refines', 'relates_to', 'links_to',
+  'depends_on', 'caused_by', 'conflicts_with', 'amends',
 ];
 
 /**

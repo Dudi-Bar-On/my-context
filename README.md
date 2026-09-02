@@ -724,6 +724,15 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "contract",
+      "description": "A surface other parties depend on, and what changing it costs",
+      "extraFields": [
+        "consumers",
+        "stability",
+        "breaking"
+      ]
+    },
+    {
       "name": "decision",
       "description": "Lightweight decision not warranting a full ADR",
       "extraFields": []
@@ -737,6 +746,16 @@ built, it is meant as a boundary.
       "name": "environment",
       "description": "How the environments differ: what production does that local does not",
       "extraFields": []
+    },
+    {
+      "name": "exception",
+      "description": "A scoped, dated carve-out from a named normative item, and the reason it was granted",
+      "extraFields": [
+        "waives",
+        "until",
+        "granted_by",
+        "reason"
+      ]
     },
     {
       "name": "glossary",
@@ -764,6 +783,16 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "measurement",
+      "description": "A number, how it was obtained and when, so a later reader can tell whether it still holds",
+      "extraFields": [
+        "method",
+        "measured_on",
+        "subject",
+        "revision"
+      ]
+    },
+    {
       "name": "non_goal",
       "description": "Explicit prohibition on building something",
       "extraFields": []
@@ -784,6 +813,16 @@ built, it is meant as a boundary.
       "name": "pattern",
       "description": "Reusable solution, or an anti-pattern to avoid",
       "extraFields": []
+    },
+    {
+      "name": "plan",
+      "description": "A named body of work: its goal, the order it is taken in, and the condition that finishes it",
+      "extraFields": [
+        "goal",
+        "done_when",
+        "wave",
+        "state"
+      ]
     },
     {
       "name": "procedure",
@@ -1864,7 +1903,7 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>79 slash commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>87 slash commands"]
   U --> CL["<b>mycontext …</b><br/>40 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
@@ -1970,11 +2009,13 @@ Slash commands are namespaced by the plugin's name, so every one of them begins
 `/mycontext:add-requirement`, `/mycontext:add-standard`, `/mycontext:add-pattern`,
 `/mycontext:add-glossary`, `/mycontext:add-instruction`, `/mycontext:add-non-goal`,
 `/mycontext:add-open-question`, `/mycontext:add-runbook`, `/mycontext:add-procedure`,
-`/mycontext:add-environment`, `/mycontext:add-known-issue` — capture through the
+`/mycontext:add-environment`, `/mycontext:add-known-issue`,
+`/mycontext:add-exception`, `/mycontext:add-contract` — capture through the
 `create_item` tool and land as **drafts**. The rationale ones — `/mycontext:add-adr`,
 `/mycontext:add-decision`, `/mycontext:add-lesson`, `/mycontext:add-tradeoff`,
 `/mycontext:add-assumption`, `/mycontext:add-edge-case`, `/mycontext:add-risk`,
-`/mycontext:add-reference`, `/mycontext:add-task`, `/mycontext:add-todo` and
+`/mycontext:add-measurement`, `/mycontext:add-reference`, `/mycontext:add-plan`,
+`/mycontext:add-task`, `/mycontext:add-todo` and
 `/mycontext:add-note` — land
 active, because rationale is never injected and so cannot silently steer anything.
 
@@ -2016,7 +2057,9 @@ that category's table: `/mycontext:list-constraint`, `/mycontext:list-invariant`
 `/mycontext:list-procedure`, `/mycontext:list-environment`, `/mycontext:list-adr`,
 `/mycontext:list-decision`, `/mycontext:list-lesson`, `/mycontext:list-tradeoff`,
 `/mycontext:list-assumption`, `/mycontext:list-edge-case`, `/mycontext:list-risk`,
-`/mycontext:list-known-issue`, `/mycontext:list-reference`, `/mycontext:list-task`,
+`/mycontext:list-known-issue`, `/mycontext:list-exception`,
+`/mycontext:list-contract`, `/mycontext:list-measurement`,
+`/mycontext:list-reference`, `/mycontext:list-plan`, `/mycontext:list-task`,
 `/mycontext:list-todo`, `/mycontext:list-note`. Each takes the same detail flags as the CLI.
 
 `/mycontext:LoadMyContext` is the odd one out: it injects the pinned items and the index
@@ -2087,7 +2130,7 @@ the shell it ran in is on.
 /mycontext:LoadMyContext
 ```
 
-There is one `add-<type>` and one `list-<type>` per **enabled** category — 50 today — plus
+There is one `add-<type>` and one `list-<type>` per **enabled** category — 58 today — plus
 the 28 that are not per-category: `add`, `search`, `show`, `todo`, `doctor`, `decay`,
 `query`, `status`, `audit`, `focus`, `ui`, `review`, `promote`, `discard`, `procedure`,
 `inbox-promote`,
@@ -2099,7 +2142,7 @@ a test fails if the committed files and the generator disagree: a disabled categ
 keep a command that would then be refused. `add` is generated from nothing, which is the
 point of it — it is the one that survives a category the generator never saw.
 
-All 78 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 86 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -3794,7 +3837,7 @@ Bookstore API corpus, and the output quoted is what actually changed.
 
 ### `profile` — which categories exist at all
 
-Two profiles: `minimal` (8 categories) and `standard` (all 25, the default) — see
+Two profiles: `minimal` (8 categories) and `standard` (all 29, the default) — see
 [what the difference buys](#the-two-profiles-and-the-one-that-was-removed). A profile decides
 which categories are **enabled**; an unknown profile name is an error at load time, not a
 silent fallback, and that includes `full`, which was a third profile until the categories it
@@ -3822,7 +3865,7 @@ The definitions live in the catalogue (`src/core/categories.ts`) and are printed
 project by `mycontext help categories`, which the model reads through the same
 `mycontext_help` tool. **The block below is that command's real output**, run against the
 example project **with one named transformation applied so that it renders here** — the
-table of the 25 categories the `standard` profile enables, in tier order, and then one entry
+table of the 29 categories the `standard` profile enables, in tier order, and then one entry
 per type: what it is for, and the single type it is most often confused with, with the test
 that separates the two.
 
@@ -3834,7 +3877,7 @@ and applying that rule (`toDocumentMarkdown`), so `npm run gen:docs` regenerates
 `test/docs/examples.test.ts` re-runs the command and applies the same rule from the same
 function on every test run, so a block that has fallen behind the catalogue fails the suite.
 The headings are folded rather than kept because they are the *tool's* headings, not
-sections of this document: written as headings they would put 29 entries into this
+sections of this document: written as headings they would put 33 entries into this
 document's outline that its table of contents does not link to.
 
 It is printed here in full rather than folded away. The comparisons are the part of this
@@ -3869,7 +3912,9 @@ Only the types below are accepted in this project. Anything else is refused.
 | type | tier | id prefix | use for |
 |---|---|---|---|
 | `constraint` | normative | `CONST-` | Non-negotiable limit: budget, stack, regulation, SLA |
+| `contract` | normative | `CONTRACT-` | A surface other parties depend on, and what changing it costs |
 | `environment` | normative | `ENV-` | How the environments differ: what production does that local does not |
+| `exception` | normative | `EXC-` | A scoped, dated carve-out from a named normative item, and the reason it was granted |
 | `glossary` | normative | `GLOSS-` | Ubiquitous language: the agreed term, and terms not to use |
 | `instruction` | normative | `INSTR-` | Governs the agent's process, not the artifact |
 | `invariant` | normative | `INV-` | Condition that must always hold during execution |
@@ -3887,7 +3932,9 @@ Only the types below are accepted in this project. Anything else is refused.
 | `decision` | rationale | `DEC-` | Lightweight decision not warranting a full ADR |
 | `edge_case` | rationale | `EDGE-` | Boundary condition; frequently worth promoting |
 | `lesson` | rationale | `LESSON-` | What was learned; source material for generated rules |
+| `measurement` | rationale | `MEAS-` | A number, how it was obtained and when, so a later reader can tell whether it still holds |
 | `note` | rationale | `NOTE-` | Anything that arose during development and must not be lost |
+| `plan` | rationale | `PLAN-` | A named body of work: its goal, the order it is taken in, and the condition that finishes it |
 | `reference` | rationale | `REF-` | A snapshot of a file, with its origin recorded so doctor reports drift |
 | `risk` | rationale | `RISK-` | May occur and would harm |
 | `task` | rationale | `TASK-` | A unit of planned work, tracked to completion. Its plan, sequence, state and progress live in extra fields; the body is what the task actually requires. |
@@ -3969,6 +4016,35 @@ the table. A type then adds only the names that are its own.
   a governance tier and never consults isNormative, so a reference can carry
   it.
 
+**`contract`** — the `normative` rules above, and 3 of its own:
+
+- **`consumers`** — a field; free text; `mycontext edit <id> --extra consumers=<value>`
+  Who depends on this surface, named. A contract with no named consumer is a
+  design note: nobody can be asked whether a change to it is acceptable.
+- **`stability`** — a field; free text; `mycontext edit <id> --extra stability=<value>`
+  How much this surface may still move. Nothing constrains the value today —
+  say it in whatever words the consumers above would recognise.
+- **`breaking`** — a field; free text; `mycontext edit <id> --extra breaking=<value>`
+  What counts as a breaking change to this surface, and what it would cost the
+  consumers named above. It is the sentence that makes the promise checkable.
+
+**`exception`** — the `normative` rules above, and 4 of its own:
+
+- **`waives`** — a field; free text; `mycontext edit <id> --extra waives=<value>`
+  The id of the ONE normative item this carves out of. A carve-out from the
+  rules in general is not an exception — it is a different rule, and it belongs
+  in the category for one.
+- **`until`** — a field; free text; `mycontext edit <id> --extra until=<value>`
+  The date the carve-out expires, as YYYY-MM-DD. An exception with no end date
+  is a permanent change to the rule, made without anybody deciding to make one.
+- **`granted_by`** — a field; free text; `mycontext edit <id> --extra granted_by=<value>`
+  Who granted it. A person, not a role: an exception is somebody choosing to
+  carry a risk, and the record has to say who.
+- **`reason`** — a field; free text; `mycontext edit <id> --extra reason=<value>`
+  Why it was granted — the circumstance that made the rule the wrong answer
+  here. It is what a reader needs in order to tell whether that circumstance
+  still holds.
+
 **`open_question`** — the `normative` rules above, and 1 of its own:
 
 - **`blocks`** — a field; free text; `mycontext edit <id> --extra blocks=<value>`
@@ -3995,6 +4071,40 @@ the table. A type then adds only the names that are its own.
 - **`validated_on`** — a field; free text; `mycontext edit <id> --extra validated_on=<value>`
   The date it was actually checked, as YYYY-MM-DD. Absent means it has not
   been.
+
+**`measurement`** — the `rationale` rules above, and 4 of its own:
+
+- **`method`** — a field; free text; `mycontext edit <id> --extra method=<value>`
+  How the number was obtained, precisely enough that somebody else could take
+  it again and get the same one. A method nobody can repeat makes the number
+  unfalsifiable.
+- **`measured_on`** — a field; free text; `mycontext edit <id> --extra measured_on=<value>`
+  The date it was taken, as YYYY-MM-DD. It is what turns a number into a number
+  AS OF a moment, which is the only kind that can go stale honestly.
+- **`subject`** — a field; free text; `mycontext edit <id> --extra subject=<value>`
+  What was measured — the corpus, the file, the command, the population. Two
+  measurements of different subjects are not a trend.
+- **`revision`** — a field; free text; `mycontext edit <id> --extra revision=<value>`
+  The revision of the thing measured: a commit, a tag, a version. It is what a
+  later reader compares against to decide whether re-taking the number is worth
+  the effort.
+
+**`plan`** — the `rationale` rules above, and 4 of its own:
+
+- **`goal`** — a field; free text; `mycontext edit <id> --extra goal=<value>`
+  What this body of work is for, in one sentence — the thing that would be true
+  afterwards and is not true now.
+- **`done_when`** — a field; free text; `mycontext edit <id> --extra done_when=<value>`
+  The condition that finishes it, stated so that somebody who did not write the
+  plan can check it. "When the tasks are done" is not one: it says nothing the
+  task states do not already say.
+- **`wave`** — a field; free text; `mycontext edit <id> --extra wave=<value>`
+  Which wave this plan is taken in — the ordering ACROSS plans, as `seq` is the
+  ordering across the tasks within one.
+- **`state`** — a field; free text; `mycontext edit <id> --extra state=<value>`
+  Where the plan as a whole has got to. It is NOT `task.state`, and it carries
+  no closed vocabulary: a plan is not a unit of work, it never appears in
+  `mycontext ready`, and nothing computes this from the tasks inside it.
 
 **`risk`** — the `rationale` rules above, and 2 of its own:
 
@@ -4062,6 +4172,18 @@ enough reason, it is a `standard` and not a constraint.
 ("must run on Node 24 with no dependencies"); a non_goal excludes the thing
 itself ("we are not building offline sync").
 
+**`contract`**
+
+A surface other parties depend on, and what changing it costs. `consumers` names
+who is holding you to it, `stability` says how much it may still move, and
+`breaking` says what would count as a break and what it would cost them. A
+contract with no named consumer is a design note: nobody can be asked whether a
+change to it is acceptable.
+
+**Nearest neighbour: `constraint`.** A constraint says what the limit *is*; a
+contract says *who is holding you to it* and what breaking it costs them — the
+half a person needs in order to decide whether the break is worth negotiating.
+
 **`environment`**
 
 How the environments differ — what production does that local does not, and
@@ -4075,6 +4197,23 @@ conditional on *where the code runs*, and its content is a difference rather
 than a limit ("local mocks the payment API, staging calls it in test mode,
 production calls it live"). If removing the words "in production" or "locally"
 leaves the sentence still true, it is a constraint.
+
+**`exception`**
+
+A scoped, dated carve-out from one named normative item, and the reason it was
+granted. `waives` names the item, `until` is the date it expires, `granted_by`
+is the person who granted it, and `reason` is the circumstance that made the
+waived item the wrong answer here — which is what a later reader needs in order
+to tell whether that circumstance still holds.
+
+Both halves are required in practice. A carve-out from "our rules generally" is
+not an exception but a different rule; and one with no end date is a permanent
+change to the item it waives, made without anybody deciding to make one.
+
+**Nearest neighbour: `rule`.** A rule says what must hold; an exception says
+where, for how long and on whose authority it does not. It is normative for the
+same reason the rule is: it has to arrive in the same session the rule does, or
+the reader is told the rule and not told it does not apply here.
 
 **`glossary`**
 
@@ -4307,6 +4446,40 @@ fresh and before anyone knows what the rule should say.
 now hold. Capture the lesson — a human promotes it, or accepts a candidate
 derived from it.
 
+**`measurement`**
+
+A number, how it was obtained and when, so a later reader can tell whether it
+still holds. `method` is how it was taken — precisely enough that somebody else
+could take it again — `subject` is what was measured, `revision` is the commit
+or version it was taken against, and `measured_on` is the date.
+
+Those four are what separate a measurement from a number in a sentence. A figure
+with no method cannot be re-taken and cannot be falsified; one with no date
+cannot go stale honestly, so it keeps being quoted long after it stopped being
+true.
+
+**Nearest neighbour: `assumption`.** An assumption is a premise being relied on
+and not yet checked; a measurement is the check, with the result written down. An
+assumption carries the date by which it must be verified, a measurement the date
+on which it was.
+
+**`plan`**
+
+A named body of work: its `goal`, the `wave` it is taken in, and the
+`done_when` condition that finishes it. `state` says where the plan as a whole
+has got to; unlike a task's, it carries no closed vocabulary and nothing computes
+it from the tasks inside.
+
+A plan is a container and never a unit of work. It does not appear in
+`mycontext ready`, nothing can declare that it `needs` one, and none of doctor's
+task checks reads it — those all ask for `plan`, `seq` and `state` together,
+which is what a task has and a plan does not.
+
+**Nearest neighbour: `task`.** `task.plan` names the plan a task belongs to, so
+the two meet at that field: the plan says what the work is for and when it is
+finished, the tasks are the things that can actually be picked up and completed.
+Write the plan once; write a task for each piece of it.
+
 **`reference`**
 
 A file you want in the corpus — a roadmap, a progress log, a runbook, a spec.
@@ -4450,6 +4623,20 @@ RDS permits 25 connections; 5 are reserved for migrations and the admin console.
 ```
 <!-- /example -->
 
+**`contract`**
+
+<!-- example: examples contract --short -->
+```text
+id: CONTRACT-the-v1-invoices-payload-keeps-its-field-names-and-their
+title: The /v1/invoices payload keeps its field names and their meanings
+consumers: Acme Reconciliation, Northwind Payouts, our own iOS client
+stability: frozen until v2
+breaking: Renaming or removing a field, or changing a currency unit
+
+Fields may be ADDED. Renaming or removing one breaks the partners silently — their parsers do not error, they mis-post money.
+```
+<!-- /example -->
+
 **`environment`**
 
 <!-- example: examples environment --short -->
@@ -4460,6 +4647,20 @@ title: Staging talks to the real Stripe API, local does not
 Local: the Stripe CLI mock. Staging: the real API with test keys.
 Production: the real API with live keys, and the only place retries happen.
 A signature bug therefore looks fine in local and staging, and only bites live.
+```
+<!-- /example -->
+
+**`exception`**
+
+<!-- example: examples exception --short -->
+```text
+id: EXC-the-legacy-importer-is-exempt-from-the-repository-layer
+title: The legacy importer is exempt from the repository-layer standard
+waives: STD-queries-go-through-a-repository
+until: 2026-12-31
+granted_by: Dana Weiss
+
+It is deleted with the old ingest service in Q4, so rewriting its queries now is work thrown away; nothing else may take this exemption.
 ```
 <!-- /example -->
 
@@ -4669,6 +4870,34 @@ Two deploys ran migrations concurrently and left the schema half-applied.
 ```
 <!-- /example -->
 
+**`measurement`**
+
+<!-- example: examples measurement --short -->
+```text
+id: MEAS-the-webhook-dispatcher-handles-1-900-events-a-minute-before
+title: The webhook dispatcher handles 1,900 events a minute before it queues
+method: k6 run load/webhooks.js, 5 minutes, staging, one dispatcher process
+revision: v2.4.1
+measured_on: 2026-08-30
+
+Taken to settle whether the backoff work needs a second worker. It does not: the observed peak is 480 a minute, so the headroom is about 4x.
+```
+<!-- /example -->
+
+**`plan`**
+
+<!-- example: examples plan --short -->
+```text
+id: PLAN-harden-the-billing-webhook-path
+title: Harden the billing webhook path
+goal: No event is lost when a partner is down for under an hour
+done_when: A 30-minute partner outage replays end to end in staging, zero events dropped
+state: in progress
+
+Retry, then dead-letter, then replay — each is useless without the one before it, which is why this is one plan and not three unrelated tasks.
+```
+<!-- /example -->
+
 **`reference`**
 
 <!-- example: examples reference --short -->
@@ -4746,7 +4975,7 @@ Noticed while debugging something else; not characterised yet. If it turns out t
 ```
 <!-- /example -->
 
-That is every category in the catalogue — twenty-five specimens, twenty-five types, nothing left
+That is every category in the catalogue — twenty-nine specimens, twenty-nine types, nothing left
 without a worked example. A category you [declare yourself](#categories-you-define-yourself)
 is the one case `mycontext examples` cannot answer with real content, and it says so rather
 than inventing one.
@@ -4930,7 +5159,7 @@ a session — the [generic capture command](#what-you-type-the-slash-commands), 
 argument is the category precisely so that a name this plugin never shipped can be one.
 
 That is the thing worth taking from this section: **my_context is a substrate for whatever
-normative vocabulary your project actually has**, not a fixed list of twenty-five nouns. If your
+normative vocabulary your project actually has**, not a fixed list of twenty-nine nouns. If your
 domain thinks in security controls or service level objectives, declare them and file them
 as that, rather than under the nearest built-in — `type` is fixed at creation, so a misfiled
 item stays misfiled.
@@ -5005,8 +5234,8 @@ or ask the model to, which reaches `create_item` — that surface takes any enab
 
 ### The two profiles, and the one that was removed
 
-The catalogue holds **25** categories, and `standard` — what `mycontext init` writes —
-enables all **25** of them. Nothing ships switched off.
+The catalogue holds **29** categories, and `standard` — what `mycontext init` writes —
+enables all **29** of them. Nothing ships switched off.
 
 That was not always true. Three categories, `policy`, `postmortem` and `taxonomy`, shipped
 disabled because each duplicated one that was already on: `policy` overlapped `rule` and
@@ -5908,7 +6137,7 @@ in two ways, and neither of them is a widget, because **there is still no picker
 to ship one**: a slash command's `argument-hint` frontmatter field supplies placeholder text
 on the argument line, and nothing in a plugin can put a menu on `--severity`.
 
-**By naming.** The 25 `/mycontext:add-<type>` and 25 `/mycontext:list-<type>` commands *are*
+**By naming.** The 29 `/mycontext:add-<type>` and 29 `/mycontext:list-<type>` commands *are*
 the category selector, which is why they are generated per category rather than taking a
 `<type>` argument; autocomplete filters the list as you type. `/mycontext:add` takes the
 argument instead, and is not a retreat from that: naming works only for the categories the

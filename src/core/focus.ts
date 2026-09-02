@@ -102,16 +102,22 @@ export interface Focus extends FocusAxes {
  * from the same item: a rule that says `derived_from LESSON-x` still stands on
  * its own, and hiding the lesson costs provenance, not correctness.
  *
- * **This table is a superset of `RELATION_TYPES` (`core/mutate.ts`), and the
- * two disagree — which is recorded here rather than quietly reconciled.**
+ * **This table is a superset of `RELATION_TYPES` (`core/vocabulary.ts`), and
+ * the two disagree — which is recorded here rather than quietly reconciled.**
  * `RELATION_TYPES` is the whole gate on `linkItems`, and it lists
  * `derived_from`, `constrains`, `supersedes`, `blocks`, `mitigates`, `refines`,
- * `relates_to`, `links_to`. This project's own corpus, measured on
- * 2026-08-16, additionally carries `superseded_by`, `produced`,
+ * `relates_to`, `links_to`, and — since 2026-09-02 — `depends_on`,
+ * `caused_by`, `conflicts_with` and `amends`. This project's own corpus,
+ * measured on 2026-08-16, additionally carried `superseded_by`, `produced`,
  * `discovered_by`, `unblocks`, `enforces`, `enforced_by`, `depends_on` and
- * `answers` — eight edge types that `link_items` would refuse today and that
- * exist because the corpus was seeded before the enum closed and because the
- * Markdown parser does not gate relation names. Nothing here widens the enum:
+ * `answers` — eight edge types that `link_items` would then have refused, and
+ * that exist because the corpus was seeded before the enum closed and because
+ * the Markdown parser does not gate relation names. `depends_on` has since
+ * been adopted INTO the enum, so SEVEN of those eight remain unwritable
+ * through `link_items` — `answers`, `discovered_by`, `enforced_by`,
+ * `enforces`, `produced`, `superseded_by` and `unblocks`. Reconciling the
+ * remaining seven is a separate job and is deliberately not done here.
+ * Nothing here widens the enum:
  * classifying an edge is not permission to create one. But focus must be able
  * to classify what is ON DISK, and a table that only knew the enum would report
  * zero dangling relations for the very corpus that raised the question. The
@@ -123,12 +129,32 @@ export const RELATION_CLASSIFICATION: Record<string, 'load-bearing' | 'referenti
   // Load-bearing: a dependency, a constraint, or a lifecycle gate.
   blocks: 'load-bearing',
   unblocks: 'load-bearing',
+  // `depends_on` — this item's correctness RESTS ON the target, so hiding the
+  // target leaves the visible item looking self-standing when it is not: the
+  // reader acts on a claim whose premise they cannot see and cannot check.
   depends_on: 'load-bearing',
   constrains: 'load-bearing',
   answers: 'load-bearing',
   enforces: 'load-bearing',
   enforced_by: 'load-bearing',
   refines: 'load-bearing',
+  // Hiding the far end leaves this item's own instruction wrongly actionable,
+  // which is the test at the top of this comment, applied one type at a time:
+  //
+  // `conflicts_with` — a rule shown alone reads as settled; the whole content
+  // of the edge is that something visible-elsewhere contradicts it, so hiding
+  // that end is hiding the only reason not to act on what is on screen. It is
+  // the one SYMMETRIC member, and the classification is symmetric with it: it
+  // is load-bearing from either end, which is exactly why no mirror needs to
+  // be stored for focus to report it — `danglingEdges` already reports a
+  // hidden `from` as well as a hidden `to`.
+  conflicts_with: 'load-bearing',
+  // `amends` — the target STAYS ACTIVE and this item adds to it. Read on its
+  // own, an amendment is a fragment: it states the addition and not the thing
+  // being added to, so a reader who cannot see the target cannot tell what the
+  // rule now is. That is the same failure as a hidden premise, not the merely
+  // missing provenance `derived_from` costs.
+  amends: 'load-bearing',
 
   // Referential: provenance, cross-reference, or a fact the item already
   // carries in a field of its own.
@@ -141,7 +167,15 @@ export const RELATION_CLASSIFICATION: Record<string, 'load-bearing' | 'referenti
   // `mitigates` is referential because a mitigation stands on its own and a
   // risk without its mitigation in view is still a true risk — the cost is
   // duplicated work, not a violated rule.
+  //
+  // `caused_by` names what PRODUCED the thing this item describes. The item is
+  // complete without it — a known issue is just as broken whether or not its
+  // cause is on screen — so hiding the cause costs an explanation rather than
+  // correctness. That is the same line `derived_from` falls on, and the two
+  // are deliberately classified alike: one is the provenance of the artefact,
+  // the other the provenance of the fact, and neither is an instruction.
   derived_from: 'referential',
+  caused_by: 'referential',
   relates_to: 'referential',
   links_to: 'referential',
   discovered_by: 'referential',

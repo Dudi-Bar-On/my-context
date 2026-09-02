@@ -261,12 +261,14 @@ mycontext review discard <id> # reject one
 Ask Claude to record a *decision* and it lands **active** immediately. That is
 not a bug. The discriminator is the **category's tier**, not who typed it:
 
-- **Normative** categories (14 of them: `constraint`, `rule`, `requirement`,
+- **Normative** categories (16 of them: `constraint`, `rule`, `requirement`,
   `invariant`, `standard`, `pattern`, `glossary`, `instruction`, `non_goal`,
-  `open_question`, `runbook`, `procedure`, `environment`, `known_issue`) — an
-  agent capture becomes a draft, because these steer future work.
-- **Rationale** categories (11: `adr`, `decision`, `lesson`, `tradeoff`,
-  `assumption`, `edge_case`, `risk`, `reference`, `task`, `todo`, `note`) — an agent
+  `open_question`, `runbook`, `procedure`, `environment`, `known_issue`,
+  `exception`, `contract`) — an agent capture becomes a draft, because these
+  steer future work.
+- **Rationale** categories (13: `adr`, `decision`, `lesson`, `tradeoff`,
+  `assumption`, `edge_case`, `risk`, `measurement`, `reference`, `plan`,
+  `task`, `todo`, `note`) — an agent
   capture lands active, because rationale is never injected and so cannot steer
   anything.
 

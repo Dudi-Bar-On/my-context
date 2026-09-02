@@ -949,7 +949,7 @@ export function egoDrawing(data, rtl = false, span = 0) {
   //
   // The cause is that both coordinates are functions of the two ENDPOINTS and
   // of nothing else, so two edges that share a pair share a midpoint exactly.
-  // `RELATION_TYPES` is a closed vocabulary of eight and two items may
+  // `RELATION_TYPES` is a closed vocabulary of twelve and two items may
   // legitimately be related in more than one way, so this is an ordinary corpus
   // shape rather than a corner.
   //

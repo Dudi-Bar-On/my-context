@@ -134,7 +134,7 @@ export interface ResolvedCategory {
    * already declares in `TIER_UPDATES` (core/categories.ts).
    *
    * Every resolved category has one; `{}` says "this category adds nothing of
-   * its own", which is true of nineteen of the twenty-five shipped ones and is
+   * its own", which is true of nineteen of the twenty-nine shipped ones and is
    * a declaration rather than a gap.
    *
    * A CUSTOM category resolves to what its `config.json` entry declares, and

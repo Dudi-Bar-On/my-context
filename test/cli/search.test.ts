@@ -161,9 +161,68 @@ test('a status or relation outside the vocabulary is refused in the shared words
     const status = run(['search', '--text', 'pool', '--status', 'retired'], cwd);
     assert.equal(status.code, 1);
     assert.match(status.out, /status/);
-    const relation = run(['search', '--text', 'pool', '--relation', 'depends_on'], cwd);
+    // `depends_on` used to stand here and was adopted INTO the vocabulary on
+    // 2026-09-02, which is exactly why the exemplar is now a name no plausible
+    // widening would take: a test whose "outside the vocabulary" case can be
+    // moved inside by an unrelated change stops testing what it says it does.
+    const relation = run(['search', '--text', 'pool', '--relation', 'not_a_relation'], cwd);
     assert.equal(relation.code, 1);
     assert.match(relation.out, /relation/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * **A READ FILTER IS NOT THE WRITE GATE**, and this is the test that fails
+ * without the fix.
+ *
+ * `--relation` validated against `RELATION_TYPES`, which deliberately EXCLUDES
+ * `superseded_by` — that omission is the whole thing stopping `link_items`
+ * forging a retirement. The consequence was that the ONE edge type only
+ * `supersedeItem` can write was the one nobody could search for: measured on
+ * this project's own corpus, nine items carried a `superseded_by` and
+ * `mycontext search --relation superseded_by` answered "must be one of …".
+ *
+ * The edge is written through the real command rather than planted, because
+ * the point is that the product writes a type its own query surface refused.
+ */
+test('--relation superseded_by finds the edges supersede writes, though link_items cannot', () => {
+  const cwd = project();
+  try {
+    corpus(cwd);
+    const retired = run(['supersede', 'CONST-pool', '--by', 'CONST-everywhere', '--yes'], cwd);
+    assert.equal(retired.code, 0, retired.out);
+
+    const hits = run(['search', '--relation', 'superseded_by'], cwd);
+    assert.equal(hits.code, 0, hits.out);
+    assert.match(hits.out, /CONST-pool/,
+      'the retired item carries the only superseded_by edge in this corpus and must be found');
+    assert.doesNotMatch(hits.out, /must be one of/,
+      'the read filter was validated against the write gate again');
+
+    // The mirror direction is an ordinary member and keeps working, so this is
+    // not a test that would pass by disabling the refusal altogether.
+    const forward = run(['search', '--relation', 'supersedes'], cwd);
+    assert.equal(forward.code, 0, forward.out);
+    assert.match(forward.out, /CONST-everywhere/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * The other half, and without it the fix above could be "accept anything". A
+ * type NOTHING carries is still a typo, and answering it with an empty table
+ * is the silent-empty-answer failure the `--type` refusal exists to prevent.
+ */
+test('a relation type that is neither in the vocabulary nor in the corpus is still refused', () => {
+  const cwd = project();
+  try {
+    corpus(cwd);
+    const { code, out } = run(['search', '--relation', 'superseded_bye'], cwd);
+    assert.equal(code, 1);
+    assert.match(out, /superseded_bye/);
   } finally {
     removeTree(cwd);
   }

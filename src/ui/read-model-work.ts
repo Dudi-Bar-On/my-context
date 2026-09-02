@@ -20,13 +20,16 @@
 import path from 'node:path';
 import { injection } from '../cli/commands/injection.ts';
 import { matchesAnyGlob } from '../core/paths.ts';
-import { anyFilterSet, filterItems, type ItemFilters } from '../core/search.ts';
+import {
+  anyFilterSet, filterItems, searchableRelationTypes, type ItemFilters,
+} from '../core/search.ts';
 import type { Item, Status } from '../core/types.ts';
 import type { Workspace } from '../core/workspace.ts';
 /**
- * No mirrors. `STATUSES` comes from `core/validate.ts` and `RELATION_TYPES`
- * from `core/vocabulary.ts`, which imports nothing and exists so that reading
- * a closed vocabulary never requires a module that can write.
+ * No mirrors. `STATUSES` comes from `core/validate.ts`, and the relation
+ * vocabulary is reached through `searchableRelationTypes` (`core/search.ts`),
+ * which reads `core/vocabulary.ts` — a module that imports nothing and exists
+ * so that reading a closed vocabulary never requires a module that can write.
  *
  * An earlier version of plan 2 declared local copies here, because both lists
  * then lived in `mutate.ts` and the server's import graph bans it. That is no
@@ -34,7 +37,6 @@ import type { Workspace } from '../core/workspace.ts';
  * the defect `RELATION_TYPES`'s own comment warns about.
  */
 import { STATUSES } from '../core/validate.ts';
-import { RELATION_TYPES } from '../core/vocabulary.ts';
 import { badRequest, coverageFiles, unknownParams, withStores } from './read-model.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import {
@@ -154,10 +156,10 @@ export function apiSearch(ws: Workspace, url: URL): JsonResult {
   if (status !== null && !STATUSES.includes(status as Status)) {
     return badRequest(`status must be one of ${STATUSES.join(', ')} (got ${JSON.stringify(status)})`);
   }
+  // Not validated here: see the refusal inside `withStores` below. Which
+  // relation types are ASKABLE depends on what the corpus holds, and the store
+  // is not open until then.
   const relation = url.searchParams.get('relation');
-  if (relation !== null && !RELATION_TYPES.includes(relation)) {
-    return badRequest(`relation must be one of ${RELATION_TYPES.join(', ')} (got ${JSON.stringify(relation)})`);
-  }
   const type = url.searchParams.get('type');
   // `Object.hasOwn`, not a bare index: the categories map is null-prototype
   // (`config.ts` · `const categories: Record<string, ResolvedCategory> = Object.create(null);` · ~1140).
@@ -187,7 +189,19 @@ export function apiSearch(ws: Workspace, url: URL): JsonResult {
   }
 
   return withStores(ws, (store) => {
-    const matched = filterItems(store.all(), filters, ws.config);
+    const all = store.all();
+    // **THE WRITE GATE IS NOT THE READ FILTER.** This validated `relation`
+    // against `RELATION_TYPES`, which deliberately EXCLUDES `superseded_by`
+    // because that list is the whole gate on `link_items` — so the palette
+    // could not ask about the nine `superseded_by` edges this corpus carries,
+    // in any state of the filter. `apiGraph` fixed the same class for the
+    // graph's type filter by serving the vocabulary UNION what is on disk;
+    // `searchableRelationTypes` is that answer, shared rather than copied.
+    const askable = searchableRelationTypes(all);
+    if (relation !== null && !askable.includes(relation)) {
+      return badRequest(`relation must be one of ${askable.join(', ')} (got ${JSON.stringify(relation)})`);
+    }
+    const matched = filterItems(all, filters, ws.config);
     return {
       status: 200,
       body: {

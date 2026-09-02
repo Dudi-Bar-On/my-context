@@ -92,6 +92,34 @@ test('/api/search filters through filterItems and reports truncation', () => {
   } finally { done(); }
 });
 
+/**
+ * The same defect on the palette's surface, and the same test: `relation` was
+ * validated against `RELATION_TYPES`, so /api/search could not ask about a
+ * `superseded_by` edge in any state of the filter. `apiGraph` had already
+ * fixed this class for the graph's type list; the three surfaces now share one
+ * implementation (`searchableRelationTypes`, core/search.ts).
+ */
+test('/api/search accepts a relation the corpus carries and the write gate refuses', () => {
+  const { dir, done } = workspace();
+  try {
+    assert.equal(
+      runCli(['supersede', 'RULE-pin-me', '--by', 'RULE-always-use-posix-paths', '--yes'], dir, () => {}),
+      0, 'the fixture supersede failed',
+    );
+    const ws = resolveWorkspace(dir);
+    const result = apiSearch(ws, new URL('http://x/api/search?relation=superseded_by'));
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    const body = result.body as { items: { id: string }[] };
+    assert.deepEqual(body.items.map((i) => i.id), ['RULE-pin-me']);
+
+    // And a name neither the vocabulary nor the corpus has is still a 400 —
+    // the fix widens the filter to what exists, not to anything at all.
+    assert.equal(
+      apiSearch(ws, new URL('http://x/api/search?relation=superseded_bye')).status, 400,
+    );
+  } finally { done(); }
+});
+
 test('/api/search refuses: no filter, bad enums, unknown category, unknown params, bad limit', () => {
   const { dir, done } = workspace();
   try {
