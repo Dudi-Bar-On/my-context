@@ -29,14 +29,23 @@ const CONFIG = resolveConfig({
   },
 });
 
-/** The same category WITHOUT `needs` declared — the state this project's own
- * corpus is in while the config declaration waits on another lane. The checks
- * must fire identically; only the remedy sentence changes. */
+/**
+ * A work category WITHOUT `needs` declared. The checks must fire identically;
+ * only the remedy sentence changes.
+ *
+ * It is a CUSTOM category rather than `task`, and it has to be: `task` shipped
+ * in the catalogue on 2026-09-02 declaring `needs`, and a config `extraFields`
+ * override EXTENDS the catalogue's list rather than replacing it — so no
+ * `config.json` can produce a `task` that does not declare `needs`. A project
+ * that plans work under a name of its own is the one state of the world where
+ * `--extra needs=…` is still refused by name, and that is the state this
+ * fixture is.
+ */
 const CONFIG_WITHOUT_NEEDS = resolveConfig({
   categories: {
-    task: {
+    chore: {
       tier: 'rationale',
-      prefix: 'TASK',
+      prefix: 'CHORE',
       description: 'A unit of planned work, tracked to completion.',
       extraFields: ['plan', 'seq', 'state', 'priority'],
     },
@@ -112,14 +121,18 @@ test('a blocked task with no needs is a blocker with no target', () => {
 test('the remedy names the config declaration only while the field is undeclared', () => {
   const orphan = task({ plan: 'walk', seq: '1h', state: 'blocked' });
   const declared = checkTaskNeeds([orphan], CONFIG)[0].message;
-  const undeclared = checkTaskNeeds([orphan], CONFIG_WITHOUT_NEEDS)[0].message;
+  // The undeclared half is a project's OWN work category — see
+  // `CONFIG_WITHOUT_NEEDS` for why `task` can no longer be one.
+  const chore = task({ plan: 'walk', seq: '1h', state: 'blocked' },
+    { id: 'CHORE-walk-1h', type: 'chore', filePath: 'items/chore/CHORE-walk-1h.md' });
+  const undeclared = checkTaskNeeds([chore], CONFIG_WITHOUT_NEEDS)[0].message;
 
   assert.match(declared, /mycontext edit .* --extra needs=/);
   assert.doesNotMatch(declared, /extraFields/);
   // Printing `--extra needs=…` at a reader whose category does not declare the
   // field costs them an attempt at a command `unknownExtraFieldError` refuses
   // by name.
-  assert.match(undeclared, /categories\.task\.extraFields/);
+  assert.match(undeclared, /categories\.chore\.extraFields/);
   assert.match(undeclared, /refused by name/);
 });
 

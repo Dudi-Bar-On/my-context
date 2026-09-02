@@ -50,16 +50,23 @@ import { sandbox, type Sandbox } from '../helpers/workspace.ts';
 
 /**
  * The declaration, as a project writes it in `.my_context/config.json` — the
- * same one `test/cli/edit-projection.test.ts` drives the command with. `task`
+ * same one `test/cli/edit-projection.test.ts` drives the command with. `chore`
  * exists nowhere in `src/`, so a refusal that knows this vocabulary can only
  * have read it from the config.
+ *
+ * It was `task` until `task` shipped in the catalogue (2026-09-02). A SHIPPED
+ * category resolves through the built-in branch of `resolveConfig`, where an
+ * `updates` override EXTENDS the catalogue's declaration rather than being the
+ * whole of it — so these fixtures would no longer have been the config's own
+ * vocabulary and nothing else, which is the only thing they prove. `chore` is
+ * the same declaration under a name the catalogue does not hold.
  */
 const STATE = {
   store: 'field',
   values: ['todo', 'doing', 'blocked', 'done'],
   projectsTo: 'state',
   command: 'mycontext edit <id> --state <value>',
-  note: 'Where this task is.',
+  note: 'Where this chore is.',
 };
 
 function config(
@@ -69,9 +76,9 @@ function config(
   return {
     profile: 'standard',
     categories: {
-      task: {
+      chore: {
         tier: 'rationale',
-        prefix: 'TASK',
+        prefix: 'CHORE',
         description: 'A unit of planned work, tracked to completion.',
         extraFields: ['plan', 'seq', 'state'],
         updates,
@@ -83,12 +90,12 @@ function config(
 
 /** The item as it is ON DISK, reparsed — never the one in the index. */
 function onDisk(box: Sandbox, id: string): Item {
-  const rel = `items/task/${id}.md`;
+  const rel = `items/chore/${id}.md`;
   return parseItem(readFileSync(path.join(box.root, ...rel.split('/')), 'utf8'), rel, 'project');
 }
 
 function fileExists(box: Sandbox, id: string): boolean {
-  return existsSync(path.join(box.root, 'items', 'task', `${id}.md`));
+  return existsSync(path.join(box.root, 'items', 'chore', `${id}.md`));
 }
 
 function withBox(rawConfig: Record<string, unknown>, fn: (box: Sandbox) => void): void {
@@ -105,7 +112,7 @@ function withBox(rawConfig: Record<string, unknown>, fn: (box: Sandbox) => void)
 test('createItem writes the projected tag for a declared field the caller never tagged', () => {
   withBox(config(), (box) => {
     const { id } = createItem(box.ctx, {
-      type: 'task', title: 'Captured legally', body: 'x', extra: { state: 'done' },
+      type: 'chore', title: 'Captured legally', body: 'x', extra: { state: 'done' },
     });
     // Before this landed the item was born with the field and NO tag — `absent`
     // in `projectionMismatch`'s terms, and invisible to every filter that
@@ -119,7 +126,7 @@ test('createItem refuses a value outside the declared vocabulary and writes no f
   withBox(config(), (box) => {
     assert.throws(
       () => createItem(box.ctx, {
-        type: 'task', title: 'Captured with a typo', body: 'x', extra: { state: 'donee' },
+        type: 'chore', title: 'Captured with a typo', body: 'x', extra: { state: 'donee' },
       }),
       /"state" must be one of: todo, doing, blocked, done/,
     );
@@ -133,7 +140,7 @@ test('createItem refuses a value outside the declared vocabulary and writes no f
 test('createItem reconciles a hand-written projected tag onto the caller\'s own list', () => {
   withBox(config(), (box) => {
     const { id } = createItem(box.ctx, {
-      type: 'task', title: 'Wire the projection', body: 'x',
+      type: 'chore', title: 'Wire the projection', body: 'x',
       tags: ['plan:categories', 'state:todo', 'v2'],
       extra: { state: 'done', plan: 'categories' },
     });
@@ -146,7 +153,7 @@ test('createItem reconciles a hand-written projected tag onto the caller\'s own 
 test('createItem cannot capture a duplicate projected membership even by hand', () => {
   withBox(config(), (box) => {
     const { id } = createItem(box.ctx, {
-      type: 'task', title: 'Two memberships', body: 'x',
+      type: 'chore', title: 'Two memberships', body: 'x',
       tags: ['state:todo', 'state:doing'], extra: { state: 'done' },
     });
     assert.deepEqual(onDisk(box, id).tags, ['state:done']);
@@ -163,10 +170,10 @@ test('createItem cannot capture a duplicate projected membership even by hand', 
 test('createItem hashes the projected tags, so an identical capture still dedupes', () => {
   withBox(config(), (box) => {
     const first = createItem(box.ctx, {
-      type: 'task', title: 'Same content', body: 'x', extra: { state: 'done' },
+      type: 'chore', title: 'Same content', body: 'x', extra: { state: 'done' },
     });
     const second = createItem(box.ctx, {
-      type: 'task', title: 'Same content', body: 'x', extra: { state: 'done' },
+      type: 'chore', title: 'Same content', body: 'x', extra: { state: 'done' },
     });
     assert.equal(second.created, false);
     assert.equal(second.id, first.id);
@@ -177,7 +184,7 @@ test('createItem hashes the projected tags, so an identical capture still dedupe
 test('createItem leaves a category that declares no projection exactly as it was', () => {
   withBox(config({}), (box) => {
     const { id } = createItem(box.ctx, {
-      type: 'task', title: 'Undeclared', body: 'x',
+      type: 'chore', title: 'Undeclared', body: 'x',
       tags: ['v2'], extra: { state: 'anything at all' },
     });
     assert.deepEqual(onDisk(box, id).tags, ['v2']);
@@ -187,12 +194,12 @@ test('createItem leaves a category that declares no projection exactly as it was
 
 // --- updateItem, applied ----------------------------------------------------
 
-/** One task carrying both halves of the projection in agreement, plus two
+/** One chore carrying both halves of the projection in agreement, plus two
  * unrelated tags — what every "the others survive" assertion is measured
  * against. */
-function task(box: Sandbox, extra: Record<string, string> = { state: 'todo', plan: 'categories' }): string {
+function chore(box: Sandbox, extra: Record<string, string> = { state: 'todo', plan: 'categories' }): string {
   return createItem(box.ctx, {
-    type: 'task', title: 'Wire the projection', body: 'Call the seam.',
+    type: 'chore', title: 'Wire the projection', body: 'Call the seam.',
     tags: ['plan:categories', 'seq:20', 'state:todo', 'v2'],
     extra, origin: 'human',
   }).id;
@@ -200,7 +207,7 @@ function task(box: Sandbox, extra: Record<string, string> = { state: 'todo', pla
 
 test('updateItem moves the projected tag with the field it is generated from', () => {
   withBox(config(), (box) => {
-    const id = task(box);
+    const id = chore(box);
     updateItem(box.ctx, { id, extra: { state: 'done' }, origin: 'human' });
     assert.deepEqual(onDisk(box, id).tags, ['plan:categories', 'seq:20', 'state:done', 'v2']);
     assert.equal(onDisk(box, id).extra.state, 'done');
@@ -215,7 +222,7 @@ test('updateItem moves the projected tag with the field it is generated from', (
  */
 test('updateItem projects onto the caller\'s replacement tag list, not the stored one', () => {
   withBox(config(), (box) => {
-    const id = task(box);
+    const id = chore(box);
     updateItem(box.ctx, { id, tags: ['v2', 'ui'], extra: { state: 'done' }, origin: 'human' });
     assert.deepEqual(onDisk(box, id).tags, ['v2', 'ui', 'state:done']);
   });
@@ -223,13 +230,13 @@ test('updateItem projects onto the caller\'s replacement tag list, not the store
 
 test('updateItem refuses a value outside the declared vocabulary and changes nothing on disk', () => {
   withBox(config(), (box) => {
-    const id = task(box);
-    const before = readFileSync(path.join(box.root, 'items', 'task', `${id}.md`), 'utf8');
+    const id = chore(box);
+    const before = readFileSync(path.join(box.root, 'items', 'chore', `${id}.md`), 'utf8');
     assert.throws(
       () => updateItem(box.ctx, { id, extra: { state: 'donee' }, origin: 'human' }),
       /"state" must be one of: todo, doing, blocked, done/,
     );
-    assert.equal(readFileSync(path.join(box.root, 'items', 'task', `${id}.md`), 'utf8'), before);
+    assert.equal(readFileSync(path.join(box.root, 'items', 'chore', `${id}.md`), 'utf8'), before);
   });
 });
 
@@ -269,12 +276,12 @@ test('updateItem does not touch the tags of an item whose edit carries no extra'
   const box = sandbox(config({}));
   try {
     const id = createItem(box.ctx, {
-      type: 'task', title: 'Already drifted', body: 'x',
+      type: 'chore', title: 'Already drifted', body: 'x',
       tags: ['state:todo', 'v2'], extra: { state: 'done' }, origin: 'human',
     }).id;
     // The declaration arrives afterwards, the way seq 14 authored it into a
     // config already full of items that predate it.
-    box.ctx.config.categories.task.updates = { state: STATE } as unknown as CategoryUpdates;
+    box.ctx.config.categories.chore.updates = { state: STATE } as unknown as CategoryUpdates;
 
     updateItem(box.ctx, { id, title: 'Renamed, nothing else', origin: 'human' });
 
@@ -295,7 +302,7 @@ test('updateItem does not touch the tags of an item whose edit carries no extra'
  */
 test('projecting in the command and again in the store yields one tag, not two', () => {
   withBox(config(), (box) => {
-    const id = task(box);
+    const id = chore(box);
     const item = box.ctx.store.get(id)!;
     const projected = projectFieldUpdate(box.ctx.config, item, { state: 'doing' });
     updateItem(box.ctx, { id, extra: projected.extra, tags: projected.tags, origin: 'human' });
@@ -314,7 +321,7 @@ const REVIEWED = config({ state: STATE }, { agentEdits: 'review' });
  */
 test('a staged revision carries the projected tags with the field', () => {
   withBox(REVIEWED, (box) => {
-    const id = task(box);
+    const id = chore(box);
     const result = updateItem(box.ctx, { id, extra: { state: 'done' }, origin: 'agent' });
 
     assert.ok(result.staged, 'the update must have been staged, not applied');
@@ -329,7 +336,7 @@ test('a staged revision carries the projected tags with the field', () => {
 
 test('promoting that revision lands the field and the tag together', () => {
   withBox(REVIEWED, (box) => {
-    const id = task(box);
+    const id = chore(box);
     updateItem(box.ctx, { id, extra: { state: 'done' }, origin: 'agent' });
     promoteRevision(box.ctx, id);
     assert.deepEqual(onDisk(box, id).tags, ['plan:categories', 'seq:20', 'state:done', 'v2']);
@@ -339,7 +346,7 @@ test('promoting that revision lands the field and the tag together', () => {
 
 test('an undeclared value is refused before it can be staged for a human to approve', () => {
   withBox(REVIEWED, (box) => {
-    const id = task(box);
+    const id = chore(box);
     assert.throws(
       () => updateItem(box.ctx, { id, extra: { state: 'donee' }, origin: 'agent' }),
       /"state" must be one of: todo, doing, blocked, done/,
@@ -361,10 +368,10 @@ test('an echoed field with a stale tag stages the tag rewrite rather than report
   const box = sandbox(config({}, { agentEdits: 'review' }));
   try {
     const id = createItem(box.ctx, {
-      type: 'task', title: 'Already drifted', body: 'x',
+      type: 'chore', title: 'Already drifted', body: 'x',
       tags: ['state:todo', 'v2'], extra: { state: 'done' }, origin: 'human',
     }).id;
-    box.ctx.config.categories.task.updates = { state: STATE } as unknown as CategoryUpdates;
+    box.ctx.config.categories.chore.updates = { state: STATE } as unknown as CategoryUpdates;
 
     const result = updateItem(box.ctx, { id, extra: { state: 'done' }, origin: 'agent' });
 

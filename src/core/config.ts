@@ -134,7 +134,7 @@ export interface ResolvedCategory {
    * already declares in `TIER_UPDATES` (core/categories.ts).
    *
    * Every resolved category has one; `{}` says "this category adds nothing of
-   * its own", which is true of nineteen of the twenty-four shipped ones and is
+   * its own", which is true of nineteen of the twenty-five shipped ones and is
    * a declaration rather than a gap.
    *
    * A CUSTOM category resolves to what its `config.json` entry declares, and
@@ -568,10 +568,13 @@ interface RawCategory {
  * sentence REQ-every-category-declares-what-may-be-updated-on-its-items-and
  * opens with. The owner's constraint, 2026-08-23: "custom categories are
  * created by humen and it should be written in a way a user could edit and
- * define it in the config". `task` is the measured case and is not a special
- * case: it is not named anywhere in `src/`, it is an entry in this repo's own
- * `.my_context/config.json` with a tier, a prefix, a description and seven
- * extra fields, exactly like any category a user defines.
+ * define it in the config". `task` was the measured case when this key was
+ * added — an entry in this repo's own `.my_context/config.json` with a tier, a
+ * prefix, a description and eight extra fields, exactly like any category a
+ * user defines. It SHIPS in the catalogue now (`CATEGORIES`, categories.ts),
+ * so the same config entry lands on the built-in branch of `resolveConfig`
+ * instead of the custom one; the argument for the key is unchanged, because
+ * the branch a category takes is not what makes `updates` authorable.
  */
 const CATEGORY_KEYS = [
   'enabled', 'tier', 'description', 'prefix', 'agentEdits', 'scopePolicy', 'extraFields',

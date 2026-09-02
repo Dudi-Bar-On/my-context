@@ -58,12 +58,13 @@ export const NEEDS_FIELD = 'needs';
  * other.
  *
  * Read from config rather than matched against the name `task`, and the
- * difference is not cosmetic. `task` is a CUSTOM category in this project: it
- * exists only because `.my_context/config.json` declares it, another project
- * may call the same idea `story` or `ticket`, and a hardcoded name would make
- * every check below silently do nothing there. What the checks actually
- * require is a plan, a position in it, and a state — so that is what is asked
- * for.
+ * difference is not cosmetic. `task` was a CUSTOM category when this was
+ * written — it existed only because `.my_context/config.json` declared it — and
+ * it SHIPS in the catalogue as of 2026-09-02, which changes nothing here:
+ * another project may still call the same idea `story` or `ticket`, and a
+ * hardcoded name would make every check below silently do nothing there. What
+ * the checks actually require is a plan, a position in it, and a state — so
+ * that is what is asked for.
  */
 export const PLAN_FIELD = 'plan';
 export const SEQ_FIELD = 'seq';
@@ -133,10 +134,25 @@ export function parseNeeds(raw: string | undefined): ParsedNeeds {
  * `Object.hasOwn`, not a bare index, for the prototype hazard `resolveCategory`
  * and `tierOf` both document: a category literally named `constructor` must
  * answer false here rather than reaching `Object.prototype`.
+ *
+ * **A DISABLED category plans no work**, and that clause is what keeps the
+ * zero-work-category answer reachable at all. `task` shipped in the catalogue
+ * on 2026-09-02 with `plan`, `seq` and `state` among its extra fields, and a
+ * config `extraFields` override EXTENDS the catalogue's list rather than
+ * replacing it (`resolveConfig`, core/config.ts) — so no `config.json` can take
+ * those three names off `task`, and without this clause every project on earth
+ * would answer true here and `ready`'s "no category plans work" branch would be
+ * dead code guarding a case no configuration could produce. `enabled` is the
+ * switch a project actually has, it is the one this question should follow —
+ * offering work from a category the project switched off is offering work its
+ * own tools will not capture — and turning it off is a deliberate act, so the
+ * answer is loud rather than an empty list: `ready` names the switch.
  */
 export function isWorkCategory(config: Config, type: string): boolean {
   if (!Object.hasOwn(config.categories, type)) return false;
-  const declared = config.categories[type].extraFields;
+  const category = config.categories[type];
+  if (!category.enabled) return false;
+  const declared = category.extraFields;
   return declared.includes(PLAN_FIELD)
     && declared.includes(SEQ_FIELD)
     && declared.includes(STATE_FIELD);

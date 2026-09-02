@@ -462,8 +462,8 @@ them; it appears as a bare count.
 `standard` `pattern` `glossary` `instruction` `non_goal` `open_question`
 `runbook` `procedure` `environment` `known_issue`
 
-**The 10 rationale categories:** `adr` `decision` `lesson` `tradeoff`
-`assumption` `edge_case` `risk` `reference` `todo` `note`
+**The 11 rationale categories:** `adr` `decision` `lesson` `tradeoff`
+`assumption` `edge_case` `risk` `reference` `task` `todo` `note`
 
 **Statuses:** `draft` · `active` · `validated` · `deprecated` · `superseded`.
 Only `active` is injected.

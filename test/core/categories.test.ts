@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CATEGORIES, PROFILES } from '../../src/core/categories.ts';
 
-test('there are 24 categories', () => {
-  assert.equal(Object.keys(CATEGORIES).length, 24);
+test('there are 25 categories', () => {
+  assert.equal(Object.keys(CATEGORIES).length, 25);
 });
 
 test('prefixes are unique and uppercase', () => {
@@ -67,7 +67,7 @@ test('the three removed categories are gone from the catalogue', () => {
 
 test('profiles have the documented sizes', () => {
   assert.equal(PROFILES.minimal.length, 8);
-  assert.equal(PROFILES.standard.length, 24);
+  assert.equal(PROFILES.standard.length, 25);
 });
 
 test('every profile entry names a real category', () => {
@@ -82,7 +82,7 @@ test('requirement declares the kind field', () => {
 
 // A silent tier flip (e.g. `lesson` promoted to normative) would start
 // injecting the whole rationale corpus in full text on every session. This
-// table pins (name, prefix, tier, defaultEnabled) for all 24 categories so
+// table pins (name, prefix, tier, defaultEnabled) for all 25 categories so
 // such a change cannot land unnoticed.
 test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
   const table = Object.values(CATEGORIES).map((c) => [c.name, c.prefix, c.tier, c.defaultEnabled]);
@@ -125,6 +125,14 @@ test('the full (name, prefix, tier, defaultEnabled) table is pinned', () => {
     // project. A retiering is the user's call and the machinery honours it;
     // what must not happen silently is the catalogue shipping it that way.
     ['reference', 'REF', 'rationale', true],
+    // RATIONALE, and it is the tier that keeps `ready` usable. A task is
+    // reasoning ABOUT work rather than a rule the work must satisfy, so it
+    // governs nothing; promoting it to normative would inject every open task
+    // in full at every session start and name each one in the index — this
+    // repository's own outer corpus holds 515 of them. The commands that need
+    // tasks (`ready`, `doctor`) read the store directly and never go through
+    // `select`, so nothing is lost by keeping it off the governing tier.
+    ['task', 'TASK', 'rationale', true],
     // RATIONALE, and deliberately not the tier `procedure` above got. The two
     // are the inbox: a `todo` records an intention and a `note` records
     // something noticed, and neither asserts anything a future session should

@@ -61,15 +61,22 @@ async function session(
 
 /**
  * The declaration under test, as a user writes it in `.my_context/config.json`.
- * `task` exists nowhere in `src/`, so a refusal that knows this vocabulary — or
+ * `chore` exists nowhere in `src/`, so a refusal that knows this vocabulary — or
  * a tag written from this prefix — can only have read it from the config.
+ *
+ * It was `task` until `task` shipped in the catalogue (2026-09-02). A SHIPPED
+ * category takes the built-in branch of `resolveConfig`, where an `updates`
+ * override EXTENDS the catalogue's declaration instead of being the whole of
+ * it — so the fixture would no longer be the config's own vocabulary and
+ * nothing else, which is the only thing it proves. `chore` is the same
+ * declaration under a name the catalogue does not hold.
  */
 const CONFIG = {
   profile: 'standard',
   categories: {
-    task: {
+    chore: {
       tier: 'rationale',
-      prefix: 'TASK',
+      prefix: 'CHORE',
       description: 'A unit of planned work, tracked to completion.',
       extraFields: ['plan', 'seq', 'state'],
       updates: {
@@ -78,7 +85,7 @@ const CONFIG = {
           values: ['todo', 'doing', 'blocked', 'done'],
           projectsTo: 'state',
           command: 'mycontext edit <id> --state <value>',
-          note: 'Where this task is.',
+          note: 'Where this chore is.',
         },
       },
     },
@@ -113,7 +120,7 @@ function project(): string {
 }
 
 function itemPath(cwd: string, id: string): string {
-  return path.join(cwd, '.my_context', 'items', 'task', `${id}.md`);
+  return path.join(cwd, '.my_context', 'items', 'chore', `${id}.md`);
 }
 
 function rulePath(cwd: string, id: string): string {
@@ -132,25 +139,25 @@ function tagsOf(file: string): string[] {
     .map((l) => l.replace(/^ {2}- /, '').replace(/^"|"$/g, ''));
 }
 
-const TASK = 'TASK-wire-the-projection';
+const CHORE = 'CHORE-wire-the-projection';
 
-/** One task carrying both halves of the projection in agreement, plus two
+/** One chore carrying both halves of the projection in agreement, plus two
  * unrelated tags. Through the CLI, so the MCP call under test is the only
  * thing the assertions can be measuring. */
-function task(cwd: string): string {
+function chore(cwd: string): string {
   const lines: string[] = [];
   const code = runCli([
-    'add', '--summary-omitted', 'task', 'Wire the projection', '--body', 'Call the seam.',
+    'add', '--summary-omitted', 'chore', 'Wire the projection', '--body', 'Call the seam.',
     '--tags', 'plan:categories,seq:20,state:todo,v2',
     '--extra', 'state=todo', '--extra', 'plan=categories',
   ], cwd, (l) => lines.push(l));
   assert.equal(code, 0, lines.join('\n'));
-  return TASK;
+  return CHORE;
 }
 
 /**
  * The reproduction. Before this landed the response read "my_context: updated
- * TASK-wire-the-projection (active)." and the file on disk read `state: donee`
+ * CHORE-wire-the-projection (active)." and the file on disk read `state: donee`
  * — `updateItem` called `validateExtra` and `unknownExtraFieldError` and never
  * `updatableExtraError`, so the declared vocabulary was not enforced on this
  * path at all.
@@ -158,7 +165,7 @@ function task(cwd: string): string {
 test('update_item refuses a value outside the declared vocabulary', async () => {
   const cwd = project();
   try {
-    const id = task(cwd);
+    const id = chore(cwd);
     const before = itemFile(cwd, id);
     const [res] = await session(cwd, [
       { name: 'update_item', arguments: { summary_unchanged: true, id, extra: { state: 'donee' } } },
@@ -183,7 +190,7 @@ test('update_item refuses a value outside the declared vocabulary', async () => 
 test('update_item moves the projected tag with the field, and doctor stays clean', async () => {
   const cwd = project();
   try {
-    const id = task(cwd);
+    const id = chore(cwd);
     const [res] = await session(cwd, [
       { name: 'update_item', arguments: { summary_unchanged: true, id, extra: { state: 'done' } } },
     ]);
@@ -210,7 +217,7 @@ test('update_item moves the projected tag with the field, and doctor stays clean
 test('update_item projects onto the tag list the caller passed, not the one it replaces', async () => {
   const cwd = project();
   try {
-    const id = task(cwd);
+    const id = chore(cwd);
     const [res] = await session(cwd, [
       { name: 'update_item', arguments: { summary_unchanged: true, id, tags: ['v2', 'ui'], extra: { state: 'done' } } },
     ]);
@@ -281,7 +288,7 @@ test('create_item refuses an undeclared value and projects a declared one', asyn
 test('update_item regenerates a hand-written projected tag from the field', async () => {
   const cwd = project();
   try {
-    const id = task(cwd);
+    const id = chore(cwd);
     const [res] = await session(cwd, [
       {
         name: 'update_item',
@@ -317,7 +324,7 @@ test('update_item regenerates a hand-written projected tag from the field', asyn
 test('update_item restores a projected tag a replacement list dropped', async () => {
   const cwd = project();
   try {
-    const id = task(cwd);
+    const id = chore(cwd);
     const [res] = await session(cwd, [
       { name: 'update_item', arguments: { id, tags: ['v2', 'ui'] } },
     ]);
@@ -349,11 +356,11 @@ test('update_item leaves a projected tag alone when no field backs it', async ()
     const [made] = await session(cwd, [
       {
         name: 'create_item',
-        arguments: { summary_omitted: true, type: 'task', title: 'Born half projected', body: 'x', tags: ['state:done'] },
+        arguments: { summary_omitted: true, type: 'chore', title: 'Born half projected', body: 'x', tags: ['state:done'] },
       },
     ]);
     assert.equal(made.isError, false, made.text);
-    const id = 'TASK-born-half-projected';
+    const id = 'CHORE-born-half-projected';
     assert.deepEqual(tagsOf(itemFile(cwd, id)), ['state:done']);
 
     const [res] = await session(cwd, [

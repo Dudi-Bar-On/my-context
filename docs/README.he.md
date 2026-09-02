@@ -893,6 +893,20 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "task",
+      "description": "A unit of planned work, tracked to completion. Its plan, sequence, state and progress live in extra fields; the body is what the task actually requires.",
+      "extraFields": [
+        "plan",
+        "seq",
+        "state",
+        "progress",
+        "source",
+        "last_change",
+        "priority",
+        "needs"
+      ]
+    },
+    {
       "name": "todo",
       "description": "Something to build or fix later, captured the moment it occurs to you",
       "extraFields": []
@@ -1947,7 +1961,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>77 פקודות סלאש"]
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>79 פקודות סלאש"]
   U --> CL["<b>mycontext …</b><br/>40 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>ארבעה-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
@@ -2203,7 +2217,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 48 היום — ועוד 28 שאינן לפי קטגוריה:
+קטגוריה **מופעלת** — 50 היום — ועוד 28 שאינן לפי קטגוריה:
 <span dir="ltr">`add`, `search`, `show`, `todo`, `doctor`, `decay`, `query`, `status`, `audit`,
 `focus`, `ui`, `review`, `promote`, `discard`, `procedure`, `inbox-promote`, `edit`, `pin`, `unpin`,
 `harden`,
@@ -2214,7 +2228,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 מכובה אינה יכולה לשמור פקודה שתסורב אחר כך. <span dir="ltr">`add`</span> נוצרת מכלום, וזו
 כל הנקודה שלה — היא זו ששורדת קטגוריה שהמחולל מעולם לא ראה.
 
-כל 76 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 78 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -4036,7 +4050,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 ### `profile` — אילו קטגוריות קיימות בכלל
 
-שני פרופילים: `minimal` (8 קטגוריות) ו-`standard` (כל ה-24, ברירת המחדל) — ראו
+שני פרופילים: `minimal` (8 קטגוריות) ו-`standard` (כל ה-25, ברירת המחדל) — ראו
 [מה ההבדל קונה](#שני-הפרופילים-והאחד-שהוסר). פרופיל קובע אילו קטגוריות **מופעלות**. שם
 פרופיל לא מוכר הוא שגיאה בזמן טעינה, לא נסיגה שקטה — וזה כולל את `full`, שהיה פרופיל שלישי
 עד שהקטגוריות שבשבילן הוא היה קיים הוסרו.
@@ -4068,7 +4082,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 מראה של המקור האנגלי שהפקודה מדפיסה — והמחולל הוא שבוחר את המקור לפי המסמך
 (<span dir="ltr">`MYCONTEXT_DOC_LOCALE=he`</span>). **הגוש שלמטה הוא הפלט האמיתי של הפקודה
 הזאת מול פרויקט הדוגמה, מהמקור העברי, עם המרה אחת ומוגדרת שהוחלה עליו כדי שיוצג כראוי
-כאן**: הטבלה של 24 הקטגוריות שהפרופיל `standard` מפעיל, לפי סדר הדרגים, ואחריה ערך אחד לכל
+כאן**: הטבלה של 25 הקטגוריות שהפרופיל `standard` מפעיל, לפי סדר הדרגים, ואחריה ערך אחד לכל
 סוג — למה הוא משמש, ומול איזה סוג הוא מתבלבל לרוב, עם המבחן שמפריד ביניהם. הפרוזה של המקור
 העברי היא עברית; העובדות שמכונה יכולה לבדוק — הסוג, הדרג, קידומת המזהה — מודפסות מהקטלוג
 שבקוד בשתי השפות, ו-<span dir="ltr">`test/help/categories-he.test.ts`</span> מפיל את חבילת
@@ -4081,7 +4095,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 על ידי הרצת הפקודה והחלת אותו כלל (`toDocumentMarkdown`), כך ש-`npm run gen:docs` מייצר אותו
 מחדש; ו-`test/docs/examples.test.ts` מריץ את הפקודה שוב ומחיל את אותו כלל מאותה פונקציה בכל
 הרצת בדיקות, כך שגוש שפיגר אחרי הקטלוג מפיל את חבילת הבדיקות. הכותרות מקופלות ולא נשמרות
-משום שהן הכותרות של *הכלי*, לא סעיפים של המסמך הזה: לו נכתבו ככותרות, הן היו מוסיפות 28
+משום שהן הכותרות של *הכלי*, לא סעיפים של המסמך הזה: לו נכתבו ככותרות, הן היו מוסיפות 29
 ערכים למתאר של המסמך שתוכן העניינים שלו אינו מקשר אליהם.
 
 הוא מודפס כאן במלואו ולא מקופל. ההשוואות הן החלק במסמך שקובע לרוב תחת איזה סוג עובדה
@@ -4147,6 +4161,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | `note` | rationale | `NOTE-` | כל דבר שעלה במהלך הפיתוח ואסור שיאבד |
 | `reference` | rationale | `REF-` | תצלום מצב של קובץ, שמקורו מתועד כך ש-doctor מדווח על סחיפה |
 | `risk` | rationale | `RISK-` | עלול להתרחש, ויזיק אם יתרחש |
+| `task` | rationale | `TASK-` | יחידת עבודה מתוכננת, שנעקבת עד להשלמתה. התוכנית, הרצף, המצב וההתקדמות חיים בשדות נוספים; הגוף הוא מה שהמשימה דורשת בפועל. |
 | `todo` | rationale | `TODO-` | משהו לבנות או לתקן בהמשך, שנלכד ברגע שהוא עולה בדעתכם |
 | `tradeoff` | rationale | `TRADE-` | מה הוקרב, ותמורת מה |
 
@@ -4260,6 +4275,29 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 - **`impact`** — a field; free text; `mycontext edit <id> --extra impact=<value>`
   How much it would harm. The shipped example uses `high`; nothing constrains
   the value today.
+
+**`task`** — the `rationale` rules above, and 8 of its own:
+
+- **`state`** — a field, projected to `state:` tags; `todo`, `doing`, `blocked`, `done`; `mycontext edit <id> --extra state=<value>`
+  Where this task is.
+- **`plan`** — a field, projected to `plan:` tags; free text; `mycontext edit <id> --extra plan=<value>`
+  Which body of work it belongs to.
+- **`seq`** — a field, projected to `seq:` tags; free text; `mycontext edit <id> --extra seq=<value>`
+  Position within the plan.
+- **`priority`** — a field; `1`, `2`, `3`, `4`; `mycontext edit <id> --extra priority=<value>`
+  1 is highest.
+- **`progress`** — a field; free text; `mycontext edit <id> --extra progress=<value>`
+  Percent complete. Only 0 and 100 are used today; state is the real signal.
+- **`source`** — a field; free text; `mycontext edit <id> --extra source=<value>`
+  The document this task came from.
+- **`last_change`** — a field; free text; `mycontext edit <id> --extra last_change=<value>`
+  Hand-typed and unreliable - all 133 disagree with the audit log, which is the
+  store that knows.
+- **`needs`** — a field; free text; `mycontext edit <id> --extra needs=<value>`
+  The plan/seq references this task waits on, comma-separated - e.g. "walk/7,
+  port/6". Shape is checked, existence is not: a reference to a task that does
+  not exist yet is legitimate, because plans are written before their tasks
+  are.
 
 The other 19 — `constraint`, `environment`, `glossary`, `instruction`,
 `invariant`, `known_issue`, `non_goal`, `pattern`, `procedure`, `runbook`,
@@ -4546,6 +4584,25 @@ reference הוא מצביע עם עותק מצורף: השתמשו בו כשהט
 
 **השכן הקרוב: `assumption`.** סיכון עלול לקרות; על הנחת יסוד כבר מסתמכים
 כנכונה. על סיכון משגיחים; הנחת יסוד בודקים.
+
+**`task`**
+
+יחידת עבודה מתוכננת, שנעקבת עד להשלמתה. `plan` ו-`seq` אומרים לאיזה גוף עבודה
+היא שייכת והיכן היא יושבת בתוכו, `state` אומר להיכן המשימה הגיעה
+(<span dir="ltr">`todo`, `doing`, `blocked`, `done`</span>), ו-`needs` מונה את
+הפניות ה-plan/seq שהיא ממתינה להן. הגוף הוא מה שהמשימה דורשת בפועל; השדות
+הנוספים הם האופן שבו העבודה נעקבת סביבה.
+
+**<span dir="ltr">`mycontext ready`</span> היא הפקודה שהסוג הזה קיים בשבילה.**
+היא קוראת את `needs` מול הקורפוס ועונה *מה אפשר להרים עכשיו*,
+ו-<span dir="ltr">`mycontext doctor`</span> מדווח על שלוש הדרכים שבהן תלויות של
+משימה משתבשות — חסומה בלי שנרשם במה היא חסומה, חסומה כשכל תלויותיה כבר התקיימו,
+והפניה שאינה נפתרת.
+
+**השכן הקרוב: `todo`.** todo הוא מחשבה שנלכדה ברגע שעלתה, בלי תוכנית סביבה ובלי
+שדבר עוקב אחרי אם בוצעה אי פעם. task היא עבודה מתוכננת עם מיקום, מצב ולעיתים
+תלות. שניהם בדרג הרציונל ואף אחד מהם אינו מכתיב; קדמו todo ל-task ברגע שיש לו
+תוכנית ומקום בתוכה.
 
 **`tradeoff`**
 
@@ -4950,6 +5007,24 @@ The importer has no backoff today.
 
 <div dir="rtl">
 
+**`task`**
+
+</div>
+
+<!-- example: examples task --short -->
+```text
+id: TASK-add-backoff-to-the-webhook-dispatcher
+title: Add backoff to the webhook dispatcher
+plan: billing
+state: blocked
+needs: billing/3
+
+The dispatcher drops on the first 5xx from our own handler. Retry with exponential backoff, capped at six attempts, and dead-letter the rest. Waits on billing/3, which adds the dead-letter table.
+```
+<!-- /example -->
+
+<div dir="rtl">
+
 **`tradeoff`**
 
 </div>
@@ -4995,7 +5070,7 @@ Noticed while debugging something else; not characterised yet. If it turns out t
 
 <div dir="rtl">
 
-אלה כל הקטגוריות שבקטלוג — עשרים וארבעה פריטים לדוגמה, עשרים וארבעה סוגים, ואף אחד מהם אינו נשאר בלי
+אלה כל הקטגוריות שבקטלוג — עשרים וחמישה פריטים לדוגמה, עשרים וחמישה סוגים, ואף אחד מהם אינו נשאר בלי
 דוגמה כתובה. קטגוריה ש[אתם מגדירים בעצמכם](#קטגוריות-שאתם-מגדירים-בעצמכם) היא המקרה היחיד
 שבו <span dir="ltr">`mycontext examples`</span> אינו יכול להשיב בתוכן אמיתי, והוא אומר זאת
 במפורש במקום להמציא אחד.
@@ -5204,7 +5279,7 @@ query`</span> שולף אותה. מכיוון שהיא נורמטיבית היא
 שהארגומנט הראשון שלה הוא הקטגוריה בדיוק כדי ששם שהתוסף מעולם לא נשלח איתו יוכל להיות אחד.
 
 זו הנקודה שכדאי לקחת מהפרק הזה: **my_context הוא תשתית לכל אוצר מילים נורמטיבי שיש
-לפרויקט שלכם בפועל**, ולא רשימה קבועה של עשרים וארבעה שמות עצם. אם התחום שלכם חושב במונחי בקרות
+לפרויקט שלכם בפועל**, ולא רשימה קבועה של עשרים וחמישה שמות עצם. אם התחום שלכם חושב במונחי בקרות
 אבטחה או יעדי רמת שירות, הצהירו עליהם ותייקו אותם ככאלה במקום תחת הקטגוריה המובנית הקרובה
 ביותר — `type` נקבע ברגע היצירה, ולכן פריט שתויק לא נכון נשאר לא נכון.
 
@@ -5304,8 +5379,8 @@ my_context: create_item does not take "control_id". It accepts: type, title, bod
 
 ### שני הפרופילים, והאחד שהוסר
 
-הקטלוג מחזיק **24** קטגוריות, ו-`standard` — מה ש-<span dir="ltr">`mycontext init`</span>
-כותב — מפעיל את כל **24**. שום קטגוריה אינה נשלחת כבויה.
+הקטלוג מחזיק **25** קטגוריות, ו-`standard` — מה ש-<span dir="ltr">`mycontext init`</span>
+כותב — מפעיל את כל **25**. שום קטגוריה אינה נשלחת כבויה.
 
 לא תמיד זה היה כך. שלוש קטגוריות — <span dir="ltr">`policy`, `postmortem`,
 `taxonomy`</span> — נשלחו מושבתות מפני שכל אחת מהן שכפלה קטגוריה שכבר הייתה מופעלת:
@@ -6297,7 +6372,7 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 פקודת סלאש מספק טקסט מציין מקום בשורת הארגומנטים, ואין בתוסף דבר שיציב תפריט על
 <span dir="ltr">`--severity`</span>.
 
-**בדרך של שמות.** 24 פקודות ה-<span dir="ltr">`/mycontext:add-<type>`</span> ו-24 פקודות
+**בדרך של שמות.** 25 פקודות ה-<span dir="ltr">`/mycontext:add-<type>`</span> ו-25 פקודות
 ה-<span dir="ltr">`/mycontext:list-<type>`</span> *הן* בורר הקטגוריה, וזו הסיבה שהן
 מיוצרות לכל קטגוריה במקום לקבל ארגומנט <span dir="ltr">`<type>`</span>; ההשלמה האוטומטית
 מסננת את הרשימה תוך כדי הקלדה. <span dir="ltr">`/mycontext:add`</span> מקבלת את הארגומנט

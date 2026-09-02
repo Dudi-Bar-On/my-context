@@ -11,21 +11,26 @@ import { CATEGORIES } from '../../src/core/categories.ts';
  * config". Seq 13 gave every SHIPPED category an `updates` declaration and gave
  * a custom one `{}` with no key to set it — so a person could describe their
  * category's SHAPE (`extraFields`) and not its RULES, which is the half that
- * teaches. `task` is the measured case: it is not special-cased anywhere in the
- * source, it is a `config.json` entry with a tier, a prefix, a description and
- * seven extra fields, exactly like any user-defined category.
+ * teaches. `task` was the measured case when this shipped: a `config.json`
+ * entry with a tier, a prefix, a description and eight extra fields, exactly
+ * like any user-defined category. It has since been ADOPTED into the catalogue
+ * (2026-09-02), so the fixtures below use `chore` — the same declaration under
+ * a name the catalogue does not hold. A shipped category takes the built-in
+ * branch of `resolveConfig`, where an override EXTENDS the catalogue rather
+ * than being the whole declaration, and that branch is pinned separately in
+ * `test/core/config-task-override.test.ts`.
  *
  * The shape a person writes is the one the owner approved:
  *
- *   "task": { "tier": "rationale", "prefix": "TASK",
+ *   "chore": { "tier": "rationale", "prefix": "CHORE",
  *             "updates": { "state": { "store": "field", "values": [...],
  *                                     "projectsTo": "state", "note": "…" } } }
  */
 
 /** The owner-approved declaration, verbatim, as a person would type it. */
-const TASK_ENTRY = {
+const CHORE_ENTRY = {
   tier: 'rationale',
-  prefix: 'TASK',
+  prefix: 'CHORE',
   description: 'A unit of planned work, tracked to completion.',
   extraFields: ['plan', 'state'],
   updates: {
@@ -33,26 +38,26 @@ const TASK_ENTRY = {
       store: 'field',
       values: ['todo', 'doing', 'blocked', 'done'],
       projectsTo: 'state',
-      note: 'Where this task is.',
+      note: 'Where this chore is.',
     },
     plan: { store: 'tag', note: 'Which plan it belongs to.' },
   },
 };
 
 test('a custom category declares its own updates in config.json', () => {
-  const cfg = resolveConfig({ categories: { task: TASK_ENTRY } });
-  assert.deepEqual(cfg.categories.task.updates, {
+  const cfg = resolveConfig({ categories: { chore: CHORE_ENTRY } });
+  assert.deepEqual(cfg.categories.chore.updates, {
     state: {
       store: 'field',
       values: ['todo', 'doing', 'blocked', 'done'],
       projectsTo: 'state',
-      note: 'Where this task is.',
+      note: 'Where this chore is.',
     },
     plan: { store: 'tag', note: 'Which plan it belongs to.' },
   });
   // And nothing else about the category moved with it.
-  assert.deepEqual(cfg.categories.task.extraFields, ['plan', 'state']);
-  assert.equal(cfg.categories.task.prefix, 'TASK');
+  assert.deepEqual(cfg.categories.chore.extraFields, ['plan', 'state']);
+  assert.equal(cfg.categories.chore.prefix, 'CHORE');
 });
 
 /**
@@ -63,9 +68,9 @@ test('a custom category declares its own updates in config.json', () => {
  */
 test('a custom category with no updates entry still declares none', () => {
   const cfg = resolveConfig({
-    categories: { task: { tier: 'rationale', description: 'A unit of planned work' } },
+    categories: { chore: { tier: 'rationale', description: 'A unit of planned work' } },
   });
-  assert.deepEqual(cfg.categories.task.updates, {});
+  assert.deepEqual(cfg.categories.chore.updates, {});
 });
 
 /**
@@ -82,10 +87,10 @@ test('a custom category with no updates entry still declares none', () => {
 test('only store is required, and an omitted note is filled rather than left unrenderable', () => {
   const cfg = resolveConfig({
     categories: {
-      task: { tier: 'rationale', description: 'x', updates: { plan: { store: 'tag' } } },
+      chore: { tier: 'rationale', description: 'x', updates: { plan: { store: 'tag' } } },
     },
   });
-  const plan = cfg.categories.task.updates.plan;
+  const plan = cfg.categories.chore.updates.plan;
   assert.equal(plan.store, 'tag');
   assert.equal(plan.values, undefined, 'an absent values means free text, not an empty vocabulary');
   assert.equal(plan.projectsTo, undefined);
@@ -347,10 +352,10 @@ test('an updatable name of __proto__ becomes an own property, not a prototype wr
   // object LITERAL would read `__proto__:` as the prototype-setting syntax and
   // never produce the key this test is about.
   const cfg = resolveConfig(JSON.parse(
-    '{"categories":{"task":{"tier":"rationale","description":"x","updates":' +
+    '{"categories":{"chore":{"tier":"rationale","description":"x","updates":' +
     '{"__proto__":{"store":"field","note":"Pathological but writable."}}}}}',
   ));
-  const updates = cfg.categories.task.updates as Record<string, unknown>;
+  const updates = cfg.categories.chore.updates as Record<string, unknown>;
   assert.ok(Object.hasOwn(updates, '__proto__'), 'the declaration was dropped by the setter');
   assert.deepEqual(Object.keys(updates), ['__proto__']);
   assert.equal((Object.prototype as Record<string, unknown>).store, undefined);
@@ -377,11 +382,11 @@ test('updates loads alongside every other category key', () => {
         agentEdits: 'review', scopePolicy: 'inert', extraFields: ['owner'],
         updates: { owner: { store: 'field', command: 'mycontext edit <id> --extra owner=x', note: 'Who owns it.' } },
       },
-      task: TASK_ENTRY,
+      chore: CHORE_ENTRY,
     },
   });
   assert.deepEqual(cfg.categories.rule.extraFields, ['directive', 'owner']);
   assert.deepEqual(Object.keys(cfg.categories.rule.updates).sort(), ['directive', 'owner']);
   assert.equal(cfg.categories.rule.updates.owner.command, 'mycontext edit <id> --extra owner=x');
-  assert.deepEqual(Object.keys(cfg.categories.task.updates).sort(), ['plan', 'state']);
+  assert.deepEqual(Object.keys(cfg.categories.chore.updates).sort(), ['plan', 'state']);
 });

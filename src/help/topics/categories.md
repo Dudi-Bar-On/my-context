@@ -365,6 +365,26 @@ rather than a list of worries.
 **Nearest neighbour: `assumption`.** A risk may happen; an assumption is already
 being relied on as true. A risk is watched; an assumption is checked.
 
+### `task`
+
+A unit of planned work, tracked to completion. `plan` and `seq` say which body
+of work it belongs to and where it sits inside it, `state` says where the task
+has got to (`todo`, `doing`, `blocked`, `done`), and `needs` names the plan/seq
+references it is waiting on. The body is what the task actually requires; the
+extra fields are how the work is tracked around it.
+
+**`mycontext ready` is the command this type exists for.** It reads `needs`
+against the corpus and answers *what can be picked up right now*, and
+`mycontext doctor` reports the three ways a task's dependencies go wrong —
+blocked with nothing recorded to be blocked on, blocked when every dependency is
+already met, and a reference that does not resolve.
+
+**Nearest neighbour: `todo`.** A todo is a thought captured the moment it occurs
+to you, with no plan around it and nothing tracking whether it was ever done. A
+task is planned work with a position, a state and sometimes a dependency. Both
+are rationale and neither governs; promote a todo to a task once it has a plan
+and a place in one.
+
 ### `tradeoff`
 
 What a choice cost — the thing given up, and what was bought with it. It exists

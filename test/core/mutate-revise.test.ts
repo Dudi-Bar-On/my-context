@@ -1111,19 +1111,21 @@ test('updateItem refuses a reserved extra key as reserved, not as undeclared', (
 });
 
 /** A config-declared field on a custom category is editable, not merely
- * capturable — the two surfaces read the same resolved category. */
+ * capturable — the two surfaces read the same resolved category. `chore`
+ * rather than `task`: `task` was adopted into the catalogue on 2026-09-02 and
+ * now extends a shipped declaration instead of being the whole of one. */
 test('updateItem accepts a config-declared extra field on a custom category', () => {
   const s = sandbox({
     categories: {
-      task: { tier: 'rationale', description: 'A unit of planned work', extraFields: ['state'] },
+      chore: { tier: 'rationale', description: 'A unit of planned work', extraFields: ['state'] },
     },
   });
-  const created = createItem(s.ctx, { type: 'task', title: 'Ship it', extra: { state: 'todo' } });
+  const created = createItem(s.ctx, { type: 'chore', title: 'Ship it', extra: { state: 'todo' } });
   updateItem(s.ctx, { id: created.id, extra: { state: 'done' } });
   assert.equal(s.ctx.store.get(created.id)!.extra.state, 'done');
   assert.throws(
     () => updateItem(s.ctx, { id: created.id, extra: { progress: '50' } }),
-    /extra field "progress" is not declared by "task"/,
+    /extra field "progress" is not declared by "chore"/,
   );
   s.dispose();
 });
@@ -1135,17 +1137,17 @@ test('updateItem accepts a config-declared extra field on a custom category', ()
 test('an item keeps an extra field its category stopped declaring, and stays editable', () => {
   const s = sandbox({
     categories: {
-      task: { tier: 'rationale', description: 'Work', extraFields: ['state', 'progress'] },
+      chore: { tier: 'rationale', description: 'Work', extraFields: ['state', 'progress'] },
     },
   });
   const created = createItem(s.ctx, {
-    type: 'task', title: 'Ship it', extra: { state: 'todo', progress: '10' },
+    type: 'chore', title: 'Ship it', extra: { state: 'todo', progress: '10' },
   });
 
   // The config narrows underneath the item, exactly as editing config.json
   // between two sessions would.
   s.ctx.config = resolveConfig({
-    categories: { task: { tier: 'rationale', description: 'Work', extraFields: ['state'] } },
+    categories: { chore: { tier: 'rationale', description: 'Work', extraFields: ['state'] } },
   });
 
   // The stored value is untouched, on disk and in the index.
@@ -1163,7 +1165,7 @@ test('an item keeps an extra field its category stopped declaring, and stays edi
   // Re-asserting the dropped key is the one thing refused.
   assert.throws(
     () => updateItem(s.ctx, { id: created.id, extra: { progress: '50' } }),
-    /extra field "progress" is not declared by "task"/,
+    /extra field "progress" is not declared by "chore"/,
   );
   s.dispose();
 });

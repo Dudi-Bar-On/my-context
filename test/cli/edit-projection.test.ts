@@ -15,8 +15,15 @@
  * rather than written out at the call site — so the vocabulary a refusal
  * teaches, the command it names as the one that works, and the flag this CLI
  * actually accepts are three readings of one declaration. Which is why the
- * fixtures below are CONFIG DOCUMENTS: `task` exists nowhere in `src/`, so a
+ * fixtures below are CONFIG DOCUMENTS: `chore` exists nowhere in `src/`, so a
  * refusal that knows its vocabulary can only have read it from the config.
+ *
+ * It was `task` until `task` shipped in the catalogue (2026-09-02). A SHIPPED
+ * category takes the built-in branch of `resolveConfig`, where an `updates`
+ * override EXTENDS the catalogue's declaration instead of being the whole of
+ * it — so the fixture would no longer be the config's own vocabulary and
+ * nothing else, which is the only thing it proves. `chore` is the same
+ * declaration under a name the catalogue does not hold.
  *
  * Every assertion drives the real command through `runCli` and checks the FILE
  * afterwards, because the property that matters is that a refusal arrives
@@ -49,16 +56,16 @@ const STATE = {
   values: ['todo', 'doing', 'blocked', 'done'],
   projectsTo: 'state',
   command: 'mycontext edit <id> --state <value>',
-  note: 'Where this task is.',
+  note: 'Where this chore is.',
 };
 
 function taskConfig(updates: Record<string, unknown> = { state: STATE }): unknown {
   return {
     profile: 'standard',
     categories: {
-      task: {
+      chore: {
         tier: 'rationale',
-        prefix: 'TASK',
+        prefix: 'CHORE',
         description: 'A unit of planned work, tracked to completion.',
         extraFields: ['plan', 'seq', 'state'],
         updates,
@@ -90,21 +97,21 @@ function itemFile(cwd: string, type: string, id: string): string {
   return readFileSync(path.join(cwd, '.my_context', 'items', type, `${id}.md`), 'utf8');
 }
 
-const TASK = 'TASK-wire-the-projection';
+const CHORE = 'CHORE-wire-the-projection';
 
 /**
- * One task carrying both halves of the projection in agreement, plus two
+ * One chore carrying both halves of the projection in agreement, plus two
  * unrelated tags — which is what every assertion about "the others survive" is
  * measured against.
  */
-function task(cwd: string): string {
+function chore(cwd: string): string {
   const { code, out } = run([
-    'add', '--summary-omitted', 'task', 'Wire the projection', '--body', 'Call the seam.',
+    'add', '--summary-omitted', 'chore', 'Wire the projection', '--body', 'Call the seam.',
     '--tags', 'plan:categories,seq:15,state:todo,v2',
     '--extra', 'state=todo', '--extra', 'plan=categories',
   ], cwd);
   assert.equal(code, 0, out);
-  return TASK;
+  return CHORE;
 }
 
 /** The `tags:` block of a rendered item, as a list of tag strings. */
@@ -127,13 +134,13 @@ function phrase(text: string): RegExp {
 
 test('--state writes the field and rewrites the projected tag in one write', () => {
   withProject((cwd) => {
-    const id = task(cwd);
+    const id = chore(cwd);
     // `--state` writes `extra`, which IS part of what a summary summarises, so
     // the gate asks for one. This fixture item has none and keeps none.
     const { code, out } = run(['edit', id, '--state', 'done', '--summary-unchanged'], cwd);
 
     assert.equal(code, 0, out);
-    const file = itemFile(cwd, 'task', id);
+    const file = itemFile(cwd, 'chore', id);
     assert.match(file, /^state: done$/m, 'the field must hold the value');
     assert.deepEqual(
       tagsOf(file), ['plan:categories', 'seq:15', 'state:done', 'v2'],
@@ -144,11 +151,11 @@ test('--state writes the field and rewrites the projected tag in one write', () 
 
 test('--extra is the same door and projects identically', () => {
   withProject((cwd) => {
-    const id = task(cwd);
+    const id = chore(cwd);
     const { code, out } = run(['edit', '--summary-unchanged', id, '--extra', 'state=blocked'], cwd);
 
     assert.equal(code, 0, out);
-    const file = itemFile(cwd, 'task', id);
+    const file = itemFile(cwd, 'chore', id);
     assert.match(file, /^state: blocked$/m);
     assert.ok(tagsOf(file).includes('state:blocked'), tagsOf(file).join(','));
     assert.ok(!tagsOf(file).includes('state:todo'), 'the old membership must not survive');
@@ -157,24 +164,24 @@ test('--extra is the same door and projects identically', () => {
 
 test('--state at the value the item already holds changes nothing and says so', () => {
   withProject((cwd) => {
-    const id = task(cwd);
-    const before = itemFile(cwd, 'task', id);
+    const id = chore(cwd);
+    const before = itemFile(cwd, 'chore', id);
     const { code, out } = run(['edit', id, '--state', 'todo'], cwd);
 
     assert.equal(code, 0, out);
     assert.match(out, phrase('nothing to change'));
-    assert.equal(itemFile(cwd, 'task', id), before, 'an echo must not rewrite the file');
+    assert.equal(itemFile(cwd, 'chore', id), before, 'an echo must not rewrite the file');
   });
 });
 
 test('--tags and --state compose: the projection lands on the replacement list', () => {
   withProject((cwd) => {
-    const id = task(cwd);
+    const id = chore(cwd);
     const { code, out } = run(['edit', id, '--tags', 'v2,ui', '--state', 'done',
       '--summary-unchanged'], cwd);
 
     assert.equal(code, 0, out);
-    const file = itemFile(cwd, 'task', id);
+    const file = itemFile(cwd, 'chore', id);
     assert.match(file, /^state: done$/m);
     assert.deepEqual(
       tagsOf(file), ['v2', 'ui', 'state:done'],
@@ -204,12 +211,12 @@ test('--tags and --state compose: the projection lands on the replacement list',
  */
 test('a --tags list with no projected prefix is a tag list like any other', () => {
   withProject((cwd) => {
-    const id = task(cwd);
+    const id = chore(cwd);
     const { code, out } = run(['edit', id, '--tags', 'v2,ui'], cwd);
 
     assert.equal(code, 0, out);
     assert.deepEqual(
-      tagsOf(itemFile(cwd, 'task', id)), ['v2', 'ui', 'state:todo'],
+      tagsOf(itemFile(cwd, 'chore', id)), ['v2', 'ui', 'state:todo'],
       'both tags the caller typed are stored as typed, and the projection is not dropped',
     );
 
@@ -225,8 +232,8 @@ test('a --tags list with no projected prefix is a tag list like any other', () =
 
 test('--tags carrying a projected tag is refused, naming the command that works', () => {
   withProject((cwd) => {
-    const id = task(cwd);
-    const before = itemFile(cwd, 'task', id);
+    const id = chore(cwd);
+    const before = itemFile(cwd, 'chore', id);
     const { code, out } = run(['edit', id, '--tags', 'v2,state:done'], cwd);
 
     assert.equal(code, 1, out);
@@ -235,18 +242,18 @@ test('--tags carrying a projected tag is refused, naming the command that works'
     // substituted into it — not a sentence this command spells.
     assert.match(out, phrase('mycontext edit <id> --state done'));
     assert.match(out, phrase('Nothing was changed'));
-    assert.equal(itemFile(cwd, 'task', id), before, 'a refusal must precede every write');
+    assert.equal(itemFile(cwd, 'chore', id), before, 'a refusal must precede every write');
   });
 });
 
 test('the hand-written-tag refusal beats the field edit, rather than honouring one half', () => {
   withProject((cwd) => {
-    const id = task(cwd);
-    const before = itemFile(cwd, 'task', id);
+    const id = chore(cwd);
+    const before = itemFile(cwd, 'chore', id);
     const { code } = run(['edit', id, '--tags', 'state:done', '--state', 'doing'], cwd);
 
     assert.equal(code, 1);
-    assert.equal(itemFile(cwd, 'task', id), before);
+    assert.equal(itemFile(cwd, 'chore', id), before);
   });
 });
 
@@ -254,8 +261,8 @@ test('the hand-written-tag refusal beats the field edit, rather than honouring o
 
 test('an illegal --state names the declared vocabulary and the declared command', () => {
   withProject((cwd) => {
-    const id = task(cwd);
-    const before = itemFile(cwd, 'task', id);
+    const id = chore(cwd);
+    const before = itemFile(cwd, 'chore', id);
     const { code, out } = run(['edit', id, '--state', 'donee'], cwd);
 
     assert.equal(code, 1, out);
@@ -270,13 +277,13 @@ test('an illegal --state names the declared vocabulary and the declared command'
     assert.match(out, phrase('mycontext edit <id> --state <value>'));
     assert.match(out, phrase('Nothing was changed'));
     assert.doesNotMatch(out, /about to edit/);
-    assert.equal(itemFile(cwd, 'task', id), before);
+    assert.equal(itemFile(cwd, 'chore', id), before);
   });
 });
 
 test('a declared flag on a category that does not declare it is refused, naming the one that does', () => {
   withProject((cwd) => {
-    task(cwd);
+    chore(cwd);
     run(['add', '--summary-omitted', 'rule', 'Never log secrets', '--body', 'Not at any level.', '--yes'], cwd);
     const id = 'RULE-never-log-secrets';
     const before = itemFile(cwd, 'rule', id);
@@ -287,7 +294,7 @@ test('a declared flag on a category that does not declare it is refused, naming 
     // Composed from the declaration on both sides: what a `rule` does declare,
     // and who declares the name that was typed.
     assert.match(out, phrase('A "rule" declares its own: directive'));
-    assert.match(out, phrase('"--state" is declared by task'));
+    assert.match(out, phrase('"--state" is declared by chore'));
     assert.match(out, phrase('Nothing was changed'));
     assert.equal(itemFile(cwd, 'rule', id), before);
   });
@@ -295,28 +302,28 @@ test('a declared flag on a category that does not declare it is refused, naming 
 
 test('a narrowed status is refused in the declaration\'s own words, not the global list', () => {
   withProject((cwd) => {
-    const id = task(cwd);
-    const before = itemFile(cwd, 'task', id);
+    const id = chore(cwd);
+    const before = itemFile(cwd, 'chore', id);
     const { code, out } = run(['edit', id, '--status', 'deprecated'], cwd);
 
     assert.equal(code, 1, out);
     assert.match(out, phrase('"status" must be one of: draft, active'));
     assert.match(out, phrase('You passed "deprecated"'));
-    assert.equal(itemFile(cwd, 'task', id), before);
+    assert.equal(itemFile(cwd, 'chore', id), before);
   }, taskConfig({
     state: STATE,
     status: {
       store: 'field',
       values: ['draft', 'active'],
       command: 'mycontext edit <id> --status <status>',
-      note: 'A task is drafted or active; it is retired by being done.',
+      note: 'A chore is drafted or active; it is retired by being done.',
     },
   }));
 });
 
 test('--severity hard on a rationale category keeps the refusal it has today', () => {
   withProject((cwd) => {
-    const id = task(cwd);
+    const id = chore(cwd);
     const { code, out } = run(['edit', id, '--severity', 'hard'], cwd);
 
     assert.equal(code, 1, out);
@@ -329,14 +336,14 @@ test('--severity hard on a rationale category keeps the refusal it has today', (
 
 test('a declaration whose command is the generic --extra spelling grows no flag', () => {
   withProject((cwd) => {
-    const id = task(cwd);
+    const id = chore(cwd);
     const { code, out } = run(['edit', id, '--state', 'done'], cwd);
 
     assert.equal(code, 1, out);
     assert.match(out, phrase('unknown option "--state"'));
     // The projection still holds through the spelling the declaration DOES name.
     assert.equal(run(['edit', '--summary-unchanged', id, '--extra', 'state=done'], cwd).code, 0);
-    assert.ok(tagsOf(itemFile(cwd, 'task', id)).includes('state:done'));
+    assert.ok(tagsOf(itemFile(cwd, 'chore', id)).includes('state:done'));
   }, taskConfig({
     state: { store: 'field', values: ['todo', 'done'], projectsTo: 'state', note: 'Where it is.' },
   }));
@@ -344,7 +351,7 @@ test('a declaration whose command is the generic --extra spelling grows no flag'
 
 test('the usage line names the declared flags, so it is discoverable before the attempt', () => {
   withProject((cwd) => {
-    const id = task(cwd);
+    const id = chore(cwd);
     const { out } = run(['edit', id, '--nonsense', 'x'], cwd);
     assert.match(out, phrase('--state <value>'));
   });
@@ -352,13 +359,13 @@ test('the usage line names the declared flags, so it is discoverable before the 
 
 test('one field given through two spellings with two values is refused, not resolved', () => {
   withProject((cwd) => {
-    const id = task(cwd);
-    const before = itemFile(cwd, 'task', id);
+    const id = chore(cwd);
+    const before = itemFile(cwd, 'chore', id);
     const { code, out } = run(['edit', '--summary-unchanged', id, '--state', 'done', '--extra', 'state=doing'], cwd);
 
     assert.equal(code, 1, out);
     assert.match(out, phrase('state'));
-    assert.equal(itemFile(cwd, 'task', id), before);
+    assert.equal(itemFile(cwd, 'chore', id), before);
   });
 });
 
@@ -366,7 +373,7 @@ test('one field given through two spellings with two values is refused, not reso
 
 test('every declaration-composed refusal fits the layout budget', () => {
   withProject((cwd) => {
-    const id = task(cwd);
+    const id = chore(cwd);
     run(['add', '--summary-omitted', 'rule', 'Never log secrets', '--body', 'Not at any level.', '--yes'], cwd);
     for (const args of [
       ['edit', id, '--state', 'donee'],

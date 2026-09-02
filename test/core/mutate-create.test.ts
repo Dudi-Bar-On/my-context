@@ -1125,11 +1125,17 @@ test('a reserved extra key is refused as reserved, not as undeclared', () => {
  * one commit: a CUSTOM category could declare nothing, so validation shipped
  * alone would refuse every `task` item in this machine's outer corpus — 250
  * would-be violations, all of them `task`, carrying exactly these five fields.
+ *
+ * `task` has since been ADOPTED into the catalogue (2026-09-02) and now takes
+ * the built-in branch of `resolveConfig`, where `extraFields` EXTENDS the
+ * catalogue's list. These two tests are about the branch where the config's
+ * list is the WHOLE declaration and about the refusal a category declaring
+ * NOTHING gives, so they name `chore`, which the catalogue does not hold.
  */
 test('a config-declared extra field on a custom category is accepted', () => {
   const s = sandbox({
     categories: {
-      task: {
+      chore: {
         tier: 'rationale',
         description: 'A unit of planned work',
         extraFields: ['plan', 'seq', 'state', 'progress', 'source'],
@@ -1137,7 +1143,7 @@ test('a config-declared extra field on a custom category is accepted', () => {
     },
   });
   const created = createItem(s.ctx, {
-    type: 'task', title: 'Ship extra-field ownership',
+    type: 'chore', title: 'Ship extra-field ownership',
     extra: { plan: '2026-08-20-v2', seq: '7', state: 'done', progress: '100', source: 'plan' },
   });
   assert.equal(created.created, true, created.message);
@@ -1151,16 +1157,16 @@ test('a config-declared extra field on a custom category is accepted', () => {
  * entry is refused, which is why the two halves cannot ship apart. */
 test('the same custom-category item is refused when config declares no extraFields', () => {
   const s = sandbox({
-    categories: { task: { tier: 'rationale', description: 'A unit of planned work' } },
+    categories: { chore: { tier: 'rationale', description: 'A unit of planned work' } },
   });
   assert.throws(
     () => createItem(s.ctx, {
-      type: 'task', title: 'Ship extra-field ownership', extra: { plan: '2026-08-20-v2' },
+      type: 'chore', title: 'Ship extra-field ownership', extra: { plan: '2026-08-20-v2' },
     }),
     (err: Error) => {
-      assert.match(err.message, /extra field "plan" is not declared by "task"/);
-      assert.match(err.message, /A "task" declares no extra fields at all\./);
-      assert.match(err.message, /categories\.task\.extraFields/);
+      assert.match(err.message, /extra field "plan" is not declared by "chore"/);
+      assert.match(err.message, /A "chore" declares no extra fields at all\./);
+      assert.match(err.message, /categories\.chore\.extraFields/);
       return true;
     },
   );

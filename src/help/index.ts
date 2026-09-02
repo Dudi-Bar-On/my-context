@@ -264,7 +264,7 @@ export function tierUpdateList(): string {
  * that absence is the check that the data path is the only path.
  *
  * The categories that declare nothing are named in one line rather than given
- * a block each. Nineteen of the twenty-four shipped ones are silent, and
+ * a block each. Nineteen of the twenty-five shipped ones are silent, and
  * nineteen blocks saying "nothing of its own" would bury the five that are
  * not — but leaving them out entirely would leave a reader unable to tell "no
  * declaration" from "not rendered", which is the distinction the whole
@@ -971,6 +971,27 @@ const SEEDS: Record<string, Seed> = {
       + 'Untrue the day Stripe closes SUP-41022 — check there, and retire this item then.',
     scope: ['test/billing/**'],
     tags: ['billing', 'flaky'],
+  },
+  // THREE of the category's eight extra fields, and the three are chosen the
+  // way `assumption`'s specimen carries `validate_by` and not `validated_on`:
+  // the short form's seven-line budget is what makes one specimen per category
+  // affordable, so a specimen shows the fields that teach the category rather
+  // than every field it may carry. `plan` says which body of work it belongs
+  // to, `state` says where it has got to, and `needs` is the one the shipped
+  // machinery turns on — `mycontext ready` resolves it, and all three of
+  // doctor's task checks read it. `blocked` paired with a `needs` it can name
+  // is also the specimen that does NOT trip `blocked_without_needs`. `seq`,
+  // `priority`, `progress`, `source` and `last_change` are described in the
+  // categories topic, which is where a list of fields belongs.
+  task: {
+    title: 'Add backoff to the webhook dispatcher',
+    body:
+      'The dispatcher drops on the first 5xx from our own handler. Retry with exponential '
+      + 'backoff, capped at six attempts, and dead-letter the rest. Waits on billing/3, '
+      + 'which adds the dead-letter table.',
+    scope: ['src/billing/webhooks/**'],
+    tags: ['billing', 'reliability'],
+    extra: { plan: 'billing', state: 'blocked', needs: 'billing/3' },
   },
   todo: {
     title: 'Retry the webhook dispatcher on 5xx',

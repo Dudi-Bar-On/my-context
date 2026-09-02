@@ -828,6 +828,20 @@ built, it is meant as a boundary.
       "extraFields": []
     },
     {
+      "name": "task",
+      "description": "A unit of planned work, tracked to completion. Its plan, sequence, state and progress live in extra fields; the body is what the task actually requires.",
+      "extraFields": [
+        "plan",
+        "seq",
+        "state",
+        "progress",
+        "source",
+        "last_change",
+        "priority",
+        "needs"
+      ]
+    },
+    {
       "name": "todo",
       "description": "Something to build or fix later, captured the moment it occurs to you",
       "extraFields": []
@@ -1850,7 +1864,7 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>77 slash commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>79 slash commands"]
   U --> CL["<b>mycontext …</b><br/>40 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
@@ -1960,7 +1974,8 @@ Slash commands are namespaced by the plugin's name, so every one of them begins
 `create_item` tool and land as **drafts**. The rationale ones — `/mycontext:add-adr`,
 `/mycontext:add-decision`, `/mycontext:add-lesson`, `/mycontext:add-tradeoff`,
 `/mycontext:add-assumption`, `/mycontext:add-edge-case`, `/mycontext:add-risk`,
-`/mycontext:add-reference`, `/mycontext:add-todo` and `/mycontext:add-note` — land
+`/mycontext:add-reference`, `/mycontext:add-task`, `/mycontext:add-todo` and
+`/mycontext:add-note` — land
 active, because rationale is never injected and so cannot silently steer anything.
 
 `known_issue` sits on the normative tier even though it reads as a present fact
@@ -2001,8 +2016,8 @@ that category's table: `/mycontext:list-constraint`, `/mycontext:list-invariant`
 `/mycontext:list-procedure`, `/mycontext:list-environment`, `/mycontext:list-adr`,
 `/mycontext:list-decision`, `/mycontext:list-lesson`, `/mycontext:list-tradeoff`,
 `/mycontext:list-assumption`, `/mycontext:list-edge-case`, `/mycontext:list-risk`,
-`/mycontext:list-known-issue`, `/mycontext:list-reference`, `/mycontext:list-todo`,
-`/mycontext:list-note`. Each takes the same detail flags as the CLI.
+`/mycontext:list-known-issue`, `/mycontext:list-reference`, `/mycontext:list-task`,
+`/mycontext:list-todo`, `/mycontext:list-note`. Each takes the same detail flags as the CLI.
 
 `/mycontext:LoadMyContext` is the odd one out: it injects the pinned items and the index
 into the session right now, without waiting for a session start. Use it when you cleared
@@ -2072,7 +2087,7 @@ the shell it ran in is on.
 /mycontext:LoadMyContext
 ```
 
-There is one `add-<type>` and one `list-<type>` per **enabled** category — 48 today — plus
+There is one `add-<type>` and one `list-<type>` per **enabled** category — 50 today — plus
 the 28 that are not per-category: `add`, `search`, `show`, `todo`, `doctor`, `decay`,
 `query`, `status`, `audit`, `focus`, `ui`, `review`, `promote`, `discard`, `procedure`,
 `inbox-promote`,
@@ -2084,7 +2099,7 @@ a test fails if the committed files and the generator disagree: a disabled categ
 keep a command that would then be refused. `add` is generated from nothing, which is the
 point of it — it is the one that survives a category the generator never saw.
 
-All 76 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 78 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -3779,7 +3794,7 @@ Bookstore API corpus, and the output quoted is what actually changed.
 
 ### `profile` — which categories exist at all
 
-Two profiles: `minimal` (8 categories) and `standard` (all 24, the default) — see
+Two profiles: `minimal` (8 categories) and `standard` (all 25, the default) — see
 [what the difference buys](#the-two-profiles-and-the-one-that-was-removed). A profile decides
 which categories are **enabled**; an unknown profile name is an error at load time, not a
 silent fallback, and that includes `full`, which was a third profile until the categories it
@@ -3807,7 +3822,7 @@ The definitions live in the catalogue (`src/core/categories.ts`) and are printed
 project by `mycontext help categories`, which the model reads through the same
 `mycontext_help` tool. **The block below is that command's real output**, run against the
 example project **with one named transformation applied so that it renders here** — the
-table of the 24 categories the `standard` profile enables, in tier order, and then one entry
+table of the 25 categories the `standard` profile enables, in tier order, and then one entry
 per type: what it is for, and the single type it is most often confused with, with the test
 that separates the two.
 
@@ -3819,7 +3834,7 @@ and applying that rule (`toDocumentMarkdown`), so `npm run gen:docs` regenerates
 `test/docs/examples.test.ts` re-runs the command and applies the same rule from the same
 function on every test run, so a block that has fallen behind the catalogue fails the suite.
 The headings are folded rather than kept because they are the *tool's* headings, not
-sections of this document: written as headings they would put 28 entries into this
+sections of this document: written as headings they would put 29 entries into this
 document's outline that its table of contents does not link to.
 
 It is printed here in full rather than folded away. The comparisons are the part of this
@@ -3875,6 +3890,7 @@ Only the types below are accepted in this project. Anything else is refused.
 | `note` | rationale | `NOTE-` | Anything that arose during development and must not be lost |
 | `reference` | rationale | `REF-` | A snapshot of a file, with its origin recorded so doctor reports drift |
 | `risk` | rationale | `RISK-` | May occur and would harm |
+| `task` | rationale | `TASK-` | A unit of planned work, tracked to completion. Its plan, sequence, state and progress live in extra fields; the body is what the task actually requires. |
 | `todo` | rationale | `TODO-` | Something to build or fix later, captured the moment it occurs to you |
 | `tradeoff` | rationale | `TRADE-` | What was sacrificed for what |
 
@@ -3988,6 +4004,29 @@ the table. A type then adds only the names that are its own.
 - **`impact`** — a field; free text; `mycontext edit <id> --extra impact=<value>`
   How much it would harm. The shipped example uses `high`; nothing constrains
   the value today.
+
+**`task`** — the `rationale` rules above, and 8 of its own:
+
+- **`state`** — a field, projected to `state:` tags; `todo`, `doing`, `blocked`, `done`; `mycontext edit <id> --extra state=<value>`
+  Where this task is.
+- **`plan`** — a field, projected to `plan:` tags; free text; `mycontext edit <id> --extra plan=<value>`
+  Which body of work it belongs to.
+- **`seq`** — a field, projected to `seq:` tags; free text; `mycontext edit <id> --extra seq=<value>`
+  Position within the plan.
+- **`priority`** — a field; `1`, `2`, `3`, `4`; `mycontext edit <id> --extra priority=<value>`
+  1 is highest.
+- **`progress`** — a field; free text; `mycontext edit <id> --extra progress=<value>`
+  Percent complete. Only 0 and 100 are used today; state is the real signal.
+- **`source`** — a field; free text; `mycontext edit <id> --extra source=<value>`
+  The document this task came from.
+- **`last_change`** — a field; free text; `mycontext edit <id> --extra last_change=<value>`
+  Hand-typed and unreliable - all 133 disagree with the audit log, which is the
+  store that knows.
+- **`needs`** — a field; free text; `mycontext edit <id> --extra needs=<value>`
+  The plan/seq references this task waits on, comma-separated - e.g. "walk/7,
+  port/6". Shape is checked, existence is not: a reference to a task that does
+  not exist yet is legitimate, because plans are written before their tasks
+  are.
 
 The other 19 — `constraint`, `environment`, `glossary`, `instruction`,
 `invariant`, `known_issue`, `non_goal`, `pattern`, `procedure`, `runbook`,
@@ -4315,6 +4354,26 @@ rather than a list of worries.
 **Nearest neighbour: `assumption`.** A risk may happen; an assumption is already
 being relied on as true. A risk is watched; an assumption is checked.
 
+**`task`**
+
+A unit of planned work, tracked to completion. `plan` and `seq` say which body
+of work it belongs to and where it sits inside it, `state` says where the task
+has got to (`todo`, `doing`, `blocked`, `done`), and `needs` names the plan/seq
+references it is waiting on. The body is what the task actually requires; the
+extra fields are how the work is tracked around it.
+
+**`mycontext ready` is the command this type exists for.** It reads `needs`
+against the corpus and answers *what can be picked up right now*, and
+`mycontext doctor` reports the three ways a task's dependencies go wrong —
+blocked with nothing recorded to be blocked on, blocked when every dependency is
+already met, and a reference that does not resolve.
+
+**Nearest neighbour: `todo`.** A todo is a thought captured the moment it occurs
+to you, with no plan around it and nothing tracking whether it was ever done. A
+task is planned work with a position, a state and sometimes a dependency. Both
+are rationale and neither governs; promote a todo to a task once it has a plan
+and a place in one.
+
 **`tradeoff`**
 
 What a choice cost — the thing given up, and what was bought with it. It exists
@@ -4640,6 +4699,20 @@ The importer has no backoff today.
 ```
 <!-- /example -->
 
+**`task`**
+
+<!-- example: examples task --short -->
+```text
+id: TASK-add-backoff-to-the-webhook-dispatcher
+title: Add backoff to the webhook dispatcher
+plan: billing
+state: blocked
+needs: billing/3
+
+The dispatcher drops on the first 5xx from our own handler. Retry with exponential backoff, capped at six attempts, and dead-letter the rest. Waits on billing/3, which adds the dead-letter table.
+```
+<!-- /example -->
+
 **`tradeoff`**
 
 <!-- example: examples tradeoff --short -->
@@ -4673,7 +4746,7 @@ Noticed while debugging something else; not characterised yet. If it turns out t
 ```
 <!-- /example -->
 
-That is every category in the catalogue — twenty-four specimens, twenty-four types, nothing left
+That is every category in the catalogue — twenty-five specimens, twenty-five types, nothing left
 without a worked example. A category you [declare yourself](#categories-you-define-yourself)
 is the one case `mycontext examples` cannot answer with real content, and it says so rather
 than inventing one.
@@ -4857,7 +4930,7 @@ a session — the [generic capture command](#what-you-type-the-slash-commands), 
 argument is the category precisely so that a name this plugin never shipped can be one.
 
 That is the thing worth taking from this section: **my_context is a substrate for whatever
-normative vocabulary your project actually has**, not a fixed list of twenty-four nouns. If your
+normative vocabulary your project actually has**, not a fixed list of twenty-five nouns. If your
 domain thinks in security controls or service level objectives, declare them and file them
 as that, rather than under the nearest built-in — `type` is fixed at creation, so a misfiled
 item stays misfiled.
@@ -4932,8 +5005,8 @@ or ask the model to, which reaches `create_item` — that surface takes any enab
 
 ### The two profiles, and the one that was removed
 
-The catalogue holds **24** categories, and `standard` — what `mycontext init` writes —
-enables all **24** of them. Nothing ships switched off.
+The catalogue holds **25** categories, and `standard` — what `mycontext init` writes —
+enables all **25** of them. Nothing ships switched off.
 
 That was not always true. Three categories, `policy`, `postmortem` and `taxonomy`, shipped
 disabled because each duplicated one that was already on: `policy` overlapped `rule` and
@@ -5835,7 +5908,7 @@ in two ways, and neither of them is a widget, because **there is still no picker
 to ship one**: a slash command's `argument-hint` frontmatter field supplies placeholder text
 on the argument line, and nothing in a plugin can put a menu on `--severity`.
 
-**By naming.** The 24 `/mycontext:add-<type>` and 24 `/mycontext:list-<type>` commands *are*
+**By naming.** The 25 `/mycontext:add-<type>` and 25 `/mycontext:list-<type>` commands *are*
 the category selector, which is why they are generated per category rather than taking a
 `<type>` argument; autocomplete filters the list as you type. `/mycontext:add` takes the
 argument instead, and is not a retreat from that: naming works only for the categories the

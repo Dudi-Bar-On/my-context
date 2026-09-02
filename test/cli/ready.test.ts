@@ -206,12 +206,38 @@ test('a project with no work-planning category is told so, not shown an empty li
   // "Nothing is ready" and "this project declares no category that plans
   // work" are different answers; printing the first for the second is the
   // silent-empty-answer failure `list` and `search` were both fixed for.
-  const cwd = project(null);
+  //
+  // The project has to SWITCH `task` OFF to reach this answer, and that is the
+  // only route there is since `task` shipped in the catalogue (2026-09-02): a
+  // config `extraFields` override extends the catalogue's list rather than
+  // replacing it, so no config can take `plan`, `seq` and `state` off `task`.
+  // `enabled` is the switch a project actually has, `isWorkCategory` follows
+  // it, and the sentence below names it back.
+  const cwd = project({ profile: 'standard', categories: { task: { enabled: false } } });
   try {
     const { code, out } = run(['ready'], cwd);
     assert.equal(code, 0);
-    assert.match(prose(out), /no category in this project declares "plan", "seq" and "state"/);
+    assert.match(prose(out),
+      /no ENABLED category in this project declares "plan", "seq" and "state"/);
+    assert.match(prose(out), /categories\.task\.enabled/);
     assert.doesNotMatch(prose(out), /no task is ready to start/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/** ...and the other half: a project that changed NOTHING has one, which is the
+ * hole shipping the category closed. Before it shipped, a fresh install got a
+ * `ready` command that could never find anything. */
+test('a fresh project has a work-planning category with no config edit at all', () => {
+  const cwd = project(null);
+  try {
+    writeTask(cwd, 'TASK-walk-7', { plan: 'walk', seq: '7', state: 'todo' });
+    const { code, out } = run(['ready', '--json'], cwd);
+    assert.equal(code, 0);
+    const doc = JSON.parse(out);
+    assert.deepEqual(doc.workCategories, ['task']);
+    assert.equal(doc.readyTotal, 1);
   } finally {
     removeTree(cwd);
   }

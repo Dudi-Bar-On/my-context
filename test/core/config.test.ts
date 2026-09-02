@@ -520,31 +520,37 @@ test('an unknown key on a category entry is refused, not ignored', () => {
  * (core/trust.ts) refuses a key the item's category does not declare — so the
  * reason is answered and the key is settable.
  *
- * Both halves had to land together: 250 would-be violations exist in this
- * machine's outer corpus and every one of them is a `task` item, a CUSTOM
+ * Both halves had to land together: 250 would-be violations existed in this
+ * machine's outer corpus and every one of them was a `task` item, a CUSTOM
  * category, which before this could declare nothing at all. Validation shipped
  * alone would have refused exactly the items the feature was built for.
+ *
+ * `task` has since been ADOPTED into the catalogue (2026-09-02), so the
+ * fixtures below name `chore` instead: a shipped category takes the built-in
+ * branch of `resolveConfig`, where `extraFields` EXTENDS the catalogue's list,
+ * and these two tests are about the branch where the config's list is the whole
+ * of it. The built-in branch is pinned in `config-task-override.test.ts`.
  */
 test('extraFields is a settable category key on a custom category', () => {
   const cfg = resolveConfig({
     categories: {
-      task: {
+      chore: {
         tier: 'rationale',
         description: 'A unit of planned work',
         extraFields: ['plan', 'seq', 'state', 'progress', 'source'],
       },
     },
   });
-  assert.deepEqual(cfg.categories.task.extraFields, ['plan', 'seq', 'state', 'progress', 'source']);
+  assert.deepEqual(cfg.categories.chore.extraFields, ['plan', 'seq', 'state', 'progress', 'source']);
   // And it reaches the union the MCP schema is built from.
   assert.ok(extraFieldNames(cfg).includes('progress'));
 });
 
 test('a custom category with no extraFields entry still declares none', () => {
   const cfg = resolveConfig({
-    categories: { task: { tier: 'rationale', description: 'A unit of planned work' } },
+    categories: { chore: { tier: 'rationale', description: 'A unit of planned work' } },
   });
-  assert.deepEqual(cfg.categories.task.extraFields, []);
+  assert.deepEqual(cfg.categories.chore.extraFields, []);
 });
 
 /**

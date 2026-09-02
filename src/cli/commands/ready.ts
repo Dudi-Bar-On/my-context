@@ -151,11 +151,13 @@ function cmdReady(ws: Workspace, args: string[], out: Emit): number {
   /**
    * Which categories this report is about, resolved rather than assumed.
    *
-   * `task` is a CUSTOM category — it exists in this project because
-   * `.my_context/config.json` declares it — so a report keyed on the NAME
-   * would print "nothing is ready" in a project that calls the same idea
-   * `story`, which is the accepted-and-ignored answer this corpus rules out.
-   * `isWorkCategory` asks for the three fields the report actually needs.
+   * `task` ships in the catalogue (2026-09-02) and was a CUSTOM category before
+   * that, which is why this is not keyed on the NAME: a report that looked for
+   * `task` would print "nothing is ready" in a project that calls the same idea
+   * `story`, which is the accepted-and-ignored answer this corpus rules out,
+   * and it would still do so now that one spelling happens to be shipped.
+   * `isWorkCategory` asks for the three fields the report actually needs, and
+   * for the category being switched on.
    */
   const workCategories = Object.keys(ws.config.categories)
     .filter((name) => isWorkCategory(ws.config, name))
@@ -244,9 +246,11 @@ function cmdReady(ws: Workspace, args: string[], out: Emit): number {
     // this project plans work" are different answers, and printing the first
     // for the second is the silent-empty-answer failure `list` and `search`
     // were both fixed for.
-    say(out, `my_context: no category in this project declares "${PLAN_FIELD}", "${SEQ_FIELD}" ` +
-      `and "${STATE_FIELD}", so there is no planned work to order. A category that plans work ` +
-      `declares those three in categories.<name>.extraFields in .my_context/config.json, plus ` +
+    say(out, `my_context: no ENABLED category in this project declares "${PLAN_FIELD}", ` +
+      `"${SEQ_FIELD}" and "${STATE_FIELD}", so there is no planned work to order. The shipped ` +
+      `"task" category declares all four; if this project switched it off, ` +
+      `categories.task.enabled in .my_context/config.json is the switch. A category of your ` +
+      `own that plans work declares those three in categories.<name>.extraFields there, plus ` +
       `"${NEEDS_FIELD}" for the dependency this report reads.`);
     emitLoadErrors(errors, out);
     return 0;

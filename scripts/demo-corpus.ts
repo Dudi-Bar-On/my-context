@@ -145,10 +145,15 @@ const config = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, un
 // rather than a number invented for it.
 config['budgets'] = { pinned: 240, jit: 180, restored: 240, continuity: 2000, index: 90 };
 // **The same category configuration the real corpus runs**, so the demo
-// exercises the shape the product is actually used in. `task` is not in any
-// stock profile — it is a project-defined category — and a demo corpus without
-// it cannot populate the Work or Status screens at all. Copied field for field
+// exercises the shape the product is actually used in. Copied field for field
 // rather than invented, so the two corpora agree about what a task IS.
+//
+// `task` SHIPS in the catalogue as of 2026-09-02, which makes this entry
+// redundant rather than wrong: a name the catalogue holds takes the built-in
+// branch of `resolveConfig`, where each key is applied on its own — the scalars
+// replace with equal values and `extraFields` extends with names the catalogue
+// already declares. It is kept because the real corpus's `config.json` still
+// carries it, and this block's whole claim is that the two agree.
 config['categories'] = {
   reference: { tier: 'normative' },
   task: {

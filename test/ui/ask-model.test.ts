@@ -364,8 +364,23 @@ function taskWorkspace(): { dir: string; root: string; done: () => void } {
   // the field, and FIFTEEN of those disagree. Reconciling them is
   // `plan:categories seq:18`, not this report; what this report owes is to say
   // which one it read, and this row is what pins that answer.
+  //
+  // The disagreement is written STRAIGHT TO THE FILE, because since `task`
+  // shipped in the catalogue (2026-09-02) it declares `state` with a
+  // `projectsTo`, and `createItem` regenerates the tag from the field in the
+  // same write — no `add` can leave the two disagreeing any more. The corpora
+  // this report was built for were authored before that gate existed and are
+  // full of rows exactly like this one, so the fixture reproduces them the only
+  // way they can still be reproduced: as bytes on disk, read back by the same
+  // parser. The audit log is untouched, so the `count`/`lastOp` assertions
+  // below still describe the `add` that created it.
   run(['add', '--summary-omitted', 'task', 'Backfill the invoice ids', '--body', 'B.',
-    '--tags', 'plan:alpha,seq:2,state:doing', '--extra', 'state=todo', '--yes']);
+    '--tags', 'plan:alpha,seq:2', '--extra', 'state=todo', '--yes']);
+  const drifted = path.join(dir, '.my_context', 'items', 'task', 'TASK-backfill-the-invoice-ids.md');
+  const before = readFileSync(drifted, 'utf8');
+  const after = before.replace('state:todo', 'state:doing');
+  assert.notEqual(after, before, 'the projected `state:todo` tag was not where the fixture expects it');
+  writeFileSync(drifted, after);
   // `seq:10` sorts AFTER `seq:2` here and BEFORE it under a string compare.
   run(['add', '--summary-omitted', 'task', 'Split the settlement job', '--body', 'B.',
     '--tags', 'plan:alpha,seq:10,state:todo', '--yes']);

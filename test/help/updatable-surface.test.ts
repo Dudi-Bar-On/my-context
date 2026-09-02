@@ -6,7 +6,7 @@
  * Until these renderings existed, nothing anywhere printed either: not the
  * category table, not the seven help topics, not `mycontext examples`. Five
  * rules were learned in one session by trying something and reading the
- * refusal — `state` on a task being a TAG, `--tags` replacing the whole list,
+ * refusal — `state` on a chore being a TAG, `--tags` replacing the whole list,
  * `--severity hard` being refused on the rationale tier, `always` having two
  * spellings, `source_file` having no command at all — which is guidance
  * arriving after the attempt.
@@ -33,16 +33,20 @@ import type { Tier } from '../../src/core/types.ts';
 const CONFIG = resolveConfig({});
 
 /**
- * The outer corpus's own `task`, copied from `.my_context/config.json` as a
- * CONFIG DOCUMENT rather than imported: it is a category that exists nowhere
- * in `src/`, which is exactly what makes it the check that the data path is
- * the only path.
+ * A category declared as a CONFIG DOCUMENT rather than imported: it exists
+ * nowhere in `src/`, which is exactly what makes it the check that the data
+ * path is the only path.
+ *
+ * It was the outer corpus's own `task`, copied from `.my_context/config.json`,
+ * until `task` was adopted into the catalogue on 2026-09-02 — at which point it
+ * stopped being config-only and the assertion below says so out loud. `chore`
+ * is the same declaration under a name the catalogue does not hold.
  */
 const CUSTOM = resolveConfig({
   categories: {
-    task: {
+    chore: {
       tier: 'rationale',
-      prefix: 'TASK',
+      prefix: 'CHORE',
       description: 'A unit of planned work, tracked to completion.',
       extraFields: ['plan', 'seq', 'state'],
     },
@@ -115,7 +119,7 @@ test('help categories prints every tier rule: its name, its store, its values an
 
 /**
  * The difference between the tiers is the part a reader cannot guess, and the
- * part that cost an attempt: `--severity hard` on a task is refused, and the
+ * part that cost an attempt: `--severity hard` on a chore is refused, and the
  * refusal — which is a good one — arrives only after the attempt.
  *
  * Asserted as a difference rather than against the literal `soft`: whatever
@@ -189,14 +193,14 @@ test('mycontext examples prints the surface beside the specimen, tier rules firs
 /**
  * The check that the data path is the only path.
  *
- * `task` and `sla` exist nowhere in `src/`; they are two objects in a config
+ * `chore` and `sla` exist nowhere in `src/`; they are two objects in a config
  * document. A shipped category on the same tier that also declares nothing of
  * its own must therefore produce the SAME rendering, name for name — any
  * difference is a branch for built-ins, which is the thing this requirement
  * exists to rule out.
  */
 test('a category defined only in config.json renders exactly like a shipped one', () => {
-  const pairs: [string, string][] = [['task', 'todo'], ['sla', 'constraint']];
+  const pairs: [string, string][] = [['chore', 'todo'], ['sla', 'constraint']];
   for (const [custom, shipped] of pairs) {
     assert.ok(!Object.hasOwn(CATEGORIES, custom),
       `\`${custom}\` is in the catalogue now — it can no longer stand for a config-only category`);
@@ -227,7 +231,7 @@ test('a category defined only in config.json renders exactly like a shipped one'
   // category table above it: named on exactly the terms a shipped category is.
   const closing = flat(helpTopic('categories', CUSTOM).split('\n\n')
     .find((block) => /nothing of (its|their) own/.test(block)) ?? '');
-  for (const name of ['task', 'sla']) {
+  for (const name of ['chore', 'sla']) {
     assert.ok(closing.includes(`\`${name}\``),
       `the categories topic's update section never names \`${name}\` — it is rendered from ` +
       `the catalogue rather than from the resolved config, so a project's own categories ` +
@@ -236,19 +240,19 @@ test('a category defined only in config.json renders exactly like a shipped one'
 });
 
 /**
- * A reader of a `task`'s help must learn the rationale tier's rules from the
- * command, not from `src/core/categories.ts`. `task` is the case that made the
+ * A reader of a `chore`'s help must learn the rationale tier's rules from the
+ * command, not from `src/core/categories.ts`. `chore` is the case that made the
  * point: it is defined only in a config document, it is on the rationale tier,
  * and `--severity hard` on one is refused.
  */
-test('a task teaches its tier\'s refusals without anyone reading the source', () => {
-  const surface = flat(wide(() => updatableSurface('task', CUSTOM)));
+test('a chore teaches its tier\'s refusals without anyone reading the source', () => {
+  const surface = flat(wide(() => updatableSurface('chore', CUSTOM)));
   for (const [name, entry] of Object.entries(TIER_UPDATES.rationale)) {
-    assert.ok(surface.includes(flat(entry.note)), `\`mycontext examples task\` never says what ` +
-      `\`${name}\` means on the tier the task is actually on`);
+    assert.ok(surface.includes(flat(entry.note)), `\`mycontext examples chore\` never says what ` +
+      `\`${name}\` means on the tier the chore is actually on`);
     for (const value of entry.values ?? []) {
       assert.ok(surface.includes(value),
-        `\`${name}\` on a task admits ${JSON.stringify(value)} and the surface does not say so`);
+        `\`${name}\` on a chore admits ${JSON.stringify(value)} and the surface does not say so`);
     }
   }
 });

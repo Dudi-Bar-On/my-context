@@ -67,7 +67,7 @@ export interface UpdatableName {
 /**
  * A category's own updatable surface, by name. Empty is a real answer.
  *
- * Two places produce one: the catalogue below, for the twenty-four shipped
+ * Two places produce one: the catalogue below, for the twenty-five shipped
  * categories, and `.my_context/config.json`, for the ones a person defines —
  * "custom categories are created by humen and it should be written in a way a
  * user could edit and define it in the config" (owner, 2026-08-23). The loader
@@ -89,7 +89,7 @@ export type CategoryUpdates = Readonly<Record<string, UpdatableName>>;
  * category declares only what is genuinely its own."
  *
  * So `CATEGORIES[x].updates` below carries a category's OWN names and nothing
- * else, and every one of the 24 shipped categories is silent about `title`,
+ * else, and every one of the 25 shipped categories is silent about `title`,
  * `status` and the rest — because this table already said it.
  *
  * **The two tiers differ in exactly two entries, and the difference is read off
@@ -139,7 +139,7 @@ export interface CategoryDef {
    *
    * Every category has one, and `{}` is a real declaration rather than a gap:
    * it says this category adds nothing of its own, which is true of nineteen of
-   * the twenty-four shipped ones. What it must never be is absent — a category
+   * the twenty-five shipped ones. What it must never be is absent — a category
    * that cannot describe its own updates teaches nobody anything, which is the
    * sentence the requirement opens with.
    */
@@ -285,6 +285,65 @@ export const CATEGORIES: Record<string, CategoryDef> = {
   // rather than softened.
   reference:     def('reference', 'REF', 'rationale', true,
     'A snapshot of a file, with its origin recorded so doctor reports drift'),
+  // A unit of planned work, and the ONE category the product already had the
+  // machinery for and not the entry: `cli/commands/ready.ts` prints the column
+  // headers `['task','pri','state','title']`, `core/needs.ts` computes
+  // readiness from a `needs` field, and `doctor/checks.ts` carries
+  // `blocked_without_needs`, `blocked_needs_met` and `needs_unresolved`. All of
+  // it was reachable only by a project that invented `task` in its own
+  // `config.json`, so a fresh install got a `ready` command that could never
+  // find anything and three doctor checks that could never fire. Shipping the
+  // category is what closes that.
+  //
+  // Taken verbatim from the working definition this repository's outer corpus
+  // has run on since 2026-08-23 — the same tier, prefix, description, eight
+  // extra fields and eight update declarations — rather than re-derived, so a
+  // corpus that already holds task items keeps the exact shape it was written
+  // against.
+  //
+  // RATIONALE, and deliberately: a task is REASONING ABOUT WORK, not a rule the
+  // work must satisfy. Nothing an agent does is wrong because a task exists, so
+  // it must not reach the tier that is injected in full and named in the
+  // session index — 515 open tasks arriving as 515 things a model is told to
+  // care about is exactly the failure the tier boundary exists to prevent. The
+  // views that DO need them (`ready`, `plan`, `doctor`) query the store
+  // directly and never go through `select`.
+  task:          def('task', 'TASK', 'rationale', true,
+    'A unit of planned work, tracked to completion. Its plan, sequence, state and progress live in extra fields; the body is what the task actually requires.',
+    ['plan', 'seq', 'state', 'progress', 'source', 'last_change', 'priority', 'needs'], {
+      state: {
+        store: 'field', values: ['todo', 'doing', 'blocked', 'done'], projectsTo: 'state',
+        note: 'Where this task is.',
+      },
+      plan: {
+        store: 'field', projectsTo: 'plan',
+        note: 'Which body of work it belongs to.',
+      },
+      seq: {
+        store: 'field', projectsTo: 'seq',
+        note: 'Position within the plan.',
+      },
+      priority: {
+        store: 'field', values: ['1', '2', '3', '4'],
+        note: '1 is highest.',
+      },
+      progress: {
+        store: 'field',
+        note: 'Percent complete. Only 0 and 100 are used today; state is the real signal.',
+      },
+      source: {
+        store: 'field',
+        note: 'The document this task came from.',
+      },
+      last_change: {
+        store: 'field',
+        note: 'Hand-typed and unreliable - all 133 disagree with the audit log, which is the store that knows.',
+      },
+      needs: {
+        store: 'field',
+        note: 'The plan/seq references this task waits on, comma-separated - e.g. "walk/7, port/6". Shape is checked, existence is not: a reference to a task that does not exist yet is legitimate, because plans are written before their tasks are.',
+      },
+    }),
   // The inbox, and the tier is the feature rather than a taxonomy judgement.
   // Every other category expects the author to already know what kind of
   // knowledge they have; at the moment a thought arrives mid-development they
@@ -314,7 +373,7 @@ export type ProfileName = 'minimal' | 'standard';
  * that shipped switched off because each duplicated a clearer sibling — so
  * `full` was, in practice, the name for "including the three nobody should
  * enable". Phase 3 removed all three, and the two names have resolved to the
- * same catalogue ever since — twenty categories then, twenty-four now, every
+ * same catalogue ever since — twenty categories then, twenty-five now, every
  * one of them enabled by default. Two profile names that are synonyms, one of
  * which a user has to be told means nothing different.
  *
