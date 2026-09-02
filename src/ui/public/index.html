@@ -89,10 +89,11 @@
       <button class="sel" id="focusbtn" aria-haspopup="dialog" aria-expanded="false">
         <span id="focus-label"></span> <b id="focuslbl"></b>
       </button>
-      <!-- #sesspop is the same story. app.js still computes and exposes the
-           default/cold session (ctx.session()), it just has no dropdown to
-           paint it into yet — see app.js's loadSessions() and this task's
-           report. -->
+      <!-- #sesspop IS built now — below, after `</header>`, where the design of
+           record puts it. `aria-haspopup="dialog"` finally names something that
+           exists, and `aria-expanded` is moved by app.js's togglePopover()
+           rather than being a permanent "false" about a dialog there was no way
+           to expand. -->
       <button class="sel" id="sessbtn" aria-haspopup="dialog" aria-expanded="false">
         <span class="live"></span> <span id="session-label"></span> <b id="sesslbl"></b>
       </button>
@@ -102,6 +103,57 @@
            answer to it. No #theme button: dark only (repaint Task 1). -->
     </div>
   </header>
+
+  <!-- ══ THE SESSION PICKER — docs/design/web-ui-mockup.html ~2323-2342 ══
+       (read as the design of record, never edited: owner ruling 2026-09-02,
+       "it should stay as reference".)
+
+       WHY IT SITS HERE and not inside `.topr`: `.pop{position:absolute}` with
+       `inset-block-start:42px` measures from the initial containing block, and
+       DOM order is tab order — a keyboard user reaches the trigger in the
+       header, then the dialog it opened, then the rail. Nested inside `.topr`
+       (a flex row) it would also be a flex item, and `[hidden]`'s `display:none`
+       is the only thing that would keep it from widening the header.
+
+       **THIS IS A READ, AND THAT IS WHY IT HAS NO CONFIRMATION.** Choosing a
+       session changes which session every screen ASKS about — `ctx.session()`,
+       and the listeners `ctx.onSessionChange` hands out — and writes nothing
+       anywhere. `plan:walk seq:35` measured the cost of its absence: with no
+       picker `ctx.session()` was always `/api/sessions`' `default`, so
+       *Injected now* could only ever draw one session and its own e2e had to
+       mount the screen module rather than navigate to it. Compare `#focuspop`
+       below, which COMPOSES a command line and runs nothing.
+
+       EVERY TEXT NODE IS EMPTY and filled by app.js's applyStatic() from
+       `[data-t]` — the rule the whole shell follows (no innerHTML, no authored
+       English the א/A toggle cannot reach). `#sesslist`'s rows are built by
+       paintSessionList() from `/api/sessions`, so a session's NAME reaches the
+       reader wherever `mycontext session name` gave it one.
+
+       `aria-label` is authored in English beside `data-t-aria` for the same
+       reason `#pane` and `#panegrip` carry both: nothing in this shell applies
+       the -aria form yet, and a dialog with no accessible name at all is worse
+       than one named in the wrong language. -->
+  <div class="pop gloss float" id="sesspop" role="dialog" aria-label="Session"
+       data-t-aria="aria.sesspop" hidden>
+    <h3 data-t="sess.title"></h3>
+    <div id="sesslist"></div>
+    <p class="aside" data-t="sess.name"></p>
+    <hr>
+    <!-- The cold session is a DIFFERENT QUESTION, not another row of the list
+         above, which is why the design of record puts a rule between them: it
+         asks what a brand-new session would receive, and there is no ledger row
+         for it to have come from. `data-cold` rather than a reserved
+         `data-sid="cold"`, so the two can never be confused by a selector. -->
+    <button class="row" data-cold="1">
+      <span><b data-t="sess.cold"></b></span>
+      <span class="small" data-t="sess.coldn"></span>
+    </button>
+    <p class="aside" data-t="sess.coldhelp"></p>
+    <hr>
+    <p class="aside" data-t="sess.parent"></p>
+  </div>
+
   <nav class="rail" id="nav" aria-label="Screens"></nav>
   <main class="body" id="screen"></main>
   <!-- The exit banner IS in the mockup: <div class="banner" id="exited"> with

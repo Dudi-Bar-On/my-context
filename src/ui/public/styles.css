@@ -563,6 +563,50 @@ bdi{unicode-bidi:isolate}
 .icon:hover,.sel:hover{border-color:var(--ink);color:var(--ink)}
 .icon[aria-pressed="true"]{background:var(--goldbg);border-color:var(--gold);color:var(--gold)}
 
+/* ─── THE TITLE-BAR POPOVERS — #sesspop and #focuspop, copied byte-for-byte
+   from docs/design/web-ui-mockup.html (~515-526 and ~599-610) with the two
+   dialogs themselves, 2026-09-02. The mockup is read here and never written
+   (owner ruling, 2026-09-02).
+
+   NINE RULES AND NOT ONE OF THEM IS NEW. `.gloss` / `.gloss.float` are the
+   card material this file's own R5 comment already names as "still used by
+   .gloss / .gloss.float" — the tokens were carried across on day one and the
+   rules that spend them never were, because nothing in the app wore the class.
+   `.aside` is the popovers' explanatory register. Both were invisible to
+   test/ui/styles-parity.test.ts for the reason that file records against the
+   item pane: "parity measures what the app renders against what the mockup
+   declares, so a whole element the app never built is invisible to it in both
+   directions." They are listed there now, with the seven .pop rules.
+
+   `.pop{position:absolute}` resolves against the initial containing block —
+   `.app` sets no `position` — which is what makes `inset-block-start:42px` the
+   header's own height and `inset-inline-end` mirror with the writing
+   direction rather than needing an RTL override. */
+.gloss{
+  background-color:var(--panel);
+  background-image:linear-gradient(to bottom,     /* vertical => no RTL work */
+      var(--sheen-top) 0%, transparent 42%, transparent 62%, var(--sheen-bottom) 100%);
+  box-shadow:var(--e1),
+      inset 0 1px 0 0 var(--rim-lit),
+      inset 0 -1px 0 0 var(--rim-shade);
+  border:1px solid var(--edge-3);
+  border-radius:var(--r-lg);
+}
+.gloss.float{background-color:var(--panel-2);
+  box-shadow:var(--e3),inset 0 1px 0 0 var(--rim-lit),inset 0 -1px 0 0 var(--rim-shade)}
+.pop{position:absolute;inset-block-start:42px;inset-inline-end:var(--sp-3);
+  inline-size:min(400px,92vw);padding:var(--sp-3);z-index:20}
+.pop[hidden]{display:none}
+.pop h3{margin:0 0 6px;font-size:var(--fs-0);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim);font-weight:700}
+.pop .row{display:flex;justify-content:space-between;gap:var(--sp-3);align-items:center;
+  padding:5px 6px;border-radius:var(--r-md);cursor:pointer;font-size:var(--fs-1);
+  inline-size:100%;border:0;background:none;text-align:start}
+.pop .row:hover{background:var(--sink)}
+.pop .row[aria-selected="true"]{background:var(--goldbg)}
+.pop hr{border:0;border-block-start:1px solid var(--rule);margin-block:var(--sp-2)}
+.aside{font-size:var(--fs-0);color:var(--dim);line-height:1.45;margin:0}
+
 /* The rail's own layout — same story as .hdr: grid-area is inert without
    .app, but overflow-y/padding-block apply regardless. Its INLINE-SIZE
    (214px in the mockup) comes ONLY from .app's grid-template-columns, so

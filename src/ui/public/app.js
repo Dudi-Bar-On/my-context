@@ -117,6 +117,21 @@
 //   target id, never as markup this task owns. loadSessions() below still
 //   computes and exposes the real default/cold session (ctx.session()) so a
 //   later task can wire the popup without re-deriving that logic.
+//
+//   ── AND #sesspop LANDED ON 2026-09-02 (`plan:walk seq:115`) ──────────────
+//
+//   That refusal was right when it was written and became a defect: two
+//   controls in the title bar did nothing when pressed, and the owner asked
+//   for the session picker twice in one morning. `#sesspop` is now built —
+//   markup in `index.html` after `</header>`, mechanism in `installPopovers()`
+//   below, rows in `paintSessionList()` — and it consumes `loadSessions()`'s
+//   answer exactly as the note above anticipated, without re-deriving it.
+//
+//   The picker is a READ: it moves `sessionValue` and nothing else, so every
+//   screen's next request names the chosen session and the server is never
+//   told anything. That is what ends the state `plan:walk seq:35` measured,
+//   where `ctx.session()` could only ever be the default and *Injected now*
+//   could only ever draw one session.
 
 import { extractNonce, exchangeNonce } from '/lib/bootstrap.js';
 import { startHeartbeat } from '/lib/heartbeat.js';
@@ -1195,13 +1210,168 @@ function installItemPane() {
   // (`e2e/keyboard.spec.ts` asserts that contract for those).
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
-    // **Escape steps back ONE level.** One un-floats, a second closes. The
-    // alternative — one Escape dismissing both at once — is the gesture a
-    // MODAL would answer to, and this is deliberately not a modal: the rail
-    // and the body stay usable behind the floating pane, so leaving the
-    // expanded view is a separate act from leaving the item.
+    // **Escape steps back ONE level**, and as of 2026-09-02 there is a level
+    // ABOVE the pane to step back from: a title-bar popover. `installPopovers`
+    // handles that key first (it is installed first, and document listeners run
+    // in registration order) and this guard is what stops the SAME keystroke
+    // from also closing the pane behind it. Without it, one Escape over an open
+    // `#sesspop` would dismiss the dialog and the item the reader was reading.
+    if (popoverOpen() !== null) return;
+    // One un-floats, a second closes. The alternative — one Escape dismissing
+    // both at once — is the gesture a MODAL would answer to, and this is
+    // deliberately not a modal: the rail and the body stay usable behind the
+    // floating pane, so leaving the expanded view is a separate act from
+    // leaving the item.
     if (paneIsFloating()) { setPaneFloat(false); return; }
     closePane();
+  });
+}
+
+/**
+ * ══ THE TITLE-BAR POPOVERS — `#sesspop` and `#focuspop` ═══════════════════
+ *
+ * `plan:walk seq:115`. Both triggers shipped with `aria-haspopup="dialog"` and
+ * a permanent `aria-expanded="false"`, and neither dialog had markup anywhere:
+ * two controls in the title bar that did nothing when pressed, reported by the
+ * owner. This is the mechanism they were missing, and there is exactly ONE of
+ * it — the pane is the other dialog in this shell and it is a different shape
+ * (it opens from a click on an item, not from a trigger that must announce its
+ * own state), so this does not try to be both.
+ *
+ * The behaviour is the design of record's, read off `web-ui-mockup.html`'s own
+ * script (~4736-4750) rather than invented:
+ *
+ *   · ONE AT A TIME. Opening either closes the other. They share a corner of
+ *     the screen — `.pop{inset-block-start:42px;inset-inline-end:var(--sp-3)}`
+ *     seats both in the same place — so two open at once is two dialogs
+ *     stacked on one another.
+ *   · FOCUS MOVES IN, to the first `.row`. A dialog that opens without taking
+ *     focus strands a keyboard user: the trigger is still focused, the content
+ *     is after it in DOM order, and Tab walks INTO the dialog only by luck of
+ *     ordering. Both dialogs are authored so their first `.row` is a real
+ *     choice.
+ *   · AND FOCUS COMES BACK. Escape returns it to the trigger — the one thing
+ *     the mockup does NOT do, and the reason it is here: the mockup's Escape
+ *     hides the popover and leaves `document.activeElement` inside a
+ *     `display:none` subtree, which drops focus to `<body>` and loses the
+ *     reader's place in the page. An outside CLICK deliberately does not move
+ *     focus, because the click has already put it where the reader aimed.
+ *
+ * `aria-expanded` is set on every transition and from ONE place, so it cannot
+ * describe a state the dialog is not in.
+ */
+const POPOVERS = [
+  { trigger: 'sessbtn', dialog: 'sesspop' },
+  { trigger: 'focusbtn', dialog: 'focuspop' },
+];
+
+/** The id of the open dialog, or `null`. The one place that answer lives. */
+let popoverId = null;
+
+function popoverOpen() { return popoverId; }
+
+/**
+ * Hide every popover and tell every trigger it is collapsed.
+ *
+ * `restoreFocus` is the difference between the two dismissals, and it is not a
+ * detail: Escape is a keyboard gesture and must hand focus back to the control
+ * the reader opened the dialog from, while a click outside has already placed
+ * focus deliberately and must not have it yanked away.
+ */
+function closePopovers(restoreFocus) {
+  const was = popoverId;
+  popoverId = null;
+  for (const { trigger, dialog } of POPOVERS) {
+    const pop = document.getElementById(dialog);
+    if (pop !== null) pop.hidden = true;
+    document.getElementById(trigger)?.setAttribute('aria-expanded', 'false');
+  }
+  if (!restoreFocus || was === null) return;
+  const owner = POPOVERS.find((entry) => entry.dialog === was);
+  if (owner !== undefined) document.getElementById(owner.trigger)?.focus();
+}
+
+/**
+ * Open `dialog`, or close it if it is already the open one.
+ *
+ * Closing via the trigger keeps focus ON the trigger — the reader is already
+ * there, having just pressed it, and moving focus after a press that CLOSED
+ * something would be the shell taking a step the reader did not ask for.
+ */
+function togglePopover(dialog) {
+  const wasOpen = popoverId === dialog;
+  // Closed FIRST and unconditionally, before the dialog is even looked up. The
+  // interim state this shell is in until `#focuspop` lands is exactly why:
+  // `#focusbtn` resolves to no element, and an early return above this line
+  // would leave `#sesspop` open behind a press of the OTHER trigger — one
+  // popover at a time, whether or not the one being asked for exists.
+  closePopovers(false);
+  const pop = document.getElementById(dialog);
+  if (pop === null) return;
+  const trigger = POPOVERS.find((entry) => entry.dialog === dialog)?.trigger ?? null;
+  if (wasOpen) {
+    if (trigger !== null) document.getElementById(trigger)?.focus();
+    return;
+  }
+  pop.hidden = false;
+  popoverId = dialog;
+  if (trigger !== null) document.getElementById(trigger)?.setAttribute('aria-expanded', 'true');
+  // The first CHOICE, not the dialog box: `.row` is a real button either way
+  // (`#sesspop`'s cold row is authored in the markup, so this is never empty
+  // even before `/api/sessions` answers), and focusing a `<div role="dialog">`
+  // would need a `tabindex` on it and would announce the whole dialog before
+  // the reader could act.
+  pop.querySelector('.row')?.focus();
+}
+
+/**
+ * The document-level wiring, installed once and BEFORE `installItemPane()` —
+ * see the Escape guard there for why the order is load-bearing.
+ *
+ * Delegated from the document rather than bound to each dialog, for the same
+ * reason the item pane is: `#sesslist`'s rows are rebuilt on every session read
+ * and a listener bound to a row would be a listener on a discarded element.
+ */
+function installPopovers() {
+  document.addEventListener('click', (event) => {
+    const trigger = event.target.closest?.('#sessbtn, #focusbtn');
+    if (trigger !== null && trigger !== undefined) {
+      togglePopover(trigger.id === 'sessbtn' ? 'sesspop' : 'focuspop');
+      return;
+    }
+    const inside = event.target.closest?.('.pop');
+    if (inside === null || inside === undefined) {
+      // A CLICK OUTSIDE dismisses — and this is the branch, not a listener on
+      // the two dialogs that calls `stopPropagation()` the way the mockup does.
+      // Swallowing every click inside a popover would also swallow it before
+      // `installItemPane`'s delegation ran, and the two dialogs sit in the same
+      // document as every `[data-id]` in the product.
+      closePopovers(false);
+      return;
+    }
+    // ── Inside `#sesspop`: choosing a session ─────────────────────────────
+    //
+    // **THIS IS THE READ THE TASK EXISTS FOR, and it writes nothing.** It moves
+    // `sessionValue`, which is what `ctx.session()` answers and what every
+    // screen builds its next request from; the server is never told, because
+    // there is nothing on the server to tell. That is why there is no
+    // confirmation here and no `POST` — compare `#focuspop`, which composes a
+    // command line and still needs an Execute behind the approval boundary.
+    const row = event.target.closest?.('#sesspop [data-sid], #sesspop [data-cold]');
+    if (row === null || row === undefined) return;
+    const chosen = row.dataset.cold !== undefined ? 'cold' : row.dataset.sid;
+    if (typeof chosen !== 'string' || chosen === '') return;
+    setSession(chosen);
+    // Closed on the choice, focus back on the trigger: the picker's whole
+    // answer is the label the trigger now carries, so there is nothing left in
+    // the dialog to look at. (`#focuspop` deliberately does the opposite — the
+    // line its choice composes lives INSIDE it.)
+    closePopovers(true);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (popoverId === null) return;
+    closePopovers(true);
   });
 }
 
@@ -2458,8 +2628,17 @@ function currentSession() { return sessionValue; }
  * mockup's own demo shows a raw session id there (`<b id="sesslbl">a3f9c1
  * </b>`), not a translated string, so this is a plain value assignment, not
  * a t()/tFlat() call. `sess.cold` (real key, string table) covers the
- * no-sessions state. There is no `<select>`/dropdown here — see the file
- * header's "what this task did not wire".
+ * no-sessions state.
+ *
+ * **AND SINCE 2026-09-02 IT PAINTS THE PICKER TOO** (`plan:walk seq:115`).
+ * What used to stand here — "there is no `<select>`/dropdown here" — was the
+ * defect: `#sessbtn` carried `aria-haspopup="dialog"` pointing at a `#sesspop`
+ * that did not exist, so the control did nothing when pressed and
+ * `ctx.session()` was permanently `/api/sessions`' `default` (measured,
+ * `plan:walk seq:35`). The answer this function already had is the answer the
+ * dialog needs, so the dialog reads it here rather than fetching `/api/sessions`
+ * a second time and re-deriving the default from it — two derivations of one
+ * fact is how the two surfaces come to disagree.
  */
 async function loadSessions() {
   const data = await api('/api/sessions');
@@ -2468,31 +2647,130 @@ async function loadSessions() {
   // See `noCredential`'s own header for why this can't just be `sessionValue
   // === 'cold'` read backwards.
   noCredential = false;
+  // The picker's rows, held for `paintSessionList()` — `sessionSummaries`
+  // VERBATIM off the wire (`read-model.ts` keeps it that way on purpose, which
+  // is how `name` reached this client at all), never re-shaped field by field.
+  sessionRows = Array.isArray(data.sessions) ? data.sessions : [];
   const next = data.sessions.length === 0 ? 'cold' : (data.default ?? 'cold');
-  // **ON CHANGE, and this is the difference between a listener and a pulse.**
-  //
-  // `onSessionChange(fn)` promises `fn` on every future CHANGE — the contract
-  // is written into this file's own header block. It used to fire on every
-  // CALL, which is a different thing: this function runs at boot and again on
-  // every nonce redeemed into a live page, so a screen subscribed here was
-  // told the session had moved when it had not, and re-fetched a selection it
-  // was already showing. Paired with `preview.js`'s appending `draw()` that is
-  // the second half of `TASK-the-preview-can-hold-two-renders-at-once-and-
-  // session`: a spurious notification is a spurious `show()`, and two `show()`
-  // calls in flight used to be two renders on screen.
-  //
-  // Recorded BEFORE the assignment, because "changed" is a comparison against
-  // what the shell was last showing and there is exactly one place that is
-  // known.
+  setSession(next);
+}
+
+/**
+ * The sessions `/api/sessions` last answered with, in its order. Empty until
+ * the first successful read, and left ALONE by a read that refused: a picker
+ * that emptied itself on a 401 would tell a locked-out reader the corpus has no
+ * sessions, which is a claim about the ledger and not about the credential.
+ */
+let sessionRows = [];
+
+/**
+ * Move the shell to `next`, and tell everything that asked to be told.
+ *
+ * Lifted out of `loadSessions()` on 2026-09-02 with the picker, because there
+ * are two callers now and the notification contract is subtle enough that a
+ * second hand-written copy of it would drift. `loadSessions()` calls it with
+ * the server's default; `#sesspop`'s row handler calls it with the reader's
+ * choice. Everything below is the behaviour that was already here.
+ *
+ * **ON CHANGE, and this is the difference between a listener and a pulse.**
+ *
+ * `onSessionChange(fn)` promises `fn` on every future CHANGE — the contract
+ * is written into this file's own header block. It used to fire on every
+ * CALL, which is a different thing: `loadSessions()` runs at boot and again on
+ * every nonce redeemed into a live page, so a screen subscribed here was
+ * told the session had moved when it had not, and re-fetched a selection it
+ * was already showing. Paired with `preview.js`'s appending `draw()` that is
+ * the second half of `TASK-the-preview-can-hold-two-renders-at-once-and-
+ * session`: a spurious notification is a spurious `show()`, and two `show()`
+ * calls in flight used to be two renders on screen.
+ *
+ * Recorded BEFORE the assignment, because "changed" is a comparison against
+ * what the shell was last showing and there is exactly one place that is
+ * known.
+ */
+function setSession(next) {
   const changed = next !== sessionValue;
   sessionValue = next;
+  // **`#sesslbl` STAYS THE RAW ID and does not become the name.** The design of
+  // record's own demo writes an id there and two e2e specs read it as one
+  // (`preview-compact-continuity`, `preview-overlap`, both `toHaveText` a
+  // session id) — the label is how a test, and a reader, says WHICH session
+  // without ambiguity, and two sessions can share a name where they cannot
+  // share an id. The NAME is drawn in the picker beside the id, which is the
+  // surface that has room for both.
   const label = document.getElementById('sesslbl');
   label.textContent = sessionValue === 'cold' ? flat(table.strings, 'sess.cold') : sessionValue;
+  paintSessionList();
   if (!changed) return;
   // Over a COPY: a listener may unsubscribe from inside its own callback (a
   // screen re-rendering itself does exactly that), and splicing the array
   // being iterated would skip the listener after it.
   for (const fn of [...sessionListeners]) fn(sessionValue);
+}
+
+/**
+ * `#sesslist` — one row per session the ledger knows, newest first, built from
+ * `sessionRows` and never from markup.
+ *
+ * **THE NAME IS THE POINT.** `SessionSummary.name` is what `mycontext session
+ * name` gave the session and it is `null` when nobody named it — ruling 12, and
+ * `core/ledger.ts` states in its own words that it is "`null` and never a
+ * fallback", because a derived name cannot be told from a real one. So this
+ * draws the short id ALWAYS and appends the name only where there is one: an
+ * unnamed session shows exactly what is known about it, and the reader's own
+ * session ("my-context V2.0.0 Development") is findable by the name they gave
+ * it rather than by a hex prefix they never chose.
+ *
+ * The name goes in a `<bdi>` and the id in `.m`: a name is corpus text in an
+ * unknown direction and an id is a machine value that must read LTR in an RTL
+ * page. That is the same treatment the item pane's body and every id in this
+ * product already get.
+ *
+ * `aria-selected` marks the current row rather than `aria-pressed`, because
+ * `.pop .row[aria-selected="true"]` is the design of record's own rule for a
+ * chosen row in one of these dialogs.
+ *
+ * The right column is `formatAge`, this app's ONE spelling of a duration, over
+ * `lastInjectedAt` — and an em dash where that timestamp cannot be parsed,
+ * because a row that quietly showed `0s` for an unreadable date would be a
+ * measurement nobody took (`STD-a-measured-zero-is-drawn-and-named`).
+ */
+function paintSessionList() {
+  const list = document.getElementById('sesslist');
+  if (list === null) return;
+  const rows = [];
+  for (const row of sessionRows) {
+    const id = typeof row.sessionId === 'string' ? row.sessionId : '';
+    if (id === '') continue;
+    const button = document.createElement('button');
+    button.className = 'row';
+    button.dataset.sid = id;
+    button.setAttribute('aria-selected', String(id === sessionValue));
+    const left = document.createElement('span');
+    const mono = document.createElement('span');
+    mono.className = 'm';
+    mono.textContent = id;
+    left.append(mono);
+    if (typeof row.name === 'string' && row.name !== '') {
+      left.append(document.createTextNode(' · '));
+      const named = document.createElement('bdi');
+      named.textContent = row.name;
+      left.append(named);
+    }
+    const when = document.createElement('span');
+    when.className = 'small m';
+    const at = Date.parse(row.lastInjectedAt);
+    when.textContent = Number.isFinite(at) ? formatAge(Math.max(0, Date.now() - at)) : '—';
+    button.append(left, when);
+    rows.push(button);
+  }
+  list.replaceChildren(...rows);
+  // The cold row lives in the markup, below the rule, so it is marked here
+  // rather than built here — and it is the selected row exactly when the shell
+  // is on `cold`, which is a real state (an empty ledger, or a session read
+  // that refused) and not merely the absence of a choice.
+  document.querySelector('#sesspop [data-cold]')
+    ?.setAttribute('aria-selected', String(sessionValue === 'cold'));
 }
 
 /**
@@ -5696,10 +5974,11 @@ async function route() {
   // wait for them to guess that `preview` is where it lives.
   //
   // What it is NOT: the `#exited` banner (`.banner`, a fixed overlay) or the
-  // `#sesspop` dialog neither of which is built in this shell (see the header
-  // comment on "what this task did not wire"). Both were considered and
-  // rejected — a banner and a modal are both call-outs ABOVE the content; this
-  // sits IN the one place a reader locked out of every screen is actually
+  // `#sesspop` dialog — which IS built now (2026-09-02) and still is not where
+  // this sentence goes. Both were considered and rejected — a banner and a
+  // dialog are both call-outs ABOVE the content, and a dialog is worse: it says
+  // nothing until the reader presses the control they have no reason to press.
+  // This sits IN the one place a reader locked out of every screen is actually
   // looking, which is the content itself, empty as it is.
   //
   // `sess.nocred`, not `sess.cold`: the label `#sesslbl` already draws stays
@@ -5903,6 +6182,14 @@ async function main() {
       noteOccupancy(answer);
     }).catch(() => {}), 60_000);
   installNonceRedemption();
+  // **BEFORE `installItemPane()`, and the order is the contract.** Both install
+  // a document-level `keydown`, listeners fire in registration order, and
+  // `installItemPane`'s handler asks `popoverOpen()` whether this Escape was
+  // already spent. Installed here rather than after `loadSessions()` for the
+  // same reason the pane is: a reader whose session read was refused still has
+  // a title bar, and a picker that only works on a healthy page is a picker
+  // missing from every page where knowing the session matters most.
+  installPopovers();
   // Installed here for the same reason as the two above: it is a document
   // listener that must survive a boot which fails. A pane wired after
   // `loadSessions()` would be a pane that does not open on exactly the pages
