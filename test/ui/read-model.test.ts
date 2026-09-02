@@ -62,6 +62,7 @@ import {
 } from '../../src/core/select.ts';
 import { appendSeen, readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import { setSessionName } from '../../src/core/session-names.ts';
+import { writeTee } from '../../src/core/statusline-tee.ts';
 import type { Item, Relation } from '../../src/core/types.ts';
 import { VERSION } from '../../src/core/version.ts';
 import { listRepoFiles, runChecks, type Finding } from '../../src/doctor/checks.ts';
@@ -840,6 +841,49 @@ test('/api/sessions defaults to the most recent session and lists the summaries 
     // asserts it again at the endpoint, because a default pointing at a
     // session the picker does not list is a picker with no selected row.
     assert.equal(body.default, body.sessions[0].sessionId);
+  } finally { f.done(); }
+});
+
+/**
+ * **The default is the most recent SAMPLED session, not the most recent one.**
+ *
+ * Pinned because the two were the same thing until 2026-09-01, and the day they
+ * came apart it cost the owner their whole status bar. Diagnostic hook probes
+ * left three synthetic sessions as the three most recent injections; the bar
+ * opened on one of them, that session had never been sampled, and every field
+ * on it read "not read" — the same thing a bar reading nothing at all reads.
+ *
+ * The fixture below is that shape reduced to two rows: `s-probe` is newer and
+ * has no sample, `s-real` is older and has one. `s-probe` must not be chosen,
+ * and it must still be LISTED — this changes which row is selected, never which
+ * rows exist.
+ */
+test('/api/sessions prefers the most recent session that has a statusline sample', () => {
+  const f = fixture();
+  try {
+    const ledger = Ledger.open(f.ws.dbPath);
+    ledger.record('s-real', 'RULE-pin-me', 'jit', '2026-08-01T10:00:00.000Z');
+    ledger.record('s-probe', 'RULE-pin-me', 'jit', '2026-08-02T10:00:00.000Z');
+    ledger.close();
+
+    // Ordering first, so a failure below is about the CHOICE and not about a
+    // fixture that never made `s-probe` the most recent session at all.
+    const before = apiSessions(f.ws, url('sessions', '')).body as SessionsBody;
+    assert.equal(before.default, 's-probe',
+      'with no sample anywhere the old behaviour stands: the most recent injection wins');
+
+    assert.equal(
+      writeTee(f.ws.projectRoot!, { session_id: 's-real', model: { display_name: 'Opus' } }).written,
+      true, 'the sample must reach .statusline/ or this test proves nothing',
+    );
+
+    const after = apiSessions(f.ws, url('sessions', '')).body as SessionsBody;
+    assert.equal(after.default, 's-real',
+      'the sampled session is the one somebody was working in; the unsampled newer one is not');
+    assert.deepEqual(after.sessions.map((s) => s.sessionId), ['s-probe', 's-real'],
+      'the LIST is untouched — this changes which row is selected, never which rows exist');
+    assert.ok(after.sessions.some((s) => s.sessionId === after.default),
+      'a default the picker does not list is a picker with no selected row');
   } finally { f.done(); }
 });
 

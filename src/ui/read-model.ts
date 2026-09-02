@@ -73,6 +73,14 @@ import {
   type JsonlFileState, type SeenLine,
 } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
+// The SAME reader `ui/watch-model.ts` opens a statusline sample with, bound
+// here for the one question `apiSessions` asks of it: does this session have a
+// sample at all. A second `existsSync` on a path this module spelled itself
+// would be a second opinion about where the tee lives and about what counts as
+// a readable one — `readTee` answers `null` for an unsafe id, an absent file
+// and a half-written one alike, which is exactly the three-in-one answer the
+// default wants. It is a read; `writeTee` stays out of `src/ui/` (no-writes).
+import { readTee } from '../core/statusline-tee.ts';
 import { VERSION } from '../core/version.ts';
 // The one authority for the relation vocabulary. Imported rather than
 // re-listed; see `GraphBody.relationTypes` for why it is then served.
@@ -806,21 +814,76 @@ export function apiSessions(ws: Workspace, url: URL): JsonResult {
   const bad = unknownParams(url, []);
   if (bad) return badRequest(bad);
   return withStores(ws, (_store, ledger): JsonResult => {
+    // The picker's window, read ONCE and used twice — as the list, and as the
+    // ordered candidates `defaultSession` walks. `sessionSummaries` and
+    // `recentSessions` are pinned equal by a test in `core/ledger.ts`, so
+    // walking this list is the same ordering the old one-row query gave.
+    const sessions = ledger === null ? [] : ledger.sessionSummaries(SESSIONS_LIMIT, ws.projectRoot);
     // One body, and every field answers the not-projected state on its own
     // line — so a field added later cannot inherit a `0` or a `[]` there by
     // being written before anyone thought about it.
     const body: SessionsBody = {
       ledger: ledgerPresence(ledger),
-      default: ledger === null ? null : ledger.recentSessions(1)[0] ?? null,
+      default: defaultSession(ws.projectRoot, sessions),
       // The root is what turns a session id into the name `mycontext session
       // name` gave it (ruling 12). `Ledger` is opened from a `dbPath` and holds
       // no workspace, so the caller that has one passes it; a workspace with no
       // project root has no ledger to summarise either, and answers `[]` above.
-      sessions: ledger === null ? [] : ledger.sessionSummaries(SESSIONS_LIMIT, ws.projectRoot),
+      sessions,
       sessionCount: ledger === null ? null : ledger.sessionCount(),
     };
     return { status: 200, body };
   });
+}
+
+/**
+ * **The default session is the most recent one that was actually SAMPLED, and
+ * only failing that the most recent one at all.**
+ *
+ * It used to be `recentSessions(1)[0]` — the most recently INJECTED session,
+ * full stop. That is a different question from the one the status bar asks, and
+ * on 2026-09-01 the difference cost the owner their bar: three synthetic
+ * sessions left behind by diagnostic hook probes (`probe-now`, `probe-timing`,
+ * `probe-subagent-start`) were the three most recent injections, so the bar
+ * opened on `probe-now`, which has no statusline payload — and all thirteen
+ * fields read *"not read"*, which is exactly what a BROKEN bar reads. The
+ * disclosure was honest and the reader could not tell it from a failure.
+ *
+ * A session with a sample is one somebody was actually working in, because the
+ * sample is written by `mycontext statusline` on Claude Code's own per-message
+ * hook. That is the session a bar should open on.
+ *
+ * **The fallback is the OLD behaviour, unchanged.** No sample anywhere — no
+ * statusline bridge installed, a fresh clone, a corpus that has only ever been
+ * injected into by tests — and this returns `candidates[0]`, which is
+ * `recentSessions(1)[0]`. Nothing regresses for a workspace that never had a
+ * sample to prefer.
+ *
+ * ── THE COST, AND WHAT BOUNDS IT ───────────────────────────────────────────
+ *
+ * `readTee` opens a file, so this is a per-session read and it is on the shell's
+ * boot path. Two things bound it and neither is a guess:
+ *
+ *  - **The candidate list is the PICKER'S WINDOW**, `SESSIONS_LIMIT` = 20, not
+ *    every session in the ledger. A corpus with ten thousand sessions costs the
+ *    same as one with twenty, because the twenty-first can never be the default
+ *    of a picker that cannot show it.
+ *  - **It short-circuits on the FIRST hit.** The ordinary case — the session
+ *    you are working in is the one you last injected into — reads exactly one
+ *    file. Twenty reads is the worst case and it is reached only when nothing
+ *    in the window was ever sampled, which is the case that then falls back.
+ *
+ * `root === null` skips the walk entirely: there is no `.my_context` to look in,
+ * so every read would answer `null` and the fallback is the only answer
+ * available.
+ */
+function defaultSession(root: string | null, candidates: SessionSummary[]): string | null {
+  const first = candidates[0]?.sessionId ?? null;
+  if (root === null) return first;
+  for (const summary of candidates) {
+    if (readTee(root, summary.sessionId) !== null) return summary.sessionId;
+  }
+  return first;
 }
 
 /**
