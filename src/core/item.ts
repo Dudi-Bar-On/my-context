@@ -364,22 +364,65 @@ function parseSteps(lines: string[]): Step[] {
   return out;
 }
 
+/**
+ * The READ boundary's rule for `#tag` inside an observation line, exported so
+ * the WRITE boundary can apply the identical rule instead of a second copy of
+ * it (`normalizeObservations`/`validateObservationText`, validate.ts).
+ *
+ * `parseObservations` below is the only caller inside this module, and that is
+ * deliberate: the two boundaries have to agree exactly or an item is written
+ * with a checksum taken over text the reader will never produce again. Keeping
+ * the regex, the collapse and the trim in ONE function is what makes "the
+ * write boundary stores what the read boundary will hand back" a property
+ * rather than a hope.
+ *
+ * Returns the text with every `#tag` removed and interior whitespace runs
+ * collapsed, plus the tag names in the order they appeared — which is the
+ * order `renderObservation` writes them back in, so the pair round-trips.
+ */
+export function splitObservationTags(text: string): { text: string; tags: string[] } {
+  const tags: string[] = [];
+  const stripped = text
+    .replace(/#([A-Za-z0-9_-]+)/g, (_all, tag: string) => { tags.push(tag); return ''; })
+    .replace(/\s+/g, ' ').trim();
+  return { text: stripped, tags };
+}
+
+/**
+ * An observation as ONE Markdown list line — exported for the same reason
+ * `splitObservationTags` is: the write boundary needs to ask what line this
+ * observation will actually occupy on disk before it accepts it.
+ */
+export function renderObservation(o: Observation): string {
+  const tags = o.tags.map((t) => ` #${t}`).join('');
+  const ctx = o.context ? ` (${o.context})` : '';
+  return `- [${o.category}] ${o.text}${tags}${ctx}`;
+}
+
+/**
+ * ONE `## Observations` line, as the reader sees it — `null` when the grammar
+ * does not match, which is the silent drop every guard in validate.ts exists to
+ * keep out of a file. Exported so the write boundary can ask the real reader
+ * what it will get back, rather than predicting it.
+ */
+export function parseObservationLine(line: string): Observation | null {
+  const m = OBSERVATION.exec(line.trim());
+  if (!m) return null;
+  let text = m[2].trim();
+
+  let context: string | null = null;
+  const ctx = /\(([^()]*)\)\s*$/.exec(text);
+  if (ctx) { context = ctx[1].trim(); text = text.slice(0, ctx.index).trim(); }
+
+  const split = splitObservationTags(text);
+  return { category: m[1].toLowerCase(), text: split.text, tags: split.tags, context };
+}
+
 function parseObservations(lines: string[]): Observation[] {
   const out: Observation[] = [];
   for (const line of lines) {
-    const m = OBSERVATION.exec(line.trim());
-    if (!m) continue;
-    let text = m[2].trim();
-
-    let context: string | null = null;
-    const ctx = /\(([^()]*)\)\s*$/.exec(text);
-    if (ctx) { context = ctx[1].trim(); text = text.slice(0, ctx.index).trim(); }
-
-    const tags: string[] = [];
-    text = text.replace(/#([A-Za-z0-9_-]+)/g, (_all, tag: string) => { tags.push(tag); return ''; })
-               .replace(/\s+/g, ' ').trim();
-
-    out.push({ category: m[1].toLowerCase(), text, tags, context });
+    const parsed = parseObservationLine(line);
+    if (parsed) out.push(parsed);
   }
   return out;
 }
@@ -699,12 +742,6 @@ export function computeItemChecksum(item: Item): string {
   shape.observations = item.observations;
   shape.relations = item.relations;
   return formatChecksum(CHECKSUM_BASIS_VERSION, checksum(JSON.stringify(shape)));
-}
-
-function renderObservation(o: Observation): string {
-  const tags = o.tags.map((t) => ` #${t}`).join('');
-  const ctx = o.context ? ` (${o.context})` : '';
-  return `- [${o.category}] ${o.text}${tags}${ctx}`;
 }
 
 export function renderItem(item: Item): string {

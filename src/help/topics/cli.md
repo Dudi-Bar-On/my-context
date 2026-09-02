@@ -76,10 +76,11 @@ something that nothing replaces is a different act: `mycontext edit <id>
 ## What this CLI cannot spell at all
 
 - **Creating a relation.** Above.
-- **An observation, except one.** `mycontext add … --note "<text>"` records a
-  `[note]` observation and may be repeated. An observation under any other
-  category, and an observation's own tags or context, have no flag spelling;
-  `create_item` is the route.
+- **An observation's tags or context.** `mycontext add … --note "<text>"`
+  records a `[note]` observation and `--observation kind=text` records one
+  under any other kind; both may be repeated and keep command-line order
+  between them. What neither carries is the observation's own tags or its
+  parenthetical context — `create_item` is the route for those.
 - **An item's `type`.** Fixed at creation, on every surface — see
   `help("categories")` for what to do with a misfiled item.
 - **Deleting anything.** There is no delete here and none on the tool surface.

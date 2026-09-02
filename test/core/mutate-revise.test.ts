@@ -1168,14 +1168,36 @@ test('supersede_item refuses a reason that would be mangled into tags and contex
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
   const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  // A "#word" that is NOT last really is moved to the end of the line by the
+  // reader, so the sentence on disk would not be the sentence given here.
   assert.throws(
-    () => supersedeItem(s.ctx, { id: old.id, by: next.id, reason: 'see #4521' }),
+    () => supersedeItem(s.ctx, { id: old.id, by: next.id, reason: 'see #4521 for the sizing' }),
     /my_context: .*#4521/,
   );
   assert.throws(
     () => supersedeItem(s.ctx, { id: old.id, by: next.id, reason: 'resized (again)' }),
     /my_context: .*\(again\)/,
   );
+  s.dispose();
+});
+
+/**
+ * The other side of the rule above, and the reason it was narrowed: a trailing
+ * "#word" is read back out of the text and written back after it, so the line
+ * on disk is the reason verbatim. Refusing it cost the author their issue
+ * number for a corruption that does not happen.
+ */
+test('supersede_item keeps a trailing "#word" in the reason exactly as given', () => {
+  const s = sandbox();
+  const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
+  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  supersedeItem(s.ctx, { id: old.id, by: next.id, reason: 'the pool was resized, see #4521' });
+
+  const observation = s.ctx.store.get(next.id)!.observations
+    .find((o) => o.category === 'supersession');
+  assert.ok(observation, 'the supersession observation was not written');
+  assert.equal(observation.text, `Replaces ${old.id}: the pool was resized, see`);
+  assert.deepEqual(observation.tags, ['4521']);
   s.dispose();
 });
 

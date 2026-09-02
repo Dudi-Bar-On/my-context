@@ -300,3 +300,125 @@ test('extra.__proto__ is refused rather than silently vanishing on write', () =>
     f.close();
   }
 });
+
+/**
+ * **A `#word` at the end of observation text, through `mycontext add`.**
+ *
+ * The line is the real one from this repository's own corpus
+ * (`.my_context/items/invariant/INV-hooks-fail-open.md` · `## Observations` ·
+ * the `[limit]` line) — not a synthetic `#tag` — because that shape is what
+ * blocked the migration: nine committed items carry it across eleven
+ * observation lines, and `add --observation` refused every one of them on the
+ * claim that the "#" would be "silently moved out of the text".
+ *
+ * It is not moved. `parseObservations` lifts the tag into the observation's
+ * own `tags` and `renderObservation` writes it back after the text, so a
+ * TRAILING tag cancels: the bytes on disk are the bytes the author typed, and
+ * `show` prints them back unchanged. What the write boundary must do — and
+ * what this pins — is perform that extraction on the way IN, so the checksum
+ * is taken over what the reader will produce. Without it the file is written
+ * with a checksum it can never match again and `doctor` reports a hand edit
+ * on a file my_context itself just wrote, which is what `assertRoundTrips`
+ * checks and what the `doctor` assertion below re-checks through the command.
+ */
+const CORPUS_OBSERVATION_TEXT =
+  'PreToolUse/JIT is held to p95 under 50ms; SessionStart to 500ms #performance';
+const CORPUS_OBSERVATION_LINE = `- [limit] ${CORPUS_OBSERVATION_TEXT}`;
+
+test('a "#word" at the end of observation text survives `add` byte-identically', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-obs-hash-'));
+  try {
+    runCli(['init'], cwd, () => {});
+    let added = '';
+    const code = runCli([
+      'add', 'invariant', 'Hooks fail open',
+      '--body', 'Any error yields empty output and exit 0.',
+      '--observation', `limit=${CORPUS_OBSERVATION_TEXT}`,
+      '--summary-omitted', '--yes',
+    ], cwd, (s) => { added += s + '\n'; });
+    assert.equal(code, 0, added);
+
+    const created = /created (\S+) \(/.exec(added);
+    assert.ok(created, `add did not report a created item: ${added}`);
+    const id = created[1];
+    const filePath = `items/invariant/${id}.md`;
+
+    // (a) ON DISK, byte for byte — the "#" and the word after it are still in
+    //     the line, in the position they were written in.
+    const raw = readFileSync(path.join(cwd, '.my_context', ...filePath.split('/')), 'utf8');
+    assert.ok(
+      raw.includes(`${CORPUS_OBSERVATION_LINE}\n`),
+      `the observation line is not on disk as written:\n${raw}`,
+    );
+
+    // (b) RENDERED — `show` reads from the index, so this is the files → DB →
+    //     output path, not a second read of the same file.
+    let shown = '';
+    assert.equal(runCli(['show', id], cwd, (s) => { shown += s + '\n'; }), 0);
+    assert.ok(
+      shown.includes(CORPUS_OBSERVATION_LINE),
+      `\`show\` did not render the observation as written:\n${shown}`,
+    );
+
+    // (c) NOT a frontmatter tag. The observation's tags are its own field; the
+    //     item's `tags:` list is a different one, and nothing may have leaked
+    //     across. `INV-hooks-fail-open` in the corpus is the witness: its
+    //     frontmatter carries `reliability` and has never carried
+    //     `performance`.
+    const parsed = parseItem(raw, filePath, 'project');
+    assert.deepEqual(parsed.tags, [], `"performance" leaked into the item's tags: ${raw}`);
+    assert.deepEqual(
+      parsed.observations,
+      [{
+        category: 'limit',
+        text: 'PreToolUse/JIT is held to p95 under 50ms; SessionStart to 500ms',
+        tags: ['performance'],
+        context: null,
+      }],
+      'the observation did not read back as text-plus-tag',
+    );
+
+    // (d) The checksum stored in the file matches the file's own content, and
+    //     re-rendering is byte-identical (spec §10).
+    assertRoundTrips(cwd, filePath);
+
+    // (e) The doctor's own verdict, through the real command — the surface a
+    //     user would meet a write-time normalization defect on.
+    let report = '';
+    runCli(['doctor'], cwd, (s) => { report += s + '\n'; });
+    assert.doesNotMatch(report, /checksum mismatch/, report);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * The other half of the same rule, kept honest: a `#word` that is NOT at the
+ * end really would be moved, so it stays refused — and the refusal says which
+ * shape is accepted, because the previous one said none was.
+ */
+test('a "#word" in the middle of observation text is still refused, by name', () => {
+  const f = fixture();
+  try {
+    assert.throws(
+      () => createItem(f.ctx, {
+        type: 'lesson', title: 'Mid-text hash', body: 'b',
+        observations: [{
+          category: 'limit',
+          text: 'held to #performance p95 under 50ms',
+          tags: [], context: null,
+        }],
+      }),
+      (err: Error) => {
+        assert.match(err.message, /has a "#word" that is not at the end/);
+        // The message states what WOULD be stored, and says the accepted
+        // shape exists — the old one claimed no "#" could ever be kept.
+        assert.match(err.message, /"held to p95 under 50ms #performance"/);
+        assert.match(err.message, /at the END of the text is kept exactly as written/);
+        return true;
+      },
+    );
+  } finally {
+    f.close();
+  }
+});

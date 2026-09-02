@@ -42,6 +42,7 @@ import {
   normalizeObservations, normalizeSteps, normalizeSummary, validateBody, validateEnums,
   validateExplicitId, validateExtra, validateObservationText, validateRelations,
   validateRelationTarget, validateScope, validateSummary, validateTags, validateTitle,
+  validateValidFrom,
 } from './validate.ts';
 
 export interface MutationContext {
@@ -146,6 +147,30 @@ export interface CreateInput {
   origin?: Origin;
   sourceFile?: string | null;
   sourceAnchor?: string | null;
+  /**
+   * The day this item started holding, as `YYYY-MM-DD`. Defaults to `today()`,
+   * which is what every capture got and the only thing any surface could
+   * produce until this field existed.
+   *
+   * **It exists for the one job the clock cannot do: re-creating an item that
+   * already exists.** An item carried in from another corpus, or rebuilt from
+   * a document that predates this workspace, has its own start date; stamping
+   * it with the day of the import makes the corpus claim a history it does not
+   * have, and `valid_from` is a reserved frontmatter name, so `extra` could not
+   * carry it either (`RESERVED_FRONTMATTER_KEYS`, validate.ts — correctly, an
+   * `extra` field of that name would overwrite the real one unvalidated).
+   *
+   * Not on `UpdateInput`, and that is the same boundary `steps` and
+   * `observations` have: moving an existing item's start date is rewriting when
+   * it began to govern, which is a claim about the past rather than a
+   * correction to content. It is settable at CREATION, where it is a fact about
+   * the item being copied, and nowhere else.
+   *
+   * `validUntil` has no sibling here: it is stamped by `stampValidUntil`
+   * (persist.ts) at the lifecycle change that ends the item, so a caller that
+   * could set it at creation would be minting an item that had already expired.
+   */
+  validFrom?: string;
   observations?: Observation[];
   /**
    * A `procedure`'s ordered steps, as TEXT — never `Step[]`.
@@ -302,6 +327,12 @@ export function createItem(
   const body = normalizeEol(input.body ?? '').trim();
 
   validateEnums(input);
+  // Beside the enums and before anything is written, for their reason: a date
+  // the format cannot store would land as a frontmatter line every later read
+  // reparses into a different day, and the write itself would report success.
+  // Enforced HERE rather than only at `mycontext add`, so that every surface
+  // that grows a spelling for the field gets the same refusal (spec §10).
+  if (input.validFrom !== undefined) validateValidFrom(input.validFrom, '"valid_from"');
   validateTitle(title);
   validateExtra(input.extra ?? {});
   // AFTER `validateExtra`, deliberately — see `unknownExtraFieldError`: a
@@ -474,7 +505,10 @@ export function createItem(
     sourceFile,
     sourceAnchor,
     sourceChecksum: input.sourceChecksum ?? null,
-    validFrom: today(),
+    // The clock is the DEFAULT, not the rule — see `CreateInput.validFrom`.
+    // Already validated above, so nothing that could not have been produced by
+    // `today()` itself reaches the file.
+    validFrom: input.validFrom ?? today(),
     validUntil: null,
     checksum: '',
     extra: input.extra ?? {},

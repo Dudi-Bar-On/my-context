@@ -39,8 +39,9 @@ routes are `mycontext review promote`/`discard` for a draft's status, and
 ## The human's CLI, and why it is not your route
 
 `mycontext add <category> "<title>" [--body "<why>"|--file <path>]
-[--note "<text>"] [--step "<text>"] [--summary "<text>"|--summary-omitted]
-[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft]
+[--note "<text>"] [--observation kind=text] [--step "<text>"]
+[--summary "<text>"|--summary-omitted] [--scope "a/**,b/**"] [--tags "a,b"]
+[--severity hard|soft] [--valid-from YYYY-MM-DD]
 [--extra key=value] [--yes]` is the user's capture command. `--scope` and
 `--tags` are comma-separated; `--body` goes through the same round-trip guards
 described above, so a body containing a `#` heading is refused there exactly as
@@ -71,13 +72,23 @@ nobody wrote one is visible rather than assumed. Reach for it when the item has
 nothing to say in one sentence that its title does not already say — never to
 get past the refusal.
 
-`--note "<text>"` records a `[note]` observation and may be repeated, and that
-is the whole of what this CLI can say about observations. An observation under
-any OTHER category, an observation's tags or context, and the CREATION of a
-relation have no flag spelling: `create_item` is the route for the first two
-and `link_items` for the third — `create_item` refuses a `relations` argument
-by name and says so. An unrecognised option is refused rather than folded into
-the title. `mycontext help cli` is the command surface as a whole.
+`--note "<text>"` records a `[note]` observation and `--observation kind=text`
+records one under any other kind — `--observation limit="Pool size must never
+exceed 20"`. Both may be repeated and they keep command-line order between
+them, so an item's observations come back in the order they were written. The
+kind must be lowercase letters, digits, underscore or hyphen, because that is
+what the parser reading the item back can see; anything else is refused rather
+than silently dropped. An observation's tags or context, and the CREATION of a
+relation, still have no flag spelling: `create_item` is the route for the first
+two and `link_items` for the third — `create_item` refuses a `relations`
+argument by name and says so. An unrecognised option is refused rather than
+folded into the title. `mycontext help cli` is the command surface as a whole.
+
+`--valid-from YYYY-MM-DD` sets the day the item started holding. It is today
+when omitted, which is right for something captured now and wrong for an item
+copied in from a corpus where it already existed — and `valid_from` is a
+reserved frontmatter name, so `--extra` cannot carry it. A date that does not
+exist is refused rather than rounded.
 
 `--yes` is required when the category is **normative**, because `add` passes
 `origin: 'human'` and the item therefore lands `active` and governs the project

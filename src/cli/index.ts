@@ -9,9 +9,10 @@ import { scopeCell } from '../core/render-item.ts';
 import { createItem, type CreateInput, type MutationContext } from '../core/mutate.ts';
 import { scopeRequirementError } from '../core/trust.ts';
 import {
-  normalizeSteps, normalizeSummary, validateSummary, SEVERITIES,
+  normalizeSteps, normalizeSummary, validateObservationCategory, validateSummary,
+  validateValidFrom, SEVERITIES,
 } from '../core/validate.ts';
-import type { Severity } from '../core/types.ts';
+import type { Observation, Severity } from '../core/types.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
 import {
@@ -40,9 +41,9 @@ import {
   unknownFlag, wantsJson,
 } from './commands/format.ts';
 import {
-  COMMANDS, boolFlag, csv, dedupe, extraFlag, flag, flagOccurrences, positionals,
-  registerCommand, repeatedFlagError,
-  type CommandDef,
+  COMMANDS, boolFlag, csv, dedupe, extraFlag, flag, flagOccurrences, interleavedOccurrences,
+  positionals, registerCommand, repeatedFlagError,
+  type CommandDef, type FlagOccurrence,
 } from './commands/registry.ts';
 import {
   summaryAtCreateRefusal, summaryOmittedRefusal, summaryRequiredAtCreate,
@@ -470,8 +471,37 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
 
 const ADD_USAGE =
   'usage: mycontext add <category> <title> [--body <text>|--file <path>] [--note <text>] ' +
-  '[--step <text>] [--summary <text>|--summary-omitted] [--scope "a/**,b/**"] [--tags "a,b"] ' +
-  '[--severity hard|soft] [--extra key=value] [--yes]';
+  '[--observation kind=text] [--step <text>] [--summary <text>|--summary-omitted] ' +
+  '[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] [--valid-from YYYY-MM-DD] ' +
+  '[--extra key=value] [--yes]';
+
+/**
+ * The flag list in `add`'s one-line entry in `mycontext help`, DERIVED from
+ * `ADD_USAGE` rather than typed a second time.
+ *
+ * It was typed a second time, and the two disagreed: the banner still read
+ * `(--body|--file --summary --scope --tags --severity --yes)` after
+ * `--observation`, `--step`, `--valid-from` and `--extra` had all shipped, so
+ * the first place anybody looks was the one place that had not been updated —
+ * the same failure the comment on `summary` below was written to prevent, one
+ * level down. A derived list cannot drift: adding a flag to `ADD_USAGE` (which
+ * every refusal in this command already interpolates) adds it here too.
+ *
+ * The reduction is deliberately literal. Each `[...]` group after `<title>` is
+ * split on `|` into alternatives, and an alternative contributes its leading
+ * token when that token is a flag — so `[--severity hard|soft]` yields
+ * `--severity` alone (`soft` is a value, not a flag) while
+ * `[--body <text>|--file <path>]` yields both. Values are dropped, because the
+ * banner column has room for names and `mycontext add` with no arguments
+ * prints `ADD_USAGE` itself for the rest.
+ */
+const ADD_FLAG_SUMMARY = Array.from(ADD_USAGE.matchAll(/\[([^\]]+)\]/g))
+  .map((m) => m[1].split('|')
+    .map((alt) => alt.trim().split(/\s+/)[0])
+    .filter((token) => token.startsWith('--'))
+    .join('|'))
+  .filter((group) => group !== '')
+  .join(' ');
 
 /**
  * `--step`, in full, wherever `add`'s own help is printed.
@@ -528,14 +558,15 @@ const { allowed: ADD_FLAGS, values: ADD_VALUE_FLAGS } = COMMAND_FLAGS.add;
  * positional, and in `--note "..."` it is this observation's category. A
  * reader can, so both are named here (§0).
  *
- * One fixed category rather than a `--note category:text` mini-format. The
- * four-field observation record (category, text, tags, context) has
+ * One fixed category, and it stays one now that `--observation kind=text`
+ * exists beside it. The two are not redundant: `--note "..."` is the spelling
+ * a human typing at a shell reaches for, and it cannot get the kind wrong. The
+ * four-field observation record (category, text, tags, context) still has
  * round-trip constraints on every field (`validateObservationCategory`,
- * `validateObservationTags`, `validateObservationText`), and a flat flag
- * spelling for all four is the second mini-format this command's own
- * unknown-flag message declines to invent. `note` carries the one field a
- * human typing at a shell actually wants, and `create_item` remains the route
- * for the rest — which is what the message now says instead of "not here".
+ * `validateObservationTags`, `validateObservationText`); `--observation`
+ * carries the first two, and `create_item` remains the route for TAGS and
+ * CONTEXT, which is what the unknown-flag message now says instead of claiming
+ * the whole record is unreachable.
  */
 const NOTE_CATEGORY = 'note';
 
@@ -598,20 +629,87 @@ function addSnapshot(
  * value.
  */
 function addValues(args: string[], name: string): string[] {
+  return flagOccurrences(args, name).map((occurrence) => checkedValue(occurrence, name));
+}
+
+/**
+ * The two checks above, for ONE occurrence — split out so the observation
+ * reader below can apply them to `--note` and `--observation` from a single
+ * ordered scan rather than restating them.
+ */
+function checkedValue(occurrence: FlagOccurrence, name: string): string {
   const long = `--${name}`;
-  return flagOccurrences(args, name).map((occurrence) => {
-    if (!occurrence.bare) return occurrence.value ?? '';
-    if (occurrence.value === null) {
-      throw new Error(`my_context: ${long} needs a value. ${ADD_USAGE}`);
+  if (!occurrence.bare) return occurrence.value ?? '';
+  if (occurrence.value === null) {
+    throw new Error(`my_context: ${long} needs a value. ${ADD_USAGE}`);
+  }
+  if (occurrence.value.startsWith('--')) {
+    throw new Error(
+      `my_context: ${long} was followed by ${JSON.stringify(occurrence.value)}, which is ` +
+      `another option, not a value. Write ${long}="..." if the value really begins with ` +
+      `"--". ${ADD_USAGE}`,
+    );
+  }
+  return occurrence.value;
+}
+
+/**
+ * `--note` and `--observation`, read TOGETHER and in command-line order.
+ *
+ * **The shape, and why it is `kind=text` rather than anything else.** The
+ * command already has a repeatable value flag whose value is one whole argv
+ * token and is deliberately not comma-split (`--note`, `--step`), and it
+ * already has a repeatable flag that carries two fields in one token by
+ * splitting on the FIRST `=` (`--extra key=value`, whose parser and refusal
+ * live in registry.ts and are shared with `edit`). An observation is two
+ * fields, so it takes the second idiom, and the value is taken whole after
+ * that first `=` — commas, further `=`, backticks, brackets and apostrophes
+ * all reach the item untouched, because the shell has already delimited the
+ * token and nothing here splits it again. A repeatable flag also beats a file
+ * or stdin here: `add` reads no structured input from either today (`--file`
+ * is a body snapshot, not a record format), and both would have made the
+ * observation's shape a second file format to specify, parse and refuse.
+ *
+ * **Read in one scan, because the ORDER of the two flags is the item.**
+ * `## Observations` is a list and `renderItem` writes it in array order, so
+ * `--note a --observation limit=b --note c` has to land as `a, b, c`; two
+ * independent `flagOccurrences` scans would produce `a, c, b` and report
+ * success. `interleavedOccurrences` is what makes the relative order readable
+ * at all — see its doc comment.
+ *
+ * **The KIND is checked against the parser, not against a list kept here.**
+ * `validateObservationCategory` (validate.ts) delegates to
+ * `isValidObservationCategory` (item.ts), which runs the `OBSERVATION` regex
+ * the reader actually uses and additionally requires the kind to equal its own
+ * lowercased form — because `parseObservations` lowercases whatever it
+ * captures. There is deliberately no enumerated vocabulary of kinds anywhere
+ * in this product, and this command does not invent the first one: a closed
+ * list here would refuse `[supersession]`, which `supersedeItem` itself writes,
+ * and every kind a corpus being imported already carries. What is refused is
+ * what the FORMAT cannot store, which is the same question every other guard
+ * in `validate.ts` answers.
+ */
+const OBSERVATION_FLAGS = ['note', 'observation'];
+
+function addObservations(args: string[]): Observation[] {
+  return interleavedOccurrences(args, OBSERVATION_FLAGS).map((occurrence) => {
+    const value = checkedValue(occurrence, occurrence.name);
+    if (occurrence.name === 'note') {
+      return { category: NOTE_CATEGORY, text: value, tags: [], context: null };
     }
-    if (occurrence.value.startsWith('--')) {
+    const eq = value.indexOf('=');
+    if (eq <= 0) {
       throw new Error(
-        `my_context: ${long} was followed by ${JSON.stringify(occurrence.value)}, which is ` +
-        `another option, not a value. Write ${long}="..." if the value really begins with ` +
-        `"--". ${ADD_USAGE}`,
+        `my_context: --observation takes kind=text (got ${JSON.stringify(value)}). The kind is ` +
+        `the word the observation is filed under and is written as "[kind]" on its own line in ` +
+        `the item — \`--observation limit="Pool size must never exceed 20"\`. The text is taken ` +
+        `whole after the first "=", commas and further "=" included, and the flag may be ` +
+        `repeated. Use --note "<text>" for a plain "[${NOTE_CATEGORY}]" one.\n${ADD_USAGE}`,
       );
     }
-    return occurrence.value;
+    const category = value.slice(0, eq);
+    validateObservationCategory(category, "--observation's kind");
+    return { category, text: value.slice(eq + 1), tags: [], context: null };
   });
 }
 
@@ -649,11 +747,11 @@ function listValues(args: string[], name: string): string[] | null {
  * item (one with a reason and a scope) was hand-editing the Markdown — which
  * is what the write-deny hook exists to stop — so every generated slash
  * command had to route through the MCP `create_item` tool and disclaim the
- * CLI as "captures the title only". `observations` and `relations` are still
- * not expressible here: an observation is a four-field record (category,
- * text, tags, context) with round-trip constraints of its own, and no flat
- * flag spelling expresses it without inventing a second mini-format. The
- * unknown-flag message names `create_item` for that reason.
+ * CLI as "captures the title only". An observation's CATEGORY and TEXT are
+ * expressible now — `--note` for `[note]`, `--observation kind=text` for any
+ * other kind — which is what makes an existing item re-creatable here at all;
+ * an observation's `tags` and `context`, and `relations`, are still not, and
+ * the unknown-flag message names `create_item` for exactly those.
  *
  * The `--yes` gate on a normative category is `review promote`'s gate, for
  * `review promote`'s reason (see `confirmAction`'s doc comment, which this
@@ -689,15 +787,20 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     if (unknown !== null) {
       out(
         `my_context: unknown option "--${unknown}".\n${ADD_USAGE}\n` +
-        `--note adds a "[${NOTE_CATEGORY}]" observation and may be repeated. An observation ` +
-        `under any OTHER category, an observation's tags or context, and relations have no ` +
-        `flag spelling — capture those with the create_item tool on the mycontext MCP server. ` +
+        `--note adds a "[${NOTE_CATEGORY}]" observation and --observation kind=text adds one ` +
+        `under any other kind; both may be repeated and keep command-line order. An ` +
+        `observation's tags or context, and relations, have no flag spelling — capture those ` +
+        `with the create_item tool on the mycontext MCP server. ` +
         // Steps used to be on that list by implication: this message named
         // `create_item` as the route for everything `add` cannot express, and
         // `add` could not express a step at all. It can now, so the sentence
         // that was true when it was written has to stop claiming more than the
-        // command does.
-        `A procedure's steps are no longer among them.\n${STEP_HELP}`,
+        // command does. The observation KIND and `valid_from` joined steps in
+        // that correction, and for the same reason: an item that cannot be
+        // re-created faithfully through any write path is the defect, not the
+        // migration's problem.
+        `A procedure's steps are no longer among them, and neither is an observation's kind ` +
+        `nor an item's valid_from.\n${STEP_HELP}`,
       );
       return 1;
     }
@@ -770,17 +873,17 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     if (summaryRequiredAtCreate(input)) {
       throw new Error(summaryAtCreateRefusal(input, 'add'));
     }
-    // Every occurrence, in command-line order, so `--note a --note b` records
-    // two observations rather than keeping the first and dropping the second
-    // — the silent-drop failure `addValues` exists to close for every other
-    // repeatable flag here. Not comma-split, unlike `--scope`/`--tags`: an
-    // observation is a sentence, and sentences contain commas.
-    const notes = addValues(args, 'note');
-    if (notes.length > 0) {
-      input.observations = notes.map((text) => ({
-        category: NOTE_CATEGORY, text, tags: [], context: null,
-      }));
-    }
+    // Every occurrence of BOTH observation flags, in command-line order, so
+    // `--note a --observation limit=b --note c` records three observations in
+    // that order rather than keeping the first and dropping the second — the
+    // silent-drop failure `addValues` exists to close for every other
+    // repeatable flag here, and the silent-REORDER failure two separate scans
+    // would introduce. Not comma-split, unlike `--scope`/`--tags`: an
+    // observation is a sentence, and sentences contain commas. See
+    // `addObservations` for the `kind=text` shape and for why the kind is
+    // checked against the parser rather than against a list.
+    const observations = addObservations(args);
+    if (observations.length > 0) input.observations = observations;
     // The same call `--note` uses, for the same reason and with the same two
     // guarantees: every occurrence in command-line ORDER — for a procedure the
     // order IS the knowledge, so a dropped or reordered step is a corrupted
@@ -819,6 +922,21 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     // so a reserved name is refused here exactly as it is on `edit`.
     const extra = extraFlag(args);
     if (extra !== null) input.extra = extra;
+    // `--valid-from`, and it is a REAL field rather than an `--extra` key:
+    // `valid_from` is reserved (`RESERVED_FRONTMATTER_KEYS`, validate.ts)
+    // because an `extra` of that name would overwrite the item's own on disk
+    // unvalidated, so `--extra valid_from=...` was refused and stays refused.
+    // Validated HERE as well as inside `createItem`, which is where it is
+    // enforced for every surface — the duplication is of the CALL, not of the
+    // rule (`validateValidFrom` owns the wording and the shape) — for the
+    // ordering `--severity` and `--step` are validated early for: a human must
+    // not be asked to approve a governing capture and told only afterwards
+    // that the date was never storable.
+    const validFrom = scalarFlag(args, 'valid-from');
+    if (validFrom !== null) {
+      validateValidFrom(validFrom, '--valid-from');
+      input.validFrom = validFrom;
+    }
     // Validated here rather than left to `createItem`'s `validateEnums`, for
     // the reason `review promote` validates its own `--severity` up front: a
     // garbled value must refuse before the normative preview and confirmation
@@ -1254,8 +1372,11 @@ registerCommand({
   // The flag list is on the summary side because the usage column is 30
   // wide and `col` would otherwise push every other summary out of line —
   // but it is here rather than nowhere: a banner that stops at `<title>`
-  // is what let the CLI look title-only for three plans.
-  summary: 'create an item (--body|--file --summary --scope --tags --severity --yes)',
+  // is what let the CLI look title-only for three plans. It is DERIVED from
+  // `ADD_USAGE` (see `ADD_FLAG_SUMMARY`) rather than restated, because a
+  // hand-kept second copy is exactly how this line came to omit
+  // `--observation` and `--valid-from` after both had shipped.
+  summary: `create an item (${ADD_FLAG_SUMMARY})`,
   run: cmdAdd,
 });
 registerCommand({

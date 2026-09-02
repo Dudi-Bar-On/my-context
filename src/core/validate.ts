@@ -11,7 +11,9 @@
  * doc comment: the reasoning is the load-bearing part.
  */
 import type { CategoryUpdates, UpdatableName } from './categories.ts';
-import { isValidObservationCategory } from './item.ts';
+import {
+  isValidObservationCategory, parseObservationLine, renderObservation, splitObservationTags,
+} from './item.ts';
 import { enumError } from './teach.ts';
 import { ID_GRAMMAR, isUsableId } from './vocabulary.ts';
 import type { Observation, Origin, Relation, Severity, Status, Step } from './types.ts';
@@ -55,6 +57,53 @@ export function validateEnums(input: { status?: Status; severity?: Severity; ori
   if (input.origin !== undefined && !ORIGINS.includes(input.origin)) {
     throw new Error(enumError('origin', input.origin, ORIGINS, 'capture'));
   }
+}
+
+/**
+ * **The one expression that says what a stored DAY looks like.**
+ *
+ * `valid_from` and `valid_until` are written by `today()` (persist.ts), which
+ * is `isoDay(new Date())` and nothing else, so this function IS the format:
+ * anything a surface accepts as a day has to be a string this could have
+ * produced. It lives here rather than in persist.ts because the validator
+ * below has to reach it and `persist.ts` imports `mutate.ts`, which imports
+ * this module — the arrow only runs one way.
+ */
+export function isoDay(when: Date): string {
+  return when.toISOString().slice(0, 10);
+}
+
+/**
+ * `valid_from`, when a caller sets it rather than letting the clock.
+ *
+ * **Checked by ROUND TRIP, not by a calendar written out here.** A regex for
+ * `\d{4}-\d{2}-\d{2}` accepts `2026-02-31` and `2026-13-01`; a hand-written
+ * month table is the second spelling of a calendar that `Date` already owns.
+ * So the value is parsed as a UTC instant and re-rendered through `isoDay` —
+ * the same function `today()` writes with — and it is legal only if that gives
+ * back exactly what was passed. `2026-02-31` re-renders as `2026-03-03` and is
+ * refused; `2026-8-13` re-renders as `2026-08-13` and is refused too, because
+ * a value that is silently rewritten on its way to disk is the round-trip
+ * failure every other guard in this module exists to stop.
+ *
+ * Why the field is settable at all: an item being copied into a corpus from
+ * somewhere it already existed carries its own start date, and until this
+ * existed there was no write path that could say so. `valid_from` is a
+ * reserved frontmatter name (`RESERVED_FRONTMATTER_KEYS`), so `--extra
+ * valid_from=...` is refused and always was — that refusal is correct and
+ * stays, because an `extra` field of that name would overwrite the real one on
+ * disk with no validation at all. This is the named way to mean it.
+ */
+export function validateValidFrom(value: string, where: string): void {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (!Number.isNaN(parsed.getTime()) && isoDay(parsed) === value) return;
+  throw new Error(
+    `my_context: ${where} is ${JSON.stringify(value)}, which is not a date this corpus can ` +
+    `store. Dates are written as YYYY-MM-DD — four-digit year, two-digit month, two-digit day, ` +
+    `and a day that exists — because that is the shape every item's valid_from and valid_until ` +
+    `already carry. Pass ${JSON.stringify(isoDay(new Date()))} for today, or the item's own ` +
+    `start date in that spelling. See mycontext_help("capture").`,
+  );
 }
 
 /**
@@ -584,13 +633,40 @@ export function validateObservationText(text: string, where: string): void {
       `Keep it on one line, or split it into a separate observation. See mycontext_help("capture").`,
     );
   }
-  if (text.includes('#')) {
-    throw new Error(
-      `my_context: ${where} contains "#" (${JSON.stringify(text)}). Observation text is ` +
-      `stored as Markdown in which "#word" is a TAG, so the "#" and the word after it would ` +
-      `be silently moved out of the text when the item is read back. Drop the "#", or pass ` +
-      `the value in "tags". See mycontext_help("capture").`,
-    );
+  // **What actually happens to a "#word", measured rather than assumed.**
+  // `parseObservations` (item.ts) lifts every `#word` out of the text into the
+  // observation's `tags`, and `renderObservation` writes those tags back at the
+  // END of the line. So the two halves cancel for a `#tag` that is ALREADY the
+  // tail of the text: `- [limit] ... under 50ms #performance` is written, read
+  // back and re-rendered as exactly those bytes, which is why nine items in
+  // this repository's own corpus carry that shape and `mycontext show` prints
+  // them unchanged. `normalizeObservations` below performs the reader's own
+  // extraction on the way in, so what is STORED and HASHED is what will be read
+  // back — without it, an accepted `#` produces a file whose recorded checksum
+  // can never match its own content and `doctor` accuses the author of a hand
+  // edit. (The observation's `tags` are its own field; nothing here touches the
+  // item's frontmatter `tags:` list.)
+  //
+  // A `#word` anywhere ELSE does not cancel — the reader moves it to the end of
+  // the line, so the sentence on disk is not the sentence that was written. Only
+  // that is refused, and this check is what tells the two apart: it re-joins the
+  // stripped text with its tags in the order `renderObservation` will emit them
+  // and asks whether that is the text it was given. Compared against the
+  // whitespace-COLLAPSED text because `normalizeObservations` collapses too, so
+  // a stray double space before a trailing tag is not a refusal.
+  const inline = splitObservationTags(text);
+  if (inline.tags.length > 0) {
+    const asWritten = `${inline.text}${inline.tags.map((t) => ` #${t}`).join('')}`;
+    if (asWritten !== text.replace(/\s+/g, ' ').trim()) {
+      throw new Error(
+        `my_context: ${where} has a "#word" that is not at the end (${JSON.stringify(text)}). ` +
+        `Observation text is stored as Markdown in which "#word" is a TAG, and a tag is always ` +
+        `read back and re-written after the text — so this observation would be stored as ` +
+        `${JSON.stringify(asWritten)}, which is not what you wrote. A "#word" at the END of the ` +
+        `text is kept exactly as written and is not refused. Move it to the end, drop the "#", ` +
+        `or pass the value in "tags". See mycontext_help("capture").`,
+      );
+    }
   }
   if (/\([^()]*\)\s*$/.test(text)) {
     throw new Error(
@@ -889,11 +965,43 @@ export function normalizeObservations(observations: Observation[]): Observation[
     // `create_item`/`update_item` path never reaches schema.ts at all, so
     // the rule was enforced for ingested items and absent for the ones a
     // model writes interactively. schema.ts now delegates to this function.
-    return {
+    //
+    // THE SECOND SANCTIONED NORMALIZATION, and it is the same act as the
+    // collapse for the same reason: `splitObservationTags` IS the reader
+    // (`parseObservations` calls that one function and nothing else), so the
+    // observation stored here is the observation the next read will produce.
+    // `validateObservationText` above has already refused every text where
+    // this MOVES a `#word`, so what is left is a trailing tag run that
+    // `renderObservation` writes back verbatim: the bytes on disk are the
+    // author's own, and the checksum is taken over what will be read back
+    // instead of over a form that only ever existed in memory.
+    //
+    // Extracted tags come BEFORE `o.tags` because that is the order the line
+    // presents them — text first, then the caller's explicit tags — so
+    // re-parsing the rendered line yields this exact array again.
+    const split = splitObservationTags(trimmed);
+    const normalized: Observation = {
       category: o.category,
-      text: trimmed.replace(/\s+/g, ' '),
-      tags: o.tags,
+      text: split.text,
+      tags: [...split.tags, ...o.tags],
       context,
     };
+
+    // The promise above, asserted rather than reasoned about, once per write.
+    // Every guard in this function names a shape that fails to round-trip;
+    // this is the round trip itself, run against the real reader, so a future
+    // change to either boundary fails here at the write instead of surfacing
+    // days later as a `doctor` checksum mismatch on a file nobody has touched.
+    const line = renderObservation(normalized);
+    const reread = parseObservationLine(line);
+    if (!reread || renderObservation(reread) !== line) {
+      throw new Error(
+        `my_context: observations[${i}] does not survive being written and read back ` +
+        `(${JSON.stringify(o.text)} would be stored as ${JSON.stringify(line)}). Nothing was ` +
+        `written. Simplify the text — plain prose with no "#", no brackets and no trailing ` +
+        `"(...)" always round-trips. See mycontext_help("capture").`,
+      );
+    }
+    return normalized;
   });
 }

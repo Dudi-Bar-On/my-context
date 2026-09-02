@@ -165,9 +165,20 @@ const CONTROL = [
 ].join('\n');
 
 /** `from '…'` and bare `import '…'`, which is the whole reach of an ES module. */
+/**
+ * `\b` is not enough in front of `from`, and the flag `--valid-from` is what
+ * proved it: `{ name: 'valid-from', input: 'text' }` contains the bytes
+ * `from', input: '`, and a word boundary matches after the `-` — so the
+ * catalogue was reported as importing a module named `, input: `. The
+ * lookbehind excludes the three ways `from` can be the tail of something that
+ * is not the keyword: a hyphen or an identifier character before it, or a
+ * quote (a string that merely ENDS in the word). Everything the keyword can
+ * legitimately follow — a newline, a space, `}` after a named-import list — is
+ * still matched.
+ */
 function specifiers(source: string): string[] {
   const found = [
-    ...source.matchAll(/\bfrom\s*['"]([^'"]+)['"]/g),
+    ...source.matchAll(/(?<![-'"\w$])from\s*['"]([^'"]+)['"]/g),
     ...source.matchAll(/^\s*import\s*['"]([^'"]+)['"]/gm),
   ];
   return found.map((m) => m[1]);
@@ -202,6 +213,28 @@ test('the composing modules bind nothing that can run, send or navigate', () => 
 test('the composing modules reach nothing outside their own directory', () => {
   const files = LIB_FILES();
   assert.ok(files.length > 0, `no browser modules found under ${LIB}`);
+
+  // `CONTROL`'s move, for the reader below `specifiers`: the closure this
+  // walks currently imports NOTHING, so an empty result here is the honest
+  // answer and cannot distinguish "reaches outside nowhere" from "the regex
+  // stopped matching". The regex is therefore asked about text that does
+  // contain imports — including the two shapes the lookbehind must NOT read as
+  // one.
+  assert.deepEqual(
+    specifiers([
+      "import { a } from './b.js';",
+      "import './side-effect.js';",
+      "export { c } from '../outside.js';",
+      // The one that actually bit: a flag whose NAME ends in "-from", so a
+      // word boundary alone reads `from', input: '` as an import of
+      // `, input: `. A string whose last WORD is "from" is beyond a byte scan
+      // and is deliberately not claimed here.
+      "const flag = { name: 'valid-from', input: 'text' };",
+    ].join('\n')),
+    ['./b.js', '../outside.js', './side-effect.js'],
+    'the import scanner no longer reads the imports it is pointed at, or it reads a string ' +
+    'ending in "from" as one. Either way the check below would pass over anything.',
+  );
 
   const offenders: string[] = [];
   for (const file of composingModules()) {

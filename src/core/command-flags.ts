@@ -149,12 +149,18 @@ export const DETAIL_FLAGS = ['full', 'short', 'summary', 'json'];
  * `add`'s value-taking flags, named because its `allowed` is DERIVED from
  * them: the command accepts every flag that takes a value, plus the
  * confirmation, and that is the sentence `ADD_FLAGS = [...ADD_VALUE_FLAGS,
- * 'yes']` said in `cli/index.ts`. Spelling the eight names a second time
+ * 'yes']` said in `cli/index.ts`. Spelling these names a second time
  * inside `allowed` would be the duplicate this module exists to remove —
  * the same reason `[...DETAIL_FLAGS, 'quiet']` below is still a spread.
+ *
+ * `observation` and `valid-from` joined the list when `add` grew the ability to
+ * re-create an item that already exists: an observation under a kind other than
+ * `note`, and the day the item started holding. Both take a value; neither is
+ * comma-split.
  */
 const ADD_VALUE_FLAGS = [
-  'body', 'file', 'note', 'step', 'summary', 'scope', 'tags', 'severity', 'extra',
+  'body', 'file', 'note', 'observation', 'step', 'summary', 'scope', 'tags', 'severity',
+  'valid-from', 'extra',
 ];
 
 /**
@@ -786,10 +792,26 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       note: 'Adds one "[note]" observation. Repeatable, in the order given, and NOT comma-split '
         + '- an observation is a sentence, and sentences contain commas.',
     },
+    observation: {
+      format: 'kind=text, one observation per flag',
+      example: 'limit=Pool size must never exceed 20 across all workers',
+      note: 'One observation under a kind of your choosing - what `--note` does for `[note]`, '
+        + 'for `[limit]`, `[exception]`, `[invariant]` or any other. The kind is written as '
+        + '"[kind]" in the Markdown and must be lowercase letters, digits, underscore or hyphen; '
+        + 'anything else is refused, because the parser that reads the item back would drop the '
+        + 'whole line. The text is taken whole after the first "=", commas and further "=" '
+        + 'included. Repeatable, and it keeps command-line order with --note.',
+    },
     step: {
       format: 'one sentence, one step', example: 'Take the database out of the load balancer.',
       note: 'One step of a `procedure`. Repeatable, keeps command-line order, not comma-split, '
         + 'and no later command can edit or tick it.',
+    },
+    'valid-from': {
+      format: 'a date, as YYYY-MM-DD', example: '2026-08-13',
+      note: 'The day this item started holding. Today when omitted, which is right for something '
+        + 'captured now and wrong for an item copied in from somewhere it already existed. A '
+        + 'date that does not exist is refused rather than rounded.',
     },
     scope: {
       format: 'comma-separated path globs', example: 'src/**,docs/*.md',

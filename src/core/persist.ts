@@ -15,6 +15,7 @@ import { checksum } from './slug.ts';
 import { sleepMs } from './sleep.ts';
 import { unknownIdError } from './teach.ts';
 import type { Item, Origin, Status } from './types.ts';
+import { isoDay } from './validate.ts';
 import type { MutationContext } from './mutate.ts';
 
 /**
@@ -43,8 +44,17 @@ export function withRetry<T>(fn: () => T, attempts = 8): T {
   );
 }
 
+/**
+ * The day every `valid_from`/`valid_until` stamp is written with.
+ *
+ * `isoDay` rather than an inline `.toISOString().slice(0, 10)`: a caller may
+ * now SET `valid_from` (`mycontext add --valid-from`), and the guard that
+ * refuses a date this format cannot store has to check against the same
+ * expression that writes one. Two spellings of "a stored day" is how a
+ * validator comes to accept what the writer would not produce.
+ */
 export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return isoDay(new Date());
 }
 
 export function normalizeSource(value: string | null | undefined): string | null {

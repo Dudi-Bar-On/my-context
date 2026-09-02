@@ -107,17 +107,53 @@ export function extraFlag(args: string[]): Record<string, string> | null {
 }
 
 export function flagOccurrences(args: string[], name: string): FlagOccurrence[] {
-  const long = `--${name}`;
-  const found: FlagOccurrence[] = [];
+  // The `name` each occurrence carries is dropped rather than passed through:
+  // this function's answer is about ONE flag, and every caller already knows
+  // which. Returning the richer record would also change what
+  // `deepEqual(flagOccurrences(...), [{value, bare}])` compares in
+  // `test/cli/registry.test.ts`, which is a claim about this shape and not
+  // about the scanner underneath it.
+  return interleavedOccurrences(args, [name]).map(({ value, bare }) => ({ value, bare }));
+}
+
+/**
+ * The same occurrence, plus WHICH flag it was — for a caller reading two or
+ * more flags whose RELATIVE order is part of the meaning.
+ *
+ * `mycontext add --note a --observation limit=b --note c` records three
+ * observations, and they must land in that order: an item's `## Observations`
+ * block is a list, `renderItem` writes it in array order, and a re-created item
+ * whose observations came back in flag-grouped order is not the item it was
+ * copied from. Reading each flag separately with `flagOccurrences` cannot
+ * answer that — two independent scans know each flag's internal order and
+ * nothing about the order BETWEEN them, so `--note a --observation x --note c`
+ * would be assembled as `a, c, x` and reported as a success.
+ *
+ * One scan, not two, is also what keeps the value-token skip honest: a bare
+ * `--note --observation` must consume `--observation` as `--note`'s value
+ * (where the caller's own guard then refuses it by name), exactly as
+ * `positionals` and `unknownFlag` treat it, and two scans would see the same
+ * token as both a value and a flag.
+ */
+export interface NamedFlagOccurrence extends FlagOccurrence {
+  /** Which of the requested flags this occurrence is. */
+  name: string;
+}
+
+export function interleavedOccurrences(
+  args: string[], names: string[],
+): NamedFlagOccurrence[] {
+  const found: NamedFlagOccurrence[] = [];
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === long) {
-      found.push({ value: args[i + 1] ?? null, bare: true });
+    const arg = args[i];
+    const name = names.find((n) => arg === `--${n}` || arg.startsWith(`--${n}=`));
+    if (name === undefined) continue;
+    if (arg === `--${name}`) {
+      found.push({ name, value: args[i + 1] ?? null, bare: true });
       i++;
       continue;
     }
-    if (args[i].startsWith(`${long}=`)) {
-      found.push({ value: args[i].slice(long.length + 1), bare: false });
-    }
+    found.push({ name, value: arg.slice(name.length + 3), bare: false });
   }
   return found;
 }

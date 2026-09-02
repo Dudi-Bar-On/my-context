@@ -63,15 +63,21 @@ export const PALETTE = [
       { name: 'category', source: 'categories', required: true },
       { name: 'title', input: 'text', required: true },
     ],
-    // `--step` and `--extra` are repeatable at the CLI and single-valued here:
-    // this model is one value per flag, and a screen that needed two steps
-    // would have to grow a repeat control rather than quietly compose one.
+    // `--note`, `--observation`, `--step` and `--extra` are repeatable at the
+    // CLI and single-valued here: this model is one value per flag, and a
+    // screen that needed two steps would have to grow a repeat control rather
+    // than quietly compose one. `--observation` additionally carries two
+    // fields in one value (`kind=text`, the shape `--extra` already uses), so
+    // the placeholder its declaration supplies is what tells a composer the
+    // "=" is not optional.
     flags: [
       { name: 'body', input: 'textarea' }, { name: 'file', input: 'text' },
-      { name: 'note', input: 'text' }, { name: 'step', input: 'text' },
+      { name: 'note', input: 'text' }, { name: 'observation', input: 'text' },
+      { name: 'step', input: 'text' },
       { name: 'summary', input: 'text' },
       { name: 'scope', input: 'glob' }, { name: 'tags', input: 'text' },
-      { name: 'severity', options: ['hard', 'soft'] }, { name: 'extra', input: 'text' },
+      { name: 'severity', options: ['hard', 'soft'] },
+      { name: 'valid-from', input: 'text' }, { name: 'extra', input: 'text' },
       yes,
     ],
   },

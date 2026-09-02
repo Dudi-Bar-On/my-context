@@ -185,11 +185,29 @@ test('an observation category with a space is rejected early, aligned with the w
   assert.match(result.issues[0].message, /root cause/);
 });
 
-test('an observation text containing "#" is rejected early, aligned with the write boundary', () => {
+test('an observation text with a "#word" that is not last is rejected early, aligned with the write boundary', () => {
   const result = validateCandidates(
-    [candidate({ observations: [{ category: 'limit', text: 'see #123' }] })], CONFIG, CHUNK);
+    [candidate({ observations: [{ category: 'limit', text: 'see #123 for the cap' }] })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
   assert.match(result.issues[0].message, /observations\[0\]\.text/);
+});
+
+/**
+ * The accepted half, through the same surface: a trailing "#word" is a TAG the
+ * reader lifts out and the renderer writes straight back, so the line on disk
+ * is the extracted text unchanged. Aligned with the write boundary means
+ * aligned in both directions — a candidate refused here that `createItem`
+ * would have taken is a document the extractor cannot capture for no reason.
+ */
+test('an observation text ending in a "#word" is accepted and normalized into tags', () => {
+  const result = validateCandidates(
+    [candidate({ observations: [{ category: 'limit', text: 'held under 50ms #performance' }] })],
+    CONFIG, CHUNK);
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.valid.length, 1);
+  assert.deepEqual(result.valid[0].observations, [{
+    category: 'limit', text: 'held under 50ms', tags: ['performance'], context: null,
+  }]);
 });
 
 test('an observation text ending in a parenthetical is rejected early, aligned with the write boundary', () => {
