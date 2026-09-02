@@ -1321,11 +1321,30 @@ export const GIVE = {
    * bar that could reveal it. A rate window outranked by this is still true
    * whichever corpus is loaded; a rate window is a fact about the account.
    *
-   * They also cost almost nothing to keep. In the ordinary case they are
-   * `CWD .` and `CORPUS .` — nineteen columns including their labels and
-   * separators — because `relDir` draws them relative to the launch
-   * directory. A field that is cheap when quiet and loud when it is not has
-   * earned a high rank on width alone.
+   * **THE HIGH RANK IS NOW ALSO PAYING FOR WIDTH, and that is the trade.**
+   * Until 2026-09-02 the quiet spelling was `CWD .` and `CORPUS .` — nineteen
+   * columns for the pair, labels and separators included — and the owner could
+   * not read either of them. The dot has been replaced by the launch
+   * directory's own name (`relDir`, which carries the whole argument), so the
+   * quiet pair now costs fifty-nine columns and line 1 measures 204 on the
+   * live payload against 164 before. The alarm is unchanged at 210.
+   *
+   * **What a narrower terminal actually gives up was MEASURED, not reasoned
+   * about**, by rendering the live payload at each width:
+   *
+   *     210   everything, untouched
+   *     200   the branch elides four code points from the LEFT — `…ign/…`
+   *     190   the branch is down to `…text-test`
+   *     183   the branch is a bare `…` and the SESSION NAME goes
+   *
+   * So at the owner's ~200-column terminal the whole row still fits and the
+   * cost is four characters off the head of a branch name whose tail is the
+   * half that distinguishes it — `fitSegments` step 1, which exists for
+   * exactly this. The session name is the first BLOCK to go and it is the
+   * right one to lose: a window whose project, branch, directory and corpus
+   * are all on the line is a window the reader can already place. These two
+   * stay ranked above every measurement for the reason above, and `clock`
+   * (`give: 7`) is ranked to go before either of them.
    *
    * The corpus above the directory, because the corpus is the effect: given
    * one block, a reader would rather be told which corpus is in play than
@@ -1862,10 +1881,11 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   // the repository, the branch, the directory inside it, and the corpus that
   // directory resolved to.
   //
-  // Both are drawn relative to the launch directory, so the ordinary session
-  // spends nineteen columns on the pair and the broken one spends more. See
-  // `relDir` in `lib/viewmodel.js` for why that is the abbreviation and not a
-  // truncated absolute path.
+  // Both are drawn relative to the launch directory: the quiet session NAMES
+  // that directory and the broken one draws its descent from it. See `relDir`
+  // in `lib/viewmodel.js` for why that is the abbreviation and not a truncated
+  // absolute path, and for why the quiet answer stopped being `.` on
+  // 2026-09-02.
   const where = relDir(input.cwd, input.projectDir);
   if (where !== null) {
     identity.push({
@@ -2067,7 +2087,7 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
  *
  * So this block has two spellings and they are deliberately unalike:
  *
- *     CORPUS .                                  the ordinary case, one column
+ *     CORPUS test_mycontext_plugin                  the ordinary case, a place
  *     CORPUS ▲ ./my-context — 44 items, 759 above   the alarm
  *
  * **THE COUNTS RIDE THE ALARM, AND THEY ARE THE POINT.** The outage this all

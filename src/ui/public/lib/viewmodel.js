@@ -206,14 +206,54 @@ export function wallStamp(ms) {
  *
  * ── THE THREE ANSWERS ─────────────────────────────────────────────────────
  *
- *     `.`               the session is where it was launched — the ordinary case
- *     `./my-context`    it has moved BELOW the launch directory — the defect
- *     `…/repos/other`   somewhere else entirely, so the last two segments
+ *     `test_mycontext_plugin`  the session is where it was launched — ordinary
+ *     `./my-context`           it has moved BELOW the launch directory — the defect
+ *     `…/repos/other`          somewhere else entirely, so the last two segments
  *
  * The third is the owner's "last segment or two", and it is what an anchor
  * cannot describe: a directory outside the launch tree has no relative form
  * shorter than the absolute one. It carries a leading `…` so it can never be
  * misread as relative — `INV-nothing-is-dropped-silently`.
+ *
+ * ── WHY THE FIRST ANSWER IS A NAME AND NOT A DOT, 2026-09-02 ──────────────
+ *
+ * It WAS `.`, and the owner could not read it: *"the cwd and corpus on status
+ * lines display nothing"*, then *"they show maybe . that does not read"*.
+ *
+ * The dot was correct and it was mute. **A field that shows a bare dot
+ * whenever things are normal teaches a reader to stop looking at it** — and
+ * this field's only job is to be GLANCED at, so a value that trains the glance
+ * away destroys the field while passing every test of correctness. It was a
+ * spelling optimised for the alarm and left silent in the quiet state, which
+ * is the state it spends ninety-nine per cent of its life in.
+ *
+ * So the quiet answer is THE LAUNCH DIRECTORY'S OWN LAST SEGMENT: a place, one
+ * a person recognises with no legend. Three things follow from that choice and
+ * each is the reason it beats the alternatives:
+ *
+ *   - **It teaches the other two answers.** A reader who has seen `CWD
+ *     test_mycontext_plugin` for a week has learned that this field NAMES A
+ *     DIRECTORY, so `CWD ./my-context` reads instantly as one below it. `.`
+ *     taught nothing, which is why `./my-context` had to be explained.
+ *   - **The `./` still carries the descent.** The drifted answer keeps its
+ *     prefix rather than collapsing to a bare `my-context`, because "below the
+ *     project" is the whole content of the alarm; a bare segment would say
+ *     which directory and lose that it is a CHILD.
+ *   - **It costs the bar about nineteen columns per field.** Measured, not
+ *     estimated: line 1 of the terminal bar goes 164 → 204 columns on the live
+ *     payload. The alarm is unchanged at 210, because neither alarm value ever
+ *     took this branch. See `GIVE.cwd`'s note for what a narrower terminal
+ *     gives up instead.
+ *
+ * **On repeating `REPO`.** In an ordinary Claude Code payload the quiet value
+ * IS the `REPO` block's value, and not by coincidence: `statusline.ts` derives
+ * `project` from `basename(workspace.project_dir)` and the anchor here is that
+ * same directory. That is a real cost and it is paid deliberately. The two are
+ * different facts — one is which repository this is, the other is where the
+ * session is standing inside it — and they agree only while nothing is wrong.
+ * The moment they disagree is the moment the reader needs the field, and a
+ * field that is blank until then is a field nobody has learned to read. The
+ * duplication is what buys the fluency.
  *
  * Separators are normalised to `/`. The relative form is not a path anybody
  * will paste; it is a comparison, and one spelling means a Windows session and
@@ -223,8 +263,8 @@ export function wallStamp(ms) {
  * state, which is the state where a path is a thing to act on.
  *
  * `null` for a directory that was not reported, which the caller draws as a
- * named unmeasured field and never as `.` — "I do not know where this session
- * is" and "it is where it started" are different sentences.
+ * named unmeasured field and never as a place — "I do not know where this
+ * session is" and "it is where it started" are different sentences.
  */
 export function relDir(dir, anchor) {
   if (typeof dir !== 'string' || dir === '') return null;
@@ -236,13 +276,37 @@ export function relDir(dir, anchor) {
     // one directory and a comparison that called them different would raise the
     // alarm on a session that has not moved. A FALSE ALARM ON THIS FIELD IS
     // WORSE THAN NO FIELD: its whole worth is that it is normally quiet.
-    if (d.toLowerCase() === a.toLowerCase()) return '.';
+    if (d.toLowerCase() === a.toLowerCase()) return lastSegment(d);
     const prefix = a + '/';
     if (d.toLowerCase().startsWith(prefix.toLowerCase())) return './' + d.slice(prefix.length);
   }
   const parts = d.split('/').filter((part) => part !== '');
   if (parts.length <= 2) return d;
   return '…/' + parts.slice(-2).join('/');
+}
+
+/**
+ * **THE NAME OF A DIRECTORY** — its last segment, and never an empty string.
+ *
+ * This is what the quiet answer above is spelled with, so it is held to the
+ * one rule that answer exists to satisfy: **it must always name somewhere.**
+ * The two inputs that have no last segment are a filesystem root — `/`, which
+ * `norm` has already reduced to the empty string, and `D:`, which keeps its
+ * one segment — and neither may come back blank, because a blank field is the
+ * defect being fixed here wearing a different costume. A session launched at a
+ * volume root is not a case anybody has, but it is a case a fallback either
+ * handles or fails loudly in, and silence is not on the menu
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`).
+ *
+ * The path is already `/`-normalised by the caller; this does not re-normalise
+ * it, because a second spelling of that rule is a second thing to keep true.
+ */
+function lastSegment(dir) {
+  const parts = dir.split('/').filter((part) => part !== '');
+  // The root of a POSIX filesystem, which `norm` left as `''`. It IS a place
+  // and `/` is its name.
+  if (parts.length === 0) return '/';
+  return parts[parts.length - 1];
 }
 
 /**
@@ -255,10 +319,11 @@ export function relDir(dir, anchor) {
  * vocabulary as the working directory beside it: two fields, one shape, and a
  * reader who has learned to read one has learned to read the other.
  *
- * That is also what makes the alarm legible rather than a diff. `CWD .` beside
- * `CORPUS .` is a session reading the corpus it was launched in; `CWD
- * ./my-context` beside `CORPUS ./my-context` is the failure, and the two
- * fields say it in the same three characters.
+ * That is also what makes the alarm legible rather than a diff. `CWD
+ * test_mycontext_plugin` beside `CORPUS test_mycontext_plugin` is a session
+ * reading the corpus it was launched in — TWO FIELDS AGREEING ON A PLACE,
+ * which is a sentence; `CWD ./my-context` beside `CORPUS ./my-context` is the
+ * failure, and the pair changes shape together rather than one at a time.
  *
  * `dirName` is a parameter and not a constant because the name belongs to
  * `core/workspace.ts` (`DIR_NAME`) and a browser module may not hold a second

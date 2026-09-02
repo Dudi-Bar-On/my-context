@@ -5297,7 +5297,7 @@ function drawIdentity(view) {
  * failure the owner reported twice on 2026-09-02, and it is the ONE state this
  * field raises its voice for.
  *
- *     CORPUS .                                       the ordinary case
+ *     CORPUS test_mycontext_plugin                   the ordinary case
  *     CORPUS ▲ ./my-context — 44 items, 759 above    the alarm
  *
  * **THE COUNTS RIDE THE ALARM AND THEY ARE THE POINT.** The outage this comes

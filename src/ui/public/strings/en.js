@@ -1141,10 +1141,14 @@ export const strings = {
   // `my-context/` holds a corpus of its own before it means anything.
   //
   // Both paths are drawn RELATIVE to the directory the session was launched
-  // in, so the ordinary session reads `.` in one column and the broken one
-  // reads `./my-context` — a shape change, not a diff two long paths apart.
-  // The whole absolute path is on the hover; `relDir` in `lib/viewmodel.js`
-  // carries the argument for all of it.
+  // in, so the ordinary session NAMES that directory —
+  // `test_mycontext_plugin` — and the broken one reads `./my-context`: a shape
+  // change, not a diff two long paths apart. It read `.` until 2026-09-02 and
+  // the owner could not read it ("they show maybe . that does not read"); a
+  // field whose quiet value is a bare dot teaches the eye to skip it, which is
+  // fatal to a field whose only job is to be glanced at. The whole absolute
+  // path is on the hover; `relDir` in `lib/viewmodel.js` carries the argument
+  // for all of it.
   'strip.grp.where': 'where',
   'strip.grp.cwd': 'cwd',
   'strip.grp.corpusRoot': 'corpus',
@@ -1158,7 +1162,7 @@ export const strings = {
   'strip.corpusRootNested': '{mv:dir} — {items} items, {enclosing} above',
   'strip.corpusRootNone': 'no corpus here',
   'strip.clock': '{mv:stamp}',
-  'title.cwd': 'Where this session is working right now, relative to the directory it was launched in. A single dot means it has not moved. Anything else means a command changed the working directory — which also changes which corpus the hooks resolve, so check the corpus field beside this one.',
+  'title.cwd': 'Where this session is working right now, relative to the directory it was launched in. The launch directory’s own name — matching the repo field — means it has not moved. A path starting with ./ means a command changed the working directory to somewhere below it — which also changes which corpus the hooks resolve, so check the corpus field beside this one. A path starting with … is somewhere else entirely, shown as its last two segments.',
   'title.corpusRoot': 'Which corpus this session’s working directory resolves to, relative to the directory the session was launched in. The corpus is found by walking up from the working directory and stopping at the first .my_context, so the directory decides which one it gets. A warning here means the walk stopped at a nested corpus while another one stands higher up the same tree: the smaller item count is A DIFFERENT CORPUS, not a project with little recorded in it.',
   'title.clock': 'When this bar was last drawn. The web strip repaints on its own cycle, so this is close to the current time; the terminal status line is drawn only when Claude Code sends a message, so the same field there tells you how stale that line is.',
   'strip.grp.repo': 'repo',

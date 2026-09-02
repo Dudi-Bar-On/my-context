@@ -817,9 +817,13 @@ bdi{unicode-bidi:isolate}
    (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`). */
 .sgrp-where .slab{color:var(--carry)}
 /* A floor, so the group does not collapse to its label while the two paths
-   ellipsise to nothing, and a modest one: the QUIET spelling is `CWD . CORPUS .`
-   and the alarm's extra width is bought by ellipsising rather than by holding
-   210px open on every screen at every width. Measured at 1280px, where five
+   ellipsise to nothing, and a DELIBERATELY modest one. Since 2026-09-02 the
+   quiet spelling names the launch directory in both fields rather than drawing
+   `.` twice (`relDir`, which carries the argument), so the group's natural
+   width grew by roughly two project names — but the floor did not move with
+   it. It is a floor and not a width: `flex:0 2 auto` means this group gives up
+   room twice as fast as its neighbours, the extra is bought by ellipsising,
+   and the whole path survives on the hover either way. Measured at 1280px, where five
    identity groups share the row and a bigger floor here pushes one of the
    others under the 20px that `e2e/strip.spec.ts` calls collapsed-to-nothing. */
 .sgrp-where{flex:0 2 auto;min-inline-size:120px}
