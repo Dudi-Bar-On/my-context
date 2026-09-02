@@ -1,0 +1,32 @@
+---
+id: TASK-the-capture-screen-has-no-endpoint-behind-it
+type: task
+title: the Capture screen has no endpoint behind it
+status: active
+severity: soft
+always: false
+summary: The screen for writing something new has nothing serving it yet, so it cannot be built until that exists.
+summary_of: af2749083a30996a
+scope: []
+tags:
+  - "plan:api"
+  - "seq:1"
+  - v2
+  - ui
+  - backend
+  - "state:done"
+origin: human
+source_file: null
+source_anchor: null
+source_checksum: null
+valid_from: 2026-08-23
+valid_until: null
+checksum: ed64a78141d03486
+plan: api
+seq: "1"
+state: done
+---
+
+# the Capture screen has no endpoint behind it
+
+Measured 2026-08-23: of the ten screens the rail lists and the app does not build, six already have their endpoints - ask, work, palette, config, docs and tut - and are pure UI work. This screen is one of the four that has NONE, so the UI task for it is blocked until this lands. That makes these four the long pole to TASK-screen-by-screen-review-walk-the-rail-item-by-item-against (plan:port seq:98), which cannot run until all 21 screens exist. Read the mockup section for the shape of the data it must answer, and the web-ui spec for what a read surface may and may not do - it performs no writes, and a composed command is handed back for the user to run rather than executed. Section data-p=capture in docs/design/web-ui-mockup.html. Capture composes a new item; the read surface must be able to show what would be written and hand back the command, never run it.

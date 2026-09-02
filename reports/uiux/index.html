@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mycontext v2.0 — UI/UX panel</title>
+<style>
+:root{
+  color-scheme:light dark;
+  --paper:light-dark(#f7f6f2,#0f0f12); --panel:light-dark(#fffffe,#17171c);
+  --ink:light-dark(#17171b,#ecebe4); --dim:light-dark(#5d5b55,#a3a099);
+  --faint:light-dark(#7a776f,#7d7a73); --rule:light-dark(#e2dfd6,#262630);
+  --edge:light-dark(#cdc9bd,#3a3a45); --gold:light-dark(#7a5f0f,#dbb047);
+  --goldbg:light-dark(#f7f0d9,#292110); --ok:light-dark(#2f6a49,#68a482);
+  --crit:light-dark(#8e2f2f,#cd6b6b); --critbg:light-dark(#f8e5e5,#2a1616);
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.6 var(--sans);
+  -webkit-font-smoothing:antialiased}
+.wrap{max-inline-size:1080px;margin-inline:auto;padding:32px 20px 64px}
+h1{font-size:26px;letter-spacing:-.02em;margin:0 0 4px}
+.sub{color:var(--dim);margin:0 0 8px;font-size:14px}
+.note{background:var(--goldbg);border:1px solid var(--gold);border-radius:8px;
+  padding:12px 14px;font-size:13.5px;margin-block:20px;color:var(--ink)}
+.note b{color:var(--gold)}
+h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
+  margin:34px 0 12px;font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;
+  padding:15px 16px;display:flex;flex-direction:column;gap:8px}
+.card.hero{border-color:var(--gold)}
+.card h3{margin:0;font-size:15.5px;letter-spacing:-.01em}
+.card h3 a{color:inherit;text-decoration:none}
+.card h3 a:hover{color:var(--gold);text-decoration:underline}
+.who{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.03em}
+.card p{margin:0;font-size:13.5px;color:var(--dim)}
+.claim{border-inline-start:2px solid var(--gold);padding-inline-start:10px;
+  font-size:13px;color:var(--ink)}
+.links{margin-block-start:auto;padding-block-start:8px;display:flex;gap:8px;flex-wrap:wrap}
+.links a{font-size:12px;font-family:var(--mono);text-decoration:none;color:var(--ink);
+  border:1px solid var(--edge);border-radius:5px;padding:3px 9px;background:var(--paper)}
+.links a:hover{border-color:var(--gold);color:var(--gold)}
+.links a.primary{background:var(--goldbg);border-color:var(--gold);color:var(--gold);font-weight:600}
+table{inline-size:100%;border-collapse:collapse;font-size:13px;margin-block-start:8px}
+th{text-align:start;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--faint);border-block-end:1px solid var(--rule);padding-block-end:6px}
+td{padding-block:7px;border-block-end:1px solid var(--rule);vertical-align:top}
+td.n{font-family:var(--mono);white-space:nowrap;color:var(--gold);font-weight:600}
+code,.m{font-family:var(--mono);font-size:.88em;direction:ltr;unicode-bidi:isolate}
+.foot{margin-block-start:34px;padding-block-start:16px;border-block-start:1px solid var(--rule);
+  font-size:12.5px;color:var(--faint)}
+
+/* -- historical marker --------------------------------------------------------------------------
+   Added 2026-08-29. This page is a dated record, and the block at the top of
+   the body says so. Styled from this file's own tokens on purpose, and with
+   logical properties, so it behaves like the rest of the page.             */
+.histnote{background:var(--goldbg,var(--panel));border:1px solid var(--gold);
+  border-radius:var(--r-md,8px);padding-block:10px;padding-inline:13px;
+  font:13px/1.55 var(--sans);color:var(--ink);margin-block:12px 16px;margin-inline:0}
+.histnote b{color:var(--gold)}
+.histnote code{font-family:var(--mono);font-size:.9em;direction:ltr;unicode-bidi:isolate}
+</style>
+
+<div class="wrap">
+  <h1>mycontext v2.0 — UI/UX panel</h1>
+  <p class="sub">Nine experts, run 2026-08-19. Seven produced a working sketch.</p>
+
+<div class="histnote" dir="ltr">
+  <b>Historical &mdash; this panel ran on 2026-08-19.</b>
+  These sketches record the design as of that date and are not synced forward. They are
+  kept, and still worth reading, because their reasoning is what the mockup and the app
+  were drawn from. Where a sketch and <code>docs/design/web-ui-mockup.html</code>
+  differ, the mockup is current.
+</div>
+
+
+  <div class="note">
+    <b>Read these as proposals, not decisions.</b> Nothing here has been filtered, reconciled or
+    checked against the spec yet — several sketches contradict each other, and at least one
+    proposes replacing a structure another argues to keep. They are also <em>sketches</em>: inline
+    styles and scripts are fine here and forbidden in the real app, whose CSP is
+    <code>default-src 'none'</code>.
+  </div>
+
+  <h2>Start here — the two that reframe the most</h2>
+  <div class="grid">
+    <div class="card hero">
+      <div class="who">02 · information architecture</div>
+      <h3><a href="sketches/02-ia.html">Three groups, not four — and an item pane</a></h3>
+      <p>Argues the current Core / Work / Watch / Report names the build rather than the user, and
+      replaces it with Injection / Evidence / Change.</p>
+      <div class="claim"><b>There is no item page.</b> Sixteen screens name item ids and give them
+      nowhere to go. 16 destinations → 8, with no capability lost.</div>
+      <div class="links"><a class="primary" href="sketches/02-ia.html">Open sketch</a><a href="reports/02-ia.md">Report</a></div>
+    </div>
+
+    <div class="card hero">
+      <div class="who">03 · interaction design</div>
+      <h3><a href="sketches/03-interaction.html">Compose-and-copy, with a receipt</a></h3>
+      <p>The UI never writes; every mutation is a command you paste. This makes that feel like
+      control rather than a workaround.</p>
+      <div class="claim">The composed command becomes an object with six states, a preview before
+      and a <b>receipt after</b> — the audit record, where <code>origin:'human'</code> proves it
+      was your shell.</div>
+      <div class="links"><a class="primary" href="sketches/03-interaction.html">Open sketch</a><a href="reports/03-interaction.md">Report</a></div>
+    </div>
+  </div>
+
+  <h2>The rest</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="who">04 · visual design</div>
+      <h3><a href="sketches/04-visual.html">Evolve, don't replace</a></h3>
+      <p>Argues <em>against</em> a bolder redesign: paper-and-gold is the right material metaphor
+      for a tool that renders verdicts. The weakness is system discipline, not palette.</p>
+      <div class="claim">Map visual weight to <b>epistemic status</b> — measured numbers render
+      large, fabricated ones stay small and tagged.</div>
+      <div class="links"><a class="primary" href="sketches/04-visual.html">Open sketch</a><a href="reports/04-visual.md">Report</a></div>
+    </div>
+
+    <div class="card">
+      <div class="who">05 · data visualisation</div>
+      <h3><a href="sketches/05-dataviz.html">Seven graphics, no library</a></h3>
+      <p>Hand-written SVG only. Live RTL toggle and a 50 ↔ 57,195-file scale toggle.</p>
+      <div class="claim"><b>Hoist pinned out of the coverage tree.</b> <code>always:true</code>
+      items govern every path, so colouring them per-path is why a governed directory renders as a
+      gap.</div>
+      <div class="links"><a class="primary" href="sketches/05-dataviz.html">Open sketch</a><a href="reports/05-dataviz.md">Report</a></div>
+    </div>
+
+    <div class="card">
+      <div class="who">06 · accessibility &amp; RTL</div>
+      <h3><a href="sketches/06-a11y.html">What the current mockup breaks</a></h3>
+      <p>Audited the regenerated mockup and found five measured contrast failures and two whole
+      missing interaction models.</p>
+      <div class="claim">The Hebrew table uses <code>innerHTML</code>, destroying the bidi
+      isolation the CSS provides — <b>English isolated, Hebrew not.</b> Gold vs green measures
+      <b>1.04:1</b>.</div>
+      <div class="links"><a class="primary" href="sketches/06-a11y.html">Open sketch</a><a href="reports/06-a11y.md">Report</a></div>
+    </div>
+
+    <div class="card">
+      <div class="who">07 · frontend architecture</div>
+      <h3><a href="sketches/07-arch.html">The URL is the store</a></h3>
+      <p>How sixteen screens share state with no framework and no store library, under
+      <code>default-src 'none'</code>.</p>
+      <div class="claim"><code>/api/coverage</code> is O(files × items) on one event loop —
+      ~5.6 s for 20k files × 5k items, which <b>stalls the whole server</b>, not just the screen.</div>
+      <div class="links"><a class="primary" href="sketches/07-arch.html">Open sketch</a><a href="reports/07-arch.md">Report</a></div>
+    </div>
+
+    <div class="card">
+      <div class="who">08 · onboarding</div>
+      <h3><a href="sketches/08-onboarding.html">Nine screens at zero</a></h3>
+      <p>Every screen in the design assumes a populated corpus. This is what a real first run
+      looks like.</p>
+      <div class="claim"><b>The dot rule.</b> 1,284 dashed warning dots are one true sentence
+      rendered 1,284 times.</div>
+      <div class="links"><a class="primary" href="sketches/08-onboarding.html">Open sketch</a><a href="reports/08-onboarding.md">Report</a></div>
+    </div>
+
+    <div class="card">
+      <div class="who">01 · capability coverage — no sketch</div>
+      <h3>392 capabilities, 273 missing</h3>
+      <p>The exhaustive inventory: 41 CLI surfaces, 118 flags, 14 MCP tools, 62 params, 14 config
+      keys, 27 item fields, 66 slash commands.</p>
+      <div class="claim">The entire <b>MCP surface is absent</b> — while Configure lets you edit
+      <code>agentEdits</code>, whose only effect is on those tools.</div>
+      <div class="links"><a href="reports/01-coverage.md">Report</a></div>
+    </div>
+
+    <div class="card">
+      <div class="who">09 · workflow research — no sketch</div>
+      <h3>Eighteen capabilities nobody proposed</h3>
+      <p>Derived from the data the product already records, each with the evidence it exists.</p>
+      <div class="claim">There are <b>four</b> unfinished-work queues — drafts, revisions, staged
+      rules, unfinished ingests — and <code>review</code> shows two.</div>
+      <div class="links"><a href="reports/09-workflows.md">Report</a></div>
+    </div>
+  </div>
+
+  <h2>For comparison</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="who">before / after</div>
+      <h3>The mockup as it stands</h3>
+      <p>The original 16-screen mockup, and the regenerated 10-screen one. The six missing screens
+      are <code>graph</code>, <code>capture</code>, <code>palette</code>, <code>doctor</code>,
+      <code>decay</code>, <code>gaps</code> — a regression I introduced and am restoring.</p>
+      <div class="links">
+        <a href="sketches/00-mockup-before.html">Original (16 screens)</a>
+        <a href="sketches/00-mockup-current.html">Current (10 screens)</a>
+      </div>
+    </div>
+  </div>
+
+  <h2>Numbers worth keeping</h2>
+  <table>
+    <tr><th>Finding</th><th>Value</th></tr>
+    <tr><td>Capabilities inventoried / exposed / missing</td><td class="n">392 / 95 / 273</td></tr>
+    <tr><td>Item fields that render nowhere</td><td class="n">15 of 27</td></tr>
+    <tr><td>Palette coverage of command surfaces</td><td class="n">21 of 41</td></tr>
+    <tr><td>Gold vs green contrast, coverage map</td><td class="n">1.04 : 1</td></tr>
+    <tr><td>Hebrew strings losing bidi isolation</td><td class="n">10 of 114</td></tr>
+    <tr><td><code>/api/coverage</code> at 20k files × 5k items</td><td class="n">~5.6 s</td></tr>
+    <tr><td>Unfinished-work queues that exist / are shown</td><td class="n">4 / 2</td></tr>
+  </table>
+
+  <p class="foot">
+    Sketches are self-contained — open any file directly, no server needed. Several carry live
+    EN/HE and light/dark toggles. Reports are markdown, ~330 KB in total.
+  </p>
+</div>
+</html>

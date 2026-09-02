@@ -5,6 +5,8 @@ title: core/select is a pure function
 status: active
 severity: hard
 always: false
+summary: The code that chooses what goes into the context window reads nothing and writes nothing, so its whole behaviour can be tested from fixed inputs.
+summary_of: 8c02b9fb311cf820
 scope:
   - src/core/select.ts
 tags:
@@ -15,7 +17,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: 4535db6ef83cc742
+checksum: ec08077a18153ee2
 ---
 
 # core/select is a pure function

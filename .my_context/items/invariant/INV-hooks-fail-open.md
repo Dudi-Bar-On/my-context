@@ -5,6 +5,8 @@ title: Hooks fail open, always
 status: active
 severity: hard
 always: false
+summary: When anything goes wrong the hooks say nothing and let the session carry on, because breaking someone's work is worse than telling them nothing.
+summary_of: 072adad2db5459f8
 scope:
   - src/hooks/**
 tags:
@@ -15,7 +17,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: a1b0de64271e5aca
+checksum: 8463c6bfb0ac7f80
 ---
 
 # Hooks fail open, always

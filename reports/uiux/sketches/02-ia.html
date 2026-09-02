@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<meta charset="utf-8">
+<title>mycontext v2 — IA sketch: rail / body / detail</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<!--
+  IA SKETCH ONLY. Inline CSS is used because this is a sketch; the real app
+  cannot use it (CSP default-src 'none', script-src 'self', style-src 'self').
+  Every offset below is nevertheless written with LOGICAL properties, because
+  that rule is not a styling preference in this product - it is spec §3, and a
+  sketch that models it wrong teaches the wrong shape.
+
+  What this sketch is arguing:
+    1. THREE rail groups, not four: Injection / Evidence / Change.
+       Eight destinations, not sixteen.
+    2. A THIRD COLUMN. rail | body | detail. The detail pane is the universal
+       "the thing that is wrong" surface. Every item id, path node, audit row,
+       spill and doctor finding on every screen puts its subject there.
+       You never navigate away to inspect; the rail's aria-current never lies.
+    3. A PROVENANCE BAR under the header. Every qualification the spec requires
+       (session is the parent thread, focus is narrowing, the projection is
+       behind, the seen file was unreadable, tokens not recorded) lands in ONE
+       place instead of being re-invented per screen.
+    4. MODES, not screens, where the input is the same and only the question
+       differs: coverage+gaps, preview+simulate, stream+decay.
+    5. A GLOBAL COMPOSER. Writes are composed and pasted (spec §2), so the one
+       surface that composes them belongs to the shell, pre-filled from
+       whatever is selected - not to a rail leaf you must travel to.
+    6. The WHY-NOT panel: the single highest-value screen the design does not
+       currently name. It renders injection() in select()'s own order and names
+       the FIRST gate that failed.
+-->
+
+<style>
+:root{
+  --bg:#141210; --panel:#1b1917; --sink:#232120; --rule:#332f2c;
+  --ink:#ece7e1; --dim:#9b938a; --faint:#6d655d;
+  --gold:#d8a657; --goldbg:#2a2318;
+  --ok:#89b482; --warn:#d8a657; --bad:#ea6962; --info:#7daea3;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:13px/1.5 var(--sans)}
+.m{font-family:var(--mono);font-size:12px}
+.small{font-size:11.5px;color:var(--dim)}
+.faint{color:var(--faint)}
+b{font-weight:600}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+code{font-family:var(--mono);font-size:11.5px;background:var(--sink);
+  padding-inline:5px;padding-block:1px;border-radius:3px}
+
+/* ── the shell: three columns, mirrored automatically by the inline axis ── */
+.app{
+  display:grid;block-size:100vh;
+  grid-template-columns:216px minmax(0,1fr) 340px;
+  grid-template-rows:auto auto minmax(0,1fr) auto;
+  grid-template-areas:
+    "top  top   top"
+    "prov prov  prov"
+    "rail body  detail"
+    "strip strip strip";
+}
+.app[data-detail="off"]{grid-template-columns:216px minmax(0,1fr) 0}
+.app[data-detail="off"] .detail{display:none}
+
+/* ── top bar ── */
+.top{grid-area:top;display:flex;align-items:center;gap:10px;
+  padding-inline:14px;padding-block:9px;
+  background:var(--panel);border-block-end:1px solid var(--rule)}
+.mark{inline-size:11px;block-size:11px;border-radius:2px;background:var(--gold);
+  display:inline-block;margin-inline-end:7px}
+.topr{margin-inline-start:auto;display:flex;gap:6px;align-items:center}
+.sel{border:1px solid var(--rule);border-radius:5px;
+  padding-inline:9px;padding-block:4px;background:var(--sink);font-size:12px}
+.sel b{color:var(--gold)}
+.sel:hover{border-color:var(--gold)}
+.compose{border:1px solid var(--gold);background:var(--goldbg);color:var(--gold);
+  border-radius:5px;padding-inline:10px;padding-block:4px;font-size:12px;font-weight:600}
+.icon{border:1px solid var(--rule);border-radius:5px;inline-size:28px;block-size:26px;
+  background:var(--sink);font-size:12px}
+
+/* ── provenance bar: the global "what you are looking at" ── */
+.prov{grid-area:prov;display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  padding-inline:14px;padding-block:5px;font-size:11.5px;color:var(--dim);
+  background:#191614;border-block-end:1px solid var(--rule)}
+.prov .pill{border:1px solid var(--rule);border-radius:99px;
+  padding-inline:8px;padding-block:1px;background:var(--sink)}
+.prov .pill.warn{border-color:var(--warn);color:var(--warn)}
+.prov .pill.ok{border-color:#3d4a3a;color:var(--ok)}
+.prov .lead{color:var(--faint)}
+
+/* ── rail ── */
+.rail{grid-area:rail;background:var(--panel);
+  border-inline-end:1px solid var(--rule);overflow-y:auto;
+  padding-block:10px;padding-inline:8px}
+.grp{margin-block-end:14px}
+.grp>p{font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--faint);padding-inline-start:9px;margin-block-end:5px}
+.grp>.q{font-size:11px;color:var(--faint);padding-inline-start:9px;
+  margin-block-end:6px;font-style:italic}
+.nav{display:flex;inline-size:100%;text-align:start;align-items:center;gap:7px;
+  padding-inline:9px;padding-block:5px;border-radius:5px;color:var(--dim)}
+.nav:hover{background:var(--sink);color:var(--ink)}
+.nav[aria-current="true"]{background:var(--goldbg);color:var(--ink);font-weight:600;
+  box-shadow:inset 2px 0 0 var(--gold)}
+[dir="rtl"] .nav[aria-current="true"]{box-shadow:inset -2px 0 0 var(--gold)}
+.cnt{margin-inline-start:auto;font-family:var(--mono);font-size:10.5px;
+  background:var(--sink);border-radius:99px;padding-inline:6px;color:var(--dim)}
+.cnt.x{background:#3a2422;color:var(--bad)}
+.railnote{padding-inline:9px;font-size:10.5px;color:var(--faint);
+  border-block-start:1px solid var(--rule);padding-block-start:10px;margin-block-start:4px}
+
+/* ── body ── */
+.body{grid-area:body;overflow-y:auto;padding:16px}
+.phd{display:flex;align-items:baseline;gap:10px;margin-block-end:3px}
+h2{font-size:16px;font-weight:600}
+.psub{color:var(--dim);font-size:12px;margin-block-end:12px;max-inline-size:62ch}
+.modes{display:inline-flex;border:1px solid var(--rule);border-radius:6px;
+  overflow:hidden;margin-block-end:12px}
+.modes button{padding-inline:11px;padding-block:4px;font-size:12px;color:var(--dim)}
+.modes button[aria-pressed="true"]{background:var(--goldbg);color:var(--gold);font-weight:600}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:7px;
+  padding:12px;margin-block-end:12px}
+.card h3{font-size:12px;font-weight:600;margin-block-end:8px;color:var(--ink)}
+.fld{display:flex;gap:8px;align-items:center;margin-block-end:10px;flex-wrap:wrap}
+.fld input,.fld select{background:var(--sink);border:1px solid var(--rule);
+  border-radius:5px;color:var(--ink);padding-inline:8px;padding-block:4px;
+  font-family:var(--mono);font-size:12px}
+.bar{block-size:9px;border-radius:99px;background:var(--sink);overflow:hidden;
+  display:flex;margin-block:7px}
+.bar i{display:block;block-size:100%}
+.row{display:flex;gap:8px;align-items:center;padding-block:4px;
+  border-block-end:1px solid var(--rule)}
+.row:last-child{border-block-end:0}
+.row .grow{flex:1;min-inline-size:0}
+.tag{font-size:10px;border:1px solid var(--rule);border-radius:3px;
+  padding-inline:5px;color:var(--dim)}
+.tag.pin{border-color:#4a3f28;color:var(--gold)}
+.tag.jit{border-color:#2f4340;color:var(--info)}
+.tag.spill{border-color:#4a2f2c;color:var(--bad)}
+.link{color:var(--gold);text-decoration:underline;text-underline-offset:2px}
+.why{border:1px dashed var(--rule);border-radius:6px;padding:10px;
+  background:#191614;margin-block-start:10px}
+.chain{list-style:none}
+.chain li{display:flex;gap:8px;padding-block:3px;align-items:flex-start}
+.chain .g{inline-size:14px;flex:none;text-align:center;font-family:var(--mono);font-size:11px}
+.pass{color:var(--ok)} .fail{color:var(--bad)} .skip{color:var(--faint)}
+.cmd{font-family:var(--mono);font-size:11.5px;background:#0f0d0c;
+  border:1px solid var(--rule);border-radius:5px;padding:8px;
+  margin-block-start:7px;color:var(--ok);overflow-x:auto}
+.cmd[dir]{unicode-bidi:isolate}
+.note{font-size:11px;color:var(--warn);margin-block-start:5px}
+
+/* ── detail pane: the universal "the thing that is wrong" ── */
+.detail{grid-area:detail;background:var(--panel);
+  border-inline-start:1px solid var(--rule);overflow-y:auto;padding:13px}
+.dhd{display:flex;align-items:flex-start;gap:8px;margin-block-end:9px}
+.dhd h3{font-size:13px;font-weight:600;flex:1;min-inline-size:0}
+.dclose{color:var(--faint);font-size:15px;line-height:1}
+.dsec{border-block-start:1px solid var(--rule);padding-block:9px}
+.dsec>p.h{font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);margin-block-end:6px}
+.kv{display:flex;justify-content:space-between;gap:8px;padding-block:2px;font-size:12px}
+.kv span:last-child{color:var(--dim);font-family:var(--mono);font-size:11.5px}
+.spark{display:flex;gap:2px;align-items:flex-end;block-size:26px;margin-block:5px}
+.spark i{inline-size:7px;background:var(--info);display:block;border-radius:1px}
+.ego{font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.7}
+.ego b{color:var(--ink)}
+
+/* ── strip ── */
+.strip{grid-area:strip;display:flex;gap:9px;align-items:center;
+  padding-inline:14px;padding-block:5px;font-size:11.5px;color:var(--dim);
+  background:var(--panel);border-block-start:1px solid var(--rule)}
+.sep{inline-size:1px;block-size:11px;background:var(--rule)}
+.chip{border-radius:99px;border:1px solid #3d4a3a;color:var(--ok);
+  padding-inline:7px;font-size:10.5px}
+
+/* ── composer overlay ── */
+.scrim{position:fixed;inset:0;background:#0009;display:none;z-index:9}
+.scrim[data-open="1"]{display:block}
+.composer{position:fixed;inset-block-start:14vh;inset-inline-start:50%;
+  transform:translateX(-50%);inline-size:min(620px,92vw);z-index:10;
+  background:var(--panel);border:1px solid var(--gold);border-radius:9px;
+  padding:14px;display:none;box-shadow:0 18px 50px #000a}
+[dir="rtl"] .composer{transform:translateX(50%)}
+.composer[data-open="1"]{display:block}
+
+/* -- historical marker --------------------------------------------------------------------------
+   Added 2026-08-29. This page is a dated record, and the block at the top of
+   the body says so. Styled from this file's own tokens on purpose, and with
+   logical properties, so it behaves like the rest of the page.             */
+.histnote{background:var(--goldbg,var(--panel));border:1px solid var(--gold);
+  border-radius:var(--r-md,8px);padding-block:10px;padding-inline:13px;
+  font:13px/1.55 var(--sans);color:var(--ink);margin-block:12px;margin-inline:12px}
+.histnote b{color:var(--gold)}
+.histnote code{font-family:var(--mono);font-size:.9em;direction:ltr;unicode-bidi:isolate}
+</style>
+
+<div class="histnote" dir="ltr">
+  <b>Historical &mdash; the design as of 2026-08-19.</b>
+  This sketch records the design as it stood on that date. It is kept, and still worth
+  reading, because its reasoning is what the mockup and the app were drawn from; it is
+  not synced forward. Where this page and <code>docs/design/web-ui-mockup.html</code>
+  differ, the mockup is current.
+</div>
+
+<div class="app" id="app" data-detail="on">
+
+  <!-- ═══ top bar: global STATE only ═══════════════════════════════════════
+       The line this sketch draws: GLOBAL = state that exists whether or not
+       the UI is open (the session, the focus, the corpus, the branch).
+       PER-SCREEN = a question the UI is asking (a path, a budget override,
+       a date range, a filter). Promoting a question to global makes it look
+       like state - which is the exact confusion "cold session" and "focus
+       off" were labelled to prevent. -->
+  <header class="top">
+    <div><span class="mark"></span><b>mycontext</b></div>
+    <div class="topr">
+      <button class="sel">focus <b>none</b></button>
+      <button class="sel">session <b>a3f9c1</b></button>
+      <button class="compose" id="openc">Compose &hellip;</button>
+      <button class="icon" id="lang" title="English / עברית">א/A</button>
+      <button class="icon" title="Theme">&#9686;</button>
+    </div>
+  </header>
+
+  <!-- ═══ provenance bar: one home for every qualification ════════════════
+       Today the spec asks each screen to carry its own caveat: parent-thread
+       only, seen-file unreadable, projection behind its log, tokens absent
+       means not-recorded, context "as of last response", focus is hiding N.
+       Six caveats x seventeen screens is how the seventeenth forgets one.
+       INV-nothing-is-dropped-silently deserves one surface, not N. -->
+  <div class="prov">
+    <span class="lead">You are looking at</span>
+    <span class="pill">session <b>a3f9c1</b> &middot; parent thread</span>
+    <span class="pill ok">focus off &middot; nothing hidden</span>
+    <span class="pill ok">audit projection current &middot; log position 12&#8239;418</span>
+    <span class="pill warn">context number unavailable &mdash; status line bridge not installed</span>
+    <span class="pill">43 items <span class="faint">&middot; 3 drafts</span></span>
+  </div>
+
+  <!-- ═══ rail: three groups, eight destinations ══════════════════════════
+       Core / Work / Watch / Report named the BUILD, not the user. "Core" is a
+       rank, not a subject; Watch and Report split one object (the audit log)
+       across two groups by tense. These three name the three directions a
+       user actually arrives from. -->
+  <nav class="rail">
+    <div class="grp">
+      <p>Injection</p><p class="q">what arrives, and what does not</p>
+      <button class="nav" aria-current="true">Injection preview</button>
+      <button class="nav">Injected now</button>
+      <button class="nav">Scope coverage</button>
+    </div>
+    <div class="grp">
+      <p>Evidence</p><p class="q">why it did, or stopped</p>
+      <button class="nav">Audit stream</button>
+      <button class="nav">Doctor<span class="cnt x">4</span></button>
+      <button class="nav">Ask</button>
+    </div>
+    <div class="grp">
+      <p>Change</p><p class="q">composed here, run in your shell</p>
+      <button class="nav">Review queue<span class="cnt x">3</span></button>
+      <button class="nav">Configure</button>
+    </div>
+    <p class="railnote">
+      Gaps is a mode of Coverage. Simulate is a mode of Preview. Decay is a
+      mode of Stream. The relation graph and every item&rsquo;s history live in
+      the detail pane. Capture and the palette are the Composer. Status is cut
+      &mdash; its counts link from the bar above.
+    </p>
+  </nav>
+
+  <!-- ═══ body ═══════════════════════════════════════════════════════════ -->
+  <main class="body">
+    <div class="phd"><h2>Injection preview</h2>
+      <span class="small">exactly what Claude gets</span></div>
+    <p class="psub">
+      What the selected session was given. Choose a file to preview a tool event;
+      the session and focus above narrow this the way the hook does.
+    </p>
+
+    <!-- Same inputs, different question -> a MODE. Labelled as a different
+         question, following the cold-session precedent rather than blending
+         a counterfactual into the live view. -->
+    <div class="modes" role="group" aria-label="mode">
+      <button aria-pressed="true">Live</button>
+      <button aria-pressed="false">Simulate a budget &mdash; a different question</button>
+    </div>
+
+    <div class="card">
+      <div class="fld">
+        <label class="small">event</label>
+        <select><option>tool</option><option>session-start</option>
+          <option>compact</option><option>manual</option></select>
+        <label class="small">path</label>
+        <input value="src/billing/prices.js" size="30">
+      </div>
+      <div class="small">jit budget &mdash; 1&#8239;180 of 1&#8239;500 estimated tokens</div>
+      <div class="bar">
+        <i style="inline-size:38%;background:var(--gold)"></i>
+        <i style="inline-size:41%;background:var(--info)"></i>
+        <i style="inline-size:21%;background:var(--sink)"></i>
+      </div>
+
+      <div class="row"><span class="tag pin">pinned</span>
+        <button class="grow link" style="text-align:start">CONST-zero-runtime-dependencies</button>
+        <span class="small m">214 tok</span></div>
+      <div class="row"><span class="tag jit">jit</span>
+        <button class="grow link" style="text-align:start">INV-posix-normalized-paths</button>
+        <span class="small m">331 tok</span></div>
+      <div class="row"><span class="tag spill">spilled</span>
+        <button class="grow link" style="text-align:start">RULE-money-never-floats</button>
+        <span class="small">budget exhausted &mdash; <button class="link">why?</button></span></div>
+    </div>
+
+    <!-- ═══ the why-not panel ═════════════════════════════════════════════
+         The screen the current design does not name, and the one that turns
+         journey (a) from six clicks across four groups into two navigations.
+         It renders injection() in select()'s own order and names the FIRST
+         gate that failed. It composes nothing new: isEligible, the normative
+         test, matchesScope and scopePolicyFor are already the contract. -->
+    <div class="card">
+      <h3>Why did an item not arrive?</h3>
+      <div class="fld">
+        <input value="INV-prices-are-integer-cents" size="34">
+        <button class="sel">Trace it</button>
+      </div>
+      <div class="why">
+        <p class="small" style="margin-block-end:7px">
+          <b>INV-prices-are-integer-cents</b> is not in the delivered set and not
+          in the spill set for <span class="m">tool</span> on
+          <span class="m" dir="ltr">src/billing/prices.js</span>. It never entered
+          selection. The gates below run in <span class="m">select()</span>&rsquo;s
+          own order; the first failure is the answer.
+        </p>
+        <ul class="chain">
+          <li><span class="g pass">&#10003;</span><span><b>isEligible</b> &mdash; status is <span class="m">active</span>, not a draft or superseded</span></li>
+          <li><span class="g pass">&#10003;</span><span><b>normative tier</b> &mdash; category <span class="m">invariant</span> is normative, so it can inject</span></li>
+          <li><span class="g pass">&#10003;</span><span><b>category enabled</b> &mdash; yes</span></li>
+          <li><span class="g fail">&#10007;</span><span><b>matchesScope</b> &mdash; <b class="fail">this is the gate that failed.</b>
+            Its scope is <span class="m" dir="ltr">src/billing/**</span> and the path is
+            <span class="m" dir="ltr">src/billing/prices.js</span> &mdash; but the stored path is
+            <span class="m" dir="ltr">src\billing\prices.js</span>, so the glob matched nothing.
+            <button class="link">Open the glob tester</button></span></li>
+          <li><span class="g skip">&middot;</span><span class="faint">focus &mdash; not reached</span></li>
+          <li><span class="g skip">&middot;</span><span class="faint">seen (already delivered this session) &mdash; not reached</span></li>
+          <li><span class="g skip">&middot;</span><span class="faint">budget &mdash; not reached</span></li>
+        </ul>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══ detail pane: the universal answer to "the thing that is wrong" ══
+       Sixteen screens name item ids - spill sets, coverage nodes, doctor
+       findings, audit rows, decay series, graph nodes, review diffs - and the
+       current design gives those ids nowhere to go. This is the missing
+       spine. It is a PANE, not a route, so returning costs nothing and the
+       rail's aria-current never lies about where you are. -->
+  <aside class="detail">
+    <div class="dhd">
+      <h3>INV-prices-are-integer-cents</h3>
+      <button class="dclose" id="closed" title="Close">&times;</button>
+    </div>
+    <p class="small">invariant &middot; normative &middot; active &middot; origin human</p>
+
+    <div class="dsec"><p class="h">Injects on what terms</p>
+      <div class="kv"><span>tier</span><span>jit</span></div>
+      <div class="kv"><span>scope</span><span dir="ltr">src/billing/**</span></div>
+      <div class="kv"><span>severity</span><span>hard &mdash; focus never hides it</span></div>
+      <div class="kv"><span>estimated size</span><span>287 tok</span></div>
+    </div>
+
+    <div class="dsec"><p class="h">Paths it governs &mdash; matchesScope</p>
+      <p class="small m" dir="ltr">src/billing/prices.js<br>src/billing/invoice.js<br>src/billing/v2/rates.js</p>
+      <p class="small faint">3 of 412 files in this repo</p>
+    </div>
+
+    <div class="dsec"><p class="h">Delivered over 12 weeks</p>
+      <div class="spark">
+        <i style="block-size:60%"></i><i style="block-size:85%"></i><i style="block-size:40%"></i>
+        <i style="block-size:70%"></i><i style="block-size:95%"></i><i style="block-size:30%"></i>
+        <i style="block-size:20%"></i><i style="block-size:10%"></i><i style="block-size:4%;background:var(--faint)"></i>
+        <i style="block-size:4%;background:var(--faint)"></i><i style="block-size:4%;background:var(--faint)"></i>
+        <i style="block-size:4%;background:var(--faint)"></i>
+      </div>
+      <p class="small">Last injected 41 days ago. 2 spills in that window.
+        <button class="link">Open in Stream</button></p>
+    </div>
+
+    <div class="dsec"><p class="h">Relations &mdash; ego, radius 1</p>
+      <p class="ego">
+        <b>INV-prices-are-integer-cents</b><br>
+        &#8627; refines &rarr; <span class="link">STD-money-formatting</span><br>
+        &#8627; supersedes &rarr; <span class="faint">DEC-float-prices (retired)</span><br>
+        &#8627; <span class="fail">dangling</span> &rarr; <span class="m">REQ-checkout-v1</span> (not found)
+      </p>
+      <p class="small faint">3 of 3 neighbours. No cap reached.</p>
+    </div>
+
+    <div class="dsec"><p class="h">Change it &mdash; composed, never run</p>
+      <button class="sel" style="inline-size:100%;text-align:start">Widen its scope &hellip;</button>
+      <button class="sel" style="inline-size:100%;text-align:start;margin-block-start:5px">Pin it &hellip;</button>
+      <button class="sel" style="inline-size:100%;text-align:start;margin-block-start:5px">Supersede it &hellip;</button>
+    </div>
+  </aside>
+
+  <footer class="strip">
+    <span class="m">main</span><span class="m">7f3a91c</span>
+    <span class="chip">in sync</span>
+    <span class="sep"></span>
+    <span class="small">audit append p95 <span class="m">0.55 ms</span></span>
+    <span style="margin-inline-start:auto" class="small">&#9825;</span>
+  </footer>
+</div>
+
+<!-- ═══ the composer: global, pre-filled from the selection ════════════════
+     Writes are composed and pasted (spec §2). That makes composing a shell
+     capability, not a destination: the command is worth composing precisely
+     where you found the reason for it. A rail leaf costs the user the context
+     that motivated the command. This is NOT the old ⌘K - that was cut for
+     being a search box with no handler, and this composes rather than searches.
+     A key binding is earned only once it does something. -->
+<div class="scrim" id="scrim"></div>
+<div class="composer" id="composer">
+  <div class="dhd"><h3>Compose a command</h3>
+    <button class="dclose" id="closec">&times;</button></div>
+  <p class="small">Pre-filled from what you had selected: <b>INV-prices-are-integer-cents</b></p>
+  <div class="fld" style="margin-block-start:9px">
+    <select><option>edit --scope</option><option>add</option><option>pin</option>
+      <option>supersede</option><option>review promote-revision</option></select>
+    <input value="src/billing/**,src/checkout/**" size="30">
+  </div>
+  <p class="small">Glob tester: <b class="pass">7 files match</b>, 3 more than now &mdash;
+    <span class="m" dir="ltr">src/checkout/cart.js</span>, <span class="m" dir="ltr">src/checkout/tax.js</span>,
+    <span class="m" dir="ltr">src/checkout/total.js</span></p>
+  <p class="small" style="margin-block-start:6px">Overlap check: <b class="warn">1 near-duplicate</b> &mdash;
+    <span class="link">STD-money-formatting</span> says nearly the same thing.
+    Type is fixed at creation, so a duplicate filed here can only be superseded.</p>
+  <div class="cmd" dir="ltr">mycontext edit INV-prices-are-integer-cents --scope "src/billing/**,src/checkout/**" --yes</div>
+  <p class="note">This is a write. Copy it and run it in your own shell &mdash;
+    this page never executes it.</p>
+  <button class="sel" style="margin-block-start:8px">Copy</button>
+</div>
+
+<script>
+/* Sketch behaviour only: enough to show the shell is real, nothing implied. */
+var app=document.getElementById('app');
+document.querySelectorAll('.rail .nav').forEach(function(b){
+  b.addEventListener('click',function(){
+    document.querySelectorAll('.rail .nav').forEach(function(n){n.setAttribute('aria-current','false');});
+    b.setAttribute('aria-current','true');
+  });
+});
+document.querySelectorAll('.modes button').forEach(function(b){
+  b.addEventListener('click',function(){
+    b.parentNode.querySelectorAll('button').forEach(function(n){n.setAttribute('aria-pressed','false');});
+    b.setAttribute('aria-pressed','true');
+  });
+});
+document.getElementById('closed').onclick=function(){app.dataset.detail='off';};
+document.querySelectorAll('.link').forEach(function(a){
+  a.addEventListener('click',function(){app.dataset.detail='on';});
+});
+function comp(o){
+  document.getElementById('composer').dataset.open=o;
+  document.getElementById('scrim').dataset.open=o;
+}
+document.getElementById('openc').onclick=function(){comp('1');};
+document.getElementById('closec').onclick=function(){comp('0');};
+document.getElementById('scrim').onclick=function(){comp('0');};
+/* RTL check: the whole shell mirrors because every offset is logical and the
+   grid's inline axis flips. Paths and commands stay LTR - a path is not prose. */
+document.getElementById('lang').onclick=function(){
+  var h=document.documentElement;
+  var rtl=h.getAttribute('dir')==='rtl';
+  h.setAttribute('dir',rtl?'ltr':'rtl');
+  h.setAttribute('lang',rtl?'en':'he');
+};
+</script>
+</html>

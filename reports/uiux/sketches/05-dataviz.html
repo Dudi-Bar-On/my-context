@@ -1,0 +1,1450 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mycontext v2.0 — data-visualisation sketch</title>
+<!--
+  DATAVIZ SKETCH for the mycontext v2.0 local web UI.
+
+  This is a sketch of the GRAPHICS, not of the screens. The screen shell lives in
+  docs/design/web-ui-mockup.html; this file exists to settle five questions that
+  file leaves open: what the coverage map looks like at 50,000 files, how a spill
+  is drawn, what dragging a budget feels like, what "six weeks cold" looks like,
+  and how any of it mirrors into Hebrew.
+
+  ── CONSTRAINTS HONOURED ─────────────────────────────────────────────────────
+  * Zero runtime dependencies. No charting library, no D3. Hand-written SVG + CSS.
+  * No build step.
+  * CSP `default-src 'none'`. No external asset of any kind is referenced.
+      NOTE FOR THE IMPLEMENTER: the shipped CSP is
+      `script-src 'self'; style-src 'self'` with NO 'unsafe-inline', so in the
+      real app this <style> and <script> become real .css / .js files and every
+      `style="..."` attribute below becomes a class or a CSS custom property set
+      through `element.style.setProperty` (which CSP does allow — it is the
+      *attribute* parser that is blocked, not the CSSOM). Every inline style here
+      is either a geometry value (width %, --n) or demo-only chrome.
+  * English + Hebrew, structurally mirrored. Hit "עב" to mirror the whole page.
+      CSS mirrors the DOM for free. CSS CANNOT mirror an SVG's interior, so every
+      SVG here is emitted through one projection function, `X()`, that takes the
+      direction as a parameter. Toggling direction re-renders the SVGs.
+  * Legible in light and dark. `light-dark()` + `color-scheme`, one palette.
+
+  ── DATA PROVENANCE ──────────────────────────────────────────────────────────
+  Every field drawn below exists in the shipped code. Where a field does NOT
+  exist, the graphic says so rather than inventing it. Sources:
+    Selection.full / .spilled / .index / .focus / .tokens   src/core/select.ts
+    Spill { id, tier, reason }                              src/core/select.ts
+    itemCost()  (private; plan 1 Task 5 exports it)         src/core/select.ts
+    matchesScope(), isEligible(), injection()               select.ts / injection.ts
+    DEFAULT_BUDGETS {pinned:6000,jit:6000,restored:8000,index:1200}  config.ts
+    Ledger (session_id,item_id,tier,injected_at) + allUsage()        ledger.ts
+    DecayReport { window, sessionsRecorded, cold, warm, unrestricted } decay.ts
+    AuditRecord { at,kind,op,origin,itemId,fields,sessionId,hook,
+                  injected,tokens?,spilled,path,note }      src/core/audit.ts
+    audit_item(seq,item_id,role∈subject|injected|spilled,tier)  audit-db.ts
+    listRepoFiles(), FILE_LIMIT = 20_000                    src/doctor/checks.ts
+    globToRegExp() COMPILED cache (commit e96bd05)          src/core/paths.ts
+  All numbers in the sketch are fabricated demo data of the right SHAPE.
+-->
+<style>
+/* ═══ TOKENS — one palette, light-dark(), same approach as the shell mockup ═══ */
+:root{
+  color-scheme:light dark;
+  --paper:light-dark(#f7f6f2,#0f0f12);
+  --panel:light-dark(#fffffe,#17171c);
+  --sink:light-dark(#eeece5,#101014);
+  --ink:light-dark(#17171b,#ecebe4);
+  --dim:light-dark(#65635d,#928f87);
+  --faint:light-dark(#94918a,#68655f);
+  --rule:light-dark(#e2dfd6,#262630);
+  --edge:light-dark(#cdc9bd,#3a3a45);
+
+  /* ── the encoding palette ──────────────────────────────────────────────
+     Four hues carry meaning and nothing else carries it. Each is defined
+     with a paired background so a fill and its label pass contrast in both
+     themes. Tier colours are NOT reused for state colours anywhere. */
+  --gold:light-dark(#8a6d14,#dbb047);      /* governed / pinned tier      */
+  --goldbg:light-dark(#f7f0d9,#292110);
+  --ok:light-dark(#3c7a57,#68a482);        /* jit tier / delivered        */
+  --okbg:light-dark(#e7f0ea,#152219);
+  --teal:light-dark(#2f6f77,#5fa8b0);      /* restored tier               */
+  --tealbg:light-dark(#e4eff0,#12211f);
+  --violet:light-dark(#5b4b8a,#9b8ad0);    /* index tier                  */
+  --violetbg:light-dark(#eeeaf5,#1c1830);
+  --warn:light-dark(#98691f,#c78f3d);      /* ungoverned / gap            */
+  --warnbg:light-dark(#f8eeda,#282010);
+  --crit:light-dark(#a03737,#cd6b6b);      /* spilled / dangling          */
+  --critbg:light-dark(#f8e5e5,#2a1616);
+
+  --sh:0 1px 1px light-dark(rgba(24,20,8,.04),rgba(0,0,0,.5)),
+       0 3px 10px light-dark(rgba(24,20,8,.05),rgba(0,0,0,.35));
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+}
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans);
+  -webkit-font-smoothing:antialiased}
+
+/* ── Bidi isolation. Every id, path, glob and command is LTR text that must not
+   reorder inside a Hebrew paragraph. This one rule is why `.m` is on every id. */
+.m,code{font-family:var(--mono);font-size:.87em;font-variant-numeric:tabular-nums;
+  direction:ltr;unicode-bidi:isolate}
+
+.wrap{max-inline-size:1120px;margin-inline:auto;padding-inline:20px;padding-block:0 60px}
+
+header.top{position:sticky;inset-block-start:0;z-index:9;background:var(--panel);
+  border-block-end:1px solid var(--rule);padding-block:10px;margin-block-end:22px}
+header.top .wrap{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding-block:0}
+header.top b{font-size:14.5px;letter-spacing:-.02em}
+header.top .sp{margin-inline-start:auto}
+button.tg{font:inherit;font-size:12px;color:var(--dim);background:var(--sink);
+  border:1px solid var(--rule);border-radius:6px;padding-block:4px;padding-inline:9px;cursor:pointer}
+button.tg:hover{border-color:var(--edge);color:var(--ink)}
+button.tg[aria-pressed="true"]{background:var(--goldbg);border-color:var(--gold);color:var(--ink)}
+button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+section{margin-block-end:34px}
+h2{font-size:17px;font-weight:640;letter-spacing:-.015em;margin:0 0 2px}
+h2 .num{color:var(--faint);font-variant-numeric:tabular-nums;margin-inline-end:8px}
+.sub{color:var(--dim);font-size:12.5px;margin:0 0 12px;max-inline-size:88ch}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:9px;
+  padding:13px 14px;box-shadow:var(--sh);margin-block-end:11px}
+.card>h3{margin:0 0 9px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);font-weight:650}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+@media (max-width:900px){.two{grid-template-columns:1fr}}
+.small{font-size:11.5px;color:var(--dim);line-height:1.5}
+.note{font-size:11.5px;color:var(--dim);border-inline-start:2px solid var(--edge);
+  padding-inline-start:9px;margin-block-start:9px}
+.note b{color:var(--ink);font-weight:620}
+
+.chip{display:inline-block;font-size:10.5px;padding-inline:5px;border-radius:3px;
+  border:1px solid;line-height:1.65;white-space:nowrap}
+.c-pin{color:var(--gold);border-color:var(--gold);background:var(--goldbg)}
+.c-jit{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+.c-res{color:var(--teal);border-color:var(--teal);background:var(--tealbg)}
+.c-idx{color:var(--violet);border-color:var(--violet);background:var(--violetbg)}
+.c-gap{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
+.c-sp{color:var(--crit);border-color:var(--crit);background:var(--critbg)}
+
+.legend{display:flex;flex-wrap:wrap;gap:5px 12px;font-size:11.5px;color:var(--dim);
+  align-items:center;margin-block-start:9px}
+.legend i{inline-size:10px;block-size:10px;border-radius:2px;display:inline-block;
+  margin-inline-end:5px;vertical-align:-1px}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1 · COVERAGE MAP
+   Rows are CSS, not SVG: a 50,000-file tree cannot afford an SVG node per row,
+   and CSS mirrors the row chrome for free while `unicode-bidi:isolate` keeps
+   the path itself LTR (spec §3: "a path is not prose").
+   ══════════════════════════════════════════════════════════════════════════ */
+.covbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-block-end:9px}
+.pinband{display:flex;gap:9px;align-items:center;background:var(--goldbg);
+  border:1px solid var(--gold);border-radius:7px;padding-block:7px;padding-inline:11px;
+  font-size:12px;margin-block-end:10px}
+.pinband b{color:var(--gold)}
+
+.treewrap{display:flex;gap:8px;align-items:stretch}
+.treescroll{flex:1;min-inline-size:0;block-size:340px;overflow-y:auto;overflow-x:hidden;
+  border:1px solid var(--rule);border-radius:7px;background:var(--sink);
+  contain:strict}
+.rows{position:relative}
+.row{display:flex;align-items:center;gap:7px;block-size:22px;padding-inline:8px;
+  font-family:var(--mono);font-size:11.5px;cursor:pointer;border:0;background:none;
+  color:var(--ink);inline-size:100%;text-align:start}
+.row:hover{background:var(--panel)}
+.row[aria-selected="true"]{background:var(--goldbg);box-shadow:inset 2px 0 0 var(--gold)}
+[dir="rtl"] .row[aria-selected="true"]{box-shadow:inset -2px 0 0 var(--gold)}
+.row .tw{inline-size:11px;flex:none;color:var(--faint);font-size:9px}
+.row .nm{direction:ltr;unicode-bidi:isolate;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;flex:none;max-inline-size:44%}
+.row .mini{flex:1;min-inline-size:40px;block-size:7px;border-radius:4px;display:flex;
+  overflow:hidden;background:light-dark(#dedbd2,#232330)}
+.row .mini i{display:block;block-size:100%}
+.row .mini i.g{background:var(--gold)}
+.row .mini i.u{background:var(--warn);opacity:.34}
+.row .mini i.x{background:repeating-linear-gradient(45deg,var(--faint) 0 2px,transparent 2px 4px)}
+.row .ct{flex:none;font-size:10px;color:var(--faint);inline-size:9ch;text-align:end;
+  direction:ltr;unicode-bidi:isolate}
+.row.gapleaf .nm{color:var(--warn)}
+.row.trunc{color:var(--faint);font-style:italic;cursor:default;background:var(--warnbg)}
+
+/* the density rail: one merged run per colour, docked to the reading-end edge.
+   No interior text, so it mirrors by docking alone — zero coordinate work. */
+.rail{inline-size:13px;flex:none;border:1px solid var(--rule);border-radius:4px;
+  overflow:hidden;background:var(--sink)}
+.rail svg{display:block;inline-size:100%;block-size:100%}
+
+.detail{font-size:12px}
+.detail table{inline-size:100%;border-collapse:collapse;font-size:11.5px}
+.detail td{padding-block:4px;border-block-end:1px solid var(--rule);vertical-align:top}
+.detail tr:last-child td{border-block-end:0}
+.perf{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--dim);
+  font-variant-numeric:tabular-nums;margin-block-start:9px}
+.perf b{color:var(--ink);font-weight:620}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   2 · BUDGET RIBBON — the injection preview.
+   Deliberately CSS flex, not SVG: a quantity bar must mirror, and flex with
+   logical properties mirrors for free. Fills grow from the inline-start edge
+   in both directions, which is the same rule the progress bar already obeys.
+   ══════════════════════════════════════════════════════════════════════════ */
+.ribbon{margin-block-end:15px}
+.rlabel{display:flex;gap:8px;align-items:baseline;font-size:11.5px;margin-block-end:4px}
+.rlabel .t{font-weight:640;font-size:12px}
+.rlabel .n{margin-inline-start:auto;color:var(--dim);font-variant-numeric:tabular-nums;
+  direction:ltr;unicode-bidi:isolate}
+.track{block-size:26px;background:var(--sink);border:1px solid var(--rule);
+  border-radius:5px;display:flex;overflow:hidden;position:relative}
+.track .seg{block-size:100%;border-inline-end:1px solid light-dark(#fff8,#0006);
+  position:relative;min-inline-size:2px}
+.seg.pinned{background:var(--gold)}
+.seg.jit{background:var(--ok)}
+.seg.restored{background:var(--teal)}
+.seg.index{background:var(--violet)}
+.seg.head{background:transparent;flex:1;border:0}
+/* the ghost lane: spills, at their real would-be width, in the order the
+   selector considered them. This is what makes first-fit legible. */
+.ghosts{block-size:16px;display:flex;margin-block-start:3px;gap:2px}
+.ghosts .gh{background:repeating-linear-gradient(45deg,var(--crit) 0 3px,transparent 3px 6px);
+  border:1px solid var(--crit);border-radius:3px;block-size:100%;min-inline-size:3px;
+  position:relative}
+.ghosts .gap{background:none;border:0}
+.dead{position:absolute;inset-block:0;inline-size:2px;background:var(--crit)}
+.hint{font-size:11px;color:var(--dim);margin-block-start:4px}
+.hint b{color:var(--crit)}
+.notrun{background:repeating-linear-gradient(45deg,var(--faint) 0 4px,transparent 4px 8px);
+  opacity:.28;flex:1;block-size:100%}
+.tierbadges{display:flex;gap:6px;flex-wrap:wrap;margin-block-end:10px}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   3 · SIMULATOR — SVG, because a step function is not a box model.
+   Everything inside goes through X().
+   ══════════════════════════════════════════════════════════════════════════ */
+.sim{display:grid;grid-template-columns:1fr 260px;gap:12px}
+@media (max-width:900px){.sim{grid-template-columns:1fr}}
+svg.chart{display:block;inline-size:100%;block-size:auto;overflow:visible}
+svg text{font-family:var(--sans);font-size:10px;fill:var(--dim)}
+svg text.mono{font-family:var(--mono);font-size:9.5px}
+svg .axis{stroke:var(--rule);stroke-width:1}
+svg .step{stroke:var(--ok);stroke-width:2;fill:none;stroke-linejoin:round}
+svg .evict{stroke:var(--crit);stroke-width:2;fill:none}
+svg .nowline{stroke:var(--gold);stroke-width:1.5}
+svg .defline{stroke:var(--faint);stroke-width:1;stroke-dasharray:3 3}
+input[type=range]{inline-size:100%;accent-color:var(--gold)}
+.ladder{font-size:11px;max-block-size:210px;overflow-y:auto}
+.ladder div{display:flex;justify-content:space-between;gap:8px;padding-block:3px;
+  border-block-end:1px solid var(--rule);font-variant-numeric:tabular-nums}
+.ladder div.at{background:var(--goldbg);font-weight:620}
+.ladder div.ev{color:var(--crit)}
+.readout{font-size:12.5px;margin-block-start:8px;min-block-size:34px}
+.readout b{font-variant-numeric:tabular-nums}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   4 · DECAY — comb (SVG, projected) + heatstrip (CSS grid, mirrors free)
+   ══════════════════════════════════════════════════════════════════════════ */
+.comb{margin-block-end:6px}
+svg .never{fill:var(--critbg);stroke:var(--crit);stroke-dasharray:2 2}
+svg .tick{stroke-width:0}
+.heat{display:grid;grid-template-columns:150px 1fr;gap:6px 10px;align-items:center;
+  font-size:11px}
+.strip{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:1px;block-size:13px}
+.strip i{border-radius:1px;background:light-dark(#e6e3da,#1e1e28)}
+.strip i.h1{background:light-dark(#dfd0a0,#54441c)}
+.strip i.h2{background:light-dark(#c8ab5a,#8a6d24)}
+.strip i.h3{background:var(--gold)}
+.strip i.sp{background:repeating-linear-gradient(45deg,var(--crit) 0 2px,transparent 2px 4px)}
+.hname{direction:ltr;unicode-bidi:isolate;font-family:var(--mono);font-size:10px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   5 · EGO GRAPH — SVG, projected. Nodes carry IDS ONLY (LTR by grammar),
+   so the SVG contains no bidi-sensitive text at all.
+   ══════════════════════════════════════════════════════════════════════════ */
+svg .node{fill:var(--panel);stroke:var(--edge);stroke-width:1}
+svg .node.focus{fill:var(--goldbg);stroke:var(--gold);stroke-width:2}
+svg .node.missing{fill:none;stroke:var(--crit);stroke-dasharray:3 2}
+svg .node.superseded{fill:var(--sink);stroke:var(--faint)}
+svg .edge{stroke:var(--edge);fill:none}
+svg .edge.bearing{stroke:var(--ink);stroke-width:1.4;opacity:.55}
+svg .edge.ref{stroke:var(--faint);stroke-width:.8}
+svg .edge.dangling{stroke:var(--crit);stroke-width:1.6;stroke-dasharray:4 3}
+svg text.nid{font-family:var(--mono);font-size:9px;fill:var(--ink)}
+svg text.rel{font-family:var(--mono);font-size:8px;fill:var(--faint)}
+svg .more{fill:var(--warnbg);stroke:var(--warn);stroke-dasharray:3 2}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   6 · AUDIT STREAM
+   ══════════════════════════════════════════════════════════════════════════ */
+.pulse{block-size:34px;border:1px solid var(--rule);border-radius:6px;background:var(--sink);
+  overflow:hidden;margin-block-end:9px}
+.pulse svg{display:block;inline-size:100%;block-size:100%}
+.feed{max-block-size:290px;overflow-y:auto;border:1px solid var(--rule);border-radius:7px}
+.ev{display:flex;gap:9px;align-items:flex-start;padding-block:6px;padding-inline:10px;
+  border-block-end:1px solid var(--rule);font-size:11.5px}
+.ev:last-child{border-block-end:0}
+.ev .gl{inline-size:14px;flex:none;display:grid;place-items:center;padding-block-start:2px}
+.ev .at{flex:none;color:var(--faint);font-family:var(--mono);font-size:10px;
+  direction:ltr;unicode-bidi:isolate}
+.ev .bd{flex:1;min-inline-size:0}
+.ev .bd .ttl{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.ev .bd .nt{color:var(--dim);font-size:11px;margin-block-start:2px}
+.tokbar{block-size:6px;border-radius:3px;background:var(--gold);margin-block-start:4px;
+  max-inline-size:100%}
+.tokvoid{block-size:6px;border-radius:3px;margin-block-start:4px;inline-size:52px;
+  background:repeating-linear-gradient(45deg,var(--faint) 0 2px,transparent 2px 4px);
+  border:1px dashed var(--edge)}
+/* A focus change is not a row. It is a REGIME BOUNDARY: everything after it was
+   selected under a different corpus. Drawing it as a rule is what stops items
+   appearing to vanish for no visible cause (spec §5). */
+.regime{display:flex;gap:9px;align-items:center;padding-block:6px;padding-inline:10px;
+  background:var(--violetbg);border-block:1px solid var(--violet);font-size:11px;
+  color:var(--violet);font-weight:620}
+.regime .ln{flex:1;block-size:1px;background:var(--violet);opacity:.45}
+.banner{display:flex;gap:9px;align-items:center;background:var(--warnbg);
+  border:1px solid var(--warn);border-radius:7px;padding-block:7px;padding-inline:11px;
+  font-size:11.5px;margin-block-end:9px;color:var(--warn)}
+
+.gl .d-inj{inline-size:9px;block-size:9px;background:var(--ok);border-radius:2px}
+.gl .d-mut{inline-size:9px;block-size:9px;background:var(--gold);transform:rotate(45deg)}
+.gl .d-mut.agent{background:none;border:1.5px solid var(--gold)}
+.gl .d-hook{inline-size:9px;block-size:9px;border:1.5px solid var(--faint);border-radius:50%}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   7 · SPILL RATIO — the diverging bar nobody proposed
+   ══════════════════════════════════════════════════════════════════════════ */
+.div-row{display:grid;grid-template-columns:170px 1fr 1fr 62px;gap:8px;align-items:center;
+  font-size:11px;padding-block:3px}
+.div-l,.div-r{block-size:11px;display:flex}
+.div-l{justify-content:flex-end}
+.div-l i{background:var(--ok);border-radius:2px 0 0 2px}
+.div-r i{background:repeating-linear-gradient(45deg,var(--crit) 0 3px,transparent 3px 6px);
+  border:1px solid var(--crit);border-radius:0 2px 2px 0}
+/* the two halves are logical: in RTL, `justify-content:flex-end` and the
+   physical border radii are the two things CSS will NOT flip for us, so the
+   RTL rule below restates them. This is the only physical-value exception in
+   the file, and it is written down rather than discovered. */
+[dir="rtl"] .div-l i{border-radius:0 2px 2px 0}
+[dir="rtl"] .div-r i{border-radius:2px 0 0 2px}
+.div-name{direction:ltr;unicode-bidi:isolate;font-family:var(--mono);font-size:10px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.div-n{font-variant-numeric:tabular-nums;color:var(--dim);text-align:end;
+  direction:ltr;unicode-bidi:isolate}
+
+/* Hebrew captions appear only when mirrored, to prove the strings are keyed. */
+.he{display:none}
+[dir="rtl"] .he{display:inline}
+[dir="rtl"] .en{display:none}
+
+/* -- historical marker --------------------------------------------------------------------------
+   Added 2026-08-29. This page is a dated record, and the block at the top of
+   the body says so. Styled from this file's own tokens on purpose, and with
+   logical properties, so it behaves like the rest of the page.             */
+.histnote{background:var(--goldbg,var(--panel));border:1px solid var(--gold);
+  border-radius:var(--r-md,8px);padding-block:10px;padding-inline:13px;
+  font:13px/1.55 var(--sans);color:var(--ink);margin-block:12px;margin-inline:12px}
+.histnote b{color:var(--gold)}
+.histnote code{font-family:var(--mono);font-size:.9em;direction:ltr;unicode-bidi:isolate}
+</style>
+</head>
+<body>
+
+<div class="histnote" dir="ltr">
+  <b>Historical &mdash; the design as of 2026-08-19.</b>
+  This sketch records the design as it stood on that date, and its reasoning is still
+  load-bearing: the density rules that fixed the staircase came from the prose below.
+  It is not synced forward, and one divergence is known &mdash; it still carries
+  <code>svg.chart{inline-size:100%}</code>, the rule behind the stretched-chart defect
+  that was fixed in the mockup and in the app. Where this page and
+  <code>docs/design/web-ui-mockup.html</code> differ, the mockup is current.
+</div>
+
+
+<header class="top">
+  <div class="wrap">
+    <b>mycontext · data-visualisation sketch</b>
+    <span class="small en">five graphics, one palette, no dependencies</span>
+    <span class="small he">חמישה גרפים, לוח צבעים אחד, ללא תלויות</span>
+    <span class="sp"></span>
+    <button class="tg" id="scaleBtn" aria-pressed="false">corpus: 50 files</button>
+    <button class="tg" id="dirBtn" aria-pressed="false">עב · RTL</button>
+    <button class="tg" id="themeBtn">theme: system</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section id="s1">
+  <h2><span class="num">1</span><span class="en">Scope coverage map</span><span class="he">מפת כיסוי היקף</span></h2>
+  <p class="sub">
+    A directory rollup, not a file list. Colour is <span class="m">matchesScope</span> ∧
+    <span class="m">injection().injected</span> — never <span class="m">matchesAnyGlob</span>.
+    Pinned items are hoisted out of the tree entirely, because they govern every file and
+    colouring them per-path is what made a pinned-governed directory render as a gap.
+  </p>
+
+  <div class="pinband">
+    <span class="chip c-pin">pinned</span>
+    <span><b>4 items</b> govern <b>every file</b> in this repository, path-independent —
+      they arrive at session start, not on a file touch.</span>
+    <span class="small" style="margin-inline-start:auto">
+      <span class="m">always: true</span> · not a tree colour</span>
+  </div>
+
+  <div class="covbar">
+    <span class="small"><span class="en">expand:</span><span class="he">פתיחה:</span></span>
+    <button class="tg" data-exp="1" aria-pressed="true">depth 1</button>
+    <button class="tg" data-exp="informative" aria-pressed="false">where coverage changes</button>
+    <button class="tg" data-exp="all" aria-pressed="false">all</button>
+  </div>
+
+  <div class="two" style="grid-template-columns:1.35fr 1fr">
+    <div class="card">
+      <h3><span class="en">repository</span><span class="he">מאגר</span></h3>
+      <div class="treewrap">
+        <div class="treescroll" id="treeScroll"><div class="rows" id="rows"></div></div>
+        <div class="rail" id="rail" title="density rail — every directory, in order"></div>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--gold)"></i><span class="en">governed</span><span class="he">מכוסה</span></span>
+        <span><i style="background:var(--warn);opacity:.34"></i><span class="en">no rule fires here</span><span class="he">אין כלל</span></span>
+        <span><i style="background:repeating-linear-gradient(45deg,var(--faint) 0 2px,transparent 2px 4px)"></i><span class="en">not examined</span><span class="he">לא נבדק</span></span>
+      </div>
+      <div class="perf" id="perf"></div>
+    </div>
+
+    <div class="card detail">
+      <h3><span class="en">what governs</span><span class="he">מה חל על</span>
+        <span class="m" id="detPath"></span></h3>
+      <div id="det"></div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Degradation, four layers, each disclosed.</b>
+    (1) The wire carries <i>directories</i>, not files — one row per directory with rolled-up
+    counts; per-file detail is fetched for the opened directory only.
+    (2) The match loop is inverted: <span class="m">injection()</span> is path-independent and
+    runs once per item; unscoped-injectable items match every path with zero
+    <span class="m">matchesScope</span> calls; only scoped items are tested per path, and a
+    directory whose subtree cannot prefix-match any glob is decided once for the whole subtree.
+    (3) Two distinct truncations, never merged into one word: the walk's own
+    <span class="m">FILE_LIMIT = 20_000</span> bound, and the coverage computation's time budget.
+    (4) Only the visible ~40 rows are in the DOM.
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section id="s2">
+  <h2><span class="num">2</span><span class="en">Injection preview — the budget ribbon</span><span class="he">תצוגת הזרקה</span></h2>
+  <p class="sub">
+    One picture, three answers. Above the line: what fit, each segment sized by its real
+    <span class="m">itemCost</span>. Below: what did not, at the width it <i>would</i> have taken.
+    The selector is <b>first-fit, not priority truncation</b> — it skips an over-budget item and
+    keeps going — so a wide ghost followed by a narrow fill is the algorithm being honest.
+    A design that drew spills as a tail would misrepresent it.
+  </p>
+
+  <div class="card">
+    <div class="tierbadges" id="evBadges"></div>
+    <div id="ribbons"></div>
+    <div class="note">
+      <b>Widths come from <span class="m">/api/simulate</span>, not <span class="m">/api/select</span>.</b>
+      <span class="m">/api/select</span> is the parity endpoint and returns <span class="m">select()</span>'s
+      serialization and nothing else; <span class="m">/api/simulate</span> returns
+      <span class="m">costs: {id, tokens}[]</span> for every id in <span class="m">full ∪ spilled</span>,
+      each the exported <span class="m">itemCost</span>. The screen composes the two rather than
+      re-deriving a cost from the spill's reason string.
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section id="s3">
+  <h2><span class="num">3</span><span class="en">Budget simulator — the admission staircase</span><span class="he">סימולטור תקציב</span></h2>
+  <p class="sub">
+    Dragging a budget is a search unless you can see where the thresholds are. The staircase is
+    the selector's own answer at every breakpoint, computed once as a sweep and scrubbed with no
+    further requests. <b>The downward steps are the point:</b> because admission is first-fit,
+    raising a budget can admit one large item and evict two smaller ones. A simulator that
+    assumed monotonicity would draw a lie.
+  </p>
+
+  <div class="card sim">
+    <div>
+      <div id="stair"></div>
+      <div style="display:flex;gap:9px;align-items:center;margin-block-start:8px">
+        <span class="small" style="inline-size:5.5ch"><span class="m" id="tierName">jit</span></span>
+        <input type="range" id="slider" min="0" max="12000" step="50" value="6000">
+        <span class="m" id="budgetVal" style="inline-size:7ch;text-align:end">6000</span>
+      </div>
+      <div class="tierbadges" style="margin-block-start:9px" id="tierPick"></div>
+      <div class="readout" id="readout"></div>
+    </div>
+    <div>
+      <h3 style="margin:0 0 7px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)">
+        <span class="en">thresholds</span><span class="he">ספים</span></h3>
+      <div class="ladder" id="ladder"></div>
+      <p class="small" style="margin-block-start:8px">
+        Every value between two rungs behaves identically. The slider snaps to rungs, so
+        dragging lands on meaning rather than on 6,050.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section id="s4">
+  <h2><span class="num">4</span><span class="en">Decay — the recency comb</span><span class="he">דעיכה</span></h2>
+  <p class="sub">
+    "This rule has not been injected in six weeks" is a position on an axis, and "never injected"
+    is not a large number on that axis — it is a different kind, so it gets its own terminal
+    bucket. Time comes from <span class="m">MAX(injected_at)</span>; cold/warm membership comes
+    from <span class="m">computeDecay</span>, whose window is counted in <b>sessions</b>. Two
+    different measurements, so two different encodings, and the caveat rides with the chart.
+  </p>
+
+  <div class="card">
+    <div class="comb" id="comb"></div>
+    <div class="legend">
+      <span><i style="background:var(--gold)"></i>warm — injected inside the window</span>
+      <span><i style="background:var(--warn)"></i>cold</span>
+      <span><i style="border:1px dashed var(--crit);background:var(--critbg)"></i>never injected</span>
+      <span><i style="background:var(--crit);border-radius:50%"></i>pinned <b>and</b> cold — a defect signal, not decay</span>
+    </div>
+    <div class="note">
+      <b>Two traps the source documents by name.</b>
+      <span class="m">DecayReport.unrestricted</span> is a <i>breadth view over</i> cold ∪ warm,
+      not a third bucket — a stacked bar of the three double-counts, and its own doc comment says
+      so. It is drawn here as a <span class="m">∀</span> marker on the rows it applies to.
+      And a <span class="m">always:true</span> item that is cold cannot be decay: it is injected
+      at every session start unless it <i>spilled</i>. That is why <span class="m">DecayRow</span>
+      carries <span class="m">always</span> at all.
+    </div>
+    <div class="small" id="decayCaveat" style="margin-block-start:9px"></div>
+  </div>
+
+  <div class="card">
+    <h3><span class="en">90-day heatstrip — delivered vs spilled, per item</span><span class="he">רצועת חום</span></h3>
+    <div class="heat" id="heat"></div>
+    <div class="note">
+      One cell per day, from the audit projection: <span class="m">audit_item</span> joined to
+      <span class="m">audit.at</span>, both indexed. Solid = delivered, hatched = <b>spilled</b>.
+      A six-week gap is six weeks of empty cells and needs no reading. The ledger alone cannot
+      draw the hatched cells — it records deliveries only.
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section id="s5">
+  <h2><span class="num">5</span><span class="en">Relation ego-graph — columns, not a hairball</span><span class="he">גרף יחסים</span></h2>
+  <p class="sub">
+    Five deterministic columns: radius-2 in · radius-1 in · focus · radius-1 out · radius-2 out.
+    Relations in this vocabulary are directional, so direction <i>is</i> the layout and no
+    simulation is needed. Edges only ever join adjacent columns, so the crossing count is
+    bounded by construction. O(n), stable, 60-node cap with the overflow shown
+    <b>in the column it was cut from</b>.
+  </p>
+
+  <div class="card">
+    <div id="ego"></div>
+    <div class="legend">
+      <span><i style="background:var(--goldbg);border:1.5px solid var(--gold)"></i>focus</span>
+      <span><i style="border:1px dashed var(--crit)"></i>target not in corpus</span>
+      <span><i style="background:var(--sink);border:1px solid var(--faint)"></i>superseded</span>
+      <span><span style="display:inline-block;inline-size:16px;border-block-start:1.5px solid var(--ink);opacity:.55;vertical-align:3px;margin-inline-end:5px"></span>load-bearing</span>
+      <span><span style="display:inline-block;inline-size:16px;border-block-start:1px solid var(--faint);vertical-align:3px;margin-inline-end:5px"></span>referential</span>
+      <span><span style="display:inline-block;inline-size:16px;border-block-start:1.6px dashed var(--crit);vertical-align:3px;margin-inline-end:5px"></span>dangling</span>
+    </div>
+    <div class="note">
+      <b>The nodes carry ids, never titles — and that is a bidi decision, not a space one.</b>
+      An id is grammar-guaranteed ASCII (uppercase prefix, hyphen, lowercase body), so it is
+      LTR-safe by construction. A title is free text and may be Hebrew, which inside an SVG
+      needs per-<span class="m">&lt;text&gt;</span> bidi control that CSS cannot supply from
+      outside. Putting titles in the HTML detail pane — which mirrors for free — removes SVG
+      bidi from the problem entirely.
+      <span class="m">isLoadBearing</span> already classifies the vocabulary, so a dangling
+      <span class="m">relates_to</span> reads as noise and a dangling
+      <span class="m">constrains</span> reads as an alarm, which is the true difference.
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section id="s6">
+  <h2><span class="num">6</span><span class="en">Live audit stream — pulse, feed, regime</span><span class="he">זרם ביקורת</span></h2>
+  <p class="sub">
+    Three of the four record kinds are events in a list. The fourth is not:
+    a <span class="m">focus</span> change touches no item and injects nothing, but it changes
+    what every later selection delivers. Drawn as a row it is trivia; drawn as a rule across
+    the feed it says <i>everything below this line was selected from a different corpus</i> —
+    which is precisely the disappearance the focus records exist to explain.
+  </p>
+
+  <div class="card">
+    <div class="banner" id="freshness"></div>
+    <div class="pulse" id="pulse"></div>
+    <div class="feed" id="feed"></div>
+    <div class="legend">
+      <span><i style="background:var(--ok);border-radius:2px"></i>injection</span>
+      <span><i style="background:var(--gold);transform:rotate(45deg)"></i>mutation (human)</span>
+      <span><i style="border:1.5px solid var(--gold)"></i>mutation (agent)</span>
+      <span><i style="border:1.5px solid var(--faint);border-radius:50%"></i>hook — injected nothing</span>
+      <span><i style="background:var(--violet)"></i>focus — a regime boundary</span>
+    </div>
+    <div class="note">
+      <b>Absent is not zero.</b> <span class="m">AuditRecord.tokens</span> is absent on records
+      written before the field existed, and its own doc comment forbids defaulting it to 0 —
+      "a reader that defaults a missing value to 0 turns 'unknown' into a claim". A zero-height
+      bar <i>is</i> that claim, so an unrecorded count draws a hatched void of fixed width and
+      the words "not recorded". <b><span class="m">note</span> renders for every kind</b>, not
+      only focus: four degraded hook runs that print identically is a defect this repository has
+      already fixed once.
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section id="s7">
+  <h2><span class="num">7</span><span class="en">Selected-but-not-delivered — the one nobody asked for</span><span class="he">נבחר אך לא נמסר</span></h2>
+  <p class="sub">
+    <span class="m">audit_item.role</span> distinguishes <span class="m">injected</span> from
+    <span class="m">spilled</span> per item and is indexed; the schema comment says in as many
+    words that counting spills by item "is how a user finds a budget that is too small". No
+    screen in the spec renders it. One indexed query, one diverging bar, and the budget
+    simulator finally has an <i>entry point</i>: the items on the right are the argument for
+    the number you would drag.
+  </p>
+  <div class="card"><div id="ratio"></div>
+    <div class="note">Delivered grows from the reading-start edge, spilled from the centre
+      outward. In RTL both flip together — the only two physical values CSS will not mirror
+      here are the bar's own corner radii, and the stylesheet restates them explicitly rather
+      than leaving it to be discovered.</div>
+  </div>
+</section>
+
+<section>
+  <div class="card">
+    <h3>RTL: what mirrors, and where</h3>
+    <table style="inline-size:100%;border-collapse:collapse;font-size:12px">
+      <tr><td style="padding-block:5px;border-block-end:1px solid var(--rule)"><b>CSS box model</b> — ribbon, heatstrip, tree rows, diverging bars, feed</td>
+          <td style="padding-block:5px;border-block-end:1px solid var(--rule)">mirrors for free via logical properties. Zero JS.</td></tr>
+      <tr><td style="padding-block:5px;border-block-end:1px solid var(--rule)"><b>SVG interiors</b> — staircase, comb, pulse, ego graph</td>
+          <td style="padding-block:5px;border-block-end:1px solid var(--rule)">CSS cannot reach inside. One <span class="m">X(u)</span> projection per chart:
+          <span class="m">rtl ? W - u : u</span>, applied where coordinates are emitted, plus a
+          <span class="m">anchor()</span> helper that swaps <span class="m">start</span>/<span class="m">end</span>.
+          Never a <span class="m">scale(-1,1)</span> wrapper — that mirrors the glyphs too.</td></tr>
+      <tr><td style="padding-block:5px;border-block-end:1px solid var(--rule)"><b>The density rail</b></td>
+          <td style="padding-block:5px;border-block-end:1px solid var(--rule)">has no interior text, so it mirrors by docking to <span class="m">inset-inline-end</span>. No coordinate work at all.</td></tr>
+      <tr><td style="padding-block:5px;border-block-end:1px solid var(--rule)"><b>Paths, ids, globs, commands</b></td>
+          <td style="padding-block:5px;border-block-end:1px solid var(--rule)">stay LTR inside the RTL page (spec §3: a path is not prose), isolated with <span class="m">unicode-bidi:isolate</span>.</td></tr>
+      <tr><td style="padding-block:5px"><b>Keyboard</b></td>
+          <td style="padding-block:5px">tree expand/collapse follows ArrowRight/ArrowLeft in LTR and swaps in RTL — a render-layer mirror of the handler, since CSS cannot mirror a key code either.</td></tr>
+    </table>
+  </div>
+</section>
+
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Direction projection. THE central RTL device.
+
+   CSS mirrors the DOM. It does not mirror an SVG's interior: `direction:rtl`
+   on an <svg> changes text anchoring and nothing about x. Wrapping the whole
+   drawing in `transform="scale(-1,1)"` mirrors the glyphs too, so every label
+   would need a counter-transform.
+
+   So: charts are emitted through X(). One function, one place, and every chart
+   re-renders when direction changes.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let RTL = false;
+const X   = (u, W) => RTL ? W - u : u;
+const ANC = a => RTL ? (a === 'start' ? 'end' : a === 'end' ? 'start' : a) : a;
+const $   = s => document.querySelector(s);
+const el  = (t, a = {}, kids = []) => {
+  const n = document.createElementNS(
+    ['svg','g','rect','path','text','line','circle','polyline','tspan'].includes(t)
+      ? 'http://www.w3.org/2000/svg' : 'http://www.w3.org/1999/xhtml', t);
+  for (const [k, v] of Object.entries(a)) if (v !== null && v !== undefined) n.setAttribute(k, v);
+  for (const c of [].concat(kids)) n.append(c.nodeType ? c : document.createTextNode(c));
+  return n;
+};
+const svg = (w, h, kids) => el('svg', {
+  viewBox:`0 0 ${w} ${h}`, class:'chart', preserveAspectRatio:'xMidYMid meet',
+  role:'img'
+}, kids);
+
+/* ═══ 1 · COVERAGE MAP ══════════════════════════════════════════════════════
+   Model: one node per DIRECTORY. `f` files below it, `g` governed, `x` not
+   examined. Leaves are files only when the corpus is small enough to show
+   them; at monorepo scale the tree stops at directories and per-file detail
+   is fetched for the opened one. */
+let SCALE = 'small';
+const rnd = (seed => () => (seed = seed * 16807 % 2147483647) / 2147483647)(42);
+
+function buildTree(){
+  const small = SCALE === 'small';
+  const root = { name:'', path:'', depth:-1, kids:[], f:0, g:0, x:0, dir:true };
+  const mk = (parent, name, dir) => {
+    const n = { name, path: parent.path ? parent.path + '/' + name : name,
+                depth: parent.depth + 1, kids: [], f:0, g:0, x:0, dir };
+    parent.kids.push(n); return n;
+  };
+  if (small){
+    const spec = {
+      src:{ billing:['prices.ts','refunds.ts','tax.ts'], api:['errors.ts','routes.ts'],
+            cache:['keys.ts'], workers:['retry.ts','queue.ts'] },
+      test:{ core:['select.test.ts','ledger.test.ts'] },
+      docs:{ design:['web-ui.md'] },
+      scripts:['release.sh']
+    };
+    for (const [top, sub] of Object.entries(spec)){
+      const t = mk(root, top, true);
+      if (Array.isArray(sub)) { for (const f of sub) mk(t, f, false); continue; }
+      for (const [d, files] of Object.entries(sub)){
+        const dd = mk(t, d, true); for (const f of files) mk(dd, f, false);
+      }
+    }
+    // governed sets, as matchesScope would answer them
+    const gov = { 'src/billing':1, 'src/api':1, 'src/cache':0.34, 'test/core':1, 'docs/design':0 };
+    const paint = n => {
+      if (!n.dir){ n.f = 1; n.g = 0; return; }
+      for (const k of n.kids) paint(k);
+      n.f = n.kids.reduce((a,k)=>a+k.f,0);
+      const ratio = gov[n.path] !== undefined ? gov[n.path] : null;
+      if (ratio !== null){
+        let want = Math.round(n.f * ratio);
+        for (const k of n.kids){ if (want > 0 && !k.dir){ k.g = 1; want--; } }
+      }
+      n.g = n.kids.reduce((a,k)=>a+k.g,0);
+    };
+    paint(root);
+  } else {
+    // ~50,000 files across ~3,800 directories, monorepo-shaped
+    const pkgs = mk(root, 'packages', true);
+    for (let p = 0; p < 88; p++){
+      const P = mk(pkgs, 'p' + String(p).padStart(2,'0'), true);
+      for (const s of ['src','test','docs']){
+        const S = mk(P, s, true);
+        const nd = 4 + Math.floor(rnd()*11);
+        for (let d = 0; d < nd; d++){
+          const D = mk(S, 'mod' + d, true);
+          D.f = 8 + Math.floor(rnd()*30);
+          // governed iff a scope glob reaches it. Most monorepo packages have none.
+          D.g = (s === 'src' && p < 11) ? D.f : (s === 'src' && rnd() < .1 ? Math.round(D.f*.5) : 0);
+        }
+      }
+    }
+    for (const t of ['tools','infra','vendor']){
+      const T = mk(root, t, true);
+      for (let d = 0; d < 26; d++){
+        const D = mk(T, 'd'+d, true); D.f = 20 + Math.floor(rnd()*70);
+        D.g = t === 'tools' && d < 3 ? D.f : 0;
+        if (t === 'vendor'){ D.x = D.f; D.g = 0; }   // beyond FILE_LIMIT — not examined
+      }
+    }
+    const roll = n => {
+      if (!n.kids.length) return;
+      for (const k of n.kids) roll(k);
+      n.f = n.kids.reduce((a,k)=>a+k.f,0) || n.f;
+      n.g = n.kids.reduce((a,k)=>a+k.g,0);
+      n.x = n.kids.reduce((a,k)=>a+k.x,0);
+    };
+    roll(root);
+  }
+  return root;
+}
+
+let TREE = buildTree();
+let OPEN = new Set(['src','test','docs','packages','tools','infra','vendor']);
+let SEL  = null;
+
+function flatten(){
+  const out = [];
+  const walk = n => {
+    for (const k of n.kids){
+      out.push(k);
+      if (k.dir && OPEN.has(k.path)) walk(k);
+    }
+  };
+  walk(TREE);
+  return out;
+}
+
+function renderTree(){
+  const rows = flatten();
+  const box = $('#treeScroll'), host = $('#rows');
+  const H = 22, view = box.clientHeight || 340;
+  const draw = () => {
+    const top = box.scrollTop;
+    const a = Math.max(0, Math.floor(top / H) - 6);
+    const b = Math.min(rows.length, Math.ceil((top + view) / H) + 6);
+    host.style.height = (rows.length * H) + 'px';
+    host.textContent = '';
+    const pad = el('div', {}); pad.style.height = (a * H) + 'px'; host.append(pad);
+    for (let i = a; i < b; i++){
+      const n = rows[i];
+      const gpc = n.f ? (n.g / n.f * 100) : 0;
+      const xpc = n.f ? (n.x / n.f * 100) : 0;
+      const upc = Math.max(0, 100 - gpc - xpc);
+      const btn = el('button', {
+        class:'row' + (!n.dir && !n.g ? ' gapleaf' : ''),
+        'aria-selected': String(SEL === n.path), type:'button'
+      });
+      btn.style.paddingInlineStart = (8 + n.depth * 13) + 'px';
+      const tw = el('span', { class:'tw' }, n.dir ? (OPEN.has(n.path) ? '▾' : '▸') : '·');
+      const nm = el('span', { class:'nm' }, n.name + (n.dir ? '/' : ''));
+      const mini = el('span', { class:'mini' });
+      for (const [cls, pc] of [['g',gpc],['u',upc],['x',xpc]]){
+        if (pc <= 0) continue;
+        const i2 = el('i', { class: cls }); i2.style.width = pc + '%'; mini.append(i2);
+      }
+      const ct = el('span', { class:'ct' }, n.f.toLocaleString());
+      btn.append(tw, nm, mini, ct);
+      btn.addEventListener('click', () => {
+        if (n.dir){ OPEN.has(n.path) ? OPEN.delete(n.path) : OPEN.add(n.path); }
+        SEL = n.path; renderTree(); renderDetail(n);
+      });
+      host.append(btn);
+    }
+    if (SCALE === 'big'){
+      const t = el('div', { class:'row trunc' },
+        '⌁ 2 directories below packages/ were not examined — the walk hit FILE_LIMIT = 20,000');
+      host.append(t);
+    }
+  };
+  box.onscroll = draw;
+  draw();
+  renderRail(rows);
+  $('#perf').textContent = '';
+  const stats = [
+    ['directories on the wire', flattenAll().length.toLocaleString()],
+    ['files rolled up', TREE.kids.reduce((a,k)=>a+k.f,0).toLocaleString()],
+    ['rows in the DOM', String(Math.min(rows.length, Math.ceil(340/22)+12))],
+    ['matchesScope calls', SCALE === 'big' ? '≈ 41k (scoped items × pruned subtrees)' : '≈ 190']
+  ];
+  for (const [k,v] of stats){
+    const s = el('span', {}, [el('b', {}, v), ' ' + k]); $('#perf').append(s);
+  }
+}
+function flattenAll(){ const o=[]; const w=n=>{for(const k of n.kids){o.push(k);w(k);}}; w(TREE); return o; }
+
+/* The density rail: consecutive same-state directories merge into one rect, so
+   3,800 directories become a few hundred rects. No text inside → mirrors by
+   docking alone. */
+function renderRail(rows){
+  const H = 300, W = 13;
+  const state = n => n.x > n.f/2 ? 'x' : (n.f === 0 ? 'u' : n.g / n.f > .6 ? 'g' : n.g > 0 ? 'p' : 'u');
+  const runs = [];
+  rows.forEach((n, i) => {
+    const s = state(n);
+    const last = runs[runs.length-1];
+    if (last && last.s === s) last.n++; else runs.push({ s, i, n:1 });
+  });
+  const fill = { g:'var(--gold)', p:'var(--gold)', u:'var(--warn)', x:'var(--faint)' };
+  const op   = { g:1, p:.45, u:.3, x:.25 };
+  const kids = runs.map(r => el('rect', {
+    x:0, y:(r.i / rows.length * H).toFixed(2), width:W,
+    height: Math.max(.6, r.n / rows.length * H).toFixed(2),
+    fill: fill[r.s], 'fill-opacity': op[r.s]
+  }));
+  const s = svg(W, H, kids);
+  s.setAttribute('preserveAspectRatio','none');
+  s.setAttribute('aria-label','density rail: every directory in document order, coloured by coverage');
+  $('#rail').textContent = ''; $('#rail').append(s);
+}
+
+function renderDetail(n){
+  $('#detPath').textContent = n ? (n.path || '/') : '';
+  const host = $('#det'); host.textContent = '';
+  if (!n){ host.append(el('p', { class:'small' }, 'Select a path.')); return; }
+  if (n.dir && n.g === 0 && n.x === 0){
+    host.append(el('p', { class:'small' }, [
+      el('b', {}, 'No rule fires here. '),
+      'No eligible normative item declares a scope reaching this path, and no unscoped item is ' +
+      'unrestricted under this category’s scopePolicy. The 4 pinned items still arrive at ' +
+      'session start — coverage of a path and coverage of a session are different questions.'
+    ]));
+    const cmd = el('code', {}, 'mycontext add constraint "…" --scope "' + n.path + '/**"');
+    host.append(el('p', { class:'small', style:'margin-block-start:8px' }, cmd));
+    return;
+  }
+  const rowsData = [
+    ['CONST-postgres-pool-capped-at-20','constraint','PINNED — injected in full at every session start, regardless of scope','c-pin'],
+    ['RULE-never-log-customer-email','rule','injected when work touches src/billing/**','c-jit'],
+    ['INV-prices-are-integer-cents','invariant','injected when work touches src/billing/**, src/api/**','c-jit'],
+    ['DEC-we-chose-sqlite','decision','not injected — rationale-tier categories contribute an index line only','c-gap'],
+    ['STD-legacy-naming','standard','not injected (category "standard" scopePolicy: inert — an empty scope matches no path)','c-gap']
+  ];
+  const t = el('table', {});
+  for (const [id, type, phrase, cls] of rowsData){
+    t.append(el('tr', {}, [
+      el('td', {}, [el('span', { class:'m' }, id), el('br'),
+                    el('span', { class:'small' }, type)]),
+      el('td', {}, [el('span', { class:'chip ' + cls }, phrase.split(' —')[0].split(' (')[0]),
+                    el('div', { class:'small', style:'margin-block-start:3px' }, phrase)])
+    ]));
+  }
+  host.append(t);
+  host.append(el('p', { class:'small', style:'margin-block-start:9px' },
+    'Every phrase above is injection(item, config).phrase verbatim — the one answer to ' +
+    '"is this injected and on what terms", not a fourth spelling of it.'));
+}
+
+/* ═══ 2 · BUDGET RIBBON ════════════════════════════════════════════════════ */
+const TIER_BUDGET = { pinned:6000, jit:6000, restored:8000, index:1200 };
+const EVENT_TIERS = {
+  'session-start': ['pinned','index'],
+  'tool':          ['jit'],
+  'compact':       ['pinned','restored','index'],
+  'manual':        ['pinned','index']
+};
+/* costs are itemCost() figures; order is the selector's: hard first, then
+   project layer, then id — and admission is FIRST-FIT within that order. */
+const CANDIDATES = {
+  pinned: [
+    ['CONST-zero-runtime-dependencies', 980],
+    ['CONST-node-24-no-build-step',     760],
+    ['INV-markdown-is-source-of-truth', 2450],
+    ['INV-nothing-dropped-silently',    1610],
+    ['CONST-postgres-pool-capped-20',   540],
+    ['STD-error-message-conventions',   1180]
+  ],
+  jit: [
+    ['RULE-never-log-customer-email',   1240],
+    ['INV-prices-are-integer-cents',    880],
+    ['STD-api-errors-problem-json',     3900],
+    ['RULE-posix-normalized-paths',     620],
+    ['DEC-refunds-are-idempotent',      1150],
+    ['STD-money-never-float',           430]
+  ],
+  restored: [
+    ['INV-prices-are-integer-cents',    880],
+    ['RULE-never-log-customer-email',  1240],
+    ['CONST-zero-runtime-dependencies', 980]
+  ],
+  index: [
+    ['— 19 normative index lines —',    1040],
+    ['+ 6 more that did not fit',        260]
+  ]
+};
+function fitFirstFit(cands, budget){
+  let used = 0; const fit = [], spill = [];
+  for (const [id, cost] of cands){
+    if (used + cost > budget){ spill.push({ id, cost, reason:
+      `budget exceeded (${used+cost} > ${budget} estimated tokens)` }); continue; }
+    used += cost; fit.push({ id, cost });
+  }
+  return { fit, spill, used };
+}
+let EVENT = 'session-start';
+function renderRibbons(){
+  const bad = $('#evBadges'); bad.textContent = '';
+  for (const ev of Object.keys(EVENT_TIERS)){
+    const b = el('button', { class:'tg', 'aria-pressed': String(ev === EVENT), type:'button' }, ev);
+    b.addEventListener('click', () => { EVENT = ev; renderRibbons(); });
+    bad.append(b);
+  }
+  const host = $('#ribbons'); host.textContent = '';
+  for (const tier of ['pinned','jit','restored','index']){
+    const runs = EVENT_TIERS[EVENT].includes(tier);
+    const budget = TIER_BUDGET[tier];
+    const r = el('div', { class:'ribbon' });
+    const lab = el('div', { class:'rlabel' }, [
+      el('span', { class:'chip c-' + tier.slice(0,3) }, tier),
+      el('span', { class:'t' }, runs ? '' : (RTL ? 'לא רץ באירוע זה' : 'does not run on this event')),
+    ]);
+    if (!runs){
+      const track = el('div', { class:'track' }, [el('div', { class:'notrun' })]);
+      r.append(lab, track);
+      r.append(el('div', { class:'hint' },
+        'A tier the event never reaches is drawn as absent, not as empty. Empty would mean ' +
+        '"ran and delivered nothing", which is a different fact.'));
+      host.append(r); continue;
+    }
+    const { fit, spill, used } = fitFirstFit(CANDIDATES[tier], budget);
+    lab.append(el('span', { class:'n' },
+      `${used.toLocaleString()} / ${budget.toLocaleString()} · ${fit.length} in · ${spill.length} out`));
+    const track = el('div', { class:'track' });
+    for (const f of fit){
+      const s = el('div', { class:'seg ' + tier, title:`${f.id} · ${f.cost} tokens` });
+      s.style.width = (f.cost / budget * 100) + '%';
+      track.append(s);
+    }
+    track.append(el('div', { class:'seg head' }));
+    // the ghost lane, positioned at the point in the sequence each spill occurred
+    const ghosts = el('div', { class:'ghosts' });
+    let cursor = 0;
+    for (const [id, cost] of CANDIDATES[tier]){
+      const sp = spill.find(s => s.id === id);
+      const g = el('div', { class: sp ? 'gh' : 'gap', title: sp ? `${id} · ${cost} tokens · ${sp.reason}` : '' });
+      g.style.width = (cost / budget * 100) + '%';
+      ghosts.append(g); cursor += cost;
+    }
+    r.append(lab, track, ghosts);
+    const smallest = spill.length ? Math.min(...spill.map(s => s.cost)) : null;
+    r.append(el('div', { class:'hint' }, smallest === null
+      ? 'Everything selected fit. Headroom ' + (budget - used).toLocaleString() + ' tokens.'
+      : [ 'Headroom ' + (budget - used).toLocaleString() + '. ',
+          el('b', {}, `the smallest thing that did not fit costs ${smallest.toLocaleString()}`),
+          ' — so the headroom is not usable by anything currently selected.' ]));
+    host.append(r);
+  }
+}
+
+/* ═══ 3 · SIMULATOR STAIRCASE ══════════════════════════════════════════════ */
+let SIM_TIER = 'jit';
+function sweep(tier){
+  // Breakpoints are exact and finite: run the selector at every cumulative
+  // candidate cost. No sampling, so no invented behaviour between samples.
+  const cands = CANDIDATES[tier];
+  const pts = new Set([0]);
+  for (let i = 0; i < cands.length; i++){
+    let acc = 0;
+    for (let j = i; j < cands.length; j++){ acc += cands[j][1]; pts.add(acc); }
+    pts.add(cands[i][1]);
+  }
+  const xs = [...pts].filter(v => v <= 12000).sort((a,b)=>a-b);
+  return xs.map(b => { const r = fitFirstFit(cands, b); return { b, n:r.fit.length, ids:r.fit.map(f=>f.id) }; });
+}
+function renderStair(){
+  const W = 560, H = 210, PL = 34, PR = 12, PT = 12, PB = 26;
+  const data = sweep(SIM_TIER);
+  const maxN = Math.max(...data.map(d => d.n), 1);
+  const bx = b => PL + (b / 12000) * (W - PL - PR);
+  const by = n => H - PB - (n / maxN) * (H - PT - PB);
+  const kids = [];
+  kids.push(el('line', { class:'axis', x1:X(PL,W), y1:H-PB, x2:X(W-PR,W), y2:H-PB }));
+  kids.push(el('line', { class:'axis', x1:X(PL,W), y1:PT, x2:X(PL,W), y2:H-PB }));
+  for (let n = 0; n <= maxN; n++){
+    kids.push(el('text', { x:X(PL-5,W), y:by(n)+3, 'text-anchor':ANC('end') }, String(n)));
+  }
+  for (const t of [0,3000,6000,9000,12000]){
+    kids.push(el('text', { x:X(bx(t),W), y:H-PB+13, 'text-anchor':'middle', class:'mono' },
+      t.toLocaleString()));
+  }
+  // the step path + eviction markers
+  let d = '', prev = null, evicts = [];
+  data.forEach((p, i) => {
+    const x = X(bx(p.b), W), y = by(p.n);
+    if (i === 0){ d = `M ${x} ${y}`; }
+    else { d += ` L ${X(bx(p.b),W)} ${by(prev.n)} L ${x} ${y}`; if (p.n < prev.n) evicts.push(p); }
+    prev = p;
+  });
+  kids.push(el('path', { class:'step', d }));
+  for (const e of evicts){
+    kids.push(el('circle', { cx:X(bx(e.b),W), cy:by(e.n), r:4, fill:'var(--critbg)',
+      stroke:'var(--crit)', 'stroke-width':1.6 }));
+    kids.push(el('text', { x:X(bx(e.b),W)+ (RTL?-6:6), y:by(e.n)-8, 'text-anchor':ANC('start'),
+      fill:'var(--crit)' }, RTL ? 'פינוי' : 'eviction'));
+  }
+  const cur = Number($('#slider').value);
+  kids.push(el('line', { class:'defline', x1:X(bx(TIER_BUDGET[SIM_TIER]),W), y1:PT,
+    x2:X(bx(TIER_BUDGET[SIM_TIER]),W), y2:H-PB }));
+  kids.push(el('line', { class:'nowline', x1:X(bx(cur),W), y1:PT, x2:X(bx(cur),W), y2:H-PB }));
+  kids.push(el('text', { x:X(bx(cur),W) + (RTL?-5:5), y:PT+9, 'text-anchor':ANC('start'),
+    fill:'var(--gold)', class:'mono' }, cur.toLocaleString()));
+  const s = svg(W, H, kids);
+  s.setAttribute('aria-label','admission staircase: items admitted as a function of the tier budget');
+  $('#stair').textContent = ''; $('#stair').append(s);
+
+  // ladder + readout
+  const lad = $('#ladder'); lad.textContent = '';
+  let last = null;
+  for (const p of data){
+    if (last && last.n === p.n) continue;
+    const isEv = last && p.n < last.n;
+    const row = el('div', { class:(cur >= p.b && (!last || cur >= p.b) ? '' : '') + (isEv ? ' ev' : '') },
+      [ el('span', { class:'m' }, p.b.toLocaleString()),
+        el('span', {}, (isEv ? '▼ ' : '') + p.n + (RTL ? ' פריטים' : ' items')) ]);
+    if (cur >= p.b) { lad.querySelectorAll('.at').forEach(x=>x.classList.remove('at')); }
+    row.dataset.b = p.b;
+    lad.append(row); last = p;
+  }
+  const rungs = [...lad.children].filter(r => Number(r.dataset.b) <= cur);
+  if (rungs.length) rungs[rungs.length-1].classList.add('at');
+
+  const at = fitFirstFit(CANDIDATES[SIM_TIER], cur);
+  const ro = $('#readout'); ro.textContent = '';
+  ro.append(el('b', {}, `${at.fit.length} in · ${at.spill.length} out · ${at.used.toLocaleString()} tokens used`));
+  if (at.spill.length){
+    const cheapest = at.spill.reduce((a,b)=>a.cost<b.cost?a:b);
+    ro.append(el('div', { class:'small', style:'margin-block-start:3px' },
+      [ 'next in at ', el('span', { class:'m' }, (cur + (cheapest.cost - (cur - at.used))).toLocaleString()),
+        ' — ', el('span', { class:'m' }, cheapest.id) ]));
+  }
+  if (evicts.length){
+    ro.append(el('div', { class:'small', style:'margin-block-start:3px;color:var(--crit)' },
+      RTL ? 'העלאת התקציב מפנה פריט אחד לפחות — ראו הצעד היורד.'
+          : 'Raising this budget evicts at least one item — see the downward step. First-fit is not monotone in membership.'));
+  }
+}
+
+/* ═══ 4 · DECAY COMB + HEATSTRIP ═══════════════════════════════════════════ */
+const DECAY = {
+  window: 20, sessionsRecorded: 7,
+  rows: [
+    ['CONST-zero-runtime-dependencies', 0.2, true,  false, 'warm'],
+    ['INV-markdown-is-source-of-truth', 1.1, true,  false, 'warm'],
+    ['RULE-never-log-customer-email',   3.4, false, false, 'warm'],
+    ['INV-prices-are-integer-cents',    9.0, false, false, 'cold'],
+    ['STD-api-errors-problem-json',    17.0, false, true,  'cold'],
+    ['RULE-posix-normalized-paths',    42.0, false, false, 'cold'],
+    ['CONST-node-24-no-build-step',    47.0, true,  false, 'cold'],
+    ['STD-error-message-conventions',  63.0, false, true,  'cold'],
+    ['DEC-refunds-are-idempotent',     null, false, false, 'cold'],
+    ['STD-money-never-float',          null, false, true,  'cold']
+  ]
+};
+function renderComb(){
+  const W = 900, H = 190, PL = 200, PR = 84, PT = 18, PB = 30;
+  const maxD = 70;
+  const dx = d => PL + Math.log10(1 + d) / Math.log10(1 + maxD) * (W - PL - PR);
+  const kids = [];
+  kids.push(el('line', { class:'axis', x1:X(PL,W), y1:H-PB, x2:X(W-PR,W), y2:H-PB }));
+  for (const [d, lab] of [[0,'today'],[1,'1d'],[7,'1w'],[30,'1mo'],[60,'2mo']]){
+    kids.push(el('line', { class:'axis', x1:X(dx(d),W), y1:PT-4, x2:X(dx(d),W), y2:H-PB,
+      'stroke-dasharray':'2 4' }));
+    kids.push(el('text', { x:X(dx(d),W), y:H-PB+13, 'text-anchor':'middle' },
+      RTL ? { today:'היום','1d':'יום','1w':'שבוע','1mo':'חודש','2mo':'חודשיים' }[lab] : lab));
+  }
+  // the "never" terminal bucket — a different KIND, not a large number
+  const nx = W - PR + 16;
+  kids.push(el('rect', { class:'never', x:X(nx,W) - (RTL?46:0), y:PT-6, width:46, height:H-PT-PB+6, rx:4 }));
+  kids.push(el('text', { x:X(nx+23,W), y:H-PB+13, 'text-anchor':'middle', fill:'var(--crit)' },
+    RTL ? 'מעולם' : 'never'));
+
+  const rowH = (H - PT - PB) / DECAY.rows.length;
+  DECAY.rows.forEach((r, i) => {
+    const [id, days, always, unrestricted] = r;
+    const y = PT + rowH * i + rowH/2;
+    kids.push(el('text', { x:X(PL-8,W), y:y+3, 'text-anchor':ANC('end'), class:'mono',
+      fill:'var(--ink)' }, id.length > 30 ? id.slice(0,29)+'…' : id));
+    if (unrestricted){
+      kids.push(el('text', { x:X(PL-8-192,W), y:y+3, 'text-anchor':ANC('start'),
+        fill:'var(--dim)' }, '∀'));
+    }
+    const cold = days === null || days > 7;
+    const cx = days === null ? nx + 23 : dx(days);
+    const badPin = always && cold;
+    kids.push(el('circle', {
+      cx:X(cx,W), cy:y, r: badPin ? 5.5 : 4.2,
+      fill: days === null ? 'var(--critbg)' : cold ? 'var(--warn)' : 'var(--gold)',
+      stroke: days === null ? 'var(--crit)' : badPin ? 'var(--crit)' : 'none',
+      'stroke-width': badPin ? 2 : 1
+    }));
+    if (badPin){
+      kids.push(el('text', { x:X(cx,W) + (RTL?-9:9), y:y+3, 'text-anchor':ANC('start'),
+        fill:'var(--crit)' }, RTL ? 'נעוץ אך קר' : 'pinned, yet cold — it spilled'));
+    }
+  });
+  const s = svg(W, H, kids);
+  s.setAttribute('aria-label','recency comb: days since last injection, per item, with a separate never bucket');
+  $('#comb').textContent = ''; $('#comb').append(s);
+
+  $('#decayCaveat').textContent =
+    `"cold" means: not auto-injected in the last ${DECAY.window} session(s). The ledger holds ` +
+    `${DECAY.sessionsRecorded} session(s) — fewer than the window, so cold mostly means "new". ` +
+    `The horizontal axis is real time from injected_at; the cold/warm badge is counted in ` +
+    `sessions. They are different measurements and the chart never merges them.`;
+}
+function renderHeat(){
+  const host = $('#heat'); host.textContent = '';
+  const items = ['RULE-never-log-customer-email','INV-prices-are-integer-cents',
+                 'STD-api-errors-problem-json','RULE-posix-normalized-paths',
+                 'STD-error-message-conventions'];
+  const patt = [
+    d => d < 60 ? (d % 3 ? 0 : 3) : (d % 5 ? 0 : 2),
+    d => d < 84 ? (d % 7 ? 0 : 2) : 3,
+    d => d > 46 ? 0 : (d % 2 ? 0 : 'sp'),
+    d => d < 12 ? (d % 4 ? 0 : 1) : 0,
+    d => d > 74 ? 3 : 0
+  ];
+  items.forEach((id, k) => {
+    host.append(el('div', { class:'hname', title:id }, id));
+    const strip = el('div', { class:'strip' });
+    for (let d = 0; d < 90; d++){
+      const v = patt[k](d);
+      strip.append(el('i', { class: v === 'sp' ? 'sp' : v ? 'h'+v : '' }));
+    }
+    host.append(strip);
+  });
+  host.append(el('div', { class:'small' }, ''));
+  host.append(el('div', { class:'small', style:'display:flex;justify-content:space-between' },
+    [ el('span', {}, RTL ? 'לפני 90 יום' : '90 days ago'), el('span', {}, RTL ? 'היום' : 'today') ]));
+}
+
+/* ═══ 5 · EGO GRAPH ════════════════════════════════════════════════════════ */
+const EGO = {
+  focus: 'INV-nothing-dropped-silently',
+  cols: [
+    { k:'r2in',  label:'r2 · in',  nodes:[
+        { id:'LESSON-symlinked-items', rel:'derived_from' },
+        { id:'LESSON-category-vanish', rel:'derived_from' } ] },
+    { k:'r1in',  label:'r1 · in',  nodes:[
+        { id:'REQ-spills-are-recorded', rel:'refines' },
+        { id:'RULE-index-truncation',   rel:'constrains' },
+        { id:'OQ-audit-retention',      rel:'blocks' } ] },
+    { k:'focus', label:'focus',    nodes:[ { id:'INV-nothing-dropped-silently', focus:true } ] },
+    { k:'r1out', label:'r1 · out', nodes:[
+        { id:'STD-spill-reason-format', rel:'constrains' },
+        { id:'RULE-load-error-surface', rel:'constrains' },
+        { id:'DEC-audit-log-is-jsonl',  rel:'relates_to', ref:true },
+        { id:'CONST-budget-defaults',   rel:'supersedes', missing:true } ] },
+    { k:'r2out', label:'r2 · out', nodes:[
+        { id:'STD-error-message-conv',  rel:'refines' },
+        { id:'DEC-jsonb-projection',    rel:'relates_to', ref:true, superseded:true } ] }
+  ],
+  omitted: { r1out: 0, r2out: 14 }
+};
+function renderEgo(){
+  const W = 900, colW = W / 5, NW = 148, NH = 26, PT = 26;
+  const maxRows = Math.max(...EGO.cols.map(c => c.nodes.length)) + 1;
+  const H = PT + maxRows * 44 + 16;
+  const kids = [];
+  const pos = {};
+  EGO.cols.forEach((c, ci) => {
+    const cxc = colW * ci + colW/2;
+    kids.push(el('text', { x:X(cxc,W), y:14, 'text-anchor':'middle', class:'mono' }, c.label));
+    c.nodes.forEach((n, ri) => {
+      const y = PT + ri * 44;
+      pos[n.id] = { cx: cxc, y: y + NH/2, ci };
+      const cls = 'node' + (n.focus ? ' focus' : '') + (n.missing ? ' missing' : '')
+        + (n.superseded ? ' superseded' : '');
+      kids.push(el('rect', { class:cls, x:X(cxc,W) - NW/2, y, width:NW, height:NH, rx:5 }));
+      const label = n.id.length > 24 ? n.id.slice(0,23) + '…' : n.id;
+      kids.push(el('text', { class:'nid', x:X(cxc,W), y:y + 17, 'text-anchor':'middle' }, label));
+      if (n.missing){
+        kids.push(el('text', { x:X(cxc,W), y:y + NH + 10, 'text-anchor':'middle',
+          fill:'var(--crit)' }, RTL ? 'לא בקורפוס' : 'not in corpus'));
+      }
+    });
+    const om = EGO.omitted[c.k];
+    if (om){
+      const y = PT + c.nodes.length * 44;
+      kids.push(el('rect', { class:'more', x:X(cxc,W) - NW/2, y, width:NW, height:NH, rx:5 }));
+      kids.push(el('text', { class:'nid', x:X(cxc,W), y:y+17, 'text-anchor':'middle',
+        fill:'var(--warn)' }, `+${om} more`));
+    }
+  });
+  // edges: adjacent columns only, so crossings are bounded by construction
+  const link = (a, b, rel, ref, dangling) => {
+    const A = pos[a], B = pos[b]; if (!A || !B) return;
+    const dir = (A.ci < B.ci) ? 1 : -1;
+    const ax = X(A.cx + dir * NW/2, W), bx = X(B.cx - dir * NW/2, W);
+    const mid = (ax + bx) / 2;
+    const cls = 'edge ' + (dangling ? 'dangling' : ref ? 'ref' : 'bearing');
+    kids.push(el('path', { class:cls,
+      d:`M ${ax} ${A.y} C ${mid} ${A.y}, ${mid} ${B.y}, ${bx} ${B.y}` }));
+    kids.push(el('text', { class:'rel', x:mid, y:(A.y + B.y)/2 - 4, 'text-anchor':'middle' }, rel));
+  };
+  for (const n of EGO.cols[1].nodes) link(n.id, EGO.focus, n.rel, n.ref, false);
+  for (const n of EGO.cols[0].nodes) link(n.id, EGO.cols[1].nodes[0].id, n.rel, n.ref, false);
+  for (const n of EGO.cols[3].nodes) link(EGO.focus, n.id, n.rel, n.ref, !!n.missing);
+  for (const n of EGO.cols[4].nodes) link(EGO.cols[3].nodes[0].id, n.id, n.rel, n.ref, false);
+
+  const s = svg(W, H, kids);
+  s.setAttribute('aria-label','ego graph of INV-nothing-dropped-silently, radius 2, five columns');
+  $('#ego').textContent = ''; $('#ego').append(s);
+}
+
+/* ═══ 6 · AUDIT STREAM ═════════════════════════════════════════════════════ */
+const FEED = [
+  { at:'14:02:11', kind:'injection', op:'jit', hook:'PreToolUse', path:'src/billing/prices.ts',
+    injected:3, tokens:2740, spilled:1 },
+  { at:'14:02:09', kind:'hook', op:'post-tool-use', note:'no matching items for this path' },
+  { at:'14:01:58', kind:'injection', op:'jit', hook:'PreToolUse', path:'src/api/errors.ts',
+    injected:2, tokens:null, spilled:0 },
+  { at:'14:01:40', kind:'focus', op:'focus-set', origin:'agent',
+    note:'scope=src/billing/**, categories=rule,invariant' },
+  { at:'14:01:22', kind:'mutation', op:'update', origin:'human', itemId:'RULE-never-log-customer-email',
+    fields:['body','scope'] },
+  { at:'14:00:51', kind:'mutation', op:'stage', origin:'agent', itemId:'STD-money-never-float',
+    fields:['body'], note:'held as a proposal — agentEdits: review' },
+  { at:'14:00:03', kind:'injection', op:'session-start', hook:'SessionStart',
+    injected:11, tokens:5910, spilled:2, note:'source: startup' },
+  { at:'13:59:58', kind:'hook', op:'deny', note:'write to .my_context/config.json refused' }
+];
+function renderFeed(){
+  $('#freshness').textContent = '';
+  $('#freshness').append(
+    el('span', {}, '⌁'),
+    el('span', {}, RTL
+      ? 'ההיטל מפגר אחרי היומן ב‑12 רשומות. הוא משלים לפני כל תשובה, ולעולם לא עונה בשקט.'
+      : 'The projection is behind its log by 12 records. It catches up before answering — a projection that is behind either catches up or says so, never both silently.'),
+    el('span', { class:'small', style:'margin-inline-start:auto' }, 'projectionState: behind'));
+
+  const host = $('#feed'); host.textContent = '';
+  for (const r of FEED){
+    if (r.kind === 'focus'){
+      host.append(el('div', { class:'regime' }, [
+        el('span', {}, '◇'),
+        el('span', {}, (RTL ? 'שינוי מיקוד · ' : 'focus ' + (r.op === 'focus-set' ? 'set' : 'cleared') + ' · ')
+          + r.note),
+        el('span', { class:'ln' }),
+        el('span', { class:'m' }, r.origin),
+        el('span', { class:'m' }, r.at)
+      ]));
+      continue;
+    }
+    const gl = el('span', { class:'gl' });
+    gl.append(el('span', { class:
+      r.kind === 'injection' ? 'd-inj'
+      : r.kind === 'mutation' ? ('d-mut' + (r.origin === 'agent' ? ' agent' : ''))
+      : 'd-hook' }));
+    const ttl = el('div', { class:'ttl' }, [
+      el('span', { class:'chip ' + (r.kind === 'injection' ? 'c-jit' : r.kind === 'mutation' ? 'c-pin' : 'c-gap') }, r.op)
+    ]);
+    if (r.path)   ttl.append(el('span', { class:'m' }, r.path));
+    if (r.itemId) ttl.append(el('span', { class:'m' }, r.itemId));
+    if (r.fields) ttl.append(el('span', { class:'small' }, 'fields: ' + r.fields.join(', ')));
+    if (r.kind === 'injection'){
+      ttl.append(el('span', { class:'small' }, `${r.injected} delivered`));
+      if (r.spilled) ttl.append(el('span', { class:'chip c-sp' }, `${r.spilled} spilled`));
+    }
+    const bd = el('div', { class:'bd' }, [ttl]);
+    if (r.kind === 'injection'){
+      if (r.tokens === null){
+        bd.append(el('div', { class:'tokvoid', title:'tokens not recorded' }));
+        bd.append(el('div', { class:'nt' }, RTL ? 'לא נרשם — לא אפס' : 'tokens: not recorded — this record predates the field. Not zero.'));
+      } else {
+        const b = el('div', { class:'tokbar' });
+        b.style.width = (r.tokens / 6000 * 100).toFixed(1) + '%';
+        bd.append(b);
+        bd.append(el('div', { class:'nt' }, `${r.tokens.toLocaleString()} estimated tokens, computed at injection time`));
+      }
+    }
+    // note renders for EVERY kind, not only focus
+    if (r.note && r.kind !== 'injection') bd.append(el('div', { class:'nt' }, r.note));
+    else if (r.note) bd.append(el('div', { class:'nt' }, r.note));
+    host.append(el('div', { class:'ev' }, [gl, el('span', { class:'at' }, r.at), bd]));
+  }
+}
+function renderPulse(){
+  const W = 900, H = 34, N = 120;
+  const kids = [];
+  const colour = ['var(--ok)','var(--gold)','var(--faint)','var(--violet)'];
+  for (let i = 0; i < N; i++){
+    const h = i > N - 26 ? 2 + Math.round(rnd()*26) : Math.round(rnd()*rnd()*20);
+    if (!h) continue;
+    const c = colour[i % 17 === 0 ? 3 : i % 5 === 0 ? 1 : i % 11 === 0 ? 2 : 0];
+    const w = W / N - 1.4;
+    kids.push(el('rect', { x:X(i * (W/N), W) - (RTL ? w : 0), y:H - h, width:w, height:h,
+      fill:c, rx:1 }));
+  }
+  const s = svg(W, H, kids);
+  s.setAttribute('preserveAspectRatio','none');
+  s.setAttribute('aria-label','activity pulse, one column per ten seconds, newest at the reading-end edge');
+  $('#pulse').textContent = ''; $('#pulse').append(s);
+}
+
+/* ═══ 7 · SPILL RATIO ══════════════════════════════════════════════════════ */
+const RATIO = [
+  ['STD-api-errors-problem-json',   3, 41],
+  ['INV-markdown-is-source-truth', 12, 22],
+  ['STD-error-message-conventions', 18, 9],
+  ['RULE-never-log-customer-email', 34, 4],
+  ['INV-prices-are-integer-cents',  29, 1],
+  ['RULE-posix-normalized-paths',   17, 0]
+];
+function renderRatio(){
+  const host = $('#ratio'); host.textContent = '';
+  const max = Math.max(...RATIO.flatMap(r => [r[1], r[2]]));
+  for (const [id, del, sp] of RATIO){
+    const l = el('div', { class:'div-l' }); const li = el('i');
+    li.style.width = (del / max * 100) + '%'; l.append(li);
+    const r = el('div', { class:'div-r' }); const ri = el('i');
+    ri.style.width = (sp / max * 100) + '%'; r.append(ri);
+    host.append(el('div', { class:'div-row' }, [
+      el('span', { class:'div-name', title:id }, id), l, r,
+      el('span', { class:'div-n' }, `${del}/${sp}`)
+    ]));
+  }
+  host.append(el('div', { class:'div-row', style:'color:var(--faint);font-size:10px' }, [
+    el('span', {}, ''),
+    el('span', { style:'text-align:end' }, RTL ? 'נמסר' : 'delivered'),
+    el('span', {}, RTL ? 'נשפך' : 'spilled'),
+    el('span', {}, '')
+  ]));
+}
+
+/* ═══ CONTROLS ═════════════════════════════════════════════════════════════ */
+function renderAll(){
+  renderTree(); renderDetail(null);
+  renderRibbons(); renderStair(); renderComb(); renderHeat();
+  renderEgo(); renderFeed(); renderPulse(); renderRatio();
+}
+$('#dirBtn').addEventListener('click', e => {
+  RTL = !RTL;
+  document.documentElement.dir = RTL ? 'rtl' : 'ltr';
+  document.documentElement.lang = RTL ? 'he' : 'en';
+  e.currentTarget.setAttribute('aria-pressed', String(RTL));
+  e.currentTarget.textContent = RTL ? 'EN · LTR' : 'עב · RTL';
+  renderAll();   // every SVG re-emits through X(); CSS needs no help
+});
+let THEME = 0;
+$('#themeBtn').addEventListener('click', e => {
+  THEME = (THEME + 1) % 3;
+  const v = [null,'light','dark'][THEME];
+  if (v) document.documentElement.setAttribute('data-theme', v);
+  else document.documentElement.removeAttribute('data-theme');
+  e.currentTarget.textContent = 'theme: ' + (v || 'system');
+});
+$('#scaleBtn').addEventListener('click', e => {
+  SCALE = SCALE === 'small' ? 'big' : 'small';
+  TREE = buildTree();
+  OPEN = new Set(SCALE === 'small'
+    ? ['src','test','docs']
+    : ['packages','packages/p00','packages/p01','tools','infra','vendor']);
+  SEL = null;
+  e.currentTarget.setAttribute('aria-pressed', String(SCALE === 'big'));
+  const total = TREE.kids.reduce((a,k)=>a+k.f,0);
+  e.currentTarget.textContent = 'corpus: ' + total.toLocaleString() + ' files';
+  renderTree(); renderDetail(null);
+});
+document.querySelectorAll('[data-exp]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-exp]').forEach(x => x.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true');
+  const mode = b.dataset.exp;
+  OPEN = new Set();
+  const walk = (n, d) => {
+    for (const k of n.kids){
+      if (!k.dir) continue;
+      const informative = k.f > 0 && k.kids.some(c => (c.g/(c.f||1)) !== (k.g/(k.f||1)));
+      if (mode === 'all' || (mode === '1' && d < 1) || (mode === 'informative' && (d < 1 || informative)))
+        OPEN.add(k.path);
+      walk(k, d + 1);
+    }
+  };
+  walk(TREE, 0);
+  renderTree();
+}));
+$('#slider').addEventListener('input', e => {
+  $('#budgetVal').textContent = Number(e.target.value).toLocaleString();
+  renderStair();
+});
+(function tierPick(){
+  const host = $('#tierPick');
+  for (const t of ['pinned','jit','restored','index']){
+    const b = el('button', { class:'tg', type:'button', 'aria-pressed':String(t === SIM_TIER) }, t);
+    b.addEventListener('click', () => {
+      SIM_TIER = t; $('#tierName').textContent = t;
+      $('#slider').value = TIER_BUDGET[t];
+      $('#budgetVal').textContent = TIER_BUDGET[t].toLocaleString();
+      host.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x.textContent === t)));
+      renderStair();
+    });
+    host.append(b);
+  }
+})();
+renderAll();
+</script>
+</body>
+</html>

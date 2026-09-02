@@ -1,0 +1,111 @@
+const CORPUS = [
+  ['add', 'constraint', 'Never commit a secret', '--yes'],
+  ['pin', 'CONST-never-commit-a-secret', '--yes'],          // pinned tier
+  ['harden', 'CONST-never-commit-a-secret', '--yes'],       // severity: hard
+  ['add', 'constraint', 'Pool capped at 20', '--scope', 'src/db/**', '--tags', 'db', '--yes'],
+  ['add', 'invariant', 'Prices are integer cents', '--scope', 'src/billing/**', '--yes'],
+  ['add', 'rule', 'Write the failing test first', '--yes'], // unscoped normative
+  ['add', 'decision', 'We chose Stripe'],                    // rationale, for the count line
+  ['add', 'lesson', 'Retry storms need jitter'],
+];
+
+const pre = (file, tool = 'Read') => ({
+  session_id: 's1', tool_name: tool, tool_input: { file_path: file },
+});
+
+export const cases = [
+  // SessionStart
+  { id: 'session-start-startup', kind: 'hook', hook: 'sessionStart', setup: CORPUS,
+    payload: { session_id: 's1', source: 'startup' } },
+  { id: 'session-start-resume', kind: 'hook', hook: 'sessionStart', setup: CORPUS,
+    payload: { session_id: 's1', source: 'resume' } },
+  { id: 'session-start-compact', kind: 'hook', hook: 'sessionStart', setup: CORPUS,
+    payload: { session_id: 's1', source: 'compact' } },
+  { id: 'session-start-clear', kind: 'hook', hook: 'sessionStart', setup: CORPUS,
+    payload: { session_id: 's1', source: 'clear' } },
+  { id: 'session-start-empty-stdin', kind: 'hook', hook: 'sessionStart', payload: '' },
+  { id: 'session-start-garbage-stdin', kind: 'hook', hook: 'sessionStart', payload: 'not json' },
+  { id: 'session-start-empty-corpus', kind: 'hook', hook: 'sessionStart',
+    payload: { session_id: 's1', source: 'startup' },
+    note: 'a workspace with nothing in it must still exit 0' },
+  { id: 'session-start-dedupe-same-session', kind: 'hook', hook: 'sessionStart', setup: CORPUS,
+    payload: { session_id: 's1', source: 'startup' },
+    note: 'compare against session-start-startup: each item arrives once per session' },
+
+  // PreToolUse — JIT injection
+  { id: 'pre-tool-use-scoped-hit', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('src/db/writer.ts'), note: 'src/db/** scoped item should be injected' },
+  { id: 'pre-tool-use-scoped-miss', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('src/api/handler.ts'), note: 'src/db/** scoped item should not match; unscoped items still arrive' },
+  { id: 'pre-tool-use-scoped-billing-hit', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('src/billing/pricing.ts'), note: 'src/billing/** scoped item should be injected' },
+  { id: 'pre-tool-use-scoped-billing-miss', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('src/billing/pricing.ts'), note: 'src/db/** scoped item should not match src/billing/**' },
+  { id: 'pre-tool-use-edit-tool', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('src/db/writer.ts', 'Edit') },
+  { id: 'pre-tool-use-write-tool', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('src/db/writer.ts', 'Write') },
+  { id: 'pre-tool-use-notebook-edit', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('nb.ipynb', 'NotebookEdit') },
+
+  // PreToolUse — the deny path
+  { id: 'pre-tool-use-deny-items', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('.my_context/items/constraint/x.md', 'Write'),
+    note: 'must emit the deny envelope with a per-path reason' },
+  { id: 'pre-tool-use-deny-focus', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('.my_context/state/focus.json', 'Write') },
+  { id: 'pre-tool-use-deny-index', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('.my_context/.index.db', 'Edit') },
+  { id: 'pre-tool-use-deny-hyphen', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('.my-context/items/x.md', 'Write'),
+    note: 'README 4185: hyphen spelling of segment name' },
+  { id: 'pre-tool-use-deny-config', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('.my_context/config.json', 'Write'),
+    note: 'hits the generic 4th deny branch for managed paths' },
+  { id: 'pre-tool-use-deny-read-allowed', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('.my_context/items/constraint/x.md', 'Read'),
+    note: 'deny applies to Edit|Write only — Read must pass' },
+  { id: 'pre-tool-use-deny-dotdot', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('src/../.my_context/items/x.md', 'Write'),
+    note: 'canonicalization must catch the traversal' },
+  { id: 'pre-tool-use-deny-backslash', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('.my_context\\items\\x.md', 'Write'),
+    note: 'Windows separator must be normalized' },
+  { id: 'pre-tool-use-deny-case', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('.MY_CONTEXT/items/x.md', 'Write'),
+    note: 'README 4185: matched case-insensitively' },
+  { id: 'pre-tool-use-deny-notebookedit', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('.my_context/items/x.md', 'NotebookEdit'),
+    note: 'deny gate: substring match on Edit|Write includes NotebookEdit' },
+  { id: 'pre-tool-use-deny-multiedit', kind: 'hook', hook: 'preToolUse', setup: CORPUS,
+    payload: pre('.my_context/items/x.md', 'MultiEdit'),
+    note: 'deny gate: substring match on Edit|Write includes MultiEdit' },
+  { id: 'pre-tool-use-empty-stdin', kind: 'hook', hook: 'preToolUse', payload: '' },
+  { id: 'pre-tool-use-garbage-stdin', kind: 'hook', hook: 'preToolUse', payload: 'not json' },
+  { id: 'pre-tool-use-no-file-path', kind: 'hook', hook: 'preToolUse',
+    payload: { session_id: 's1', tool_name: 'Read', tool_input: {} } },
+
+  // PostToolUse — the watched-docs nudge
+  { id: 'post-tool-use-watched', kind: 'hook', hook: 'postToolUse', setup: CORPUS,
+    payload: { session_id: 's1', tool_name: 'Write',
+               tool_input: { file_path: 'docs/superpowers/specs/x.md' },
+               tool_response: { success: true } },
+    note: 'default watchedDocs includes docs/superpowers/specs/**' },
+  { id: 'post-tool-use-unwatched', kind: 'hook', hook: 'postToolUse', setup: CORPUS,
+    payload: { session_id: 's1', tool_name: 'Write',
+               tool_input: { file_path: 'src/index.ts' }, tool_response: { success: true } } },
+  { id: 'post-tool-use-inside-my-context', kind: 'hook', hook: 'postToolUse', setup: CORPUS,
+    payload: { session_id: 's1', tool_name: 'Write',
+               tool_input: { file_path: '.my_context/items/x.md' },
+               tool_response: { success: true } },
+    note: 'README 3922: writes inside .my_context never nudge' },
+  { id: 'post-tool-use-empty-stdin', kind: 'hook', hook: 'postToolUse', payload: '' },
+  { id: 'post-tool-use-garbage-stdin', kind: 'hook', hook: 'postToolUse', payload: 'not json' },
+
+  // PreCompact
+  { id: 'pre-compact-basic', kind: 'hook', hook: 'preCompact', setup: CORPUS,
+    payload: { session_id: 's1', transcript_path: 'nonexistent.jsonl' },
+    note: 'writes a restore snapshot, keeps stdout clean' },
+  { id: 'pre-compact-empty-stdin', kind: 'hook', hook: 'preCompact', payload: '' },
+  { id: 'pre-compact-garbage-stdin', kind: 'hook', hook: 'preCompact', payload: 'not json' },
+];

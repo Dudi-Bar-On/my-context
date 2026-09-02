@@ -30,3 +30,9 @@ blob-report/
 .demo-corpus/
 .demo-pack/
 .demo-pack-author/
+
+# harness scratch
+.scratch/
+
+# Playwright MCP session artefacts.
+.playwright-mcp/

@@ -1,0 +1,780 @@
+<!--
+  08-onboarding.html — the FIRST-RUN experience, sketched.
+
+  A visual reference for the empty states of the v2.0 console, not a
+  specification. Authority: docs/superpowers/specs/2026-08-16-web-ui-design.md.
+  Where this file and the spec disagree, the spec wins.
+
+  Every number below is FABRICATED except: the four default budgets
+  (pinned 6000 / jit 6000 / restored 8000 / index 1200, core/config.ts:51),
+  the 21 category names and their tier split (TUTORIAL.md §6), and the
+  0.55 ms audit-append p95 (test/perf/audit-latency.perf.ts) — which is real,
+  measured and shipped, and is called out here because the previous mockup's
+  self-audit got exactly this wrong in the other direction.
+
+  CSP NOTE, carried from web-ui-mockup.md: the real app serves
+  `default-src 'none'; script-src 'self'; style-src 'self'` and may not use
+  inline <style> or <script>. This file is inline-everything because it is a
+  single-file reference. Its CSS and JS are written as if they were about to be
+  lifted into `first-run.css` and `first-run.js`, because they are.
+-->
+<title>mycontext — first run</title>
+<style>
+/* ═══ TOKENS — lifted from web-ui-mockup.html so the sketch is the same product ═══ */
+:root{
+  color-scheme:light dark;
+  --paper:light-dark(#f7f6f2,#0f0f12);
+  --panel:light-dark(#fffffe,#17171c);
+  --sink:light-dark(#eeece5,#101014);
+  --ink:light-dark(#17171b,#ecebe4);
+  --dim:light-dark(#65635d,#928f87);
+  --faint:light-dark(#94918a,#68655f);
+  --rule:light-dark(#e2dfd6,#262630);
+  --edge:light-dark(#cdc9bd,#3a3a45);
+  --gold:light-dark(#8a6d14,#dbb047);
+  --goldbg:light-dark(#f7f0d9,#292110);
+  --goldln:light-dark(#dbc98b,#5d4a1b);
+  --ok:light-dark(#3c7a57,#68a482);
+  --okbg:light-dark(#e7f0ea,#152219);
+  --warn:light-dark(#98691f,#c78f3d);
+  --warnbg:light-dark(#f8eeda,#282010);
+  --crit:light-dark(#a03737,#cd6b6b);
+  --critbg:light-dark(#f8e5e5,#2a1616);
+  --sh:0 1px 1px light-dark(rgba(24,20,8,.04),rgba(0,0,0,.5)),
+       0 3px 10px light-dark(rgba(24,20,8,.05),rgba(0,0,0,.35));
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+}
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{block-size:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 var(--sans);
+  -webkit-font-smoothing:antialiased;overflow:hidden}
+
+/* Bidi isolation: every id, path, glob and command is an LTR run inside prose
+   that may be RTL. `.m` carries it, exactly as the mockup does. */
+.m,code,kbd{font-family:var(--mono);font-size:.87em;font-variant-numeric:tabular-nums;
+  direction:ltr;unicode-bidi:isolate}
+
+h2{margin:0;font-size:16px;font-weight:620;letter-spacing:-.012em}
+button{font:inherit;color:inherit}
+
+.app{display:grid;grid-template-rows:46px 1fr 34px;grid-template-columns:216px 1fr;block-size:100vh;
+  grid-template-areas:"top top" "rail body" "strip strip"}
+
+.top{grid-area:top;background:var(--panel);border-block-end:1px solid var(--rule);display:flex;
+  align-items:center;gap:12px;padding-inline:12px;z-index:5}
+.logo{display:flex;align-items:center;gap:8px;flex:none}
+.mark{inline-size:19px;block-size:19px;border-radius:4px;background:var(--gold);position:relative;flex:none}
+.mark::after{content:"";position:absolute;inset-block:4px;inset-inline:4px 9px;background:var(--panel);border-radius:1px}
+.logo b{font-size:14px;letter-spacing:-.02em}
+.topr{margin-inline-start:auto;display:flex;align-items:center;gap:8px}
+.sel{display:flex;align-items:center;gap:6px;background:var(--sink);border:1px solid var(--rule);
+  border-radius:6px;padding-block:4px;padding-inline:8px;font-size:12px;color:var(--dim);cursor:pointer}
+.sel b{font-family:var(--mono);font-size:11.5px;color:var(--ink);direction:ltr;unicode-bidi:isolate}
+.icon{min-inline-size:29px;block-size:27px;border:1px solid var(--rule);background:var(--sink);border-radius:6px;
+  cursor:pointer;color:var(--dim);display:grid;place-items:center;font-size:12px;padding-inline:6px}
+.icon:hover,.sel:hover{border-color:var(--edge);color:var(--ink)}
+button:focus-visible,.nav:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+
+/* rail */
+.rail{grid-area:rail;background:var(--panel);border-inline-end:1px solid var(--rule);overflow-y:auto;
+  padding-block:8px 14px}
+.grp{padding-block:9px 1px;padding-inline:8px}
+.grp>p{margin:0 0 4px;margin-inline-start:9px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);font-weight:600}
+.nav{display:flex;inline-size:100%;text-align:start;background:none;border:0;color:var(--dim);
+  padding-block:5px;padding-inline:9px;border-radius:5px;font-size:13px;cursor:pointer;
+  justify-content:space-between;align-items:center;gap:6px}
+.nav:hover{background:var(--sink);color:var(--ink)}
+.nav[aria-current="true"]{background:var(--goldbg);color:var(--ink);font-weight:600;
+  box-shadow:inset 2px 0 0 var(--gold)}
+[dir="rtl"] .nav[aria-current="true"]{box-shadow:inset -2px 0 0 var(--gold)}
+.cnt{font-family:var(--mono);font-size:9.5px;padding-inline:4px;border-radius:3px;
+  border:1px solid var(--edge);color:var(--faint);direction:ltr;unicode-bidi:isolate}
+/* A zero badge is a fact, not an alarm. Only the review queue ever goes warn. */
+.cnt.x{color:var(--warn);border-color:var(--warn)}
+
+.body{grid-area:body;overflow-y:auto;padding-block:14px 24px;padding-inline:16px;min-inline-size:0}
+.phd{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;margin-block-end:3px}
+.verdict{font-size:11.5px;color:var(--dim)}
+.psub{color:var(--dim);font-size:12.5px;margin:0 0 14px;max-inline-size:82ch}
+
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:12px 13px;
+  box-shadow:var(--sh);margin-block-end:12px}
+.card>h3{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:900px){.two{grid-template-columns:1fr}}
+
+table{inline-size:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:start;font-weight:600;color:var(--faint);font-size:10.5px;letter-spacing:.07em;
+  text-transform:uppercase;padding-block-end:5px;border-block-end:1px solid var(--rule)}
+td{padding-block:5px;border-block-end:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-block-end:0}
+
+.chip{display:inline-block;font-size:10.5px;padding-inline:5px;border-radius:3px;border:1px solid;line-height:1.6}
+.chip.gov{color:var(--gold);border-color:var(--goldln);background:var(--goldbg)}
+.chip.ok{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+.chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
+.chip.crit{color:var(--crit);border-color:var(--crit);background:var(--critbg)}
+.chip.neutral{color:var(--dim);border-color:var(--edge)}
+.small{font-size:11.5px;color:var(--dim)}
+.hint{font-size:11.5px;color:var(--faint);margin-block-start:4px}
+
+/* compose-don't-write — the only shape a "next action" ever takes when it writes */
+.cmd{display:flex;align-items:center;gap:8px;background:var(--sink);border:1px solid var(--rule);
+  border-radius:6px;padding-block:7px;padding-inline:9px;margin-block-start:8px}
+.cmd code{flex:1;overflow-x:auto;white-space:nowrap}
+.cmd button{border:1px solid var(--edge);background:var(--panel);border-radius:5px;
+  padding-block:3px;padding-inline:8px;font-size:11.5px;cursor:pointer;flex:none}
+.cmdnote{font-size:11.5px;color:var(--warn);margin-block-start:6px}
+
+/* budget bars — at zero they are still the best explainer of the four tiers */
+.tier{display:grid;grid-template-columns:92px 1fr auto;gap:10px;align-items:center;
+  padding-block:7px;border-block-end:1px solid var(--rule)}
+.tier:last-of-type{border-block-end:0}
+.tier b{font-size:12.5px}
+.bar{block-size:9px;border-radius:5px;background:var(--sink);overflow:hidden;display:flex}
+.bar i{display:block;block-size:100%}
+.bar i.f{background:var(--gold)}
+.bar i.s{background:var(--crit);opacity:.55}
+.tierdef{grid-column:1 / -1;font-size:11.5px;color:var(--dim);margin-block-start:-2px}
+
+/* ── the five zeroes. One class per empty, and the class is visible. ──────── */
+.zero{border:1px dashed var(--edge);border-radius:8px;padding:18px 16px;color:var(--dim);
+  max-inline-size:76ch}
+.zero b.zh{display:block;color:var(--ink);font-size:13.5px;margin-block-end:5px}
+.zero .kind{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
+  border:1px solid var(--rule);border-radius:3px;padding-inline:5px;margin-inline-end:7px}
+.zero p{margin:0 0 8px}
+.zero .cmd{max-inline-size:520px}
+.zero.noaction b.zh{color:var(--dim)}
+
+/* the Start-here strip — a reading of state, not a wizard */
+.start{background:var(--goldbg);border:1px solid var(--goldln);border-radius:8px;
+  padding:11px 13px;margin-block-end:14px}
+.start h3{margin:0 0 3px;font-size:12.5px;color:var(--ink)}
+.start>p{margin:0 0 9px;font-size:11.5px;color:var(--dim);max-inline-size:78ch}
+.steps{display:grid;gap:7px}
+.step{display:grid;grid-template-columns:19px 1fr;gap:9px;align-items:start;font-size:12.5px}
+.tick{inline-size:15px;block-size:15px;border-radius:50%;border:1px solid var(--edge);
+  margin-block-start:2px;display:grid;place-items:center;font-size:9px;color:var(--panel)}
+.step.done .tick{background:var(--ok);border-color:var(--ok)}
+.step.done .lbl{color:var(--dim);text-decoration:line-through;text-decoration-color:var(--faint)}
+.step .why{display:block;font-size:11.5px;color:var(--dim);margin-block-start:1px}
+.start .foot{margin-block-start:9px;font-size:11px;color:var(--faint)}
+
+/* tree */
+.tree{font-family:var(--mono);font-size:12px;line-height:1.85;direction:ltr;unicode-bidi:isolate}
+.tree .row{display:flex;gap:7px;align-items:center;padding-inline:5px;border-radius:4px}
+.dot{inline-size:7px;block-size:7px;border-radius:50%;flex:none}
+.dot.g{background:var(--gold)} .dot.o{background:var(--ok)}
+.dot.w{background:transparent;border:1px dashed var(--warn)}
+.dot.none{background:transparent;border:1px solid transparent}
+
+/* the wrong/right pair — a panel artefact, not a product screen */
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:900px){.pair{grid-template-columns:1fr}}
+.pair>div{border-radius:8px;border:1px solid var(--rule);padding:11px 12px;background:var(--panel)}
+.pair .tag{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;
+  margin-block-end:7px;display:block}
+.pair .bad .tag{color:var(--crit)} .pair .good .tag{color:var(--ok)}
+.pair .bad{border-color:var(--crit)} .pair .good{border-color:var(--ok)}
+
+/* the ladder — one binding reason, named in the order select() applies it */
+.ladder{display:grid;gap:0;font-size:12.5px}
+.rung{display:grid;grid-template-columns:22px 128px 1fr;gap:10px;padding-block:8px;
+  border-block-end:1px solid var(--rule);align-items:start}
+.rung:last-child{border-block-end:0}
+.rung .n{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.rung.pass .n{color:var(--ok)}
+.rung.binds{background:var(--warnbg);border-radius:6px;padding-inline:8px}
+.rung.binds .n{color:var(--warn)}
+.rung.after{opacity:.42}
+.rung .q{color:var(--dim)}
+
+/* growth — small multiples */
+.grow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media (max-width:1000px){.grow{grid-template-columns:repeat(2,1fr)}}
+.grow .g{border:1px solid var(--rule);border-radius:8px;padding:11px 12px;background:var(--panel)}
+.grow .g h4{margin:0 0 2px;font-size:12.5px}
+.grow .g .n{font-family:var(--mono);font-size:19px;letter-spacing:-.02em}
+.grow .g p{margin:6px 0 0;font-size:11.5px;color:var(--dim)}
+.grow .g .surf{margin-block-start:8px;font-size:11.5px;border-block-start:1px solid var(--rule);padding-block-start:7px}
+.grow .g .surf b{color:var(--ink)}
+
+.strip{grid-area:strip;background:var(--panel);border-block-start:1px solid var(--rule);display:flex;
+  align-items:center;gap:14px;padding-inline:12px;font-size:11.5px;color:var(--dim)}
+.strip .sep{inline-size:1px;block-size:14px;background:var(--rule)}
+
+.note{font-size:11.5px;color:var(--faint);border-inline-start:2px solid var(--rule);
+  padding-inline-start:9px;margin-block:10px;max-inline-size:80ch}
+
+/* -- historical marker --------------------------------------------------------------------------
+   Added 2026-08-29. This page is a dated record, and the block at the top of
+   the body says so. Styled from this file's own tokens on purpose, and with
+   logical properties, so it behaves like the rest of the page.             */
+.histnote{background:var(--goldbg,var(--panel));border:1px solid var(--gold);
+  border-radius:var(--r-md,8px);padding-block:10px;padding-inline:13px;
+  font:13px/1.55 var(--sans);color:var(--ink);margin-block:12px;margin-inline:12px}
+.histnote b{color:var(--gold)}
+.histnote code{font-family:var(--mono);font-size:.9em;direction:ltr;unicode-bidi:isolate}
+@media screen{
+  /* this shell is a 100vh grid on a body that does not scroll. The banner is
+     a flow sibling above it, so the page is now taller than the viewport and
+     has to be allowed to scroll. The shell itself is left exactly as drawn. */
+  body{overflow:auto}
+}
+</style>
+
+<div class="histnote" dir="ltr">
+  <b>Historical &mdash; the design as of 2026-08-19.</b>
+  This sketch records the design as it stood on that date. It is kept, and still worth
+  reading, because its reasoning is what the mockup and the app were drawn from; it is
+  not synced forward. Where this page and <code>docs/design/web-ui-mockup.html</code>
+  differ, the mockup is current.
+</div>
+
+<div class="app">
+  <header class="top">
+    <div class="logo"><span class="mark"></span><b>mycontext</b></div>
+    <div class="topr">
+      <button class="sel" id="focusbtn"><span data-t="top.focus">focus</span> <b data-t="top.focusnone">none set</b></button>
+      <button class="sel" id="sessbtn"><span data-t="top.session">session</span> <b data-t="top.sesscold">cold (no sessions yet)</b></button>
+      <button class="icon" id="lang" title="English / עברית">א/A</button>
+      <button class="icon" id="theme" title="Theme">◐</button>
+    </div>
+  </header>
+
+  <nav class="rail">
+    <div class="grp"><p data-t="nav.core">Core</p>
+      <button class="nav" data-s="preview" aria-current="true"><span data-t="s.preview">Injection preview</span><span class="cnt">0</span></button>
+      <button class="nav" data-s="coverage"><span data-t="s.coverage">Scope coverage</span><span class="cnt">0</span></button>
+      <button class="nav" data-s="gaps"><span data-t="s.gaps">Coverage gaps</span><span class="cnt">21</span></button>
+      <button class="nav" data-s="simulate"><span data-t="s.simulate">Budget simulator</span><span class="cnt">0</span></button>
+    </div>
+    <div class="grp"><p data-t="nav.work">Work</p>
+      <button class="nav" data-s="why"><span data-t="s.why">Why isn't this here?</span></button>
+      <button class="nav" data-s="review"><span data-t="s.review">Review queue</span><span class="cnt">0</span></button>
+      <button class="nav" data-s="config"><span data-t="s.config">Configure</span></button>
+    </div>
+    <div class="grp"><p data-t="nav.panel">Panel notes</p>
+      <button class="nav" data-s="wrongright"><span data-t="s.wrongright">The wall of dots</span></button>
+      <button class="nav" data-s="growth"><span data-t="s.growth">Growth states</span></button>
+    </div>
+  </nav>
+
+  <main class="body">
+
+    <!-- ════════ 1. THE LANDING SCREEN AT ZERO ════════ -->
+    <section data-p="preview">
+      <div class="phd"><h2 data-t="p.h">Injection preview</h2>
+        <span class="verdict" data-t="p.v">✅ exactly what Claude gets — including when that is nothing</span></div>
+      <p class="psub" data-t="p.sub">
+        The block Claude receives at the start of a session in this project. Right now the hook sends
+        no block at all, because nothing is eligible to send. That is the true state of this
+        repository, and it is what most people believe is not true of theirs.
+      </p>
+
+      <!-- the Start-here strip: four predicates over observed state -->
+      <div class="start">
+        <h3 data-t="st.h">Start here — four things, and three of them are already true or take one command</h3>
+        <p data-t="st.sub">
+          Nothing on this list blocks anything. Each line is a fact about your workspace, checked
+          when the page refreshes; it ticks itself when the fact changes and the whole strip stops
+          rendering once you have five items. There is no "skip" because there is nothing to skip.
+        </p>
+        <div class="steps">
+          <div class="step done"><span class="tick">✓</span>
+            <span><span class="lbl" data-t="st.1">See what this repository looks like to mycontext</span>
+              <span class="why" data-t="st.1w">Done — you are looking at it. 1,284 files, 0 items, profile <span class="m">standard</span>.</span></span></div>
+          <div class="step"><span class="tick"></span>
+            <span><span class="lbl" data-t="st.2">Capture one thing, or find one you already wrote down</span>
+              <span class="why" data-t="st.2w">Ticks when the corpus reaches 1 item. Three documents in this repo read like they
+                contain rules — <span class="m">docs/adr/0003-queues.md</span> is the densest, and
+                <span class="m">ingest</span> turns it into drafts you review rather than items you inherit.</span></span></div>
+          <div class="step"><span class="tick"></span>
+            <span><span class="lbl" data-t="st.3">Promote one draft, and see the boundary do its job</span>
+              <span class="why" data-t="st.3w">Ticks when the queue goes from N to N−1. Everything <span class="m">ingest</span>
+                writes lands as a draft and governs nothing until you promote it — which is the same
+                gate that holds an agent's capture, met before it costs you anything.</span></span></div>
+          <div class="step"><span class="tick"></span>
+            <span><span class="lbl" data-t="st.4">Watch one arrive in a real session</span>
+              <span class="why" data-t="st.4w">Ticks when the audit log holds an injection record naming it. This one needs Claude,
+                not this page — there is no command that produces it, and this strip will not pretend
+                otherwise. Touch <span class="m">src/billing/charge.ts</span> and it fires.</span></span></div>
+        </div>
+        <p class="foot" data-t="st.foot">Hidden for this tab · reappears on a new tab until the corpus reaches 5 items</p>
+      </div>
+
+      <div class="two">
+        <div class="card">
+          <h3 data-t="p.delivered">Delivered — the four tiers</h3>
+          <div class="tier"><b>pinned</b>
+            <div class="bar"><i class="f" style="inline-size:0%"></i></div>
+            <span class="small m">0 / 6,000</span>
+            <span class="tierdef" data-t="p.t.pinned">every session start · the item in full · costs tokens in every session forever</span></div>
+          <div class="tier"><b>index</b>
+            <div class="bar"><i class="f" style="inline-size:0%"></i></div>
+            <span class="small m">0 / 1,200</span>
+            <span class="tierdef" data-t="p.t.index">every session start · id and title only · rationale items reduce to a bare count</span></div>
+          <div class="tier"><b>jit</b>
+            <div class="bar"><i class="f" style="inline-size:0%"></i></div>
+            <span class="small m">0 / 6,000</span>
+            <span class="tierdef" data-t="p.t.jit">first time a touched file matches the item's scope · the item in full</span></div>
+          <div class="tier"><b>restored</b>
+            <div class="bar"><i class="f" style="inline-size:0%"></i></div>
+            <span class="small m">0 / 8,000</span>
+            <span class="tierdef" data-t="p.t.restored">after a compaction · in full · only what this session had already seen</span></div>
+          <p class="hint" data-t="p.t.foot">
+            Four bars, four tiers, and at zero items the structure is the only thing on the screen —
+            which makes this the best explanation of the tiers the product will ever get to give.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3 data-t="p.block">The block, as sent</h3>
+          <div class="zero noaction">
+            <span class="kind" data-t="k.empty">empty corpus</span>
+            <b class="zh" data-t="p.block.h">No block is sent.</b>
+            <p data-t="p.block.p">
+              Not an empty block — none. With nothing eligible, <span class="m">SessionStart</span>
+              writes nothing into the session, so this panel has nothing to quote. Capture one item
+              and the text that would appear here is the exact text Claude reads.
+            </p>
+          </div>
+          <p class="hint" data-t="p.block.note">
+            An empty region is a claim. This one claims <b>you have captured nothing</b> — which is
+            different from "nothing matches this path", from "focus hid it", and from "the seen file
+            could not be read". Four zeroes, four sentences, never one blank panel.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 data-t="p.next">The one next action</h3>
+        <div class="zero">
+          <span class="kind" data-t="k.notobs">not yet observed</span>
+          <b class="zh" data-t="p.next.h">Preview a file instead of a session.</b>
+          <p data-t="p.next.p">
+            No session has been recorded, so the session selector offers only <b>cold session</b>
+            and says why. A cold preview on a real file is a real answer from the real selector —
+            it is <i>predicted</i>, not <i>observed</i>, and it is labelled that way everywhere it
+            appears.
+          </p>
+          <div class="cmd"><code>src/billing/charge.ts</code><button data-t="btn.preview">Preview this file</button></div>
+          <p class="hint" data-t="p.next.hint">
+            A UI action, not a command — previewing writes nothing. Commands only appear where a
+            write is genuinely required, and then they are copied into your own shell.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════ 2. COVERAGE MAP AT ZERO ════════ -->
+    <section data-p="coverage" hidden>
+      <div class="phd"><h2 data-t="c.h">Scope coverage</h2>
+        <span class="verdict" data-t="c.v">✅ you cannot see coverage in a table</span></div>
+      <p class="psub" data-t="c.sub">
+        The file tree coloured by what governs it. With no items, nothing governs anything — so the
+        colour says the same thing 1,284 times, and a fact repeated per row is not information.
+      </p>
+
+      <div class="card">
+        <h3 data-t="c.tree">This repository</h3>
+        <div class="tree">
+          <div class="row"><span class="dot none"></span><span>src/</span><span class="small">412 files</span></div>
+          <div class="row"><span class="dot none"></span><span>&nbsp;&nbsp;src/billing/</span><span class="small">38 files</span></div>
+          <div class="row"><span class="dot none"></span><span>&nbsp;&nbsp;src/api/</span><span class="small">96 files</span></div>
+          <div class="row"><span class="dot none"></span><span>docs/</span><span class="small">61 files</span></div>
+          <div class="row"><span class="dot none"></span><span>test/</span><span class="small">288 files</span></div>
+        </div>
+        <p class="hint" data-t="c.tree.note">
+          No markers at all — not grey ones, not dashed ones. The state is uniform and its cause is
+          global, so it is stated once, below, in prose.
+        </p>
+      </div>
+
+      <div class="zero">
+        <span class="kind" data-t="k.empty">empty corpus</span>
+        <b class="zh" data-t="c.z.h">Nothing governs this project yet.</b>
+        <p data-t="c.z.p">
+          1,284 files, 0 items. Every directory is uncovered, which is exactly what a repository
+          initialised four minutes ago looks like — not a problem, and not 1,284 problems.
+        </p>
+        <p data-t="c.z.p2">
+          <b>Three documents here read like they already contain rules.</b> That is a guess from the
+          words in them, shown with the sentence that triggered it, and it counts nothing:
+        </p>
+        <table style="margin-block:6px 10px">
+          <tr><td class="m">docs/adr/0003-queues.md</td>
+            <td class="small">“Consumers <b>must</b> be idempotent; redelivery is guaranteed.”</td></tr>
+          <tr><td class="m">CLAUDE.md</td>
+            <td class="small">“<b>Never</b> add a runtime dependency.”</td></tr>
+          <tr><td class="m">docs/runbooks/oncall.md</td>
+            <td class="small">“Page the on-call <b>before</b> restarting the pool.”</td></tr>
+        </table>
+        <div class="cmd"><code>mycontext ingest docs/adr/0003-queues.md</code><button data-t="btn.copy">Copy</button></div>
+        <p class="cmdnote" data-t="c.z.note">This writes. Run it in your own shell — this page never does.</p>
+      </div>
+
+      <p class="note" data-t="c.rule">
+        <b>The rule this screen encodes.</b> A per-row marker is suppressed when the value is uniform
+        across every row and its cause is global. The wall of dashed warning dots was one true
+        sentence rendered 1,284 times as an alarm.
+      </p>
+    </section>
+
+    <!-- ════════ 3. GAPS AT ZERO — degrades into the category census ════════ -->
+    <section data-p="gaps" hidden>
+      <div class="phd"><h2 data-t="g.h">Coverage gaps</h2>
+        <span class="verdict" data-t="g.v">✅ names what is missing, which no listing can</span></div>
+      <p class="psub" data-t="g.sub">
+        Gaps are the difference between what you have covered and what you have not. With nothing
+        covered there is no difference — so at zero this screen shows the half that is still true and
+        still useful: which of the 21 categories you have nothing in, and what each one is for.
+      </p>
+
+      <div class="two">
+        <div class="card">
+          <h3 data-t="g.norm">Normative — 13 categories · injected · 0 items</h3>
+          <p class="small" data-t="g.norm.p">
+            These steer future work, so they are the ones Claude reads. When <i>Claude</i> captures
+            one it lands as a <span class="chip warn">draft</span> and governs nothing until you
+            promote it. When <i>you</i> capture one it is <span class="chip ok">active</span> at once.
+          </p>
+          <p class="small m" style="line-height:2">
+            constraint · rule · requirement · invariant · standard · pattern · glossary ·
+            instruction · non_goal · open_question · runbook · environment · known_issue
+          </p>
+        </div>
+        <div class="card">
+          <h3 data-t="g.rat">Rationale — 8 categories · never injected · 0 items</h3>
+          <p class="small" data-t="g.rat.p">
+            History you can search, and Claude can look up deliberately. Never injected — which is
+            why an agent's capture of one lands <span class="chip ok">active</span> immediately: it
+            cannot steer anything.
+          </p>
+          <p class="small m" style="line-height:2">
+            adr · decision · lesson · tradeoff · assumption · edge_case · risk · reference
+          </p>
+          <p class="hint" data-t="g.rat.note">
+            <span class="m">known_issue</span> sits on the normative side even though it reads like a
+            fact: its whole job is “this is broken, do not spend effort here”, and it cannot do that
+            job from a tier Claude never reads.
+          </p>
+        </div>
+      </div>
+
+      <div class="zero">
+        <span class="kind" data-t="k.empty">empty corpus</span>
+        <b class="zh" data-t="g.z.h">Pick the category first; it is the one thing you cannot change later.</b>
+        <p data-t="g.z.p">
+          <span class="m">type</span> is fixed at creation and there is no retype — a duplicate filed
+          under the wrong category can only be superseded. The category also decides the tier, which
+          decides whether the item is ever injected at all.
+        </p>
+        <div class="cmd"><code>mycontext add constraint "…" --scope "src/**" --severity hard --yes</code><button data-t="btn.copy">Copy</button></div>
+        <p class="cmdnote" data-t="g.z.note">This writes, and without <span class="m">--yes</span> it will refuse and tell you the item would govern at once.</p>
+      </div>
+    </section>
+
+    <!-- ════════ 4. BUDGET SIMULATOR AT ZERO ════════ -->
+    <section data-p="simulate" hidden>
+      <div class="phd"><h2 data-t="b.h">Budget simulator</h2>
+        <span class="verdict" data-t="b.v">✅ drag the budget, watch what fits</span></div>
+      <p class="psub" data-t="b.sub">
+        Nothing can spill out of an empty corpus, so there is nothing to drag. The screen still has
+        one true thing to say, and it is the thing that matters before you have paid for it.
+      </p>
+      <div class="card">
+        <h3 data-t="b.cfg">Your budgets, as configured</h3>
+        <table>
+          <tr><td class="m">pinned</td><td class="m">6,000</td><td class="small">≈ 24,000 characters ≈ a 370-line document, charged to <b>every</b> session</td></tr>
+          <tr><td class="m">index</td><td class="m">1,200</td><td class="small">ids and titles only</td></tr>
+          <tr><td class="m">jit</td><td class="m">6,000</td><td class="small">per matching file operation</td></tr>
+          <tr><td class="m">restored</td><td class="m">8,000</td><td class="small">after a compaction</td></tr>
+        </table>
+        <p class="hint" data-t="b.units">
+          Units are <span class="m">estimateTokens</span> — characters ÷ 4, an approximation with
+          error in both directions and not a bound. The screen says so rather than implying a
+          precision the estimate does not have.
+        </p>
+      </div>
+      <div class="zero noaction">
+        <span class="kind" data-t="k.empty">empty corpus</span>
+        <b class="zh" data-t="b.z.h">An item that does not fit spills whole, and is named.</b>
+        <p data-t="b.z.p">
+          Never truncated, never dropped in silence. This screen becomes the fastest way to answer
+          “what is my budget costing me” at around 40 items; today it would have to invent items to
+          show you anything, and inventing them is how a demo teaches a false number.
+        </p>
+      </div>
+    </section>
+
+    <!-- ════════ 5. WHY ISN'T THIS HERE — the recovery ladder ════════ -->
+    <section data-p="why" hidden>
+      <div class="phd"><h2 data-t="w.h">Why isn't this here?</h2>
+        <span class="verdict" data-t="w.v">✅ one binding reason, not a checklist of suspects</span></div>
+      <p class="psub" data-t="w.sub">
+        <span class="m">RULE-every-price-is-an-integer-of-minor-units</span> against
+        <span class="m">src/billing/charge.ts</span>, event <span class="m">tool</span>. The selector
+        applies its filters in a fixed order, so there is always exactly one <i>first</i> reason —
+        and naming the first is honest where listing all six is noise.
+      </p>
+      <div class="card">
+        <div class="ladder">
+          <div class="rung pass"><span class="n">1 ✓</span><span><b data-t="w.1">eligible</b></span>
+            <span class="q" data-t="w.1q">active, not retired, not superseded, category enabled, not past <span class="m">valid_until</span></span></div>
+          <div class="rung pass"><span class="n">2 ✓</span><span><b data-t="w.2">normative tier</b></span>
+            <span class="q" data-t="w.2q"><span class="m">rule</span> is normative, so it is injectable at all</span></div>
+          <div class="rung pass"><span class="n">3 ✓</span><span><b data-t="w.3">focus</b></span>
+            <span class="q" data-t="w.3q">no focus is set, so nothing is narrowed away</span></div>
+          <div class="rung binds"><span class="n">4 ✗</span><span><b data-t="w.4">scope</b></span>
+            <span class="q"><b data-t="w.4q">This is the reason.</b>
+              <span data-t="w.4q2">Its scope is <span class="m">src/payments/**</span>, which matches
+              <b>0 files</b> in this repository. <span class="m">src/</span> matches 412 and
+              <span class="m">src/billing/</span> matches 38 — there is no
+              <span class="m">src/payments/</span> here. <span class="m">doctor</span> reports this
+              as <span class="m">dead_scope</span>.</span></span></div>
+          <div class="rung after"><span class="n">5</span><span><b data-t="w.5">seen</b></span>
+            <span class="q" data-t="w.5q">not reached — already-delivered items are filtered before budgeting</span></div>
+          <div class="rung after"><span class="n">6</span><span><b data-t="w.6">budget</b></span>
+            <span class="q" data-t="w.6q">not reached — an item that gets here and does not fit spills whole, with its reason</span></div>
+        </div>
+        <div class="cmd"><code>mycontext edit RULE-every-price-is-an-integer-of-minor-units --scope "src/billing/**" --yes</code><button data-t="btn.copy">Copy</button></div>
+        <p class="cmdnote" data-t="w.note">This writes. Composed here, run by you — the page never edits an item.</p>
+      </div>
+      <p class="note" data-t="w.rule">
+        <b>One component, three jobs.</b> The same ladder answers the spill list on the preview, the
+        “governs nothing” line under a stale draft, and every “I captured it and nothing happened”
+        support question. It re-implements no rule: rungs 1–4 are <span class="m">injection()</span>,
+        rung 5 is the seen file, rung 6 is <span class="m">select()</span>'s own spill reason.
+      </p>
+    </section>
+
+    <!-- ════════ 6. REVIEW QUEUE AT ZERO ════════ -->
+    <section data-p="review" hidden>
+      <div class="phd"><h2 data-t="r.h">Review queue</h2>
+        <span class="verdict" data-t="r.v">✅ the diff is the capability; the approval is a paste</span></div>
+      <p class="psub" data-t="r.sub">
+        Empty is the good state here, and the screen says so — otherwise a new user reads a blank
+        panel as something they failed to find.
+      </p>
+      <div class="zero noaction">
+        <span class="kind" data-t="k.result">empty result</span>
+        <b class="zh" data-t="r.z.h">Nothing is waiting. That is the healthy state, not a missing feature.</b>
+        <p data-t="r.z.p">
+          Anything Claude captures in one of the 13 normative categories lands here as a
+          <span class="chip warn">draft</span> and governs nothing until you promote it. Rationale
+          captures never appear here — they are never injected, so they cannot steer anything.
+        </p>
+        <p data-t="r.z.p2">
+          <b>Drafts piling up unread is the failure this design invites:</b> Claude keeps proposing,
+          nothing governs, and you pay the cost of the tool with none of its benefit. When this
+          number is not zero it is the only badge in the rail that turns amber.
+        </p>
+        <p data-t="r.z.p3">
+          The fastest way to have something here is <span class="m">mycontext ingest</span> — every
+          candidate it extracts from a document you already wrote is filed as a draft, so a new user
+          meets this gate on their own prose before an agent ever tests it on them.
+        </p>
+      </div>
+    </section>
+
+    <!-- ════════ 6b. CONFIGURE — the screen that is fully useful on day zero ════════ -->
+    <section data-p="config" hidden>
+      <div class="phd"><h2 data-t="cf.h">Configure</h2>
+        <span class="verdict" data-t="cf.v">✅ shows what a change would do before it is made</span></div>
+      <p class="psub" data-t="cf.sub">
+        The only screen with a complete corpus on day one, because its subject is
+        <span class="m">config.json</span>, which <span class="m">init</span> already wrote. Its
+        impact column is the empty half — and “affects 0 items today, and everything from now on” is
+        the most useful sentence a new user can read, because these are the settings that are cheap
+        to choose now and expensive to change later.
+      </p>
+
+      <div class="card">
+        <h3 data-t="cf.now">Your config, as <span class="m">init</span> wrote it</h3>
+        <table>
+          <tr><td class="m">profile</td><td class="m">standard</td>
+            <td class="small">all 21 categories enabled. <span class="m">minimal</span> enables 8 —
+              constraint, invariant, rule, assumption, tradeoff, adr, edge_case, lesson.
+              <b>Impact today: 0 items.</b></td></tr>
+          <tr><td class="m">categories</td><td class="m">{}</td>
+            <td class="small">no per-category override. <span class="m">scopePolicy</span> is
+              <span class="m">global</span> everywhere, so an unscoped item is weighed on every file
+              operation. <b>Impact today: 0 items.</b></td></tr>
+          <tr><td class="m">budgets</td><td class="m">{}</td>
+            <td class="small">the four defaults. <b>Impact today: nothing can spill.</b></td></tr>
+          <tr><td class="m">watchedDocs</td>
+            <td class="m">3 globs</td>
+            <td class="small"><span class="m">docs/superpowers/specs/**</span> ·
+              <span class="m">docs/superpowers/plans/**</span> · <span class="m">docs/prd/**</span>
+              — <b>0 of the 61 documents in this repo match any of them.</b></td></tr>
+        </table>
+      </div>
+
+      <div class="zero">
+        <span class="kind" data-t="k.result">empty result</span>
+        <b class="zh" data-t="cf.z.h">Nothing in this repository is being watched.</b>
+        <p data-t="cf.z.p">
+          <span class="m">watchedDocs</span> decides when Claude is nudged to capture after editing a
+          document. The three defaults are this plugin author's own paths; your docs live in
+          <span class="m">docs/adr/</span>, <span class="m">docs/runbooks/</span> and
+          <span class="m">CLAUDE.md</span>. The list <b>replaces</b>, it does not merge, so these are
+          the globs that match your tree:
+        </p>
+        <div class="cmd"><code>"watchedDocs": ["docs/adr/**", "docs/runbooks/**", "CLAUDE.md"]</code><button data-t="btn.copy">Copy</button></div>
+        <p class="cmdnote" data-t="cf.z.note">
+          Paste into <span class="m">.my_context/config.json</span> yourself. This page composes the
+          diff and never writes the file — the deny hook already declares this file yours to change,
+          and a UI that wrote it would be arguing with a rule the product enforces against its own agent.
+        </p>
+      </div>
+    </section>
+
+    <!-- ════════ 7. PANEL NOTE — the wall of dots ════════ -->
+    <section data-p="wrongright" hidden>
+      <div class="phd"><h2 data-t="x.h">The recorded defect, and the fix</h2></div>
+      <p class="psub" data-t="x.sub">
+        A fresh <span class="m">mycontext init</span> renders the coverage map as a wall of dashed
+        warning dots — the worst first impression, shown to exactly the newest user. Both panels
+        below are truthful. Only one is informative.
+      </p>
+      <div class="pair">
+        <div class="bad">
+          <span class="tag" data-t="x.bad">Today — one fact, rendered 1,284 times</span>
+          <div class="tree">
+            <div class="row"><span class="dot w"></span><span>src/</span></div>
+            <div class="row"><span class="dot w"></span><span>&nbsp;&nbsp;src/billing/</span></div>
+            <div class="row"><span class="dot w"></span><span>&nbsp;&nbsp;src/billing/charge.ts</span></div>
+            <div class="row"><span class="dot w"></span><span>&nbsp;&nbsp;src/billing/refund.ts</span></div>
+            <div class="row"><span class="dot w"></span><span>&nbsp;&nbsp;src/api/</span></div>
+            <div class="row"><span class="dot w"></span><span>&nbsp;&nbsp;src/api/handler.ts</span></div>
+            <div class="row"><span class="dot w"></span><span>docs/</span></div>
+            <div class="row"><span class="dot w"></span><span>test/</span></div>
+          </div>
+          <p class="small" style="margin-block-start:9px" data-t="x.bad.p">
+            Every dot is correct. Together they read as 1,284 warnings about a workspace that is
+            four minutes old, and they teach the newest user that the product is angry at them.
+          </p>
+        </div>
+        <div class="good">
+          <span class="tag" data-t="x.good">Fixed — stated once, at the level where it is true</span>
+          <div class="tree">
+            <div class="row"><span class="dot none"></span><span>src/</span><span class="small">412</span></div>
+            <div class="row"><span class="dot none"></span><span>&nbsp;&nbsp;src/billing/</span><span class="small">38</span></div>
+            <div class="row"><span class="dot none"></span><span>&nbsp;&nbsp;src/api/</span><span class="small">96</span></div>
+            <div class="row"><span class="dot none"></span><span>docs/</span><span class="small">61</span></div>
+            <div class="row"><span class="dot none"></span><span>test/</span><span class="small">288</span></div>
+          </div>
+          <p class="small" style="margin-block-start:9px" data-t="x.good.p">
+            No markers, because the value is uniform and its cause is global. One sentence carries
+            the fact, and the next action is about <i>their</i> repository — the three documents in
+            it that already read like rules.
+          </p>
+        </div>
+      </div>
+      <p class="note" data-t="x.rule">
+        <b>Generalised, so it does not recur elsewhere.</b> Suppress a per-row status marker whenever
+        the status is uniform across all rows <i>and</i> its cause is global. The same rule protects
+        the gaps list, the decay chart and the audit stream from turning a normal zero into a
+        screenful of alarm.
+      </p>
+    </section>
+
+    <!-- ════════ 8. GROWTH STATES ════════ -->
+    <section data-p="growth" hidden>
+      <div class="phd"><h2 data-t="gr.h">Growth states</h2></div>
+      <p class="psub" data-t="gr.sub">
+        The same four screens, at four sizes. What changes is not the layout — it is which question
+        is worth asking, and the UI should be the thing that notices the question has changed.
+      </p>
+      <div class="grow">
+        <div class="g"><span class="n">1</span><h4 data-t="gr.1h">item</h4>
+          <p data-t="gr.1p">The whole product is legible from one item. Everything is a detail view;
+            aggregates are noise.</p>
+          <div class="surf"><b data-t="gr.1s">Surface:</b>
+            <span data-t="gr.1s2">the exact file in this repo that will make it fire, named — and if it is
+            unscoped, that it will be weighed on every file operation forever.</span></div></div>
+        <div class="g"><span class="n">10</span><h4 data-t="gr.10h">items</h4>
+          <p data-t="gr.10p">Coverage acquires a shape. Gaps become a real difference rather than
+            “everything”. Two items can now say the same thing.</p>
+          <div class="surf"><b data-t="gr.10s">Surface:</b>
+            <span data-t="gr.10s2">overlap at capture time, before the second is filed — type is fixed at
+            creation, so catching it later costs a supersede.</span></div></div>
+        <div class="g"><span class="n">100</span><h4 data-t="gr.100h">items</h4>
+          <p data-t="gr.100p">Budgets start to bind and spill becomes routine. Decay becomes readable
+            once ~20 sessions are recorded.</p>
+          <div class="surf"><b data-t="gr.100s">Surface:</b>
+            <span data-t="gr.100s2">“7 items spilled at least once in the last 20 sessions” and “4 items have
+            never been injected” — both from the audit log, neither derivable from the corpus.</span></div></div>
+        <div class="g"><span class="n">5,000</span><h4 data-t="gr.5kh">items</h4>
+          <p data-t="gr.5kp">The tree stops being renderable per file and the graph stops being a
+            graph. Cost becomes the subject.</p>
+          <div class="surf"><b data-t="gr.5ks">Surface:</b>
+            <span data-t="gr.5ks2">the count of unscoped normative items — the tax paid on every file
+            operation — and <span class="m">doctor</span>'s <span class="m">corpus_size_fallback_ceiling</span>,
+            which only exists above 5,000 and is the one finding a large corpus earns for being large.</span></div></div>
+      </div>
+      <p class="note" data-t="gr.rule">
+        <b>The rule underneath.</b> A screen whose statistic needs a minimum sample states the
+        minimum and how far you are from it. <span class="m">decay</span> already does this in the
+        CLI — “only 1 session recorded so far, so cold mostly means new” — and every chart in the UI
+        inherits it.
+      </p>
+    </section>
+
+  </main>
+
+  <footer class="strip">
+    <span data-t="f.v"><span class="m">1.0.2</span></span><span class="sep"></span>
+    <span data-t="f.items">0 items</span><span class="sep"></span>
+    <span data-t="f.sessions">0 sessions</span><span class="sep"></span>
+    <span data-t="f.profile">profile <span class="m">standard</span></span><span class="sep"></span>
+    <span data-t="f.audit">audit log: 0 records</span><span class="sep"></span>
+    <span data-t="f.ctx">context: bridge not installed</span><span class="sep"></span>
+    <span class="m">main</span> <span data-t="f.git">· no upstream</span>
+  </footer>
+</div>
+
+<script>
+/* Written as if it were about to be lifted into `first-run.js`, because the real
+   app's CSP (`script-src 'self'`) forbids an inline block like this one. */
+(function () {
+  var body = document.querySelector('.body');
+
+  function show(name) {
+    body.querySelectorAll('section[data-p]').forEach(function (s) {
+      s.hidden = s.dataset.p !== name;
+    });
+    document.querySelectorAll('.nav').forEach(function (b) {
+      b.setAttribute('aria-current', String(b.dataset.s === name));
+    });
+    body.scrollTop = 0;
+  }
+  document.querySelectorAll('.nav').forEach(function (b) {
+    b.addEventListener('click', function () { show(b.dataset.s); });
+  });
+
+  document.getElementById('theme').addEventListener('click', function () {
+    var r = document.documentElement;
+    var next = r.dataset.theme === 'dark' ? 'light' : r.dataset.theme === 'light' ? '' : 'dark';
+    if (next) { r.dataset.theme = next; } else { delete r.dataset.theme; }
+  });
+
+  /* The language switch demonstrates the mirroring constraint, not a translation.
+     Real strings live in one keyed module per language with a key-parity test;
+     here `dir`/`lang` flip so the logical properties can be seen doing their job.
+     Paths, ids, globs and commands stay LTR inside the RTL page, by design. */
+  var he = false;
+  document.getElementById('lang').addEventListener('click', function () {
+    he = !he;
+    document.documentElement.dir = he ? 'rtl' : 'ltr';
+    document.documentElement.lang = he ? 'he' : 'en';
+  });
+})();
+</script>

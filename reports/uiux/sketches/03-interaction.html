@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!--
+  SKETCH 03 — the compose-and-copy pattern, and the command builder.
+
+  Not a mockup of the whole UI. It demonstrates one thing: that a composed
+  command is an OBJECT WITH A LIFECYCLE, not a string with a Copy button.
+
+    ready ──copy──▶ armed ──audit record / corpus change──▶ landed
+                      │                                  ├─▶ diverged
+                      └──precondition breaks──▶ stale ───┘
+
+  Everything below is fabricated. No backend. The point is the interaction.
+
+  Constraints honoured, because the real app has them:
+   · zero dependencies, no build step, no framework
+   · CSS logical properties only — no left/right/margin-left anywhere
+   · EN + HE from one key table, structurally mirrored
+   · no inline event handlers (CSP default-src 'none'; script-src 'self')
+   · every identifier/command is `direction:ltr; unicode-bidi:isolate`
+-->
+<title>Sketch 03 — compose &amp; copy</title>
+<style>
+/* ── tokens: same family as docs/design/web-ui-mockup.html ──────────────── */
+:root{
+  color-scheme:light dark;
+  --paper:light-dark(#f7f6f2,#0f0f12);
+  --panel:light-dark(#fffffe,#17171c);
+  --sink:light-dark(#eeece5,#101014);
+  --ink:light-dark(#17171b,#ecebe4);
+  --dim:light-dark(#65635d,#928f87);
+  --faint:light-dark(#94918a,#68655f);
+  --rule:light-dark(#e2dfd6,#262630);
+  --edge:light-dark(#cdc9bd,#3a3a45);
+  --gold:light-dark(#8a6d14,#dbb047);
+  --goldbg:light-dark(#f7f0d9,#292110);
+  --ok:light-dark(#3c7a57,#68a482);
+  --okbg:light-dark(#e7f0ea,#152219);
+  --warn:light-dark(#98691f,#c78f3d);
+  --warnbg:light-dark(#f8eeda,#282010);
+  --crit:light-dark(#a03737,#cd6b6b);
+  --critbg:light-dark(#f8e5e5,#2a1616);
+  --sh:0 1px 1px light-dark(rgba(24,20,8,.05),rgba(0,0,0,.5)),
+       0 4px 14px light-dark(rgba(24,20,8,.06),rgba(0,0,0,.38));
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+}
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 var(--sans);
+  -webkit-font-smoothing:antialiased}
+.m,code,kbd{font-family:var(--mono);font-size:.87em;font-variant-numeric:tabular-nums;
+  direction:ltr;unicode-bidi:isolate}
+kbd{border:1px solid var(--edge);border-radius:4px;padding-inline:5px;padding-block:1px;
+  background:var(--sink);font-size:11px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-visible{
+  outline:2px solid var(--gold);outline-offset:2px}
+h1{font-size:17px;margin:0;letter-spacing:-.015em}
+h2{font-size:13px;margin:0 0 8px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+h3{font-size:13.5px;margin:0 0 6px}
+p{margin:0 0 8px}
+.small{font-size:12px;color:var(--dim);line-height:1.45}
+
+/* ── shell ──────────────────────────────────────────────────────────────── */
+.top{background:var(--panel);border-block-end:1px solid var(--rule);display:flex;
+  align-items:center;gap:10px;padding:9px 14px;position:sticky;inset-block-start:0;z-index:8}
+.mark{inline-size:18px;block-size:18px;border-radius:4px;background:var(--gold);position:relative}
+.mark::after{content:"";position:absolute;inset-block:4px;inset-inline:4px 8px;
+  background:var(--panel);border-radius:1px}
+.topr{margin-inline-start:auto;display:flex;gap:7px;align-items:center}
+.icon{border:1px solid var(--rule);background:var(--sink);border-radius:6px;color:var(--dim);
+  padding-block:4px;padding-inline:8px;font-size:12px}
+.icon:hover{border-color:var(--edge);color:var(--ink)}
+.icon[aria-pressed="true"]{background:var(--goldbg);border-color:var(--gold);color:var(--ink)}
+
+.wrap{max-inline-size:1240px;margin-inline:auto;padding:16px 14px 220px}
+.lede{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px 14px;
+  margin-block-end:14px;box-shadow:var(--sh)}
+.lede b{color:var(--gold)}
+
+/* three-zone builder */
+.builder{display:grid;grid-template-columns:230px minmax(0,1fr) minmax(0,1.15fr);gap:12px;align-items:start}
+@media (max-width:1080px){.builder{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;
+  box-shadow:var(--sh)}
+
+/* zone 1 — verb catalogue */
+.filter{inline-size:100%;background:var(--sink);border:1px solid var(--rule);border-radius:6px;
+  padding-block:5px;padding-inline:8px;color:var(--ink);font:inherit;font-size:12.5px;
+  margin-block-end:8px;text-align:start}
+.vgrp{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
+  font-weight:600;margin-block:9px 3px;padding-inline-start:2px}
+.verb{display:flex;inline-size:100%;gap:8px;align-items:baseline;background:none;border:0;
+  color:var(--dim);padding-block:4px;padding-inline:7px;border-radius:5px;text-align:start;
+  font-size:12.5px;line-height:1.35}
+.verb:hover{background:var(--sink);color:var(--ink)}
+.verb[aria-pressed="true"]{background:var(--goldbg);color:var(--ink);font-weight:600;
+  box-shadow:inset 2px 0 0 var(--gold)}
+[dir="rtl"] .verb[aria-pressed="true"]{box-shadow:inset -2px 0 0 var(--gold)}
+.verb .vn{font-family:var(--mono);font-size:11.5px;direction:ltr;unicode-bidi:isolate}
+.badge{font-size:9px;letter-spacing:.08em;text-transform:uppercase;border-radius:3px;
+  padding-inline:4px;padding-block:1px;border:1px solid;flex:none;margin-inline-start:auto}
+.badge.w{color:var(--gold);border-color:var(--gold);background:var(--goldbg)}
+.badge.r{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+
+/* zone 2 — inputs */
+label.f{display:block;margin-block-end:9px}
+label.f>span{display:block;font-size:11.5px;color:var(--dim);margin-block-end:3px}
+label.f>span em{font-style:normal;color:var(--faint)}
+input[type=text],select,textarea{inline-size:100%;background:var(--sink);border:1px solid var(--rule);
+  border-radius:6px;padding-block:5px;padding-inline:8px;color:var(--ink);font:inherit;font-size:12.5px;
+  text-align:start}
+input[type=text],textarea{font-family:var(--mono);font-size:12px;direction:ltr;unicode-bidi:isolate}
+.fgrp{border:1px solid var(--rule);border-radius:8px;padding:9px 10px 2px;margin-block-end:10px}
+.fgrp>.lg{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);
+  font-weight:600;margin-block-end:7px}
+.blank{font-size:11px;color:var(--faint);margin-block-start:-5px;margin-block-end:9px}
+
+/* glob tester: two answers, deliberately not one */
+.glob{margin-block-start:6px;border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+.glob .half{padding:8px 10px}
+.glob .half+.half{border-block-start:1px dashed var(--edge)}
+.glob .hl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);
+  font-weight:600;margin-block-end:5px;display:flex;gap:6px;align-items:center}
+.glob .hl .fn{font-family:var(--mono);text-transform:none;letter-spacing:0;color:var(--dim)}
+.tree{font-family:var(--mono);font-size:11.5px;direction:ltr;unicode-bidi:isolate;
+  max-block-size:150px;overflow:auto}
+.tree button{display:block;inline-size:100%;text-align:start;background:none;border:0;
+  color:var(--faint);padding-block:1px;padding-inline:4px;border-radius:3px;font:inherit}
+.tree button.hit{color:var(--ink);background:var(--goldbg)}
+.tree button:hover{outline:1px solid var(--edge)}
+.zero{color:var(--warn);background:var(--warnbg);border-radius:5px;padding:5px 7px;font-size:11.5px}
+
+/* zone 3 — the command + its consequence */
+.argv{display:flex;flex-wrap:wrap;gap:4px;align-items:center;background:var(--sink);
+  border:1px solid var(--rule);border-radius:8px;padding:9px;direction:ltr;unicode-bidi:isolate}
+.chip{font-family:var(--mono);font-size:12px;border-radius:4px;padding-inline:5px;padding-block:2px;
+  border:1px solid transparent;white-space:pre}
+.chip.base{color:var(--dim)}
+.chip.val{background:var(--panel);border-color:var(--edge);color:var(--ink)}
+.chip.flag{color:var(--gold)}
+.chip.quoted{border-style:dashed;border-color:var(--gold)}
+.chip.danger{background:var(--critbg);border-color:var(--crit);color:var(--crit);font-weight:700}
+.chip.miss{background:var(--warnbg);border-color:var(--warn);color:var(--warn);border-style:dashed}
+
+.acts{display:flex;gap:7px;flex-wrap:wrap;margin-block-start:9px;align-items:center}
+.primary{background:var(--gold);border:1px solid var(--gold);color:light-dark(#fff,#17140a);
+  border-radius:7px;padding-block:6px;padding-inline:13px;font-weight:640;font-size:12.5px}
+.primary[disabled]{opacity:.4;cursor:not-allowed}
+.ghost{background:none;border:1px solid var(--edge);border-radius:7px;padding-block:6px;
+  padding-inline:11px;color:var(--dim);font-size:12.5px}
+.cmdnote{font-size:11.5px;color:var(--dim);margin-block-start:7px;
+  border-inline-start:2px solid var(--gold);padding-inline-start:8px}
+.block{background:var(--critbg);border:1px solid var(--crit);color:var(--crit);border-radius:8px;
+  padding:9px 10px;font-size:12px;margin-block-start:9px}
+
+.conseq{margin-block-start:12px;border-block-start:1px solid var(--rule);padding-block-start:10px}
+.delta{display:flex;gap:8px;align-items:baseline;font-size:12.5px;padding-block:3px}
+.was{font-family:var(--mono);font-size:11.5px;color:var(--faint);text-decoration:line-through;
+  direction:ltr;unicode-bidi:isolate}
+.will{font-family:var(--mono);font-size:11.5px;color:var(--ink);font-weight:650;
+  background:var(--goldbg);border-radius:3px;padding-inline:4px;direction:ltr;unicode-bidi:isolate}
+.arrow{color:var(--gold)}
+.gain{color:var(--ok)}.loss{color:var(--crit)}
+.predicate{margin-block-start:10px;background:var(--sink);border:1px dashed var(--edge);
+  border-radius:7px;padding:8px 10px;font-size:12px;color:var(--dim)}
+.predicate b{color:var(--ink);font-weight:620}
+.computing{opacity:.45;font-style:italic}
+.exact::after{content:"";display:inline-block;inline-size:5px;block-size:5px;border-radius:50%;
+  background:var(--ok);margin-inline-start:5px;vertical-align:middle}
+
+/* ── the tray: composed commands, across screens, across refreshes ──────── */
+.tray{position:fixed;inset-block-end:0;inset-inline:0;background:var(--panel);
+  border-block-start:1px solid var(--edge);box-shadow:0 -6px 22px light-dark(rgba(24,20,8,.07),rgba(0,0,0,.5));
+  z-index:9;max-block-size:44vh;display:flex;flex-direction:column}
+.trayhd{display:flex;align-items:center;gap:9px;padding:8px 14px;border-block-end:1px solid var(--rule)}
+.trayhd b{font-size:13px}
+.pill{font-size:11px;border-radius:20px;padding-inline:8px;padding-block:2px;border:1px solid var(--edge);
+  color:var(--dim)}
+.pill.hot{background:var(--goldbg);border-color:var(--gold);color:var(--gold);font-weight:650}
+.traybody{overflow:auto;padding:9px 14px 14px;display:grid;gap:8px}
+.tray[data-open="false"] .traybody{display:none}
+
+.tc{border:1px solid var(--rule);border-radius:8px;padding:9px 10px;background:var(--paper);
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center}
+.tc code{display:block;overflow-x:auto;white-space:pre;padding-block:2px}
+.tc .sub{font-size:11px;color:var(--dim);margin-block-start:2px}
+.st{font-size:10px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;border-radius:4px;
+  padding-inline:7px;padding-block:3px;border:1px solid;white-space:nowrap;align-self:start}
+.st.ready{color:var(--dim);border-color:var(--edge)}
+.st.armed{color:var(--gold);border-color:var(--gold);background:var(--goldbg)}
+.st.landed{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+.st.stale{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
+.st.diverged{color:var(--crit);border-color:var(--crit);background:var(--critbg)}
+.st.blind{color:var(--faint);border-color:var(--edge);border-style:dashed}
+.tc[data-st="stale"] code{text-decoration:line-through;opacity:.6}
+.tc[data-st="landed"]{border-color:var(--ok)}
+.tc[data-st="diverged"]{border-color:var(--crit)}
+.tc[data-st="armed"]{border-color:var(--gold)}
+.tc[aria-selected="true"]{box-shadow:inset 0 0 0 2px var(--gold)}
+
+/* fan-out preview table */
+.fan{inline-size:100%;border-collapse:collapse;font-size:12px;margin-block-start:8px}
+.fan th{text-align:start;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);border-block-end:1px solid var(--rule);padding-block:4px}
+.fan td{border-block-end:1px solid var(--rule);padding-block:5px;padding-inline-end:8px;vertical-align:top}
+.fan tr.ex td{color:var(--faint)}
+.fan tr.ex .m{text-decoration:line-through}
+
+/* overlays */
+.sheet{position:fixed;inset:0;background:light-dark(rgba(30,26,14,.35),rgba(0,0,0,.62));
+  display:grid;place-items:center;z-index:40;padding:20px}
+.sheet[hidden]{display:none}
+.sheetc{background:var(--panel);border:1px solid var(--edge);border-radius:12px;padding:18px 20px;
+  inline-size:min(560px,100%);box-shadow:var(--sh);max-block-size:80vh;overflow:auto}
+.kb{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:baseline;font-size:12.5px}
+.banner{position:fixed;inset-block-end:calc(44vh + 8px);inset-inline:14px;background:var(--critbg);
+  border:1px solid var(--crit);color:var(--crit);border-radius:9px;padding:10px 12px;font-size:12.5px;
+  display:flex;gap:10px;align-items:center;z-index:30}
+.banner[hidden]{display:none}
+.sr{position:absolute;inline-size:1px;block-size:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+/* -- historical marker --------------------------------------------------------------------------
+   Added 2026-08-29. This page is a dated record, and the block at the top of
+   the body says so. Styled from this file's own tokens on purpose, and with
+   logical properties, so it behaves like the rest of the page.             */
+.histnote{background:var(--goldbg,var(--panel));border:1px solid var(--gold);
+  border-radius:var(--r-md,8px);padding-block:10px;padding-inline:13px;
+  font:13px/1.55 var(--sans);color:var(--ink);margin-block:12px;margin-inline:12px}
+.histnote b{color:var(--gold)}
+.histnote code{font-family:var(--mono);font-size:.9em;direction:ltr;unicode-bidi:isolate}
+</style>
+
+<div class="histnote" dir="ltr">
+  <b>Historical &mdash; the design as of 2026-08-19.</b>
+  This sketch records the design as it stood on that date. It is kept, and still worth
+  reading, because its reasoning is what the mockup and the app were drawn from; it is
+  not synced forward. Where this page and <code>docs/design/web-ui-mockup.html</code>
+  differ, the mockup is current.
+</div>
+
+<header class="top">
+  <span class="mark"></span><b style="font-size:14px;letter-spacing:-.02em">mycontext</b>
+  <span class="small" data-t="sk.tag" style="margin:0">sketch 03 · compose &amp; copy</span>
+  <span class="topr">
+    <button class="icon" id="simshell" data-t="sk.simshell">Simulate: I pasted it</button>
+    <button class="icon" id="simdrift" data-t="sk.simdrift">Simulate: corpus moved</button>
+    <button class="icon" id="simexit" data-t="sk.simexit">Simulate: server exits</button>
+    <button class="icon" id="help">?</button>
+    <button class="icon" id="lang">א/A</button>
+    <button class="icon" id="theme">◐</button>
+  </span>
+</header>
+
+<div class="wrap">
+  <div class="lede">
+    <h1 data-t="sk.h">The composed command is an object with a lifecycle.</h1>
+    <p class="small" data-t="sk.sub" style="margin-block-start:6px">
+      The UI never writes. It builds the command, shows you <b>the exact consequence before you copy
+      it</b>, and then recognises <b>the audit record it leaves behind</b> — so copy is the middle of
+      the interaction, not the end of it. Try the three <em>Simulate</em> buttons in the header.
+    </p>
+  </div>
+
+  <div class="builder">
+
+    <!-- ── zone 1: the verb ─────────────────────────────────────────────── -->
+    <div class="card">
+      <h2 data-t="z1.h">1 · What to do</h2>
+      <input class="filter" type="text" id="vfilter" placeholder="filter…" aria-label="Filter commands">
+      <div id="verbs"></div>
+      <p class="small" style="margin-block-start:10px" data-t="z1.note">
+        Reads and writes never look alike. A read runs here; a write is composed for your shell.
+      </p>
+    </div>
+
+    <!-- ── zone 2: the subject ──────────────────────────────────────────── -->
+    <div class="card">
+      <h2 data-t="z2.h">2 · On what</h2>
+      <div id="inputs"></div>
+    </div>
+
+    <!-- ── zone 3: the command and its consequence ──────────────────────── -->
+    <div class="card">
+      <h2 data-t="z3.h">3 · The command, and what it will do</h2>
+      <div class="argv" id="argv"></div>
+      <div id="blockmsg"></div>
+      <div class="acts">
+        <button class="primary" id="docopy" data-t="btn.copy">Copy</button>
+        <button class="ghost" id="doqueue" data-t="btn.queue">Add to tray</button>
+        <label class="small" style="display:flex;gap:5px;align-items:center;margin:0">
+          <input type="checkbox" id="yes" style="inline-size:auto"> <span data-t="btn.yes">--yes</span>
+        </label>
+      </div>
+      <p class="cmdnote" id="note" data-t="note.write">
+        This is a write. mycontext composes it; you run it in your own shell — which is what keeps
+        your Bash deny rules able to match it.
+      </p>
+
+      <div class="conseq" id="conseq"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── the tray ────────────────────────────────────────────────────────── -->
+<section class="tray" id="tray" data-open="true" aria-label="Composed commands">
+  <div class="trayhd">
+    <b data-t="tray.h">Composed</b>
+    <span class="pill" id="traycount"></span>
+    <span class="small" id="traymsg" style="margin:0"></span>
+    <span style="margin-inline-start:auto;display:flex;gap:7px">
+      <button class="icon" id="copyall" data-t="tray.copyall">Copy all</button>
+      <button class="icon" id="checknow" data-t="tray.check">Check now</button>
+      <button class="icon" id="traytoggle">▾</button>
+    </span>
+  </div>
+  <div class="traybody" id="traybody"></div>
+</section>
+
+<div class="banner" id="exited" hidden role="alert">
+  <span data-t="ex.msg">The server has exited, so nothing here can be re-checked. Your composed
+    commands still work — they are just text.</span>
+  <code>mycontext ui</code>
+  <button class="icon" id="exok" data-t="ex.ok">OK</button>
+</div>
+
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheeth">
+  <div class="sheetc">
+    <h3 id="sheeth" data-t="kb.h">Keyboard</h3>
+    <p class="small" data-t="kb.sub">
+      One table drives both the bindings and this sheet, so the sheet cannot drift from the app.
+      Nothing fires while a text field has focus. Arrow keys resolve against the writing direction.
+    </p>
+    <div class="kb" id="kbtable"></div>
+    <p class="small" style="margin-block-start:12px" data-t="kb.why">
+      There is no ⌘K omnibox: this product commits to no global search, and the loop that actually
+      needs the keyboard is compose → copy → paste → return. <kbd>n</kbd> opens a <em>composer</em>,
+      not a search box.
+    </p>
+  </div>
+</div>
+
+<div class="sr" id="live" role="status" aria-live="polite"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   No inline handlers anywhere: everything binds through addEventListener, so
+   this file would survive `script-src 'self'` unchanged if lifted into a .js.
+   ═══════════════════════════════════════════════════════════════════════ */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const el = (tag, cls, text) => { const n = document.createElement(tag);
+  if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+const say = (msg) => { $('#live').textContent = ''; setTimeout(() => { $('#live').textContent = msg; }, 40); };
+
+/* ── strings: two tables, identical keys (parity is what the real test checks) */
+const EN = { dir: 'ltr', lang: 'en' };
+const HE = { dir: 'rtl', lang: 'he',
+  'sk.tag': 'סקיצה 03 · הרכבה והעתקה',
+  'sk.h': 'הפקודה המורכבת היא אובייקט עם מחזור חיים.',
+  'sk.sub': 'הממשק לעולם אינו כותב. הוא בונה את הפקודה, מראה לך את <b>ההשלכה המדויקת לפני ההעתקה</b>, ואז מזהה את <b>רשומת הביקורת שהיא הותירה</b> — כך שההעתקה היא אמצע האינטראקציה, לא סופה. נסו את שלושת כפתורי <em>הדמיה</em> בכותרת.',
+  'sk.simshell': 'הדמיה: הדבקתי את זה', 'sk.simdrift': 'הדמיה: הקורפוס זז', 'sk.simexit': 'הדמיה: השרת יוצא',
+  'z1.h': '1 · מה לעשות', 'z2.h': '2 · על מה', 'z3.h': '3 · הפקודה, ומה היא תעשה',
+  'z1.note': 'קריאות וכתיבות לעולם אינן נראות אותו דבר. קריאה רצה כאן; כתיבה מורכבת עבור המעטפת שלך.',
+  'btn.copy': 'העתקה', 'btn.queue': 'הוספה למגש', 'btn.yes': '‎--yes',
+  'note.write': 'זו כתיבה. mycontext מרכיב אותה; אתם מריצים אותה במעטפת שלכם — וזה מה שמשאיר את כללי ה‑deny שלכם מסוגלים להתאים לה.',
+  'note.read': 'זו קריאה. הממשק מריץ אותה עבורכם.',
+  'tray.h': 'מורכבות', 'tray.copyall': 'העתקת הכול', 'tray.check': 'בדיקה עכשיו',
+  'ex.msg': 'השרת יצא, ולכן דבר כאן אינו ניתן לבדיקה מחדש. הפקודות המורכבות שלכם עדיין עובדות — הן רק טקסט.',
+  'ex.ok': 'הבנתי',
+  'kb.h': 'מקלדת',
+  'kb.sub': 'טבלה אחת מניעה גם את הקיצורים וגם את הדף הזה, כך שהדף אינו יכול לסטות מהאפליקציה. דבר אינו נורה כששדה טקסט במיקוד. מקשי החיצים נפתרים מול כיוון הכתיבה.',
+  'kb.why': 'אין ⌘K: המוצר הזה אינו מתחייב לחיפוש גלובלי, והלולאה שבאמת זקוקה למקלדת היא הרכבה ← העתקה ← הדבקה ← חזרה. <kbd>n</kbd> פותח <em>מרכיב</em>, לא תיבת חיפוש.',
+  'cons.h': 'מה זה משנה', 'cons.pred': 'איך אדע שזה עבד',
+  'glob.pattern': 'הקבצים שהתבנית הזו תופסת', 'glob.govern': 'על מה הפריט הזה יחול',
+  'zero.msg': 'שום קובץ אינו תואם. פריט עם ההיקף הזה לא יחול על דבר — לגיטימי אם הקבצים עוד לא נכתבו.',
+  'st.ready': 'מוכן', 'st.armed': 'ממתין', 'st.landed': 'נחת', 'st.stale': 'התיישן', 'st.diverged': 'סטה', 'st.blind': 'לא נצפה' };
+let T = EN;
+
+const applyLang = () => {
+  document.documentElement.dir = T.dir; document.documentElement.lang = T.lang;
+  $$('[data-t]').forEach((n) => {
+    const v = T[n.dataset.t];
+    if (v !== undefined) n.innerHTML = v;
+    else if (T === EN && n.dataset.en !== undefined) n.innerHTML = n.dataset.en;
+  });
+  render();
+};
+$$('[data-t]').forEach((n) => { n.dataset.en = n.innerHTML; });
+const t = (k, fallback) => (T[k] !== undefined ? T[k] : fallback);
+
+/* ── fabricated corpus ─────────────────────────────────────────────────── */
+const ITEMS = [
+  { id: 'RULE-never-log-customer-email', title: 'Never log customer email', scope: 'src/**', tier: 'jit' },
+  { id: 'INV-prices-are-integer-cents', title: 'Prices are integer cents', scope: 'src/billing/**', tier: 'jit' },
+  { id: 'STD-api-errors-use-problem-json', title: 'API errors use problem+json', scope: 'src/api/**', tier: 'jit' },
+  { id: 'CONST-postgres-pool-capped-at-20', title: 'Postgres pool capped at 20', scope: '', tier: 'pinned' },
+  { id: 'RULE-cache-keys-include-tenant-id', title: 'Cache keys include tenant id', scope: 'src/cache/*.ts', tier: 'jit' },
+  { id: 'DEC-$(echo SUBSTITUTED)', title: 'An id read from disk that never passed ID_GRAMMAR', scope: '', tier: 'jit' },
+];
+const FILES = ['src/api/errors.js', 'src/api/routes.js', 'src/billing/prices.js', 'src/billing/refunds.js',
+  'src/cache/keys.ts', 'src/workers/retry.js', 'docs/README.md', 'test/billing.test.js'];
+const CATEGORIES = ['rule', 'constraint', 'invariant', 'decision', 'standard'];
+const DRAFTS = [{ id: 'RULE-retry-budget-is-three', title: 'Retry budget is three' }];
+const REVISIONS = [{ item: 'RULE-never-log-customer-email', rev: 'REV-8c21' }];
+
+/* ── the catalogue. Every def declares: how it composes, what it will change,
+      and — the part that matters — how the UI will recognise that it happened. */
+const opt = (v) => ({ value: v, label: v });
+const PALETTE = [
+  { name: 'add', group: 'capture', kind: 'write', base: ['mycontext', 'add'], overlap: true,
+    gloss: 'file a new item',
+    args: [{ name: 'category', source: 'categories', required: true },
+           { name: 'title', input: 'text', required: true }],
+    flags: [{ name: 'scope', input: 'glob' }, { name: 'body', input: 'text' },
+            { name: 'tags', input: 'text' }, { name: 'severity', options: ['hard', 'soft'] }],
+    predicate: (v) => `an item titled “${v.title || '…'}” appears in /api/items, and the audit log carries a create record with origin: human`,
+    effect: 'coverage' },
+  { name: 'edit', group: 'change', kind: 'write', base: ['mycontext', 'edit'],
+    gloss: 'change fields in place',
+    args: [{ name: 'id', source: 'items', required: true }],
+    flags: [{ name: 'scope', input: 'glob' }, { name: 'title', input: 'text' },
+            { name: 'severity', options: ['hard', 'soft'] }],
+    predicate: (v) => `${v.id || 'the item'} carries the new fields, and a mutation record names them`,
+    effect: 'coverage' },
+  { name: 'pin', group: 'change', kind: 'write', base: ['mycontext', 'pin'], gloss: 'always inject it',
+    args: [{ name: 'id', source: 'items', required: true }], flags: [],
+    predicate: (v) => `${v.id || 'the item'} reports tier “pinned”`, effect: 'budget' },
+  { name: 'supersede', group: 'retire', kind: 'write', base: ['mycontext', 'supersede'],
+    gloss: 'retire one item in favour of another',
+    args: [{ name: 'id', source: 'items', required: true }],
+    flags: [{ name: 'by', source: 'items', required: true }],
+    predicate: (v) => `${v.id || 'the old item'} reports status “superseded” and no longer governs any file`,
+    effect: 'hole' },
+  { name: 'review promote-revision', group: 'review', kind: 'write',
+    base: ['mycontext', 'review', 'promote-revision'], gloss: 'accept a staged rewrite',
+    args: [{ name: 'id', source: 'revisions', required: true }],
+    flags: [{ name: 'revision', source: 'revids', required: true }],
+    predicate: (v) => `${v.revision || 'the revision'} leaves the pending list AND the item body matches the proposal — both, because either one alone can be true for the wrong reason`,
+    effect: 'select' },
+  { name: 'review discard', group: 'review', kind: 'write', base: ['mycontext', 'review', 'discard'],
+    gloss: 'reject a draft',
+    args: [{ name: 'id', source: 'drafts', required: true }], flags: [],
+    predicate: (v) => `${v.id || 'the draft'} leaves the review queue`, effect: 'none' },
+  { name: 'status', group: 'read', kind: 'read', base: ['mycontext', 'status'], gloss: 'corpus counts',
+    args: [], flags: [], screen: '#/status' },
+  { name: 'search', group: 'read', kind: 'read', base: ['mycontext', 'search'], gloss: 'find items',
+    args: [{ name: 'text', input: 'text', required: true }], flags: [], endpoint: true },
+];
+const GROUPS = [['capture', 'Capture'], ['change', 'Change'], ['retire', 'Retire'],
+  ['review', 'Review'], ['read', 'Read — the UI runs these']];
+
+/* ── quoting: plan 2's SAFE class, plus the check plan 2 is missing ─────── */
+const SAFE = /^[A-Za-z0-9@%_+=:,.\/\-]+$/;
+/* Double quotes do NOT neutralise these in a POSIX shell. `"$(x)"` still runs. */
+const LIVE_IN_DQ = /[$`]|\\\n/;
+function quoteArg(value) {
+  if (typeof value !== 'string' || value === '') throw new Error('quoteArg: not composable');
+  if (SAFE.test(value)) return value;
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+/* ── state ─────────────────────────────────────────────────────────────── */
+let current = PALETTE[3];              // supersede — the interesting one
+let values = { id: 'RULE-cache-keys-include-tenant-id', by: 'RULE-never-log-customer-email' };
+let tray = [];                          // survives reload in the real app (sessionStorage)
+let seq = 1;
+let selected = new Set();
+let serverUp = true;
+
+/* ── zone 1 ────────────────────────────────────────────────────────────── */
+function renderVerbs() {
+  const q = $('#vfilter').value.trim().toLowerCase();
+  const host = $('#verbs'); host.innerHTML = '';
+  for (const [key, label] of GROUPS) {
+    const defs = PALETTE.filter((d) => d.group === key &&
+      (!q || d.name.includes(q) || d.gloss.includes(q)));
+    if (!defs.length) continue;
+    host.append(el('div', 'vgrp', label));
+    for (const d of defs) {
+      const b = el('button', 'verb');
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(d === current));
+      const n = el('span', 'vn', d.name);
+      const g = el('span', null, d.gloss);
+      g.style.fontSize = '11.5px'; g.style.color = 'var(--faint)';
+      b.append(n, g, el('span', 'badge ' + (d.kind === 'write' ? 'w' : 'r'), d.kind));
+      b.addEventListener('click', () => { current = d; values = {}; selected.clear(); render(); });
+      host.append(b);
+    }
+  }
+}
+
+/* ── zone 2 ────────────────────────────────────────────────────────────── */
+function sourceFor(name) {
+  if (name === 'items') return ITEMS.map((i) => ({ value: i.id, label: `${i.id} — ${i.title}` }));
+  if (name === 'categories') return CATEGORIES.map(opt);
+  if (name === 'drafts') return DRAFTS.map((d) => ({ value: d.id, label: `${d.id} — ${d.title}` }));
+  if (name === 'revisions') return REVISIONS.map((r) => opt(r.item));
+  if (name === 'revids') return REVISIONS.map((r) => opt(r.rev));
+  return [];
+}
+function control(spec) {
+  const wrap = el('label', 'f');
+  const lab = el('span');
+  lab.append(spec.name + (spec.required ? ' *' : ''));
+  if (!spec.required) { const e = el('em', null, '  ·  blank means unchanged'); lab.append(e); }
+  wrap.append(lab);
+  let node;
+  if (spec.source || spec.options) {
+    node = el('select');
+    node.append(new Option('—', ''));
+    for (const o of (spec.options ? spec.options.map(opt) : sourceFor(spec.source)))
+      node.append(new Option(o.label, o.value));
+    node.value = values[spec.name] ?? '';
+    node.addEventListener('change', () => { values[spec.name] = node.value; render(); });
+  } else {
+    node = el('input'); node.type = 'text';
+    node.value = values[spec.name] ?? '';
+    node.placeholder = spec.input === 'glob' ? 'src/**,docs/**' : '';
+    node.addEventListener('input', () => { values[spec.name] = node.value; render(); });
+  }
+  wrap.append(node);
+  if (spec.input === 'glob') wrap.append(globTester(values[spec.name] ?? ''));
+  return wrap;
+}
+function matchGlob(file, patterns) {
+  return patterns.split(',').map((s) => s.trim()).filter(Boolean).some((p) => {
+    const rx = new RegExp('^' + p.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*\*/g, ' ').replace(/\*/g, '[^/]*').replace(/ /g, '.*')
+      .replace(/\?/g, '[^/]') + '$');
+    return rx.test(file);
+  });
+}
+/* Two answers, rendered as two answers. Collapsing them is the exact defect
+   `select.ts` documents by name: `matchesAnyGlob` cannot answer "what governs
+   this file", and a tester that implies it can teaches the wrong model. */
+function globTester(pattern) {
+  const box = el('div', 'glob');
+  const hits = pattern ? FILES.filter((f) => matchGlob(f, pattern)) : [];
+
+  const a = el('div', 'half');
+  const ah = el('div', 'hl'); ah.append(t('glob.pattern', 'Files this pattern catches'),
+    el('span', 'fn', 'matchesAnyGlob'));
+  a.append(ah);
+  if (!pattern) a.append(el('p', 'small', 'Type a pattern, or click a file below to build one.'));
+  else if (!hits.length) a.append(el('div', 'zero',
+    t('zero.msg', 'No file matches. An item scoped here would govern nothing — legitimate if the files are not written yet.')));
+  else a.append(el('p', 'small', `${hits.length} of ${FILES.length} files match.`));
+  const tree = el('div', 'tree');
+  for (const f of FILES) {
+    const b = el('button', hits.includes(f) ? 'hit' : '', f);
+    b.type = 'button';
+    b.addEventListener('click', () => {
+      const dir = f.split('/').slice(0, -1).join('/') + '/**';
+      const cur = (values.scope ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      if (!cur.includes(dir)) cur.push(dir);
+      values.scope = cur.join(','); render();
+    });
+    tree.append(b);
+  }
+  a.append(tree);
+
+  const b2 = el('div', 'half');
+  const bh = el('div', 'hl'); bh.append(t('glob.govern', 'What this item would govern'),
+    el('span', 'fn', 'matchesScope + injection()'));
+  b2.append(bh);
+  b2.append(el('p', 'small', pattern
+    ? `${hits.length} file(s) — of which ${Math.max(0, hits.length - 2)} are governed by nothing else today.`
+    : 'Empty scope is not "no files": under this project’s scopePolicy it means every path.'));
+  box.append(a, b2);
+  return box;
+}
+function renderInputs() {
+  const host = $('#inputs'); host.innerHTML = '';
+  const specs = [...current.args, ...current.flags];
+  if (!specs.length) { host.append(el('p', 'small', 'This command takes nothing.')); return; }
+  const req = specs.filter((s) => s.required), opts = specs.filter((s) => !s.required);
+  const mk = (label, list) => {
+    if (!list.length) return;
+    const g = el('div', 'fgrp'); g.append(el('div', 'lg', label));
+    list.forEach((s) => g.append(control(s)));
+    host.append(g);
+  };
+  mk('Required', req);
+  mk('Optional — omitted flags leave the field alone', opts);
+}
+
+/* ── zone 3: argv chips, the block, the consequence, the predicate ─────── */
+function argvFor() {
+  const out = [...current.base];
+  const missing = [];
+  for (const a of current.args) {
+    const v = values[a.name];
+    if (!v) { if (a.required) missing.push(a.name); continue; }
+    out.push(v);
+  }
+  for (const f of current.flags) {
+    const v = values[f.name];
+    if (!v) { if (f.required) missing.push('--' + f.name); continue; }
+    out.push('--' + f.name, v);
+  }
+  if ($('#yes').checked && current.kind === 'write') out.push('--yes');
+  return { out, missing };
+}
+function renderArgv() {
+  const host = $('#argv'); host.innerHTML = '';
+  const { out, missing } = argvFor();
+  let dangerous = null;
+  out.forEach((tok, i) => {
+    const isBase = i < current.base.length;
+    const isFlag = tok.startsWith('--');
+    const q = !isBase && !isFlag ? quoteArg(tok) : tok;
+    const quoted = q !== tok;
+    const live = quoted && LIVE_IN_DQ.test(tok);
+    if (live) dangerous = tok;
+    const c = el('span', 'chip ' + (isBase ? 'base' : isFlag ? 'flag' : 'val') +
+      (quoted ? ' quoted' : '') + (live ? ' danger' : ''), q);
+    c.title = isBase ? 'the command' : isFlag ? 'flag' :
+      (quoted ? 'quoted, because it is not in the safe character class' : 'safe unquoted');
+    host.append(c);
+  });
+  for (const m of missing) host.append(el('span', 'chip miss', `‹${m}›`));
+
+  const bm = $('#blockmsg'); bm.innerHTML = '';
+  const readonlyDef = current.kind === 'read';
+  $('#note').innerHTML = readonlyDef
+    ? t('note.read', 'This is a read. The UI runs it for you.')
+    : ($('#note').dataset.en);
+  if (T !== EN) $('#note').innerHTML = readonlyDef ? T['note.read'] : T['note.write'];
+
+  let blocked = false;
+  if (dangerous) {
+    blocked = true;
+    const d = el('div', 'block');
+    d.append(el('b', null, 'Not copyable. '),
+      document.createTextNode(`The value ${JSON.stringify(dangerous)} contains a character that double quotes do not neutralise — `),
+      el('code', null, '"$(…)"'),
+      document.createTextNode(' still runs in your shell. This id came from a file on disk; it never passed ID_GRAMMAR. Fix the file, or pick another item.'));
+    bm.append(d);
+  }
+  $('#docopy').disabled = blocked || missing.length > 0;
+  $('#doqueue').disabled = blocked || missing.length > 0 || readonlyDef;
+  $('#docopy').textContent = readonlyDef ? (T === HE ? 'הרצה' : 'Run') : t('btn.copy', 'Copy');
+  return { out, missing, blocked };
+}
+
+function delta(kind, was, will, label) {
+  const row = el('div', 'delta');
+  row.append(el('span', null, label));
+  if (was !== null) row.append(el('span', 'was', was));
+  row.append(el('span', 'arrow', '→'), el('span', 'will', will));
+  if (kind) row.classList.add(kind);
+  return row;
+}
+function renderConsequence() {
+  const host = $('#conseq'); host.innerHTML = '';
+  host.append(el('h2', null, t('cons.h', 'What it changes')));
+  if (current.kind === 'read') {
+    host.append(el('p', 'small', 'Nothing. The UI fetches the answer and shows it — no clipboard involved.'));
+    return;
+  }
+  const box = el('div');
+  if (current.effect === 'hole') {
+    const victim = values.id || '—';
+    box.append(delta('loss', '3 files', '0 files', `${victim} governs`));
+    box.append(delta(null, '9 governed', '8 governed', 'Across the repo'));
+    const warn = el('p', 'small');
+    warn.append(el('b', null, 'After this, one file is governed by nothing: '),
+      el('code', null, 'src/cache/keys.ts'));
+    box.append(warn);
+    box.append(el('p', 'small', 'Computed by running matchesScope + injection() over a candidate corpus built in memory. No write, and not an estimate.'));
+  } else if (current.effect === 'select') {
+    box.append(delta('gain', '4 delivered', '4 delivered', 'On src/billing/prices.js'));
+    box.append(delta('loss', '1 spilled', '2 spilled', 'jit budget'));
+    const p = el('p', 'small');
+    p.append(el('b', null, 'The longer body pushes one item out: '),
+      el('code', null, 'STD-api-errors-use-problem-json'),
+      document.createTextNode(' stops being delivered on this file.'));
+    box.append(p);
+    box.append(el('p', 'small', 'select() run twice — once on the corpus as it is, once on a corpus with the revision applied. The diff is the preview.'));
+  } else if (current.effect === 'budget') {
+    box.append(delta(null, 'jit', 'pinned', values.id || 'the item'));
+    box.append(delta('loss', '0 spilled', '1 spilled', 'pinned tier'));
+  } else if (current.effect === 'coverage') {
+    const n = (values.scope ? FILES.filter((f) => matchGlob(f, values.scope)).length : 0);
+    box.append(delta('gain', '9 governed', String(9 + Math.min(n, 2)), 'Files governed'));
+    box.append(el('p', 'small', 'Recomputed live from the scope you are typing.'));
+  } else {
+    box.append(el('p', 'small', 'Nothing that is injected changes. Only the review queue shortens.'));
+  }
+  host.append(box);
+
+  const pred = el('div', 'predicate');
+  pred.append(el('b', null, t('cons.pred', 'How I will know it worked') + ': '));
+  pred.append(document.createTextNode(current.predicate(values)));
+  const sub = el('p', 'small');
+  sub.style.marginBlockStart = '6px'; sub.style.marginBlockEnd = '0';
+  sub.textContent = 'Written down before you copy, so the acknowledgement is something you agreed to in advance — not something the UI asserts afterwards.';
+  pred.append(sub);
+  host.append(pred);
+}
+
+/* ── the tray: lifecycle, the whole point ──────────────────────────────── */
+const STATE_LABEL = () => ({
+  ready: t('st.ready', 'ready'), armed: t('st.armed', 'waiting'), landed: t('st.landed', 'landed'),
+  stale: t('st.stale', 'stale'), diverged: t('st.diverged', 'diverged'), blind: t('st.blind', 'not seen'),
+});
+const SUBS = {
+  ready: () => 'Composed. Not copied yet.',
+  armed: () => 'Copied at ' + new Date().toLocaleTimeString() + ' — waiting to see it in the corpus. Returning to this tab re-checks.',
+  landed: (c) => 'Seen at ' + c.at + ' · audit record ' + c.rec + ' · origin: human — which is the proof it was your shell and not an agent.',
+  stale: () => 'The corpus moved before this was pasted, so this command is now wrong. Do not run what is in your clipboard — recompose.',
+  diverged: () => 'Something resolved this, but not the way this command would have. The item does not carry the proposed text.',
+  blind: () => 'Cannot check: the server is not running. This is “not observed”, not “did not happen”.',
+};
+function renderTray() {
+  const body = $('#traybody'); body.innerHTML = '';
+  const armed = tray.filter((c) => c.state === 'armed' || c.state === 'blind').length;
+  const landed = tray.filter((c) => c.state === 'landed').length;
+  $('#traycount').textContent = tray.length
+    ? `${tray.length} composed · ${armed} waiting · ${landed} landed`
+    : 'nothing composed';
+  $('#traycount').className = 'pill' + (armed ? ' hot' : '');
+  $('#traymsg').textContent = tray.length && selected.size
+    ? `${selected.size} selected — Copy all copies only those`
+    : '';
+  if (!tray.length) {
+    body.append(el('p', 'small', 'Compose something above. Commands queue here across screens, survive a page refresh, and each one reports whether it landed.'));
+    return;
+  }
+  const L = STATE_LABEL();
+  for (const c of tray) {
+    const row = el('div', 'tc');
+    row.dataset.st = c.state;
+    row.tabIndex = 0;
+    row.setAttribute('aria-selected', String(selected.has(c.n)));
+    row.append(el('span', 'st ' + c.state, L[c.state]));
+    const mid = el('div');
+    mid.append(el('code', null, c.cmd));
+    mid.append(el('div', 'sub', SUBS[c.state](c)));
+    row.append(mid);
+    const acts = el('div'); acts.style.display = 'flex'; acts.style.gap = '5px';
+    const cp = el('button', 'icon', T === HE ? 'העתקה' : 'Copy');
+    cp.addEventListener('click', () => copyText(c.cmd, cp, () => { if (c.state === 'ready') c.state = 'armed'; renderTray(); }));
+    const rm = el('button', 'icon', '×');
+    rm.addEventListener('click', () => { tray = tray.filter((x) => x !== c); selected.delete(c.n); renderTray(); });
+    acts.append(cp, rm); row.append(acts);
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'x') { e.preventDefault(); selected.has(c.n) ? selected.delete(c.n) : selected.add(c.n); renderTray(); }
+    });
+    body.append(row);
+  }
+  /* fan-out: five selected, five commands, and the exclusions are the value */
+  if (selected.size >= 2) {
+    const f = el('div', 'card'); f.style.boxShadow = 'none';
+    f.append(el('h3', null, `Bulk — ${selected.size} subjects, one verb, one block`));
+    const tb = el('table', 'fan');
+    tb.innerHTML = '<thead><tr><th>Subject</th><th>Composable</th><th>Why not</th></tr></thead>';
+    const bd = el('tbody');
+    [...selected].forEach((n, i) => {
+      const c = tray.find((x) => x.n === n);
+      const bad = i === 1;
+      const tr = el('tr', bad ? 'ex' : '');
+      tr.innerHTML = `<td class="m">${c ? c.subject : '—'}</td>
+        <td>${bad ? '—' : '✓'}</td><td class="small">${bad ? 'already superseded — excluded, and counted' : ''}</td>`;
+      bd.append(tr);
+    });
+    tb.append(bd); f.append(tb);
+    f.append(el('p', 'small', `${selected.size} selected · ${selected.size - 1} composable · 1 excluded. The block is newline-separated — never && or ;, so one failure cannot silently swallow the rest, and each line stays a command string your deny rules can match.`));
+    body.append(f);
+  }
+}
+function copyText(text, btn, after) {
+  const done = () => { const was = btn.textContent; btn.textContent = T === HE ? 'הועתק' : 'Copied';
+    say((T === HE ? 'הועתק: ' : 'Copied: ') + text);
+    setTimeout(() => { btn.textContent = was; }, 1400); if (after) after(); };
+  const fail = () => { btn.textContent = T === HE ? 'בחרו והעתיקו' : 'Select and press Ctrl+C';
+    say('Clipboard refused. The command is selected — press Ctrl+C.'); };
+  try { navigator.clipboard.writeText(text).then(done, fail); }
+  catch { fail(); }
+}
+
+/* ── actions ───────────────────────────────────────────────────────────── */
+function compose() {
+  const { out, missing, blocked } = renderArgv();
+  if (missing.length || blocked) return null;
+  return out.map(quoteArg).join(' ');
+}
+$('#docopy').addEventListener('click', () => {
+  const cmd = compose(); if (!cmd) return;
+  if (current.kind === 'read') { say('Read executed in the UI — nothing copied.'); return; }
+  const entry = { n: seq++, cmd, state: 'ready', subject: values.id || values.title || '—',
+    at: '', rec: '' };
+  tray.push(entry);
+  copyText(cmd, $('#docopy'), () => { entry.state = 'armed'; renderTray(); });
+  renderTray();
+});
+$('#doqueue').addEventListener('click', () => {
+  const cmd = compose(); if (!cmd) return;
+  tray.push({ n: seq++, cmd, state: 'ready', subject: values.id || values.title || '—', at: '', rec: '' });
+  say('Added to the tray.'); renderTray();
+});
+$('#copyall').addEventListener('click', () => {
+  const pool = selected.size ? tray.filter((c) => selected.has(c.n)) : tray;
+  const block = pool.filter((c) => c.state !== 'landed' && c.state !== 'stale').map((c) => c.cmd).join('\n');
+  if (!block) { say('Nothing to copy.'); return; }
+  copyText(block, $('#copyall'), () => {
+    pool.forEach((c) => { if (c.state === 'ready') c.state = 'armed'; }); renderTray();
+  });
+});
+$('#checknow').addEventListener('click', () => resolve('manual'));
+$('#traytoggle').addEventListener('click', () => {
+  const tr = $('#tray'); const open = tr.dataset.open === 'true';
+  tr.dataset.open = String(!open); $('#traytoggle').textContent = open ? '▴' : '▾';
+});
+
+/* The acknowledgement. In wave 3 this is the audit stream; in wave 2 it is a
+   corpus fingerprint on the ping the page already sends when it becomes
+   visible — which is exactly the moment the user comes back from the
+   terminal. Returning to the tab IS the "did it work?" gesture. */
+function resolve(reason) {
+  if (!serverUp) {
+    tray.forEach((c) => { if (c.state === 'armed') c.state = 'blind'; });
+    renderTray(); say('Cannot check — the server is not running.'); return;
+  }
+  let n = 0;
+  tray.forEach((c, i) => {
+    /* `ready` is included: the user may have typed the command by hand. The
+       corpus is the authority on what happened, never our record of a click. */
+    if (c.state === 'landed' || c.state === 'stale' || c.state === 'diverged') return;
+    c.at = new Date().toLocaleTimeString();
+    c.rec = 'AUD-' + (2200 + c.n);
+    c.state = (i % 4 === 3) ? 'diverged' : 'landed';
+    n += 1;
+  });
+  renderTray();
+  say(n ? `${n} command(s) resolved.` : 'Nothing was waiting.');
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') resolve('visible');
+});
+$('#simshell').addEventListener('click', () => resolve('simulated'));
+$('#simdrift').addEventListener('click', () => {
+  tray.forEach((c) => { if (c.state === 'armed' || c.state === 'ready') c.state = 'stale'; });
+  renderTray();
+  say('The corpus moved. Armed commands are now stale and are struck through — what is in your clipboard is wrong.');
+});
+$('#simexit').addEventListener('click', () => {
+  serverUp = false; $('#exited').hidden = false; $('#exok').focus();
+  tray.forEach((c) => { if (c.state === 'armed') c.state = 'blind'; });
+  renderTray();
+});
+$('#exok').addEventListener('click', () => { serverUp = true; $('#exited').hidden = true; });
+$('#yes').addEventListener('change', render);
+$('#vfilter').addEventListener('input', renderVerbs);
+
+/* ── keyboard: one table, two consumers ────────────────────────────────── */
+const KEYS = [
+  ['?', 'Open this sheet', () => toggleSheet()],
+  ['n', 'New composition — focus the verb list', () => { $('#vfilter').focus(); }],
+  ['c', 'Copy the composed command', () => $('#docopy').click()],
+  ['Shift+C', 'Copy the whole tray as one block', () => $('#copyall').click()],
+  ['x', 'Toggle selection on the focused tray row', null],
+  ['r', 'Re-check every waiting command', () => resolve('key')],
+  ['t', 'Collapse or expand the tray', () => $('#traytoggle').click()],
+  ['g then p / c / w', 'Go to preview / coverage / work', null],
+  ['Esc', 'Close · revert the focused preview · clear the selection — in that order', null],
+];
+function renderKeys() {
+  const host = $('#kbtable'); host.innerHTML = '';
+  for (const [k, d] of KEYS) {
+    const kb = el('div'); k.split(' then ').forEach((part, i) => {
+      if (i) kb.append(document.createTextNode(' then '));
+      kb.append(el('kbd', null, part));
+    });
+    host.append(kb, el('div', 'small', d));
+  }
+}
+function toggleSheet() { const s = $('#sheet'); s.hidden = !s.hidden; if (!s.hidden) $('#sheet .sheetc').focus(); }
+$('#help').addEventListener('click', toggleSheet);
+$('#sheet').addEventListener('click', (e) => { if (e.target === $('#sheet')) toggleSheet(); });
+document.addEventListener('keydown', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+    if (e.key === 'Escape') e.target.blur();
+    return;
+  }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const hit = KEYS.find(([k]) => (k === 'Shift+C' ? (e.key === 'C' && e.shiftKey) : k === e.key));
+  if (hit && hit[2]) { e.preventDefault(); hit[2](); return; }
+  if (e.key === 'Escape') { if (!$('#sheet').hidden) toggleSheet(); else if (selected.size) { selected.clear(); renderTray(); } }
+});
+
+/* ── chrome ────────────────────────────────────────────────────────────── */
+$('#lang').addEventListener('click', () => { T = (T === EN ? HE : EN); applyLang(); });
+$('#theme').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const sysDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme',
+    cur ? (cur === 'dark' ? 'light' : 'dark') : (sysDark ? 'light' : 'dark'));
+});
+
+function render() { renderVerbs(); renderInputs(); renderArgv(); renderConsequence(); renderTray(); renderKeys(); }
+render();
+</script>
+</html>

@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mycontext — a11y &amp; bidi sketch</title>
+<!--
+  A DEMONSTRATION, not a component library. Four things are shown working:
+
+    1. Bidi isolation done three ways, side by side, so the failure is VISIBLE.
+    2. An ARIA tree with real expand/collapse, roving tabindex and RTL-aware arrows.
+    3. A data table with the semantics the mockup's tables lack.
+    4. A batched live region for the streaming audit log.
+
+  CSP NOTE. The real app ships `default-src 'none'`, which blocks this file's
+  <style>, <script> AND its `style="…"` attributes. Everything here is written to
+  be LIFTED OUT verbatim into `ui.css` / `ui.js`: no inline handlers, no inline
+  style attributes, no `innerHTML`, no `javascript:` URLs, no `eval`. The two
+  inline blocks are the only concession, and they are the only thing that has to
+  change when this becomes a served page.
+
+  ZERO DEPENDENCIES. Everything below is platform: `Intl`, `<bdi>`, `hidden`,
+  `:focus-visible`, logical properties, `light-dark()`.
+-->
+<style>
+/* ═══ TOKENS ═══════════════════════════════════════════════════════════════
+   Same shape as the mockup's `light-dark()` palette, with the six measured
+   contrast failures corrected. Each moved value carries its old ratio.
+   ═════════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+  --paper:light-dark(#f7f6f2,#0f0f12);
+  --panel:light-dark(#fffffe,#17171c);
+  --sink:light-dark(#eeece5,#101014);
+  --ink:light-dark(#17171b,#ecebe4);
+  --dim:light-dark(#65635d,#928f87);
+  /* fixed: was #94918a/#68655f — 2.91:1 light, 3.07:1 dark, both fail 4.5:1 */
+  --faint:light-dark(#6e6b64,#a3a099);
+  --rule:light-dark(#e2dfd6,#262630);
+  /* fixed: --edge is a CONTROL boundary, so it owes 3:1 (1.65:1 / 1.59:1 before) */
+  --edge:light-dark(#8f8a7d,#6f6b78);
+  /* fixed: gold darkened for 4.5:1 on goldbg at 10.5px (was 4.31:1) */
+  --gold:light-dark(#7d6210,#dbb047);
+  --goldbg:light-dark(#f7f0d9,#292110);
+  --goldln:light-dark(#a08c46,#7a6428);   /* fixed: chip border owed 3:1 */
+  --ok:light-dark(#2f6746,#68a482);       /* fixed: was 4.39:1 on okbg */
+  --okbg:light-dark(#e7f0ea,#152219);
+  --warn:light-dark(#84590f,#c78f3d);     /* fixed: was 4.17:1 on warnbg */
+  --warnbg:light-dark(#f8eeda,#282010);
+  --crit:light-dark(#a03737,#cd6b6b);
+  --critbg:light-dark(#f8e5e5,#2a1616);
+  --focus:light-dark(#0b57d0,#8ab4f8);    /* focus ring is NOT gold: gold means "governed" */
+  --mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  --sp:8px;
+}
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark}
+
+/* Hebrew needs its own face and looser leading; and it has no case, so the
+   uppercase micro-label device has to be replaced rather than translated. */
+:root:lang(he){--sans:"Segoe UI","Arial Hebrew","Noto Sans Hebrew",system-ui,sans-serif}
+:lang(he) h1,:lang(he) h2,:lang(he) h3,:lang(he) th,:lang(he) .grp>p{
+  text-transform:none;letter-spacing:normal}
+:lang(he) body{line-height:1.7}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font:1rem/1.55 var(--sans);   /* rem, not px: honours the browser's default size */
+  -webkit-font-smoothing:antialiased}
+
+/* ═══ FOCUS ══════════════════════════════════════════════════════════════
+   One rule, on :focus-visible, for everything focusable — including things
+   that are focusable only because they scroll. A second, thicker outline in
+   forced-colors, because a colour ring is not guaranteed to survive there. */
+:where(a,button,input,select,textarea,summary,[tabindex]):focus-visible{
+  outline:3px solid var(--focus);outline-offset:2px;border-radius:3px}
+/* Never `outline:none` without a replacement. The one legitimate suppression: */
+:where(a,button,input,select,textarea,[tabindex]):focus:not(:focus-visible){outline:none}
+
+/* ═══ SKIP LINKS ═════════════════════════════════════════════════════════ */
+.skip{position:absolute;inset-block-start:-3rem;inset-inline-start:var(--sp);z-index:100;
+  background:var(--panel);color:var(--ink);border:2px solid var(--focus);border-radius:4px;
+  padding:.5rem .75rem;text-decoration:none;font-size:.875rem}
+.skip:focus{inset-block-start:var(--sp)}
+
+/* ═══ VISUALLY HIDDEN ════════════════════════════════════════════════════
+   The clip-path form. `display:none` and `visibility:hidden` remove it from the
+   a11y tree; `text-indent:-9999px` breaks in RTL (the text lands 9999px to the
+   RIGHT and the page grows a horizontal scrollbar). This form is direction-safe. */
+.vh{position:absolute!important;inline-size:1px;block-size:1px;overflow:hidden;
+  clip-path:inset(50%);white-space:nowrap;margin:-1px;padding:0;border:0}
+
+/* ═══ SHELL ══════════════════════════════════════════════════════════════
+   No 100vh, no overflow:hidden on body. `grid-template-areas` is direction-
+   aware, so the whole shell mirrors for free. The rail collapses on a
+   CONTAINER query, not a viewport media query, so it survives text-only zoom. */
+.app{display:grid;grid-template-columns:minmax(0,14rem) minmax(0,1fr);
+  grid-template-areas:"rail body";gap:var(--sp);
+  max-inline-size:76rem;margin-inline:auto;padding:var(--sp)}
+@media (max-width:52rem){.app{grid-template-columns:minmax(0,1fr);
+  grid-template-areas:"rail" "body"}}
+.rail{grid-area:rail}
+.body{grid-area:body;min-inline-size:0}
+
+h1{font-size:1.25rem;margin:0 0 .25rem}
+h2{font-size:1.05rem;margin:0 0 .5rem}
+h3{font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);
+  margin:0 0 .5rem;font-weight:700}
+p{margin:0 0 .75rem;max-inline-size:72ch}
+
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:8px;
+  padding:calc(var(--sp)*1.5);margin-block-end:var(--sp)}
+.note{font-size:.8125rem;color:var(--dim)}
+.bad{border-inline-start:4px solid var(--crit);padding-inline-start:var(--sp)}
+.good{border-inline-start:4px solid var(--ok);padding-inline-start:var(--sp)}
+
+button{font:inherit;color:inherit}
+.btn{background:var(--sink);border:1px solid var(--edge);border-radius:6px;
+  padding:.35rem .7rem;cursor:pointer;font-size:.8125rem;
+  min-block-size:2.25rem;min-inline-size:2.25rem}  /* 2.5.8 target size */
+.btn[aria-pressed="true"]{background:var(--goldbg);border-color:var(--gold);font-weight:650}
+.btn[aria-pressed="true"]::before{content:"\2713\00a0"}  /* state is not colour alone */
+
+/* ═══ BIDI ═══════════════════════════════════════════════════════════════
+   Two rules, and the difference between them is the whole contract.
+
+   `.m` — a run KNOWN to be LTR (an id, a path, a glob, a command, a hash).
+   `direction:ltr` fixes its internal order, `unicode-bidi:isolate` stops it
+   dragging adjacent neutrals across the boundary.
+
+   `<bdi>` — a run of UNKNOWN direction (anything read off disk or out of the
+   corpus). It is `unicode-bidi:isolate` + `dir=auto`: the first strong
+   character decides, and it still cannot leak. Native, one element, no CSS.
+
+   NEITHER inserts a character. U+2066/U+2069 would also work and MUST NOT be
+   used: they survive a copy, and this product's core mechanic is copying a
+   composed shell command. An invisible FSI inside `--revision REV-8c21` is a
+   command that fails with an unreadable error. */
+.m,code,kbd{font-family:var(--mono);font-size:.875em;font-variant-numeric:tabular-nums;
+  direction:ltr;unicode-bidi:isolate}
+bdi{unicode-bidi:isolate}
+/* A block of code is LTR as a BLOCK: set direction on the container so every
+   line is independently LTR and no line's trailing `;` migrates. */
+pre{direction:ltr;unicode-bidi:isolate;overflow-x:auto;background:var(--sink);
+  border:1px solid var(--rule);border-radius:6px;padding:var(--sp);margin:0 0 var(--sp)}
+/* The demonstration of what happens WITHOUT the rule. Never ship these two. */
+.unisolated{font-family:var(--mono);font-size:.875em}
+body.probe .m,body.probe bdi,body.probe pre{unicode-bidi:normal;direction:inherit}
+
+/* ═══ TREE ═══════════════════════════════════════════════════════════════ */
+[role="tree"]{list-style:none;margin:0;padding:0;font-family:var(--mono);font-size:.8125rem}
+[role="tree"] ul{list-style:none;margin:0;padding:0}
+[role="treeitem"]{margin:0}
+.tw{display:flex;align-items:center;gap:.4rem;padding:.2rem .35rem;border-radius:4px;
+  cursor:pointer;min-block-size:1.9rem;
+  /* Depth is CSS, never &nbsp;. A screen reader gets aria-level; a sighted user
+     gets the indent; and it mirrors, because padding-inline-start is logical. */
+  padding-inline-start:calc(.35rem + (var(--lvl) - 1) * 1.1rem)}
+.tw:hover{background:var(--sink)}
+[role="treeitem"][aria-selected="true"]>.tw{background:var(--goldbg);
+  box-shadow:inset 2px 0 0 var(--gold);font-weight:650}
+[dir="rtl"] [role="treeitem"][aria-selected="true"]>.tw{box-shadow:inset -2px 0 0 var(--gold)}
+/* The twisty is a VERTICAL rotation, so it needs no mirroring: closed points
+   down-ish in both directions once rotated from a down chevron. */
+.twisty{inline-size:1rem;text-align:center;flex:none;color:var(--dim);
+  transform:rotate(-90deg)}
+[aria-expanded="true"]>.tw .twisty{transform:none}
+[dir="rtl"] .twisty{transform:rotate(90deg)}
+[dir="rtl"] [aria-expanded="true"]>.tw .twisty{transform:none}
+.twisty.leaf{visibility:hidden}
+/* Tier: a glyph AND a colour AND a name in the accessible string. Gold and
+   green measure 1.04:1 against each other — as pure colour they are the same
+   state to a dichromat and identical grey on a mono printer. */
+.tier{inline-size:1rem;flex:none;text-align:center;font-size:.8rem}
+.tier-pinned{color:var(--gold)}
+.tier-jit{color:var(--ok)}
+.tier-none{color:var(--warn)}
+
+/* ═══ TABLE ══════════════════════════════════════════════════════════════ */
+.tablewrap{overflow-x:auto;max-inline-size:100%}     /* + tabindex=0 in the markup */
+table{border-collapse:collapse;font-size:.8125rem;inline-size:100%}
+caption{text-align:start;font-size:.8rem;color:var(--dim);padding-block-end:.4rem}
+th,td{text-align:start;padding:.35rem .5rem;border-block-end:1px solid var(--rule);
+  vertical-align:top}
+th{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);
+  font-weight:700;white-space:nowrap}
+/* A numeric column inside an RTL table: the cell is LTR, so `start` is its LEFT
+   and the column goes ragged against every other right-aligned column. Pin it. */
+td.num,th.num{text-align:end;font-variant-numeric:tabular-nums}
+[dir="rtl"] td.m,[dir="rtl"] th.m{text-align:end}
+tbody tr:hover{background:var(--sink)}
+
+.chip{display:inline-block;font-size:.75rem;padding:0 .35rem;border-radius:3px;
+  border:1px solid;line-height:1.7;white-space:nowrap}
+.chip.gov{color:var(--gold);border-color:var(--goldln);background:var(--goldbg)}
+.chip.ok{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+.chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
+
+/* ═══ LOG ════════════════════════════════════════════════════════════════ */
+.plain{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:.35rem}
+.log{max-block-size:14rem;overflow-y:auto;border:1px solid var(--rule);border-radius:6px}
+.log:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.logrow{padding:.25rem .5rem}
+
+/* ═══ MOTION ═════════════════════════════════════════════════════════════
+   Everything that moves is opt-out. Note `!important` and `0.01ms` rather than
+   `0s`: a zero duration can skip transitionend/animationend handlers and hang a
+   state machine, so the animation still "runs", instantly. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important}
+  .pulse{animation:none!important;opacity:1!important}
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.pulse{animation:pulse 1.6s ease-in-out infinite}
+
+/* ═══ FORCED COLORS ══════════════════════════════════════════════════════
+   Windows High Contrast replaces every background and colour. The whole tier /
+   verdict language here is background chips, so without this block all four
+   chips become one chip. Restore the distinction with BORDER STYLE, which
+   forced-colors preserves. This project is Windows-first; this is not exotic. */
+@media (forced-colors:active){
+  .chip{border-width:2px;forced-color-adjust:none;background:Canvas;color:CanvasText;
+    border-color:CanvasText}
+  .chip.gov{border-style:solid}
+  .chip.ok{border-style:double}
+  .chip.warn{border-style:dashed}
+  .tier{forced-color-adjust:none;color:CanvasText}
+  :where(a,button,[tabindex]):focus-visible{outline:3px solid Highlight;outline-offset:2px}
+  [role="treeitem"][aria-selected="true"]>.tw{background:Highlight;color:HighlightText;
+    forced-color-adjust:none}
+}
+
+/* ═══ PRINT ══════════════════════════════════════════════════════════════
+   Prints the CURRENT screen, not a hard-coded one. Colour is not assumed. */
+@media print{
+  .noprint,.skip,.rail{display:none!important}
+  .app{display:block;max-inline-size:none;padding:0}
+  .card{border-color:#999;break-inside:avoid}
+  .tier::after{content:" (" attr(data-tier) ")";font-family:var(--sans);font-size:.7rem}
+  a[href^="http"]::after{content:" <" attr(href) ">";font-size:.75em}
+  @page{margin:16mm}
+}
+
+/* -- historical marker --------------------------------------------------------------------------
+   Added 2026-08-29. This page is a dated record, and the block at the top of
+   the body says so. Styled from this file's own tokens on purpose, and with
+   logical properties, so it behaves like the rest of the page.             */
+.histnote{background:var(--goldbg,var(--panel));border:1px solid var(--gold);
+  border-radius:var(--r-md,8px);padding-block:10px;padding-inline:13px;
+  font:13px/1.55 var(--sans);color:var(--ink);margin-block:12px;margin-inline:auto;max-inline-size:76rem;inline-size:calc(100% - 24px)}
+.histnote b{color:var(--gold)}
+.histnote code{font-family:var(--mono);font-size:.9em;direction:ltr;unicode-bidi:isolate}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to main content</a>
+<a class="skip" href="#rail">Skip to screens</a>
+
+<!-- role=alert is announced without stealing focus, and it is FIRST in the DOM
+     so a keyboard user reaches its dismiss button early rather than last. -->
+<div id="lifecycle" role="alert" hidden></div>
+
+<div class="histnote" dir="ltr">
+  <b>Historical &mdash; the design as of 2026-08-19.</b>
+  This sketch records the design as it stood on that date. It is kept, and still worth
+  reading, because its reasoning is what the mockup and the app were drawn from; it is
+  not synced forward. Where this page and <code>docs/design/web-ui-mockup.html</code>
+  differ, the mockup is current.
+</div>
+
+
+
+<header>
+  <div class="app">
+    <div class="rail"></div>
+    <div class="body">
+      <h1>Accessibility &amp; bidi sketch</h1>
+      <p class="note">Four demonstrations. Toggle the language and the theme; everything
+        below is meant to be inspected with a screen reader and with the mouse unplugged.</p>
+      <p class="noprint">
+        <button class="btn" id="lang" type="button"></button>
+        <button class="btn" id="theme" type="button"></button>
+        <button class="btn" id="rtlprobe" type="button" aria-pressed="false">Show the unisolated form</button>
+      </p>
+    </div>
+  </div>
+</header>
+
+<div class="app">
+  <nav class="rail" id="rail" aria-labelledby="rail-h">
+    <h2 id="rail-h" class="vh">Screens</h2>
+    <ul class="plain" id="navlist"></ul>
+  </nav>
+
+  <main class="body" id="main" tabindex="-1">
+
+    <!-- ═══ 1. BIDI ═══════════════════════════════════════════════════ -->
+    <section class="card" aria-labelledby="s1">
+      <h2 id="s1">1 — Bidi isolation, three ways</h2>
+      <p class="note">Switch to Hebrew. The first block is the mockup's own Hebrew string,
+        rendered the way the mockup renders it. The second and third are the same sentence
+        with the technical runs isolated.</p>
+
+      <div class="bad">
+        <h3>Unisolated — what ships today</h3>
+        <p class="unisolated" id="demo-bad"></p>
+        <p class="note">The parentheses of <code>injection()</code> are neutrals sitting
+          between a Latin run and Hebrew text. Rule N2 of the bidi algorithm gives them the
+          paragraph direction, so they resolve RTL, get <em>mirrored</em>, and jump to the
+          other side of the identifier. The <code>**</code> of a glob and the <code>--</code>
+          of a flag do the same thing.</p>
+      </div>
+
+      <div class="good">
+        <h3>Isolated with <code>&lt;bdi&gt;</code> and <code>.m</code></h3>
+        <p id="demo-good"></p>
+        <p class="note">Built by substituting nodes into a placeholder string —
+          <code>{fn}</code>, <code>{glob}</code> — never by concatenation and never through
+          <code>innerHTML</code>. The isolate makes each run a single neutral object to the
+          paragraph, so the runs sit in RTL reading order: first run rightmost. That is
+          correct, and it is the thing most often "fixed" into a bug.</p>
+      </div>
+
+      <h3>Numbers, dates and plurals</h3>
+      <div class="tablewrap" tabindex="0" role="region" aria-labelledby="s1-t">
+        <table>
+          <caption id="s1-t">Native <code>Intl</code> output for the current language — no library, no polyfill.</caption>
+          <thead><tr><th scope="col">What</th><th scope="col">Source</th><th scope="col">Rendered</th></tr></thead>
+          <tbody id="intltbl"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ═══ 2. TREE ═══════════════════════════════════════════════════ -->
+    <section class="card" aria-labelledby="s2">
+      <h2 id="s2">2 — Coverage tree</h2>
+      <p class="note">One tab stop. <kbd>↑</kbd><kbd>↓</kbd> move, <kbd>→</kbd><kbd>←</kbd>
+        expand and collapse (swapped under RTL), <kbd>Home</kbd>/<kbd>End</kbd> jump,
+        <kbd>*</kbd> expands every sibling, typing letters jumps by name,
+        <kbd>Enter</kbd> selects. Depth is <code>aria-level</code> and a logical
+        <code>padding-inline-start</code>, never non-breaking spaces.</p>
+      <ul role="tree" id="tree" aria-labelledby="s2"></ul>
+      <p class="note" id="treestatus" role="status"></p>
+    </section>
+
+    <!-- ═══ 3. TABLE ══════════════════════════════════════════════════ -->
+    <section class="card" aria-labelledby="s3">
+      <h2 id="s3">3 — What governs <bdi id="s3-path"></bdi></h2>
+      <div class="tablewrap" tabindex="0" role="region" aria-labelledby="s3-cap">
+        <table>
+          <caption id="s3-cap"></caption>
+          <thead><tr>
+            <th scope="col">Item</th>
+            <th scope="col">Tier</th>
+            <th scope="col">Why it applies</th>
+            <th scope="col" class="num">Tokens</th>
+          </tr></thead>
+          <tbody id="govtbl"></tbody>
+        </table>
+      </div>
+      <p class="note">The wrapper is <code>role="region"</code> with
+        <code>tabindex="0"</code> and a name: a scrolling box that cannot be focused is
+        unreachable to a keyboard user, and the mockup has four of them.</p>
+    </section>
+
+    <!-- ═══ 4. LOG ════════════════════════════════════════════════════ -->
+    <section class="card" aria-labelledby="s4">
+      <h2 id="s4">4 — Audit stream</h2>
+      <p class="noprint">
+        <button class="btn" id="streamtoggle" type="button" aria-pressed="false">Start the stream</button>
+        <button class="btn" id="verbose" type="button" aria-pressed="false">Announce every record</button>
+      </p>
+      <p class="note">Rows are <em>appended</em>, never re-rendered. The polite region
+        announces a coalesced count on a 1.5&nbsp;s timer, so a burst of forty records is one
+        utterance rather than forty. "Announce every record" is the opt-in for people who
+        want the firehose, and the pause button is <abbr title="Web Content Accessibility Guidelines">WCAG</abbr>
+        2.2.2, not politeness.</p>
+      <div class="log" tabindex="0" role="log" aria-labelledby="s4" id="log"></div>
+      <p class="vh" id="livestatus" role="status" aria-live="polite" aria-atomic="true"></p>
+      <p class="note"><span id="logcount"></span></p>
+    </section>
+
+  </main>
+</div>
+
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════════
+   No innerHTML anywhere in this file. Every node is built with
+   createElement/textContent, which is simultaneously the XSS answer, the CSP
+   answer, and the reason a placeholder can be filled with an ISOLATED NODE
+   rather than with a string.
+   ═════════════════════════════════════════════════════════════════════════ */
+const el = (tag, props = {}, kids = []) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "text") n.textContent = v;
+    else if (k === "cls") n.className = v;
+    else if (v !== null && v !== undefined) n.setAttribute(k, v);
+  }
+  for (const c of [].concat(kids)) n.append(c);
+  return n;
+};
+/* An identifier / path / glob / command: direction is KNOWN to be ltr. */
+const code = t => el("span", { cls: "m", dir: "ltr", text: t });
+/* Anything out of the corpus: direction is UNKNOWN. <bdi> decides per value. */
+const bdi  = t => el("bdi", { text: t });
+
+/* ── The string table ────────────────────────────────────────────────────
+   Key parity, placeholder parity, and plural categories are all mechanically
+   checkable. Values carry NO markup — the placeholders are where nodes go, so
+   a translator never has to reproduce a <span> and the renderer never needs
+   innerHTML. `dir` is not stored: Intl.Locale knows it.                     */
+const EN = {
+  "lang.switch": "עברית",
+  "theme.switch": "Toggle theme",
+  "cov.sub": "Every file, coloured by what governs it — through {fn1} and {fn2}, never a bare glob match.",
+  "cfg.nowfits": "{item} now fits on {glob}.",
+  "gov.caption": "Items governing {path}, with the reason each applies.",
+  "tree.status": "{name}, {n} of {total}, level {lvl}.",
+  "log.new.one": "{n} new audit record.",
+  "log.new.other": "{n} new audit records.",
+  "log.total.one": "{n} record.",
+  "log.total.other": "{n} records.",
+  "items.one": "{n} item", "items.other": "{n} items",
+  "stream.start": "Start the stream", "stream.stop": "Pause the stream",
+  "nav.preview": "Injection preview", "nav.coverage": "Scope coverage",
+  "nav.simulate": "Budget simulator", "nav.watch": "Audit stream"
+};
+const HE = {
+  "lang.switch": "English",
+  "theme.switch": "החלפת ערכת נושא",
+  "cov.sub": "כל קובץ, צבוע לפי מה שחל עליו — דרך {fn1} ו‑{fn2}, לעולם לא התאמת גלוב בודדת.",
+  "cfg.nowfits": "{item} נכנס כעת ב‑{glob}.",
+  "gov.caption": "פריטים שחלים על {path}, והסיבה שכל אחד חל.",
+  "tree.status": "{name}, {n} מתוך {total}, רמה {lvl}.",
+  "log.new.one": "רשומת ביקורת אחת חדשה.",
+  "log.new.two": "שתי רשומות ביקורת חדשות.",
+  "log.new.other": "{n} רשומות ביקורת חדשות.",
+  "log.total.one": "רשומה אחת.",
+  "log.total.two": "שתי רשומות.",
+  "log.total.other": "{n} רשומות.",
+  "items.one": "פריט אחד", "items.two": "שני פריטים", "items.other": "{n} פריטים",
+  "stream.start": "התחלת הזרם", "stream.stop": "השהיית הזרם",
+  "nav.preview": "תצוגת הזרקה", "nav.coverage": "כיסוי היקף",
+  "nav.simulate": "סימולטור תקציב", "nav.watch": "זרם ביקורת"
+};
+const TABLES = { en: EN, he: HE };
+let LANG = "en";
+const T = () => TABLES[LANG];
+
+/* Direction comes from the locale, not from a hand-maintained field. */
+const dirOf = tag => {
+  const l = new Intl.Locale(tag);
+  const info = typeof l.getTextInfo === "function" ? l.getTextInfo() : l.textInfo;
+  return (info && info.direction) || "ltr";
+};
+
+/* Plural: the CATEGORY set is asked of the platform, never assumed to be
+   {one, other}. `he` returns [one, two, other] — a real dual. */
+const plural = (key, n) => {
+  const cat = new Intl.PluralRules(LANG).select(n);
+  return T()[key + "." + cat] ?? T()[key + ".other"];
+};
+
+/* fill(): the only way a string reaches the DOM. Placeholders are named
+   ({glob}), never positional (%s) — Hebrew reorders the sentence and a
+   positional slot silently swaps two arguments. Returns a DocumentFragment. */
+const fill = (str, slots = {}) => {
+  const frag = document.createDocumentFragment();
+  const re = /\{(\w+)\}/g;
+  let last = 0, m;
+  while ((m = re.exec(str))) {
+    if (m.index > last) frag.append(str.slice(last, m.index));
+    const v = slots[m[1]];
+    frag.append(v instanceof Node ? v : document.createTextNode(String(v ?? m[0])));
+    last = m.index + m[0].length;
+  }
+  if (last < str.length) frag.append(str.slice(last));
+  return frag;
+};
+const setFrag = (node, frag) => { node.replaceChildren(); node.append(frag); };
+
+/* Numbers: localised for PROSE. Never for anything that will be copied into a
+   shell — `--budget jit=8,000` is a syntax error, so composed commands use
+   String(n) and nothing else. */
+const num = n => new Intl.NumberFormat(LANG).format(n);
+/* Time: forced to 2-digit h23 and to UTC. `timeStyle:'medium'` under he-IL
+   drops the leading zero ("9:22:41"), which un-aligns a tabular column; and
+   the formatter uses the SYSTEM zone, which silently shifts a forensic
+   timestamp. The machine-readable value stays in <time datetime>. */
+const TIME = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZone: "UTC"
+});
+
+/* ── Language and theme ─────────────────────────────────────────────────── */
+const applyLang = () => {
+  document.documentElement.lang = LANG;
+  document.documentElement.dir = dirOf(LANG);
+  document.getElementById("lang").textContent = T()["lang.switch"];
+  /* The switch's own name must be readable in the language you are LEAVING,
+     and it carries lang= so the speech synthesiser changes voice for it. */
+  document.getElementById("lang").lang = LANG === "en" ? "he" : "en";
+  document.getElementById("theme").textContent = T()["theme.switch"];
+  renderAll();
+};
+document.getElementById("lang").addEventListener("click", () => {
+  LANG = LANG === "en" ? "he" : "en"; applyLang();
+});
+document.getElementById("theme").addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const sysDark = matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.setAttribute("data-theme",
+    cur ? (cur === "dark" ? "light" : "dark") : (sysDark ? "light" : "dark"));
+});
+
+/* ── 1. Bidi demonstrations ─────────────────────────────────────────────── */
+const renderBidi = () => {
+  const s = T()["cov.sub"], f = T()["cfg.nowfits"];
+  /* The broken form: the placeholders filled with BARE TEXT. */
+  const bad = document.getElementById("demo-bad");
+  bad.textContent =
+    s.replace("{fn1}", "matchesScope").replace("{fn2}", "injection()") + " " +
+    f.replace("{item}", "STD-api-errors-use-problem-json").replace("{glob}", "src/billing/**");
+  /* The correct form: filled with isolated nodes. */
+  const good = document.getElementById("demo-good");
+  good.replaceChildren();
+  good.append(fill(s, { fn1: code("matchesScope"), fn2: code("injection()") }));
+  good.append(" ");
+  good.append(fill(f, { item: bdi("STD-api-errors-use-problem-json"), glob: code("src/billing/**") }));
+
+  /* Intl table. */
+  const rows = [
+    ["Count (43)", "Intl.NumberFormat", num(43)],
+    ["Tokens (4260)", "Intl.NumberFormat", num(4260)],
+    ["Plural, n=1", "Intl.PluralRules", fill(plural("items", 1), { n: num(1) })],
+    ["Plural, n=2", "Intl.PluralRules", fill(plural("items", 2), { n: num(2) })],
+    ["Plural, n=43", "Intl.PluralRules", fill(plural("items", 43), { n: num(43) })],
+    ["Audit timestamp", "Intl.DateTimeFormat (UTC, h23)", TIME.format(new Date(Date.UTC(2026, 7, 19, 9, 22, 41)))],
+    ["Last seen", "Intl.RelativeTimeFormat",
+      new Intl.RelativeTimeFormat(LANG, { numeric: "auto" }).format(-1, "day")],
+    ["Narrowing inputs", "Intl.ListFormat",
+      new Intl.ListFormat(LANG).format(["event", "path", "seen", "restore", "focus"])]
+  ];
+  const tb = document.getElementById("intltbl");
+  tb.replaceChildren(...rows.map(([a, b, c]) => el("tr", {}, [
+    el("td", { text: a }),
+    el("td", {}, [code(b)]),
+    el("td", {}, [c instanceof Node ? c : el("bdi", { text: c })])
+  ])));
+};
+
+/* The probe: strip the isolation off everything, so the failure is visible on
+   demand rather than described. */
+document.getElementById("rtlprobe").addEventListener("click", e => {
+  const on = e.currentTarget.getAttribute("aria-pressed") !== "true";
+  e.currentTarget.setAttribute("aria-pressed", String(on));
+  document.body.classList.toggle("probe", on);   /* a class, not a style attribute */
+});
+
+/* ── 2. Tree ────────────────────────────────────────────────────────────── */
+const DATA = [
+  { name: "src/", tier: "pinned", kids: [
+    { name: "billing/", tier: "pinned", kids: [
+      { name: "prices.js", tier: "pinned" }, { name: "refunds.js", tier: "pinned" } ] },
+    { name: "api/", tier: "jit", kids: [ { name: "errors.js", tier: "jit" } ] },
+    { name: "cache/", tier: "jit", kids: [ { name: "keys.js", tier: "jit" } ] },
+    { name: "workers/", tier: "none", kids: [ { name: "retry.js", tier: "none" } ] } ] }
+];
+const TIER = {
+  pinned: { glyph: "◆", label: "pinned" },   /* ◆ filled */
+  jit:    { glyph: "○", label: "jit" },      /* ○ hollow */
+  none:   { glyph: "△", label: "not governed" } /* △ triangle */
+};
+let items = [];          /* flattened, VISIBLE order — the roving-tabindex universe */
+let selected = "src/billing/prices.js";
+
+const buildTree = () => {
+  const root = document.getElementById("tree");
+  root.replaceChildren();
+  const walk = (nodes, parent, lvl, path) => {
+    nodes.forEach((n, i) => {
+      const full = path + n.name;
+      const t = TIER[n.tier];
+      const li = el("li", {
+        role: "treeitem", "aria-level": lvl,
+        "aria-setsize": nodes.length, "aria-posinset": i + 1,
+        "aria-selected": String(full === selected), "data-path": full
+      });
+      if (n.kids) li.setAttribute("aria-expanded", lvl < 2 ? "true" : "false");
+      const tw = el("div", { cls: "tw" });
+      /* CSSOM property setting is NOT gated by CSP — `style-src` governs the
+         `style` *attribute* (including setAttribute('style',…)), `<style>` and
+         `<link>`. So the depth→CSS-variable bridge survives `default-src
+         'none'` while an inline style attribute would not. */
+      tw.style.setProperty("--lvl", lvl);
+      tw.append(
+        el("span", { cls: "twisty" + (n.kids ? "" : " leaf"), "aria-hidden": "true", text: "▾" }),
+        /* The tier glyph is decorative; its MEANING is in the visually hidden
+           text, so the accessible name is "prices.js, pinned" and not "◆". */
+        el("span", { cls: "tier tier-" + n.tier, "aria-hidden": "true",
+                     "data-tier": t.label, text: t.glyph }),
+        el("span", { dir: "ltr", cls: "m", text: n.name }),
+        el("span", { cls: "vh", text: ", " + t.label })
+      );
+      li.append(tw);
+      if (n.kids) { const ul = el("ul", { role: "group" }); li.append(ul); walk(n.kids, ul, lvl + 1, full); }
+      parent.append(li);
+    });
+  };
+  walk(DATA, root, 1, "");
+  refreshRoving();
+};
+const visible = () => [...document.querySelectorAll('#tree [role="treeitem"]')]
+  .filter(li => !li.closest('[aria-expanded="false"] > ul'));
+const refreshRoving = () => {
+  items = visible();
+  /* Exactly ONE tab stop in the whole tree; arrows move within it. */
+  items.forEach(li => li.tabIndex = -1);
+  const cur = items.find(li => li.dataset.path === selected) || items[0];
+  if (cur) cur.tabIndex = 0;
+};
+const focusItem = li => {
+  if (!li) return;
+  items.forEach(x => x.tabIndex = -1);
+  li.tabIndex = 0; li.focus();
+  const st = document.getElementById("treestatus");
+  setFrag(st, fill(T()["tree.status"], {
+    name: bdi(li.dataset.path), n: num(items.indexOf(li) + 1),
+    total: num(items.length), lvl: num(+li.getAttribute("aria-level"))
+  }));
+};
+const select = li => {
+  document.querySelectorAll('#tree [aria-selected="true"]')
+    .forEach(x => x.setAttribute("aria-selected", "false"));
+  li.setAttribute("aria-selected", "true");
+  selected = li.dataset.path;
+  renderGov();
+};
+document.getElementById("tree").addEventListener("keydown", e => {
+  const li = e.target.closest('[role="treeitem"]'); if (!li) return;
+  const rtl = document.documentElement.dir === "rtl";
+  const fwd = rtl ? "ArrowLeft" : "ArrowRight";   /* direction-aware, always */
+  const back = rtl ? "ArrowRight" : "ArrowLeft";
+  const i = items.indexOf(li);
+  const expandable = li.hasAttribute("aria-expanded");
+  const open = li.getAttribute("aria-expanded") === "true";
+  let handled = true;
+  switch (e.key) {
+    case "ArrowDown": focusItem(items[Math.min(i + 1, items.length - 1)]); break;
+    case "ArrowUp":   focusItem(items[Math.max(i - 1, 0)]); break;
+    case "Home":      focusItem(items[0]); break;
+    case "End":       focusItem(items[items.length - 1]); break;
+    case fwd:
+      if (expandable && !open) { li.setAttribute("aria-expanded", "true"); refreshRoving(); }
+      else if (expandable && open) focusItem(items[i + 1]);
+      break;
+    case back:
+      if (expandable && open) { li.setAttribute("aria-expanded", "false"); refreshRoving(); focusItem(li); }
+      else { const p = li.parentElement.closest('[role="treeitem"]'); if (p) focusItem(p); }
+      break;
+    case "*":
+      li.parentElement.querySelectorAll(':scope > [aria-expanded="false"]')
+        .forEach(x => x.setAttribute("aria-expanded", "true"));
+      refreshRoving(); break;
+    case "Enter": case " ": select(li); break;
+    default:
+      /* Type-ahead. Single printable keys are only bound INSIDE a widget that
+         already has focus — never globally, which is what WCAG 2.1.4 is about. */
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const from = items.slice(i + 1).concat(items.slice(0, i + 1));
+        const hit = from.find(x => x.dataset.path.split("/").filter(Boolean).pop()
+          .toLowerCase().startsWith(e.key.toLowerCase()));
+        if (hit) focusItem(hit); else handled = false;
+      } else handled = false;
+  }
+  if (handled) { e.preventDefault(); e.stopPropagation(); }
+});
+document.getElementById("tree").addEventListener("click", e => {
+  const li = e.target.closest('[role="treeitem"]'); if (!li) return;
+  if (e.target.closest(".twisty") && li.hasAttribute("aria-expanded")) {
+    li.setAttribute("aria-expanded", String(li.getAttribute("aria-expanded") !== "true"));
+    refreshRoving();
+  } else { select(li); }
+  focusItem(li);
+});
+
+/* ── 3. Governing table ─────────────────────────────────────────────────── */
+const GOV = {
+  "src/billing/prices.js": [
+    ["CONST-postgres-pool-capped-at-20", "gov", "pinned", "always", 210],
+    ["RULE-never-log-customer-email", "ok", "jit", "src/**", 168],
+    ["INV-prices-are-integer-cents", "ok", "jit", "src/billing/**", 143],
+    ["STD-api-errors-use-problem-json", "warn", "spilled", "src/billing/**", 830]
+  ]
+};
+const renderGov = () => {
+  document.getElementById("s3-path").textContent = selected;
+  setFrag(document.getElementById("s3-cap"),
+    fill(T()["gov.caption"], { path: code(selected) }));
+  const rows = GOV[selected] || [];
+  document.getElementById("govtbl").replaceChildren(...rows.map(([id, cls, tier, why, tok]) =>
+    el("tr", {}, [
+      /* An id read off disk: <bdi>. Its direction is not ours to assume. */
+      el("td", {}, [bdi(id)]),
+      el("td", {}, [el("span", { cls: "chip " + cls, text: tier })]),
+      el("td", {}, [why === "always" ? el("span", { text: why }) : code(why)]),
+      el("td", { cls: "num" }, [document.createTextNode(num(tok))])
+    ])));
+};
+
+/* ── 4. Streaming log ───────────────────────────────────────────────────── */
+let timer = null, pending = 0, total = 0, flush = null, verbose = false;
+const KINDS = ["injection", "mutation", "hook", "focus"];
+const appendRecord = () => {
+  total++; pending++;
+  const kind = KINDS[total % KINDS.length];
+  const t = new Date();
+  const row = el("div", { cls: "logrow" }, [
+    /* <time datetime> keeps the machine-readable ISO value next to the
+       human-readable one, so the localised rendering never becomes the only
+       copy of a forensic timestamp. */
+    el("time", { datetime: t.toISOString(), cls: "m", text: TIME.format(t) }),
+    document.createTextNode(" "),
+    el("span", { cls: "chip " + (kind === "focus" ? "gov" : kind === "mutation" ? "warn" : "ok"), text: kind }),
+    document.createTextNode(" "),
+    bdi("src/billing/prices.js")
+  ]);
+  /* APPEND. Re-rendering the container makes a screen reader re-announce every
+     row and destroys the reading cursor. */
+  document.getElementById("log").append(row);
+  if (verbose) announce(1);
+  else if (!flush) flush = setTimeout(() => { announce(pending); flush = null; }, 1500);
+  setFrag(document.getElementById("logcount"),
+    fill(plural("log.total", total), { n: num(total) }));
+};
+const announce = n => {
+  if (!n) return;
+  pending = 0;
+  /* Clear first: an identical string written twice is not re-announced. */
+  const live = document.getElementById("livestatus");
+  live.textContent = "";
+  setTimeout(() => setFrag(live, fill(plural("log.new", n), { n: num(n) })), 50);
+};
+document.getElementById("streamtoggle").addEventListener("click", e => {
+  const on = e.currentTarget.getAttribute("aria-pressed") !== "true";
+  e.currentTarget.setAttribute("aria-pressed", String(on));
+  e.currentTarget.textContent = T()[on ? "stream.stop" : "stream.start"];
+  if (on) timer = setInterval(appendRecord, 700);
+  else { clearInterval(timer); timer = null; }
+});
+document.getElementById("verbose").addEventListener("click", e => {
+  verbose = e.currentTarget.getAttribute("aria-pressed") !== "true";
+  e.currentTarget.setAttribute("aria-pressed", String(verbose));
+});
+
+/* ── Screen switching, with the focus move that makes it perceivable ────── */
+const SCREENS = ["preview", "coverage", "simulate", "watch"];
+let screen = "coverage";
+const renderNav = () => {
+  document.getElementById("navlist").replaceChildren(...SCREENS.map(s => {
+    const b = el("button", {
+      type: "button", cls: "btn", "data-s": s,
+      /* aria-current on the ACTIVE one only. Emitting aria-current="false" on
+         nine siblings is legal but makes every one of them carry a state. */
+      ...(s === screen ? { "aria-current": "page" } : {}),
+      text: T()["nav." + s]
+    });
+    b.addEventListener("click", () => {
+      screen = s; renderNav();
+      const main = document.getElementById("main");
+      /* tabindex=-1 + focus(): the new screen's heading is where a keyboard
+         user resumes, and the screen reader reads the new context. Without
+         this the focus stays on the rail and the swap is silent. */
+      main.focus({ preventScroll: false });
+    });
+    return el("li", {}, [b]);
+  }));
+};
+
+const renderAll = () => { renderBidi(); buildTree(); renderGov(); renderNav(); };
+applyLang();
+</script>
+</body>
+</html>

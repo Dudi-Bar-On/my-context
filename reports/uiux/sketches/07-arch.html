@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<title>07 — architecture sketch: URL-as-store, template rendering, mount/dispose</title>
+<!--
+  ══════════════════════════════════════════════════════════════════════════
+  WHAT THIS IS, AND THE ONE RULE IT BREAKS ON PURPOSE
+
+  A runnable demonstration of the module/state/rendering pattern proposed in
+  07-arch.md. It is ONE file so it can be opened with a double-click, which
+  means its <script> and <style> are inline — the one thing the real app's CSP
+  (`script-src 'self'; style-src 'self'`) forbids. Every other constraint is
+  honoured exactly: zero dependencies, no build step, no framework, plain ES
+  module syntax, logical CSS properties only, EN+HE from one code path.
+
+  The real files are marked with `── FILE: … ──` banners below. Cutting this
+  file along those banners produces the actual module layout; nothing else
+  changes, because nothing here depends on being in one file.
+
+  WHAT TO LOOK AT, in order:
+    1. The XSS row. An item title carries a live `<img onerror>` payload and a
+       second carries an RTL-override character. Both render as TEXT. There is
+       no escape function anywhere in this file — `textContent` is the whole
+       defence, and it is the whole defence because `innerHTML` is banned.
+    2. The URL bar. Every piece of shared state — screen, session, focus, mode,
+       selected item — is in the query string. Copy the URL, open it in a new
+       tab, land on the same view. There is no store object to keep in sync.
+    3. The "listeners" counter in the footer. Navigate ten times: it stays flat.
+       Tick "leak like plan 1 Task 16" and navigate ten more: it climbs, and
+       every session change then fires N copies of every screen's refresh.
+    4. The staleness strip. Press "corpus changed" — nothing silently refreshes;
+       the strip says what is now behind, per resource.
+  ══════════════════════════════════════════════════════════════════════════
+-->
+<style>
+/* ── FILE: public/styles.css ────────────────────────────────────────────────
+   Logical properties only. A physical left/right in this block is a defect.
+   The dynamic values screens need (a bar's fill, a tree row's indent) arrive
+   as CSS CUSTOM PROPERTIES set through CSSOM, never as a style attribute:
+   `style-src 'self'` blocks setAttribute('style', …) but does not intercept
+   `el.style.setProperty()`. One documented channel instead of two.        */
+:root{
+  color-scheme:light dark;
+  --paper:light-dark(#f7f6f2,#0f0f12); --panel:light-dark(#fffffe,#17171c);
+  --ink:light-dark(#17171b,#ecebe4);   --dim:light-dark(#65635d,#928f87);
+  --rule:light-dark(#e2dfd6,#262630);  --gold:light-dark(#8a6d14,#dbb047);
+  --warn:light-dark(#98691f,#c78f3d);  --crit:light-dark(#a03737,#cd6b6b);
+  --ok:light-dark(#3c7a57,#68a482);
+  --mono:ui-monospace,Consolas,Menlo,monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans)}
+.m,code{font-family:var(--mono);font-size:.88em;direction:ltr;unicode-bidi:isolate}
+header,footer{background:var(--panel);border-block-end:1px solid var(--rule);
+  padding-block:8px;padding-inline:14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+footer{border-block:1px solid var(--rule) none;border-block-start:1px solid var(--rule)}
+nav{display:flex;gap:4px}
+nav button[aria-current="true"]{border-color:var(--gold);color:var(--gold);font-weight:600}
+button,select,input{font:inherit;color:inherit;background:var(--panel);
+  border:1px solid var(--rule);border-radius:5px;padding-block:3px;padding-inline:8px}
+main{padding-block:14px;padding-inline:14px;max-inline-size:64rem}
+h1{font-size:19px;margin-block:0 4px}
+h2{font-size:15px;margin-block:16px 6px}
+.sub{color:var(--dim);margin-block:0 12px}
+.prov{display:flex;gap:10px;flex-wrap:wrap;background:var(--panel);
+  border-block-end:1px solid var(--rule);padding-block:5px;padding-inline:14px;font-size:12.5px}
+.prov b{font-weight:600}
+.note{border-inline-start:3px solid var(--rule);padding-inline-start:9px;color:var(--dim);
+  margin-block:8px;font-size:12.5px}
+.note[data-level="stale"]{border-color:var(--warn);color:var(--warn)}
+.note[data-level="bad"]{border-color:var(--crit);color:var(--crit)}
+.note[data-level="ok"]{border-color:var(--ok)}
+table{border-collapse:collapse;inline-size:100%}
+td,th{border-block-end:1px solid var(--rule);padding-block:4px;padding-inline:8px;text-align:start;
+  vertical-align:top}
+th{color:var(--dim);font-weight:600;font-size:12.5px}
+.bar-track{background:var(--rule);block-size:9px;border-radius:5px;overflow:hidden;inline-size:100%}
+.bar-fill{background:var(--gold);block-size:100%;inline-size:var(--fill,0%)}
+.row-indent{padding-inline-start:calc(var(--depth,0) * 1.1rem)}
+.dim{color:var(--dim)}
+.spill{color:var(--warn)}
+.gap{color:var(--crit)}
+.pill{border:1px solid var(--rule);border-radius:99px;padding-inline:7px;font-size:12px}
+.detail{border-inline-start:1px solid var(--rule);padding-inline-start:12px}
+.cols{display:grid;grid-template-columns:1fr 18rem;gap:16px}
+@media (max-width:900px){.cols{grid-template-columns:1fr}}
+
+/* -- historical marker --------------------------------------------------------------------------
+   Added 2026-08-29. This page is a dated record, and the block at the top of
+   the body says so. Styled from this file's own tokens on purpose, and with
+   logical properties, so it behaves like the rest of the page.             */
+.histnote{background:var(--goldbg,var(--panel));border:1px solid var(--gold);
+  border-radius:var(--r-md,8px);padding-block:10px;padding-inline:13px;
+  font:13px/1.55 var(--sans);color:var(--ink);margin-block:12px;margin-inline:12px}
+.histnote b{color:var(--gold)}
+.histnote code{font-family:var(--mono);font-size:.9em;direction:ltr;unicode-bidi:isolate}
+</style>
+</head>
+<body>
+
+<div class="histnote" dir="ltr">
+  <b>Historical &mdash; the design as of 2026-08-19.</b>
+  This sketch records the design as it stood on that date. It is kept, and still worth
+  reading, because its reasoning is what the mockup and the app were drawn from; it is
+  not synced forward. Where this page and <code>docs/design/web-ui-mockup.html</code>
+  differ, the mockup is current.
+</div>
+
+
+<!-- ── FILE: public/index.html ────────────────────────────────────────────────
+     Structure lives in markup, as <template> elements. Screens clone and FILL;
+     they never author tags in JavaScript. This is what makes an RTL audit, a
+     design review and a diff readable, and it is what shrinks the JS enough
+     that the DOM stub in test/ui/dom.ts stays under ~150 lines.            -->
+
+<header>
+  <b>mycontext</b>
+  <nav id="nav"></nav>
+  <label>session <select id="session"></select></label>
+  <label>focus <select id="focus">
+    <option value="live">the focus that is set</option>
+    <option value="off">focus off — a different question</option>
+  </select></label>
+  <label>lang <select id="lang"><option value="en">English</option><option value="he">עברית</option></select></label>
+</header>
+
+<div class="prov" id="prov"></div>
+
+<main id="screen"></main>
+
+<footer>
+  <span class="dim">URL is the store →</span> <code id="urlecho"></code>
+  <span class="pill">live subscriptions: <b id="subcount">0</b></span>
+  <label><input type="checkbox" id="leak"> leak like plan 1 Task 16</label>
+  <button id="bump">corpus changed (server side)</button>
+</footer>
+
+<!-- Templates. One per repeating unit; ids are the contract the template test
+     asserts against, together with each screen's exported `fields` list. -->
+
+<template id="tpl-preview">
+  <h1 data-f="title"></h1>
+  <p class="sub" data-f="sub"></p>
+  <div class="bar-track"><div class="bar-fill" data-f="bar"></div></div>
+  <p class="dim"><span data-f="used"></span> / <span data-f="budget"></span> tokens</p>
+  <h2 data-f="deliveredHead"></h2>
+  <table><thead><tr><th data-f="cId"></th><th data-f="cTier"></th><th data-f="cTitle"></th></tr></thead>
+    <tbody data-f="delivered"></tbody></table>
+  <h2 data-f="spilledHead"></h2>
+  <table><tbody data-f="spilled"></tbody></table>
+</template>
+
+<template id="tpl-row3">
+  <tr><td class="m" data-f="a"></td><td data-f="b"></td><td data-f="c"></td></tr>
+</template>
+
+<template id="tpl-coverage">
+  <h1 data-f="title"></h1>
+  <p class="sub" data-f="sub"></p>
+  <div class="cols">
+    <div data-f="tree"></div>
+    <div class="detail" data-f="detail"></div>
+  </div>
+</template>
+
+<template id="tpl-treerow">
+  <div class="row-indent" data-f="row">
+    <button data-f="name"></button> <span class="dim" data-f="count"></span>
+  </div>
+</template>
+
+<template id="tpl-note">
+  <p class="note" data-f="text"></p>
+</template>
+
+<script type="module">
+/* ══ FILE: public/lib/signal.js ══════════════════════════════════════════════
+   The whole state library. 24 lines, no dependency, no store object, no
+   framework. A signal is a value plus a subscriber set; `subscribe` returns
+   its own unsubscribe, which is what makes leak-free teardown possible at all.
+   Plan 1's `onSessionChange(fn)` pushes into a module-level array with no
+   removal path — the API shape, not the implementation, is the leak.        */
+let LIVE_SUBS = 0;                       // instrumentation for the sketch only
+export function createSignal(initial, equals = Object.is) {
+  let value = initial;
+  const subs = new Set();
+  return {
+    get: () => value,
+    set(next) {
+      if (equals(value, next)) return;   // equality check: no spurious re-render
+      value = next;
+      for (const fn of [...subs]) fn(value);
+    },
+    subscribe(fn) {
+      subs.add(fn); LIVE_SUBS++;
+      return () => { if (subs.delete(fn)) LIVE_SUBS--; };
+    },
+  };
+}
+const liveSubs = () => LIVE_SUBS;
+
+/* ══ FILE: public/lib/router.js ══════════════════════════════════════════════
+   THE URL IS THE STORE. Screen, global selectors and per-screen selection all
+   live in the query string; the fragment is reserved for the one-shot handoff
+   nonce and is never used for routing (plan 1 uses it for both, which is why a
+   deep link and a credential cannot arrive in the same URL).
+
+   Each screen declares its parameter schema. Unknown parameters are refused
+   loudly — the client mirror of plan 1's design decision 6, which refuses them
+   server-side. A typo that silently answered a different question is this
+   project's canonical defect; it must not be legal in the address bar either. */
+const GLOBAL_PARAMS = { session: 'cold', focus: 'live' };   // sticky across screens
+const SCREENS = {
+  preview:  { params: { event: 'session-start', path: '', mode: 'preview' } },
+  coverage: { params: { dir: '', item: '' } },
+};
+export function parseUrl(search, pathname) {
+  const name = pathname.replace(/^\/+/, '') || 'preview';
+  const screen = SCREENS[name] ? name : 'preview';
+  const q = new URLSearchParams(search);
+  const schema = { ...GLOBAL_PARAMS, ...SCREENS[screen].params };
+  const state = { screen, unknown: [] };
+  for (const [k, v] of q) {
+    if (k in schema) state[k] = v; else state.unknown.push(k);
+  }
+  for (const [k, v] of Object.entries(schema)) if (!(k in state)) state[k] = v;
+  return state;
+}
+export function toUrl(state) {
+  const schema = { ...GLOBAL_PARAMS, ...SCREENS[state.screen].params };
+  const q = new URLSearchParams();
+  for (const [k, def] of Object.entries(schema)) {
+    if (state[k] !== undefined && state[k] !== '' && state[k] !== def) q.set(k, state[k]);
+  }
+  const qs = q.toString();
+  return `/${state.screen}${qs ? '?' + qs : ''}`;
+}
+
+/* ══ FILE: public/lib/dom.js ═════════════════════════════════════════════════
+   THE ESCAPING BOUNDARY, and there is exactly one of it.
+
+   `fill()` writes through `.textContent`. textContent is not parsed as HTML, so
+   an item title, a body, a scope glob, a doctor message or an audit note can
+   never become markup — no escape() call, no sanitiser, no allow-list to get
+   wrong on a Tuesday. The invariant that makes this true is negative and
+   greppable: innerHTML / outerHTML / insertAdjacentHTML / document.write /
+   eval / new Function / setAttribute('style'|'href'|'src') appear NOWHERE under
+   public/. That single grep is a better XSS test than any assertion about
+   escaping, and it is the same enforcement shape as plan 1 Task 14's
+   import-graph test.                                                        */
+export function clone(id) {
+  const tpl = document.getElementById(id);
+  if (!tpl) throw new Error(`no template #${id}`);       // fails loud, in dev
+  return tpl.content.cloneNode(true);
+}
+export function fields(frag) {
+  const map = new Map();
+  for (const el of frag.querySelectorAll('[data-f]')) map.set(el.dataset.f, el);
+  return {
+    node: (k) => { const el = map.get(k); if (!el) throw new Error(`no field ${k}`); return el; },
+    text(k, value) { this.node(k).textContent = value == null ? '' : String(value); return this; },
+    css(k, prop, value) { this.node(k).style.setProperty(prop, value); return this; },
+    on(k, event, fn) { this.node(k).addEventListener(event, fn); return this; },
+    clear(k) { this.node(k).replaceChildren(); return this; },
+    append(k, child) { this.node(k).append(child); return this; },
+  };
+}
+
+/* ══ FILE: public/lib/resource.js ════════════════════════════════════════════
+   Fetch + cache + a staleness envelope every screen must render. Nothing here
+   returns a bare value: it returns {data, state, fetchedAt, reason}. A screen
+   physically cannot show a stale number without having been handed the word
+   'stale', which is INV-nothing-is-dropped-silently expressed as a type rather
+   than as a habit.                                                          */
+const CLASS = {                                  // one policy table, not 16 opinions
+  meta:      { scope: 'process'  },              // fetched once
+  corpus:    { scope: 'generation' },            // flushed when the corpus generation moves
+  session:   { scope: 'session+generation' },    // flushed by a stream record for that session
+  live:      { scope: 'never' },
+};
+function makeCache(sourceOf) {
+  const store = new Map();
+  let generation = 1;
+  const staleKeys = new Set();
+  return {
+    bumpGeneration() {                           // server said the corpus moved
+      generation++;
+      for (const [key, entry] of store) if (entry.cls !== 'meta') staleKeys.add(key);
+      return generation;
+    },
+    async read(key, cls = 'corpus') {
+      const hit = store.get(key);
+      if (hit && !staleKeys.has(key)) return { ...hit, state: 'fresh' };
+      if (hit && staleKeys.has(key)) {
+        // Serve the cached answer immediately AND say it is behind. Never a
+        // spinner that hides a usable answer; never a number with no age.
+        return { ...hit, state: 'stale', reason: 'corpus.changed' };
+      }
+      const data = await sourceOf(key);
+      const entry = { data, cls, fetchedAt: Date.now(), key };
+      store.set(key, entry);
+      return { ...entry, state: 'fresh' };
+    },
+    refresh(key) { staleKeys.delete(key); store.delete(key); },
+    stale: () => [...staleKeys],
+    generation: () => generation,
+  };
+}
+
+/* ══ FILE: public/lib/i18n.js ════════════════════════════════════════════════
+   Strings are TEXT. No value may contain '<' — a parity-test extension, and the
+   reason is the mockup: its Hebrew table already carries <b> markup and binds
+   it with innerHTML. Rich strings take node substitution instead, so the
+   markup lives in a template and the translation stays a string.            */
+const EN = { lang:'en', dir:'ltr', strings:{
+  'nav.preview':'Injection preview', 'nav.coverage':'Scope coverage',
+  'preview.title':'Injection preview',
+  'preview.sub':'Exactly what Claude gets — five narrowing inputs decide it: event, path, seen, restore and focus.',
+  'preview.delivered':'Delivered', 'preview.spilled':'Spilled — eligible, did not fit',
+  'preview.id':'Item', 'preview.tier':'Tier', 'preview.what':'Title',
+  'coverage.title':'Scope coverage', 'coverage.sub':'The gaps are the point. Expand a directory to cost it.',
+  'coverage.governs':'Governs this path',
+  'prov.session':'session', 'prov.focus':'focus', 'prov.parent':'previews are of the parent thread',
+  'prov.cold':'cold session — a different question, not this session’s preview',
+  'prov.focusOff':'focus off — a different question, not what Claude gets',
+  'prov.stale':'{n} view(s) behind the corpus — press refresh on the note that names one',
+  'prov.fresh':'up to date',
+  'note.refresh':'Refresh this view',
+  'note.staleCoverage':'This map was computed before the corpus changed.',
+  'note.truncated':'File walk truncated at {n} files — this map is partial, not complete.',
+  'note.focusHid':'Focus hid {n} item(s) from this selection.',
+}};
+const HE = { lang:'he', dir:'rtl', strings:{
+  'nav.preview':'תצוגת הזרקה', 'nav.coverage':'כיסוי היקף',
+  'preview.title':'תצוגת הזרקה',
+  'preview.sub':'בדיוק מה ש-Claude מקבל — חמישה קלטים מצמצמים זאת: event, path, seen, restore ו-focus.',
+  'preview.delivered':'נמסר', 'preview.spilled':'נשפך — היה כשיר, לא נכנס',
+  'preview.id':'פריט', 'preview.tier':'רמה', 'preview.what':'כותרת',
+  'coverage.title':'כיסוי היקף', 'coverage.sub':'הפערים הם העיקר. הרחיבו תיקייה כדי לחשב אותה.',
+  'coverage.governs':'מה חל על הנתיב הזה',
+  'prov.session':'שיחה', 'prov.focus':'מיקוד', 'prov.parent':'התצוגות הן של השרשור ההורה',
+  'prov.cold':'שיחה קרה — שאלה אחרת, לא תצוגה של השיחה הנוכחית',
+  'prov.focusOff':'ללא מיקוד — שאלה אחרת, לא מה ש-Claude מקבל',
+  'prov.stale':'{n} תצוגות מפגרות אחרי הקורפוס',
+  'prov.fresh':'מעודכן',
+  'note.refresh':'רענון התצוגה',
+  'note.staleCoverage':'המפה חושבה לפני שהקורפוס השתנה.',
+  'note.truncated':'סריקת הקבצים נקטעה ב-{n} קבצים — המפה חלקית.',
+  'note.focusHid':'המיקוד הסתיר {n} פריטים מהבחירה.',
+}};
+function t(table, key, subs = {}) {
+  const s = table.strings[key];
+  if (s === undefined) throw new Error(`missing string key: ${key}`);
+  return s.replace(/\{(\w+)\}/g, (m, n) => (n in subs ? String(subs[n]) : m));
+}
+
+/* ══ FILE: (server stand-in) ═════════════════════════════════════════════════
+   Fabricated data. Two titles are hostile ON PURPOSE — the first is a live XSS
+   payload, the second an RTL-override that would reorder a whole line if it
+   were ever concatenated into markup. Both are corpus text: an agent or an
+   ingest wrote them, so they are exactly the semi-trusted input the spec's CSP
+   section is about.                                                         */
+const ITEMS = [
+  { id:'RULE-posix-paths', tier:'normative', title:'Every stored path is POSIX-normalized', tokens:180 },
+  { id:'RULE-xss-probe',   tier:'normative', title:'<img src=x onerror="alert(\'corpus text executed\')">', tokens:120 },
+  { id:'RULE-bidi-probe',  tier:'normative', title:'drop ‮ siht ekil enil a‬ — bidi override in a title', tokens:90 },
+  { id:'DEC-sqlite',       tier:'rationale', title:'We chose node:sqlite over a dependency', tokens:260 },
+  { id:'DEC-audit-jsonl',  tier:'rationale', title:'JSONL is the truth; SQLite is a projection', tokens:310 },
+];
+const TREE = [
+  { path:'src',      depth:0, files:41, governed:38 },
+  { path:'src/core', depth:1, files:19, governed:19 },
+  { path:'src/ui',   depth:1, files:14, governed:0  },
+  { path:'docs',     depth:0, files:22, governed:0  },
+];
+let SERVER_GENERATION = 1;
+async function fakeFetch(key) {
+  await new Promise((r) => setTimeout(r, 40));           // a real round trip
+  if (key.startsWith('/api/select')) {
+    const cold = key.includes('session=cold');
+    const focusOff = key.includes('focus=off');
+    const delivered = ITEMS.slice(0, cold ? 5 : 3);
+    const spilled = ITEMS.slice(delivered.length).map((i) => ({ ...i, reason:'jit budget exhausted' }));
+    return { delivered, spilled, budget: 1200, focusHid: focusOff ? 0 : 2, generation: SERVER_GENERATION };
+  }
+  if (key.startsWith('/api/coverage')) return { rows: TREE, truncated: 20000, generation: SERVER_GENERATION };
+  throw new Error(`no route ${key}`);
+}
+
+/* ══ FILE: public/screens/preview.js ═════════════════════════════════════════
+   The screen contract that plan 1 is missing:
+
+       export const fields = [...]                  // asserted against the template
+       export function mount(root, ctx) -> dispose  // teardown is REQUIRED
+
+   `mount` returns its own teardown. `ctx.effect()` registers a subscription and
+   files its unsubscribe with the router, so a screen cannot leak by omission —
+   it would have to opt out. Plan 1's `render(root, ctx)` has no return value,
+   so the ten-screen tour leaves ten live session subscribers, each firing three
+   fetches on the next session change.                                       */
+export const previewFields = ['title','sub','bar','used','budget','deliveredHead','delivered',
+  'spilledHead','spilled','cId','cTier','cTitle'];
+function mountPreview(root, ctx) {
+  const frag = clone('tpl-preview');
+  const f = fields(frag);
+  f.text('title', ctx.t('preview.title')).text('sub', ctx.t('preview.sub'));
+  f.text('deliveredHead', ctx.t('preview.delivered')).text('spilledHead', ctx.t('preview.spilled'));
+  f.text('cId', ctx.t('preview.id')).text('cTier', ctx.t('preview.tier')).text('cTitle', ctx.t('preview.what'));
+  root.replaceChildren(frag);                     // never innerHTML, not even ''
+
+  async function paint() {
+    const s = ctx.state();
+    const key = `/api/select?event=${s.event}&path=${encodeURIComponent(s.path)}` +
+                `&session=${encodeURIComponent(s.session)}&focus=${s.focus}`;
+    const res = await ctx.read(key, 'session');
+    if (ctx.cancelled()) return;                  // aborted by a newer mount
+    const { delivered, spilled, budget, focusHid } = res.data;
+    const used = delivered.reduce((n, i) => n + i.tokens, 0);
+    f.css('bar', '--fill', `${Math.min(100, Math.round(used / budget * 100))}%`);
+    f.text('used', used).text('budget', budget);
+
+    f.clear('delivered');
+    for (const item of delivered) {
+      const row = fields(clone('tpl-row3'));
+      row.text('a', item.id).text('b', item.tier).text('c', item.title);   // ← hostile text, rendered as text
+      f.append('delivered', row.node('a').closest('tr'));
+    }
+    f.clear('spilled');
+    for (const item of spilled) {
+      const row = fields(clone('tpl-row3'));
+      row.text('a', item.id).text('b', item.tier).text('c', item.reason);
+      row.node('a').closest('tr').classList.add('spill');
+      f.append('spilled', row.node('a').closest('tr'));
+    }
+    ctx.declare([
+      res.state === 'stale' ? { level:'stale', text: ctx.t('note.staleCoverage'), refresh: key } : null,
+      focusHid > 0 ? { level:'ok', text: ctx.t('note.focusHid', { n: focusHid }) } : null,
+    ]);
+  }
+  // Every dependency is declared once, and unsubscribed for us.
+  ctx.effect(['session','focus','event','path','generation'], paint);
+  paint();
+}
+
+/* ══ FILE: public/screens/coverage.js ════════════════════════════════════════
+   The performance-shaped screen. It renders ONLY the rows the URL says are
+   expanded (`?dir=src`), so a 50,000-file monorepo costs the same as this one:
+   the server prices one directory's children against the corpus, not the whole
+   tree against the whole corpus. Plan 1 fetches every file with its governing
+   ids in one response and creates a DOM node per file.                      */
+function mountCoverage(root, ctx) {
+  const frag = clone('tpl-coverage');
+  const f = fields(frag);
+  f.text('title', ctx.t('coverage.title')).text('sub', ctx.t('coverage.sub'));
+  root.replaceChildren(frag);
+
+  async function paint() {
+    const s = ctx.state();
+    const res = await ctx.read(`/api/coverage?dir=${encodeURIComponent(s.dir)}`, 'corpus');
+    if (ctx.cancelled()) return;
+    f.clear('tree');
+    for (const row of res.data.rows) {
+      const r = fields(clone('tpl-treerow'));
+      r.css('row', '--depth', row.depth);
+      r.text('name', row.path.split('/').pop());
+      r.text('count', `${row.governed}/${row.files}`);
+      if (row.governed === 0) r.node('count').classList.add('gap');
+      r.on('name', 'click', () => ctx.go({ item: row.path }));    // selection → URL
+      f.append('tree', r.node('row'));
+    }
+    f.clear('detail');
+    if (s.item) {
+      const d = fields(clone('tpl-note'));
+      d.text('text', `${ctx.t('coverage.governs')}: ${s.item}`);
+      f.append('detail', d.node('text'));
+    }
+    ctx.declare([
+      { level:'stale', text: ctx.t('note.truncated', { n: res.data.truncated }) },
+      res.state === 'stale' ? { level:'stale', text: ctx.t('note.staleCoverage'), refresh: res.key } : null,
+    ]);
+  }
+  ctx.effect(['dir','item','generation'], paint);
+  paint();
+}
+
+/* ══ FILE: public/app.js ═════════════════════════════════════════════════════
+   The shell: signals for global state, the router that owns the URL, the
+   provenance bar that renders every screen's declared qualifications in ONE
+   place, and the mount/dispose lifecycle.                                   */
+const MOUNTS = { preview: mountPreview, coverage: mountCoverage };
+const NAV = ['preview', 'coverage'];
+
+/* Opened from disk (file://), the History API refuses a path change, so the
+   sketch keeps its own href and mirrors it into the address bar only when it
+   is allowed to. The real app is always served over http from the loopback
+   server and takes the pushState branch. Nothing else differs. */
+const CAN_PUSH = location.protocol === 'http:' || location.protocol === 'https:';
+let href = CAN_PUSH ? location.pathname + location.search
+                    : (location.hash.startsWith('#/') ? location.hash.slice(1) : '/preview');
+const url = createSignal(href, (a, b) => a === b);
+const langSig = createSignal('en');
+const generation = createSignal(1);
+const cache = makeCache(fakeFetch);
+let leakMode = false;
+const leaked = [];                       // holds the un-disposed subscriptions
+
+let table = EN;
+let disposeScreen = () => {};
+let mountToken = 0;
+
+function state() {
+  const [path, search = ''] = href.split('?');
+  return parseUrl(search, path);
+}
+
+function go(patch, { replace = false } = {}) {
+  const next = { ...state(), ...patch };
+  href = toUrl(next);
+  if (CAN_PUSH) {
+    if (replace) history.replaceState(null, '', href); else history.pushState(null, '', href);
+  } else {
+    location.hash = href;                        // file:// fallback, sketch only
+  }
+  url.set(href);
+}
+
+function renderNav() {
+  const nav = document.getElementById('nav');
+  nav.replaceChildren();
+  const here = state().screen;
+  for (const name of NAV) {
+    const b = document.createElement('button');
+    b.textContent = t(table, `nav.${name}`);
+    b.setAttribute('aria-current', String(name === here));
+    b.addEventListener('click', () => go({ screen: name }));
+    nav.append(b);
+  }
+}
+
+/* The provenance bar: the one home for every qualification the spec requires
+   and the seventeenth screen would otherwise forget — cold session, focus off,
+   parent thread, staleness, truncation, "not recorded". Screens DECLARE; the
+   shell RENDERS. */
+let declared = [];
+let shellNotes = [];
+function renderProvenance() {
+  const s = state();
+  const bar = document.getElementById('prov');
+  bar.replaceChildren();
+  const add = (text, cls) => {
+    const span = document.createElement('span');
+    span.textContent = text;
+    if (cls) span.className = cls;
+    bar.append(span);
+  };
+  add(`${t(table,'prov.session')}: ${s.session}`);
+  if (s.session === 'cold') add(t(table, 'prov.cold'), 'spill');
+  else add(t(table, 'prov.parent'), 'dim');
+  add(`${t(table,'prov.focus')}: ${s.focus}`);
+  if (s.focus === 'off') add(t(table, 'prov.focusOff'), 'spill');
+  const staleCount = declared.filter((d) => d && d.level === 'stale').length;
+  add(staleCount > 0 ? t(table, 'prov.stale', { n: staleCount }) : t(table, 'prov.fresh'),
+      staleCount > 0 ? 'spill' : 'dim');
+}
+
+let notesBox = null;
+function renderNotes() {
+  const root = notesBox;
+  if (!root) return;
+  root.replaceChildren();                 // declarations replace; they never accumulate
+  for (const d of [...shellNotes, ...declared]) {
+    if (!d) continue;
+    const n = fields(clone('tpl-note'));
+    n.node('text').dataset.level = d.level;
+    n.text('text', d.text);
+    if (d.refresh) {
+      const b = document.createElement('button');
+      b.textContent = t(table, 'note.refresh');
+      b.addEventListener('click', () => { cache.refresh(d.refresh); generation.set(generation.get() + 1); });
+      n.node('text').append(' ', b);
+    }
+    root.append(n.node('text'));
+  }
+}
+
+function mountScreen() {
+  disposeScreen();
+  const myToken = ++mountToken;
+  const unsubs = [];
+  declared = [];
+  const main = document.getElementById('screen');
+  main.replaceChildren();
+  const root = document.createElement('div');
+  notesBox = document.createElement('div');
+  main.append(root, notesBox);
+  const s = state();
+  // Client mirror of design decision 6: an unknown parameter is refused, not
+  // dropped. A typo that answered a different question is the canonical bug.
+  shellNotes = s.unknown.length === 0 ? [] : [{ level:'bad',
+    text:`unknown URL parameter(s): ${s.unknown.join(', ')} — refused, not ignored` }];
+  const ctx = {
+    state,
+    go,
+    t: (key, subs) => t(table, key, subs),
+    cancelled: () => myToken !== mountToken,
+    read: (key, cls) => cache.read(key, cls),
+    declare(list) { declared = list; renderProvenance(); renderNotes(); },
+    effect(deps, fn) {
+      const sources = { session: url, focus: url, event: url, path: url, dir: url, item: url,
+                        generation };
+      for (const dep of deps) {
+        const sig = sources[dep];
+        if (!sig) continue;
+        const un = sig.subscribe(() => { if (myToken === mountToken) fn(); });
+        if (leakMode) leaked.push(un); else unsubs.push(un);   // ← the plan-1 shape, on a switch
+      }
+    },
+  };
+  MOUNTS[s.screen](root, ctx);
+  renderNav();
+  renderProvenance();
+  renderNotes();
+  disposeScreen = () => { for (const un of unsubs) un(); unsubs.length = 0; };
+}
+
+/* ── wiring ───────────────────────────────────────────────────────────────── */
+function syncControls() {
+  const s = state();
+  const sess = document.getElementById('session');
+  if (sess.options.length === 0) {
+    for (const [v, label] of [['a3f9c1','a3f9c1 — 09:22'],['77b204','77b204 — 08:41'],['cold','cold session']]) {
+      const o = document.createElement('option'); o.value = v; o.textContent = label; sess.append(o);
+    }
+  }
+  sess.value = s.session;
+  document.getElementById('focus').value = s.focus;
+  document.getElementById('lang').value = langSig.get();
+  document.getElementById('urlecho').textContent = href;
+  document.getElementById('subcount').textContent = String(liveSubs());
+}
+
+document.getElementById('session').addEventListener('change', (e) => go({ session: e.target.value }));
+document.getElementById('focus').addEventListener('change', (e) => go({ focus: e.target.value }));
+document.getElementById('lang').addEventListener('change', (e) => {
+  langSig.set(e.target.value);
+  table = e.target.value === 'he' ? HE : EN;
+  document.documentElement.lang = table.lang;
+  document.documentElement.dir = table.dir;      // one code path, both languages
+  mountScreen();
+});
+document.getElementById('leak').addEventListener('change', (e) => { leakMode = e.target.checked; });
+document.getElementById('bump').addEventListener('click', () => {
+  SERVER_GENERATION++;
+  cache.bumpGeneration();
+  generation.set(generation.get() + 1);          // screens re-read; nothing silently refreshes
+});
+window.addEventListener('popstate', () => {
+  href = CAN_PUSH ? location.pathname + location.search
+                  : (location.hash.startsWith('#/') ? location.hash.slice(1) : '/preview');
+  url.set(href);
+});
+url.subscribe(() => { mountScreen(); syncControls(); });
+
+// Deep-link entry: honour whatever is in the address bar, including a pasted link.
+href = toUrl(state());
+if (CAN_PUSH) history.replaceState(null, '', href); else location.hash = href;
+mountScreen();
+syncControls();
+setInterval(syncControls, 400);                  // sketch only: keeps the counters live
+</script>
+</body>
+</html>

@@ -1,0 +1,424 @@
+<!--
+  Visual-direction sketch — CSS Expert panel seat.
+  NOT a screen spec. Demonstrates token refinements, elevation, dense-surface
+  treatments and the RTL mirroring strategy proposed in 04-visual.md, across
+  three surfaces: a dense table, a coverage tree, and a compose block.
+
+  Everything here is fabricated demo data. Logical properties only, per the
+  spec's §3 requirement — the one deliberate physical-property exception
+  (a select caret drawn with border+rotate rather than background-position)
+  is commented where it appears, to show the technique rather than hide it.
+-->
+<title>mycontext — visual direction sketch</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TOKENS — same light-dark()/color-scheme architecture as the baseline
+   mockup (kept: it is the right call). Refinements: a real 4px spacing
+   scale, a 7-step type scale replacing nine ad-hoc pixel sizes, a 3-step
+   radius scale replacing six, a 3-tier elevation ladder, and colour-mix()
+   derived tint/border pairs so "govern/ok/warn/crit" is a formula, not
+   six hand-picked hex pairs to keep in sync across two themes.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light dark;
+
+  /* surfaces — a lightness ladder, not one flat panel colour reused for
+     every raised thing. Dark mode reads depth through lightness steps;
+     shadows barely register on dark backgrounds, lightness does. */
+  --paper:light-dark(#f7f6f2,#0f0f12);
+  --panel:light-dark(#fffffe,#17171c);
+  --panel-2:light-dark(#fbfaf7,#1d1d24);   /* elevated: popovers, banners */
+  --sink:light-dark(#eeece5,#101014);
+  --stripe:light-dark(#f4f2ec,#131318);    /* zebra tint */
+
+  --ink:light-dark(#17171b,#ecebe4);
+  --dim:light-dark(#65635d,#928f87);
+  --faint:light-dark(#78766f,#8a877f);     /* darkened vs. baseline's #94918a —
+                                               10px uppercase labels at the old
+                                               tone were under AA at that size */
+  --rule:light-dark(#e2dfd6,#262630);
+  --edge:light-dark(#cdc9bd,#3a3a45);
+  --hairline:light-dark(rgba(0,0,0,0),rgba(255,255,255,.07)); /* dark-mode
+     raised-edge highlight — an inset top/start highlight substitutes for
+     a shadow that would be invisible on a dark surface */
+
+  --gold:light-dark(#8a6d14,#dbb047);
+  --goldbg:color-mix(in oklch, var(--gold) 12%, var(--panel));
+  --goldln:color-mix(in oklch, var(--gold) 45%, var(--panel));
+  --ok:light-dark(#3c7a57,#68a482);
+  --okbg:color-mix(in oklch, var(--ok) 12%, var(--panel));
+  --warn:light-dark(#98691f,#c78f3d);
+  --warnbg:color-mix(in oklch, var(--warn) 12%, var(--panel));
+  --crit:light-dark(#a03737,#cd6b6b);
+  --critbg:color-mix(in oklch, var(--crit) 12%, var(--panel));
+
+  /* elevation: 3 tiers, each with a matching surface lightness step.
+     e0 = flush with the page (table rows, tree). e1 = resting card.
+     e2 = interactive-raised (hover on a genuinely clickable dense row).
+     e3 = floating (popover, banner) — panel-2, not panel, underneath it. */
+  --e1:0 1px 1px light-dark(rgba(24,20,8,.04),rgba(0,0,0,.5)),
+       0 3px 10px light-dark(rgba(24,20,8,.05),rgba(0,0,0,.35));
+  --e2:0 2px 4px light-dark(rgba(24,20,8,.06),rgba(0,0,0,.55)),
+       0 8px 20px light-dark(rgba(24,20,8,.07),rgba(0,0,0,.4));
+  --e3:0 4px 6px light-dark(rgba(24,20,8,.08),rgba(0,0,0,.6)),
+       0 16px 38px light-dark(rgba(24,20,8,.12),rgba(0,0,0,.55));
+
+  /* type scale — 7 steps, not nine ad-hoc values (the baseline sheet uses
+     16,14,13,12.5,12,11.5,10.5,10,9.5px with no evident ratio). */
+  --fs-00:10px;  /* micro caps: wave badges, chip labels */
+  --fs-0:11px;   /* meta: timestamps, helper text */
+  --fs-1:12.5px; /* dense body: table cells — the tool's default reading size */
+  --fs-2:14px;   /* body: paragraphs, .psub */
+  --fs-3:16px;   /* section headings */
+  --fs-4:22px;   /* rare: a callout numeral */
+  --fs-5:30px;   /* rarest: reserved for a MEASURED figure — see .stat-real */
+
+  /* spacing — 4px base, one scale instead of a dozen one-off values
+     (the baseline sheet contains 4,5,6,7,8,9,10,12,13,14,16,20,22px). */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
+
+  /* radius — 3 steps instead of six (baseline has 1,3,4,5,6,8px) */
+  --r-xs:3px;  /* chips, badges, dots */
+  --r-sm:5px;  /* buttons, inputs, nav rows */
+  --r-md:8px;  /* cards, popovers, banners */
+
+  --dur-fast:120ms; --dur-base:180ms; --dur-slow:260ms;
+  --ease:cubic-bezier(.2,.7,.3,1);
+
+  /* the one physical-property escape hatch: see "RTL strategy" in the
+     report. Everything that cannot be expressed logically multiplies a
+     physical offset by --flip instead of duplicating rules under [dir]. */
+  --flip:1;
+
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+}
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark}
+[dir="rtl"]{--flip:-1}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+}
+
+*{box-sizing:border-box}
+html,body{block-size:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:var(--fs-2)/1.55 var(--sans);
+  -webkit-font-smoothing:antialiased;padding:var(--sp-6);max-inline-size:1180px;margin-inline:auto}
+
+/* bidi isolation for identifiers/paths/code embedded in prose — unchanged
+   from the baseline; this is the load-bearing rule and it was right. Any
+   NEW element that carries an id, path or hex value gets this class. */
+.m,code,kbd{font-family:var(--mono);font-size:.9em;font-variant-numeric:tabular-nums;
+  direction:ltr;unicode-bidi:isolate}
+.num{text-align:end;font-variant-numeric:tabular-nums}
+
+h1{font-size:var(--fs-4);margin:0 0 var(--sp-1);letter-spacing:-.01em}
+h2{font-size:var(--fs-3);margin:0 0 var(--sp-1);font-weight:620;letter-spacing:-.012em}
+h3{margin:0 0 var(--sp-2);font-size:var(--fs-0);letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+p.lede{color:var(--dim);font-size:var(--fs-2);max-inline-size:74ch;margin:0 0 var(--sp-5)}
+.note{font-size:var(--fs-0);color:var(--dim);margin-block-start:var(--sp-2)}
+
+/* top controls */
+.topbar{display:flex;align-items:center;gap:var(--sp-2);margin-block-end:var(--sp-6)}
+.topbar .fill{flex:1}
+button.ctl{font:inherit;font-size:var(--fs-1);cursor:pointer;background:var(--sink);
+  color:var(--dim);border:1px solid var(--rule);border-radius:var(--r-sm);
+  padding-block:5px;padding-inline:10px;transition:border-color var(--dur-fast) var(--ease),color var(--dur-fast) var(--ease)}
+button.ctl:hover{border-color:var(--edge);color:var(--ink)}
+button:focus-visible,select:focus-visible,.tree .row:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-5)}
+@media (max-width:880px){.grid{grid-template-columns:1fr}}
+
+/* ── card / elevation ladder ─────────────────────────────────────────── */
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r-md);
+  padding:var(--sp-4);box-shadow:var(--e1);margin-block-end:var(--sp-5)}
+.card.raised{box-shadow:var(--e2);border-color:var(--edge)}
+.floating{background:var(--panel-2);border:1px solid var(--edge);border-radius:var(--r-md);
+  box-shadow:var(--e3);padding:var(--sp-3);position:relative}
+/* dark-mode-only raised-edge highlight: a shadow disappears on a dark
+   surface, so depth there comes from a 1px lighter inset edge instead. */
+.floating::after{content:"";position:absolute;inset:0;border-radius:inherit;
+  box-shadow:inset 0 1px 0 var(--hairline);pointer-events:none}
+
+/* ══ 1. the earned-shine moment: visual weight mapped to epistemic status,
+   not to decoration. A measured, shipped number gets size and weight; a
+   fabricated demo number next to it stays small and is labelled as such. ══ */
+.statrow{display:flex;gap:var(--sp-6);flex-wrap:wrap;align-items:flex-end;margin-block-end:var(--sp-3)}
+.stat-real{font-family:var(--mono);font-size:var(--fs-5);font-weight:650;
+  font-variant-numeric:tabular-nums;line-height:1;color:var(--ink)}
+.stat-real + .stat-label{display:block;font-size:var(--fs-0);color:var(--ok);margin-block-start:3px}
+.stat-demo{font-family:var(--mono);font-size:var(--fs-3);color:var(--dim);line-height:1}
+.stat-demo + .stat-label{display:block;font-size:var(--fs-0);color:var(--faint);margin-block-start:3px}
+.tag-illustrative{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;
+  border:1px dashed var(--edge);border-radius:var(--r-xs);padding-inline:4px;color:var(--faint)}
+
+/* budget bar — functional motion: the fill animates because it is a real
+   computed proportion changing, not a flourish. inline-size (not
+   transform) so it fills from the correct edge automatically under RTL. */
+.bar{block-size:9px;border-radius:var(--r-sm);background:var(--sink);overflow:hidden;display:flex}
+.bar i{display:block;block-size:100%;inline-size:0;
+  transition:inline-size var(--dur-slow) var(--ease)}
+.bar i.f{background:linear-gradient(var(--grad-dir,to right), color-mix(in oklch, var(--gold) 82%, transparent), var(--gold))}
+.bar i.s{background:var(--crit);opacity:.5}
+/* gradient direction is a physical keyword (linear-gradient has no logical
+   equivalent) — mirrored the same way as --flip, via a custom property
+   instead of a duplicated rule. */
+[dir="rtl"]{--grad-dir:to left}
+.bar.on i.f{inline-size:71%} .bar.on i.s{inline-size:12%}
+
+/* ══ 2. dense table: zebra, sticky header, numeric column alignment,
+   row hover on genuinely-interactive tables. ══ */
+.tablewrap{overflow-x:auto;border-radius:var(--r-sm)}
+table{inline-size:100%;border-collapse:collapse;font-size:var(--fs-1)}
+thead th{position:sticky;inset-block-start:0;background:var(--panel);z-index:1;
+  text-align:start;font-weight:600;color:var(--faint);font-size:var(--fs-00);
+  letter-spacing:.07em;text-transform:uppercase;padding-block-end:6px;
+  padding-inline-end:10px;border-block-end:1px solid var(--rule)}
+td{padding-block:6px;padding-inline-end:10px;border-block-end:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-block-end:0}
+tbody tr:nth-child(even){background:var(--stripe)}
+tbody.interactive tr:hover{background:var(--sink);cursor:pointer}
+
+.chip{display:inline-block;font-size:var(--fs-00);padding-inline:5px;border-radius:var(--r-xs);
+  border:1px solid;line-height:1.6}
+.chip.gov{color:var(--gold);border-color:var(--goldln);background:var(--goldbg)}
+.chip.ok{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+.chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
+.chip.crit{color:var(--crit);border-color:var(--crit);background:var(--critbg)}
+
+/* word-level diff — real HTML semantics, styled rather than decorated;
+   ins/del are announced by assistive tech without extra ARIA. This is the
+   "does something a terminal cannot" case: inline word-diff colouring. */
+ins{background:var(--okbg);color:var(--ink);text-decoration:none;border-radius:2px;padding-inline:2px}
+del{background:var(--critbg);color:var(--dim);text-decoration:line-through;border-radius:2px;padding-inline:2px}
+td.stale{box-shadow:inset 2px 0 0 var(--warn)} /* one physical inset offset — same
+  class of exception as the baseline's nav-indicator; mirror below */
+[dir="rtl"] td.stale{box-shadow:inset -2px 0 0 var(--warn)}
+
+/* ══ 3. coverage tree: depth via a custom property (no &nbsp; runs),
+   ARIA tree semantics, colour+shape redundant status dots, a guide line
+   for scanning deep hierarchies. ══ */
+.tree{font-family:var(--mono);font-size:var(--fs-1);line-height:1.95}
+.tree [role="treeitem"]{position:relative;display:flex;align-items:center;gap:7px;
+  padding-inline-start:calc(var(--depth,0) * 16px + 6px);padding-inline-end:6px;
+  border-radius:var(--r-xs);cursor:pointer;color:var(--ink);
+  direction:ltr;unicode-bidi:isolate; /* paths stay LTR inside RTL prose —
+    the spec names this explicitly as a decision, not a bug */
+  transition:background-color var(--dur-fast) var(--ease)}
+.tree [role="treeitem"]:hover{background:var(--sink)}
+.tree [role="treeitem"][aria-selected="true"]{background:var(--goldbg)}
+/* guide line: a hairline at each indent step, the way a file tree in an
+   editor helps the eye track which node is whose child. Logical
+   border-inline-start — no mirroring needed, it already flips with dir. */
+.tree [role="treeitem"][data-depth-gt0]::before{content:"";position:absolute;
+  inset-block:0;inset-inline-start:calc(var(--depth,0) * 16px - 7px);
+  border-inline-start:1px solid var(--rule)}
+.dot{inline-size:7px;block-size:7px;border-radius:50%;flex:none}
+.dot.g{background:var(--gold)} .dot.o{background:var(--ok)}
+.dot.w{background:transparent;border:1px dashed var(--warn)} /* dashed = warn,
+  redundant to colour for colour-blind legibility, same pattern as baseline */
+
+/* ══ 4. compose-don't-write block, with a safety-legible flagged token.
+   --yes is the spec's own "explicit, greppable token"; giving it visual
+   weight is UX in service of that stated safety property, not flourish. ══ */
+.cmd{display:flex;align-items:center;gap:var(--sp-2);background:var(--sink);
+  border:1px solid var(--rule);border-radius:var(--r-sm);
+  padding-block:8px;padding-inline:10px;margin-block-start:var(--sp-2)}
+.cmd code{flex:1;overflow-x:auto;white-space:nowrap}
+.cmd code .flag{color:var(--warn);font-weight:700}
+.cmd button{border:1px solid var(--edge);background:var(--panel);border-radius:var(--r-xs);
+  padding-block:4px;padding-inline:9px;font-size:var(--fs-0);cursor:pointer;flex:none;
+  color:inherit;transition:background-color var(--dur-fast) var(--ease),
+  border-color var(--dur-fast) var(--ease),color var(--dur-fast) var(--ease)}
+.cmd button.copied{background:var(--okbg);border-color:var(--ok);color:var(--ok)}
+.cmdnote{font-size:var(--fs-0);color:var(--warn);margin-block-start:6px}
+
+/* select: appearance:none + a hand-drawn caret via border+rotate rather
+   than the common background-position trick. background-position is
+   box-relative, not writing-mode-relative, in every engine shipping
+   today — "100% center" means the physical right edge even under RTL, so
+   that popular technique is a silent RTL bug. inset-inline-end fixes it
+   for free. */
+.selwrap{position:relative;display:inline-block}
+.selwrap::after{content:"";position:absolute;inset-inline-end:11px;inset-block:0;
+  margin-block:auto;inline-size:5px;block-size:5px;
+  border-inline-end:1px solid var(--dim);border-block-end:1px solid var(--dim);
+  transform:rotate(45deg);pointer-events:none}
+select{appearance:none;font:inherit;font-size:var(--fs-1);background:var(--panel);
+  color:var(--ink);border:1px solid var(--edge);border-radius:var(--r-sm);
+  padding-block:5px;padding-inline:9px 28px}
+
+.two-up{display:flex;gap:var(--sp-3);flex-wrap:wrap;align-items:center;margin-block-end:var(--sp-3)}
+
+/* -- historical marker --------------------------------------------------------------------------
+   Added 2026-08-29. This page is a dated record, and the block at the top of
+   the body says so. Styled from this file's own tokens on purpose, and with
+   logical properties, so it behaves like the rest of the page.             */
+.histnote{background:var(--goldbg,var(--panel));border:1px solid var(--gold);
+  border-radius:var(--r-md,8px);padding-block:10px;padding-inline:13px;
+  font:13px/1.55 var(--sans);color:var(--ink);margin-block:12px 16px;margin-inline:0}
+.histnote b{color:var(--gold)}
+.histnote code{font-family:var(--mono);font-size:.9em;direction:ltr;unicode-bidi:isolate}
+</style>
+
+<div class="histnote" dir="ltr">
+  <b>Historical &mdash; the design as of 2026-08-19.</b>
+  This sketch records the design as it stood on that date. It is kept, and still worth
+  reading, because its reasoning is what the mockup and the app were drawn from; it is
+  not synced forward. Where this page and <code>docs/design/web-ui-mockup.html</code>
+  differ, the mockup is current.
+</div>
+
+<div class="topbar">
+  <h1 data-t="h1">Visual direction — evolved, not replaced</h1>
+  <span class="fill"></span>
+  <button class="ctl" id="theme" title="Theme">◐ <span data-t="theme">theme</span></button>
+  <button class="ctl" id="lang" title="English / עברית">א/A</button>
+</div>
+<p class="lede" data-t="lede">
+  Paper-and-gold kept; gold's meaning narrowed rather than widened. Refined type/spacing/radius
+  scales, a real elevation ladder, and one earned-shine idea: visual weight follows what is
+  <em>measured</em>, not what would look nice big.
+</p>
+
+<!-- ══ earned shine: real vs. fabricated, sized by epistemic status ══ -->
+<section class="card raised">
+  <h3 data-t="h3-shine">One measured number, sized like one</h3>
+  <div class="statrow">
+    <div>
+      <span class="stat-real">0.55<span style="font-size:.5em">ms</span></span>
+      <span class="stat-label m" data-t="real-label">audit-append p95 — measured, shipped</span>
+    </div>
+    <div>
+      <span class="stat-demo">4,260<span style="font-size:.6em"> / 6,000</span></span>
+      <span class="stat-label" data-t="demo-label">tokens delivered <span class="tag-illustrative" data-t="illus">illustrative</span></span>
+    </div>
+  </div>
+  <div class="bar on"><i class="f"></i><i class="s"></i></div>
+  <p class="note" data-t="bar-note">The fill animates because the proportion is real and recomputed — not decoration. <span class="m">inline-size</span>, not <span class="m">transform</span>, so it fills from the correct edge under either direction with no mirrored rule.</p>
+</section>
+
+<div class="grid">
+  <!-- ══ coverage tree ══ -->
+  <section class="card">
+    <h3 data-t="h3-tree">Repository — depth via custom property</h3>
+    <div class="tree" role="tree" aria-label="Repository coverage">
+      <div class="row-group">
+        <div class="row" role="treeitem" aria-selected="false" aria-level="1" style="--depth:0"><span class="dot g"></span>src/</div>
+        <div class="row" role="treeitem" aria-selected="false" aria-level="2" data-depth-gt0 style="--depth:1"><span class="dot g"></span>billing/</div>
+        <div class="row" role="treeitem" aria-selected="true" aria-level="3" data-depth-gt0 style="--depth:2"><span class="dot g"></span>prices.js</div>
+        <div class="row" role="treeitem" aria-selected="false" aria-level="3" data-depth-gt0 style="--depth:2"><span class="dot g"></span>refunds.js</div>
+        <div class="row" role="treeitem" aria-selected="false" aria-level="2" data-depth-gt0 style="--depth:1"><span class="dot o"></span>cache/keys.js</div>
+        <div class="row" role="treeitem" aria-selected="false" aria-level="2" data-depth-gt0 style="--depth:1"><span class="dot w"></span>workers/</div>
+        <div class="row" role="treeitem" aria-selected="false" aria-level="3" data-depth-gt0 style="--depth:2"><span class="dot w"></span>retry.js</div>
+      </div>
+    </div>
+    <p class="note" data-t="tree-note">Baseline used four <span class="m">&amp;nbsp;</span> per indent level, hardcoded into the text node. Here indentation is <span class="m">padding-inline-start</span> driven by <span class="m">--depth</span>, and the hierarchy also exists as <span class="m">role="treeitem"</span>/<span class="m">aria-level</span> — free for assistive tech, not just visual.</p>
+  </section>
+
+  <!-- ══ dense table: zebra + sticky header + numeric alignment ══ -->
+  <section class="card">
+    <h3 data-t="h3-table">What governs — dense table</h3>
+    <div class="tablewrap" style="max-block-size:220px;overflow-y:auto">
+      <table>
+        <thead><tr><th data-t="th-item">Item</th><th data-t="th-tier">Tier</th><th class="num" data-t="th-tok">Tokens</th></tr></thead>
+        <tbody class="interactive">
+          <tr><td class="m">CONST-postgres-pool-capped-at-20</td><td><span class="chip gov">pinned</span></td><td class="num m">142</td></tr>
+          <tr><td class="m">CONST-zero-runtime-dependencies</td><td><span class="chip gov">pinned</span></td><td class="num m">96</td></tr>
+          <tr><td class="m">RULE-never-log-customer-email</td><td><span class="chip ok">jit</span></td><td class="num m">58</td></tr>
+          <tr><td class="m">INV-prices-are-integer-cents</td><td><span class="chip ok">jit</span></td><td class="num m">71</td></tr>
+          <tr><td class="m">STD-api-errors-use-problem-json</td><td><span class="chip warn">spilled</span></td><td class="num m">203</td></tr>
+          <tr><td class="m">RULE-cache-keys-include-tenant-id</td><td><span class="chip crit">gap</span></td><td class="num m">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" data-t="table-note">Zebra + sticky header + right-aligned tabular numerals — scanability for long lists (audit stream, Ask results), not styling for its own sake.</p>
+  </section>
+</div>
+
+<!-- ══ diff table ══ -->
+<section class="card">
+  <h3 data-t="h3-diff">Review queue — word-level diff, real markup</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th data-t="th-field">Field</th><th data-t="th-force">In force</th><th data-t="th-prop">Proposed</th></tr></thead>
+      <tbody>
+        <tr><td class="m">title</td><td>Never log customer email</td>
+          <td>Never log customer email<ins> or phone</ins></td></tr>
+        <tr><td class="m">tags</td><td class="m">pii</td><td class="m">pii<ins>, gdpr</ins></td></tr>
+        <tr><td class="m stale">body <span class="chip warn">stale</span></td>
+          <td class="small" data-t="td-moved">changed since staged</td>
+          <td class="small" data-t="td-blocked">promote refuses until re-based</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══ compose block ══ -->
+<section class="card">
+  <h3 data-t="h3-cmd">Compose, never write</h3>
+  <div class="two-up">
+    <div class="selwrap"><select><option data-t="opt-scope">by scope</option><option data-t="opt-tier">by tier</option></select></div>
+    <div class="selwrap"><select><option>src/billing/**</option><option>src/api/**</option></select></div>
+  </div>
+  <div class="cmd">
+    <code>mycontext review promote-revision RULE-never-log-customer-email --revision REV-8c21 <span class="flag">--yes</span></code>
+    <button id="copybtn" data-t="btn-copy">Copy</button>
+  </div>
+  <p class="cmdnote" data-t="cmd-warn">This is a write. Run it in your own shell.</p>
+</section>
+
+<!-- ══ elevation ladder demo ══ -->
+<section class="card">
+  <h3 data-t="h3-elev">Elevation ladder</h3>
+  <div style="display:flex;gap:var(--sp-4);flex-wrap:wrap;align-items:flex-start">
+    <div class="card" style="margin:0;flex:1;min-inline-size:160px"><p class="note" style="margin:0" data-t="e1-label">e1 — resting card</p></div>
+    <div class="card raised" style="margin:0;flex:1;min-inline-size:160px"><p class="note" style="margin:0" data-t="e2-label">e2 — interactive-raised</p></div>
+    <div class="floating" style="flex:1;min-inline-size:160px"><p class="note" style="margin:0" data-t="e3-label">e3 — floating (panel-2 + hairline)</p></div>
+  </div>
+</section>
+
+<script>
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+const EN={dir:'ltr',lang:'en'};
+const HE={dir:'rtl',lang:'he',
+ h1:'כיוון חזותי — פותח, לא הוחלף',theme:'ערכת נושא',
+ lede:'הנייר והזהב נשמרים; משמעות הזהב מצומצמת ולא מורחבת. סולמות טיפוגרפיה/מרווח/רדיוס מעודנים, סולם הגבהה אמיתי, ורעיון זוהר אחד שהרוויח את מקומו: המשקל החזותי עוקב אחר מה שנמדד, לא אחר מה שהיה נראה יפה בגודל.',
+ 'h3-shine':'מספר אחד נמדד, בגודל שמתאים לו',
+ 'real-label':'זמן הוספת ביקורת p95 — נמדד, שוגר',
+ 'demo-label':'אסימונים שנמסרו',
+ illus:'להמחשה',
+ 'bar-note':'המילוי מונפש כי היחס אמיתי ומחושב מחדש — לא קישוט. inline-size, לא transform, כך שהוא מתמלא מהקצה הנכון בכל כיוון בלי כלל משוקף.',
+ 'h3-tree':'מאגר — עומק דרך משתנה מותאם',
+ 'tree-note':'הבסיס השתמש בארבעה &nbsp; לכל רמת הזחה, מוטבעים בטקסט. כאן ההזחה היא padding-inline-start הנשלט על ידי --depth, וההיררכיה קיימת גם כ‑role="treeitem"/aria-level — בחינם עבור טכנולוגיה מסייעת, לא רק חזותית.',
+ 'h3-table':'מה חל — טבלה צפופה',
+ 'th-item':'פריט','th-tier':'רמה','th-tok':'אסימונים',
+ 'table-note':'פסים לסירוגין + כותרת דביקה + מספרים מיושרים לסוף — קריאות לרשימות ארוכות, לא עיצוב לשמו.',
+ 'h3-diff':'תור סקירה — הפרש ברמת מילה, סימון אמיתי',
+ 'th-field':'שדה','th-force':'בתוקף','th-prop':'מוצע',
+ 'td-moved':'השתנה מאז ההעמדה','td-blocked':'הקידום מסרב עד לבסיס מחדש',
+ 'h3-cmd':'הרכבה, לעולם לא כתיבה',
+ 'opt-scope':'לפי היקף','opt-tier':'לפי רמה','btn-copy':'העתקה',
+ 'cmd-warn':'זו כתיבה. הריצו אותה במעטפת שלכם.',
+ 'h3-elev':'סולם הגבהה',
+ 'e1-label':'e1 — כרטיס במנוחה','e2-label':'e2 — מוגבה אינטראקטיבי','e3-label':'e3 — צף (panel-2 + קו הבהרה)'};
+let TABLE=EN;
+$$('[data-t]').forEach(el=>{el.dataset.en=el.innerHTML});
+const applyLang=()=>{
+  document.documentElement.dir=TABLE.dir; document.documentElement.lang=TABLE.lang;
+  $$('[data-t]').forEach(el=>{const v=TABLE[el.dataset.t]; el.innerHTML = v!==undefined ? v : el.dataset.en;});
+};
+$('#lang').addEventListener('click',()=>{TABLE=(TABLE===EN?HE:EN);applyLang();});
+$('#theme').addEventListener('click',()=>{
+  const cur=document.documentElement.getAttribute('data-theme');
+  const sysDark=matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme',cur?(cur==='dark'?'light':'dark'):(sysDark?'light':'dark'));
+});
+$('#copybtn').addEventListener('click',()=>{
+  const b=$('#copybtn'); b.classList.add('copied');
+  const prev=b.textContent; b.textContent=TABLE===HE?'הועתק':'Copied';
+  setTimeout(()=>{b.classList.remove('copied'); b.textContent=TABLE[b.dataset.t]??b.dataset.en??prev;},1200);
+});
+applyLang();
+</script>
