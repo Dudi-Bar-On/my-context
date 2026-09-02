@@ -82,10 +82,13 @@
          translated. -->
     <div class="logo"><span class="mark"></span><b>mycontext</b></div>
     <div class="topr">
-      <!-- #focuspop has no markup here — nothing in this task's shell or its
-           app.js wires it, and building the dialog itself would be inventing
-           UI the mockup shows only as a target, not a source (open question,
-           this task's report). The trigger renders inert until it does. -->
+      <!-- #focuspop IS built now — below, after `</header>`, beside #sesspop
+           and for the same layout reason. What used to stand here said the
+           dialog would be "inventing UI the mockup shows only as a target";
+           the mockup does draw it (~2344) and the refusal became the defect
+           the owner reported. `aria-expanded` is moved by app.js's
+           togglePopover() and is no longer a permanent claim about a dialog
+           there was no way to expand. -->
       <button class="sel" id="focusbtn" aria-haspopup="dialog" aria-expanded="false">
         <span id="focus-label"></span> <b id="focuslbl"></b>
       </button>
@@ -152,6 +155,66 @@
     <p class="aside" data-t="sess.coldhelp"></p>
     <hr>
     <p class="aside" data-t="sess.parent"></p>
+  </div>
+
+  <!-- ══ THE FOCUS DIALOG — docs/design/web-ui-mockup.html ~2344-2356 ══
+       (read as the design of record, never edited: owner ruling 2026-09-02.)
+
+       It sits here, beside `#sesspop`, for the reason `#sesspop`'s own comment
+       gives: `.pop{position:absolute}` measures from the initial containing
+       block, DOM order is tab order, and nested inside `.topr` it would be a
+       flex item widening the header.
+
+       **THIS ONE COMPOSES, AND THAT IS THE WHOLE DIFFERENCE FROM `#sesspop`
+       ABOVE.** The session picker moves a value this page already holds and
+       tells nobody, so it is a READ and needs no confirmation. A focus changes
+       what Claude receives on the NEXT event — it is written to
+       `state/focus.json` by `mycontext focus`, and this UI does not write. So
+       the two rows and the tag box below compose a command LINE, drawn in
+       `.cmd` and handed to the one Copy-and-Execute control every composing
+       screen already uses (`lib/command-actions.js`, adopted here by app.js's
+       `paintFocusCommand()`). There is no second approval route in this file
+       and no `POST` behind either row.
+
+       The two rows are the design of record's, byte for byte: the focus that
+       IS set (`state/focus.json`, an authored path and so not translated) and
+       focus OFF. The tag box and the composed line are this app going beyond
+       the mockup, which `17e7482` unpinned the parity gates to allow — the
+       mockup's dialog toggles a demo variable, and a dialog that toggled a
+       variable here would be claiming to have changed what Claude gets.
+
+       EVERY TEXT NODE IS EMPTY and filled by app.js's applyStatic() from
+       `[data-t]`, the rule the whole shell follows. `aria-label` is authored in
+       English beside `data-t-aria` for the reason `#sesspop` states: nothing
+       applies the -aria form yet, and a dialog with no accessible name at all
+       is worse than one named in the wrong language. -->
+  <div class="pop gloss float" id="focuspop" role="dialog" aria-label="Focus"
+       data-t-aria="aria.focuspop" hidden>
+    <h3 data-t="focus.title"></h3>
+    <!-- The FIRST `.row`, and `togglePopover()` focuses it on open — so it is
+         authored here rather than built, exactly as `#sesspop`'s cold row is,
+         and the dialog is never focus-empty even before any data arrives. -->
+    <button class="row" data-focus="live" aria-selected="true">
+      <span><b data-t="focus.live"></b></span>
+      <span class="small m">state/focus.json</span>
+    </button>
+    <button class="row" data-focus="off">
+      <span><b data-t="focus.off"></b></span>
+      <span class="small" data-t="focus.offn"></span>
+    </button>
+    <p class="aside" data-t="focus.help"></p>
+    <hr>
+    <!-- `--tag` and not a positional list: `mycontext focus <tag>…` and
+         `--tag a,b` are both real, and the flag is the form the CLI's own
+         usage documents and `core/command-flags.ts` declares ("one tag, or
+         several comma-separated"). One spelling, quoted by `quoteArg`. -->
+    <label class="small" for="focustags"><span data-t="focus.tags"></span></label>
+    <input class="tagin" id="focustags" type="text" autocomplete="off" spellcheck="false">
+    <div class="cmd"><code id="focusargv"></code></div>
+    <!-- Filled by `paintFocusCommand()` with `commandActions(...)` — never
+         authored here, and never with innerHTML. -->
+    <div id="focusact"></div>
+    <p class="aside" data-t="focus.compose"></p>
   </div>
 
   <nav class="rail" id="nav" aria-label="Screens"></nav>

@@ -605,6 +605,26 @@ bdi{unicode-bidi:isolate}
 .pop .row:hover{background:var(--sink)}
 .pop .row[aria-selected="true"]{background:var(--goldbg)}
 .pop hr{border:0;border-block-start:1px solid var(--rule);margin-block:var(--sp-2)}
+
+/* — #focuspop's composing half: a tag box and the line it builds —
+   Rules the mockup does not declare, and that is allowed rather than a fault:
+   `17e7482` unpinned styles-parity to a COVERAGE FLOOR, so the app may carry a
+   rule the design of record lacks. The mockup's focus dialog toggles a demo
+   variable; this one composes `mycontext focus …` and shows it, because this
+   UI does not write.
+
+   `.tagin` is `.globin`'s treatment (~951) applied to the other place this
+   product takes a machine value by hand: mono, LTR and ISOLATED, so a tag list
+   reads left-to-right inside a Hebrew page and cannot reorder the sentence
+   around it. Full-width here rather than 320px — the dialog is 400px and the
+   box is the only control on its line. */
+.pop label{display:block;margin-block-end:4px;color:var(--dim)}
+.pop .tagin{font-family:var(--mono);font-size:var(--fs-1);inline-size:100%;
+  padding-block:4px;padding-inline:6px;background:var(--sink);color:var(--ink);
+  border:1px solid var(--edge-3);border-radius:var(--r-md);
+  direction:ltr;unicode-bidi:isolate}
+.pop .cmd{margin-block-start:var(--sp-2)}
+.pop .cmdactions{margin-block:var(--sp-2)}
 .aside{font-size:var(--fs-0);color:var(--dim);line-height:1.45;margin:0}
 
 /* The rail's own layout — same story as .hdr: grid-area is inert without

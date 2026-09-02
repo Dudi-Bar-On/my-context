@@ -127,6 +127,20 @@
 //   below, rows in `paintSessionList()` — and it consumes `loadSessions()`'s
 //   answer exactly as the note above anticipated, without re-deriving it.
 //
+//   ── AND #focuspop LANDED THE SAME DAY (`plan:walk seq:115`) ─────────────
+//
+//   The second half of the same defect. Markup in `index.html` beside
+//   `#sesspop`, mechanism in the same `installPopovers()` — one table, one
+//   `togglePopover()`, one Escape — and its composition in
+//   `paintFocusCommand()` below.
+//
+//   **It COMPOSES; it does not write.** A focus changes what Claude receives
+//   on the next event, which is the kind of change the owner applies, so the
+//   two rows and the tag box build a `mycontext focus …` line and hand it to
+//   `lib/command-actions.js` — the one control that owns Copy, the confirm and
+//   `POST /api/execute`. Nothing in this file posts on a row click, and there
+//   is no second approval route.
+//
 //   The picker is a READ: it moves `sessionValue` and nothing else, so every
 //   screen's next request names the chosen session and the server is never
 //   told anything. That is what ends the state `plan:walk seq:35` measured,
@@ -134,6 +148,15 @@
 //   could only ever draw one session.
 
 import { extractNonce, exchangeNonce } from '/lib/bootstrap.js';
+// **The ONE Copy-and-Execute control, adopted by the title bar's focus dialog.**
+// `#focuspop` composes `mycontext focus …` and must not be a second approval
+// route: the confirm inside this control IS the security boundary (spec §6.3),
+// and nine hand-rolled copy buttons is the mistake it was built to end. See
+// `paintFocusCommand()`.
+import { commandActions } from '/lib/command-actions.js';
+// The argv-to-line spelling, shared with that control so the string a reader
+// sees in `.cmd` and the string the control copies cannot drift apart.
+import { composeCommand } from '/lib/command.js';
 import { startHeartbeat } from '/lib/heartbeat.js';
 import { applyLanguage, pickLanguage, t as translate, tFlat as flat } from '/lib/i18n.js';
 // The pane's WIDTH — a preference, remembered per browser. Its own module for
@@ -1325,6 +1348,87 @@ function togglePopover(dialog) {
 }
 
 /**
+ * ══ `#focuspop` — WHAT THE DIALOG COMPOSES ════════════════════════════════
+ *
+ * Which of the two rows is chosen. `'live'` on arrival, matching the
+ * `aria-selected="true"` the markup authors on that row, so the dialog's first
+ * paint and its first keystroke agree about which choice is standing.
+ *
+ * This is a property of the DIALOG, not of the corpus: it says which command
+ * the reader is composing, never which focus is set. What IS set is
+ * `state/focus.json`, read by the server and drawn on the status strip and in
+ * `#focuslbl` — see `drawIdentity()`.
+ */
+let focusChoice = 'live';
+
+/**
+ * The argv the dialog's current state composes — `mycontext` included, because
+ * that is what a person types and what Copy hands to a shell.
+ *
+ * THE THREE LINES, AND WHY EACH IS THE FLAG IT IS. Read off the real command
+ * (`node src/cli/index.ts help cli`, and `core/command-flags.ts`'s accept-list
+ * `['tag','category','scope','clear','show','preview','relations','json']`)
+ * rather than off any prose about it:
+ *
+ *   · **off** → `--clear`. The command's own spelling for "stop narrowing".
+ *   · **live, with tags** → `--tag <tags>`. `<tag>…` positionals and `--tag a,b`
+ *     are both real; the flag is the form the usage line and the flag table
+ *     document, and one spelling is what keeps the composed line and the
+ *     confirm the same string.
+ *   · **live, no tags** → `--show`. The honest answer to "the focus that is
+ *     set" when the reader has narrowed nothing: report it. A dialog that
+ *     composed a bare `mycontext focus` would compose a command that sets a
+ *     focus of nothing, which is not what the row says.
+ *
+ * The tags are read from the box at call time and TRIMMED, so a box holding
+ * only spaces composes `--show` rather than `--tag "   "`.
+ */
+function focusArgv() {
+  if (focusChoice === 'off') return ['mycontext', 'focus', '--clear'];
+  const tags = (document.getElementById('focustags')?.value ?? '').trim();
+  if (tags === '') return ['mycontext', 'focus', '--show'];
+  return ['mycontext', 'focus', '--tag', tags];
+}
+
+/**
+ * Draw the composed line and the control that acts on it.
+ *
+ * **`id: null`, and that is the shared control's own documented answer rather
+ * than a shortcut.** `lib/command-actions.js` takes a CATALOGUE id and gives
+ * Copy alone to "a composition the catalogue cannot name", because the client
+ * sends an id and never a command (spec §3.1) and there is nothing for the
+ * server to rebuild from. `mycontext focus` is not in `lib/palette-defs.js`,
+ * and it cannot be added from this lane: the catalogue's write entries are
+ * checked against the derived deny recipe by `test/ui/palette-lib.test.ts`, and
+ * `focus` takes no `--yes`, so `approvalBoundary()` does not place it on the
+ * boundary at all. `screens/packs.js`, `screens/port.js` and `screens/proc.js`
+ * pass `id: null` for exactly this reason and this is the fourth.
+ *
+ * What that buys is the thing the ruling asks for: ONE approval route. The
+ * dialog does not post, does not write and does not grow a confirm of its own;
+ * it composes, and the shared control decides what may be done with the line.
+ *
+ * Rebuilt whole on every change rather than patched: the control is stateless
+ * between compositions (its result region belongs to the line that produced
+ * it), and a stale Copy button beside a changed line is the drift the
+ * composed-and-shown design exists to prevent.
+ */
+function paintFocusCommand() {
+  const code = document.getElementById('focusargv');
+  const host = document.getElementById('focusact');
+  if (code === null || host === null) return;
+  for (const row of document.querySelectorAll('#focuspop .row[data-focus]')) {
+    row.setAttribute('aria-selected', String(row.dataset.focus === focusChoice));
+  }
+  const argv = focusArgv();
+  code.textContent = composeCommand(argv);
+  // `window.myctx` rather than a ctx assembled here: the control reaches
+  // `t()`, `announce()` and the execute doors through the ONE shell contract
+  // every screen already uses, so this dialog gets no private surface.
+  host.replaceChildren(commandActions({ argv, id: null, values: {}, ctx: window.myctx }));
+}
+
+/**
  * The document-level wiring, installed once and BEFORE `installItemPane()` —
  * see the Escape guard there for why the order is load-bearing.
  *
@@ -1357,6 +1461,22 @@ function installPopovers() {
     // there is nothing on the server to tell. That is why there is no
     // confirmation here and no `POST` — compare `#focuspop`, which composes a
     // command line and still needs an Execute behind the approval boundary.
+    // ── Inside `#focuspop`: composing a line, and writing NOTHING ─────────
+    //
+    // The opposite case to the one below, and the reason both live in one
+    // handler: a choice here moves `focusChoice` and redraws the composed
+    // line, and the dialog STAYS OPEN because its whole answer is the line
+    // inside it — there is somewhere left to look, which is exactly what is
+    // not true of the session picker. Applying the line is the shared
+    // control's act, behind its confirm; nothing on this path posts.
+    const choice = event.target.closest?.('#focuspop .row[data-focus]');
+    if (choice !== null && choice !== undefined) {
+      const next = choice.dataset.focus;
+      if (typeof next !== 'string' || next === '') return;
+      focusChoice = next;
+      paintFocusCommand();
+      return;
+    }
     const row = event.target.closest?.('#sesspop [data-sid], #sesspop [data-cold]');
     if (row === null || row === undefined) return;
     const chosen = row.dataset.cold !== undefined ? 'cold' : row.dataset.sid;
@@ -1368,11 +1488,24 @@ function installPopovers() {
     // line its choice composes lives INSIDE it.)
     closePopovers(true);
   });
+  // The tag box recomposes as it is typed. Delegated from the document like
+  // everything else here, and narrowed by id rather than by a `.pop` ancestor
+  // test: this is the only input the title bar has, and a handler that fired
+  // for every input in the product would be a handler running on every
+  // keystroke of every screen's forms.
+  document.addEventListener('input', (event) => {
+    if (event.target?.id !== 'focustags') return;
+    paintFocusCommand();
+  });
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
     if (popoverId === null) return;
     closePopovers(true);
   });
+  // The opening composition, drawn once at install so the dialog is never
+  // opened onto an empty `.cmd`. `#focuspop` is authored `hidden`, so this
+  // costs one paint of two elements nobody is looking at yet.
+  paintFocusCommand();
 }
 
 function showExited() {
@@ -4913,6 +5046,26 @@ function drawIdentity(view) {
         { field: 'focus', nameKey: 'strip.grp.focus', titleKey: 'title.focus' }));
     }
     windowEl.replaceChildren(...parts);
+  }
+
+  // **`#focuslbl` — the title bar's half of the same fact.** The trigger has
+  // carried an empty `<b>` since the shell landed, because nothing had ever
+  // told it what focus is set; the strip above has the answer and this is the
+  // one place it is known, so it is written here rather than re-derived.
+  //
+  // It says what IS SET and never what `#focuspop` is composing: the dialog
+  // composes a command that has not been run, and a label that moved on a row
+  // click would be this UI claiming to have applied it. The label moves when
+  // the SERVER's answer moves, which is the only honest trigger.
+  //
+  // `focus.offn` ("no narrowing") rather than an empty label for the no-focus
+  // case — a measured "nothing is narrowing this" and an unread state must not
+  // look alike, which is the same rule the strip's `strip.unread` chip keeps.
+  const focusLabel = document.getElementById('focuslbl');
+  if (focusLabel !== null && view.focusRead) {
+    focusLabel.textContent = view.focus === null
+      ? flat(table.strings, 'focus.offn')
+      : view.focus;
   }
 
   const cost = document.getElementById('coststate');
