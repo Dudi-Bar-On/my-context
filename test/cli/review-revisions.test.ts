@@ -46,7 +46,7 @@ function withProject(fn: (cwd: string) => void): void {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-revs-'));
   try {
     runCli(['init'], cwd, () => {});
-    run(['add', 'rule', 'Do not log customer email', '--body', BODY, '--yes'], cwd);
+    run(['add', '--summary-omitted', 'rule', 'Do not log customer email', '--body', BODY, '--yes'], cwd);
     fn(cwd);
   } finally {
     removeTree(cwd);
@@ -197,7 +197,7 @@ test('the word "governs" appears only where the tier earns it', () => {
       }),
       'utf8',
     );
-    run(['add', 'lesson', 'Retry storms need jitter', '--body', 'Because they synchronise.'], cwd);
+    run(['add', '--summary-omitted', 'lesson', 'Retry storms need jitter', '--body', 'Because they synchronise.'], cwd);
 
     const staged = stageIn(cwd, LESSON, { body: 'Because they synchronise on the same tick.' });
     assert.doesNotMatch(

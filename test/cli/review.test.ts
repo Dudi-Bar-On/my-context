@@ -127,7 +127,7 @@ test('promote can set scope in the same step', () => {
 
 test('promoting a non-draft is refused with its actual status', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Already active', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Already active', '--yes'], cwd);
     const { code, out } = run(['review', 'promote', 'CONST-already-active', '--yes'], cwd);
     assert.equal(code, 1);
     assert.match(out, /active/);

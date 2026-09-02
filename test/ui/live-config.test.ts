@@ -47,7 +47,7 @@ function project(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-live-cfg-'));
   assert.equal(runCli(['init'], dir, () => {}), 0);
   assert.equal(
-    runCli(['add', 'constraint', ITEM_TITLE, '--body', 'a body', '--yes'], dir, () => {}), 0);
+    runCli(['add', '--summary-omitted', 'constraint', ITEM_TITLE, '--body', 'a body', '--yes'], dir, () => {}), 0);
   assert.equal(runCli(['rebuild'], dir, () => {}), 0);
   return dir;
 }

@@ -12,7 +12,7 @@ const count = Number(countArg);
 try {
   const registry = createRegistry(cwd);
   for (let i = 0; i < count; i++) {
-    registry.call('create_item', {
+    registry.call('create_item', { summary_omitted: true,
       type: 'lesson',
       title: label === 'same' ? 'A contended lesson' : `Lesson ${label} ${i}`,
       body: 'Written under contention.',

@@ -91,7 +91,7 @@ test('pinned items appear in the output', () => {
 test('non-pinned items appear only in the index', () => {
   const cwd = sandbox();
   runCli(['init'], cwd, () => {});
-  runCli(['add', 'lesson', 'Migrations need locks'], cwd, () => {});
+  runCli(['add', '--summary-omitted', 'lesson', 'Migrations need locks'], cwd, () => {});
   const out = buildSessionStartOutput(cwd);
   assert.match(out, /1 lesson/);
   assert.equal(/Migrations need locks/.test(out), false);

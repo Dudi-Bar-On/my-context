@@ -5,6 +5,8 @@ title: Checkout completes in two steps
 status: active
 severity: soft
 always: false
+summary: A customer must be able to finish buying something in two steps, so the checkout is short enough that people complete it.
+summary_of: 47e6631339b96a44
 scope: []
 tags:
   - checkout
@@ -14,7 +16,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-14
 valid_until: null
-checksum: b286c4a950816c9b
+checksum: df30c16f4b151af2
 ---
 
 # Checkout completes in two steps

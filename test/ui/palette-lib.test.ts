@@ -510,13 +510,18 @@ const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
       + 'offered, and offering it alone would compose a flag the command refuses.',
   },
   add: {
-    summary: '--summary is a first-class field on every item as of the summary plan phase 1, and '
-      + 'both `add` and `edit` accept it. The palette does not offer it YET, and the reason is '
-      + 'lane rather than design: `src/ui/public/lib/palette-defs.js` belongs to the web shell, and '
-      + 'phase 1 deliberately reaches no screen — the field, its staleness mechanism and the '
-      + 'CLI/MCP surfaces are phase 1; every screen is phase 3. This row is an excuse with an '
-      + 'expiry: the `excused && offered` branch below fails the moment the palette adds it, so '
-      + 'phase 3 cannot leave this sentence standing over the opposite.',
+    // 2026-09-02: `mycontext add` began REFUSING without `--summary` (an item
+    // created with none could never afterwards be asked for one), and the
+    // palette composed `add` without it — a regression that handed the user a
+    // command guaranteed to be refused. `--summary` is now offered below, so
+    // its excuse row is gone; only its opt-out survives here.
+    'summary-omitted': '--summary-omitted is the named opt-out on the CREATION gate: a capture '
+      + 'carrying no --summary is refused, and this flag is how a person says the item should '
+      + 'genuinely have none. It is not offered for the reason its edit-side sibling '
+      + '--summary-unchanged already states: it must be a DELIBERATE act, and a checkbox sitting '
+      + 'beside a title field is the least deliberate control there is. When the palette does '
+      + 'offer it, it belongs beside the refusal it answers rather than in the flag list, and '
+      + 'this row must move rather than stand over the opposite.',
   },
   edit: {
     summary: '--summary is a first-class field on every item as of the summary plan phase 1, and '

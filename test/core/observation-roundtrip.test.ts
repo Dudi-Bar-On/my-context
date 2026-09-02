@@ -229,7 +229,7 @@ test('a double space through the real MCP create_item tool round-trips', () => {
   try {
     runCli(['init'], cwd, () => {});
     const registry = createRegistry(cwd);
-    const message = String(registry.call('create_item', {
+    const message = String(registry.call('create_item', { summary_omitted: true,
       type: 'lesson',
       title: 'Written through MCP',
       body: 'A body.',
@@ -249,7 +249,7 @@ test('a double space through the real MCP create_item tool round-trips', () => {
     // construction, and measured as such — flipped to `match` on a
     // deliberately corrupted tree it still failed, so the line could neither
     // fail for the reason it gave nor pass for one.
-    const after = String(registry.call('create_item', {
+    const after = String(registry.call('create_item', { summary_omitted: true,
       type: 'lesson', title: 'Anything else', body: 'b',
     }));
     assert.doesNotMatch(after, /could not be read during rebuild/);

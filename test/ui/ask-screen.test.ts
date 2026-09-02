@@ -493,7 +493,7 @@ function workspace(): { dir: string; done: () => void } {
   // without confirmation when stdin is not interactive, which it never is
   // under the test runner.
   assert.equal(
-    runCli(['add', 'rule', 'Money is an integer number of cents', '--body', 'B.', '--yes'], dir, quiet),
+    runCli(['add', '--summary-omitted', 'rule', 'Money is an integer number of cents', '--body', 'B.', '--yes'], dir, quiet),
     0, 'fixture command failed: add rule',
   );
   return { dir, done: () => removeTree(dir) };

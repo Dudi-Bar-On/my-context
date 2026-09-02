@@ -231,7 +231,7 @@ test('the route the generic add names captures a category no committed file cove
       'generated file points the reader at a list that would not tell them it exists');
 
     // 2. The capture step itself, through the tool the file names.
-    const created = createRegistry(box.cwd).call('create_item', {
+    const created = createRegistry(box.cwd).call('create_item', { summary_omitted: true,
       type: CUSTOM, title: 'The July rollout needed a manual step', body: 'It did.',
     });
     assert.match(created, new RegExp(`items/${CUSTOM}/[A-Z]+-the-july-rollout-needed-a-manual-step`),
@@ -240,7 +240,7 @@ test('the route the generic add names captures a category no committed file cove
     // 3. And the refusal the file promises for a name this project does NOT
     //    have: by name, with the catalogue listed, from the same one place.
     assert.throws(
-      () => createRegistry(box.cwd).call('create_item', { type: 'deployment_notes', title: 'x' }),
+      () => createRegistry(box.cwd).call('create_item', { summary_omitted: true, type: 'deployment_notes', title: 'x' }),
       (error: Error) => {
         assert.match(error.message, /"type" must be one of: /, 'the catalogue must be listed');
         assert.match(error.message, new RegExp(CUSTOM), 'the listed catalogue is this project\'s');

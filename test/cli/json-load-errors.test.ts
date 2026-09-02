@@ -35,7 +35,7 @@ function run(args: string[], cwd: string): { code: number; out: string } {
 function project(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-json-'));
   runCli(['init'], cwd, () => {});
-  runCli(['add', 'constraint', 'A real item so the reports are not empty', '--yes'], cwd, () => {});
+  runCli(['add', '--summary-omitted', 'constraint', 'A real item so the reports are not empty', '--yes'], cwd, () => {});
   return cwd;
 }
 

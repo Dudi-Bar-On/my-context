@@ -59,7 +59,10 @@ test('a dead scope glob is warned about but does not fail', () => {
     assert.equal(code, 0, 'a warning must not break the build the day a directory is renamed');
     assert.match(out, /dead_scope/);
     assert.match(out, /src\/legacy/);
-    assert.match(out, /1 warning/);
+    // Two: the dead scope, and `summary_absent` on the same item. `writeItem`
+    // here writes raw frontmatter with no summary, which is exactly the
+    // hand-authored case that finding exists to name.
+    assert.match(out, /2 warning/);
   });
 });
 
@@ -114,7 +117,8 @@ test('doctor --quiet prints only the summary line', () => {
     writeItem(cwd, 'CONST-a', 'constraint', 'scope:\n  - "src/legacy/**"\n');
     const { code, out } = run(['doctor', '--quiet'], cwd);
     assert.equal(out.trim().split('\n').length, 1);
-    assert.match(out, /1 warning/);
+    // The dead scope plus `summary_absent` on the same raw-written item.
+    assert.match(out, /2 warning/);
     // The quiet branch has its own `failed ? 1 : 0` return, separate from
     // the verbose branch's — a warn-only run must still exit 0 here too.
     assert.equal(code, 0);
@@ -348,7 +352,8 @@ test('the summary total matches the number of individually printed findings', ()
   withProject((cwd) => {
     for (let i = 0; i < 3; i++) writeItem(cwd, `CONST-${i}`, 'constraint', `scope:\n  - "src/gone${i}/**"\n`);
     const { out } = run(['doctor'], cwd);
-    assert.match(out, /across 3 finding\(s\)/);
+    // Six: one `dead_scope` and one `summary_absent` per raw-written item.
+    assert.match(out, /across 6 finding\(s\)/);
   });
 });
 

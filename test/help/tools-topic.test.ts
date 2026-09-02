@@ -242,7 +242,7 @@ test('an empty tool registry is refused, never rendered as an empty reference', 
  * -------------------------------------------------------------------- */
 
 test('no tool takes `origin`, and the topic quotes the refusal it really gives', () => {
-  const message = workspace((cwd) => call(cwd, 'create_item', {
+  const message = workspace((cwd) => call(cwd, 'create_item', { summary_omitted: true,
     type: 'rule', title: 'Probe', body: 'why', origin: 'human',
   }));
   assert.match(message, /create_item does not take "origin"/, message);
@@ -272,10 +272,10 @@ test('no tool takes `origin`, and the topic quotes the refusal it really gives',
 
 test('an agent-authored normative item lands draft, and a rationale one lands active', () => {
   const { normative, rationale } = workspace((cwd) => ({
-    normative: call(cwd, 'create_item', {
+    normative: call(cwd, 'create_item', { summary_omitted: true,
       type: 'rule', title: 'Never log request bodies on probe endpoints', body: 'why',
     }),
-    rationale: call(cwd, 'create_item', {
+    rationale: call(cwd, 'create_item', { summary_omitted: true,
       type: 'lesson', title: 'Probe lesson about advisory locks', body: 'why',
     }),
   }));
@@ -299,7 +299,7 @@ test('scope, always and severity are refused on a governing normative item, by n
   const answers = workspace((cwd) => {
     let out = '';
     assert.equal(
-      runCli(['add', 'rule', 'Probe governing rule', '--body', 'why', '--yes'], cwd,
+      runCli(['add', '--summary-omitted', 'rule', 'Probe governing rule', '--body', 'why', '--yes'], cwd,
         (s) => { out += `${s}\n`; }),
       0, out,
     );
@@ -333,7 +333,7 @@ test('scope, always and severity are refused on a governing normative item, by n
 });
 
 test('an extra field the category does not declare is refused by name', () => {
-  const message = workspace((cwd) => call(cwd, 'create_item', {
+  const message = workspace((cwd) => call(cwd, 'create_item', { summary_omitted: true,
     type: 'rule', title: 'Probe extra field', body: 'why', likelihood: 'high',
   }));
   assert.match(message, /extra field "likelihood" is not declared by "rule"/, message);
@@ -347,7 +347,7 @@ test('an extra field the category does not declare is refused by name', () => {
 
 test('an undeclared argument is refused by name, which is the probe the topic recommends', () => {
   const { created, updated } = workspace((cwd) => ({
-    created: call(cwd, 'create_item', {
+    created: call(cwd, 'create_item', { summary_omitted: true,
       type: 'rule', title: 'Probe typo', body: 'why', sevrity: 'hard',
     }),
     // The exact call the topic names, and the one this check was built for:
@@ -367,7 +367,7 @@ test('an undeclared argument is refused by name, which is the probe the topic re
 });
 
 test('create_item refuses `relations`, and the topic names the two routes that work', () => {
-  const message = workspace((cwd) => call(cwd, 'create_item', {
+  const message = workspace((cwd) => call(cwd, 'create_item', { summary_omitted: true,
     type: 'rule', title: 'Probe relations', body: 'why',
     relations: [{ type: 'refines', target: 'RULE-x' }],
   }));
@@ -385,10 +385,10 @@ test('create_item refuses `relations`, and the topic names the two routes that w
 test('supersede_item refuses to retire a governing normative item', () => {
   const message = workspace((cwd) => {
     let out = '';
-    runCli(['add', 'rule', 'Probe retiree', '--body', 'why', '--yes'], cwd, (s) => { out += `${s}\n`; });
+    runCli(['add', '--summary-omitted', 'rule', 'Probe retiree', '--body', 'why', '--yes'], cwd, (s) => { out += `${s}\n`; });
     const id = /\b(RULE-[a-z0-9-]+)/.exec(out)?.[1];
     assert.ok(id, out);
-    const replacement = call(cwd, 'create_item', { type: 'rule', title: 'Probe replacement', body: 'why' });
+    const replacement = call(cwd, 'create_item', { summary_omitted: true, type: 'rule', title: 'Probe replacement', body: 'why' });
     const by = /\b(RULE-[a-z0-9-]+)/.exec(replacement)?.[1];
     assert.ok(by, replacement);
     return call(cwd, 'supersede_item', { id, by });

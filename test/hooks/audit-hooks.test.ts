@@ -26,11 +26,11 @@ function project(): Project {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-audit-hook-'));
   assert.equal(runCli(['init'], cwd, () => {}), 0);
   runCli([
-    'add', 'constraint', 'Postgres pool capped at twenty',
+    'add', '--summary-omitted', 'constraint', 'Postgres pool capped at twenty',
     '--body', SECRET, '--scope', 'src/db/**', '--yes',
   ], cwd, () => {});
   runCli([
-    'add', 'rule', 'Always pinned rule',
+    'add', '--summary-omitted', 'rule', 'Always pinned rule',
     '--body', 'Do the thing everywhere.', '--yes',
   ], cwd, () => {});
   const root = resolveWorkspace(cwd).projectRoot!;
@@ -250,7 +250,7 @@ test('a mutation whose audit record fails says so in the message it returns', ()
 
     let out = '';
     const code = runCli(
-      ['add', 'lesson', 'A lesson captured with a broken audit log', '--yes'],
+      ['add', '--summary-omitted', 'lesson', 'A lesson captured with a broken audit log', '--yes'],
       p.cwd, (s) => { out += `${s}\n`; },
     );
     assert.equal(code, 0, 'the capture itself must still succeed');

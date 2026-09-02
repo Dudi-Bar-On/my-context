@@ -27,8 +27,8 @@ function workspace(): { dir: string; done: () => void } {
     assert.equal(runCli(args, dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
   };
   run(['init']);
-  run(['add', 'rule', 'Always use POSIX paths', '--scope', 'src/**', '--body', 'Use POSIX.', '--yes']);
-  run(['add', 'rule', 'Pin me', '--body', 'Pinned body.', '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'Always use POSIX paths', '--scope', 'src/**', '--body', 'Use POSIX.', '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'Pin me', '--body', 'Pinned body.', '--yes']);
   run(['edit', 'RULE-pin-me', '--always=true', '--yes']);
   return { dir, done: () => removeTree(dir) };
 }
@@ -71,7 +71,7 @@ test('/api/revisions: a staged revision arrives as a per-field diff; a human edi
     assert.ok(bodyField!.diff.some((l) => l.mark === '+' && l.text === 'Use POSIX paths everywhere.'));
 
     // A human edit to the same field, via the real CLI:
-    runCli(['edit', rev.itemId, '--body', 'Humanly rewritten.', '--yes'], dir, () => {});
+    runCli(['edit', '--summary-unchanged', rev.itemId, '--body', 'Humanly rewritten.', '--yes'], dir, () => {});
     const after = apiRevisions(ws, new URL('http://x/api/revisions'));
     const staleRev = (after.body as typeof body).revisions[0];
     assert.equal(staleRev.stale, true);

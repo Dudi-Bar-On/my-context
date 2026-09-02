@@ -418,12 +418,24 @@ test('doctor reports a stale summary, an unanchored one and an over-long one', (
   } finally { box.dispose(); }
 });
 
-test('doctor says nothing at all about the 730 items that have no summary', () => {
+/**
+ * This test used to assert the opposite — that doctor said nothing at all about
+ * an item with no summary, so a corpus predating the field would not turn
+ * yellow the day it landed. That silence turned out to be the defect: an item
+ * with no summary is reached by no other clause of `checkSummary`, so "nothing
+ * to report" and "nothing that can be reported" were the same output. The
+ * corpus has since been backfilled, and the finding exists so it can never
+ * quietly refill.
+ */
+test('doctor NAMES an item with no summary — it is the one state no other check reaches', () => {
   const box = sandbox();
   try {
-    assert.deepEqual(checkSummary([itemOf(box, rule(box))]), [],
-      'absent is legal and stays legal — a corpus that predates the field must not turn ' +
-      'yellow the day it lands');
+    const findings = checkSummary([itemOf(box, rule(box))]);
+    assert.deepEqual(findings.map((f) => f.code), ['summary_absent']);
+    assert.equal(findings[0].level, 'warn',
+      'the same level as summary_stale: nothing is lost and nothing is corrupt, and the item ' +
+      'still loads, injects and governs');
+    assert.match(findings[0].message, /no other summary check reaches|reported here or it is reported nowhere/);
   } finally { box.dispose(); }
 });
 

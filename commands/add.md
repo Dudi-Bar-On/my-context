@@ -33,7 +33,13 @@ than part of the name.
    not interrogate the user — at most one clarifying question. `scope` RESTRICTS where the
    item applies, so leave it empty if the item is not about particular files — an item with
    no scope is unrestricted and applies everywhere.
-5. Report the id it returns, in one line, and say which tier it landed on. A **normative**
+5. Fill `summary` with one plain sentence for a reader who does not know this codebase:
+   what the item IS and why it matters — no ids, no file paths, no measurements, never how
+   it was found. It is **required**: a capture without one is refused, because an item
+   created with no summary can never afterwards be asked for one. If this item genuinely
+   has nothing to say in one sentence that its title does not, pass
+   `summary_omitted: true` instead and say in your report that you did.
+6. Report the id it returns, in one line, and say which tier it landed on. A **normative**
    category lands as a **draft**: it governs nothing until a human promotes it with
    `/mycontext:review`. A **rationale** category lands active, and rationale is never
    auto-injected into a session — it is there to be found later.
@@ -50,7 +56,7 @@ categories that have none. For `reference` it is not a preference:
 `/mycontext:add-reference` is the only route, because that body is a
 **snapshot of a file** and no tool call can make one.
 
-If the MCP server is not available, `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" add <category> "<title>" --body "<why it holds>" --scope "<glob>" --tags "<tag>"` captures the same fields from a
+If the MCP server is not available, `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" add <category> "<title>" --body "<why it holds>" --summary "<one plain sentence>" --scope "<glob>" --tags "<tag>"` captures the same fields from a
 shell — but not by the same route: `mycontext add` is the human-facing command, so it
 claims `origin: "human"`, and on a normative category the item lands **active** rather
 than as a draft and governs this project the moment it is written. That is why it

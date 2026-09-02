@@ -113,7 +113,7 @@ test('tools are listed in a deterministic order', () => {
 test('create_item creates a draft because the caller is an agent', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  const text = registry.call('create_item', {
+  const text = registry.call('create_item', { summary_omitted: true,
     type: 'constraint', title: 'Pool capped at 20', body: 'RDS permits 25.',
     scope: ['src/db/**'],
   });
@@ -136,7 +136,7 @@ test('create_item refuses an origin argument instead of accepting and dropping i
   const cwd = project();
   const registry = createRegistry(cwd);
   assert.throws(
-    () => registry.call('create_item', { type: 'constraint', title: 'Pool cap', origin: 'human' }),
+    () => registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap', origin: 'human' }),
     /create_item does not take "origin"/,
   );
   // Refused before the handler ran, so nothing was written under any origin.
@@ -147,7 +147,7 @@ test('create_item refuses an origin argument instead of accepting and dropping i
 test('the origin refusal says why, rather than only that', () => {
   const cwd = project();
   assert.throws(
-    () => createRegistry(cwd).call('create_item', {
+    () => createRegistry(cwd).call('create_item', { summary_omitted: true,
       type: 'constraint', title: 'Pool cap', origin: 'human',
     }),
     /records origin "agent" itself/,
@@ -158,7 +158,7 @@ test('the origin refusal says why, rather than only that', () => {
 test('update_item refuses an origin argument, so an agent cannot self-attest as human', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   assert.throws(
     () => registry.call('update_item', { id: 'CONST-pool-cap', status: 'active', origin: 'human' }),
     /update_item does not take "origin"/,
@@ -171,8 +171,8 @@ test('update_item refuses an origin argument, so an agent cannot self-attest as 
 
 test('create_item is idempotent across calls and across processes', () => {
   const cwd = project();
-  createRegistry(cwd).call('create_item', { type: 'lesson', title: 'Locks matter' });
-  const second = createRegistry(cwd).call('create_item', { type: 'lesson', title: 'Locks matter' });
+  createRegistry(cwd).call('create_item', { summary_omitted: true, type: 'lesson', title: 'Locks matter' });
+  const second = createRegistry(cwd).call('create_item', { summary_omitted: true, type: 'lesson', title: 'Locks matter' });
   assert.match(second, /already captured as LESSON-locks-matter/);
   removeTree(cwd);
 });
@@ -180,7 +180,7 @@ test('create_item is idempotent across calls and across processes', () => {
 test('create_item with a bad type returns a teaching message', () => {
   const cwd = project();
   assert.throws(
-    () => createRegistry(cwd).call('create_item', { type: 'requirment', title: 'X' }),
+    () => createRegistry(cwd).call('create_item', { summary_omitted: true, type: 'requirment', title: 'X' }),
     /closest match is "requirement"/,
   );
   removeTree(cwd);
@@ -189,7 +189,7 @@ test('create_item with a bad type returns a teaching message', () => {
 test('create_item with a non-array scope is corrected, not coerced silently', () => {
   const cwd = project();
   assert.throws(
-    () => createRegistry(cwd).call('create_item', {
+    () => createRegistry(cwd).call('create_item', { summary_omitted: true,
       type: 'constraint', title: 'X', scope: 'src/db/**',
     }),
     /"scope" must be an array of strings/,
@@ -200,7 +200,7 @@ test('create_item with a non-array scope is corrected, not coerced silently', ()
 test('get_item returns the full Markdown and query_items finds it', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', {
+  registry.call('create_item', { summary_omitted: true,
     type: 'lesson', title: 'Migrations need locks', body: 'Two deploys collided.',
     tags: ['database'],
   });
@@ -215,8 +215,8 @@ test('get_item returns the full Markdown and query_items finds it', () => {
 test('query_items filters by the file path an item scopes', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
-  registry.call('create_item', { type: 'constraint', title: 'Token check', scope: ['src/api/**'] });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Token check', scope: ['src/api/**'] });
 
   const hits = registry.call('query_items', { path: 'src/db/writer.ts' });
   assert.match(hits, /CONST-pool-cap/);
@@ -234,8 +234,8 @@ test('query_items filters by the file path an item scopes', () => {
 test('query_items returns unscoped items for any path — they are unrestricted, not unmatched', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Applies everywhere' });
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Applies everywhere' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
 
   for (const path of ['src/db/writer.ts', 'docs/notes.md']) {
     const hits = registry.call('query_items', { path });
@@ -249,7 +249,7 @@ test('query_items returns unscoped items for any path — they are unrestricted,
 test('query_items accepts a Windows path and normalizes it', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap', scope: ['src/db/**'] });
   assert.match(registry.call('query_items', { path: 'src\\db\\writer.ts' }), /CONST-pool-cap/);
   removeTree(cwd);
 });
@@ -264,7 +264,7 @@ test('query_items bounds its output and discloses the remainder', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
   for (let i = 0; i < 30; i++) {
-    registry.call('create_item', { type: 'lesson', title: `Lesson number ${i}` });
+    registry.call('create_item', { summary_omitted: true, type: 'lesson', title: `Lesson number ${i}` });
   }
   const out = registry.call('query_items', { type: 'lesson', limit: 5 });
   assert.equal(out.split('\n').filter((l) => l.startsWith('LESSON-')).length, 5);
@@ -275,8 +275,8 @@ test('query_items bounds its output and discloses the remainder', () => {
 test('list_drafts is the review queue', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
-  registry.call('create_item', { type: 'lesson', title: 'Locks matter' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'lesson', title: 'Locks matter' });
 
   const drafts = registry.call('list_drafts', {});
   assert.match(drafts, /CONST-pool-cap/);
@@ -287,8 +287,8 @@ test('list_drafts is the review queue', () => {
 test('supersede_item retires without deleting when one agent-authored draft supersedes another', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool capped at 10' });
-  registry.call('create_item', { type: 'constraint', title: 'Pool capped at 20' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool capped at 10' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool capped at 20' });
 
   const text = registry.call('supersede_item', {
     id: 'CONST-pool-capped-at-10', by: 'CONST-pool-capped-at-20', reason: 'RDS resized.',
@@ -301,8 +301,8 @@ test('supersede_item retires without deleting when one agent-authored draft supe
 test('an agent cannot supersede a governing normative item through the registry', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool capped at 10' });
-  registry.call('create_item', { type: 'constraint', title: 'Pool capped at 20' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool capped at 10' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool capped at 20' });
 
   // A human promotes the retiree to active — the registry itself has no way
   // to do this, since every handler passes origin: 'agent'.
@@ -321,8 +321,8 @@ test('an agent cannot supersede a governing normative item through the registry'
 test('supersede_item refuses an origin argument, so an agent cannot self-attest as human', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool capped at 10' });
-  registry.call('create_item', { type: 'constraint', title: 'Pool capped at 20' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool capped at 10' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool capped at 20' });
   promoteToActive(cwd, 'CONST-pool-capped-at-10');
 
   assert.throws(
@@ -341,7 +341,7 @@ test('supersede_item refuses an origin argument, so an agent cannot self-attest 
 test('update_item cannot change the status of a normative item', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   assert.throws(
     () => registry.call('update_item', { id: 'CONST-pool-cap', status: 'active' }),
     /cannot change the status of a normative item/i,
@@ -352,8 +352,8 @@ test('update_item cannot change the status of a normative item', () => {
 test('link_items records a relation', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
-  registry.call('create_item', { type: 'adr', title: 'Managed Postgres' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'adr', title: 'Managed Postgres' });
   registry.call('link_items', {
     from: 'CONST-pool-cap', to: 'ADR-managed-postgres', relation: 'derived_from',
   });
@@ -367,7 +367,7 @@ test('link_items records a relation', () => {
 test('get_item on an unknown id suggests the nearest', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   assert.throws(
     () => registry.call('get_item', { id: 'CONST-pool-capp' }),
     /closest match is "CONST-pool-cap"/,
@@ -387,7 +387,7 @@ test('mycontext_help and mycontext_examples answer from the topic files', () => 
 test('a missing required argument is named', () => {
   const cwd = project();
   assert.throws(
-    () => createRegistry(cwd).call('create_item', { type: 'constraint' }),
+    () => createRegistry(cwd).call('create_item', { summary_omitted: true, type: 'constraint' }),
     /create_item requires "title"/,
   );
   removeTree(cwd);
@@ -396,7 +396,7 @@ test('a missing required argument is named', () => {
 test('calling a tool outside a workspace explains how to create one', () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-bare-'));
   assert.throws(
-    () => createRegistry(cwd).call('create_item', { type: 'constraint', title: 'X' }),
+    () => createRegistry(cwd).call('create_item', { summary_omitted: true, type: 'constraint', title: 'X' }),
     /mycontext init/,
   );
   removeTree(cwd);
@@ -463,8 +463,8 @@ test('list_drafts ties on valid_from break by id ascending, for determinism', ()
 test('update_item can correct an extra field set at creation', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'risk', title: 'Vendor outage', likelihood: 'low' });
-  registry.call('update_item', { id: 'RISK-vendor-outage', extra: { likelihood: 'high' } });
+  registry.call('create_item', { summary_omitted: true, type: 'risk', title: 'Vendor outage', likelihood: 'low' });
+  registry.call('update_item', { summary_unchanged: true, id: 'RISK-vendor-outage', extra: { likelihood: 'high' } });
   assert.match(registry.call('get_item', { id: 'RISK-vendor-outage' }), /likelihood: high/);
   removeTree(cwd);
 });
@@ -477,7 +477,7 @@ test('update_item refuses an always that selection would ignore, rather than sto
   // "updated" over a field that does nothing. It is now refused (spec §3).
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'lesson', title: 'A rationale item', body: 'b' });
+  registry.call('create_item', { summary_omitted: true, type: 'lesson', title: 'A rationale item', body: 'b' });
   assert.throws(
     () => registry.call('update_item', { id: 'LESSON-a-rationale-item', always: true }),
     /only governs on the normative tier/,
@@ -507,12 +507,13 @@ test('a normative item with always is accepted and given no inert note', () => {
   // The other direction: a rule that fires on everything says nothing.
   const cwd = project();
   const registry = createRegistry(cwd);
-  const created = registry.call('create_item', {
+  const created = registry.call('create_item', { summary_omitted: true,
     type: 'constraint', title: 'Pool capped at 20', body: 'b', always: true,
   });
   assert.doesNotMatch(created, /INERT/);
   const updated = registry.call('update_item', {
     id: 'CONST-pool-capped-at-20', always: true, body: 'Measured.',
+    summary: 'A sentence for the fixture.',
   });
   assert.doesNotMatch(updated, /INERT/);
   removeTree(cwd);
@@ -531,7 +532,7 @@ test('update_item refuses extra.__proto__ instead of reporting a silent no-op', 
   // the MCP transport.
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'risk', title: 'Vendor outage' });
+  registry.call('create_item', { summary_omitted: true, type: 'risk', title: 'Vendor outage' });
   const args = JSON.parse('{"id": "RISK-vendor-outage", "extra": {"__proto__": "boom"}}');
   assert.throws(
     () => registry.call('update_item', args),
@@ -546,7 +547,7 @@ test('update_item refuses extra.__proto__ instead of reporting a silent no-op', 
 test('update_item refuses a non-object extra rather than silently dropping it', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'risk', title: 'Vendor outage' });
+  registry.call('create_item', { summary_omitted: true, type: 'risk', title: 'Vendor outage' });
   assert.throws(
     () => registry.call('update_item', { id: 'RISK-vendor-outage', extra: 'high' }),
     /"extra" must be an object/,
@@ -587,7 +588,7 @@ test('mycontext_examples on a prototype-polluting type is refused with a teachin
 test('update_item with a wrong-typed title is refused, not a silent no-op', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   assert.throws(
     () => registry.call('update_item', { id: 'CONST-pool-cap', title: 12345 }),
     /"title" must be a string/,
@@ -600,7 +601,7 @@ test('update_item with a wrong-typed title is refused, not a silent no-op', () =
 test('update_item with a wrong-typed always is refused, not a silent no-op', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   assert.throws(
     () => registry.call('update_item', { id: 'CONST-pool-cap', always: 'true' }),
     /"always" must be a boolean/,
@@ -613,10 +614,10 @@ test('an explicit null on an optional string field behaves exactly like omitting
   const registry = createRegistry(cwd);
   // source_file: null must create successfully (not throw "must be a
   // string") and must be indistinguishable from never having passed it.
-  const withNull = registry.call('create_item', {
+  const withNull = registry.call('create_item', { summary_omitted: true,
     type: 'constraint', title: 'Pool cap A', source_file: null,
   });
-  const omitted = registry.call('create_item', {
+  const omitted = registry.call('create_item', { summary_omitted: true,
     type: 'constraint', title: 'Pool cap B',
   });
   assert.match(withNull, /created/);
@@ -627,7 +628,7 @@ test('an explicit null on an optional string field behaves exactly like omitting
 test('an explicit null on an optional boolean field behaves exactly like omitting it', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   const text = registry.call('update_item', { id: 'CONST-pool-cap', always: null });
   assert.match(text, /updated/);
   removeTree(cwd);
@@ -636,7 +637,7 @@ test('an explicit null on an optional boolean field behaves exactly like omittin
 test('an explicit null limit falls back to the default, like an omitted one', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'lesson', title: 'Locks matter' });
+  registry.call('create_item', { summary_omitted: true, type: 'lesson', title: 'Locks matter' });
   const text = registry.call('query_items', { type: 'lesson', limit: null });
   assert.match(text, /LESSON-locks-matter/);
   removeTree(cwd);
@@ -645,7 +646,7 @@ test('an explicit null limit falls back to the default, like an omitted one', ()
 test('an explicit null extra behaves exactly like omitting it', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   const text = registry.call('update_item', { id: 'CONST-pool-cap', extra: null });
   assert.match(text, /updated/);
   removeTree(cwd);
@@ -656,7 +657,7 @@ test('an explicit null on an optional array field behaves exactly like omitting 
   const registry = createRegistry(cwd);
   // scope: null must create successfully — not throw "must be an array of
   // strings" — and behave the same as never passing scope at all.
-  const text = registry.call('create_item', {
+  const text = registry.call('create_item', { summary_omitted: true,
     type: 'constraint', title: 'Pool cap', scope: null,
   });
   assert.match(text, /created/);
@@ -666,7 +667,7 @@ test('an explicit null on an optional array field behaves exactly like omitting 
 test('an explicit null on an optional enum field behaves exactly like omitting it', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   // status: null on query_items must not throw an enum error — it must
   // behave as though status were never passed, i.e. no status filter.
   const text = registry.call('query_items', { type: 'constraint', status: null });
@@ -677,7 +678,7 @@ test('an explicit null on an optional enum field behaves exactly like omitting i
 test('an explicit null on the observations field behaves exactly like omitting it', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  const text = registry.call('create_item', {
+  const text = registry.call('create_item', { summary_omitted: true,
     type: 'lesson', title: 'Locks matter', observations: null,
   });
   assert.match(text, /created/);
@@ -687,7 +688,7 @@ test('an explicit null on the observations field behaves exactly like omitting i
 test('a per-entry observation context: null is unaffected by the top-level null handling', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  const text = registry.call('create_item', {
+  const text = registry.call('create_item', { summary_omitted: true,
     type: 'lesson', title: 'Locks matter',
     observations: [{ category: 'symptom', text: 'Duplicate column errors', context: null }],
   });
@@ -698,10 +699,10 @@ test('a per-entry observation context: null is unaffected by the top-level null 
 test('an explicit null does not bypass wrong-type rejection for a real array or enum violation', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   // A bare string (not null, not an array) is still refused for scope.
   assert.throws(
-    () => registry.call('create_item', { type: 'constraint', title: 'X', scope: 'src/db/**' }),
+    () => registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'X', scope: 'src/db/**' }),
     /"scope" must be an array of strings/,
   );
   // A non-member string (not null) is still refused for status.
@@ -715,7 +716,7 @@ test('an explicit null does not bypass wrong-type rejection for a real array or 
 test('an explicit null does not bypass wrong-type rejection for genuinely bad values', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   // A number is still refused — only null (and undefined) are treated as absent.
   assert.throws(
     () => registry.call('update_item', { id: 'CONST-pool-cap', title: 12345 }),
@@ -735,7 +736,7 @@ test("update_item's extra schema constrains values to strings", () => {
 test('create_item refuses an observation missing category, rather than defaulting to "note"', () => {
   const cwd = project();
   assert.throws(
-    () => createRegistry(cwd).call('create_item', {
+    () => createRegistry(cwd).call('create_item', { summary_omitted: true,
       type: 'lesson', title: 'X', observations: [{ text: 'no category here' }],
     }),
     /observations\[0\] is missing "category"/,
@@ -746,7 +747,7 @@ test('create_item refuses an observation missing category, rather than defaultin
 test('create_item refuses an observation with a non-string text, rather than stringifying it', () => {
   const cwd = project();
   assert.throws(
-    () => createRegistry(cwd).call('create_item', {
+    () => createRegistry(cwd).call('create_item', { summary_omitted: true,
       type: 'lesson', title: 'X', observations: [{ category: 'note', text: 42 }],
     }),
     /observations\[0\] is missing "text"/,
@@ -780,7 +781,7 @@ test('a rebuild error surfaces as a note on the result, not silence', () => {
   writeFileSync(path.join(itemsDir, 'CONST-broken.md'), 'not a valid item file at all', 'utf8');
 
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   const out = registry.call('query_items', { type: 'constraint' });
 
   assert.match(out, /CONST-pool-cap/);
@@ -798,7 +799,7 @@ test('a rebuild error surfaces as a note on the result, not silence', () => {
 test('a clean rebuild never appends a load-error note', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   const out = registry.call('get_item', { id: 'CONST-pool-cap' });
   assert.equal(/could not be read during rebuild/.test(out), false);
   removeTree(cwd);
@@ -821,7 +822,7 @@ test('create_item refuses kind on a constraint, naming the category and what it 
   const cwd = project();
   const registry = createRegistry(cwd);
   assert.throws(
-    () => registry.call('create_item', { type: 'constraint', title: 'Weird', kind: 'x' }),
+    () => registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Weird', kind: 'x' }),
     (err: Error) => {
       assert.match(err.message, /extra field "kind" is not declared by "constraint"/);
       assert.match(err.message, /declares no extra fields at all/);
@@ -833,7 +834,7 @@ test('create_item refuses kind on a constraint, naming the category and what it 
   );
   // ...and the same field on the category that DOES declare it still lands.
   assert.match(
-    registry.call('create_item', { type: 'requirement', title: 'Reset flow', kind: 'functional' }),
+    registry.call('create_item', { summary_omitted: true, type: 'requirement', title: 'Reset flow', kind: 'functional' }),
     /created/,
   );
   removeTree(cwd);
@@ -872,8 +873,8 @@ test('the create_item schema exposes exactly the extra fields the config declare
   // And nothing invented: every schema property is either a core create_item
   // field or a declared extra field.
   const core = new Set([
-    'type', 'title', 'body', 'summary', 'scope', 'tags', 'severity', 'always', 'observations',
-    'steps', 'source_file', 'source_anchor',
+    'type', 'title', 'body', 'summary', 'summary_omitted', 'scope', 'tags', 'severity', 'always',
+    'observations', 'steps', 'source_file', 'source_anchor',
   ]);
   for (const key of Object.keys(props)) {
     assert.ok(core.has(key) || declared.includes(key), `schema has undeclared property "${key}"`);
@@ -884,7 +885,7 @@ test('the create_item schema exposes exactly the extra fields the config declare
 test('create_item stores validated_on, which the hardcoded harvest silently dropped', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', {
+  registry.call('create_item', { summary_omitted: true,
     type: 'assumption', title: 'Traffic stays under 500rps', validated_on: '2026-01-01',
   });
   assert.match(
@@ -897,7 +898,7 @@ test('create_item stores validated_on, which the hardcoded harvest silently drop
 test('create_item stores blocks, the other field the hardcoded harvest dropped', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', {
+  registry.call('create_item', { summary_omitted: true,
     type: 'open_question', title: 'Shard by tenant or region', blocks: 'REQ-sharding',
   });
   assert.match(
@@ -1114,7 +1115,7 @@ test('create_item refuses a relations argument rather than dropping it', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
   assert.throws(
-    () => registry.call('create_item', {
+    () => registry.call('create_item', { summary_omitted: true,
       type: 'constraint', title: 'Pool cap',
       relations: [{ type: 'derived_from', target: 'LESSON-x' }],
     }),
@@ -1129,7 +1130,7 @@ test('create_item refuses a relations argument rather than dropping it', () => {
 test('the relations refusal names the routes that do work', () => {
   const cwd = project();
   assert.throws(
-    () => createRegistry(cwd).call('create_item', {
+    () => createRegistry(cwd).call('create_item', { summary_omitted: true,
       type: 'constraint', title: 'Pool cap', relations: [],
     }),
     /link_items\(from, to, relation\)[\s\S]*supersede_item\(id, by\)/,
@@ -1143,8 +1144,8 @@ test('refusing relations at creation does not reopen the retirement-edge door', 
   // a second way to assert one. Both halves are pinned here.
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool capped at 10' });
-  registry.call('create_item', { type: 'constraint', title: 'Pool capped at 20' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool capped at 10' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool capped at 20' });
   for (const relation of ['supersedes', 'superseded_by']) {
     assert.throws(
       () => registry.call('link_items', {
@@ -1155,7 +1156,7 @@ test('refusing relations at creation does not reopen the retirement-edge door', 
     );
   }
   assert.throws(
-    () => registry.call('create_item', {
+    () => registry.call('create_item', { summary_omitted: true,
       type: 'constraint', title: 'Pool capped at 30',
       relations: [{ type: 'superseded_by', target: 'CONST-pool-capped-at-20' }],
     }),
@@ -1188,7 +1189,7 @@ test('every tool refuses an argument it does not declare', () => {
 test('a misspelled argument is refused, not answered with success', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', { type: 'constraint', title: 'Pool cap' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
   assert.throws(
     () => registry.call('update_item', { id: 'CONST-pool-cap', sevrity: 'hard' }),
     /does not take "sevrity"/,
@@ -1206,7 +1207,7 @@ test('the refusal is about unknown keys only — a full, correct call still work
   // A guard that refused everything would pass every assertion above.
   const cwd = project();
   const registry = createRegistry(cwd);
-  const text = registry.call('create_item', {
+  const text = registry.call('create_item', { summary_omitted: true,
     type: 'constraint', title: 'Pool capped at 20', body: 'RDS permits 25.',
     scope: ['src/db/**'], tags: ['db'], severity: 'hard', always: false,
     observations: [{ category: 'note', text: 'Seen in staging.', tags: ['x'], context: 'ops' }],
@@ -1242,14 +1243,20 @@ test('every advertised schema closes its top level, so a client sees the same ru
  */
 function stageAgainstGoverning(cwd: string, id: string): void {
   const registry = createRegistry(cwd);
-  registry.call('update_item', { id, body: 'A proposal nobody has settled.' });
+  // A summary rather than `summary_unchanged`: under `agentEdits: "review"` the
+  // hatch is refused outright, because a staged revision has nowhere to carry
+  // "the summary still describes this". A summary IS stageable, so this is the
+  // shape an agent's proposal has to take on a governing item.
+  registry.call('update_item', {
+    id, body: 'A proposal nobody has settled.', summary: 'A proposed sentence.',
+  });
 }
 
 /** A governing normative item, so an agent's content edit stages rather than
  * applying — `agentEdits` defaults to `review` on every normative category. */
 function governingRule(cwd: string): string {
   const registry = createRegistry(cwd);
-  registry.call('create_item', {
+  registry.call('create_item', { summary_omitted: true,
     type: 'rule', title: 'Never log customer email', body: 'The original body.',
   });
   const id = 'RULE-never-log-customer-email';
@@ -1282,7 +1289,7 @@ test('get_item on a DIFFERENT item does not claim a revision it does not have', 
   const cwd = project();
   const id = governingRule(cwd);
   stageAgainstGoverning(cwd, id);
-  createRegistry(cwd).call('create_item', { type: 'lesson', title: 'Locks matter' });
+  createRegistry(cwd).call('create_item', { summary_omitted: true, type: 'lesson', title: 'Locks matter' });
 
   const other = createRegistry(cwd).call('get_item', { id: 'LESSON-locks-matter' });
   assert.doesNotMatch(other, /pending revision/);
@@ -1292,7 +1299,7 @@ test('get_item on a DIFFERENT item does not claim a revision it does not have', 
 test('query_items marks the items whose text is pre-proposal, and reports the queue', () => {
   const cwd = project();
   const id = governingRule(cwd);
-  createRegistry(cwd).call('create_item', { type: 'lesson', title: 'Locks matter' });
+  createRegistry(cwd).call('create_item', { summary_omitted: true, type: 'lesson', title: 'Locks matter' });
   stageAgainstGoverning(cwd, id);
 
   const out = createRegistry(cwd).call('query_items', {});
@@ -1358,7 +1365,7 @@ test('every agent-facing surface reports the same pending-revision count as the 
   const cwd = project();
   const id = governingRule(cwd);
   const registry = createRegistry(cwd);
-  registry.call('update_item', { id, body: 'First proposal.' });
+  registry.call('update_item', { id, body: 'First proposal.', summary: 'A proposed sentence.' });
   registry.call('update_item', { id, title: 'Never log any customer email' });
 
   const surfaces: Record<string, string> = {
@@ -1383,7 +1390,7 @@ test('every agent-facing surface reports the same pending-revision count as the 
 test('an observation entry may still carry tags and context, and the schema says so', () => {
   const cwd = project();
   const registry = createRegistry(cwd);
-  registry.call('create_item', {
+  registry.call('create_item', { summary_omitted: true,
     type: 'lesson', title: 'Locks matter',
     observations: [{ category: 'note', text: 'A DDL wedged staging.', tags: ['db'], context: 'ops' }],
   });
@@ -1417,7 +1424,7 @@ function stepsOnDisk(cwd: string, filePath: string): { text: string; checked: bo
 
 test('create_item accepts steps and they land unchecked', () => {
   const cwd = project();
-  const text = createRegistry(cwd).call('create_item', {
+  const text = createRegistry(cwd).call('create_item', { summary_omitted: true,
     type: 'procedure',
     title: 'Rotate the webhook secret',
     body: 'The live secret leaked.',
@@ -1450,7 +1457,7 @@ test('create_item exposes nothing about `checked`, and refuses a Step-shaped arr
   assert.deepEqual(steps.items, { type: 'string' });
   assert.equal(JSON.stringify(schema).includes('checked'), false);
   assert.throws(
-    () => createRegistry(cwd).call('create_item', {
+    () => createRegistry(cwd).call('create_item', { summary_omitted: true,
       type: 'procedure', title: 'Rotate it', steps: [{ text: 'Roll it', checked: true }],
     }),
     /"steps" must be an array of strings/,

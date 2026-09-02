@@ -58,7 +58,7 @@ function findings(cwd: string): ReturnType<typeof checkSourceDrift> {
 }
 
 function capture(cwd: string): { code: number; out: string } {
-  return run(['add', 'reference', 'Roadmap', '--file', 'docs/roadmap.md'], cwd);
+  return run(['add', '--summary-omitted', 'reference', 'Roadmap', '--file', 'docs/roadmap.md'], cwd);
 }
 
 // --- capture ---
@@ -97,7 +97,7 @@ test('--body and --file together are refused, and nothing is created', () => {
   const cwd = sandbox();
   try {
     const { code, out } = run(
-      ['add', 'reference', 'Roadmap', '--file', 'docs/roadmap.md', '--body', 'mine'], cwd,
+      ['add', '--summary-omitted', 'reference', 'Roadmap', '--file', 'docs/roadmap.md', '--body', 'mine'], cwd,
     );
     assert.equal(code, 1);
     assert.match(out, /--body and --file both supply the item's body/);
@@ -110,7 +110,7 @@ test('--body and --file together are refused, and nothing is created', () => {
 test('a --file refusal lands before the item is created, not after', () => {
   const cwd = sandbox();
   try {
-    const { code, out } = run(['add', 'reference', 'Missing', '--file', 'docs/nope.md'], cwd);
+    const { code, out } = run(['add', '--summary-omitted', 'reference', 'Missing', '--file', 'docs/nope.md'], cwd);
     assert.equal(code, 1);
     assert.match(out, /could not be read/);
     assert.deepEqual(items(cwd), []);
@@ -123,7 +123,7 @@ test('--note records the WHY the snapshot itself cannot carry', () => {
   const cwd = sandbox();
   try {
     const { code } = run([
-      'add', 'reference', 'Roadmap', '--file', 'docs/roadmap.md',
+      'add', '--summary-omitted', 'reference', 'Roadmap', '--file', 'docs/roadmap.md',
       '--note', 'The ordering is what matters; the dates move.',
       '--note', 'Retire this when billing moves out of the monolith.',
     ], cwd);
@@ -279,7 +279,7 @@ test('refresh on an unchanged file says so and writes nothing', () => {
 test('refresh refuses an item that is not a snapshot, and says which kind it is', () => {
   const cwd = sandbox();
   try {
-    run(['add', 'decision', 'A decision with no source'], cwd);
+    run(['add', '--summary-omitted', 'decision', 'A decision with no source'], cwd);
     const { code, out } = run(['refresh', 'DEC-a-decision-with-no-source', '--yes'], cwd);
     assert.equal(code, 1);
     assert.match(out, /records no source file/);

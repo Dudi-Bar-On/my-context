@@ -98,14 +98,14 @@ function fixture(): Fixture {
     assert.equal(runCli(args, dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
   };
   run(['init']);
-  run(['add', 'rule', 'Always use POSIX paths', '--scope', 'src/**', '--tags', 'paths',
+  run(['add', '--summary-omitted', 'rule', 'Always use POSIX paths', '--scope', 'src/**', '--tags', 'paths',
     '--body', 'Use POSIX separators everywhere. '.repeat(40), '--yes']);
-  run(['add', 'rule', 'Never log the customer email', '--scope', 'src/**',
+  run(['add', '--summary-omitted', 'rule', 'Never log the customer email', '--scope', 'src/**',
     '--body', 'Redact the address before it reaches a log sink. '.repeat(40), '--yes']);
-  run(['add', 'rule', 'Pin me', '--body', 'Pinned body, long enough to cost real tokens. '
+  run(['add', '--summary-omitted', 'rule', 'Pin me', '--body', 'Pinned body, long enough to cost real tokens. '
     .repeat(30), '--yes']);
   run(['edit', 'RULE-pin-me', '--always=true', '--yes']);
-  run(['add', 'decision', 'We chose sqlite', '--body', 'Rationale body.', '--yes']);
+  run(['add', '--summary-omitted', 'decision', 'We chose sqlite', '--body', 'Rationale body.', '--yes']);
 
   const ws = resolveWorkspace(dir);
   const store = Store.openReadOnlyChecked(ws.dbPath);
@@ -606,11 +606,11 @@ function evictionFixture(): Fixture {
     assert.equal(runCli(args, dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
   };
   run(['init']);
-  run(['add', 'rule', 'AAA big pinned item', '--body', 'Big body text. '.repeat(400), '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'AAA big pinned item', '--body', 'Big body text. '.repeat(400), '--yes']);
   run(['edit', 'RULE-aaa-big-pinned-item', '--always=true', '--yes']);
-  run(['add', 'rule', 'BBB medium pinned item', '--body', 'Medium body text. '.repeat(15), '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'BBB medium pinned item', '--body', 'Medium body text. '.repeat(15), '--yes']);
   run(['edit', 'RULE-bbb-medium-pinned-item', '--always=true', '--yes']);
-  run(['add', 'rule', 'CCC small pinned item', '--body', 'Tiny body.', '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'CCC small pinned item', '--body', 'Tiny body.', '--yes']);
   run(['edit', 'RULE-ccc-small-pinned-item', '--always=true', '--yes']);
   const ws = resolveWorkspace(dir);
   const store = Store.openReadOnlyChecked(ws.dbPath);
@@ -1369,7 +1369,7 @@ test('/api/status is `status --json`\'s document, composed from the same functio
       + 'lost one would make the badge quietly under-report, which is the defect this whole '
       + 'change is against',
     );
-    assert.deepEqual(body.health, { errors: 1, warnings: 2, infos: 1, acknowledged: 0 },
+    assert.deepEqual(body.health, { errors: 1, warnings: 7, infos: 1, acknowledged: 0 },
       'all three levels are non-zero, so no field of the tally can be a hard-coded 0');
     assert.equal(
       body.health.errors + body.health.warnings + body.health.infos, findings.length,
@@ -1453,11 +1453,19 @@ test('/api/doctor is runChecks verbatim — unfiltered, ungrouped, unsorted', ()
     // Non-vacuity, and the shape of the screen's three groups: all three
     // levels present, four findings under three codes, in `runChecks`' own
     // order — neither grouped by code nor sorted by level here.
+    // `summary_absent` on every item is the honest tail of this fixture: it
+    // captures through `mycontext add --summary-omitted`, which is the named
+    // opt-out, and doctor names exactly the items nothing else can reach.
     assert.deepEqual(findings.map((x) => [x.level, x.code, x.item ?? null]), [
       ['error', 'source_missing', 'RULE-a-captured-rule'],
       ['warn', 'dead_scope', 'RULE-always-use-posix-paths'],
       ['warn', 'dead_scope', 'RULE-never-log-the-customer-email'],
       ['info', 'scope_policy_required', null],
+      ['warn', 'summary_absent', 'DEC-we-chose-sqlite'],
+      ['warn', 'summary_absent', 'RULE-a-captured-rule'],
+      ['warn', 'summary_absent', 'RULE-always-use-posix-paths'],
+      ['warn', 'summary_absent', 'RULE-never-log-the-customer-email'],
+      ['warn', 'summary_absent', 'RULE-pin-me'],
     ]);
     for (const finding of findings) {
       assert.ok(['error', 'warn', 'info'].includes(finding.level));
@@ -1719,8 +1727,8 @@ function coverageFixture(): { f: Fixture; ws: Workspace; repoRoot: string } {
   const run = (args: string[]): void => {
     assert.equal(runCli(args, f.dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
   };
-  run(['add', 'rule', 'Unscoped rule', '--body', 'No scope at all, and not pinned.', '--yes']);
-  run(['add', 'rule', 'Draft rule', '--scope', 'src/**', '--body', 'Not promoted yet.', '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'Unscoped rule', '--body', 'No scope at all, and not pinned.', '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'Draft rule', '--scope', 'src/**', '--body', 'Not promoted yet.', '--yes']);
   run(['edit', 'RULE-draft-rule', '--status', 'draft', '--yes']);
   repoFiles(f.dir, ['src/a.ts', 'src/deep/b.ts', 'top.md']);
   return { f, ws: resolveWorkspace(f.dir), repoRoot: f.dir };
@@ -2284,8 +2292,8 @@ test('/api/graph tells two edges apart when their ends concatenate to one string
     const run = (args: string[]): void => {
       assert.equal(runCli(args, f.dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
     };
-    run(['add', 'rule', 'A', '--body', 'The shorter id.', '--yes']);
-    run(['add', 'rule', 'A x', '--body', 'The id that extends it.', '--yes']);
+    run(['add', '--summary-omitted', 'rule', 'A', '--body', 'The shorter id.', '--yes']);
+    run(['add', '--summary-omitted', 'rule', 'A x', '--body', 'The id that extends it.', '--yes']);
     const ws = relate(f, [
       { from: 'RULE-a', type: 'depends_on', to: 'RULE-a-x' },
       { from: 'RULE-a', type: 'relates_to', to: '-x-y' },
@@ -2559,7 +2567,7 @@ test('/api/help/:topic joins the four topics to THIS corpus', () => {
     const run = (args: string[]): void => {
       assert.equal(runCli(args, f.dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
     };
-    run(['add', 'rule', 'Unscoped rule', '--body', 'No scope at all.', '--yes']);
+    run(['add', '--summary-omitted', 'rule', 'Unscoped rule', '--body', 'No scope at all.', '--yes']);
     run(['edit', B, '--status', 'draft', '--yes']);
     stageIn(f.dir, C, { title: 'Pin me, revised' });
     stageIn(f.dir, C, { body: 'A second proposal, against the same item.' });
@@ -2637,8 +2645,8 @@ test('/api/help capture is ordered by file mtime, capped at five, and project-la
     const run = (args: string[]): void => {
       assert.equal(runCli(args, f.dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
     };
-    run(['add', 'rule', 'Sixth rule', '--body', 'Sixth.', '--yes']);
-    run(['add', 'rule', 'Seventh rule', '--body', 'Seventh.', '--yes']);
+    run(['add', '--summary-omitted', 'rule', 'Sixth rule', '--body', 'Sixth.', '--yes']);
+    run(['add', '--summary-omitted', 'rule', 'Seventh rule', '--body', 'Seventh.', '--yes']);
 
     const ws = resolveWorkspace(f.dir);
     const all = withStores(ws, (store) => store.all());

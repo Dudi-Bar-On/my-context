@@ -65,10 +65,10 @@ const DOCUMENT = [
 test('add --body and edit --body refuse a "## " heading with the SAME sentence â€” one check, not two', () => {
   withProject((cwd) => {
     const body = 'Prose.\n\n## A heading\n\nMore.';
-    assert.equal(run(['add', 'note', 'anchor', '--body', 'Plain.', '--yes'], cwd).code, 0);
+    assert.equal(run(['add', '--summary-omitted', 'note', 'anchor', '--body', 'Plain.', '--yes'], cwd).code, 0);
 
-    const added = run(['add', 'note', 'refused', '--body', body, '--yes'], cwd);
-    const edited = run(['edit', 'NOTE-anchor', '--body', body, '--yes'], cwd);
+    const added = run(['add', '--summary-omitted', 'note', 'refused', '--body', body, '--yes'], cwd);
+    const edited = run(['edit', '--summary-unchanged', 'NOTE-anchor', '--body', body, '--yes'], cwd);
 
     assert.equal(added.code, 1);
     assert.equal(edited.code, 1);
@@ -83,7 +83,7 @@ test('add --body and edit --body refuse a "## " heading with the SAME sentence â
 test('add --file stores a heading-heavy file WHOLE, and the item recovers it byte for byte', () => {
   withProject((cwd) => {
     writeFileSync(path.join(cwd, 'roadmap.md'), DOCUMENT + '\n', 'utf8');
-    const { code } = run(['add', 'note', 'roadmap', '--file', 'roadmap.md', '--yes'], cwd);
+    const { code } = run(['add', '--summary-omitted', 'note', 'roadmap', '--file', 'roadmap.md', '--yes'], cwd);
     assert.equal(code, 0);
 
     const rel = path.join('.my_context', 'items', 'note', 'NOTE-roadmap.md');
@@ -101,7 +101,7 @@ test('the byte count add --file prints is the count it STORED, not one it droppe
   // held 1,272 of them. The figure now describes the body that was written.
   withProject((cwd) => {
     writeFileSync(path.join(cwd, 'roadmap.md'), DOCUMENT + '\n', 'utf8');
-    const { out } = run(['add', 'note', 'roadmap', '--file', 'roadmap.md', '--yes'], cwd);
+    const { out } = run(['add', '--summary-omitted', 'note', 'roadmap', '--file', 'roadmap.md', '--yes'], cwd);
 
     const printed = /(\d+) bytes/.exec(out);
     assert.ok(printed, 'the snapshot line must state a size at all');
@@ -119,7 +119,7 @@ test('a --file snapshot survives a repair without losing a line', () => {
   // bodies went. A quoted snapshot must come back byte-identical.
   withProject((cwd) => {
     writeFileSync(path.join(cwd, 'roadmap.md'), DOCUMENT + '\n', 'utf8');
-    assert.equal(run(['add', 'note', 'roadmap', '--file', 'roadmap.md', '--yes'], cwd).code, 0);
+    assert.equal(run(['add', '--summary-omitted', 'note', 'roadmap', '--file', 'roadmap.md', '--yes'], cwd).code, 0);
 
     const file = path.join(cwd, '.my_context', 'items', 'note', 'NOTE-roadmap.md');
     const before = readFileSync(file, 'utf8');

@@ -193,7 +193,8 @@ test('a sequenced marker runs its commands in one workspace and shows the last',
   const dir = fixture();
   try {
     const out = runExample(
-      'add constraint "Uploads capped at 10 MB" --yes && list constraint --summary', dir);
+      'add constraint "Uploads capped at 10 MB" --summary-omitted --yes '
+      + '&& list constraint --summary', dir);
     assert.match(out, /2 item\(s\)/, out);
     assert.doesNotMatch(out, /created CONST-uploads-capped-at-10-mb/,
       'only the last command in the sequence is documented');
@@ -260,7 +261,7 @@ test('the round trip fills a block, is idempotent, and catches a hand edit', () 
 test('a capturing example cannot leak into the examples after it', () => {
   const md = [
     '# Doc', '',
-    block('add constraint "Docs isolation probe" --yes', ''), '',
+    block('add constraint "Docs isolation probe" --summary-omitted --yes', ''), '',
     block('list', ''), '',
   ].join('\n');
 
@@ -636,7 +637,7 @@ test('a global layer on the generating machine cannot reach a documented example
     // Built through `init` + `add` rather than hand-written, so its checksums
     // are the ones the runtime computes.
     bareCli(['init'], scratch, process.env);
-    bareCli(['add', 'constraint', 'Global layer leaked into the docs', '--yes'],
+    bareCli(['add', '--summary-omitted', 'constraint', 'Global layer leaked into the docs', '--yes'],
       scratch, process.env);
     cpSync(path.join(scratch, '.my_context'), path.join(home, '.my-context'), { recursive: true });
 

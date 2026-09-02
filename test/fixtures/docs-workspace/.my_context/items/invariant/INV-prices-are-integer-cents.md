@@ -5,6 +5,8 @@ title: Prices are integer cents
 status: active
 severity: soft
 always: false
+summary: Money is stored as whole cents rather than as decimal numbers, so rounding can never creep into a price.
+summary_of: 19dd95f5ffbaa0fa
 scope:
   - src/billing/**
 tags:
@@ -16,7 +18,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-14
 valid_until: null
-checksum: b9c3d588c634c8cc
+checksum: ba6d47d686e30f88
 ---
 
 # Prices are integer cents

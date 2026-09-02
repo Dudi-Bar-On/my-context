@@ -39,8 +39,8 @@ function withProject(fn: (cwd: string) => void): void {
 }
 
 function seed(cwd: string): void {
-  run(['add', 'constraint', 'Pool capped at 20', '--yes'], cwd);
-  run(['add', 'lesson', 'Migrations need locks'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Pool capped at 20', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'lesson', 'Migrations need locks'], cwd);
 }
 
 /** An ingest session with two chunks, one applied — the hierarchical case. */
@@ -914,7 +914,7 @@ test('doctor --json carries findings, counts and the exit code it returns', () =
 test('doctor --full renders a stanza per finding, level and code first; --summary is the one-line form', () => {
   withProject((cwd) => {
     // A dead scope glob is a warn-level finding, so there is something to show.
-    run(['add', 'constraint', 'Scoped at a directory that does not exist', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Scoped at a directory that does not exist', '--yes'], cwd);
     const file = path.join(cwd, '.my_context', 'items', 'constraint',
       'CONST-scoped-at-a-directory-that-does-not-exist.md');
     const text = readFileSync(file, 'utf8');

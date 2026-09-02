@@ -119,7 +119,7 @@ function project(): string {
   assert.equal(runCli(['init'], cwd, () => {}), 0);
   assert.equal(
     runCli(
-      ['add', 'rule', 'Never log customer email', '--body', LOCAL_BODY, '--yes'],
+      ['add', '--summary-omitted', 'rule', 'Never log customer email', '--body', LOCAL_BODY, '--yes'],
       cwd, () => {},
     ),
     0,

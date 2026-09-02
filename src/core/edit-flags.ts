@@ -132,8 +132,10 @@ const BUILT_IN_DECLARATIONS: FlagDeclarations = {
       + 'or the extra fields is refused without a new `--summary`, because nothing in this '
       + 'product can write one for you; this is the answer for a typo, a reflow or a rewrapped '
       + 'paragraph. It re-stamps what the summary was written against without new text, and the '
-      + 'audit row records that nobody rewrote it. It is refused beside `--summary`, on an item '
-      + 'with no summary, and on an edit that was never asked for one.',
+      + 'audit row records that nobody rewrote it. On an item that has NO summary it says '
+      + 'something slightly different - that the item is being left without one, deliberately '
+      + '- and the audit row records `summary-omitted` instead. It is refused beside '
+      + '`--summary`, and on an edit that was never asked for one.',
   },
   always: {
     note: 'Pin the item: inject it in full at every session start. `--always=false` clears it, '

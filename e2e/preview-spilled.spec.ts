@@ -654,8 +654,16 @@ test('the warm view NAMES what the seen gate removed, and the cold view names th
 
   // The SENTENCE carries the whole count and not the drawn one: a card naming 20
   // where the gate removed 106 would be the display cap reported as a fact.
+  //
+  // Re-pinned 2026-09-02: the owner reworded `preview.seen` from "reached the
+  // seen gate" to "hit the seen gate" (on-screen English only, no product
+  // change). The verb is deliberately NOT pinned here — what this still
+  // protects is that the COUNT is named against "the seen gate", via a single
+  // wildcard word standing in for the verb. A wildcard on the whole tail
+  // (or dropping the count) would go vacuous and pass even if the count were
+  // wrong or missing, which is the failure this test exists to catch.
   await expect(notDelivered(page)).toContainText(
-    new RegExp(`${warm.seenFiltered.length} item\\(s\\) reached the seen gate`),
+    new RegExp(`${warm.seenFiltered.length} item\\(s\\) \\S+ the seen gate`),
   );
 
   // A row is a ROUTE, like every other id in this product.

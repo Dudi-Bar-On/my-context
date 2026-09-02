@@ -238,7 +238,10 @@ test('doctor --full counts a load error and a real finding together', () => {
     const { code, out } = run(['doctor', '--full'], cwd);
     assert.equal(code, 1);
     assert.match(out, /doctor: 2 error\(s\)/);
-    assert.match(out, /across 1 finding\(s\)/);
+    // Two findings: the missing source document, and `summary_absent` on the
+    // same raw-written item, which carries no summary because it was written
+    // as frontmatter rather than captured.
+    assert.match(out, /across 2 finding\(s\)/);
     assert.match(out, /1 of the error\(s\) are corpus load errors/);
   });
 });

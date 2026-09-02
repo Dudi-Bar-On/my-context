@@ -5,6 +5,8 @@ title: Postgres pool capped at 20
 status: active
 severity: hard
 always: true
+summary: There is a hard ceiling on how many database connections the service may hold open at once.
+summary_of: cca5a2d55ca94239
 scope: []
 tags:
   - database
@@ -15,7 +17,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-14
 valid_until: null
-checksum: a81dff73a154242e
+checksum: 7785698cd925ccc8
 ---
 
 # Postgres pool capped at 20

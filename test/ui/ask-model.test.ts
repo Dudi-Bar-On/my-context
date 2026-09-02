@@ -37,14 +37,14 @@ function workspace(): { dir: string; root: string; done: () => void } {
   // plan's fixture omitted it and would have created no rules at all, then
   // asserted over the two it did not create.
   assert.equal(
-    runCli(['add', 'rule', 'Scoped rule', '--scope', 'src/**', '--body', 'B.', '--yes'], dir, quiet),
+    runCli(['add', '--summary-omitted', 'rule', 'Scoped rule', '--scope', 'src/**', '--body', 'B.', '--yes'], dir, quiet),
     0, 'fixture command failed: add scoped rule',
   );
   assert.equal(
-    runCli(['add', 'rule', 'Pinned rule', '--body', 'B.', '--yes'], dir, quiet),
+    runCli(['add', '--summary-omitted', 'rule', 'Pinned rule', '--body', 'B.', '--yes'], dir, quiet),
     0, 'fixture command failed: add pinned rule',
   );
-  assert.equal(runCli(['add', 'decision', 'A decision', '--body', 'B.'], dir, quiet), 0,
+  assert.equal(runCli(['add', '--summary-omitted', 'decision', 'A decision', '--body', 'B.'], dir, quiet), 0,
     'fixture command failed: add decision');
   // `always` has no `add` flag — it is a governing change and only `edit`
   // expresses it, with its own confirmation.
@@ -357,25 +357,25 @@ function taskWorkspace(): { dir: string; root: string; done: () => void } {
   };
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 
-  run(['add', 'task', 'Wire the retry budget', '--body', 'B.',
+  run(['add', '--summary-omitted', 'task', 'Wire the retry budget', '--body', 'B.',
     '--tags', 'plan:alpha,seq:1,state:done', '--yes']);
   // **A `state` FIELD that disagrees with the `state:` TAG.** Measured on the
   // real corpus 2026-08-23: 293 tasks, all 293 carry the tag, 213 also carry
   // the field, and FIFTEEN of those disagree. Reconciling them is
   // `plan:categories seq:18`, not this report; what this report owes is to say
   // which one it read, and this row is what pins that answer.
-  run(['add', 'task', 'Backfill the invoice ids', '--body', 'B.',
+  run(['add', '--summary-omitted', 'task', 'Backfill the invoice ids', '--body', 'B.',
     '--tags', 'plan:alpha,seq:2,state:doing', '--extra', 'state=todo', '--yes']);
   // `seq:10` sorts AFTER `seq:2` here and BEFORE it under a string compare.
-  run(['add', 'task', 'Split the settlement job', '--body', 'B.',
+  run(['add', '--summary-omitted', 'task', 'Split the settlement job', '--body', 'B.',
     '--tags', 'plan:alpha,seq:10,state:todo', '--yes']);
-  run(['add', 'task', 'Retire the webhook path', '--body', 'B.',
+  run(['add', '--summary-omitted', 'task', 'Retire the webhook path', '--body', 'B.',
     '--tags', 'plan:beta,seq:1,state:blocked', '--yes']);
   // No tags at all: plan, seq and progress are NULL — the corpus does not say,
   // which is not the same fact as any particular value.
-  run(['add', 'task', 'An untagged task', '--body', 'B.', '--yes']);
+  run(['add', '--summary-omitted', 'task', 'An untagged task', '--body', 'B.', '--yes']);
   // A non-task with a mutation history of its own. It must not reach the report.
-  run(['add', 'decision', 'A decision', '--body', 'B.']);
+  run(['add', '--summary-omitted', 'decision', 'A decision', '--body', 'B.']);
   return { dir, root: path.join(dir, '.my_context'), done: () => removeTree(dir) };
 }
 

@@ -470,8 +470,21 @@ test('the category wizard refuses a name the catalogue already has, and hands of
     // looks like and the two must not be confusable.
     const taken = await page.locator(`${pane('categories')} select.path`).inputValue();
     await settle('name', taken);
+    // Re-pinned 2026-09-02: this refusal's on-screen English was shortened
+    // ("already a category in this configuration" -> "already a category
+    // here"). The wording moved; the INTENT this assertion protects did not,
+    // and it is still the one the failure message names — the wizard must say
+    // WHY the name is refused, rather than only disabling Next. Pinned on
+    // `already a category`, which is the reason's durable core and is NOT
+    // satisfied by the step-2 prefix refusal ("is already the prefix of") or
+    // by a generic "invalid name", so wrong text still fails here. The second
+    // assertion is the other half of "said why": the message names the value
+    // it is refusing, which `{mv:name}` in `cfg.wz.taken` renders.
     await expect(wizard, `the wizard did not say why "${taken}" is refused`)
-      .toContainText('already a category in this configuration');
+      .toContainText('already a category');
+    await expect(wizard, `the wizard refused a name without naming it — "${taken}" is absent ` +
+      'from the message, so a reader cannot tell what it is being asked to change')
+      .toContainText(taken);
     await expect(next, `the wizard let "${taken}" past step 1, and the catalogue already has it`)
       .toBeDisabled();
 
@@ -484,7 +497,20 @@ test('the category wizard refuses a name the catalogue already has, and hands of
     // catalogue rather than about the field. `TASK` is `task`'s prefix in this
     // corpus's own config, and the refusal names the category it belongs to.
     await settle('prefix', 'TASK');
-    await expect(wizard).toContainText('is already the prefix of');
+    // Re-pinned 2026-09-02: this refusal's on-screen English was shortened
+    // ("TASK is already the prefix of task" -> "TASK is already used by
+    // task."). The wording moved; the INTENT the comment above states did not,
+    // and it is what is pinned in the two assertions below — the refusal must
+    // say the prefix is already TAKEN, and must name the category that holds
+    // it, so a collision reads as a fact about the resolved catalogue rather
+    // than a complaint about the field. `cfg.wz.pfxtaken` renders both through
+    // `{mv:prefix}` and `{mv:cat}`; they are asserted separately because each
+    // is its own isolated run and only the phrases are contiguous text.
+    await expect(wizard, 'the wizard did not say the prefix is already taken')
+      .toContainText('is already used by');
+    await expect(wizard, 'the refusal never named the category that already holds TASK — a ' +
+      'collision the reader cannot attribute is not an answer')
+      .toContainText('task');
     await expect(next, 'the wizard let a colliding prefix past — two categories would mint one id')
       .toBeDisabled();
     await settle('prefix', 'E2EW');

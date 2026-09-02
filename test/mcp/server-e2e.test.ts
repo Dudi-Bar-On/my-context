@@ -55,7 +55,7 @@ test('a legacy client can initialize, list and call tools over stdio', async () 
       jsonrpc: '2.0', id: 3, method: 'tools/call',
       params: {
         name: 'create_item',
-        arguments: { type: 'constraint', title: 'Pool capped at 20', scope: ['src/db/**'] },
+        arguments: { summary_omitted: true, type: 'constraint', title: 'Pool capped at 20', scope: ['src/db/**'] },
       },
     });
 
@@ -100,7 +100,7 @@ test('a rejected call arrives as content the model can read', async () => {
     harness.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
     harness.send({
       jsonrpc: '2.0', id: 2, method: 'tools/call',
-      params: { name: 'create_item', arguments: { type: 'requirment', title: 'X' } },
+      params: { name: 'create_item', arguments: { summary_omitted: true, type: 'requirment', title: 'X' } },
     });
 
     const [, call] = await harness.responses(2);
@@ -143,7 +143,7 @@ test('nothing but MCP messages reaches stdout', async () => {
  */
 test('load_context runs over stdio without a byte of stray stdout', async () => {
   const cwd = project();
-  runCli(['add', 'lesson', 'Migrations need locks'], cwd, () => {});
+  runCli(['add', '--summary-omitted', 'lesson', 'Migrations need locks'], cwd, () => {});
   const harness = start(cwd);
   try {
     harness.send({
@@ -186,7 +186,7 @@ function governingRule(cwd: string, config?: Record<string, unknown>): string {
   }
   const id = 'RULE-do-not-log-customer-email';
   assert.equal(runCli(
-    ['add', 'rule', 'Do not log customer email',
+    ['add', '--summary-omitted', 'rule', 'Do not log customer email',
       '--body', 'Never log a customer email address, anywhere.', '--scope', 'src/**', '--yes'],
     cwd, () => {},
   ), 0);
@@ -218,6 +218,7 @@ test('update_item stages an agent content edit under review, and says it did not
   try {
     const { isError, text } = await callUpdate(harness, {
       id, body: 'Avoid logging customer email addresses unless it is necessary.',
+      summary: 'A proposed sentence.',
     });
 
     assert.equal(isError, false, 'staging is not a failure — it is a different outcome');
@@ -239,6 +240,7 @@ test('update_item applies an agent content edit under allow', async () => {
   try {
     const { isError, text } = await callUpdate(harness, {
       id, body: 'Avoid logging customer email addresses unless it is necessary.',
+      summary: 'A proposed sentence.',
     });
 
     assert.equal(isError, false);
@@ -282,14 +284,14 @@ test('update_item refuses a mixed content-and-scope call whole', async () => {
       jsonrpc: '2.0', id: 2, method: 'tools/call',
       params: {
         name: 'create_item',
-        arguments: { type: 'rule', title: 'Cache reads', body: 'Cache for 60s.', scope: ['src/**'] },
+        arguments: { summary_omitted: true, type: 'rule', title: 'Cache reads', body: 'Cache for 60s.', scope: ['src/**'] },
       },
     });
     harness.send({
       jsonrpc: '2.0', id: 3, method: 'tools/call',
       params: {
         name: 'update_item',
-        arguments: { id: 'RULE-cache-reads', body: 'Cache for 300s.', scope: ['docs/**'] },
+        arguments: { id: 'RULE-cache-reads', body: 'Cache for 300s.', scope: ['docs/**'], summary: 'A proposed sentence.' },
       },
     });
     const [, created, mixed] = await harness.responses(3);
@@ -297,7 +299,9 @@ test('update_item refuses a mixed content-and-scope call whole', async () => {
 
     const result = mixed.result as { isError: boolean; content: { text: string }[] };
     assert.equal(result.isError, true);
-    assert.match(result.content[0].text, /mixes a content change \(body\) with a change to scope/);
+    // `summary` rides along because a body edit cannot be sent without one — see
+    // the summary gate. Both are content, and the refusal names both.
+    assert.match(result.content[0].text, /mixes a content change \(body, summary\) with a change to scope/);
     assert.match(result.content[0].text, /nothing was applied and nothing was staged/);
 
     const file = readFileSync(path.join(cwd, '.my_context', 'items', 'rule', 'RULE-cache-reads.md'), 'utf8');
@@ -317,7 +321,7 @@ test('the server survives a workspace it cannot use', async () => {
     harness.send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
     harness.send({
       jsonrpc: '2.0', id: 2, method: 'tools/call',
-      params: { name: 'create_item', arguments: { type: 'constraint', title: 'X' } },
+      params: { name: 'create_item', arguments: { summary_omitted: true, type: 'constraint', title: 'X' } },
     });
 
     const [list, call] = await harness.responses(2);

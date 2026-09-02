@@ -108,9 +108,12 @@ async function stripped(page: Page, body: (fixture: Fixture) => Promise<void>): 
   try {
     cli(['init'], dir);
     cli(['add', 'rule', 'the first item the strip counts',
-      '--body', 'Two items exist before anything in this test runs.', '--yes'], dir);
+      '--body', 'Two items exist before anything in this test runs.',
+      '--summary', 'A rule that already exists before anything else happens, so the count shown along the top of the screen starts from a known state.',
+      '--yes'], dir);
     cli(['add', 'rule', 'the second item the strip counts',
       '--body', 'The count on the strip is a measurement, so it starts at a known number.',
+      '--summary', 'A further rule that exists from the outset, so the count shown on screen has a settled value to be seen moving away from.',
       '--yes'], dir);
     // Without this the projection is ABSENT rather than fresh, and the
     // provenance bar's answer would start at `prov.projAbsent` — a state that
@@ -168,6 +171,7 @@ test('an item is created with the app open: the strip\'s count moves, and the gi
     // writes rather than one this test forged into the log.
     cli(['add', 'rule', 'a third item, created while the page was open',
       '--body', 'Created after the page loaded, so the count on the strip is now stale.',
+      '--summary', 'A rule created after the page was already open, so the display has to notice it and update without anybody reloading.',
       '--yes'], dir);
 
     // ── WHAT THE STRIP DOES ABOUT IT ─────────────────────────────────────

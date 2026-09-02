@@ -66,7 +66,7 @@ test('supersede refuses a global-layer item on either side, before any preview',
     runCli(['init'], cwd, () => {});
     globalItem('CONST-global-one', 'A global constraint');
     globalItem('CONST-global-two', 'Another global constraint');
-    run(['add', 'constraint', 'A project constraint', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'A project constraint', '--yes'], cwd);
     const projectId = 'CONST-a-project-constraint';
 
     // The global items are visible to this project (so the refusal below is

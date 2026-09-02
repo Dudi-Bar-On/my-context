@@ -55,7 +55,7 @@ function project(): string {
   execFileSync(process.execPath, [CLI, 'init'], { cwd: dir, stdio: 'ignore' });
   execFileSync(
     process.execPath,
-    [CLI, 'add', 'rule', 'a rule to change', '--body', 'a body', '--yes'],
+    [CLI, 'add', '--summary-omitted', 'rule', 'a rule to change', '--body', 'a body', '--yes'],
     { cwd: dir, stdio: 'ignore' },
   );
   return dir;
@@ -232,7 +232,7 @@ test('the real corpus is untouched — the command runs against the copy and now
   const before = readdirSync(path.join(corpus, 'items', 'rule')).sort();
 
   const effect = deriveEffect(corpus, dir, CLI,
-    ['add', 'note', 'a note the dry run creates', '--body', 'b', '--yes']);
+    ['add', '--summary-omitted', 'note', 'a note the dry run creates', '--body', 'b', '--yes']);
 
   assert.equal(effect.length, 1, 'the command creates exactly one item');
   assert.equal(effect[0]?.kind, 'created');
@@ -261,7 +261,7 @@ test('a repository-relative path means what the user typed, not what the copy co
   writeFileSync(path.join(dir, 'a-file-in-the-repo.md'), '# captured\n\nbody\n');
 
   const effect = deriveEffect(path.join(dir, '.my_context'), dir, CLI,
-    ['add', 'note', 'from a repo file', '--file', 'a-file-in-the-repo.md', '--yes']);
+    ['add', '--summary-omitted', 'note', 'from a repo file', '--file', 'a-file-in-the-repo.md', '--yes']);
 
   assert.equal(effect.length, 1, 'the capture must succeed: the file is right where the user said');
   assert.equal(effect[0]?.kind, 'created');
@@ -284,7 +284,7 @@ test('a STORED repository-relative path resolves too — refresh, the second sit
   const corpus = path.join(dir, '.my_context');
   writeFileSync(path.join(dir, 'snapshotted.md'), '# one' + "\\n" + "\\n" + 'first' + "\\n");
   execFileSync(process.execPath,
-    [CLI, 'add', 'note', 'a snapshot', '--file', 'snapshotted.md', '--yes'],
+    [CLI, 'add', '--summary-omitted', 'note', 'a snapshot', '--file', 'snapshotted.md', '--yes'],
     { cwd: dir, stdio: 'ignore' });
 
   // Move the file on, so refresh has something to report.
@@ -311,7 +311,7 @@ test('the corpus still cannot be reached, even though cwd is now the real reposi
   const rules = () => readdirSync(path.join(corpus, 'items', 'rule')).sort();
   const before = rules();
 
-  deriveEffect(corpus, dir, CLI, ['add', 'rule', 'written only to the copy', '--body', 'b', '--yes']);
+  deriveEffect(corpus, dir, CLI, ['add', '--summary-omitted', 'rule', 'written only to the copy', '--body', 'b', '--yes']);
 
   assert.deepEqual(rules(), before,
     'the child ran at the real repository root and must STILL have written only to the copy');

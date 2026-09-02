@@ -77,9 +77,9 @@ function reconfigure(cwd: string, edit: (config: Record<string, unknown>) => voi
 
 test('`mycontext todo` lists todos and nothing else', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher on 5xx', '--yes'], cwd);
-    run(['add', 'note', 'Seed script leaves orphaned carts', '--yes'], cwd);
-    run(['add', 'decision', 'Use Postgres', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher on 5xx', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'note', 'Seed script leaves orphaned carts', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'decision', 'Use Postgres', '--yes'], cwd);
 
     const { code, out } = run(['todo'], cwd);
     assert.equal(code, 0);
@@ -91,7 +91,7 @@ test('`mycontext todo` lists todos and nothing else', () => {
 
 test('the review queue is not widened by anything this command lists', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher on 5xx', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher on 5xx', '--yes'], cwd);
 
     const listed = run(['todo'], cwd);
     assert.match(listed.out, /TODO-retry-the-dispatcher-on-5xx/);
@@ -106,7 +106,7 @@ test('the review queue is not widened by anything this command lists', () => {
 
 test('the disclosure line carries its own condition', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher on 5xx', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher on 5xx', '--yes'], cwd);
 
     const rationale = prose(run(['todo'], cwd).out);
     assert.match(rationale, /rationale tier/);
@@ -140,7 +140,7 @@ test('the disclosure line carries its own condition', () => {
  */
 test('the inbox names the route out, and that route is a real command', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher on 5xx', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher on 5xx', '--yes'], cwd);
     const listed = prose(run(['todo'], cwd).out);
     assert.match(listed, /mycontext inbox-promote <todo id> --to <category>/);
     assert.match(listed, /derived_from/);
@@ -172,8 +172,8 @@ test('an empty inbox says so rather than printing an empty table', () => {
 
 test('--tag narrows, and it is the tag that narrows rather than the text', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher', '--tags', 'billing', '--yes'], cwd);
-    run(['add', 'todo', 'Rename the config key', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher', '--tags', 'billing', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Rename the config key', '--yes'], cwd);
 
     const kept = run(['todo', '--tag', 'billing'], cwd);
     assert.equal(kept.code, 0);
@@ -184,7 +184,7 @@ test('--tag narrows, and it is the tag that narrows rather than the text', () =>
 
 test('an unknown flag is refused by name, against this command\'s own usage', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher', '--tags', 'billing', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher', '--tags', 'billing', '--yes'], cwd);
 
     const { code, out } = run(['todo', '--tags', 'billing'], cwd);
     assert.equal(code, 1);
@@ -200,7 +200,7 @@ test('an unknown flag is refused by name, against this command\'s own usage', ()
 
 test('the refusal comes before the listing, not after it', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher', '--yes'], cwd);
     const { out } = run(['todo', '--limit', '1', '--agnet'], cwd);
     // One line of refusal plus the usage block, and no table at all — the
     // `cmdAdd` lesson: a gate that validates after it has printed is a gate
@@ -212,8 +212,8 @@ test('the refusal comes before the listing, not after it', () => {
 
 test('retired todos are hidden by default and shown with --all, with the count disclosed', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher', '--yes'], cwd);
-    run(['add', 'todo', 'Rename the config key', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Rename the config key', '--yes'], cwd);
     run(['edit', 'TODO-retry-the-dispatcher', '--status', 'deprecated', '--yes'], cwd);
 
     const shown = run(['todo'], cwd);
@@ -234,7 +234,7 @@ test('retired todos are hidden by default and shown with --all, with the count d
 
 test('a draft todo is listed rather than hidden with the retired ones', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher', '--yes'], cwd);
     run(['edit', 'TODO-retry-the-dispatcher', '--status', 'draft', '--yes'], cwd);
 
     const { out } = run(['todo'], cwd);
@@ -247,8 +247,8 @@ test('a draft todo is listed rather than hidden with the retired ones', () => {
 
 test('--limit caps the table and says it capped it', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher', '--yes'], cwd);
-    run(['add', 'todo', 'Rename the config key', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Rename the config key', '--yes'], cwd);
 
     const { code, out } = run(['todo', '--limit', '1'], cwd);
     assert.equal(code, 0);
@@ -275,7 +275,7 @@ test('--tag twice is refused rather than answered with one of them', () => {
 
 test('--all=false means false, and --all=maybe is refused rather than guessed', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher', '--yes'], cwd);
     run(['edit', 'TODO-retry-the-dispatcher', '--status', 'deprecated', '--yes'], cwd);
 
     const declined = run(['todo', '--all=false'], cwd);
@@ -291,7 +291,7 @@ test('--all=false means false, and --all=maybe is refused rather than guessed', 
 
 test('the detail levels are the same four every report carries', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher', '--tags', 'billing', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher', '--tags', 'billing', '--yes'], cwd);
 
     const summary = run(['todo', '--summary'], cwd);
     assert.equal(summary.code, 0);
@@ -311,8 +311,8 @@ test('the detail levels are the same four every report carries', () => {
 
 test('no line of any detail level ends in whitespace', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'An untagged thing', '--yes'], cwd);
-    run(['add', 'todo', 'A tagged thing', '--tags', 'infra', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'An untagged thing', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'A tagged thing', '--tags', 'infra', '--yes'], cwd);
 
     for (const level of [[], ['--short'], ['--full'], ['--summary']]) {
       const { out } = run(['todo', ...level], cwd);
@@ -329,8 +329,8 @@ test('no line of any detail level ends in whitespace', () => {
 
 test('--json carries the counts the prose carries, including what is hidden', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher', '--tags', 'billing', '--yes'], cwd);
-    run(['add', 'todo', 'Rename the config key', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher', '--tags', 'billing', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Rename the config key', '--yes'], cwd);
     run(['edit', 'TODO-retry-the-dispatcher', '--status', 'deprecated', '--yes'], cwd);
 
     const { code, out } = run(['todo', '--json'], cwd);
@@ -365,7 +365,7 @@ test('--json carries the counts the prose carries, including what is hidden', ()
 
 test('a disabled `todo` category still lists what was captured before it was switched off', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher', '--yes'], cwd);
     reconfigure(cwd, (config) => {
       const categories = config.categories as Record<string, Record<string, unknown>>;
       categories.todo = { ...categories.todo, enabled: false };
@@ -393,7 +393,7 @@ test('outside a workspace it says where to start rather than printing an empty i
 
 test('`search --type todo` already answered the same question, and still does', () => {
   withProject((cwd) => {
-    run(['add', 'todo', 'Retry the dispatcher on 5xx', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Retry the dispatcher on 5xx', '--yes'], cwd);
     const { code, out } = run(['search', '--type', 'todo'], cwd);
     assert.equal(code, 0);
     assert.match(out, /TODO-retry-the-dispatcher-on-5xx/);

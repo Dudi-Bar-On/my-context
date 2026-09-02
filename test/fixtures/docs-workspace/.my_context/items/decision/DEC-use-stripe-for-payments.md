@@ -5,6 +5,8 @@ title: Use Stripe for payments
 status: active
 severity: soft
 always: false
+summary: Payments are handled by an outside payment company, so this project never holds a card number itself.
+summary_of: 059e2a7b499e2b84
 scope: []
 tags:
   - payments
@@ -14,7 +16,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-14
 valid_until: null
-checksum: a0c1cbba4cc370ed
+checksum: 288f5545ca9e03d3
 ---
 
 # Use Stripe for payments

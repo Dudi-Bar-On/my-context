@@ -25,7 +25,8 @@ import { stageRevision, type RevisionChanges } from './revision.ts';
 import { makeId } from './slug.ts';
 import { summaryReaffirmed } from './summary-gate.ts';
 import {
-  reaffirmSummary, reviseSummary, SUMMARY_REAFFIRMED_NOTE, SUMMARY_UNCHANGED_NOTE,
+  reaffirmSummary, reviseSummary,
+  SUMMARY_OMITTED_NOTE, SUMMARY_REAFFIRMED_NOTE, SUMMARY_UNCHANGED_NOTE,
 } from './summary-history.ts';
 import type { Store } from './store.ts';
 import { projectFieldUpdate, projectOntoTags } from './tag-projection.ts';
@@ -94,10 +95,19 @@ export interface CreateInput {
    * `SUMMARY_MAX_CHARS` (validate.ts) for the bar and the bound.
    *
    * Omitted, empty, or whitespace-only all mean the same thing and all store
-   * `null`: **absent is legal**, and it is what all 730 items in this corpus
-   * are. Nothing here generates one — the owner's constraint is no external
+   * `null`. Nothing here generates one — the owner's constraint is no external
    * API, and a CLI write cannot call a model, so a summary arrives only
    * because a person or an agent wrote one through the ordinary capture path.
+   *
+   * **Absent is legal HERE and refused at the authored surfaces.** This field
+   * stays optional on `CreateInput` because `createItem` is the shared road
+   * every mechanical caller drives down — ingest, pack import, `mycontext
+   * lesson`, `inbox-promote`, `lesson-accept` — and none of those is a person
+   * holding new prose. `mycontext add` and the MCP `create_item` tool are the
+   * two surfaces where somebody IS, and both refuse a capture that carries
+   * neither a summary nor `summaryOmitted` (`summaryRequiredAtCreate` /
+   * `summaryAtCreateRefusal`, summary-gate.ts). The asymmetry is the same one
+   * `summaryUnchanged` has at `updateItem`, for the same reason.
    *
    * The basis it is written against is NOT an input at any surface:
    * `stampSummary` (content-hash.ts) computes it from the item this call
@@ -105,6 +115,32 @@ export interface CreateInput {
    * does not.
    */
   summary?: string;
+  /**
+   * **The creation opt-out: this item is being captured with no summary, and
+   * that is deliberate.**
+   *
+   * The sibling of `UpdateInput.summaryUnchanged`, at the other end of an
+   * item's life and with the same three properties. It is spelled in words
+   * (`--summary-omitted`, `summary_omitted: true`), it is never a default, and
+   * it is RECORDED — `createItem` writes `SUMMARY_OMITTED_NOTE` into the audit
+   * row, so "nobody wrote a summary for this item" is a fact a reader of the
+   * log can find rather than an absence they have to infer.
+   *
+   * It exists because the gate has to be answerable. `mycontext lesson` mints a
+   * title-only stub; a pack brings items somebody else summarised or did not;
+   * an item captured as a pointer to a document may genuinely have nothing to
+   * say in one sentence that its title does not already say. Refusing those
+   * outright would make the gate a wall rather than a question, and a wall gets
+   * routed around. What the opt-out must never be is cheap to reach by
+   * accident, which is why there is no short spelling and no default.
+   *
+   * **It is an instruction about a write, not a field of an item**, exactly as
+   * `summaryUnchanged` is: nothing on disk corresponds to it, `contentHash`
+   * does not read it, and it is absent from `ContentShape`. Refused beside a
+   * `summary` at both authored surfaces (`summaryOmittedRefusal`) — a capture
+   * cannot assert that a sentence was written and that none was.
+   */
+  summaryOmitted?: boolean;
   scope?: string[];
   tags?: string[];
   origin?: Origin;
@@ -559,7 +595,26 @@ export function createItem(
 
   // After the write, and only on the path that actually wrote: the duplicate
   // returns above (`duplicateOf`) created nothing, so they record nothing.
-  const audited = auditMutation(ctx, auditOp, origin, id);
+  //
+  // **The opt-out's record**, and it is the half of `--summary-omitted` that
+  // makes it an act rather than a shrug. An item minted with no summary is
+  // invisible to every summary check by construction (`checkSummary` skips it,
+  // and `summary_absent` in doctor exists precisely because of that), so
+  // without this note "nobody wrote a summary" and "nobody noticed there was no
+  // summary" are the same row. A `note` rather than a `field` for
+  // `SUMMARY_UNCHANGED_NOTE`'s reason: it is short, non-content and greppable,
+  // and `fields` means "what this write moved", which on a create is everything
+  // and therefore nothing worth naming.
+  //
+  // Gated on the flag alone rather than on the summary having come out null.
+  // The two cannot disagree — `summaryOmittedRefusal` refuses the flag beside a
+  // summary at both authored surfaces, and no internal caller passes it — and a
+  // second condition here would be a quieter, divergent answer to the question
+  // that refusal exists to ask.
+  const audited = auditMutation(
+    ctx, auditOp, origin, id,
+    input.summaryOmitted === true ? { note: SUMMARY_OMITTED_NOTE } : {},
+  );
 
   return {
     id,
@@ -1113,9 +1168,14 @@ export function updateItem(
   // an ordering here that silently preferred one would be a second, quieter
   // answer to the question that refusal exists to ask.
   //
-  // Guarded on there BEING a summary for the same reason: a re-stamp on an item
-  // with none would write `summaryOf` beside a null summary, which is a basis
-  // for nothing — half of the pair `summaryState` reads.
+  // Guarded on there BEING a summary, and the guard has a different meaning
+  // now that the hatch is reachable on an item with none. There, the flag is
+  // not saying "the sentence still stands" — there is no sentence — but "this
+  // item is being left without one, deliberately", which is an assertion with
+  // nothing on disk to write. `reaffirmSummary` would be a no-op on it anyway
+  // (`stampSummary(item, null)` sets `summaryOf` to null, which it already is),
+  // so skipping it says the same thing more plainly: the whole effect of the
+  // hatch on an unsummarised item is the audit note below.
   else if (input.summaryUnchanged === true && item.summary !== null) reaffirmSummary(item);
 
   const moved = movedFields(before, item);
@@ -1146,8 +1206,21 @@ export function updateItem(
     // note is the entire record of what happened. That is exactly why it has
     // to exist: without it the row is indistinguishable from a write that did
     // nothing.
-    ...(input.summaryUnchanged === true && item.summary !== null
-      ? { note: SUMMARY_UNCHANGED_NOTE }
+    //
+    // **And a third note, chosen by what happened rather than by what was
+    // typed.** The hatch on an item that HAS a summary certifies that the
+    // sentence still stands: `summary-unchanged`. The same flag on an item that
+    // has none certifies something else — that the item is being left with no
+    // summary on purpose — and that is `summary-omitted`, the identical
+    // assertion `--summary-omitted` makes at capture. Recording both as
+    // `summary-unchanged` would make the log unable to answer "which items are
+    // still carrying no summary, and did anyone mean it", which is the question
+    // the whole opt-out exists to keep answerable. `item.summary` is read AFTER
+    // the assignments above on purpose: it is the state this write LEAVES, and
+    // a call that both cleared the summary and passed the hatch cannot reach
+    // here — `summaryUnchangedRefusal` refuses that pair at both surfaces.
+    ...(input.summaryUnchanged === true
+      ? { note: item.summary === null ? SUMMARY_OMITTED_NOTE : SUMMARY_UNCHANGED_NOTE }
       : reaffirmed ? { note: SUMMARY_REAFFIRMED_NOTE } : {}),
   });
 

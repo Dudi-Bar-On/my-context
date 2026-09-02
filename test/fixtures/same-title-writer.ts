@@ -31,7 +31,7 @@ try {
     if (remaining <= 0) break;
     sleepMs(Math.min(remaining, 5));
   }
-  const out = registry.call('create_item', {
+  const out = registry.call('create_item', { summary_omitted: true,
     type: 'lesson',
     title: `A contended lesson ${round}`,
     body: `body-${round}-${index}`,

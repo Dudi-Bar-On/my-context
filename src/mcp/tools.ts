@@ -11,10 +11,11 @@ import { summaryStalenessNote } from '../core/content-hash.ts';
 import { renderItem } from '../core/item.ts';
 import {
   createItem, supersedeItem, updateItem,
-  type MutationContext, type UpdateInput,
+  type CreateInput, type MutationContext, type UpdateInput,
 } from '../core/mutate.ts';
 import {
-  summaryRequired, summaryRequiredRefusal, summaryUnchangedRefusal,
+  summaryAtCreateRefusal, summaryOmittedRefusal, summaryRequired, summaryRequiredAtCreate,
+  summaryRequiredRefusal, summaryUnchangedRefusal,
 } from '../core/summary-gate.ts';
 import { linkItems } from '../core/relations.ts';
 import { extraFieldNames, resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
@@ -483,7 +484,25 @@ const SPECS: ToolSpec[] = [
       type: { ...S_STRING, description: 'Category — see mycontext_help("categories")' },
       title: { ...S_STRING, description: 'One sentence, the item as a claim' },
       body: { ...S_STRING, description: 'Why it holds' },
-      summary: { ...S_STRING, description: 'One PLAIN sentence, max 160 chars, for a reader who does not know this codebase: what it IS and why it matters. No ids, no paths, no measurements, never how it was found. Optional - the body keeps the precision' },
+      summary: { ...S_STRING, description: 'One PLAIN sentence, max 160 chars, for a reader who does not know this codebase: what it IS and why it matters. No ids, no paths, no measurements, never how it was found. The body keeps the precision. REQUIRED unless you pass summary_omitted: an item created without a summary can never afterwards be asked for one, because every check that would ask compares a summary against the text it was written against' },
+      // A boolean beside a string, and the pair is the whole design: the
+      // schema cannot make `summary` conditionally required, so the handler
+      // refuses instead and this description is where a model learns the
+      // condition before it is refused. `required` below is unchanged — a
+      // capture may legitimately arrive with `summary_omitted` and no summary,
+      // and a schema that demanded both would refuse the opt-out it advertises.
+      summary_omitted: {
+        type: 'boolean',
+        description:
+          'Say that this item is being captured with NO summary, and that it is deliberate. A ' +
+          'capture carrying neither a summary nor this is REFUSED, because an item born with ' +
+          'no summary is invisible to every check that could later ask for one - mycontext ' +
+          'doctor reports it as summary_absent and nothing else ever will. This is the named ' +
+          'way to mean it: never a default, refused beside "summary", and the audit row records ' +
+          '"summary-omitted" so that nobody wrote one is visible rather than assumed. Reach for ' +
+          'it when the item genuinely has nothing to say in one sentence that its title does ' +
+          'not - never to get past the refusal',
+      },
       scope: { ...S_STRINGS, description: 'Repo-relative globs — see mycontext_help("scope")' },
       tags: S_STRINGS,
       severity: { ...S_STRING, enum: SEVERITIES },
@@ -536,11 +555,12 @@ const SPECS: ToolSpec[] = [
         const value = optStr(args, key);
         if (value !== undefined) extra[key] = value;
       }
-      return createItem(ctx, {
+      const input: CreateInput = {
         type: str(args, 'type', 'create_item'),
         title: str(args, 'title', 'create_item'),
         body: optStr(args, 'body'),
         summary: optStr(args, 'summary'),
+        summaryOmitted: optBool(args, 'summary_omitted') ?? undefined,
         scope: optList(args, 'scope'),
         tags: optList(args, 'tags'),
         severity: optEnum<Severity>(args, 'severity', SEVERITIES, 'capture'),
@@ -557,7 +577,23 @@ const SPECS: ToolSpec[] = [
         sourceAnchor: optStr(args, 'source_anchor') ?? null,
         extra,
         origin: 'agent',
-      }).message;
+      };
+      // **The summary gate, on the agent half of its creation surface**, and
+      // it is placed here rather than inside `createItem` for the reason
+      // `summaryRequiredAtCreate` states: `createItem` is the shared road
+      // every mechanical caller drives down, and a gate there would refuse
+      // pack imports and ingest runs that have no author to ask.
+      //
+      // The contradiction first, so a call passing both a summary and
+      // `summary_omitted` is told about it rather than being waved through by
+      // the summary it carries — the order `update_item` puts
+      // `summaryUnchangedRefusal` in, for its reason.
+      const omittedRefusal = summaryOmittedRefusal(input, 'create_item');
+      if (omittedRefusal) throw new Error(omittedRefusal);
+      if (summaryRequiredAtCreate(input)) {
+        throw new Error(summaryAtCreateRefusal(input, 'create_item'));
+      }
+      return createItem(ctx, input).message;
     }),
   },
   {

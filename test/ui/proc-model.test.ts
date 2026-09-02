@@ -42,7 +42,7 @@ function workspace(): { dir: string; done: () => void } {
 
 /** Three steps, through `mycontext add` — a human capture, so it lands active. */
 function seed(dir: string): void {
-  assert.equal(runCli(['add', 'procedure', 'Rotate the webhook secret',
+  assert.equal(runCli(['add', '--summary-omitted', 'procedure', 'Rotate the webhook secret',
     '--body', 'Run this when the shared secret leaks.',
     '--step', 'Deploy the next secret beside the live one',
     '--step', 'Roll the endpoint secret',
@@ -86,7 +86,7 @@ test('a corpus with no procedures answers a list, not an absence — vocabulary 
   try {
     // A non-procedure item, so the index exists and the empty list is a fact
     // about procedures rather than about the database.
-    assert.equal(runCli(['add', 'rule', 'Always use POSIX paths', '--body', 'Use POSIX.',
+    assert.equal(runCli(['add', '--summary-omitted', 'rule', 'Always use POSIX paths', '--body', 'Use POSIX.',
       '--yes'], dir, () => {}), 0);
     const body = list(dir);
     assert.deepEqual(body.procedures, []);
@@ -203,7 +203,7 @@ test('a finished procedure reads `done`; an abandoned one reads `abandoned`, not
     // RETIRED_STATUSES with a stage of its own. The order of the tests in
     // `stageOf` is what keeps these two apart.
     seed(dir); // a second procedure to supersede this one with
-    runCli(['add', 'procedure', 'Rotate it the new way',
+    runCli(['add', '--summary-omitted', 'procedure', 'Rotate it the new way',
       '--step', 'Do the new thing', '--yes'], dir, () => {});
     runCli(['supersede', ID, '--by', 'PROC-rotate-it-the-new-way', '--yes'], dir, () => {});
     const abandoned = list(dir).procedures.find((p) => p.id === ID)!;
@@ -322,9 +322,9 @@ test('two 404s, because a typo and a category error send a client to two places'
   const { dir, done } = workspace();
   try {
     seed(dir);
-    runCli(['add', 'runbook', 'Restore from backup', '--body', 'Repeatable.', '--yes'],
+    runCli(['add', '--summary-omitted', 'runbook', 'Restore from backup', '--body', 'Repeatable.', '--yes'],
       dir, () => {});
-    runCli(['add', 'rule', 'Always use POSIX paths', '--body', 'Use POSIX.', '--yes'],
+    runCli(['add', '--summary-omitted', 'rule', 'Always use POSIX paths', '--body', 'Use POSIX.', '--yes'],
       dir, () => {});
 
     const missing = detail(dir, 'PROC-nothing-here');

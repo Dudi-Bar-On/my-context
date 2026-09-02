@@ -57,7 +57,7 @@ function project(): string {
  * came from a surface that cannot claim to be human.
  */
 function agentNote(cwd: string, title: string): void {
-  const result = createRegistry(cwd).call('create_item', { type: 'note', title });
+  const result = createRegistry(cwd).call('create_item', { summary_omitted: true, type: 'note', title });
   assert.ok(JSON.stringify(result).includes('NOTE-'), `the agent note was not created: ${JSON.stringify(result)}`);
 }
 
@@ -76,7 +76,7 @@ function corpus(cwd: string): Record<string, string> {
 test('a note promoted to a decision creates the decision and links back with derived_from', () => {
   const cwd = project();
   try {
-    run(['add', 'note', 'Maybe we should pin the pool size', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'note', 'Maybe we should pin the pool size', '--yes'], cwd);
     const promoted = run(
       ['inbox-promote', 'NOTE-maybe-we-should-pin-the-pool-size', '--to', 'decision', '--yes'],
       cwd,
@@ -102,7 +102,7 @@ test('a note promoted to a decision creates the decision and links back with der
 test('the origin is deprecated, not deleted, and stays on disk and searchable', () => {
   const cwd = project();
   try {
-    run(['add', 'note', 'Maybe we should pin the pool size', '--body', 'Twenty is a guess.',
+    run(['add', '--summary-omitted', 'note', 'Maybe we should pin the pool size', '--body', 'Twenty is a guess.',
       '--yes'], cwd);
     run(['inbox-promote', 'NOTE-maybe-we-should-pin-the-pool-size', '--to', 'decision',
       '--yes'], cwd);
@@ -153,7 +153,7 @@ test('a human-authored note promoted into the same normative category lands acti
     // The twin of the test above, differing in exactly one input. Without it,
     // a command that hardcoded `status: 'draft'` for every normative target
     // would pass the draft assertion and be wrong about every human capture.
-    run(['add', 'note', 'The retry loop swallows 5xx', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'note', 'The retry loop swallows 5xx', '--yes'], cwd);
     const promoted = run(['inbox-promote', 'NOTE-the-retry-loop-swallows-5xx',
       '--to', 'known_issue', '--yes'], cwd);
     assert.equal(promoted.code, 0, promoted.out);
@@ -170,7 +170,7 @@ test('a human-authored note promoted into the same normative category lands acti
 test('the title, body and tags travel, and --title replaces the title alone', () => {
   const cwd = project();
   try {
-    run(['add', 'todo', 'Pin the pool', '--body', 'It flaps under load.',
+    run(['add', '--summary-omitted', 'todo', 'Pin the pool', '--body', 'It flaps under load.',
       '--tags', 'db,perf', '--yes'], cwd);
     const promoted = run(['inbox-promote', 'TODO-pin-the-pool', '--to', 'decision',
       '--title', 'The Postgres pool is capped at twenty', '--yes'], cwd);
@@ -189,7 +189,7 @@ test('the title, body and tags travel, and --title replaces the title alone', ()
 test('promoting into todo or note is refused', () => {
   const cwd = project();
   try {
-    run(['add', 'note', 'Something', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'note', 'Something', '--yes'], cwd);
     for (const target of ['todo', 'note']) {
       const refused = run(['inbox-promote', 'NOTE-something', '--to', target, '--yes'], cwd);
       assert.equal(refused.code, 1, refused.out);
@@ -208,7 +208,7 @@ test('promoting into todo or note is refused', () => {
 test('promoting an item that is not a todo or a note is refused by name', () => {
   const cwd = project();
   try {
-    run(['add', 'decision', 'Use Postgres', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'decision', 'Use Postgres', '--yes'], cwd);
     const refused = run(['inbox-promote', 'DEC-use-postgres', '--to', 'adr', '--yes'], cwd);
     assert.equal(refused.code, 1, refused.out);
     assert.match(prose(refused.out), /is a decision, not a todo or a note/);
@@ -233,7 +233,7 @@ test('an unknown id is refused, and the message names where to look', () => {
 test('an unknown target category fails once, with the catalogue named', () => {
   const cwd = project();
   try {
-    run(['add', 'note', 'Something', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'note', 'Something', '--yes'], cwd);
     const refused = run(['inbox-promote', 'NOTE-something', '--to', 'nonsense', '--yes'], cwd);
     assert.equal(refused.code, 1, refused.out);
     assert.match(refused.out, /nonsense/);
@@ -250,7 +250,7 @@ test('an unknown target category fails once, with the catalogue named', () => {
 test('the target is created before the origin is retired, so a refused create leaves the inbox whole', () => {
   const cwd = project();
   try {
-    run(['add', 'note', 'Something', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'note', 'Something', '--yes'], cwd);
     const before = corpus(cwd);
     const refused = run(['inbox-promote', 'NOTE-something', '--to', 'nonsense', '--yes'], cwd);
     assert.equal(refused.code, 1, refused.out);
@@ -264,7 +264,7 @@ test('the target is created before the origin is retired, so a refused create le
 test('without --yes it previews, refuses, and writes nothing', () => {
   const cwd = project();
   try {
-    run(['add', 'note', 'Something', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'note', 'Something', '--yes'], cwd);
     const before = corpus(cwd);
     const declined = run(['inbox-promote', 'NOTE-something', '--to', 'decision'], cwd);
     assert.equal(declined.code, 1, declined.out);
@@ -301,7 +301,7 @@ test('a retirement that fails leaves the target named, and the finishing command
   const cwd = project();
   const file = path.join(cwd, '.my_context', 'items', 'note', 'NOTE-something.md');
   try {
-    run(['add', 'note', 'Something', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'note', 'Something', '--yes'], cwd);
     chmodSync(file, 0o444);
     const halfway = run(['inbox-promote', 'NOTE-something', '--to', 'decision', '--yes'], cwd);
     assert.equal(halfway.code, 1, halfway.out);
@@ -326,7 +326,7 @@ test('a retirement that fails leaves the target named, and the finishing command
 test('what stays behind is named rather than dropped', () => {
   const cwd = project();
   try {
-    run(['add', 'note', 'Something', '--note', 'It came up in review.',
+    run(['add', '--summary-omitted', 'note', 'Something', '--note', 'It came up in review.',
       '--scope', 'src/db/**', '--yes'], cwd);
     const promoted = run(['inbox-promote', 'NOTE-something', '--to', 'decision', '--yes'], cwd);
     assert.equal(promoted.code, 0, promoted.out);
@@ -347,7 +347,7 @@ test('what stays behind is named rather than dropped', () => {
 test('an unknown flag is refused against this command\'s own usage, before anything opens', () => {
   const cwd = project();
   try {
-    run(['add', 'note', 'Something', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'note', 'Something', '--yes'], cwd);
     const refused = run(['inbox-promote', 'NOTE-something', '--to', 'decision', '--yse'], cwd);
     assert.equal(refused.code, 1, refused.out);
     assert.match(refused.out, /unknown option "--yse"/);
@@ -360,7 +360,7 @@ test('an unknown flag is refused against this command\'s own usage, before anyth
 test('a second positional is refused rather than swallowed', () => {
   const cwd = project();
   try {
-    run(['add', 'note', 'Something', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'note', 'Something', '--yes'], cwd);
     const refused = run(['inbox-promote', 'NOTE-something', 'decision', '--to', 'adr', '--yes'],
       cwd);
     assert.equal(refused.code, 1, refused.out);
@@ -386,7 +386,7 @@ test('the id and --to are both required, and neither is guessed', () => {
 test('a promoted todo is still counted by `mycontext todo --all`', () => {
   const cwd = project();
   try {
-    run(['add', 'todo', 'Pin the pool', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'Pin the pool', '--yes'], cwd);
     run(['inbox-promote', 'TODO-pin-the-pool', '--to', 'decision', '--yes'], cwd);
 
     const listed = run(['todo'], cwd);

@@ -44,7 +44,7 @@ function run(args: string[], cwd: string): { code: number; out: string } {
 function project(): Project {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-export-screen-'));
   assert.equal(runCli(['init'], cwd, () => {}), 0);
-  assert.equal(runCli(['add', 'rule', 'Never log customer email', '--yes'], cwd, () => {}), 0);
+  assert.equal(runCli(['add', '--summary-omitted', 'rule', 'Never log customer email', '--yes'], cwd, () => {}), 0);
   return { cwd, dispose: () => removeTree(cwd) };
 }
 

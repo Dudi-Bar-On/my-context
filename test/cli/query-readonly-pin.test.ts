@@ -42,7 +42,7 @@ import { removeTree } from '../helpers/tmp.ts';
 function project(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-roquery-'));
   runCli(['init'], cwd, () => {});
-  runCli(['add', 'lesson', 'Migrations need locks'], cwd, () => {});
+  runCli(['add', '--summary-omitted', 'lesson', 'Migrations need locks'], cwd, () => {});
   return cwd;
 }
 

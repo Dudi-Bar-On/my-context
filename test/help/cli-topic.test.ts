@@ -136,7 +136,7 @@ test('an empty registry is refused, never rendered as an empty command section',
  * -------------------------------------------------------------------- */
 
 test('`add --always` is refused, and the topic puts --always on edit', () => {
-  const { code, out } = workspace((cwd) => run(['add', 'rule', 'x', '--always'], cwd));
+  const { code, out } = workspace((cwd) => run(['add', '--summary-omitted', 'rule', 'x', '--always'], cwd));
   assert.equal(code, 1, `add accepted --always. Output:\n${out}`);
   assert.match(out, /unknown option "--always"/);
 
@@ -204,7 +204,7 @@ test('a command that needs an argument prints its own usage line and writes noth
 });
 
 test('an unknown flag is refused BY NAME, which is the probe the topic recommends', () => {
-  const { code, out } = workspace((cwd) => run(['add', 'rule', 'x', '--nonsense'], cwd));
+  const { code, out } = workspace((cwd) => run(['add', '--summary-omitted', 'rule', 'x', '--nonsense'], cwd));
   assert.equal(code, 1);
   assert.match(out, /unknown option "--nonsense"/,
     'the topic tells a reader that an unaccepted flag is named back at them, and that the ' +

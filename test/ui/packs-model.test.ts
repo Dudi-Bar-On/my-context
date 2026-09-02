@@ -73,8 +73,8 @@ function packDirectory(): string {
   const author = tmp('myctx-packs-author-');
   const out = path.join(tmp('myctx-packs-artefact-'), 'pack1');
   run(author, ['init']);
-  run(author, ['add', 'rule', 'Never log customer email', '--body', 'Redact it.', '--yes']);
-  run(author, ['add', 'decision', 'Use problem json', '--body', 'Errors are problem+json.', '--yes']);
+  run(author, ['add', '--summary-omitted', 'rule', 'Never log customer email', '--body', 'Redact it.', '--yes']);
+  run(author, ['add', '--summary-omitted', 'decision', 'Use problem json', '--body', 'Errors are problem+json.', '--yes']);
   run(author, ['export', '--out', out, '--as-pack', '--pack-name', PACK_NAME,
     '--pack-version', PACK_VERSION]);
   return out;

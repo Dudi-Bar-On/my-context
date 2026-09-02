@@ -131,30 +131,30 @@ const PROCEDURE = 'PROC-backfill-the-tenant-id-column';
 function fixture(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-slash-write-'));
   assert.equal(runCli(['init'], cwd, () => {}), 0);
-  run(['add', 'constraint', 'The pool is capped at twenty', '--body', 'Twenty.', '--yes'], cwd);
-  run(['add', 'constraint', 'The pool is capped at fifty', '--body', 'Fifty.', '--yes'], cwd);
-  run(['add', 'decision', 'Stripe was chosen for payments'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'The pool is capped at twenty', '--body', 'Twenty.', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'The pool is capped at fifty', '--body', 'Fifty.', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'decision', 'Stripe was chosen for payments'], cwd);
 
   // A draft: `create_item` through the MCP server passes `origin: 'agent'`,
   // which `trustedStatus` demotes — the route a real review queue fills by.
-  createRegistry(cwd).call('create_item', {
+  createRegistry(cwd).call('create_item', { summary_omitted: true,
     type: 'rule', title: 'Drafts are reviewed by a human', body: 'Because promotion is an act.',
   });
   createRegistry(cwd).call('link_items', { from: GOVERNING, to: LINKED_TO, relation: 'blocks' });
 
-  run(['add', 'note', 'The pool setting came up again', '--body', 'Twice this week.'], cwd);
+  run(['add', '--summary-omitted', 'note', 'The pool setting came up again', '--body', 'Twice this week.'], cwd);
 
-  run(['add', 'procedure', 'Backfill the tenant id column', '--body', 'One-time correction.',
+  run(['add', '--summary-omitted', 'procedure', 'Backfill the tenant id column', '--body', 'One-time correction.',
     '--step', 'Take the table out of the nightly job', '--step', 'Backfill oldest first',
     '--yes'], cwd);
   run(['edit', PROCEDURE, '--status', 'draft', '--tags', 'ready', '--yes'], cwd);
 
-  run(['add', 'constraint', 'Secrets never reach the logs', '--body', 'Never.', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Secrets never reach the logs', '--body', 'Never.', '--yes'], cwd);
   run(['pin', PINNED_HARD, '--yes'], cwd);
   run(['harden', PINNED_HARD, '--yes'], cwd);
 
   writeFileSync(path.join(cwd, 'roadmap.md'), '# Roadmap\n\n## Q3\n\n- one\n', 'utf8');
-  run(['add', 'reference', 'The quarterly roadmap', '--file', 'roadmap.md',
+  run(['add', '--summary-omitted', 'reference', 'The quarterly roadmap', '--file', 'roadmap.md',
     '--note', 'What we said we would do.'], cwd);
   // Drifted, so `refresh` reaches its write path rather than its "already
   // current, nothing was written" early return.
@@ -170,7 +170,13 @@ function fixture(): string {
 
 /** What each `<placeholder>` in a generated invocation stands for. */
 const SUBSTITUTIONS: Record<string, Record<string, string[]>> = {
-  'edit.md': { '<id>': [GOVERNING], '<the': ['--body'], 'flags>': ['A rewritten body.'] },
+  // The representative flag pair is a body edit AND the summary the gate now
+  // asks for beside it: `--body` alone is refused, which is what the file's own
+  // paragraph about `--summary` says.
+  'edit.md': {
+    '<id>': [GOVERNING], '<the': ['--body'],
+    'flags>': ['A rewritten body.', '--summary', 'A plain sentence for the fixture.'],
+  },
   'supersede.md': { '<retired': [GOVERNING], 'id>': [], '<replacement': [REPLACEMENT] },
   'inbox-promote.md': { '<id>': [CAPTURE], '<category>': ['decision'] },
   'procedure.md': { '<id>': [PROCEDURE] },

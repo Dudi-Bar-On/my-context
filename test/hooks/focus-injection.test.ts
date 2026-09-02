@@ -26,9 +26,9 @@ function project(): Project {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-focus-hook-'));
   assert.equal(runCli(['init'], cwd, () => {}), 0);
   const add = (args: string[]): void => { runCli(args, cwd, () => {}); };
-  add(['add', 'rule', 'Charge in integer cents', '--tags', 'billing', '--scope', 'src/api/**', '--yes']);
-  add(['add', 'rule', 'Rotate the session token hourly', '--tags', 'auth', '--scope', 'src/api/**', '--yes']);
-  add(['add', 'rule', 'Never log the customer email', '--tags', 'auth', '--scope', 'src/db/**', '--yes']);
+  add(['add', '--summary-omitted', 'rule', 'Charge in integer cents', '--tags', 'billing', '--scope', 'src/api/**', '--yes']);
+  add(['add', '--summary-omitted', 'rule', 'Rotate the session token hourly', '--tags', 'auth', '--scope', 'src/api/**', '--yes']);
+  add(['add', '--summary-omitted', 'rule', 'Never log the customer email', '--tags', 'auth', '--scope', 'src/db/**', '--yes']);
   return { cwd, root: resolveWorkspace(cwd).projectRoot!, dispose: () => removeTree(cwd) };
 }
 

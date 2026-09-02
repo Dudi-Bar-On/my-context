@@ -107,7 +107,7 @@ async function governingRule(cwd: string): Promise<string> {
   const id = 'RULE-never-log-customer-email';
   const [created] = await session(cwd, [{
     name: 'create_item',
-    arguments: {
+    arguments: { summary_omitted: true,
       type: 'rule',
       title: 'Never log customer email',
       body: 'Customer email addresses must not reach any log sink.',
@@ -147,7 +147,7 @@ test('an agent cannot flip extra.directive on a governing rule — it is staged,
   try {
     const id = await governingRule(cwd);
     const [flip] = await session(cwd, [
-      { name: 'update_item', arguments: { id, extra: { directive: 'do' } } },
+      { name: 'update_item', arguments: { id, extra: { directive: 'do' }, summary: 'A proposed sentence.' } },
     ]);
 
     assert.equal(flip.isError, false, 'staging is not a failure — it is a different outcome');
@@ -173,7 +173,7 @@ test('a human promoting the revision is what actually moves extra.directive', as
   const cwd = project();
   try {
     const id = await governingRule(cwd);
-    await session(cwd, [{ name: 'update_item', arguments: { id, extra: { directive: 'do' } } }]);
+    await session(cwd, [{ name: 'update_item', arguments: { id, extra: { directive: 'do' }, summary: 'A proposed sentence.' } }]);
 
     const lines: string[] = [];
     assert.equal(runCli(['review', 'promote-revision', id, '--yes'], cwd, (l) => lines.push(l)), 0,
@@ -192,7 +192,7 @@ test('review revisions renders the extra a revision proposes', async () => {
   const cwd = project();
   try {
     const id = await governingRule(cwd);
-    await session(cwd, [{ name: 'update_item', arguments: { id, extra: { directive: 'do' } } }]);
+    await session(cwd, [{ name: 'update_item', arguments: { id, extra: { directive: 'do' }, summary: 'A proposed sentence.' } }]);
 
     const lines: string[] = [];
     assert.equal(runCli(['review', 'revisions'], cwd, (l) => lines.push(l)), 0);
@@ -216,7 +216,7 @@ test('agentEdits: allow applies extra directly and still refuses reach and force
   try {
     const id = await governingRule(cwd);
     const [applied, scope, always, severity, status] = await session(cwd, [
-      { name: 'update_item', arguments: { id, extra: { directive: 'do' } } },
+      { name: 'update_item', arguments: { id, extra: { directive: 'do' }, summary: 'A proposed sentence.' } },
       { name: 'update_item', arguments: { id, scope: ['docs/**'] } },
       { name: 'update_item', arguments: { id, always: true } },
       { name: 'update_item', arguments: { id, severity: 'soft' } },
@@ -321,16 +321,19 @@ test('update_item refuses a mixed extra-and-scope call whole', async () => {
     const [created, mixed] = await session(cwd, [
       {
         name: 'create_item',
-        arguments: { type: 'rule', title: 'Cache reads', body: 'Cache for 60s.', scope: ['src/**'], directive: 'do' },
+        arguments: { summary_omitted: true, type: 'rule', title: 'Cache reads', body: 'Cache for 60s.', scope: ['src/**'], directive: 'do' },
       },
       {
         name: 'update_item',
-        arguments: { id: 'RULE-cache-reads', extra: { directive: 'dont' }, scope: ['docs/**'] },
+        arguments: { id: 'RULE-cache-reads', extra: { directive: 'dont' }, scope: ['docs/**'], summary: 'A proposed sentence.' },
       },
     ]);
     assert.equal(created.isError, false, created.text);
     assert.equal(mixed.isError, true);
-    assert.match(mixed.text, /mixes a content change \(extra\) with a change to scope/);
+    // `summary` rides along because the call has to carry one: an `extra` edit
+    // moves what the summary was written against, so the summary gate refuses it
+    // without one. Both are content, and the refusal names both.
+    assert.match(mixed.text, /mixes a content change \(summary, extra\) with a change to scope/);
     assert.match(mixed.text, /nothing was applied and nothing was staged/);
 
     const file = itemFile(cwd, 'RULE-cache-reads');

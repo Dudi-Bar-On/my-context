@@ -142,10 +142,12 @@ async function previewing(page: Page, body: (fixture: Fixture) => Promise<void>)
     cli(['init'], workspace);
     cli(['add', 'rule', 'this rule survives a compaction',
       '--body', 'Whatever else is dropped, this is delivered again after every compaction.',
+      '--summary', 'A rule that is delivered again after the conversation is shortened, so it is never lost when older context is dropped.',
       '--yes'], workspace);
     cli(['edit', CONTINUITY_ITEM, '--continuity', '--yes'], workspace);
     cli(['add', 'rule', 'pinned so this session reaches the ledger',
       '--body', 'Injected at every session start, which is what projects a ledger row.',
+      '--summary', 'A rule that is loaded at the start of every session, which is what makes the session appear in the running record of work.',
       '--yes'], workspace);
     cli(['pin', PINNED_ITEM, '--yes'], workspace);
 

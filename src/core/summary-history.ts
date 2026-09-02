@@ -200,3 +200,29 @@ export const SUMMARY_UNCHANGED_NOTE = 'summary-unchanged';
  * for the `note` column.
  */
 export const SUMMARY_REAFFIRMED_NOTE = 'summary-reaffirmed';
+
+/**
+ * What the audit row says when this write left the item with **no summary at
+ * all**, deliberately.
+ *
+ * **A third note rather than either of the other two reused**, and it is the
+ * same argument `SUMMARY_REAFFIRMED_NOTE` makes about being a second one: a
+ * note answers a question, and this one answers a question neither sibling can.
+ * `summary-unchanged` says a sentence was left standing; `summary-reaffirmed`
+ * says a sentence was re-read and still fits. Both presuppose a sentence. This
+ * one records that there is none and that somebody said so on purpose, which is
+ * the only thing that distinguishes a deliberate omission from an oversight —
+ * and telling those two apart is the whole reason the opt-out is a named act
+ * rather than a default.
+ *
+ * Written by two callers, because the same assertion can be made at two moments
+ * in an item's life: `createItem` when a capture passes `--summary-omitted` /
+ * `summary_omitted: true`, and `updateItem` when `--summary-unchanged` answers
+ * the gate on an item that has no summary. The note follows what HAPPENED, not
+ * which flag was typed — an edit hatch on a summarised item records
+ * `summary-unchanged`, and the same flag on an unsummarised one records this.
+ *
+ * Same shape as its siblings: hyphenated so it greps as one token, short enough
+ * for the `note` column.
+ */
+export const SUMMARY_OMITTED_NOTE = 'summary-omitted';

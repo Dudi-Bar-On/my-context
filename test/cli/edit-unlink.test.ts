@@ -64,8 +64,8 @@ function itemFile(cwd: string, type: string, id: string): string {
  * through `link_items`, the only surface that has ever added one, so the edge
  * under test is one the product itself created. */
 function linked(cwd: string, relation = 'blocks'): { from: string; to: string } {
-  run(['add', 'constraint', 'The pool is capped at twenty', '--yes'], cwd);
-  run(['add', 'decision', 'Stripe was chosen for payments'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'The pool is capped at twenty', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'decision', 'Stripe was chosen for payments'], cwd);
   const from = 'CONST-the-pool-is-capped-at-twenty';
   const to = 'DEC-stripe-was-chosen-for-payments';
   createRegistry(cwd).call('link_items', { from, to, relation });
@@ -102,8 +102,8 @@ test('removing a relation from a governing item previews and confirms, like a sc
 
 test('a rationale item is ungated, because nothing governs before or after', () => {
   withProject((cwd) => {
-    run(['add', 'decision', 'Stripe was chosen for payments'], cwd);
-    run(['add', 'decision', 'Payouts run on Fridays'], cwd);
+    run(['add', '--summary-omitted', 'decision', 'Stripe was chosen for payments'], cwd);
+    run(['add', '--summary-omitted', 'decision', 'Payouts run on Fridays'], cwd);
     const from = 'DEC-stripe-was-chosen-for-payments';
     const to = 'DEC-payouts-run-on-fridays';
     createRegistry(cwd).call('link_items', { from, to, relation: 'relates_to' });
@@ -127,8 +127,8 @@ test('a rationale item is ungated, because nothing governs before or after', () 
  */
 test('neither retirement edge can be removed, and the refusal names the real remedy', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'The old cap', '--yes'], cwd);
-    run(['add', 'constraint', 'The new cap', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'The old cap', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'The new cap', '--yes'], cwd);
     const old = 'CONST-the-old-cap';
     const next = 'CONST-the-new-cap';
     const retired = run(['supersede', old, '--by', next, '--yes'], cwd);
@@ -154,8 +154,8 @@ test('neither retirement edge can be removed, and the refusal names the real rem
 
 test('the retirement refusal arrives before the preview, not after it', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'The old cap', '--yes'], cwd);
-    run(['add', 'constraint', 'The new cap', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'The old cap', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'The new cap', '--yes'], cwd);
     run(['supersede', 'CONST-the-old-cap', '--by', 'CONST-the-new-cap', '--yes'], cwd);
     const { out } = run(
       ['edit', 'CONST-the-old-cap', '--unlink', 'superseded_by', 'CONST-the-new-cap'], cwd,
@@ -175,7 +175,7 @@ test('the retirement refusal arrives before the preview, not after it', () => {
  */
 test('a relation from outside RELATION_TYPES can still be removed', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'The pool is capped at twenty', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'The pool is capped at twenty', '--yes'], cwd);
     const id = 'CONST-the-pool-is-capped-at-twenty';
     const file = path.join(cwd, '.my_context', 'items', 'constraint', `${id}.md`);
     writeFileSync(
@@ -232,7 +232,7 @@ test('--unlink is repeatable, and composes with a field edit in one confirmation
     createRegistry(cwd).call('link_items', { from, to, relation: 'relates_to' });
 
     const { code, out } = run(
-      ['edit', from, '--unlink', 'blocks', to, '--unlink', 'relates_to', to,
+      ['edit', '--summary-unchanged', from, '--unlink', 'blocks', to, '--unlink', 'relates_to', to,
         '--body', 'A new body for the capped pool.', '--yes'],
       cwd,
     );

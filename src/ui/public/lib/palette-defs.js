@@ -69,6 +69,7 @@ export const PALETTE = [
     flags: [
       { name: 'body', input: 'textarea' }, { name: 'file', input: 'text' },
       { name: 'note', input: 'text' }, { name: 'step', input: 'text' },
+      { name: 'summary', input: 'text' },
       { name: 'scope', input: 'glob' }, { name: 'tags', input: 'text' },
       { name: 'severity', options: ['hard', 'soft'] }, { name: 'extra', input: 'text' },
       yes,

@@ -49,8 +49,8 @@ function itemFile(cwd: string, type: string, id: string): string {
 /** Two active constraints, the ordinary shape of a replacement. `add --yes`
  * passes `origin: 'human'`, so both land `active` rather than `draft`. */
 function pair(cwd: string, scope = 'src/db/**'): { old: string; next: string } {
-  run(['add', 'constraint', 'Pool capped at 10', '--scope', scope, '--yes'], cwd);
-  run(['add', 'constraint', 'Pool capped at 20', '--scope', scope, '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--scope', scope, '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Pool capped at 20', '--scope', scope, '--yes'], cwd);
   return { old: 'CONST-pool-capped-at-10', next: 'CONST-pool-capped-at-20' };
 }
 
@@ -119,7 +119,7 @@ test('the preview names the retiring item, its status and the pinned flag', () =
     // exactly the route `review promote`'s own preview exists to gate.
     const registry = createRegistry(cwd);
     for (const title of ['Run the suite before claiming done', 'Run the suite and read the output']) {
-      registry.call('create_item', { type: 'instruction', title, body: 'b' });
+      registry.call('create_item', { summary_omitted: true, type: 'instruction', title, body: 'b' });
     }
     for (const id of ['INSTR-run-the-suite-before-claiming-done', 'INSTR-run-the-suite-and-read-the-output']) {
       const promoted = run(['review', 'promote', id, '--always', '--yes'], cwd);
@@ -150,10 +150,10 @@ test('the preview names the retiring item, its status and the pinned flag', () =
  */
 test('the preview says so when nothing will govern in the retired item\'s place', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool capped at 10', '--scope', 'src/db/**', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--scope', 'src/db/**', '--yes'], cwd);
     // A draft replacement, the way an agent's capture arrives: `create_item`
     // through the real MCP surface demotes a normative item to `draft`.
-    createRegistry(cwd).call('create_item', {
+    createRegistry(cwd).call('create_item', { summary_omitted: true,
       type: 'constraint', title: 'Pool capped at 20', body: 'b', scope: ['src/db/**'],
     });
 
@@ -189,8 +189,8 @@ function previewLine(out: string, label: string): string {
  */
 test('the preview does not claim a scoped rationale item is injected', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool capped at 10', '--scope', 'src/db/**', '--yes'], cwd);
-    run(['add', 'lesson', 'Pools need a ceiling', '--scope', 'src/db/**', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--scope', 'src/db/**', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'lesson', 'Pools need a ceiling', '--scope', 'src/db/**', '--yes'], cwd);
 
     const { out } = run([
       'supersede', 'CONST-pool-capped-at-10', '--by', 'LESSON-pools-need-a-ceiling', '--yes',
@@ -214,8 +214,8 @@ test('the preview does not claim a scoped rationale item is injected', () => {
  */
 test('the preview says an unscoped active item is injected on any file, not never', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool capped at 10', '--yes'], cwd);
-    run(['add', 'constraint', 'Pool capped at 20', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 20', '--yes'], cwd);
 
     const { out } = run([
       'supersede', 'CONST-pool-capped-at-10', '--by', 'CONST-pool-capped-at-20', '--yes',

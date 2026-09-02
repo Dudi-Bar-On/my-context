@@ -26,9 +26,9 @@ function project(): Project {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-focus-tool-'));
   assert.equal(runCli(['init'], cwd, () => {}), 0);
   const add = (args: string[]): void => { runCli(args, cwd, () => {}); };
-  add(['add', 'rule', 'Charge in integer cents', '--tags', 'billing', '--yes']);
-  add(['add', 'rule', 'Rotate the session token hourly', '--tags', 'auth', '--yes']);
-  add(['add', 'invariant', 'Hooks fail open', '--tags', 'hooks', '--severity', 'hard', '--yes']);
+  add(['add', '--summary-omitted', 'rule', 'Charge in integer cents', '--tags', 'billing', '--yes']);
+  add(['add', '--summary-omitted', 'rule', 'Rotate the session token hourly', '--tags', 'auth', '--yes']);
+  add(['add', '--summary-omitted', 'invariant', 'Hooks fail open', '--tags', 'hooks', '--severity', 'hard', '--yes']);
   return { cwd, root: resolveWorkspace(cwd).projectRoot!, dispose: () => removeTree(cwd) };
 }
 

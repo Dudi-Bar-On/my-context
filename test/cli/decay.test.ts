@@ -86,7 +86,7 @@ test('an item injected in the window drops out of the cold list', () => {
 test('unscoped normative items are reported as unrestricted, not as never injected', () => {
   const cwd = project();
   try {
-    run(['add', 'constraint', 'No scope at all', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'No scope at all', '--yes'], cwd);
     const { out } = run(['decay'], cwd);
     assert.match(out, /^unrestricted \(1\)/m);
     assert.match(out, /apply to every file/);
@@ -229,7 +229,7 @@ test('"cold: none" on a corpus with no normative items says so, not "activated"'
     // measurable as cold or warm and the message must not claim anything
     // "activated". An UNSCOPED item no longer belongs in this case — it is
     // injectable, so it is measured, and it lands in `cold`.
-    run(['add', 'lesson', 'Something happened', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'lesson', 'Something happened', '--yes'], cwd);
     const { out } = run(['decay'], cwd);
     assert.match(out, /nothing to report — no active normative items/);
     assert.doesNotMatch(out, /activated/);

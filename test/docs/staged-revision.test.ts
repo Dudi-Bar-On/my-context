@@ -61,6 +61,19 @@ const PROPOSAL =
   'the same way access logs do, so no sink gets the address.';
 
 /**
+ * The proposed SUMMARY, and it has to be here rather than optional: the body
+ * this proposal rewrites is part of what a summary is written against, so the
+ * summary gate refuses an `update_item` that moves one without the other — and
+ * the hatch is not available on a governing item, because a staged revision has
+ * nowhere to carry "the summary still describes this". A proposal against a
+ * governing item therefore always carries both fields, which is what the
+ * fixture's committed revision log holds and what the documented diff shows.
+ */
+const PROPOSED_SUMMARY =
+  'Customer email addresses must never be written into any log or report, because those ' +
+  'travel further than the data itself.';
+
+/**
  * Calls one MCP tool against `cwd` over real stdio and returns the text
  * content of the response.
  *
@@ -175,7 +188,7 @@ function assertQuotedInDocs(text: string, what: string): void {
 
 test('the staged-revision message the documentation quotes is what update_item says', async () => {
   const text = await freshWorkspace(null, (dir) =>
-    callTool(dir, { id: ITEM, body: PROPOSAL }).then((raw) => scrubOutput(raw, dir)));
+    callTool(dir, { id: ITEM, body: PROPOSAL, summary: PROPOSED_SUMMARY }).then((raw) => scrubOutput(raw, dir)));
 
   // The three properties the surrounding prose claims about this message,
   // asserted before the verbatim check so a failure says WHICH property broke
@@ -193,7 +206,7 @@ test('the staged-revision message the documentation quotes is what update_item s
 test('the applied message the documentation quotes is what update_item says under allow', async () => {
   const text = await freshWorkspace(
     '{"profile":"standard","categories":{"rule":{"agentEdits":"allow"}}}',
-    (dir) => callTool(dir, { id: ITEM, body: PROPOSAL }),
+    (dir) => callTool(dir, { id: ITEM, body: PROPOSAL, summary: PROPOSED_SUMMARY }),
   );
 
   // The whole point of the pair: the same call, the same item, one setting

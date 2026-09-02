@@ -58,7 +58,7 @@ test('an unknown option is refused, and nothing is created', () => {
     // landed (a snapshot's body is somebody else's text, so the WHY needs
     // somewhere of its own), and a test whose "unknown flag" is a flag the
     // command accepts stops testing anything the moment it is accepted.
-    ['add', 'lesson', 'Never log secrets', '--relations', 'something'], cwd,
+    ['add', '--summary-omitted', 'lesson', 'Never log secrets', '--relations', 'something'], cwd,
   );
   assert.equal(code, 1);
   assert.match(out, /unknown option "--relations"/);
@@ -68,7 +68,7 @@ test('an unknown option is refused, and nothing is created', () => {
 
 test('an unknown option in --name=value form is refused too', () => {
   const cwd = sandbox();
-  const { code, out } = run(['add', 'lesson', 'A lesson', '--observations=x'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'lesson', 'A lesson', '--observations=x'], cwd);
   assert.equal(code, 1);
   assert.match(out, /unknown option "--observations"/);
   // The message has to name a route that actually exists for the fields the
@@ -81,7 +81,7 @@ test('an unknown option in --name=value form is refused too', () => {
 test('no accepted flag ever reaches the title', () => {
   const cwd = sandbox();
   const { code } = run(
-    ['add', 'lesson', 'Never log secrets', '--body', 'Logs are shipped offsite.',
+    ['add', '--summary-omitted', 'lesson', 'Never log secrets', '--body', 'Logs are shipped offsite.',
       '--scope', 'src/**', '--tags', 'security'],
     cwd,
   );
@@ -97,7 +97,7 @@ test('no accepted flag ever reaches the title', () => {
 test('--body, --scope and --tags are stored on the item', () => {
   const cwd = sandbox();
   const { code } = run(
-    ['add', 'lesson', 'Migrations need locks', '--body', 'A concurrent DDL wedged staging.',
+    ['add', '--summary-omitted', 'lesson', 'Migrations need locks', '--body', 'A concurrent DDL wedged staging.',
       '--scope', 'src/db/**, migrations/**', '--tags', 'database, ops'],
     cwd,
   );
@@ -113,7 +113,7 @@ test('--body, --scope and --tags are stored on the item', () => {
 test('the --flag=value form works for every value flag', () => {
   const cwd = sandbox();
   const { code } = run(
-    ['add', 'lesson', 'Equals form', '--body=Because.', '--scope=src/**', '--tags=a,b'], cwd,
+    ['add', '--summary-omitted', 'lesson', 'Equals form', '--body=Because.', '--scope=src/**', '--tags=a,b'], cwd,
   );
   assert.equal(code, 0);
   const item = get(cwd, 'LESSON-equals-form');
@@ -125,7 +125,7 @@ test('the --flag=value form works for every value flag', () => {
 
 test('a value flag with nothing after it is refused, not silently dropped', () => {
   const cwd = sandbox();
-  const { code, out } = run(['add', 'lesson', 'A lesson', '--body'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'lesson', 'A lesson', '--body'], cwd);
   assert.equal(code, 1);
   assert.match(out, /--body needs a value/);
   assert.deepEqual(items(cwd), []);
@@ -134,7 +134,7 @@ test('a value flag with nothing after it is refused, not silently dropped', () =
 
 test('a value flag followed by another option is refused, not read as its value', () => {
   const cwd = sandbox();
-  const { code, out } = run(['add', 'lesson', 'A lesson', '--body', '--scope', 'src/**'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'lesson', 'A lesson', '--body', '--scope', 'src/**'], cwd);
   assert.equal(code, 1);
   assert.match(out, /--body was followed by "--scope"/);
   assert.deepEqual(items(cwd), []);
@@ -145,7 +145,7 @@ test('a body that cannot survive the round trip is still refused by createItem',
   // The flag plumbing must not become a way around the write-boundary guards
   // the MCP path goes through: `--body` reaches the same `validateBody`.
   const cwd = sandbox();
-  const { code, out } = run(['add', 'lesson', 'A lesson', '--body', '## Heading'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'lesson', 'A lesson', '--body', '## Heading'], cwd);
   assert.equal(code, 1);
   assert.match(out, /heading/i);
   assert.deepEqual(items(cwd), []);
@@ -168,7 +168,7 @@ test('a body that cannot survive the round trip is still refused by createItem',
 test('every --scope is kept, not just the first', () => {
   const cwd = sandbox();
   const { code } = run(
-    ['add', 'lesson', 'Three scopes', '--scope', 'src/api/**',
+    ['add', '--summary-omitted', 'lesson', 'Three scopes', '--scope', 'src/api/**',
       '--scope', 'src/db/**', '--scope', 'src/web/**'],
     cwd,
   );
@@ -183,7 +183,7 @@ test('every --scope is kept, not just the first', () => {
 test('every --tags is kept too — the same helper, so the same guarantee', () => {
   const cwd = sandbox();
   const { code } = run(
-    ['add', 'lesson', 'Three tags', '--tags', 'security', '--tags', 'ops,db'], cwd,
+    ['add', '--summary-omitted', 'lesson', 'Three tags', '--tags', 'security', '--tags', 'ops,db'], cwd,
   );
   assert.equal(code, 0);
   assert.deepEqual(get(cwd, 'LESSON-three-tags')?.tags, ['security', 'ops', 'db']);
@@ -193,7 +193,7 @@ test('every --tags is kept too — the same helper, so the same guarantee', () =
 test('the repeated and comma-separated forms compose, in command-line order', () => {
   const cwd = sandbox();
   const { code } = run(
-    ['add', 'lesson', 'Both forms', '--scope', 'a/**,b/**', '--scope=c/**'], cwd,
+    ['add', '--summary-omitted', 'lesson', 'Both forms', '--scope', 'a/**,b/**', '--scope=c/**'], cwd,
   );
   assert.equal(code, 0);
   assert.deepEqual(get(cwd, 'LESSON-both-forms')?.scope, ['a/**', 'b/**', 'c/**']);
@@ -202,7 +202,7 @@ test('the repeated and comma-separated forms compose, in command-line order', ()
 
 test('a scope repeated verbatim is stored once, not twice', () => {
   const cwd = sandbox();
-  run(['add', 'lesson', 'Dupes', '--scope', 'a/**', '--scope', 'a/**,b/**'], cwd);
+  run(['add', '--summary-omitted', 'lesson', 'Dupes', '--scope', 'a/**', '--scope', 'a/**,b/**'], cwd);
   assert.deepEqual(get(cwd, 'LESSON-dupes')?.scope, ['a/**', 'b/**']);
   removeTree(cwd);
 });
@@ -216,7 +216,7 @@ test('a scope repeated verbatim is stored once, not twice', () => {
 test('a repeated --body is refused, and nothing is created', () => {
   const cwd = sandbox();
   const { code, out } = run(
-    ['add', 'lesson', 'Two bodies', '--body', 'First.', '--body', 'Second.'], cwd,
+    ['add', '--summary-omitted', 'lesson', 'Two bodies', '--body', 'First.', '--body', 'Second.'], cwd,
   );
   assert.equal(code, 1);
   assert.match(out, /--body was given 2 times/);
@@ -229,7 +229,7 @@ test('the per-occurrence checks apply to every occurrence, not only the first', 
   // The second `--scope` has nothing after it: without a per-occurrence
   // check, the first would be stored and the second would vanish.
   const cwd = sandbox();
-  const { code, out } = run(['add', 'lesson', 'Late empty', '--scope', 'a/**', '--scope'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'lesson', 'Late empty', '--scope', 'a/**', '--scope'], cwd);
   assert.equal(code, 1);
   assert.match(out, /--scope needs a value/);
   assert.deepEqual(items(cwd), []);
@@ -241,7 +241,7 @@ test('the per-occurrence checks apply to every occurrence, not only the first', 
 test('--severity hard is stored on the item', () => {
   const cwd = sandbox();
   const { code } = run(
-    ['add', 'constraint', 'Uploads capped at 10 MB', '--severity', 'hard', '--yes'], cwd,
+    ['add', '--summary-omitted', 'constraint', 'Uploads capped at 10 MB', '--severity', 'hard', '--yes'], cwd,
   );
   assert.equal(code, 0);
   assert.equal(get(cwd, 'CONST-uploads-capped-at-10-mb')?.severity, 'hard');
@@ -250,7 +250,7 @@ test('--severity hard is stored on the item', () => {
 
 test('severity still defaults to soft when the flag is absent', () => {
   const cwd = sandbox();
-  run(['add', 'constraint', 'Uploads capped at 10 MB', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Uploads capped at 10 MB', '--yes'], cwd);
   assert.equal(get(cwd, 'CONST-uploads-capped-at-10-mb')?.severity, 'soft');
   removeTree(cwd);
 });
@@ -258,7 +258,7 @@ test('severity still defaults to soft when the flag is absent', () => {
 test('a bogus --severity is refused in the same words every other surface uses', () => {
   const cwd = sandbox();
   const { code, out } = run(
-    ['add', 'constraint', 'Uploads capped', '--severity', 'critical', '--yes'], cwd,
+    ['add', '--summary-omitted', 'constraint', 'Uploads capped', '--severity', 'critical', '--yes'], cwd,
   );
   assert.equal(code, 1);
   // `enumError`'s wording, shared with create_item/update_item and
@@ -273,7 +273,7 @@ test('a bogus --severity is refused before the normative capture is previewed', 
   // human must not be asked to confirm a capture that was never going to
   // land.
   const cwd = sandbox();
-  const { out } = run(['add', 'rule', 'Never log secrets', '--severity', 'critical'], cwd);
+  const { out } = run(['add', '--summary-omitted', 'rule', 'Never log secrets', '--severity', 'critical'], cwd);
   assert.doesNotMatch(out, /about to create/);
   removeTree(cwd);
 });
@@ -281,7 +281,7 @@ test('a bogus --severity is refused before the normative capture is previewed', 
 test('a repeated --severity is refused, like every other single-valued flag', () => {
   const cwd = sandbox();
   const { code, out } = run(
-    ['add', 'lesson', 'Two severities', '--severity', 'hard', '--severity', 'soft'], cwd,
+    ['add', '--summary-omitted', 'lesson', 'Two severities', '--severity', 'hard', '--severity', 'soft'], cwd,
   );
   assert.equal(code, 1);
   assert.match(out, /--severity was given 2 times/);
@@ -293,7 +293,7 @@ test('a repeated --severity is refused, like every other single-valued flag', ()
 
 test('add on a normative category refuses without --yes and creates nothing', () => {
   const cwd = sandbox();
-  const { code, out } = run(['add', 'rule', 'Never log secrets'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'rule', 'Never log secrets'], cwd);
   assert.equal(code, 1);
   assert.match(out, /--yes/);
   assert.deepEqual(items(cwd), []);
@@ -302,7 +302,7 @@ test('add on a normative category refuses without --yes and creates nothing', ()
 
 test('the refusal names the item it declined to create, before creating it', () => {
   const cwd = sandbox();
-  const { out } = run(['add', 'rule', 'Never log secrets'], cwd);
+  const { out } = run(['add', '--summary-omitted', 'rule', 'Never log secrets'], cwd);
   // `confirmAction` asks its question only on a TTY, so the non-interactive
   // refusal is preceded by a line naming the capture — otherwise a script or
   // hook gets "refusing without confirmation" about nothing in particular.
@@ -316,7 +316,7 @@ test('the refusal names the item it declined to create, before creating it', () 
 
 test('add on a normative category with --yes creates an active item', () => {
   const cwd = sandbox();
-  const { code, out } = run(['add', 'rule', 'Never log secrets', '--yes'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'rule', 'Never log secrets', '--yes'], cwd);
   assert.equal(code, 0);
   assert.match(out, /RULE-never-log-secrets/);
   assert.equal(get(cwd, 'RULE-never-log-secrets')?.status, 'active');
@@ -328,7 +328,7 @@ test('--yes=false declines: the spelling an operator reaches for to say no', () 
   // lives in registry.ts's `boolFlag`; this pins that `add` inherits it.
   for (const spelling of ['--yes=false', '--yes=no', '--yes=0', '--yes=off']) {
     const cwd = sandbox();
-    const { code } = run(['add', 'rule', 'Never log secrets', spelling], cwd);
+    const { code } = run(['add', '--summary-omitted', 'rule', 'Never log secrets', spelling], cwd);
     assert.equal(code, 1, spelling);
     assert.deepEqual(items(cwd), [], spelling);
     removeTree(cwd);
@@ -337,7 +337,7 @@ test('--yes=false declines: the spelling an operator reaches for to say no', () 
 
 test('--yes=maybe is refused rather than guessed in either direction', () => {
   const cwd = sandbox();
-  const { code, out } = run(['add', 'rule', 'Never log secrets', '--yes=maybe'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'rule', 'Never log secrets', '--yes=maybe'], cwd);
   assert.equal(code, 1);
   assert.match(out, /--yes accepts/);
   assert.deepEqual(items(cwd), []);
@@ -346,7 +346,7 @@ test('--yes=maybe is refused rather than guessed in either direction', () => {
 
 test('a rationale category is ungated — nothing in that tier is auto-injected', () => {
   const cwd = sandbox();
-  const { code } = run(['add', 'lesson', 'Migrations need locks'], cwd);
+  const { code } = run(['add', '--summary-omitted', 'lesson', 'Migrations need locks'], cwd);
   assert.equal(code, 0);
   assert.equal(get(cwd, 'LESSON-migrations-need-locks')?.status, 'active');
   removeTree(cwd);
@@ -362,7 +362,7 @@ test('the gate follows a per-project tier override, not the built-in catalog', (
     path.join(cwd, '.my_context', 'config.json'),
     JSON.stringify({ profile: 'standard', categories: { lesson: { tier: 'normative' } } }),
   );
-  const { code, out } = run(['add', 'lesson', 'Now normative here'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'lesson', 'Now normative here'], cwd);
   assert.equal(code, 1);
   assert.match(out, /--yes/);
   assert.deepEqual(items(cwd), []);
@@ -371,7 +371,7 @@ test('the gate follows a per-project tier override, not the built-in catalog', (
 
 test('an unknown category is still refused by name, not swallowed by the gate', () => {
   const cwd = sandbox();
-  const { code, out } = run(['add', 'constraints', 'Typo'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'constraints', 'Typo'], cwd);
   assert.equal(code, 1);
   assert.match(out, /constraint/);
   assert.doesNotMatch(out, /--yes/);
@@ -386,7 +386,7 @@ test('a disabled category is refused on its own terms, without a confirmation de
     path.join(cwd, '.my_context', 'config.json'),
     JSON.stringify({ categories: { standard: { enabled: false } } }),
   );
-  const { code, out } = run(['add', 'standard', 'Some convention'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'standard', 'Some convention'], cwd);
   assert.equal(code, 1);
   assert.match(out, /disabled/i);
   assert.doesNotMatch(out, /Create standard/);
@@ -404,7 +404,7 @@ test('the usage banner advertises the flags the command actually accepts', () =>
 
 test('add with no title still prints its usage, and that usage names the flags', () => {
   const cwd = sandbox();
-  const { code, out } = run(['add', 'lesson'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'lesson'], cwd);
   assert.equal(code, 1);
   assert.match(out, /usage: mycontext add <category> <title>/);
   assert.match(out, /--body/);
@@ -414,7 +414,7 @@ test('add with no title still prints its usage, and that usage names the flags',
 test('--extra sets category fields at creation, in one command', () => {
   const cwd = sandbox();
   const { code } = run(
-    ['add', 'rule', 'Never log a customer email',
+    ['add', '--summary-omitted', 'rule', 'Never log a customer email',
      '--body', 'PII must not reach the log.',
      '--extra', 'directive=dont', '--yes'],
     cwd,
@@ -433,7 +433,7 @@ test('--extra sets category fields at creation, in one command', () => {
 test('--extra refuses a reserved frontmatter key, with the same message edit gives', () => {
   const cwd = sandbox();
   const { code, out } = run(
-    ['add', 'lesson', 'Something learned', '--extra', 'status=active', '--yes'],
+    ['add', '--summary-omitted', 'lesson', 'Something learned', '--extra', 'status=active', '--yes'],
     cwd,
   );
   assert.equal(code, 1);
@@ -444,7 +444,7 @@ test('--extra refuses a reserved frontmatter key, with the same message edit giv
 test('--extra without an = is refused, and says what the shape is', () => {
   const cwd = sandbox();
   const { code, out } = run(
-    ['add', 'lesson', 'Something learned', '--extra', 'directive', '--yes'],
+    ['add', '--summary-omitted', 'lesson', 'Something learned', '--extra', 'directive', '--yes'],
     cwd,
   );
   assert.equal(code, 1);
@@ -473,7 +473,7 @@ function stepTexts(cwd: string, id: string): string[] {
 
 test('`add --step` is repeatable and keeps command-line order', () => {
   const cwd = sandbox();
-  const { code } = run(['add', 'procedure', 'Rotate the webhook secret',
+  const { code } = run(['add', '--summary-omitted', 'procedure', 'Rotate the webhook secret',
     '--step', 'Deploy the next secret beside the live one',
     '--step', 'Roll the endpoint secret',
     '--step', 'Promote and redeploy', '--yes'], cwd);
@@ -494,14 +494,14 @@ test('`add --step` is repeatable and keeps command-line order', () => {
 test('a step is not comma-split — a step is a sentence and sentences contain commas', () => {
   // Unlike `--scope`/`--tags`, and for the reason `--note` is not split either.
   const cwd = sandbox();
-  run(['add', 'procedure', 'X', '--step', 'Stop the worker, then drain the queue', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'procedure', 'X', '--step', 'Stop the worker, then drain the queue', '--yes'], cwd);
   assert.deepEqual(stepTexts(cwd, 'PROC-x'), ['Stop the worker, then drain the queue']);
   removeTree(cwd);
 });
 
 test('a step containing a line break is refused, and nothing is written', () => {
   const cwd = sandbox();
-  const { code, out } = run(['add', 'procedure', 'X', '--step', 'a\nb', '--yes'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'procedure', 'X', '--step', 'a\nb', '--yes'], cwd);
   assert.equal(code, 1);
   assert.match(out, /line break/);
   // The refusal's own promise, which the message cannot prove on its own.
@@ -512,7 +512,7 @@ test('a step containing a line break is refused, and nothing is written', () => 
 
 test('an empty --step is refused rather than written as a marker with no text', () => {
   const cwd = sandbox();
-  const { code, out } = run(['add', 'procedure', 'X', '--step=', '--yes'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'procedure', 'X', '--step=', '--yes'], cwd);
   assert.equal(code, 1);
   assert.match(out, /is empty/);
   assert.equal(get(cwd, 'PROC-x'), null);
@@ -526,10 +526,10 @@ test('a bare --step is refused both ways, like every other value flag', () => {
   // rather than reading argv again.
   const cwd = sandbox();
   // Nothing after it at all.
-  assert.match(run(['add', 'procedure', 'X', '--yes', '--step'], cwd).out, /--step needs a value/);
+  assert.match(run(['add', '--summary-omitted', 'procedure', 'X', '--yes', '--step'], cwd).out, /--step needs a value/);
   // ...and the subtler one: the NEXT OPTION read as its text.
   assert.match(
-    run(['add', 'procedure', 'X', '--step', '--yes'], cwd).out,
+    run(['add', '--summary-omitted', 'procedure', 'X', '--step', '--yes'], cwd).out,
     /--step was followed by "--yes", which is another option, not a value/,
   );
   assert.equal(get(cwd, 'PROC-x'), null);
@@ -542,17 +542,17 @@ test('a step that is a whole pasted checkbox line is written verbatim, not unwra
   // surface neither repairs it nor refuses it. Pinned because "quietly
   // repaired" is the outcome this format does not permit.
   const cwd = sandbox();
-  run(['add', 'procedure', 'X', '--step', '- [X] Roll it', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'procedure', 'X', '--step', '- [X] Roll it', '--yes'], cwd);
   assert.deepEqual(stepTexts(cwd, 'PROC-x'), ['- [X] Roll it']);
   removeTree(cwd);
 });
 
 test('the usage banner and the unknown-flag message both name --step', () => {
   const cwd = sandbox();
-  // `run(['add', 'lesson'])` prints `ADD_USAGE` itself — not the top-level
+  // `run(['add', '--summary-omitted', 'lesson'])` prints `ADD_USAGE` itself — not the top-level
   // banner, where a `--step` printed by some OTHER command's summary line
   // would satisfy the match without `add` accepting anything.
-  const usage = run(['add', 'lesson'], cwd).out;
+  const usage = run(['add', '--summary-omitted', 'lesson'], cwd).out;
   assert.match(usage, /usage: mycontext add <category> <title>/);
   assert.match(usage, /--step/);
   // And the unknown-flag message, which used to name `create_item` as the only
@@ -562,7 +562,7 @@ test('the usage banner and the unknown-flag message both name --step', () => {
   // `ADD_USAGE`, which already names the flag, so a `/--step/` assertion here
   // passes whether or not the message says anything of its own. (It did, and a
   // mutation that deleted the whole sentence survived it.)
-  const unknown = run(['add', 'procedure', 'X', '--steps', 'a'], cwd).out;
+  const unknown = run(['add', '--summary-omitted', 'procedure', 'X', '--steps', 'a'], cwd).out;
   assert.match(unknown, /unknown option "--steps"/);
   assert.match(unknown, /steps are no longer among them/);
   assert.match(unknown, /mycontext repair/);
@@ -574,7 +574,7 @@ test('--step says it is for a procedure, that it repeats, and that it cannot be 
   // reached for the wrong category finds out, if they are going to find out at
   // all. And stating the limitation is cheaper than a user discovering it.
   const cwd = sandbox();
-  const help = run(['add', 'lesson'], cwd).out;
+  const help = run(['add', '--summary-omitted', 'lesson'], cwd).out;
   assert.match(help, /procedure/);
   assert.match(help, /runbook/);
   assert.match(help, /repeat/);
@@ -589,7 +589,7 @@ test('--step is accepted on any category, runbook included', () => {
   // so that adding the refusal later is a deliberate change, not a quiet one.
   const cwd = sandbox();
   assert.equal(
-    run(['add', 'runbook', 'Restart the worker', '--step', 'Drain the queue', '--yes'], cwd).code,
+    run(['add', '--summary-omitted', 'runbook', 'Restart the worker', '--step', 'Drain the queue', '--yes'], cwd).code,
     0,
   );
   assert.deepEqual(stepTexts(cwd, 'RUN-restart-the-worker'), ['Drain the queue']);
@@ -604,7 +604,7 @@ test('a step that cannot be written is refused before the normative capture is p
   // WITHOUT this the preview and the confirmation prompt come first on every
   // single `--step` mistake, and the refusal only after the human said yes.
   const cwd = sandbox();
-  const { code, out } = run(['add', 'procedure', 'X', '--step', '  indented', '--yes'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'procedure', 'X', '--step', '  indented', '--yes'], cwd);
   assert.equal(code, 1);
   assert.doesNotMatch(out, /about to create/);
   assert.match(out, /starts with whitespace/);

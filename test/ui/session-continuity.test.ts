@@ -56,7 +56,7 @@ function project(): string {
     assert.equal(runCli(args, dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
   };
   run(['init']);
-  run(['add', 'rule', 'Pin me', '--body', 'Pinned body. '.repeat(10), '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'Pin me', '--body', 'Pinned body. '.repeat(10), '--yes']);
   return dir;
 }
 

@@ -21,9 +21,13 @@ file, and the whole value of this category is that it is one.
 3. Draft the *why*, as one `--note` per point: what this file is for, and what would make
    the snapshot misleading. The snapshot says what the file says; only you and the user can
    say why it is in the corpus, and the item's own text is the only place that goes.
-4. Print this command for the user to run, filled in, and stop:
+4. Draft the `--summary`: one plain sentence for a reader who does not know this codebase,
+   saying what this file IS to the project and why it matters. It is required — a capture
+   without one is refused, because an item created with no summary can never afterwards be
+   asked for one. Here it is the sentence about the FILE, not about the snapshot.
+5. Print this command for the user to run, filled in, and stop:
 
-   `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" add reference "<title>" --file <path> --note "<why>"`
+   `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" add reference "<title>" --file <path> --summary "<one plain sentence>" --note "<why>"`
 
    Do not run it yourself. `mycontext add` claims `origin: "human"`, which is the one
    claim you cannot make, and it is on the deny list this plugin's README recommends.

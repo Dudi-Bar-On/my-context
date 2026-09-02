@@ -85,7 +85,7 @@ Seen in production.
 
 test('mycontext add --severity hard on a rationale category is refused, and writes nothing', () => {
   withProject((cwd) => {
-    const { code, out } = run(['add', 'lesson', 'Retries need jitter', '--severity', 'hard'], cwd);
+    const { code, out } = run(['add', '--summary-omitted', 'lesson', 'Retries need jitter', '--severity', 'hard'], cwd);
     assert.equal(code, 1, out);
     assert.match(out, /severity/);
     assert.match(out, /only governs on the normative tier/);
@@ -101,7 +101,7 @@ test('mycontext add --severity hard on a rationale category is refused, and writ
 test('mycontext add --severity hard on a normative category still works', () => {
   withProject((cwd) => {
     const { code, out } = run(
-      ['add', 'rule', 'Never log secrets', '--severity', 'hard', '--yes'], cwd);
+      ['add', '--summary-omitted', 'rule', 'Never log secrets', '--severity', 'hard', '--yes'], cwd);
     assert.equal(code, 0, out);
     assert.match(out, /created RULE-never-log-secrets/);
   });
@@ -112,7 +112,7 @@ test('mycontext add --severity hard on a normative category still works', () => 
 test('create_item refuses always on a rationale item', () => {
   withProject((cwd) => {
     assert.throws(
-      () => createRegistry(cwd).call('create_item', {
+      () => createRegistry(cwd).call('create_item', { summary_omitted: true,
         type: 'decision', title: 'Use SQLite', always: true,
       }),
       (err: Error) => {
@@ -128,7 +128,7 @@ test('create_item refuses always on a rationale item', () => {
 test('update_item refuses always on a rationale item', () => {
   withProject((cwd) => {
     const registry = createRegistry(cwd);
-    registry.call('create_item', { type: 'lesson', title: 'A rationale item', body: 'b' });
+    registry.call('create_item', { summary_omitted: true, type: 'lesson', title: 'A rationale item', body: 'b' });
     assert.throws(
       () => registry.call('update_item', { id: 'LESSON-a-rationale-item', always: true }),
       (err: Error) => {
@@ -147,7 +147,7 @@ test('update_item still accepts always on a normative DRAFT — that gate is not
     const registry = createRegistry(cwd);
     // An agent's normative capture is forced to `draft` (`trustedStatus`), and
     // a draft governs nothing, so `always` is neither guarded nor inert there.
-    registry.call('create_item', { type: 'constraint', title: 'Pool capped at 20', body: 'b' });
+    registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool capped at 20', body: 'b' });
     registry.call('update_item', { id: 'CONST-pool-capped-at-20', always: true });
     assert.match(registry.call('get_item', { id: 'CONST-pool-capped-at-20' }), /always: true/);
   });
@@ -195,7 +195,7 @@ test('review promote of a rationale draft without the flags still works', () => 
 test('review promote --always on a NORMATIVE draft is untouched', () => {
   withProject((cwd) => {
     const registry = createRegistry(cwd);
-    registry.call('create_item', { type: 'constraint', title: 'Pool capped at 20', body: 'b' });
+    registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool capped at 20', body: 'b' });
     const { code, out } = run(
       ['review', 'promote', 'CONST-pool-capped-at-20', '--always', '--yes'], cwd);
     assert.equal(code, 0, out);
@@ -242,7 +242,7 @@ test('the promote preview still tells a NORMATIVE draft it will be pinned', () =
   // that always does.
   withProject((cwd) => {
     const registry = createRegistry(cwd);
-    registry.call('create_item', { type: 'constraint', title: 'Pool capped at 20', body: 'b' });
+    registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool capped at 20', body: 'b' });
     const { out } = run(
       ['review', 'promote', 'CONST-pool-capped-at-20', '--always', '--yes'], cwd);
     assert.match(out, /injected in full at every session start/);

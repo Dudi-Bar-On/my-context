@@ -75,7 +75,7 @@ base('the bare URL, with no fragment and no prior credential, names its own caus
     // screen (here `preview`, the landing route) drew its own empty content.
     //
     // Located by `p.small.spill` filtered on the command text, not by
-    // `getByText('This page has no credential')`: that phrase is ALSO the
+    // `getByText('No credential on this page')`: that phrase is ALSO the
     // full text of the nested `<b>` run, and Playwright's text engine returns
     // the innermost matching element — the `<b>`, not the `<p>` around it —
     // so `.textContent()` on it would silently see only the bold lead-in and
@@ -86,8 +86,21 @@ base('the bare URL, with no fragment and no prior credential, names its own caus
       .toBeVisible({ timeout: 15_000 });
 
     const fullText = (await notice.textContent()) ?? '';
+    // Re-pinned 2026-09-02: this notice's on-screen English was shortened
+    // ("This page has no credential" -> "No credential on this page — not the
+    // same as an empty corpus."). The wording moved; the INTENT this assertion
+    // protects did not, and both halves of it are pinned below. First: the
+    // sentence must name the missing CREDENTIAL — matched case-insensitively
+    // so the phrase may lead the sentence or sit inside it, while "no data",
+    // "nothing here" or a bare empty-state still fail it. Second: it must say
+    // that this is NOT an empty corpus — a locked-out page and an empty corpus
+    // being indistinguishable is the defect this whole file pins closed, so
+    // that contrast is intent rather than decoration.
     expect(fullText, 'the notice must say it has no CREDENTIAL, not that it has no data')
-      .toContain('This page has no credential');
+      .toMatch(/no credential/i);
+    expect(fullText, 'the notice must say a missing credential is NOT an empty corpus — the two ' +
+      'being indistinguishable is the defect this file exists to pin closed')
+      .toMatch(/empty corpus/i);
     // Fact 2 and 3 together: the fragment-is-the-credential explanation and
     // the actual command, in the SAME element — a reader who sees the
     // sentence sees the whole answer, not half of it elsewhere on the page.

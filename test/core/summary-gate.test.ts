@@ -118,13 +118,30 @@ test('an echo is not a change: re-sending the same body raises no gate', () => {
   } finally { box.dispose(); }
 });
 
-test('an item with no summary is never gated: there is nothing to invalidate', () => {
+/**
+ * The clause that used to stand here asserted the opposite: an item with no
+ * summary was never gated, "because there is nothing to invalidate". That
+ * waiver is what made the hole self-perpetuating — an item born without a
+ * summary consulted it on every later edit and was let through every time,
+ * while `summary_stale` could not report it either, so no enforced path could
+ * ever give it one. With the creation gate closing the front door, a null
+ * summary means a legacy item or a hand-authored file, and the owner's ruling
+ * applies to both on the same terms as to everything else.
+ */
+test('an item with no summary is gated like any other: the waiver was the hole', () => {
   const box = sandbox();
   try {
     const item = itemOf(box, rule(box));
     assert.equal(item.summary, null);
-    assert.equal(summaryRequired(item, { id: item.id, body: 'Anything at all.' }), false,
-      'gating here would turn the ruling into a campaign to summarise the corpus');
+    assert.equal(summaryRequired(item, { id: item.id, body: 'Anything at all.' }), true,
+      'a waiver no path can ever lift is a dead end, not an exemption');
+    assert.equal(
+      summaryRequired(item, { id: item.id, body: 'Anything at all.', summaryUnchanged: true }),
+      false,
+      'and the same escape hatch is available, so the gate is answerable',
+    );
+    assert.equal(summaryRequired(item, { id: item.id, tags: ['x'] }), false,
+      'an edit that moves nothing summarised still raises no gate here');
   } finally { box.dispose(); }
 });
 
@@ -306,14 +323,39 @@ test('--summary-unchanged on an edit that never raised the gate is refused', () 
   } finally { box.dispose(); }
 });
 
-test('--summary-unchanged on an item with no summary is refused', () => {
+/**
+ * The hatch on an item with no summary used to be refused outright — there was
+ * no sentence for it to leave standing. It is ACCEPTED now, and it has to be:
+ * the same item is gated now, so refusing the flag would raise a gate with no
+ * way through it. What the flag asserts there is slightly different — "this
+ * item is being left without a summary, deliberately" — and the audit row says
+ * so with its own note.
+ */
+test('--summary-unchanged answers the gate on an item with no summary', () => {
+  const box = sandbox();
+  try {
+    const id = rule(box);
+    const filePath = itemOf(box, id).filePath;
+    box.ctx.store.close();
+    const refused = cli(box, ['edit', id, '--body', 'New.', '--yes']);
+    assert.equal(refused.code, 1, 'the edit is gated, exactly as on a summarised item');
+    assert.match(refused.flat, /carries no summary/);
+
+    const r = cli(box, ['edit', id, '--body', 'New.', '--summary-unchanged', '--yes']);
+    assert.equal(r.code, 0, r.flat);
+    assert.match(readFileSync(path.join(box.root, filePath), 'utf8'), /New\./);
+  } finally { box.dispose(); }
+});
+
+test('--summary-unchanged on an unsummarised item that raises no gate is still refused', () => {
   const box = sandbox();
   try {
     const id = rule(box);
     box.ctx.store.close();
-    const r = cli(box, ['edit', id, '--body', 'New.', '--summary-unchanged', '--yes']);
+    const r = cli(box, ['edit', id, '--tags', 'x', '--summary-unchanged', '--yes']);
     assert.equal(r.code, 1);
-    assert.match(r.flat, /has no summary to leave/);
+    assert.match(r.flat, /does not raise it/);
+    assert.match(r.flat, /the summary it has never had/);
   } finally { box.dispose(); }
 });
 

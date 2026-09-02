@@ -36,7 +36,7 @@ function withCorpus<T>(fn: (cwd: string, lines: () => string[], run: (...a: stri
       return runCli(args, cwd, (s) => out.push(s));
     };
     assert.equal(run('init'), 0);
-    assert.equal(run('add', 'constraint', 'Pool capped at twenty', '--yes'), 0);
+    assert.equal(run('add', '--summary-omitted', 'constraint', 'Pool capped at twenty', '--yes'), 0);
     return fn(cwd, () => out, run);
   });
 }
@@ -138,7 +138,7 @@ test('a disabled category is still listable, and its existing items are still sh
     writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), 'utf8');
 
     // The category is genuinely disabled now — `add` refuses it.
-    assert.equal(run('add', 'constraint', 'Should not be creatable', '--yes'), 1);
+    assert.equal(run('add', '--summary-omitted', 'constraint', 'Should not be creatable', '--yes'), 1);
     assert.match(lines().join('\n'), /disabled/i);
 
     assert.equal(run('list', 'constraint'), 0, 'a disabled category must still be listable');
@@ -163,7 +163,7 @@ test('a disabled category with no items answers "0 item(s)" rather than refusing
     cfg.categories = { ...(cfg.categories ?? {}), runbook: { enabled: false } };
     writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), 'utf8');
 
-    assert.equal(run('add', 'runbook', 'Should not be creatable', '--yes'), 1,
+    assert.equal(run('add', '--summary-omitted', 'runbook', 'Should not be creatable', '--yes'), 1,
       '`runbook` must really be disabled for this test to mean anything');
 
     assert.equal(run('list', 'runbook'), 0, 'a disabled, empty category must not be refused');

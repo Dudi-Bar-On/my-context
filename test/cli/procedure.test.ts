@@ -50,7 +50,7 @@ function readFileBytes(dir: string, relative: string): string {
 }
 
 function seed(dir: string): void {
-  runCli(['add', 'procedure', 'Rotate the webhook secret',
+  runCli(['add', '--summary-omitted', 'procedure', 'Rotate the webhook secret',
     '--body', 'Run this when the shared secret leaks.',
     '--step', 'Deploy the next secret beside the live one',
     '--step', 'Roll the endpoint secret',
@@ -175,7 +175,7 @@ test('`procedure list` discloses that a ready procedure reaches no index line', 
 
 test('an item that is not a procedure is refused by name', () => {
   withWorkspace((dir) => {
-    runCli(['add', 'rule', 'Never log secrets', '--yes'], dir, () => {});
+    runCli(['add', '--summary-omitted', 'rule', 'Never log secrets', '--yes'], dir, () => {});
     const out: string[] = [];
     assert.equal(runCli(['procedure', 'show', 'RULE-never-log-secrets'], dir, (s) => out.push(s)), 1);
     assert.match(out.join('\n'), /is a rule, not a procedure/);
@@ -190,7 +190,7 @@ test('a RUNBOOK is refused, and the refusal says which of the two this is', () =
     // difference is statable wherever an author is choosing. This message is
     // the fourth of those places, and it is the only one that reaches somebody
     // who has ALREADY chosen wrongly.
-    runCli(['add', 'runbook', 'Rotate the webhook secret', '--yes'], dir, () => {});
+    runCli(['add', '--summary-omitted', 'runbook', 'Rotate the webhook secret', '--yes'], dir, () => {});
     const out: string[] = [];
     assert.equal(runCli(['procedure', 'activate', 'RUN-rotate-the-webhook-secret'],
       dir, (s) => out.push(s)), 1);

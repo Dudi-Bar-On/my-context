@@ -68,7 +68,7 @@ const RULE = 'CONST-pool-capped-at-10';
 
 /** One ACTIVE, governing normative item — `add --yes` passes `origin: 'human'`. */
 function governing(cwd: string, extra: string[] = []): string {
-  run(['add', 'constraint', 'Pool capped at 10', '--body', 'Ten connections.',
+  run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--body', 'Ten connections.',
     '--scope', 'src/db/**', ...extra, '--yes'], cwd);
   return RULE;
 }
@@ -77,7 +77,7 @@ function governing(cwd: string, extra: string[] = []): string {
  * `rule` declares `directive`, and `constraint` declares none, so every
  * `--extra` test has to go through this rather than through `governing`. */
 function governingRule(cwd: string, extra: string[] = []): string {
-  run(['add', 'rule', 'Never log customer email', '--body', 'Not at any level.',
+  run(['add', '--summary-omitted', 'rule', 'Never log customer email', '--body', 'Not at any level.',
     '--scope', 'src/**', ...extra, '--yes'], cwd);
   return 'RULE-never-log-customer-email';
 }
@@ -85,19 +85,19 @@ function governingRule(cwd: string, extra: string[] = []): string {
 /** One rationale item whose category declares extra fields. `risk` is the only
  * category declaring two (`likelihood`, `impact`), which the merge test needs. */
 function risk(cwd: string): string {
-  run(['add', 'risk', 'The index may fall behind', '--body', 'Rebuilds are eventual.'], cwd);
+  run(['add', '--summary-omitted', 'risk', 'The index may fall behind', '--body', 'Rebuilds are eventual.'], cwd);
   return 'RISK-the-index-may-fall-behind';
 }
 
 /** One rationale item. Rationale categories need no confirmation at capture. */
 function rationale(cwd: string): string {
-  run(['add', 'decision', 'Use SQLite for the index', '--body', 'It ships with Node.'], cwd);
+  run(['add', '--summary-omitted', 'decision', 'Use SQLite for the index', '--body', 'It ships with Node.'], cwd);
   return 'DEC-use-sqlite-for-the-index';
 }
 
 /** A normative DRAFT: a non-human origin is forced to `draft` by `trustedStatus`. */
 function draft(cwd: string): string {
-  createRegistry(cwd).call('create_item', {
+  createRegistry(cwd).call('create_item', { summary_omitted: true,
     type: 'constraint', title: 'Retries capped at three', body: 'Three tries.',
   });
   return 'CONST-retries-capped-at-three';
@@ -112,7 +112,7 @@ test('edit is a registered command, so it inherits the registry conventions', ()
 test('row 1: a rationale item\'s content is edited with no gate at all', () => {
   withProject((cwd) => {
     const id = rationale(cwd);
-    const { code, out } = run(['edit', id, '--body', 'It ships with Node 24.'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', id, '--body', 'It ships with Node 24.'], cwd);
 
     assert.equal(code, 0, out);
     // No preview, no prompt, no --yes: nothing this edit can do requires one.
@@ -163,7 +163,7 @@ test('row 3: a normative DRAFT is ungated in every class of field', () => {
     // Content, reach and force in one call — nothing governs yet, so none of
     // it needs a human's approval beyond the promotion `review` already gates.
     const { code, out } = run([
-      'edit', id, '--body', 'Four tries.', '--always', '--severity', 'hard',
+      'edit', '--summary-unchanged', id, '--body', 'Four tries.', '--always', '--severity', 'hard',
     ], cwd);
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /about to edit/);
@@ -242,7 +242,7 @@ test('an edit that demotes a governing item to draft is still gated', () => {
 test('a draft edit that does not start the governing is still ungated', () => {
   withProject((cwd) => {
     const id = draft(cwd);
-    const { code, out } = run(['edit', id, '--status', 'deprecated', '--body', 'Four.'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', id, '--status', 'deprecated', '--body', 'Four.'], cwd);
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /about to edit/);
     assert.match(itemFile(cwd, 'constraint', id), /^status: deprecated$/m);
@@ -282,15 +282,15 @@ test('--extra on a governing item is gated, previewed as a diff, and merges', ()
     const id = governingRule(cwd, ['--tags', 'db']);
     // A first key, set through the same flag, so the merge below has something
     // to preserve.
-    run(['edit', id, '--extra', 'directive=dont', '--yes'], cwd);
+    run(['edit', '--summary-unchanged', id, '--extra', 'directive=dont', '--yes'], cwd);
 
-    const refused = run(['edit', id, '--extra', 'directive=do'], cwd);
+    const refused = run(['edit', '--summary-unchanged', id, '--extra', 'directive=do'], cwd);
     assert.equal(refused.code, 1, refused.out);
     assert.match(refused.out, /about to edit/);
     assert.match(refused.out, /refusing without confirmation/);
     assert.match(itemFile(cwd, 'rule', id), /^directive: dont$/m);
 
-    const { code, out } = run(['edit', id, '--extra', 'directive=do', '--yes'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', id, '--extra', 'directive=do', '--yes'], cwd);
     assert.equal(code, 0, out);
     assert.match(out, /^ {4}- directive: dont$/m, 'both sides, as a diff, like every content field');
     assert.match(out, /^ {4}\+ directive: do$/m);
@@ -304,8 +304,8 @@ test('--extra merges rather than replacing, and repeats collect', () => {
     // declaring TWO extra fields — which is what "a key this edit never named
     // must survive" needs in order to be observable at all.
     const id = risk(cwd);
-    run(['edit', id, '--extra', 'impact=high', '--extra', 'likelihood=high'], cwd);
-    const { code, out } = run(['edit', id, '--extra', 'likelihood=low'], cwd);
+    run(['edit', '--summary-unchanged', id, '--extra', 'impact=high', '--extra', 'likelihood=high'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', id, '--extra', 'likelihood=low'], cwd);
 
     assert.equal(code, 0, out);
     const file = itemFile(cwd, 'risk', id);
@@ -319,11 +319,13 @@ test('--extra merges rather than replacing, and repeats collect', () => {
 test('--extra does not split its value on commas', () => {
   withProject((cwd) => {
     const id = risk(cwd);
-    const { code } = run(['edit', id, '--extra', 'impact=one, two, three'], cwd);
+    const { code } = run(['edit', '--summary-unchanged', id, '--extra', 'impact=one, two, three'], cwd);
     assert.equal(code, 0);
     assert.match(itemFile(cwd, 'risk', id), /^impact: one, two, three$/m);
     // And it reads BACK as one value: a second, identical edit is an echo, which
     // it could only be if the stored field parsed to the same single string.
+    // No hatch on the echo: it moves nothing summarised, so it raises no gate,
+    // and the hatch is refused where there is no gate to answer.
     assert.match(run(['edit', id, '--extra', 'impact=one, two, three'], cwd).out,
       phrase('nothing to change'));
   });
@@ -332,7 +334,7 @@ test('--extra does not split its value on commas', () => {
 test('--extra with no "=" is refused, naming the spelling, before any preview', () => {
   withProject((cwd) => {
     const id = governing(cwd);
-    const { code, out } = run(['edit', id, '--extra', 'directive', '--yes'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', id, '--extra', 'directive', '--yes'], cwd);
     assert.equal(code, 1, out);
     assert.match(out, phrase('--extra takes key=value'));
     assert.doesNotMatch(out, /about to edit/, 'the refusal must precede the preview');
@@ -347,7 +349,7 @@ test('an unstorable extra value is refused before the preview, not by the store 
   withProject((cwd) => {
     const id = governing(cwd);
     for (const value of ['status=active', 'kind=']) {
-      const { code, out } = run(['edit', id, '--extra', value, '--yes'], cwd);
+      const { code, out } = run(['edit', '--summary-unchanged', id, '--extra', value, '--yes'], cwd);
       assert.equal(code, 1, out);
       assert.doesNotMatch(out, /about to edit/, `--extra ${value} previewed before refusing`);
     }
@@ -358,7 +360,9 @@ test('an unstorable extra value is refused before the preview, not by the store 
 test('an echoed --extra changes nothing and says so', () => {
   withProject((cwd) => {
     const id = risk(cwd);
-    run(['edit', id, '--extra', 'likelihood=medium'], cwd);
+    run(['edit', '--summary-unchanged', id, '--extra', 'likelihood=medium'], cwd);
+    // The second call is an echo: it moves nothing, raises no gate, and so
+    // must not carry the hatch either.
     const { code, out } = run(['edit', id, '--extra', 'likelihood=medium'], cwd);
     assert.equal(code, 0, out);
     assert.match(out, phrase('nothing to change'));
@@ -371,13 +375,13 @@ test('row 4: content on a governing normative item previews and confirms', () =>
     const id = governing(cwd);
 
     // Without --yes, and with no terminal to ask in, it refuses and writes nothing.
-    const refused = run(['edit', id, '--body', 'Twelve connections.'], cwd);
+    const refused = run(['edit', '--summary-unchanged', id, '--body', 'Twelve connections.'], cwd);
     assert.equal(refused.code, 1);
     assert.match(refused.out, /about to edit/);
     assert.match(refused.out, /refusing without confirmation/);
     assert.match(itemFile(cwd, 'constraint', id), /Ten connections\./);
 
-    const { code, out } = run(['edit', id, '--body', 'Twelve connections.', '--yes'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', id, '--body', 'Twelve connections.', '--yes'], cwd);
     assert.equal(code, 0, out);
     // The preview shows the change as a DIFF, both sides, not a field name.
     assert.match(out, /^ {4}- Ten connections\.$/m);
@@ -481,7 +485,7 @@ test('scopePolicy "required" refuses an edit that removes the last glob, before 
 test('a human edit is never staged, whatever agentEdits says', () => {
   withProject((cwd) => {
     const id = governing(cwd);
-    const { code, out } = run(['edit', id, '--body', 'Twelve connections.', '--yes'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', id, '--body', 'Twelve connections.', '--yes'], cwd);
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /staged/i, 'a human edit applies; it is not held for review');
     // Applied to the file, and no revision log exists at all.
@@ -496,7 +500,7 @@ test('editing an item that carries a colliding pending revision says so, twice',
     const id = governing(cwd);
     const staged = stageIn(cwd, id, { body: 'Ten connections, and no more.' });
 
-    const { code, out } = run(['edit', id, '--body', 'Twelve connections.', '--yes'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', id, '--body', 'Twelve connections.', '--yes'], cwd);
     assert.equal(code, 0, out);
     // Before the prompt: what this edit is about to do to the proposal.
     assert.match(out, phrase(`${id} carries 1 pending revision(s) (${staged.revision.revisionId})`));
@@ -517,7 +521,7 @@ test('a pending revision on a different field is not reported as made stale', ()
     const staged = stageIn(cwd, id, { title: 'Pool capped at ten' });
     // Staleness is per FIELD, so an edit to the body leaves a title proposal
     // promotable. Warning about it would be a warning about nothing.
-    const { out } = run(['edit', id, '--body', 'Twelve connections.', '--yes'], cwd);
+    const { out } = run(['edit', '--summary-unchanged', id, '--body', 'Twelve connections.', '--yes'], cwd);
     assert.match(out, phrase(`${id} carries 1 pending revision(s)`));
     assert.match(out, phrase('None of it proposes a field this edit changes'));
     assert.doesNotMatch(out, /STALE/);
@@ -533,7 +537,7 @@ test('the revision warning is printed on the UNGATED path too', () => {
     // with no prompt to hang the warning on.
     const id = draft(cwd);
     stageIn(cwd, id, { body: 'Four tries.' });
-    const { code, out } = run(['edit', id, '--body', 'Five tries.'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', id, '--body', 'Five tries.'], cwd);
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /about to edit/);
     assert.match(out, phrase('this edit makes it STALE'));
@@ -555,7 +559,7 @@ test('an unknown flag is refused rather than folded into the edit', () => {
 test('--yes=false declines, exactly as passing no --yes does', () => {
   withProject((cwd) => {
     const id = governing(cwd);
-    const { code, out } = run(['edit', id, '--body', 'Twelve connections.', '--yes=false'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', id, '--body', 'Twelve connections.', '--yes=false'], cwd);
     assert.equal(code, 1, out);
     assert.match(itemFile(cwd, 'constraint', id), /Ten connections\./);
   });
@@ -563,7 +567,7 @@ test('--yes=false declines, exactly as passing no --yes does', () => {
 
 test('a non-existent id is reported clearly, naming how to find the right one', () => {
   withProject((cwd) => {
-    const { code, out } = run(['edit', 'CONST-nothing-like-this', '--body', 'x', '--yes'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', 'CONST-nothing-like-this', '--body', 'x', '--yes'], cwd);
     assert.equal(code, 1);
     assert.match(out, /no item with id "CONST-nothing-like-this"/);
     assert.match(out, /mycontext list/);
@@ -684,12 +688,12 @@ test('the preview fits the layout budget at the widest id this project can mint'
     // Six characters of category prefix plus `slugify`'s sixty-character
     // ceiling — the same hostile id every other layout test measures at.
     const title = 'Pool capped at ten connections because the database refuses more than that';
-    run(['add', 'constraint', title, '--body', 'Ten connections.', '--scope', 'src/db/**', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', title, '--body', 'Ten connections.', '--scope', 'src/db/**', '--yes'], cwd);
     const id = run(['list', 'constraint'], cwd).out.match(/CONST-[a-z0-9-]+/)?.[0];
     assert.ok(id && id.length >= 60, `expected a long id, got ${id}`);
 
     for (const args of [
-      ['edit', id, '--body', 'Twelve connections.', '--yes'],
+      ['edit', '--summary-unchanged', id, '--body', 'Twelve connections.', '--yes'],
       ['edit', id, '--scope', 'src/api/**', '--yes'],
       ['edit', id, '--status', 'deprecated', '--yes'],
     ]) {
@@ -901,7 +905,7 @@ test('the named commands are registered, and their output fits the layout budget
   const over: string[] = [];
   withProject((cwd) => {
     const title = 'Pool capped at ten connections because the database refuses more than that';
-    run(['add', 'constraint', title, '--body', 'Ten connections.', '--scope', 'src/db/**', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', title, '--body', 'Ten connections.', '--scope', 'src/db/**', '--yes'], cwd);
     const id = run(['list', 'constraint'], cwd).out.match(/CONST-[a-z0-9-]+/)?.[0];
     assert.ok(id && id.length >= 60, `expected a long id, got ${id}`);
 

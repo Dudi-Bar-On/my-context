@@ -5,6 +5,8 @@ title: Retry storms need jitter
 status: active
 severity: soft
 always: false
+summary: When everything retries at the same moment after a failure, the retries themselves become the outage.
+summary_of: c2baba9bccd24a6b
 scope: []
 tags:
   - reliability
@@ -14,7 +16,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-14
 valid_until: null
-checksum: 9ae5e0343e454843
+checksum: e6c193cfdc2c75db
 ---
 
 # Retry storms need jitter

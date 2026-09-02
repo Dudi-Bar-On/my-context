@@ -34,9 +34,9 @@ function run(args: string[], cwd: string): { code: number; out: string } {
 
 /** Two soft rules on different tags, plus one hard invariant on neither. */
 function seed(cwd: string): void {
-  run(['add', 'rule', 'Charge in integer cents', '--tags', 'billing', '--yes'], cwd);
-  run(['add', 'rule', 'Rotate the session token hourly', '--tags', 'auth', '--yes'], cwd);
-  run(['add', 'invariant', 'Hooks fail open', '--tags', 'hooks', '--severity', 'hard', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'rule', 'Charge in integer cents', '--tags', 'billing', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'rule', 'Rotate the session token hourly', '--tags', 'auth', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'invariant', 'Hooks fail open', '--tags', 'hooks', '--severity', 'hard', '--yes'], cwd);
 }
 
 test('with no focus set, the command says so rather than printing an empty report', () => {

@@ -174,11 +174,11 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // is the guard that a later change cannot silently regress that.
   add: (cwd) => {
     plantUnrelatedCorruptItem(cwd);
-    return ['constraint', 'An item captured despite the F2 corrupt file', '--yes'];
+    return ['--summary-omitted', 'constraint', 'An item captured despite the F2 corrupt file', '--yes'];
   },
 
   list: (cwd) => {
-    run(['add', 'constraint', 'A listed item for the F2 guard', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'A listed item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [];
   },
@@ -191,19 +191,19 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // item, which is a different test's business (`ack` refuses a code doctor
   // does not report), and F2 is about the load error and nothing else.
   ack: (cwd) => {
-    const added = run(['add', 'constraint', 'An item to ack for the F2 guard', '--yes'], cwd);
+    const added = run(['add', '--summary-omitted', 'constraint', 'An item to ack for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [constraintId(added.out), '--list'];
   },
 
   show: (cwd) => {
-    const added = run(['add', 'constraint', 'An item to show for the F2 guard', '--yes'], cwd);
+    const added = run(['add', '--summary-omitted', 'constraint', 'An item to show for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [constraintId(added.out)];
   },
 
   rebuild: (cwd) => {
-    run(['add', 'constraint', 'An indexed item for the F2 guard', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'An indexed item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [];
   },
@@ -240,7 +240,7 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     // the point of planting one: this guard is about a command exiting 0 on a
     // load error that has nothing to do with it, and here the independence is
     // total rather than incidental.
-    run(['add', 'constraint', 'An item whose creation is audited', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'An item whose creation is audited', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [];
   },
@@ -249,7 +249,7 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     // its full-report branch return through two SEPARATE code paths (see
     // task-13-report.md's F2 finding) — an empty setup here would only ever
     // exercise the first one and could pass even with the second one broken.
-    run(['add', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [];
   },
@@ -298,7 +298,7 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // it — `export` resolves `--out` against the directory the command was run
   // in, which is what makes that true.
   export: (cwd) => {
-    run(['add', 'constraint', 'An item worth exporting for the F2 guard', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'An item worth exporting for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return ['--out', 'f2-artefact'];
   },
@@ -312,7 +312,7 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // corrupt file, not what it wrote. `--yes` because stdin is not interactive
   // under `node --test` and `confirmAction` refuses without it by design.
   pack: (cwd) => {
-    run(['add', 'constraint', 'An item worth packing for the F2 guard', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'An item worth packing for the F2 guard', '--yes'], cwd);
     run([
       'export', '--out', 'f2-pack', '--as-pack',
       '--pack-name', 'f2-guard', '--pack-version', '1',
@@ -415,8 +415,8 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     // actually uses, not a draft-only shortcut. `--yes` on the command
     // itself because stdin is not interactive under `node --test` and
     // `confirmAction` refuses without it by design.
-    const old = run(['add', 'constraint', 'The old constraint for the F2 guard', '--yes'], cwd);
-    const next = run(['add', 'constraint', 'The new constraint for the F2 guard', '--yes'], cwd);
+    const old = run(['add', '--summary-omitted', 'constraint', 'The old constraint for the F2 guard', '--yes'], cwd);
+    const next = run(['add', '--summary-omitted', 'constraint', 'The new constraint for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [constraintId(old.out), '--by', constraintId(next.out), '--yes'];
   },
@@ -427,9 +427,10 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     // than the ungated draft one. `--yes` on the command itself because stdin
     // is not interactive under `node --test` and `confirmAction` refuses
     // without it by design.
-    run(['add', 'constraint', 'A constraint to edit for the F2 guard', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'A constraint to edit for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
-    return ['CONST-a-constraint-to-edit-for-the-f2-guard', '--body', 'A new body.', '--yes'];
+    return ['CONST-a-constraint-to-edit-for-the-f2-guard', '--body', 'A new body.',
+      '--summary-unchanged', '--yes'];
   },
 
   // `pin`, `unpin`, `harden` and `soften` are `edit` under a shorter name
@@ -443,13 +444,13 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // one of the four exercises a real write rather than the "nothing to
   // change" branch.
   pin: (cwd) => {
-    const added = run(['add', 'constraint', 'A constraint to pin for the F2 guard', '--yes'], cwd);
+    const added = run(['add', '--summary-omitted', 'constraint', 'A constraint to pin for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [constraintId(added.out), '--yes'];
   },
 
   unpin: (cwd) => {
-    const added = run(['add', 'constraint', 'A constraint to unpin for the F2 guard', '--yes'], cwd);
+    const added = run(['add', '--summary-omitted', 'constraint', 'A constraint to unpin for the F2 guard', '--yes'], cwd);
     const id = constraintId(added.out);
     // `add` cannot set `always`, so the pin it is about to remove is put there
     // through the command that can.
@@ -459,14 +460,14 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   },
 
   harden: (cwd) => {
-    const added = run(['add', 'constraint', 'A constraint to harden for the F2 guard', '--yes'], cwd);
+    const added = run(['add', '--summary-omitted', 'constraint', 'A constraint to harden for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [constraintId(added.out), '--yes'];
   },
 
   soften: (cwd) => {
     const added = run(
-      ['add', 'constraint', 'A constraint to soften for the F2 guard', '--severity', 'hard', '--yes'],
+      ['add', '--summary-omitted', 'constraint', 'A constraint to soften for the F2 guard', '--severity', 'hard', '--yes'],
       cwd,
     );
     plantUnrelatedCorruptItem(cwd);
@@ -478,7 +479,7 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // early return — the same reason `repair` above corrupts a checksum first.
   refresh: (cwd) => {
     writeFileSync(path.join(cwd, 'f2-roadmap.md'), '# Roadmap\n\n## Q3\n\n- one\n', 'utf8');
-    run(['add', 'reference', 'A roadmap for the F2 guard', '--file', 'f2-roadmap.md'], cwd);
+    run(['add', '--summary-omitted', 'reference', 'A roadmap for the F2 guard', '--file', 'f2-roadmap.md'], cwd);
     writeFileSync(path.join(cwd, 'f2-roadmap.md'), '# Roadmap\n\n## Q3\n\n- one\n- two\n', 'utf8');
     plantUnrelatedCorruptItem(cwd);
     return ['REF-a-roadmap-for-the-f2-guard', '--yes'];
@@ -489,7 +490,7 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // one — and, before either, gets past the refusal that a filterless
   // `search` earns, which would exit 1 without ever opening the corpus.
   search: (cwd) => {
-    run(['add', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return ['--text', 'scoped item'];
   },
@@ -498,7 +499,7 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // path rather than its "no todo items" one. Both paths end in
   // `emitLoadErrors`, and this picks the one a user is actually on.
   todo: (cwd) => {
-    run(['add', 'todo', 'A jotted-down thing for the F2 guard', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'todo', 'A jotted-down thing for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [];
   },
@@ -508,7 +509,7 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // the refusals in front of them, every one of which exits 1 and would fail
   // this guard for a reason that has nothing to do with F2.
   'inbox-promote': (cwd) => {
-    run(['add', 'note', 'A jotted note for the F2 guard', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'note', 'A jotted note for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return ['NOTE-a-jotted-note-for-the-f2-guard', '--to', 'decision', '--yes'];
   },
@@ -518,7 +519,7 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // focus hides — rather than the "no focus is set" early return, which opens
   // nothing and would pass this test for the wrong reason.
   focus: (cwd) => {
-    run(['add', 'constraint', 'A constraint for the F2 guard', '--tags', 'f2', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'A constraint for the F2 guard', '--tags', 'f2', '--yes'], cwd);
     run(['focus', 'f2'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [];
@@ -535,13 +536,13 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     // keeps `procedure step` free of the index write lock. It still collects
     // and reports `loadLayer`'s per-file errors, so the F2 signal is the same
     // one every other command gives.
-    run(['add', 'procedure', 'Backfill the F2 guard', '--step', 'Do the one thing', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'procedure', 'Backfill the F2 guard', '--step', 'Do the one thing', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return ['list'];
   },
 
   query: (cwd) => {
-    run(['add', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return ['SELECT id FROM items'];
   },

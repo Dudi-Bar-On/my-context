@@ -37,7 +37,7 @@ function sandbox(config?: unknown): string {
   }
   mkdirSync(path.join(cwd, 'docs'));
   writeFileSync(path.join(cwd, 'docs', 'roadmap.md'), V1, 'utf8');
-  runCli(['add', 'reference', 'Roadmap', '--file', 'docs/roadmap.md', '--yes'], cwd, () => {});
+  runCli(['add', '--summary-omitted', 'reference', 'Roadmap', '--file', 'docs/roadmap.md', '--yes'], cwd, () => {});
   writeFileSync(path.join(cwd, 'docs', 'roadmap.md'), V2, 'utf8');
   return cwd;
 }
@@ -85,7 +85,7 @@ test('refresh_item refuses anything that is not a snapshot', () => {
   const cwd = sandbox();
   try {
     const registry = createRegistry(cwd);
-    registry.call('create_item', { type: 'decision', title: 'A decision' });
+    registry.call('create_item', { summary_omitted: true, type: 'decision', title: 'A decision' });
     assert.throws(
       () => registry.call('refresh_item', { id: 'DEC-a-decision' }),
       /is not a file snapshot/,

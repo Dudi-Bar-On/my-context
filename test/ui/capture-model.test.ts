@@ -53,15 +53,15 @@ function workspace(): { dir: string; done: () => void } {
   };
   run(['init']);
   // Insertion order is deliberately NOT id order.
-  run(['add', 'rule', 'Use POSIX paths', '--scope', 'src/**', '--body', 'POSIX.', '--yes']);
-  run(['add', 'adr', 'Chose postgres', '--scope', 'src/billing/**', '--body', 'Because.', '--yes']);
-  run(['add', 'invariant', 'Prices are integer cents',
+  run(['add', '--summary-omitted', 'rule', 'Use POSIX paths', '--scope', 'src/**', '--body', 'POSIX.', '--yes']);
+  run(['add', '--summary-omitted', 'adr', 'Chose postgres', '--scope', 'src/billing/**', '--body', 'Because.', '--yes']);
+  run(['add', '--summary-omitted', 'invariant', 'Prices are integer cents',
     '--scope', 'src/billing/**', '--body', 'Integers.', '--yes']);
-  run(['add', 'rule', 'Docs only', '--scope', 'docs/**', '--body', 'Docs.', '--yes']);
-  run(['add', 'constraint', 'Invoice api errors',
+  run(['add', '--summary-omitted', 'rule', 'Docs only', '--scope', 'docs/**', '--body', 'Docs.', '--yes']);
+  run(['add', '--summary-omitted', 'constraint', 'Invoice api errors',
     '--scope', 'src/billing/api/**', '--body', 'Problem+json.', '--yes']);
-  run(['add', 'rule', 'Applies everywhere', '--body', 'Everywhere.', '--yes']);
-  run(['add', 'rule', 'Drafted rule', '--scope', 'src/billing/**', '--body', 'Draft.', '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'Applies everywhere', '--body', 'Everywhere.', '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'Drafted rule', '--scope', 'src/billing/**', '--body', 'Draft.', '--yes']);
   run(['edit', 'RULE-drafted-rule', '--status', 'draft', '--yes']);
   return { dir, done: () => removeTree(dir) };
 }
@@ -238,7 +238,7 @@ test('the answer changes with the corpus, not with a cached snapshot', () => {
     const before = ok(dir, '?scope=src/billing/**');
     assert.equal(before.governing.some((r) => r.id === 'STD-api-errors-use-problem-json'), false);
     // The mockup's second sample row, added for real.
-    assert.equal(runCli(['add', 'standard', 'Api errors use problem json',
+    assert.equal(runCli(['add', '--summary-omitted', 'standard', 'Api errors use problem json',
       '--scope', 'src/billing/**', '--body', 'RFC 9457.', '--yes'], dir, () => {}), 0);
     const after = ok(dir, '?scope=src/billing/**');
     const row = after.governing.find((r) => r.id === 'STD-api-errors-use-problem-json');

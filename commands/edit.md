@@ -24,9 +24,17 @@ What the user typed: $ARGUMENTS
    `superseded` is deliberately absent from the status list: a retirement records its
    replacement in both directions, so it is `/mycontext:supersede`, not a status change.
 
-   The flags are `--title`, `--body`, `--scope "a/**,b/**"`, `--tags "a,b"`,
-   `--severity`, `--always[=false]`, `--status`, `--extra key=value`, and
-   `--unlink <relation> <target>` to remove a relation.
+   The flags are `--title`, `--body`, `--summary "<one plain sentence>"`,
+   `--scope "a/**,b/**"`, `--tags "a,b"`, `--severity`, `--always[=false]`,
+   `--status`, `--extra key=value`, and `--unlink <relation> <target>` to remove a
+   relation.
+
+   **An edit to `--body`, `--extra` or anything else the summary describes must carry
+   `--summary` too**, and is refused without it: the summary was written against the old
+   text, nothing in this product can rewrite it, and you are holding the new text. If the
+   edit genuinely does not change what the item MEANS — a typo, a reflow — say so with
+   `--summary-unchanged` instead, which writes no new text and records in the audit log
+   that nobody rewrote it.
 2. Run it WITHOUT `--yes`, exactly as written:
 
    `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" edit <id> <the flags>`

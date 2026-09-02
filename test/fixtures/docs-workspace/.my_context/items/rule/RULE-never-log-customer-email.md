@@ -5,6 +5,8 @@ title: Never log customer email
 status: active
 severity: soft
 always: false
+summary: Customer email addresses must never be written into logs, because logs are kept and read far more widely than the data itself.
+summary_of: 0ec078d2183abb8b
 scope:
   - src/**
 tags:
@@ -16,7 +18,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-14
 valid_until: null
-checksum: 7a07f1bebaafecdc
+checksum: c2c307e917ae7704
 ---
 
 # Never log customer email

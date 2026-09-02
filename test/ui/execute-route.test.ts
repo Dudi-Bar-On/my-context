@@ -62,7 +62,7 @@ function project(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-exec-'));
   assert.equal(runCli(['init'], dir, () => {}), 0);
   assert.equal(
-    runCli(['add', 'rule', 'a fixture rule', '--body', 'a body', '--yes'], dir, () => {}),
+    runCli(['add', '--summary-omitted', 'rule', 'a fixture rule', '--body', 'a body', '--yes'], dir, () => {}),
     0,
   );
   return dir;

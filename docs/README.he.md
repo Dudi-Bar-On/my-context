@@ -458,7 +458,7 @@ flowchart LR
 
 </div>
 
-<!-- example: add constraint "Uploads capped at 10 MB" --body "The API gateway rejects a larger body before it reaches us, so accepting one only produces a timeout the customer cannot explain." --scope "src/api/**" --tags uploads --yes -->
+<!-- example: add constraint "Uploads capped at 10 MB" --body "The API gateway rejects a larger body before it reaches us, so accepting one only produces a timeout the customer cannot explain." --summary "A cap on how large an upload the service will take, because anything bigger dies at the gateway anyway." --scope "src/api/**" --tags uploads --yes -->
 ```text
 about to create constraint "Uploads capped at 10 MB" — active, and governing this project at once.
 my_context: created CONST-uploads-capped-at-10-mb (active) at items/constraint/CONST-uploads-capped-at-10-mb.md.
@@ -1160,7 +1160,7 @@ Claude יכול להריץ את שני הצעדים בעצמו בעזרת הכל
 
 </div>
 
-<!-- example: add reference "Billing roadmap" --file docs/roadmap.md --note "The dates move; the ordering is what decides what is safe to build against." -->
+<!-- example: add reference "Billing roadmap" --file docs/roadmap.md --summary "The plan for what billing work comes when, kept as a copy so the corpus can tell when it has moved on." --note "The dates move; the ordering is what decides what is safe to build against." -->
 ```text
 my_context: snapshotting docs/roadmap.md — 10 line(s), 260 bytes, ~65 estimated tokens
 my_context: this category is on the rationale tier, so the item is never injected in full and costs the injection budget nothing. It is stored, searchable, and counted in the session index. Retiering the category to "normative" in config changes that — and changes what governs this project — see README, "reference".
@@ -1179,7 +1179,7 @@ my_context: created REF-billing-roadmap (active) at items/reference/REF-billing-
 
 </div>
 
-<!-- example: add reference "Billing roadmap" --file docs/roadmap.md --note "The dates move; the ordering is what decides what is safe to build against." && show REF-billing-roadmap -->
+<!-- example: add reference "Billing roadmap" --file docs/roadmap.md --summary "The plan for what billing work comes when, kept as a copy so the corpus can tell when it has moved on." --note "The dates move; the ordering is what decides what is safe to build against." && show REF-billing-roadmap -->
 ```text
 ---
 id: REF-billing-roadmap
@@ -1188,6 +1188,8 @@ title: Billing roadmap
 status: active
 severity: soft
 always: false
+summary: The plan for what billing work comes when, kept as a copy so the corpus can tell when it has moved on.
+summary_of: dd6921f43d43c983
 scope: []
 tags: []
 origin: human
@@ -1196,7 +1198,7 @@ source_anchor: null
 source_checksum: b4870a16d4017508
 valid_from: <today>
 valid_until: null
-checksum: 4f599b3a1340122c
+checksum: 62a5d2dd6523323f
 ---
 
 # Billing roadmap
@@ -1297,6 +1299,8 @@ title: Postgres pool capped at 20
 status: active
 severity: hard
 always: true
+summary: There is a hard ceiling on how many database connections the service may hold open at once.
+summary_of: cca5a2d55ca94239
 scope: []
 tags:
   - database
@@ -1307,7 +1311,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-14
 valid_until: null
-checksum: a81dff73a154242e
+checksum: 7785698cd925ccc8
 ---
 
 # Postgres pool capped at 20
@@ -1396,7 +1400,7 @@ the next deploy.
 2 decision · 1 lesson · 1 drafts pending review · 1 retired
 → use mycontext list or mycontext show <id> to browse these
 
-my_context: 1 pending revision(s) on 1 item(s) in this workspace, staged and NOT applied — REV-76627cb9f4c6 → RULE-never-log-customer-email. Every item here carries the text it had before the proposal; that is the text in force. Only a human can settle them, and you cannot: do not propose the same change again, and do not reason as if the proposed text applies. Tell the user they are waiting.
+my_context: 1 pending revision(s) on 1 item(s) in this workspace, staged and NOT applied — REV-968e03fda373 → RULE-never-log-customer-email. Every item here carries the text it had before the proposal; that is the text in force. Only a human can settle them, and you cannot: do not propose the same change again, and do not reason as if the proposed text applies. Tell the user they are waiting.
 ```
 
 <div dir="rtl">
@@ -1492,6 +1496,8 @@ title: Prices are integer cents
 status: active
 severity: soft
 always: false
+summary: Money is stored as whole cents rather than as decimal numbers, so rounding can never creep into a price.
+summary_of: 19dd95f5ffbaa0fa
 scope:
   - src/billing/**
 tags:
@@ -1503,7 +1509,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-14
 valid_until: null
-checksum: b9c3d588c634c8cc
+checksum: ba6d47d686e30f88
 ---
 
 # Prices are integer cents
@@ -2528,7 +2534,7 @@ current text. Read them as diffs with `mycontext review revisions`.
 </div>
 
 ```text
-my_context: NOT applied — staged as revision REV-9aae7cb2b817 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
+my_context: NOT applied — staged as revision REV-968e03fda373 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, summary, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
 ```
 
 <div dir="rtl">
@@ -2542,7 +2548,7 @@ my_context: NOT applied — staged as revision REV-9aae7cb2b817 for review. RULE
 <!-- example: review revisions -->
 ```text
 RULE-never-log-customer-email
-  revision  REV-76627cb9f4c6
+  revision  REV-968e03fda373
   staged    2026-08-15T15:28:13.911Z by agent
   state     applies cleanly — nothing has changed underneath it since it was staged
   body
@@ -2551,6 +2557,11 @@ RULE-never-log-customer-email
     - line leaves the boundary the checkout flow promises the customer.
     + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
         way access logs do, so no sink gets the address.
+  summary
+    - Customer email addresses must never be written into logs, because logs are kept and read far
+        more widely than the data itself.
+    + Customer email addresses must never be written into any log or report, because those travel
+        further than the data itself.
 
 1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
 current text. Read them as diffs with `mycontext review revisions`.
@@ -2573,7 +2584,7 @@ current text. Read them as diffs with `mycontext review revisions`.
 ```text
 about to promote a staged revision:
 RULE-never-log-customer-email
-  revision  REV-76627cb9f4c6
+  revision  REV-968e03fda373
   staged    2026-08-15T15:28:13.911Z by agent
   state     applies cleanly — nothing has changed underneath it since it was staged
   body
@@ -2582,11 +2593,16 @@ RULE-never-log-customer-email
     - line leaves the boundary the checkout flow promises the customer.
     + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
         way access logs do, so no sink gets the address.
+  summary
+    - Customer email addresses must never be written into logs, because logs are kept and read far
+        more widely than the data itself.
+    + Customer email addresses must never be written into any log or report, because those travel
+        further than the data itself.
 
 `-` is the text this item has now and `+` is what the revision proposes; the promotion replaces the
 first with the second.
-my_context: promoted revision REV-76627cb9f4c6 — RULE-never-log-customer-email now governs the
-proposed body.
+my_context: promoted revision REV-968e03fda373 — RULE-never-log-customer-email now governs the
+proposed body, summary.
 ```
 <!-- /example -->
 
@@ -2602,7 +2618,7 @@ proposed body.
 ```text
 about to discard a staged revision:
 RULE-never-log-customer-email
-  revision  REV-76627cb9f4c6
+  revision  REV-968e03fda373
   staged    2026-08-15T15:28:13.911Z by agent
   state     applies cleanly — nothing has changed underneath it since it was staged
   body
@@ -2611,12 +2627,17 @@ RULE-never-log-customer-email
     - line leaves the boundary the checkout flow promises the customer.
     + Log the customer id instead. Crash reports and analytics payloads leave our systems the same
         way access logs do, so no sink gets the address.
+  summary
+    - Customer email addresses must never be written into logs, because logs are kept and read far
+        more widely than the data itself.
+    + Customer email addresses must never be written into any log or report, because those travel
+        further than the data itself.
 
 RULE-never-log-customer-email is unchanged either way — discarding rejects the proposal, it does not
 touch the item.
-my_context: discarded revision REV-76627cb9f4c6. RULE-never-log-customer-email is unchanged and
-keeps governing its current text. The proposal itself is NOT deleted — its full proposed body stays
-in the append-only log at
+my_context: discarded revision REV-968e03fda373. RULE-never-log-customer-email is unchanged and
+keeps governing its current text. The proposal itself is NOT deleted — its full proposed body,
+summary stays in the append-only log at
 <workspace>/.my_context/.revisions/revisions.jsonl
 and is read back with `mycontext review revisions RULE-never-log-customer-email --full`. It cannot
 be staged again against this same text; a different proposal, or the same one after the item
@@ -3805,7 +3826,8 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--body "<text>"`</span> | הטקסט של הפריט — הפסקה ש-Claude מקבל. ב-<span dir="ltr">`add`</span> הוא סותר את <span dir="ltr">`--file`</span>, שמספק את הגוף מתוך קובץ | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--note "<text>"`</span> | מוסיף תצפית <span dir="ltr">`[note]`</span> אחת. ניתן לחזרה, בסדר שניתן, ואינו מפוצל בפסיקים — תצפית היא משפט, ובמשפטים יש פסיקים. שם נמצא ה*למה* כשהגוף הגיע מקובץ ולא מכם | <span dir="ltr">`add`</span> |
 | <span dir="ltr">`--step "<text>"`</span> | צעד אחד של <span dir="ltr">`procedure`</span> — פעולה שמבצעים פעם אחת ומסיימים. ניתן לחזרה, בסדר שורת הפקודה, ואינו מפוצל בפסיקים, מאותה סיבה ש-<span dir="ltr">`--note`</span> אינו: צעד הוא משפט. פעולה שחוזרת היא <span dir="ltr">`runbook`</span>, ששומרת את צעדיה בגוף. צעדים אינם ניתנים לעריכה או לסימון בשום פקודה אחר כך — תיקון אחד מהם משמעו עריכת ה-Markdown והרצת <span dir="ltr">`mycontext repair`</span> | <span dir="ltr">`add`</span> |
-| <span dir="ltr">`--summary "<text>"`</span> | משפט אחד פשוט שאומר מה הפריט **הוא** ולמה זה חשוב, כתוב לקורא שאינו מכיר את הקוד הזה: מילים פשוטות ולא אוצר מילים של הפרויקט, בלי מזהים, בלי נתיבי קבצים, בלי מדידות, ולעולם לא איך הדבר התגלה. עד 160 תווים — הגוף שומר את כל הדיוק. הוא נרשם יחד עם גיבוב של התוכן שכנגדו נכתב, ולכן עריכה מאוחרת של הכותרת, הגוף, הצעדים, התצפיות או השדות הנוספים הופכת אותו ל**מיושן**, ו-<span dir="ltr">`mycontext doctor`</span>, <span dir="ltr">`mycontext show`</span> ו-<span dir="ltr">`get_item`</span> אומרים זאת במקום להניח לצטט אותו כעדכני. <span dir="ltr">`mycontext edit <id> --summary=`</span> מוחק אותו. להשמיט אותו זה רגיל לגמרי: שום דבר אינו מחייב תקציר <!-- `core/validate.ts` · `export const SUMMARY_MAX_CHARS = 160;` · ~333 --> | <span dir="ltr">`add`, `edit`</span> |
+| <span dir="ltr">`--summary "<text>"`</span> | משפט אחד פשוט שאומר מה הפריט **הוא** ולמה זה חשוב, כתוב לקורא שאינו מכיר את הקוד הזה: מילים פשוטות ולא אוצר מילים של הפרויקט, בלי מזהים, בלי נתיבי קבצים, בלי מדידות, ולעולם לא איך הדבר התגלה. עד 160 תווים — הגוף שומר את כל הדיוק. הוא נרשם יחד עם גיבוב של התוכן שכנגדו נכתב, ולכן עריכה מאוחרת של הכותרת, הגוף, הצעדים, התצפיות או השדות הנוספים הופכת אותו ל**מיושן**, ו-<span dir="ltr">`mycontext doctor`</span>, <span dir="ltr">`mycontext show`</span> ו-<span dir="ltr">`get_item`</span> אומרים זאת במקום להניח לצטט אותו כעדכני. <span dir="ltr">`mycontext edit <id> --summary=`</span> מוחק אותו. **לכידה חייבת לשאת תקציר** — גם ב-<span dir="ltr">`mycontext add`</span> וגם ב-<span dir="ltr">`create_item`</span> — או לומר במפורש <span dir="ltr">`--summary-omitted`</span> (<span dir="ltr">`summary_omitted: true`</span>): פריט שנוצר בלי תקציר לעולם לא יידרש לקבל אחד, מפני שכל בדיקה שהייתה דורשת זאת משווה תקציר מול הטקסט שכנגדו נכתב, ולאחד שאינו קיים אין אף אחד מהם — <span dir="ltr">`mycontext doctor`</span> נוקב בו בשם <span dir="ltr">`summary_absent`</span>, ושום דבר אחר לא יעשה זאת <!-- `core/validate.ts` · `export const SUMMARY_MAX_CHARS = 160;` · ~333 --> | <span dir="ltr">`add`, `edit`</span> |
+| <span dir="ltr">`--summary-omitted`</span> | לומר במפורש שהפריט נלכד **בלי** תקציר ושזו החלטה מכוונת. לכידה שאינה נושאת לא <span dir="ltr">`--summary`</span> ולא את זה — מסורבת. זה לעולם לא ברירת מחדל, זה מסורב לצד <span dir="ltr">`--summary`</span>, ושורת הביקורת רושמת <span dir="ltr">`summary-omitted`</span>, כך שהעובדה שאיש לא כתב תקציר גלויה ולא משוערת. שימוש נכון: כשלפריט באמת אין מה לומר במשפט אחד מעבר לכותרת — לעולם לא כדי לעקוף את הסירוב | <span dir="ltr">`add`</span> |
 | <span dir="ltr">`--scope "<globs>"`</span> | תבניות הקבצים שהפריט נצמד אליהן, מופרדות בפסיקים | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
 | <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה כל עוד לא הוגדר מיקוד — <span dir="ltr">`mycontext focus <tag>`</span> מצמצם את ההזרקה לתגיות שהוא נוקב בהן | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--severity hard\|soft`</span> | פריטי `hard` מתקבלים לתקציב לפני `soft`. כל מילה אחרת מסורבת. <span dir="ltr">`mycontext harden <id>`</span> ו-<span dir="ltr">`mycontext soften <id>`</span> הן שתי ההגדרות האלה בשם קצר יותר | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
@@ -5465,7 +5487,7 @@ my_context: updated RULE-never-log-customer-email (active).
 </div>
 
 ```text
-my_context: NOT applied — staged as revision REV-9aae7cb2b817 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
+my_context: NOT applied — staged as revision REV-968e03fda373 for review. RULE-never-log-customer-email is unchanged and keeps governing its current body, summary, and will until a human promotes this proposal. A human sees it with `mycontext review revisions` (it is counted by `mycontext status` too), and it is recorded in <workspace>/.my_context/.revisions/revisions.jsonl. Tell the user you staged it rather than assuming they will look. Do not reason as if the new text is in force.
 ```
 
 <div dir="rtl">

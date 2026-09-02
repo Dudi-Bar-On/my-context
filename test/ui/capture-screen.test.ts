@@ -173,7 +173,7 @@ function mockupSection(): string {
 function workspace(): { dir: string; done: () => void } {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-capscreen-'));
   assert.equal(runCli(['init'], dir, () => {}), 0, 'the fixture workspace must init');
-  assert.equal(runCli(['add', 'rule', 'Use POSIX paths', '--scope', 'src/**',
+  assert.equal(runCli(['add', '--summary-omitted', 'rule', 'Use POSIX paths', '--scope', 'src/**',
     '--body', 'POSIX.', '--yes'], dir, () => {}), 0, 'the fixture item must be added');
   return { dir, done: () => removeTree(dir) };
 }

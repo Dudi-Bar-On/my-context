@@ -19,8 +19,8 @@ function project(): string {
   runCli(['init'], cwd, () => {});
   // `--yes`: `add` gates a normative category behind a confirmation, and
   // stdin is not interactive under `node --test`.
-  runCli(['add', 'constraint', 'Pool capped at 20', '--yes'], cwd, () => {});
-  runCli(['add', 'lesson', 'Migrations need locks'], cwd, () => {});
+  runCli(['add', '--summary-omitted', 'constraint', 'Pool capped at 20', '--yes'], cwd, () => {});
+  runCli(['add', '--summary-omitted', 'lesson', 'Migrations need locks'], cwd, () => {});
   return cwd;
 }
 

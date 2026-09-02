@@ -27,7 +27,7 @@ function workspace(): { dir: string; done: () => void } {
     assert.equal(runCli(args, dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
   };
   run(['init']);
-  run(['add', 'rule', 'Unscoped rule', '--body', 'Applies everywhere.', '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'Unscoped rule', '--body', 'Applies everywhere.', '--yes']);
   return { dir, done: () => removeTree(dir) };
 }
 
@@ -278,7 +278,7 @@ test('a budgets change runs the real selector under both configs', () => {
     // `test/ui/read-model-work.test.ts` records); it is set afterwards by
     // `edit --always=true`, which is how a pinned item really comes to exist.
     assert.equal(runCli(
-      ['add', 'rule', 'Pinned', '--body', 'A pinned body long enough to cost tokens.', '--yes'],
+      ['add', '--summary-omitted', 'rule', 'Pinned', '--body', 'A pinned body long enough to cost tokens.', '--yes'],
       dir, () => {}), 0);
     assert.equal(runCli(['edit', 'RULE-pinned', '--always=true', '--yes'], dir, () => {}), 0);
 

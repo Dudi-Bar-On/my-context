@@ -61,14 +61,14 @@ function fixture(): Fixture {
     assert.equal(runCli(args, dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
   };
   run(['init']);
-  run(['add', 'rule', 'Always use POSIX paths', '--scope', 'src/**', '--tags', 'paths',
+  run(['add', '--summary-omitted', 'rule', 'Always use POSIX paths', '--scope', 'src/**', '--tags', 'paths',
     '--body', 'Use POSIX separators everywhere. '.repeat(40), '--yes']);
-  run(['add', 'rule', 'Never log the customer email', '--scope', 'src/**',
+  run(['add', '--summary-omitted', 'rule', 'Never log the customer email', '--scope', 'src/**',
     '--body', 'Redact the address before it reaches a log sink. '.repeat(40), '--yes']);
-  run(['add', 'rule', 'Pin me', '--body', 'Pinned body, long enough to cost real tokens. '
+  run(['add', '--summary-omitted', 'rule', 'Pin me', '--body', 'Pinned body, long enough to cost real tokens. '
     .repeat(30), '--yes']);
   run(['edit', 'RULE-pin-me', '--always=true', '--yes']);
-  run(['add', 'decision', 'We chose sqlite', '--body', 'Rationale body.', '--yes']);
+  run(['add', '--summary-omitted', 'decision', 'We chose sqlite', '--body', 'Rationale body.', '--yes']);
 
   const ws = resolveWorkspace(dir);
   const store = Store.openReadOnlyChecked(ws.dbPath);

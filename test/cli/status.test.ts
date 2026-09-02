@@ -52,8 +52,8 @@ function openLedger(cwd: string): Ledger {
 
 test('the counts from Plan 1 are unchanged', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
-    run(['add', 'lesson', 'Migrations need locks'], cwd);
+    run(['add', '--summary', 'A plain sentence for the fixture.', 'constraint', 'Pool cap', '--yes'], cwd);
+    run(['add', '--summary', 'A plain sentence for the fixture.', 'lesson', 'Migrations need locks'], cwd);
     const { code, out } = run(['status'], cwd);
     assert.equal(code, 0);
     assert.match(out, cells('constraint', '1'));
@@ -74,7 +74,7 @@ test('the review queue is surfaced with the command that walks it', () => {
 
 test('a clean corpus says the queue is empty rather than omitting the section', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
+    run(['add', '--summary', 'A plain sentence for the fixture.', 'constraint', 'Pool cap', '--yes'], cwd);
     assert.match(run(['status'], cwd).out, /0 draft\(s\) pending review/);
   });
 });
@@ -258,7 +258,12 @@ test('health checks the repository root, not the .my_context directory itself', 
     // (cwd), one level above `.my_context`. If `repoRoot` were ever passed as
     // `ws.projectRoot` (the `.my_context` directory) instead, this glob would
     // wrongly be reported dead — the wrong-root class of bug this pins.
-    assert.match(out, /health: 0 error\(s\), 0 warning\(s\)/);
+    // One warning, and it is `summary_absent`: this item is written as raw
+    // frontmatter with no summary, which is the hand-authored case doctor
+    // names. The assertion that matters here is the ERROR count and the
+    // absence of `dead_scope` — that is the wrong-root bug this pins.
+    assert.match(out, /health: 0 error\(s\), 1 warning\(s\)/);
+    assert.doesNotMatch(out, /dead_scope/);
   });
 });
 
@@ -282,7 +287,7 @@ test('health checks the repository root, not the .my_context directory itself', 
  */
 test('the health line does not falsely flag staleness the index\'s own rebuild just resolved', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
+    run(['add', '--summary', 'A plain sentence for the fixture.', 'constraint', 'Pool cap', '--yes'], cwd);
     const file = path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-pool-cap.md');
     // Bump the mtime to real wall-clock "now" — later than the `add`
     // process's own checkpoint, which happened at whatever "now" was a
@@ -297,7 +302,7 @@ test('the health line does not falsely flag staleness the index\'s own rebuild j
 
 test('status reports origin so agent-authored volume is visible', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
+    run(['add', '--summary', 'A plain sentence for the fixture.', 'constraint', 'Pool cap', '--yes'], cwd);
     draft(cwd, 'REQ-a', 'requirement');
     const { out } = run(['status'], cwd);
     assert.match(out, /by origin/);
@@ -308,7 +313,7 @@ test('status reports origin so agent-authored volume is visible', () => {
 
 test('status degrades gracefully when the ledger holds nothing', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
+    run(['add', '--summary', 'A plain sentence for the fixture.', 'constraint', 'Pool cap', '--yes'], cwd);
     const { code, out } = run(['status'], cwd);
     assert.equal(code, 0);
     assert.match(out, /no sessions recorded|0 session/);
@@ -497,7 +502,7 @@ test('an error-level doctor finding is shown but does not fail status\'s own exi
 
 test('a corrupt item file is reported and exits 1, exactly as Plan 1 required', () => {
   withProject((cwd) => {
-    run(['add', 'constraint', 'Good item', '--yes'], cwd);
+    run(['add', '--summary', 'A plain sentence for the fixture.', 'constraint', 'Good item', '--yes'], cwd);
     mkdirSync(path.join(cwd, '.my_context', 'items', 'constraint'), { recursive: true });
     writeFileSync(path.join(cwd, '.my_context', 'items', 'constraint', 'CONST-broken.md'), 'no frontmatter here\n');
 

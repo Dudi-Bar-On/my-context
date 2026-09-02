@@ -175,9 +175,13 @@ file, and the whole value of this category is that it is one.
 3. Draft the *why*, as one \`--note\` per point: what this file is for, and what would make
    the snapshot misleading. The snapshot says what the file says; only you and the user can
    say why it is in the corpus, and the item's own text is the only place that goes.
-4. Print this command for the user to run, filled in, and stop:
+4. Draft the \`--summary\`: one plain sentence for a reader who does not know this codebase,
+   saying what this file IS to the project and why it matters. It is required — a capture
+   without one is refused, because an item created with no summary can never afterwards be
+   asked for one. Here it is the sentence about the FILE, not about the snapshot.
+5. Print this command for the user to run, filled in, and stop:
 
-   \`${CLI} add ${category.name} "<title>" --file <path> --note "<why>"\`
+   \`${CLI} add ${category.name} "<title>" --file <path> --summary "<one plain sentence>" --note "<why>"\`
 
    Do not run it yourself. \`mycontext add\` claims \`origin: "human"\`, which is the one
    claim you cannot make, and it is on the deny list this plugin's README recommends.
@@ -215,6 +219,7 @@ function addCommand(category: ResolvedCategory): CommandFile {
   // generated file and RUNS it: if the CLI stops accepting a flag named here,
   // or stops landing the status the sentence claims, that test fails.
   const invocation = `${CLI} add ${category.name} "<title>" --body "<why it holds>" ` +
+    `--summary "<one plain sentence>" ` +
     `--scope "<glob>" --tags "<tag>"${category.tier === 'normative' ? ' --yes' : ''}`;
   const fallback = category.tier === 'normative'
     ? `If the MCP server is not available, \`${invocation}\` captures the same fields from a
@@ -245,7 +250,13 @@ What the user typed: $ARGUMENTS
    not interrogate the user — at most one clarifying question. \`scope\` RESTRICTS where the
    item applies, so leave it empty if the item is not about particular files — an item with
    no scope is unrestricted and applies everywhere.
-4. Report the id it returns, in one line. ${landing}
+4. Fill \`summary\` with one plain sentence for a reader who does not know this codebase:
+   what the item IS and why it matters — no ids, no file paths, no measurements, never how
+   it was found. It is **required**: a capture without one is refused, because an item
+   created with no summary can never afterwards be asked for one. If this item genuinely
+   has nothing to say in one sentence that its title does not, pass
+   \`summary_omitted: true\` instead and say in your report that you did.
+5. Report the id it returns, in one line. ${landing}
 
 ${fallback}
 `,
@@ -612,9 +623,17 @@ What the user typed: $ARGUMENTS
    \`superseded\` is deliberately absent from the status list: a retirement records its
    replacement in both directions, so it is \`/mycontext:supersede\`, not a status change.
 
-   The flags are \`--title\`, \`--body\`, \`--scope "a/**,b/**"\`, \`--tags "a,b"\`,
-   \`--severity\`, \`--always[=false]\`, \`--status\`, \`--extra key=value\`, and
-   \`--unlink <relation> <target>\` to remove a relation.
+   The flags are \`--title\`, \`--body\`, \`--summary "<one plain sentence>"\`,
+   \`--scope "a/**,b/**"\`, \`--tags "a,b"\`, \`--severity\`, \`--always[=false]\`,
+   \`--status\`, \`--extra key=value\`, and \`--unlink <relation> <target>\` to remove a
+   relation.
+
+   **An edit to \`--body\`, \`--extra\` or anything else the summary describes must carry
+   \`--summary\` too**, and is refused without it: the summary was written against the old
+   text, nothing in this product can rewrite it, and you are holding the new text. If the
+   edit genuinely does not change what the item MEANS — a typo, a reflow — say so with
+   \`--summary-unchanged\` instead, which writes no new text and records in the audit log
+   that nobody rewrote it.
 ${previewThenHandBack(`${CLI} edit <id> <the flags>`)}
 For the two changes people make constantly there are shorter commands with the same
 gate: ${NAMED_ENTRY_POINTS.map((e) => `\`/mycontext:${e.name}\``).join(', ')}.
@@ -1071,7 +1090,13 @@ than part of the name.
    not interrogate the user — at most one clarifying question. \`scope\` RESTRICTS where the
    item applies, so leave it empty if the item is not about particular files — an item with
    no scope is unrestricted and applies everywhere.
-5. Report the id it returns, in one line, and say which tier it landed on. A **normative**
+5. Fill \`summary\` with one plain sentence for a reader who does not know this codebase:
+   what the item IS and why it matters — no ids, no file paths, no measurements, never how
+   it was found. It is **required**: a capture without one is refused, because an item
+   created with no summary can never afterwards be asked for one. If this item genuinely
+   has nothing to say in one sentence that its title does not, pass
+   \`summary_omitted: true\` instead and say in your report that you did.
+6. Report the id it returns, in one line, and say which tier it landed on. A **normative**
    category lands as a **draft**: it governs nothing until a human promotes it with
    \`/mycontext:review\`. A **rationale** category lands active, and rationale is never
    auto-injected into a session — it is there to be found later.
@@ -1088,7 +1113,7 @@ categories that have none. For \`${SNAPSHOT_CATEGORY}\` it is not a preference:
 \`/mycontext:add-${commandSlug(SNAPSHOT_CATEGORY)}\` is the only route, because that body is a
 **snapshot of a file** and no tool call can make one.
 
-If the MCP server is not available, \`${CLI} add <category> "<title>" --body "<why it holds>" --scope "<glob>" --tags "<tag>"\` captures the same fields from a
+If the MCP server is not available, \`${CLI} add <category> "<title>" --body "<why it holds>" --summary "<one plain sentence>" --scope "<glob>" --tags "<tag>"\` captures the same fields from a
 shell — but not by the same route: \`mycontext add\` is the human-facing command, so it
 claims \`origin: "human"\`, and on a normative category the item lands **active** rather
 than as a draft and governs this project the moment it is written. That is why it

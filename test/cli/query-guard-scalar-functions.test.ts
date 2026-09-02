@@ -39,7 +39,7 @@ function run(args: string[], cwd: string): { code: number; out: string } {
 function project(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-guardfn-'));
   runCli(['init'], cwd, () => {});
-  runCli(['add', 'lesson', 'Migrations need locks'], cwd, () => {});
+  runCli(['add', '--summary-omitted', 'lesson', 'Migrations need locks'], cwd, () => {});
   return cwd;
 }
 

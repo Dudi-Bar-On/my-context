@@ -99,7 +99,7 @@ const TASK = 'TASK-wire-the-projection';
  */
 function task(cwd: string): string {
   const { code, out } = run([
-    'add', 'task', 'Wire the projection', '--body', 'Call the seam.',
+    'add', '--summary-omitted', 'task', 'Wire the projection', '--body', 'Call the seam.',
     '--tags', 'plan:categories,seq:15,state:todo,v2',
     '--extra', 'state=todo', '--extra', 'plan=categories',
   ], cwd);
@@ -128,7 +128,9 @@ function phrase(text: string): RegExp {
 test('--state writes the field and rewrites the projected tag in one write', () => {
   withProject((cwd) => {
     const id = task(cwd);
-    const { code, out } = run(['edit', id, '--state', 'done'], cwd);
+    // `--state` writes `extra`, which IS part of what a summary summarises, so
+    // the gate asks for one. This fixture item has none and keeps none.
+    const { code, out } = run(['edit', id, '--state', 'done', '--summary-unchanged'], cwd);
 
     assert.equal(code, 0, out);
     const file = itemFile(cwd, 'task', id);
@@ -143,7 +145,7 @@ test('--state writes the field and rewrites the projected tag in one write', () 
 test('--extra is the same door and projects identically', () => {
   withProject((cwd) => {
     const id = task(cwd);
-    const { code, out } = run(['edit', id, '--extra', 'state=blocked'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', id, '--extra', 'state=blocked'], cwd);
 
     assert.equal(code, 0, out);
     const file = itemFile(cwd, 'task', id);
@@ -168,7 +170,8 @@ test('--state at the value the item already holds changes nothing and says so', 
 test('--tags and --state compose: the projection lands on the replacement list', () => {
   withProject((cwd) => {
     const id = task(cwd);
-    const { code, out } = run(['edit', id, '--tags', 'v2,ui', '--state', 'done'], cwd);
+    const { code, out } = run(['edit', id, '--tags', 'v2,ui', '--state', 'done',
+      '--summary-unchanged'], cwd);
 
     assert.equal(code, 0, out);
     const file = itemFile(cwd, 'task', id);
@@ -274,7 +277,7 @@ test('an illegal --state names the declared vocabulary and the declared command'
 test('a declared flag on a category that does not declare it is refused, naming the one that does', () => {
   withProject((cwd) => {
     task(cwd);
-    run(['add', 'rule', 'Never log secrets', '--body', 'Not at any level.', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'rule', 'Never log secrets', '--body', 'Not at any level.', '--yes'], cwd);
     const id = 'RULE-never-log-secrets';
     const before = itemFile(cwd, 'rule', id);
     const { code, out } = run(['edit', id, '--state', 'done'], cwd);
@@ -332,7 +335,7 @@ test('a declaration whose command is the generic --extra spelling grows no flag'
     assert.equal(code, 1, out);
     assert.match(out, phrase('unknown option "--state"'));
     // The projection still holds through the spelling the declaration DOES name.
-    assert.equal(run(['edit', id, '--extra', 'state=done'], cwd).code, 0);
+    assert.equal(run(['edit', '--summary-unchanged', id, '--extra', 'state=done'], cwd).code, 0);
     assert.ok(tagsOf(itemFile(cwd, 'task', id)).includes('state:done'));
   }, taskConfig({
     state: { store: 'field', values: ['todo', 'done'], projectsTo: 'state', note: 'Where it is.' },
@@ -351,7 +354,7 @@ test('one field given through two spellings with two values is refused, not reso
   withProject((cwd) => {
     const id = task(cwd);
     const before = itemFile(cwd, 'task', id);
-    const { code, out } = run(['edit', id, '--state', 'done', '--extra', 'state=doing'], cwd);
+    const { code, out } = run(['edit', '--summary-unchanged', id, '--state', 'done', '--extra', 'state=doing'], cwd);
 
     assert.equal(code, 1, out);
     assert.match(out, phrase('state'));
@@ -364,13 +367,13 @@ test('one field given through two spellings with two values is refused, not reso
 test('every declaration-composed refusal fits the layout budget', () => {
   withProject((cwd) => {
     const id = task(cwd);
-    run(['add', 'rule', 'Never log secrets', '--body', 'Not at any level.', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'rule', 'Never log secrets', '--body', 'Not at any level.', '--yes'], cwd);
     for (const args of [
       ['edit', id, '--state', 'donee'],
       ['edit', id, '--tags', 'v2,state:done'],
       ['edit', id, '--severity', 'hard'],
       ['edit', 'RULE-never-log-secrets', '--state', 'done'],
-      ['edit', id, '--state', 'done', '--extra', 'state=doing'],
+      ['edit', '--summary-unchanged', id, '--state', 'done', '--extra', 'state=doing'],
     ]) {
       const { out } = run(args, cwd);
       const over = out.split('\n').filter((l) => [...l].length > OUTPUT_WIDTH);

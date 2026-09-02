@@ -63,8 +63,8 @@ function workspace(): { dir: string; done: () => void } {
     assert.equal(runCli(args, dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
   };
   run(['init']);
-  run(['add', 'rule', 'Always use POSIX paths', '--scope', 'src/**', '--body', 'Use POSIX.', '--yes']);
-  run(['add', 'rule', 'Pin me', '--body', 'Pinned body.', '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'Always use POSIX paths', '--scope', 'src/**', '--body', 'Use POSIX.', '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'Pin me', '--body', 'Pinned body.', '--yes']);
   run(['edit', 'RULE-pin-me', '--always=true', '--yes']);
   return { dir, done: () => removeTree(dir) };
 }

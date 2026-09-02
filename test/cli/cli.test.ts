@@ -41,7 +41,7 @@ test('init writes a gitignore for the index', () => {
 test('add creates an item file with a slug id', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  const { code, out } = run(['add', 'constraint', 'Postgres pool capped at 20', '--yes'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'constraint', 'Postgres pool capped at 20', '--yes'], cwd);
   assert.equal(code, 0);
   assert.match(out, /CONST-postgres-pool-capped-at-20/);
   assert.ok(existsSync(path.join(
@@ -62,7 +62,7 @@ test('add rejects a disabled category with a helpful message', () => {
     path.join(cwd, '.my_context', 'config.json'),
     JSON.stringify({ categories: { standard: { enabled: false } } }),
   );
-  const { code, out } = run(['add', 'standard', 'Some convention'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'standard', 'Some convention'], cwd);
   assert.equal(code, 1);
   assert.match(out, /standard/);
   // `cmdAdd` now routes through `createItem`, so this is `createItem`'s own
@@ -76,7 +76,7 @@ test('add rejects a disabled category with a helpful message', () => {
 test('add rejects an unknown category and suggests the closest', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  const { code, out } = run(['add', 'constraints', 'Typo'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'constraints', 'Typo'], cwd);
   assert.equal(code, 1);
   assert.match(out, /constraint/);
   removeTree(cwd);
@@ -97,8 +97,8 @@ test('add rejects an unknown category and suggests the closest', () => {
 test('add with the same category and title twice reports the existing item, not a near-duplicate', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
-  const { code, out } = run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Pool cap', '--yes'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'constraint', 'Pool cap', '--yes'], cwd);
   assert.equal(code, 0);
   assert.match(out, /already captured/i);
   assert.doesNotMatch(out, /CONST-pool-cap-2/);
@@ -109,7 +109,7 @@ test('add with the same category and title twice reports the existing item, not 
 test('add still lands a human item as active — the trust model only demotes agent-authored items', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  const { out } = run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
+  const { out } = run(['add', '--summary-omitted', 'constraint', 'Pool cap', '--yes'], cwd);
   assert.doesNotMatch(out, /draft/i);
   const ws = resolveWorkspace(cwd);
   const { store } = openStore(ws);
@@ -122,7 +122,7 @@ test('add still lands a human item as active — the trust model only demotes ag
 test('list shows added items', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Pool cap', '--yes'], cwd);
   const { out } = run(['list'], cwd);
   assert.match(out, /CONST-pool-cap/);
   removeTree(cwd);
@@ -131,7 +131,7 @@ test('list shows added items', () => {
 test('show prints the full item', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Pool cap', '--yes'], cwd);
   const { out } = run(['show', 'CONST-pool-cap'], cwd);
   assert.match(out, /Pool cap/);
   removeTree(cwd);
@@ -140,8 +140,8 @@ test('show prints the full item', () => {
 test('status reports counts by category and status', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  run(['add', 'constraint', 'Pool cap', '--yes'], cwd);
-  run(['add', 'lesson', 'Migrations need locks'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Pool cap', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'lesson', 'Migrations need locks'], cwd);
   const { out } = run(['status'], cwd);
   assert.match(out, cells('constraint', '1'));
   assert.match(out, cells('lesson', '1'));
@@ -202,7 +202,7 @@ function corruptItem(cwd: string): void {
 test('list surfaces a rebuild error for a corrupt item as a warning but still exits 0', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  run(['add', 'constraint', 'Good item', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Good item', '--yes'], cwd);
   corruptItem(cwd);
   const { code, out } = run(['list'], cwd);
   assert.equal(code, 0);
@@ -217,7 +217,7 @@ test('list surfaces a rebuild error for a corrupt item as a warning but still ex
 test('status surfaces a rebuild error for a corrupt item and exits non-zero', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  run(['add', 'constraint', 'Good item', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Good item', '--yes'], cwd);
   corruptItem(cwd);
   const { code, out } = run(['status'], cwd);
   assert.equal(code, 1);
@@ -230,7 +230,7 @@ test('add succeeds and reports an unrelated corpus load error as a warning, not 
   const cwd = sandbox();
   run(['init'], cwd);
   corruptItem(cwd);
-  const { code, out } = run(['add', 'lesson', 'A fresh lesson'], cwd);
+  const { code, out } = run(['add', '--summary-omitted', 'lesson', 'A fresh lesson'], cwd);
   assert.equal(code, 0);
   assert.match(out, /LESSON-a-fresh-lesson/);
   assert.match(out, /my_context:.*error.*CONST-broken\.md/is);
@@ -240,7 +240,7 @@ test('add succeeds and reports an unrelated corpus load error as a warning, not 
 test('show succeeds and reports an unrelated corpus load error as a warning, not a failure', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  run(['add', 'constraint', 'Good item', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Good item', '--yes'], cwd);
   corruptItem(cwd);
   const { code, out } = run(['show', 'CONST-good-item'], cwd);
   assert.equal(code, 0);
@@ -275,7 +275,7 @@ test('rebuild disclosing a pruned session dedupe file names the re-injection con
 test('rebuild succeeds and reports an unrelated corpus load error as a warning, not a failure', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  run(['add', 'constraint', 'Good item', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Good item', '--yes'], cwd);
   corruptItem(cwd);
   const { code, out } = run(['rebuild'], cwd);
   assert.equal(code, 0);
@@ -377,7 +377,7 @@ test('a command whose store operation throws still closes the handle', () => {
 test('openStore closes the handle when rebuild throws AFTER a successful open — the real leak-guard path', () => {
   const cwd = sandbox();
   run(['init'], cwd);
-  run(['add', 'constraint', 'Good item', '--yes'], cwd);
+  run(['add', '--summary-omitted', 'constraint', 'Good item', '--yes'], cwd);
   const ws = resolveWorkspace(cwd);
 
   // Store.open succeeds fully (unlike the directory-as-dbPath test above,

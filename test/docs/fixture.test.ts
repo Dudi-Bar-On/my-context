@@ -192,9 +192,18 @@ test('the ingest walkthrough runs against the fixture with --file alone', () => 
 
     // The whole point of the drafts: nothing ingest wrote governs until this
     // ran, and the corpus is still healthy afterwards.
+    //
+    // Five warnings, all of them `summary_absent`, and they are the honest
+    // answer rather than a regression. `ingest` is a MECHANICAL caller — no
+    // person is holding new prose when a document is chunked — so it is not
+    // gated at capture and its candidate schema carries no summary field at
+    // all. What doctor is saying is exactly true: these five items are the
+    // ones no summary check can otherwise reach, and somebody has to write
+    // their sentences. Zero ERRORS is what "still healthy" means here.
     const doctor = run(['doctor'], dir);
     assert.equal(doctor.code, 0, doctor.out);
-    assert.match(doctor.out, /0 error\(s\), 0 warning\(s\), 0 note\(s\)/, doctor.out);
+    assert.match(doctor.out, /0 error\(s\), 5 warning\(s\), 0 note\(s\)/, doctor.out);
+    assert.match(doctor.out, /summary_absent \(5\)/, doctor.out);
   } finally {
     removeTree(dir);
   }

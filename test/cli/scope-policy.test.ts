@@ -48,7 +48,7 @@ function itemFiles(cwd: string, type: string): string[] {
 test('mycontext add without --scope is refused under required, and writes nothing', () => {
   const cwd = project('required');
   try {
-    const { code, out } = run(['add', 'constraint', 'Pool capped at 10', '--yes'], cwd);
+    const { code, out } = run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--yes'], cwd);
     assert.equal(code, 1);
     assert.match(out, /scopePolicy "required"/);
     assert.match(out, /--scope/, 'the refusal must name the flag to pass');
@@ -67,7 +67,7 @@ test('mycontext add WITH --scope is accepted under required', () => {
   const cwd = project('required');
   try {
     const { code, out } = run(
-      ['add', 'constraint', 'Pool capped at 10', '--scope', 'src/db/**', '--yes'], cwd);
+      ['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--scope', 'src/db/**', '--yes'], cwd);
     assert.equal(code, 0, out);
     assert.match(out, /created CONST-pool-capped-at-10/);
   } finally {
@@ -79,7 +79,7 @@ test('MCP create_item without a scope is refused under required, and writes noth
   const cwd = project('required');
   try {
     assert.throws(
-      () => createRegistry(cwd).call('create_item', {
+      () => createRegistry(cwd).call('create_item', { summary_omitted: true,
         type: 'constraint', title: 'Pool capped at 10',
       }),
       (err: Error) => {
@@ -98,7 +98,7 @@ test('an unscoped capture is still accepted under global and under inert', () =>
   for (const policy of ['global', 'inert']) {
     const cwd = project(policy);
     try {
-      assert.equal(run(['add', 'constraint', 'Pool capped at 10', '--yes'], cwd).code, 0, policy);
+      assert.equal(run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--yes'], cwd).code, 0, policy);
     } finally {
       removeTree(cwd);
     }
@@ -110,8 +110,8 @@ test('an unscoped capture is still accepted under global and under inert', () =>
 test('the supersede preview says an unscoped item is injected nowhere under inert', () => {
   const cwd = project('inert');
   try {
-    run(['add', 'constraint', 'Pool capped at 10', '--yes'], cwd);
-    run(['add', 'constraint', 'Pool capped at 20', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 20', '--yes'], cwd);
     const { out } = run([
       'supersede', 'CONST-pool-capped-at-10', '--by', 'CONST-pool-capped-at-20', '--yes',
     ], cwd);
@@ -155,7 +155,7 @@ Body.
 test('decay does not list an inert unscoped item as applying to every file', () => {
   const cwd = project('inert');
   try {
-    run(['add', 'constraint', 'Pool capped at 10', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--yes'], cwd);
     const { out } = run(['decay'], cwd);
     assert.match(out, /CONST-pool-capped-at-10/, 'it is still measured as cold');
     assert.doesNotMatch(out, /^unrestricted \(/m);
@@ -167,7 +167,7 @@ test('decay does not list an inert unscoped item as applying to every file', () 
 test('decay still lists an unscoped item as unrestricted under global', () => {
   const cwd = project('global');
   try {
-    run(['add', 'constraint', 'Pool capped at 10', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--yes'], cwd);
     assert.match(run(['decay'], cwd).out, /unrestricted \(1\)/);
   } finally {
     removeTree(cwd);
@@ -177,7 +177,7 @@ test('decay still lists an unscoped item as unrestricted under global', () => {
 test('doctor reports the policy change that rewrote no file, and stays green', () => {
   const cwd = project('inert');
   try {
-    run(['add', 'constraint', 'Pool capped at 10', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--yes'], cwd);
     const { code, out } = run(['doctor'], cwd);
     assert.match(out, /scope_policy_inert/);
     assert.equal(code, 0, 'a note must not fail the run');
@@ -195,8 +195,8 @@ test('every report fits the layout budget under each of the three policies', () 
       // The widest id this project can mint is 67 characters; `slugify` caps
       // the slug at 60 and `CONST` is the prefix here.
       const title = 'A shared cache expiry turns every miss into one simultaneous stampede';
-      run(['add', 'constraint', title, '--scope', 'src/gone/**', '--yes'], cwd);
-      run(['add', 'constraint', 'An unscoped constraint', '--yes'], cwd);
+      run(['add', '--summary-omitted', 'constraint', title, '--scope', 'src/gone/**', '--yes'], cwd);
+      run(['add', '--summary-omitted', 'constraint', 'An unscoped constraint', '--yes'], cwd);
       for (const args of [
         ['list'], ['list', '--full'], ['decay'], ['decay', '--full'],
         ['doctor'], ['doctor', '--full'], ['status'],

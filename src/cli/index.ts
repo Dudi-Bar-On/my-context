@@ -40,10 +40,13 @@ import {
   unknownFlag, wantsJson,
 } from './commands/format.ts';
 import {
-  COMMANDS, csv, dedupe, extraFlag, flag, flagOccurrences, positionals, registerCommand,
-  repeatedFlagError,
+  COMMANDS, boolFlag, csv, dedupe, extraFlag, flag, flagOccurrences, positionals,
+  registerCommand, repeatedFlagError,
   type CommandDef,
 } from './commands/registry.ts';
+import {
+  summaryAtCreateRefusal, summaryOmittedRefusal, summaryRequiredAtCreate,
+} from '../core/summary-gate.ts';
 import { confirmAction } from './commands/review.ts';
 
 type Emit = (s: string) => void;
@@ -467,7 +470,7 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
 
 const ADD_USAGE =
   'usage: mycontext add <category> <title> [--body <text>|--file <path>] [--note <text>] ' +
-  '[--step <text>] [--summary <text>] [--scope "a/**,b/**"] [--tags "a,b"] ' +
+  '[--step <text>] [--summary <text>|--summary-omitted] [--scope "a/**,b/**"] [--tags "a,b"] ' +
   '[--severity hard|soft] [--extra key=value] [--yes]';
 
 /**
@@ -743,6 +746,29 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     if (summary !== null) {
       validateSummary(normalizeSummary(summary));
       input.summary = summary;
+    }
+    // **The summary gate, on the human half of its creation surface.**
+    //
+    // `boolFlag`, like `--always` and `--yes`'s neighbours on `edit`, so
+    // `--summary-omitted=false` is the same as not passing it and the flag
+    // cannot be given as true and false at once.
+    //
+    // It sits HERE — after `--summary` is read and validated, before
+    // `addSnapshot`, before the scope refusal and before the normative
+    // confirmation — for the ordering `--severity`, `--step` and
+    // `scopeRequirementError` are all checked early for: a human must not be
+    // shown "create this item that governs the project?" and told only after
+    // answering that the capture was never going to land. It is deliberately
+    // NOT inside `createItem`; see `summaryRequiredAtCreate` for why the gate
+    // belongs at the authored surfaces and nowhere else.
+    if (boolFlag(args, 'summary-omitted') === true) input.summaryOmitted = true;
+    // The contradiction first, so a capture passing both spellings is told
+    // about it rather than being waved through by the summary it carries —
+    // the order `cmdEdit` puts `summaryUnchangedRefusal` in, for its reason.
+    const omittedRefusal = summaryOmittedRefusal(input, 'add');
+    if (omittedRefusal) throw new Error(omittedRefusal);
+    if (summaryRequiredAtCreate(input)) {
+      throw new Error(summaryAtCreateRefusal(input, 'add'));
     }
     // Every occurrence, in command-line order, so `--note a --note b` records
     // two observations rather than keeping the first and dropping the second

@@ -5,6 +5,8 @@ title: API errors use Problem JSON
 status: active
 severity: soft
 always: false
+summary: Every error the service returns uses one shared shape, so a caller can read a failure without special-casing each endpoint.
+summary_of: e3bfc7ab2adf39b0
 scope:
   - src/api/**
 tags:
@@ -16,7 +18,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-14
 valid_until: null
-checksum: 895fb679ddf817c7
+checksum: 64e45904da7e2d1c
 ---
 
 # API errors use Problem JSON

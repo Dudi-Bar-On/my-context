@@ -39,8 +39,8 @@ routes are `mycontext review promote`/`discard` for a draft's status, and
 ## The human's CLI, and why it is not your route
 
 `mycontext add <category> "<title>" [--body "<why>"|--file <path>]
-[--note "<text>"] [--step "<text>"] [--summary "<text>"] [--scope "a/**,b/**"]
-[--tags "a,b"] [--severity hard|soft]
+[--note "<text>"] [--step "<text>"] [--summary "<text>"|--summary-omitted]
+[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft]
 [--extra key=value] [--yes]` is the user's capture command. `--scope` and
 `--tags` are comma-separated; `--body` goes through the same round-trip guards
 described above, so a body containing a `#` heading is refused there exactly as
@@ -51,12 +51,25 @@ repeated — on `mycontext edit` as well.
 `--summary "<text>"` is one plain sentence saying what the item IS and why it
 matters, written for somebody who does NOT know this codebase: plain words
 rather than project vocabulary, no ids, no file paths, no measurements, and
-never how it was found. It is capped at 160 characters, the body keeps all the
-precision, and leaving it out is perfectly normal — nothing requires one. It is
-also recorded WITH the content it was written against, so a later edit to the
-body makes it measurably stale (`mycontext doctor` reports it, and `get_item`
-labels it) rather than quietly wrong. `mycontext edit <id> --summary=` removes
-one.
+never how it was found. It is capped at 160 characters and the body keeps all
+the precision. It is also recorded WITH the content it was written against, so
+a later edit to the body makes it measurably stale (`mycontext doctor` reports
+it, and `get_item` labels it) rather than quietly wrong. `mycontext edit <id>
+--summary=` removes one.
+
+**Every capture must carry one**, here and on `create_item` alike. Leaving it
+out is not a small omission: an item created with no summary can never
+afterwards be REQUIRED to have one, because every check that would ask compares
+a summary against the content it was written against and an absent one has
+neither — so `mycontext doctor` names it as `summary_absent` and nothing else
+ever will. Nothing in this product can write the sentence for you; a capture
+with no `--summary` is refused, and the refusal says all of this. If an item
+genuinely should carry none, say so in words with `--summary-omitted`
+(`summary_omitted: true` on `create_item`), which is never a default, is refused
+beside `--summary`, and records `summary-omitted` in the audit log so that
+nobody wrote one is visible rather than assumed. Reach for it when the item has
+nothing to say in one sentence that its title does not already say — never to
+get past the refusal.
 
 `--note "<text>"` records a `[note]` observation and may be repeated, and that
 is the whole of what this CLI can say about observations. An observation under

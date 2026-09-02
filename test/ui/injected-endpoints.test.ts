@@ -92,9 +92,9 @@ function fixture(): Fixture {
     assert.equal(runCli(args, dir, () => {}), 0, `fixture command failed: ${args.join(' ')}`);
   };
   run(['init']);
-  run(['add', 'rule', 'Always use POSIX paths', '--scope', 'src/**', '--body',
+  run(['add', '--summary-omitted', 'rule', 'Always use POSIX paths', '--scope', 'src/**', '--body',
     'Use POSIX separators everywhere.', '--yes']);
-  run(['add', 'reference', 'Where the billing rework stands', '--body',
+  run(['add', '--summary-omitted', 'reference', 'Where the billing rework stands', '--body',
     'The tax table is next.', '--yes']);
   const ws = resolveWorkspace(dir);
   const root = ws.projectRoot!;

@@ -140,7 +140,7 @@ const TASK = 'TASK-wire-the-projection';
 function task(cwd: string): string {
   const lines: string[] = [];
   const code = runCli([
-    'add', 'task', 'Wire the projection', '--body', 'Call the seam.',
+    'add', '--summary-omitted', 'task', 'Wire the projection', '--body', 'Call the seam.',
     '--tags', 'plan:categories,seq:20,state:todo,v2',
     '--extra', 'state=todo', '--extra', 'plan=categories',
   ], cwd, (l) => lines.push(l));
@@ -161,7 +161,7 @@ test('update_item refuses a value outside the declared vocabulary', async () => 
     const id = task(cwd);
     const before = itemFile(cwd, id);
     const [res] = await session(cwd, [
-      { name: 'update_item', arguments: { id, extra: { state: 'donee' } } },
+      { name: 'update_item', arguments: { summary_unchanged: true, id, extra: { state: 'donee' } } },
     ]);
 
     assert.equal(res.isError, true, res.text);
@@ -185,7 +185,7 @@ test('update_item moves the projected tag with the field, and doctor stays clean
   try {
     const id = task(cwd);
     const [res] = await session(cwd, [
-      { name: 'update_item', arguments: { id, extra: { state: 'done' } } },
+      { name: 'update_item', arguments: { summary_unchanged: true, id, extra: { state: 'done' } } },
     ]);
 
     assert.equal(res.isError, false, res.text);
@@ -212,7 +212,7 @@ test('update_item projects onto the tag list the caller passed, not the one it r
   try {
     const id = task(cwd);
     const [res] = await session(cwd, [
-      { name: 'update_item', arguments: { id, tags: ['v2', 'ui'], extra: { state: 'done' } } },
+      { name: 'update_item', arguments: { summary_unchanged: true, id, tags: ['v2', 'ui'], extra: { state: 'done' } } },
     ]);
 
     assert.equal(res.isError, false, res.text);
@@ -235,11 +235,11 @@ test('create_item refuses an undeclared value and projects a declared one', asyn
     const [bad, good] = await session(cwd, [
       {
         name: 'create_item',
-        arguments: { type: 'rule', title: 'Typo at capture', body: 'x', directive: 'maybe' },
+        arguments: { summary_omitted: true, type: 'rule', title: 'Typo at capture', body: 'x', directive: 'maybe' },
       },
       {
         name: 'create_item',
-        arguments: { type: 'rule', title: 'Never log customer email', body: 'x', directive: 'dont' },
+        arguments: { summary_omitted: true, type: 'rule', title: 'Never log customer email', body: 'x', directive: 'dont' },
       },
     ]);
 
@@ -349,7 +349,7 @@ test('update_item leaves a projected tag alone when no field backs it', async ()
     const [made] = await session(cwd, [
       {
         name: 'create_item',
-        arguments: { type: 'task', title: 'Born half projected', body: 'x', tags: ['state:done'] },
+        arguments: { summary_omitted: true, type: 'task', title: 'Born half projected', body: 'x', tags: ['state:done'] },
       },
     ]);
     assert.equal(made.isError, false, made.text);

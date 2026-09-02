@@ -47,14 +47,14 @@ function project(): Project {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-export-'));
   assert.equal(runCli(['init'], cwd, () => {}), 0);
   assert.equal(
-    runCli(['add', 'constraint', 'Postgres pool capped at 20', '--yes'], cwd, () => {}), 0,
+    runCli(['add', '--summary-omitted', 'constraint', 'Postgres pool capped at 20', '--yes'], cwd, () => {}), 0,
   );
   assert.equal(
-    runCli(['add', 'rule', 'Never log customer email', '--yes'], cwd, () => {}), 0,
+    runCli(['add', '--summary-omitted', 'rule', 'Never log customer email', '--yes'], cwd, () => {}), 0,
   );
   writeFileSync(path.join(cwd, 'roadmap.md'), '# Roadmap\n\n## Q3\n\n- one\n', 'utf8');
   assert.equal(
-    runCli(['add', 'reference', 'Billing roadmap', '--file', 'roadmap.md'], cwd, () => {}), 0,
+    runCli(['add', '--summary-omitted', 'reference', 'Billing roadmap', '--file', 'roadmap.md'], cwd, () => {}), 0,
   );
   return { cwd, dispose: () => removeTree(cwd) };
 }

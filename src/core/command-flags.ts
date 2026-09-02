@@ -270,7 +270,14 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
    * `--yes` is the gate; everything else supplies a field. `allowed` is
    * derived from `ADD_VALUE_FLAGS` above rather than restated.
    */
-  add: { allowed: [...ADD_VALUE_FLAGS, 'yes'], values: ADD_VALUE_FLAGS },
+  /**
+   * `allowed` is still DERIVED from `values`, plus the two BARE switches this
+   * command takes. `summary-omitted` is deliberately outside `ADD_VALUE_FLAGS`
+   * for `edit`'s `summary-unchanged` reason (edit-flags.ts): it consumes no
+   * token, and a composed `--summary-omitted "<something>"` would be offering
+   * to write the summary the flag exists to say nobody wrote.
+   */
+  add: { allowed: [...ADD_VALUE_FLAGS, 'summary-omitted', 'yes'], values: ADD_VALUE_FLAGS },
   /**
    * The detail levels and nothing else — `list`'s category filter is a
    * POSITIONAL, so the one thing a reader might expect to find here is
@@ -516,7 +523,7 @@ export const SUMMARY_FLAG: FlagDeclaration = {
   example: 'A screen says it checked a session and found nothing, when it never checked at all.',
   note: 'What this item is and why it matters, in plain words for somebody who does NOT know '
     + 'this codebase - no ids, no file paths, no measurements, and never how it was found. '
-    + 'The body keeps all the precision. Absent is fine: nothing requires one.',
+    + 'The body keeps all the precision.',
 };
 
 const YES: FlagDeclaration = {
@@ -794,7 +801,26 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       values: SEVERITIES,
       note: 'hard items are admitted to a budget before soft ones. Any other word is refused.',
     },
-    summary: SUMMARY_FLAG,
+    // `SUMMARY_FLAG`'s format, example and shared note, plus the one sentence
+    // that is true of a CAPTURE and not of an edit - the mirror of what
+    // `edit-flags.ts` does with the clear. It is not in the shared
+    // declaration because `--summary-omitted` exists only on this command,
+    // and a hint on `edit` naming a flag `edit` refuses is worse than none.
+    summary: {
+      ...SUMMARY_FLAG,
+      note: `${SUMMARY_FLAG.note} A capture must carry one, or say \`--summary-omitted\` in `
+        + 'so many words: an item created without a summary can never afterwards be asked '
+        + 'for one, because every check that would ask compares a summary against the text '
+        + 'it was written against and an absent one has neither.',
+    },
+    'summary-omitted': {
+      note: 'Say that this item is being captured with NO summary, and that it is deliberate. '
+        + 'A capture without one is otherwise refused, because an item born with no summary can '
+        + 'never afterwards be required to have one - `mycontext doctor` reports it as '
+        + '`summary_absent` and nothing else will ever ask. This is the named way to mean it: it '
+        + 'is never a default, it is refused beside `--summary`, and the audit row records '
+        + '`summary-omitted` so that nobody wrote one is visible rather than assumed.',
+    },
     extra: {
       format: 'key=value, one key per flag', example: 'directive=do',
       note: 'One category-specific field - a rule\'s directive, a requirement\'s kind. '

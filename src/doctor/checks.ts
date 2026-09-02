@@ -800,7 +800,9 @@ export function checkContinuity(items: Item[], config: Config): Finding[] {
  * still on disk, still shown, still round-trips. What is wrong is that it may
  * be believed, and the remedy is a person or an agent writing a new one.
  *
- * The two states are reported apart because their remedies differ. A `stale`
+ * The states are reported apart because their remedies differ. An ABSENT
+ * summary is the one this function used to walk past in silence, and it has its
+ * own argument at the clause that reports it. A `stale`
  * summary was correct once and the content moved under it. An `unanchored` one
  * carries no basis at all, which no write path in this product can produce —
  * it means the file was edited by hand, so the summary may never have described
@@ -816,7 +818,55 @@ export function checkContinuity(items: Item[], config: Config): Finding[] {
 export function checkSummary(items: Item[]): Finding[] {
   const findings: Finding[] = [];
   for (const item of items) {
-    if (item.summary === null) continue;
+    // **The item no other clause in this function can reach**, named rather
+    // than skipped past.
+    //
+    // Every check below compares a summary against something: the basis it was
+    // stamped with, or the length limit. An item with no summary answers none
+    // of those questions, so it used to fall through this loop silently — and
+    // silence was indistinguishable from health. Seventeen items sat in that
+    // state while `mycontext doctor` reported the corpus clean, because the one
+    // check that could have spoken about them had nothing to compare and the
+    // edit gate waived them on the same grounds. That is the shape
+    // `INV-nothing-is-dropped-silently` exists for, one layer up: not an item
+    // dropped from output, but an item dropped from every check that applies to
+    // it.
+    //
+    // **`warn`, the same level as `summary_stale`, because it is the same
+    // defect one step earlier.** A stale summary may be believed; an absent one
+    // means the item arrives everywhere it is listed with nothing to be
+    // believed at all — no sentence beside it in a report, nothing quotable
+    // into a session, and no way for a reader to judge it without opening the
+    // body. Nothing is lost and nothing is corrupt: the item loads, indexes,
+    // injects and governs exactly as it always did, which is why this is not
+    // `error` — `error` in this file is reserved for a guarantee that is NOT in
+    // force (see `continuity_overflow`), and every guarantee this product makes
+    // still holds for an item with no summary. It is not `info` either: `info`
+    // is for what a reader may want to know, and this is a remedy waiting for
+    // somebody, on an item that will otherwise stay this way forever.
+    //
+    // The remedy is one command and the finding names it. There is deliberately
+    // no note here about opting out: `--summary-omitted` is a capture-time act
+    // and the item already exists, so offering it would be offering a way to
+    // silence a finding rather than answer it.
+    if (item.summary === null) {
+      findings.push({
+        level: 'warn', code: 'summary_absent', item: item.id,
+        message:
+          `has no summary, so nothing here can say whether what it claims is still what it ` +
+          `means. It is the one state no other summary check reaches: \`summary_stale\` and ` +
+          `\`summary_unanchored\` both compare a summary against the content it was written ` +
+          `against, and an item with none has neither — it is reported here or it is reported ` +
+          `nowhere. It is either older than the requirement, hand-written into a \`.md\` file, ` +
+          `or captured with an explicit opt-out, and all three end the same way: read the body ` +
+          `and write the one plain sentence a reader who does not know this codebase would ` +
+          `need — \`mycontext edit ${item.id} --summary "<text>"\` (or update_item, which ` +
+          `stages it for review on a category set to agentEdits "review"). Nothing is wrong ` +
+          `with the item: it loads, injects and governs exactly as it did. What it cannot do ` +
+          `is be summarised to anyone who has not opened it.`,
+      });
+      continue;
+    }
 
     const state = summaryState(item);
     if (state === 'unanchored') {
