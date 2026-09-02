@@ -5,6 +5,8 @@ title: A session can narrow what loads into context, disclosing what it hid
 status: active
 severity: hard
 always: false
+summary: A session can narrow what it loads down to one topic, and is told what that hid — except the items marked never to drop, which stay regardless.
+summary_of: 8905267636fa1ec6
 scope:
   - src/cli/**
   - src/hooks/**
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: 2be9e7dc9300e37b
+checksum: b579732469fa9b57
 kind: functional
 ---
 
@@ -57,10 +59,44 @@ relations now dangling". It never refuses to do what the user asked. That settle
 OPENQ-how-do-filters-respect-dependencies, which is superseded by
 DEC-focus-discloses-and-allows-rather-than-refusing-to-hide.
 
-**The `[rule]` observations are both honoured.** Whatever focus hides is disclosed the way
-spill is, in the injected block itself and not only in a command's output; and focus never
-hides a `severity: hard` item, with the count of hard items kept for that reason reported
-alongside. The `[option]` preview exists as `mycontext focus --preview`, and it calls
+**The `[rule]` observations are both honoured, and the second is honoured more
+widely than it was written.** Whatever focus hides is disclosed the way spill
+is, in the injected block itself and not only in a command's output. The
+second observation asked that focus never hide a `severity: hard` item;
+`focusHides` in `src/core/select.ts` now exempts THREE classes, each as its own
+early return taken BEFORE the focus axes are consulted at all — `severity:
+hard`, `always: true`, and `continuity: true`. They are written as three
+statements rather than one `||` because they are independent rules with
+independent reasons: `hard` says an item MUST NOT BE VIOLATED, `always` says an
+item MUST NOT FALL OUT OF CONTEXT, and `continuity` says the next session MUST
+NOT START OVER. An item can carry any one without the others, which is exactly
+how the second came to be missing for as long as it was.
+
+**EXEMPTION, NOT DISCLOSURE, and that is the ruling rather than an
+implementation detail.** DEC-a-focus-may-not-hide-a-pinned-item (owner,
+2026-08-27) rejects this item's original remedy by name: *"Not chosen:
+disclosing what a focus hides instead of exempting. Disclosure is the right
+treatment for a deliberate drop, and this is not one — the items are marked as
+never droppable."* Disclosure remains the whole treatment for what focus DOES
+hide. It is not a treatment for what focus may not hide at all. The measured
+cost of confusing the two is on the record: a focus set 2026-08-24 with `tags:
+plan:walk` hid six soft-severity pinned items for three days, among them the
+instruction to use the product for every fitting category — the product hid its
+own instruction, and nothing said so. The absence was found by counting what
+should have been injected against what was.
+
+**The exemptions are reported, and reported APART.** `renderFocus` in
+`src/core/render.ts` emits one sentence per class that fired — "N severity:hard
+item(s) … injected anyway — focus never hides one", then the same for pinned,
+then for continuity — rather than one merged count, because a reader who asked
+for a narrow corpus is owed WHICH reason kept each thing, and a merged sentence
+would assert a severity those items need not have. The injected block carries
+counts; `mycontext focus --show` names the ids, capped with the remainder
+disclosed. That disclosure is deliberately not budgeted with the tiers: a
+budget that could drop it would make focus a way to hide knowledge silently,
+which is the one unacceptable failure in this project.
+
+The `[option]` preview exists as `mycontext focus --preview`, and it calls
 `select` with the candidate focus rather than re-deriving the predicate, so a preview and the
 injection that follows it cannot disagree.
 

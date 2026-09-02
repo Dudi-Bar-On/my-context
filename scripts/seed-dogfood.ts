@@ -50,9 +50,21 @@ const SEEDS: Seed[] = [
     severity: 'hard',
     tags: ['packaging'],
     body:
-      'Only `typescript` and `@types/node` are permitted, and only as devDependencies.\n' +
-      'A plugin that installs cleanly without a package fetch is what makes hooks start\n' +
-      'in tens of milliseconds and what lets the plugin be dropped into any repo.',
+      '`dependencies` is empty and stays empty — package.json declares no runtime\n' +
+      'dependency at all. A plugin that installs cleanly without a package fetch is\n' +
+      'what makes hooks start in tens of milliseconds and what lets the plugin be\n' +
+      'dropped into any repo.\n' +
+      '\n' +
+      'devDependencies are permitted and enumerated. Today they are three:\n' +
+      '`typescript`, `@types/node` and `@playwright/test`. The browser suite was\n' +
+      'admitted deliberately and on the record — a test tool violates neither the\n' +
+      'runtime rule nor the no-build-step rule, and it was the first test dependency\n' +
+      'this project took, everything before it running on `node:test` alone. A\n' +
+      'fourth is a ruling to record, never a commit to make.\n' +
+      '\n' +
+      'NOTHING CHECKS THIS AUTOMATICALLY. No `check:*` script and no CI step reads a\n' +
+      'dependency list, so a runtime dependency added in a pull request goes green.\n' +
+      'The guarantee is held by review.',
     observations: [
       obs('limit', 'No runtime dependency may be added to package.json', ['packaging']),
       obs('consequence', 'The MCP server in Plan 3 must speak JSON-RPC by hand rather than using the SDK'),
