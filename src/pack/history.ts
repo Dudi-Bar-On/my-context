@@ -235,14 +235,19 @@ const RECORD_KEYS = [
  * `Origin`'s three members, as a table keyed BY the union rather than an array
  * of it.
  *
- * There are already two private copies of this list — `core/validate.ts` ·
- * `const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];` and
- * `cli/commands/audit.ts` · `const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];`
- * — and neither is exported, so a third was unavoidable without editing a
- * module this task does not own. It is a `Record<Origin, true>` and not an
- * `Origin[]` precisely because of that: a fourth member added to the union
- * fails to compile HERE, where the two arrays would keep compiling and quietly
- * start rejecting a member the type permits.
+ * **The two copies this comment used to cite are gone, and the reason it gave
+ * for a third went with them.** `core/validate.ts` EXPORTS `ORIGINS`, and
+ * `cli/commands/audit.ts` imports it rather than keeping the second copy — so
+ * "neither is exported, so a third was unavoidable" is no longer true of
+ * anything, and this comment must not go on asserting a duplication that has
+ * been removed.
+ *
+ * What survives the correction is the argument for the SHAPE, which was never
+ * about availability. This is a `Record<Origin, true>` and not an `Origin[]`
+ * because a fourth member added to the union fails to compile HERE, where an
+ * array — the exported one included — keeps compiling and quietly starts
+ * rejecting a member the type permits. It is a closure check written as a
+ * table, not a second spelling of the vocabulary.
  *
  * It is checked at all because `Origin` is closed on purpose — §6m.5 refused an
  * `import` member — and a pack whose history rows carried one would put that

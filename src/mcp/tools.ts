@@ -32,6 +32,7 @@ import { filterItems } from '../core/search.ts';
 import { reviewQueue, select } from '../core/select.ts';
 import { MCP_HELP_TOPICS, enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
 import type { Item, Observation, Origin, Severity, Status } from '../core/types.ts';
+import { ORIGINS } from '../core/validate.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { exampleItem, helpTopic, toolDescriptions } from '../help/index.ts';
 import { INGEST_DOCUMENT_SCHEMA, runIngestDocument } from './tools/ingest.ts';
@@ -845,7 +846,7 @@ const SPECS: ToolSpec[] = [
   {
     name: 'query_items',
     schema: object({
-      type: S_STRING,
+      type: { ...S_STRING, description: 'Category — see mycontext_help("categories")' },
       status: { ...S_STRING, enum: STATUSES },
       tag: S_STRING,
       text: {
@@ -971,7 +972,13 @@ const SPECS: ToolSpec[] = [
       // exception into it — a weakened pin outlives the reason it was
       // weakened. The CLI keeps `--origin`, which matches the record field,
       // because no such hazard exists on a human surface.
-      actor: { ...S_STRING, enum: ['human', 'agent', 'ingest'] },
+      //
+      // The NAME is this surface's; the VALUES are `Origin`'s, so they are
+      // read from `ORIGINS` (`core/validate.ts`) rather than restated. A
+      // list retyped here would agree with the type until the day it did
+      // not, and the failure is silent: the filter would refuse a member
+      // every record is free to carry.
+      actor: { ...S_STRING, enum: ORIGINS },
       since: { ...S_STRING, description: 'ISO-8601 instant, or a span back from now: 7d, 12h' },
       limit: { type: 'number', description: 'The most recent N. Default 30.' },
     }),
@@ -996,8 +1003,8 @@ const SPECS: ToolSpec[] = [
       if (op !== undefined) filter.op = op as AuditOp;
       const kind = optEnum(args, 'kind', [...AUDIT_KINDS], 'workflow');
       if (kind !== undefined) filter.kind = kind as AuditKind;
-      const actor = optEnum(args, 'actor', ['human', 'agent', 'ingest'], 'workflow');
-      if (actor !== undefined) filter.origin = actor as Origin;
+      const actor = optEnum<Origin>(args, 'actor', ORIGINS, 'workflow');
+      if (actor !== undefined) filter.origin = actor;
       const since = optStr(args, 'since');
       if (since !== undefined) filter.since = parseWhen(since, 'since');
 
@@ -1075,7 +1082,10 @@ const SPECS: ToolSpec[] = [
     name: 'focus_context',
     schema: object({
       tags: { ...S_STRINGS, description: 'Keep items carrying any of these tags' },
-      categories: { ...S_STRINGS, description: 'Keep items of these categories' },
+      categories: {
+        ...S_STRINGS,
+        description: 'Keep items of these categories — see mycontext_help("categories")',
+      },
       scope: { ...S_STRINGS, description: 'Keep items applying to these paths or globs' },
       preview: {
         type: 'boolean',

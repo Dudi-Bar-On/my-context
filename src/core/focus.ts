@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { recordAudit, type AuditWriteResult } from './audit.ts';
 import type { Item, Origin } from './types.ts';
+import { ORIGINS } from './validate.ts';
 
 // --- Session focus ----------------------------------------------------------
 //
@@ -417,7 +418,14 @@ export function readFocus(root: string): FocusState {
       categories: strings(row.categories),
       scope: strings(row.scope),
       setAt: typeof row.setAt === 'string' ? row.setAt : '',
-      setBy: row.setBy === 'agent' || row.setBy === 'ingest' ? row.setBy : 'human',
+      // Narrowed against `ORIGINS`, never against the members spelled out
+      // here. `'human'` is the fallback for a `setBy` that is absent or is
+      // not an origin at all — but WHICH values are origins is `Origin`'s
+      // question, and a copy of the answer in this file would fail in the
+      // quietest way available: a member added to the union would be
+      // rewritten to `'human'` on read, and the focus would report an
+      // author nobody set.
+      setBy: ORIGINS.find((origin) => origin === row.setBy) ?? 'human',
     },
     error: null,
   };

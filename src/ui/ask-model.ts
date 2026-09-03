@@ -4,6 +4,7 @@ import {
 import { filterSelect, queryProjection, sessions, summaryByOp, topItems } from '../core/audit-db.ts';
 import { Store } from '../core/store.ts';
 import type { Layer, Origin, Status } from '../core/types.ts';
+import { ORIGINS } from '../core/validate.ts';
 import type { Workspace } from '../core/workspace.ts';
 import { badRequest, repeatedParams, unknownParams } from './read-model.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
@@ -66,7 +67,6 @@ import { readProjection } from './watch-model.ts';
 
 const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
 const LAYERS: Layer[] = ['project', 'global'];
-const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];
 
 export interface CorpusFilter {
   type?: string;
