@@ -4,9 +4,10 @@
  *
  * The gap this topic closes is concrete. `HELP_TOPICS` had four members and
  * none of them covered the CLI's own commands and flags, so three wrong
- * invocations in one session — `add … --always` (that flag is `edit`'s),
- * `link <id> refines <id>` (there is no `link` command), `supersede <id>
- * --reason …` (`--by` is required) — each cost a round trip. Every one of
+ * invocations in one session — `add … --always` (that flag was `edit`'s;
+ * `add` has taken it since 2026-09-03, and the test below now asserts the
+ * flip), `link <id> refines <id>` (there is no `link` command), `supersede
+ * <id> --reason …` (`--by` is required) — each cost a round trip. Every one of
  * those facts already existed in `COMMANDS`; nothing pointed a reader at it.
  *
  * So the command section is generated, on the same terms as the category
@@ -135,26 +136,60 @@ test('an empty registry is refused, never rendered as an empty command section',
  * The three real errors, executed and then read back off the topic.    *
  * -------------------------------------------------------------------- */
 
-test('`add --always` is refused, and the topic puts --always on edit', () => {
-  const { code, out } = workspace((cwd) => run(['add', '--summary-omitted', 'rule', 'x', '--always'], cwd));
-  assert.equal(code, 1, `add accepted --always. Output:\n${out}`);
-  assert.match(out, /unknown option "--always"/);
+/**
+ * **This test used to assert the opposite, and the flip is the point of
+ * keeping it.**
+ *
+ * `add --always` was the first of the three failed invocations above: the flag
+ * was `edit`'s alone, `add` refused it by name, and the topic said so. On
+ * 2026-09-03 `add` grew it — seven of the 44 items being merged from
+ * `.my_context.nested-44/` carry `always: true`, and until then every one of
+ * them had to be captured unpinned and pinned by a second command. So the
+ * topic's claim became false, and a help page that tells a reader a flag is
+ * refused when the command takes it is exactly the round trip this page exists
+ * to prevent, pointed the other way.
+ *
+ * What is asserted now is the same property as before — the topic's claim about
+ * `--always` matches the running program, in BOTH directions — against the
+ * opposite fact. The generated section must advertise the flag on `add`
+ * (`ADD_FLAG_SUMMARY` derives it from `ADD_USAGE`, so this fails if the usage
+ * line loses it) and on `edit`, and the prose must not still be standing over
+ * the refusal it once recorded.
+ */
+test('`add --always` is accepted, and the topic advertises it on `add` and on `edit`', () => {
+  const { code, out } = workspace((cwd) => run(
+    ['add', '--summary-omitted', 'rule', 'x', '--body', 'y', '--always', '--yes'], cwd,
+  ));
+  assert.equal(code, 0, `add refused --always. Output:\n${out}`);
+  assert.doesNotMatch(out, /unknown option "--always"/);
+  // The gate is what consents to a pin, so it has to SAY there is one — the
+  // flag adds no gate of its own precisely because this one already fires.
+  assert.match(out, /pinned: injected in full at every session start/,
+    'the normative confirmation approved a pinned capture without naming the pin');
 
-  const text = topic();
   // Searched in the GENERATED section rather than in the whole topic: the prose
   // above it quotes the three failed invocations verbatim, so a whole-file
-  // search finds `mycontext add … --always` in the sentence saying it fails.
+  // search finds `mycontext add … --always` in the sentence about them.
   const generated = commandList().split('\n');
   const edit = generated.find((l) => l.startsWith('- `mycontext edit '));
   assert.ok(edit, 'the topic has no line for `edit`');
   assert.match(edit, /--always/,
-    'the topic must show --always where it actually lives, or a reader refused on `add` has ' +
-    'nowhere to go next');
+    'the topic must show --always on `edit`, which is still the only command that can UNPIN');
   const add = generated.find((l) => l.startsWith('- `mycontext add '));
   assert.ok(add !== undefined, 'the topic has no line for `add`');
-  assert.equal(add.includes('--always'), false,
-    "`add`'s line advertises --always, which `add` refuses");
-  assert.match(text, /`mycontext pin <id>`/, 'the topic must name the route that does set it');
+  assert.match(add, /--always/,
+    "`add`'s line hides --always, which `add` accepts. The line is derived from ADD_USAGE, so " +
+    'this fails when the usage line drops the flag rather than when the topic does.');
+
+  const text = topic();
+  assert.match(text, /`mycontext pin <id>`/,
+    'the topic must still name the second-act route for an item that already exists');
+  // The stale claim, named by its own words so it cannot come back quietly.
+  assert.doesNotMatch(
+    text, /`mycontext add` has no spelling for it/,
+    'the topic still says `add` cannot pin. It can, and a reader who believes this page will ' +
+    'run two commands where one would do — or skip the pin on a migration entirely.',
+  );
 });
 
 test('there is no `link` command, and the topic says where relations are made', () => {

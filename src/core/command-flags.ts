@@ -157,10 +157,14 @@ export const DETAIL_FLAGS = ['full', 'short', 'summary', 'json'];
  * re-create an item that already exists: an observation under a kind other than
  * `note`, and the day the item started holding. Both take a value; neither is
  * comma-split.
+ *
+ * `original-id` is the third of that group and the last field an item carries
+ * that no write path could express: the id itself. It is on `add` and it is on
+ * no other command, which is a rule and not an omission — see its declaration.
  */
 const ADD_VALUE_FLAGS = [
   'body', 'file', 'note', 'observation', 'step', 'summary', 'scope', 'tags', 'severity',
-  'valid-from', 'extra',
+  'valid-from', 'original-id', 'extra',
 ];
 
 /**
@@ -176,8 +180,24 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
    * Two bare switches and two positionals. `<id>` and `<code>` are operands
    * rather than flags because they are the whole of what the command is about
    * — the same shape `supersede <id>` and `show <id>` already have.
+   *
+   * **`--all --code <code> [--count <n>]` is the SECOND form**, added
+   * 2026-09-03 under
+   * `DEC-doctor-gets-a-bulk-settlement-overturning-the-no-bulk-ruling`. Three
+   * flags rather than one, and each is a refusal:
+   *
+   *  - `--all` is bare and means nothing on its own; it needs `--code`, for
+   *    `review promote`'s reason — the licence a bulk act can be given is for
+   *    a NAMED, BOUNDED set, never for "everything acknowledgeable here".
+   *  - `--code` NAMES that set, and it is a flag rather than the existing
+   *    `<code>` positional because the two forms take different operands: the
+   *    single form's first positional is an item id, and a bulk form that read
+   *    its code out of that slot would be one typo away from being read as an
+   *    id it does not have.
+   *  - `--count` is the CONSENT, and there is deliberately no `--yes` — see
+   *    `cli/commands/ack.ts`, which argues why at length.
    */
-  ack: { allowed: ['clear', 'list'], values: [] },
+  ack: { allowed: ['clear', 'list', 'all', 'code', 'count'], values: ['code', 'count'] },
   /**
    * The nine value flags are the query surface; `items`/`sessions`/`files`
    * choose which projection is reported.
@@ -199,8 +219,32 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
     ],
     values: ['out', 'format', 'pack-name', 'pack-version', 'type', 'status', 'tag'],
   },
+  /**
+   * **`--yes` is here, and it is accepted by the COMMAND while being answered
+   * by only two of its five forms** — owner ruling 2026-09-04, *"writes take
+   * the boundary, the read does not"*, under
+   * `DEC-the-focus-dialog-earns-execute-by-putting-focus-on-the`.
+   *
+   * This table answers exactly one question — would the parser accept this
+   * token — and it is FLAT per command because `refuseUnknownFlag` and
+   * `positionals` are handed `{ allowed, values }` argument for argument by
+   * thirty commands. There is no shape here that could say "on `--clear` and
+   * on setting axes, but not on `--show`", and inventing one would make the
+   * accept-list conditional on the rest of argv for one command's sake.
+   *
+   * So the acceptance is stated here and the SPLIT is stated where every other
+   * conditional flag in this CLI states it: as a refusal in the command body.
+   * `focus --clear` and `focus <axes>` go through `confirmAction`; `--show`,
+   * `--preview` and `--relations` refuse `--yes` BY NAME rather than ignoring
+   * it. That is the same shape `ack` already has one entry above — `--code`
+   * "means nothing without --all and is refused rather than ignored" — and it
+   * is what keeps the owner's ruling executable instead of merely written
+   * down: putting `--yes` on focus wholesale would ask "are you sure you want
+   * to report something?", and a flag silently ignored on a read is that
+   * question asked in a quieter voice.
+   */
   focus: {
-    allowed: ['tag', 'category', 'scope', 'clear', 'show', 'preview', 'relations', 'json'],
+    allowed: ['tag', 'category', 'scope', 'clear', 'show', 'preview', 'relations', 'json', 'yes'],
     values: ['tag', 'category', 'scope'],
   },
   'inbox-promote': { allowed: ['to', 'title', 'yes'], values: ['to', 'title'] },
@@ -273,17 +317,26 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
    */
 
   /**
-   * `--yes` is the gate; everything else supplies a field. `allowed` is
-   * derived from `ADD_VALUE_FLAGS` above rather than restated.
-   */
-  /**
-   * `allowed` is still DERIVED from `values`, plus the two BARE switches this
+   * `--yes` is the gate; everything else supplies a field.
+   *
+   * `allowed` is still DERIVED from `values`, plus the three BARE switches this
    * command takes. `summary-omitted` is deliberately outside `ADD_VALUE_FLAGS`
    * for `edit`'s `summary-unchanged` reason (edit-flags.ts): it consumes no
    * token, and a composed `--summary-omitted "<something>"` would be offering
    * to write the summary the flag exists to say nobody wrote.
+   *
+   * `always` is the third, and it is a switch on the SAME terms `edit` reads
+   * it on — `boolFlag`, so `--always=false` is a value ON the token rather
+   * than the token after it. Putting it in `values` would be the disagreement
+   * `FlagSpec` warns about above: `positionals` would swallow the word after
+   * `--always` as its value, so `mycontext add --always invariant "…"` would
+   * lose its category and build a title out of the rest. It is a pin, not a
+   * field with an argument.
    */
-  add: { allowed: [...ADD_VALUE_FLAGS, 'summary-omitted', 'yes'], values: ADD_VALUE_FLAGS },
+  add: {
+    allowed: [...ADD_VALUE_FLAGS, 'always', 'summary-omitted', 'yes'],
+    values: ADD_VALUE_FLAGS,
+  },
   /**
    * The detail levels and nothing else — `list`'s category filter is a
    * POSITIONAL, so the one thing a reader might expect to find here is
@@ -587,6 +640,25 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       note: 'Print every finding doctor reports on the item and whether each one is '
         + 'acknowledged, lapsed or open, and change nothing. The code operand is not needed.',
     },
+    all: {
+      note: 'Rule on every finding of ONE code, across the corpus, in one act. It needs '
+        + '--code, and it takes no item id: the two name different acts and this command '
+        + 'refuses to guess between them.',
+    },
+    code: {
+      format: 'one doctor finding code, exactly as the report prints it',
+      example: 'body_disagrees_with_meta',
+      note: 'The class --all rules on. Findings of one code share one argument, so this is '
+        + 'one thing read once rather than many things skipped. It means nothing without '
+        + '--all and is refused rather than ignored.',
+    },
+    count: {
+      format: 'the number of findings the run will settle, as the preview names it',
+      example: '34',
+      note: 'The consent for --all, and the only one: it cannot be typed without having read '
+        + 'the preview that names it, and it is refused when the corpus has moved since. There '
+        + 'is no --yes here.',
+    },
   },
   audit: {
     ...DETAIL,
@@ -677,6 +749,27 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       note: 'Pull in items related to the matched ones, not only the ones that match.',
     },
     json: DETAIL.json,
+    /**
+     * **The one `--yes` that is NOT the shared `YES`, and the difference is
+     * the owner's ruling rather than a wording preference.**
+     *
+     * `YES` says, of every other command that carries it, that the command
+     * "can change what governs this project with no human in the loop". That
+     * sentence is true of two of focus's five forms and false of the other
+     * three, and this is the line a person reads beside the control — so the
+     * shared note would be advertising a confirmation on `--show`, which is
+     * exactly what the ruling forbids.
+     *
+     * A reader gets the split from here; the parser gets it from
+     * `cli/commands/focus.ts`, which refuses the flag by name on the reads.
+     */
+    yes: {
+      note: 'Answer the confirmation on the two forms that WRITE - `--clear`, and setting an '
+        + 'axis. It is refused by name on `--show`, `--preview` and `--relations`, which change '
+        + 'nothing and have no confirmation to answer. This is the approval boundary: anything '
+        + 'holding a shell can type it, so the forms that take it narrow what every later '
+        + 'session receives with no human in the loop.',
+    },
   },
   'inbox-promote': {
     to: { ...CATEGORY, note: `The category the note or todo becomes an item in. ${CATEGORY.note}` },
@@ -814,6 +907,21 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
         + 'captured now and wrong for an item copied in from somewhere it already existed. A '
         + 'date that does not exist is refused rather than rounded.',
     },
+    // `--original-id`, and NOT `source: "items"`: every other flag that takes
+    // an id names one that already exists here, and this one names the exact
+    // opposite - an id that must NOT. A picker built from `items` would offer
+    // a list on which every choice is refused.
+    'original-id': {
+      format: 'the id this item already carries in the corpus it is coming from',
+      example: 'STD-error-message-conventions',
+      note: 'Carry an existing item\'s id across instead of deriving a new one from its title. '
+        + 'This is for MIGRATION and nothing else: an id derived from a title cannot be the id '
+        + 'an item already has, so every citation and relation pointing at the old one would '
+        + 'break the moment it were re-created under a new name. It is on `add` alone - an id '
+        + 'that could change after creation is the same breakage with an audit trail. The id '
+        + 'must be one safe filename segment and must begin with the category\'s own prefix, '
+        + 'and an id already taken here is refused rather than overwritten.',
+    },
     scope: {
       format: 'comma-separated path globs', example: 'src/**,docs/*.md',
       note: 'The paths this item attaches to. Omitting it means the whole repository.',
@@ -826,6 +934,22 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     severity: {
       values: SEVERITIES,
       note: 'hard items are admitted to a budget before soft ones. Any other word is refused.',
+    },
+    // `--always` at CAPTURE time, spelled the way `edit` spells it. No
+    // `values` list, unlike `edit`'s: this surface offers the pin and does not
+    // offer the negative, because "not pinned" is what a capture already is
+    // (`always: input.always ?? false`, mutate.ts). `--always=false` is still
+    // ACCEPTED - refusing it would make the same word an error here and an
+    // unpin there - and it is identical to leaving the flag out.
+    always: {
+      note: 'Pin this item at capture: inject it in full at every session start, whatever files '
+        + 'are touched. The pinned tier is a shared, finite budget, so this is the most '
+        + 'expensive thing a capture can ask for and it is permanent until something unpins it '
+        + '- the confirmation names the budget before you approve it. It is refused on a '
+        + 'rationale-tier category, where selection never admits the item and the field would '
+        + 'be stored governing nothing. Omitting it captures the item unpinned; '
+        + '`--always=false` says the same thing in words, and `mycontext pin <id>` is the '
+        + 'second-act route for an item that already exists.',
     },
     // `SUMMARY_FLAG`'s format, example and shared note, plus the one sentence
     // that is true of a CAPTURE and not of an edit - the mirror of what

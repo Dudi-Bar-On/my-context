@@ -1525,11 +1525,13 @@ flowchart LR
 נעיצה מיועדת לקבוצה הקטנה של כללים שהם באמת חסרי תנאי. לדרג הנעוץ יש תקציב משלו, וכל מה
 שנעצת מתחרה עליו מול כל מה שנעצת קודם.
 
-פריט מקבל `always: true` בקידום שלו, עם
-<span dir="ltr">`mycontext review promote <id> --always`</span>, בזמן שהוא עדיין טיוטה, או
-עם <span dir="ltr">`mycontext pin <id>`</span> ברגע שהוא שולט — השנייה מבקשת אישור, ומראה
-מה משתנה בהזרקה של הפריט לפני שהיא פועלת. <span dir="ltr">`mycontext unpin <id>`</span>
-מוציאה אותו משם בחזרה.
+פריט מקבל `always: true` כבר בלכידה, עם
+<span dir="ltr">`mycontext add … --always`</span>; בקידום שלו, עם
+<span dir="ltr">`mycontext review promote <id> --always`</span>, בזמן שהוא עדיין טיוטה; או
+עם <span dir="ltr">`mycontext pin <id>`</span> ברגע שהוא שולט. הראשונה והאחרונה מבקשות
+אישור, וכל אחת מהן מראה מה הנעיצה עולה — <span dir="ltr">`add`</span> מדפיסה את התקציב
+הנעוץ באישור שלכידה נורמטיבית כבר מזכה בו, כך שנעיצה לעולם אינה מאושרת כמילה שנשמעת
+חינמית. <span dir="ltr">`mycontext unpin <id>`</span> מוציאה אותו משם בחזרה.
 
 ### בדיוק בזמן — אלה שחלים על מה שאתה נוגע בו
 
@@ -3924,12 +3926,13 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--observation kind=text`</span> | להוסיף תצפית אחת תחת סוג לבחירתכם — <span dir="ltr">`--observation limit="Pool size must never exceed 20"`</span>. מה ש-<span dir="ltr">`--note`</span> עושה עבור `[note]`, זה עושה עבור `[limit]`, `[exception]`, `[invariant]` או כל סוג אחר שמאגר כבר נושא. הסוג נכתב כ-`[kind]` בתוך הפריט, וחייב להיות אותיות קטנות, ספרות, קו תחתון או מקף — זה כל מה שהמנתח שקורא את הפריט בחזרה רואה, ולכן כל דבר אחר מסורב במקום להישמט בשקט. הטקסט הוא כל מה שאחרי ה-`=` הראשון, נלקח בשלמותו, פסיקים ו-`=` נוספים כלולים. ניתן לחזור עליו, והוא שומר על סדר שורת הפקודה **יחד עם** <span dir="ltr">`--note`</span>, כך שפריט שנוצר מחדש ממקום אחר מקבל את התצפיות שלו בסדר שבו נכתבו. לתגיות ולהקשר של תצפית עדיין אין איות של דגל; <span dir="ltr">`create_item`</span> הוא המסלול עבורם | `add` |
 | <span dir="ltr">`--valid-from YYYY-MM-DD`</span> | היום שבו הפריט התחיל לחול. היום הנוכחי כשהוא נשמט, וזה נכון לדבר שנלכד עכשיו ושגוי לפריט שהועתק ממאגר שבו הוא כבר היה קיים — ו-<span dir="ltr">`valid_from`</span> הוא שם שמור בחזית הפריט, ולכן <span dir="ltr">`--extra`</span> אינו יכול לשאת אותו. תאריך שאינו קיים מסורב במקום להיות מעוגל | `add` |
 | <span dir="ltr">`--step "<text>"`</span> | צעד אחד של <span dir="ltr">`procedure`</span> — פעולה שמבצעים פעם אחת ומסיימים. ניתן לחזרה, בסדר שורת הפקודה, ואינו מפוצל בפסיקים, מאותה סיבה ש-<span dir="ltr">`--note`</span> אינו: צעד הוא משפט. פעולה שחוזרת היא <span dir="ltr">`runbook`</span>, ששומרת את צעדיה בגוף. צעדים אינם ניתנים לעריכה או לסימון בשום פקודה אחר כך — תיקון אחד מהם משמעו עריכת ה-Markdown והרצת <span dir="ltr">`mycontext repair`</span> | <span dir="ltr">`add`</span> |
+| <span dir="ltr">`--original-id <id>`</span> | לשאת את המזהה שיש לפריט קיים במקום לגזור מזהה חדש מכותרתו. **להגירה בלבד.** מזהה הוא שם פומבי — המפתח של כל קשר, כל רשומת ביקורת וכל ציטוט שנכתב לתוך הערה בקוד — ולכן יצירה מחדש של פריט תחת מזהה שנגזר מהכותרת משנה את שמו ושוברת את כולם בבת אחת. הדגל קיים ב-<span dir="ltr">`add`</span> בלבד: מזהה שיכול להשתנות אחרי היצירה הוא אותה שבירה עצמה עם שובל ביקורת מאחוריה, ושינוי שם של פריט נעשה ב-<span dir="ltr">`mycontext supersede`</span>, שמטביעה פריט חדש ומחווטת אליו את הישן. המזהה חייב להיות מקטע שם קובץ בטוח אחד, וחייב להתחיל בקידומת של הקטגוריה עצמה; מזהה שפריט כאן כבר מחזיק מסורב במקום להידרס — אלא אם התוכן זהה, ואז הלכידה היא אותה פעולת סרק שהייתה ממילא | <span dir="ltr">`add`</span> |
 | <span dir="ltr">`--summary "<text>"`</span> | משפט אחד פשוט שאומר מה הפריט **הוא** ולמה זה חשוב, כתוב לקורא שאינו מכיר את הקוד הזה: מילים פשוטות ולא אוצר מילים של הפרויקט, בלי מזהים, בלי נתיבי קבצים, בלי מדידות, ולעולם לא איך הדבר התגלה. עד 160 תווים — הגוף שומר את כל הדיוק. הוא נרשם יחד עם גיבוב של התוכן שכנגדו נכתב, ולכן עריכה מאוחרת של הכותרת, הגוף, הצעדים, התצפיות או השדות הנוספים הופכת אותו ל**מיושן**, ו-<span dir="ltr">`mycontext doctor`</span>, <span dir="ltr">`mycontext show`</span> ו-<span dir="ltr">`get_item`</span> אומרים זאת במקום להניח לצטט אותו כעדכני. <span dir="ltr">`mycontext edit <id> --summary=`</span> מוחק אותו. **לכידה חייבת לשאת תקציר** — גם ב-<span dir="ltr">`mycontext add`</span> וגם ב-<span dir="ltr">`create_item`</span> — או לומר במפורש <span dir="ltr">`--summary-omitted`</span> (<span dir="ltr">`summary_omitted: true`</span>): פריט שנוצר בלי תקציר לעולם לא יידרש לקבל אחד, מפני שכל בדיקה שהייתה דורשת זאת משווה תקציר מול הטקסט שכנגדו נכתב, ולאחד שאינו קיים אין אף אחד מהם — <span dir="ltr">`mycontext doctor`</span> נוקב בו בשם <span dir="ltr">`summary_absent`</span>, ושום דבר אחר לא יעשה זאת <!-- `core/validate.ts` · `export const SUMMARY_MAX_CHARS = 160;` · ~333 --> | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--summary-omitted`</span> | לומר במפורש שהפריט נלכד **בלי** תקציר ושזו החלטה מכוונת. לכידה שאינה נושאת לא <span dir="ltr">`--summary`</span> ולא את זה — מסורבת. זה לעולם לא ברירת מחדל, זה מסורב לצד <span dir="ltr">`--summary`</span>, ושורת הביקורת רושמת <span dir="ltr">`summary-omitted`</span>, כך שהעובדה שאיש לא כתב תקציר גלויה ולא משוערת. שימוש נכון: כשלפריט באמת אין מה לומר במשפט אחד מעבר לכותרת — לעולם לא כדי לעקוף את הסירוב | <span dir="ltr">`add`</span> |
 | <span dir="ltr">`--scope "<globs>"`</span> | תבניות הקבצים שהפריט נצמד אליהן, מופרדות בפסיקים | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
 | <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה כל עוד לא הוגדר מיקוד — <span dir="ltr">`mycontext focus <tag>`</span> מצמצם את ההזרקה לתגיות שהוא נוקב בהן | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--severity hard\|soft`</span> | פריטי `hard` מתקבלים לתקציב לפני `soft`. כל מילה אחרת מסורבת. <span dir="ltr">`mycontext harden <id>`</span> ו-<span dir="ltr">`mycontext soften <id>`</span> הן שתי ההגדרות האלה בשם קצר יותר | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
-| <span dir="ltr">`--always`</span> | לנעוץ את הפריט: להזריק אותו במלואו בתחילת כל סשן, בלי קשר לקבצים. <span dir="ltr">`review promote --always`</span> קובעת אותו כל עוד הפריט טיוטה; <span dir="ltr">`mycontext edit --always`</span> קובעת אותו, ו-<span dir="ltr">`--always=false`</span> מנקה אותו, בכל שלב — מאחורי האישור שפריט ששולט כבר מזכה בו. <span dir="ltr">`mycontext pin <id>`</span> ו-<span dir="ltr">`mycontext unpin <id>`</span> הן שתי העריכות האלה בשם קצר יותר | <span dir="ltr">`review promote`, `edit`</span> |
+| <span dir="ltr">`--always`</span> | לנעוץ את הפריט: להזריק אותו במלואו בתחילת כל סשן, בלי קשר לקבצים. ב-<span dir="ltr">`add`</span> הנעיצה נעשית **בזמן הלכידה**, בפעולה אחת ולא בלכידה שאחריה פקודה שנייה — וזה בדיוק מה שדרוש לפריט שמועבר ממאגר אחר, שכן שבעה מתוך ארבעים וארבעה הפריטים ב-<span dir="ltr">`.my_context.nested-44/`</span> כבר נעוצים. <span dir="ltr">`review promote --always`</span> קובעת אותו כל עוד הפריט טיוטה; <span dir="ltr">`mycontext edit --always`</span> קובעת אותו, ו-<span dir="ltr">`--always=false`</span> מנקה אותו, בכל שלב — מאחורי האישור שפריט ששולט כבר מזכה בו. <span dir="ltr">`mycontext pin <id>`</span> ו-<span dir="ltr">`mycontext unpin <id>`</span> הן שתי העריכות האלה בשם קצר יותר. זה הדבר היקר ביותר שלכידה יכולה לבקש, מפני שהשכבה הנעוצה היא תקציב **אחד** המשותף לכל הפריטים הנעוצים במרחב העבודה: פריט שכבר אינו נכנס אינו מוזרק כלל, והמקום היחיד שאומר זאת הוא ה-hook של תחילת הסשן. לכן <span dir="ltr">`add`</span> מדפיסה את התקציב באישור הנורמטיבי לפני שהיא שואלת, ואינה מוסיפה שער שני — כל לכידה שהדגל יכול לנחות עליה כבר נמצאת מאחורי <span dir="ltr">`--yes`</span>, מפני שקטגוריה בשכבת ההנמקה מסרבת לו על הסף (הבחירה מכניסה לשכבה הנעוצה פריטים נורמטיביים בלבד, ולכן השדה היה נשמר בלי לשלוט בדבר). השמטתו לוכדת את הפריט לא נעוץ; <span dir="ltr">`--always=false`</span> אומר את אותו הדבר במילים, מתקבל ב-<span dir="ltr">`add`</span>, ואינו מפורסם שם מפני שהוא מבקש את ברירת המחדל | <span dir="ltr">`add`, `review promote`, `edit`</span> |
 | <span dir="ltr">`--continuity`</span> | לסמן את הפריט לדרג ה**המשכיות**: הוא נמסר מחדש בתחילת כל סשן ונספר מול תקציב <span dir="ltr">`continuity`</span> ולא מול הנעוץ. <span dir="ltr">`--continuity=false`</span> מנקה אותו. הוא מתקבל גם בדרג הנימוקים, בניגוד ל-<span dir="ltr">`--severity`</span> ול-<span dir="ltr">`--always`</span>, מפני שנשיאת הערה קדימה אינה טענה שהיא שולטת במשהו <!-- `core/edit-flags.ts` · `'title', 'body', 'summary', 'scope', 'tags', 'severity', 'always', 'continuity', 'status',` · ~60 --> | `edit` |
 | <span dir="ltr">`--title "<text>"`</span> | להחליף את כותרת המועמד המבוים בניסוח שלך לפני שהכלל נוצר; ב-`edit`, הכותרת של הפריט עצמו | <span dir="ltr">`lesson-accept`, `edit`</span> |
 | <span dir="ltr">`--directive do\|dont`</span> | האם הכלל שנוצר מורה או אוסר | `lesson-accept` |
@@ -3943,7 +3946,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 | דגל | מה הוא עושה | היכן הוא עובד |
 |---|---|---|
-| <span dir="ltr">`--yes`</span> | לאשר בלי שישאלו. כל אחת מהפקודות האלה אומרת מה היא עומדת לעשות ואז ממתינה לכן; זה עונה מראש, וזה מה שהופך את הפקודה לשמישה בסקריפט. זה אינו אמצעי אבטחה — ראו [פרק 7](#7-גבול-האמון) | <span dir="ltr">`add`, `edit`, `inbox-promote`, `procedure activate`, `procedure done`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `refresh`, `repair`, `pack import`</span> — וגם הצורות הקרויות של <span dir="ltr">`edit`</span>: <span dir="ltr">`pin`, `unpin`, `harden`, `soften`</span>, שהן אותו שער בשם קצר יותר ולא ארבעה שערים נוספים |
+| <span dir="ltr">`--yes`</span> | לאשר בלי שישאלו. כל אחת מהפקודות האלה אומרת מה היא עומדת לעשות ואז ממתינה לכן; זה עונה מראש, וזה מה שהופך את הפקודה לשמישה בסקריפט. זה אינו אמצעי אבטחה — ראו [פרק 7](#7-גבול-האמון) | <span dir="ltr">`add`, `edit`, `inbox-promote`, `focus`, `procedure activate`, `procedure done`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `refresh`, `repair`, `pack import`</span> — וגם הצורות הקרויות של <span dir="ltr">`edit`</span>: <span dir="ltr">`pin`, `unpin`, `harden`, `soften`</span>, שהן אותו שער בשם קצר יותר ולא ארבעה שערים נוספים |
 | <span dir="ltr">`--anchor <a>`</span> | לאיזה חלק של המסמך הכוונה. ב-`ingest` הוא מבקש מחדש מקטע מסוים במקום את הבא בתור; ב-`ingest-apply` הוא **חובה**, ואומר מאיזה מקטע הגיעו המועמדים שאתם מחזירים | <span dir="ltr">`ingest`, `ingest-apply`</span> |
 | <span dir="ltr">`--file <path>`</span> | שני דברים שונים, בפקודות שונות, והשורה אומרת את שניהם מפני שלדגל יש שם אחד. ב-<span dir="ltr">`add`</span>: ללכוד **תצלום מצב** של הקובץ כגוף הפריט, תוך רישום <span dir="ltr">`source_file`</span> ו-<span dir="ltr">`source_checksum`</span> כך ש-<span dir="ltr">`mycontext doctor`</span> ידווח על סחיפה — ראו [מקובץ להפניה](#מקובץ-להפניה). ב-<span dir="ltr">`ingest-apply`</span> וב-<span dir="ltr">`lesson-stage`</span>: לקרוא את ה-JSON מקובץ במקום מ-stdin | <span dir="ltr">`add`, `ingest-apply`, `lesson-stage`</span> |
 | <span dir="ltr">`--stdin`</span> | לקרוא את ה-JSON מ-stdin — האיות להזרמה פנימה. `ingest-apply` דורשת אחד מבין <span dir="ltr">`--file`</span> ו-<span dir="ltr">`--stdin`</span> ומדפיסה שימוש אם לא ניתן אף אחד; `lesson-stage` קוראת מ-stdin בכל פעם ש-<span dir="ltr">`--file`</span> נעדר, כך שבפקודה הזאת <span dir="ltr">`--stdin`</span> מתעד כוונה ולא מפעיל דבר | <span dir="ltr">`ingest-apply`, `lesson-stage`</span> |
@@ -6017,10 +6020,12 @@ MCP מקבעת מקור שאינו אנושי, והסירוב שלו נוקב ב
 <span dir="ltr">`always: true`</span> ו-<span dir="ltr">`severity: hard`</span> **מסורבים**
 בכל משטח כתיבה שיכול לבטא אותם: <span dir="ltr">`create_item`</span>,
 <span dir="ltr">`update_item`</span>, <span dir="ltr">`review promote --always/--severity`</span>
-ו-<span dir="ltr">`mycontext add --severity`</span>. שני משטחים אינם יכולים לבטא
-<span dir="ltr">`always`</span> כלל ולכן אינם מסרבים לו — ל-<span dir="ltr">`mycontext add`</span>
-אין דגל <span dir="ltr">`--always`</span>, והקליטה מקבעת <span dir="ltr">`always: false`</span>
-לכל מועמד — כך שאין מסלול ששומר אחד כזה ואז מתעלם ממנו. הבחירה מכניסה לדרג הנעוץ
+ו-<span dir="ltr">`mycontext add --severity/--always`</span>. משטח אחד אינו יכול לבטא
+<span dir="ltr">`always`</span> כלל ולכן אינו מסרב לו — הקליטה מקבעת
+<span dir="ltr">`always: false`</span> לכל מועמד — כך שאין מסלול ששומר אחד כזה ואז מתעלם
+ממנו. (<span dir="ltr">`mycontext add --always`</span> היה ברשימה הזו עד 2026-09-03; היום
+הוא נושא את הסירוב עצמו, וזו התשובה החזקה יותר: הגירה שנועצת בזמן הלכידה נאמרת לה זאת
+במקום, ולא מגלה שהדגל חסר.) הבחירה מכניסה לדרג הנעוץ
 פריטים נורמטיביים בלבד, ומחוץ לדרג הזה שום דבר אינו מותנה בחומרה — כך ששני השדות היו נשמרים
 ולא עושים דבר, ושדה שמתקבל ומתעלמים ממנו הוא הכשל היחיד שהפרויקט הזה מתייחס אליו כבלתי מתקבל
 על הדעת. הסירוב מציין את שתי הדרכים קדימה: לשנות את דרג הקטגוריה
@@ -6183,13 +6188,13 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 
 **מה שבאמת אוכף את זה: הרשאות ה-Bash שלך, ולא שום דבר אחר.**
 
-שלוש-עשרה פקודות בשורת הפקודה משנות את מה ששולט בפרויקט הזה בלי אדם בלולאה. שמונה מהן מעבירות
+ארבע-עשרה פקודות בשורת הפקודה משנות את מה ששולט בפרויקט הזה בלי אדם בלולאה. שמונה מהן מעבירות
 פריט את שער הטיוטה — שלוש מהן היו מתועדות בשלב מסוים, אחר כך ארבע, אחר כך `repair`, שנשלחה
 באותו סבב שבו נכתבה הרשימה, אחר כך <span dir="ltr">`edit --status active`</span>, שעד
 לאחרונה עשתה את המעבר הזה בלי שום תצוגה מקדימה ובלי שום אישור, ועכשיו
 <span dir="ltr">`inbox-promote`</span>, שהייתה ברשימה הזאת ביום שבו נשלחה ולא מהדורה אחריו. `supersede` פועלת בכיוון
 ההפוך: היא מוציאה פריט ששולט *החוצה*. כך גם
-<span dir="ltr">`pack import --overwrite-changed`</span>, והיא היחידה מבין השלוש-עשרה
+<span dir="ltr">`pack import --overwrite-changed`</span>, והיא היחידה מבין הארבע-עשרה
 שעושה זאת מטעמו של *זר*: כל מה שחבילה מביאה נוחת <span dir="ltr">`draft`</span>, ולכן
 הפקודה הזאת לעולם אינה יכולה לגרום למשהו לשלוט — מה שהיא משנה הוא מה ש**מפסיק**. היא
 מחליפה את הטקסט של פריט שאתם כתבתם בטקסט שהחבילה נושאת ומורידה את הפריט הזה
@@ -6206,6 +6211,18 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 היא מחליפה את הגוף של פריט ששולט בטקסט הנוכחי של הקובץ שהפריט מצלם, כך שמה שהכלל אומר
 נקבע בידי מי שיכול לכתוב לאותו קובץ. היא ברשימת המניעה המומלצת שלמטה מהיום שבו תועדה,
 וכך שרד הפער — הכללים היו נכונים והספירה לא.
+
+`focus` היא החברה החדשה ביותר ברשימה, והיחידה שאינה משנה אף פריט. כל שאר הפקודות כאן
+משכתבות את הקורפוס; `focus` משכתבת את מה ש**נמסר** ממנו — מיקוד שבתוקף מסתיר כל פריט כשיר
+שאינו תואם לו, בכל פגישה מאוחרת יותר, על פני כל סביבת העבודה ולא רק על הפגישה שקבעה אותו.
+מה ששולט ומה שהמודל באמת נאמר לו אינם אותו דבר, וזו הפקודה שמפרידה ביניהם. שתיים מחמש
+הצורות שלה מקבלות <span dir="ltr">`--yes`</span>, והן אלה שכלל המניעה שלמטה נכתב מולן:
+<span dir="ltr">`--clear`</span>, שמרחיבה, וקביעת ציר, שמצמצמת. שלוש האחרות —
+<span dir="ltr">`--show`</span>, <span dir="ltr">`--preview`</span> ו-<span dir="ltr">`--relations`</span>
+— מדווחות ואינן משנות דבר, והן **מסרבות** ל-<span dir="ltr">`--yes`</span> בשמו במקום
+להתעלם ממנו, מפני שאישור שמתקבל היכן שאין מה לאשר מלמד קורא שהפקודה הזאת שואלת לפני שהיא
+מדווחת. כלל הרשאות אינו יכול להבחין בין השתיים — הוא מותאם מול *מחרוזת* הפקודה — ולכן
+הכלל שלמטה מונע את הפקודה כולה, וצורות הדיווח הן המחיר.
 <span dir="ltr">`procedure activate`</span> היא זו שמבצעת שתי כתיבות במעשה אחד: <span dir="ltr">`status: active`</span> הופכת את הפריט לכשיר, ו-<span dir="ltr">`always: true`</span> היא זו שמוסרת אותו במלואו בכל תחילת פגישה. <span dir="ltr">`procedure done`</span> פועלת בכיוון ההפוך ומוציאה אותו מההזרקה.
 
 <span dir="ltr">`mycontext pin`</span>, <span dir="ltr">`unpin`</span>,
@@ -6230,8 +6247,9 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
 | <span dir="ltr">`mycontext supersede <id> --by <id> --yes`</span> | מוציאה לגמלאות פריט ששולט, מסמנת אותו `superseded` כך שהוא מפסיק להיות מוזרק, ורושמת את הזוג בשני הכיוונים (`superseded_by` על הפורש, `supersedes` על המחליף). היא מעבירה <span dir="ltr">`origin: 'human'`</span>, וזה בדיוק מה שכלי ה-MCP `supersede_item` מסרב לעשות עבור פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מדפיסה מה מוצא לגמלאות, באילו תנאים הוא מוזרק היום, ומה שולט אחר כך (כולל "כלום") לפני שהיא מבקשת אישור |
 | <span dir="ltr">`mycontext edit <id> … --yes`</span> | משנה כל שדה של פריט שכבר שולט — את הגוף שלו, את שדות <span dir="ltr">`extra`</span> שלו, את ה-scope, את דגל <span dir="ltr">`always`</span>, את ה-severity או את הסטטוס — **וגם הופכת טיוטה לשולטת**, עם <span dir="ltr">`--status active`</span>. היא מעבירה <span dir="ltr">`origin: 'human'`</span>, וזה בדיוק מה ש-`update_item` מסרב לעשות בשדות ההישג והכוח של פריט נורמטיבי `active` או `validated` — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מדפיסה מה משתנה, ומה שולט לפני ואחרי, לפני שהיא מבקשת אישור |
 | <span dir="ltr">`mycontext review promote-revision <id> --yes`</span> | מיישמת רוויזיה ממתינה, כך שהכותרת, הגוף, התגיות או ה-<span dir="ltr">`extra`</span> של פריט ששולט הופכים לטקסט ש**סוכן** הציע. זו החצי השני של <span dir="ltr">`agentEdits: "review"`</span>: ההגדרה מחזיקה את השכתוב של הסוכן, והפקודה הזאת היא ששחררת אותו. <span dir="ltr">`--force`</span> דורסת בנוסף עריכה אנושית חדשה יותר של אותו שדה — היא מדפיסה קודם מה היא הורסת, אבל <span dir="ltr">`--yes --force`</span> עונה גם על השאלה הזאת מראש. כשיותר מרוויזיה אחת ממתינה על הפריט היא מסרבת בלי <span dir="ltr">`--revision REV-...`</span>, כך שהאישור תמיד נוקב בהצעה המדויקת שהוא משחרר |
-| <span dir="ltr">`mycontext review discard-revision <id> --yes`</span> | דוחה רוויזיה ממתינה — <span dir="ltr">`--revision REV-...`</span> נדרש באותם תנאים כשיותר מאחת ממתינה. היא אינה משנה דבר במה ששולט, ולכן אינה נספרת בין השלוש-עשרה שלמעלה — אבל היא מיישבת, סופית, הכרעה שתור הרוויזיות קיים כדי לשמור לאדם, ואותה הצעה אינה יכולה להיות מוחזקת שוב מול אותו טקסט. ההצעה עצמה נשארת ביומן |
+| <span dir="ltr">`mycontext review discard-revision <id> --yes`</span> | דוחה רוויזיה ממתינה — <span dir="ltr">`--revision REV-...`</span> נדרש באותם תנאים כשיותר מאחת ממתינה. היא אינה משנה דבר במה ששולט, ולכן אינה נספרת בין הארבע-עשרה שלמעלה — אבל היא מיישבת, סופית, הכרעה שתור הרוויזיות קיים כדי לשמור לאדם, ואותה הצעה אינה יכולה להיות מוחזקת שוב מול אותו טקסט. ההצעה עצמה נשארת ביומן |
 | <span dir="ltr">`mycontext refresh <id> --yes`</span> | מחליפה את הגוף של פריט ששולט בטקסט הנוכחי של הקובץ שהפריט מצלם — את כל הגוף, לא מיזוג. תצלום אינו רק `reference`: <span dir="ltr">`mycontext add <normative category> "…" --file <path>`</span> לוכדת תצלום גם בדרג ששולט, ואומרת זאת בשער שלה עצמה ("<span dir="ltr">`mycontext refresh`</span> לוקחת תצלום חדש דרך אותו שער"). כך שהטקסט של הכלל הוא מה שהקובץ הזה יגיד בפעם הבאה שהיא תרוץ, וכל דבר שיכול לכתוב לקובץ יכול להכריע אותו. היא מעבירה <span dir="ltr">`origin: 'human'`</span>, ולכן שער הרוויזיה המוחזקת שהיה מחזיק שכתוב של סוכן לביקורת אינו חל כאן. אומת בהרצה |
+| <span dir="ltr">`mycontext focus <tag>… --yes`</span> / <span dir="ltr">`mycontext focus --clear --yes`</span> | משנה את מה שכל פגישה מאוחרת יותר **מקבלת**, בלי לגעת באף פריט. קביעת ציר מסתירה כל פריט כשיר שהמיקוד אינו תואם לו — כלל <span dir="ltr">`soft`</span> שעדיין שולט פשוט אינו נמסר, ומודל שמעולם לא נאמר לו על כלל אינו יכול לציית לו; <span dir="ltr">`--clear`</span> מרחיבה שוב. המיקוד תחום ל**סביבת העבודה** ולא לפגישה שקבעה אותו, מפני שלשום משטח שיכול לקבוע מיקוד אין מזהה פגישה אמין — ולכן הפגישות שהוא מצמצם בשקט אינן זו שהקלידה את הפקודה. המחיר משולם בגילוי ולא בתיחום: האישור מדפיס את מספר הפריטים שהמיקוד מסתיר ואת הקשרים נושאי המשקל שהדבר משאיר תלויים באוויר לפני שהוא שואל, וכל הזרקה תחת מיקוד אומרת זאת ונוקבת בפקודה שמנקה אותו. פריטי <span dir="ltr">`severity: hard`</span> לעולם אינם מוסתרים. שלוש צורות הדיווח — <span dir="ltr">`--show`</span>, <span dir="ltr">`--preview`</span>, <span dir="ltr">`--relations`</span> — אינן משנות דבר ו**מסרבות** ל-<span dir="ltr">`--yes`</span> בשמו; כלל המניעה שלמטה אינו יכול להבחין בהן, מפני שהוא מותאם מול מחרוזת הפקודה |
 | <span dir="ltr">`mycontext procedure activate <id> --yes`</span> | מתחילה <span dir="ltr">`procedure`</span> חד-פעמי, וזו **שתי** כתיבות ולא אחת: <span dir="ltr">`status: active`</span> הופכת את הפריט לכשיר להיבחר בכלל, ו-<span dir="ltr">`always: true`</span> היא זו שמוסרת אותו במלואו בכל תחילת פגישה. שני השדות שמורים — `update_item` מסרב לכל אחד מהם בפריט נורמטיבי ששולט עבור קורא שאינו אדם — כך שהפקודה הזאת היא הדרך לעקוף את הסירוב הזה לכל מי שמחזיק shell. היא מעבירה <span dir="ltr">`origin: 'human'`</span>. היא מדפיסה מה עושה כל אחת משתי הכתיבות לפני שהיא מבקשת אישור |
 | <span dir="ltr">`mycontext procedure done <id> --yes`</span> | מוציאה <span dir="ltr">`procedure`</span> חד-פעמי לגמלאות כ-<span dir="ltr">`deprecated`</span>, כך שהוא מפסיק להיות מוזרק. היא מעבירה <span dir="ltr">`origin: 'human'`</span>, והיא ההכרעה שמחזור החיים החד-פעמי קיים כדי לשמור לאדם: סוכן רשאי לדווח שהצעדים נראים גמורים ולשאול, ושום דבר במוצר הזה אינו מסיק זאת בשבילכם |
 | <span dir="ltr">`mycontext pack import <path> --yes --overwrite-changed`</span> | מחליפה פריטים ש**אתם כתבתם** בגרסאות שחבילה של זר נושאת, ומורידה כל פריט שהוחלף ל-<span dir="ltr">`draft`</span> — כך שפריט ששלט מפסיק לשלוט, והטקסט המגיע ממתין לסקירה לפני שישלוט במקומו. כל מה שחבילה מביאה נוחת <span dir="ltr">`draft`</span>, ולכן זו הפקודה היחידה כאן שיכולה רק לקחת שליטה *החוצה*. הדריסה היא אישור **שני** עם שאלה משלו, ו-<span dir="ltr">`--yes`</span> אינו עונה עליה: <span dir="ltr">`--yes`</span> הוא הסכמה לייבוא שתיארתם, לא הסכמה להחליף כלל שאתם כתבתם. היא גם ממזגת את אוצר המילים של הקטגוריות של החבילה אל תוך ה-<span dir="ltr">`config.json`</span> שלכם, וזה מיזוג מוסיף מעצם הבנייה — חבילה רשאית להצהיר על קטגוריה שהבנייה הזאת מעולם לא שמעה עליה, ו**אינה** רשאית לשנות דרג של קטגוריה שכבר יש לכם |
@@ -6309,6 +6327,7 @@ key=value`</span> היא הדרך האנושית, מאחורי אותו שער �
       "Bash(mycontext supersede *)",
       "Bash(mycontext inbox-promote *)",
       "Bash(mycontext refresh *)",
+      "Bash(mycontext focus *)",
       "Bash(mycontext edit *)",
       "Bash(mycontext pin *)",
       "Bash(mycontext unpin *)",
@@ -6853,7 +6872,7 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 | **normative** (נורמטיבי) | הדרג של מה שחייב להתקיים: אילוצים, אינווריאנטות, כללים, דרישות, תקנים והשאר. טקסט נורמטיבי מוזרק, בלי שביקשו, מנוסח כהוראה — ולכן אדם מאשר אותו קודם |
 | **origin** (מקור) | מי כתב פריט: <span dir="ltr">`human`, `agent`, `ingest`</span>. על השדה הזה בנוי גבול האמון |
 | **pending revision** (רוויזיה ממתינה) | שינוי לכותרת, לגוף, לתגיות או ל-<span dir="ltr">`extra`</span> של פריט שסוכן הציע ו**לא** יושם. הפריט ממשיך לשלוט בטקסט הנוכחי שלו; ההצעה ממתינה ביומן שרק מוסיפים לו, ל-<span dir="ltr">`mycontext review promote-revision`</span> או <span dir="ltr">`discard-revision`</span>. נוצרת ממדיניות <span dir="ltr">`agentEdits: "review"`</span>, לעולם לא מעריכה של אדם, ולעולם אינה מוזרקת |
-| **pinned** (נעוץ) | דרג ההזרקה של פריטים שמסומנים <span dir="ltr">`always: true`</span>: מסופקים במלואם בתחילת כל סשן. <span dir="ltr">`mycontext review promote <id> --always`</span> מכניסה לשם טיוטה; <span dir="ltr">`mycontext pin <id>`</span> מכניסה לשם פריט ששולט |
+| **pinned** (נעוץ) | דרג ההזרקה של פריטים שמסומנים <span dir="ltr">`always: true`</span>: מסופקים במלואם בתחילת כל סשן. <span dir="ltr">`mycontext add … --always`</span> לוכדת פריט ישירות לשם; <span dir="ltr">`mycontext review promote <id> --always`</span> מכניסה לשם טיוטה; <span dir="ltr">`mycontext pin <id>`</span> מכניסה לשם פריט ששולט |
 | **rationale** (נימוקים) | הדרג של הסיבה שהפרויקט הוא כפי שהוא: החלטות, מסמכי ADR, לקחים, פשרות, הנחות, מקרי קצה, סיכונים. מאונדקס, ניתן לחיפוש, נשלף לבקשה — לעולם לא מוזרק בלי שביקשו |
 | **restored** (משוחזר) | דרג ההזרקה שנורה אחרי כיווץ ומספק מחדש את מה שהיה בהקשר לפניו |
 | **scope glob** (glob של scope) | תבנית של נתיב קובץ על פריט, שנבדקת מול הקובץ ש-Claude עומד לגעת בו — <span dir="ltr">`src/billing/**`</span>. <span dir="ltr">`*`</span> נשאר בתוך רמת תיקייה אחת, <span dir="ltr">`**`</span> חוצה כמה שצריך. scope מגביל, ולכן בלי scope הפריט חל על כל קובץ — אלא אם <span dir="ltr">`scopePolicy`</span> של הקטגוריה הוא <span dir="ltr">`"inert"`</span>, ואז הוא חל על אף אחד |

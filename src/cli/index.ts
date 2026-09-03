@@ -5,11 +5,12 @@ import { COMMAND_FLAGS } from '../core/command-flags.ts';
 import { resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
 import { summaryStalenessNote } from '../core/content-hash.ts';
 import { renderItem } from '../core/item.ts';
-import { scopeCell } from '../core/render-item.ts';
+import { alwaysInjection, scopeCell } from '../core/render-item.ts';
 import { createItem, type CreateInput, type MutationContext } from '../core/mutate.ts';
 import { scopeRequirementError } from '../core/trust.ts';
 import {
-  normalizeSteps, normalizeSummary, validateObservationCategory, validateSummary,
+  normalizeSteps, normalizeSummary, validateExplicitId, validateIdPrefix,
+  validateObservationCategory, validateRelationTarget, validateSummary,
   validateValidFrom, SEVERITIES,
 } from '../core/validate.ts';
 import type { Observation, Severity } from '../core/types.ts';
@@ -469,11 +470,35 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
   return 0;
 }
 
+/**
+ * `add`'s complete flag surface, printed by every refusal this command makes.
+ *
+ * **`[--always]`, and not `[--always[=false]]` — the spelling `edit` uses.**
+ * Two reasons, and they point the same way.
+ *
+ * The first is meaning. On `edit`, `--always=false` is a REAL operand: it is
+ * the only way to unpin, so the usage line has to offer it or the command has
+ * a capability nothing advertises (`mycontext unpin` is that same edit under a
+ * shorter name). On `add` there is nothing to unpin — a capture is not pinned
+ * until something says so (`always: input.always ?? false`, mutate.ts) — so
+ * `--always=false` says exactly what leaving the flag out says, and a usage
+ * line that offered it would be offering a way to ask for the default. It is
+ * still ACCEPTED, through the same `boolFlag` `edit` reads: refusing it would
+ * make one word an error on one command and an unpin on the other, which is
+ * the disagreement this flag must not create. Not offered, not refused.
+ *
+ * The second is mechanical, and it is why the choice is not merely tasteful:
+ * `ADD_FLAG_SUMMARY` below reduces this string with `/\[([^\]]+)\]/g`, whose
+ * character class stops at the FIRST `]`. A nested `[--always[=false]]` yields
+ * the token `--always[=false` in `mycontext help`'s banner. The derived banner
+ * exists so the two cannot drift; a spelling that breaks the derivation would
+ * buy the drift back for one bracket pair.
+ */
 const ADD_USAGE =
   'usage: mycontext add <category> <title> [--body <text>|--file <path>] [--note <text>] ' +
   '[--observation kind=text] [--step <text>] [--summary <text>|--summary-omitted] ' +
-  '[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] [--valid-from YYYY-MM-DD] ' +
-  '[--extra key=value] [--yes]';
+  '[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] [--always] ' +
+  '[--valid-from YYYY-MM-DD] [--original-id <id>] [--extra key=value] [--yes]';
 
 /**
  * The flag list in `add`'s one-line entry in `mycontext help`, DERIVED from
@@ -799,8 +824,9 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
         // that correction, and for the same reason: an item that cannot be
         // re-created faithfully through any write path is the defect, not the
         // migration's problem.
-        `A procedure's steps are no longer among them, and neither is an observation's kind ` +
-        `nor an item's valid_from.\n${STEP_HELP}`,
+        `A procedure's steps are no longer among them, and neither is an observation's kind, ` +
+        `an item's valid_from, the id an existing item is carried across with (--original-id), ` +
+        `nor its pin (--always).\n${STEP_HELP}`,
       );
       return 1;
     }
@@ -937,6 +963,82 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
       validateValidFrom(validFrom, '--valid-from');
       input.validFrom = validFrom;
     }
+    // **`--original-id`: the last field of an existing item no write path
+    // could carry.** `--observation` and `--valid-from` closed the others; the
+    // id was left, and it is the one that cannot be worked around afterwards.
+    // `add` derives an id from the TITLE (`makeId`, slug.ts), and 36 of the 44
+    // items in the corpus being merged in have ids that do not derive from
+    // theirs — `STD-error-message-conventions` is titled "Error messages are
+    // prefixed once and name the file once". Re-creating one without its id
+    // renames it, and an id is a public name: it is the key of every relation,
+    // every audit row, and every `STD-…` citation written into a source
+    // comment. `STD-error-message-conventions` was re-captured on 2026-09-03
+    // and landed as `STD-error-messages-are-prefixed-once-and-name-the-file-once`;
+    // its six citation sites in `src/` and `test/` have resolved to nothing
+    // ever since. That is the defect this flag exists for, already paid once.
+    //
+    // **THE NAME.** `--id` is the obvious spelling and it is the wrong one.
+    // Every other value flag here names its argument — `--body`, `--summary`,
+    // `--valid-from` — and so does this one; what `--id` would additionally
+    // say is that `mycontext add` offers a general way to NAME items, which it
+    // does not and must not: an id derived from the title is the only thing
+    // that keeps ids honest about what they name, and a corpus where every
+    // capture picks its own would lose that in a week. `--original-id` names
+    // the same argument and carries its own precondition in the word
+    // "original": an item being captured for the first time has no original
+    // id, so the flag reads as false on the invocation it should not be on.
+    //
+    // **THE NAME IS ALSO THE GATE, and no second one is added.** This is a
+    // create, not a boundary-crossing act, and `add` already has exactly one
+    // gate: `--yes`, which is the APPROVAL boundary and fires on a normative
+    // category whether or not this flag is present. Making `--original-id`
+    // demand it too would change what that token means — a rationale-tier
+    // `lesson` carried across would start requiring the approval `add` asks
+    // for only when an item governs the project at once — and a gate that
+    // fires for two unrelated reasons is a gate a reader stops reading. What
+    // is wanted is that this cannot be reached casually, and the product
+    // already answers that with a spelling rather than a prompt:
+    // `--summary-omitted` is "never a default and no short spelling", for the
+    // same reason. This flag is spelled the same way, and, unlike that one, a
+    // value it does not like is refused outright rather than merely recorded.
+    //
+    // **THE REFUSALS ARE FOUR, AND THE FOURTH IS NOT HERE.** Shape (an id is
+    // a file name), relation-target safety, and the category prefix are all
+    // checked below, before the confirmation. A COLLISION — an id an item
+    // here already holds — is refused by `createItem` and only by
+    // `createItem`: it returns the existing item as a no-op duplicate when the
+    // content hashes match and throws `occupiedError` when they do not, and
+    // its guarantee is the exclusive write, not the lookup. A check added
+    // here would have to read `ctx.store`, which is a snapshot and stale by
+    // construction — the second, weaker answer to a question the write already
+    // answers exactly — and it would buy only the ordering, at the price of a
+    // second wording of "already exists" to drift from the first. This path
+    // cannot get around that refusal because it has no write of its own:
+    // `createItem` below is the only one `add` performs.
+    //
+    // **NOT ON `edit`, and that is a rule rather than an omission.**
+    // `UpdateInput` has no `id` and must not grow one: every relation,
+    // citation and audit record points AT an id, so an id that can change
+    // after creation breaks all of them at once and leaves a correct-looking
+    // audit trail of having done so. Renaming an item is `supersede`, which
+    // mints a new item and wires the old one to it, and that is the whole
+    // supported answer.
+    //
+    // **Validated HERE as well as inside `createItem`** — the duplication is
+    // of the CALL and not of the rule, the discipline `--severity`,
+    // `--valid-from` and `--step` each get — so that a human is not shown
+    // "create this item that governs the project?" and told only after
+    // answering that the id was never writable. Both guards, in
+    // `createItem`'s own order: `validateRelationTarget` because an id becomes
+    // a relation target the moment anything supersedes this item, and
+    // `validateExplicitId` because it also becomes a FILE NAME, which the
+    // first says nothing about.
+    const originalId = scalarFlag(args, 'original-id');
+    if (originalId !== null) {
+      validateRelationTarget(originalId, '--original-id');
+      validateExplicitId(originalId, '--original-id');
+      input.id = originalId;
+    }
     // Validated here rather than left to `createItem`'s `validateEnums`, for
     // the reason `review promote` validates its own `--severity` up front: a
     // garbled value must refuse before the normative preview and confirmation
@@ -950,6 +1052,44 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
       }
       input.severity = severity as Severity;
     }
+    // **`--always`: the last field in the verbatim list that `add` could not
+    // say.** `--observation`, `--valid-from` and `--original-id` closed the
+    // others; 7 of the 44 items in `.my_context.nested-44/` carry
+    // `always: true`, and until now every one of them had to be captured
+    // unpinned and pinned by a second command — two audit records for one
+    // intent, and a window in which the item exists NOT doing the thing it
+    // exists to do. `CreateInput.always` already existed; only the spelling
+    // was missing.
+    //
+    // Beside `--severity` rather than beside `--original-id`, because these
+    // two are the pair: they are the fields that govern only on the normative
+    // tier, they are refused together by `inertFieldError`, and `review
+    // promote` and `edit` both handle them in this order. A reader who finds
+    // one here should find the other.
+    //
+    // **`boolFlag`, the same reader `edit` uses on this word**, and that is
+    // the whole of the spelling argument (see `ADD_USAGE`): `--always=false`
+    // resolves to `false` and is dropped here, so it means "not pinned" on
+    // both commands. Read by PRESENCE instead — `args.includes('--always')` —
+    // it would mean "pinned" here and "unpinned" there, one word with two
+    // opposite readings, which is the trap `boolFlag` was written to close for
+    // `--yes=false`. Only `true` is carried into the input: `false` is the
+    // default a capture already has, and writing it would be an assertion
+    // where the user made none.
+    //
+    // **NO GATE OF ITS OWN, and the reason is stronger than `--original-id`'s
+    // was.** That flag argued no second gate because `add` has exactly one and
+    // it means approval. Here the argument is arithmetic: `always: true` is
+    // refused outright on the rationale tier (below, and in `createItem`), so
+    // every capture this flag can actually land on is a NORMATIVE one — and a
+    // normative capture is already behind `--yes`. Adding a gate would add a
+    // second prompt to an act that has one, and it would fire on exactly the
+    // set the first already covers. What the gate DOES owe is honesty: it is
+    // asked to approve the most expensive thing a capture can ask for, so the
+    // preview below names the pin and prices it. An approval that does not say
+    // the item will be delivered in every session is an approval of something
+    // else.
+    if (boolFlag(args, 'always') === true) input.always = true;
 
     // Before the scope refusal and before the normative gate, so that a
     // capture which cannot land is refused on the file's terms first (a
@@ -971,7 +1111,41 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     if (resolved) {
       const refusal = scopeRequirementError(resolved, input.scope);
       if (refusal) throw new Error(refusal);
+      // The third `--original-id` refusal, and the one that needs the resolved
+      // config: an id must begin with the prefix of the category it is being
+      // filed under. It waits for `resolved` and is still before the normative
+      // preview, so the ordering the two checks above buy is unbroken. Enforced
+      // at THIS surface only — `validateIdPrefix` (validate.ts) argues why
+      // `createItem` must go on accepting an id whose prefix belongs to
+      // somebody else's catalogue.
+      if (originalId !== null) {
+        validateIdPrefix(originalId, resolved.prefix, category, '--original-id');
+      }
     }
+    // **`--always` on a RATIONALE-tier category is refused, and it is refused
+    // by `createItem` alone — deliberately, where `--severity`, `--step`,
+    // `--valid-from`, `--original-id` and `scopeRequirementError` all get a
+    // duplicated call here.** Those duplicate the CALL (never the rule) to buy
+    // ORDERING: without them a human is shown "create this item that governs
+    // this project?" and told only after answering that the capture was never
+    // going to land. That purchase is not available here, because the two
+    // conditions are DISJOINT: `inertFieldError` fires only on the rationale
+    // tier and the confirmation below fires only on the normative one, so the
+    // refusal this flag can earn can never arrive after a prompt. A call here
+    // would buy nothing and cost a second wording of the same refusal to drift
+    // from `createItem`'s — the reasoning `--original-id` records for the
+    // collision it also leaves to the write.
+    //
+    // The refusal itself is `inertFieldError` (core/trust.ts), reached through
+    // `createItem` at surface `'capture'`: `always: true` asks for the pinned
+    // tier, which selection admits only normative items to (`select.ts` reads
+    // `isNormative` before it ever looks at `always`), so on a `lesson` it
+    // would be stored and then govern nothing. It says "Nothing was written."
+    // and names both remedies — retier the category, or capture the item under
+    // a normative one — exactly as the same function refuses `--severity hard`
+    // on a `decision`. Pinned by `test/cli/add-always.test.ts`, so a later
+    // change that stops routing this through `createItem` is caught here
+    // rather than by an item quietly stored inert.
     if (resolved?.enabled && resolved.tier === 'normative') {
       // Printed before the gate and regardless of `--yes`, the way `review
       // promote` prints its preview: `confirmAction` only asks its question
@@ -990,6 +1164,32 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
           `  this body is a snapshot of ${input.sourceFile}, not text written here. It does not ` +
           `update itself: \`mycontext doctor\` reports when the file has moved on, and ` +
           `\`mycontext refresh\` takes a new snapshot through this same gate.`,
+        );
+      }
+      // **The extra sentence a PIN earns, and the reason `--always` needs no
+      // gate of its own: this line is what the existing gate is approving.**
+      // `alwaysInjection` (render-item.ts) owns the phrase, so this preview
+      // cannot drift from `review promote`'s, which states the same fact about
+      // the same field at the other place a human decides it.
+      //
+      // It PRICES the pin as well as naming it, which the `--file` sentence
+      // above does not have to: `always` has the largest injection footprint
+      // of any field, and the pinned tier is ONE shared budget rather than a
+      // per-item allowance, so this capture spends something every other
+      // pinned item in the workspace is also spending. An item that does not
+      // fit is simply not delivered, and the only place that is ever said is
+      // the session-start hook's stderr (`pinnedSpillLine`, hooks/io.ts) —
+      // later, to whoever happens to be reading it. It has already happened
+      // here: 7 of 23 pinned items failed to reach a session at ~17,237
+      // estimated tokens against a budget of 16,000. The person approving this
+      // capture is the person spending that budget, so they get the figure
+      // before they answer rather than a word that sounds free.
+      if (input.always === true) {
+        out(
+          `  and ${alwaysInjection(resolved.tier).phrase}. The pinned tier is ONE budget ` +
+          `(${ws.config.budgets.pinned} estimated tokens) shared by every pinned item here, ` +
+          `so an item that no longer fits is not injected at all and only the session-start ` +
+          `hook says so. \`mycontext unpin <id>\` is the way back.`,
         );
       }
       if (!confirmAction(

@@ -41,7 +41,7 @@ routes are `mycontext review promote`/`discard` for a draft's status, and
 `mycontext add <category> "<title>" [--body "<why>"|--file <path>]
 [--note "<text>"] [--observation kind=text] [--step "<text>"]
 [--summary "<text>"|--summary-omitted] [--scope "a/**,b/**"] [--tags "a,b"]
-[--severity hard|soft] [--valid-from YYYY-MM-DD]
+[--severity hard|soft] [--always] [--valid-from YYYY-MM-DD] [--original-id <id>]
 [--extra key=value] [--yes]` is the user's capture command. `--scope` and
 `--tags` are comma-separated; `--body` goes through the same round-trip guards
 described above, so a body containing a `#` heading is refused there exactly as
@@ -90,6 +90,32 @@ copied in from a corpus where it already existed — and `valid_from` is a
 reserved frontmatter name, so `--extra` cannot carry it. A date that does not
 exist is refused rather than rounded.
 
+`--original-id <id>` carries an existing item's id across instead of deriving a
+new one from its title, and it is for MIGRATION and nothing else. An id is a
+public name — the key of every relation, every audit record and every citation
+written into a source comment — so re-creating an item under a title-derived id
+renames it and breaks all of them at once. It is on `add` alone: an id that
+could change after creation is the same breakage with an audit trail behind it,
+and renaming an item is `mycontext supersede`, which mints a new one and wires
+the old to it. The id must be one safe filename segment and must begin with the
+category's own prefix; an id an item here already holds is refused rather than
+overwritten, unless the content is identical, in which case the capture is the
+no-op it already was.
+
+`--always` pins the item at capture: it is injected in full at the start of
+every session, whatever files are touched. It is the most expensive thing a
+capture can ask for, because the pinned tier is **one** budget shared by every
+pinned item in the workspace — an item that no longer fits is not injected at
+all, and the only place that is ever said is the session-start hook. So the
+normative confirmation names the pin and prints the budget before asking, and
+that confirmation is the whole gate: `--always` adds none of its own, because a
+rationale-tier category refuses the flag outright (selection admits only
+normative items to the pinned tier, so the field would be stored governing
+nothing) and every capture it *can* land on is already behind `--yes`. Omitting
+it captures the item unpinned; `--always=false` says so in words and is
+identical to leaving it out. For an item that already exists the route is
+`mycontext pin <id>`, which is `edit --always=true` under a shorter name.
+
 `--yes` is required when the category is **normative**, because `add` passes
 `origin: 'human'` and the item therefore lands `active` and governs the project
 at once — no draft, no review. This is **not** a boundary that constrains you:
@@ -137,7 +163,7 @@ rebuild, silently:
 - `update_item`: Revise an existing item by id. Title, body, tags and extra apply or are staged for a human; the reply says which. Not for: scope, always or severity on a governing item, or status on a normative one.
 - `refresh_item`: Re-snapshot a file-backed item: the server re-reads its source_file and replaces the body. Applies or is staged, as update_item is. Not for: an ingested item, which holds an extraction.
 - `supersede_item`: Retire the item named by `id` in favour of `by`; both relation directions are recorded for you. Not for: retiring a governing (active or validated) normative item — a human decision.
-- `link_items`: Record a typed relation between two items, such as derived_from or constrains. Not for: self-links, supersedes or superseded_by (use supersede_item), or a duplicate relation, which is ignored.
+- `link_items`: Record a typed relation between two items, such as derived_from or constrains. Not for: self-links, supersedes or superseded_by (use supersede_item), or a duplicate — the same edge from either end.
 - `get_item`: Fetch one item in full by id, as Markdown. Not for: searching — use query_items when you do not know the id.
 - `query_items`: Search and filter items by type, status, tag, relation, text or file path. Not for: fetching a known id, which get_item does directly.
 - `list_drafts`: List items awaiting human review, newest first. Not for: promoting them — only a human can do that.

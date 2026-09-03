@@ -846,14 +846,16 @@ export function validateRelationTarget(target: string, where: string): void {
  * directories on the way, and the write-deny hook (which matches on the
  * `.my_context` path segment) never sees a managed path at all.
  *
- * Nothing forwards a caller-supplied id today: the MCP `create_item` tool
- * has no `id` field, `mycontext add` never sets one, and the three internal
- * callers that do (`lesson/derive.ts`, `ingest/apply.ts`) build theirs from
- * `makeId`/`slugify`, whose output is `[A-Z0-9]+-[a-z0-9-]*` by
- * construction. This is insurance against the surface that forwards one
- * next, taken at the boundary rather than at whichever future call site
- * first does it — and it is stated as "not reachable today" rather than
- * "an exploit", because it is not one.
+ * This was written as insurance — "nothing forwards a caller-supplied id
+ * today" — and that sentence has since stopped being true TWICE, which is
+ * the argument for having taken it at the boundary rather than at whichever
+ * call site forwarded one first. `pack/import.ts` forwards `item.id`
+ * straight out of an artefact file somebody else wrote
+ * (`createInputFor`, ~435), and `mycontext add --original-id` now forwards
+ * one a person typed. The internal minters (`lesson/derive.ts`,
+ * `ingest/apply.ts`) still build theirs from `makeId`/`slugify`, whose
+ * output is `[A-Z0-9]+-[a-z0-9-]*` by construction; the other two are
+ * exactly the surfaces this function was written for.
  *
  * The rule is "one safe filename segment", not `slugify`'s grammar. What
  * actually matters here is the path property, and the slug grammar would
@@ -884,6 +886,46 @@ export function validateExplicitId(id: string, where: string): void {
       `only letters, digits, ".", "_" and "-". See mycontext_help("capture").`,
     );
   }
+}
+
+/**
+ * **An explicit id must belong to the category it is being filed under.**
+ *
+ * `makeId` (slug.ts) writes `PREFIX-slug` and the prefix is the whole reason
+ * an id is readable at a glance: `STD-…` is a standard, `CONST-…` a
+ * constraint. An id typed by hand can say `LESSON-…` and land in
+ * `items/standard/`, and nothing downstream would ever object — the type is
+ * read from frontmatter, not from the name — so a reader, every report and
+ * every citation would carry an id that lies about what it names.
+ *
+ * **This lives here and is NOT called by `createItem`, deliberately.** The
+ * checks above it are storage properties: an id that carries a separator
+ * writes outside the workspace, and one outside `ID_GRAMMAR` cannot be a
+ * filename. Nothing breaks when a prefix disagrees, which makes this a
+ * CONVENTION — and `createItem` must go on accepting foreign-prefixed ids,
+ * because `pack/import.ts` forwards ids minted by another project whose
+ * categories are its own (`createInputFor`, ~435). Enforcing it at the
+ * mutation boundary would refuse an import this product supports. So it is
+ * enforced where a human types one and a typo is the likely cause, and the
+ * WORDING lives beside the other two id refusals rather than in the command,
+ * so all three are findable together.
+ *
+ * The comparison is case-insensitive on the prefix alone. `makeId`
+ * upper-cases it, but `validateExplicitId` is careful to keep loading the
+ * lowercase and underscored ids an older or hand-authored corpus carries, and
+ * the question this asks is "which category does this id name", to which case
+ * is not the answer.
+ */
+export function validateIdPrefix(id: string, prefix: string, type: string, where: string): void {
+  const expected = `${prefix.toUpperCase()}-`;
+  if (id.toUpperCase().startsWith(expected)) return;
+  throw new Error(
+    `my_context: ${where} is ${JSON.stringify(id)}, which is not an id of a ${type} — those ` +
+    `begin with "${expected}". The prefix is how a reader tells an item's category from its id ` +
+    `alone, and nothing downstream would ever object: the type is read from the frontmatter, ` +
+    `so the id would simply go on naming the wrong kind of item in every report and citation. ` +
+    `Pass the id the item already has, or omit the flag and let the title derive one.`,
+  );
 }
 
 /**

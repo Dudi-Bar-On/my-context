@@ -1066,8 +1066,15 @@ console.log('demo-corpus: one source_drift finding staged, so Doctor has a remed
 // focus change is the newest thing that happened to this corpus, which is also
 // the truer story — a reader's most recent action is the one whose regime the
 // feed is drawn under.
-cli(['focus', 'billing']);
-cli(['focus', '--clear']);
+// `--yes` since 2026-09-04: both of these are `focus`'s WRITE forms, and
+// `focus` joined the approval boundary under
+// `DEC-the-focus-dialog-earns-execute-by-putting-focus-on-the`. This script
+// runs off a TTY, so without the flag `confirmAction` refuses and neither
+// record is written — which the `missing` check further down would have caught
+// loudly ('focus' is one of the four kinds it requires), but only after a full
+// rebuild. The reporting forms take no `--yes` and are unchanged.
+cli(['focus', 'billing', '--yes']);
+cli(['focus', '--clear', '--yes']);
 console.log('demo-corpus: focus set and cleared last, so the Watch feed has a regime rule '
   + 'inside the pulse window');
 

@@ -520,7 +520,12 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // nothing and would pass this test for the wrong reason.
   focus: (cwd) => {
     run(['add', '--summary-omitted', 'constraint', 'A constraint for the F2 guard', '--tags', 'f2', '--yes'], cwd);
-    run(['focus', 'f2'], cwd);
+    // `--yes` since 2026-09-04: setting a focus is one of the two forms on the
+    // approval boundary, and `confirmAction` refuses off a TTY. Without it this
+    // setup silently set no focus and the bare `focus` below took the "no focus
+    // is set" early return — the exact wrong-reason pass the note above warns
+    // about, which is how this line was found.
+    run(['focus', 'f2', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [];
   },

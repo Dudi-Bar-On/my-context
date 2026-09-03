@@ -8,7 +8,8 @@ trip and costs you the benefit of the doubt on everything else you printed.
 
 Three failures from one session, all of them answerable from this page:
 
-- `mycontext add rule "…" --always` — refused, `unknown option "--always"`.
+- `mycontext add rule "…" --always` — was refused, `unknown option "--always"`.
+  `add` takes it now, and the lesson survives the fix: see below.
 - `mycontext link <id> refines <id>` — refused, `unknown command "link"`.
 - `mycontext supersede <id> --reason "…"` — refused, the usage line.
 
@@ -27,9 +28,11 @@ and `promote` and `discard` are subcommands of `review`, not commands.
 
 ## Flags belong to commands, not to the CLI
 
-There is no global flag vocabulary. `--always` is `edit`'s, `--by` is
-`supersede`'s, `--agent` is `lesson`'s. A flag one command accepts is refused
-**by name** on any other, and nothing is written when it is.
+There is no global flag vocabulary. `--by` is `supersede`'s, `--agent` is
+`lesson`'s, `--unlink` is `edit`'s. A flag one command accepts is refused **by
+name** on any other, and nothing is written when it is. A flag that appears on
+two commands appears there *deliberately*, and means the same thing on both —
+`--always` is on `add`, `edit` and `review promote`, and pins in all three.
 
 The usage above carries the flags that *distinguish* each command. It is not
 the complete list for any of them, and this page does not print one: a second
@@ -49,12 +52,15 @@ would tell you. Two things are authoritative instead, in this order:
 
 ## The three refusals, read
 
-**`--always` is `edit`'s flag, not `add`'s.** The list above shows it there.
-`mycontext add` has no spelling for it at all, so pinning is a second act on an
-item that already exists: `mycontext pin <id>`, which is `edit --always=true`
-with the flag filled in and carries the same gate and the same preview.
-`unpin`, `harden` and `soften` are the same command with a different flag
-filled in.
+**`--always` was `edit`'s flag and is now `add`'s as well** — the refusal above
+is what a printed command got until 2026-09-03, and the lesson it taught is the
+one that still holds: read the flag off the command, not off the CLI. `add
+--always` pins at capture, in one act, which is what an item carried in from
+another corpus needs; `edit --always=true` / `--always=false` pins and unpins an
+item that already exists, and `mycontext pin <id>` / `mycontext unpin <id>` are
+those two edits with the flag filled in. `--always=false` means "not pinned" on
+every one of them: `add` accepts it as the default it already is, and does not
+advertise it. `harden` and `soften` are the same shorthand over `--severity`.
 
 **There is no `link` command, and no command creates a relation.** Relations
 are recorded through the MCP server: `link_items(from, to, relation)` for an

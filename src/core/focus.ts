@@ -113,11 +113,15 @@ export interface Focus extends FocusAxes {
  * `discovered_by`, `unblocks`, `enforces`, `enforced_by`, `depends_on` and
  * `answers` — eight edge types that `link_items` would then have refused, and
  * that exist because the corpus was seeded before the enum closed and because
- * the Markdown parser does not gate relation names. `depends_on` has since
- * been adopted INTO the enum, so SEVEN of those eight remain unwritable
- * through `link_items` — `answers`, `discovered_by`, `enforced_by`,
- * `enforces`, `produced`, `superseded_by` and `unblocks`. Reconciling the
- * remaining seven is a separate job and is deliberately not done here.
+ * the Markdown parser does not gate relation names. `depends_on` was adopted
+ * INTO the enum on 2026-09-02 and six more followed on 2026-09-03 —
+ * `produced`, `discovered_by`, `unblocks`, `enforces`, `enforced_by` and
+ * `answers`, owner ruling
+ * `DEC-all-nineteen-relation-types-ship-and-an-inverse-pair-is-two`. So the
+ * superset is now a superset by exactly ONE name, `superseded_by`, and that
+ * one stays out of the enum permanently: its absence IS the write gate that
+ * stops `link_items` forging a retirement. It is classified here regardless,
+ * because focus must classify what is on disk and nine items carry one.
  * Nothing here widens the enum:
  * classifying an edge is not permission to create one. But focus must be able
  * to classify what is ON DISK, and a table that only knew the enum would report
