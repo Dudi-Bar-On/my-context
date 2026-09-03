@@ -39,6 +39,33 @@
  * — so a settings file that kept the plugin variable would run `node
  * "${CLAUDE_PLUGIN_ROOT}/src/hooks/session-start.ts"` literally, and fail on
  * every event.
+ *
+ * ── THE FINDING ABOVE HAS EXPIRED, AND THIS FILE NOW ENFORCES ITS INVERSE ──
+ *
+ * The premise of `hooks seq:23` was that *"this repository has no `.claude`
+ * directory, so `hooks/hooks.json` — which is a PLUGIN manifest, and applies
+ * where the plugin is INSTALLED — never applies here"*, the plugin being pinned
+ * to a frozen 1.0.0 cache copy that ran silent. **Both halves stopped being
+ * true.** `mycontext` is now installed as a DIRECTORY source naming this very
+ * working tree, so the manifest applies here, live, off these same files.
+ *
+ * Commit 2485e73 ("this repository becomes the single home for the plugin and
+ * its corpus") is what closed the gap: BEFORE it the two registrations named
+ * different directories and both were needed; AFTER it they name the same one.
+ *
+ * **So a checked-in settings file is a second copy of the manifest, and every
+ * hook fires twice.** Measured 2026-09-03: all 18 events registered twice,
+ * doubled rows milliseconds apart throughout `.my_context/.audit/audit.jsonl`,
+ * and one `SessionStart` injecting 198.8 KB of governing items TWICE in a single
+ * session. Not merely noise: every count derived from the audit log doubles with
+ * it, including the witness counting `state_unaudited` depends on being exact.
+ *
+ * The two tests that REQUIRED the derived file are replaced by one that requires
+ * its ABSENCE. The three that pin `renderSelfRegistration` to the manifest are
+ * untouched, so the GENERATOR stays honest wherever it is legitimately used and
+ * only this repository stops consuming its own output. The design intent above —
+ * that the manifest is the single ruling on which events my_context turns on —
+ * is better served by one registration than by two that can only ever be equal.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -59,20 +86,15 @@ function settingsPath(): string {
   return path.join(ROOT, SELF_SETTINGS_PATH);
 }
 
-test('this repository registers my_context\'s hooks for itself', () => {
-  assert.ok(existsSync(settingsPath()),
-    `${SELF_SETTINGS_PATH} does not exist, so nothing in this repository runs my_context's ` +
-    'hooks and the product is not a consumer of the product (hooks seq:23).');
-});
-
-test('the checked-in settings are exactly what the manifest derives', () => {
-  const expected = renderSelfRegistration(manifestText());
-  const actual = readFileSync(settingsPath(), 'utf8');
-  assert.equal(actual, expected,
-    `${SELF_SETTINGS_PATH} has drifted from hooks/hooks.json. It is DERIVED, and it is derived ` +
-    'so that the set of events my_context turns on for itself can never quietly differ from the ' +
-    'set it turns on for a user — which is the ruling hooks seq:22 is blocked on. Regenerate it ' +
-    'from the manifest rather than editing it.');
+test('this repository does NOT check in a derived settings file', () => {
+  assert.ok(!existsSync(settingsPath()),
+    `${SELF_SETTINGS_PATH} exists. The plugin is installed as a DIRECTORY source pointing at `
+    + 'this working tree, so hooks/hooks.json already applies here off these same files; a '
+    + 'checked-in settings file is a SECOND registration of the same 18 events, and every hook '
+    + 'fires twice. Measured 2026-09-03: doubled rows throughout the audit log, and one '
+    + 'SessionStart injecting 198.8 KB of governing items twice in a single session. Every '
+    + 'count derived from the audit log doubles with it. Delete the file, and do not run '
+    + 'self-register in this repository (hooks seq:23, whose finding expired at 2485e73).');
 });
 
 test('the derived settings carry no plugin-only variable', () => {
