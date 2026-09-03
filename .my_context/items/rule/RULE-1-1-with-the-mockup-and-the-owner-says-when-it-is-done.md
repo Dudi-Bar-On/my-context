@@ -6,7 +6,7 @@ status: active
 severity: hard
 always: false
 summary: A screen is finished only when the owner says so, and a test showing that it works is not a test showing it is the screen that was actually designed.
-summary_of: 6e4c39aa30582f8a
+summary_of: 05687cd021766948
 acknowledged:
   - body_disagrees_with_meta@7ef8f3973e3068f7
 scope: []
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 3d69b423fc8c7242
+checksum: 636533c54d9809a4
 ---
 
 # the owner says when a screen is done, and passing is not the same as designed
@@ -45,8 +45,8 @@ This is what makes 1:1 checkable on a data-driven screen. The audit stream drew 
 
 Related: [[RULE-look-at-the-mockup-and-the-plans-before-implementing-then]] is the reading order; this is the acceptance bar. [[RULE-a-ui-change-is-not-verified-until-someone-has-looked-at-it]] is why looking is the instrument.
 
-AMENDED 2026-08-26 by `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`.
+AMENDED 2026-08-26 by `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`. The amendment narrowed the reach of this rule; it did not unseat it. Both halves are stated below as they stand today, so a reader takes the current bar rather than reconstructing it from an edit.
 
 WHAT STANDS, and it is the half that has been earning its keep: a screen is DONE when the OWNER says so, not when the gates are green; and a test that proves a screen runs is not a test that proves it is the screen that was designed.
 
-WHAT NO LONGER HOLDS: that the app must equal the mockup in BOTH directions. The app is now what is built and the mockup is history plus a list of intended-but-unbuilt features. A feature added to the app does not have to be drawn in the mockup first, and a difference is a GAP only where the mockup was right -- which is a question for the owner where it is not obvious, because several differences are deliberate decisions.
+WHAT THE AMENDMENT DROPPED, and it is the parity half rather than the acceptance half: the demand that the app equal the mockup in BOTH directions. The app is now what is built and the mockup is history plus a list of intended-but-unbuilt features. A feature added to the app does not have to be drawn in the mockup first, and a difference is a GAP only where the mockup was right -- which is a question for the owner where it is not obvious, because several differences are deliberate decisions.

@@ -1,12 +1,12 @@
 ---
 id: TASK-mycontext-ready-caps-at-50-and-does-not-say-so
 type: task
-title: mycontext ready caps at 50 and does not say so
+title: the ready, todo and decay caps were untested at the default limit
 status: active
 severity: soft
 always: false
 summary: The report was thought to hide how much it left out and does not; the real gap was that no test covered what happens at the default limit.
-summary_of: 5cb9b613020cb189
+summary_of: 54a629665b65e7cf
 acknowledged:
   - body_disagrees_with_meta@36c8cca0110873b5
   - state_unaudited@36c8cca0110873b5
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 7bddb7ee0e4f686c
+checksum: e0de9b64a31bf391
 plan: categories
 seq: "23"
 state: done
@@ -32,7 +32,25 @@ priority: "1"
 source: found planning against it, 2026-08-28
 ---
 
-# mycontext ready caps at 50 and does not say so
+# the ready, todo and decay caps were untested at the default limit
+
+**Measured 2026-08-29, and it is the first thing to read here.** `mycontext ready` discloses its cap and always did. Verified by reading the output:
+
+    119 ready; 50 shown. Raise the cap with --limit 119, or narrow it with --plan.
+
+`--json` already carries `readyTotal`, `truncated` and `limit`. `todo` discloses the same way with `matched`. `decay` has no `--limit` and no slice at all, so it never had the defect either.
+
+**What WAS real, and is now fixed**
+
+The gap was in the tests, not the commands. Both suites only covered `--limit 1` — where the cap is the reader's own doing — and **nothing covered the DEFAULT cap**, which is the case that actually misled two waves of planning. `test/cli/report-caps.test.ts` now covers all three commands at the default, including that the truncation line and the held line are SEPARATE disclosures printed in that order. That ordering matters: the held line is the one the filing below mistook for the whole disclosure.
+
+**How the filing got it wrong, and the error is mine.** I grepped the output for `more|not listed|truncat|showing`. The line says *"shown"* and *"cap"* — neither matches. I then reported the absence of my pattern as the absence of a disclosure, and wrote a task asserting it.
+
+**That is the exact failure this week has been cataloguing in other people's gates** — `screen-parity`'s settle loop reading "count stopped changing" as "finished loading", the vacuous `toHaveCount(0)`, the empty-band check measuring a box. Each measured a PROXY instead of the property. Mine was: *does the output contain these words* instead of *does it disclose*. Filed against a tool for a defect I had introduced into my own measurement.
+
+**The lesson worth keeping is not about `ready`.** It is that a controller checking a tool with a pattern it invented is running an unreviewed test, and an absence of matches is the weakest evidence there is. Read the output.
+
+**What was believed when this was filed**, kept verbatim below because the reasoning inside it outlived the premise it rested on — the disclosure argument is one this project already holds, and it is worth reading whatever prompted it.
 
 > Found 2026-08-28, the day `mycontext ready` shipped, while using it to plan the work.
 >
@@ -66,21 +84,3 @@ source: found planning against it, 2026-08-28
 > ## Done when
 >
 > `ready` names what it dropped whenever it drops anything; `--json` carries the total; `todo` and `decay` are checked for the same shape and fixed if they share it; and a test asserts the disclosure appears when the ready set exceeds the default.
-
-**CORRECTED 2026-08-29 — the premise of this task was FALSE, and the error is mine**
-
-`mycontext ready` discloses its cap and always did. Verified by reading the output:
-
-    119 ready; 50 shown. Raise the cap with --limit 119, or narrow it with --plan.
-
-`--json` already carries `readyTotal`, `truncated` and `limit`. `todo` discloses the same way with `matched`. `decay` has no `--limit` and no slice at all, so it never had the defect either.
-
-**How I got it wrong.** I grepped the output for `more|not listed|truncat|showing`. The line says *"shown"* and *"cap"* — neither matches. I then reported the absence of my pattern as the absence of a disclosure, and wrote a task asserting it.
-
-**That is the exact failure this week has been cataloguing in other people's gates** — `screen-parity`'s settle loop reading "count stopped changing" as "finished loading", the vacuous `toHaveCount(0)`, the empty-band check measuring a box. Each measured a PROXY instead of the property. Mine was: *does the output contain these words* instead of *does it disclose*. Filed against a tool for a defect I had introduced into my own measurement.
-
-**What WAS real, and is now fixed**
-
-The gap was in the tests, not the commands. Both suites only covered `--limit 1` — where the cap is the reader's own doing — and **nothing covered the DEFAULT cap**, which is the case that actually misled two waves of planning. `test/cli/report-caps.test.ts` now covers all three commands at the default, including that the truncation line and the held line are SEPARATE disclosures printed in that order. That ordering matters: the held line is the one I mistook for the whole disclosure.
-
-**The lesson worth keeping is not about `ready`.** It is that a controller checking a tool with a pattern it invented is running an unreviewed test, and an absence of matches is the weakest evidence there is. Read the output.

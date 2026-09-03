@@ -1248,10 +1248,28 @@ export function apiStatus(ws: Workspace, url: URL): JsonResult {
         // `acknowledged` is set by `markAcknowledged`, which `runChecks` calls
         // after every check — so it is already on these findings and this is a
         // filter rather than a second pass over the corpus.
-        errors: findings.filter((f) => f.level === 'error' && f.acknowledged !== true).length,
-        warnings: findings.filter((f) => f.level === 'warn' && f.acknowledged !== true).length,
-        infos: findings.filter((f) => f.level === 'info' && f.acknowledged !== true).length,
-        acknowledged: findings.filter((f) => f.acknowledged === true).length,
+        //
+        // `about !== undefined` drops the DISCLOSURES for the same reason
+        // `acknowledged` is dropped, and the argument is one step of the same
+        // one: a badge says how much is waiting for you, a finding a person has
+        // ruled on is not waiting for anyone, and a note ABOUT A CHECK was never
+        // waiting for anyone in the first place. It draws no row on the Doctor
+        // screen and `summarize` excludes it from the terminal's counts, so a
+        // badge that counted it would state a number no surface a reader can
+        // open agrees with — the badge saying 1 over a list saying 0, which is
+        // the disagreement this endpoint exists to prevent rather than cause.
+        //
+        // Duplicated from `summarize` rather than imported, as the three lines
+        // above already are: importing it would pull `cli/commands/doctor.ts`
+        // into this module's import graph, which the read model forbids.
+        errors: findings.filter((f) => f.level === 'error' && f.acknowledged !== true
+          && f.about === undefined).length,
+        warnings: findings.filter((f) => f.level === 'warn' && f.acknowledged !== true
+          && f.about === undefined).length,
+        infos: findings.filter((f) => f.level === 'info' && f.acknowledged !== true
+          && f.about === undefined).length,
+        acknowledged: findings.filter((f) => f.acknowledged === true
+          && f.about === undefined).length,
       },
     };
     return { status: 200, body };

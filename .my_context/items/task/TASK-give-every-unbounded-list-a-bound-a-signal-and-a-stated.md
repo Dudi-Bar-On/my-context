@@ -5,8 +5,10 @@ title: give every unbounded list a bound, a signal and a stated order
 status: active
 severity: soft
 always: false
-summary: Five lists print everything the server sends with no limit; each needs a limit, a stated order, and an honest sentence about what is not shown.
-summary_of: 80e7ecc339a8e85d
+summary: Five lists used to print everything the server sent; each carries a limit, a stated order and a sentence about what is not shown.
+summary_of: 718a447edbe1ea69
+summary_was:
+  - 2026-09-03 Five lists print everything the server sends with no limit; each needs a limit, a stated order, and an honest sentence about what is not shown.
 acknowledged:
   - citation_form@6aadd7076a455562
 scope: []
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-26
 valid_until: null
-checksum: 61a484e34d034a41
+checksum: 5ad26f219bed431b
 plan: walk
 seq: "45"
 state: done
@@ -36,11 +38,11 @@ source: owner requirement 2026-08-26
 Carries out REQ-every-list-and-table-declares-what-leaves-it-and-when-and-says.
 
 FIVE SURFACES RENDER A SERVER ARRAY WITH NO CAP, measured 2026-08-26:
-  `preview.js:424`  the delivered items
-  `preview.js:552`  the carried-id blocks -- 19 to 26 on a real corpus
-  `injected.js:70`  the injected-now table
-  `work.js:458`     the review queue
-  `packs.js:522`    the pack list
+  `preview.js` · `selection.full.forEach` (gone 2026-09-03)  the delivered items
+  `preview.js` · `if (indexLine.carried !== true) continue;` (gone 2026-09-03)  the carried-id blocks -- 19 to 26 on a real corpus
+  `injected.js` · `for (const line of data.lines)` (gone 2026-09-03)  the injected-now table
+  `work.js` · `for (const rev of revisions)` (gone 2026-09-03)     the review queue
+  `packs.js` · `for (const pack of body.packs)` (gone 2026-09-03)    the pack list
 
 PICK ONE OF THE TWO MECHANISMS THIS PRODUCT ALREADY HAS. Do not invent a third:
   THE CAP PLUS A TRUTHFUL SIGNAL (Ask) -- bind one row more than the cap, drop it before display, and say "capped at N -- more matched". Right where the remainder is unbounded and the reader may want to widen the question.
@@ -54,4 +56,4 @@ THE CARRIED LIST IS ALREADY AN OPEN OWNER QUESTION -- `plan:screens seq:1s-e` as
 
 EVERY SENTENCE THIS NEEDS IS A STRING KEY, so the mockup moves first (`DEC-claude-drafts-the-mockup-and-the-owner-approves`). Draft all of them in one sitting: five surfaces sharing two mechanisms should share their wording too, or the product grows five ways to say "there is more".
 
-RULED 2026-08-26 by the owner -- see `DEC-a-record-list-bounds-by-time-a-computed-list-bounds-by`. The five surfaces split two ways. `injected.js:70`, `work.js:458` and `packs.js:522` replay records and take THE CAP PLUS A TRUTHFUL SIGNAL, ordered by time, newest first, with a way to the rest. `preview.js:424` and `preview.js:552` compute rather than replay, carry no timestamp, and take a DISPLAY cap ordered by the selector s own first-fit admission order, with an exact total and a show-all that costs no round trip. The hard part this task named -- that a display bound on a provenance surface must disclose that it is a display bound -- is unchanged and is now the wording work.
+RULED 2026-08-26 by the owner -- see `DEC-a-record-list-bounds-by-time-a-computed-list-bounds-by`. The five surfaces split two ways. `injected.js` · `for (const line of data.lines)` (gone 2026-09-03), `work.js` · `for (const rev of revisions)` (gone 2026-09-03) and `packs.js` · `for (const pack of body.packs)` (gone 2026-09-03) replay records and take THE CAP PLUS A TRUTHFUL SIGNAL, ordered by time, newest first, with a way to the rest. `preview.js` · `selection.full.forEach` (gone 2026-09-03) and `preview.js` · `if (indexLine.carried !== true) continue;` (gone 2026-09-03) compute rather than replay, carry no timestamp, and take a DISPLAY cap ordered by the selector s own first-fit admission order, with an exact total and a show-all that costs no round trip. The hard part this task named -- that a display bound on a provenance surface must disclose that it is a display bound -- is unchanged and is now the wording work.

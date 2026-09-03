@@ -609,6 +609,96 @@ export function sharedNotes(rows) {
 }
 
 /**
+ * **The check talking about ITSELF — routed into the note mechanism above
+ * rather than drawn as a row.**
+ *
+ * `Finding.about` names the CHECK a disclosure is about (`src/doctor/checks.ts`
+ * · `about?: string;`), and `src/cli/commands/doctor.ts`'s `disclosureAbout`
+ * carries the whole argument: the rule above `interface Finding` already made a
+ * check disclose what it cannot judge once rather than per item, and what was
+ * left is that the disclosure was still COUNTED and LISTED as work. Owner,
+ * 2026-09-03: *"after you complete handling them, the test should be that they
+ * will not be listed anymore at doctor list"* — a row saying "nothing is owed"
+ * is still a row he has to read and dismiss.
+ *
+ * **It reuses `sharedNoteBlock`'s mechanism and does not invent a second one.**
+ * That block is already documented, three functions up, as *"a note about a
+ * code, not about any one finding"* — a `details.help` sibling of the table,
+ * closed by default, one click from open. A disclosure is the same kind of
+ * thing said by the check instead of derived from its rows, so it takes the
+ * same shape, in the same place, under the same code.
+ *
+ * **Keyed by `about` and never by the disclosure's own code**, which is what
+ * puts the note where it explains something: `body_review_limits` says the
+ * findings above it are a floor, so it belongs under the
+ * `body_disagrees_with_meta` table those findings are in. Keyed by its own code
+ * it would be filed under a heading with no rows and no context, which is the
+ * row the owner is objecting to wearing a different hat.
+ *
+ * A check with no rows in this run still gets its note — `state_unaudited`
+ * reports nothing on this corpus and its coverage note is still true, still
+ * drawn, and still the only place those 24 unmeasured tasks are named. The card
+ * says `doc.zero` above it, which is a MEASURED zero and not a contradiction:
+ * none found, and here is what could not be looked at.
+ *
+ * **Every message is kept, and two under one heading stay two paragraphs.**
+ * `state_audit_coverage` can speak twice in one run — the tasks the log never
+ * saw, and the tasks born before the witness — and those are two facts.
+ * Joining them into one string would be the only lossy step in this file.
+ *
+ * `level` filters, so a note is drawn in the card of the level its own finding
+ * declared. That is the datum this screen has, and it is the right one: a
+ * disclosure states its own severity exactly as a finding does.
+ */
+export function disclosureAbout(finding) {
+  const about = finding === null || finding === undefined ? undefined : finding.about;
+  return typeof about === 'string' && about !== '' ? about : null;
+}
+
+/** `true` when this served finding is a note about a check, not about the corpus. */
+export function isDisclosure(finding) {
+  return disclosureAbout(finding) !== null;
+}
+
+export function disclosureNotes(findings, level) {
+  const notes = new Map();
+  for (const finding of findings) {
+    const about = disclosureAbout(finding);
+    if (about === null || finding.level !== level) continue;
+    const held = notes.get(about);
+    if (held === undefined) notes.set(about, { code: finding.code, messages: [finding.message] });
+    else held.messages.push(finding.message);
+  }
+  return notes;
+}
+
+/**
+ * One disclosure's `details.help`, built exactly as `sharedNoteBlock` builds
+ * one — the same element, the same class, the same closed-by-default disclosure
+ * — with the summary the only difference, because the two say different things
+ * about what is inside.
+ *
+ * `doc.about` names both codes: the CHECK first, because that is what the note
+ * is about and what the reader is looking at, then the disclosure's own code,
+ * because it is what they would grep or paste. Both are `{mv:}` — a finding
+ * code is an identifier, and an identifier inside RTL prose reorders unless it
+ * is isolated, which is `doc.shared`'s own reason for the same treatment.
+ *
+ * `appendMessage` per message, not one joined string: the producer's words,
+ * unedited, and each fact in its own paragraph.
+ */
+function aboutNoteBlock(ctx, check, note) {
+  const box = el('details', 'help');
+  const summary = el('summary');
+  summary.append(...ctx.t('doc.about', { check: check, code: note.code }));
+  box.append(summary);
+  for (const message of note.messages) {
+    box.append(appendMessage(el('div', 'helpbox'), message));
+  }
+  return box;
+}
+
+/**
  * `<details class="help"><summary>…<div class="helpbox">` — the disclosure the
  * mockup already draws on Decay, holding the paragraph the rows stopped
  * repeating
@@ -884,11 +974,45 @@ export async function render(root, ctx) {
   // Counted HERE, off the served body, rather than added to `repairTally`:
   // `repairTally` is a partition by REMEDY ROUTE and this is not a route, and
   // three tests in two files pin its return shape whole.
-  const tally = repairTally(data.findings);
-  const acked = data.findings.filter((f) => f.acknowledged === true).length;
+  //
+  // ── THE FIFTH FIGURE, AND WHY A DISCLOSURE LEAVES THE FIRST FOUR ─────────
+  //
+  // **The partition is the argument.** `test/ui/doctor-screen.test.ts` pins
+  // `chips + repairs + settle === findings` and says why in its own words: *"a
+  // row counted twice or not at all is the screen disagreeing with its own
+  // summary."* A disclosure draws NO ROW — it is a `details.help` under the
+  // table, not a `<tr>` — so leaving it inside `findings` would put it in the
+  // denominator of a partition whose three terms all count rows, and one of
+  // those three would have to claim it. `repairFor` answers `null` on it
+  // (`route: 'none'`), so `chips` would, and the screen would then say "no
+  // automated repair" about a row nobody can see. The equality survives here
+  // by SUBTRACTION FROM BOTH SIDES: the disclosures leave the array before
+  // `repairTally` reads it, so `findings` and all three terms shrink together
+  // and the identity holds exactly as it did.
+  //
+  // **And they are counted anyway, in a figure of their own.** Dropping them
+  // out of the tally with no number is the failure this file already argued
+  // against one figure up, when `acked` was ADDED rather than subtracted, and
+  // `read-model.ts` took the same decision in the same words: *"`acknowledged`
+  // is served beside them so nothing is dropped silently … a tally that made
+  // them vanish with no count would undo that."* `INV-nothing-is-dropped-silently`
+  // is the standing form of it. So the fifth slot says how many notes this run
+  // produced, and the notes themselves are one click away and complete.
+  //
+  // **Why not a fourth term inside the partition instead.** Because it is not
+  // one: the other three answer "what does this ROW offer to do", and a
+  // disclosure offers nothing because it is not a row. A fourth term would make
+  // `findings` mean "findings and notes", which is the exact conflation the
+  // owner is asking to end — and it would put the number back in the count he
+  // reads as his worklist.
+  const disclosures = data.findings.filter((f) => isDisclosure(f));
+  const findings = data.findings.filter((f) => !isDisclosure(f));
+  const tally = repairTally(findings);
+  const acked = findings.filter((f) => f.acknowledged === true).length;
   const summary = el('p', 'small');
   summary.append(...ctx.t('doc.tally', {
     findings: tally.findings, repairs: tally.repairs, settle: tally.settle, acked: acked,
+    notes: disclosures.length,
   }));
   // `.small` carries no margin and `.card` only a bottom one, so this would
   // otherwise sit flush against the first card's top edge and read as part of
@@ -900,7 +1024,7 @@ export async function render(root, ctx) {
   summary.style.setProperty('margin-block-end', 'var(--sp-3)');
   root.append(summary);
 
-  const groups = groupFindings(data.findings);
+  const groups = groupFindings(findings);
 
   // **The bulk settlements, computed ONCE over the whole run and drawn once
   // each.** `settleGroups` reads every finding rather than one card's rows,
@@ -908,7 +1032,11 @@ export async function render(root, ctx) {
   // card-local count would name a number smaller than the command settles. A
   // code lands in the card of the level it first appears at, and `settled`
   // stops it being drawn a second time if it ever appears at two.
-  const settlements = settleGroups(data.findings);
+  // `findings` and never `data.findings`: a disclosure names no item, so
+  // `settleGroups` would drop it anyway — but reading the whole body here would
+  // leave the one place on this screen where the two arrays could drift, and
+  // the drift a reader would see is a settlement offering to rule on a note.
+  const settlements = settleGroups(findings);
   const settled = new Set();
 
   for (const card of CARDS) {
@@ -1054,6 +1182,16 @@ export async function render(root, ctx) {
     }
 
     for (const [code, note] of notes) pane.append(sharedNoteBlock(ctx, code, note));
+
+    // **Beside the shared tails, not after the commands.** Both are notes about
+    // a code rather than about a row, both are `details.help`, and a reader
+    // meeting one meets the other in the same place; a `.cmd` between them
+    // would split one kind of thing across a control. The disclosures come
+    // second because a shared tail is the rest of a sentence the reader has
+    // already begun above it, and a disclosure is a new one.
+    for (const [check, note] of disclosureNotes(disclosures, card.level)) {
+      pane.append(aboutNoteBlock(ctx, check, note));
+    }
 
     for (const repair of cardCommands(rows)) pane.append(commandRow(ctx, repair));
 

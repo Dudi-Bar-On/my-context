@@ -637,7 +637,37 @@ export const strings = {
   // answer the "waiting for you" question. `acked` is the number that was
   // missing: without it, acking a finding moved no figure on this screen at
   // all, which is the same silence one level up from the row.
-  'doc.tally': 'findings: {findings} · with an automated repair: {repairs} · yours to settle: {settle} · already ruled on: {acked}',
+  // And a FIFTH, 2026-09-03, the day a note stopped being counted as work.
+  // Owner: "after you complete handling them, the test should be that they will
+  // not be listed anymore at doctor list". `state_audit_coverage`,
+  // `body_review_limits` and `citation_form_excused` each say in their own words
+  // that nothing is owed, and each was a row he had to read and dismiss. They
+  // are notes about the CHECKS now, drawn under the table each one limits, and
+  // out of `findings` — which is why the count needs a slot of its own rather
+  // than a smaller first number and no explanation. Nothing vanishes with no
+  // figure (INV-nothing-is-dropped-silently); it is just no longer counted as
+  // something to do.
+  //
+  // "notes about the checks" and not "notes": `doc.notice` already calls an
+  // info-level FINDING a notice on this very screen, and two meanings of one
+  // word in one tally is the reader's problem, not the label's.
+  'doc.tally': 'findings: {findings} · with an automated repair: {repairs} · yours to settle: {settle} · already ruled on: {acked} · notes about the checks: {notes}',
+  // **THE NOTE A CHECK MAKES ABOUT ITSELF**, drawn where it explains something.
+  // `Finding.about` names the CHECK, so `body_review_limits` — "the findings
+  // above are a FLOOR and not a count" — opens under the
+  // `body_disagrees_with_meta` table those findings are in, and
+  // `state_audit_coverage` opens under `state_unaudited`.
+  //
+  // The check comes FIRST because it is what the reader is looking at; the
+  // disclosure's own code comes second because it is what they would grep or
+  // paste, and dropping it would be the only thing this change actually lost.
+  // Both are `{mv:} — a finding code is an identifier, and an identifier inside
+  // RTL prose reorders unless it is isolated (`doc.shared`'s own reason).
+  //
+  // "not a finding" is the load-bearing half: the sentence must not read as a
+  // hint that something was hidden. Nothing was — the whole message is one
+  // click away, unedited, and the CLI prints it under the same two codes.
+  'doc.about': '{mv:check} — {mv:code}: a note about this check, not a finding',
   // **THE REPEAT, SAID ONCE.** Measured 2026-09-01 against this repo's own
   // corpus: 42,353 characters of `Finding.message` on the Doctor screen, of
   // which 34,440 are the same paragraph re-printed — 34 `citation_form` rows

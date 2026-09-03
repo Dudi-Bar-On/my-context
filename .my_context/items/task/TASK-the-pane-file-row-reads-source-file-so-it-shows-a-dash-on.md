@@ -5,8 +5,10 @@ title: the pane file row reads source_file, so it shows a dash on every hand-aut
 status: active
 severity: soft
 always: false
-summary: The detail panel shows a dash where a file path should be, because it reads the wrong field for nearly every item.
-summary_of: e351b2030af336cc
+summary: The detail panel showed a dash where a file path belonged, because it read a field the data never carried under that name.
+summary_of: c4e5434908806db4
+summary_was:
+  - 2026-09-03 The detail panel shows a dash where a file path should be, because it reads the wrong field for nearly every item.
 acknowledged:
   - citation_form@95db9332b0fb529d
 scope: []
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 482d2c1a7d7f1d1d
+checksum: 13fb240a3d085d7c
 plan: walk
 seq: "42"
 state: done
@@ -36,7 +38,7 @@ source: "owner request 2026-08-25: the item detail pane, app vs mockup, real cor
 
 FOUND 2026-08-25 by owner request 2026-08-25: the item detail pane, app vs mockup, real corpus.
 
-THE LINE: `app.js:331` -- `els.file.textContent = item.source_file ?? '-'`.
+THE LINE: `app.js` · `els.file.textContent = item.source_file ?? '-'` (gone 2026-09-03 -- the row reads `item.filePath` now).
 
 `source_file` is INGEST PROVENANCE: the document an item was ingested FROM. It is null for every hand-authored item, and this corpus is 489 items of which the overwhelming majority are authored. So the `file` row of the item detail pane shows a dash almost always.
 

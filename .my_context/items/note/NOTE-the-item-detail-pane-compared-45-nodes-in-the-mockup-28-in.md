@@ -5,8 +5,10 @@ title: "the item detail pane compared: 45 nodes in the mockup, 28 in the app, fo
 status: active
 severity: soft
 always: false
-summary: "The panel showing one entry's details compared against its design: a whole block missing, some parts unstyled, and one row reading the wrong value."
-summary_of: cc584bd7a7e74ae5
+summary: A dated comparison of the entry-detail panel against its design, and the four differences it turned up, each since filed and closed.
+summary_of: a861e3069a5a60cd
+summary_was:
+  - "2026-09-03 The panel showing one entry's details compared against its design: a whole block missing, some parts unstyled, and one row reading the wrong value."
 acknowledged:
   - citation_form@cb9072c0848138c9
 scope: []
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: e16c5202504b1604
+checksum: 8dc82165e12ac749
 ---
 
 # the item detail pane compared: 45 nodes in the mockup, 28 in the app, four differences
@@ -37,7 +39,7 @@ FOUR DIFFERENCES, all in the lower half:
 
 2. THE BODY WELL HAS NO WELL. The app EMITS `div.well` and `div.welllabel` -- verified live in the rendered pane -- and `styles.css` does not carry their rules, so the label renders as ordinary text instead of small-caps dim, and the body sits on bare panel instead of in an inset box. Filed as plan:walk seq:41.
 
-3. THE `file` ROW READS THE WRONG FIELD. `app.js:331` is `els.file.textContent = item.source_file ?? '-'`. `source_file` is the INGEST provenance and is null for every hand-authored item, so the row shows a dash on essentially the whole corpus. The mockup shows the item s OWN path, `items/constraint/CONST-postgres-pool-capped-at-20.md`, and `/api/items` already serves it as `filePath`. Filed as plan:walk seq:42.
+3. THE `file` ROW READS THE WRONG FIELD. `app.js` · `els.file.textContent = item.source_file ?? '-'` (gone 2026-09-03 -- the row reads `item.filePath` now). `source_file` is the INGEST provenance and is null for every hand-authored item, so the row shows a dash on essentially the whole corpus. The mockup shows the item s OWN path, `items/constraint/CONST-postgres-pool-capped-at-20.md`, and `/api/items` already serves it as `filePath`. Filed as plan:walk seq:42.
 
 4. THE BODY RENDERS RAW MARKDOWN -- `>` blockquote markers as literal text, mid-sentence where newlines collapsed. Already filed this session as plan:walk seq:37. The pane is a SECOND renderer from the one that produced that finding: it handles inline backticks (emitting `span.m`) which `preview.js`'s `bodyNodes()` does not, and neither handles blockquotes. seq:37 is updated to say there are two.
 

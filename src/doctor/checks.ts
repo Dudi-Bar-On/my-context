@@ -24,6 +24,53 @@ import type { Item } from '../core/types.ts';
 import { chunkDocument } from '../ingest/chunk.ts';
 import { ingestDir, SESSION_PROTOCOL } from '../ingest/session.ts';
 
+/**
+ * **THE RULE EVERY CHECK IN THIS FILE OBEYS: a check reports a finding only
+ * when a person could DO something about it; what it cannot judge is disclosed
+ * as UNMEASURED, once, and never per item.**
+ *
+ * Owner, 2026-09-03: *"the main problem is that even the user has no tools to
+ * solve them ... i want to clear them all and complete to be annoyed by this
+ * issue"* — against the purpose he had already stated for this whole module,
+ * *"doctor was added to the app for repairing, this is its role"*. A finding a
+ * reader cannot act on is a defect in the CHECK and not a chore for the
+ * reader, which makes this a rule about what a check may EMIT and not about
+ * how a screen draws what it emitted.
+ *
+ * Every row is therefore one of three things, and a check that produces a
+ * fourth is wrong:
+ *
+ *  - **FIXABLE** — a command settles it (`Remedy.route: 'run'` or `'copy'`),
+ *    and the finding's own message names that command.
+ *  - **RULABLE** — a PERSON can answer the question it asks
+ *    (`route: 'acknowledge'`). The test is NOT "is `ack` available": `ack` is
+ *    available on every finding that names an item, which is exactly why its
+ *    availability proves nothing. The test is *does the question have an
+ *    answer this reader can give*. A question whose evidence was never
+ *    recorded and cannot now be reconstructed does not, and asking for a
+ *    ruling on it is the shape the owner is objecting to.
+ *  - **NOT REPORTED — and said so, ONCE**, as a coverage line naming how many
+ *    items the check could not look at and why. This is
+ *    `STD-a-measured-zero-is-drawn-and-named` applied at the other end of the
+ *    scale: a measured zero is drawn and named, an unmeasured set is named as
+ *    unmeasured, and neither is ever blank. N per-item rows saying "this could
+ *    not be measured" is the failure both halves of that standard forbid — it
+ *    is blank dressed up as work. `checkStateUnaudited`'s
+ *    `state_audit_coverage` is the worked example.
+ *
+ * **The failure this closes was measured, not imagined.** `state_unaudited`
+ * shipped with 28 findings on this corpus, every one of them about a write
+ * that predated the witness which could have recorded it. No command could
+ * clear one; an unrelated edit could, and did — the count eroded 28 → 25 → 24
+ * while nobody repaired anything. **A row that only an accident can clear is
+ * not work. It is noise wearing work's clothes**, and it costs the reader the
+ * attention that the rows next to it needed.
+ *
+ * The corollary for the loud half, which this rule must never be read as
+ * softening: a condition a person CAN act on is still reported per item, by
+ * name, with the evidence that established it. Narrowing a check to what it
+ * can measure is not the same as narrowing it to what is comfortable.
+ */
 export interface Finding {
   level: 'error' | 'warn' | 'info';
   code: string;
@@ -45,6 +92,34 @@ export interface Finding {
    * populated — the same choice `cliOnPath: null` makes in doctor's JSON.
    */
   acknowledged?: true;
+
+  /**
+   * **This row is a NOTE ABOUT A CHECK, not a finding about the corpus**, and
+   * the value is the code of the check it is about.
+   *
+   * The rule above this interface says what a check cannot judge is disclosed
+   * once and never per item. `src/cli/commands/doctor.ts` finished the other
+   * half — owner, 2026-09-03: *"after you complete handling them, the test
+   * should be that they will not be listed anymore at doctor list"* — because a
+   * row saying "nothing is owed" is still a row he has to read and dismiss.
+   * `partitionFindings` routes anything carrying this out of the worklist and
+   * under its own heading, where every character still prints and none of it is
+   * counted as work.
+   *
+   * It names the CHECK rather than saying "this is a note", because a reader
+   * meeting the sentence needs to know a note about WHAT: it is drawn under the
+   * table whose reach it limits. `state_audit_coverage` is
+   * `about: 'state_unaudited'`; `citation_form_excused` is
+   * `about: 'citation_form'`.
+   *
+   * Absent, never `false`, on an ordinary finding — the same choice
+   * `acknowledged` makes one field up, so a consumer can tell "not a
+   * disclosure" from a field that was never populated. `doctor.ts` reads it
+   * through `disclosureAbout`, which was written as a runtime test on an
+   * optional string precisely so this declaration could land later without a
+   * second edit there; its docblock names the `as` cast that is now redundant.
+   */
+  about?: string;
 
   /**
    * **What settles this finding**, declared by the check that emits it and
@@ -1334,13 +1409,57 @@ const STATE_AUDITED_FIELD = `${EXTRA_AUDITED_FIELD}.${STATE_FIELD}`;
  *    so the file cannot lie about its own history). Neither says WHICH field
  *    moved, and the finding does not pretend otherwise.
  *
+ * **THE CUTOFF: an item born before the witness is UNMEASURABLE, and is
+ * counted rather than accused.** This is the rule at the top of this file
+ * applied to the one check that broke it, and it is the change of 2026-09-03.
+ *
+ * The predicate is exact: **the item's own `create` record carries
+ * `checksumAfter`** — that is, the item was born after `persist`'s write-time
+ * witness shipped. `checksumAfter` is stamped by `persist` on every write that
+ * touches an item file (core/persist.ts), so its presence on a record is the
+ * signature of the witness and `audit.ts` already rules what its absence
+ * means: *"on a record without `checksumAfter`, absence is UNMEASURED and must
+ * never be read as 'no divergence'"*. An item born under the witness has been
+ * watched for its whole life, so a hand edit anywhere in it leaves something:
+ * the write that overwrote it RECORDED the divergence it found, a `repair`
+ * that re-stamped it left a checksum the log disagrees with, and one still
+ * standing is red under the checksum check today. An item born before it has a
+ * stretch of life nobody measured, and a hand edit inside that stretch was
+ * erased by the next ordinary write with nothing recorded anywhere. **No
+ * command can retro-fit that evidence and there must not be one.**
+ *
+ * So the question this check asks has no answer on such an item, and asking a
+ * person to RULE on it is asking them to guess. Measured on this repository on
+ * 2026-09-03: the witness's first record is `2026-09-03T10:18:56Z`, the log
+ * reaches back to 2026-08-17, and all 24 of the items this check was reporting
+ * had zero witnessed writes — every one of them unanswerable, which is why the
+ * count could only ever erode by accident.
+ *
+ * **Why the CREATE record and not "any record".** An item created before the
+ * witness and written after it is still dark over the stretch between the two,
+ * and a bypass inside that stretch is just as gone. Keying on the create
+ * record is also the only spelling that cannot erode: a create record is
+ * written once and never rewritten, so membership of the measurable set is
+ * FIXED at birth. Keying on "any record carries a stamp" would have let an
+ * ordinary unrelated edit move an item into the reported set, which is the
+ * same accident-driven drift in the opposite direction.
+ *
+ * **The loud half is untouched, and it is deliberately checked FIRST.**
+ * Positive divergence evidence — a recorded `diverged`, or a newest
+ * `checksumAfter` the file disagrees with — is reported per item whatever the
+ * item's birth, because it is a measurement and not an inference from silence.
+ * A bypass from now on is caught by name.
+ *
  * **Items the log never saw are named as unmeasured, not counted as clean**
  * (`STD-a-measured-zero-is-drawn-and-named`, clause 2). A task with no
  * `create` record anywhere in the log — an imported pack, a corpus copied
  * without `.audit/`, a segment archived by its owner — has a life this log
  * cannot describe, and reporting it would be accusing an item of a bypass
  * nothing here could check for. Those are skipped and COUNTED, and the count
- * is emitted as its own finding whenever it is non-zero.
+ * is emitted as its own finding whenever it is non-zero. The pre-witness set
+ * is the second population of exactly the same kind and is emitted the same
+ * way, as its own line under the same `state_audit_coverage` code: two facts,
+ * two sentences, two remedies, and never a row per item.
  *
  * The zero case stays silent, which is doctor's own convention rather than a
  * departure from that standard: `checkCitationForm`, `checkAuditSize` and
@@ -1358,12 +1477,18 @@ const STATE_AUDITED_FIELD = `${EXTRA_AUDITED_FIELD}.${STATE_FIELD}`;
  * matters, and no cheaper answer exists — the question is about the ABSENCE of
  * a record, which cannot be answered from a bounded tail.
  *
- * **`info`, deliberately, and `citation_form` is the precedent.** 28 findings
- * exist the moment this ships, every one of them about history nobody can now
- * reconstruct. A check that turns a corpus amber or red on arrival for
- * historical reasons is a check people switch off, and the value here is not
- * a defect in the product: it is a question about provenance that a person
- * answers once per item and that stays visible and countable until they do.
+ * **`info`, deliberately, and `citation_form` is the precedent.** The original
+ * reason was volume — 28 findings existed the moment this shipped, and a check
+ * that turns a corpus amber on arrival for historical reasons is a check
+ * people switch off. The cutoff above retires that reason: zero per-item
+ * findings remain on this corpus. The level does not change with it, on the
+ * standing reason rather than the retired one — what is reported is a question
+ * about PROVENANCE that a person answers once per item, not a fault in the
+ * product's own state, and doctor's exit code is reserved for the second.
+ * `acknowledge` remains its remedy for the same reason and only now honestly:
+ * every finding still emitted asks a question whose evidence is in the log the
+ * reader can go and read, so the ruling it asks for is one they can actually
+ * make.
  */
 export function checkStateUnaudited(root: string, items: Item[], config: Config): Finding[] {
   const closed = workItems(items, config).filter((i) => taskState(i) === DONE_STATE);
@@ -1380,6 +1505,7 @@ export function checkStateUnaudited(root: string, items: Item[], config: Config)
     // maximal case of the thing this check reports anyway — it could not look.
     return [{
       level: 'info', code: 'state_audit_coverage',
+      about: 'state_unaudited',
       remedy: PERSON,
       message:
         `${closed.length} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and none of them has ` +
@@ -1390,13 +1516,16 @@ export function checkStateUnaudited(root: string, items: Item[], config: Config)
     }];
   }
 
-  // Five facts per item and nothing else: was its creation recorded here at
-  // all; did any recorded write name `state` itself; did any record name the
-  // whole `extra` bag coarsely (a write from before the widening, which is
+  // Six facts per item and nothing else: was its creation recorded here at
+  // all; was that creation WITNESSED (its record carries `checksumAfter`, the
+  // signature of `persist`'s write-time guard — see the cutoff in the
+  // docblock); did any recorded write name `state` itself; did any record name
+  // the whole `extra` bag coarsely (a write from before the widening, which is
   // unmeasured for `state` rather than evidence about it); did any write
   // OBSERVE the file diverging under it; and what did the last recorded write
   // stamp on it.
   const created = new Set<string>();
+  const bornWitnessed = new Set<string>();
   const laterWrites = new Map<string, number>();
   const movedState = new Set<string>();
   const movedExtraCoarsely = new Set<string>();
@@ -1406,8 +1535,15 @@ export function checkStateUnaudited(root: string, items: Item[], config: Config)
     if (record.kind !== 'mutation') continue;
     const id = record.itemId;
     if (typeof id !== 'string' || id === '') continue;
-    if (record.op === 'create') created.add(id);
-    else laterWrites.set(id, (laterWrites.get(id) ?? 0) + 1);
+    if (record.op === 'create') {
+      created.add(id);
+      // The cutoff, read off the record rather than off a date: a `create`
+      // carrying the guard's stamp is an item born under the witness, and
+      // every write of its life since has been measured.
+      if (typeof record.checksumAfter === 'string' && record.checksumAfter !== '') {
+        bornWitnessed.add(id);
+      }
+    } else laterWrites.set(id, (laterWrites.get(id) ?? 0) + 1);
     if (Array.isArray(record.fields)) {
       if (record.fields.includes(STATE_AUDITED_FIELD)) movedState.add(id);
       if (record.fields.includes(EXTRA_AUDITED_FIELD)) movedExtraCoarsely.add(id);
@@ -1423,6 +1559,7 @@ export function checkStateUnaudited(root: string, items: Item[], config: Config)
 
   const findings: Finding[] = [];
   let unseen = 0;
+  let unwitnessed = 0;
   for (const item of closed) {
     if (!created.has(item.id)) { unseen++; continue; }
     // A record that named `state` itself settles the question: a recorded
@@ -1454,6 +1591,16 @@ export function checkStateUnaudited(root: string, items: Item[], config: Config)
     // that credit: an old coarse record cannot excuse a file the log actually
     // saw move.
     if (divergence === '' && movedExtraCoarsely.has(item.id)) continue;
+
+    // THE CUTOFF. With no positive evidence left, all this check has is the
+    // ABSENCE of a record — and an absence is only evidence where something
+    // was watching. An item born before `persist`'s witness has a stretch of
+    // life nobody measured; a hand edit inside it was erased by the next
+    // ordinary write with nothing recorded, and no command can retro-fit that.
+    // A person asked to rule on it would be guessing, so it is COUNTED as
+    // unmeasurable and reported once, below, rather than as a row of its own.
+    // See the docblock, and the rule at the top of this file.
+    if (divergence === '' && !bornWitnessed.has(item.id)) { unwitnessed++; continue; }
 
     const later = laterWrites.get(item.id) ?? 0;
     findings.push({
@@ -1492,6 +1639,7 @@ export function checkStateUnaudited(root: string, items: Item[], config: Config)
   if (unseen > 0) {
     findings.push({
       level: 'info', code: 'state_audit_coverage',
+      about: 'state_unaudited',
       remedy: AUDIT_FILES,
       message:
         `${unseen} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and have no \`create\` record ` +
@@ -1502,6 +1650,32 @@ export function checkStateUnaudited(root: string, items: Item[], config: Config)
         `leaves no trace of its own capture, and an item whose life this log never saw must not ` +
         `be accused of a bypass nothing here can check for. \`mycontext audit --files\` names ` +
         `the segments that do survive, and how far back they reach.`,
+    });
+  }
+
+  if (unwitnessed > 0) {
+    findings.push({
+      level: 'info', code: 'state_audit_coverage',
+      about: 'state_unaudited',
+      // NOTHING, and it is the whole point of this line. There is no command,
+      // and there is no ruling to ask for either: `acknowledge` on a question
+      // whose evidence was never recorded asks a person to certify a guess.
+      // The set shrinks on its own as items created under the witness replace
+      // the ones created before it — which is repair by turnover, not by
+      // accident, because nothing an unrelated edit does can move an item into
+      // or out of it.
+      remedy: NOTHING,
+      message:
+        `${unwitnessed} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and were CREATED before ` +
+        `this workspace began recording what each write found on disk, so \`state_unaudited\` ` +
+        `cannot measure them and does not report them one by one. That is an UNMEASURED set ` +
+        `and not a clean one: nothing is being asserted about these items in either direction. ` +
+        `The reason it is stated once here rather than as ${unwitnessed} finding(s) is that ` +
+        `there is no answer to give — a write that bypassed the product before the guard ` +
+        `existed was erased by the next ordinary write, the evidence is not recoverable, and ` +
+        `no command can retro-fit it. Nothing is owed on this line and this set can only ` +
+        `shrink: every task created from now on is watched for its whole life, and a bypass on ` +
+        `one is reported against that item by name.`,
     });
   }
   return findings;
@@ -2307,6 +2481,107 @@ const UNFINISHED_TAIL = /(?::|[^.!?)\]"'*_|\u00bb\u201d\u2019\u2026])$/u;
 const BARE_POINTER = /`?([A-Za-z0-9_.\-/@]+\.(?:ts|js|mjs|cjs|md|json|html|css)):\d+(?:[-,]\d+)*`?/g;
 
 /**
+ * **The `historical-citation` marker, which this project already ships and
+ * `scripts/verify-citations.ts` already honours. Copied, not invented.**
+ *
+ * The spelling is NOT written out here, and that is the same refusal
+ * `checkCitationForm`'s own message makes one screen down about the citation
+ * form: a real marker written into this file would be read as one by the gate
+ * that walks `src/`, and a marker that excuses nothing is a fault there — so a
+ * specimen printed here would manufacture the defect it describes. The two
+ * regexes below ARE the spelling, exactly; `scripts/verify-citations.ts` writes
+ * it out properly in its own header, where it is exempt for this reason.
+ *
+ * Three items in this corpus hold sixteen bare pointers that must never be
+ * converted, because the sentence they sit in is ABOUT the pointer: a stale
+ * citation quoted so it can be named as stale, a measured count of what the
+ * corpus contained, a doctor message reproduced verbatim. Converting one of
+ * those to the fragment form does not repair a citation — it falsifies a
+ * quotation. Left alone they fire `citation_form` forever, and a finding
+ * nobody can ever clear is the shape `state_unaudited` was just narrowed to
+ * stop producing: noise wearing work's clothes.
+ *
+ * **`acknowledge` is the wrong SHAPE here, not the wrong strength.** An `ack`
+ * records only *a person read this*, and it anchors on the content hash — so
+ * every future edit to the item lapses it and reopens sixteen findings the
+ * next reader has to re-derive as fine. The claim actually being made is
+ * different and durable: *this pointer is a quotation, not a citation.* That
+ * is a claim about the text, so it belongs IN the text, on the line it governs.
+ *
+ * **The same marker, deliberately, and not a second spelling of it.** The
+ * escape `verify-citations.ts` grants a plan is the escape this check grants an
+ * item, word for word: one vocabulary, a claim a person signs with a stated
+ * reason, scoped to the line it sits on and nothing wider. A reader who has
+ * learned the marker in a plan does not learn it twice, and a second noun would
+ * be a second thing to get subtly wrong. Its docblock argues the line scope out
+ * in full and every word of it holds here: a section- or item-level fence grows
+ * its blast radius in silence and can never go stale, where a line-scoped one
+ * has to keep earning itself.
+ *
+ * **TWO regexes rather than one, and that is the point of them** — the same
+ * two, for the same reason. `OPEN` finds anything that was TRYING to be a
+ * marker; `FULL` decides whether it managed it. A single strict pattern would
+ * let a marker whose keyword is pluralised, or whose reason is missing, or
+ * whose close ran onto the next line, fall
+ * through as "no marker here" — leaving the author staring at a pointer they
+ * believe they excused and a check that never mentions the thing they wrote.
+ * Without this half the mechanism decays into a blanket suppressor, which is
+ * exactly what `SOURCE_EXEMPT` refuses to become over in the script.
+ */
+const MARKER_OPEN = /<!--[ \t]*historical-citation/g;
+const MARKER_FULL = /^<!--[ \t]*historical-citation[ \t]*:[ \t]*(\S.*?)[ \t]*-->/;
+
+/** One body line's markers: the reason it excuses by, and what it got wrong. */
+interface MarkerRead {
+  /** The reason of the ONE honoured marker on this line, or `null` if none. */
+  reason: string | null;
+  /** The line with every honoured marker removed, so rule 1 cannot be gamed. */
+  stripped: string;
+  /** Why each marker on this line is not doing the job markers exist to do. */
+  faults: string[];
+}
+
+/**
+ * Every attempt at the marker on one body line, sorted into the one this check
+ * will honour and the ones it refuses to.
+ *
+ * A SECOND marker on a line is a fault rather than a redundancy — one marker
+ * already covers the whole line, so a second can only mean its author thought
+ * markers attach to individual pointers, and someone who believes that will
+ * eventually leave one attached to nothing.
+ *
+ * A malformed marker is reported AND leaves the pointers on its line judged as
+ * normal: a mangled marker fails twice rather than swallowing once.
+ */
+function readMarkers(line: string): MarkerRead {
+  MARKER_OPEN.lastIndex = 0;
+  let reason: string | null = null;
+  let stripped = line;
+  const faults: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = MARKER_OPEN.exec(line)) !== null) {
+    const full = MARKER_FULL.exec(line.slice(m.index));
+    if (full === null) {
+      // `MARKER_OPEN` has already advanced `lastIndex` past its own match, so
+      // the loop makes progress without touching it here.
+      faults.push(
+        'malformed — an HTML comment opening on the `historical-citation` keyword, spelled ' +
+        'exactly, then a colon, then a reason, then the comment closed on the same line',
+      );
+      continue;
+    }
+    MARKER_OPEN.lastIndex = m.index + full[0]!.length;
+    if (reason === null) {
+      reason = full[1]!;
+      stripped = stripped.replace(full[0]!, '');
+      continue;
+    }
+    faults.push('a second marker on one line — one marker already covers every pointer on the line');
+  }
+  return { reason, stripped, faults };
+}
+
+/**
  * **A line number is not a citation, and this is the only place that says so
  * where the writing happens.**
  *
@@ -2339,6 +2614,46 @@ const BARE_POINTER = /`?([A-Za-z0-9_.\-/@]+\.(?:ts|js|mjs|cjs|md|json|html|css))
  * often an EXAMPLE of the form (`file.ts:123`, written to describe it) than a
  * citation of anything. Reporting the example as the fault it documents is how
  * a check earns itself a permanent finding nobody can clear.
+ *
+ * **AN ITEM MAY DECLARE A SPAN EXEMPT, and the count is drawn rather than
+ * hidden.** See `MARKER_OPEN` above for the marker, why it is the one
+ * `verify-citations.ts` already honours rather than a second spelling, and why
+ * `acknowledge` is the wrong shape for the claim. Three rules keep it from
+ * becoming a suppressor, and they are the script's three rules:
+ *
+ *   1. **It must excuse something.** A marker on a line carrying no bare
+ *      pointer this check would have reported is itself a fault. It cannot be
+ *      pre-armed against a pointer somebody might write later, and one left
+ *      behind after the pointer is converted turns red rather than sitting
+ *      there ready to hide the next one underneath itself. The line is read
+ *      with the marker's own text REMOVED first, so a pointer written inside a
+ *      reason cannot be the thing the marker claims to excuse.
+ *   2. **It must be well formed.** Missing reason, missing colon, misspelled
+ *      or unterminated is reported AND leaves the pointers on its line judged
+ *      as normal — a mangled marker fails twice rather than swallowing once.
+ *   3. **It excuses only what this check would otherwise REPORT** — a pointer
+ *      whose file this repository has. A pointer naming no file here is already
+ *      read as an example of the form and needs no excuse, so a marker cannot
+ *      borrow one to satisfy rule 1.
+ *
+ * **The excused count is a DISCLOSURE and never a finding**, emitted once under
+ * `citation_form_excused` with `remedy: none/nothing` and naming no item —
+ * `state_audit_coverage`'s shape exactly. An excused span is not UNMEASURED:
+ * it was measured and then RULED, in writing, by the person who wrote the
+ * reason, so there is nothing left for a reader to do and nothing to
+ * acknowledge. But it must still be counted where a person reads it, because
+ * an exemption that leaves no trace is precisely the silent drop
+ * `INV-nothing-is-dropped-silently` forbids, and a measured number is drawn
+ * and named (`STD-a-measured-zero-is-drawn-and-named`). Zero excused spans
+ * stay silent, which is doctor's own convention rather than a departure from
+ * that standard — no per-check green is printed here for a reader to misread.
+ *
+ * **A marker fault IS a finding, at `warn`**, one row per item listing every
+ * broken marker in it by body line. It is louder than the `info` it failed to
+ * excuse on purpose: a marker that is not working is the only thing standing
+ * between this exception and a blanket suppressor, and it is repairable by
+ * hand in the body — which is exactly the question `ack` exists to let a person
+ * answer if they disagree.
  */
 export function checkCitationForm(repoRoot: string, items: Item[]): Finding[] {
   const findings: Finding[] = [];
@@ -2347,15 +2662,65 @@ export function checkCitationForm(repoRoot: string, items: Item[]): Finding[] {
     known.add(rel);
     known.add(rel.slice(rel.lastIndexOf('/') + 1));
   }
+  let excusedSpans = 0;
+  let excusedItems = 0;
   for (const item of items) {
     if (item.layer !== 'project') continue;
     const found: string[] = [];
-    BARE_POINTER.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = BARE_POINTER.exec(item.body)) !== null) {
-      const cited = m[1]!;
-      if (!known.has(cited) && !known.has(cited.slice(cited.lastIndexOf('/') + 1))) continue;
-      found.push(m[0].replace(/`/g, ''));
+    const markerFaults: string[] = [];
+    let excusedHere = 0;
+    // Line at a time, because one line is the marker's entire scope. Nothing
+    // here joins or wraps: an item body is Markdown, and a pointer and the
+    // marker that excuses it could always have been written on one line.
+    const lines = item.body.split('\n');
+    for (let n = 0; n < lines.length; n++) {
+      const { reason, stripped, faults } = readMarkers(lines[n]!);
+      for (const why of faults) markerFaults.push(`body line ${n + 1}: ${why}`);
+      const here: string[] = [];
+      BARE_POINTER.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = BARE_POINTER.exec(reason === null ? lines[n]! : stripped)) !== null) {
+        const cited = m[1]!;
+        if (!known.has(cited) && !known.has(cited.slice(cited.lastIndexOf('/') + 1))) continue;
+        here.push(m[0].replace(/`/g, ''));
+      }
+      if (reason === null) {
+        found.push(...here);
+        continue;
+      }
+      if (here.length === 0) {
+        markerFaults.push(
+          `body line ${n + 1}: excuses nothing — this line carries no bare pointer this check ` +
+          'would have reported, so the marker is either pre-armed against one nobody has ' +
+          'written, or left behind after the pointer it excused was converted',
+        );
+        continue;
+      }
+      excusedHere += here.length;
+    }
+    if (excusedHere > 0) {
+      excusedSpans += excusedHere;
+      excusedItems++;
+    }
+    if (markerFaults.length > 0) {
+      findings.push({
+        level: 'warn', code: 'citation_marker', item: item.id,
+        remedy: ACK,
+        message:
+          `${markerFaults.length} \`historical-citation\` marker(s) in this body are not doing ` +
+          `the job the marker exists to do — ${markerFaults.join('; ')}. The marker says a ` +
+          `pointer on its line is a QUOTATION rather than a citation, so \`citation_form\` must ` +
+          `not count it; a marker that is malformed, doubled, or excusing nothing is reported ` +
+          `here rather than silently obeyed, because a marker obeyed without being read is a ` +
+          `blanket suppressor with extra steps. The pointers on a malformed marker's line are ` +
+          `judged as normal in the same run, so a mangled marker fails twice rather than ` +
+          `swallowing once. Write it on the line the pointer sits on, with a reason that says ` +
+          `why THIS pointer is a quotation, or delete it. (The spelling is not printed here for ` +
+          `the reason \`citation_form\` does not print the citation form: a real marker in this ` +
+          `string would be read as one where this message is written. ` +
+          `\`scripts/verify-citations.ts\` writes it out properly in its header, and honours the ` +
+          `identical marker under the identical rules in plans and specs.)`,
+      });
     }
     if (found.length === 0) continue;
     const shown = found.slice(0, 3).join(', ');
@@ -2376,6 +2741,35 @@ export function checkCitationForm(repoRoot: string, items: Item[]): Finding[] {
         `never on user-facing copy. Where the fragment itself contains backticks, use a ` +
         `double-backtick span, or the span ends early and the rest of the citation is read as ` +
         `prose. If the cited code is gone, say so — do not repoint to something plausible.`,
+    });
+  }
+  // One line, whatever the number, naming no item and asking for nothing —
+  // `state_audit_coverage`'s shape. This is not an unmeasured set: every span
+  // counted here was measured and then RULED, in writing, on the line it sits
+  // on. What the line exists to prevent is the other failure — an exemption
+  // that leaves no trace, which is the silent drop the invariant forbids.
+  if (excusedSpans > 0) {
+    findings.push({
+      level: 'info', code: 'citation_form_excused',
+      // A note about `citation_form`'s own reach, not a row of work — so it
+      // prints under its own heading and is not counted among the things a
+      // reader has to do. See `Finding.about`.
+      about: 'citation_form',
+      remedy: NOTHING,
+      message:
+        `${excusedSpans} bare pointer(s) across ${excusedItems} item(s) are excused as SPECIMENS ` +
+        `and are not counted above: each sits on a line carrying a \`historical-citation\` ` +
+        `marker, which says the sentence is ABOUT the pointer — a ` +
+        `stale citation quoted so it can be named as stale, a measured count of what the corpus ` +
+        `held, a doctor message reproduced verbatim. Converting one of those to the fragment ` +
+        `form would not repair a citation; it would falsify a quotation. Nothing is owed on this ` +
+        `line: the ruling is already made, in writing, by the person who wrote the reason, and ` +
+        `each marker governs one line and no more. It is drawn rather than left silent because ` +
+        `an exemption that leaves no trace is the silent drop ` +
+        `\`INV-nothing-is-dropped-silently\` forbids, and because a measured number is drawn and ` +
+        `named. The reasons are in the item bodies beside the pointers they excuse; a marker ` +
+        `that is malformed, doubled or excusing nothing is reported as \`citation_marker\` ` +
+        `instead of being obeyed.`,
     });
   }
   return findings;
@@ -2696,6 +3090,7 @@ export function checkBodyAgreement(items: Item[], config: Config): Finding[] {
   if (findings.length > 0) {
     findings.push({
       level: 'info', code: 'body_review_limits',
+      about: 'body_disagrees_with_meta',
       remedy: NOTHING,
       message:
         `the ${findings.length} finding(s) above, out of ${items.length} item(s) read, are a ` +

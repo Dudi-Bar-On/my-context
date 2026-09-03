@@ -322,14 +322,37 @@ const SOURCE_ROOTS = ['src', 'test', 'scripts', 'e2e'];
  * a good specimen — so the list is EXACT PATHS. Not a glob, which would swallow
  * the next real test file to appear beside them; not a suppression comment,
  * which would let any file opt itself out and turn this exemption into the
- * blanket suppressor the marker rules exist to prevent. Three paths, named, and
+ * blanket suppressor the marker rules exist to prevent. Four paths, named, and
  * `citations-in-source.test.ts` plants a defect in a file OUTSIDE the list and
  * proves it is still reported.
+ *
+ * **THE FOURTH, 2026-09-03: the marker crossed into the corpus, and its test
+ * writes markers for a living.** `checkCitationForm` (`src/doctor/checks.ts`)
+ * now honours this exact marker inside an item body, under these exact rules,
+ * so that three items whose sentences are ABOUT a bare pointer can say so
+ * rather than carrying a finding nobody can ever clear.
+ * `test/doctor/citation-form.test.ts` is the analogue of
+ * `verify-citations.test.ts` one directory over: nineteen markers, several of
+ * them deliberately malformed, because a test that a broken marker is REPORTED
+ * has to contain a broken marker. Walked like ordinary source it reported
+ * nineteen faults against text doing its job, and its one citation is itself a
+ * fixture specimen of the three-part form.
+ *
+ * **`src/doctor/checks.ts` is deliberately NOT here**, and that is the more
+ * interesting half. It documents the marker and it teaches the marker in the
+ * text of two findings, so the obvious move was to exempt it too — a
+ * three-thousand-line file that other lanes cite from, quietly leaving the
+ * gate to buy six specimen faults. It took the other answer instead, the one
+ * `checkCitationForm`'s own message has taken all along about the citation
+ * form: **do not print the specimen, point at the file that prints it
+ * properly.** That file is this one, which is exempt for this reason. The
+ * result is zero faults there, full coverage kept, and one canonical spelling.
  */
 const SOURCE_EXEMPT = new Set([
   'scripts/verify-citations.ts',
   'test/scripts/verify-citations.test.ts',
   'test/scripts/citations-in-source.test.ts',
+  'test/doctor/citation-form.test.ts',
 ]);
 
 /** Where a bare `select.ts` may be resolved from, in priority order. */

@@ -62,15 +62,38 @@ function withRoot(records: AuditInput[], fn: (corpus: string) => void): void {
   }
 }
 
+/**
+ * A `create` from BEFORE `persist`'s write-time witness shipped — no
+ * `checksumAfter`, which is every create record in every log written until
+ * 2026-09-03. An item born here is UNMEASURABLE for this check: the stretch of
+ * its life nobody watched could hold a hand edit that the next ordinary write
+ * erased, and no command can retro-fit that evidence.
+ */
 const created = (itemId: string): AuditInput => (
   { kind: 'mutation', op: 'create', origin: 'human', itemId }
+);
+
+/**
+ * A `create` from AFTER the witness shipped — the cutoff this check now keys
+ * on. Every write of this item's life has been measured, so an absence in the
+ * log is evidence about it and a person asked to rule on that absence has
+ * something to rule on.
+ *
+ * The stamp is `'x'` — the checksum `task()` above gives every fixture item —
+ * so a `born` item AGREES with its own newest record. That is the honest
+ * baseline: these fixtures exercise the SILENCE path, and a stamp that
+ * disagreed would hand every one of them positive divergence evidence and
+ * quietly test a different branch.
+ */
+const born = (itemId: string): AuditInput => (
+  { kind: 'mutation', op: 'create', origin: 'human', itemId, checksumAfter: 'x' }
 );
 const updated = (itemId: string, fields: string[]): AuditInput => (
   { kind: 'mutation', op: 'update', origin: 'human', itemId, fields }
 );
 
 test('a done task whose state never moved through a recorded write is reported', () => {
-  withRoot([created('TASK-a'), updated('TASK-a', ['summary'])], (corpus) => {
+  withRoot([born('TASK-a'), updated('TASK-a', ['summary'])], (corpus) => {
     const findings = checkStateUnaudited(corpus, [task('TASK-a', { state: 'done' })], CONFIG);
     assert.equal(findings.length, 1);
     const [finding] = findings;
@@ -104,7 +127,7 @@ test('an unrelated extra edit no longer credits an item whose state never moved'
   // these writes, so a `priority` edit through the product credited an item
   // whose `state` was written by hand. At `extra.<key>` resolution the two are
   // different records and this item is reported.
-  withRoot([created('TASK-a'), updated('TASK-a', ['extra.priority'])], (corpus) => {
+  withRoot([born('TASK-a'), updated('TASK-a', ['extra.priority'])], (corpus) => {
     const findings = checkStateUnaudited(corpus, [task('TASK-a', { state: 'done' })], CONFIG);
     assert.equal(findings.length, 1);
     assert.equal(findings[0]!.code, 'state_unaudited');
@@ -177,7 +200,7 @@ test('a stamp that still agrees with the file is not reported as a divergence', 
   // first: every item my_context itself last wrote agrees with its own newest
   // record, so this must draw nothing extra on any of them.
   withRoot([
-    created('TASK-a'),
+    born('TASK-a'),
     {
       kind: 'mutation', op: 'update', origin: 'human', itemId: 'TASK-a',
       fields: ['title'], checksumAfter: 'x',
@@ -191,20 +214,125 @@ test('a stamp that still agrees with the file is not reported as a divergence', 
   });
 });
 
-test('records written before this shipped carry no stamp, and absence stays UNMEASURED', () => {
-  // A record with neither `checksumAfter` nor `diverged` is every record in
-  // every log that exists today. It must not be read as "measured and clean":
-  // the check falls back to the absence reading it always used, and says so.
+/**
+ * **THE CUTOFF, and the reason this check stopped asking people to rule on
+ * questions with no answer.**
+ *
+ * An item born before `persist`'s write-time witness has a stretch of life
+ * nobody measured. A hand edit inside it was erased by the next ordinary write
+ * with nothing recorded anywhere, so no command can retro-fit the evidence and
+ * there must not be one — and an `ack` on it certifies a guess. On this
+ * repository that was all 24 of the findings this check was drawing.
+ *
+ * It is UNMEASURED, which is a fact and is reported as one — once, as a
+ * coverage line, exactly as a corpus with no audit log already was.
+ */
+test('an item born before the witness is counted as unmeasurable, never accused', () => {
   withRoot([created('TASK-a'), updated('TASK-a', ['title'])], (corpus) => {
     const findings = checkStateUnaudited(corpus, [task('TASK-a', { state: 'done' })], CONFIG);
     assert.equal(findings.length, 1);
-    assert.doesNotMatch(findings[0]!.message, /RECORDS/);
-    assert.match(findings[0]!.message, /cannot choose between them/);
+    const [note] = findings;
+    assert.equal(note!.code, 'state_audit_coverage');
+    assert.equal(note!.level, 'info');
+    // NEVER a row against the item: that is the whole change.
+    assert.equal(note!.item, undefined);
+    assert.match(note!.message, /1 task\(s\)/);
+    assert.match(note!.message, /CREATED before/);
+    assert.match(note!.message, /UNMEASURED set/);
+    // And no ruling is asked for. `acknowledge` on an unanswerable question is
+    // the shape the owner objected to; this line asks for nothing at all.
+    assert.deepEqual(note!.remedy, { route: 'none', why: 'nothing' });
+    assert.doesNotMatch(note!.message, /mycontext ack/);
+  });
+});
+
+test('the unmeasurable set is counted, not listed, however many items are in it', () => {
+  // ONCE, not per item — the rule at the top of `checks.ts`. Three items, one
+  // line, and the line carries the count.
+  withRoot([created('TASK-a'), created('TASK-b'), created('TASK-c')], (corpus) => {
+    const items = ['TASK-a', 'TASK-b', 'TASK-c'].map((id) => task(id, { state: 'done' }));
+    const findings = checkStateUnaudited(corpus, items, CONFIG);
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0]!.code, 'state_audit_coverage');
+    assert.match(findings[0]!.message, /3 task\(s\)/);
+    assert.equal(findings.some((f) => f.item !== undefined), false);
+  });
+});
+
+test('membership of the unmeasurable set cannot be eroded by an unrelated later edit', () => {
+  // WHY THE PREDICATE IS THE `create` RECORD. The count on this corpus drifted
+  // 28 → 25 → 24 because ordinary edits credited items out of the check —
+  // repair by accident. A create record is written once and never rewritten,
+  // so a later write, witnessed or not, moves nothing: the item is unmeasurable
+  // before it and unmeasurable after it.
+  withRoot([
+    created('TASK-a'),
+    { kind: 'mutation', op: 'update', origin: 'human', itemId: 'TASK-a', fields: ['title'],
+      checksumAfter: 'x' },
+  ], (corpus) => {
+    const findings = checkStateUnaudited(corpus, [task('TASK-a', { state: 'done' })], CONFIG);
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0]!.code, 'state_audit_coverage');
+  });
+});
+
+test('THE LOUD HALF: recorded divergence is reported per item even on a pre-witness birth', () => {
+  // The cutoff narrows what an ABSENCE may be read to mean. It does not touch
+  // a measurement: a write that saw this file diverging under it recorded what
+  // it saw, and that is evidence about this item whenever it was born.
+  withRoot([
+    created('TASK-a'),
+    {
+      kind: 'mutation', op: 'update', origin: 'human', itemId: 'TASK-a',
+      fields: ['title'], checksumAfter: 'after-1',
+      diverged: { recorded: 'stamped-0', actual: 'hand-edited-0' },
+    },
+  ], (corpus) => {
+    const findings = checkStateUnaudited(corpus, [task('TASK-a', { state: 'done' })], CONFIG);
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0]!.code, 'state_unaudited');
+    assert.equal(findings[0]!.item, 'TASK-a');
+    assert.match(findings[0]!.message, /log RECORDS this item's file being changed outside/);
+    // And it is RULABLE: the evidence is in a log the reader can go and read.
+    assert.deepEqual(findings[0]!.remedy, { route: 'acknowledge' });
+  });
+});
+
+test('THE LOUD HALF: a stamp the file disagrees with is reported on a pre-witness birth too', () => {
+  // The other measurement — `mycontext repair` re-stamps and records nothing,
+  // so the log's newest stamp and the file's own checksum part company. Same
+  // rule: a measurement outranks the birth date.
+  withRoot([
+    created('TASK-a'),
+    { kind: 'mutation', op: 'update', origin: 'human', itemId: 'TASK-a', fields: ['title'],
+      checksumAfter: 'stamped-by-the-product' },
+  ], (corpus) => {
+    const item = { ...task('TASK-a', { state: 'done' }), checksum: 're-stamped-by-hand' };
+    const findings = checkStateUnaudited(corpus, [item], CONFIG);
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0]!.code, 'state_unaudited');
+    assert.match(findings[0]!.message, /against the LOG/);
+  });
+});
+
+test('the two unmeasured populations are two lines, and neither is ever per item', () => {
+  // A corpus can hold both at once: an item the log never saw at all, and an
+  // item it saw born before the witness. They are different facts with
+  // different remedies, so they are two sentences — and still never a row per
+  // item.
+  withRoot([created('TASK-a')], (corpus) => {
+    const items = [task('TASK-a', { state: 'done' }), task('TASK-imported', { state: 'done' })];
+    const findings = checkStateUnaudited(corpus, items, CONFIG);
+    assert.equal(findings.length, 2);
+    assert.equal(findings.every((f) => f.code === 'state_audit_coverage'), true);
+    assert.equal(findings.some((f) => f.item !== undefined), false);
+    assert.equal(findings.filter((f) => f.message.includes('no `create` record')).length, 1);
+    assert.equal(findings.filter((f) => f.message.includes('CREATED before')).length, 1);
   });
 });
 
 test('the message states the two readings and accuses neither', () => {
-  withRoot([created('TASK-a')], (corpus) => {
+  withRoot([born('TASK-a')], (corpus) => {
     const [finding] = checkStateUnaudited(corpus, [task('TASK-a', { state: 'done' })], CONFIG);
     const message = finding!.message;
     // Both readings, named, in the finding itself — a `create` record carries

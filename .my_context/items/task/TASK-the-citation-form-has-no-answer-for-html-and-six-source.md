@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: References into the design file are not checked at all, and six references into code are known broken; fix them and turn the check on.
-summary_of: d20be5a23ad70830
+summary_of: 71a4a4f055521a19
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: c2eb6e521c223c77
+checksum: 8002d0e0474f467e
 plan: rulings
 seq: "47"
 state: todo
@@ -63,7 +63,7 @@ RECOMMENDED, FOR THE DECISION TO ACCEPT OR REFUSE: that a fragment in an .html f
 and never visible copy, never prose inside an HTML or CSS comment, never a run of markup crossing sibling tags.
 The argument: strings-parity and styles-parity already hold the first two shapes byte-identical between the mockup and the app, so a citation of that shape breaks when a design decision changes and at no other time. And the corpus's own advice for .ts -- anchor on a key or an identifier, never on user-facing copy -- is the same rule, which this file needs MORE than src/ does because its copy is translated and repainted.
 
-AND THE STATUS CHANGE THE DECISION SHOULD WEIGH, which post-dates this task: DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap (2026-08-26) retired the app-to-mockup direction. The mockup is HISTORY and a gap list rather than a specification the app must equal. So one available answer -- possibly the right one -- is that a citation into it is a quotation of the past and takes `<!-- historical-citation: ... -->`, which the gate already honours and prints HIST for on every run, rather than a pointer to be re-anchored at all.
+AND THE STATUS CHANGE THE DECISION SHOULD WEIGH, which post-dates this task: DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap (2026-08-26) retired the app-to-mockup direction. The mockup is HISTORY and a gap list rather than a specification the app must equal. So one available answer -- possibly the right one -- is that a citation into it is a quotation of the past and takes a `historical-citation` marker, which the gate already honours and prints HIST for on every run, rather than a pointer to be re-anchored at all.
 
 The same text is recorded beside CITED_EXT in scripts/verify-citations.ts, marked there as not in force.
 

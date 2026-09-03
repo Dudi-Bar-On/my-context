@@ -5,8 +5,10 @@ title: "reconciliation batch 6: plan:config and plan:builder, fourteen open task
 status: active
 severity: soft
 always: false
-summary: A sixth batch of open work read, all of it genuinely unbuilt, plus a stale note telling every reader that something they need does not exist.
-summary_of: 6f2243ae2e48dceb
+summary: A sixth batch of open work read, all of it genuinely unbuilt at the time, and a stale note that had been telling readers a thing they needed did not exist.
+summary_of: 102f1cfcb6d26bb3
+summary_was:
+  - 2026-09-03 A sixth batch of open work read, all of it genuinely unbuilt, plus a stale note telling every reader that something they need does not exist.
 acknowledged:
   - citation_form@12ec69aaad230726
 scope: []
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: def940d854a845a7
+checksum: 2aaf40d014ecd2fe
 ---
 
 # reconciliation batch 6: plan:config and plan:builder, fourteen open tasks verdicted
@@ -30,7 +32,7 @@ plan:walk seq:23, 2026-08-25. ALL FOURTEEN STAND. Nothing closed, nothing supers
 
 THE FIFTH STALE BLOCKER, AND THE WORST. `plan:config seq:2` records itself BLOCKED ON `ctx.api` having no POST. `ctx.post` is built at `app.js` · `ctx.post` · ~28, exported at `app.js` · `ctx.post` · ~28, documented in the module header, and the task that delivered it (`plan:ui2 seq:15p`) is DONE. IT HAS ZERO CALLERS.
 
-AND THE REASON IT WENT UNNOTICED IS A COMMENT. `config.js:24-40` still tells every reader that the fetcher takes "no method, no body" and that POST support is "an app.js extension that plan-2 Task 12 adds and that app.js does not have today". A screen header instructing the next implementer that what they need does not exist. Every candidate-config preview on that screen is ABSENT rather than approximated on that basis. The comment must be corrected in the same commit as the first POST call.
+AND THE REASON IT WENT UNNOTICED IS A COMMENT. `config.js` · `no method, no body` · ~119 (corrected since) still tells every reader that the fetcher takes "no method, no body" and that POST support is "an app.js extension that plan-2 Task 12 adds and that app.js does not have today". A screen header instructing the next implementer that what they need does not exist. Every candidate-config preview on that screen is ABSENT rather than approximated on that basis. The comment must be corrected in the same commit as the first POST call.
 
 ONE PLAN KNEW AND THE OTHER DID NOT. `plan:builder seq:4`, written 2026-08-24, says in its own body: "ctx.post landed 2026-08-23, so the page can reach this". That is the argument for this reconciliation in one line -- the fact was IN the corpus, in a sibling plan, and no query would ever have joined them.
 

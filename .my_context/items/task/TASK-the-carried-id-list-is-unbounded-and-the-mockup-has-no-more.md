@@ -5,8 +5,10 @@ title: the carried id list is unbounded and the mockup has no more affordance fo
 status: active
 severity: soft
 always: false
-summary: A list of what a session inherited grows without limit and pushes everything else off screen; someone must decide whether to cap it.
-summary_of: bfa1242454339e31
+summary: A list of what a session inherited used to grow without limit and push everything else off screen; it is capped now.
+summary_of: cdb1675b8de11278
+summary_was:
+  - 2026-09-03 A list of what a session inherited grows without limit and pushes everything else off screen; someone must decide whether to cap it.
 acknowledged:
   - citation_form@51c0683c742376fa
 scope: []
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 9a5f5c614d7c117b
+checksum: 797abde85d80b16f
 state: done
 plan: screens
 seq: 1s-e
@@ -36,7 +38,7 @@ RECONCILED 2026-08-25 under plan:walk seq:23, against the precedence order.
 
 VERDICT: STANDS -- an owner ruling, not an implementation.
 
-It is now KNOWN to be the same code path plan:screens seq:1s-d and plan:walk seq:26 argue over: preview.js:552 loops every index line with carried === true and draws one block each, unbounded. On the fixture that loop draws nothing (IndexSummary.carried is null unless the event is session-start with a resolved root, `read-model.ts` · `ctx.carried = resolveCarry` · ~373), which is why the walk never saw the problem this task describes. On the OWNER S OWN CORPUS it draws nineteen to twenty-six, photographed.
+It is now KNOWN to be the same code path plan:screens seq:1s-d and plan:walk seq:26 argue over: `preview.js` · `if (indexLine.carried !== true) continue;` (gone 2026-09-03) loops every index line with carried === true and draws one block each, unbounded. On the fixture that loop draws nothing (IndexSummary.carried is null unless the event is session-start with a resolved root, `read-model.ts` · `ctx.carried = resolveCarry` · ~373), which is why the walk never saw the problem this task describes. On the OWNER S OWN CORPUS it draws nineteen to twenty-six, photographed.
 
 SO THE FIXTURE HIDES IT. That is worth saying plainly: this defect is invisible to every gate in the project and visible on the first real session. Dispatch it with seq:1s-d -- one ruling can answer both, since both ask what the block should say.
 

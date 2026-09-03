@@ -5,8 +5,10 @@ title: the status strip says the bridge is not installed without ever asking
 status: active
 severity: soft
 always: false
-summary: The strip tells everyone that a component is not installed without ever checking, including the people who installed it.
-summary_of: bb072681297f706d
+summary: The strip told everyone a component was not installed without ever checking, including the people who had installed it; it asks now.
+summary_of: 1ec003d247b9ff27
+summary_was:
+  - 2026-09-03 The strip tells everyone that a component is not installed without ever checking, including the people who installed it.
 acknowledged:
   - citation_form@8412e66d162efdb9
   - state_unaudited@8412e66d162efdb9
@@ -26,7 +28,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 385cc49098ac89b8
+checksum: 56697d4ac1045e06
 plan: walk
 seq: "29"
 state: done
@@ -38,7 +40,7 @@ source: "plan:walk seq:23, reconciliation of plan:port seq:6"
 
 FOUND 2026-08-25 by plan:walk seq:23, the reconciliation. Not previously recorded anywhere, and it is a defect rather than an absence.
 
-THE STRIP LIES, in the one place built to stop the product lying. `src/ui/public/app.js:736-738` appends `strip.ctx.noBridge` to the context group UNCONDITIONALLY, with no check of any kind. That string says: "showing only what mycontext injected -- that is all this number is. The status line bridge is not installed." Every user reads that sentence, including every user who has installed the bridge.
+THE STRIP LIES, in the one place built to stop the product lying. `src/ui/public/app.js` · `noBridge.append(...translate(table.strings, 'strip.ctx.noBridge'));` (gone 2026-09-03) appends `strip.ctx.noBridge` to the context group UNCONDITIONALLY, with no check of any kind. That string says: "showing only what mycontext injected -- that is all this number is. The status line bridge is not installed." Every user reads that sentence, including every user who has installed the bridge.
 
 IT WAS TRUE WHEN IT WAS WRITTEN. `plan:port seq:6` recorded the context group as honestly-absent and named its own unblocking condition in its body: "ui3 tasks 4 and 5 build the statusline, which is what would let the context group leave its noBridge state". BOTH ARE DONE. Nothing went back. That is the pattern `plan:walk seq:11` exists for -- a refusal naming its unblocking condition in a comment nothing checks.
 

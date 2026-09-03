@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The health report repeats the same long explanation with every finding, so the page is almost all one paragraph and tells you nothing.
-summary_of: 791adbc90c355c47
+summary_of: 22b9f11b068d27ec
 acknowledged:
   - body_disagrees_with_meta@9acbb023e1537a53
   - citation_form@9acbb023e1537a53
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: 6c74f4188cc3c567
+checksum: 3fe7afce6b64e25e
 plan: walk
 seq: "122"
 state: todo
@@ -47,7 +47,7 @@ source: owner report, 2026-08-31
 > The differing part is the whole finding:
 >
 >     3 citation(s) point by line number and carry no fragment
->     — injected.js:70, work.js:458, packs.js:522
+>     — injected.js:70, work.js:458, packs.js:522 <!-- historical-citation: a verbatim reproduction of the 99 characters a doctor finding actually printed, quoted to measure the message against the 945 identical ones around it; rewriting it would misquote the output -->
 >
 > **Ninety-one per cent of that screen is one paragraph printed sixty-one times.**
 >

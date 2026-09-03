@@ -100,6 +100,11 @@ interface DoctorModule {
   repairFor: (finding: Partial<Finding>) => Repair | null;
   cardCommands: (rows: Row[]) => Repair[];
   settleGroups: (findings: Partial<Finding>[]) => SettleGroup[];
+  disclosureAbout: (finding: Partial<Finding> | null) => string | null;
+  isDisclosure: (finding: Partial<Finding>) => boolean;
+  disclosureNotes: (
+    findings: Partial<Finding>[], level: string,
+  ) => Map<string, { code: string; messages: string[] }>;
   render: (root: unknown, ctx: unknown) => Promise<void>;
 }
 
@@ -1163,3 +1168,145 @@ test("the screen draws the shared note in the mockup's own disclosure, and keys 
       'the summary is unkeyed, or a slot is missing — an unsupplied {slot} throws at render '
       + 'time, and a shorthand `{ code }` is invisible to the scan that checks slots are passed');
   });
+
+/**
+ * ── A NOTE A CHECK MAKES ABOUT ITSELF IS NOT A ROW ─────────────────────────
+ *
+ * Owner, 2026-09-03: *"after you complete handling them, the test should be
+ * that they will not be listed anymore at doctor list"*, about three findings
+ * that name no item, carry `route: 'none'` and say in their own words that
+ * nothing is owed. The rule above `interface Finding` already made a check
+ * disclose what it cannot judge once rather than per item; what was left is
+ * that the disclosure was still COUNTED and DRAWN as work.
+ *
+ * `Finding.about` names the CHECK the note is about, and this screen routes it
+ * into the note mechanism it already had — `details.help` under that check's
+ * table — instead of into `<tbody>`. The tests below hold both halves: the note
+ * leaves the rows and the tally, and a real finding beside it does not.
+ */
+test('disclosureAbout reads the marker, and both spellings of absence agree', async () => {
+  const { disclosureAbout, isDisclosure } = await doctorModule();
+  assert.equal(disclosureAbout({ code: 'state_audit_coverage', about: 'state_unaudited' }),
+    'state_unaudited');
+  assert.equal(disclosureAbout({ code: 'dead_scope' }), null,
+    'a body from a build that predates the field omits it — the same case `cardRows` already '
+    + 'normalises `item` and `acknowledged` against');
+  assert.equal(disclosureAbout({ code: 'x', about: '' }), null,
+    'an empty `about` is a disclosure with no check to draw it under, which is worse than not '
+    + 'being one: the note would be filed under an empty heading');
+  assert.equal(isDisclosure({ code: 'x', about: 'y' }), true);
+  assert.equal(isDisclosure({ code: 'x' }), false);
+});
+
+test('disclosureNotes keys by the CHECK, filters by level, and keeps every message', async () => {
+  const { disclosureNotes } = await doctorModule();
+  const findings: Partial<Finding>[] = [
+    { level: 'info', code: 'state_audit_coverage', about: 'state_unaudited', message: 'unseen.' },
+    {
+      level: 'info', code: 'state_audit_coverage', about: 'state_unaudited',
+      message: 'unwitnessed.',
+    },
+    {
+      level: 'info', code: 'body_review_limits', about: 'body_disagrees_with_meta',
+      message: 'a floor, not a count.',
+    },
+    { level: 'warn', code: 'other_coverage', about: 'other_check', message: 'elsewhere.' },
+  ];
+
+  const info = disclosureNotes(findings, 'info');
+  assert.deepEqual([...info.keys()], ['state_unaudited', 'body_disagrees_with_meta'],
+    'the note is keyed by the check it is about, so it opens under the table whose reach it '
+    + 'limits — keyed by its own code it would sit under a heading with no rows and no context');
+  // Two facts under one code stay two paragraphs. `state_audit_coverage` speaks
+  // twice in a run that has both populations, and joining them would be the one
+  // lossy step in this screen.
+  assert.deepEqual(info.get('state_unaudited')!.messages, ['unseen.', 'unwitnessed.']);
+  assert.equal(info.get('state_unaudited')!.code, 'state_audit_coverage',
+    'the disclosure keeps its own code, because that is what a reader greps or pastes');
+
+  assert.deepEqual([...disclosureNotes(findings, 'warn').keys()], ['other_check'],
+    'a note is drawn in the card of the level its own finding declared');
+  assert.deepEqual([...disclosureNotes(findings, 'error').keys()], []);
+});
+
+/**
+ * **The partition survives, by subtraction from BOTH sides.**
+ *
+ * `the tally and the per-row disclosure read one decision, never two` above
+ * pins `chips + repairs + settle === findings` and says why: *"a row counted
+ * twice or not at all is the screen disagreeing with its own summary."* A
+ * disclosure draws no row at all, so leaving it in `findings` would put it in
+ * the denominator of a partition whose three terms all count rows — and
+ * `repairFor` would claim it as a chip, drawing "no automated repair" about a
+ * row nobody can see. It leaves the array before `repairTally` reads it, so
+ * every term shrinks together and the identity holds untouched.
+ */
+test('a disclosure is in none of the four tally figures, and the partition still closes',
+  async () => {
+    const { repairFor, isDisclosure } = await doctorModule();
+    const { repairTally } = await browserModule<TallyModule>('lib', 'viewmodel.js');
+    const served: Finding[] = [
+      {
+        level: 'warn', code: 'blocked_without_needs', message: 'm', item: 'TASK-a',
+        remedy: REMEDY.ACK,
+      },
+      { level: 'error', code: 'index_stale', message: 'm', remedy: REMEDY.REBUILD },
+      { level: 'info', code: 'nested_corpus', message: 'm', remedy: REMEDY.NOTHING },
+      {
+        level: 'info', code: 'state_audit_coverage', about: 'state_unaudited',
+        message: 'nothing is owed on this line.', remedy: REMEDY.NOTHING,
+      },
+    ];
+
+    // What `render` does, in the same two lines and the same order.
+    const disclosures = served.filter((f) => isDisclosure(f));
+    const findings = served.filter((f) => !isDisclosure(f));
+    assert.equal(disclosures.length, 1);
+
+    const tally = repairTally(findings);
+    assert.deepEqual(tally, { findings: 3, repairs: 1, settle: 1 },
+      'the note is not a finding, not a repair and not a ruling — and the three real ones '
+      + 'beside it are all still counted');
+    const chips = findings.filter((f) => repairFor(f) === null).length;
+    assert.equal(chips + tally.repairs + tally.settle, tally.findings,
+      'the partition the screen depends on must close over the array it actually draws');
+    assert.equal(repairFor(disclosures[0]!), null,
+      'and the note would have been counted as a chip, drawing "no automated repair" about '
+      + 'something that is not a row — which is why it must not reach this loop at all');
+  });
+
+test('the screen filters before it counts, groups and settles — not after', () => {
+  assert.ok(
+    /const disclosures = data\.findings\.filter\(\(f\) => isDisclosure\(f\)\);/.test(doctorSource)
+    && /const findings = data\.findings\.filter\(\(f\) => !isDisclosure\(f\)\);/.test(doctorSource),
+    'the split is not made off the served body, so the three consumers below can disagree');
+  // Anchored on the WHOLE statement, never on the call alone: `settleGroups`
+  // is DECLARED in this file as `export function settleGroups(findings)`, so a
+  // bare `/settleGroups\(findings\)/` matches the declaration and passes over a
+  // call site that was changed back to `data.findings`. Measured — that exact
+  // mutant survived this assertion before it was tightened.
+  assert.ok(/const tally = repairTally\(findings\);/.test(doctorSource),
+    'the tally reads the whole served body again, so a note is back in "findings:"');
+  assert.ok(/const groups = groupFindings\(findings\);/.test(doctorSource),
+    'the cards read the whole served body, so a note is back in the tbody as a row');
+  assert.ok(/const settlements = settleGroups\(findings\);/.test(doctorSource),
+    'the settlements read the whole served body — the drift a reader would see is a bulk '
+    + 'ruling offering to settle a note');
+  assert.equal(/\(data\.findings\)/.test(doctorSource), false,
+    'the served body is read once, by the two filters, and by nothing else');
+});
+
+test('the disclosure is drawn in the mockup own disclosure, keyed, with both codes', () => {
+  // `pane.append(…)` and not the call alone: a note that is BUILT and never
+  // appended draws nothing, and every character of the disclosure is lost with
+  // the screen still naming the function that would have drawn it. Measured —
+  // that mutant survived the looser assertion.
+  assert.ok(/pane\.append\(aboutNoteBlock\(ctx, check, note\)\);/.test(doctorSource),
+    'nothing draws the note, or it is built and dropped on the floor');
+  assert.ok(/ctx\.t\('doc\.about', \{ check: check, code: note\.code \}\)/.test(doctorSource),
+    'the summary is unkeyed, or a slot is missing — an unsupplied {slot} throws at render '
+    + 'time, and a shorthand `{ check }` is invisible to the scan that checks slots are passed');
+  assert.ok(/notes: disclosures\.length/.test(doctorSource),
+    'the fifth tally figure is gone, so the notes vanish from the summary with no count — '
+    + 'the silent drop INV-nothing-is-dropped-silently forbids and `acked` was added to avoid');
+});

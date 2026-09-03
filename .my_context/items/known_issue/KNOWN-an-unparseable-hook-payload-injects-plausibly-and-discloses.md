@@ -5,8 +5,10 @@ title: An unparseable hook payload injects plausibly and discloses nothing
 status: active
 severity: soft
 always: false
-summary: When the startup message cannot be read, the result still looks complete and normal while quietly losing the parts that decide what is delivered.
-summary_of: 1d590c67ad6f90fb
+summary: An unreadable start-up message used to pass as a normal one; it now says plainly that it could not be read.
+summary_of: 655bd86a15eeec82
+summary_was:
+  - 2026-09-03 When the startup message cannot be read, the result still looks complete and normal while quietly losing the parts that decide what is delivered.
 acknowledged:
   - citation_form@0a782d0fffce1487
 scope: []
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-19
 valid_until: null
-checksum: 939274614e37fb37
+checksum: 2d5be178a3cb424a
 ---
 
 # An unparseable hook payload injects plausibly and discloses nothing
@@ -31,8 +33,7 @@ silently dropped — which is indistinguishable from a correct plain session
 start.
 
 **The mechanism, two functions cooperating.** `parseHookInput` swallows every
-stdin failure into an empty object — `my-context/src/hooks/io.ts:60-68` ends
-`} catch { return {}; }`. `session-start.ts` · `const cwd = input.cwd ?? process.cwd();` · ~207 then papers over the loss with a
+stdin failure into an empty object — `src/hooks/io.ts` · `} catch { return {}; }` (gone 2026-09-03). `session-start.ts` · `const cwd = input.cwd ?? process.cwd();` · ~207 then papers over the loss with a
 cwd fallback: `buildSessionStartOutput(input.cwd ?? process.cwd(), { source:
 input.source, sessionId: input.session_id })`.
 

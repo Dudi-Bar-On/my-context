@@ -5,8 +5,10 @@ title: "ruling 35: derive the README --yes flag table, and close two more hand-k
 status: active
 severity: soft
 always: false
-summary: Three more hand-kept lists that the code could produce on its own, one of them held stale in place by the test that was meant to protect it.
-summary_of: 2cd3798f86bc37d1
+summary: Three lists kept by hand where the code already knew the answer, one of them pinned stale by its own test, all since derived.
+summary_of: b3835dee11e3eb38
+summary_was:
+  - 2026-09-03 Three more hand-kept lists that the code could produce on its own, one of them held stale in place by the test that was meant to protect it.
 acknowledged:
   - citation_form@5620ba3c428bb635
 scope: []
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 607935eb165ede6e
+checksum: b873505ef1399f34
 plan: rulings
 seq: "35"
 state: done
@@ -32,7 +34,7 @@ priority: "2"
 
 Found by ruling 34 while extracting the approval-boundary derivation. Three lists, same defect, all now cheap because the derivation is a shared helper.
 
-**1. README's --yes table is stale in exactly the way SKILL.md was, and a test pins it there.** Around README.md:2938 it lists twelve command strings that take --yes. The parser accepts it on **fourteen**: **inbox-promote** and **refresh** are missing, both proven gated by the probe. `test/plugin-assets.test.ts` asserts that literal, so the stale row is pinned in place. The set is already computed as `approvalBoundary().gated` in `test/helpers/approval-boundary.ts`. This is one deepEqual.
+**1. README's --yes table is stale in exactly the way SKILL.md was, and a test pins it there.** Around `README.md` · ``| `--yes` | confirm without being asked.`` · ~3707 it lists twelve command strings that take --yes. The parser accepts it on **fourteen**: **inbox-promote** and **refresh** are missing, both proven gated by the probe. `test/plugin-assets.test.ts` asserts that literal, so the stale row is pinned in place. The set is already computed as `approvalBoundary().gated` in `test/helpers/approval-boundary.ts`. This is one deepEqual.
 
 **2. Nothing stops the skill naming a retired MCP tool.** `test/plugin-assets.test.ts` iterates a hand-written literal of four tool names against the fourteen in `TOOL_NAMES`, and the check is one-directional: every listed tool must be mentioned, but a tool the skill names that no longer exists passes. All eight names in SKILL.md are real today. The reverse check is derivable: backticked snake_case identifiers, minus the category names from `CATEGORIES`, must be a subset of `TOOL_NAMES`.
 

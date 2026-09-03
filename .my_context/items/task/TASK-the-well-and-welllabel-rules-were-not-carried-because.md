@@ -5,8 +5,10 @@ title: the well and welllabel rules were not carried because nothing emitted the
 status: active
 severity: soft
 always: false
-summary: Two styling rules were skipped because nothing used them; something does now, so a quoted body reads as ordinary page text.
-summary_of: e9d29ada9ae852bf
+summary: Two styling rules skipped because nothing used them, and what a deliberate omission costs once its reason quietly expires.
+summary_of: e73d64d965c3ec14
+summary_was:
+  - 2026-09-03 Two styling rules were skipped because nothing used them; something does now, so a quoted body reads as ordinary page text.
 acknowledged:
   - citation_form@e5d2e442aa1bdd91
 scope: []
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: e1411995de678121
+checksum: 3fc3b5bdfe989859
 plan: walk
 seq: "41"
 state: done
@@ -36,7 +38,7 @@ source: "owner request 2026-08-25: the item detail pane, app vs mockup, real cor
 
 FOUND 2026-08-25 by owner request 2026-08-25: the item detail pane, app vs mockup, real corpus. A deliberate decision whose premise has since become false -- the fourth of that shape this week.
 
-THE DECISION, recorded in `styles.css:889-892` in its own words: "NOT carried, deliberately: `.well`/`.welllabel`, and config s `.delta` and `.blast` families. NO BUILT MODULE EMITS THEM ... CSS for markup nothing renders is the same defect as a field no screen reads." That reasoning is right and the rule it produced is now wrong.
+THE DECISION, recorded in `styles.css` · `NOT carried, deliberately: .well/.welllabel` (gone 2026-09-03) in its own words: "NOT carried, deliberately: `.well`/`.welllabel`, and config s `.delta` and `.blast` families. NO BUILT MODULE EMITS THEM ... CSS for markup nothing renders is the same defect as a field no screen reads." That reasoning is right and the rule it produced is now wrong.
 
 THE FACT: `app.js` EMITS BOTH. Verified in the rendered pane on the real corpus -- `div.welllabel` carrying "Body - as authored", and `div.well` wrapping `div.md#panebody`. The pane was built after the carry was measured.
 

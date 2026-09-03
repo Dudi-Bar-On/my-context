@@ -5,8 +5,10 @@ title: README still says there is no export command, and that is now false
 status: active
 severity: soft
 always: false
-summary: The main guide still says a feature does not exist, weeks after it shipped, and the same false claim survives in a second place.
-summary_of: 4d91e883d2adce37
+summary: The main guide went on saying a shipped feature did not exist, in both languages, weeks after it shipped.
+summary_of: 9f3df6484923b908
+summary_was:
+  - 2026-09-03 The main guide still says a feature does not exist, weeks after it shipped, and the same false claim survives in a second place.
 acknowledged:
   - citation_form@293dcefef6597724
 scope: []
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 382767033e50068b
+checksum: 1bd34ee42b0f1306
 plan: export
 seq: 13r
 state: done
@@ -38,8 +40,8 @@ Recording it because the sentence has changed character. It was a forward-lookin
 
 CONFIRMED with a real run, 2026-08-23.
 
-README.md:2600 reads "this is built: there is no export command in this release, and nothing in the log travels". Ran `mycontext export --dry-run` against the live corpus: 325 items, 856 mutation records, exit 0, nothing written. Both halves of that sentence are false.
+`README.md` · `this is built: there is no export command in this release, and nothing in the log travels` (gone 2026-09-03). Ran `mycontext export --dry-run` against the live corpus: 325 items, 856 mutation records, exit 0, nothing written. Both halves of that sentence are false.
 
 Related and already corrected on the same day: the audit-travel prose this task shares with plan:export seq:17 said three audit kinds are withheld from an export. There are five - `access` and `progress` both landed after that sentence was written. The mockup and both string tables now say five, and the read model derives the list from AUDIT_KINDS so it cannot drift again. Whoever takes seq:17 should know the endpoint is now the authority on that count.
 
-VERIFIED PARTIAL 2026-08-26. The sentence this task names IS gone from both READMEs, and both now document `mycontext export` (README.md:3572, docs/README.he.md:3187). But a SAME-FAMILY FALSEHOOD SURVIVES IN BOTH: README.md:5666 still says a corpus export carrying the mutation half of the log is "decided and not built" — mirrored at docs/README.he.md:6143 - and README.md:3572 contradicts it in the same document. The task is not done until that sentence goes too.
+VERIFIED PARTIAL 2026-08-26. The sentence this task names IS gone from both READMEs, and both now document `mycontext export` (`README.md` · `writes this workspace's corpus to a path outside it` · ~3111, `docs/README.he.md` · `כדי שמי שאין לו את המאגר הזה יוכל לקרוא אותו` · ~3330). But a SAME-FAMILY FALSEHOOD SURVIVES IN BOTH: `README.md` · `decided and not built` · ~6231 (corrected since) still says a corpus export carrying the mutation half of the log is "decided and not built" — mirrored at `docs/README.he.md` · `"הוכרעה ולא נבנתה"` · ~6707 (corrected since) - and `README.md` · `writes this workspace's corpus to a path outside it` · ~3111 contradicts it in the same document. The task is not done until that sentence goes too.

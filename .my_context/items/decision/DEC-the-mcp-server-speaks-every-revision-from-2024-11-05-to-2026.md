@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The tool speaks every version of the protocol a caller might use and settles on one per caller, so nobody had to first discover which version they speak.
-summary_of: 245646a69a6601b2
+summary_of: 014e99699d863931
 scope:
   - src/mcp/**
 tags:
@@ -18,14 +18,14 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-14
 valid_until: null
-checksum: 3a86c412185880be
+checksum: 4274c542346d9184
 ---
 
 # The MCP server speaks every revision from 2024-11-05 to 2026-07-28 and negotiates per client
 
 Settled during Plan 3 by building the dual-era server rather than by observing a client. `SUPPORTED_PROTOCOL_VERSIONS` (src/mcp/protocol.ts) lists five revisions — 2026-07-28, 2025-11-25, 2025-06-18, 2025-03-26 and the original 2024-11-05 — and every one of them is echoed back verbatim by `initialize`.
 
-The premise the question was built on turned out to be wrong: `initialize` is not removed in the newest revision. Both handshakes are implemented side by side. `initialize` answers with the requested version when it is supported and falls back to `LATEST_PROTOCOL_VERSION` when it is not; `server/discover` answers with the whole supported list. A client may also announce a revision on any message through the `io.modelcontextprotocol/protocolVersion` key in `_meta`, and one this server does not know is refused with JSON-RPC error -32022 carrying both the supported list and what was requested.
+The question's own premise turned out to be wrong: `initialize` is not removed in the newest revision. The premise was the QUESTION's — `OPENQ-which-mcp-revision-does-claude-code-speak`, which this record retires — and not a claim made here. Both handshakes are implemented side by side. `initialize` answers with the requested version when it is supported and falls back to `LATEST_PROTOCOL_VERSION` when it is not; `server/discover` answers with the whole supported list. A client may also announce a revision on any message through the `io.modelcontextprotocol/protocolVersion` key in `_meta`, and one this server does not know is refused with JSON-RPC error -32022 carrying both the supported list and what was requested.
 
 One behavioural switch hangs off the negotiated value: results gain `resultType`, `_meta`, `ttlMs` and `cacheScope` only from 2026-07-28 onward, and below that the legacy result shape is emitted unchanged. A client that never announces anything is assumed to be 2025-06-18 — the older of the two plausible legacy shapes, so a silent client is understated rather than handed fields it never asked for.
 

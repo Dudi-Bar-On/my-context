@@ -5,8 +5,10 @@ title: every endpoint but /api/config serves the config as it was at server star
 status: active
 severity: soft
 always: false
-summary: Change a setting while the app is running and almost everything keeps using the old value, because it was read once when the server started.
-summary_of: eb495223dd9c1d1c
+summary: A setting changed while the app ran used to be ignored by almost everything, because the value was read once at start-up.
+summary_of: 6f1887d55e17e03b
+summary_was:
+  - 2026-09-03 Change a setting while the app is running and almost everything keeps using the old value, because it was read once when the server started.
 acknowledged:
   - citation_form@5f2e6f9760f1bf42
   - state_unaudited@5f2e6f9760f1bf42
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 65aa8ddca5b0aaeb
+checksum: 5f66933a4ba50000
 plan: live
 seq: "8"
 state: done
@@ -48,11 +50,11 @@ source: found measuring the owner's 2026-08-28 ribbon report
 >
 > ## The mechanism
 >
-> `resolveWorkspace()` runs ONCE, at `ui/server.ts:374`. Every request past it is handed that same `ws` object (`ui/server.ts:702`), so `ws.config` is a photograph of `config.json` taken at start. `read-model.ts`'s `apiSimulate` spreads `{ ...ws.config.budgets }` from it.
+> `resolveWorkspace()` runs ONCE, at `ui/server.ts` · `const ws = resolveWorkspace(options.cwd);` (gone 2026-09-03). Every request past it is handed that same `ws` object (`ui/server.ts` · `const ctx: ApiContext = { ws, repoRoot, url, params: match.params, body };` -- gone 2026-09-03), so `ws.config` is a photograph of `config.json` taken at start. `read-model.ts`'s `apiSimulate` spreads `{ ...ws.config.budgets }` from it.
 >
 > `read-model-config.ts` does the opposite deliberately — its own header says so: *"`ws.config` is the snapshot taken when"* the server started, so `/api/config` resolves from disk on every call. One endpoint is live, the other is frozen, and nothing reconciles them.
 >
-> `plan:budget seq:5` already found this from the other side and patched around it: after writing the file it also assigns `ctx.ws.config.budgets[key] = after` (`ui/execute.ts:852`), with a comment explaining that without it *"`config.json` and the in-memory `Config` every other endpoint reads would disagree for the rest of the server's life."* That fix is correct and covers exactly one writer — the UI's own button. **Every other way a budget can change still leaves the snapshot behind.**
+> `plan:budget seq:5` already found this from the other side and patched around it: after writing the file it also assigns `ctx.ws.config.budgets[key] = after` (`ui/execute.ts` · `ctx.ws.config.budgets[key] = after` -- gone 2026-09-03), with a comment explaining that without it *"`config.json` and the in-memory `Config` every other endpoint reads would disagree for the rest of the server's life."* That fix is correct and covers exactly one writer — the UI's own button. **Every other way a budget can change still leaves the snapshot behind.**
 >
 > ## Why this is not `plan:live seq:4`
 >

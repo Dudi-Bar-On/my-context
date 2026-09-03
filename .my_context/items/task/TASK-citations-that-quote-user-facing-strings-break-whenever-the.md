@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Cross-references that quote wording people see break every time that wording changes, so they should point at names that do not move.
-summary_of: ce37e84c1dc6df12
+summary_of: 1608514490961f09
 acknowledged:
   - citation_form@ff17f84c1a6b7199
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 394b29bf080dbc6d
+checksum: 3509031a0d84c748
 plan: walk
 seq: "69"
 state: done
@@ -81,18 +81,18 @@ That task widened the gate and, on the way, measured the corpus itself. Across a
 
 **RE-MEASURED AND PART-DONE 2026-08-29 by `plan:walk seq:69`. The count moved, and so did the finding.**
 
-Re-measured at the moment of acting, over 669 item files: **171 bare pointers across 66 items**, not the 165/63 recorded above. The four PAST-EOF are still four and are still `work.js:458`, four times over in three items.
+Re-measured at the moment of acting, over 669 item files: **171 bare pointers across 66 items**, not the 165/63 recorded above. The four PAST-EOF are still four and are still `work.js:458`, four times over in three items. <!-- historical-citation: the pointer IS the measurement — this line counts how many times that exact string still stands in three other items, so rewriting it would change the number the sentence reports -->
 
 **The finding is not the four.** Each pointer was checked against the anchor its own corpus line names — the identifier or quoted text the sentence says it is citing — and resolved in the cited file:
 
     18   the anchor is AT the cited line          the pointer is still true
     22   the anchor is elsewhere in the file      the pointer has drifted, and the anchor says where
-     4   the line is past end of file             `work.js:458`
+     4   the line is past end of file             `work.js:458` <!-- historical-citation: a row of the measurement table above, naming the pointer that failed; the form it is written in is the finding, and a fragment here would report a different measurement -->
    127   no anchor on the line resolves           unverifiable either way
 
-So `145 in range` above measured only that the line EXISTS. Sampling the in-range ones shows most no longer land on what the sentence beside them claims: `injected.js:70` says it cites `for (const line of data.lines)` and line 70 today is a docblock sentence; `preview.js:424` says `selection.full.forEach`; `app.js:331` says `els.file.textContent = item.source_file ?? '-'`. **The four past-EOF are not a different class of drift — they are the one file that happened to SHRINK.** All five unbounded-list citations (`injected.js:70`, `work.js:458`, `packs.js:522`, `preview.js:424`, `preview.js:552`) drifted the same way, because the loops they name were replaced by `boundedList` when the bound landed. Only `work.js` got short enough for a line number to notice.
+So `145 in range` above measured only that the line EXISTS. Sampling the in-range ones shows most no longer land on what the sentence beside them claims: `injected.js:70` says it cites `for (const line of data.lines)` and line 70 today is a docblock sentence; `preview.js:424` says `selection.full.forEach`; `app.js:331` says `els.file.textContent = item.source_file ?? '-'`. **The four past-EOF are not a different class of drift — they are the one file that happened to SHRINK.** All five unbounded-list citations (`injected.js:70`, `work.js:458`, `packs.js:522`, `preview.js:424`, `preview.js:552`) drifted the same way, because the loops they name were replaced by `boundedList` when the bound landed. Only `work.js` got short enough for a line number to notice. <!-- historical-citation: every pointer on this line is quoted as it stands in another item, so the clause beside it can say what that line holds today instead; re-anchoring them would erase the drift this paragraph exists to report -->
 
-**What was normalised: 37 pointers across 27 items** — every one whose anchor could be VERIFIED in the cited file, and no others. **Deliberately not normalised: the remaining 134.** Deriving a fragment from whatever text now sits at a stale line number manufactures a true-looking statement about the wrong code, which is the trap this task named in its own words. Seven more were held by hand, including the two `file.ts:123` that are specimens of the form and the `core/paths.ts:161` in `TASK-ruling-33-…`, whose whole point is that the pointer is wrong.
+**What was normalised: 37 pointers across 27 items** — every one whose anchor could be VERIFIED in the cited file, and no others. **Deliberately not normalised: the remaining 134.** Deriving a fragment from whatever text now sits at a stale line number manufactures a true-looking statement about the wrong code, which is the trap this task named in its own words. Seven more were held by hand, including the two `file.ts:123` that are specimens of the form and the `core/paths.ts:161` in `TASK-ruling-33-…`, whose whole point is that the pointer is wrong. <!-- historical-citation: this names a pointer deliberately left unconverted in TASK-ruling-33, and the sentence’s own claim is that the pointer is wrong; converting it would make the sentence false -->
 
 **The corpus's own citations now check.** It held 1 citation in the form and 5 UNREAD faults; it now holds 39 and 0. The faults were the two AUTHORING shapes: two citations wrapped across Markdown lines in `TASK-the-item-detail-pane-…` (joined, and one stale hint fixed), and one fragment written as italic double-quoted prose rather than a span. The single-backtick-truncation shape does not occur in the corpus — its two observed instances (`"needs the paths "`, `"~1476"`) are both under `src/ui/public/**`, another lane's files, and are described rather than touched.
 

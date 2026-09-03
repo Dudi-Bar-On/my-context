@@ -5,8 +5,10 @@ title: three comments now argue from a premise that is false, and the config bre
 status: active
 severity: soft
 always: false
-summary: Three explanatory comments give reasons that have since stopped being true, which is worse than never having written them.
-summary_of: 0c4c1554c2aa7b9d
+summary: Three comments that had gone false are fixed; what is left is that a broken settings file is disclosed on one screen only.
+summary_of: 0fbc4ceefec2740f
+summary_was:
+  - 2026-09-03 Three explanatory comments give reasons that have since stopped being true, which is worse than never having written them.
 acknowledged:
   - citation_form@10c7a0fe3b352557
 scope: []
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: e2d741775fa1aa15
+checksum: 4d7178e3fd8c98ee
 plan: live
 seq: "13"
 state: todo
@@ -40,8 +42,8 @@ source: "plan:live seq:8's out-of-lane findings, 2026-08-28"
 > Each was TRUE when written and is now the opposite of the truth. This is the shape this project keeps meeting — a comment correct at its writing and wrong four hours later — and leaving them is worse than never having written them, because a reader trusts a comment that explains itself.
 >
 > * `src/core/budgets-write.ts` · `ctx.ws.config` · ~128 — cites `src/ui/server.ts` and the line `const ws = resolveWorkspace(options.cwd);`, which no longer exists, and says *"Never `ctx.ws.config` — that is a snapshot taken once, when the UI server started."* The reason is now wrong even though the instruction is still right. `seq:8` suggests: *"Never `ctx.ws.config` — not because it is stale (it no longer is; see `liveWorkspace`) but because this module must be readable off any corpus directory, without a `Workspace`."*
-> * `src/ui/packs-model.ts:425-430` — argues for `ws.config` because *"every other endpoint on this server judges against the same boot-time config"*. There is no boot-time config now. The BEHAVIOUR it wanted is unchanged — one config per page — but it is a config a moment old rather than a boot old, and the sentence must say so.
-> * `src/ui/capture-model.ts:208-217` — states *"the ITEMS are read fresh on every call; the CONFIG is not"* and that a category retiered mid-session *"does not move an item across this filter until the server restarts"*. Both are now exactly backwards. Delete or invert.
+> * `src/ui/packs-model.ts` · `every other endpoint on this server judges against the same boot-time config` (gone 2026-09-03) — argues for `ws.config` because *"every other endpoint on this server judges against the same boot-time config"*. There is no boot-time config now. The BEHAVIOUR it wanted is unchanged — one config per page — but it is a config a moment old rather than a boot old, and the sentence must say so.
+> * `src/ui/capture-model.ts` · `the ITEMS are read fresh on every call; the CONFIG is not` (gone 2026-09-03) — states *"the ITEMS are read fresh on every call; the CONFIG is not"* and that a category retiered mid-session *"does not move an item across this filter until the server restarts"*. Both are now exactly backwards. Delete or invert.
 >
 > `verify:citations` reports the first one and does not gate on it, so nothing is red and nothing will force this.
 >

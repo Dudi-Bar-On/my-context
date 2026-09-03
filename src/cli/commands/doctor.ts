@@ -19,11 +19,108 @@ import { hasFlag, registerCommand, type Emit } from './registry.ts';
  */
 const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.doctor;
 
-export function summarize(findings: Finding[]): { errors: number; warnings: number; infos: number } {
+/**
+ * **A DISCLOSURE — the check describing ITSELF — and how this command tells one
+ * from a finding.**
+ *
+ * The rule above `interface Finding` (checks.ts) already made a check disclose
+ * what it cannot judge *"as UNMEASURED, once, and never per item"*, and three
+ * checks obey it: `state_audit_coverage` says how many items `state_unaudited`
+ * could not look at, `body_review_limits` says the count above it is a floor,
+ * and the citation-specimen lane adds a third of the same shape. **What that
+ * rule did not finish is that a disclosure was still being COUNTED and LISTED
+ * as work.**
+ *
+ * Owner, 2026-09-03, on exactly these lines: *"after you complete handling
+ * them, the test should be that they will not be listed anymore at doctor
+ * list"*, against his standing objection that *"a finding a user has no tool to
+ * solve is the problem"*. All three name no item, carry `route: 'none'`, and
+ * say in their own words that nothing is owed. **A row that says "nothing is
+ * owed" is still a row he has to read and dismiss** — which is the same failure
+ * the rule names, one level up: not noise wearing work's clothes, but a note
+ * wearing a worklist's.
+ *
+ * So `Finding.about` marks it, and the marker is the CHECK the note is about
+ * (`state_audit_coverage` is `about: 'state_unaudited'`). That is not
+ * decoration: it is what lets the note be drawn under the table whose reach it
+ * limits, which is where a reader meets it in the only context that explains
+ * it. A self-naming flag would have said "this is a note" and left the reader
+ * to work out a note about WHAT.
+ *
+ * **Nothing is deleted and nothing is hidden.** `RULE-say-what-your-check-cannot-see-when-you-report-it-green`
+ * requires the text and `INV-nothing-is-dropped-silently` forbids losing it, so
+ * every character still prints — under its code's heading, after the summary,
+ * as a note, and in `--json` under its own key. It moves; it does not go.
+ *
+ * ── WHY IT IS A RUNTIME TEST AND NOT `if (finding.about)` ─────────────────
+ *
+ * `about` is OPTIONAL, and the two ways it can be absent must answer the same
+ * thing: a check that never sets it, and a `''` from a call site that meant to
+ * name a code and named nothing. An empty string is a disclosure with no check
+ * to draw it under, which is worse than not being one — the UI keys the note by
+ * this value and would file it under `""`.
+ *
+ * It is also read off objects that were never typed. `/api/doctor` serves these
+ * findings verbatim to a browser (`read-model.ts`: *"`runChecks` output,
+ * carried and not reshaped"*), and `screens/doctor.js` applies the same two
+ * conditions for the same reason — a body from a build that predates the field
+ * omits it, exactly as `cardRows` already normalises `item` and `acknowledged`
+ * against that case.
+ *
+ * Written before `checks.ts` declared the field, deliberately as a test on an
+ * optional string so that landing the declaration needed no second edit here.
+ * That has happened; nothing about this function changed when it did.
+ */
+export function disclosureAbout(finding: Finding): string | undefined {
+  const { about } = finding;
+  return typeof about === 'string' && about !== '' ? about : undefined;
+}
+
+/** `true` when this finding is a note about a check rather than about the corpus. */
+export function isDisclosure(finding: Finding): boolean {
+  return disclosureAbout(finding) !== undefined;
+}
+
+/**
+ * The run split in two, ONCE, so no loop below has to remember the distinction.
+ *
+ * Both halves are returned rather than one filtered array, because the second
+ * half is printed and served rather than discarded — the split is a routing
+ * decision, not a filter, and a function that returned only the findings would
+ * be the shape that loses the disclosure.
+ */
+export function partitionFindings(
+  all: Finding[],
+): { findings: Finding[]; disclosures: Finding[] } {
   return {
-    errors: findings.filter((f) => f.level === 'error').length,
-    warnings: findings.filter((f) => f.level === 'warn').length,
-    infos: findings.filter((f) => f.level === 'info').length,
+    findings: all.filter((f) => !isDisclosure(f)),
+    disclosures: all.filter((f) => isDisclosure(f)),
+  };
+}
+
+/**
+ * The level tally — **of findings, and a disclosure is not one.**
+ *
+ * Filtered HERE rather than only at the call site, and that is deliberate
+ * belt-and-braces: this function is exported, is called directly by tests, and
+ * its three lines are duplicated verbatim in `read-model.ts`'s `health`. A
+ * caller that forgot to partition first would report a note as a note-level
+ * finding and put the count back on the screen the owner is clearing.
+ *
+ * **The exit code cannot move because of this.** `exitCode` reads
+ * `counts.errors`, and it is not that all three disclosures happen to be `info`
+ * today — it is that a disclosure states what a check could not measure, which
+ * is never a corpus defect, so one may not be emitted at `error` in the first
+ * place. Should one ever be, the arithmetic here removes it from `errors`
+ * BEFORE `exitCode` sees it, which is the safe direction: a note has never
+ * failed a build and must not start.
+ */
+export function summarize(findings: Finding[]): { errors: number; warnings: number; infos: number } {
+  const real = findings.filter((f) => !isDisclosure(f));
+  return {
+    errors: real.filter((f) => f.level === 'error').length,
+    warnings: real.filter((f) => f.level === 'warn').length,
+    infos: real.filter((f) => f.level === 'info').length,
   };
 }
 
@@ -106,6 +203,62 @@ function emitCliPathFinding(cliFindings: Finding[], out: Emit): void {
   out('');
   out(`mycontext (the command, not a corpus finding): ${f.code}  [${f.level}]`);
   for (const line of paragraph(f.message, '  ', outputWidth(), '    ')) out(line);
+}
+
+/**
+ * **The disclosures, printed under their code's headings, AFTER the summary —
+ * as notes, not as a section of the report.**
+ *
+ * Position is the argument. `emitCliPathFinding` established this exact place
+ * and this exact reason one field over: a fact that is real, worth printing and
+ * NOT a corpus finding goes after the count rather than inside it, so the
+ * number a reader takes away is the number of things to do. A disclosure is the
+ * second member of that class, and it gets the second block rather than a
+ * second convention.
+ *
+ * **Grouped by code, one heading, every message under it.** `state_audit_coverage`
+ * can speak twice in one run — once for the tasks the log never saw, once for
+ * the tasks born before the witness — and those are two facts under one code,
+ * which is exactly what the grouped level does with findings. Two headings for
+ * one code would read as two problems.
+ *
+ * **The heading names the CHECK, because that is what the note is about.**
+ * `state_audit_coverage — about the state_unaudited check` tells a reader what
+ * the sentence below is limiting; the code alone tells them nothing they can
+ * use. Both are printed, so nothing is lost to grep either way.
+ *
+ * Everything wraps through `paragraph` at `outputWidth()`, for the reason the
+ * grouped level does: these are the longest sentences this command prints, and
+ * `every reporting command fits the layout budget at every detail level`
+ * (output.test.ts) measures them.
+ *
+ * Silent at zero, which is this command's own convention for a line nobody can
+ * clear — `emitAcknowledged`, `checkCitationForm` and `checkAuditSize` all take
+ * it, and a clean corpus's summary block is pinned character for character in
+ * three test files.
+ */
+function emitDisclosures(disclosures: Finding[], out: Emit): void {
+  if (!disclosures.length) return;
+  const byCode = new Map<string, Finding[]>();
+  for (const finding of disclosures) {
+    const bucket = byCode.get(finding.code) ?? [];
+    bucket.push(finding);
+    byCode.set(finding.code, bucket);
+  }
+  out('');
+  for (const line of paragraph(
+    `notes about the checks themselves — what they could not measure, said once. ` +
+    `These are NOT findings, are not counted above, and nothing is owed on them.`,
+    'my_context: ', outputWidth(), '  ',
+  )) out(line);
+  for (const [code, bucket] of [...byCode.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    out('');
+    const about = disclosureAbout(bucket[0]!);
+    out(`  ${code} — about the \`${about}\` check`);
+    for (const finding of bucket) {
+      for (const line of paragraph(finding.message, '    ', outputWidth(), '    ')) out(line);
+    }
+  }
 }
 
 /**
@@ -192,7 +345,12 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
   const errors = rawErrors.filter((e) => e.kind !== 'migration');
   const migrationFindings = checksumMigrationFindings(rawErrors);
 
-  const findings = [
+  // **Split before anything counts, prints or serves.** `partitionFindings`
+  // routes the notes a check makes about ITSELF out of the worklist and into
+  // `emitDisclosures` below — see its docblock, and `disclosureAbout` for the
+  // owner report. `findings` from here down means what it has always meant to
+  // every line under it: the things a person could do something about.
+  const { findings, disclosures } = partitionFindings([
     ...runChecks({
       root: ws.projectRoot,
       repoRoot: path.dirname(ws.projectRoot),
@@ -201,7 +359,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
       config: ws.config,
     }),
     ...migrationFindings,
-  ];
+  ]);
 
   // `checkCliOnPath` deliberately runs OUTSIDE `runChecks` — see the long
   // comment on `runChecks` itself for why: it answers a question about this
@@ -290,6 +448,15 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
       acknowledgedCount: acknowledged,
       exitCode: failed ? 1 : 0,
       findings,
+      // **Carried under its own key rather than folded into `findings`**, which
+      // is the choice `cliOnPath` two fields down already made and for the
+      // identical reason: `counts` and `findings` are the FINDINGS tally and
+      // list, whole and untouched, and a consumer that gates CI on
+      // `findings.length` must not be handed a note. Always an array, never
+      // omitted, so "checked, none" is distinguishable from a field an older
+      // build never populated — and `INV-nothing-is-dropped-silently` is
+      // satisfied by the text being HERE, not by it being counted.
+      disclosures,
       loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
       // Carried under its own key rather than folded into `findings` — see
       // the comment on `cliFindings` above for why: it is not a corpus
@@ -334,6 +501,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
     out(summary);
     emitAcknowledged(acknowledged, out);
     emitLoadErrors(errors, out);
+    emitDisclosures(disclosures, out);
     emitCliPathFinding(cliFindings, out);
     return failed ? 1 : 0;
   }
@@ -375,6 +543,7 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
   out(summary);
   emitAcknowledged(acknowledged, out);
   emitLoadErrors(errors, out);
+  emitDisclosures(disclosures, out);
   emitCliPathFinding(cliFindings, out);
   return failed ? 1 : 0;
 }
