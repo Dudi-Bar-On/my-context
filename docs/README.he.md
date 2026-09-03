@@ -2000,7 +2000,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>87 פקודות סלאש"]
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>88 פקודות סלאש"]
   U --> CL["<b>mycontext …</b><br/>40 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>ארבעה-עשר, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
@@ -2239,6 +2239,9 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 של מה ששונה ומה כל סשן קיבל,
 ו-<span dir="ltr">`/mycontext:query`</span> כותבת ומריצה
 [SQL לקריאה בלבד](#הסכמה-של-האינדקס-ואיך-לתשאל-אותה) מעל האינדקס.
+<span dir="ltr">`/mycontext:ready`</span> מונה את המשימות הפתוחות שכל מה שרשום
+ב-<span dir="ltr">`needs`</span> שלהן כבר נחת — נגזר בכל הרצה, כי אין מצב
+<span dir="ltr">`ready`</span> לקרוא.
 <span dir="ltr">`/mycontext:focus`</span> מצמצמת את מה שמוזרק — ראו
 [מיקוד סשן](#מיקוד-סשן--צמצום-מה-שנטען) — ומדווחת מה זה מסתיר.
 <span dir="ltr">`/mycontext:ui`</span> היא פקודת הקריאה היחידה שמחזירה לך את הפקודה במקום
@@ -2260,8 +2263,8 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 58 היום — ועוד 28 שאינן לפי קטגוריה:
-<span dir="ltr">`add`, `search`, `show`, `todo`, `doctor`, `decay`, `query`, `status`, `audit`,
+קטגוריה **מופעלת** — 58 היום — ועוד 29 שאינן לפי קטגוריה:
+<span dir="ltr">`add`, `search`, `show`, `todo`, `ready`, `doctor`, `decay`, `query`, `status`, `audit`,
 `focus`, `ui`, `review`, `promote`, `discard`, `procedure`, `inbox-promote`, `edit`, `pin`, `unpin`,
 `harden`,
 `soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson`, `lesson-stage`</span>.
@@ -2271,7 +2274,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 מכובה אינה יכולה לשמור פקודה שתסורב אחר כך. <span dir="ltr">`add`</span> נוצרת מכלום, וזו
 כל הנקודה שלה — היא זו ששורדת קטגוריה שהמחולל מעולם לא ראה.
 
-כל 86 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 87 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -6552,7 +6555,7 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
 מדפיסה ומול הקבצים ב-<span dir="ltr">`commands/`</span>.
 
 מה שנשאר הוא אי-סימטריה בכיוון השני — פקודות בלי פקודת סלאש — והיא **מפורטת ולא מתגלה**.
-ל-15 מתוך 40 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
+ל-14 מתוך 40 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
 ב-<span dir="ltr">`CLI_WITHOUT_SLASH`</span>:
 
 - <span dir="ltr">`init`</span> ו-<span dir="ltr">`rebuild`</span> רצות לפני סשן, או מחוצה
@@ -6587,13 +6590,6 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
   <span dir="ltr">`mycontext pack import`</span> שתריץ בעצמך היא בדיוק הצורה
   ש-<span dir="ltr">`/mycontext:lesson-stage`</span> כבר משתמשת בה, וזה מה שהשורה הזאת
   ממתינה לו.
-- <span dir="ltr">`ready`</span> מדווחת על המשימות שכל התלויות שלהן נחתו, ומשימה אינה קטגוריה
-  שהתוסף הזה נשלח איתה. משטח הסלאש נוצר מתצורת **ברירת המחדל**, שבה שום קטגוריה אינה מכריזה
-  על השדות <span dir="ltr">`plan`, `seq`</span> ו-<span dir="ltr">`state`</span> שהדוח הזה
-  קורא, ולכן <span dir="ltr">`/mycontext:ready`</span> שהייתה נוצרת הייתה אומרת "אין בפרויקט
-  הזה עבודה מתוכננת" בכל פרויקט שלא הכריז על קטגוריה כזו. היא ממתינה לאותו דבר שהשורה של
-  <span dir="ltr">`pack`</span> ממתינה לו: משטח סלאש שנוצר מהתצורה המיושבת ולא מהקטלוג
-  הנשלח.
 - <span dir="ltr">`statusline`</span> היא הגדרה של Claude Code עצמו ולא דבר שבקורפוס הזה.
   בהרצה חשופה היא קוראת מ-stdin מטען ש-Claude Code לבדו שולח, ולפקודת סלאש אין דרך לייצר
   אותו; ו-<span dir="ltr">`statusline install`</span> עורכת את

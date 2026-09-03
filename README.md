@@ -1903,7 +1903,7 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>87 slash commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>88 slash commands"]
   U --> CL["<b>mycontext …</b><br/>40 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
@@ -2113,7 +2113,9 @@ self-check, `/mycontext:decay` lists what has not reached a session lately,
 `/mycontext:audit` shows the [run-time log](#the-audit-log--what-my_context-actually-did) of
 what has been changed and what each session was shown, and
 `/mycontext:query` writes and runs [read-only SQL](#the-index-schema-and-how-to-query-it)
-over the index. `/mycontext:focus` narrows what gets injected — see [session
+over the index. `/mycontext:ready` lists the open tasks whose `needs` have all landed —
+derived on every run, because there is no `ready` state to read.
+`/mycontext:focus` narrows what gets injected — see [session
 focus](#session-focus--narrowing-what-loads) — and reports what that hides.
 `/mycontext:ui` is the one read command that hands you the command instead of running it:
 `mycontext ui` is a server, so it does not return, and it opens a browser on whatever machine
@@ -2131,7 +2133,7 @@ the shell it ran in is on.
 ```
 
 There is one `add-<type>` and one `list-<type>` per **enabled** category — 58 today — plus
-the 28 that are not per-category: `add`, `search`, `show`, `todo`, `doctor`, `decay`,
+the 29 that are not per-category: `add`, `search`, `show`, `todo`, `ready`, `doctor`, `decay`,
 `query`, `status`, `audit`, `focus`, `ui`, `review`, `promote`, `discard`, `procedure`,
 `inbox-promote`,
 `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`, `refresh`, `link`, `unlink`,
@@ -2142,7 +2144,7 @@ a test fails if the committed files and the generator disagree: a disabled categ
 keep a command that would then be refused. `add` is generated from nothing, which is the
 point of it — it is the one that survives a category the generator never saw.
 
-All 86 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 87 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -6078,7 +6080,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 15 of the 40 CLI commands have none, each for a reason
+is **listed rather than discovered**. 14 of the 40 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `ack` records that a **person** read a `doctor` finding and ruled on it, so a slash command
@@ -6114,12 +6116,6 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
   that only *previewed* an import and then printed the `mycontext pack import` for you to
   run is the shape `/mycontext:lesson-stage` already uses, and it is what this row is
   waiting for.
-- `ready` reports the tasks whose dependencies have landed, and a task is not a category this
-  plugin ships. The slash surface is generated from the **default** configuration, in which
-  no category declares the `plan`, `seq` and `state` fields this report reads, so a generated
-  `/mycontext:ready` would say "this project has no planned work" in every project that has
-  not declared such a category. It is waiting on the same thing `pack`'s row is: a slash
-  surface generated against the resolved config rather than the shipped catalogue.
 - `statusline` is Claude Code's own configuration rather than anything in this corpus. Run
   bare it reads a payload only Claude Code sends, on stdin, which a slash command has no way
   to produce; and `statusline install` edits `settings.json`, which is a decision about the
@@ -6331,7 +6327,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "15 of the 40 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "14 of the 40 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

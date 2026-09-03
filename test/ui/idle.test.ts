@@ -418,7 +418,7 @@ test('an accepted window is kept exactly as passed', () => {
   const production = new IdleMonitor(IDLE_MS, () => {});
   production.touch(0);
   assert.equal(production.expired(IDLE_MS), false);
-  assert.equal(production.expired(IDLE_MS + 1), true, 'the fifteen-minute window survives the guard unchanged');
+  assert.equal(production.expired(IDLE_MS + 1), true, 'the eight-hour window survives the guard unchanged');
 });
 
 test('expired() is false inside the window and true past it, measured from the last touch', () => {

@@ -916,7 +916,8 @@ function sseSend(res: ServerResponse, event: string, data: unknown): void {
 /**
  * The live audit stream — **the route the idle rule was built for**. The
  * dispatch loop never `touch()`es a `kind: 'stream'` route, so a forgotten tab
- * holding this open still lets the 15-minute idle exit fire (spec §2).
+ * holding this open still lets the idle exit fire (spec §2) — eight hours by
+ * default today, and the number is `IDLE_MS` in `ui/idle.ts` rather than here.
  *
  * It reads the JSONL directly through `AuditTail` and opens no database at
  * all, which is what makes it safe to hold open: no write lock, no handle, and

@@ -11,8 +11,8 @@ here is a process that finishes; this one is a server. Two consequences, and bot
 end with you reporting a failure that did not happen:
 
 - `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" ui` **does not return.** It holds the terminal until the page has been idle
-  for fifteen minutes or the user interrupts it, so a tool call that runs it waits that
-  long and then reports a timeout rather than a UI.
+  for eight hours or the user interrupts it, so a tool call that runs it waits until its
+  own timeout and then reports a failure rather than a UI.
 - It **opens a browser on the machine whose shell you are holding**, which is not
   necessarily the screen the user is looking at.
 

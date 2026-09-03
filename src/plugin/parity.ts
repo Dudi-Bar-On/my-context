@@ -144,14 +144,6 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
     'read in a terminal before choosing one. A model running INSIDE a session is not the ' +
     'reader of that table: it already has the session it is in, and what it would need is ' +
     'the ability to name one or carry from one, neither of which this listing does.',
-  ready: 'Reports the tasks whose `needs` are all done — and a task is not a category this '
-    + 'plugin ships. `gen-commands` builds the slash surface from `resolveConfig({})`, the '
-    + 'DEFAULT configuration, in which no category declares the plan, seq and state fields '
-    + 'this report reads; a generated `/mycontext:ready` would therefore be a prompt whose '
-    + 'only honest content, in every project that installs the plugin and has not declared '
-    + 'such a category, is "this project has no planned work". The row is waiting on the '
-    + 'same thing `pack`\'s is: a slash surface generated against the RESOLVED config rather '
-    + 'than the shipped catalogue, which is the open item ROADMAP row B2.8 records.',
   statusline: 'Configuration belonging to Claude Code rather than anything in this corpus. '
     + 'Run bare it reads a payload that only Claude Code sends, on stdin, which a slash '
     + 'command has no way to produce; and `statusline install` edits settings.json, which is '

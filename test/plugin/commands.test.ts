@@ -132,7 +132,7 @@ const GENERIC = [
   'add.md', 'audit.md', 'decay.md', 'discard.md', 'doctor.md', 'edit.md', 'harden.md',
   'inbox-promote.md', 'ingest.md',
   'focus.md', 'lesson-stage.md', 'lesson.md', 'link.md', 'pin.md', 'procedure.md', 'promote.md',
-  'query.md',
+  'query.md', 'ready.md',
   'refresh.md', 'review.md', 'search.md', 'show.md', 'soften.md', 'status.md',
   'supersede.md', 'todo.md', 'ui.md', 'unlink.md', 'unpin.md',
 ];

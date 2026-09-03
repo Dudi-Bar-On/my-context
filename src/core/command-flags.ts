@@ -762,8 +762,9 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     'no-open': { note: 'Do not launch a browser; print the URL instead.' },
     'idle-ms': {
       format: 'a whole number of milliseconds', example: '28800000',
-      note: 'How long the server may sit unused before it exits. The default is fifteen minutes, '
-        + 'which is shorter than most pieces of work.',
+      note: 'How long the server may sit unused before it exits. The default is eight hours '
+        + '(28800000) and the ceiling is a day; a working day, so a server started in the '
+        + 'morning is still there in the afternoon.',
     },
     nonce: {
       note: 'Print a fresh one-shot credential for a server already running, and do nothing '

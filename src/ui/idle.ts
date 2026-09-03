@@ -219,7 +219,7 @@ export class IdleMonitor {
    * check every `idleMs / 10` is exact enough. The exit is never EARLY —
    * `expired()` is what decides — and it is late by at most one poll
    * interval, which is 10% of the window for any window of 100ms or more
-   * (production's 15-minute window polls every 90s). Below that the floor of
+   * (production's eight-hour window polls every 48 minutes). Below that the floor of
    * 10ms dominates, so the lateness is larger in proportion but the poll is
    * never a hot loop; short windows exist for tests, which pass a clock
    * rather than wait. The constructor has already refused a window that is
