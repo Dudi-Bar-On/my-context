@@ -6,7 +6,10 @@ status: active
 severity: soft
 always: false
 summary: The health report repeats the same long explanation with every finding, so the page is almost all one paragraph and tells you nothing.
-summary_of: b8c403c0c3005793
+summary_of: 791adbc90c355c47
+acknowledged:
+  - body_disagrees_with_meta@9acbb023e1537a53
+  - citation_form@9acbb023e1537a53
 scope: []
 tags:
   - v2
@@ -19,10 +22,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/msgsplit.md"
 source_anchor: null
-source_checksum: fab0f0f747479daf
+source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: 8a5bd4f372fd1c54
+checksum: 6c74f4188cc3c567
 plan: walk
 seq: "122"
 state: todo
@@ -38,7 +41,7 @@ source: owner report, 2026-08-31
 > **The measurement**
 >
 >     61 findings                     63,560 characters total
->     945 chars of every message      IDENTICAL on all 61  =  58,000 repeated
+>     945 chars of every message      IDENTICAL on all 61  =  58000 characters repeated
 >     the part that actually differs  99 characters
 >
 > The differing part is the whole finding:

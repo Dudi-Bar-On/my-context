@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: A fifth batch of open work read, finding a colour question posed backwards and two items still blocking work that had already been finished.
-summary_of: edb525be50c613d1
+summary_of: 9a863ffcbe1535d6
+acknowledged:
+  - body_disagrees_with_meta@04f37f2c67c1c629
 scope: []
 tags:
   - v2
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 73706f5f2d29b346
+checksum: f91d7bc643002a92
 ---
 
 # reconciliation batch 5: plan:repaint, seven open tasks verdicted
@@ -38,4 +40,4 @@ THE HUE FINDING IS THE ONE TO CARRY. `seq:13a` item 2 says doctor s levels "lost
 
 AND `seq:13a` item 1 was decided the way it feared -- "deferred to whoever builds #pulse; it should not be decided by them alone". `watch.js` · `const KIND_HUE = {` · ~164 ships four hues plus a fifth `--faint` for a kind the build cannot name. The answer is good and argued. It still reached the owner as a fait accompli.
 
-TWO CLOSED ON EVIDENCE, and both had been reading as open blockers on work that had long since shipped: `2w` said the app "cannot serve the vendored fonts yet" while `static.ts` · `'.woff2': 'font/woff2',` · ~108 has carried `.woff2` since ui1 Task 16, `styles.css` is 63KB rather than the 99-byte placeholder it names, and `index.html` is 9KB rather than an empty shell.
+TWO, seq:2w and seq:3h, CLOSED ON EVIDENCE, and both had been reading as open blockers on work that had long since shipped: `2w` said the app "cannot serve the vendored fonts yet" while `static.ts` · `'.woff2': 'font/woff2',` · ~108 has carried `.woff2` since ui1 Task 16, `styles.css` is 63KB rather than the 99-byte placeholder it names, and `index.html` is 9KB rather than an empty shell.

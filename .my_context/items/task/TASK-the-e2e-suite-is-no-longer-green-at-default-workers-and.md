@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: The browser tests stopped passing reliably once the sample data grew, and there is no earlier measurement to compare against.
-summary_of: 2606968bc173723e
+summary_of: ed6d3c353561b7af
+acknowledged:
+  - body_disagrees_with_meta@3f63f1005dbcb37d
 scope: []
 tags:
   - v2
@@ -19,10 +21,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/susp.md"
 source_anchor: null
-source_checksum: 29e62f68d756bd3d
+source_checksum: null
 valid_from: 2026-08-30
 valid_until: null
-checksum: 4189801e1e91f6a1
+checksum: 6e8f9edf78f996e4
 plan: port
 seq: "96"
 state: done
@@ -34,7 +36,7 @@ source: "measured by plan:port seq:94, 2026-08-30"
 
 > > Measured 2026-08-30 by `plan:port seq:94`, which reported it **against its own change** rather than only about it.
 >
-> **The claim that is now false**
+> **The recorded claim that no longer describes the suite**
 >
 > After `plan:walk seq:85` removed the boot-refusal writes, a full `npm run test:e2e` at the default worker count ran **331 passed / 0 failed**. That is recorded in this corpus and in several briefs.
 >

@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: List every place the app quietly declined to build something, then for each one either build it, file it, or decide out loud not to.
-summary_of: d4485ed392e7df40
+summary_of: b6d845026ffad63b
+acknowledged:
+  - citation_form@d57d17e7adaeb294
 scope: []
 tags:
   - v2
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: cce1d794e87d0953
+checksum: ac3e97abddf9e6a0
 plan: walk
 seq: "12"
 state: todo
@@ -95,7 +97,7 @@ REFUSALS THAT LEAVE THE LIST BY BEING RULED TO STAY -- the owner said "in genera
 
 REFUSALS THAT ARE ALREADY OVER AND NOBODY NOTICED -- these are the harvest:
   coverage s magnitude bar was refused in an earlier pass and IS DRAWN NOW
-  plan:config seq:2 and the delta plate / blast panels refuse "until ctx.api can POST". ctx.post is at `app.js` · `async function post(path, body) {` · ~1398, exported at 947, with ZERO callers -- and config.js:24-40 still tells readers it does not exist
+  plan:config seq:2 and the delta plate / blast panels refuse "until ctx.api can POST". ctx.post is at `app.js` · `async function post(path, body) {` · ~1398, exported at 947, with ZERO callers -- and `config.js` · `no method, no body` still tells readers it does not exist
   the status strip announces the bridge is not installed WITHOUT ASKING, while /api/watch/context serves the answer (now plan:walk seq:29)
 
 SILENCES THAT ARE REFUSALS IN EVERYTHING BUT NAME -- nothing 503s and the reader is told nothing:
@@ -104,3 +106,5 @@ SILENCES THAT ARE REFUSALS IN EVERYTHING BUT NAME -- nothing 503s and the reader
   the Export screen s third format rung, served as built:false (plan:port seq:14)
 
 AND THE ONE STRUCTURAL NOTE: three of these named their unblocking condition in a COMMENT and the condition was met without anything noticing. That is plan:walk seq:11, and it should be widened -- see its own reconciliation note.
+
+CITATION DRIFT, checked 2026-09-03. The line above ends "and config.js still tells readers it does not exist" — it no longer does (`config.js` · `nothing else: no method, no body"*, which is why nobody noticed. It is` · ~119), and `ctx.post` has callers now.

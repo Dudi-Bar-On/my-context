@@ -2,11 +2,13 @@
 id: KNOWN-four-timing-sensitive-tests-each-went-red-once-under-load
 type: known_issue
 title: four timing-sensitive tests each went red once under load after the dry-run landed
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: Several time-sensitive checks each failed once when too much was running at the same time, and the extra parallel work bought no speed at all.
 summary_of: 0208fd1129e39b50
+acknowledged:
+  - body_disagrees_with_meta@5ebe452363c6a6f3
 scope: []
 tags:
   - v2
@@ -18,8 +20,8 @@ source_file: null
 source_anchor: null
 source_checksum: e8e8107c4396d952
 valid_from: 2026-08-27
-valid_until: null
-checksum: e09b2efae493864b
+valid_until: 2026-09-03
+checksum: 185b9f9db632b708
 ---
 
 # four timing-sensitive tests each went red once under load after the dry-run landed

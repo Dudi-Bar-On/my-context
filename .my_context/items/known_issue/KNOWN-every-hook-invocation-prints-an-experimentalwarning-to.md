@@ -2,11 +2,13 @@
 id: KNOWN-every-hook-invocation-prints-an-experimentalwarning-to
 type: known_issue
 title: Every hook invocation prints an ExperimentalWarning to stderr, keeping 11 tests red
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: A harmless warning is printed on every single run, which keeps a group of checks permanently red and teaches everyone to ignore the count.
-summary_of: 095ed50b6980cc8b
+summary_of: 7438d20436358e26
+acknowledged:
+  - body_disagrees_with_meta@34ba371ef676cb1d
 scope: []
 tags:
   - hooks
@@ -18,8 +20,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-19
-valid_until: null
-checksum: c8644e5cd1251040
+valid_until: 2026-09-03
+checksum: 65e3ca8be329cc81
 ---
 
 # Every hook invocation prints an ExperimentalWarning to stderr, keeping 11 tests red
@@ -65,3 +67,5 @@ discard the only thing that noticed.
 suppress a genuine deprecation the project would want to see. Disable the
 specific `ExperimentalWarning` class, not all warnings, and only for the hook
 entry points — the CLI can keep them.
+
+2026-09-03: THE FLAG IS IN BOTH PLACES THIS ITEM NAMES, and the issue is closed on that. `hooks/hooks.json` invokes each of its four hooks as `node --disable-warning=ExperimentalWarning "<root>/src/hooks/<name>.ts"`, so a real session is quiet; and the harness that spawns the hooks under test passes the same flag -- `test/hooks/hook-binaries-e2e.test.ts` · `['--disable-warning=ExperimentalWarning', ...args]` · ~117, with `hook-contention.test.ts` and `observation-binaries-e2e.test.ts` doing the same. The 11 tests this issue kept red are asserting an empty stderr against a channel that is empty again. What was never in scope still prints it: `node src/cli/index.ts doctor` shows the warning today, and this item says in as many words that the CLI can keep them.

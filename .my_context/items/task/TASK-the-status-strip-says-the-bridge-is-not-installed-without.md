@@ -7,6 +7,9 @@ severity: soft
 always: false
 summary: The strip tells everyone that a component is not installed without ever checking, including the people who installed it.
 summary_of: bb072681297f706d
+acknowledged:
+  - citation_form@8412e66d162efdb9
+  - state_unaudited@8412e66d162efdb9
 scope: []
 tags:
   - v2
@@ -23,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 218aa8a1cc46899f
+checksum: 385cc49098ac89b8
 plan: walk
 seq: "29"
 state: done

@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A few cell-level pieces of the coverage table are still missing, though the table itself has since been built.
 summary_of: db8de9cac9f4a285
+acknowledged:
+  - body_disagrees_with_meta@37a285a3f21bfd7b
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 4fb7ef473749609f
+checksum: bb744875b0cb724d
 plan: screens
 seq: 4s
 state: todo

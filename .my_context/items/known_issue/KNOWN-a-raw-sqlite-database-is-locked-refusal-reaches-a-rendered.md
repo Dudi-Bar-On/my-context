@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: When two sessions touch one workspace at once, a person can be shown a raw database-locked error on screen instead of a handled message.
-summary_of: 69e6211a85dd0b06
+summary_of: abf069d04299fc09
+acknowledged:
+  - citation_form@c7b79ea65f9668f9
 scope: []
 tags:
   - e2e
@@ -15,10 +17,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-test-mycontext-plugin/9e5b6b17-c186-4c93-a0a5-775b4eccd9e7/scratchpad/known-issue-db-locked.md"
 source_anchor: null
-source_checksum: 821c22bf3de3cbf1
+source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: ce67ec6d1378a3ad
+checksum: be70feb58338de4a
 ---
 
 # a raw SQLite "database is locked" refusal reaches a rendered screen
@@ -27,8 +29,8 @@ checksum: ce67ec6d1378a3ad
 >
 > Measured 2026-09-02 while baselining the e2e suite (four full `npm run test:e2e` runs, default workers, headed, quiet machine): the string **`database is locked`** reached a RENDERED SCREEN, not just a log, on at least one occasion. Two distinct observations, both real:
 >
-> - `page.evaluate: Error: database is locked` at `e2e/preview-gate-counts.spec.ts:166`
-> - the UI drew `Refused. …: database is locked` into a card, at `e2e/injected-empty.spec.ts:140`
+> - `page.evaluate: Error: database is locked` at `e2e/preview-gate-counts.spec.ts` · `test('every rung carries the count of items that fail there` · ~166
+> - the UI drew `Refused. …: database is locked` into a card, at `e2e/injected-empty.spec.ts` · `test('the screen lands on a session that has lines, and says nothing about emptiness'` · ~140
 >
 > Three occurrences total across the four runs. The mechanism is two concurrent hook sessions touching one workspace: SQLite refuses the second session's write, and that refusal is surfaced to the reader verbatim — as the raw driver error text — instead of being handled or named in the product's own voice.
 >

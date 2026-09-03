@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Speed limits labelled as a typical case are really a worst case, so one hiccup fails the run; three test files still do this.
 summary_of: 1282604d0723bca1
+acknowledged:
+  - citation_form@b7d01675bb92ee52
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: e7dad8a6658d2a06
+checksum: ccff82f6519b9c94
 plan: hooks
 seq: 12p
 state: done

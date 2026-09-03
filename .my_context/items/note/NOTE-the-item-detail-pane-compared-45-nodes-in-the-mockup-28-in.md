@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: "The panel showing one entry's details compared against its design: a whole block missing, some parts unstyled, and one row reading the wrong value."
 summary_of: cc584bd7a7e74ae5
+acknowledged:
+  - citation_form@cb9072c0848138c9
 scope: []
 tags:
   - v2
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 90de9e49abbbb9b8
+checksum: e16c5202504b1604
 ---
 
 # the item detail pane compared: 45 nodes in the mockup, 28 in the app, four differences

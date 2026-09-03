@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: A test still states a hand-counted number for a set that is now worked out automatically, so it will quietly disagree the moment the set grows.
-summary_of: 4d65c4535ecc165d
+summary_of: 136b91c5dc1b51e0
+acknowledged:
+  - citation_form@152ffae06a866632
 scope: []
 tags:
   - v2
@@ -19,10 +21,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/vocab.md"
 source_anchor: null
-source_checksum: dd2e4c753b965298
+source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: fbddf978e03586c0
+checksum: c97e32cbf552732b
 plan: rulings
 seq: "53"
 state: todo
@@ -36,7 +38,7 @@ source: "found by plan:rulings seq:50, 2026-08-31"
 >
 > **The observation**
 >
-> `test/core/vocabulary-graph.test.ts:33` describes *"the eight functions the web UI's no-writes guarantee names"*.
+> `test/core/vocabulary-graph.test.ts` · `The eight functions the web UI's no-writes guarantee names.` · ~33 describes *"the eight functions the web UI's no-writes guarantee names"*.
 >
 > That is a **hand-kept count of a set that has just stopped being hand-kept.** `test/ui/no-writes.test.ts` now derives its membership from a property — a module is a writer when it calls, by an imported `node:fs` name, an API that mutates the filesystem — and that derivation moved the answer from **12 named modules to 27**.
 >

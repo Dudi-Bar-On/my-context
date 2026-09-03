@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Three more hand-kept lists that the code could produce on its own, one of them held stale in place by the test that was meant to protect it.
 summary_of: 2cd3798f86bc37d1
+acknowledged:
+  - citation_form@5620ba3c428bb635
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 0a23762ca28693f6
+checksum: 607935eb165ede6e
 plan: rulings
 seq: "35"
 state: done

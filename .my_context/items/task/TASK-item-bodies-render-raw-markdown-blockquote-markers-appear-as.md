@@ -7,6 +7,10 @@ severity: soft
 always: false
 summary: Quoted passages in an item show their punctuation as stray characters mid-sentence, and fixing it is a decision about the design, not a bug.
 summary_of: df59e4de5b233386
+acknowledged:
+  - body_disagrees_with_meta@91ba2ad248254faa
+  - citation_form@91ba2ad248254faa
+  - state_unaudited@91ba2ad248254faa
 scope: []
 tags:
   - v2
@@ -22,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: a60caf89858932d0
+checksum: 6819b134af84b9c8
 plan: walk
 seq: "37"
 state: done

@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The background the whole look depends on was written but never actually used, so the translucent panels had nothing to catch.
 summary_of: 137fbf8caef70788
+acknowledged:
+  - state_unaudited@75ecf4d975c6cb41
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 8a2acc489f4ba9e1
+checksum: 69270ec547a30a2d
 plan: repaint
 seq: 1g
 state: done

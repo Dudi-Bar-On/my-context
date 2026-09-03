@@ -7,6 +7,9 @@ severity: soft
 always: false
 summary: The report was thought to hide how much it left out and does not; the real gap was that no test covered what happens at the default limit.
 summary_of: 5cb9b613020cb189
+acknowledged:
+  - body_disagrees_with_meta@36c8cca0110873b5
+  - state_unaudited@36c8cca0110873b5
 scope: []
 tags:
   - v2
@@ -21,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 6c9b48de66e6c573
+checksum: 7bddb7ee0e4f686c
 plan: categories
 seq: "23"
 state: done

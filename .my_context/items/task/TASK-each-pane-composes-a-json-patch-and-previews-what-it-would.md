@@ -6,7 +6,10 @@ status: active
 severity: soft
 always: false
 summary: Each settings section shows the exact text to paste and what would actually change as a result, since the file stays the user's own to edit.
-summary_of: 8e56f978fbf752d1
+summary_of: f8253696b31891ff
+acknowledged:
+  - body_disagrees_with_meta@6dfcb120e7fd82d1
+  - citation_form@6dfcb120e7fd82d1
 scope: []
 tags:
   - "plan:config"
@@ -19,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 71d799917f62c7d8
+checksum: 41b5b704455d9e9c
 plan: config
 seq: "2"
 state: done
@@ -33,7 +36,7 @@ TODAY the screen previews a budget change and says, correctly, that there is no 
 
 DO: each pane emits the precise JSON block for its subject, and a diff of the RESOLVED config before and after - not of the file, of what would actually govern, since a shipped default and an override compose. The endpoints exist: `/api/config/check` and `/api/config/preview` are registered and tested.
 
-BLOCKED ON `ctx.api` having no POST, filed as TASK-ctx-api-has-no-post-so-three-registered-endpoints-are: both endpoints are registered, tested and unreachable from the page, which is why Configure ships with a disabled segbar today.
+ITS BLOCKER IS GONE: `ctx.api` having no POST was filed as TASK-ctx-api-has-no-post-so-three-registered-endpoints-are: both endpoints are registered, tested and unreachable from the page, which is why Configure ships with a disabled segbar today.
 
 RECONCILED 2026-08-25 under plan:walk seq:23, against the precedence order.
 

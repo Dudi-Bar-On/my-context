@@ -2,11 +2,13 @@
 id: KNOWN-the-corpus-pointed-into-the-plans-by-line-number-and-104-of
 type: known_issue
 title: the corpus pointed into the plans by line number and 104 of 109 pointers were wrong
-status: active
+status: deprecated
 severity: hard
 always: false
 summary: References from the notes into the planning documents pointed at the wrong place, landing a reader in a different section with no sign of it.
 summary_of: 5a2f81d6b3dbb94f
+acknowledged:
+  - body_disagrees_with_meta@ac649959aeaf749a
 scope: []
 tags:
   - v2
@@ -19,8 +21,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
-valid_until: null
-checksum: 4e8f5a30303053cd
+valid_until: 2026-09-03
+checksum: 8987dbc45ebe9054
 ---
 
 # the corpus pointed into the plans by line number and 104 of 109 pointers were wrong

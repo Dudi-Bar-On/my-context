@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: What a session inherited from an earlier one is already shown; it looks missing only because a sample session has nothing to inherit.
-summary_of: 470688d727ef13d7
+summary_of: 13e018279ad76d4f
+acknowledged:
+  - citation_form@91adea82dad3dd08
 scope: []
 tags:
   - v2
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 708d8b676daf6bdd
+checksum: a785a04466b434fd
 plan: walk
 seq: "26"
 state: done
@@ -61,4 +63,6 @@ THE FIXTURE IS NOT A SESSION-START WITH A RESOLVED ROOT, so it carries nothing, 
 
 AND THE OVERLAP THIS TASK FLAGGED IS ALSO SETTLED. plan:screens seq:1s-d ("the carried item block is BUILT and the mockup still badges it PROPOSED") and this task CONTRADICTED each other outright. Both were right about different things: built in code, absent in the fixture.
 
-WHAT SURVIVES, AND IT IS NOT NOTHING: plan:screens seq:1s-e is a REAL defect this task could never have seen -- the carried list is unbounded, preview.js:552 loops every carried line and draws one block each. On the fixture: zero. On the owner s own corpus: nineteen to twenty-six, photographed, pushing two graphics off the screen. INVISIBLE TO EVERY GATE, VISIBLE ON THE FIRST REAL SESSION.
+WHAT SURVIVES, AND IT IS NOT NOTHING: plan:screens seq:1s-e is a REAL defect this task could never have seen -- the carried list is unbounded, `preview.js` · `const carriedLines = index.normative.filter((line) => line.carried === true);` · ~1453 loops every carried line and draws one block each. On the fixture: zero. On the owner s own corpus: nineteen to twenty-six, photographed, pushing two graphics off the screen. INVISIBLE TO EVERY GATE, VISIBLE ON THE FIRST REAL SESSION.
+
+CITATION DRIFT, checked 2026-09-03. The loop cited above still exists and is no longer unbounded: it goes through the house's one `boundedList` (`preview.js` · `const carriedBound = boundedList(ctx, carriedHost, carriedLines, (indexLine) => {` · ~1454). The hint is current; the "unbounded" half of the sentence is not.

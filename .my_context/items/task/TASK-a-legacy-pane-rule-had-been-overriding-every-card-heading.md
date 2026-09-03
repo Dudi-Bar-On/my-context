@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: An old style rule quietly took over every card heading once a name was reused, and shipped wrong for weeks because nothing measures how text looks.
 summary_of: b736557227d69006
+acknowledged:
+  - state_unaudited@97d6a2c155ec82ee
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 40ccd7e16ba0ff62
+checksum: 9be47d941db4bf90
 plan: repaint
 seq: 9c
 state: done

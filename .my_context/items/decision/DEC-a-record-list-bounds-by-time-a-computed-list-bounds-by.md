@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: A list of things that happened is cut off by date; a list worked out on the spot is cut off in the order it was worked out, never by an invented time.
-summary_of: bb3e370fb6d56389
+summary_of: 313474fd80718f28
+acknowledged:
+  - citation_form@44528b9cbe3a027d
 scope: []
 tags:
   - v2
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-26
 valid_until: null
-checksum: 068fb32960c00192
+checksum: 78337806918f8016
 ---
 
 # a record-list bounds by time, a computed list bounds by admission order
@@ -29,9 +31,9 @@ OWNER RULING, 2026-08-26. Asked how to bound the five unbounded surfaces of `REQ
 THE SPLIT, AND THE LINE IT FALLS ON. A surface that REPLAYS A RECORD bounds by TIME. A surface that RE-COMPUTES bounds by the order its computation admitted things in. The distinction is not stylistic -- it is about what the data can honestly be asked.
 
 THREE SURFACES REPLAY A RECORD, and each already carries a real timestamp:
-  `injected.js:70`  the injected-now table -- `InjectedLine.at`, per line, and the table already draws a When column
-  `work.js:458`     the review queue -- the revision log stamps each staging
-  `packs.js:522`    the pack list -- import records under the audit directory
+  `injected.js` · `const when = el('td', 'm small', line.at);` · ~230  the injected-now table -- `InjectedLine.at`, per line, and the table already draws a When column
+  `work.js` · `const bound = boundedList(ctx, stack, revisions, (rev) => revisionCard(ctx, rev),` · ~739     the review queue -- the revision log stamps each staging
+  `packs.js` · `const bound = boundedList(ctx, stack, body.packs, (pack) => packCard(pack),` · ~548    the pack list -- import records under the audit directory
 These take the ruling as he said it: SHOW THE LAST N BY TIME, and offer the rest, because the rest is persisted and can be fetched.
 
 TWO SURFACES COMPUTE, and carry no time field at all:

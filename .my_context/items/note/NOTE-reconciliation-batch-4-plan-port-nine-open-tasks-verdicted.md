@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A fourth batch of open work read, settling the order to do it in and turning up a claim the product makes on screen without ever checking it.
 summary_of: 8ea387d20cd355b0
+acknowledged:
+  - citation_form@de7d10d9c79ec145
 scope: []
 tags:
   - v2
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 41a4673fb01ce70d
+checksum: 75f14cf1cf1ea00f
 ---
 
 # reconciliation batch 4: plan:port, nine open tasks verdicted

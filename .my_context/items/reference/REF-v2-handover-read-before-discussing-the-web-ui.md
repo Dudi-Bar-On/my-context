@@ -12,7 +12,7 @@ acknowledged:
   - dead_scope@542e1344c9e2fce6
 scope:
   - reports/**
-  - my-context/docs/superpowers/specs/**
+  - docs/superpowers/specs/**
 tags: []
 origin: human
 source_file: null
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-18
 valid_until: null
-checksum: 74d12481039a867c
+checksum: 386241cc647b8b1c
 ---
 
 # v2.0 handover — we are mid-decision, keep deciding

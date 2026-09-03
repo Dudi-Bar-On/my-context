@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Two tests fail now and again purely because the machine was slow; widen their margins rather than delete them.
 summary_of: 0c75579341e075e2
+acknowledged:
+  - citation_form@4462a8c75485454d
 scope: []
 tags:
   - "plan:port"
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: dafb2f9ff08487ae
 valid_from: 2026-08-23
 valid_until: null
-checksum: e154ce5709e8ef69
+checksum: 07ba3eaf270cb951
 plan: port
 seq: 10b
 state: done

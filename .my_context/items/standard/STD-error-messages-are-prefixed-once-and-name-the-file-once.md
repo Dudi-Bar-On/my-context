@@ -2,7 +2,7 @@
 id: STD-error-messages-are-prefixed-once-and-name-the-file-once
 type: standard
 title: Error messages are prefixed once and name the file once
-status: active
+status: superseded
 severity: soft
 always: false
 summary: An error names the tool and the file it concerns exactly once, so a message never comes out with the same words repeated back at the reader.
@@ -16,8 +16,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
-valid_until: null
-checksum: 0797dbadc083455a
+valid_until: 2026-09-03
+checksum: c092bf190098efd7
 ---
 
 # Error messages are prefixed once and name the file once
@@ -29,3 +29,6 @@ either produces `my_context: error  f.md: my_context: f.md ...`.
 ## Observations
 - [rule] A failed call should teach: name the closest valid value and where to look
 - [exception] The duplicate-id message names two files deliberately — there the repetition is the information
+
+## Relations
+- superseded_by [[STD-error-message-conventions]]

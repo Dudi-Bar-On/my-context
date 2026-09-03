@@ -7,6 +7,8 @@ severity: hard
 always: false
 summary: A screen is finished only when the owner says so, and a test showing that it works is not a test showing it is the screen that was actually designed.
 summary_of: 6e4c39aa30582f8a
+acknowledged:
+  - body_disagrees_with_meta@7ef8f3973e3068f7
 scope: []
 tags:
   - v2
@@ -18,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: df9b27e2bb7cd3b7
+checksum: 3d69b423fc8c7242
 ---
 
 # the owner says when a screen is done, and passing is not the same as designed

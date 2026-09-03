@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A security test that only tries the missing-password case cannot tell a real check from one that accepts absolutely anything.
 summary_of: b3ce85640de166fb
+acknowledged:
+  - state_unaudited@12499047ce7ac684
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 7eaf890a21b72235
+checksum: 389b376d703007db
 plan: rulings
 seq: "39"
 state: done

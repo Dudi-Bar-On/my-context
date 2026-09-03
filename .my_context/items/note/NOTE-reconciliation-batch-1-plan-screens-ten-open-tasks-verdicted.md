@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: A first batch of open work read against the code, settling what is finished and what stands, and one place where two records disagreed.
-summary_of: 47d04e63103b8f83
+summary_of: 178069ff19761a33
+acknowledged:
+  - body_disagrees_with_meta@2b7163ebdeeb8d4c
 scope: []
 tags:
   - v2
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 83108b8e4527985a
+checksum: 6b9d3e5a87654fa8
 ---
 
 # reconciliation batch 1: plan:screens, ten open tasks verdicted
@@ -27,7 +29,7 @@ checksum: 83108b8e4527985a
 plan:walk seq:23, 2026-08-25. Ten open tasks in plan:screens, read against the corpus, the code and the KNOWN_GAPS ledger, in the order STD-the-precedence-order-when-four-sources-of-truth-disagree sets.
 
   seq:9s   DONE            status s one missing kind was `b`; 61d0090 closed it
-  seq:4s   STANDS REDUCED  the table landed; 6 of 13 kinds left, and the title is wrong
+  seq:4s   STANDS REDUCED  the table landed; 6 of 13 kinds left, and its own title is wrong
   seq:3s   REFINES walk/7  one graphic seen from three angles; walk/7 is the build
   seq:1s-f SUPERSEDED      by walk/16, which is later and wider
   seq:1s-a STANDS          the only open API gap here; no walk task covers it

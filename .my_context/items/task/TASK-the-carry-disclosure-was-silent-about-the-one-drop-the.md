@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The notice meant to list everything left out was itself leaving one case out, and it was the very case the notice exists to catch.
 summary_of: 6e7127084160b6f1
+acknowledged:
+  - state_unaudited@74f9bf65e76291e9
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: acd912daeab2a83b
+checksum: f37d5681bb7e58a2
 plan: hooks
 seq: 19a
 state: done

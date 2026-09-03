@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Importing two collections that share a name silently overwrites the first one's record of what it brought in.
 summary_of: 78d7402f65e4483c
+acknowledged:
+  - state_unaudited@e2964795739984df
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 6bd546c7b8725f5d
+checksum: 28151abc7452d7a0
 plan: export
 seq: 14n
 state: done

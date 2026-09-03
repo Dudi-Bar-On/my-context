@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: An old reading is treated as current, so nothing notices the context is nearly full and the handover is never written.
-summary_of: 9f3a710d1cb1c19e
+summary_of: e8de3e40b02225c9
+acknowledged:
+  - citation_form@b97a439e9a2e4fc0
 scope: []
 tags:
   - v2
@@ -20,10 +22,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/stale.md"
 source_anchor: null
-source_checksum: 1d1ec216f1e11737
+source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: 7e0cea34c646b822
+checksum: 5bad92406f714367
 plan: walk
 seq: "123"
 state: done
@@ -46,7 +48,7 @@ source: owner report, 2026-08-31
 >
 > It carefully distinguishes three unmeasurable reasons — `no-bridge` (the directory is absent), `no-sample` (the file is missing or unreadable), `unknown-shape` (the payload does not carry the fields). **A 29-hour-old sample is none of them.** The directory exists and the file parses, so it returns a *measured* percentage.
 >
-> **The consequence is not cosmetic.** `src/hooks/stop.ts:260` calls `readOccupancy`, compares the result against `handoverThresholdPercent()` (98, unset so defaulted), reads 60.1, and concludes no ask is needed. **The handover ask has never fired this session** — `asks: 0` — while occupancy sat far past the threshold. The mechanism that exists to protect continuity across a compaction is silently off, and every surface reports it as working.
+> **The consequence is not cosmetic.** `src/hooks/stop.ts` · `const occupancy = readOccupancy(root, sessionId);` · ~260 calls `readOccupancy`, compares the result against `handoverThresholdPercent()` (98, unset so defaulted), reads 60.1, and concludes no ask is needed. **The handover ask has never fired this session** — `asks: 0` — while occupancy sat far past the threshold. The mechanism that exists to protect continuity across a compaction is silently off, and every surface reports it as working.
 >
 > **Why the fossil exists at all, which is the part nobody would guess**
 >

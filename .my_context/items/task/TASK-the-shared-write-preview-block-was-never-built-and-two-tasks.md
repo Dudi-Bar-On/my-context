@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A shared before-and-after preview was never actually built, and two jobs marked finished were planned on top of it.
 summary_of: 38600c0970b73ef7
+acknowledged:
+  - citation_form@7f1ce3987645213c
 scope: []
 tags:
   - v2
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-26
 valid_until: null
-checksum: 1f7723208ae89d3c
+checksum: da250c266f83bcdd
 plan: walk
 seq: "46"
 state: done

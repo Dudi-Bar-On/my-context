@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A sixth batch of open work read, all of it genuinely unbuilt, plus a stale note telling every reader that something they need does not exist.
 summary_of: 6f2243ae2e48dceb
+acknowledged:
+  - citation_form@12ec69aaad230726
 scope: []
 tags:
   - v2
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: d896738a74730edb
+checksum: def940d854a845a7
 ---
 
 # reconciliation batch 6: plan:config and plan:builder, fourteen open tasks verdicted

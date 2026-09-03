@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The detail panel shows a dash where a file path should be, because it reads the wrong field for nearly every item.
 summary_of: e351b2030af336cc
+acknowledged:
+  - citation_form@95db9332b0fb529d
 scope: []
 tags:
   - v2
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 162d4399437ad916
+checksum: 482d2c1a7d7f1d1d
 plan: walk
 seq: "42"
 state: done

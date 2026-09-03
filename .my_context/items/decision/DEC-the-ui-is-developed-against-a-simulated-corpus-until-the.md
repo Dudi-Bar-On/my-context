@@ -2,7 +2,7 @@
 id: DEC-the-ui-is-developed-against-a-simulated-corpus-until-the
 type: decision
 title: The UI is developed against a simulated corpus until the screens are finished
-status: active
+status: superseded
 severity: soft
 always: false
 summary: The screens are built against made-up data containing one of everything, so an empty screen means a bug and not a quiet day; real data comes back at the end.
@@ -17,8 +17,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
-valid_until: null
-checksum: 2c6170d800954a6e
+valid_until: 2026-09-03
+checksum: b48c144225864ea5
 ---
 
 # The UI is developed against a simulated corpus until the screens are finished
@@ -46,3 +46,6 @@ IT ALSO FIXES THE PARITY GATE. e2e/screen-parity.spec.ts compares each screen to
 THE RETURN IS A TASK, NOT A HOPE
 
 TASK-return-the-ui-to-the-real-corpus-after-the-screens-are-built is the final UI task and must be the last one executed. Shipping against a fixture is exactly how a product comes to work only on its demo.
+
+## Relations
+- superseded_by [[INSTR-testing-happens-against-the-current-corpus-and-an-exception]]

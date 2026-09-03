@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: Three explanatory comments give reasons that have since stopped being true, which is worse than never having written them.
-summary_of: 569196eecfd9b53f
+summary_of: 0c4c1554c2aa7b9d
+acknowledged:
+  - citation_form@10c7a0fe3b352557
 scope: []
 tags:
   - v2
@@ -14,17 +16,17 @@ tags:
   - live
   - "plan:live"
   - "seq:13"
-  - "state:done"
+  - "state:todo"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: b0454e087641541b
+checksum: e2d741775fa1aa15
 plan: live
 seq: "13"
-state: done
+state: todo
 priority: "1"
 source: "plan:live seq:8's out-of-lane findings, 2026-08-28"
 ---

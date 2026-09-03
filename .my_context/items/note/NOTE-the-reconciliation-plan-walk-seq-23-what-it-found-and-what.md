@@ -5,8 +5,12 @@ title: "the reconciliation, plan:walk seq:23: what it found and what it changed"
 status: active
 severity: soft
 always: false
-summary: "A full review of every piece of open work: what is really finished, what was held up by something long since done, and what was filed twice."
-summary_of: 0400b33e21671ba4
+summary: "\"A full review of every piece of open work: what is really finished, what was held up by something long since done, and what was filed twice.\""
+summary_of: a2ae2f8edb06bdcc
+summary_was:
+  - "2026-09-03 A full review of every piece of open work: what is really finished, what was held up by something long since done, and what was filed twice."
+acknowledged:
+  - body_disagrees_with_meta@8d62e836157e016b
 scope: []
 tags:
   - v2
@@ -19,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 889cc6f576436b68
+checksum: bbafb9f147146f26
 ---
 
 # the reconciliation, plan:walk seq:23: what it found and what it changed
@@ -28,10 +32,10 @@ RUN 2026-08-25, in the order `STD-the-precedence-order-when-four-sources-of-trut
 
 THE COUNT. 106 open tasks across 16 plans, every one read and given ONE verdict.
 
-    DONE            12   something closed it, and the evidence is named
-    SUPERSEDED       6   a later task carries everything it had left
-    REFINES          3   real content, but dispatched with its parent
-    STANDS          85
+    12   DONE          something closed it, and the evidence is named
+     6   SUPERSEDED    a later task carries everything it had left
+     3   REFINES       real content, but dispatched with its parent
+    85   STANDS
 
 Tasks 344 -> 346, done 238 -> 250, open 106 -> 96. Nothing was deleted; every superseded statement stays where it was, because it is how the next reader understands the winner.
 

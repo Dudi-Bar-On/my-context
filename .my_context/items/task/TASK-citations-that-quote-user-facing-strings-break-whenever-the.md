@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Cross-references that quote wording people see break every time that wording changes, so they should point at names that do not move.
 summary_of: ce37e84c1dc6df12
+acknowledged:
+  - citation_form@ff17f84c1a6b7199
 scope: []
 tags:
   - v2
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: afb29f17cfcfb114
+checksum: 394b29bf080dbc6d
 plan: walk
 seq: "69"
 state: done

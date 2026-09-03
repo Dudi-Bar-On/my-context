@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: When the startup message cannot be read, the result still looks complete and normal while quietly losing the parts that decide what is delivered.
 summary_of: 1d590c67ad6f90fb
+acknowledged:
+  - citation_form@0a782d0fffce1487
 scope: []
 tags:
   - hooks
@@ -18,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-19
 valid_until: null
-checksum: 38131150674d5855
+checksum: 939274614e37fb37
 ---
 
 # An unparseable hook payload injects plausibly and discloses nothing

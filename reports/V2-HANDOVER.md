@@ -1,5 +1,103 @@
 # v2.0 handover — we are mid-decision. Keep deciding.
 
+## ⏭ READ THIS FIRST — 2026-09-04
+
+**STATE: five commits are pushed (`cb1cbba..9c55076`). EVERYTHING SINCE IS UNCOMMITTED AND UNGATED.**
+
+**FIRST ACTION NEXT SESSION, in this order:**
+1. **Check whether the `persist` lane finished.** It was mid-edit on `src/core/persist.ts`, `src/core/audit.ts`, `src/core/mutate.ts` and `test/core/snapshot-provenance.test.ts` when this ended. `git status` and `npx tsc --noEmit` first.
+2. **Stop the UI server, then run the seven gates.** `npm test` (~3 min) and `npm run test:e2e` (~13 min) HAVE NOT BEEN RUN against today's work. Read the e2e SUMMARY LINE and ISOLATE before attributing — `strip-fields.spec.ts` has been measured as worker contention thirteen times.
+3. **Commit and push.** It is a large day and it is all unsaved.
+
+**FAST GATES AS OF NOW: 5 of 6 green.** `typecheck` 0 · `check:test-glob` 0 · `check:retired` 0 · `check:text-files` 0 · `check:needs-cycles` 0 · **`verify:citations` exit 1 — RED AT `HEAD` TOO**, measured in an isolated worktree. Broken source citations: 22 at HEAD → 20 → 21 now. A standing condition, not a new break.
+
+### THE 44-ITEM MERGE IS COMPLETE
+
+**814 items. Zero missing.** The 42 were migrated through `mycontext add` and 5 supersessions ran; a 47-step plan was proved in a throwaway first (47/47 exit 0, doctor 0 errors 0 warnings, Markdown→DB→Markdown byte-clean). Bodies: 0 of 42 differ. Observation blocks: 0 of 42 differ. All 7 pinned items landed pinned.
+
+**It was blocked on two missing flags, both built today:**
+- **`add --original-id <id>`** — 32 of 44 nested items have ids that do not derive from their titles. Named `--original-id` rather than `--id` deliberately: `--id` would say `add` offers a general way to NAME items, which it must not, and "original" carries its own precondition.
+- **`add --always`** — 7 items are pinned. Accepted but not advertised in its `=false` form; read BY VALUE not by presence, or `--always=false` would mean *pinned* on `add` and *unpinned* on `edit`. Its confirmation now PRICES the pin (6000-token shared tier).
+
+**Relations: 19 of 27 written.** 12 via MCP `link_items` (there is no CLI spelling — see the open item below), 7 by the supersede steps. **The remaining 8 are blocked on the six orphan relation types.**
+
+**Could not be carried, recorded not glossed:** `valid_until` on 3 items (`add` has no spelling; `supersede` stamps today instead — all 3 were superseded anyway), and `status: superseded` at creation (restored by the supersede steps).
+
+**Owner ruling that governs the merge:** `DEC-in-the-merge-of-the-nested-corpus-an-existing-item-always` — an existing item always wins a contradiction because it is newer; the loser is SUPERSEDED, never deleted. One contradiction fired (`DEC-focus-discloses-and-allows` → `DEC-a-focus-may-not-hide-a-pinned-item`). One exception was ruled the other way: `STD-error-message-conventions` (incoming) BEAT the re-capture `STD-error-messages-are-prefixed-once-and-name-the-file-once`, because six source citations point at the incoming id.
+
+### I BROKE SEVEN ITEMS' PROVENANCE. THE FIX IS IN FLIGHT.
+
+`mycontext edit --body` on a **snapshot** item re-stamps `source_checksum` from the new body — `KNOWN-edit-body-silently-re-stamps-source-checksum-on-a-snapshot`, filed and never priced. I triggered it 7 times repairing citations. **Doctor went 0 warnings to 7 `source_drift`.** Proved by `git diff`: `source_checksum` changed on the items I edited; the source files never moved.
+
+**Do not repair more item bodies until the `persist` fix lands.**
+
+The owner ruled: fix the product defect first, then repair the seven. That also needs a way to CLEAR `source_file` — an authored body is no longer a snapshot of anything — and no command can do that today.
+
+### DOCTOR: 95 FINDINGS to 61
+
+`body_disagrees_with_meta` 34 to 8 · `body_ends_unfinished` 1 to 0 · `citation_form` 35 to 21 · `state_unaudited` 24 · `source_drift` 0 to 7 (mine).
+
+**Doctor work that landed today:** `Finding` declares its own `remedy` (a four-route union: run/copy/acknowledge/none) — the UI-side table is gone. `mycontext ack` is catalogued so it renders Execute. `stdout` is now rendered on the row (`report()` never showed it — that is why "the run did nothing"). An acknowledged row says "Already ruled on. Running this again writes nothing." A **bulk settlement** shipped: `ack --all --code <code> --count <n>`, card-level control, full preview before the gate, everything skipped named. **`--count` is the consent, not `--yes`** — a number cannot be typed without reading the preview, and it is REFUSED if the corpus moved.
+
+**A route race in `app.js` was found and fixed:** `route()` had no generation guard, so the LAST route to finish owned `currentScreenRefresh` — an Execute on the visible screen redrew a hidden one. Also fixed: the execute outcome rendered ~3,974px off-screen on EVERY command site.
+
+### OWNER RULINGS TAKEN TODAY — all captured as items
+
+- `INSTR-read-the-design-record-before-acting-on-a-subject-and-learn` — **PINNED, hard.** Read specs/plans/docs BEFORE designing. It paid for itself within the hour: it found the owner had already ruled against bulk "fix all" on 2026-08-31.
+- `INSTR-testing-happens-against-the-current-corpus-and-an-exception` — **hard.** Dogfooding; an exception is ASKED FOR FIRST. Superseded `DEC-the-ui-is-developed-against-a-simulated-corpus-until-the` and three fixture-mandating items. **Consequence: `port/99` (return the UI to the real corpus) is now live work, and the e2e suite is still hardwired to `.demo-corpus`.**
+- `RULE-a-screen-shows-the-new-state-after-the-reader-acts-on-it` — hard, scoped `src/ui/**`.
+- `DEC-doctor-gets-a-bulk-settlement-overturning-the-no-bulk-ruling`.
+- `DEC-the-focus-dialog-earns-execute-by-putting-focus-on-the` and `REQ-the-focus-dialog-offers-the-tags-it-could-focus-on-with-the` — **both owner rulings that had governed NOTHING**; they lived only in `reports/`.
+- **Bash blocking was REVERTED** on owner ruling: "bash in general should allow writes, you should look for a way to make the agent not to abuse it and bypass the app mechanisms." `hooks/hooks.json` matcher is back to `Read|Edit|MultiEdit|Write|NotebookEdit`. **`self-register.ts` was deliberately NOT run.**
+
+### THE BYPASS PROBLEM, AND WHAT WAS BUILT INSTEAD
+
+27 task items had `state: done` with no audit record ever setting it — hand-edited Markdown. **All 27 were verified against the tree: 24 TRUE-DONE, 3 PARTIAL, ZERO false completions.** The board was honest.
+
+**The file cannot betray a hand edit** — a hand-edited item is byte-shape identical to a product-written one. **But doctor WOULD have caught it at the moment it happened**: `computeItemChecksum` hashes `extra`, `loadLayer` raises a LOAD ERROR, doctor exits 1. **The eraser is `writeItem` (`rebuild.ts`), which recomputes the checksum unconditionally** — so the next ordinary `edit` silently re-stamps it. Measured: 25 of 25 flagged items had a later product write and all checksum cleanly. **The evidence erodes as we watch: 28 to 25 to 24.**
+
+Two hypotheses tested and DISPROVED: records lost in the relocation (every item has its `create` record), and rotation (one un-rotated segment, 2026-08-17 to now).
+
+**Built:** `state_unaudited` doctor check (info, 24 findings, refuses to accuse — it states both readings) and the **write-time divergence guard**, all four parts: `persist` detects divergence before `writeItem` erases it; every mutation carries `checksumAfter`; audit `fields` widened `extra` to `extra.<key>`; `state_unaudited` made exact. Each part proven red in isolation.
+
+### FOUR FALSE-DONES REOPENED (owner ruling)
+
+`live/13` (client half absent — `grep configError src/ui/public/` returns 0), `walk/30` (refusal never recorded), `live/12` (banner proved by regex; the only e2e mention pins it HIDDEN), `repaint/10` (marked done, `@media print` absent — and that absence is the whole of `ui1/18`'s unmet half).
+
+### THE WAVE MAP IS STALE, AND `builder` WAS NEVER BLOCKED
+
+Four read-only lanes mapped the file surface of all 93 unassigned tasks.
+
+- **The serial lane is the STRING TABLES, not the mockup.** The mockup is frozen so nobody contends for it, and `strings-parity` went ONE-DIRECTIONAL on 2026-08-26 — **no task is blocked on opening it**, though several bodies still say so.
+- **`walk/20` INVERTS into `builder/5`** by `DEC-the-mockup-is-a-frozen-reference`, which names it by id. `builder/1,1b,1c,2,2b` are done; `port/95` — a hard blocker named in three bodies — is done. **`builder/3` and `builder/4` are free NOW and independent.**
+- **The authored wave programme is 5 tasks from complete**: `budget/6`, `walk/20` (into builder/5), `repaint/12`, `ui1/17b`, `walk/18`.
+- ~18 rows should leave the board as dead, satisfied, or needing a one-line re-scope. A full draft assignment for the 93 is in `reports/EXECUTION-BOARD.md`.
+
+### STILL OPEN — ALL NEED THE OWNER
+
+1. **The pairs question, and it gates the last 8 relations.** `enforces`/`enforced_by` and `produced`/`discovered_by` are INVERSE PAIRS, and this project already ruled inverses are DERIVED not stored. The owner ruled "I want all 19" but **the pairs framing has never been put to him.**
+2. **Six body-repair owner-calls** — full text in `scratchpad/fix-bodies/proposals.json`, recommendations in the board.
+3. **17 items whose SUMMARY is now false** — they describe defects that have since been fixed. Summaries were deliberately not rewritten.
+4. **`ADR-normative-vs-rationale-tiers` vs `DEC-continuity-gets-its-own-budget`** — a real gap at `select.ts:1178` (continuity admits on `i.continuity` alone, no `isNormative` check), NOT realised today.
+5. **The agent-title hook** — MEASURED and ready to build. The title is NOT on the subagent payloads; it is `tool_input.description` on the **`Agent`** tool, and `tool_response.agentId` is on the same payload, so one `PostToolUse(Agent)` firing carries both halves with zero file I/O. 100% coverage over 541 real dispatches, p50 29 chars. **Keep the id** — it is the `ledgerKey` join and titles are not unique. Also found: **96.7% of `subagent-stop` rows carry `type=<absent>`**, and `SubagentStop` sends an undeclared `last_assistant_message`.
+6. **`walk/131`/`port/5d`** — are tutorials in scope at all?
+7. **`repaint/7b` and `pane/5`** — both are acts of LOOKING; no agent can discharge them.
+
+### OWNER ASKS RAISED AT THE VERY END, NOT YET ACTIONED
+
+- **Relations need a CLI spelling.** Today `link_items` is MCP-only; the CLI cannot write a relation at all, which is why the merge needed a working MCP server. A task must be filed.
+- **The Relations screen's 19 filters** — the owner asked when they are planned. Not yet answered.
+
+### TRAPS RE-CONFIRMED TODAY
+
+- **A UI server freezes its own modules at start; browser assets are read LIVE.** The owner's page ran NEW `doctor.js` against an OLD `read-model.ts` and looked broken. That is `live/12`, whose skew banner exists and is driven by no browser test. **Restart the server after any source change.**
+- **The MCP server does the same.** It wrote a relation through last-night's `persist`, producing an audit row missing `checksumAfter`. Its footer says so on every result — read it.
+- **Never trust a lane's prose claim.** A report said `(state: done)`; the file said `todo`. Verify the FILE.
+
+---
+
+# v2.0 handover (earlier sections follow) — we are mid-decision. Keep deciding.
+
 **Written:** 2026-08-19, before a compaction.
 **Supersedes** the previous v2 handover. The earlier `reports/HANDOVER.md` remains the record of
 the closed v1.0.0 test campaign.

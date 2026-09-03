@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: A long entry can be read as a short numbered summary on the spot, clearly marked as generated so nobody mistakes it for the entry itself.
-summary_of: f1e71a4ab4e00a64
+summary_of: c52360c92bfa89fb
+acknowledged:
+  - body_disagrees_with_meta@dfb67343732e5ee5
 scope: []
 tags:
   - v2
@@ -17,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 449a270c4702e549
+checksum: 4c0d18d681241214
 ---
 
 # an item's body can be read as a short numbered summary, from the pane that shows it
@@ -38,7 +40,7 @@ checksum: 449a270c4702e549
 > * **Short.** A summary the length of the body is not a summary. Whatever bound is chosen should be stated in the item and enforced, not hoped for.
 > * **Visibly NOT the item.** This is the constraint that matters most and it is easy to lose. This corpus's whole value is that items are normative — a rule means what it says. A generated summary sitting beside an authoritative item, in the same pane, styled alike, WILL be read as the item by someone in a hurry. It must be unmistakably a derived, fallible view: its own region, its own visual register, and a statement that it is generated. A summary mistaken for a rule is worse than no summary.
 >
-> **WITHDRAWN by the owner, 2026-08-28** — *"cancel the english hebrew symetry, i see that in hebrew the body is in english so leave it as is, just summerize."*
+> **2026-08-28 — the owner WITHDREW THE SYMMETRY REQUIREMENT** — *"cancel the english hebrew symetry, i see that in hebrew the body is in english so leave it as is, just summerize."*
 >
 > The reason is measured and correct: item bodies in this corpus are written in ENGLISH, and the Hebrew UI shows them in English because that is what they are. A summary of an English body is English in either language, so there is nothing to make symmetric. The three shapes below are recorded as considered-and-dropped rather than deleted, because the question will look new to the next reader.
 >

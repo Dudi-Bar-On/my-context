@@ -2,7 +2,7 @@
 id: NOTE-what-the-fixture-must-hold-screen-by-screen-for-the
 type: note
 title: what the fixture must hold, screen by screen, for the comparison to mean anything
-status: active
+status: superseded
 severity: soft
 always: false
 summary: What the sample data must contain, screen by screen, so that comparing a screen to its design says something about the code and not the data.
@@ -18,8 +18,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
-valid_until: null
-checksum: bcb2fd8cdeb4232c
+valid_until: 2026-09-03
+checksum: 12acd92a48c38689
 ---
 
 # what the fixture must hold, screen by screen, for the comparison to mean anything
@@ -37,3 +37,6 @@ gaps     -- three ungoverned rows. injected -- two injected rows.
 simulate -- the spill-ratio bars need audit rows in the window; the staircase needs nothing from the fixture because it needs an endpoint first.
 
 THE PRINCIPLE THIS IS ALL ONE INSTANCE OF: the fixture is not a smaller corpus, it is THE MOCKUP S OWN SCENE. Where it holds less, the walker reports code gaps that are data gaps; where it holds more, it reports quantity divergences that are nothing at all. Both waste the owner s attention, which is the scarcest thing in this review.
+
+## Relations
+- superseded_by [[INSTR-testing-happens-against-the-current-corpus-and-an-exception]]

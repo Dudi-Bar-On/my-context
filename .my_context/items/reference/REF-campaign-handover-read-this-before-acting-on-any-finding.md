@@ -6,16 +6,18 @@ status: active
 severity: soft
 always: false
 summary: What an earlier round of testing found and left behind, and which of its own reports can be trusted as conclusions.
-summary_of: 82f2c1ee4de52bba
+summary_of: b891e042b4234fec
+acknowledged:
+  - citation_form@e72b184a1aff1a52
 scope: []
 tags: []
 origin: human
 source_file: reports/HANDOVER.md
 source_anchor: null
-source_checksum: 313c3018f3b5e72e
+source_checksum: null
 valid_from: 2026-08-17
 valid_until: null
-checksum: 768f8d17cc8e5741
+checksum: a2c035d2eeaeae27
 ---
 
 # Campaign handover — read this before acting on any finding
@@ -159,11 +161,11 @@ checksum: 768f8d17cc8e5741
 >   Actual: tags `v0.9.0`/`v1.0.0`, released sections, manifests `1.0.0`.
 > - README:4290 says Linux uncertified. `docs/ROADMAP.md` E1 records run
 >   `31965803312`, ✅ 2026-08-16.
-> - **F3** — `src/mcp/protocol.ts:33` `SERVER_INFO` still `version: '0.1.0'`.
+> - **F3** — `src/mcp/protocol.ts` · `export const SERVER_INFO =` · ~47 `SERVER_INFO` still `version: '0.1.0'`.
 > One fix closes all three.
 >
 > **Cluster 2 — `known_issue` is normative, documented as rationale in 3 places.**
-> `categories.ts:57` is `normative`; the comment at :50-51 explains the move.
+> `categories.ts` · `def('known_issue', 'KNOWN', 'normative', true,` · ~237 is `normative`; the comment at :50-51 explains the move.
 > README:1790-1800 lists it as rationale that "lands active" (it lands **draft**)
 > and justifies it with "rationale is never injected" (it **is** injected).
 > README:3473 puts its specimen block in the rationale run. Confirmed three ways:
@@ -172,8 +174,8 @@ checksum: 768f8d17cc8e5741
 >
 > **Cluster 3 — `tags` and `severity` do affect injection, via focus.**
 > Claimed otherwise at README:427, 1221, 1224, 4291 and the glossary at 4610.
-> But a tag focus removes items from injection (`select.ts:228`) and
-> `severity: hard` is exempt from focus hiding (`select.ts:242-246`).
+> But a tag focus removes items from injection (`select.ts` · `export function focusHides(item: Item, focus: Focus | null, config: Config): boolean {` · ~501) and
+> `severity: hard` is exempt from focus hiding (`select.ts` · `if (item.severity === 'hard') return false;` · ~503).
 > README:2484 and the `focus_context` MCP tool description both state it
 > correctly — so the document contradicts itself and its own tool schema.
 >
@@ -200,7 +202,7 @@ checksum: 768f8d17cc8e5741
 > - `A-037` — `audit replay-ledger` is incremental (`topUpLedger`), not "whole".
 > - `B-053` — "no slash command for ingest"; `commands/ingest.md` ships.
 > - `D1-023` — README:1837 "every one previews without `--yes`"; `/mycontext:link`
->   does not, and `write-commands.test.ts:66-73` exempts it explicitly.
+>   does not, and `write-commands.test.ts` · `'link.md': 'link_items is an MCP tool call, not a CLI command — there is nothing to dry-run',` · ~67 exempts it explicitly.
 >
 > ---
 >
@@ -260,7 +262,7 @@ checksum: 768f8d17cc8e5741
 > `restored`; it is pinned, so it was never discriminating.
 >
 > That bare-count line is also a live sighting of the behaviour
-> `categories.ts:50-51` describes as the reason `known_issue` was promoted to
+> `categories.ts` · `session as the digit in "1 known_issue" and nothing else.` · ~231 describes as the reason `known_issue` was promoted to
 > normative: a rationale item "reached a session as the digit … and nothing else."
 > Here it is `1 lesson`.
 >
@@ -350,3 +352,5 @@ checksum: 768f8d17cc8e5741
 > `my-context/` is on `master` @ `2f306ad`, tag `v1.0.0`, working tree clean, no
 > branches created, `.my_context/` unmodified. **This changes only when the fix
 > mandate above is executed**, and even then never by a push.
+
+CITATION DRIFT, checked 2026-09-03. One of the six citations above no longer supports the sentence it sits in: F3's `SERVER_INFO` is `version: VERSION` now, not `'0.1.0'`. The other five resolve to the code the handover named, moved.

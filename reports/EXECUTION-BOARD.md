@@ -120,6 +120,21 @@ and this is a separate list in the same file.
 
 ---
 
+## Wave 11 — the morning of 2026-09-04 (owner rulings)
+
+| # | id | what | progress |
+|---|---|---|---|
+| E46 | — | **`add` gains a migration flag carrying an explicit id.** Owner ruled 2026-09-03. Unblocks E20/E21/E22 (the 42-item merge), the two recovered standards, and the nested-44 governing items — including a HARD requirement that governs nothing today. Proof it was needed: `STD-error-message-conventions` was re-captured and landed under a title-derived id, leaving its six citation sites resolving to nothing | doing |
+| E47 | — | **The Bash write-deny is REVERTED.** Owner: *"bash in general should allow writes, you should look for a way to make the agent not to abuse it and bypass the app mechanisms."* Blocking at the shell is the wrong instrument; the goal is that going around the product is VISIBLE. `state_unaudited` already does that. `self-register.ts` deliberately NOT run | doing |
+| E48 | — | **Focus `--yes`, split by line.** `--tag` and `--clear` are writes and take the boundary; `--show` is a read and gets no confirm. Captured as `DEC-the-focus-dialog-earns-execute-by-putting-focus-on-the`, which also records the contradiction the owner resolved | blocked (E46 holds `command-flags.ts`) |
+| E49 | — | **Focus tag-picker.** Captured as `REQ-the-focus-dialog-offers-the-tags-it-could-focus-on-with-the`. Nothing serves tags: `ItemSummary` carries none, no route serves a vocabulary, and `pickerOptions` answers `[]` for an unknown source. The count is `--preview`'s question. **Open: how to present projected (`plan:`/`seq:`/`state:`) beside free-form tags** | owner |
+| E50 | — | **Bulk settlement built** — `ack --all --code <code> --count <n>`, card-level control, full preview before the gate, everything skipped named. `--count` is the consent, not `--yes`: a number cannot be typed without reading the preview, and it is REFUSED if the corpus moved between preview and run | landed (ungated) |
+| E51 | — | **A font ligature eats the space before every `--` flag.** `styles.css:142` sets `--mono: "Geist Mono"`, whose ligatures render `ack --all` as `ack--all`. The DOM is correct; only the rendering lies — **including in the confirm dialog, which is the security boundary**. `execute-catalogue.ts` already refuses zero-width and bidi characters because *"they LIE"*; this does the same from the stylesheet. One line fixes it | todo |
+| E52 | — | **Four false-dones reopened** by owner ruling: `live/13` (client half absent), `walk/30` (refusal never recorded), `live/12` (banner proved by regex, and the only e2e mention pins it hidden), `repaint/10` (marked done, `@media print` absent — found by the wave analysis) | done |
+
+
+---
+
 ## The night run — owner instruction 2026-09-03
 
 > "continue to execute tasks without resting all the way, use subagents, only you git commit
@@ -148,6 +163,8 @@ the FILE, never the lane's report; kill a lane that stops making progress.
 
 | when | row | what happened |
 |---|---|---|
+| 2026-09-04 | ⚠ | **The 58888 server was frozen at 06:06 with 10 source files changed under it.** Browser assets are read live; the server's own modules are not — so the page ran NEW `doctor.js` against an OLD `read-model.ts`. That is exactly `live/12`, whose skew banner exists and is driven by no browser test. Restarted on current code. |
+| 2026-09-04 | WAVE | Four read-only lanes mapped the file surface of all 93 unassigned tasks. **The serial lane is the STRING TABLES, not the mockup** — the map's own premise is stale, and `strings-parity` went one-directional on 2026-08-26, so **no task is blocked on opening the mockup**. ~18 rows leave the board as dead, satisfied, or needing a one-line re-scope. **`builder` was never blocked**: `walk/20` INVERTS into `builder/5` by the freeze ruling, and `port/95` — a hard blocker named in three bodies — is done. |
 | 2026-09-03 | E5 | **e2e first run: 471 passed / 6 failed / 1 skipped.** Isolated at `--workers=1`: `strip-fields.spec.ts` PASSES alone (worker contention — 12th measurement of that trap on that spec); `execute.spec.ts:521` and `doctor-outcome.spec.ts:337` fail in BOTH browsers — real. Cause: stale locators, not a product defect. The doctor migration put ~72 `div.confirm` on the screen, all hidden; a descendant selector + `.first()` picked a ROW's hidden confirm instead of the one the click opened. Fixed by anchoring on the Execute button's own `.cmdactions` parent. **No assertion weakened** — verified byte-identical. Regression proven: reverting the `app.js` placement fix turns `doctor-outcome` red (`top:-169843 in a 720px window`), and `app.js` restored SHA-256 identical. |
 | 2026-09-03 | E39/E40 | **Fixed and verified on disk.** `data-cmdkey` on every command control (`command-actions.js:320,418`) gives the outcome an address to return to after the redraw; `executeOutcomeHome` + `revealExecuteOutcome` with `scrollIntoView({block:'nearest'})` — which walks the SCROLL CHAIN, so it reaches the inner `#screen` scroller where `window.scrollY` never moves. `acknowledged` now drawn as `span.chip.index` with `doc.acked`/`title.acked` in both tables, plus a fourth tally figure. **Fix is GENERAL: repairs palette, doctor, work, capture, coverage, packs, port, proc.** Lane proved it by running old and new algorithms A/B against the real DOM at 166,929px: old `top:-146,513 inView:false`, new `top:465 inView:true`. |
 | 2026-09-03 | E5 | **Gates: 6 of 7 green.** `verify:citations` measured RED AT HEAD in an isolated worktree — pre-existing, not tonight's. I first captured its exit code through a `tail` pipe, which is the trap `RULE-run-a-gate-the-way-the-project-runs-it` names; re-measured without the pipe. |

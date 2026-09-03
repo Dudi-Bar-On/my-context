@@ -6,12 +6,14 @@ status: active
 severity: soft
 always: false
 summary: The shortcut commands for session and carry-over work, waiting on a measurement that only a live session can provide.
-summary_of: d1b36dd384adf6ea
+summary_of: 045476d19a39c15c
+acknowledged:
+  - body_disagrees_with_meta@a2233a0553063bf5
 scope: []
 tags:
   - "plan:hooks"
   - "seq:16"
-  - "state:done"
+  - "state:todo"
   - v2
 origin: human
 source_file: null
@@ -19,10 +21,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: d48dc6de0ddf0bab
+checksum: 5004f962bc9fabaf
 plan: hooks
 seq: "16"
-state: done
+state: todo
 progress: "0"
 source: "my-context/docs/superpowers/plans/2026-08-20-v2-hooks-sessions-and-continuity.md#task-16"
 last_change: "2026-08-20T00:00:00Z"

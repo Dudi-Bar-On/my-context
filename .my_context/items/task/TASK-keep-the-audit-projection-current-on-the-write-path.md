@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Keep the searchable copy of the activity log up to date as it is written, instead of letting it fall behind until someone runs a command.
 summary_of: 09a6fa023b77b6dc
+acknowledged:
+  - state_unaudited@62708b3b72a4a5c0
 scope: []
 tags:
   - v2
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 35f5827e96d28120
+checksum: 12a9c834f14ad822
 plan: walk
 seq: "28"
 state: done
@@ -57,3 +59,6 @@ THE TRAP: this task stops /api/watch/volume 503ing, so the watch filter row stop
 Same file, same read path. Whoever is there should fix both.
 
 AND THE LEDGER CHECK IN THIS TASK S OWN BODY HAS AN OWNER NOW: plan:rulings seq:26 asks that a missing ledger projection render as its own state rather than as the null state. That is the same distinction four other places in this product have drawn independently -- watch s floor line under an empty pulse, ask s 200-with-no-columns, export s built:false format rung. IT SHOULD BE RULED ONCE AS A PRINCIPLE rather than decided a fifth time.
+
+## Relations
+- supersedes [[TASK-on-a-working-corpus-the-audit-projection-is-stale-within]]

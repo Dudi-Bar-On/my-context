@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: A seventh batch of open work read, gathering scattered items into single pieces of work and naming a habit of stating things nobody checked.
-summary_of: a58ffeb020dd87ee
+summary_of: cc76ca1ffcb7c032
+acknowledged:
+  - body_disagrees_with_meta@1ebeda0f2f576807
 scope: []
 tags:
   - v2
@@ -18,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: bb5493edc0a50533
+checksum: e1cc7ffb3e7b0bfe
 ---
 
 # reconciliation batch 7: rulings, export, hooks, categories, api and review -- 23 verdicted
@@ -31,7 +33,7 @@ THE TYPED-SQL FEATURE IS THREE TASKS IN THREE PLANS and the order is now fixed: 
 
 TWO MORE STALE BLOCKERS, bringing the total to seven. `review/5`, the functional UX review, is blocked on `ui1 task 15` which is DONE -- and it is THE ONLY ITEM IN THE CORPUS THAT MEASURES WHETHER A SCREEN WORKS. Every gate here measures shape. That is the direct answer to the owner saying "many things does not work". And `hooks/22`, an owner instruction, waits for a hooks programme that is 32 done with one README SENTENCE outstanding.
 
-ONE CLOSED ON ITS OWN WORDS: `review/2` has said "RULED 2026-08-21: absorbed by the web UI visual repaint" in its own body for four days, while reading as open priority-1 work.
+ONE, `review/2`, CLOSED ON ITS OWN WORDS: it has said "RULED 2026-08-21: absorbed by the web UI visual repaint" in its own body for four days, while reading as open priority-1 work.
 
 AND A COUNT THAT GREW: `categories/19` measured 13 tasks whose state tag and field disagree. It is TWENTY-EIGHT today, of 265. Direction uniform -- all 28 are tag=done with a stale field, so no reported count was ever wrong. But it is growing, which means a closing path still moves the tag and leaves the field. Find that path before the sweep, or the sweep is needed again next week.
 

@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Two styling rules were skipped because nothing used them; something does now, so a quoted body reads as ordinary page text.
 summary_of: e9d29ada9ae852bf
+acknowledged:
+  - citation_form@e5d2e442aa1bdd91
 scope: []
 tags:
   - v2
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 78a628932b6e652a
+checksum: e1411995de678121
 plan: walk
 seq: "41"
 state: done

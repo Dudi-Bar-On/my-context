@@ -2,11 +2,13 @@
 id: TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup
 type: task
 title: the string grammar has no bold run, so three of the mockup watch strings lose their emphasis
-status: active
+status: superseded
 severity: soft
 always: false
 summary: Three emphasised phrases on the activity screen come out flat, because translated text cannot carry bold at all.
 summary_of: c677fe860db81968
+acknowledged:
+  - body_disagrees_with_meta@19d91c84a2ef5193
 scope: []
 tags:
   - "plan:ui3"
@@ -19,8 +21,8 @@ source_file: null
 source_anchor: null
 source_checksum: b6762f4cdaf3db39
 valid_from: 2026-08-22
-valid_until: null
-checksum: a1fb1bd9f49a60f0
+valid_until: 2026-09-03
+checksum: 666eb1ecba9cc6af
 state: done
 plan: ui3
 seq: 11x
@@ -72,3 +74,6 @@ VERDICT: SUPERSEDED BY plan:walk seq:1h for everything it has left.
 The HALF DONE note above is the full account. Both remaining halves -- the mockup s own grammar block, and the Hebrew table -- are plan:walk seq:1h, which is blocked on the owner because placing stress in a language by pattern-matching it is guessing. Nothing is left here that seq:1h does not carry.
 
 Closed because it has no remainder of its own, not because the emphasis story is finished. It is not: Hebrew still has no emphasis anywhere in the product.
+
+## Relations
+- superseded_by [[TASK-hebrew-emphasis-the-owner-places-it-because-nothing-else-can]]

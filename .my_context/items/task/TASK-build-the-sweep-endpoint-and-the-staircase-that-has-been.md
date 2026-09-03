@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 39e3d9ca54a361f1
+checksum: 120f2c3ba22cb093
 plan: walk
 seq: "7"
 state: done
@@ -58,3 +58,6 @@ DISPATCH BESIDE IT -- same request family, same refusal to be reconstructed in t
   plan:screens seq:1s-a -- the seen set, or the ids filtered by it, for gate ladder rung 5
 
 AND IT UNBLOCKS plan:walk seq:8, the owner s own idea -- anchor the simulator on the real context window. That block is REAL, not stale: a marker needs a chart to sit on.
+
+## Relations
+- supersedes [[TASK-the-admission-staircase-needs-a-sweep-response-or-a-ruling]]

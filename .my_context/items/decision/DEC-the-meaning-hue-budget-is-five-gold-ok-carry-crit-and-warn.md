@@ -5,8 +5,10 @@ title: "the meaning-hue budget is FIVE: gold, ok, carry, crit and warn"
 status: active
 severity: soft
 always: false
-summary: "There are five colours that carry meaning, not four: a middle caution step is genuinely needed and already in use, so the approved list is corrected."
-summary_of: 8e5a098871fdcc2d
+summary: "\"There are five colours that carry meaning, not four: a middle caution step is genuinely needed and already in use, so the approved list is corrected.\""
+summary_of: 236df0e8d1f05d68
+summary_was:
+  - "2026-09-03 There are five colours that carry meaning, not four: a middle caution step is genuinely needed and already in use, so the approved list is corrected."
 acknowledged:
   - body_disagrees_with_meta@90c5045483a83ea0
 scope: []
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 80c53360a5927465
+checksum: 8d8456f3a3aaad30
 ---
 
 # the meaning-hue budget is FIVE: gold, ok, carry, crit and warn
@@ -30,7 +32,7 @@ OWNER RULING 2026-08-25, ratifying what shipped and correcting the record.
 
 THE APPROVED VISUAL DIRECTION OF 2026-08-21 BUDGETS FOUR meaning-hues -- gold, ok, carry, crit. `plan:repaint seq:13a` was filed on the belief that `--warn` had been RETIRED and asked how three meanings could fit in four hues.
 
-THAT PREMISE WAS FALSE, found 2026-08-25 by the reconciliation. `styles.css` · `--gold:#e8c368; --ok:#7cc0a0; --carry:#8b9ce6; --crit:#e08b8b; --warn:#c78f3d;` · ~89 declares all five on one line -- `--gold:#e8c368; --ok:#7cc0a0; --carry:#8b9ce6; --crit:#e08b8b; --warn:#c78f3d;` -- and eight places use `var(--warn)`: `decay.js` (the window rule, its label and the cold row), `graph.js`, `port.js`, `watch.js` (the `access` pulse hue), `work.js` (the RTL stale marker), and `styles.css` itself (`.prov b` and `--warnbg`).
+THAT TASK'S PREMISE WAS FALSE, found 2026-08-25 by the reconciliation. `styles.css` · `--gold:#e8c368; --ok:#7cc0a0; --carry:#8b9ce6; --crit:#e08b8b; --warn:#c78f3d;` · ~89 declares all five on one line -- `--gold:#e8c368; --ok:#7cc0a0; --carry:#8b9ce6; --crit:#e08b8b; --warn:#c78f3d;` -- and eight places use `var(--warn)`: `decay.js` (the window rule, its label and the cold row), `graph.js`, `port.js`, `watch.js` (the `access` pulse hue), `work.js` (the RTL stale marker), and `styles.css` itself (`.prov b` and `--warnbg`).
 
 THE RULING: THE BUDGET IS FIVE. `--warn` is legitimate and stays.
 

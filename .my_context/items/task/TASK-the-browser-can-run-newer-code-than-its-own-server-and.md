@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The page can load newer code than the server it talks to, so a feature that works looks broken and nothing says why.
-summary_of: 5414e6d41ae43ca5
+summary_of: 9528c62a4205c1ca
 scope: []
 tags:
   - v2
@@ -14,17 +14,17 @@ tags:
   - live
   - "plan:live"
   - "seq:12"
-  - "state:done"
+  - "state:todo"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 64517de3754c6959
+checksum: 9937e149695f34ef
 plan: live
 seq: "12"
-state: done
+state: todo
 priority: "1"
 source: owner, 2026-08-28
 ---

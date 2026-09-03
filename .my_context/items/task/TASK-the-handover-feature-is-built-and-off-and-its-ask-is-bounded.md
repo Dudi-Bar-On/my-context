@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The handover feature is finished but switched off, and only the owner can decide to turn it on and how.
 summary_of: 40672c9ac76ba8ee
+acknowledged:
+  - state_unaudited@76b3d1110c68f05e
 scope: []
 tags:
   - v2
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: afe33c913e8c6c01
+checksum: 996f55d9c99087f5
 plan: handover
 seq: "10"
 state: done

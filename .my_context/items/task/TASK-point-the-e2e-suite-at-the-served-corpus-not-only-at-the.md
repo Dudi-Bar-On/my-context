@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: Run the end-to-end tests against the real running product rather than the static design file, checking relationships instead of fixed values.
-summary_of: f6f8ce1e79bfaee9
+summary_of: dcdafe0d6f5813a8
+acknowledged:
+  - citation_form@7acc38e838784c89
 scope: []
 tags:
   - "plan:ui1"
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: d2ff2039fad351ec
+checksum: 72b071dd6dd9092b
 plan: ui1
 seq: 20e
 state: done
@@ -46,4 +48,4 @@ The server already spawns cleanly in tests: test/ui/watch-e2e.test.ts and server
 
 Watch for the trap the read surface already has: the 401 is the read surface's one write, and it leaves the projection behind its log, so an authorised read after a refusal returns 503. Any sequence that refuses and then reads must expect that.
 
-VERIFIED PARTIAL 2026-08-26. Met: the suite genuinely reaches the served corpus - syncProjection() + startUiChild(CORPUS) in the app fixture (`e2e/app.ts` · `harness = await startUiChild(CORPUS);` · ~162), consumed by seven specs. NOT MET: THE RULED SHAPE ASSERTIONS. No spec compares a drawn row count against an endpoint payload; the corpus assertion is a TEXT-LENGTH FLOOR (body.innerText.length > 200, `app-layout.spec.ts` · `return (body.innerText ?? '').trim().length;` · ~61) which is the demanded property only weakly. No absent-vs-stale (503) assertion exists under the app fixture at all - screen-parity.spec.ts:279 merely narrates the hazard. The `blocked` field was closer to the truth than the `done` tag.
+VERIFIED PARTIAL 2026-08-26. Met: the suite genuinely reaches the served corpus - syncProjection() + startUiChild(CORPUS) in the app fixture (`e2e/app.ts` · `harness = await startUiChild(CORPUS);` · ~162), consumed by seven specs. NOT MET: THE RULED SHAPE ASSERTIONS. No spec compares a drawn row count against an endpoint payload; the corpus assertion is a TEXT-LENGTH FLOOR (body.innerText.length > 200, `app-layout.spec.ts` · `return (body.innerText ?? '').trim().length;` · ~61) which is the demanded property only weakly. No absent-vs-stale (503) assertion exists under the app fixture at all - `screen-parity.spec.ts` · `503s the moment the audit projection falls behind, and the suite stales` · ~381 merely narrates the hazard. The `blocked` field was closer to the truth than the `done` tag.

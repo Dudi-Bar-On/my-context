@@ -2,7 +2,7 @@
 id: KNOWN-a-focus-silently-overrides-always-true-so-a-pinned-item
 type: known_issue
 title: "a focus silently overrides always:true, so a pinned item stops being pinned"
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: Narrowing what gets shown also drops items marked to appear every time, and nothing says which of those promised items went missing.
@@ -18,8 +18,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
-valid_until: null
-checksum: ce08101268cc7750
+valid_until: 2026-09-03
+checksum: f650d64f42bb5c41
 ---
 
 # a focus silently overrides always:true, so a pinned item stops being pinned

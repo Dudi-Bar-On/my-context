@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: Walk every screen against the design side by side and fix what differs, once they all exist and while the sample data still shows everything.
-summary_of: f56993b6b327ff32
+summary_of: fab3b87ea6c1e5f7
+acknowledged:
+  - body_disagrees_with_meta@1ba412572c27844b
 scope: []
 tags:
   - "plan:port"
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: d8cb2c4284ac5503
+checksum: 3d3b05374ac8b43f
 state: todo
 plan: port
 seq: "98"
@@ -140,7 +142,7 @@ comments nothing checks, long after the condition was met.
 The screens are unfrozen. The freeze was narrowed the moment re-measuring
 turned out to cost thirty seconds and the baseline turned out to be wrong.
 
-REOPENED 2026-08-25, IMMEDIATELY AFTER BEING CLOSED. The close was wrong.
+2026-08-25: REOPENED IMMEDIATELY AFTER BEING CLOSED. The close was wrong.
 
 The owner asked "did we complete the walk screen by screen?" and the answer,
 counted rather than remembered, is NO. Five of twenty-one.
@@ -176,7 +178,7 @@ whether a named cause is enough for them or whether they get the same treatment
 the five got. The owner decides that; it is not for the agent to grade its own
 coverage.
 
-CLOSED 2026-08-25, THE SECOND TIME, AND THIS TIME THE COUNT IS CHECKABLE.
+2026-08-25: CLOSED THE SECOND TIME, AND THIS TIME THE COUNT IS CHECKABLE.
 
 The first close claimed "21 of 21, screen by screen" and was false: five had
 been walked, ten batch-surveyed, six never opened. That correction stands above.

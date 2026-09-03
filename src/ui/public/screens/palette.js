@@ -33,6 +33,21 @@
  * and not a fill-in. `offeredFlagNames()` below exists so a test can pin that
  * from outside rather than trusting this paragraph.
  *
+ * **A flag can be withheld from THIS screen without being withheld from the
+ * product.** Since 2026-09-03 the catalogue carries a third field list,
+ * `flagsNotOffered`, holding fields `commandFor` composes and this screen never
+ * draws — `mycontext ack --all --code <code> --count <n>`, the bulk settlement
+ * the owner approved as a DOCTOR CARD control, per code group
+ * (`DEC-doctor-gets-a-bulk-settlement-overturning-the-no-bulk-ruling`). Doctor
+ * draws it beside the count, the level and a sentence naming what the ruling
+ * covers; the Composer draws no findings at all, so the same checkbox here would
+ * settle a class nobody has looked at. That is the approval-boundary ruling
+ * already recorded against `review promote --all --pack`, and the reason for
+ * this trio is filed beside it in `FLAGS_NOT_OFFERED`. The mechanism is in
+ * `lib/palette-defs.js` above `commandFor`; what belongs on THIS side is that
+ * `controlSpecs()` reads `def.args` and `def.flags` and has no third case, so
+ * the withheld list cannot reach a control by being forgotten about.
+ *
  * ── THE TWO THINGS THE MOCKUP DRAWS THAT NOTHING ELSE SPECIFIES ────────────
  *
  * **1. The Arguments card.** Every argv element is its own chip, so a value
@@ -199,12 +214,28 @@ export function copyBlocked(argv) {
 /**
  * Every control a def offers, args before flags — the order `commandFor`
  * composes them in, so the form reads in the order the command does.
+ *
+ * **`def.flagsNotOffered` is absent here on purpose and by construction.** This
+ * function is the whole population of the form, so the two lists it names are
+ * the two lists a reader can be offered; a field the catalogue files under
+ * `flagsNotOffered` has nowhere to appear. Written as an explicit pair rather
+ * than as a filter over one merged list, because a filter is a rule that can be
+ * relaxed by one predicate and this is meant to be a rule that has to be
+ * rewritten. `commandFor` still composes the withheld fields — the Doctor card
+ * needs `ack --all --code <c> --count <n>` — and that asymmetry is the point.
  */
 export function controlSpecs(def) {
   return [...def.args, ...def.flags];
 }
 
-/** The flag names this screen will draw a control for, for one def. */
+/**
+ * The flag names this screen will draw a control for, for one def.
+ *
+ * `def.flags` and not every flag the entry can compose: this is the answer to
+ * *what does the Composer offer*, which is a different question from *what can
+ * this command take*. `test/ui/palette-screen.test.ts` asks it of the whole
+ * catalogue and requires that no `--all` or `--pack` comes back.
+ */
 export function offeredFlagNames(def) {
   return def.flags.map((flag) => flag.name);
 }

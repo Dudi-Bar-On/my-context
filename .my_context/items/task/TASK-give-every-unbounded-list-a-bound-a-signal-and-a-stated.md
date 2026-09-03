@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Five lists print everything the server sends with no limit; each needs a limit, a stated order, and an honest sentence about what is not shown.
 summary_of: 80e7ecc339a8e85d
+acknowledged:
+  - citation_form@6aadd7076a455562
 scope: []
 tags:
   - v2
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-26
 valid_until: null
-checksum: 93e718c4a44dc3b7
+checksum: 61a484e34d034a41
 plan: walk
 seq: "45"
 state: done

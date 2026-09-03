@@ -2,11 +2,13 @@
 id: KNOWN-every-command-the-product-tells-a-user-to-run-begins-with-a
 type: known_issue
 title: every command the product tells a user to run begins with a word that is not on their PATH
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: Every command the product tells a person to type starts with a word their terminal does not know, so copying it hands them something that will not run.
 summary_of: 2ac495457767848c
+acknowledged:
+  - body_disagrees_with_meta@4de6aa68133463c9
 scope: []
 tags:
   - v2
@@ -19,8 +21,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
-valid_until: null
-checksum: 41d306cf46cc96b7
+valid_until: 2026-09-03
+checksum: 476d50c83589ff85
 ---
 
 # every command the product tells a user to run begins with a word that is not on their PATH

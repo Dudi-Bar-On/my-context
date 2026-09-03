@@ -7,6 +7,9 @@ severity: soft
 always: false
 summary: Change a setting while the app is running and almost everything keeps using the old value, because it was read once when the server started.
 summary_of: eb495223dd9c1d1c
+acknowledged:
+  - citation_form@5f2e6f9760f1bf42
+  - state_unaudited@5f2e6f9760f1bf42
 scope: []
 tags:
   - v2
@@ -21,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 8a0dd6e27dd23f52
+checksum: 65aa8ddca5b0aaeb
 plan: live
 seq: "8"
 state: done

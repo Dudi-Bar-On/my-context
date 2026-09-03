@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: Read the older plans against the newer one before starting anything, so nobody builds the same thing twice from two descriptions.
-summary_of: f859d6d8e0f86579
+summary_of: 3347a633b8f277e9
+acknowledged:
+  - body_disagrees_with_meta@d99ba4a84d121194
 scope: []
 tags:
   - v2
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 703612c6d3ab2809
+checksum: ca36b5b88c11e7a5
 plan: walk
 seq: "23"
 state: done
@@ -68,8 +70,7 @@ not hold the specification today -- it holds state and rulings, and points at
 he could not tell where v2.0.0 stands.
 
 THE OUTPUT IS A STABLE BASE, and concretely that means:
-- every open task carries one verdict: DONE (something closed it, named),
-  SUPERSEDED BY <id>, REFINES <id>, or STANDS
+- every open task carries one verdict: DONE (something closed it, named), SUPERSEDED BY <id>, REFINES <id>, or STANDS
 - every contradiction found between two sources is RECORDED with which source
   won and why, rather than silently resolved
 - anything found only in a plan or a spec, and still true, is ADDED to the

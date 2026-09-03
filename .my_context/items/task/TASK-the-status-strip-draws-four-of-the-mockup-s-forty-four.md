@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The bottom information strip shows four of the forty-four things the design puts there, all in a single colour.
 summary_of: 5b7ca9091b591d7d
+acknowledged:
+  - state_unaudited@3da7b569c37ee135
 scope: []
 tags:
   - v2
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: 3c42bbd9bc67365e
 valid_from: 2026-08-28
 valid_until: null
-checksum: 06788b66d1e764bb
+checksum: 324106254a165cf2
 plan: walk
 seq: 29b
 state: done

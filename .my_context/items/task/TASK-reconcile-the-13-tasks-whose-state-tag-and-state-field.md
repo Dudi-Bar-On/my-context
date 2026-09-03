@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: Two places record how far a job has got and they disagree on a growing number of jobs; settle them onto one and keep them settled.
-summary_of: 1cd704c19bd891e5
+summary_of: 51c7115e24aa3ae1
+acknowledged:
+  - body_disagrees_with_meta@089511eb2e7246e3
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 177fd18722c5e80a
+checksum: 43aa09426f5b6e46
 plan: categories
 seq: "19"
 state: done
@@ -38,7 +40,7 @@ DEPENDS ON seq 18, which is what makes the state impossible to reach again.
 
 RECONCILED 2026-08-25 under plan:walk seq:23, against the precedence order.
 
-VERDICT: STANDS, AND THE NUMBER HAS GROWN. RE-MEASURED TODAY: of 265 task items carrying both a state TAG and a state FIELD, TWENTY-EIGHT DISAGREE. It was thirteen on 2026-08-23. The title is now wrong and the mechanism is still live.
+VERDICT: STANDS, AND THE NUMBER HAS GROWN. RE-MEASURED TODAY: of 265 task items carrying both a state TAG and a state FIELD, TWENTY-EIGHT DISAGREE. It was thirteen on 2026-08-23. The title had gone wrong by then, and the mechanism was still live.
 
 THE DIRECTION IS UNIFORM AND THAT IS THE REASSURING PART: all 28 are tag=done with a stale field -- 21 field=todo, 5 field=doing, 2 field=blocked. NOT ONE is the other way round. Every progress count ever reported to the owner reads the TAG, so no count was ever inflated; the field simply lags. The owner s ruling of 2026-08-23 is confirmed by the data rather than merely asserted: the values in those fields are stale leftovers from an earlier workflow, which is why five still say "doing".
 

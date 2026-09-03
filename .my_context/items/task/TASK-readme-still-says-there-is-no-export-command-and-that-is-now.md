@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The main guide still says a feature does not exist, weeks after it shipped, and the same false claim survives in a second place.
 summary_of: 4d91e883d2adce37
+acknowledged:
+  - citation_form@293dcefef6597724
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: b03435ef4b23c6a7
+checksum: 382767033e50068b
 plan: export
 seq: 13r
 state: done

@@ -2,11 +2,13 @@
 id: TASK-on-a-working-corpus-the-audit-projection-is-stale-within
 type: task
 title: on a working corpus the audit projection is stale within minutes, so the Audit stream refuses most of the time
-status: active
+status: superseded
 severity: soft
 always: false
 summary: Ordinary work makes the activity data out of date within minutes, so the history screen refuses to show anything most of the time.
 summary_of: c8243e8d95d0f509
+acknowledged:
+  - body_disagrees_with_meta@89b0776d7edf3e35
 scope: []
 tags:
   - "plan:ui3"
@@ -19,8 +21,8 @@ source_file: null
 source_anchor: null
 source_checksum: 216656fd867ed34f
 valid_from: 2026-08-22
-valid_until: null
-checksum: d6815b5dc0958e28
+valid_until: 2026-09-03
+checksum: 6df2b686ce6baf51
 state: done
 plan: ui3
 seq: 11x
@@ -70,3 +72,6 @@ VERDICT: SUPERSEDED BY plan:walk seq:28, "keep the audit projection current on t
 This task s deliverable was a MEASUREMENT and a choice between three ways out. It delivered both: fresh to behind twice inside forty minutes, and the owner took the first, 2026-08-25. walk seq:28 carries the build, at priority 1, with the failure mode written into the design.
 
 CLOSING THIS DOES NOT MEAN THE DEFECT IS FIXED. It is not. On a real corpus the Audit stream still refuses within minutes of ordinary work, and it is the single defect on this board that is visibly broken for a user today rather than merely unbuilt. It is tracked at walk seq:28 and nowhere else -- if that task is closed without the write path changing, nothing else in the corpus will say so.
+
+## Relations
+- superseded_by [[TASK-keep-the-audit-projection-current-on-the-write-path]]

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The reference checker has three known blind spots; settle by rule what it covers, and stop pointing at line numbers that rot.
-summary_of: 9d9cee3922d1935a
+summary_of: a7660311110c1ab2
 scope: []
 tags:
   - v2
@@ -15,17 +15,17 @@ tags:
   - citations
   - "plan:walk"
   - "seq:30"
-  - "state:done"
+  - "state:todo"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 3dca5b7851067598
+checksum: a44ce095a2eaea09
 plan: walk
 seq: "30"
-state: done
+state: todo
 priority: "1"
 source: "plan:walk seq:23, the reconciliation"
 ---

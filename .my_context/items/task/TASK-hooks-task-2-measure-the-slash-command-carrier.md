@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: Find out what information a shortcut command actually carries, which needs someone to run one in a live session.
-summary_of: b30a549331266a5e
+summary_of: 0d7b5ff34fb417dd
+acknowledged:
+  - body_disagrees_with_meta@a9ecccb5aa0d6060
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 80e7efd7e9057c8b
+checksum: 0ed1e9715977b6a9
 plan: hooks
 seq: "2"
 state: done
@@ -31,8 +33,8 @@ priority: "4"
 
 # hooks task 2: Measure the slash-command carrier
 
-Measure the slash-command carrier — BLOCKED on an interactive session
+Measure the slash-command carrier — the measurement is taken; one interactive step remains
 
 Task 2 of the hooks plan. The full specification is the task section itself: my-context/docs/superpowers/plans/2026-08-20-v2-hooks-sessions-and-continuity.md at line 604 — that file is the authority, and this item tracks state only.
 
-BLOCKED: this task cannot be executed until the measurement it depends on is taken.
+THE MEASUREMENT WAS TAKEN 2026-08-22 and is recorded in `reports/probes/2026-08-20-clear-and-prompt-hooks.md` §3. A slash command fires TWO events carrying `session_id` -- `UserPromptExpansion`, with `command_name`, `command_args` and `command_source` already parsed, and then `UserPromptSubmit`, carrying the raw `/name args` as `prompt` -- while plain typed text fires only the second, which is what makes a slash command distinguishable. The plan section marks this task "ANSWERED, one step short of done" -- only its Step 2, the interactive run, is unrun.

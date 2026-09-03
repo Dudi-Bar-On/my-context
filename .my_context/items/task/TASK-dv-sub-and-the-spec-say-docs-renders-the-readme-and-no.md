@@ -2,11 +2,13 @@
 id: TASK-dv-sub-and-the-spec-say-docs-renders-the-readme-and-no
 type: task
 title: dv.sub and the spec say Docs renders the README, and no endpoint serves it
-status: active
+status: superseded
 severity: soft
 always: false
 summary: The documentation screen promises to show a document that nothing serves; it will instead say plainly which help topics it really does show.
 summary_of: c588b0e344972626
+acknowledged:
+  - body_disagrees_with_meta@db3c6552a1212c03
 scope: []
 tags:
   - "plan:port"
@@ -18,8 +20,8 @@ source_file: null
 source_anchor: null
 source_checksum: c8cda95525910d8b
 valid_from: 2026-08-23
-valid_until: null
-checksum: 4538f2abd1a33f4d
+valid_until: 2026-09-03
+checksum: 2b59b72af2e7f1e8
 state: done
 plan: port
 seq: 5c
@@ -76,3 +78,6 @@ This task found it first, on 2026-08-23: the design of record and the spec both 
 THE OWNER RULED IT 2026-08-25: the screen serves help topics AND SAYS SO -- for now -- with a full documentation programme behind it (walk seq:24), in English and Hebrew. The markdown route and its boundary are walk seq:25, which is BLOCKED on an open question about what the server may serve, because a markdown route is a path-traversal surface.
 
 THE DEEP LINK HALF GOES WITH IT: #/docs/4 is not a route the router parses. It belongs to the same sitting, because a document viewer that cannot be linked to is half a feature.
+
+## Relations
+- superseded_by [[TASK-serve-markdown-documents-to-the-ui-behind-a-decided-boundary]]

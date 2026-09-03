@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: Notice when another tool on the same machine also collects durable notes, so people do not write knowledge somewhere this one will never read.
-summary_of: ebaa16c911bcc7d7
+summary_of: 22fe6869c8909b8d
+acknowledged:
+  - body_disagrees_with_meta@7ea5c8b3ca54f8b7
 scope: []
 tags:
   - v2
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 9c366b1036af57fb
+checksum: 4f666dfbca465724
 plan: walk
 seq: "19"
 state: done
@@ -34,7 +36,7 @@ source: "plan:port seq:98, doctor"
 
 Carries out the ruling that `foreign_store` becomes a real check, at notice level.
 
-BLOCKED on the open question of where it may look. That is not a detail to settle on the way past: this check reads OUTSIDE the repository, which no other check does.
+THE OPEN QUESTION OF WHERE IT MAY LOOK IS GONE, and the check shipped without it. The owner dropped the `~/.gsd/knowledge/` row from the mockup s notice card on 2026-08-26, so `checkForeignStore` never reads OUTSIDE the repository -- `src/doctor/checks.ts` · `code: 'foreign_store',` · ~1806 stats a known list of in-repo directories and reports each at info level. That dissolves the question rather than settling it, and it is why the constraint below is met rather than waived.
 
 WHAT IT REPORTS, in the design s own words: "a second cross-project knowledge store exists on this machine" and "another plugin writes durable learnings here -- the same kind as lessons". Two rows, `notice` level, in the notice card.
 
@@ -42,4 +44,4 @@ WHY IT IS WORTH BUILDING: it answers a question nothing else asks. This tool exi
 
 CONSTRAINTS THAT ALREADY EXIST: `test/core/real-home-guard.test.ts` is there because this project has already had to stop code touching a real home directory. Whatever the check reads, its test must not reach one.
 
-DO NOT let this become a filesystem scan by default. The open question exists precisely because thorough and surprising are the same option here.
+DO NOT let this become a filesystem scan by default. The open question existed precisely because thorough and surprising are the same option here.

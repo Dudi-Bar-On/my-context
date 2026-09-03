@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Turn dependencies written in prose into a real field, one at a time, since several tasks still claim to be waiting for something already finished.
 summary_of: 298888f05c589ac1
+acknowledged:
+  - state_unaudited@4c2476a2bc47df5d
 scope: []
 tags:
   - v2
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: ec0cbbaf819d2279
+checksum: 83e7fb3a002e7e87
 plan: categories
 seq: "22"
 state: done

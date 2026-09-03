@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: Ten labels stayed in English on the Hebrew page for months; the fix is in, but nothing yet stops it happening again.
-summary_of: 6e644c4ff7914305
+summary_of: cb8840e18ef1b703
+acknowledged:
+  - body_disagrees_with_meta@ac65ef6e0e6f5d91
 scope: []
 tags:
   - v2
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 7f6d5aa3ac51cbe7
+checksum: 014589d1b67d0229
 plan: walk
 seq: "43"
 state: todo
@@ -32,7 +34,7 @@ source: "found while building plan:walk seq:40, 2026-08-25"
 
 # nothing translated the shell markup: ten data-t labels were English on the Hebrew page
 
-FOUND AND FIXED 2026-08-25 while building the pane s sparkline, code 5e69257.
+2026-08-25: THE DEFECT WAS FOUND AND FIXED while building the pane s sparkline, code 5e69257.
 
 THE DEFECT. `src/ui/public/index.html` carries TEN `data-t` attributes -- the item pane s six `<dl>` labels plus `pane.body`, `pane.hist`, `pane.histn` and `pane.well`. The file s own comment says they "are translated in place by i18n.js's applyStatic". THERE WAS NO `applyStatic`. `applyLanguage()` sets `lang` and `dir` and nothing else, and nothing anywhere queried `[data-t]`.
 

@@ -2,7 +2,7 @@
 id: TASK-give-the-demo-corpus-a-continuity-item-and-remove-the-two
 type: task
 title: give the demo corpus a continuity item, and remove the two guards that stand in for it
-status: active
+status: superseded
 severity: soft
 always: false
 summary: The sample data set is missing one kind of item, so two tests quietly skip a check; add it and remove the workarounds at the same time.
@@ -21,8 +21,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
-valid_until: null
-checksum: d532878f35286f38
+valid_until: 2026-09-03
+checksum: ce28bd8ed8a12c74
 plan: live
 seq: "10"
 state: done
@@ -64,3 +64,6 @@ source: "plan:live seq:9's fixture gap, 2026-08-28"
 > ## Done when
 >
 > The demo corpus contains one bounded `continuity: true` item and a proportionate `budgets.continuity`; the preview ribbon draws a continuity segment over it; `div.continuity.seg` is removed from `KNOWN_GAPS.preview`; the `track.segs === 0` guard is removed from `e2e/app-layout.spec.ts`; and the full browser suite is green.
+
+## Relations
+- superseded_by [[INSTR-testing-happens-against-the-current-corpus-and-an-exception]]

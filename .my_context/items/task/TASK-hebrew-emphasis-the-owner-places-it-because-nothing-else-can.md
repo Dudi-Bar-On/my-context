@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The Hebrew wording carries no emphasis and only the owner can say where it belongs, since guessing would be inventing rather than translating.
 summary_of: 5d396b8927c79bb3
+acknowledged:
+  - state_unaudited@4ea302f2eaf3ae0a
 scope: []
 tags:
   - v2
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 293b04d75921b485
+checksum: d1a9f943fd39d72e
 plan: walk
 seq: 1h
 state: done
@@ -42,3 +44,6 @@ HEBREW HAS NO SOURCE. The mockup s {m:const HE} table is plain strings with no m
 WHAT IS NEEDED: for each of the 57 keys, where the emphasis falls in the Hebrew sentence. That is the owner s to say. The English value beside it shows what is being emphasised and why, so the question is where the same emphasis lands, not what to emphasise.
 
 THE DEBT IS HELD BY A TEST, deliberately, so it cannot quietly become permanent: {m:learn-screen.test.ts} asserts that English draws the italic and Hebrew does not, and says that the day he.js gains the marker BOTH branches should expect the mockup s full list. strings-parity compares key SETS and not marker content, so the asymmetry is structurally legal while it lasts -- legal, and unfinished.
+
+## Relations
+- supersedes [[TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup]]

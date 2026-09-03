@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: Two figures the design puts in the bottom strip are missing, left out along with their separators so the strip is short but true.
-summary_of: fe9ef26b1a44ac23
+summary_of: bfabffdfc9cf50f6
+acknowledged:
+  - citation_form@56bb933ad3374588
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 500d5c3ef5801976
+checksum: 92374da6ee3120c3
 plan: port
 seq: "6"
 state: done
@@ -39,8 +41,10 @@ HALF ONE -- THE CONTEXT GROUP -- IS UNBLOCKED AND IS NOW A DEFECT RATHER THAN AN
   `watch-model.ts` · `context: classifyContext(tee.payload),` · ~405 reads it with readTee() and classifies it with classifyContext()
   `watch-model.ts` · `no bridge installed, or this session was never sampled` · ~272 already names the null case: "no bridge installed, or this session was never sampled"
   /api/watch/context IS REGISTERED and serves it
-Meanwhile app.js:736-738 appends strip.ctx.noBridge UNCONDITIONALLY -- it never asks. So the strip tells every user the bridge is not installed, including the users who have installed it. A provenance bar stating an unchecked fact is the precise defect that bar exists to prevent, and it is the same class as the Tutorials screen s twelve hard-coded checkmarks.
+Meanwhile `app.js` · `strip.ctx.noBridge` appends strip.ctx.noBridge UNCONDITIONALLY -- it never asks. So the strip tells every user the bridge is not installed, including the users who have installed it. A provenance bar stating an unchecked fact is the precise defect that bar exists to prevent, and it is the same class as the Tutorials screen s twelve hard-coded checkmarks.
 
 HALF TWO -- INJECTIONS TODAY AND THE AUDIT APPEND p95 -- STANDS UNCHANGED. Both need an audit aggregate the read surface does not expose, and omitting them with their separators, so the bar reads shorter and TRUE rather than complete with holes, remains the right treatment until the aggregate exists.
 
 WHY HALF ONE MATTERS BEYOND THE STRIP: the same sample is what the owner s own idea for the simulator rests on (plan:walk seq:8, "anchor the simulator on the real context window, from the status line"). seq:8 is blocked on walk seq:7 for a REAL reason -- a marker needs a chart to sit on -- but the strip needs no chart.
+
+CITATION DRIFT, checked 2026-09-03. The paragraph above says the strip appends `strip.ctx.noBridge` unconditionally. It does not any more (`app.js` · `used to be appended unconditionally, with no check of` · ~4654).

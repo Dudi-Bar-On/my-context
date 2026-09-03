@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: The check listing which commands can act without a person misses one command entirely, so two of its options are watched by nothing.
-summary_of: 3a3677e3d06c2396
+summary_of: 1612fadef2a15b61
+acknowledged:
+  - citation_form@f8e3f9ba74a6f9a0
 scope: []
 tags:
   - v2
@@ -19,10 +21,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/sub.md"
 source_anchor: null
-source_checksum: 11686cf3fddffba8
+source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 8844cd33e0938f3d
+checksum: 0f4ee8154b91ea0e
 plan: walk
 seq: "107"
 state: done
@@ -36,7 +38,7 @@ source: "found by plan:export seq:13r, 2026-08-29"
 >
 > **The observation**
 >
-> `statusline install --yes` and `statusline uninstall --yes` are real flags and are named in no flag-table row. Adding the row was tried and reverted, because `test/plugin-assets.test.ts:725` pins that row to exactly `approvalBoundary().gated` — and the probe in `test/helpers/approval-boundary.ts` expands only `pack`, `procedure`, `review` and `session` into subcommands.
+> `statusline install --yes` and `statusline uninstall --yes` are real flags and are named in no flag-table row. Adding the row was tried and reverted, because `test/plugin-assets.test.ts` · `namedInRow, [...approvalBoundary().gated].sort(),` · ~725 pins that row to exactly `approvalBoundary().gated` — and the probe in `test/helpers/approval-boundary.ts` expands only `pack`, `procedure`, `review` and `session` into subcommands.
 >
 > **`statusline` is a fifth command of that shape** and the probe therefore tests bare `mycontext statusline --yes`, which is refused — so it classifies as **ungated**, and the row is not wrong *by its own contract*.
 >
@@ -48,8 +50,10 @@ source: "found by plan:export seq:13r, 2026-08-29"
 >
 > **A second, smaller finding from the same audit**
 >
-> `src/core/command-flags.ts:37` says *"the 38 commands `COMMANDS` registers"*. The registry registers **32** by side effect and the CLI dispatches **39** — seven live in `src/cli/index.ts`. Both READMEs say 39 and are right; the source comment is wrong in both directions at once.
+> `src/core/command-flags.ts` · `the 38 commands` says *"the 38 commands `COMMANDS` registers"*. The registry registers **32** by side effect and the CLI dispatches **39** — seven live in `src/cli/index.ts`. Both READMEs say 39 and are right; the source comment is wrong in both directions at once.
 >
 > **Done when**
 >
 > The approval-boundary probe derives its subcommanded set from the registry; `statusline`'s two `--yes` flags appear in the table; and `command-flags.ts`'s count is corrected or replaced by something derived.
+
+CITATION DRIFT, checked 2026-09-03. The second citation's target is gone: the comment no longer says "the 38 commands `COMMANDS` registers" — it says what it said and why it was wrong (`src/core/command-flags.ts` · `This paragraph said 38, and 38 was neither number.` · ~65). The first citation is unchanged and still pins the row.

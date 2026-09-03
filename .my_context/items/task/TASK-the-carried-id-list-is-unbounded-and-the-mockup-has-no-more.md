@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A list of what a session inherited grows without limit and pushes everything else off screen; someone must decide whether to cap it.
 summary_of: bfa1242454339e31
+acknowledged:
+  - citation_form@51c0683c742376fa
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 1d97c611bd03e32c
+checksum: 9a5f5c614d7c117b
 state: done
 plan: screens
 seq: 1s-e

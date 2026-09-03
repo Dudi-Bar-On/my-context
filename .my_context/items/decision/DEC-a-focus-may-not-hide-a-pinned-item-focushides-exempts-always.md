@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: 2b0b8c0134e4112a
 valid_from: 2026-08-27
 valid_until: null
-checksum: 681b66ab72db7447
+checksum: cde632dcc62436ee
 ---
 
 # a focus may not hide a pinned item: focusHides exempts always: true
@@ -47,3 +47,6 @@ checksum: 681b66ab72db7447
 > Not chosen: disclosing what a focus hides instead of exempting. Disclosure is
 > the right treatment for a deliberate drop, and this is not one — the items are
 > marked as never droppable.
+
+## Relations
+- supersedes [[DEC-focus-discloses-and-allows-rather-than-refusing-to-hide]]
