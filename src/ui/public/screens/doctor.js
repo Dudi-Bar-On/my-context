@@ -203,7 +203,12 @@ export function repairFor(finding) {
   if (remedy.route === 'acknowledge') {
     const item = finding.item;
     if (typeof item !== 'string' || item === '') return null;
-    return catalogued('ack', { id: item, code: finding.code });
+    // `finding:` and not `code:` — the catalogue's second POSITIONAL is keyed
+    // `finding` since the bulk form arrived, because `--code` is now a flag on
+    // the same entry and one values bag cannot hold two fields of one name. The
+    // composed argv is unchanged: a positional is composed by position, so this
+    // is still `mycontext ack <id> <code>` byte for byte.
+    return catalogued('ack', { id: item, finding: finding.code });
   }
   return null;
 }
@@ -331,6 +336,134 @@ export function cardCommands(rows) {
     repairs.push(repair);
   }
   return repairs;
+}
+
+/**
+ * **THE SETTLEMENTS ONE CODE OFFERS — the bulk ruling, grouped by code.**
+ *
+ * `DEC-doctor-gets-a-bulk-settlement-overturning-the-no-bulk-ruling`, owner
+ * ruling 2026-09-03, overturning his own no-bulk ruling of 2026-08-31: *"for
+ * notices that could be many items, we need to have a capability to fix all of
+ * them at once using doctor"*, and *"doctor was added to the app for repairing
+ * this is it's role"*. Measured the same day on this repository: 71 findings, 70
+ * of them routing to `acknowledge` — seventy confirms and seventy single-use
+ * nonces to clear one screen.
+ *
+ * **WHY RULING PER CODE IS RULING ON ONE THING READ ONCE.** `sharedTail` above
+ * exists because 34,440 of this screen's 42,353 characters were one paragraph
+ * reprinted per row: thirty-four `body_disagrees_with_meta` rows say the same
+ * sentence thirty-four times, and this file already draws that sentence ONCE per
+ * code, in a `details.help`, on exactly that ground. A control that rules on the
+ * code is a control over the argument the reader has just read in that
+ * disclosure. What differs per row is which item it lands on, and the CLI's own
+ * preview names every one before it writes.
+ *
+ * ── WHAT THIS IS NOT: A PER-ROW CHECKBOX ──────────────────────────────────
+ *
+ * `test/ui/palette-lib.test.ts` rules on that shape in its own words, about the
+ * bulk PROMOTE: a checkbox *"moves an unreviewed promotion closer to one click
+ * than the CLI puts it. That is a design decision about the approval boundary,
+ * not a convenience."* So there is no checkbox and no selection state here. The
+ * control is one composed command per code, drawn under the table with the same
+ * `.cmd` block and the same Copy-and-Execute the shared repairs already use, so
+ * it goes through the same confirm and the same one-shot execution nonce as
+ * every other command this UI runs (`src/ui/execute.ts` · the nonce is minted by
+ * the GET that renders a confirm and by nothing else).
+ *
+ * ── THE FOUR THINGS A GROUP MUST BE, AND WHY EACH ─────────────────────────
+ *
+ *  - **`route === 'acknowledge'`.** Only. Bulk-running `refresh` would rewrite N
+ *    bodies, which is a different act with a different gate, and it stays one
+ *    item at a time.
+ *  - **It NAMES AN ITEM.** An acknowledgement is anchored to an item's content
+ *    (`core/acknowledge.ts`), so a finding with no `item` cannot carry one —
+ *    `repairFor` already answers `null` for exactly that, and the CLI names such
+ *    findings in its skip list rather than dropping them.
+ *  - **It is not already acknowledged.** A settled row keeps its row, its chip
+ *    and its own control (nothing here filters), but counting it again would put
+ *    a number on the button that is larger than the number the command writes —
+ *    and the CLI refuses a `--count` that does not match what it finds.
+ *  - **TWO AT LEAST.** One finding is not a class: the row already carries
+ *    `mycontext ack <id> <code>`, which is shorter, more precise and settles the
+ *    same thing. A bulk control for a single row would be a second control for
+ *    one act, and the reader would have to work out which one to press.
+ *
+ * **The group's level is where the code FIRST appears**, and the count is the
+ * whole run's rather than that card's. Those two facts belong together: the
+ * command is corpus-wide per code, so a card-local count would name a smaller
+ * number than the command settles — the one number on this control that must not
+ * be a guess. Every code in this corpus sits at one level, so the distinction is
+ * invisible today; it is written down because the day a check emits one code at
+ * two levels, a card-local count would be silently wrong rather than absent.
+ */
+export function settleGroups(findings) {
+  const byCode = new Map();
+  for (const finding of findings ?? []) {
+    const remedy = finding.remedy ?? null;
+    if (remedy === null || remedy === undefined || remedy.route !== 'acknowledge') continue;
+    if (typeof finding.item !== 'string' || finding.item === '') continue;
+    if (finding.acknowledged === true) continue;
+    const held = byCode.get(finding.code);
+    if (held === undefined) {
+      byCode.set(finding.code, { level: finding.level, count: 1, items: new Set([finding.item]) });
+    } else {
+      held.count += 1;
+      held.items.add(finding.item);
+    }
+  }
+  const groups = [];
+  for (const [code, held] of byCode) {
+    if (held.count < 2) continue;
+    groups.push({
+      code,
+      level: held.level,
+      count: held.count,
+      items: held.items.size,
+      // Composed through the CATALOGUE'S OWN `commandFor`, like every other
+      // control on this screen: the line the reader reads and the argv the
+      // server rebuilds are one computation rather than two that agree today.
+      // `count` is a string because the catalogue declares it as text — a
+      // number would be refused at the boundary, which is `resolveCommand`
+      // being right rather than in the way.
+      ...catalogued('ack', { all: true, code, count: String(held.count) }),
+    });
+  }
+  return groups;
+}
+
+/**
+ * `<p class="small">` naming what the settlement covers, then the command.
+ *
+ * The sentence sits ABOVE the command and in the reading path to the button,
+ * which is where `doc.ackedNoop` already puts the one fact a reader needs before
+ * pressing. It names the code, the count and the number of items, and it says
+ * the thing about this act that a reader could most easily get wrong: the
+ * findings do not go away. `INV-nothing-is-dropped-silently` and
+ * `RULE-a-screen-shows-the-new-state-after-the-reader-acts-on-it` agree on that
+ * — the latter in its own words, *"It does not require a finding to vanish when
+ * it was ACKNOWLEDGED rather than repaired"* — so the row stays, marked.
+ *
+ * The count is in the COMMAND as well as in the sentence, and that is not a
+ * repetition: `--count` is how the CLI is consented to, so the number the reader
+ * agrees to is a number they can see in the line they are agreeing to. It is
+ * also what makes this control safe to press from a page — there is no `--yes`
+ * on `ack`, deliberately (see `cli/commands/ack.ts`), and a count answers the
+ * gate identically with a terminal and without one.
+ */
+function settleBlock(ctx, group) {
+  const block = document.createDocumentFragment();
+  const note = el('p', 'small');
+  note.append(...ctx.t('doc.settle', {
+    code: group.code, count: String(group.count), items: String(group.items),
+  }));
+  // `.small` sets size and colour and no box, so a bare `<p>` would take the
+  // user agent's `1em 0` — a physical pair, and a size from nowhere. The
+  // stylesheet's own spacing token, set through the CSSOM because
+  // `style-src 'self'` carries no `'unsafe-inline'`; `doc.ackedNoop` above and
+  // `screens/parts.js`'s `spaced` established this treatment.
+  note.style.setProperty('margin-block', 'var(--sp-3) 0');
+  block.append(note, commandRow(ctx, group));
+  return block;
 }
 
 /** A literal the checker delimited: `"a glob"` or `` `a command` ``. */
@@ -769,6 +902,15 @@ export async function render(root, ctx) {
 
   const groups = groupFindings(data.findings);
 
+  // **The bulk settlements, computed ONCE over the whole run and drawn once
+  // each.** `settleGroups` reads every finding rather than one card's rows,
+  // because `mycontext ack --all --code <code>` is corpus-wide per code and a
+  // card-local count would name a number smaller than the command settles. A
+  // code lands in the card of the level it first appears at, and `settled`
+  // stops it being drawn a second time if it ever appears at two.
+  const settlements = settleGroups(data.findings);
+  const settled = new Set();
+
   for (const card of CARDS) {
     const pane = el('div', 'card pane');
     const heading = el('h3');
@@ -841,6 +983,45 @@ export async function render(root, ctx) {
         // Swapping the row's command out from under the reader on the strength
         // of a guess is the wider change; leaving the row as it was is the
         // conservative one.
+        //
+        // ── WHAT IT NOW SAYS FIRST, AND WHY THAT IS THE WHOLE CHANGE ───────
+        //
+        // Owner, 2026-09-03: *"clicked execute, clicked run it but nothing has
+        // changed"*. Nothing had. His finding was already acknowledged at
+        // 00:17, so the 07:29 run re-ran `ack` against a current ruling and the
+        // CLI answered, correctly, *"already acknowledges … Nothing was
+        // written"* (`src/core/mutate.ts` · the `before === 'current'` return).
+        // The row had offered a button that could not do anything, with nothing
+        // on it to say so, and the reader spent an Execute, a confirm and a
+        // full-corpus dry run finding that out.
+        //
+        // **The minimum that stops the row lying is a sentence, not a different
+        // control.** It sits directly above the command, in the reading path to
+        // the button rather than at the tail of a 420-character paragraph, and
+        // it states the one fact the reader needs BEFORE pressing: this is
+        // already settled, and running it again writes nothing.
+        //
+        // **Two questions are deliberately left OPEN, because they are the
+        // owner's**: whether an acknowledged row should offer `ack --clear`
+        // instead of `ack`, and what an acknowledged row should look like. This
+        // answers neither. Nothing is swapped, nothing is hidden, no chip moves,
+        // no hue is spent — `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`
+        // is untouched and `docs/design/web-ui-mockup.html` still contains
+        // "acknowledg" zero times, so there is still no design of record to
+        // build against. What is added is a true statement where a false
+        // impression was; the design ruling is still his to give.
+        if (row.acknowledged) {
+          const noop = el('p', 'small');
+          noop.append(...ctx.t('doc.ackedNoop'));
+          // `.small` sets size and colour and no box, so a `<p>` here would take
+          // the user agent's `1em 0`: a physical pair, and a size from nowhere.
+          // Replaced with the stylesheet's own spacing token, set through the
+          // CSSOM and never as an attribute — `style-src 'self'` carries no
+          // `'unsafe-inline'`. This is the treatment `screens/parts.js`'s
+          // `spaced` established and the tally summary above already follows.
+          noop.style.setProperty('margin-block', 'var(--sp-2) 0');
+          message.append(noop);
+        }
         message.append(commandRow(ctx, repair));
       }
 
@@ -875,6 +1056,18 @@ export async function render(root, ctx) {
     for (const [code, note] of notes) pane.append(sharedNoteBlock(ctx, code, note));
 
     for (const repair of cardCommands(rows)) pane.append(commandRow(ctx, repair));
+
+    // **AFTER the shared repairs, and that ordering is a reading order rather
+    // than a preference.** A `.cmd` under this table either REPAIRS its code —
+    // `mycontext rebuild` makes `index_stale` stop being true — or RULES on it,
+    // which leaves every row exactly where it is and marks it. The repairs come
+    // first because they are the shorter question; the settlement comes last
+    // because it is the one that needs the sentence above it read.
+    for (const group of settlements) {
+      if (group.level !== card.level || settled.has(group.code)) continue;
+      settled.add(group.code);
+      pane.append(settleBlock(ctx, group));
+    }
     root.append(pane);
   }
 }

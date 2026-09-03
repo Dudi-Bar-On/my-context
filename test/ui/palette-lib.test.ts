@@ -260,6 +260,15 @@ interface Field {
 interface Def {
   name: string; kind: 'write' | 'read'; base: string[];
   args: Field[]; flags: Field[];
+  /**
+   * Fields the entry COMPOSES and the Composer screen does not OFFER. Optional
+   * because one entry has them: `ack`'s bulk trio, drawn on the Doctor card.
+   * `advertised` below reads `flags` alone — that is the point of the split —
+   * so every field here needs a row in `FLAGS_NOT_OFFERED`, and the sweep that
+   * feeds real argvs to the real parser reads both lists so the withheld form
+   * is still measured rather than merely asserted.
+   */
+  flagsNotOffered?: Field[];
   boundary?: boolean; ungated?: boolean;
   screen?: string; endpoint?: (values: Record<string, string>) => string;
 }
@@ -547,6 +556,79 @@ const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
       + '`kind: read` row out of a write def — and the Doctor screen already draws what it would '
       + 'print. When the palette offers it, it belongs as its own read entry rather than as a '
       + 'checkbox on this one, and this row must move rather than stand over the opposite.',
+    // 2026-09-03: `ack` grew the bulk form `--all --code <code> --count <n>`
+    // (`DEC-doctor-gets-a-bulk-settlement-overturning-the-no-bulk-ruling`). The
+    // three flags below are CATALOGUED and COMPOSABLE — they live in the entry's
+    // `flagsNotOffered` list, `commandFor` composes them and
+    // `src/ui/execute-catalogue.ts` declares them — and they are not offered on
+    // the Composer. That is the same shape as `review promote --all --pack`
+    // below, and for the same ruling.
+    all: 'the bulk settlement is a DOCTOR-CARD control by owner design, and the Composer '
+      + 'offering it would be the one-click bulk act the approval-boundary ruling refuses. What '
+      + 'was approved is a control per code group, on the screen that has already drawn the '
+      + 'findings: `settleGroups` counts them, the card names the code, the level, the count and '
+      + 'the number of items, and `--count` is consent to a number the reader can see in the line '
+      + 'they are agreeing to. Strip that context away and the same argv is a different act — the '
+      + 'Composer draws no findings at all, so a checkbox here settles a whole class nobody has '
+      + 'looked at, which is exactly the cost `DEC-a-stale-summary-that-is-still-correct-is-'
+      + 'cleared-by-passing` names and the settlement decision inherits: a one-token flag that '
+      + 'could settle a corpus without a single finding being read is refused. The decision '
+      + 'overturned the no-bulk ruling for Doctor; it did not widen this screen. When the palette '
+      + 'does offer it, it belongs beside a preview of the findings it would settle — the shape '
+      + 'the Doctor card already has — and this row must move rather than stand over the '
+      + 'opposite.',
+    code: 'the second part of the bulk form, and it is what makes the act BOUNDED rather than '
+      + '"everything": `--all` settles one named code and never a corpus. It means nothing '
+      + 'without `--all`, which is not offered, and offering it alone would compose a flag that '
+      + 'silently duplicates the `<code>` positional this entry already takes.',
+    count: 'the third part, and it is the CONSENT: `ack` has no `--yes` and must not grow one, so '
+      + 'the number the reader agrees to is the number in the line. A count is only consent when '
+      + 'the reader has been shown what it counts, which this screen has not; on the Doctor card '
+      + 'it is computed from the findings on the page. Not offerable without `--all` either way.',
+  },
+  focus: {
+    // 2026-09-04: `focus` joined the approval boundary
+    // (`DEC-the-focus-dialog-earns-execute-by-putting-focus-on-the`, owner:
+    // *"writes take the boundary, the read does not"*). The catalogued entry is
+    // the BOUNDARY entry — it carries `--yes` because the parser accepts it —
+    // and these four are the forms that REPORT.
+    //
+    // Withheld the older way, by simply not appearing in `flags`, rather than
+    // through the entry's `flagsNotOffered` list. That list means *composable
+    // here, never drawn on the Composer*, and it is the right mechanism only
+    // when another screen genuinely composes the withheld argv through
+    // `commandFor` — `ack`'s bulk trio, sent by the Doctor card. Nothing
+    // composes a focus REPORT through this catalogue and nothing could: the CLI
+    // refuses `--yes` by name beside all four of these, so a `flagsNotOffered`
+    // row would declare a form this entry can never validly compose. The
+    // distinction is the one `commandFor`'s header draws, taken in the other
+    // direction.
+    show: '--show prints the focus in force and changes nothing. This entry exists because '
+      + '`focus` is on the approval boundary, and a boundary entry has no business composing a '
+      + 'report: it is the one the Composer offers `--yes` on, and `cli/commands/focus.ts` '
+      + 'REFUSES `--yes` on `--show` by name rather than ignoring it — so the two cannot appear '
+      + 'in one composed line at all. The focus dialog (`app.js`) already draws this form, and '
+      + '`focusCommandId` returns null for it permanently, which is the same ruling reaching '
+      + 'the screen: Copy, never Execute. When the palette offers a focus report it belongs as '
+      + 'its own `kind: read` entry with a screen, the way every other read here is listed, and '
+      + 'this row must move rather than stand over the opposite.',
+    preview: '--preview reports what a focus WOULD hide and sets nothing. It refuses `--yes` by '
+      + 'name for the reason above, so it cannot be composed beside the flag this boundary entry '
+      + 'carries. It is also the one form whose whole value is being read before a person '
+      + 'answers a question — the CLI prints that report inside the confirmation the Execute '
+      + 'route already asks — so offering it as a checkbox beside `--yes` would put two answers '
+      + 'to one question on the same line.',
+    relations: '--relations prints the relation classification table — a reference document '
+      + 'about how focus treats each relation kind, naming no item and reading no focus. It '
+      + 'refuses `--yes` by name like the other two reads. `mycontext help` is the read entry '
+      + 'for documentation in this catalogue, and a table of static classifications belongs '
+      + 'behind a screen rather than behind a write def\'s checkbox.',
+    json: '--json is a DETAIL flag that only shapes the three reporting forms above; on the two '
+      + 'forms that write it suppresses the very disclosure the gate exists to print '
+      + '(`cli/commands/focus.ts` skips the report under --json so a parser is not handed prose '
+      + 'and a document on one stream). Offering it here would let the Composer compose a '
+      + 'boundary write whose preview is silently withheld, which is the opposite of what a '
+      + 'composed-and-shown catalogue is for.',
   },
   'review promote': {
     all: 'bulk promotion: --all --pack <name> settles every draft a pack imported in one '
@@ -567,6 +649,34 @@ const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
     // palette composed `add` without it — a regression that handed the user a
     // command guaranteed to be refused. `--summary` is now offered below, so
     // its excuse row is gone; only its opt-out survives here.
+    // 2026-09-03: `add` grew `--original-id`, which carries an existing item's
+    // id across instead of deriving one from the title. Not offered, and this
+    // is a design decision rather than a lane: see below.
+    // 2026-09-03: `add` also grew `--always`, which pins at capture. Not
+    // offered, and for a reason of its own — see its row.
+    always: '--always pins the item at capture: it is then injected in full at every session '
+      + 'start, whatever files are touched. It is not offered because a checkbox misprices it. '
+      + 'The pinned tier is ONE budget shared by every pinned item in the workspace, so this '
+      + 'control does not set a property of the item being captured — it spends something every '
+      + 'other pinned item is also spending, and an item that stops fitting is silently not '
+      + 'injected at all, reported only by the session-start hook long afterwards. This project '
+      + 'has already paid that: 7 of 23 pinned items failed to reach a session at ~17237 '
+      + 'estimated tokens against a budget of 16000. The CLI answers with a confirmation that '
+      + 'prints the budget before it asks; a checkbox beside a title field has nowhere to put '
+      + 'that sentence and would make the most expensive field on the form the cheapest one to '
+      + 'tick. When the palette does offer it, it belongs beside the pinned-budget figure — the '
+      + 'shape `mycontext pin <id>` already has, since that command carries the same preview — '
+      + 'and this row must move rather than stand over the opposite.',
+    'original-id': '--original-id is a MIGRATION affordance — it carries the id an item already '
+      + 'has in the corpus it is coming from, because an id is the key of every relation, audit '
+      + 'record and citation that points at it. Offering it as a text box beside the title field '
+      + 'would turn it into a general way to NAME items, which is the one thing it must not be: '
+      + 'ids derived from titles are what keep an id honest about what it names, and a corpus '
+      + 'where every capture picks its own loses that. Its whole gate is that a person has to '
+      + 'type a long flag whose name reads as false unless the item genuinely has an original '
+      + 'id, and a control makes typing it free. When the palette does offer it, it belongs on '
+      + 'a migration screen next to the corpus being carried across rather than in this flag '
+      + 'list, and this row must move rather than stand over the opposite.',
     'summary-omitted': '--summary-omitted is the named opt-out on the CREATION gate: a capture '
       + 'carrying no --summary is refused, and this flag is how a person says the item should '
       + 'genuinely have none. It is not offered for the reason its edit-side sibling '
@@ -703,11 +813,16 @@ test('every argv the catalogue composes is one the real parser accepts', async (
     let composed = 0;
 
     for (const def of PALETTE.filter((d) => d.kind === 'write')) {
+      // BOTH flag lists. `flagsNotOffered` holds argv this catalogue really does
+      // compose — the Doctor card sends `ack --all --code <c> --count <n>`
+      // through the same `commandFor` — so sweeping only `flags` would let the
+      // one form no screen's picker can typo drift away from the parser unseen.
+      const composable = [...def.flags, ...(def.flagsNotOffered ?? [])];
       const base: Record<string, unknown> = {};
       for (const arg of def.args) base[arg.name] = sample(arg);
-      for (const flag of def.flags.filter((f) => f.required)) base[flag.name] = sample(flag);
+      for (const flag of composable.filter((f) => f.required)) base[flag.name] = sample(flag);
 
-      const variants = [{ ...base }, ...def.flags.map((flag) => ({ ...base, [flag.name]: sample(flag) }))];
+      const variants = [{ ...base }, ...composable.map((flag) => ({ ...base, [flag.name]: sample(flag) }))];
       for (const values of variants) {
         const argv = commandFor(def, values);
         composed += 1;
@@ -824,9 +939,16 @@ const UNCATALOGUED: Record<string, string> = {
     + 'questions.',
   examples: 'a read whose answer is an example item and its updatable surface. `mycontext help` '
     + 'is catalogued and reaches `#/learn`; this one has no screen of its own.',
-  focus: 'a WRITE — it sets the injection focus for the whole project — and the one write in '
-    + 'this list whose entry needs a design decision first: a focus is not addressed by an item '
-    + 'id, so the def\'s `args` have no `source` any existing screen resolves.',
+  // `focus` stood here until 2026-09-04, and the design decision its row asked
+  // for is the one the owner took: `DEC-the-focus-dialog-earns-execute-by-
+  // putting-focus-on-the` put the two WRITE forms on the approval boundary and
+  // left the reports off it. The row's stated blocker — "a focus is not
+  // addressed by an item id, so the def's `args` have no `source` any existing
+  // screen resolves" — is answered by the entry having no positional args at
+  // all: a focus is composed entirely from flags, and `--category` is the one
+  // axis with a picker source this screen already fills. The reports are named
+  // in `FLAGS_NOT_OFFERED` above rather than composed, so the row is deleted
+  // rather than left standing over the opposite.
   'inbox-promote': 'a write on the approval boundary, and a straightforward entry. It is here '
     + 'rather than in the catalogue only because closing it changes the Composer picker.',
   ingest: 'a read that prints an extraction request for a model to answer. Its output is a '

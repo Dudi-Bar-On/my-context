@@ -85,7 +85,7 @@ import { readGitInfo } from './git-info.ts';
 import { IDLE_MS, IdleMonitor } from './idle.ts';
 import {
   apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem, apiItems,
-  apiRender, apiSelect, apiSessions, apiSimulate, apiSimulateSweep, apiStatus,
+  apiRender, apiSelect, apiSessions, apiSimulate, apiSimulateSweep, apiStatus, apiTags,
 } from './read-model.ts';
 import { registerFlagRoutes } from './read-model-flags.ts';
 import { registerConfigRoutes } from './read-model-config.ts';
@@ -422,6 +422,13 @@ export function registerReadRoutes(): void {
   registerRoute('GET', '/api/coverage', json(apiCoverage));
   registerRoute('GET', '/api/graph', json(apiGraph));
   registerRoute('GET', '/api/items', json(apiItems));
+  // The tag vocabulary a focus can be built from, in its two classes with
+  // their counts — `REQ-the-focus-dialog-offers-the-tags-it-could-focus-on-
+  // with-the`. It is beside `/api/items` because it is the same read of the
+  // same corpus asking a different question, and separate from it because
+  // `ItemSummary` carries no tags and widening it would put a 431-token
+  // vocabulary on every screen that lists items.
+  registerRoute('GET', '/api/tags', json(apiTags));
   registerRoute('GET', '/api/session/:session/injected', {
     kind: 'json',
     handle: (ctx) => apiInjected(ctx.ws, ctx.url, { session: ctx.params['session'] ?? '' }),

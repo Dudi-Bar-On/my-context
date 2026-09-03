@@ -60,14 +60,18 @@ import {
   Ledger, LedgerUninitializedError, readSnapshotMeta,
   type InjectionEvent, type SessionSummary, type Usage,
 } from '../core/ledger.ts';
-import { isFocusActive, isLoadBearing, readFocus } from '../core/focus.ts';
+import { isFocusActive, isLoadBearing, readFocus, type Focus } from '../core/focus.ts';
 import { renderSelection } from '../core/render.ts';
 import { pendingRevisionCounts, pendingRevisionSummaries } from '../core/revision-log.ts';
 import {
-  focusHides, isEligible, isNormative, itemCost, matchesScope, mergeLayers, reviewQueue,
-  select, tiersRun,
+  focusHides, isEligible, isNormative, itemCost, matchesFocus, matchesScope, mergeLayers,
+  reviewQueue, select, tiersRun,
   type GateCode, type SelectContext, type SelectEvent, type Selection,
 } from '../core/select.ts';
+// The one authority for which tag prefixes are GENERATED from a field rather
+// than written by a person — see `TagsBody`, which is the whole reason a tag
+// vocabulary can be served as two classes instead of one unusable list.
+import { projectionsFor } from '../core/tag-projection.ts';
 import {
   continuityFor, CONTINUITY_WINDOW_SESSION, readSeen, seenIds,
   type JsonlFileState, type SeenLine,
@@ -2266,6 +2270,267 @@ export function apiItems(ws: Workspace, url: URL): JsonResult {
     return { status: 200, body };
   });
 }
+
+/* ══ `/api/tags` — the vocabulary a focus can be built from ══════════════════
+ *
+ * `REQ-the-focus-dialog-offers-the-tags-it-could-focus-on-with-the`, owner
+ * request 2026-09-02: *"i would like to have such a generated check box list
+ * with the item counts in the dialog so user could select there and not have
+ * to remember them"*.
+ *
+ * **Nothing served tags before this, and the absence was total** — measured
+ * 2026-09-04: `ItemSummary` carries id, type, title, status, always, scope,
+ * injected, phrase, gate, summary, summaryState, relations and relationKinds,
+ * and no tags; no route among the registered read routes served a vocabulary;
+ * and `pickerOptions` (screens/palette.js) answers `[]` for any source it does
+ * not know, so `command-flags.ts`'s existing `source: 'tags'` on `focus --tag`
+ * resolved silently to nothing. An empty picker and an unimplemented one look
+ * identical, which is `LESSON-on-real-data-an-absent-feature-and-a-missing-
+ * feature-look` by construction — so this endpoint exists rather than a
+ * client-side tally over `/api/items`, which could not have counted anything
+ * because that response carries no tags either.
+ *
+ * ── THE TWO CLASSES, DERIVED AND NOT LISTED ───────────────────────────────
+ *
+ * Owner ruling on presentation, 2026-09-04: **free-form tags as checkboxes,
+ * projected tags behind their prefix.** The two are not alike and a flat list
+ * is unusable — measured on this repository's own corpus the same day: 431
+ * distinct tags over 779 eligible items, of which 244 are projected (`seq:`
+ * alone is 217 values, `plan:` 23, `state:` 4) and 187 are free-form.
+ *
+ * A projected tag is GENERATED from a frontmatter field — `mutate.ts` writes
+ * it, and hand-writing one is refused — so it is not a membership a person
+ * picks, it is a fact about the item. Which prefixes those are is ASKED FOR
+ * rather than listed: `projectionsFor(config, type)` is the one authority, and
+ * this walks every enabled category through it. `command-flags.ts`'s header
+ * argues for exactly that ("a static list of this project's categories would be
+ * exactly the hand-copied vocabulary this table exists to remove"), and a
+ * `state:` prefix added to a profile tomorrow moves this response with no edit
+ * here.
+ */
+
+/** One tag, with the two numbers that are not the same number. */
+export interface TagCount {
+  /** The tag as items carry it — the exact token `--tag` takes. */
+  tag: string;
+  /**
+   * ELIGIBLE items carrying it.
+   *
+   * Eligible and not "all", because focus only ever acts on the eligible set
+   * (`select`: `eligibleAll.filter((i) => !focusHides(…))`), so a count over
+   * drafts and disabled categories would promise items no focus could deliver.
+   *
+   * Computed with `matchesFocus` rather than `item.tags.includes(tag)`: the tag
+   * axis is `focus.tags.some(…)`, OR within the axis, and a second spelling of
+   * it here is how a picker comes to read as AND. One predicate, one answer.
+   */
+  items: number;
+  /**
+   * What `mycontext focus --tag <tag>` would actually INJECT — `FocusReport`'s
+   * `visible`, over the same eligible universe.
+   *
+   * **It is not `items`, and the gap is the point.** A focus never hides a
+   * `severity: hard` item, an `always` item or a continuity item
+   * (`focusHides`), so every narrowing keeps a floor of items that match
+   * nothing it asked for. Measured on this corpus, that floor is ~96 of 779:
+   * `a11y` is carried by 11 items and a focus on it injects 107. A picker
+   * showing only the first number promises a narrower session than the reader
+   * gets; one showing only the second reads as if every tag were the same size.
+   * Both travel, and the dialog says which is which.
+   */
+  visible: number;
+}
+
+/** One projected prefix and every value in use under it. */
+export interface ProjectedTags {
+  /** The prefix, so the tag is `<prefix>:<value>` — `plan`, `seq`, `state`. */
+  prefix: string;
+  /** The frontmatter field(s) it is generated from, sorted. */
+  fields: string[];
+  /**
+   * How the field is changed, as a person types it. Carried so the dialog can
+   * say why these are not checkboxes without a second sentence about it.
+   */
+  commands: string[];
+  /** The declared vocabulary when the field has one, else `null` for free text. */
+  values: string[] | null;
+  /** Every value actually in use, most-used first. */
+  options: TagCount[];
+}
+
+export interface TagsBody {
+  /**
+   * Tags a person wrote, most-used first then alphabetical — the checkboxes.
+   *
+   * Ordered by use because that is the order in which a reader recognises
+   * their own vocabulary, and tie-broken alphabetically so two runs over one
+   * corpus produce the same list.
+   */
+  free: TagCount[];
+  /** The generated tags, grouped by the prefix that generates them. */
+  projected: ProjectedTags[];
+  /**
+   * The universe every count above is over: eligible items in this workspace.
+   *
+   * Served rather than left to be inferred, because "11" means nothing without
+   * it and the client has no other way to know the denominator — `/api/status`
+   * counts the whole corpus, drafts included, which is a different number.
+   */
+  eligible: number;
+}
+
+/** The candidate focus one tag alone would set. Built once per tag. */
+function tagFocus(tag: string): Focus {
+  return {
+    tags: [tag], categories: [], scope: [],
+    // Neither field reaches `focusHides` or `matchesFocus`; they are here
+    // because `Focus` carries provenance for the focus that is SET, and this
+    // one never is. `'human'` is honest about who is asking: a person is
+    // looking at a dialog.
+    setAt: NEVER_SET, setBy: 'human',
+  };
+}
+
+/**
+ * The instant a candidate focus carries. It is never written anywhere — this
+ * focus exists for the length of one `focusHides` call — and a real timestamp
+ * here would put a fresh value in a response body that is otherwise identical
+ * between two requests over an unchanged corpus.
+ */
+const NEVER_SET = '1970-01-01T00:00:00.000Z';
+
+/**
+ * `GET /api/tags` — every tag a focus could be built from, with its counts.
+ *
+ * **Cost, measured on this repository's corpus 2026-09-04** (816 items, 779
+ * eligible, 431 distinct tags): the `focusHides`/`matchesFocus` sweep is
+ * **9.3ms** — 431 tags × 779 items of two O(1) predicates — on top of the
+ * `store.all()` every read route here already pays. That is the whole of what
+ * this endpoint adds, and it is why the counts are computed per request rather
+ * than cached: a cache would need invalidating on every item write, and 9ms
+ * does not buy a cache-coherence problem.
+ *
+ * It is deliberately NOT `select()` per tag. `select` runs five tiers, budgets
+ * and a relation walk to answer a question this endpoint does not ask, and 431
+ * of them would cost seconds. `focusHides` is the one predicate the injection
+ * itself uses for this decision, so nothing is re-implemented by leaving the
+ * rest out — `buildFocusReport` computes `visible` from exactly this call.
+ */
+export function apiTags(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, []) ?? repeatedParams(url);
+  if (bad) return badRequest(bad);
+
+  return withStores(ws, (store): JsonResult => {
+    // `mergeLayers` then `isEligible`, in `select`'s own order: a global-layer
+    // item shadowed by a project one must be counted once, under the tags the
+    // WINNER carries. Counting the raw rows would report tags of items that
+    // are never delivered.
+    const eligible = mergeLayers(store.all()).filter((i) => isEligible(i, ws.config));
+
+    // Every prefix any ENABLED category generates, and the declaration behind
+    // it. A prefix can come from more than one category — `state` is declared
+    // on several — so the fields and the commands are collected as sets.
+    const projections = new Map<string, Declared>();
+    for (const [type, category] of Object.entries(ws.config.categories)) {
+      if (!category.enabled) continue;
+      for (const p of projectionsFor(ws.config, type)) {
+        const seen = projections.get(p.prefix)
+          ?? { fields: new Set<string>(), commands: new Set<string>(),
+               values: new Set<string>(), open: false };
+        seen.fields.add(p.field);
+        seen.commands.add(p.command);
+        // **A closed vocabulary survives only while EVERY category declaring
+        // the prefix closes it**, and `open` is ABSORBING for that reason: one
+        // category leaving the field free text makes the prefix free text
+        // however many others close it, and a select built on the others'
+        // vocabulary would refuse a value the corpus really carries.
+        //
+        // Where two categories BOTH close it, the union is taken rather than
+        // the intersection, for the mirror reason: two different closed sets
+        // both really occur, and offering only what they share would hide a
+        // value some category legitimately writes. A tri-state — not-yet-seen,
+        // closed, open — because `null` alone cannot tell the first from the
+        // last, which is the bug this shape replaced.
+        if (p.values === undefined) seen.open = true;
+        else for (const value of p.values) seen.values.add(value);
+        projections.set(p.prefix, seen);
+      }
+    }
+
+    // ONE walk for the distinct tags; the counts below are the sweep.
+    const distinct = new Set<string>();
+    for (const item of eligible) for (const tag of item.tags) distinct.add(tag);
+
+    const counted = new Map<string, TagCount>();
+    for (const tag of distinct) {
+      const focus = tagFocus(tag);
+      let items = 0;
+      let visible = 0;
+      for (const item of eligible) {
+        if (matchesFocus(item, focus, ws.config)) items += 1;
+        if (!focusHides(item, focus, ws.config)) visible += 1;
+      }
+      counted.set(tag, { tag, items, visible });
+    }
+
+    /** `<prefix>:` and a non-empty value, where the prefix is a GENERATED one. */
+    const prefixOf = (tag: string): string | null => {
+      const colon = tag.indexOf(':');
+      if (colon <= 0 || colon === tag.length - 1) return null;
+      const prefix = tag.slice(0, colon);
+      return projections.has(prefix) ? prefix : null;
+    };
+
+    const free: TagCount[] = [];
+    const grouped = new Map<string, TagCount[]>();
+    for (const tag of [...distinct].sort(compareTagStrings)) {
+      const count = counted.get(tag)!;
+      const prefix = prefixOf(tag);
+      // **A tag carrying a colon under an UNGENERATED prefix is free-form**,
+      // and that is a decision rather than an oversight: this corpus really
+      // carries `screen:palette` and `reconcile:rewritten`, written by hand
+      // under no projection at all. They are memberships a person chose, so
+      // they get a checkbox like every other one.
+      if (prefix === null) free.push(count);
+      else grouped.set(prefix, [...(grouped.get(prefix) ?? []), count]);
+    }
+
+    const byUse = (a: TagCount, b: TagCount): number =>
+      b.items - a.items || compareTagStrings(a.tag, b.tag);
+
+    const body: TagsBody = {
+      free: free.sort(byUse),
+      // Every declared prefix appears, INCLUDING one no item uses yet — with
+      // `options: []`. A prefix that is declared and unused is a real state,
+      // and dropping it would make "this project has no plans" and "this
+      // project cannot have plans" the same response.
+      projected: [...projections.entries()]
+        .sort(([a], [b]) => compareTagStrings(a, b))
+        .map(([prefix, decl]) => ({
+          prefix,
+          fields: [...decl.fields].sort(compareTagStrings),
+          commands: [...decl.commands].sort(compareTagStrings),
+          values: decl.open ? null : [...decl.values].sort(compareTagStrings),
+          options: (grouped.get(prefix) ?? []).sort(byUse),
+        })),
+      eligible: eligible.length,
+    };
+    return { status: 200, body };
+  });
+}
+
+/** One prefix as the enabled categories collectively declare it. */
+interface Declared {
+  fields: Set<string>;
+  commands: Set<string>;
+  /** The union of every CLOSED vocabulary declared for it. */
+  values: Set<string>;
+  /** Whether any category leaves it free text, which wins over `values`. */
+  open: boolean;
+}
+
+/** Byte order, so the response is identical between runs and across locales. */
+const compareTagStrings = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
  * `GET /api/item/:id`' body — the item detail pane's read.

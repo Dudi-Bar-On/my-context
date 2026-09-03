@@ -55,7 +55,7 @@
 // the only one.
 import { composeCommand } from './command.js';
 import { fieldView } from './viewmodel.js';
-import { el, errorNote } from '../screens/parts.js';
+import { el, errorNote, boundedList, BOUND_CAP_LIST } from '../screens/parts.js';
 
 /**
  * The query parameter that carries an ARGUMENT named `id`.
@@ -649,6 +649,49 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
  * and are shown unedited — an `execute` row with no `execute-done` beside it
  * MEANS a run that never returned, so a swallowed note would leave the audit
  * log making a specific and false statement about this run.
+ *
+ * ── AND STDOUT, WHICH IS THE ANSWER AND WAS NOT DRAWN AT ALL ──────────────
+ *
+ * Owner, 2026-09-03: *"in warning there is `mycontext ack REF-… dead_scope`,
+ * clicked execute, clicked run it but nothing has changed"*. The run was
+ * correct and the report was not. `POST /api/execute` had answered 200 with
+ *
+ *     my_context: REF-… already acknowledges "dead_scope" against its current
+ *     content. Nothing was written.
+ *
+ * on `stdout`, and this function appended exactly one node — a green
+ * `exit code 0` — because the word `stdout` appeared nowhere in this file. So
+ * the product did the right thing, said so, and the client threw the sentence
+ * away. A green exit code over a discarded answer is worse than silence: it
+ * tells the reader the command succeeded at doing nothing they can name.
+ *
+ * `execute-effect.ts` already states the rule this now follows — *"stdout is
+ * where the answer usually is … the CLI writes its own refusals to stdout with
+ * a `my_context:` prefix, so reading only stderr discards exactly [that
+ * sentence]"*.
+ *
+ * ── WHY `stderr` STAYS WHERE IT WAS: NON-ZERO EXITS ONLY, UNEDITED ────────
+ *
+ * Weighed three ways, and the existing condition wins on all three:
+ *
+ *   - **Always showing it** would put Node's own `ExperimentalWarning: SQLite
+ *     is an experimental feature…` plus its `(Use --trace-warnings …)` line
+ *     under EVERY clean run in this product. That is the runtime talking about
+ *     itself, not the command answering the person, and a reader who learns to
+ *     skip this region on every successful run is the exact failure the fix
+ *     above exists to end.
+ *   - **Filtering it here** — dropping the known noise and keeping the rest —
+ *     would be a SECOND spelling of `execute-effect.ts`'s `withoutRuntimeNoise`,
+ *     in a browser module that cannot import it. This codebase has recorded
+ *     that mistake by name more than once, and the copy that went stale would
+ *     be the one deciding what a reader is allowed to see.
+ *   - **Showing it only on a non-zero or unobserved exit** is what the line
+ *     below already did, and it is right: an exit of 0 IS the command saying it
+ *     succeeded, and its answer is on stdout. When it did not succeed, stderr
+ *     is usually the whole explanation, and it is passed through unedited.
+ *
+ * So stderr is untouched by this change. The defect was never that stderr was
+ * hidden; it was that stdout was never shown.
  */
 function report(ctx, say, outcome) {
   const exitCode = outcome?.exitCode;
@@ -660,6 +703,12 @@ function report(ctx, say, outcome) {
   else code.append(...ctx.t('exec.noexit'));
   nodes.push(code);
 
+  // Before the refusal notes below, and after the code: what the command SAID
+  // is the answer to "what did that do", and a reader stops at the first thing
+  // that answers it. Drawn on every ending, clean or not — a command that
+  // printed a sentence and then exited 1 printed that sentence on purpose.
+  nodes.push(...saidNodes(ctx, outcome?.stdout));
+
   if (typeof outcome?.error === 'string' && outcome.error !== '') {
     nodes.push(errorNote(outcome.error));
   }
@@ -669,6 +718,104 @@ function report(ctx, say, outcome) {
     nodes.push(errorNote(outcome.auditNote));
   }
   say(...nodes);
+}
+
+/**
+ * The command's own output, as the command laid it out, bounded the way every
+ * other list in this product is bounded.
+ *
+ * Returns `[]` for a run that printed nothing — and that is a real answer
+ * rather than a gap. `STD-a-measured-zero-is-drawn-and-named` governs a MEASURED
+ * zero on a surface whose subject is the zero; here the exit code beside it is
+ * already the whole statement, and a "this command said nothing" line under
+ * every `pin`, `unpin` and `focus` would be a second sentence saying what the
+ * first one said.
+ *
+ * ── WHY A `<pre class="lit">` AND NOT A PARAGRAPH ─────────────────────────
+ *
+ * **Whitespace is content here.** `mycontext doctor` aligns codes into columns
+ * and `mycontext show` prints front matter; a `<p>` collapses every run of
+ * spaces and every blank line, which turns a table into prose and loses the
+ * only thing the alignment was for.
+ *
+ * `.lit` is the design of record's own PRIMITIVES §3 field, described there in
+ * these words: *"the literal field: a darker field inside the pane, for the
+ * machine's own voice."* That is exactly what this is, so no class is invented.
+ * `<pre>` on top of it is not decoration either: `styles.css` ~405 gives
+ * `pre` the mono face, `direction:ltr` and `unicode-bidi:isolate`, which is what
+ * keeps a command's English output readable inside the Hebrew page instead of
+ * reordered by the bidi algorithm.
+ *
+ * Three CSSOM declarations, and each buys something the shipped rules do not:
+ *
+ *   `white-space: pre-wrap`  `<pre>`'s own `pre` keeps the bytes and REFUSES to
+ *                            wrap. `.pane` is `overflow:hidden`, so a 145-column
+ *                            line — which is what `ack`'s answer is — would be
+ *                            clipped and unreachable rather than merely wide.
+ *                            `pre-wrap` keeps every byte and wraps anyway.
+ *   `overflow-wrap: anywhere` and the same again for one unbroken token: an
+ *                            absolute path or an item id longer than the cell.
+ *                            The stylesheet already spells this exact remedy at
+ *                            `.div-name`.
+ *   `margin-block`           the UA gives `<pre>` `1em 0`, which is a physical
+ *                            pair and a size from nowhere. Replaced with the
+ *                            stylesheet's own spacing token.
+ *
+ * Set through the CSSOM and never as an attribute — the page ships
+ * `style-src 'self'` with no `'unsafe-inline'` — which is the treatment
+ * `screens/parts.js`'s `spaced` established and `screens/doctor.js` follows.
+ *
+ * ── AND WHY `boundedList` RATHER THAN A TRUNCATION ────────────────────────
+ *
+ * `REQ-every-list-and-table-declares-what-leaves-it-and-when-and-says`, and
+ * `REQ-a-bounded-list-gives-the-reader-a-way-to-reach-what-it-held` behind it:
+ * a surface that drops rows and says nothing cannot be told apart from one that
+ * is showing everything, and declaring the bound is necessary but not
+ * sufficient — the reader needs a way through. Output is a list of lines, the
+ * whole of it is already in hand, so "show all" and the two steppers are a
+ * re-render over data legitimately held and no new fetch is introduced.
+ *
+ * `order: 'position'` because lines have no timestamp and were not selected by
+ * anything: they are in the order the command printed them, and `list.positionOf`
+ * ("Showing the first {shown} of {total}.") is the one sentence that claims
+ * nothing more than that. `BOUND_CAP_LIST` and not `BOUND_CAP_TABLE`, because
+ * this region is a transient answer pinned beside the row it was run from, not
+ * a screen's own scrolling table — twenty lines is already deep next to a
+ * table row, and reusing a declared constant beats inventing a third number.
+ *
+ * Lines are TEXT NODES, not one element each. An empty element has no height,
+ * so a per-line `<div>` would silently swallow every blank line the command
+ * printed — collapsing whitespace by a different route. Joined with `\n` under
+ * `pre-wrap`, a blank line is a blank line. `i === 0` rather than a trailing
+ * newline on every line, so the block does not end in a fabricated blank one;
+ * `i` is the index within the drawn window, which is exactly the right question.
+ */
+function saidNodes(ctx, stdout) {
+  const text = typeof stdout === 'string' ? stdout : '';
+  // Trailing whitespace only: the final newline is the stream's terminator
+  // rather than a line the command wrote. Leading and interior blank lines are
+  // the command's own layout and survive.
+  const said = text.replace(/\s+$/u, '');
+  if (said === '') return [];
+
+  const label = el('p', 'small');
+  label.append(...ctx.t('exec.said'));
+
+  const field = el('pre', 'lit');
+  field.style.setProperty('white-space', 'pre-wrap');
+  field.style.setProperty('overflow-wrap', 'anywhere');
+  field.style.setProperty('margin-block', 'var(--sp-1) 0');
+
+  // `\r\n` is what a Windows child writes and `\n` is what the page draws; the
+  // carriage return is a line TERMINATOR, not a character of the line, and
+  // leaving it in renders as a stray glyph in some fonts.
+  const lines = said.split('\n').map((line) => line.replace(/\r$/u, ''));
+  const bound = boundedList(
+    ctx, field, lines,
+    (line, i) => document.createTextNode(i === 0 ? line : `\n${line}`),
+    { cap: BOUND_CAP_LIST, order: 'position' },
+  );
+  return [label, field, bound];
 }
 
 /** A thrown thing as the sentence it carries — the platform's words, unedited. */

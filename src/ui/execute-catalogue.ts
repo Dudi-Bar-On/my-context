@@ -65,6 +65,19 @@ interface CommandDef {
   boundary?: boolean;
   args?: FieldSpec[];
   flags?: FieldSpec[];
+  /**
+   * Fields the catalogue composes and the Composer screen never offers — today
+   * `ack`'s `--all --code <code> --count <n>`, drawn on the Doctor card instead
+   * (`DEC-doctor-gets-a-bulk-settlement-overturning-the-no-bulk-ruling`).
+   *
+   * Declared here for the reason at the top of this file: withholding is a
+   * decision about a PICKER, and this module is not a picker. A field this
+   * server did not declare would be refused by name, so leaving the list out
+   * would not withhold the flag from anyone — it would break the one screen the
+   * owner licensed to send it, while the Composer's own `controlSpecs` (which
+   * reads `args` and `flags` and nothing else) went on withholding it correctly.
+   */
+  flagsNotOffered?: FieldSpec[];
 }
 
 interface CatalogueModule {
@@ -201,7 +214,10 @@ export function resolveCommand(id: string, values: Record<string, unknown>): Res
   // unresolvable would make the catalogue mean two different things depending
   // on which side read it — the one outcome this module exists to prevent.
   const args = def.args ?? [];
-  const flags = def.flags ?? [];
+  // Every field the entry can COMPOSE, which is not the same set as the fields
+  // one screen may OFFER; see `flagsNotOffered` on `CommandDef`. In `commandFor`'s
+  // own concatenation order, so `declared` and the argv agree about the entry.
+  const flags = [...(def.flags ?? []), ...(def.flagsNotOffered ?? [])];
   const specs = [...args, ...flags];
   const declared = new Map(specs.map((spec) => [spec.name, spec]));
 

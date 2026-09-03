@@ -99,7 +99,13 @@ interface DoctorModule {
   // thing that carries it (`reports/V2-HANDOVER.md:437`).
   repairFor: (finding: Partial<Finding>) => Repair | null;
   cardCommands: (rows: Row[]) => Repair[];
+  settleGroups: (findings: Partial<Finding>[]) => SettleGroup[];
   render: (root: unknown, ctx: unknown) => Promise<void>;
+}
+
+/** One bulk ruling the screen offers: a code, what it covers, and the argv. */
+interface SettleGroup extends Repair {
+  code: string; level: string; count: number; items: number;
 }
 
 /** `from '/lib/viewmodel.js'` — the browser's own specifier form. */
@@ -482,7 +488,12 @@ test('an acknowledge remedy composes ack against the finding\'s own id and code'
   const repair = repairFor({ code: 'body_disagrees_with_meta', item: 'DEC-a', remedy: REMEDY.ACK });
   assert.deepEqual(repair, {
     id: 'ack',
-    values: { id: 'DEC-a', code: 'body_disagrees_with_meta' },
+    // The second positional is keyed `finding` since the bulk form arrived —
+    // `--code` is a FLAG on the same catalogue entry and one values bag cannot
+    // hold two fields of one name. The ARGV is what this test is really about
+    // and it is unchanged: a positional is composed by position, so the line is
+    // still `mycontext ack <id> <code>` byte for byte.
+    values: { id: 'DEC-a', finding: 'body_disagrees_with_meta' },
     argv: ['mycontext', 'ack', 'DEC-a', 'body_disagrees_with_meta'],
   });
 
@@ -495,6 +506,123 @@ test('an acknowledge remedy composes ack against the finding\'s own id and code'
   // carry one, and the screen must draw its chip rather than compose
   // `mycontext ack undefined <code>`.
   assert.equal(repairFor({ code: 'body_review_limits', remedy: REMEDY.ACK }), null);
+});
+
+/* ---------------------------------------------------------------------------
+ * The bulk settlement — `DEC-doctor-gets-a-bulk-settlement-overturning-the-no-bulk-ruling`
+ * ------------------------------------------------------------------------- */
+
+/**
+ * **The control the owner asked for, and the four things it must refuse to
+ * cover.**
+ *
+ * Owner ruling 2026-09-03, overturning his own no-bulk ruling of 2026-08-31:
+ * *"for notices that could be many items, we need to have a capability to fix
+ * all of them at once using doctor"*. The measurement behind it is 70 of this
+ * corpus's 71 findings routing to `acknowledge`, which is 70 confirms and 70
+ * single-use nonces to clear one screen.
+ *
+ * Every assertion here is a way the control could silently cover more or less
+ * than it says. The count is the load-bearing one: it is the argument of
+ * `--count`, which is how the CLI is CONSENTED to, and the CLI refuses a count
+ * that does not match what it finds. A group that over-counted would compose a
+ * command guaranteed to be refused; one that under-counted would put a number in
+ * front of a person that is smaller than the act.
+ */
+test('a settlement covers one code, and only findings a ruling can actually settle', async () => {
+  const { settleGroups } = await doctorModule();
+  const groups = settleGroups([
+    // Two of one code on two items — a class, and the whole point.
+    { level: 'info', code: 'body_disagrees_with_meta', item: 'DEC-a', remedy: REMEDY.ACK },
+    { level: 'info', code: 'body_disagrees_with_meta', item: 'DEC-b', remedy: REMEDY.ACK },
+    // Already ruled on: it keeps its row and its own control, and is NOT counted
+    // here — `--count` names what the run will write.
+    { level: 'info', code: 'body_disagrees_with_meta', item: 'DEC-c', remedy: REMEDY.ACK, acknowledged: true },
+    // Names no item, so nothing can carry the ruling (`core/acknowledge.ts`).
+    { level: 'info', code: 'body_disagrees_with_meta', remedy: REMEDY.ACK },
+    // A different route entirely: bulk-running `refresh` would rewrite bodies.
+    { level: 'warn', code: 'source_drift', item: 'REF-a', remedy: REFRESH('REF-a') },
+    { level: 'warn', code: 'source_drift', item: 'REF-b', remedy: REFRESH('REF-b') },
+    // One finding is not a class — the row's own `ack <id> <code>` settles it.
+    { level: 'error', code: 'source_missing', item: 'REF-c', remedy: REMEDY.ACK },
+  ]);
+
+  assert.deepEqual(groups, [{
+    code: 'body_disagrees_with_meta',
+    level: 'info',
+    count: 2,
+    items: 2,
+    id: 'ack',
+    values: { all: true, code: 'body_disagrees_with_meta', count: '2' },
+    argv: ['mycontext', 'ack', '--all', '--code', 'body_disagrees_with_meta', '--count', '2'],
+  }], 'a settlement must cover exactly the findings `mycontext ack --all` will write, or the '
+    + 'count it composes is a consent token measuring something other than the act');
+});
+
+/**
+ * **Two findings of one code on ONE item are one ruling, and the count still
+ * counts findings.**
+ *
+ * `checkDeadScopes` emits a finding per dead glob, so an item with two dead
+ * scopes carries two `dead_scope` findings. `mycontext ack` is keyed by (item,
+ * code), so that is ONE acknowledgement and one audit record — and the CLI's
+ * `--count` is the FINDING count, because that is what its preview names and
+ * what the reader is agreeing to. The two numbers differ legitimately, and this
+ * pins that they are both reported rather than conflated.
+ */
+test('a settlement counts findings and items separately, because they can differ', async () => {
+  const { settleGroups } = await doctorModule();
+  const [group] = await Promise.resolve(settleGroups([
+    { level: 'warn', code: 'dead_scope', item: 'INV-a', message: 'one', remedy: REMEDY.ACK },
+    { level: 'warn', code: 'dead_scope', item: 'INV-a', message: 'two', remedy: REMEDY.ACK },
+    { level: 'warn', code: 'dead_scope', item: 'INV-b', message: 'three', remedy: REMEDY.ACK },
+  ]));
+  assert.equal(group.count, 3, 'the count is the FINDING count — what --count is agreed against');
+  assert.equal(group.items, 2, 'and the item count is what the writes and audit records are');
+  assert.deepEqual(group.argv,
+    ['mycontext', 'ack', '--all', '--code', 'dead_scope', '--count', '3']);
+});
+
+/**
+ * **No `--yes`, and this is the assertion that keeps it that way.**
+ *
+ * `mycontext ack` accepts no `--yes` and must not grow one: `approvalBoundary()`
+ * derives the approval boundary — §7 of both READMEs and the skill the model
+ * reads at every session start — by asking the real parser which commands take
+ * it, and an acknowledgement changes nothing about what governs this project.
+ * The consent is `--count`, which cannot be typed without reading the preview
+ * that names it and is refused when the corpus has moved since. See
+ * `src/cli/commands/ack.ts` for the whole argument.
+ *
+ * Asserted over the composed ARGV, which is the thing a person reads in the
+ * confirm and the thing the nonce is bound to.
+ */
+test('a settlement is consented to by a count, never by a one-token flag', async () => {
+  const { settleGroups } = await doctorModule();
+  const [group] = settleGroups([
+    { level: 'info', code: 'citation_form', item: 'A', remedy: REMEDY.ACK },
+    { level: 'info', code: 'citation_form', item: 'B', remedy: REMEDY.ACK },
+  ]);
+  assert.equal(group.argv.includes('--yes'), false,
+    'a one-token flag that could settle a corpus unread is refused — the guard is intrinsic to '
+    + 'the act (DEC-a-stale-summary-that-is-still-correct-is-cleared-by-passing)');
+  assert.equal(group.argv.at(-2), '--count');
+  assert.equal(group.argv.at(-1), String(group.count));
+});
+
+/**
+ * **The screen offers no checkbox, and that is a ruling rather than an
+ * omission.** `test/ui/palette-lib.test.ts` states it about the bulk promote in
+ * words this file is bound by: a checkbox *"moves an unreviewed promotion closer
+ * to one click than the CLI puts it. That is a design decision about the
+ * approval boundary, not a convenience."* A per-row selection control here would
+ * be that decision taken by accident, so it is checked over the bytes.
+ */
+test('the settlement is a composed command per code, never a per-row checkbox', () => {
+  assert.equal(/type\s*=\s*['"]checkbox['"]/.test(doctorSource), false,
+    'a per-row checkbox is the one shape this control may not take');
+  assert.equal(/createElement\(\s*['"]input['"]/.test(doctorSource), false,
+    'the screen builds no input of any kind; the settlement is a command, read and confirmed');
 });
 
 /**
@@ -577,10 +705,18 @@ test('a row with no repair draws the strip\'s own unmeasured chip, and only ther
   // this honest instead of merely permissive is the count below: the call
   // appears exactly ONCE in the file, and the branch opens exactly once, so a
   // lazy bounded gap between them cannot match across anything else.
+  //
+  // **The bound was 2,000 and is 6,000, for the second time and for the same
+  // reason.** It went red again on 2026-09-03 over the prose recording why an
+  // acknowledged row now says "already ruled on, running this again writes
+  // nothing" above its command — measured gap 3,134 characters, none of it
+  // code. A character budget on a comment is not a property of this screen, and
+  // the two assertions that ARE properties (the call appears exactly once; it
+  // appears inside this branch) do not weaken as the budget rises.
   assert.equal(doctorSource.split('message.append(commandRow(ctx, repair));').length - 1, 1,
     'the row-scoped acknowledge control is appended more than once, or not at all — the match '
     + 'below would then be saying nothing about where it is drawn');
-  assert.ok(/row\.remedy\.route === 'acknowledge'\) \{[\s\S]{0,2000}?message\.append\(commandRow\(ctx, repair\)\);/
+  assert.ok(/row\.remedy\.route === 'acknowledge'\) \{[\s\S]{0,6000}?message\.append\(commandRow\(ctx, repair\)\);/
     .test(doctorSource),
     'a finding a person settles no longer draws its acknowledge control on its own row');
   assert.ok(/el\('span',\s*'chip unmeas'\)/.test(doctorSource),

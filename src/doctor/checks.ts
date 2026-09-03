@@ -3,11 +3,14 @@ import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathS
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isAcknowledged } from '../core/acknowledge.ts';
-import { AUDIT_MAX_BYTES, AUDIT_REPORT_BYTES, auditDir, auditSize } from '../core/audit.ts';
+import {
+  AUDIT_MAX_BYTES, AUDIT_REPORT_BYTES, auditDir, auditSize, readAudit, type AuditRecord,
+} from '../core/audit.ts';
 import { scopePolicyFor, skippedKeyNotice, type Config } from '../core/config.ts';
 import { isEligible, itemCost } from '../core/select.ts';
 import {
-  BLOCKED_STATE, buildTaskIndex, NEEDS_FIELD, readNeeds, workItems,
+  BLOCKED_STATE, buildTaskIndex, DONE_STATE, NEEDS_FIELD, readNeeds, STATE_FIELD, taskState,
+  workItems,
 } from '../core/needs.ts';
 import { droppedBodyText } from '../core/item.ts';
 import { matchesAnyGlob, relPosix } from '../core/paths.ts';
@@ -1216,6 +1219,292 @@ export function checkAuditSize(root: string): Finding[] {
       `derived query index and is always safe to delete — it rebuilds on the next ` +
       `\`mycontext audit\`. See \`mycontext audit --files\`.`,
   }];
+}
+
+/**
+ * The audited field name a record written BEFORE the widening used for the
+ * whole `extra` bag.
+ *
+ * `state` is an EXTRA field (`categories.ts`: `task.state`, `store: 'field'`),
+ * and `movedFields` (core/persist.ts) used to compare `AUDITED_FIELDS` with
+ * `extra` as one entry covering the whole bag. So a record that moved `state`
+ * said `extra`, and so did a record that moved `priority`, `progress`,
+ * `last_change` or `needs` — which is why this check could only ever be a
+ * floor on the bypass and never a count of it.
+ *
+ * `movedFields` now reports per key (`STATE_AUDITED_FIELD` below), so this
+ * spelling identifies exactly one thing: a record old enough that its `extra`
+ * says nothing about which key moved. Such a record is treated as UNMEASURED
+ * for `state` and credits the item, because reading it as evidence in either
+ * direction would be inventing a measurement nobody took
+ * (`STD-a-measured-zero-is-drawn-and-named`).
+ */
+const EXTRA_AUDITED_FIELD = 'extra';
+
+/**
+ * What a record naming this item's `state` says since `movedFields`
+ * (core/persist.ts) began reporting `extra` per key. A record carrying it
+ * moved `state` and nothing else can have; a record not carrying it did not.
+ */
+const STATE_AUDITED_FIELD = `${EXTRA_AUDITED_FIELD}.${STATE_FIELD}`;
+
+/**
+ * **A task that says it is finished, over a log that never recorded anybody
+ * finishing it.**
+ *
+ * Owner ruling, verbatim: *"i never allow to do that only using create and
+ * edit that updates properties, generates summary and calculates checksum."*
+ * A `state` typed straight into an item's Markdown skips all three of those
+ * acts. Measured on this corpus 2026-09-03: 28 tasks carry `state: done` with
+ * no recorded write that could have set it.
+ *
+ * **This check exists because the file STOPS betraying the bypass, which is
+ * not the same as never having betrayed it.** The earlier wording here — that
+ * a hand-edited item "checksums correctly" and passes every file-level check
+ * "by construction, and always would" — was measured and is false at the
+ * moment of the edit, and the correction is the mechanism this whole check
+ * depends on:
+ *
+ *  1. **At the hand edit, the file DOES betray it, loudly.**
+ *     `computeItemChecksum` (core/item.ts) hashes `extra`, and `state` lives
+ *     in `extra`, so a hand-edited item's recorded checksum is stale the
+ *     instant the edit lands. `loadLayer` (core/rebuild.ts) raises that as a
+ *     corpus LOAD ERROR naming the file, `doctor` exits 1, and the message
+ *     says in as many words that "an edit outside my_context is one cause".
+ *     Every one of the bypasses on this corpus was catchable at the moment it
+ *     happened.
+ *  2. **The next ordinary write erases it.** `writeItem` recomputes the
+ *     checksum unconditionally on every write path, so the next `mycontext
+ *     edit` on that item — for any reason at all, on any field — silently
+ *     re-hashes the hand-edited value. `mycontext repair` does the same
+ *     deliberately. From that moment the two items ARE indistinguishable on
+ *     disk: identical frontmatter shape, a correct `summary` and
+ *     `summary_of`, a correct `checksum`, `state:done` correctly projected
+ *     into `tags`, and `doctor` green on both.
+ *  3. **So the log is the only witness that survives**, and on this corpus
+ *     every flagged item had a later product write and every one now
+ *     checksums cleanly. The evidence eroded while it was being counted: the
+ *     count drifted 28 → 25 → 24 as ordinary edits credited items out of the
+ *     check.
+ *
+ * `persist` (core/persist.ts) now takes the measurement in (1) at write time
+ * and records it in the mutation record that would have erased it, so a
+ * divergence is a fact this check can READ rather than one it has to infer
+ * from an absence — see `AuditRecord.diverged` and `AuditRecord.checksumAfter`.
+ *
+ * **`done` alone, and that is a scope decision rather than an oversight.**
+ * `todo` is the value a task is CREATED in — 95 of them here — so "no record
+ * ever set this to todo" reports the default on a hundred items and teaches a
+ * reader to skim the code. `doing` and `blocked` are transient: the next real
+ * move corrects them, and a stale one costs a glance. `done` is terminal. It
+ * is the value that removes a task from `mycontext ready`, satisfies every
+ * `needs` pointing at it (core/needs.ts) and closes the work; it is the one
+ * whose truth another person's plan depends on, and it is the value the
+ * owner's ruling was made about. Widening this to every tracked field would
+ * fire on `title` for every item that was never retitled, which is a check
+ * that fires on everything and therefore says nothing.
+ *
+ * **What it CANNOT determine, said here and said again in the finding**
+ * (RULE-say-what-your-check-cannot-see-when-you-report-it-green):
+ *
+ *  - **Create-time values are invisible.** A `create` record carries no
+ *    `fields` — on a create everything moved, so naming fields would name all
+ *    of them — so a task captured with `--extra state=done` already set looks
+ *    exactly like one hand-edited to `done` later. The two are
+ *    indistinguishable from the log, and several of the findings on this
+ *    corpus are honestly the first. That is why the message does not ACCUSE:
+ *    it states the two readings and hands the choice to the person who knows.
+ *  - **Records written before `fields` reported `extra` per key say only
+ *    `extra`** (see `EXTRA_AUDITED_FIELD`). Over that stretch of the log a
+ *    task whose `priority` was edited through the product and whose `state`
+ *    was written by hand is still CREDITED here, and over that stretch this
+ *    check is a floor on the bypass rather than a count of it. Records
+ *    written from now on say `extra.state` or they do not, so for them the
+ *    question has an answer. The finding says which of the two it is looking
+ *    at, because a silence from this check would otherwise be read as an
+ *    assurance it has no way to give. A coarse credit is defeated by positive
+ *    divergence evidence — see below.
+ *  - **Divergence, when the log holds it, is REPORTED rather than inferred.**
+ *    Two independent measurements reach this check, and either one is enough:
+ *    a `diverged` on some mutation record for the item (the file had moved
+ *    under the product at the instant of that write), and a `checksumAfter`
+ *    on the newest such record that disagrees with the item's checksum today
+ *    (the file has moved since, and that comparison is made against the LOG
+ *    rather than against a number stored inside the very file being checked,
+ *    so the file cannot lie about its own history). Neither says WHICH field
+ *    moved, and the finding does not pretend otherwise.
+ *
+ * **Items the log never saw are named as unmeasured, not counted as clean**
+ * (`STD-a-measured-zero-is-drawn-and-named`, clause 2). A task with no
+ * `create` record anywhere in the log — an imported pack, a corpus copied
+ * without `.audit/`, a segment archived by its owner — has a life this log
+ * cannot describe, and reporting it would be accusing an item of a bypass
+ * nothing here could check for. Those are skipped and COUNTED, and the count
+ * is emitted as its own finding whenever it is non-zero.
+ *
+ * The zero case stays silent, which is doctor's own convention rather than a
+ * departure from that standard: `checkCitationForm`, `checkAuditSize` and
+ * `emitAcknowledged` all refuse to draw a line nobody can ever clear, and
+ * doctor prints no per-check green for a reader to misread. The blind spots
+ * above therefore travel in the per-item message, where they are read on
+ * every run in which this check speaks at all.
+ *
+ * **It reads the whole log, and that is affordable HERE and nowhere else.**
+ * `readAudit`'s own docblock draws the line — it is the read surface, not the
+ * hot path, and nothing on the hook path calls it. Measured 2026-09-03 over
+ * this repository's log: 11,296 records, 5.7 MiB, one un-rotated segment,
+ * 39 ms. `doctor` already walks the repository twice and stats every source a
+ * `reference` names; one pass over the log beside that is not the cost that
+ * matters, and no cheaper answer exists — the question is about the ABSENCE of
+ * a record, which cannot be answered from a bounded tail.
+ *
+ * **`info`, deliberately, and `citation_form` is the precedent.** 28 findings
+ * exist the moment this ships, every one of them about history nobody can now
+ * reconstruct. A check that turns a corpus amber or red on arrival for
+ * historical reasons is a check people switch off, and the value here is not
+ * a defect in the product: it is a question about provenance that a person
+ * answers once per item and that stays visible and countable until they do.
+ */
+export function checkStateUnaudited(root: string, items: Item[], config: Config): Finding[] {
+  const closed = workItems(items, config).filter((i) => taskState(i) === DONE_STATE);
+  if (closed.length === 0) return [];
+
+  let records: AuditRecord[];
+  try {
+    records = readAudit(root);
+  } catch (err) {
+    // `readAudit` REFUSES a log with a damaged line rather than skipping it,
+    // and that refusal must not become a `check_failed` error: doctor would go
+    // red, and the red would say a doctor check crashed when what actually
+    // happened is that this workspace's log cannot be read. Reported as the
+    // maximal case of the thing this check reports anyway — it could not look.
+    return [{
+      level: 'info', code: 'state_audit_coverage',
+      remedy: PERSON,
+      message:
+        `${closed.length} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and none of them has ` +
+        `been checked against the audit log, because the log could not be read: ` +
+        `${err instanceof Error ? err.message : String(err)} That is an UNMEASURED set and not ` +
+        `a clean one. Nothing about the items is being asserted here in either direction; the ` +
+        `file named in that refusal is what a person has to look at first.`,
+    }];
+  }
+
+  // Five facts per item and nothing else: was its creation recorded here at
+  // all; did any recorded write name `state` itself; did any record name the
+  // whole `extra` bag coarsely (a write from before the widening, which is
+  // unmeasured for `state` rather than evidence about it); did any write
+  // OBSERVE the file diverging under it; and what did the last recorded write
+  // stamp on it.
+  const created = new Set<string>();
+  const laterWrites = new Map<string, number>();
+  const movedState = new Set<string>();
+  const movedExtraCoarsely = new Set<string>();
+  const observedDivergence = new Map<string, string>();
+  const stamped = new Map<string, string>();
+  for (const record of records) {
+    if (record.kind !== 'mutation') continue;
+    const id = record.itemId;
+    if (typeof id !== 'string' || id === '') continue;
+    if (record.op === 'create') created.add(id);
+    else laterWrites.set(id, (laterWrites.get(id) ?? 0) + 1);
+    if (Array.isArray(record.fields)) {
+      if (record.fields.includes(STATE_AUDITED_FIELD)) movedState.add(id);
+      if (record.fields.includes(EXTRA_AUDITED_FIELD)) movedExtraCoarsely.add(id);
+    }
+    // Records arrive oldest-first across every segment, so a plain overwrite
+    // leaves the NEWEST of each — which is what both divergence questions are
+    // about.
+    if (record.diverged !== undefined) observedDivergence.set(id, record.at);
+    if (typeof record.checksumAfter === 'string' && record.checksumAfter !== '') {
+      stamped.set(id, record.checksumAfter);
+    }
+  }
+
+  const findings: Finding[] = [];
+  let unseen = 0;
+  for (const item of closed) {
+    if (!created.has(item.id)) { unseen++; continue; }
+    // A record that named `state` itself settles the question: a recorded
+    // write moved it, and this check has nothing to ask.
+    if (movedState.has(item.id)) continue;
+
+    // The two divergence measurements, either of which is a POSITIVE fact
+    // rather than an inference from silence. See the docblock.
+    const observedAt = observedDivergence.get(item.id);
+    const lastStamp = stamped.get(item.id);
+    const stampDisagrees = lastStamp !== undefined && item.checksum !== ''
+      && lastStamp !== item.checksum;
+    const divergence = observedAt !== undefined
+      ? `The log RECORDS this item's file being changed outside my_context: the write at ` +
+        `${observedAt} found the file's own recorded checksum disagreeing with its own ` +
+        `content, which is what a hand edit leaves and what the write after it erases. `
+      : stampDisagrees
+        ? `The log RECORDS a divergence: the last write it holds for this item stamped ` +
+          `\`${lastStamp}\`, and the file now carries \`${item.checksum}\`, so the file has ` +
+          `been written since by something this log never saw — a hand edit, or a ` +
+          `\`mycontext repair\` re-stamp of one. That comparison is made against the LOG and ` +
+          `not against a number stored inside the file being checked, so the file cannot ` +
+          `answer it for itself. `
+        : '';
+
+    // A record that named the whole bag coarsely predates the widening and is
+    // UNMEASURED for `state` — it credits the item rather than accusing it,
+    // exactly as this check always did. Positive divergence evidence defeats
+    // that credit: an old coarse record cannot excuse a file the log actually
+    // saw move.
+    if (divergence === '' && movedExtraCoarsely.has(item.id)) continue;
+
+    const later = laterWrites.get(item.id) ?? 0;
+    findings.push({
+      level: 'info', code: 'state_unaudited', item: item.id,
+      remedy: ACK,
+      message:
+        `\`${STATE_FIELD}: ${DONE_STATE}\` closes this task, and no write recorded in the audit ` +
+        `log ever moved it there. The log holds this item's \`create\` record and ` +
+        `${later} later write(s), and not one of them named \`${STATE_AUDITED_FIELD}\` among ` +
+        `the fields it moved. ${divergence}` +
+        (divergence === ''
+          ? `Two readings fit that evidence and this check cannot choose between them: the ` +
+            `task was CREATED already done, which is invisible from here because a \`create\` ` +
+            `record lists no fields at all; or \`${STATE_FIELD}\` was written into the Markdown ` +
+            `by hand, outside \`mycontext edit\` — the path that updates the properties, ` +
+            `regenerates the summary and re-stamps the checksum. `
+          : `That does not by itself say WHICH field moved, so it is evidence of a bypass on ` +
+            `this item and not proof that \`${STATE_FIELD}\` was the field bypassed. `) +
+        `What the FILE can tell you is bounded, and it is bounded in a way worth knowing: a ` +
+        `hand edit DOES show up at the moment it lands, because the recorded checksum covers ` +
+        `\`extra\` and \`doctor\` goes red naming the file — and then the very next write ` +
+        `through the product re-stamps it, after which the hand-set state projects into ` +
+        `\`tags\`, checksums correctly, and passes every other check in this report. The log ` +
+        `is what survives that, so which reading is right is yours to say and nobody else's — ` +
+        `\`mycontext ack ${item.id} state_unaudited\` records the ruling. What this check ` +
+        `cannot see, said here so its silence elsewhere is not read as an assurance: a ` +
+        `mutation record written before \`fields\` reported \`${EXTRA_AUDITED_FIELD}\` per key ` +
+        `names the bag and never WHICH extra key moved, so over that stretch of the log a task ` +
+        `whose \`priority\` or \`progress\` was edited through the product is credited by this ` +
+        `check even if its \`${STATE_FIELD}\` never was. Over that stretch this is a ` +
+        `floor on the bypass, never a count of it; over what follows it, \`${STATE_AUDITED_FIELD}\` ` +
+        `is named or it is not.`,
+    });
+  }
+
+  if (unseen > 0) {
+    findings.push({
+      level: 'info', code: 'state_audit_coverage',
+      remedy: AUDIT_FILES,
+      message:
+        `${unseen} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and have no \`create\` record ` +
+        `anywhere in the audit log, so \`state_unaudited\` has NOT looked at them — an ` +
+        `unmeasured set, which is a different fact from a clean one and is reported as itself. ` +
+        `The log describes the stretch of history it holds and no more: an item restored from ` +
+        `a pack, copied in without \`.audit/\`, or older than the oldest segment still present ` +
+        `leaves no trace of its own capture, and an item whose life this log never saw must not ` +
+        `be accused of a bypass nothing here can check for. \`mycontext audit --files\` names ` +
+        `the segments that do survive, and how far back they reach.`,
+    });
+  }
+  return findings;
 }
 
 /**
@@ -2503,6 +2792,7 @@ export function runChecks(opts: {
     () => checkPermissions(opts.root, accessSync, opts.repoRoot),
     () => checkSessionIdMismatch(opts.root),
     () => checkAuditSize(opts.root),
+    () => checkStateUnaudited(opts.root, opts.items, opts.config),
     () => checkCorpusSize(opts.items),
     () => checkTagProjection(opts.items, opts.config),
     () => checkTaskNeeds(opts.items, opts.config),

@@ -182,7 +182,7 @@ test('a focus that hides an item removes it from seenFiltered — rung 3 runs be
     ]);
     // `paths` is carried by the first rule only, so a focus on it hides the
     // second — unless the second is exempt, which a plain scoped rule is not.
-    assert.equal(runCli(['focus', 'paths'], f.dir, () => {}), 0);
+    assert.equal(runCli(['focus', 'paths', '--yes'], f.dir, () => {}), 0);
     const ws = resolveWorkspace(f.dir);
     assert.ok(readFocus(ws.projectRoot!).focus, 'the fixture must actually have set a focus');
 

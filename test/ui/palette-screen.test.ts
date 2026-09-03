@@ -213,8 +213,11 @@ test('no ordinary composition is blocked', async () => {
     tag: 'billing', path: 'src/billing/prices.ts', relation: 'refines', limit: '50',
     directive: 'do', yes: true, force: true,
     // `ack <id> <code>` — a doctor finding code, which is the one argument in
-    // this catalogue whose plausible value is neither an item id nor prose.
-    code: 'body_disagrees_with_meta', clear: true,
+    // this catalogue whose plausible value is neither an item id nor prose. The
+    // POSITIONAL is keyed `finding`, because `--code` is a flag on the same
+    // command and one values bag cannot hold two fields of one name; both are
+    // filled here so the composition this sweep tests is the whole entry.
+    finding: 'body_disagrees_with_meta', code: 'body_disagrees_with_meta', clear: true,
   };
   const blocked = PALETTE.filter((def) => copyBlocked(commandFor(def, values))).map((d) => d.name);
   assert.deepEqual(blocked, []);

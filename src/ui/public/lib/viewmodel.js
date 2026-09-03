@@ -1445,7 +1445,15 @@ export function repairArgvFor(finding) {
     // spellings of one id is how a control comes to name a different item from
     // the row it sits on.
     if (typeof finding.item !== 'string' || finding.item === '') return null;
-    const values = { id: finding.item, code: finding.code };
+    // `finding:` and not `code:` — the catalogue's second POSITIONAL was rekeyed
+    // when `ack` grew its bulk form on 2026-09-03, because `--code` is now a
+    // FLAG on the same entry and one values bag cannot hold two fields of one
+    // name (`src/ui/public/lib/palette-defs.js`). The composed argv is
+    // unchanged: a positional is composed by position, so this is still
+    // `mycontext ack <id> <code>` byte for byte, which is what
+    // `test/ui/doctor-screen.test.ts` holds this function and `repairFor` equal
+    // on.
+    const values = { id: finding.item, finding: finding.code };
     return { id: 'ack', values, argv: composed('ack', values) };
   }
   return null;

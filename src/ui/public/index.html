@@ -208,6 +208,29 @@
          `--tag a,b` are both real, and the flag is the form the CLI's own
          usage documents and `core/command-flags.ts` declares ("one tag, or
          several comma-separated"). One spelling, quoted by `quoteArg`. -->
+    <!-- ══ THE TAG PICKER ══════════════════════════════════════════════════
+         `REQ-the-focus-dialog-offers-the-tags-it-could-focus-on-with-the` —
+         owner request 2026-09-02: "i would like to have such a generated check
+         box list with the item counts in the dialog so user could select there
+         and not have to remember them".
+
+         EMPTY HERE, and filled by app.js's paintFocusPicker() from
+         `/api/tags`. Nothing is authored inside it because every row is a tag
+         this workspace really carries — a hand-written example would be the
+         hand-copied vocabulary `core/command-flags.ts` exists to remove, and
+         the checked state is derived from the box below on every paint.
+
+         The `.aside` IS authored, as the state before the first read answers:
+         `focus.picking`. A dialog that opened onto an empty box could not be
+         told apart from one whose corpus has no tags, which is
+         `LESSON-on-real-data-an-absent-feature-and-a-missing-feature-look`. -->
+    <div id="focuspick"><p class="aside" data-t="focus.picking"></p></div>
+    <!-- THE BOX IS THE MODEL, and the picker above is a view onto it. Ticking
+         a checkbox writes into this input; typing here re-marks the checkboxes.
+         One list, so `focusArgv()` is unchanged and the OR-within-the-axis
+         semantics (`core/select.ts`: `focus.tags.some(…)`) cannot drift into a
+         second reading — and a tag that does not exist yet can still be typed,
+         which a picker alone would take away. -->
     <label class="small" for="focustags"><span data-t="focus.tags"></span></label>
     <input class="tagin" id="focustags" type="text" autocomplete="off" spellcheck="false">
     <div class="cmd"><code id="focusargv"></code></div>

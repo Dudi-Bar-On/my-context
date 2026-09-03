@@ -1354,6 +1354,15 @@ function togglePopover(dialog) {
   // would need a `tabindex` on it and would announce the whole dialog before
   // the reader could act.
   pop.querySelector('.row')?.focus();
+  // **The tag vocabulary is read on the OPEN**, not at install and not once.
+  // `void`, deliberately: the dialog is already on screen and focused by the
+  // time the request settles, and awaiting here would delay the open behind a
+  // corpus read. `paintFocusPicker()` draws the not-yet-read state until it
+  // lands, so there is never an unexplained empty box.
+  if (dialog === 'focuspop') {
+    void readFocusVocabulary();
+    void readFocusCatalogue();
+  }
 }
 
 /**
@@ -1393,25 +1402,354 @@ let focusChoice = 'live';
  * only spaces composes `--show` rather than `--tag "   "`.
  */
 function focusArgv() {
-  if (focusChoice === 'off') return ['mycontext', 'focus', '--clear'];
+  if (focusChoice === 'off') return ['mycontext', 'focus', '--clear', '--yes'];
   const tags = (document.getElementById('focustags')?.value ?? '').trim();
   if (tags === '') return ['mycontext', 'focus', '--show'];
-  return ['mycontext', 'focus', '--tag', tags];
+  return ['mycontext', 'focus', '--tag', tags, '--yes'];
+}
+
+/**
+ * **`--yes` is on the two WRITE lines and on neither read — the owner's ruling
+ * of 2026-09-04 ("writes take the boundary, the read does not") composed
+ * rather than described.**
+ *
+ * `mycontext focus` joined the approval boundary on that ruling
+ * (`DEC-the-focus-dialog-earns-execute-by-putting-focus-on-the`): it accepts
+ * `--yes`, `confirmAction` gates `--clear` and the set, and the three
+ * reporting forms refuse the flag BY NAME (`cli/commands/focus.ts`). So the
+ * three lines this dialog composes are no longer alike, and the line has to
+ * say which is which:
+ *
+ *   · `--clear --yes` and `--tag <tags> --yes` are writes, and the flag is
+ *     SHOWN rather than implied — `lib/palette-defs.js` holds every other
+ *     boundary command to exactly that ("`--yes` shown rather than hidden"),
+ *     because the confirm a reader is being asked to give is the thing they
+ *     are reading. It is also what makes the copied line work where it is
+ *     pasted: off a TTY the command refuses without it.
+ *   · `--show` takes no `--yes` AND MUST NOT BE GIVEN ONE. The CLI refuses it
+ *     there, so composing it would hand the reader a line that does not run —
+ *     and it would ask, in the owner's words, "are you sure you want to report
+ *     something?".
+ *
+ * `e2e/focus-picker.spec.ts` asserted all three of these lines and was
+ * re-taken with this change rather than adjusted around it.
+ */
+
+/**
+ * The catalogue id for the line now composed, or `null`.
+ *
+ * **`null` for `--show`, and that is the ruling at the UI layer rather than a
+ * gap.** A read needs no confirm, so it is handed to the shared control with
+ * no id and gets Copy alone — the same treatment `screens/port.js` and
+ * `screens/proc.js` get, for their own reasons.
+ *
+ * `null` for the WRITES TOO, until `lib/palette-defs.js` carries a `focus`
+ * entry — and that file belongs to another lane. The client sends an id and
+ * never a command (spec §3.1), so an id the server's catalogue cannot resolve
+ * is a confirm that 400s rather than a button that works. `focusCatalogued` is
+ * read from the catalogue itself rather than assumed, so the day the entry
+ * lands Execute appears here with no edit, and `e2e/focus-picker.spec.ts`
+ * fails on its Copy-only assertion so that the change is taken deliberately.
+ */
+function focusCommandId(argv) {
+  if (!focusCatalogued) return null;
+  return argv.includes('--yes') ? 'focus' : null;
+}
+
+/** The value bag the server rebuilds that same argv from. */
+function focusCommandValues(argv) {
+  if (!argv.includes('--yes')) return {};
+  if (argv.includes('--clear')) return { clear: true, yes: true };
+  return { tag: argv[argv.indexOf('--tag') + 1], yes: true };
+}
+
+/**
+ * Whether `lib/palette-defs.js` names `focus`. Read once, lazily, on the first
+ * open of the dialog — a static import would load the whole catalogue into
+ * every page load for a popover nobody has pressed.
+ */
+let focusCatalogued = false;
+
+async function readFocusCatalogue() {
+  try {
+    const { PALETTE } = await import('/lib/palette-defs.js');
+    focusCatalogued = PALETTE.some((def) => def.name === 'focus' && def.kind === 'write');
+  } catch {
+    // A catalogue that cannot be read is a catalogue with no entry: Copy alone,
+    // which is the safe direction. Nothing here may fabricate an id.
+    focusCatalogued = false;
+  }
+  paintFocusCommand();
+}
+
+/* ══ THE TAG PICKER ═══════════════════════════════════════════════════════
+ *
+ * `REQ-the-focus-dialog-offers-the-tags-it-could-focus-on-with-the`, owner
+ * request 2026-09-02: *"i would like to have such a generated check box list
+ * with the item counts in the dialog so user could select there and not have
+ * to remember them"*.
+ *
+ * ── THE BOX IS THE MODEL, and that is the whole design ────────────────────
+ *
+ * `#focustags` holds the comma-separated list `focusArgv()` already composes
+ * from. Ticking a checkbox writes into it; typing into it re-marks the
+ * checkboxes. So there is ONE list of tags in this dialog, `focusArgv()` is
+ * unchanged, and the tag axis's semantics cannot drift: `core/select.ts`
+ * matches an item that carries ANY of the tags (`focus.tags.some(…)`), and a
+ * picker holding its own parallel state is how a second reading — "all of
+ * these" — gets built without anyone deciding to build one.
+ *
+ * It also keeps the escape hatch a picker alone would take away: a tag no item
+ * carries yet cannot be ticked, and can still be typed.
+ *
+ * ── THE TWO CLASSES, and why they are two controls ────────────────────────
+ *
+ * Owner ruling on presentation, 2026-09-04: **free-form tags as checkboxes,
+ * projected tags behind their prefix.** `/api/tags` serves them already split,
+ * derived from the categories' own `projectsTo` declarations rather than from
+ * a list here — see `TagsBody` for the measurement (431 tags on this corpus,
+ * of which 217 are `seq:` values alone).
+ *
+ *   · free-form — a membership a person chose. One checkbox each, carrying the
+ *     number of items that have it.
+ *   · projected — GENERATED from a frontmatter field, and hand-writing one is
+ *     refused by `mutate.ts`. One `<select>` per prefix, because the field
+ *     holds one value: picking `plan:builder` replaces whatever `plan:` token
+ *     the box held rather than adding a second, which is `reconcileTags`'s own
+ *     rule (core/tag-projection.ts) arriving in the UI.
+ */
+
+/**
+ * The vocabulary `/api/tags` last answered, or `null` before the first read.
+ *
+ * `null` and `{ free: [], projected: [] }` are different states and both are
+ * drawn: the first says "not read yet", the second says "this corpus has no
+ * tags". They are the two halves of
+ * `LESSON-on-real-data-an-absent-feature-and-a-missing-feature-look`, and one
+ * empty box would be indistinguishable from either.
+ */
+let focusVocabulary = null;
+
+/** What the last read failed with, or `null`. Drawn rather than swallowed. */
+let focusVocabularyError = null;
+
+/** The tags the box names, in the order it names them. */
+function tagsInBox() {
+  return (document.getElementById('focustags')?.value ?? '')
+    .split(',').map((tag) => tag.trim()).filter((tag) => tag !== '');
+}
+
+/**
+ * Replace the box's list, then recompose and re-mark.
+ *
+ * Joined with `,` and no space, which is what `--tag` takes and what keeps the
+ * composed line inside `quoteArg`'s safe set — a space would quote the line,
+ * which is correct and noisier to read for no gain.
+ */
+function setTagsInBox(tags) {
+  const box = document.getElementById('focustags');
+  if (box === null) return;
+  box.value = [...new Set(tags)].join(',');
+  paintFocusCommand();
+  markFocusPicks();
+}
+
+/**
+ * Mark every control FROM the box, never the other way round.
+ *
+ * Derived on every paint rather than remembered, so a tag typed by hand ticks
+ * its checkbox and a tag deleted by hand unticks it — and so a redraw of the
+ * picker cannot disagree with the line the dialog is showing.
+ */
+function markFocusPicks() {
+  const host = document.getElementById('focuspick');
+  if (host === null) return;
+  const chosen = new Set(tagsInBox());
+  for (const box of host.querySelectorAll('input[type="checkbox"][data-tag]')) {
+    box.checked = chosen.has(box.dataset.tag);
+  }
+  for (const select of host.querySelectorAll('select[data-prefix]')) {
+    const prefix = `${select.dataset.prefix}:`;
+    // The FIRST tag under this prefix, which is the rule `projectedTagValues`
+    // and `reconcileTags` already follow: a corpus that somehow carries two
+    // keeps its first, and the select does not silently claim the second.
+    const held = [...chosen].find((tag) => tag.startsWith(prefix)) ?? '';
+    // A value the corpus no longer carries leaves `selectedIndex` at -1, so
+    // the select shows blank rather than snapping to its first option and
+    // claiming a choice the box does not hold.
+    select.value = held;
+  }
+}
+
+/** One free-form tag as a checkbox, with the number of items carrying it. */
+function tagCountRow(count, eligible) {
+  const row = document.createElement('label');
+  row.className = 'tagpick';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.dataset.tag = count.tag;
+  const name = document.createElement('span');
+  name.className = 'tagname';
+  name.textContent = count.tag;
+  const number = document.createElement('span');
+  number.className = 'tagn';
+  number.textContent = String(count.items);
+  // **The whole truth goes in the title, and the count stays the count.** A
+  // focus never hides a hard rule, a pinned item or a continuity item, so what
+  // `--tag v2` INJECTS is larger than the number of items carrying `v2` — 11
+  // carried and 107 injected for `a11y` on this repository's own corpus,
+  // measured 2026-09-04. The discriminating number is the one on screen; the
+  // honest one is one hover away, and neither is hidden.
+  row.title = flat(table.strings, 'focus.tagn', {
+    items: String(count.items), tag: count.tag,
+    visible: String(count.visible), eligible: String(eligible),
+  });
+  row.append(box, name, number);
+  return row;
+}
+
+/** One projected prefix as a select — "pick a plan", never 217 checkboxes. */
+function projectedPicker(group, eligible) {
+  const wrap = document.createElement('div');
+  wrap.className = 'tagproj';
+  const label = document.createElement('label');
+  label.className = 'small m';
+  label.htmlFor = `focusproj-${group.prefix}`;
+  label.append(...translate(table.strings, 'focus.proj', { prefix: group.prefix }));
+  const select = document.createElement('select');
+  select.id = `focusproj-${group.prefix}`;
+  select.dataset.prefix = group.prefix;
+  select.title = flat(table.strings, 'focus.projn', {
+    fields: group.fields.join(', '), cmd: group.commands.join(' / '),
+  });
+  const any = document.createElement('option');
+  any.value = '';
+  any.textContent = flat(table.strings, 'focus.projany');
+  select.append(any);
+  if (group.options.length === 0) {
+    // A DECLARED prefix nobody uses yet is a real state and is said, not
+    // dropped: "this project has no plans" and "this project cannot have
+    // plans" must not render as the same empty select.
+    const none = document.createElement('option');
+    none.value = '';
+    none.disabled = true;
+    none.textContent = flat(table.strings, 'focus.projnone', { prefix: group.prefix });
+    select.append(none);
+  }
+  for (const option of group.options) {
+    const node = document.createElement('option');
+    node.value = option.tag;
+    node.textContent = `${option.tag} · ${option.items}`;
+    node.title = flat(table.strings, 'focus.tagn', {
+      items: String(option.items), tag: option.tag,
+      visible: String(option.visible), eligible: String(eligible),
+    });
+    select.append(node);
+  }
+  wrap.append(label, select);
+  return wrap;
+}
+
+/**
+ * Draw the picker from the last read.
+ *
+ * Rebuilt whole, like `paintFocusCommand()` and for its reason: the checked
+ * state is derived from the box at the end of this function, so a half-patched
+ * list cannot carry a mark belonging to a tag that is no longer there.
+ */
+function paintFocusPicker() {
+  const host = document.getElementById('focuspick');
+  if (host === null) return;
+
+  const aside = (key) => {
+    const note = document.createElement('p');
+    note.className = 'aside';
+    note.append(...translate(table.strings, key));
+    return note;
+  };
+
+  if (focusVocabularyError !== null) {
+    host.replaceChildren(aside('focus.pickerr'));
+    return;
+  }
+  if (focusVocabulary === null) {
+    host.replaceChildren(aside('focus.picking'));
+    return;
+  }
+
+  const { free, projected, eligible } = focusVocabulary;
+  const nodes = projected.map((group) => projectedPicker(group, eligible));
+
+  if (free.length === 0) {
+    nodes.push(aside('focus.pickn'));
+  } else {
+    const caption = document.createElement('p');
+    caption.className = 'aside';
+    caption.append(...translate(table.strings, 'focus.free', {
+      n: String(free.length), eligible: String(eligible),
+    }));
+    const list = document.createElement('div');
+    list.className = 'tagpicks';
+    list.append(...free.map((count) => tagCountRow(count, eligible)));
+    // **The OR is on screen, not only in the code.** `matchesFocus` accepts an
+    // item carrying ANY of the chosen tags, and the requirement warns in those
+    // words that "a picker that reads as AND would silently narrow to nothing".
+    // A checkbox list is read as AND by default, so the sentence is drawn.
+    nodes.push(caption, list, aside('focus.any'));
+  }
+  host.replaceChildren(...nodes);
+  markFocusPicks();
+}
+
+/**
+ * Read the vocabulary, on every OPEN of the dialog rather than once.
+ *
+ * `/api/tags` costs one `store.all()` plus a 9ms sweep (measured on this
+ * corpus, 431 tags × 779 eligible items — see `apiTags`), and the alternative
+ * to re-reading is a cache that every item write has to invalidate.
+ * `RULE-a-screen-shows-the-new-state-after-the-reader-acts-on-it` is the same
+ * argument from the other side: a tag added since the dialog last opened has
+ * to be there when it opens again.
+ *
+ * NOT read at install. The dialog is authored `hidden`, and paying a corpus
+ * read at page load for a popover nobody has pressed is the cost this shell
+ * already refuses for every screen it has not routed to.
+ */
+async function readFocusVocabulary() {
+  try {
+    focusVocabulary = await api('/api/tags');
+    focusVocabularyError = null;
+  } catch (error) {
+    // Kept and DRAWN. A picker that silently rendered nothing on a failed read
+    // would be indistinguishable from a corpus with no tags, which is the one
+    // confusion this endpoint exists to end.
+    focusVocabulary = null;
+    focusVocabularyError = error;
+  }
+  paintFocusPicker();
 }
 
 /**
  * Draw the composed line and the control that acts on it.
  *
- * **`id: null`, and that is the shared control's own documented answer rather
- * than a shortcut.** `lib/command-actions.js` takes a CATALOGUE id and gives
- * Copy alone to "a composition the catalogue cannot name", because the client
- * sends an id and never a command (spec §3.1) and there is nothing for the
- * server to rebuild from. `mycontext focus` is not in `lib/palette-defs.js`,
- * and it cannot be added from this lane: the catalogue's write entries are
- * checked against the derived deny recipe by `test/ui/palette-lib.test.ts`, and
- * `focus` takes no `--yes`, so `approvalBoundary()` does not place it on the
- * boundary at all. `screens/packs.js`, `screens/port.js` and `screens/proc.js`
- * pass `id: null` for exactly this reason and this is the fourth.
+ * **The id is DERIVED per line now, and the sentence that used to stand here
+ * is false.** It said `focus` "takes no `--yes`, so `approvalBoundary()` does
+ * not place it on the boundary at all". Since the owner's ruling of 2026-09-04
+ * it does take `--yes`, and the derivation puts it on the boundary — the
+ * fourteenth member — so the reason for Copy-alone has changed and is no longer
+ * the same reason for all three lines this dialog composes:
+ *
+ *   · `--show` gets `id: null` BY THE RULING. It is a read, it needs no
+ *     confirm, and `lib/command-actions.js` gives Copy alone to a composition
+ *     the catalogue cannot name. `screens/port.js` and `screens/proc.js` pass
+ *     `id: null` for reasons of their own; this one is a design decision.
+ *   · the two WRITES get `id: 'focus'` the moment `lib/palette-defs.js` carries
+ *     that entry, and `null` until then — read from the catalogue rather than
+ *     assumed (`focusCommandId`). That file belongs to another lane; the entry
+ *     it needs is `kind: 'write'`, `boundary: true`, `base: ['mycontext',
+ *     'focus']`, flags `tag`/`category`/`scope`/`clear`/`yes`, with `show`,
+ *     `preview`, `relations` and `json` named in `FLAGS_NOT_OFFERED` because a
+ *     boundary entry has no business composing a report.
  *
  * What that buys is the thing the ruling asks for: ONE approval route. The
  * dialog does not post, does not write and does not grow a confirm of its own;
@@ -1434,7 +1772,9 @@ function paintFocusCommand() {
   // `window.myctx` rather than a ctx assembled here: the control reaches
   // `t()`, `announce()` and the execute doors through the ONE shell contract
   // every screen already uses, so this dialog gets no private surface.
-  host.replaceChildren(commandActions({ argv, id: null, values: {}, ctx: window.myctx }));
+  host.replaceChildren(commandActions({
+    argv, id: focusCommandId(argv), values: focusCommandValues(argv), ctx: window.myctx,
+  }));
 }
 
 /**
@@ -1502,9 +1842,45 @@ function installPopovers() {
   // test: this is the only input the title bar has, and a handler that fired
   // for every input in the product would be a handler running on every
   // keystroke of every screen's forms.
+  //
+  // **And the picker is re-marked from the box, never the reverse.** Typing
+  // `v2` ticks its checkbox; deleting it unticks it. One list, one direction.
   document.addEventListener('input', (event) => {
     if (event.target?.id !== 'focustags') return;
     paintFocusCommand();
+    markFocusPicks();
+  });
+  // ── The picker writes INTO the box ───────────────────────────────────────
+  //
+  // `change` and not `click`: a checkbox reached by keyboard (Space) fires no
+  // click on some platforms and always fires change, and a `<select>` has no
+  // click at all worth listening to. Delegated from the document for the
+  // reason everything else here is — `#focuspick` is rebuilt on every open, so
+  // a listener bound to a row would be bound to a discarded element.
+  document.addEventListener('change', (event) => {
+    const box = event.target?.closest?.('#focuspick input[type="checkbox"][data-tag]');
+    if (box !== null && box !== undefined) {
+      const tag = box.dataset.tag;
+      if (typeof tag !== 'string' || tag === '') return;
+      // ADDED to the end and REMOVED in place — the reader's own order is kept,
+      // because the box is a line they can also type into and reordering it
+      // under their cursor is the shell taking a step they did not ask for.
+      const held = tagsInBox();
+      setTagsInBox(box.checked ? [...held, tag] : held.filter((t) => t !== tag));
+      return;
+    }
+    const select = event.target?.closest?.('#focuspick select[data-prefix]');
+    if (select === null || select === undefined) return;
+    const prefix = `${select.dataset.prefix}:`;
+    // **One value per prefix, which is what a projection IS.** The tag is
+    // generated from a field that holds one value (`core/tag-projection.ts`,
+    // `reconcileTags`: "the first tag under the prefix keeps its SLOT and
+    // takes the new value; any further tag under the same prefix is dropped").
+    // A select that ADDED would compose `--tag plan:walk,plan:builder`, which
+    // the CLI accepts and which asks for items in either plan — a different
+    // question from the one the control appears to ask.
+    const kept = tagsInBox().filter((t) => !t.startsWith(prefix));
+    setTagsInBox(select.value === '' ? kept : [...kept, select.value]);
   });
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;

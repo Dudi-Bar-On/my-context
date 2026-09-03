@@ -98,6 +98,27 @@ export const strings = {
   'focus.offn': 'no narrowing',
   'focus.help': 'The focus that is set is what Claude really gets. Focus off is the other choice: nothing narrowing the corpus at all.',
   'focus.tags': 'Tags to focus on',
+  // ── The tag picker (REQ-the-focus-dialog-offers-the-tags-it-could-focus-on)
+  'focus.picking': 'Reading the tags in this corpus…',
+  'focus.pickn': 'This corpus carries no tags yet, so there is nothing to pick. Type one above to focus on a tag as soon as an item has it.',
+  'focus.pickerr': 'The tags could not be read, so none are offered. Type them instead — the line below composes either way.',
+  'focus.free': 'Tags people wrote — {n} of {eligible} items',
+  // The OR is stated because the opposite reading is the one that fails
+  // silently: `core/select.ts` matches an item that carries ANY ticked tag,
+  // and a reader who takes a checkbox list as "all of these" would tick three
+  // and expect a narrower session than they get.
+  'focus.any': 'Tick any number. An item matches if it carries {b:any one} of them — the other axes still have to match too.',
+  // The count beside each tag, as a title a reader can hover for the whole
+  // truth: a focus never hides a hard rule, a pinned item or a continuity
+  // item, so what it INJECTS is always more than what carries the tag.
+  'focus.tagn': '{items} item(s) carry {tag}. Focusing on it alone injects {visible} of {eligible} eligible items — a focus never hides a hard rule or a pinned item.',
+  // Projected tags are not a membership anybody typed: `mutate.ts` generates
+  // them from a field and refuses a hand-written one, and `seq:` alone is 217
+  // values on this corpus. So they are picked one-per-prefix, not ticked.
+  'focus.proj': '{prefix}:',
+  'focus.projn': 'Generated from {fields} — set with {cmd}, never written by hand. One at a time.',
+  'focus.projany': '(any)',
+  'focus.projnone': 'no {prefix}: tag is in use yet',
   'focus.compose': 'Nothing here writes. The choice above and the tags beside it {b:compose} the line; running it is the one act, behind the same confirmation every other composed command gets.',
   'aria.rail': 'Screens',
   'nav.inj': 'Injection — what arrives',
@@ -599,6 +620,12 @@ export const strings = {
   // was a silencer would be reading the screen wrong in the one direction that
   // matters.
   'doc.acked': 'acknowledged',
+  // Sits directly above the command on a row that is already ruled on, so the
+  // reader learns it BEFORE pressing rather than from the run. Owner,
+  // 2026-09-03: "clicked execute, clicked run it but nothing has changed".
+  // Says what the command will do and stops — which control an acknowledged row
+  // ought to offer instead is the owner's open question, not this sentence's.
+  'doc.ackedNoop': 'Already ruled on. Running this again writes nothing.',
   'title.acked': 'A person read this finding and ruled on it. It is still reported, still counted in the numbers above, and still contributes to the exit code — an acknowledgement is a mark, never a silencer. Run mycontext ack <id> <code> --clear to withdraw the ruling and open the finding again.',
   // A THIRD number, added the day `mycontext ack` reached this screen. Two
   // numbers said the screen was honest; neither said what to DO, and on this
@@ -630,6 +657,25 @@ export const strings = {
   // `{mv:code}` and never `{code}`: a finding code is an identifier, and an
   // identifier inside RTL prose reorders unless it is isolated.
   'doc.shared': '{mv:code} — the rest of the note, same on {count} rows',
+  // **ONE RULING FOR A WHOLE CODE**, added 2026-09-03 when the owner overturned
+  // his own no-bulk ruling: "for notices that could be many items, we need to
+  // have a capability to fix all of them at once using doctor". Seventy of this
+  // corpus's seventy-one findings are settled by a person reading one argument,
+  // and one at a time that is seventy confirmations.
+  //
+  // Three facts and no more, in the order a reader needs them: WHICH code, HOW
+  // MUCH it covers, and that nothing disappears. The last is the one a reader
+  // could most easily get wrong — an acknowledgement is a mark and never a
+  // filter (`core/acknowledge.ts`, owner ruling 2026-08-27) — and it is the same
+  // promise `title.acked` makes on the row.
+  //
+  // The count is in this sentence AND in the command under it, which is not a
+  // repetition: `--count` is how the CLI is consented to, so the number agreed
+  // to is a number that is visible in the line being agreed to.
+  //
+  // `{mv:code}` and never `{code}`: a finding code is an identifier, and an
+  // identifier inside RTL prose reorders unless it is isolated.
+  'doc.settle': 'One ruling for all {count} {mv:code} findings, on {items} item(s). Every one stays reported and counted, and each ruling clears on its own.',
   // Decay
   'dec.h': 'Decay',
   'dec.v': 'a chart, not a table — of sessions',
@@ -776,6 +822,11 @@ export const strings = {
   'exec.changes': 'What changes — in force, then proposed',
   'exec.exit': 'exit {code}',
   'exec.noexit': 'the command did not exit under observation',
+  // The label over the command's own output. Owner, 2026-09-03: the run
+  // answered "already acknowledged … nothing was written" and the page drew a
+  // green exit code over it. Four words, because the field under it is the
+  // content and a heading that explains itself is a heading nobody reads.
+  'exec.said': 'What the command said',
   'exec.item.created': '{b:{mv:id}} — created',
   'exec.item.changed': '{b:{mv:id}} — changed',
   'exec.item.removed': '{b:{mv:id}} — removed',

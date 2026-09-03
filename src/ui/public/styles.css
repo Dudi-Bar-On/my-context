@@ -623,6 +623,42 @@ bdi{unicode-bidi:isolate}
   padding-block:4px;padding-inline:6px;background:var(--sink);color:var(--ink);
   border:1px solid var(--edge-3);border-radius:var(--r-md);
   direction:ltr;unicode-bidi:isolate}
+/* — #focuspop's TAG PICKER (REQ-the-focus-dialog-offers-the-tags-it-could) —
+   Rules the mockup does not declare, allowed for the reason stated directly
+   above: `17e7482` unpinned styles-parity to a COVERAGE FLOOR.
+
+   `.tagpicks` is `.globtree`'s treatment (~2289) applied to the other list in
+   this product that is long, machine-valued and must not push a 400px dialog
+   past the viewport: this corpus carries 187 free-form tags, so the list
+   scrolls inside a bounded box rather than growing the popover off screen.
+
+   `.tagname` is ISOLATED and LTR for `.tagin`'s reason one block up — a tag is
+   a machine value and must read left-to-right inside a Hebrew page without
+   reordering the number beside it. `.tagn` is tabular so the counts form a
+   column the eye can compare, which is the whole point of showing them. */
+/* **The dialog itself is now bounded, and it was not before.** `.pop` seats at
+   `inset-block-start:42px` and grew freely: with three prefix selects, a tag
+   list and the composed line, `#focuspop` ran past the bottom of a 720px
+   viewport and took the "nothing here writes" note and part of the Copy
+   control with it — measured in Chrome at the suite's own pinned viewport.
+   `#sesspop` needs none of this; its one list already scrolls (~356). */
+#focuspop{max-block-size:calc(100dvh - 54px);overflow-y:auto}
+.pop .tagpicks{max-block-size:150px;overflow-y:auto;border:1px solid var(--rule);
+  border-radius:var(--r-md);padding:4px;margin-block:4px}
+.pop .tagpick{display:flex;align-items:center;gap:6px;padding:2px 4px;
+  border-radius:var(--r-sm);font-size:var(--fs-0);cursor:pointer}
+.pop .tagpick:hover{background:var(--sink)}
+.pop .tagname{font-family:var(--mono);color:var(--ink);flex:1 1 auto;min-inline-size:0;
+  direction:ltr;unicode-bidi:isolate;overflow-wrap:anywhere}
+.pop .tagn{color:var(--dim);font-variant-numeric:tabular-nums;flex:0 0 auto}
+/* One row per projected prefix: a label the width of its own words, and a
+   select taking the rest. `min-inline-size:0` so a 217-option `seq:` select
+   cannot widen the dialog to its longest option. */
+.pop .tagproj{display:flex;align-items:center;gap:6px;margin-block-end:4px}
+.pop .tagproj label{margin:0;flex:0 0 auto}
+.pop .tagproj select{flex:1 1 auto;min-inline-size:0;font-family:var(--mono);
+  font-size:var(--fs-0);padding-block:3px;padding-inline:4px;background:var(--sink);
+  color:var(--ink);border:1px solid var(--edge-3);border-radius:var(--r-md);direction:ltr}
 .pop .cmd{margin-block-start:var(--sp-2)}
 .pop .cmdactions{margin-block:var(--sp-2)}
 .aside{font-size:var(--fs-0);color:var(--dim);line-height:1.45;margin:0}

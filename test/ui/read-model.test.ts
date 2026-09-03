@@ -161,7 +161,13 @@ test('/api/select equals select() as JSON, for a matrix of events, paths and res
 test('/api/select passes the focus the hook would pass, and focus=off asks a different question', () => {
   const f = fixture();
   try {
-    assert.equal(runCli(['focus', 'paths'], f.dir, () => {}), 0);
+    // `--yes` since 2026-09-04: setting a focus is one of the two forms on the
+    // approval boundary (`DEC-the-focus-dialog-earns-execute-by-putting-focus-
+    // on-the`), and `confirmAction` refuses off a TTY. The exit code is
+    // asserted, and the `assert.ok(active)` below is the second guard — without
+    // the flag this fixture set no focus at all and the rest of the test would
+    // have compared two unfocused selections and passed.
+    assert.equal(runCli(['focus', 'paths', '--yes'], f.dir, () => {}), 0);
     const ws = resolveWorkspace(f.dir);
     const active = readFocus(ws.projectRoot!).focus;
     assert.ok(active, 'the fixture must actually have set a focus');

@@ -449,7 +449,16 @@ function readBody(raw: unknown): ExecuteBody {
 function declaredFields(id: string): Map<string, { boolean?: boolean }> {
   const def = catalogueEntries().find((entry) => entry.name === id);
   if (def === undefined) return new Map();
-  return new Map([...(def.args ?? []), ...(def.flags ?? [])].map((spec) => [spec.name, spec]));
+  // `flagsNotOffered` counts as declared here for the same reason it does in
+  // `resolveCommand`: this map is what coerces `all=true` in a query string into
+  // the boolean the switch takes, and a field missing from it would leave the
+  // Doctor card's bulk settlement refused as "all is a switch and takes true or
+  // false" — a withholding that never withheld anything from the Composer,
+  // which reads a different list entirely.
+  return new Map(
+    [...(def.args ?? []), ...(def.flags ?? []), ...(def.flagsNotOffered ?? [])]
+      .map((spec) => [spec.name, spec]),
+  );
 }
 
 /**

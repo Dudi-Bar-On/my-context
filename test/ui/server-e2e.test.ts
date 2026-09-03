@@ -630,6 +630,11 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   '/api/graph?focus=RULE-no-such-item',
   `/api/graph?focus=${encodeURIComponent(from.item)}&radius=2`,
   '/api/items',
+  // The focus dialog's tag vocabulary. It takes no parameters and answers 200
+  // over any corpus — including one with no tags at all, where `free` and every
+  // group's `options` are empty and the declared prefixes still appear, which
+  // is the state this sweep runs it in.
+  '/api/tags',
   // Plan 2, Task 3's Work read model. Both take no parameters, so the probe is
   // the bare path; both answer 200 over any corpus, including one with an empty
   // revision log and no drafts.

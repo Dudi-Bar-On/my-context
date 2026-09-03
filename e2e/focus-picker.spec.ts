@@ -160,9 +160,15 @@ test('a choice composes a mycontext focus line, and nothing writes', async ({ ap
     .toHaveText(['Copy']);
 
   // ── Focus off ──────────────────────────────────────────────────────────
+  //
+  // `--clear --yes`, re-taken 2026-09-04 with the boundary ruling. The flag is
+  // SHOWN and not implied, which is what `lib/palette-defs.js` requires of
+  // every boundary command it composes ("`--yes` shown rather than hidden") and
+  // what makes the copied line work where it is pasted: `confirmAction` refuses
+  // off a TTY without it.
   await off.click();
   await expect(line, 'choosing "focus off" must compose the command\'s own spelling for it')
-    .toHaveText('mycontext focus --clear');
+    .toHaveText('mycontext focus --clear --yes');
   await expect(off, 'and the chosen row is the marked one').toHaveAttribute('aria-selected', 'true');
   await expect(live).toHaveAttribute('aria-selected', 'false');
   // The dialog STAYS OPEN, unlike the session picker: its whole answer is the
@@ -175,17 +181,28 @@ test('a choice composes a mycontext focus line, and nothing writes', async ({ ap
   await page.fill('#focustags', 'v2,ui');
   await expect(line, 'tags compose `--tag`, the flag the CLI documents; a comma-separated list '
     + 'is inside quoteArg\'s safe set and so is not quoted')
-    .toHaveText('mycontext focus --tag v2,ui');
+    .toHaveText('mycontext focus --tag v2,ui --yes');
 
   // A value that needs quoting is quoted, which is the property that makes the
   // shown line and the copied line the same string in a shell.
   await page.fill('#focustags', 'two words');
-  await expect(line).toHaveText('mycontext focus --tag "two words"');
+  await expect(line).toHaveText('mycontext focus --tag "two words" --yes');
 
   // Whitespace alone is not a tag list. The box is trimmed, so it falls back to
   // the reporting line rather than composing `--tag "   "`.
+  //
+  // **AND THE `--yes` DOES NOT COME WITH IT.** This is the ruling's other half,
+  // and it is the half a wholesale `--yes` would have got wrong: `mycontext
+  // focus --show --yes` is REFUSED by the CLI by name, so composing it would
+  // hand the reader a line that cannot run — and would ask, in the owner's
+  // words, "are you sure you want to report something?".
   await page.fill('#focustags', '   ');
-  await expect(line, 'a box holding only spaces names no tags').toHaveText('mycontext focus --show');
+  await expect(line, 'a box holding only spaces names no tags, and the reporting line it falls '
+    + 'back to must carry no confirmation')
+    .toHaveText('mycontext focus --show');
+  await expect(page.locator('#focusact .cmdactions button'),
+    'and the read is handed to the shared control with no catalogue id, so it is Copy alone')
+    .toHaveText(['Copy']);
 
   // ── NOTHING WROTE ──────────────────────────────────────────────────────
   //
