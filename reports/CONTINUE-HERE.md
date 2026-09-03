@@ -1,5 +1,174 @@
 # CONTINUE HERE — everything left, in the order to do it
 
+## ⏭ CURRENT STATE — 2026-09-03 15:23Z, written after a session restart
+
+**Everything is committed and pushed. Tree clean at `c050dd5`.** Two commits landed
+this session: `a3555c4` (doctor findings 95 → 0, plus the badge that disagreed with the
+list) and `c050dd5` (one hook registration, because two made every event fire twice).
+
+**Section 0 below is now STALE:** it says `mycontext status` should report 763 items.
+It reports **817**. The `cli_path_mismatch` check in it is still worth running.
+
+### The three things waiting on the owner
+
+1. **8 e2e specs are red, and correctly so.** `doctor-settle` (6) and `doctor-outcome`
+   (2) carry an explicit anti-vacuity guard — *"a corpus with nothing to settle would
+   pass every assertion below by having nothing to check, which is the shape this
+   project has caught itself shipping four times."* Doctor is now at 0 findings, so
+   their subject is gone and they fail loudly rather than pass on an empty set. That is
+   the guard working. Reproduced at `--workers=1`, so not contention.
+   **The fix needs a workspace with one deliberate finding, which is the fixture
+   `INSTR-testing-happens-against-the-current-corpus-and-an-exception` says to ask about
+   first.** Re-scoping them to assert the clean state is NOT an option: it reintroduces
+   exactly the vacuity the guard exists to prevent.
+2. **The nonce TTL is a usability defect.** `mycontext ui --nonce` mints a nonce with a
+   **30-second** TTL; the URL printed at server start lasts **10 minutes**. The
+   no-credential error page tells the reader to run the command that gives them 30
+   seconds. This is the whole reason the server repeatedly *looked* dead — measured
+   three times on 2026-09-03, twice failing before the next tool call landed. The 30s
+   figure was an owner ruling on 2026-08-28; whether a loopback-only server needs it is
+   the owner's call.
+3. **`state` is stored TWICE on all 518 tasks** — once as a `state:` field, once as a
+   `state:` tag. A live duplication at 100% incidence, unrelated to any design work, and
+   the same defect shape as the two found and fixed on 2026-09-03.
+
+### A — 9 rows, ALL NINE DONE. Verified against source, not memory
+
+| # | what | state |
+|---|---|---|
+| A1–A4, A6 | landed before 2026-09-03 | ✅ |
+| **A5** | `parity.ts` — `ready` in `CLI_WITHOUT_SLASH` | ✅ removed; both its clauses were false |
+| **A7** | `audit_log.actor` — four hardcoded copies of `['human','agent','ingest']` | ✅ derived from `ORIGINS` |
+| **A8** | `query_items.type` / `focus_context.categories` carried no description | ✅ both carry one |
+| **A9** | `--idle-ms` said 15 minutes, README said 8 hours | ✅ **no discrepancy exists now.** README says "eight idle hours"; the server prints "480 idle minutes". Closed as NO DEFECT FOUND, not as built |
+
+### B — 6 rows, ZERO DONE. All six still owed, each verified absent
+
+| # | what | verified state |
+|---|---|---|
+| **B10** | Backlink query, `direction: in\|out\|both` | ❌ `direction` appears in `mcp/tools.ts` only in prose, never as a parameter. **Highest value and cheapest** — one `Map` over `store.all()`; `query_items` and `mycontext search` inherit together. START HERE |
+| **B11** | `ready` as an MCP tool | ❌ no such tool. Its recorded excuse died when `task` shipped, and A5 is now settled, so it is unblocked |
+| **B12** | `doctor` as an MCP tool | ❌ no such tool. No excuse was ever recorded for its absence |
+| **B13** | Reverse parity declaration | ❌ no `CLI_WITHOUT_TOOL` or equivalent exists anywhere. Parity is ONE-DIRECTIONAL: `TOOL_PARITY` asserts every tool has a user counterpart, nothing asserts a CLI command has a tool. `doctor`, `ready`, `status`, `decay`, `pack`, `export`, `session` all sit in that unexamined space. **This is the structural finding under all of A and B** |
+| **B14** | `create_item` gains `extra` for PROJECT-DEFINED fields | ❌ only `extraFieldSchema(DEFAULT_CONFIG)` exists, which is the pre-existing built-in flattening. ~10 lines |
+| **B15** | `{{FLAG_REFERENCE}}` in `cli.md` from `FLAG_DECLARATIONS` | ❌ absent from `src/help/topics/cli.md`. ~40 lines, mirrors `toolReference` |
+
+### C — the merge. DONE
+
+**817 items, zero missing.** 26 of 27 relations written; the 27th was the same edge
+twice, caught by the new inverse gate. It needed `add --original-id` and `add --always`,
+both built and shipped.
+
+### Gates — 6 of 7, one standing red, one owner-gated
+
+| gate | state |
+|---|---|
+| `typecheck` · `check:text-files` · `check:retired` · `check:test-glob` · `check:needs-cycles` | green |
+| `npm test` | **6051 pass, 0 fail** |
+| `verify:citations` | exit 1 — **measured IDENTICALLY red at `HEAD`** in an isolated worktree (21 broken, 36 marker faults, same exit). A standing condition that predates this work; it moved one citation from `moved` to `ok` |
+| `test:e2e` | 472 pass, 21 fail. **8 are real** (item 1 above); 13 are one-each across 13 different specs, the contention signature — **unverified, do not attribute without isolating** |
+
+### Progress — 510 active tasks, 406 done (80%)
+
+```
+plan           done todo blkd doing  tot    %
+walk             86   44    1     0  131   66%   <- 44 of the 100 open tasks
+rulings          48   10    0     0   58   83%
+hooks            31    3    1     0   35   89%
+ui1              25    3    0     0   28   89%
+export           25    2    0     0   27   93%
+port             21    6    0     0   27   78%
+ui3              21    5    0     0   26   81%
+repaint          22    3    0     0   25   88%
+categories       23    1    0     0   24   96%
+ui2              14    5    0     0   19   74%
+screens          13    3    0     0   16   81%
+execute          12    0    0     0   12  100%
+builder           5    5    0     1   11   45%   <- weakest; holds the only `doing`
+live              9    2    0     0   11   82%
+handover          9    2    0     0   11   82%
+budget            7    1    0     0    8   88%
+upkeep            8    0    0     0    8  100%
+review            4    2    1     0    7   57%
+fixes             6    0    0     0    6  100%
+api               6    0    0     0    6  100%
+pane              4    1    0     0    5   80%
+config            4    0    0     0    4  100%
+(none)            1    2    0     0    3   33%
+probe             2    0    0     0    2  100%
+TOTAL           406  100    3     1  510   80%
+```
+
+Seven plans are at 100%. The 3 blocked sit in `walk`, `hooks` and `review`.
+
+### The structuring idea — PARKED by the owner, with the research banked
+
+The owner stopped this deliberately: he asked to leave the idea for now, start later by
+testing the ingest from files to see what is identified, and only then maybe return to
+structuring specs, plans and tasks. Both research answers are already paid for — do not
+re-run them.
+
+- **STORAGE IS SETTLED: no graph engine, no JSONB, no schema change.** 817 items and
+  **91 relation edges** (0.11 per item), max out-degree 7, longest single-type chain
+  **2 hops**. All graph traversal today happens in JavaScript (`apiGraph` builds an
+  adjacency `Map`, BFS, radius ≤2, 60-node cap); there is **no edges table**, and
+  relations live inside the `data` JSON blob. Every SQLite capability was verified by
+  RUNNING it (3.51.2): `jsonb()`, `jsonb_extract`, `json_each`, `json_tree`,
+  `WITH RECURSIVE`, generated columns, partial and expression indexes, `WITHOUT ROWID`,
+  FTS5 — all present. **JSONB is nevertheless the wrong answer:** at 20,000 items /
+  60,000 edges the query "everything that transitively implements spec S" runs in
+  0.1 ms on a normalised `edges(source,type,target)` table and 0.016 ms in pure JS, but
+  **28–38 ms** on a JSON column, because SQLite can scan for a value inside an array
+  but cannot INDEX it. At 91 edges, building anything is YAGNI.
+- **NO `spec` CATEGORY IS NEEDED, and the 2026-08-12 ruling already covers this.** That
+  ruling rejects `prd`/`brief`/`epic`/`story` as *"Documents, not items — these are the
+  ingestion sources"*, and it means: do not make the DOCUMENT an item; DO import its
+  content as items of the right categories. The owner's request is therefore CONTINUOUS
+  with the record, not a reversal. A spec's assertions become `requirement` /
+  `constraint` / `invariant` / `decision` / `standard` / `open_question` / `task`, each
+  carrying `source_file` + `source_anchor` back to the document. Traceability runs
+  `requirement <- task -> plan`.
+- **Adding a category costs 22 hand-typed places.** The last time it was done
+  (`e5b12ca`, adding `todo`/`note`/`procedure`) touched **19 files, +594/−64**, and it
+  **cannot be staged** — "enumeration sites are mutually pinned by set-equality tests".
+- Measured obstacles if the idea is resumed: **98 of 518 `seq` values are not integers**
+  (`16b`, `8q`, `18s`, `33c`, `11l`, `8w` — insertion suffixes, so `seq` must stay a
+  string with a documented sort); **35% of tasks carry no `source:` anchor**; there are
+  **23 `plan` values against ~26 plan files**, so the mapping is not 1:1; and the `plan`
+  category exists with **0 items**.
+
+### NEXT: test ingest from a real file — the honest starting state
+
+The owner's chosen next step. Before starting, know this:
+
+- `ingest_document` / `mycontext ingest` **does** stamp real provenance and **can** emit
+  several categories from one document.
+- **It has never been used.** All **27** `requirement` items are hand-authored; **zero**
+  came from ingest.
+- **It never links an item back to its source document by a relation** — only by
+  `source_file` / `source_anchor`.
+- It needs a human or agent to do the extraction; it does not classify by itself.
+- One of the owner's own decisions on it is unimplemented:
+  `DEC-the-document-extraction-schema-gains-a-summary-field-so`.
+
+### Two traps confirmed on 2026-09-03
+
+- **The audit log doubled every hook event** because `.claude/settings.json`
+  self-registered the same 18 events the plugin manifest already registers — the plugin
+  is installed as a DIRECTORY source naming this working tree, so both applied. Fixed in
+  `c050dd5` and **verified after restart**: `session-start` and `instructions-loaded`
+  now write ONE row each where every earlier hook event wrote two. **A `nonce-minted`
+  PAIR is not this bug** — `ui-server-upkeep` also POSTs `/api/nonce`, floored to one
+  per five minutes. Pairs on EVERY mint would be a bug; an occasional pair is upkeep.
+- **`.mcp.json` registers a second, permanently broken MCP server.** Its command
+  interpolates `${CLAUDE_PLUGIN_ROOT}`, which is substituted only for entries from a
+  plugin registry, so the project-scoped copy dies at startup with `CONNECTION_CLOSED`
+  while the plugin's own copy works. **DO NOT DELETE IT** — `plugin.json` declares no
+  MCP server, so the plugin discovers this same file. It is cosmetic noise that has
+  already caused one false report that the server was down.
+
+---
+
 Written 2026-09-03 at the relocation. **Open this first in the new workspace.**
 
 Companions, holding the evidence behind it:
