@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { exitCode, summarize } from '../../src/cli/commands/doctor.ts';
+import { REMEDY } from '../../src/doctor/checks.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { chunkDocument } from '../../src/ingest/chunk.ts';
@@ -193,22 +194,22 @@ test('doctor outside a workspace explains how to make one', () => {
 // than fishing for a CLI scenario that produces a pure-info result, is what
 // actually pins each level to its exit code.)
 test('exit code mapping: info-only findings exit 0', () => {
-  assert.equal(exitCode(summarize([{ level: 'info', code: 'index_missing', message: 'x' }]), 0), 0);
+  assert.equal(exitCode(summarize([{ level: 'info', code: 'index_missing', message: 'x', remedy: REMEDY.NOTHING }]), 0), 0);
 });
 
 test('exit code mapping: warn-only findings exit 0', () => {
-  assert.equal(exitCode(summarize([{ level: 'warn', code: 'dead_scope', message: 'x' }]), 0), 0);
+  assert.equal(exitCode(summarize([{ level: 'warn', code: 'dead_scope', message: 'x', remedy: REMEDY.ACK }]), 0), 0);
 });
 
 test('exit code mapping: an error-level finding exits 1', () => {
-  assert.equal(exitCode(summarize([{ level: 'error', code: 'source_missing', message: 'x' }]), 0), 1);
+  assert.equal(exitCode(summarize([{ level: 'error', code: 'source_missing', message: 'x', remedy: REMEDY.ACK }]), 0), 1);
 });
 
 test('exit code mapping: mixed info+warn+error exits 1 (error dominates)', () => {
   assert.equal(exitCode(summarize([
-    { level: 'info', code: 'index_missing', message: 'x' },
-    { level: 'warn', code: 'dead_scope', message: 'x' },
-    { level: 'error', code: 'source_missing', message: 'x' },
+    { level: 'info', code: 'index_missing', message: 'x', remedy: REMEDY.NOTHING },
+    { level: 'warn', code: 'dead_scope', message: 'x', remedy: REMEDY.ACK },
+    { level: 'error', code: 'source_missing', message: 'x', remedy: REMEDY.ACK },
   ]), 0), 1);
 });
 
@@ -249,9 +250,9 @@ test('a mix of warn and error findings still exits 1', () => {
 // anywhere, which let a mutant hardcoding it to 0 survive. Pin it directly.
 test('summarize counts infos, not just errors and warnings', () => {
   const counts = summarize([
-    { level: 'info', code: 'index_missing', message: 'x' },
-    { level: 'info', code: 'index_missing', message: 'y' },
-    { level: 'warn', code: 'dead_scope', message: 'z' },
+    { level: 'info', code: 'index_missing', message: 'x', remedy: REMEDY.NOTHING },
+    { level: 'info', code: 'index_missing', message: 'y', remedy: REMEDY.NOTHING },
+    { level: 'warn', code: 'dead_scope', message: 'z', remedy: REMEDY.ACK },
   ]);
   assert.deepEqual(counts, { errors: 0, warnings: 1, infos: 2 });
 });

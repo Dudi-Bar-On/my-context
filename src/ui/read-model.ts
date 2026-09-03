@@ -1267,10 +1267,26 @@ export interface DoctorBody { findings: Finding[] }
  * and `doc.v` is this endpoint's whole reason for existing: *"a findings list
  * flattened to 'exit 1' is what a terminal loses"*.
  *
- * `Finding` is `{ level, code, message, item?, acknowledged? }`, and `item`
- * stays OPTIONAL: `watched_docs_no_match` and `audit_log_size` name no item,
- * and a `''` or a `null` invented here would put an empty cell where the mockup
- * draws an em dash for the finding that names none.
+ * `Finding` is `{ level, code, message, remedy, item?, acknowledged? }`, and
+ * `item` stays OPTIONAL: `watched_docs_no_match` and `audit_log_size` name no
+ * item, and a `''` or a `null` invented here would put an empty cell where the
+ * mockup draws an em dash for the finding that names none.
+ *
+ * `remedy` is REQUIRED, and it arrives here for the same reason everything else
+ * does — because the check that emitted the finding put it there. It is a
+ * `Remedy`: a route (`run`, `copy`, `acknowledge`, `none`), and where a command
+ * settles the finding, the catalogue id and the value bag `src/ui/execute-catalogue.ts`
+ * will rebuild the argv from. The client sends an id and a value bag and never a
+ * command (spec §3.1), so a remedy carrying a composed LINE would be a second
+ * composer the confirm could not be bound to; it carries neither a line nor a
+ * copy of the finding's own id and code.
+ *
+ * **Carried, never interpreted.** Deciding which control a route draws is the
+ * screen's business, exactly as drawing `acknowledged` is. What this endpoint
+ * guarantees is that the decision reaching the browser is the CHECK'S — until
+ * 2026-09-03 it was a four-code table inside two browser modules, and every code
+ * neither of them named drew no control and no reason
+ * (`reports/V2-HANDOVER.md:437`).
  *
  * `acknowledged` arrives set by `markAcknowledged` (doctor/checks.ts) and is
  * carried like every other field — verbatim, unfiltered. It means a PERSON read

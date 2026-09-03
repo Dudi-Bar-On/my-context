@@ -54,8 +54,17 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   checkCorpusSize, checkDeadScopes, checkOrphanRelations, FALLBACK_CEILING_WARN_ITEMS,
-  type Finding,
+  REMEDY, type Finding, type Remedy,
 } from '../../src/doctor/checks.ts';
+
+/**
+ * The remedies these fixtures declare, in the spelling `src/doctor/checks.ts`
+ * declares them — imported rather than hand-written, so a fixture cannot assert
+ * about a shape the real checks stopped emitting.
+ */
+const REFRESH = (id: string): Remedy => (
+  { route: 'run', command: 'refresh', values: { id, yes: true } }
+);
 import { resolveConfig } from '../../src/core/config.ts';
 import type { Item } from '../../src/core/types.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -69,7 +78,7 @@ const MOCKUP = path.join(REPO, 'docs', 'design', 'web-ui-mockup.html');
 const doctorSource = readFileSync(DOCTOR_JS, 'utf8');
 
 interface Run { mono: boolean; text: string }
-interface Row { code: string; item: string | null; message: string }
+interface Row { code: string; item: string | null; message: string; remedy: Remedy | null }
 
 /**
  * The screen's published interface. Hand-declared rather than inferred, so it
@@ -85,7 +94,10 @@ interface DoctorModule {
   sharedTail: (messages: string[]) => string;
   sharedNotes: (rows: Row[]) => Map<string, SharedNote>;
   cardRows: (groups: Map<string, Finding[]>, level: string) => Row[];
-  repairFor: (code: string, item: string | null) => Repair | null;
+  // Takes the FINDING now, not a code and an item: the decision it used to
+  // make lives on `Finding.remedy`, and a reader of a declaration needs the
+  // thing that carries it (`reports/V2-HANDOVER.md:437`).
+  repairFor: (finding: Partial<Finding>) => Repair | null;
   cardCommands: (rows: Row[]) => Repair[];
   render: (root: unknown, ctx: unknown) => Promise<void>;
 }
@@ -113,9 +125,9 @@ async function doctorModule(): Promise<DoctorModule> {
 }
 
 interface CommandModule { composeCommand: (argv: string[]) => string }
-interface ViewModelModule { repairCommandFor: (code: string, item: string | null) => string | null }
+interface ViewModelModule { repairCommandFor: (finding: Partial<Finding>) => string | null }
 interface TallyModule {
-  repairTally: (findings: Finding[]) => { findings: number; repairs: number };
+  repairTally: (findings: Finding[]) => { findings: number; repairs: number; settle: number };
 }
 interface DefsModule {
   PALETTE: { name: string }[];
@@ -270,10 +282,12 @@ test('cardRows claims only its own level and keeps groupFindings\' order', async
   const { cardRows } = await doctorModule();
   const groups = new Map<string, Finding[]>([
     ['source_drift', [
-      { level: 'error', code: 'source_drift', item: 'RULE-a', message: 'a' },
-      { level: 'warn', code: 'source_drift', item: 'RULE-b', message: 'b' },
+      { level: 'error', code: 'source_drift', item: 'RULE-a', message: 'a', remedy: REFRESH('RULE-a') },
+      { level: 'warn', code: 'source_drift', item: 'RULE-b', message: 'b', remedy: REFRESH('RULE-b') },
     ]],
-    ['dead_scope', [{ level: 'warn', code: 'dead_scope', item: 'CONST-c', message: 'c' }]],
+    ['dead_scope', [
+      { level: 'warn', code: 'dead_scope', item: 'CONST-c', message: 'c', remedy: REMEDY.ACK },
+    ]],
   ]);
 
   assert.deepEqual(cardRows(groups, 'error').map((r) => r.item), ['RULE-a']);
@@ -287,8 +301,12 @@ test('cardRows claims only its own level and keeps groupFindings\' order', async
 test('cardRows normalises every shape of "this finding names no item" to null', async () => {
   const { cardRows } = await doctorModule();
   const groups = new Map<string, Finding[]>([
-    ['audit_log_size', [{ level: 'info', code: 'audit_log_size', message: 'm' }]],
-    ['check_failed', [{ level: 'info', code: 'check_failed', item: '', message: 'm' }]],
+    ['audit_log_size', [
+      { level: 'info', code: 'audit_log_size', message: 'm', remedy: REMEDY.AUDIT_FILES },
+    ]],
+    ['check_failed', [
+      { level: 'info', code: 'check_failed', item: '', message: 'm', remedy: REMEDY.PERSON },
+    ]],
   ]);
   // Absent and empty are the same fact, and one spelling of it is what the em
   // dash reads. An empty string reaching `linkId` would compose a button that
@@ -309,7 +327,10 @@ test('cardCommands composes the design of record\'s own line, byte for byte', as
   assert.ok(code, 'the doctor section draws no <code> command');
   assert.deepEqual(
     (await lines(cardCommands([
-      { code: 'source_drift', item: 'RULE-never-log-customer-email', message: '' },
+      {
+        code: 'source_drift', item: 'RULE-never-log-customer-email', message: '',
+        remedy: REFRESH('RULE-never-log-customer-email'),
+      },
     ]))),
     [code![1]],
   );
@@ -323,7 +344,9 @@ test('cardCommands quotes through the one quoting implementation', async () => {
   // concatenated would produce `mycontext refresh RULE with spaces`, which the
   // CLI reads as three arguments.
   assert.deepEqual(
-    await lines(cardCommands([{ code: 'source_drift', item: 'RULE with spaces', message: '' }])),
+    await lines(cardCommands([{
+      code: 'source_drift', item: 'RULE with spaces', message: '', remedy: REFRESH('RULE with spaces'),
+    }])),
     ['mycontext refresh "RULE with spaces" --yes'],
   );
 });
@@ -331,39 +354,49 @@ test('cardCommands quotes through the one quoting implementation', async () => {
 test('cardCommands offers one row per DISTINCT command, in first-ask order', async () => {
   const { cardCommands } = await doctorModule();
   assert.deepEqual(await lines(cardCommands([
-    { code: 'source_drift', item: 'RULE-a', message: '' },
-    { code: 'index_stale', item: null, message: '' },
-    { code: 'source_drift', item: 'RULE-a', message: '' },
-    { code: 'corpus_size_fallback_ceiling', item: null, message: '' },
+    { code: 'source_drift', item: 'RULE-a', message: '', remedy: REFRESH('RULE-a') },
+    { code: 'index_stale', item: null, message: '', remedy: REMEDY.REBUILD },
+    { code: 'source_drift', item: 'RULE-a', message: '', remedy: REFRESH('RULE-a') },
+    { code: 'corpus_size_fallback_ceiling', item: null, message: '', remedy: REMEDY.DECAY },
   ])), ['mycontext refresh RULE-a --yes', 'mycontext rebuild', 'mycontext decay']);
 });
 
 /**
- * **The three parity-ledger entries this screen cannot close by writing code.**
+ * **A command that answers for ONE ROW is never drawn under the table.**
  *
- * `div.cmd`, `code` and `button` are listed as missing on `doctor` in
- * `e2e/screen-parity.spec.ts`. `commandRow` builds all three. They are absent
- * because `.demo-corpus` — the corpus that gate runs over — answers
- * `/api/doctor` with three findings, all `dead_scope`, and `dead_scope` earns
- * no command: re-scoping is an edit to the item file, not a line anyone can
- * paste. That is not this screen shrugging. The MOCKUP's own warning card
- * carries a `dead_scope` row and composes nothing for it either; the `.cmd`
- * under that card belongs to `watched_docs_no_match`, one of three PROPOSED
- * checks this build does not have.
+ * `cardCommands` composes the shared block under a card: one line serving every
+ * row of its code, deduped by the composed line. That is right for `mycontext
+ * rebuild`, which settles every `index_stale` row at once, and wrong for
+ * `mycontext ack <id> <code>`, which settles exactly one. Seventy-three ack
+ * lines stacked under a table would be seventy-three controls a reader cannot
+ * match to a row; they are drawn ON the row instead, which the `render` scan
+ * below pins.
  *
- * So this test asserts the empty answer deliberately. Composing something for
- * `dead_scope` would draw the missing kinds and contradict the design of
- * record in the same edit.
+ * `dead_scope` is the case the parity ledger records: it composes nothing
+ * SHARED, because re-scoping is an edit to the item file and there is no line
+ * to paste. The MOCKUP's own warning card carries a `dead_scope` row and
+ * composes nothing for it either; the `.cmd` under that card belongs to
+ * `watched_docs_no_match`, one of three PROPOSED checks this build does not
+ * have. What `dead_scope` HAS now is the acknowledge route on its own row —
+ * a different control in a different place, and neither of them this one.
  */
-test('cardCommands composes nothing for the codes whose messages name no command', async () => {
+test('cardCommands composes nothing under the table for a row-scoped remedy', async () => {
   const { cardCommands } = await doctorModule();
-  for (const code of ['dead_scope', 'orphan_relation', 'source_missing', 'index_missing']) {
-    assert.deepEqual(cardCommands([{ code, item: 'CONST-a', message: '' }]), [],
-      `${code} composed a command; its own message asks for a file edit, and a line that cannot `
-      + 'be pasted without editing is a placeholder wearing a command\'s clothes');
+  const rows: Row[] = [
+    // Settled by a person, on the item: the control belongs to the row.
+    { code: 'dead_scope', item: 'CONST-a', message: '', remedy: REMEDY.ACK },
+    { code: 'orphan_relation', item: 'CONST-a', message: '', remedy: REMEDY.ACK },
+    { code: 'source_missing', item: 'CONST-a', message: '', remedy: REMEDY.ACK },
+    // Asks for no action at all, so there is nothing anywhere.
+    { code: 'index_missing', item: null, message: '', remedy: REMEDY.NOTHING },
+  ];
+  for (const row of rows) {
+    assert.deepEqual(cardCommands([row]), [],
+      `${row.code} composed a SHARED command block; its remedy answers for one row, or for `
+      + 'no row at all');
   }
   // The mockup agrees, and it is the specification: its warning card draws a
-  // dead_scope row and no command for it.
+  // dead_scope row and no command under it.
   const section = mockupSection();
   assert.ok(section.includes('dead_scope'), 'the mockup no longer draws a dead_scope row');
   assert.ok(!/mycontext\s+\S*scope/.test(section),
@@ -376,44 +409,92 @@ test('cardCommands composes nothing for the codes whose messages name no command
  * -------------------------------------------------------------------------- */
 
 /**
- * **The screen's own repair table is held to `viewmodel.js`' one, code by code.**
+ * **The two surfaces are held equal over FINDINGS, and neither of them decides
+ * any more.**
  *
- * `repairCommandFor` decided which findings earn a line and composed it as a
- * STRING. A string cannot be executed: the client sends an id and a value bag,
- * never a command, so the screen now carries the same decision in the shape the
- * control takes. Two tables would drift, and the drift would be silent in the
- * direction that matters — a `<code>` showing one command while the confirm ran
- * another. So this holds the new one to the old one by its own bytes, and
- * `viewmodel.js` remains where the decision was established and argued.
+ * They used to hold two copies of one four-code table — `repairFor` in the shape
+ * the control takes, `repairCommandFor` as a string — and this test existed so
+ * they could not drift. The table is gone: `Finding.remedy` is the declaration
+ * and both are readers of it (`reports/V2-HANDOVER.md:437`). The test stays,
+ * because two readers can still disagree about how to read four route names, and
+ * the disagreement would be silent in the direction that matters — a `<code>`
+ * showing one command while the confirm ran another.
+ *
+ * The cases are the four routes plus the two ways a declaration can be
+ * malformed: an `acknowledge` on a finding naming no item (which nothing can
+ * anchor) and a body served by a build that had no `remedy` field at all.
  */
 test("every repair the screen composes is byte-identical to viewmodel's own line", async () => {
   const { repairFor } = await doctorModule();
   const { repairCommandFor } = await browserModule<ViewModelModule>('lib', 'viewmodel.js');
   const { composeCommand } = await browserModule<CommandModule>('lib', 'command.js');
 
-  const codes = [
-    'index_stale', 'audit_log_size', 'corpus_size_fallback_ceiling', 'source_drift',
-    'dead_scope', 'orphan_relation', 'source_missing', 'index_missing',
-    'some_check_added_next_year',
+  const cases: Partial<Finding>[] = [
+    { code: 'index_stale', remedy: REMEDY.REBUILD },
+    { code: 'audit_log_size', remedy: REMEDY.AUDIT_FILES },
+    { code: 'corpus_size_fallback_ceiling', remedy: REMEDY.DECAY },
+    { code: 'source_drift', item: 'RULE-never-log-customer-email', remedy: REFRESH('RULE-never-log-customer-email') },
+    { code: 'source_drift', item: 'RULE with spaces', remedy: REFRESH('RULE with spaces') },
+    { code: 'checksum_basis_migration', remedy: REMEDY.REPAIR },
+    { code: 'dead_scope', item: 'CONST-a', remedy: REMEDY.ACK },
+    { code: 'body_disagrees_with_meta', item: 'RULE with spaces', remedy: REMEDY.ACK },
+    { code: 'cli_not_on_path', remedy: REMEDY.PERSON },
+    { code: 'nested_corpus', remedy: REMEDY.NOTHING },
+    // Malformed, both ways. Neither may compose a line, and neither may throw.
+    { code: 'dead_scope', remedy: REMEDY.ACK },
+    { code: 'some_check_added_next_year', item: 'CONST-a' },
   ];
   let composed = 0;
-  for (const code of codes) {
-    for (const item of ['RULE-never-log-customer-email', 'RULE with spaces', null]) {
-      const repair = repairFor(code, item);
-      const expected = repairCommandFor(code, item);
-      if (expected === null) {
-        assert.equal(repair, null,
-          `${code}/${String(item)}: the screen offers a line viewmodel.js composes none for`);
-        continue;
-      }
-      assert.notEqual(repair, null,
-        `${code}/${String(item)}: viewmodel.js composes a line and the screen offers none`);
-      assert.equal(composeCommand(repair!.argv), expected, `${code}/${String(item)}`);
-      composed += 1;
+  for (const finding of cases) {
+    const where = `${finding.code}/${String(finding.item)}`;
+    const repair = repairFor(finding);
+    const expected = repairCommandFor(finding);
+    if (expected === null) {
+      assert.equal(repair, null, `${where}: the screen offers a line viewmodel.js composes none for`);
+      continue;
     }
+    assert.notEqual(repair, null, `${where}: viewmodel.js composes a line and the screen offers none`);
+    assert.equal(composeCommand(repair!.argv), expected, where);
+    composed += 1;
   }
-  assert.ok(composed >= 5,
+  assert.ok(composed >= 7,
     `only ${composed} repair(s) were compared; the loop stopped seeing the ones that exist`);
+});
+
+/**
+ * **The ACKNOWLEDGE route composes `mycontext ack <id> <code>` from the
+ * finding's own two fields — the answer to the report this work exists for.**
+ *
+ * Owner, 2026-09-03: *"currently doctor contains many items i do not have any
+ * way to handle, solve it"*. `mycontext ack` had existed since 2026-08-27 and
+ * reached no surface in this UI. `test/ui/palette-lib.test.ts` carried the
+ * reason — *"a control that composed a usable line would have to be driven by
+ * the doctor read model rather than by a flag declaration"* — and this is that
+ * line, driven by `Finding.remedy`.
+ *
+ * The id and the code come from the FINDING and never from a copy inside the
+ * remedy, which is why a remedy of `{ route: 'acknowledge' }` is the whole
+ * declaration: a second spelling of an id is how a control comes to name a
+ * different item from the row it sits on.
+ */
+test('an acknowledge remedy composes ack against the finding\'s own id and code', async () => {
+  const { repairFor } = await doctorModule();
+  const repair = repairFor({ code: 'body_disagrees_with_meta', item: 'DEC-a', remedy: REMEDY.ACK });
+  assert.deepEqual(repair, {
+    id: 'ack',
+    values: { id: 'DEC-a', code: 'body_disagrees_with_meta' },
+    argv: ['mycontext', 'ack', 'DEC-a', 'body_disagrees_with_meta'],
+  });
+
+  // Quoted through the ONE quoting implementation, like every other line here.
+  const { composeCommand } = await browserModule<CommandModule>('lib', 'command.js');
+  const spaced = repairFor({ code: 'dead_scope', item: 'RULE with spaces', remedy: REMEDY.ACK });
+  assert.equal(composeCommand(spaced!.argv), 'mycontext ack "RULE with spaces" dead_scope');
+
+  // An acknowledgement is anchored to an ITEM. A finding naming none cannot
+  // carry one, and the screen must draw its chip rather than compose
+  // `mycontext ack undefined <code>`.
+  assert.equal(repairFor({ code: 'body_review_limits', remedy: REMEDY.ACK }), null);
 });
 
 /**
@@ -437,21 +518,28 @@ test('the tally and the per-row disclosure read one decision, never two', async 
   const { repairFor } = await doctorModule();
   const { repairTally } = await browserModule<TallyModule>('lib', 'viewmodel.js');
 
-  // Two unrepairable (the owner's own corpus), one repairable, one repairable
-  // code whose MISSING item makes it unrepairable — the case where the two
-  // functions could most easily disagree, since only one of them takes an item.
+  // One of each ending, plus the case where the two functions could most easily
+  // disagree: a repairable CODE whose declaration was built without the item its
+  // command needs, which is unrepairable however the code reads.
   const findings: Finding[] = [
-    { level: 'warn', code: 'blocked_without_needs', message: 'm', item: 'TASK-a' },
-    { level: 'info', code: 'nested_corpus', message: 'm' },
-    { level: 'error', code: 'index_stale', message: 'm' },
-    { level: 'error', code: 'source_drift', message: 'm' },
+    { level: 'warn', code: 'blocked_without_needs', message: 'm', item: 'TASK-a', remedy: REMEDY.ACK },
+    { level: 'info', code: 'nested_corpus', message: 'm', remedy: REMEDY.NOTHING },
+    { level: 'warn', code: 'cli_not_on_path', message: 'm', remedy: REMEDY.PERSON },
+    { level: 'error', code: 'index_stale', message: 'm', remedy: REMEDY.REBUILD },
+    { level: 'error', code: 'source_drift', message: 'm', remedy: REMEDY.ACK },
   ];
-  const chips = findings.filter((f) => repairFor(f.code, f.item ?? null) === null).length;
+  const chips = findings.filter((f) => repairFor(f) === null).length;
   const tally = repairTally(findings);
-  assert.deepEqual(tally, { findings: 4, repairs: 1 });
-  assert.equal(chips + tally.repairs, tally.findings,
-    'a finding is either drawn with a repair or drawn with the chip that says it has none; a '
-    + 'row counted by both or by neither is the screen disagreeing with its own summary');
+  assert.deepEqual(tally, { findings: 5, repairs: 1, settle: 1 });
+  assert.equal(chips + tally.repairs + tally.settle, tally.findings,
+    'a finding is drawn with a shared repair, with its own acknowledge control, or with the '
+    + 'chip that says it has neither; a row counted twice or not at all is the screen '
+    + 'disagreeing with its own summary');
+  // **The third number is the one the owner was missing**, and it counts rows a
+  // person settles rather than rows a command repairs. Collapsing the two would
+  // put "with an automated repair: 73" over a corpus where nothing is automated.
+  assert.equal(tally.settle, 1, 'the ack route is not counted, so the screen still cannot say '
+    + 'how many findings a reader can actually act on');
 });
 
 /**
@@ -473,9 +561,28 @@ test('the tally and the per-row disclosure read one decision, never two', async 
  *    length that severity is said by the card heading and nowhere else.
  */
 test('a row with no repair draws the strip\'s own unmeasured chip, and only there', async () => {
-  assert.ok(/repairFor\(row\.code,\s*row\.item\)\s*===\s*null/.test(doctorSource),
+  assert.ok(/const repair = repairFor\(row\);/.test(doctorSource),
     'the screen no longer asks whether the row has a repair before disclosing that it has none');
-  assert.ok(/noRepairChip\(ctx\)/.test(doctorSource), 'nothing draws the disclosure');
+  assert.ok(/noRepairChip\(ctx, row\.remedy\)/.test(doctorSource),
+    'nothing draws the disclosure, or it draws one sentence over two different reasons');
+  // **The row draws its OWN control where the remedy answers for one row.**
+  // Without this the two assertions above pass over a screen that went back to
+  // drawing a chip for every ack finding — the silence the owner reported.
+  //
+  // **The gap between the branch and the append is allowed to hold prose, and
+  // that is a loosening with a bound.** It used to require `{`, a newline and
+  // the call — which is a claim about WHITESPACE, and on 2026-09-03 it went red
+  // for a comment recording why the ack control stays drawn on a row that is
+  // already acknowledged. Nothing about the property had changed. What keeps
+  // this honest instead of merely permissive is the count below: the call
+  // appears exactly ONCE in the file, and the branch opens exactly once, so a
+  // lazy bounded gap between them cannot match across anything else.
+  assert.equal(doctorSource.split('message.append(commandRow(ctx, repair));').length - 1, 1,
+    'the row-scoped acknowledge control is appended more than once, or not at all — the match '
+    + 'below would then be saying nothing about where it is drawn');
+  assert.ok(/row\.remedy\.route === 'acknowledge'\) \{[\s\S]{0,2000}?message\.append\(commandRow\(ctx, repair\)\);/
+    .test(doctorSource),
+    'a finding a person settles no longer draws its acknowledge control on its own row');
   assert.ok(/el\('span',\s*'chip unmeas'\)/.test(doctorSource),
     'the disclosure is no longer the strip\'s `.chip.unmeas` primitive');
   assert.ok(/dataset\.g\s*=\s*'◌'/.test(doctorSource),
@@ -534,9 +641,14 @@ test('every BOUNDARY repair this screen composes carries --yes, or it cannot run
     (PALETTE as { name: string; boundary?: boolean }[]).find((def) => def.name === name)?.boundary !== false;
 
   const composed = [
-    repairFor('index_stale', null),
-    repairFor('corpus_size_fallback_ceiling', null),
-    repairFor('source_drift', 'RULE-a'),
+    repairFor({ code: 'index_stale', remedy: REMEDY.REBUILD }),
+    repairFor({ code: 'corpus_size_fallback_ceiling', remedy: REMEDY.DECAY }),
+    repairFor({ code: 'source_drift', item: 'RULE-a', remedy: REFRESH('RULE-a') }),
+    repairFor({ code: 'checksum_basis_migration', remedy: REMEDY.REPAIR }),
+    // `ack` is BELOW the boundary — it takes no `--yes` and the catalogue says
+    // so — which is what makes this loop's `continue` load-bearing rather than
+    // decorative: an entry off the boundary must NOT carry the flag.
+    repairFor({ code: 'dead_scope', item: 'RULE-a', remedy: REMEDY.ACK }),
   ].filter((r) => r !== null && typeof r.id === 'string');
 
   assert.ok(composed.length > 0, 'no repair composed anything, so this checked nothing');
@@ -555,9 +667,12 @@ test('a repair names the catalogue entry it IS, and null where the catalogue has
   const { PALETTE } = await browserModule<DefsModule>('lib', 'palette-defs.js');
   const known = new Set(PALETTE.map((def) => def.name));
 
-  assert.equal(repairFor('index_stale', null)?.id, 'rebuild');
-  assert.equal(repairFor('corpus_size_fallback_ceiling', null)?.id, 'decay');
-  assert.equal(repairFor('source_drift', 'RULE-a')?.id, 'refresh');
+  assert.equal(repairFor({ code: 'index_stale', remedy: REMEDY.REBUILD })?.id, 'rebuild');
+  assert.equal(repairFor({ code: 'corpus_size_fallback_ceiling', remedy: REMEDY.DECAY })?.id, 'decay');
+  assert.equal(repairFor({ code: 'source_drift', item: 'RULE-a', remedy: REFRESH('RULE-a') })?.id,
+    'refresh');
+  assert.equal(repairFor({ code: 'checksum_basis_migration', remedy: REMEDY.REPAIR })?.id, 'repair');
+  assert.equal(repairFor({ code: 'dead_scope', item: 'RULE-a', remedy: REMEDY.ACK })?.id, 'ack');
   // **`yes: true`, and the command cannot run without it.** Owner-reported
   // 2026-08-28, twice: `refresh` replaces an item's whole body, so it gates on a
   // human by reading stdin — and a command run from this UI is a child process
@@ -569,14 +684,53 @@ test('a repair names the catalogue entry it IS, and null where the catalogue has
   // so it appears in the code the reader reads and in the confirm's own copy of
   // the resolved command, and the human decision is the confirm dialog. Omitting
   // it did not preserve a gate — it removed the command.
-  assert.deepEqual(repairFor('source_drift', 'RULE-a')?.values, { id: 'RULE-a', yes: true });
-  assert.equal(repairFor('audit_log_size', null)?.id, null,
+  assert.deepEqual(
+    repairFor({ code: 'source_drift', item: 'RULE-a', remedy: REFRESH('RULE-a') })?.values,
+    { id: 'RULE-a', yes: true },
+  );
+  assert.equal(repairFor({ code: 'audit_log_size', remedy: REMEDY.AUDIT_FILES })?.id, null,
     'mycontext audit is not in the catalogue; naming an id it does not have would make the '
     + 'confirm render a DIFFERENT command from the one the code above it shows');
 
-  for (const code of ['index_stale', 'corpus_size_fallback_ceiling', 'source_drift']) {
-    const id = repairFor(code, 'RULE-a')!.id;
-    assert.ok(known.has(id!), `${code} names "${String(id)}", which the catalogue does not have`);
+  for (const finding of [
+    { code: 'index_stale', item: 'RULE-a', remedy: REMEDY.REBUILD },
+    { code: 'corpus_size_fallback_ceiling', item: 'RULE-a', remedy: REMEDY.DECAY },
+    { code: 'source_drift', item: 'RULE-a', remedy: REFRESH('RULE-a') },
+    { code: 'checksum_basis_migration', item: 'RULE-a', remedy: REMEDY.REPAIR },
+    { code: 'dead_scope', item: 'RULE-a', remedy: REMEDY.ACK },
+  ] as Partial<Finding>[]) {
+    const id = repairFor(finding)!.id;
+    assert.ok(known.has(id!),
+      `${finding.code} names "${String(id)}", which the catalogue does not have`);
+  }
+});
+
+/**
+ * **Every catalogue id a CHECK names is an id the catalogue actually carries.**
+ *
+ * The decision moved out of the browser and into `src/doctor/checks.ts`, which
+ * cannot see `palette-defs.js` — it is a browser asset, and there is no build
+ * step joining them. So a check naming `rebiuld` would typecheck, ship, and
+ * fail in `catalogued()` at render time on the one corpus that produced that
+ * finding. This is the join, made over the real declarations rather than over a
+ * list retyped here: `REMEDY` is what the checks use, so a row added there
+ * without a catalogue entry fails on the next run of this file.
+ */
+test('every catalogue id the doctor checks name is one PALETTE declares', async () => {
+  const { PALETTE } = await browserModule<DefsModule>('lib', 'palette-defs.js');
+  const known = new Set(PALETTE.map((def) => def.name));
+  const named = Object.values(REMEDY)
+    .filter((remedy) => remedy.route === 'run')
+    .map((remedy) => (remedy as { command: string }).command);
+  // Plus the two remedies built per item, and the route with no `command` field
+  // at all — `acknowledge` resolves to `ack`, which no `REMEDY` constant names.
+  const all = [...named, 'refresh', 'edit', 'ack'];
+  assert.ok(all.length >= 6, 'the derivation stopped seeing the run remedies');
+  for (const command of all) {
+    assert.ok(known.has(command),
+      `src/doctor/checks.ts names the catalogue entry "${command}", which PALETTE does not `
+      + 'declare. The screen would throw at render time, on whichever corpus produces that '
+      + 'finding and no other.');
   }
 });
 
@@ -594,10 +748,14 @@ test('a catalogued repair composes through the catalogue, so the confirm cannot 
   async () => {
     const { repairFor } = await doctorModule();
     const { PALETTE, commandFor } = await browserModule<DefsModule>('lib', 'palette-defs.js');
-    for (const [code, item] of [
-      ['index_stale', null], ['corpus_size_fallback_ceiling', null], ['source_drift', 'RULE-a'],
-    ] as [string, string | null][]) {
-      const repair = repairFor(code, item)!;
+    for (const finding of [
+      { code: 'index_stale', remedy: REMEDY.REBUILD },
+      { code: 'corpus_size_fallback_ceiling', remedy: REMEDY.DECAY },
+      { code: 'source_drift', item: 'RULE-a', remedy: REFRESH('RULE-a') },
+      { code: 'dead_scope', item: 'RULE-a', remedy: REMEDY.ACK },
+    ] as Partial<Finding>[]) {
+      const code = finding.code;
+      const repair = repairFor(finding)!;
       const def = PALETTE.find((entry) => entry.name === repair.id);
       assert.ok(def, `${code} names an id the catalogue does not carry`);
       assert.deepEqual(repair.argv, commandFor(def, repair.values), code);
@@ -833,9 +991,18 @@ test('sharedNotes groups by code, counts the rows, and keeps first-ask order', a
   const { sharedNotes, sharedTail } = await doctorModule();
   const messages = realDeadScopeMessages();
   const rows: Row[] = [
-    { code: 'dead_scope', item: 'CONST-migrations-run-forward-only', message: messages[0]! },
-    { code: 'index_stale', item: null, message: 'the index is older than the newest item file.' },
-    { code: 'dead_scope', item: 'CONST-prices-are-integer-cents', message: messages[1]! },
+    {
+      code: 'dead_scope', item: 'CONST-migrations-run-forward-only', message: messages[0]!,
+      remedy: REMEDY.ACK,
+    },
+    {
+      code: 'index_stale', item: null, message: 'the index is older than the newest item file.',
+      remedy: REMEDY.REBUILD,
+    },
+    {
+      code: 'dead_scope', item: 'CONST-prices-are-integer-cents', message: messages[1]!,
+      remedy: REMEDY.ACK,
+    },
   ];
   const notes = sharedNotes(rows);
 

@@ -320,6 +320,14 @@ test('commandFor builds the exact argv for representative commands', async () =>
  *     red and someone chooses, rather than the palette silently lagging.
  */
 const OFF_BOUNDARY: Record<string, string> = {
+  ack: 'records that a PERSON read a doctor finding and ruled on it, anchored to the item as it '
+    + 'stands. It writes into the item file and re-stamps its checksum, and it changes nothing '
+    + 'about what the item SAYS or whether it governs — which is `cli/commands/ack.ts` own '
+    + 'argument for why it is a verb rather than a flag on `edit`, whose gate is sized to a '
+    + 'change that CAN move governance. It accepts no --yes and is absent from the shipped deny '
+    + 'recipe, and the derivation agrees. Its real gate is stronger than a deny rule and is not '
+    + 'a permission at all: `acknowledgeFinding` (core/mutate.ts) refuses any origin but '
+    + '`human`, and this command is its only caller — there is deliberately no MCP tool.',
   rebuild: 'rewrites only the derived index (.index.db), which the README tells users they may '
     + 'delete and rebuild freely. It changes nothing about what governs, so it is on no deny '
     + 'list — and it is still COMPOSED rather than executed, like every other write here.',
@@ -529,6 +537,17 @@ const NO_FLAG_PROBE: Record<string, string> = {
  * and adding one later means editing a test that states why it was left out.
  */
 const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
+  ack: {
+    list: '--list prints what doctor reports on one item and what has been ruled on already, '
+      + 'and it takes NO code operand — `ack <id> --list` is the whole form. This model composes '
+      + 'one argv from a def whose `code` argument is REQUIRED, so offering the flag would '
+      + 'compose `ack <id> <code> --list`, in which the code a reader chose is silently ignored: '
+      + 'the command would print a report rather than record the ruling the line appears to '
+      + 'make. It is also a READ in a write def, which is the same shape that keeps every '
+      + '`kind: read` row out of a write def — and the Doctor screen already draws what it would '
+      + 'print. When the palette offers it, it belongs as its own read entry rather than as a '
+      + 'checkbox on this one, and this row must move rather than stand over the opposite.',
+  },
   'review promote': {
     all: 'bulk promotion: --all --pack <name> settles every draft a pack imported in one '
       + 'confirmation. Promotion is a human act — both READMEs and the skill say an agent must '
@@ -793,13 +812,13 @@ const WITHHELD: Record<string, string> = {
  * browser test that drives it.
  */
 const UNCATALOGUED: Record<string, string> = {
-  ack: 'a WRITE, and a new one (owner ruling 2026-08-27, doctor findings become '
-    + 'acknowledgeable). `PALETTE` is a browser asset and `palette.js` builds the Composer '
-    + 'picker from it, so an entry is a UI change owed a mockup and a browser test rather than '
-    + 'something added in passing from the CLI side. Its refusal is also unlike every other row '
-    + 'here: `mycontext ack` accepts only a finding code `doctor` is CURRENTLY reporting on that '
-    + 'item, so a control that composed a usable line would have to be driven by the doctor read '
-    + 'model rather than by a flag declaration.',
+  // `ack` stood here until 2026-09-03 and its row named the condition that
+  // closed it: "a control that composed a usable line would have to be driven
+  // by the doctor read model rather than by a flag declaration". `Finding.remedy`
+  // (src/doctor/checks.ts) is that read model — every check declares whether a
+  // person settles its finding — so the entry is in `PALETTE` and the row is
+  // deleted rather than left standing over the opposite. `e2e/doctor-repairless.spec.ts`
+  // is the browser test the row asked for.
   audit: 'a read with no execution path in this UI. `/api/audit` does not exist; the audit log '
     + 'reaches the browser through the Watch and Ask read models, which answer different '
     + 'questions.',

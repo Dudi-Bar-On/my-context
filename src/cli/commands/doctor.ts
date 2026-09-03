@@ -1,6 +1,8 @@
 import path from 'node:path';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
-import { checkCliOnPath, checksumMigrationFindings, runChecks, type Finding } from '../../doctor/checks.ts';
+import {
+  checkCliOnPath, checksumMigrationFindings, REMEDY, runChecks, type Finding,
+} from '../../doctor/checks.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
@@ -219,6 +221,10 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
       message:
         `the \`mycontext\`-on-PATH check itself failed unexpectedly: ` +
         `${err instanceof Error ? err.message : String(err)}.`,
+      // The SAME remedy `checkCliOnPath` declares for this code, taken from
+      // `REMEDY` rather than written out again: two spellings of what settles
+      // one code is exactly the UI-side table this field replaced.
+      remedy: REMEDY.NOTHING,
     }];
   }
   // Only the WORST of the three states — PATH resolves to a different CLI —

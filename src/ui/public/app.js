@@ -1987,6 +1987,51 @@ function subscribeStream(kinds, onEvent) {
  */
 const EXCLUDED_FROM_GENERIC_LIVE_REFRESH = new Set(['watch']);
 
+/**
+ * **WHICH ROUTE OWNS THE SCREEN.** Taken at the top of `route()`, checked at
+ * every point after an `await` that would write state OUTLIVING that call.
+ *
+ * ── THE DEFECT IT CLOSES, MEASURED ────────────────────────────────────────
+ *
+ * `route()` opens with `teardownLiveScreen()` and ends with
+ * `setupLiveScreen(name, mod, section)`, which writes `currentScreenRefresh` —
+ * the closure `noteExecuteSettled` calls to redraw the screen a command was run
+ * on. Between those two points it AWAITS twice (the dynamic import, then the
+ * render), and `route()` is entered from `hashchange` as `void route()`. So a
+ * hash change landing inside the first route's render starts a second one, and
+ * whichever finishes LAST took the slot — not whichever the reader is looking
+ * at.
+ *
+ * It is not symmetric, which is why it was reproducible rather than rare:
+ * `doctor` is one `/api/doctor`, and the landing `preview` is five sequential
+ * fetches. Click a rail button while the landing screen is still loading and
+ * preview finishes second EVERY time. Measured 2026-09-03: after
+ * `POST /api/execute` on the visible Doctor screen the page fetched `select`,
+ * `simulate`, `items`, `coverage`, `injection-history` — preview's endpoint set
+ * — and not one `/api/doctor`, though the ruling was on disk and the read model
+ * returned it. `e2e/doctor-outcome.spec.ts` had to reach Doctor by RELOADING
+ * rather than by changing the hash, and said so in its own comment.
+ *
+ * ── WHY A GENERATION AND NOT A LOCK OR A CANCEL ───────────────────────────
+ *
+ * A lock would make the reader wait for a screen they have already left. A
+ * cancel would need an `AbortSignal` threaded through `mod.render(root, ctx)`,
+ * a contract twenty-one screen modules implement, to unsend fetches that
+ * `sectionRender`'s own header already rules cannot be unsent ("Chained rather
+ * than cancelled ... a render abandoned halfway leaves a half-drawn screen").
+ * A superseded render is not itself dangerous — every screen has its OWN
+ * `[data-p]` section and `renderScreen` queues per section, so it draws into a
+ * hidden element nobody is reading, and the only way back to that section is a
+ * `route()` that redraws it first. What is dangerous is the SHARED state it
+ * writes AFTERWARDS. So the loser is allowed to finish and forbidden to
+ * install, and at the one point where a doomed route can be stopped before it
+ * spends anything — between the import resolving and the render starting — it
+ * is stopped.
+ *
+ * `e2e/route-race.spec.ts` drives it.
+ */
+let routeGeneration = 0;
+
 /** Torn down and re-armed on every `route()` — one screen's subscription at a time. */
 let liveScreenUnsub = null;
 /** The single in-flight debounce timer for the CURRENT screen's subscription. */
@@ -2321,7 +2366,15 @@ async function renderScreen(mod, section) {
  * argues for (one act, several rows off the stream), applied here rather
  * than left for every screen to reinvent.
  */
-function setupLiveScreen(name, mod, section) {
+function setupLiveScreen(name, mod, section, generation) {
+  // **A SUPERSEDED ROUTE MAY NOT INSTALL ITSELF.** `route()` checks this too,
+  // one line before the call; it is checked AGAIN here because this function is
+  // what actually writes the shared slots — `currentScreenRefresh`, and
+  // `liveScreenUnsub`, which it overwrites WITHOUT unsubscribing, so a late
+  // install both steals the Execute refresh and leaks the current screen's
+  // subscription behind it. A guard that lives only at the call site is a guard
+  // the next caller does not inherit. See `routeGeneration`.
+  if (generation !== routeGeneration) return;
   const decl = SCREEN_INVALIDATION[name];
 
   const act = () => {
@@ -2349,6 +2402,18 @@ function setupLiveScreen(name, mod, section) {
     const scrollHost = document.getElementById('screen');
     const savedScroll = takenFrom ?? (scrollHost === null ? null : scrollHost.scrollTop);
     return renderScreen(mod, section).then(() => {
+      // **AND THE REDRAW CHECKS AGAIN WHEN IT LANDS.** `act` can be held for a
+      // while — in `currentScreenRefresh` across an Execute, in
+      // `pendingScreenRefresh` behind an affordance the reader may take at
+      // leisure — and `scrollHost` is `#screen`, ONE element shared by every
+      // section. A restore arriving after the reader has routed away would set
+      // the NEW screen's offset from the OLD screen's reading position, which
+      // is `DEC-a-refresh-keeps-the-reader-s-place-or-it-asks` broken by the
+      // mechanism built to honour it. `attachExecuteOutcome()` is skipped with
+      // it and loses nothing: a route ran, so `teardownLiveScreen()` has
+      // already dropped `executeOutcome`, and it would return at its own first
+      // line anyway.
+      if (generation !== routeGeneration) return;
       if (scrollHost !== null && savedScroll !== null) scrollHost.scrollTop = savedScroll;
       // **After EVERY redraw, not only the first.** One Execute is three
       // records — `execute`, the CLI's own `mutation`, `execute-done` — and the
@@ -2550,16 +2615,173 @@ const EXECUTE_SETTLED_WINDOW_MS = 2 * (STREAM_POLL_MS + LIVE_INVALIDATION_DEBOUN
 let executeOutcome = null;
 
 /**
- * Put the held outcome back at the top of the screen, where a statement about
- * the act that produced this screen belongs.
+ * Put the held outcome back **ON THE ROW IT WAS RUN FROM**, and make sure the
+ * person who pressed the button can actually see it.
  *
- * Idempotent, and safe to call after any render: it does nothing with no
- * outcome held, and nothing when the node is already where it should be.
+ * ── THE DEFECT THIS REPLACES, MEASURED ────────────────────────────────────
+ *
+ * Owner, 2026-09-03: *"check the doctor using playright, it looks like the run
+ * do nothing"*. Driven in real Chrome the same day, the run works end to end —
+ * `POST /api/execute` answers 200 with `exitCode: 0` and real stdout, followed
+ * by two `GET /api/doctor` refreshes — and the screen then redraws identically.
+ *
+ * This function was the reason. It did `section.prepend(executeOutcome)`: the
+ * TOP of the screen, which was defended above as "where a statement about the
+ * act that produced this screen belongs" and is a fine sentence about a screen
+ * that fits in a window. The Doctor pane is ~4,000px tall, and the reader who
+ * presses Execute on row 21 is nowhere near the top of it. Probed twice, 2s and
+ * 14s after "Run it", identical both times:
+ *
+ *     .execresult  hidden:false  text:"exit 0"  top:-3974px  inView:false
+ *
+ * So the single piece of feedback the product gives for a write it just made
+ * was rendered 3,974px above the reader, and nothing said so. **This is not a
+ * Doctor defect.** Every screen that composes a command reaches this function,
+ * so every one of them had it: `palette`, `doctor`, `work`, `capture`,
+ * `coverage`, `packs`, `port` and `proc`.
+ *
+ * ── WHY THE ROW, RATHER THAN A SCROLL TO THE TOP OR A BANNER ──────────────
+ *
+ * **Because the CONFIRM already got this right and the outcome did not.**
+ * `lib/command-actions.js` renders the confirm INLINE, in the row, under the
+ * button that opened it — the residual, the argv, the per-item diff and the two
+ * buttons — and nobody has ever reported not finding it. The outcome is the
+ * answer to the question that confirm asked, and it belongs in the same place.
+ * It could not GET back there because every redraw opens with
+ * `root.replaceChildren()` and builds a fresh, anonymous control, so the shell
+ * had nothing to aim at. `commandActions` now stamps `data-cmdkey` (the
+ * composed line — the identity `cardCommands` already dedupes by), so the row
+ * can be found again.
+ *
+ * Two alternatives were weighed and rejected:
+ *
+ *   SCROLL THE SCREEN TO THE TOP after every run. It takes the reader away
+ *   from the row they were working on to read one line, and on a 4,000px pane
+ *   that is a whole screen of travel each way. It also answers only half the
+ *   report: the outcome would be visible, and it would still not be beside the
+ *   thing it is about.
+ *
+ *   A STICKY OR OVERLAID BANNER. This project has already run that experiment
+ *   with `#screenstale` and recorded the result in `styles.css`: overlaid in
+ *   the screens' own grid cell, nothing moved and *"the price was that it
+ *   covered the data underneath it, which is what the owner then reported"*.
+ *   Repeating it for a second transient would be re-shipping a defect whose
+ *   write-up is thirty lines long in the stylesheet.
+ *
+ * ── AND THE FALLBACK, WHICH IS THE OLD BEHAVIOUR PLUS A SCROLL ────────────
+ *
+ * A run can REMOVE the row it was run from — `work.js`'s promote is exactly
+ * that, and it is the case `e2e/execute.spec.ts` drives — and then there is no
+ * control to return to. The outcome goes to the top of the section, as before,
+ * because a statement with nowhere of its own to be still has to be somewhere.
+ * What is new is that the reader is taken to it: `scrollIntoView` walks the
+ * scroll CHAIN, which is what this layout needs — `#screen` is the scroller
+ * (`.body{overflow-y:auto}`) and `window.scrollY` measured 0 throughout, so
+ * anything written against the window would have moved nothing at all.
+ *
+ * `block: 'nearest'` and not `'center'`: it is a no-op when the node is already
+ * visible, which is the ordinary case once the outcome is back on its row, and
+ * it scrolls the MINIMUM when it is not. So this is idempotent across the
+ * several redraws one Execute produces rather than a jump repeated three times.
+ *
+ * Still idempotent and still safe to call after any render: nothing with no
+ * outcome held, and no move when the node is already where it should be.
  */
 function attachExecuteOutcome() {
   if (executeOutcome === null) return;
   const section = visibleSection();
-  if (section !== null && !section.contains(executeOutcome)) section.prepend(executeOutcome);
+  if (section === null) return;
+  // **THE HOME IS RE-ASKED EVERY TIME, AND "IT IS SOMEWHERE IN THE SECTION" IS
+  // NOT AN ANSWER.** This used to open with `if (!section.contains(...))`, so
+  // the FIRST attach decided the placement for good — and one attach can
+  // legitimately land on a section that is momentarily EMPTY, which makes the
+  // fallback the permanent answer for a row that is still there.
+  //
+  // ── THE WINDOW, WHICH IS ORDINARY RATHER THAN EXOTIC ─────────────────────
+  //
+  // One Execute produces several redraws by design (`execute`, the CLI's own
+  // `mutation`, `execute-done`), so the stream's `act()` is routinely QUEUED
+  // BEHIND the Execute's own through `renderScreen`'s per-section chain. When
+  // the first render resolves, the second render's continuation is already
+  // registered on it — and every screen's `render()` opens with
+  // `root.replaceChildren()` SYNCHRONOUSLY. So the second render clears the
+  // section in a microtask that runs BEFORE the first render's `.then` reaches
+  // this function: `executeOutcomeHome` scans an empty section, finds nothing,
+  // and the outcome is prepended to the top. Every later attach then saw
+  // `contains` and left it there — including the ones that ran after the rows
+  // came back.
+  //
+  // Measured 2026-09-03, `doctor-outcome.spec.ts:337` under parallel load, both
+  // browser projects, on the code as it stood before this change and after the
+  // route-race guard (so: not that defect):
+  //   `[data-p="doctor"] > .execresult` resolved to 1 for the full 5s bound,
+  //   while the row it was run from was on screen carrying its control.
+  // At `--workers=1` the same test passed, because the second render had
+  // finished before the first one's `.then` ran.
+  //
+  // ── WHY RE-HOMING IS SAFE TO DO ON EVERY ATTACH ──────────────────────────
+  //
+  // It is a MOVE, not a copy — one node has one parent — and the target is
+  // compared first, so an outcome already on its row is not touched at all and
+  // this stays the idempotent call every render path can make blindly. The
+  // fallback keeps its meaning exactly: `home === null` is "this screen no
+  // longer draws the control this ran from" (`work.js`'s promote removes the
+  // row it was run from, which `e2e/execute.spec.ts` drives), and the top of
+  // the section is still where a statement with nowhere of its own to be goes.
+  // What changes is only that the fallback is no longer PERMANENT: when the
+  // control comes back — because the redraw that had cleared it finished — the
+  // answer returns to the row that asked for it.
+  const home = executeOutcomeHome(section);
+  if (home !== null) {
+    if (executeOutcome.parentNode !== home) home.append(executeOutcome);
+  } else if (executeOutcome.parentNode !== section) {
+    section.prepend(executeOutcome);
+  }
+  revealExecuteOutcome();
+}
+
+/**
+ * The rebuilt control the held outcome came from, or `null` when this screen no
+ * longer draws it.
+ *
+ * Matched on `data-cmdkey` — the composed command line, written by
+ * `commandActions` onto both the control and the result region it hands over.
+ * A LINEAR SCAN rather than an attribute selector, deliberately: the key is a
+ * shell command, it contains quotes and spaces on any id that needs escaping,
+ * and `CSS.escape` on every redraw is a second correctness question this does
+ * not need to answer. Eight hundred and twenty nodes is the largest screen this
+ * product draws and a `querySelectorAll` walk over it costs nothing beside the
+ * fetch that produced them.
+ *
+ * **The FIRST match, and where that is imprecise it is imprecise safely.** Two
+ * controls can share a key only when one screen composes the identical line
+ * twice — a shared repair block for a code that appears at two levels is the
+ * only shape that reaches it — and then the outcome lands on a control for the
+ * SAME command, which is still a true statement in a place the reader can read
+ * it. An ordinal would not be more correct: after a redraw that removed rows,
+ * the n-th control of a key is not the same control either.
+ */
+function executeOutcomeHome(section) {
+  const key = executeOutcome.dataset?.cmdkey;
+  if (typeof key !== 'string' || key === '') return null;
+  for (const control of section.querySelectorAll('.cmdactions')) {
+    if (control.dataset.cmdkey === key) return control;
+  }
+  return null;
+}
+
+/**
+ * Bring the held outcome into the viewport, if it is not already there.
+ *
+ * Guarded on `hidden` because the region is BUILT hidden and unhidden by
+ * `say()` — scrolling to a node with no box is a scroll to nowhere — and on the
+ * method existing at all, the same guard `announce()` carries: a screen
+ * rendered by a test harness has no layout engine behind it.
+ */
+function revealExecuteOutcome() {
+  if (executeOutcome === null || executeOutcome.hidden === true) return;
+  if (typeof executeOutcome.scrollIntoView !== 'function') return;
+  executeOutcome.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 /**
@@ -2605,11 +2827,12 @@ function noteExecuteSettled(outcomeNode) {
   // — so a refresh that merely redrew would take back the answer to "what did
   // that do", which is worse for a NON-ZERO exit than for a clean one: the
   // reader would see the item still in the queue and be told nothing about
-  // why. The node is re-attached at the TOP of the rebuilt screen, which is
-  // where a statement about the act that produced this screen belongs, and it
-  // is prepended whether or not it has content yet: it is built `hidden` and
-  // `say()` unhides it, so the order in which the refresh and `report()`
-  // finish cannot matter.
+  // why. The node is re-attached ON THE ROW IT WAS RUN FROM, and only at the
+  // top of the screen when that row is gone — see `attachExecuteOutcome` for
+  // the measurement that moved it and for why the reader is scrolled to it
+  // either way. It is re-attached whether or not it has content yet: it is
+  // built `hidden` and `say()` unhides it, so the order in which the refresh
+  // and `report()` finish cannot matter.
   const done = currentScreenRefresh?.();
   if (done !== undefined && done !== null && typeof done.then === 'function') {
     void done.then(attachExecuteOutcome, attachExecuteOutcome);
@@ -6199,6 +6422,15 @@ async function route() {
   // the id in one call, so no part of the previous screen's pane survives into
   // the next one — and it runs even if the dynamic import below throws.
   // `test/ui/pane-route.test.ts` is this line.
+  //
+  // **AND THIS ROUTE'S GENERATION IS TAKEN FIRST, before a single piece of
+  // shared state is touched.** Everything from here to the first `await` is
+  // synchronous, so the LAST route to start is the one whose screen is visible
+  // and whose rail is current; `routeGeneration` is that fact written down, so
+  // the work that resumes after an `await` can ask whether it is still the
+  // reader's. See `routeGeneration` for the measurement.
+  const generation = routeGeneration + 1;
+  routeGeneration = generation;
   closePane();
   // The same argument, for the OTHER piece of state a screen leaves behind:
   // a subscription opened on Coverage's behalf and an affordance saying
@@ -6278,6 +6510,16 @@ async function route() {
   unread.append(stateChip('screen.unread', 'title.screenUnread'));
   section.append(unread);
   const mod = await loader();
+  // **STOPPED HERE IF THE READER HAS ALREADY MOVED ON**, at the one point where
+  // stopping costs nothing: the import has resolved, the render has not begun,
+  // and everything this route would do from here on — five sequential fetches,
+  // on the landing screen — is work for a `[data-p]` section that is now hidden
+  // and that the next visit redraws from scratch anyway. Nothing is left
+  // half-drawn: the section holds the `#screenunread` holding chip appended
+  // above, which is exactly what every screen shows before it has finished, and
+  // the only thing that ever makes it visible again is a `route()` whose own
+  // `section.replaceChildren()` clears it first.
+  if (generation !== routeGeneration) return;
   // Through the queue, never straight at the module: two routes to one screen
   // in one turn used to leave two whole renders stacked in its section. See
   // `sectionRender` above for the measurement.
@@ -6286,7 +6528,15 @@ async function route() {
   // screen to either rebuild or ask about. After render(), not before: a
   // record arriving mid-render would race a subscription against a first
   // paint that has not happened yet.
-  setupLiveScreen(name, mod, section);
+  // **THE RENDER MAY HAVE OUTLIVED THE ROUTE.** A fetch already in flight
+  // cannot be unsent, so a route superseded DURING `renderScreen` still
+  // finishes — into its own hidden section, harmlessly. What it must not do is
+  // reach the lines below, which write state belonging to whatever screen the
+  // reader is on NOW: `currentScreenRefresh` and `liveScreenUnsub` through
+  // `setupLiveScreen`, and the `sess.nocred` note into a section the winning
+  // route has already stopped showing.
+  if (generation !== routeGeneration) return;
+  setupLiveScreen(name, mod, section, generation);
 
   // **`KNOWN-the-bare-server-url-renders-the-whole-app-and-never-says-it`.**
   //
@@ -6544,10 +6794,11 @@ async function main() {
   // **Two things made that far worse than a missing session name.**
   //
   // The heartbeat never started, so the page issued no `/api` request ever
-  // again — and `IdleMonitor` reaps a server after fifteen minutes without
-  // one. The lockout starved the timer that then killed the server, and the
-  // next reload met a port with nothing behind it. One symptom, two layers,
-  // fifteen minutes apart.
+  // again — and `IdleMonitor` reaps a server that goes that long without one.
+  // The lockout starved the timer that then killed the server, and the next
+  // reload met a port with nothing behind it. One symptom, two layers, an idle
+  // window apart — fifteen minutes when this happened, eight hours since the
+  // 2026-08-23 ruling recorded in `ui/idle.ts`.
   //
   // And the `hashchange` listener below — which exists for precisely this
   // state, and whose own comment calls itself "the ONLY route back after the

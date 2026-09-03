@@ -42,7 +42,153 @@ export interface Finding {
    * populated — the same choice `cliOnPath: null` makes in doctor's JSON.
    */
   acknowledged?: true;
+
+  /**
+   * **What settles this finding**, declared by the check that emits it and
+   * never by a surface that renders it — the design of record recorded at
+   * `reports/V2-HANDOVER.md:437`. See `Remedy`.
+   *
+   * Required, not optional, and that is the whole point: a check added
+   * tomorrow cannot reach a screen without somebody deciding what a reader is
+   * supposed to DO about it. An optional field would have let the same silence
+   * back in through the same door.
+   */
+  remedy: Remedy;
 }
+
+/**
+ * The values a catalogue entry is rebuilt with — `src/ui/execute-catalogue.ts`
+ * resolves an id plus one of these into the argv, and refuses anything outside
+ * the entry's declared shape. `true` is a boolean flag SET; a flag left out is
+ * simply absent, never `false`.
+ */
+export type RemedyValues = Record<string, string | true>;
+
+/**
+ * **What settles a finding, declared by the check that emits it.**
+ *
+ * Recorded as designed-and-unbuilt at `reports/V2-HANDOVER.md:437` and
+ * `reports/EXECUTION-BOARD.md:99` (E32): *"a `Finding` in `src/doctor/` must
+ * declare its OWN remedies, never a UI-side table."* Until 2026-09-03 the
+ * decision lived twice in the browser — `screens/doctor.js`'s `repairFor` and
+ * `lib/viewmodel.js`'s `repairCommandFor`, four `if`s each — and every code
+ * either of them did not name drew a chip saying there was nothing to offer.
+ * On this repository's own corpus that was 74 findings out of 74. Owner,
+ * 2026-09-03: *"currently doctor contains many items i do not have any way to
+ * handle, solve it"*.
+ *
+ * **It is DATA and never a composed string.** The client sends a catalogue id
+ * and a value bag and never a command (spec §3.1, `src/ui/execute-catalogue.ts`),
+ * so a remedy that carried a line would be a second composer whose output the
+ * confirm could not be bound to. The one exception carries an explicit `argv`
+ * and says why: see `copy`.
+ *
+ * The four routes, and the question each answers:
+ *
+ *  - **`run`** — a catalogue command RESOLVES it. `command` is the entry's name
+ *    in `src/ui/public/lib/palette-defs.js`; `values` is what it is rebuilt
+ *    with. Declared only where the finding's own MESSAGE names that command:
+ *    the message is the specification and this field is its machine-readable
+ *    half, never a second opinion about it.
+ *  - **`copy`** — a line the catalogue declares NO entry for. There is nothing
+ *    for the server to rebuild, so it is copied and never run. `audit --files`
+ *    is the only one, and naming a nearby id instead would put a different
+ *    command behind a confirm that looked right.
+ *  - **`acknowledge`** — `mycontext ack <item> <code>`: a PERSON reads the
+ *    finding and rules on it (owner ruling 2026-08-27, argued in
+ *    `core/acknowledge.ts`). This is the route for every message whose own
+ *    words say the answer is a judgement or a hand edit — *"which of the two
+ *    moves is the owner's call"*, *"only a person can tell the two apart"*,
+ *    *"Re-scope it to the path that replaced it"*. It carries no id and no code
+ *    of its own: the finding already has both, and a copy here could disagree
+ *    with the finding it is attached to.
+ *  - **`none`** — no control, because there is nothing honest to offer: the
+ *    finding names no item, so nobody can rule on it either. `why` picks which
+ *    sentence says so — `person` for something a person fixes OUTSIDE
+ *    my_context (a PATH, a `.gitignore`, `config.json`), `nothing` for a
+ *    finding that explicitly asks for no action at all.
+ */
+export type Remedy =
+  | { route: 'run'; command: string; values: RemedyValues }
+  | { route: 'copy'; argv: string[] }
+  | { route: 'acknowledge' }
+  | { route: 'none'; why: 'person' | 'nothing' };
+
+/** `mycontext ack <id> <code>` — a person rules; nothing runs on their behalf. */
+const ACK: Remedy = { route: 'acknowledge' };
+
+/**
+ * A person settles it, outside my_context, and the finding names no item — so
+ * there is not even an acknowledgement to anchor. A PATH entry, a `.gitignore`
+ * line, a key in `config.json`, a doctor check that threw.
+ */
+const PERSON: Remedy = { route: 'none', why: 'person' };
+
+/** The finding asks for no action: it is a disclosure, not a defect. */
+const NOTHING: Remedy = { route: 'none', why: 'nothing' };
+
+/** `mycontext rebuild` — `index_stale`'s own last sentence. */
+const REBUILD: Remedy = { route: 'run', command: 'rebuild', values: {} };
+
+/** `mycontext decay` — named by `corpus_size_fallback_ceiling` as "the lever". */
+const DECAY: Remedy = { route: 'run', command: 'decay', values: {} };
+
+/**
+ * `mycontext repair --yes` — `checksum_basis_migration`'s own recommendation
+ * ("Run `mycontext repair` to re-stamp it in the current format"), plus the
+ * `--yes` every boundary command composed for this UI carries: it is SHOWN in
+ * the line a reader reads, never implied, and without it a command run as a
+ * child process with no terminal refuses for want of a confirmation it has no
+ * way to ask for.
+ */
+const REPAIR: Remedy = { route: 'run', command: 'repair', values: { yes: true } };
+
+/**
+ * `mycontext audit --files`, and it names NO catalogue id DELIBERATELY.
+ * `PALETTE` carries no `audit` entry, so there is nothing for the server to
+ * rebuild; the control draws Copy alone, and that is the correct outcome rather
+ * than a gap to work around.
+ */
+const AUDIT_FILES: Remedy = { route: 'copy', argv: ['mycontext', 'audit', '--files'] };
+
+/**
+ * `mycontext refresh <id> --yes` — `source_drift`'s own recommendation.
+ *
+ * **`yes: true`, and without it this command cannot run at all.** Owner-reported
+ * twice on 2026-08-28 from the Doctor screen: `refresh` REPLACES an item's whole
+ * body, so it gates on a human by reading stdin; a command run from this UI is a
+ * child with no terminal, so it computed the change, printed it, and refused —
+ * and the dry run behind the confirm refused first, so the confirm never
+ * rendered either. The button was dead in both directions. This does not imply
+ * the confirmation, it MOVES it: the flag is in the composed argv, so it appears
+ * in the line the reader reads and in the confirm's own copy of it.
+ */
+const refreshRemedy = (id: string): Remedy => (
+  { route: 'run', command: 'refresh', values: { id, yes: true } }
+);
+
+/**
+ * `mycontext edit <id> --extra state=todo --yes` — `blocked_needs_met`'s own
+ * recommendation, verbatim but for the `--yes` that every boundary command
+ * composed for this UI carries (see `refreshRemedy`).
+ *
+ * The message asks the reader to "confirm the ground is finished ground and
+ * then" run it. The confirm dialog IS that confirmation — it shows, field by
+ * field, what the edit changes before anything is written — so the control does
+ * not skip the step the sentence asks for; it is where that step happens.
+ */
+const stateTodoRemedy = (id: string): Remedy => (
+  { route: 'run', command: 'edit', values: { id, extra: 'state=todo', yes: true } }
+);
+
+/**
+ * The reusable remedies, by name, for the one caller outside this file that
+ * builds a `Finding` of its own: `cmdDoctor` synthesises a `cli_lookup_failed`
+ * when `checkCliOnPath` itself throws, and it must declare the same remedy the
+ * check declares rather than a second opinion about the same code.
+ */
+export const REMEDY = { ACK, PERSON, NOTHING, REBUILD, DECAY, REPAIR, AUDIT_FILES } as const;
+
 
 /**
  * Directories `listRepoFiles` never descends into, for its general "fast,
@@ -163,6 +309,7 @@ export function checksumMigrationFindings(errors: { file: string; message: strin
       return {
         level: 'warn',
         code: 'checksum_basis_migration',
+        remedy: REPAIR,
         item: m ? m[1] : undefined,
         message: e.message,
       };
@@ -182,6 +329,7 @@ export function checkIndexFreshness(root: string, dbPath: string): Finding[] {
   if (!existsSync(dbPath)) {
     return [{
       level: 'info', code: 'index_missing',
+      remedy: NOTHING,
       message: `no index at ${dbPath}. It is disposable and will be built on the next command.`,
     }];
   }
@@ -192,6 +340,7 @@ export function checkIndexFreshness(root: string, dbPath: string): Finding[] {
   } catch (err) {
     return [{
       level: 'error', code: 'index_unreadable',
+      remedy: PERSON,
       message: `cannot stat ${dbPath}: ${err instanceof Error ? err.message : String(err)}`,
     }];
   }
@@ -206,6 +355,7 @@ export function checkIndexFreshness(root: string, dbPath: string): Finding[] {
   if (newest > indexMtime) {
     return [{
       level: 'warn', code: 'index_stale',
+      remedy: REBUILD,
       message:
         `the index is older than the newest item file ` +
         `(${new Date(indexMtime).toISOString()} vs ${new Date(newest).toISOString()}). ` +
@@ -231,6 +381,7 @@ export function checkOrphanRelations(items: Item[]): Finding[] {
       if (known.has(relation.target)) continue;
       findings.push({
         level: 'warn', code: 'orphan_relation', item: item.id,
+        remedy: ACK,
         message:
           `relation "${relation.type} [[${relation.target}]]" points at an item that does not exist. ` +
           `Create it, or remove the line from ${item.filePath}.`,
@@ -285,6 +436,7 @@ function checkSnapshotDrift(repoRoot: string, items: Item[]): Finding[] {
     if (live === null) {
       findings.push({
         level: 'error', code: 'source_missing', item: item.id,
+        remedy: ACK,
         message:
           `source document "${sourceFile}" could not be read (missing, unreadable, or outside the ` +
           `repository). ${item.id} still holds the snapshot taken when it was captured, and that ` +
@@ -299,6 +451,7 @@ function checkSnapshotDrift(repoRoot: string, items: Item[]): Finding[] {
 
     findings.push({
       level: 'warn', code: 'source_drift', item: item.id,
+      remedy: refreshRemedy(item.id),
       message:
         `"${sourceFile}" has changed since ${item.id} snapshotted it ` +
         `(${item.sourceChecksum} → ${liveChecksum}). The item still holds the OLD text, and that ` +
@@ -339,6 +492,7 @@ export function checkSourceDrift(repoRoot: string, items: Item[]): Finding[] {
     if (chunks === null || chunks === undefined) {
       findings.push({
         level: 'error', code: 'source_missing', item: item.id,
+        remedy: ACK,
         message:
           `source document "${item.sourceFile}" could not be read (missing, unreadable, or outside the ` +
           `repository). The item still stands, but its provenance cannot be verified. Clear source_file, ` +
@@ -354,6 +508,7 @@ export function checkSourceDrift(repoRoot: string, items: Item[]): Finding[] {
       const suffix = anchors.length > MAX_LISTED_ANCHORS ? `, and ${anchors.length - MAX_LISTED_ANCHORS} more` : '';
       findings.push({
         level: 'warn', code: 'source_anchor_missing', item: item.id,
+        remedy: ACK,
         message:
           `"${item.sourceFile}" no longer has a section anchored "${item.sourceAnchor}" — it was probably ` +
           `renamed. Current anchors: ${listed}${suffix}.`,
@@ -364,6 +519,7 @@ export function checkSourceDrift(repoRoot: string, items: Item[]): Finding[] {
     if (chunk.checksum !== item.sourceChecksum) {
       findings.push({
         level: 'warn', code: 'source_drift', item: item.id,
+        remedy: refreshRemedy(item.id),
         message:
           `"${item.sourceFile}" § ${item.sourceAnchor} has changed since this item was captured ` +
           `(${item.sourceChecksum} → ${chunk.checksum}). Nothing was auto-resolved: read the section and ` +
@@ -443,6 +599,7 @@ export function checkDeadScopes(repoRoot: string, items: Item[], config: Config)
       if (files.some((f) => matchesAnyGlob(f, [glob]))) continue;
       findings.push({
         level: 'warn', code: 'dead_scope', item: item.id,
+        remedy: ACK,
         // The item is NOT named again inside the sentence. It used to be, and
         // it was the widest line `doctor` printed: every surface that renders
         // this finding already carries `item` beside the message — the text
@@ -532,6 +689,7 @@ export function checkPermissions(
     } catch (err) {
       findings.push({
         level: 'error', code: 'not_writable',
+        remedy: PERSON,
         message: `${target} is not readable and writable: ${err instanceof Error ? err.message : String(err)}`,
       });
     }
@@ -546,6 +704,7 @@ export function checkPermissions(
   if (!ignored) {
     findings.push({
       level: 'warn', code: 'index_not_ignored',
+      remedy: PERSON,
       message:
         `${ignore} does not ignore .index.db. The index is disposable and machine-specific; ` +
         `committing it produces binary merge conflicts. Add ".index.db" and ".index.db-*".`,
@@ -618,6 +777,7 @@ export function checkSessionIdMismatch(root: string): Finding[] {
     if (expected !== name) {
       findings.push({
         level: 'error', code: 'session_id_mismatch',
+        remedy: PERSON,
         message:
           `ingest session file "${name}" has internal id "${obj.id}", which disagrees with its ` +
           `filename. Nothing is lost on the next resume — reads are keyed off the filename-derived ` +
@@ -662,6 +822,7 @@ export function checkScopePolicy(items: Item[], config: Config): Finding[] {
     if (policy === 'inert') {
       findings.push({
         level: 'info', code: 'scope_policy_inert',
+        remedy: NOTHING,
         message:
           `${count} active "${type}" item(s) declare no scope, and categories.${type}.scopePolicy ` +
           `is "inert" — so they match no path: they are not JIT-injected on any file and ` +
@@ -674,6 +835,7 @@ export function checkScopePolicy(items: Item[], config: Config): Finding[] {
     } else if (policy === 'required') {
       findings.push({
         level: 'info', code: 'scope_policy_required',
+        remedy: NOTHING,
         message:
           `${count} active "${type}" item(s) declare no scope, although ` +
           `categories.${type}.scopePolicy is "required". Changing the policy does not rewrite ` +
@@ -746,6 +908,7 @@ export function checkContinuity(items: Item[], config: Config): Finding[] {
     const enabled = config.categories[item.type]?.enabled === true;
     findings.push({
       level: 'warn', code: 'continuity_inert', item: item.id,
+      remedy: ACK,
       message:
         `${item.id} carries continuity: true and cannot be delivered: its status is `
         + `"${item.status}" and its category "${item.type}" is `
@@ -765,6 +928,7 @@ export function checkContinuity(items: Item[], config: Config): Finding[] {
 
   findings.push({
     level: 'error', code: 'continuity_overflow',
+    remedy: PERSON,
     message:
       `the continuity tier costs ${cost} estimated tokens and budgets.continuity is `
       + `${budget}, so at least one continuity item reaches no session: `
@@ -852,6 +1016,7 @@ export function checkSummary(items: Item[]): Finding[] {
     if (item.summary === null) {
       findings.push({
         level: 'warn', code: 'summary_absent', item: item.id,
+        remedy: ACK,
         message:
           `has no summary, so nothing here can say whether what it claims is still what it ` +
           `means. It is the one state no other summary check reaches: \`summary_stale\` and ` +
@@ -872,6 +1037,7 @@ export function checkSummary(items: Item[]): Finding[] {
     if (state === 'unanchored') {
       findings.push({
         level: 'warn', code: 'summary_unanchored', item: item.id,
+        remedy: ACK,
         message:
           `carries a summary with no "summary_of", so there is no record of what it was written ` +
           `against and nothing can say whether it still describes this item. No command in this ` +
@@ -884,6 +1050,7 @@ export function checkSummary(items: Item[]): Finding[] {
     } else if (state === 'stale') {
       findings.push({
         level: 'warn', code: 'summary_stale', item: item.id,
+        remedy: ACK,
         message:
           `its summary is STALE: this item's body, steps, observations or extra fields ` +
           `have changed since the summary was written, so the summary describes text that is no ` +
@@ -906,6 +1073,7 @@ export function checkSummary(items: Item[]): Finding[] {
     if (item.summary.length > SUMMARY_MAX_CHARS) {
       findings.push({
         level: 'warn', code: 'summary_too_long', item: item.id,
+        remedy: ACK,
         message:
           `its summary is ${item.summary.length} characters and the limit is ` +
           `${SUMMARY_MAX_CHARS}. No write path accepts one this long, so it was written into ` +
@@ -926,6 +1094,7 @@ export function checkUnknownCategory(items: Item[], config: Config): Finding[] {
     if (Object.hasOwn(config.categories, item.type)) continue;
     findings.push({
       level: 'warn', code: 'unknown_category', item: item.id,
+      remedy: ACK,
       message:
         `declares type "${item.type}", which this project's config does not define — a ` +
         `category removed or renamed since this item was captured. Nothing has been dropped: ` +
@@ -1002,7 +1171,7 @@ export function checkUnknownCategory(items: Item[], config: Config): Finding[] {
 export function checkSkippedConfigKeys(config: Config): Finding[] {
   const notice = skippedKeyNotice(config);
   if (notice === '') return [];
-  return [{ level: 'warn', code: 'config_key_skipped', message: notice }];
+  return [{ level: 'warn', code: 'config_key_skipped', message: notice, remedy: PERSON }];
 }
 
 /**
@@ -1035,6 +1204,7 @@ export function checkAuditSize(root: string): Finding[] {
   const rotated = files.length - 1;
   return [{
     level: 'info', code: 'audit_log_size',
+    remedy: AUDIT_FILES,
     message:
       `the run-time audit log is ${(bytes / 1024 / 1024).toFixed(1)} MiB across ` +
       `${files.length} file(s) under ${auditDir(root)}. Nothing is wrong: the live log ` +
@@ -1065,6 +1235,7 @@ export function checkCorpusSize(items: Item[]): Finding[] {
   if (items.length < FALLBACK_CEILING_WARN_ITEMS) return [];
   return [{
     level: 'warn', code: 'corpus_size_fallback_ceiling',
+    remedy: DECAY,
     message:
       `the corpus holds ${items.length} items. my_context's never-miss injection guarantee is ` +
       `conditional on corpus size: when the index is unavailable, hooks serve the injection ` +
@@ -1129,6 +1300,7 @@ export function checkTagProjection(items: Item[], config: Config): Finding[] {
     if (m.kind === 'unprojected') {
       return {
         level: 'info' as const, code: 'tag_projection_unprojected', item: m.itemId,
+        remedy: ACK,
         message:
           `carries the projected tag ${tag} but no "${field}" field, so the value lives only in ` +
           `the index. Filtering is unaffected — the tag is there and \`mycontext focus ` +
@@ -1163,6 +1335,7 @@ export function checkTagProjection(items: Item[], config: Config): Finding[] {
 
     return {
       level: 'error' as const, code: 'tag_projection_drift', item: m.itemId,
+      remedy: ACK,
       message: `${said}${fix}`,
     };
   });
@@ -1241,6 +1414,7 @@ export function checkTaskNeeds(items: Item[], config: Config): Finding[] {
     if (reading.malformed.length > 0) {
       findings.push({
         level: 'warn', code: 'needs_malformed', item: item.id,
+        remedy: ACK,
         message:
           `declares "${NEEDS_FIELD}" entries that are not \`plan/seq\` references — ` +
           `${reading.malformed.map((m) => JSON.stringify(m)).join(', ')} — so nothing reads them ` +
@@ -1254,6 +1428,7 @@ export function checkTaskNeeds(items: Item[], config: Config): Finding[] {
     if (reading.unresolved.length > 0) {
       findings.push({
         level: 'info', code: 'needs_unresolved', item: item.id,
+        remedy: ACK,
         message:
           `waits on ${reading.unresolved.join(', ')}, which no task in this corpus answers to. ` +
           `That is NOT a defect on its own: plans are routinely written before the tasks in them ` +
@@ -1271,6 +1446,7 @@ export function checkTaskNeeds(items: Item[], config: Config): Finding[] {
       && reading.malformed.length === 0) {
       findings.push({
         level: 'warn', code: 'blocked_without_needs', item: item.id,
+        remedy: ACK,
         message:
           `is at state "${BLOCKED_STATE}" and names nothing in "${NEEDS_FIELD}", so it is a ` +
           `blocker with no target: nothing can say what would free it, and nothing will notice ` +
@@ -1286,6 +1462,7 @@ export function checkTaskNeeds(items: Item[], config: Config): Finding[] {
       && reading.malformed.length === 0 && reading.satisfied.length > 0) {
       findings.push({
         level: 'warn', code: 'blocked_needs_met', item: item.id,
+        remedy: stateTodoRemedy(item.id),
         message:
           `is at state "${BLOCKED_STATE}", and everything it waits on has landed: ` +
           `${reading.satisfied.join(', ')} ${reading.satisfied.length === 1 ? 'is' : 'are'} done. ` +
@@ -1372,6 +1549,7 @@ export function checkNestedCorpus(root: string, repoRoot: string): Finding[] {
   return found.sort().map((where) => ({
     level: 'info' as const,
     code: 'nested_corpus',
+    remedy: NOTHING,
     message:
       `a second corpus is nested at "${where}". \`findProjectRoot\` stops at the FIRST ` +
       '`.my_context` above the working directory, so any session started at or below that path ' +
@@ -1443,6 +1621,7 @@ export function checkForeignStore(repoRoot: string): Finding[] {
     findings.push({
       level: 'info' as const,
       code: 'foreign_store',
+      remedy: NOTHING,
       message:
         `another plugin writes durable learnings in "${where}/" inside this repository — the ` +
         'same KIND of knowledge as a `lesson`, in a second spelling, with no ids either store ' +
@@ -1681,6 +1860,7 @@ export function checkCliOnPath(
   } catch (err) {
     return [{
       level: 'info', code: 'cli_lookup_failed',
+      remedy: NOTHING,
       message:
         `could not determine whether \`${CLI_BIN_NAME}\` resolves on this machine's PATH: the ` +
         `platform lookup itself could not be run (${err instanceof Error ? err.message : String(err)}). ` +
@@ -1693,6 +1873,7 @@ export function checkCliOnPath(
     const packageRoot = nearestPackageRoot(ownCliEntry);
     return [{
       level: 'warn', code: 'cli_not_on_path',
+      remedy: PERSON,
       message:
         `\`${CLI_BIN_NAME}\` — the word every documented command in this project's READMEs and ` +
         `skill begins with, and what every UI palette entry composes — does not resolve on this ` +
@@ -1726,6 +1907,7 @@ export function checkCliOnPath(
   if (mismatch) {
     return [{
       level: 'error', code: 'cli_path_mismatch',
+      remedy: PERSON,
       message:
         `\`${CLI_BIN_NAME}\` on this machine's PATH — "${mismatch.candidate}" — resolves to ` +
         `"${mismatch.target}", NOT this workspace's own CLI ("${ownReal}"). This is worse than ` +
@@ -1740,6 +1922,7 @@ export function checkCliOnPath(
 
   return [{
     level: 'info', code: 'cli_path_unverifiable',
+    remedy: NOTHING,
     message:
       `\`${CLI_BIN_NAME}\` resolves on PATH to ${candidates.map((c) => `"${c}"`).join(', ')}, but ` +
       `doctor could not read through ${candidates.length === 1 ? 'it' : 'any of them'} to the CLI ` +
@@ -1889,6 +2072,7 @@ export function checkCitationForm(repoRoot: string, items: Item[]): Finding[] {
     const shown = found.slice(0, 3).join(', ');
     findings.push({
       level: 'info', code: 'citation_form', item: item.id,
+      remedy: ACK,
       message:
         `${found.length} citation(s) point by line number and carry no fragment — ${shown}` +
         `${found.length > 3 ? ', …' : ''}. A line number proves only that the line exists; it ` +
@@ -1924,6 +2108,7 @@ export function checkBodyTruncation(root: string, items: Item[]): Finding[] {
     if (loss !== null) {
       findings.push({
         level: 'error', code: 'body_truncation', item: item.id,
+        remedy: ACK,
         message:
           `${item.filePath} holds ${loss.lines} line(s) (${loss.bytes} bytes) that are not part ` +
           `of any field of an item, starting at ${JSON.stringify(loss.line)}. An item's body is ` +
@@ -1945,6 +2130,7 @@ export function checkBodyTruncation(root: string, items: Item[]): Finding[] {
     if (!UNFINISHED_TAIL.test(last)) continue;
     findings.push({
       level: 'info', code: 'body_ends_unfinished', item: item.id,
+      remedy: ACK,
       message:
         `this item's body ends ${JSON.stringify(last.slice(-60))} — mid-sentence, or on a colon ` +
         `whose list is not there. That is what a body cut short at a "## " heading looks like ` +
@@ -2199,6 +2385,7 @@ export function checkBodyAgreement(items: Item[], config: Config): Finding[] {
     const extra = reasons.length > 2 ? ` (+${reasons.length - 2} more)` : '';
     findings.push({
       level: 'info', code: 'body_disagrees_with_meta', item: item.id,
+      remedy: ACK,
       message:
         `${reasons.slice(0, 2).join(' ')}${extra} Read the body against the title and the ` +
         `fields; which of the two moves is the owner's call.`,
@@ -2220,6 +2407,7 @@ export function checkBodyAgreement(items: Item[], config: Config): Finding[] {
   if (findings.length > 0) {
     findings.push({
       level: 'info', code: 'body_review_limits',
+      remedy: NOTHING,
       message:
         `the ${findings.length} finding(s) above, out of ${items.length} item(s) read, are a ` +
         `FLOOR and not a count. This check reads two shapes only: a shouted clause OPENING a ` +
@@ -2270,6 +2458,32 @@ export function markAcknowledged(findings: Finding[], items: Item[]): void {
   }
 }
 
+/**
+ * **An acknowledgement is anchored to an ITEM, so a finding that names none
+ * cannot carry one.**
+ *
+ * `acknowledgeFinding` (core/mutate.ts) writes into the item's own
+ * `acknowledged` map and re-stamps its checksum — that anchoring is the whole
+ * of the 2026-08-27 ruling, and it is why `mycontext ack` takes an id as its
+ * first operand. A check that declared `route: 'acknowledge'` on a finding with
+ * no `item` would therefore have a surface compose `mycontext ack undefined
+ * <code>`, which the CLI refuses.
+ *
+ * TypeScript cannot see the pairing — `item` is optional on `Finding` and the
+ * route is a literal — so it is enforced here, once, over the assembled list.
+ * It DOWNGRADES rather than throws: the honest reading of "a person settles
+ * this and there is nothing to anchor a ruling to" is exactly `why: 'person'`,
+ * and a doctor that refused to run over a mis-declared remedy would take the
+ * whole report away to report one field.
+ */
+export function anchorAcknowledgeRemedies(findings: Finding[]): void {
+  for (const finding of findings) {
+    if (finding.remedy.route !== 'acknowledge') continue;
+    if (typeof finding.item === 'string' && finding.item !== '') continue;
+    finding.remedy = PERSON;
+  }
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
@@ -2304,6 +2518,7 @@ export function runChecks(opts: {
       // A check that throws must never suppress the others.
       findings.push({
         level: 'error', code: 'check_failed',
+        remedy: PERSON,
         message: `a doctor check threw: ${err instanceof Error ? err.message : String(err)}`,
       });
     }
@@ -2313,5 +2528,6 @@ export function runChecks(opts: {
   // so a reporting surface can DISTINGUISH them, which is the whole of the
   // owner's ruling and the whole of what this line does.
   markAcknowledged(findings, opts.items);
+  anchorAcknowledgeRemedies(findings);
   return findings;
 }

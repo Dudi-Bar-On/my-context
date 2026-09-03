@@ -33,7 +33,7 @@ import {
 import { itemContentHash } from '../../src/core/content-hash.ts';
 import { computeItemChecksum, parseItem, renderItem } from '../../src/core/item.ts';
 import { acknowledgeFinding, createItem, updateItem } from '../../src/core/mutate.ts';
-import { markAcknowledged, type Finding } from '../../src/doctor/checks.ts';
+import { markAcknowledged, REMEDY, type Finding } from '../../src/doctor/checks.ts';
 import { acknowledgedCount, summarize } from '../../src/cli/commands/doctor.ts';
 import type { Item } from '../../src/core/types.ts';
 import { sandbox, type Sandbox } from '../helpers/workspace.ts';
@@ -188,9 +188,9 @@ test('withdrawing removes it, and withdrawing what is not there writes nothing',
 // --- 3. it marks, it does not filter ---------------------------------------
 
 const FINDINGS = (): Finding[] => [
-  { level: 'info', code: 'body_disagrees_with_meta', item: 'RULE-x', message: 'a' },
-  { level: 'warn', code: 'summary_stale', item: 'RULE-x', message: 'b' },
-  { level: 'info', code: 'body_review_limits', message: 'the standing note, with no item' },
+  { level: 'info', code: 'body_disagrees_with_meta', item: 'RULE-x', message: 'a', remedy: REMEDY.ACK },
+  { level: 'warn', code: 'summary_stale', item: 'RULE-x', message: 'b', remedy: REMEDY.ACK },
+  { level: 'info', code: 'body_review_limits', message: 'the standing note, with no item', remedy: REMEDY.NOTHING },
 ];
 
 function markedAgainst(item: Item): Finding[] {
@@ -242,7 +242,7 @@ test('markAcknowledged names no check — any code on any item is markable', () 
     // codes out of the corpus lives at the CLI boundary, not here.
     acknowledgeFinding(box.ctx, { id, code: 'a_check_written_tomorrow' });
     const findings: Finding[] = [
-      { level: 'error', code: 'a_check_written_tomorrow', item: 'RULE-x', message: 'z' },
+      { level: 'error', code: 'a_check_written_tomorrow', item: 'RULE-x', message: 'z', remedy: REMEDY.ACK },
     ];
     markAcknowledged(findings, [{ ...itemOf(box, id), id: 'RULE-x' }]);
     assert.equal(findings[0].acknowledged, true);

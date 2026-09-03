@@ -139,55 +139,71 @@ function catalogued(id, values) {
 }
 
 /**
- * **The repair a finding code earns, as the thing the control takes.**
+ * **The repair a finding earns, READ off the finding's own declaration.**
  *
- * `lib/viewmodel.js`' `repairCommandFor` is where this decision was established
- * and argued — which codes earn a line, and why most do not: a message that
- * asks for a file edit is not a line anyone can paste. It answers a STRING, and
- * a string cannot be executed. The client sends an id and a value bag and never
- * a command (spec §3.1), so the same decision is carried here in that shape,
- * and `test/ui/doctor-screen.test.ts` holds the two equal code by code — a
- * screen that quietly grew its own table would still draw a `.cmd` and still
- * look right.
+ * This function used to BE the decision: four `if`s over four codes, `null` for
+ * everything else, with `lib/viewmodel.js`' `repairCommandFor` carrying the
+ * identical four in string form. Measured on this repository 2026-09-03: 74
+ * findings across five codes, and not one of them named by either table — so
+ * every row drew a chip saying there was nothing to offer. Owner, that morning:
+ * *"currently doctor contains many items i do not have any way to handle, solve
+ * it"*.
  *
- * **`audit --files` names NO id, deliberately.** `PALETTE` carries no `audit`
- * entry, so there is nothing for the server to rebuild; `commandActions` draws
- * Copy alone for a null id, and that is the correct outcome rather than a gap
- * to work around. Naming a nearby id instead would put a different command
- * behind a confirm that looked right.
+ * `reports/V2-HANDOVER.md:437` had the design and recorded it as unbuilt:
+ * *"`Finding` in `src/doctor/` must declare its own remedies, never a UI-side
+ * table"*. It is built. Every check populates `Finding.remedy`
+ * (`src/doctor/checks.ts` · `export type Remedy =` · ~64), and what is left here
+ * is the resolution of a route into the shape the control takes.
+ *
+ * The client sends an id and a value bag and never a command (spec §3.1), which
+ * is why the declaration is DATA rather than a line, and why the argv is
+ * composed by the CATALOGUE'S OWN `commandFor` — the same function
+ * `src/ui/execute-catalogue.ts` resolves with on the server.
+ *
+ * **`audit --files` names NO id, and that is deliberate.** `PALETTE` carries no
+ * `audit` entry, so there is nothing for the server to rebuild;
+ * `commandActions` draws Copy alone for a null id, and that is the correct
+ * outcome rather than a gap to work around. The check declares that as
+ * `route: 'copy'` and carries the argv itself; naming a nearby id instead would
+ * put a different command behind a confirm that looked right.
+ *
+ * **`source_drift` carries `yes: true`, and without it the command cannot run.**
+ * Owner-reported 2026-08-28, twice, from this screen:
+ *
+ *     about to refresh: item REF-… checksum af12674273859b85 -> 244cac0d…
+ *     my_context: refusing without confirmation — stdin is not interactive.
+ *     Rerun with --yes to confirm, or run this from an interactive terminal.
+ *
+ * `refresh` REPLACES an item's whole body, so it gates on a human by reading
+ * stdin, and a command run from this UI is a child process with no terminal —
+ * so it computed the change, printed it, and refused. The dry run that derives
+ * the confirm hit the same wall first, so the confirm never rendered either: the
+ * button was dead in both directions. The flag now lives in the check's own
+ * `refreshRemedy`, which is the only place it can be written once; it is SHOWN,
+ * never implied, because it is in the argv this composes and therefore in the
+ * `<code>` the reader reads.
+ *
+ * **`acknowledge` is the route that answers the owner's report.** A finding
+ * whose message says the resolution is a judgement — *"which of the two moves is
+ * the owner's call"*, *"only a person can tell the two apart"* — gets
+ * `mycontext ack <id> <code>`, the verb built for exactly that on 2026-08-27 and
+ * unreachable from this UI until now. The id and the code come from the FINDING,
+ * never from a copy inside the remedy: two spellings of one id is how a control
+ * comes to name a different item from the row it sits on.
+ *
+ * `null` means `route: 'none'` — the finding names no item, so there is not even
+ * a ruling to anchor. The row says which of the two reasons applies; see
+ * `noRepairChip`.
  */
-export function repairFor(code, item) {
-  if (code === 'index_stale') return catalogued('rebuild', {});
-  if (code === 'audit_log_size') {
-    return { id: null, values: {}, argv: ['mycontext', 'audit', '--files'] };
-  }
-  if (code === 'corpus_size_fallback_ceiling') return catalogued('decay', {});
-  if (code === 'source_drift' && typeof item === 'string' && item !== '') {
-    // **`yes: true`, and without it this command cannot run at all.**
-    //
-    // Owner-reported 2026-08-28, twice, from this screen:
-    //
-    //     about to refresh: item REF-… checksum af12674273859b85 -> 244cac0d…
-    //     my_context: refusing without confirmation — stdin is not interactive.
-    //     Rerun with --yes to confirm, or run this from an interactive terminal.
-    //
-    // `refresh` REPLACES an item's whole body, so it gates on a human. The gate
-    // reads stdin, and a command run from this UI is a child process with no
-    // terminal — so it computes the change, prints it, and refuses. The dry run
-    // that derives the confirm hits the same wall first, so the confirm never
-    // renders either: the button was dead in both directions.
-    //
-    // **This does not imply the confirmation, it MOVES it.** The catalogue's
-    // rule is that `--yes` on the approval boundary is SHOWN, never implied, and
-    // it is shown: it is in the argv this composes, so it appears in the `<code>`
-    // the reader reads and in the confirm's own copy of the resolved command. The
-    // human confirmation is the confirm dialog — that is the entire feature — and
-    // the flag is how that decision reaches a process that has no terminal to ask
-    // through. Omitting it does not preserve a gate; it removes the command.
-    //
-    // `work.js` already composes its boundary command this way (`revisionPlan`,
-    // `yes: true`). This line was the only one that did not.
-    return catalogued('refresh', { id: item, yes: true });
+export function repairFor(finding) {
+  const remedy = finding === null || finding === undefined ? null : finding.remedy;
+  if (remedy === null || remedy === undefined) return null;
+  if (remedy.route === 'copy') return { id: null, values: {}, argv: remedy.argv };
+  if (remedy.route === 'run') return catalogued(remedy.command, remedy.values);
+  if (remedy.route === 'acknowledge') {
+    const item = finding.item;
+    if (typeof item !== 'string' || item === '') return null;
+    return catalogued('ack', { id: item, code: finding.code });
   }
   return null;
 }
@@ -233,6 +249,27 @@ const CARDS = [
  * compose a button that opens the detail pane for no item at all. Both become
  * `null`, which is what the em dash below and `repairCommandFor` each read,
  * rather than two spellings of absence drifting apart in two loops.
+ *
+ * **`remedy` is carried through unchanged**, because it is the finding's own
+ * declaration and this row is what every reader of it downstream is handed.
+ * Absent on a body served by an older build, which `repairFor` reads as "no
+ * route" — the same chip that build already drew, rather than a thrown error
+ * over a field it never sent.
+ *
+ * **`acknowledged` is carried through too, and until 2026-09-03 it was not.**
+ * `mycontext ack` writes `Finding.acknowledged`, `runChecks` sets it through
+ * `markAcknowledged`, and `/api/doctor` serves it verbatim — `read-model.ts`
+ * says so in those words, and adds that *"the Doctor screen still draws an
+ * acknowledged finding, marked"* and that *"drawing it is the screen's business
+ * and is not done here"*. It was not done here either: this file and
+ * `lib/viewmodel.js` between them contained zero occurrences of the word. So
+ * the one command 73 of this corpus's 74 findings offer wrote a field nothing
+ * read, and running it changed nothing a reader could see.
+ *
+ * Normalised to a BOOLEAN here, once, for the same reason `item` is normalised
+ * to `null` here: a body from a build that predates the field omits it, and
+ * `undefined` and `false` are the same fact — nobody has ruled on this — with
+ * two spellings that would drift apart in the loop that draws them.
  */
 export function cardRows(groups, level) {
   const rows = [];
@@ -240,7 +277,13 @@ export function cardRows(groups, level) {
     for (const finding of findings) {
       if (finding.level !== level) continue;
       const named = typeof finding.item === 'string' && finding.item !== '';
-      rows.push({ code, item: named ? finding.item : null, message: finding.message });
+      rows.push({
+        code,
+        item: named ? finding.item : null,
+        message: finding.message,
+        remedy: finding.remedy ?? null,
+        acknowledged: finding.acknowledged === true,
+      });
     }
   }
   return rows;
@@ -248,7 +291,17 @@ export function cardRows(groups, level) {
 
 /**
  * The DISTINCT repair commands one card offers, in the order its rows first
- * asked for them.
+ * asked for them — the ones that answer for MANY rows, and never the ones that
+ * answer for one.
+ *
+ * **`acknowledge` is excluded, and that is the whole shape of the change.** A
+ * `mycontext rebuild` is about the CORPUS: every `index_stale` row in the card
+ * is settled by the same line, so one block under the table serves all of them
+ * and deduping by the composed line is right. A `mycontext ack <id> <code>` is
+ * about ONE item and ONE code; there is no sharing to do, and seventy-three of
+ * them stacked under a table would be seventy-three controls a reader cannot
+ * match to a row. Those are drawn ON the row instead, where the id in the
+ * `<code>` is the id in the cell beside it.
  *
  * Nothing here builds a command string. Which code earns one is
  * `repairCommandFor`'s decision and the composition is `lib/command.js`'s, the
@@ -264,7 +317,10 @@ export function cardCommands(rows) {
   const repairs = [];
   const seen = new Set();
   for (const row of rows) {
-    const repair = repairFor(row.code, row.item);
+    if (row.remedy !== null && row.remedy !== undefined && row.remedy.route === 'acknowledge') {
+      continue;
+    }
+    const repair = repairFor(row);
     if (repair === null) continue;
     // Deduped by the composed LINE rather than by the id: two `source_drift`
     // rows about different items are two different repairs under one id, and
@@ -478,14 +534,119 @@ function sharedNoteBlock(ctx, code, note) {
  * A fourth `<td>` would change the table's shape for a fact that is about the
  * finding rather than a column of its own.
  */
-function noRepairChip(ctx) {
+function noRepairChip(ctx, remedy) {
+  // **Two sentences now, not one, because there are two reasons and they are
+  // not the same fact.**
+  //
+  // `why: 'person'` is a PATH entry, a `.gitignore` line, a key in
+  // `config.json`, a doctor check that threw — settled by a person, outside
+  // my_context, and naming no item, so there is not even an acknowledgement to
+  // anchor. `why: 'nothing'` is a finding that asks for no action at all:
+  // `index_missing` says the index "is disposable and will be built on the next
+  // command"; `nested_corpus` says "nothing is wrong with it existing". Drawing
+  // "no automated repair" over that second group described the product instead
+  // of the finding — true, and about the wrong thing.
+  //
+  // Everything else about the chip is unchanged, including the reason it exists
+  // at all: a missing control reads as a bug and a named state reads as a state.
   const chip = el('span', 'chip unmeas');
   chip.dataset.g = '◌';
+  // The four keys are named as LITERALS, in two branches, rather than picked by
+  // a ternary inside the call. `test/ui/doctor-screen.test.ts` finds the keys a
+  // screen names by scanning these bytes for a translation call whose key is a
+  // string literal — a key chosen
+  // by an expression is invisible to it, and the two assertions that every
+  // named key is declared in both tables would pass by finding nothing.
+  //
+  // `tFlat` for the title because an attribute cannot hold an element — the
+  // same reason `stateChip` flattens, and the flattening is lossless here:
+  // neither key carries an isolated run.
+  if (remedy !== null && remedy !== undefined && remedy.why === 'nothing') {
+    chip.append(...ctx.t('doc.noaction'));
+    chip.title = ctx.tFlat('title.noAction');
+    return chip;
+  }
   chip.append(...ctx.t('doc.norepair'));
-  // `tFlat` because an attribute cannot hold an element — the same reason
-  // `stateChip` flattens, and the flattening is lossless here: the key carries
-  // no isolated run.
   chip.title = ctx.tFlat('title.noRepair');
+  return chip;
+}
+
+/**
+ * **`acknowledged` — a person read this finding and ruled on it, said on the
+ * row.**
+ *
+ * Owner, 2026-09-03: *"check the doctor using playright, it looks like the run
+ * do nothing"*. Driven in Chrome the same day, `ack` DID run: 200, `exitCode:
+ * 0`, the field written. What it had no way to show is that anything had
+ * happened, because this screen never read `Finding.acknowledged` — a repo-wide
+ * grep over `screens/doctor.js` and `lib/viewmodel.js` returned zero
+ * occurrences of the word. `read-model.ts` carries the field verbatim and says
+ * whose job the drawing is; this is that job.
+ *
+ * ── IT IS A MARK, AND IT IS NOT A FILTER ──────────────────────────────────
+ *
+ * Owner ruling 2026-08-27, argued at length in `src/core/acknowledge.ts`:
+ * *"An acknowledged finding is still computed, still reported, still counted,
+ * and still contributes to the exit code."* The CLI's own stdout says the same
+ * sentence to the person who runs `ack`: *"They are still reported and still
+ * counted in the numbers above."*
+ *
+ * So the row stays in its card, in its level, in `doc.tally`'s finding count,
+ * and keeps the control it had. Nothing here hides, drops, sorts or dims a
+ * finding out of the way. The one thing that changes is that the row now SAYS
+ * which of the two states it is in, which is the whole of what was missing.
+ *
+ * ── WHAT IT LOOKS LIKE, AND WHY THIS SHAPE ────────────────────────────────
+ *
+ * **The design of record does not answer this question.** `docs/design/web-ui-mockup.html`
+ * contains the string "acknowledg" zero times, and its `<section data-p="doctor">`
+ * draws no settled, ruled-on or marked row of any kind. Under
+ * `INSTR-the-mockup-is-the-ui-specification-build-it-exactly-and-ask` that is a
+ * QUESTION FOR THE OWNER and not a licence to invent, so what is built here is
+ * the most conservative thing available: **this screen's own existing
+ * vocabulary for a row-level state**, not a new one.
+ *
+ * That vocabulary is `noRepairChip` above — `span.chip` in the message cell,
+ * after the message, with the word on screen and the sentence in a `title` —
+ * which is itself `app.js`'s `stateChip` primitive, which is
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`. The mockup
+ * puts a row badge in exactly that position (`<span class="prop">PROPOSED</span>`,
+ * inside the message `<td>`, on three of its own rows).
+ *
+ * `chip index` and NOT `chip unmeas`, and not a meaning hue:
+ *
+ *   - not `unmeas`, because that is taken and means something else on this very
+ *     screen — "nothing here, and here is why". An acknowledged finding is the
+ *     opposite of unmeasured: it is the one row on the screen somebody has
+ *     definitely looked at.
+ *   - not `ok`/`warn`/`crit`/`gov`/`carry`. `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`
+ *     caps the meaning hues at five, and this screen's own header argues that
+ *     severity is said by the card heading and nowhere else. `.chip.ok` would
+ *     tell a reader the finding was resolved, and it is not — it is ruled on and
+ *     still counted, which is a different fact and the one the ack design is
+ *     most careful about.
+ *   - `index` is the stylesheet's declared SECOND NEUTRAL, ruled 2026-08-31,
+ *     whose documented meaning is exactly this: *"PRESENT, and quieter than the
+ *     things around it"*. It spends `--dim`/`--edge-3`/`--sink` — decoration and
+ *     structure, no meaning hue at all — and it carries no `::before` of its
+ *     own, so the glyph is the call site's to name.
+ *
+ * `●` is that glyph: the "present" mark this shell already uses, never `◌`,
+ * which is absence. Colour is not the only carrier and neither is shape — the
+ * WORD inside the chip is, which is the stylesheet's own rule for telling two
+ * neutrals apart, and it is why this is legible in print and in forced-colors.
+ *
+ * **No new class**, so nothing here depends on a stylesheet change: `.chip` and
+ * `.chip.index` are both already shipped rules.
+ */
+function acknowledgedChip(ctx) {
+  const chip = el('span', 'chip index');
+  chip.dataset.g = '●';
+  chip.append(...ctx.t('doc.acked'));
+  // `tFlat` because an attribute cannot hold an element — `noRepairChip`'s own
+  // reason, and lossless here for the same reason: the key carries no isolated
+  // run.
+  chip.title = ctx.tFlat('title.acked');
   return chip;
 }
 
@@ -557,9 +718,45 @@ export async function render(root, ctx) {
   // declares is actually supplied reads the ARGUMENT LITERAL — a spread it
   // cannot see is a substitution nothing checks, and `t()` throws on a missing
   // one at render time rather than leaving braces on screen.
+  //
+  // ── THE FOURTH FIGURE, AND WHY `settle` DID NOT MOVE ─────────────────────
+  //
+  // The question asked on 2026-09-03 was whether "yours to settle" should stop
+  // counting findings a person has already ruled on. **It should not**, and the
+  // reason is what that number IS. `lib/viewmodel.js`'s `repairTally` says it
+  // in its own words — *"`settle` is the count of rows that now carry
+  // `mycontext ack`"* — and `test/ui/doctor-screen.test.ts` pins the
+  // consequence as an equality: rows-drawing-a-chip + `repairs` + `settle` is
+  // exactly `findings`, "a row counted twice or not at all is the screen
+  // disagreeing with its own summary". An acknowledged row still carries its
+  // ack control, so subtracting it would leave a row counted in none of the
+  // three columns and reintroduce `plan:walk seq:61`'s defect — a summary that
+  // contradicts the rows underneath it — while fixing the one above it.
+  //
+  // The question a badge asks — how much is waiting for YOU — is a real
+  // question and it already has a correct answer on a different surface:
+  // `read-model.ts`'s `health` excludes acknowledged findings from
+  // `errors`/`warnings`/`infos`, argued there from the owner's own report, and
+  // that is what the rail's gold count reads. Two surfaces, two questions, both
+  // answered; folding one into the other would break a partition to duplicate
+  // an answer.
+  //
+  // What was genuinely missing is the number itself, so it is ADDED rather than
+  // subtracted. `read-model.ts` took the same decision for the same reason when
+  // it started excluding them from the badge: *"`acknowledged` is served beside
+  // them so nothing is dropped silently … a tally that made them vanish with no
+  // count would undo that."* Nothing vanishes here either — `findings` is still
+  // the whole run.
+  //
+  // Counted HERE, off the served body, rather than added to `repairTally`:
+  // `repairTally` is a partition by REMEDY ROUTE and this is not a route, and
+  // three tests in two files pin its return shape whole.
   const tally = repairTally(data.findings);
+  const acked = data.findings.filter((f) => f.acknowledged === true).length;
   const summary = el('p', 'small');
-  summary.append(...ctx.t('doc.tally', { findings: tally.findings, repairs: tally.repairs }));
+  summary.append(...ctx.t('doc.tally', {
+    findings: tally.findings, repairs: tally.repairs, settle: tally.settle, acked: acked,
+  }));
   // `.small` carries no margin and `.card` only a bottom one, so this would
   // otherwise sit flush against the first card's top edge and read as part of
   // it. Set through the CSSOM and never as an attribute — `style-src 'self'`
@@ -603,12 +800,48 @@ export async function render(root, ctx) {
       const message = messageCell(note === undefined
         ? row.message
         : row.message.slice(0, row.message.length - note.text.length));
-      // The row says what it HAS. `repairFor` is asked once per row here and
-      // again inside `cardCommands` below; that is two calls to a pure function
-      // over four `if`s, and it keeps the chip and the `.cmd` block reading the
-      // same decision rather than this loop passing a flag down to it.
-      if (repairFor(row.code, row.item) === null) {
-        message.append(document.createTextNode(' '), noRepairChip(ctx));
+      // **The row says what it HAS, and where that is a command only this row
+      // can run, it draws the command.**
+      //
+      // Three endings, and every finding reaches exactly one of them:
+      //
+      //   route `acknowledge`  the control is HERE, in the cell, because
+      //                        `mycontext ack <id> <code>` answers for this row
+      //                        and no other. This is the ending the owner's
+      //                        2026-09-03 report was missing — 73 of this
+      //                        corpus's 74 findings take it.
+      //   route `run`/`copy`   the control is under the table, shared by every
+      //                        row of its code (`cardCommands`), so the cell
+      //                        adds nothing.
+      //   route `none`         a chip naming which of the two reasons applies.
+      //
+      // `repairFor` is asked once per row here and again inside `cardCommands`;
+      // that is two calls to a pure reader of one declaration, and it keeps the
+      // cell and the `.cmd` block reading the same field rather than this loop
+      // passing a flag down to it.
+      // **The ruling comes FIRST, before whatever the row offers to do next.**
+      // "A person has read this and ruled on it" is a fact about the finding;
+      // the chip or the control after it is about what is left to do. Drawn on
+      // its own condition rather than folded into the three endings below,
+      // because it is orthogonal to all three: a finding can be acknowledged
+      // and still carry a shared repair, and one that names no item can never
+      // be acknowledged at all.
+      if (row.acknowledged) {
+        message.append(document.createTextNode(' '), acknowledgedChip(ctx));
+      }
+      const repair = repairFor(row);
+      if (repair === null) {
+        message.append(document.createTextNode(' '), noRepairChip(ctx, row.remedy));
+      } else if (row.remedy.route === 'acknowledge') {
+        // **Still drawn on an acknowledged row, and that is the ruling rather
+        // than an oversight.** The mark is a mark and not a filter, so nothing
+        // about the row is taken away by it — and `mycontext ack --clear` is
+        // the command that would undo a ruling, which is a different control
+        // with a different confirm and a decision the owner has not taken.
+        // Swapping the row's command out from under the reader on the strength
+        // of a guess is the wider change; leaving the row as it was is the
+        // conservative one.
+        message.append(commandRow(ctx, repair));
       }
 
       tr.append(who, message);

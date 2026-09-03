@@ -58,6 +58,42 @@ const yes = { name: 'yes', boolean: true };
 export const PALETTE = [
   // --- writes: composed, copied, never executed --------------------------
   {
+    // **`mycontext ack <id> <code>` — a person rules on a doctor finding.**
+    //
+    // Owner ruling 2026-08-27, argued in `src/core/acknowledge.ts`; the verb
+    // shipped the same day and reached NO surface in this UI until 2026-09-03.
+    // Owner, that morning: *"currently doctor contains many items i do not have
+    // any way to handle, solve it"*. Doctor drew a repair control for four
+    // finding codes and a chip saying "no automated repair" for every other —
+    // 74 rows out of 74 on this repository's own corpus. `ack` is the designed
+    // route for a finding whose resolution is a JUDGEMENT rather than a
+    // command, and it is now what those rows offer.
+    //
+    // `test/ui/palette-lib.test.ts` carried the reason it was absent, and the
+    // reason names exactly what changed: *"a control that composed a usable
+    // line would have to be driven by the doctor read model rather than by a
+    // flag declaration"*. `Finding.remedy` (src/doctor/checks.ts) IS that read
+    // model — the check that emits a finding declares whether a person settles
+    // it — so the row is deleted and this entry stands in its place.
+    //
+    // **`boundary: false`, derived and not chosen.** `mycontext ack` accepts no
+    // `--yes` (`COMMAND_FLAGS.ack`), and `approvalBoundary()` reads the
+    // boundary off exactly that, so the marking is what the real parser says.
+    // It is the honest answer as well as the derived one: an acknowledgement
+    // changes nothing about what GOVERNS this project — it records that a
+    // person read a finding, against the item as it stands — which is `ack.ts`'
+    // own argument for why this is a verb and not a flag on `edit`.
+    //
+    // `--list` is deliberately not offered; see `FLAGS_NOT_OFFERED` in
+    // `test/ui/palette-lib.test.ts`.
+    name: 'ack', kind: 'write', base: ['mycontext', 'ack'], boundary: false,
+    args: [
+      { name: 'id', source: 'items', required: true },
+      { name: 'code', input: 'text', required: true },
+    ],
+    flags: [{ name: 'clear', boolean: true }],
+  },
+  {
     name: 'add', kind: 'write', base: ['mycontext', 'add'], overlap: true, boundary: true,
     args: [
       { name: 'category', source: 'categories', required: true },

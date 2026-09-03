@@ -285,6 +285,40 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
   const root = el('div', 'cmdactions');
   const composed = composeCommand(argv);
 
+  /**
+   * **THE CONTROL'S OWN IDENTITY, so the outcome of a run can be put back ON
+   * THE ROW IT WAS RUN FROM after the redraw that run causes.**
+   *
+   * Measured in Chrome on 2026-09-03, on a Doctor pane 4,000px tall carrying
+   * 820 of these controls: press Execute, confirm, "Run it", and the run works
+   * end to end — `POST /api/execute` answers 200 with `exitCode: 0` — while the
+   * one piece of feedback the product gives lands at `top: -3974px`,
+   * `inView: false`, and is still there fourteen seconds later. `app.js`'s
+   * `attachExecuteOutcome` was doing `section.prepend(...)`, which is the top of
+   * a screen the reader is nowhere near, and the page's scroller is an INNER
+   * container so `window.scrollY` never moved off 0 to say so.
+   *
+   * The CONFIRM had this right all along: it renders inline, in the row, where
+   * the button that opened it is. The outcome is the answer to the question
+   * that confirm asked and belongs in the same place. It could not GET back
+   * there because the redraw discards the node the outcome sits in and builds a
+   * fresh, anonymous one, so the shell had nothing to aim at.
+   *
+   * This is that aim. The composed line is the key because it is already this
+   * product's identity for a control — `screens/doctor.js`'s `cardCommands`
+   * dedupes its shared repair blocks by exactly this string, for exactly the
+   * reason that two rows about different items are two different commands. It
+   * is stable across a redraw (the same row composes the same line), it needs
+   * no second spelling of an id and a value bag, and it is a `data-` attribute
+   * rather than a class so `e2e/screen-parity.spec.ts`, which compares element
+   * KINDS as `tag.class1.class2`, sees no new kind.
+   *
+   * Written for EVERY control including the Copy-only one (`id === null`),
+   * because the branch below returns before Execute exists and a key that is
+   * present on some controls and absent on others is a key nothing can trust.
+   */
+  root.dataset.cmdkey = composed;
+
   // **CLASSLESS, and that is the design of record's own shape.** Nothing in
   // `styles.css` selects `.copy` or `.exec` — grepped, zero occurrences — so the
   // appearance comes entirely from the ANCESTOR rule `.cmdactions button`, which
@@ -376,6 +410,12 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
   // The exit code is the answer to the question the click asked. A polite live
   // region is how a reader who is not watching the button hears it.
   result.setAttribute('role', 'status');
+  // **And the same key on the region itself**, because this node is the one the
+  // shell CARRIES across the redraw — `ctx.executeSettled(result)` hands it over
+  // and the control it came from is gone by the time it is handed back. The key
+  // travels with the node, so `attachExecuteOutcome` can find the row again
+  // without the shell holding a reference to a detached element's old parent.
+  result.dataset.cmdkey = composed;
 
   root.append(exec, confirm, result);
 

@@ -35,6 +35,12 @@
 // code — a row saying something ran and refusing to say what, which is the
 // one thing an audit surface may not do.
 import { composeCommand } from './command.js';
+// The catalogue, for the ONE reason a view model may reach for it: a
+// `Finding.remedy` names a catalogue entry and a value bag, and resolving
+// that into an argv is the catalogue's own `commandFor`. Composing the line
+// here by hand instead would be a second composer whose output the server's
+// rebuild could silently disagree with.
+import { PALETTE, commandFor } from './palette-defs.js';
 
 export function describeRecord(record) {
   const injection = record.kind === 'injection';
@@ -1359,125 +1365,150 @@ export function groupFindings(findings) {
 }
 
 /**
- * The repair command for a finding code — **composed, never run** (spec §4),
- * and composed only where the finding's OWN MESSAGE names a command.
+ * **The repair command for a finding — READ off the finding's own declaration,
+ * never decided here.**
  *
- * This mapping was established by reading every message in
- * `src/doctor/checks.ts` and then reading the usage banner of every command
- * those messages name. The plan's own table
- * (`docs/superpowers/plans/2026-08-16-web-ui-1-server-and-reads.md` · `others → null); establish the exact command per code by reading` · ~6449)
- * says in the same breath that it is a sketch and that the messages win. They
- * disagree with it on four rows, and the messages won every one:
+ * Until 2026-09-03 this function WAS the decision: four `if`s over four codes,
+ * with `null` for everything else. `screens/doctor.js`' `repairFor` carried the
+ * same four in the shape the control takes, and `test/ui/doctor-screen.test.ts`
+ * held the two equal code by code — which kept two surfaces honest about a
+ * table that should never have been in a browser at all.
  *
- *  - **`index_missing` → nothing.** The plan sends it to `mycontext rebuild`.
- *    Its message is *"It is disposable and will be built on the next
- *    command."* — a finding that explicitly asks for no action. A Copy button
- *    under it would invent work the checker went out of its way not to ask for.
- *  - **`orphan_relation` → nothing.** The plan sends it to `mycontext repair
- *    <id>`. The message says *"Create it, or remove the line from
- *    &lt;filePath&gt;"* — a file edit, and neither half is a command.
- *  - **`source_missing` → nothing.** The plan sends it to `mycontext repair
- *    <id>`; the message says *"retire &lt;id&gt; with `mycontext supersede`"*.
- *    But `supersede` REQUIRES a replacement
- *    (`cli/commands/supersede.ts` · `usage: mycontext supersede <retired id> --by <replacement id>` · ~29),
- *    and this screen has no replacement id to put there. A command line that
- *    cannot be pasted without editing is not a composed command; it is a
- *    placeholder wearing one's clothes.
- *  - **`mycontext repair` takes no id at all** — `usage: mycontext repair
- *    [--yes]` (`cli/commands/repair.ts` · `const USAGE = 'usage: mycontext repair [--yes]';` · ~10).
- *    Every row the plan routed through `mycontext repair <id>` would have
- *    composed a command the CLI refuses.
+ * `reports/V2-HANDOVER.md:437` recorded the design: *"`Finding` in
+ * `src/doctor/` must declare its own remedies, never a UI-side table"*. It is
+ * built. `Finding.remedy` (src/doctor/checks.ts) is a `Remedy` — a route, a
+ * catalogue id and a value bag — and this function does nothing but resolve
+ * that into the line a reader reads:
  *
- * What remains is the four codes whose message names a runnable command, and
- * each composed string is that message's own recommendation:
+ *  - `run` -> the catalogue entry named by `command`, composed with `values`
+ *    through the CATALOGUE'S OWN `commandFor`, which is the same function
+ *    `src/ui/execute-catalogue.ts` rebuilds the argv with on the server. The
+ *    line shown and the argv run are one computation, not two that agree today.
+ *  - `copy` -> the explicit argv, for the one remedy the catalogue declares no
+ *    entry for (`audit --files`). `commandActions` draws Copy alone for a null
+ *    id, and that is the correct outcome rather than a gap to work around.
+ *  - `acknowledge` -> `mycontext ack <item> <code>`, composed from the FINDING'S
+ *    OWN two fields. The remedy carries neither, deliberately: a copy of an id
+ *    inside the remedy could disagree with the id on the finding it is attached
+ *    to, and the CLI refuses a code doctor is not reporting on that item.
+ *  - `none` -> `null`, and the row draws a chip saying which of the two reasons
+ *    applies. `null` is now the RARE answer rather than the ordinary one: it
+ *    means the finding names no item, so there is not even a ruling to record.
  *
- *  - `index_stale` → *"Run `mycontext rebuild`."*
- *  - `source_drift` → *"run `mycontext refresh <id>`"* — the same command the
- *    mockup composes under its own error card.
- *  - `audit_log_size` → *"See `mycontext audit --files`."*
- *  - `corpus_size_fallback_ceiling` → *"`mycontext decay` is the lever for
- *    retiring unused items"*.
+ * The four codes this used to name are unchanged in what they compose —
+ * `index_stale` -> `mycontext rebuild`, `audit_log_size` -> `mycontext audit
+ * --files`, `corpus_size_fallback_ceiling` -> `mycontext decay`, `source_drift`
+ * -> `mycontext refresh <id> --yes` — because the checks declare exactly what
+ * this file used to assert about them. What changed is WHERE that is written,
+ * and that every other code now has a route too.
  *
- * `null` for everything else, and `null` is the ordinary answer rather than
- * the exception: most findings are repaired by editing a file, and a screen
- * that offered a command for each of them would be composing fiction.
- *
- * The one argument any of these takes is quoted through `composeCommand`, the
- * single place quoting lives in this UI — so a hypothetical id carrying a
- * space or a quote is escaped here rather than in a fourth spelling.
+ * Quoting still goes through `composeCommand`, the single place quoting lives
+ * in this UI, so an id carrying a space is escaped once.
  */
-export function repairCommandFor(code, item) {
-  if (code === 'index_stale') return composeCommand(['mycontext', 'rebuild']);
-  if (code === 'audit_log_size') return composeCommand(['mycontext', 'audit', '--files']);
-  if (code === 'corpus_size_fallback_ceiling') return composeCommand(['mycontext', 'decay']);
-  if (code === 'source_drift' && typeof item === 'string' && item !== '') {
-    // **`--yes`, which the doctor message's own recommendation does not carry.**
-    //
-    // Every other line here is that message's recommendation verbatim, and this
-    // one is deliberately one flag longer. `refresh` replaces an item's whole
-    // body, so it gates on a human by reading stdin — fine for the reader the
-    // message was written for, who is standing at a terminal, and impossible for
-    // this UI, which runs it as a child with no terminal. Owner-reported
-    // 2026-08-28: it computed the change, printed it, and refused, and the dry
-    // run behind the confirm refused first, so no confirm rendered either.
-    //
-    // The flag goes in the DISPLAYED line and not only in the executed argv,
-    // because the invariant this whole feature rests on is that the string a
-    // person reads is the argv that runs. A card showing `mycontext refresh X`
-    // beside a button running `mycontext refresh X --yes` would be the exact
-    // defect the confirm exists to prevent, wearing a tidier shape.
-    //
-    // The cost, stated: a reader who COPIES this line into their own terminal
-    // gets no prompt. That is the catalogue's standing rule working as intended
-    // — on the approval boundary `--yes` is SHOWN, never implied — and shown is
-    // what it now is, in the card, in the clipboard and in the confirm alike.
-    return composeCommand(['mycontext', 'refresh', item, '--yes']);
+export function repairCommandFor(finding) {
+  const repair = repairArgvFor(finding);
+  return repair === null ? null : composeCommand(repair.argv);
+}
+
+/**
+ * The catalogue by name. A Map rather than a repeated `PALETTE.find`, because a
+ * corpus can carry seventy-odd findings and a linear scan per row is a scan per
+ * row of a table that gets long.
+ */
+const CATALOGUE = new Map(PALETTE.map((def) => [def.name, def]));
+
+/**
+ * One remedy resolved into what a control takes: the catalogue id the SERVER
+ * will rebuild from, the values it will rebuild with, and the argv composed
+ * from the entry.
+ *
+ * Exported because the tally below reads the route as well as the line — but
+ * `screens/doctor.js` does NOT import it. It keeps its own reader, for the
+ * reason `test/ui/doctor-screen.test.ts` exists: the two surfaces are held
+ * equal by a test rather than by a shared function, so a screen that quietly
+ * grew a table of its own fails rather than passing because it imported the
+ * answer.
+ */
+export function repairArgvFor(finding) {
+  const remedy = finding === null || finding === undefined ? null : finding.remedy;
+  if (remedy === null || remedy === undefined) return null;
+  if (remedy.route === 'copy') return { id: null, values: {}, argv: remedy.argv };
+  if (remedy.route === 'run') {
+    return {
+      id: remedy.command,
+      values: remedy.values,
+      argv: composed(remedy.command, remedy.values),
+    };
+  }
+  if (remedy.route === 'acknowledge') {
+    // The finding's own id and code, never a copy carried in the remedy: two
+    // spellings of one id is how a control comes to name a different item from
+    // the row it sits on.
+    if (typeof finding.item !== 'string' || finding.item === '') return null;
+    const values = { id: finding.item, code: finding.code };
+    return { id: 'ack', values, argv: composed('ack', values) };
   }
   return null;
 }
 
+/** The argv a catalogue entry composes for a value bag, or a loud failure. */
+function composed(name, values) {
+  const def = CATALOGUE.get(name);
+  if (def === undefined) {
+    // Not a refusal a reader can act on — a check named a catalogue entry that
+    // does not exist — so it fails loudly rather than degrading into a
+    // Copy-only control that looks deliberate.
+    throw new Error(`doctor: the command catalogue declares no "${name}"`);
+  }
+  return commandFor(def, values);
+}
+
 /**
- * **How many findings there are, and how many of them a command can repair.**
+ * **How many findings there are, how many a command repairs, and how many are
+ * yours to settle.**
  *
- * `null` above is the ORDINARY answer — most findings are repaired by editing a
- * file, and the docstring says so — but until 2026-08-29 nothing on the screen
- * counted them, so a corpus in which every finding was of that ordinary kind
- * drew no repair control anywhere and said nothing about why. Owner, 2026-08-28:
- * *"doctor lost it's execute an fix controls ? why yo broke it ?"* Nothing had
- * broken. Nine `source_file` links had been cleared, which retired every
- * `source_drift`, and `blocked_without_needs` had landed — a finding whose
- * remedy is a PERSON naming a blocker, correctly not automatable. The corpus got
- * healthier and the toolbar went quiet, and quiet is what broken looks like.
+ * Owner, 2026-08-28: *"doctor lost it's execute an fix controls ? why yo broke
+ * it ?"* Nothing had. Nine `source_file` links had been cleared, which retired
+ * every `source_drift`, and `blocked_without_needs` had landed — a finding whose
+ * remedy is a PERSON naming a blocker. The corpus got healthier and the toolbar
+ * went quiet, and quiet is what broken looks like. The tally was the answer: "2
+ * findings, 0 with an automated repair" is a sentence a reader can act on.
  *
- * A number is what makes the two states tell themselves apart. "2 findings, 0
- * with an automated repair" is a sentence a reader can act on; an empty toolbar
- * is a sentence about the reader's own build.
+ * **The third number is new on 2026-09-03, and it is the one the owner was
+ * actually missing.** *"currently doctor contains many items i do not have any
+ * way to handle, solve it"* — measured on this repository the same morning: 74
+ * findings, 0 with an automated repair, and no control on any row. Two numbers
+ * said the screen was honest; neither said what to DO. `settle` counts the
+ * findings a person rules on with `mycontext ack`, and those rows now draw that
+ * command. On the same corpus it reads 73.
  *
  * **It counts FINDINGS, not composed lines, and the difference is deliberate.**
  * `screens/doctor.js`' `cardCommands` dedupes by the composed line, because two
  * rows sharing a code share one `.cmd` block — that is a count of CONTROLS. This
  * is a count of the rows those controls answer for, which is the number the
- * sentence beside it ("N findings") is a fraction of. Counting deduped lines
- * here would produce "4 findings, 1 with an automated repair" over four
- * `index_stale` rows that every one of them repairs.
+ * sentence beside it ("N findings") is a fraction of.
  *
- * It reads `repairCommandFor` rather than a second table, so the tally and the
- * per-row disclosure can never disagree about a code:
- * `test/ui/doctor-screen.test.ts` already holds that function and the screen's
- * own `repairFor` equal code by code.
+ * It reads the finding's own `remedy` rather than a second table, so the tally
+ * and the per-row control can never disagree about a code.
  *
- * The keys are the SLOT NAMES `doc.tally` substitutes, so no third spelling of
- * "findings" exists to drift. The call site still writes the two out as a literal
+ * The keys are the SLOT NAMES `doc.tally` substitutes, so no fourth spelling of
+ * "findings" exists to drift. The call site still writes them out as literals
  * rather than spreading this object — see its own comment: the scan that proves
  * every declared slot is supplied reads the argument literal, and a spread is
  * invisible to it.
  */
 export function repairTally(findings) {
   let repairs = 0;
+  let settle = 0;
   for (const finding of findings) {
-    if (repairCommandFor(finding.code, finding.item ?? null) !== null) repairs += 1;
+    const remedy = finding.remedy ?? null;
+    const route = remedy === null ? 'none' : remedy.route;
+    if (route === 'run' || route === 'copy') repairs += 1;
+    else if (route === 'acknowledge' && typeof finding.item === 'string' && finding.item !== '') {
+      settle += 1;
+    }
   }
-  return { findings: findings.length, repairs };
+  return { findings: findings.length, repairs, settle };
 }
 
 // --- The write preview, lifted out of one screen ----------------------------

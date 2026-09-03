@@ -539,7 +539,7 @@ export const strings = {
   // Doctor
   'doc.h': 'Doctor',
   'doc.v': '"exit 1" loses the findings list',
-  'doc.sub': 'Grouped by code, in three levels. Each row links its item; repair commands are composed, never run.',
+  'doc.sub': 'Grouped by code, in three levels. Each row links its item. A repair command sits under the table it answers for; a finding only a person can settle carries mycontext ack on its own row, which records the ruling and changes nothing else.',
   'doc.d1': 'its source document changed since the snapshot',
   'doc.d2': 'scope {mv:scope} matches no file',
   'doc.d3': '{b:Zero files match any watched glob}, so the capture nudge never fires. The shipped defaults name three paths from one workflow — this repo has none.',
@@ -571,8 +571,46 @@ export const strings = {
   // not inflect. It is drawn at every count including zero — a measured zero is
   // drawn and named.
   'doc.norepair': 'no automated repair',
-  'title.noRepair': 'Repaired by a person, not a command: a file edit, or a call only someone with the context can make. Nothing to compose, so nothing is offered — the state, not a missing control.',
-  'doc.tally': 'findings: {findings} · with an automated repair: {repairs}',
+  // Reworded 2026-09-03. It used to end "Nothing to compose, so nothing is
+  // offered", which stopped being true the day a finding a person settles began
+  // drawing `mycontext ack`. What it says now is the narrower fact still true of
+  // the rows that draw it: the finding names no item, so there is not even a
+  // ruling to record against one.
+  'title.noRepair': 'Settled by a person, outside my_context — a file edit, a config key, a machine PATH. This finding names no item either, so there is nothing to acknowledge: what settles it is not a command this product can compose.',
+  // The OTHER reason, and it is a different fact rather than a softer one: the
+  // finding asks for no action at all. `index_missing` says the index is
+  // disposable and will be built on the next command; `nested_corpus` says
+  // nothing is wrong with it existing. "No automated repair" over those two
+  // described the product instead of the finding — true, and about the wrong
+  // thing.
+  'doc.noaction': 'nothing to do',
+  'title.noAction': 'A disclosure, not a defect. This finding reports something worth knowing and asks for no change — its own words say so. Nothing is offered because nothing needs doing.',
+  // **THE ROW SAYS THAT SOMEBODY RULED ON IT.** Added 2026-09-03, after the
+  // owner reported that running a repair from Doctor "do nothing": `ack` had
+  // been writing `Finding.acknowledged` since 2026-08-27, `/api/doctor` had been
+  // serving it, and no screen had ever drawn it — so the one command 73 of 74
+  // findings offer changed nothing a reader could see.
+  //
+  // The word is what tells this chip apart from the other neutral one beside
+  // it, so it is the carrier and not the decoration — see `doctor.js`'s
+  // `acknowledgedChip`. The title carries the sentence, and the sentence is the
+  // ack design's own load-bearing claim, in the CLI's own words: still
+  // reported, still counted, still in the exit code. A reader who believed this
+  // was a silencer would be reading the screen wrong in the one direction that
+  // matters.
+  'doc.acked': 'acknowledged',
+  'title.acked': 'A person read this finding and ruled on it. It is still reported, still counted in the numbers above, and still contributes to the exit code — an acknowledgement is a mark, never a silencer. Run mycontext ack <id> <code> --clear to withdraw the ruling and open the finding again.',
+  // A THIRD number, added the day `mycontext ack` reached this screen. Two
+  // numbers said the screen was honest; neither said what to DO, and on this
+  // repository the answer was 74 findings with no control on any row.
+  //
+  // And a FOURTH, 2026-09-03. `settle` counts the rows that CARRY the ack
+  // control and is deliberately not reduced by the rulings already made — see
+  // `doctor.js` for the argument, and `read-model.ts` for the badge that does
+  // answer the "waiting for you" question. `acked` is the number that was
+  // missing: without it, acking a finding moved no figure on this screen at
+  // all, which is the same silence one level up from the row.
+  'doc.tally': 'findings: {findings} · with an automated repair: {repairs} · yours to settle: {settle} · already ruled on: {acked}',
   // **THE REPEAT, SAID ONCE.** Measured 2026-09-01 against this repo's own
   // corpus: 42,353 characters of `Finding.message` on the Doctor screen, of
   // which 34,440 are the same paragraph re-printed — 34 `citation_form` rows

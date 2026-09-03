@@ -212,6 +212,9 @@ test('no ordinary composition is blocked', async () => {
     revision: 'REV-8c21', topic: 'scope', text: 'integer cents', type: 'constraint',
     tag: 'billing', path: 'src/billing/prices.ts', relation: 'refines', limit: '50',
     directive: 'do', yes: true, force: true,
+    // `ack <id> <code>` — a doctor finding code, which is the one argument in
+    // this catalogue whose plausible value is neither an item id nor prose.
+    code: 'body_disagrees_with_meta', clear: true,
   };
   const blocked = PALETTE.filter((def) => copyBlocked(commandFor(def, values))).map((d) => d.name);
   assert.deepEqual(blocked, []);

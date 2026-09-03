@@ -186,17 +186,28 @@ test('a read command runs from the UI and the screen shows what it did', async (
   ).toHaveText('mycontext status');
 
   await page.locator(`${PALETTE} .confirm`).getByRole('button', { name: 'Run it', exact: true }).click();
-  // **`> .execresult`, a DIRECT child of the section, with room to reach it.**
+  // **The `.execresult` CARRYING AN EXIT CODE, wherever the shell put it.**
   // Since `plan:walk seq:120` an Execute REDRAWS the screen it was run on, and
   // every screen's `render()` opens with `root.replaceChildren()` — so the
   // result region `report()` has just filled is detached by that redraw and
-  // re-attached at the top of the rebuilt screen by the shell (`app.js`'s
-  // `attachExecuteOutcome`). Scoped to a DIRECT child so it names that node
-  // and not the empty one the rebuilt control brings with it, and given a real
+  // re-attached by the shell (`app.js`'s `attachExecuteOutcome`). Every control
+  // on the screen brings its own empty, hidden `.execresult`; exactly one of
+  // them carries an exit code, which is what the text filter names. A real
   // budget because it is now a fetch away rather than already on screen:
   // measured timing out at the 5s default under a loaded parallel run.
+  //
+  // **It used to be `> .execresult`, a DIRECT child of the section, and that
+  // selector was written against a DEFECT.** `attachExecuteOutcome` prepended
+  // the outcome to the top of the screen, and on a pane taller than the window
+  // that is a node the reader never sees — measured in Chrome on 2026-09-03 at
+  // `top: -146,513px`, `inView: false`, while this assertion stayed green.
+  // Since the fix the outcome goes back to the control it was run from and the
+  // top of the section is the fallback for a run that removed its own row, so
+  // pinning one placement here would assert whichever half of that happens to
+  // apply. `e2e/doctor-outcome.spec.ts` is where the placement and the VIEWPORT
+  // are asserted; this file's business is that the run happened and said so.
   await expect(
-    page.locator(`${PALETTE} > .execresult`),
+    page.locator(`${PALETTE} .execresult`).filter({ hasText: 'exit 0' }),
     '`status` must exit clean, and its outcome must survive the redraw the run itself caused',
   ).toContainText('exit 0', { timeout: 30_000 });
 });
@@ -209,16 +220,27 @@ test('the run is in the audit stream, as one execution record', async ({ app }) 
   await composeStatusOnPalette(page);
   await page.locator(`${PALETTE} .cmdactions`).getByRole('button', { name: 'Execute', exact: true }).click();
   await page.locator(`${PALETTE} .confirm`).getByRole('button', { name: 'Run it', exact: true }).click();
-  // **`> .execresult`, a DIRECT child of the section, with room to reach it.**
+  // **The `.execresult` CARRYING AN EXIT CODE, wherever the shell put it.**
   // Since `plan:walk seq:120` an Execute REDRAWS the screen it was run on, and
   // every screen's `render()` opens with `root.replaceChildren()` — so the
   // result region `report()` has just filled is detached by that redraw and
-  // re-attached at the top of the rebuilt screen by the shell (`app.js`'s
-  // `attachExecuteOutcome`). Scoped to a DIRECT child so it names that node
-  // and not the empty one the rebuilt control brings with it, and given a real
+  // re-attached by the shell (`app.js`'s `attachExecuteOutcome`). Every control
+  // on the screen brings its own empty, hidden `.execresult`; exactly one of
+  // them carries an exit code, which is what the text filter names. A real
   // budget because it is now a fetch away rather than already on screen:
   // measured timing out at the 5s default under a loaded parallel run.
-  await expect(page.locator(`${PALETTE} > .execresult`))
+  //
+  // **It used to be `> .execresult`, a DIRECT child of the section, and that
+  // selector was written against a DEFECT.** `attachExecuteOutcome` prepended
+  // the outcome to the top of the screen, and on a pane taller than the window
+  // that is a node the reader never sees — measured in Chrome on 2026-09-03 at
+  // `top: -146,513px`, `inView: false`, while this assertion stayed green.
+  // Since the fix the outcome goes back to the control it was run from and the
+  // top of the section is the fallback for a run that removed its own row, so
+  // pinning one placement here would assert whichever half of that happens to
+  // apply. `e2e/doctor-outcome.spec.ts` is where the placement and the VIEWPORT
+  // are asserted; this file's business is that the run happened and said so.
+  await expect(page.locator(`${PALETTE} .execresult`).filter({ hasText: 'exit 0' }))
     .toContainText('exit 0', { timeout: 30_000 });
 
   // The audit projection that `/api/ask/audit` reads is never synced by a plain
@@ -450,16 +472,13 @@ base('a boundary command shows every field that changes, before and after, and o
       await expect(page.locator(PALETTE).getByRole('cell', { name: 'always', exact: true })).toBeVisible();
 
       await page.locator(`${PALETTE} .confirm`).getByRole('button', { name: 'Run it', exact: true }).click();
-      // **`> .execresult`, a DIRECT child of the section, with room to reach it.**
-      // Since `plan:walk seq:120` an Execute REDRAWS the screen it was run on, and
-      // every screen's `render()` opens with `root.replaceChildren()` — so the
-      // result region `report()` has just filled is detached by that redraw and
-      // re-attached at the top of the rebuilt screen by the shell (`app.js`'s
-      // `attachExecuteOutcome`). Scoped to a DIRECT child so it names that node
-      // and not the empty one the rebuilt control brings with it, and given a real
-      // budget because it is now a fetch away rather than already on screen:
-      // measured timing out at the 5s default under a loaded parallel run.
-      await expect(page.locator(`${PALETTE} > .execresult`))
+      // **The `.execresult` CARRYING AN EXIT CODE, wherever the shell put it** —
+      // see the two assertions above for why this stopped naming a direct child
+      // of the section on 2026-09-03, and `e2e/doctor-outcome.spec.ts` for where
+      // the placement and the viewport are measured instead. A real budget
+      // because it is a fetch away rather than already on screen: measured
+      // timing out at the 5s default under a loaded parallel run.
+      await expect(page.locator(`${PALETTE} .execresult`).filter({ hasText: 'exit 0' }))
         .toContainText('exit 0', { timeout: 30_000 });
       // `always` again — this time the row survives into the RESULT only
       // indirectly: what proves the run and not merely the preview agreed is
@@ -506,17 +525,39 @@ test("Doctor's repair reaches a confirm instead of refusing for want of a termin
   // The command block only exists if this corpus HAS a source_drift finding.
   // A screen is not a state: without this step the assertions below would pass
   // against a Doctor that simply found nothing to repair.
-  const exec = page.locator('[data-p="doctor"] .cmdactions button', { hasText: 'Execute' }).first();
+  //
+  // **`.card.pane > div.cmd`, a DIRECT child, and the child combinator is
+  // load-bearing as of 2026-09-03.** A repair that answers for many rows is
+  // appended under the card, as a sibling of the table; a `mycontext ack` that
+  // answers for ONE row is drawn inside that row's `<td>`. Both are `div.cmd`
+  // with a `.cmdactions` beside them, so a descendant selector plus `.first()`
+  // now picks whichever row happens to sort first — on `.demo-corpus` that is a
+  // `dead_scope` ack, and this test would report the absence of `--yes` on a
+  // command that is correctly below the approval boundary and does not take it.
+  const shared = '[data-p="doctor"] .card.pane';
+  const exec = page.locator(`${shared} > .cmdactions button`, { hasText: 'Execute' }).first();
   await exec.waitFor({ state: 'visible', timeout: 20_000 });
 
-  const shown = await page.locator('[data-p="doctor"] div.cmd code').first().innerText();
+  const shown = await page.locator(`${shared} > div.cmd code`).first().innerText();
   expect(shown, 'the composed line must carry --yes, or the command cannot run from a UI at all: '
     + 'refresh gates on stdin and a child process has no terminal to answer through')
     .toContain('--yes');
 
   await exec.click();
 
-  const confirm = page.locator('[data-p="doctor"] div.confirm').first();
+  // **The confirm belongs to the control whose Execute was just pressed, and it
+  // is named through that control rather than by position.** `commandActions`
+  // appends the Execute button, the `div.confirm` and the `div.execresult` as
+  // SIBLINGS of one `.cmdactions` root, so the confirm this click opens is the
+  // one beside `exec` and no other — `xpath=..` is that root.
+  //
+  // The descendant-plus-`.first()` this replaces was the same omission the
+  // comment at 529 documents for lines 538 and 541, missed on this line in that
+  // edit: since 71 of 72 findings gained a per-row `mycontext ack`, this screen
+  // draws ~72 `div.confirm`, every one of them built hidden, and DOM order puts
+  // a row's ahead of the card's. It resolved 57 times to a hidden node in a row
+  // nothing had clicked and timed out over a confirm that was open on screen.
+  const confirm = exec.locator('xpath=..').locator('div.confirm');
   await confirm.waitFor({ state: 'visible', timeout: 30_000 });
 
   const text = await confirm.innerText();
@@ -614,19 +655,32 @@ base('an item settled through Execute leaves the queue, and the rail moves in th
       ).toContainText(`mycontext review promote ${settledId}`, { timeout: 15_000 });
       await page.locator(`${WORK} .confirm`)
         .getByRole('button', { name: 'Run it', exact: true }).click();
-      // **`${WORK} > .execresult` — a DIRECT child of the section**, which is
-      // where the shell re-attaches the run's outcome after the redraw. Two
-      // things at once, deliberately: the promote actually ran (a refused
-      // command leaves the queue exactly as it was, which is indistinguishable
-      // from the defect this test is about), AND the answer to "what did that
-      // do" survived the refresh that answered it. Every card carries its own
-      // `.cmdactions > .execresult`, so an unscoped selector here would be
-      // ambiguous — and after the redraw the card this one belonged to is gone.
+      // **`${WORK} > .execresult` — a DIRECT child of the section, and here that
+      // is the RIGHT placement rather than the accident it was elsewhere.**
+      // Since 2026-09-03 the shell puts a run's outcome back on the control it
+      // was run from (`app.js`'s `attachExecuteOutcome`), and the top of the
+      // section is the fallback for a run that REMOVED that control. A promote
+      // is exactly that: the card is gone, so there is nowhere on the row to
+      // return to and this is where the answer belongs. Two things at once,
+      // deliberately: the promote actually ran (a refused command leaves the
+      // queue exactly as it was, which is indistinguishable from the defect this
+      // test is about), AND the answer to "what did that do" survived the
+      // refresh that answered it.
       await expect(
         page.locator(`${WORK} > .execresult`),
         'the promote must actually have run, and its outcome must survive the redraw it caused — '
         + 'a screen that swallows the exit code is worse for a FAILED run than for a clean one',
       ).toContainText('exit 0', { timeout: 30_000 });
+      // **AND THE READER CAN SEE IT.** Surviving the redraw is not the same
+      // property as being on screen, and until 2026-09-03 this suite only ever
+      // asserted the first: the node existed, at `top: -146,513px` on a tall
+      // pane, and every assertion above it stayed green. `e2e/doctor-outcome.spec.ts`
+      // carries the measurement and the general form of this.
+      await expect(
+        page.locator(`${WORK} > .execresult`),
+        'the outcome is in the DOM and out of the window — which is the shape of "it looks like '
+        + 'the run do nothing"',
+      ).toBeInViewport();
 
       // ── 1. THE ROW IS GONE, WITH NO MANUAL REFRESH. Nothing below presses
       // anything: `expect` polls, and the only thing that can remove this row

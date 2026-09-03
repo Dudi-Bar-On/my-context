@@ -30,6 +30,11 @@ import { AUDIT_KINDS } from '../../src/core/audit.ts';
 import {
   CONTEXT_SAMPLE_FRESH_MS as SERVER_CONTEXT_SAMPLE_FRESH_MS,
 } from '../../src/core/context-occupancy.ts';
+// The remedies these fixtures declare, in the spelling `src/doctor/checks.ts`
+// declares them. Imported rather than retyped: a fixture that hand-wrote a
+// `Remedy` would keep asserting about a shape the real checks stopped emitting,
+// which is the drift this whole field exists to close.
+import { REMEDY, type Remedy } from '../../src/doctor/checks.ts';
 
 /**
  * **How a TypeScript test imports an untyped browser module, and why not the
@@ -141,17 +146,20 @@ interface ViewModelModule {
   /** Task 19: doctor's findings, grouped by code and ordered worst-first. */
   groupFindings: (findings: Finding[]) => Map<string, Finding[]>;
   /**
-   * Task 19: the composed, never-run repair for a finding code — or `null`,
-   * which is the ordinary answer. `item` is `string | null` because
-   * `Finding.item` is optional and the absence is real.
+   * Task 19: the composed, never-run repair for a FINDING — or `null`, which is
+   * now the rare answer rather than the ordinary one. It takes the finding and
+   * not a code, because the decision it used to make lives on `Finding.remedy`
+   * and a reader of a declaration needs the thing that carries it
+   * (`reports/V2-HANDOVER.md:437`).
    */
-  repairCommandFor: (code: string, item: string | null) => string | null;
+  repairCommandFor: (finding: Partial<Finding> | null) => string | null;
   /**
-   * `plan:walk seq:61`: how many findings there are, and how many of them a
-   * command can repair — the two numbers `doc.tally` substitutes, under the
-   * slot names it declares.
+   * `plan:walk seq:61`, plus the third number added 2026-09-03: how many
+   * findings there are, how many a command repairs, and how many are a person's
+   * to settle — the three numbers `doc.tally` substitutes, under the slot names
+   * it declares.
    */
-  repairTally: (findings: Finding[]) => { findings: number; repairs: number };
+  repairTally: (findings: Finding[]) => { findings: number; repairs: number; settle: number };
   /** Task 18: the coverage tree, the gap list, and the ego graph's columns. */
   buildTree: (files: { path: string; governs: string[] }[]) => TreeNode;
   coverageGaps: (tree: TreeNode) => string[];
@@ -176,6 +184,13 @@ interface Finding {
   code: string;
   message: string;
   item?: string;
+  /**
+   * What settles it, declared by the check that emitted it. Optional HERE and
+   * required there, on purpose: this boundary also stands for a body served by
+   * an older build, and the fixtures below pin that such a body is read as "no
+   * route" rather than throwing over a field it never sent.
+   */
+  remedy?: Remedy | null;
 }
 
 const sse = (): Promise<SseModule> => lib<SseModule>('sse.js');
@@ -1205,70 +1220,93 @@ test('groupFindings drops nothing — every finding the checker reported comes b
 });
 
 /**
- * **The establish-by-executing row of this task, and what executing
- * established.**
+ * **What each finding's own message recommends, now declared BY the check and
+ * only resolved here.**
  *
- * The plan's own table is explicit that it is a sketch — *"establish the exact
- * command per code by reading `src/doctor/checks.ts`'s finding messages during
- * implementation … the composed command must match the message's own
- * recommendation, not this table"*. Reading them corrected four rows, and each
- * correction is one assertion below:
+ * This function used to hold the decision: four `if`s over four codes, arrived
+ * at by reading every message in `src/doctor/checks.ts` and correcting the
+ * plan's sketch on four rows. That reading is unchanged and its four
+ * corrections still stand — they are simply written where the messages are:
  *
- *  - `index_missing` → `null`. Its message says the index *"is disposable and
- *    will be built on the next command"*. A Copy button under a finding that
- *    asks for nothing invents work.
- *  - `orphan_relation` → `null`. *"Create it, or remove the line from
- *    &lt;filePath&gt;"* — a file edit; neither half is a command.
- *  - `source_missing` → `null`. The message names `mycontext supersede`, but
- *    `supersede` REQUIRES `--by <replacement id>` and this screen has no
- *    replacement to put there. A line that cannot be pasted without editing is
- *    not a composed command.
- *  - `mycontext repair` takes no id at all (`usage: mycontext repair
- *    [--yes]`), so every row the plan routed through `mycontext repair <id>`
- *    would have composed something the CLI refuses.
+ *  - `index_missing` -> no command. Its message says the index *"is disposable
+ *    and will be built on the next command"*; it declares `route: 'none'` with
+ *    `why: 'nothing'`, and a Copy button under a finding that asks for nothing
+ *    invents work.
+ *  - `orphan_relation`, `source_missing`, `dead_scope` -> no command. Each asks
+ *    for a file edit or names `mycontext supersede`, which REQUIRES `--by
+ *    <replacement id>` this screen does not have. A line that cannot be pasted
+ *    without editing is not a composed command. They declare
+ *    `route: 'acknowledge'` instead, which is a real control: a person rules,
+ *    and the ruling is recorded against the item.
+ *  - `mycontext repair` takes no id at all (`usage: mycontext repair [--yes]`),
+ *    so every row the plan routed through `mycontext repair <id>` would have
+ *    composed something the CLI refuses.
+ *
+ * What this test now pins is the RESOLUTION: a route plus a catalogue id plus a
+ * value bag becomes exactly the line it used to hardcode, and a route with no
+ * command becomes `null`.
  */
 test('repairCommandFor composes only what a finding message itself recommends', async () => {
   const { repairCommandFor } = await vm();
 
   // The four that name a runnable command, in the message's own words.
-  assert.equal(repairCommandFor('index_stale', null), 'mycontext rebuild');
-  assert.equal(repairCommandFor('source_drift', 'RULE-never-log-customer-email'),
-    'mycontext refresh RULE-never-log-customer-email --yes');
-  assert.equal(repairCommandFor('audit_log_size', null), 'mycontext audit --files');
-  assert.equal(repairCommandFor('corpus_size_fallback_ceiling', null), 'mycontext decay');
+  assert.equal(repairCommandFor({ code: 'index_stale', remedy: REMEDY.REBUILD }),
+    'mycontext rebuild');
+  assert.equal(repairCommandFor({
+    code: 'source_drift',
+    item: 'RULE-never-log-customer-email',
+    remedy: { route: 'run', command: 'refresh', values: { id: 'RULE-never-log-customer-email', yes: true } },
+  }), 'mycontext refresh RULE-never-log-customer-email --yes');
+  assert.equal(repairCommandFor({ code: 'audit_log_size', remedy: REMEDY.AUDIT_FILES }),
+    'mycontext audit --files');
+  assert.equal(repairCommandFor({ code: 'corpus_size_fallback_ceiling', remedy: REMEDY.DECAY }),
+    'mycontext decay');
 
-  // The four corrections, each against the plan's own sketch.
-  assert.equal(repairCommandFor('index_missing', null), null,
+  // The route that answers for a person, and the two that answer for nobody.
+  assert.equal(
+    repairCommandFor({ code: 'dead_scope', item: 'INV-prices-are-integer-cents', remedy: REMEDY.ACK }),
+    'mycontext ack INV-prices-are-integer-cents dead_scope',
+    're-scoping is an edit to the item file and composes no repair — but the ruling on it is a '
+    + 'command, and it is the one the owner had no way to reach',
+  );
+  assert.equal(repairCommandFor({ code: 'index_missing', remedy: REMEDY.NOTHING }), null,
     'the message says the index will be built on the next command — it asks for nothing');
-  assert.equal(repairCommandFor('orphan_relation', 'INV-prices-are-integer-cents'), null,
-    'the message asks for a file edit, and mycontext repair takes no id');
-  assert.equal(repairCommandFor('source_missing', 'INV-prices-are-integer-cents'), null,
-    'supersede requires --by <replacement id>, which this screen does not have');
-  assert.equal(repairCommandFor('dead_scope', 'INV-prices-are-integer-cents'), null,
-    're-scoping is an edit to the item file, not a command');
+  assert.equal(repairCommandFor({ code: 'cli_not_on_path', remedy: REMEDY.PERSON }), null,
+    'npm link is not a command this catalogue carries, and the finding names no item to rule on');
 
-  // A code this build has never heard of gets no command rather than a guess.
-  assert.equal(repairCommandFor('some_check_added_next_year', 'CONST-x'), null);
+  // A body served by a build that had no `remedy` field is read as "no route",
+  // which is the chip that build already drew — never a thrown error over a
+  // field it never sent.
+  assert.equal(repairCommandFor({ code: 'some_check_added_next_year', item: 'CONST-x' }), null);
+  assert.equal(repairCommandFor(null), null);
 });
 
 /**
- * `source_drift` is the only row that takes an argument, so it is the only
- * row where quoting can go wrong — and it goes through `composeCommand`, the
- * one place quoting lives in this UI, rather than through a fourth spelling of
- * it. An id with no item is not composable at all: the finding would name a
- * file to refresh and not say which.
+ * The two remedies that take an argument are the only places quoting can go
+ * wrong, and both go through `composeCommand` — the one place quoting lives in
+ * this UI — rather than through a fourth spelling of it.
+ *
+ * An `acknowledge` route with no item composes nothing at all: an
+ * acknowledgement is anchored to an ITEM (`acknowledgeFinding` writes into its
+ * `acknowledged` map and re-stamps its checksum), so `mycontext ack undefined
+ * <code>` would be a line the CLI refuses under a button that looked ready.
  */
-test('repairCommandFor quotes its one argument, and refuses to compose without one', async () => {
+test('repairCommandFor quotes its arguments, and refuses to compose without one', async () => {
   const { repairCommandFor } = await vm();
-  assert.equal(repairCommandFor('source_drift', 'RULE with spaces'),
-    'mycontext refresh "RULE with spaces" --yes');
-  assert.equal(repairCommandFor('source_drift', null), null);
-  assert.equal(repairCommandFor('source_drift', ''), null);
+  assert.equal(repairCommandFor({
+    code: 'source_drift',
+    item: 'RULE with spaces',
+    remedy: { route: 'run', command: 'refresh', values: { id: 'RULE with spaces', yes: true } },
+  }), 'mycontext refresh "RULE with spaces" --yes');
+  assert.equal(repairCommandFor({ code: 'dead_scope', item: 'RULE with spaces', remedy: REMEDY.ACK }),
+    'mycontext ack "RULE with spaces" dead_scope');
+  assert.equal(repairCommandFor({ code: 'dead_scope', item: undefined, remedy: REMEDY.ACK }), null);
+  assert.equal(repairCommandFor({ code: 'dead_scope', item: '', remedy: REMEDY.ACK }), null);
 });
 
 /**
  * **`plan:walk seq:61` — the number that tells a healthy corpus from a broken
- * screen.**
+ * screen — and the THIRD number that says what to do about it.**
  *
  * Owner, 2026-08-28: *"doctor lost it's execute an fix controls ? why yo broke
  * it ?"* Nothing had. That day cleared nine `source_file` links — which retired
@@ -1278,25 +1316,30 @@ test('repairCommandFor quotes its one argument, and refuses to compose without o
  * "this corpus needs no command" and "this build lost its commands", and the
  * only difference a screen can draw is a count.
  *
- * The three cases below are the three the report is made of, and the first is
- * the one that reproduces the owner's corpus exactly: two findings, both real
- * codes, neither repairable, and a tally that says so instead of nothing.
+ * A year of checks later that count was still 0, on 74 findings, because "a
+ * person settles this" had no control behind it. Owner, 2026-09-03: *"currently
+ * doctor contains many items i do not have any way to handle, solve it"*.
+ * `settle` is the count of rows that now carry `mycontext ack`, and it is a
+ * SEPARATE number rather than folded into `repairs`: collapsing them would put
+ * "with an automated repair: 73" over a corpus where nothing is automated.
  */
-test('repairTally counts the findings and the ones a command can repair', async () => {
+test('repairTally counts findings, automated repairs and rulings separately', async () => {
   const { repairTally } = await vm();
 
-  // The owner's own corpus on 2026-08-28, code for code.
+  // The owner's own corpus on 2026-08-28, code for code — one finding a person
+  // rules on, one that asks for nothing at all.
   assert.deepEqual(
     repairTally([
-      { level: 'warn', code: 'blocked_without_needs', message: 'm', item: 'TASK-a' },
-      { level: 'info', code: 'nested_corpus', message: 'm' },
+      { level: 'warn', code: 'blocked_without_needs', message: 'm', item: 'TASK-a', remedy: REMEDY.ACK },
+      { level: 'info', code: 'nested_corpus', message: 'm', remedy: REMEDY.NOTHING },
     ]),
-    { findings: 2, repairs: 0 },
+    { findings: 2, repairs: 0, settle: 1 },
     'a corpus whose findings are all repaired by a person must still be COUNTED — a zero here '
-    + 'is the sentence that distinguishes it from a screen that lost its controls',
+    + 'is the sentence that distinguishes it from a screen that lost its controls, and the '
+    + 'settle count is what says the reader can act on one of them',
   );
 
-  assert.deepEqual(repairTally([]), { findings: 0, repairs: 0 });
+  assert.deepEqual(repairTally([]), { findings: 0, repairs: 0, settle: 0 });
 
   // **Findings, not deduped command lines.** `cardCommands` dedupes by the
   // composed line because two rows sharing a code share one `.cmd` block; that
@@ -1305,21 +1348,29 @@ test('repairTally counts the findings and the ones a command can repair', async 
   // compose one line and are two repairable findings.
   assert.deepEqual(
     repairTally([
-      { level: 'error', code: 'index_stale', message: 'm' },
-      { level: 'error', code: 'index_stale', message: 'm' },
-      { level: 'warn', code: 'dead_scope', message: 'm', item: 'INV-a' },
+      { level: 'error', code: 'index_stale', message: 'm', remedy: REMEDY.REBUILD },
+      { level: 'error', code: 'index_stale', message: 'm', remedy: REMEDY.REBUILD },
+      { level: 'warn', code: 'dead_scope', message: 'm', item: 'INV-a', remedy: REMEDY.ACK },
     ]),
-    { findings: 3, repairs: 2 },
+    { findings: 3, repairs: 2, settle: 1 },
   );
 
-  // `source_drift` with no item composes nothing (see the test above), so it is
-  // an UNREPAIRABLE finding and the tally must agree with the row that draws it.
+  // An `acknowledge` route with no item is not settleable — there is nothing to
+  // anchor a ruling to — so it counts in neither column, and the row draws the
+  // chip that says so. The tally must agree with the row.
   assert.deepEqual(
     repairTally([
-      { level: 'error', code: 'source_drift', message: 'm', item: 'RULE-a' },
-      { level: 'error', code: 'source_drift', message: 'm' },
+      { level: 'error', code: 'dead_scope', message: 'm', item: 'RULE-a', remedy: REMEDY.ACK },
+      { level: 'error', code: 'dead_scope', message: 'm', remedy: REMEDY.ACK },
     ]),
-    { findings: 2, repairs: 1 },
+    { findings: 2, repairs: 0, settle: 1 },
+  );
+
+  // A body from a build that never had the field is counted, and counted as
+  // unactionable, rather than crashing the summary of a screen it belongs to.
+  assert.deepEqual(
+    repairTally([{ level: 'info', code: 'from_an_older_build', message: 'm' }] as never),
+    { findings: 1, repairs: 0, settle: 0 },
   );
 });
 
