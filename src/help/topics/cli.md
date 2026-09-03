@@ -34,10 +34,20 @@ name** on any other, and nothing is written when it is. A flag that appears on
 two commands appears there *deliberately*, and means the same thing on both —
 `--always` is on `add`, `edit` and `review promote`, and pins in all three.
 
-The usage above carries the flags that *distinguish* each command. It is not
-the complete list for any of them, and this page does not print one: a second
-copy of a per-command flag list is stale the day a flag is added, and nothing
-would tell you. Two things are authoritative instead, in this order:
+The usage above carries the flags that *distinguish* each command, not the
+complete list for any of them — a HAND-KEPT copy of one is stale the day a
+flag is added, and nothing would tell you. The table below is not hand-kept:
+it is generated from the same declarations (`FLAG_DECLARATIONS`,
+`core/command-flags.ts`) the corpus UI already reads to drive its own flag
+pickers, and it refuses to render at all the day a flag the parser accepts has
+no row here, or a row here names a flag the parser refuses — naming the flag
+in the message either way. What it does not carry is which commands need
+`--yes`: that boundary is derived by probing the running parser rather than
+declared per flag, and `help("workflow")` is where it is stated.
+
+{{FLAG_REFERENCE}}
+
+Two things are authoritative beyond this table, in this order:
 
 1. **The refusal.** `mycontext <command> … --nonsense` prints
    `unknown option "--nonsense"` when the command does not accept it — and that

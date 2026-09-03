@@ -45,14 +45,15 @@ import type { Workspace } from '../../core/workspace.ts';
 import { IDLE_MS, MAX_IDLE_MS } from '../../ui/idle.ts';
 import { openBrowser } from '../../ui/open.ts';
 import {
-  CODE_FREEZE_NOTICE, OPENER_NONCE_TTL_MS, PRINTED_NONCE_TTL_MS, startUiServer,
+  CODE_FREEZE_NOTICE, MINT_NONCE_TTL_MS, OPENER_NONCE_TTL_MS, PRINTED_NONCE_TTL_MS, startUiServer,
 } from '../../ui/server.ts';
 import { refuseUnknownFlag } from './format.ts';
 import {
   flagOccurrences, hasFlag, registerCommand, repeatedFlagError, type Emit,
 } from './registry.ts';
 
-const USAGE = 'usage: mycontext ui [--port N] [--no-open] [--idle-ms N] | mycontext ui --nonce';
+const USAGE =
+  'usage: mycontext ui [--port N] [--no-open] [--idle-ms N] | mycontext ui --nonce [--no-open]';
 
 /** The flags this command accepts, and which of them take a following value. */
 /**
@@ -242,6 +243,78 @@ function fallbackLine(url: string, reason: string): string {
 }
 
 /**
+ * The fallback when opening a browser for a MINTED nonce fails — rare, since
+ * this route only runs after `probeUiServer` or a configured `ui.port` has
+ * already proved a server is there.
+ *
+ * **Not `fallbackLine` above, on purpose.** That one is right for a server
+ * that just STARTED, whose printed URL carries a `PRINTED_NONCE_TTL_MS`
+ * (ten-minute) nonce. This one is reached only when `--no-open` was NOT
+ * given, which means `deliverNonce` asked `POST /api/nonce` for the SHORT
+ * variant (`MINT_NONCE_TTL_MS`, thirty seconds) — the nonce was minted on the
+ * assumption a browser would consume it in milliseconds, not that a human
+ * would read it off a terminal. Printing it anyway, with that said honestly,
+ * beats silence; the remedy this line names is a fresh mint sized for a human
+ * (`mycontext ui --nonce --no-open`), not this one reused past its purpose.
+ */
+function nonceOpenFailedLine(url: string, reason: string): string {
+  return `mycontext ui: could not open a browser (${reason}). The link below was minted for a ` +
+    `browser and is short-lived (${MINT_NONCE_TTL_MS / 1_000}s) — it may already be stale by the ` +
+    `time it is read. Visit ${url}, or run \`mycontext ui --nonce --no-open\` for a fresh one ` +
+    'sized for a human to carry.';
+}
+
+/**
+ * Deliver a minted nonce the way `noOpen` says to — owner ruling 2026-09-03:
+ *
+ *     ui --nonce          -> opens the browser, 30s TTL (MINT_NONCE_TTL_MS)
+ *     ui --nonce --no-open -> prints, longer TTL (PRINTED_NONCE_TTL_MS)
+ *
+ * The 30s ruling of 2026-08-28 (`MINT_NONCE_TTL_MS`, `src/ui/server.ts`) was
+ * sized for "someone already AT the terminal" reading and pasting a printed
+ * line — which is exactly the case `--nonce` used to be, unconditionally, and
+ * exactly the case measured today to fail: a human reads the line, switches
+ * windows, and the window is gone. This does not overturn that ruling; it
+ * removes the human from the path it was sized for. A browser opened by THIS
+ * process consumes the nonce in milliseconds, so the 30s window is ample and
+ * stays exactly what it was for the caller it now serves. `--no-open` is the
+ * escape hatch for the caller who still needs to carry the link by hand, and
+ * it asks the server for the SAME longer TTL the startup print path already
+ * uses (`printedNonceTtl`/`PRINTED_NONCE_TTL_MS`) — reusing the flag's
+ * existing meaning ("do not launch a browser; print the URL instead") rather
+ * than adding a second flag that would say the same thing (`--print`
+ * considered and rejected for that reason).
+ *
+ * **The SAME spawn-with-fallback mechanism `cmdUi`'s own start path uses** —
+ * `openBrowser` (`../../ui/open.ts`) — reused here rather than a second way of
+ * opening a URL existing beside it. `openFn` is that function by default and
+ * the injection seam `test/cli/ui-nonce-open.test.ts` uses to prove the
+ * open/print decision and the no-browser fallback without a test spawning a
+ * real browser.
+ *
+ * The mint that produced `nonce` already happened — exactly once, in
+ * `cmdUiNonce` — before this function is reached, so calling `openFn` here
+ * and falling back to printing on failure costs no second mint and no second
+ * `nonce-minted` audit row: both outcomes deliver the ONE nonce that was
+ * already handed out.
+ */
+function deliverNonce(
+  out: Emit, port: number, nonce: string, noOpen: boolean, openFn: typeof openBrowser,
+): void {
+  const url = `http://127.0.0.1:${port}/#${nonce}`;
+  if (noOpen) {
+    out(`mycontext ui: ${url}`);
+    return;
+  }
+  const launch = openFn(url);
+  if (!launch.opened) {
+    out(nonceOpenFailedLine(url, launch.reason));
+    return;
+  }
+  out(`mycontext ui: opening your browser — http://127.0.0.1:${port}`);
+}
+
+/**
  * `--nonce`: ask a server that is ALREADY running for a credential, instead of
  * binding a port of its own.
  *
@@ -303,14 +376,35 @@ function fallbackLine(url: string, reason: string): string {
  * ── WHY THIS PRINTS RATHER THAN RETURNS ────────────────────────────────────
  *
  * Same shape as every other exit from `cmdUi`: `out` is the only channel, and
- * the SAME one-line format the start path prints —
+ * a successful mint reaches it through `deliverNonce` — the SAME one-line
+ * printed format the start path prints when it prints at all —
  * `mycontext ui: http://127.0.0.1:<port>/#<nonce>` — so a script or a person
  * reading either output is reading one contract, not two.
+ *
+ * ── OPENS BY DEFAULT, PRINTS ON `--no-open` (owner ruling 2026-09-03) ──────
+ *
+ * `noOpen` decides which, and `openFn` (default `openBrowser`,
+ * `../../ui/open.ts`) is how the open half happens — see `deliverNonce` for
+ * the whole argument, including why this is not a reason to mint twice.
+ * Exactly ONE `POST /api/nonce` happens per call to this function, whichever
+ * branch is taken and whatever `openFn` reports back, which is what keeps it
+ * to the ONE `nonce-minted` audit row `recordNonceMint` (`security.ts`) writes
+ * per credential coming into existence — this command must not multiply that.
  */
-async function cmdUiNonce(out: Emit, configuredPort: number | null): Promise<void> {
+// `cmdUiNonce`, `mintNonceFrom` and `NonceMint` are exported — the only
+// exports this file adds beyond the registered command — so that
+// `test/cli/ui-nonce-open.test.ts` can drive the open/print decision and the
+// no-browser fallback in-process, with a fake `openFn`, instead of either
+// spawning a real browser from a test or never covering that branch at all.
+export async function cmdUiNonce(
+  out: Emit,
+  configuredPort: number | null,
+  noOpen: boolean,
+  openFn: typeof openBrowser = openBrowser,
+): Promise<void> {
   const liveness = await probeUiServer();
   if (liveness.state === 'alive') {
-    const minted = await mintNonceFrom(liveness.url);
+    const minted = await mintNonceFrom(liveness.url, noOpen);
     if (minted.nonce === null) {
       out(minted.kind === 'unreachable'
         ? `mycontext ui: could not reach the server at ${liveness.url} — it ${minted.reason}. ` +
@@ -321,7 +415,7 @@ async function cmdUiNonce(out: Emit, configuredPort: number | null): Promise<voi
       process.exitCode = 1;
       return;
     }
-    out(`mycontext ui: http://127.0.0.1:${liveness.port}/#${minted.nonce}`);
+    deliverNonce(out, liveness.port, minted.nonce, noOpen, openFn);
     return;
   }
 
@@ -334,10 +428,10 @@ async function cmdUiNonce(out: Emit, configuredPort: number | null): Promise<voi
     : null;
   let fallback: NonceMint | null = null;
   if (fallbackPort !== null) {
-    fallback = await mintNonceFrom(`http://127.0.0.1:${fallbackPort}/`);
+    fallback = await mintNonceFrom(`http://127.0.0.1:${fallbackPort}/`, noOpen);
     if (fallback.nonce !== null) {
       out(`mycontext ui: ${recoveredWithoutRecordLine(liveness, fallbackPort)}`);
-      out(`mycontext ui: http://127.0.0.1:${fallbackPort}/#${fallback.nonce}`);
+      deliverNonce(out, fallbackPort, fallback.nonce, noOpen, openFn);
       return;
     }
   }
@@ -347,7 +441,7 @@ async function cmdUiNonce(out: Emit, configuredPort: number | null): Promise<voi
 }
 
 /** What `mintNonceFrom` found at one address. */
-interface NonceMint {
+export interface NonceMint {
   /** The credential, or `null` for every way of not getting one. */
   nonce: string | null;
   /**
@@ -359,6 +453,17 @@ interface NonceMint {
   kind: 'minted' | 'unreachable' | 'refused' | 'unusable';
   /** A phrase completing "it …", so every caller composes one sentence. */
   reason: string | null;
+  /**
+   * The TTL the server actually minted at, on a `'minted'` kind only —
+   * `null` for every other kind, and `null` too if an old or misbehaving
+   * server answered with no usable number. Not consulted to decide anything
+   * here: `deliverNonce` already knows which TTL it asked for, from `noOpen`
+   * alone. It is echoed back and kept on this type so a test can assert the
+   * two TTLs `POST /api/nonce` offers (`MINT_NONCE_TTL_MS`,
+   * `PRINTED_NONCE_TTL_MS` — `src/ui/server.ts`) are actually different
+   * values, from the wire, without waiting out either window in real time.
+   */
+  ttlMs: number | null;
 }
 
 /**
@@ -380,11 +485,19 @@ const MINT_TIMEOUT_MS = 5_000;
  * `url` ends in `/` — the liveness record's `url` field is written that way and
  * the fallback builds it the same — so `${url}api/nonce` is the endpoint in
  * both cases without a join.
+ *
+ * `printed` selects which of the two TTLs `POST /api/nonce` mints at
+ * (`src/ui/server.ts`), by appending `?ttl=printed` when true — the SAME
+ * query flag `deliverNonce`'s caller decided on from `--no-open`, plumbed
+ * through here rather than decided twice. `false` (the default path, browser
+ * about to consume the nonce in milliseconds) gets `MINT_NONCE_TTL_MS`; `true`
+ * (a human is about to carry it) gets `PRINTED_NONCE_TTL_MS`. Exactly one
+ * request either way — this function mints, it does not retry.
  */
-async function mintNonceFrom(url: string): Promise<NonceMint> {
+export async function mintNonceFrom(url: string, printed: boolean): Promise<NonceMint> {
   let response: Response;
   try {
-    response = await fetch(`${url}api/nonce`, {
+    response = await fetch(`${url}api/nonce${printed ? '?ttl=printed' : ''}`, {
       method: 'POST',
       signal: AbortSignal.timeout(MINT_TIMEOUT_MS),
     });
@@ -399,6 +512,7 @@ async function mintNonceFrom(url: string): Promise<NonceMint> {
       reason: timedOut
         ? `accepted the connection and did not answer within ${MINT_TIMEOUT_MS}ms`
         : `did not answer (${err instanceof Error ? err.message : String(err)})`,
+      ttlMs: null,
     };
   }
   if (response.status !== 200) {
@@ -406,18 +520,20 @@ async function mintNonceFrom(url: string): Promise<NonceMint> {
       nonce: null,
       kind: 'refused',
       reason: `answered status ${response.status} rather than a nonce`,
+      ttlMs: null,
     };
   }
-  let nonce: unknown;
+  let body: { nonce?: unknown; ttlMs?: unknown };
   try {
-    nonce = (await response.json() as { nonce?: unknown }).nonce;
+    body = await response.json() as { nonce?: unknown; ttlMs?: unknown };
   } catch {
-    nonce = undefined;
+    body = {};
   }
-  if (typeof nonce !== 'string' || nonce === '') {
-    return { nonce: null, kind: 'unusable', reason: 'answered with no usable nonce' };
+  if (typeof body.nonce !== 'string' || body.nonce === '') {
+    return { nonce: null, kind: 'unusable', reason: 'answered with no usable nonce', ttlMs: null };
   }
-  return { nonce, kind: 'minted', reason: null };
+  const ttlMs = typeof body.ttlMs === 'number' && Number.isFinite(body.ttlMs) ? body.ttlMs : null;
+  return { nonce: body.nonce, kind: 'minted', reason: null, ttlMs };
 }
 
 /**
@@ -527,12 +643,22 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
   if (refuseUnknownFlag(args, UI_FLAGS, UI_VALUE_FLAGS, USAGE, out)) return 1;
 
   // **`--nonce` is a different command wearing this one's name, and it exits
-  // here rather than falling through.** Every flag below it describes a
-  // server this mode does not start, so combining them would either be
-  // silently ignored (`INV-nothing-is-dropped-silently` forbids that) or
-  // require guessing which of two commands the caller meant.
+  // here rather than falling through.** `--port` and `--idle-ms` describe a
+  // server this mode does not start, so combining either with `--nonce` would
+  // either be silently ignored (`INV-nothing-is-dropped-silently` forbids
+  // that) or require guessing which of two commands the caller meant.
+  //
+  // **`--no-open` is no longer one of them** (owner ruling 2026-09-03).
+  // `--nonce` now OPENS the browser by default — the credential it mints
+  // (`MINT_NONCE_TTL_MS`, thirty seconds) is sized for a browser to consume in
+  // milliseconds, not for a human to read off this terminal and paste — and
+  // `--nonce --no-open` is the printed path for the caller who still needs to
+  // carry the link by hand, with the longer TTL that case needs
+  // (`PRINTED_NONCE_TTL_MS`, `deliverNonce` below). `--no-open` already meant
+  // "do not launch a browser; print the URL instead" on the start path, so it
+  // is reused rather than adding a second flag that would say the same thing.
   if (hasFlag(args, 'nonce')) {
-    const inert = ['port', 'idle-ms', 'no-open'].filter((name) => flagOccurrences(args, name).length > 0);
+    const inert = ['port', 'idle-ms'].filter((name) => flagOccurrences(args, name).length > 0);
     if (inert.length > 0) {
       out(
         `my_context: --nonce asks the server that is ALREADY running for a credential — it binds ` +
@@ -554,7 +680,7 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     // `cmdUiNonce` because `ws` is already resolved and `cmdUiNonce` should
     // depend on an address, not on a workspace — the same reason `resolvePort`
     // hands back a number instead of consulting the config itself.
-    void cmdUiNonce(out, ws.config.ui.port);
+    void cmdUiNonce(out, ws.config.ui.port, hasFlag(args, 'no-open'));
     return 0;
   }
 
@@ -690,7 +816,7 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
 
 registerCommand({
   name: 'ui',
-  usage: 'ui [--port N] [--no-open] [--idle-ms N] | ui --nonce',
+  usage: 'ui [--port N] [--no-open] [--idle-ms N] | ui --nonce [--no-open]',
   summary: 'read-only web UI on 127.0.0.1 — preview, coverage, reports',
   run: cmdUi,
 });

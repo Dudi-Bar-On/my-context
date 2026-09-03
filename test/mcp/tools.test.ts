@@ -272,6 +272,160 @@ test('query_items bounds its output and discloses the remainder', () => {
   removeTree(cwd);
 });
 
+/**
+ * **B10 — the backlink query, on the MCP surface.** `relationDegrees` and
+ * `apiGraph` (`src/ui/read-model.ts`) already walk every edge in both
+ * directions; before this, no tool could answer "what points AT this item".
+ * `linked_to` names the anchor and `direction` (`in|out|both`) says which side
+ * of its edges to answer with.
+ *
+ * `CONST-hub` carries the case this feature exists for: a stored
+ * `enforced_by` targeting `RULE-enforces-hub`. `enforced_by` is the PASSIVE
+ * spelling — "the hub is enforced_by RULE-enforces-hub" means
+ * `RULE-enforces-hub` enforces the hub — so the row's owner (`CONST-hub`) is
+ * the party being pointed AT, backwards from the literal owner/target
+ * columns `link_items` wrote it with. `direction: 'in'` on the hub must
+ * still surface `RULE-enforces-hub`, and `direction: 'out'` on
+ * `RULE-enforces-hub` must surface the hub — both derived from the one row,
+ * exactly `DEC-all-nineteen-relation-types-ship-and-an-inverse-pair-is-two`'s
+ * "a reader may want either" end.
+ */
+function backlinkFixture(registry: ReturnType<typeof createRegistry>): void {
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Hub' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Points at hub' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Hub points here' });
+  registry.call('create_item', { summary_omitted: true, type: 'rule', title: 'Enforces hub' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Lonely item' });
+  registry.call('link_items', { from: 'CONST-points-at-hub', to: 'CONST-hub', relation: 'constrains' });
+  registry.call('link_items', { from: 'CONST-hub', to: 'CONST-hub-points-here', relation: 'relates_to' });
+  registry.call('link_items', { from: 'CONST-hub', to: 'RULE-enforces-hub', relation: 'enforced_by' });
+}
+
+function idsFrom(text: string): string[] {
+  return [...text.matchAll(/^([A-Z][A-Za-z0-9-]*) ·/gm)].map((m) => m[1]).sort();
+}
+
+test('query_items direction:in finds what points at the anchor, through the passive enforced_by row', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  backlinkFixture(registry);
+  const out = registry.call('query_items', { linked_to: 'CONST-hub', direction: 'in' });
+  assert.deepEqual(idsFrom(out), ['CONST-points-at-hub', 'RULE-enforces-hub'].sort());
+  removeTree(cwd);
+});
+
+test('query_items direction:out excludes what merely points at the anchor', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  backlinkFixture(registry);
+  const out = registry.call('query_items', { linked_to: 'CONST-hub', direction: 'out' });
+  assert.deepEqual(idsFrom(out), ['CONST-hub-points-here']);
+  removeTree(cwd);
+});
+
+test('query_items direction:both is the union', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  backlinkFixture(registry);
+  const out = registry.call('query_items', { linked_to: 'CONST-hub', direction: 'both' });
+  assert.deepEqual(
+    idsFrom(out),
+    ['CONST-points-at-hub', 'CONST-hub-points-here', 'RULE-enforces-hub'].sort(),
+  );
+  removeTree(cwd);
+});
+
+test('query_items linked_to with no direction defaults to both', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  backlinkFixture(registry);
+  const both = registry.call('query_items', { linked_to: 'CONST-hub', direction: 'both' });
+  const defaulted = registry.call('query_items', { linked_to: 'CONST-hub' });
+  assert.deepEqual(idsFrom(defaulted), idsFrom(both),
+    'an out-only default would hide every item that only points AT the anchor');
+  removeTree(cwd);
+});
+
+test('query_items reads the inverse pair correctly from the other end too', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  backlinkFixture(registry);
+  assert.deepEqual(
+    idsFrom(registry.call('query_items', { linked_to: 'RULE-enforces-hub', direction: 'out' })),
+    ['CONST-hub'],
+  );
+  assert.match(
+    registry.call('query_items', { linked_to: 'RULE-enforces-hub', direction: 'in' }),
+    /no items match/i,
+  );
+  removeTree(cwd);
+});
+
+test('query_items linked_to on an item with zero inbound answers empty', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  backlinkFixture(registry);
+  assert.match(
+    registry.call('query_items', { linked_to: 'CONST-lonely-item', direction: 'in' }),
+    /no items match/i,
+  );
+  removeTree(cwd);
+});
+
+test('query_items linked_to an item with inbound edges of several relation types returns every one', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Magnet' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'X one' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'X two' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'X three' });
+  registry.call('link_items', { from: 'CONST-x-one', to: 'CONST-magnet', relation: 'constrains' });
+  registry.call('link_items', { from: 'CONST-x-two', to: 'CONST-magnet', relation: 'depends_on' });
+  registry.call('link_items', { from: 'CONST-x-three', to: 'CONST-magnet', relation: 'blocks' });
+  const out = registry.call('query_items', { linked_to: 'CONST-magnet', direction: 'in' });
+  assert.deepEqual(idsFrom(out), ['CONST-x-one', 'CONST-x-three', 'CONST-x-two']);
+  removeTree(cwd);
+});
+
+/**
+ * `superseded_by` again — `RELATION_TYPES` deliberately excludes it (it is
+ * the write gate `link_items` refuses it under), so a `linked_to` + `relation`
+ * combination must not be checked against that vocabulary either, or it
+ * refuses the one edge type `supersede_item` actually writes.
+ */
+test('query_items direction finds a real superseded_by edge from both the retired item and its replacement', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Old item' });
+  registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'New item' });
+  registry.call('supersede_item', { id: 'CONST-old-item', by: 'CONST-new-item' });
+
+  assert.deepEqual(
+    idsFrom(registry.call('query_items', {
+      linked_to: 'CONST-old-item', direction: 'out', relation: 'superseded_by',
+    })),
+    ['CONST-new-item'],
+  );
+  assert.deepEqual(
+    idsFrom(registry.call('query_items', {
+      linked_to: 'CONST-new-item', direction: 'in', relation: 'superseded_by',
+    })),
+    ['CONST-old-item'],
+  );
+  removeTree(cwd);
+});
+
+test('query_items refuses a direction outside in|out|both', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  backlinkFixture(registry);
+  assert.throws(
+    () => registry.call('query_items', { linked_to: 'CONST-hub', direction: 'sideways' }),
+    /must be one of.*in.*out.*both/s,
+  );
+  removeTree(cwd);
+});
+
 test('list_drafts is the review queue', () => {
   const cwd = project();
   const registry = createRegistry(cwd);

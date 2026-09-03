@@ -208,6 +208,21 @@ const FILTER_FLAGS: Record<keyof ItemFilters, string> = {
   text: '--text',
   path: '--path',
   relation: '--relation',
+  // B10 added these to `ItemFilters` for `query_items`/`mycontext search`;
+  // `mycontext export` does not offer either today, same as three of the six
+  // rows above it. Listed here only so this file keeps compiling under the
+  // totality this table promises — see the class doc above.
+  //
+  // `direction` alone can never be the clause that decides an exclusion:
+  // `filterItems` only reads it when `linkedTo` is also set, so a caller of
+  // `exclusionReason` who set `direction` without `linkedTo` gets an item
+  // this filter never actually narrowed, tested in isolation as this file's
+  // loop does. Recorded rather than silently accepted: a future
+  // `mycontext export --linked-to/--direction` would need this function's
+  // per-key loop taught to test the PAIR, not each key alone — out of scope
+  // for the query surface this task built.
+  linkedTo: '--linked-to',
+  direction: '--direction',
 };
 
 /** The keys of `FILTER_FLAGS`, in the order it declares them. */

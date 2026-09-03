@@ -341,24 +341,59 @@ const LEVELS = ['error', 'warn', 'info'] as const;
 test('Doctor draws one row per finding /api/doctor returned, and invents none', async ({ app }) => {
   const { page } = app;
   await show(page, 'doctor');
-  const doctor = await payload<{ findings: { level: string; code: string }[] }>(page, '/api/doctor');
+  const doctor = await payload<{
+    findings: { level: string; code: string; about?: string }[];
+  }>(page, '/api/doctor');
 
   const drawn = await page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>('section[data-p="doctor"] tbody tr')]
       .map((tr) => tr.querySelector<HTMLElement>('td.m')?.textContent?.trim() ?? ''));
 
+  // **`/api/doctor` serves `runChecks` WHOLE, and the screen partitions it.**
+  // A finding carrying `about` is a DISCLOSURE about a check rather than a
+  // finding about the corpus, and it deliberately draws no row — it is a
+  // `details.help` sibling of the table. So the row count is owed against the
+  // findings that are rows, and this comparison would otherwise report a
+  // deliberate partition as rows lost in transit.
+  //
+  // The original invariant is not weakened, it is SPLIT: the count below is
+  // against rows, and the disclosures are asserted PRESENT a few lines down.
+  // Dropping the second half would turn a real guarantee — nothing reaches the
+  // screen and vanishes — into an equality that a screen could satisfy by
+  // hiding anything it liked, which is the failure this test exists to catch.
+  const rows = doctor.findings.filter((f) => f.about === undefined);
+  const notes = doctor.findings.filter((f) => f.about !== undefined);
+
   expect(
     drawn.length,
     `Doctor drew ${drawn.length} rows across its three cards; \`/api/doctor\` returned `
-    + `${doctor.findings.length} findings. A findings list that loses rows on the way to the `
-    + 'screen is a corpus reported healthier than it is.',
-  ).toBe(doctor.findings.length);
+    + `${rows.length} finding(s) that are rows (of ${doctor.findings.length} served, `
+    + `${notes.length} being disclosures that draw no row). A findings list that loses rows `
+    + 'on the way to the screen is a corpus reported healthier than it is.',
+  ).toBe(rows.length);
+
+  // **The other half: a disclosure draws no ROW, but it must still be READABLE.**
+  // `INV-nothing-is-dropped-silently`. Asserted by code rather than by counting
+  // `details.help` elements, because that class also carries the per-code help a
+  // row can open, so an element count would pass while naming nothing.
+  if (notes.length > 0) {
+    const shown = await page.evaluate(() =>
+      document.querySelector<HTMLElement>('section[data-p="doctor"]')?.textContent ?? '');
+    for (const note of notes) {
+      expect(
+        shown,
+        `\`/api/doctor\` served the disclosure \`${note.code}\` (about \`${note.about}\`) and the `
+        + 'Doctor screen does not mention it anywhere. A disclosure draws no row on purpose; '
+        + 'disappearing entirely is the silent drop INV-nothing-is-dropped-silently forbids.',
+      ).toContain(note.code);
+    }
+  }
 
   // Every drawn row carries a code the payload actually holds — sorted, so the
   // comparison is about the multiset and not about the order the three cards
   // happen to be built in.
   const sortedDrawn = [...drawn].sort();
-  const sortedPayload = doctor.findings.map((f) => f.code).sort();
+  const sortedPayload = rows.map((f) => f.code).sort();
   expect(
     sortedDrawn,
     `the codes Doctor drew are not the codes \`/api/doctor\` returned — ${drawn.length} drawn `
@@ -386,7 +421,9 @@ test('Doctor draws one row per finding /api/doctor returned, and invents none', 
   const perCard = await page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>('section[data-p="doctor"] .card')]
       .map((card) => card.querySelectorAll('tbody tr').length));
-  const owed = LEVELS.map((level) => doctor.findings.filter((f) => f.level === level).length);
+  // `rows`, not `doctor.findings`: every disclosure is `info`, so owing the
+  // notice card the served count would demand rows for lines that draw none.
+  const owed = LEVELS.map((level) => rows.filter((f) => f.level === level).length);
   expect(
     perCard,
     `the three severity cards hold ${perCard.join(' + ')} rows; \`/api/doctor\` returned `

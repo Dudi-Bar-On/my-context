@@ -28,7 +28,7 @@ import { scopeField } from '../core/render-item.ts';
 import {
   agentRevisionNotice, itemRevisionNotice, pendingRevisions, type PendingRevision,
 } from '../core/revision.ts';
-import { filterItems } from '../core/search.ts';
+import { filterItems, LINK_DIRECTIONS, type LinkDirection } from '../core/search.ts';
 import { reviewQueue, select } from '../core/select.ts';
 import { MCP_HELP_TOPICS, enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
 import type { Item, Observation, Origin, Severity, Status } from '../core/types.ts';
@@ -857,7 +857,29 @@ const SPECS: ToolSpec[] = [
       description: 'Substring of the title, body, any observation, or any extra value',
     },
       path: { ...S_STRING, description: 'Repo-relative file path; matches item scopes' },
-      relation: { ...S_STRING, description: 'Items carrying this relation type' },
+      relation: {
+        ...S_STRING,
+        description: 'Items carrying this relation type. Combined with linked_to, matches either '
+          + 'spelling of an inverse pair (e.g. "enforces" also matches a stored "enforced_by" row)',
+      },
+      // B10 — the backlink query. `relationDegrees` and `apiGraph`
+      // (`src/ui/read-model.ts`) already walk every edge in both directions to
+      // build their own read models; before this, nothing an agent could call
+      // answered "what points AT this item" — only "what does this item point
+      // at", by reading its own relations back off `get_item`.
+      linked_to: {
+        ...S_STRING,
+        description: 'Item id. Only items connected to THIS item by a relation, in `direction`. '
+          + 'Needs no direction to be useful alone — with only linked_to, every connected item '
+          + 'comes back regardless of which way the relation points',
+      },
+      direction: {
+        ...S_STRING,
+        enum: LINK_DIRECTIONS,
+        description: 'Which side of linked_to\'s edges to answer with: "in" is what points AT it, '
+          + '"out" is what it points at, "both" (the default) is either. Refused without '
+          + 'linked_to, which is the item this is a direction OF',
+      },
       limit: { type: 'number' },
     }),
     // The predicate itself is `filterItems` (src/core/search.ts), shared with
@@ -867,6 +889,18 @@ const SPECS: ToolSpec[] = [
     // structural fact rather than a promise. Only the RENDERING is this
     // surface's own.
     run: (cwd, args) => withWorkspace(cwd, (ctx) => {
+      const linkedTo = optStr(args, 'linked_to');
+      const direction = optEnum<LinkDirection>(args, 'direction', [...LINK_DIRECTIONS], 'workflow');
+      // `direction` alone answers nothing — it names a side of an anchor's
+      // edges that was never given. Refused rather than silently ignored, the
+      // same reason an unrecognized argument is refused elsewhere on this
+      // surface: a caller who typed it believed it was doing something.
+      if (direction !== undefined && linkedTo === undefined) {
+        throw new Error(
+          'my_context: "direction" only means something alongside "linked_to" — it names which ' +
+          'side of THAT item\'s edges to answer with, and there is no item here to answer about.',
+        );
+      }
       const hits = filterItems(ctx.store.all(), {
         type: optStr(args, 'type'),
         status: optEnum<Status>(args, 'status', STATUSES, 'workflow'),
@@ -874,6 +908,8 @@ const SPECS: ToolSpec[] = [
         text: optStr(args, 'text'),
         path: optStr(args, 'path'),
         relation: optStr(args, 'relation'),
+        linkedTo,
+        direction,
       }, ctx.config);
 
       return listOf(

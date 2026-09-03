@@ -51,6 +51,7 @@ import {
   RULE_DIRECTIVES,
 } from '../../src/core/command-flags.ts';
 import { AUDIT_KINDS, AUDIT_OPS } from '../../src/core/audit.ts';
+import { LINK_DIRECTIONS } from '../../src/core/search.ts';
 import { ORIGINS, SEVERITIES, STATUSES } from '../../src/core/validate.ts';
 import { RELATION_TYPES } from '../../src/core/vocabulary.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -568,7 +569,7 @@ test('the flag-spec header counts and names every registered command', () => {
  */
 const KNOWN_VOCABULARIES: Record<string, readonly string[]> = {
   SEVERITIES, STATUSES, AUDIT_KINDS, AUDIT_OPS, RELATION_TYPES, DETAIL_FLAGS,
-  ORIGINS, AUDIT_ROLES, ARTEFACT_FORMATS, RULE_DIRECTIVES,
+  ORIGINS, AUDIT_ROLES, ARTEFACT_FORMATS, RULE_DIRECTIVES, LINK_DIRECTIONS,
 };
 
 test('every flag of every command is declared, and nothing else is', () => {

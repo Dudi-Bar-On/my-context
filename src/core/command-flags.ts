@@ -111,6 +111,7 @@
  */
 
 import { AUDIT_KINDS, AUDIT_OPS } from './audit.ts';
+import { LINK_DIRECTIONS } from './search.ts';
 import { ORIGINS, SEVERITIES, STATUSES } from './validate.ts';
 import { RELATION_TYPES } from './vocabulary.ts';
 import type { ArtefactFormat } from '../pack/reader.ts';
@@ -271,8 +272,11 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
   /** `repair` also hand-rolls its refusal; same spec, same reading. */
   repair: { allowed: ['yes'], values: [] },
   search: {
-    allowed: ['text', 'type', 'tag', 'path', 'status', 'relation', 'limit', ...DETAIL_FLAGS],
-    values: ['text', 'type', 'tag', 'path', 'status', 'relation', 'limit'],
+    allowed: [
+      'text', 'type', 'tag', 'path', 'status', 'relation', 'linked-to', 'direction', 'limit',
+      ...DETAIL_FLAGS,
+    ],
+    values: ['text', 'type', 'tag', 'path', 'status', 'relation', 'linked-to', 'direction', 'limit'],
   },
   status: { allowed: DETAIL_FLAGS, values: [] },
   supersede: { allowed: ['by', 'reason', 'yes'], values: ['by', 'reason'] },
@@ -825,6 +829,18 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
         + 'answer - search also accepts any type your corpus actually carries, superseded_by '
         + 'included, which only mycontext supersede can write.',
     },
+    'linked-to': {
+      ...ITEM_ID,
+      note: 'Only items connected to THIS item by a relation, in --direction. Needs no direction '
+        + 'of its own to be useful alone: with only --linked-to, every connected item comes back '
+        + 'regardless of which way the relation points.',
+    },
+    direction: {
+      values: LINK_DIRECTIONS,
+      note: 'Which side of --linked-to\'s edges to answer with - "in" is what points AT it, "out" '
+        + 'is what it points at, "both" (the default) is either. Refused without --linked-to, '
+        + 'which is the item it is a direction OF.',
+    },
     limit: LIMIT,
   },
   status: DETAIL,
@@ -860,9 +876,12 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
         + 'morning is still there in the afternoon.',
     },
     nonce: {
-      note: 'Print a fresh one-shot credential for a server already running, and do nothing '
-        + 'else. Mutually exclusive with the other three, which this command refuses rather '
-        + 'than silently ignores.',
+      note: 'Ask a server already running for a fresh one-shot credential, and open your '
+        + 'browser with it — nothing else runs. Combine with --no-open to print the URL '
+        + 'instead, for a human who has to carry the link rather than a browser about to open '
+        + 'it immediately; that copy is minted with a longer window. Mutually exclusive with '
+        + '--port and --idle-ms, which this command refuses rather than silently ignores: '
+        + 'neither describes a server this mode binds.',
     },
   },
   pin: { yes: YES },

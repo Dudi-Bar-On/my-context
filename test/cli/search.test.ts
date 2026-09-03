@@ -38,6 +38,8 @@ interface Plant {
   scope?: string[];
   tags?: string[];
   status?: string;
+  /** `## Relations` lines, written verbatim as `- <type> [[<target>]]`. */
+  relations?: { type: string; target: string }[];
 }
 
 function plant(cwd: string, item: Plant): void {
@@ -50,11 +52,14 @@ function plant(cwd: string, item: Plant): void {
   const tags = item.tags?.length
     ? `tags:\n${item.tags.map((t) => `  - ${t}`).join('\n')}\n`
     : '';
+  const relations = item.relations?.length
+    ? `\n\n## Relations\n${item.relations.map((r) => `- ${r.type} [[${r.target}]]`).join('\n')}\n`
+    : '\n';
   writeFileSync(
     file,
     `---\nid: ${item.id}\ntype: ${type}\ntitle: ${item.title}\n` +
     `status: ${item.status ?? 'active'}\n${scope}${tags}---\n\n` +
-    `# ${item.title}\n\n${item.body ?? 'Body.'}\n`,
+    `# ${item.title}\n\n${item.body ?? 'Body.'}${relations}`,
     'utf8',
   );
 }
@@ -331,6 +336,292 @@ test('mycontext search and query_items select the same items for the same filter
         `they must run one predicate, not two`,
       );
       assert.ok(cli.length > 0, `${JSON.stringify(filters)} matched nothing on either surface`);
+    }
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * **B10 — the backlink query.** `relationDegrees` and `apiGraph`
+ * (`src/ui/read-model.ts`) already walk every edge in both directions; no
+ * agent- or CLI-reachable surface could ask "what points AT this item" before
+ * this. `--linked-to <id>` names the anchor and `--direction in|out|both`
+ * says which side of its edges to answer with — `in` is what points at the
+ * anchor, `out` is what the anchor points at, and the two are asymmetric
+ * because a relation is directional.
+ *
+ * The fixture below is built once (`backlinkCorpus`) and used by every test
+ * in this block, because the direction rules only cohere when compared
+ * against each other: `CONST-hub` is the target of an ordinary inbound edge
+ * (`constrains`, from `CONST-a`), the source of an ordinary outbound edge
+ * (`relates_to`, to `CONST-b`), and — the case this whole feature exists for —
+ * carries a stored `enforced_by` pointing at `RULE-c`.
+ *
+ * `enforced_by` is the PASSIVE spelling: "`CONST-hub` is enforced_by
+ * `RULE-c`" means `RULE-c` enforces `CONST-hub`, so the stored row's owner
+ * (`CONST-hub`) is the party being pointed AT and its target (`RULE-c`) is
+ * the party doing the pointing — backwards from every ordinary relation,
+ * where the owner is always the one pointing. A direction filter that only
+ * read the literal owner/target columns would call this row outbound from
+ * `CONST-hub` (it is `CONST-hub`'s own row) and inbound to `RULE-c` — exactly
+ * backwards from what `enforced_by` means, and the defect
+ * `DEC-all-nineteen-relation-types-ship-and-an-inverse-pair-is-two` names in
+ * so many words: "a reader may want either" end of a pair, and both must
+ * answer correctly however the single stored row happens to spell it.
+ */
+function backlinkCorpus(cwd: string): void {
+  plant(cwd, { id: 'CONST-hub', title: 'The hub' });
+  plant(cwd, {
+    id: 'CONST-a', title: 'Points at the hub',
+    relations: [{ type: 'constrains', target: 'CONST-hub' }],
+  });
+  plant(cwd, { id: 'CONST-b', title: 'The hub points here' });
+  plant(cwd, {
+    id: 'CONST-hub2', title: 'never referenced, placeholder to keep ids distinct', status: 'draft',
+  });
+  plant(cwd, { id: 'RULE-c', type: 'rule', title: 'Enforces the hub' });
+  plant(cwd, { id: 'CONST-lonely', title: 'Touches nothing at all' });
+  // Rewrite CONST-hub with its two real edges: the ordinary outbound
+  // `relates_to`, and the PASSIVE `enforced_by` — one row, and `RULE-c`
+  // itself carries no relation of its own. This mirrors the real corpus's
+  // only instance of a passive-spelled edge, `CONST-node-24-no-build-step`
+  // `enforced_by` `RULE-erasable-syntax-only` (`.my_context/`), which has the
+  // same shape: the enforcer (`RULE-erasable-syntax-only`) writes nothing —
+  // the enforced item alone carries the row.
+  plant(cwd, {
+    id: 'CONST-hub', title: 'The hub',
+    relations: [
+      { type: 'relates_to', target: 'CONST-b' },
+      { type: 'enforced_by', target: 'RULE-c' },
+    ],
+  });
+}
+
+function ids(json: string): string[] {
+  return (JSON.parse(json).items as { id: string }[]).map((i) => i.id).sort();
+}
+
+test('--direction in finds what points at the anchor, including through a passive-spelled edge', () => {
+  const cwd = project();
+  try {
+    backlinkCorpus(cwd);
+    const { code, out } = run(['search', '--linked-to', 'CONST-hub', '--direction', 'in', '--json'], cwd);
+    assert.equal(code, 0, out);
+    assert.deepEqual(ids(out), ['CONST-a', 'RULE-c'].sort(),
+      'CONST-a points at the hub directly; RULE-c points at it only via the passive ' +
+      '"enforced_by" row the hub itself carries');
+    assert.doesNotMatch(out, /"CONST-b"/, 'the hub points at CONST-b, not the reverse');
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('--direction out finds what the anchor points at, and excludes the passive-spelled inbound edge', () => {
+  const cwd = project();
+  try {
+    backlinkCorpus(cwd);
+    const { code, out } = run(['search', '--linked-to', 'CONST-hub', '--direction', 'out', '--json'], cwd);
+    assert.equal(code, 0, out);
+    assert.deepEqual(ids(out), ['CONST-b']);
+    assert.doesNotMatch(out, /"CONST-a"/, 'CONST-a points AT the hub; that is inbound, not outbound');
+    assert.doesNotMatch(out, /"RULE-c"/,
+      'the hub is enforced_by RULE-c — RULE-c points at the hub, so this must not appear as ' +
+      'something the hub points at');
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('--direction both is the union of in and out', () => {
+  const cwd = project();
+  try {
+    backlinkCorpus(cwd);
+    const { code, out } = run(['search', '--linked-to', 'CONST-hub', '--direction', 'both', '--json'], cwd);
+    assert.equal(code, 0, out);
+    assert.deepEqual(ids(out), ['CONST-a', 'CONST-b', 'RULE-c'].sort());
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('--linked-to with no --direction defaults to both', () => {
+  const cwd = project();
+  try {
+    backlinkCorpus(cwd);
+    const both = run(['search', '--linked-to', 'CONST-hub', '--direction', 'both', '--json'], cwd);
+    const defaulted = run(['search', '--linked-to', 'CONST-hub', '--json'], cwd);
+    assert.equal(defaulted.code, 0, defaulted.out);
+    assert.deepEqual(ids(defaulted.out), ids(both.out),
+      'an out-only default would silently hide every item that only points AT the anchor — ' +
+      'the exact gap this feature closes, so both is the only default that cannot regress it');
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('the inverse pair reads correctly from BOTH ends of the one stored row', () => {
+  const cwd = project();
+  try {
+    backlinkCorpus(cwd);
+    // From RULE-c's end: it points AT the hub (out), and nothing points at it (in) —
+    // the exact mirror of the hub's own results above.
+    const out = run(['search', '--linked-to', 'RULE-c', '--direction', 'out', '--json'], cwd);
+    assert.equal(out.code, 0, out.out);
+    assert.deepEqual(ids(out.out), ['CONST-hub']);
+
+    const in_ = run(['search', '--linked-to', 'RULE-c', '--direction', 'in'], cwd);
+    assert.equal(in_.code, 0, in_.out);
+    assert.match(in_.out, /0 item\(s\) match/,
+      'RULE-c owns no relation and is never named as a target, so nothing points at it');
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('--relation composes with --direction, matching either spelling of an inverse pair', () => {
+  const cwd = project();
+  try {
+    backlinkCorpus(cwd);
+    // "enforces" is the ACTIVE spelling; the stored row is the PASSIVE
+    // "enforced_by" on CONST-hub. A caller who asks the active question must
+    // still get RULE-c, and must not also get CONST-a (whose edge is
+    // "constrains", not this pair at all).
+    const { code, out } = run(
+      ['search', '--linked-to', 'CONST-hub', '--direction', 'in', '--relation', 'enforces', '--json'],
+      cwd,
+    );
+    assert.equal(code, 0, out);
+    assert.deepEqual(ids(out), ['RULE-c']);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('an item with zero inbound answers empty, not an error', () => {
+  const cwd = project();
+  try {
+    backlinkCorpus(cwd);
+    const { code, out } = run(['search', '--linked-to', 'CONST-lonely', '--direction', 'in'], cwd);
+    assert.equal(code, 0, out);
+    assert.match(out, /0 item\(s\) match/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('an item with inbound edges of several relation types returns every one', () => {
+  const cwd = project();
+  try {
+    plant(cwd, { id: 'CONST-magnet', title: 'Pulls from three directions' });
+    plant(cwd, {
+      id: 'CONST-x1', title: 'a', relations: [{ type: 'constrains', target: 'CONST-magnet' }],
+    });
+    plant(cwd, {
+      id: 'CONST-x2', title: 'b', relations: [{ type: 'depends_on', target: 'CONST-magnet' }],
+    });
+    plant(cwd, {
+      id: 'CONST-x3', title: 'c', relations: [{ type: 'blocks', target: 'CONST-magnet' }],
+    });
+    const { code, out } = run(['search', '--linked-to', 'CONST-magnet', '--direction', 'in', '--json'], cwd);
+    assert.equal(code, 0, out);
+    assert.deepEqual(ids(out), ['CONST-x1', 'CONST-x2', 'CONST-x3']);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * **`superseded_by` again — the SAME defect `--relation` was fixed for,
+ * reached through `--direction` this time.** `RELATION_TYPES` excludes
+ * `superseded_by` on purpose (it is the write gate that stops `link_items`
+ * forging a retirement); a direction-aware filter that validated against it
+ * would refuse the one edge type `supersede_item` actually writes on the
+ * retired item. Written through the real command, matching the precedent
+ * `--relation superseded_by` test above: the point is that the product
+ * writes a type its own query surface must still be able to find.
+ */
+test('--direction finds a real superseded_by edge from both the retired item and its replacement', () => {
+  const cwd = project();
+  try {
+    plant(cwd, { id: 'CONST-old', title: 'Retired' });
+    plant(cwd, { id: 'CONST-new', title: 'Replacement' });
+    const retired = run(['supersede', 'CONST-old', '--by', 'CONST-new', '--yes'], cwd);
+    assert.equal(retired.code, 0, retired.out);
+
+    // CONST-old's own row IS the superseded_by edge — literal outbound.
+    const fromOld = run(
+      ['search', '--linked-to', 'CONST-old', '--direction', 'out', '--relation', 'superseded_by', '--json'],
+      cwd,
+    );
+    assert.equal(fromOld.code, 0, fromOld.out);
+    assert.deepEqual(ids(fromOld.out), ['CONST-new']);
+
+    // From CONST-new's end, that same row is literal inbound.
+    const toNew = run(
+      ['search', '--linked-to', 'CONST-new', '--direction', 'in', '--relation', 'superseded_by', '--json'],
+      cwd,
+    );
+    assert.equal(toNew.code, 0, toNew.out);
+    assert.deepEqual(ids(toNew.out), ['CONST-old']);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('--direction without --linked-to is refused rather than silently ignored', () => {
+  const cwd = project();
+  try {
+    corpus(cwd);
+    const { code, out } = run(['search', '--type', 'constraint', '--direction', 'in'], cwd);
+    assert.equal(code, 1);
+    assert.match(out, /--linked-to/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('an unrecognized --direction is refused in the shared words', () => {
+  const cwd = project();
+  try {
+    backlinkCorpus(cwd);
+    const { code, out } = run(['search', '--linked-to', 'CONST-hub', '--direction', 'sideways'], cwd);
+    assert.equal(code, 1);
+    assert.match(out, /direction/);
+    assert.match(out, /in, out, both/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('mycontext search and query_items agree on --linked-to and --direction', () => {
+  const cwd = project();
+  try {
+    backlinkCorpus(cwd);
+    const registry = createRegistry(cwd);
+    for (const filters of [
+      { linkedTo: 'CONST-hub', direction: 'in' },
+      { linkedTo: 'CONST-hub', direction: 'out' },
+      { linkedTo: 'CONST-hub', direction: 'both' },
+      { linkedTo: 'RULE-c', direction: 'out' },
+    ]) {
+      const { code, out } = run(
+        ['search', '--linked-to', filters.linkedTo, '--direction', filters.direction, '--json'], cwd,
+      );
+      assert.equal(code, 0, out);
+      const cli = ids(out);
+
+      // `--linked-to` on the CLI is `linked_to` on the wire, matching every
+      // other multi-word MCP argument (`source_file`, `summary_omitted`).
+      const tool = registry.call('query_items', {
+        linked_to: filters.linkedTo, direction: filters.direction, limit: 500,
+      });
+      const fromTool = tool.includes('no items match')
+        ? []
+        : [...tool.matchAll(/^([A-Z][A-Za-z0-9-]*) ·/gm)].map((m) => m[1]).sort();
+
+      assert.deepEqual(cli, fromTool,
+        `search and query_items disagree for ${JSON.stringify(filters)}`);
     }
   } finally {
     removeTree(cwd);

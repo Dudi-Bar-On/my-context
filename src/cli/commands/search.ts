@@ -4,7 +4,8 @@ import type { LoadError } from '../../core/rebuild.ts';
 import { STATUSES } from '../../core/validate.ts';
 import { scopeCell } from '../../core/render-item.ts';
 import {
-  anyFilterSet, filterItems, searchableRelationTypes, type ItemFilters,
+  anyFilterSet, filterItems, LINK_DIRECTIONS, searchableRelationTypes,
+  type ItemFilters, type LinkDirection,
 } from '../../core/search.ts';
 import { enumError } from '../../core/teach.ts';
 import type { Item, Status } from '../../core/types.ts';
@@ -52,6 +53,7 @@ const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.search;
 const USAGE = `usage: mycontext search "<words>" ${DETAIL_USAGE}
        mycontext search [--text "<words>"] [--type <category>] [--tag <tag>]
                         [--path <file>] [--status <status>] [--relation <type>]
+                        [--linked-to <id>] [--direction in|out|both]
                         [--limit <n>] ${DETAIL_USAGE}
 
 A bare positional is the --text filter, so \`mycontext search "connection pool"\` and
@@ -59,7 +61,9 @@ A bare positional is the --text filter, so \`mycontext search "connection pool"\
 --text matches a substring of the title, body, any observation or any extra value,
       case-insensitively. --path asks what
 governs a file and therefore returns the UNSCOPED items too, because an item with no
-scope applies everywhere.
+scope applies everywhere. --linked-to <id> answers "what points at (or from) this item" —
+in|out|both, --direction default both — the backlink query relationDegrees and apiGraph
+already compute internally.
 
 At least one filter is required. To list the whole corpus, that is \`mycontext list\`.`;
 
@@ -114,6 +118,22 @@ function cmdSearch(ws: Workspace, args: string[], out: Emit): number {
     // and the store is not open yet.
     const relation = flag(args, 'relation');
 
+    const linkedTo = flag(args, 'linked-to');
+    const direction = flag(args, 'direction');
+    // `direction` is meaningless without an anchor, and a flag this command
+    // silently ignored would be the exact failure `--txt` (an unknown flag)
+    // is refused for one line down — a typo that reads as accepted.
+    if (direction !== null && linkedTo === null) {
+      say(out, 'my_context: --direction only means something alongside --linked-to <id> — it ' +
+        'names which side of THAT item\'s edges to answer with, and there is no item here to ' +
+        'answer about.');
+      return 1;
+    }
+    if (direction !== null && !(LINK_DIRECTIONS as readonly string[]).includes(direction)) {
+      say(out, enumError('direction', direction, [...LINK_DIRECTIONS], 'workflow'));
+      return 1;
+    }
+
     filters = {
       text: text ?? positional[0] ?? null,
       type: flag(args, 'type'),
@@ -121,6 +141,8 @@ function cmdSearch(ws: Workspace, args: string[], out: Emit): number {
       path: flag(args, 'path'),
       status: (status as Status | null),
       relation,
+      linkedTo,
+      direction: (direction as LinkDirection | null),
     };
 
     const rawLimit = flag(args, 'limit');
@@ -260,7 +282,8 @@ function cmdSearch(ws: Workspace, args: string[], out: Emit): number {
 
 registerCommand({
   name: 'search',
-  usage: `search "<words>" [--type|--tag|--path|--status|--relation|--limit] ${DETAIL_USAGE}`,
-  summary: 'find items by text, type, tag, path or relation',
+  usage: `search "<words>" [--type|--tag|--path|--status|--relation|--linked-to|--direction|--limit] ` +
+    DETAIL_USAGE,
+  summary: 'find items by text, type, tag, path, relation, or what links to another item',
   run: cmdSearch,
 });

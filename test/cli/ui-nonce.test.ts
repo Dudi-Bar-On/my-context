@@ -107,11 +107,11 @@ function setConfiguredPort(cwd: string, port: number): void {
   writeFileSync(file, `${JSON.stringify({ ...config, ui: { ...ui, port } }, null, 2)}\n`, 'utf8');
 }
 
-test('mycontext ui --nonce prints a usable URL when a server is live', async (t) => {
+test('mycontext ui --nonce --no-open prints a usable URL when a server is live', async (t) => {
   const cwd = project(t);
   const h = await startUiChild(cwd);
   try {
-    const run = runNonce(cwd);
+    const run = runNonce(cwd, ['--no-open']);
     assert.equal(run.code, 0, run.out);
     const match = /mycontext ui: http:\/\/127\.0\.0\.1:(\d+)\/#([0-9a-f]{32})/.exec(run.out);
     assert.ok(match, `no usable URL in the output:\n${run.out}`);
@@ -212,8 +212,13 @@ test('a live server with no record: --nonce does not deny it, and recovers it fr
 
     // Now the address a person wrote down. `--nonce` tries exactly this one,
     // and nothing else — no scan, no sweep of the ephemeral range.
+    //
+    // `--no-open`, so this spawned child prints rather than launching a real
+    // browser on whatever machine runs the suite — the open/print decision
+    // itself is covered in-process, with a fake opener, by
+    // `test/cli/ui-nonce-open.test.ts`.
     setConfiguredPort(cwd, h.port);
-    const recovered = runNonce(cwd);
+    const recovered = runNonce(cwd, ['--no-open']);
     assert.equal(recovered.code, 0, recovered.out);
     const match = /mycontext ui: http:\/\/127\.0\.0\.1:(\d+)\/#([0-9a-f]{32})/.exec(recovered.out);
     assert.ok(match, `the configured port was not tried, or its answer was dropped:\n${recovered.out}`);
@@ -259,13 +264,40 @@ test('a configured port that answers nothing is reported, not swept past', async
  * is refused rather than silently ignored (`INV-nothing-is-dropped-silently`)
  * — combining them is not "start with these settings AND also mint", it is
  * two different intents on one command line.
+ *
+ * `--no-open` used to be a third member of this list. It no longer is —
+ * owner ruling 2026-09-03: `--nonce` now OPENS the browser by default (30s is
+ * ample when no human has to read the link), and `--nonce --no-open` is the
+ * printed path for the case where a human still does — reusing `--no-open`'s
+ * existing meaning ("do not launch a browser; print the URL instead") rather
+ * than adding a second flag that says the same thing. `--port` and
+ * `--idle-ms` stay refused: neither describes anything `--nonce` could apply
+ * it to, since it binds no server of its own.
  */
 test('--nonce combined with a start-only flag is refused before anything runs', (t) => {
   const cwd = project(t);
-  for (const extra of [['--port', '0'], ['--idle-ms', '1000'], ['--no-open']]) {
+  for (const extra of [['--port', '0'], ['--idle-ms', '1000']]) {
     const run = runNonce(cwd, extra);
     assert.equal(run.code, 1, `${extra.join(' ')}: ${run.out}`);
     assert.match(run.out, /--nonce/, `${extra.join(' ')}: the refusal must name --nonce`);
     assert.doesNotMatch(run.out, /http:\/\/127\.0\.0\.1:/, `${extra.join(' ')}: nothing should have run`);
+  }
+});
+
+/**
+ * `--nonce --no-open` is now a legal, meaningful combination — the opposite
+ * of the case above. It must not be refused, and it must behave exactly like
+ * `--nonce` alone did before 2026-09-03: no browser, a printed URL.
+ */
+test('--nonce --no-open is accepted, not refused as a start-only flag', async (t) => {
+  const cwd = project(t);
+  const h = await startUiChild(cwd);
+  try {
+    const run = runNonce(cwd, ['--no-open']);
+    assert.equal(run.code, 0, run.out);
+    assert.doesNotMatch(run.out, /--nonce/, `--no-open must not be treated as start-only: ${run.out}`);
+    assert.match(run.out, new RegExp(`http://127\\.0\\.0\\.1:${h.port}/#[0-9a-f]{32}`), run.out);
+  } finally {
+    await h.stop();
   }
 });

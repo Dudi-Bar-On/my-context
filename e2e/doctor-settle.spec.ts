@@ -9,35 +9,60 @@
  * of them routing to `acknowledge` — seventy confirmations and seventy one-shot
  * nonces to clear one screen. A gate nobody can afford to pass is not a gate.
  *
- * ── THIS SPEC RUNS OVER THE LIVE CORPUS, DELIBERATELY ──────────────────────
+ * ── THIS SPEC RAN OVER THE LIVE CORPUS, UNTIL THE LIVE CORPUS HAD NOTHING ──
  *
  * `INSTR-testing-happens-against-the-current-corpus-and-an-exception`, owner,
  * 2026-09-03: *"all your tests would be on the current corpus because we are
- * doing dog fooding"*, and it says in its own words that the browser suite
- * *"is hardwired to `.demo-corpus` today and therefore does not comply"*. So
- * this file does NOT use `./app.ts`'s fixture: it starts its own server over the
- * repository's own corpus and asserts against what that corpus actually
- * reports. The reason it matters here rather than in general is the shape of
- * this feature — a control that only appears when a code has TWO OR MORE open
- * findings. The demo corpus's Doctor answers three `dead_scope` findings; the
- * live one answers 89 across five codes. A fixture would have proved the control
- * can be drawn and nothing about whether it appears on the screen the owner
- * opens.
+ * doing dog fooding"*. That is the rule this file used to follow — its own
+ * server, over the repository's own corpus, asserting against what that
+ * corpus actually reported. It held for exactly as long as the corpus had
+ * something to settle: 89 findings across five codes, one of them measured at
+ * 71-of-74 that same day.
  *
- * **The server writes nothing.** `test/ui/server-e2e.test.ts` snapshots every
- * byte under the workspace and compares it after a full route sweep, so the
- * read surface leaving the corpus untouched is an assertion rather than a
- * comment.
+ * Doctor went from 95 findings to ZERO the same day this spec was written, on
+ * the strength of the very capabilities it and its siblings exist to exercise.
+ * A spec that requires an unsettled corpus to prove a settling feature is
+ * measuring nothing once the corpus is settled — the anti-vacuity guard below
+ * is exactly the assertion that catches that, and it now fails honestly rather
+ * than passing on an empty screen.
+ *
+ * **The owner's exception, given for this file, in these terms:** a temp
+ * workspace holding one deliberately manufactured defect, exercised on screen,
+ * then thrown away — never a fixture corpus standing in for the real one, and
+ * never a write to `.my_context/`. `makeSettleWorkspace` below is that
+ * workspace. It is `mkdtemp`'d, seeded through the real CLI (`init`, `add`,
+ * `rebuild` — the same three commands a person would type), read once by
+ * `startUiChild` — the same spawn path every other UI harness in this project
+ * goes through — and `rmSync`'d in the fixture's `finally`, whether the test
+ * passed or not. **This file never opens a server over this repository's own
+ * `.my_context/` again.**
+ *
+ * ── WHY TWO FINDINGS, NOT ONE, AND WHY THIS ONE CODE ────────────────────────
+ *
+ * The control under test draws only for a CODE with TWO OR MORE open
+ * findings — `screens/doctor.js`'s own rule, "one finding is not a class: the
+ * row already carries `mycontext ack <id> <code>`, which is shorter, more
+ * precise and settles the same thing." A workspace seeded with one deliberate
+ * defect would build a screen with nothing to bulk-settle, which is the same
+ * vacuity this file already guards against one level up. So the workspace
+ * carries two items, each seeded with the SAME deliberate defect — a rule body
+ * that retracts its own premise, `checkBodyAgreement`'s trigger for
+ * `body_disagrees_with_meta` — rather than one. It is `test/cli/ack-all.test.ts`'s
+ * own choice, for the identical reason: it needs no neighbouring file to cite,
+ * and it carries no specimen-exemption mechanism (`citation_form`'s
+ * `historical-citation` marker) to dodge for a scenario that has no use for it.
+ * Two items, two findings, one code, both unacknowledged — the smallest corpus
+ * this control can be measured on, and nothing else is seeded.
  *
  * ── AND IT NEVER PRESSES "RUN IT" ──────────────────────────────────────────
  *
- * **A bulk acknowledgement writes to the owner's live corpus, and nobody has
- * approved that.** So the drive stops one button short: the confirm is opened,
- * read, asserted against the composed line, and CANCELLED. What that leaves
- * unproved is stated rather than left to be discovered — the write path is
- * covered end to end in `test/cli/ack-all.test.ts`, against a throwaway
- * workspace, where it belongs
- * (`RULE-a-diagnostic-probe-never-runs-against-a-corpus-a-person-is`).
+ * The confirm is opened, read, asserted against the composed line, and
+ * CANCELLED — this test is titled "and this spec stops there" for that reason,
+ * and stays true to it even now that the corpus behind it is a throwaway
+ * workspace rather than the owner's own. The write path is covered end to end
+ * in `test/cli/ack-all.test.ts`, against its own throwaway workspace, where it
+ * belongs (`RULE-a-diagnostic-probe-never-runs-against-a-corpus-a-person-is`)
+ * — duplicating it here would prove the same thing twice through a slower door.
  *
  * ── WHAT IS ASSERTED HERE AND NOWHERE ELSE ─────────────────────────────────
  *
@@ -50,10 +75,15 @@
  */
 import { test as base, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
 
-const REPO = path.resolve(import.meta.dirname, '..');
+/** The CLI entry the throwaway workspace is seeded through — `init`, `add`,
+ *  `rebuild`, exactly as a person would type them. */
+const CLI = path.resolve(import.meta.dirname, '..', 'src', 'cli', 'index.ts');
 
 const screen = '[data-p="doctor"]';
 /** A command block that is a direct child of a card: shared by every row of its
@@ -72,15 +102,59 @@ interface Finding {
 }
 
 /**
- * The app over THIS repository's corpus. A fixture of its own rather than
- * `./app.ts`'s, for the reason in the header: that one is pinned to
- * `.demo-corpus` and this feature is invisible at fixture scale.
+ * A body whose own wording retracts its premise — `checkBodyAgreement`'s own
+ * trigger for `body_disagrees_with_meta`, borrowed verbatim from
+ * `test/cli/ack-all.test.ts` so the two files exercise the identical finding
+ * rather than two spellings of "a body that disagrees with itself".
  */
-const test = base.extend<{ live: { page: Page } }>({
-  live: async ({ page }, use) => {
+const RETRACTING_BODY =
+  'THE PREMISE HERE IS RETRACTED. This rule no longer holds in the form its title claims.';
+
+/**
+ * `mkdtemp`'d, `init`'d, seeded with exactly two rules carrying the same
+ * deliberate defect, `rebuild`'t, and handed back as a bare path — the
+ * fixture below is what starts a server over it and what throws it away.
+ *
+ * **`rebuild` is not optional here.** `/api/doctor` is served through
+ * `withStores`, which reads the SQLite-backed index (`ws.dbPath`) rather than
+ * walking the filesystem the way the plain CLI's own `doctor` command does —
+ * `doctor-outcome.spec.ts`'s `makeWriteWorkspace` carries the same step for the
+ * same reason. `add` alone left this workspace with two item files and no
+ * guarantee the index agrees with them yet; `rebuild` is the one command whose
+ * whole purpose is making that guarantee true.
+ */
+function makeSettleWorkspace(): string {
+  const root = mkdtempSync(path.join(tmpdir(), 'myctx-e2e-settle-'));
+  const run = (args: string[]): void => {
+    execFileSync(process.execPath, [CLI, ...args], { cwd: root, encoding: 'utf8', stdio: 'pipe' });
+  };
+  run(['init']);
+  for (const title of ['Settlement probe rule one', 'Settlement probe rule two']) {
+    run([
+      'add', 'rule', title, '--body', RETRACTING_BODY,
+      '--summary', `A rule about ${title.toLowerCase()}.`, '--yes',
+    ]);
+  }
+  run(['rebuild']);
+  return root;
+}
+
+/**
+ * The app over a THROWAWAY workspace built fresh for this file, and never
+ * again over this repository's own corpus — see the header for why, and for
+ * the owner's exception this fixture is built to stay inside. A fixture of its
+ * own rather than `./app.ts`'s, for the reason the header argues at length:
+ * that one is pinned to `.demo-corpus`, and the feature under test is
+ * invisible at fixture scale unless the fixture is built to hold it, which
+ * `./app.ts`'s is not and should not be widened to be.
+ */
+const test = base.extend<{ settle: { page: Page } }>({
+  settle: async ({ page }, use) => {
     let harness: UiHarness | undefined;
+    let root: string | undefined;
     try {
-      harness = await startUiChild(REPO);
+      root = makeSettleWorkspace();
+      harness = await startUiChild(root);
       const h = harness;
       await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
       await expect(
@@ -90,6 +164,14 @@ const test = base.extend<{ live: { page: Page } }>({
       await use({ page });
     } finally {
       if (harness !== undefined) await harness.stop();
+      // Best-effort, and deliberately not awaited into a failure: a Windows
+      // SQLite handle can outlive the child's own `exit` event by a beat, and a
+      // failed cleanup of a disposable temp directory is not a reason to fail
+      // an assertion that already passed — `doctor-outcome.spec.ts`'s
+      // `makeWriteWorkspace` cleanup carries the identical argument.
+      if (root !== undefined) {
+        try { rmSync(root, { recursive: true, force: true }); } catch { /* see above */ }
+      }
     }
   },
 });
@@ -132,13 +214,16 @@ async function offered(page: Page): Promise<Map<string, number>> {
   return out;
 }
 
-test('the live corpus draws a settlement per code, and every count is the corpus\'s own', async ({ live }) => {
-  const { page } = live;
+test('this workspace draws a settlement per code, and every count is its own', async ({ settle }) => {
+  const { page } = settle;
   const findings = await openDoctor(page);
   // Anti-vacuity: a corpus with nothing to settle would pass every assertion
   // below by having nothing to check, which is the shape this project has
-  // caught itself shipping four times.
-  expect(findings.length, 'the live corpus reports no findings at all; this spec measured nothing')
+  // caught itself shipping four times. This workspace is manufactured
+  // specifically to hold something to settle, so a failure here means the
+  // manufacturing itself broke — not that the day's corpus happened to be
+  // clean.
+  expect(findings.length, 'this workspace reports no findings at all; this spec measured nothing')
     .toBeGreaterThan(0);
 
   // The expected set, derived from the SERVED body rather than from the screen:
@@ -154,7 +239,7 @@ test('the live corpus draws a settlement per code, and every count is the corpus
   for (const [code, n] of [...expected]) if (n < 2) expected.delete(code);
 
   expect(expected.size,
-    'no code in the live corpus has two open findings a person settles, so this run proves '
+    'no code in this workspace has two open findings a person settles, so this run proves '
     + 'nothing about the control the owner asked for').toBeGreaterThan(0);
 
   const drawn = await offered(page);
@@ -192,11 +277,13 @@ test('the live corpus draws a settlement per code, and every count is the corpus
   await expect(actions.first().getByRole('button', { name: 'Execute' })).toBeVisible();
 });
 
-test('a settlement covers only what a ruling can settle, and the row keeps its own control', async ({ live }) => {
-  const { page } = live;
-  // The edge cases the live corpus is not guaranteed to hold on any given day,
-  // served rather than staged: writing items into the corpus to produce them is
-  // exactly what the dogfooding instruction does NOT licence.
+test('a settlement covers only what a ruling can settle, and the row keeps its own control', async ({ settle }) => {
+  const { page } = settle;
+  // These edge cases are not worth constructing as real items in the seeded
+  // workspace — hand-building seven items just to exercise the screen's own
+  // filtering logic would be exactly the "general fixture" this file's
+  // exception does not licence. Served instead: what is under test is the
+  // filtering, not the corpus.
   const findings: Finding[] = [
     { level: 'info', code: 'body_disagrees_with_meta', item: 'DEC-a', message: 'body retracts its own premise. Which of the two moves is the owner\'s call.', remedy: { route: 'acknowledge' } },
     { level: 'info', code: 'body_disagrees_with_meta', item: 'DEC-b', message: 'body retracts its own premise. Which of the two moves is the owner\'s call.', remedy: { route: 'acknowledge' } },
@@ -239,8 +326,8 @@ test('a settlement covers only what a ruling can settle, and the row keeps its o
   expect(tally).toContain(String(findings.length));
 });
 
-test('Execute opens the confirm naming the exact command, and this spec stops there', async ({ live }) => {
-  const { page } = live;
+test('Execute opens the confirm naming the exact command, and this spec stops there', async ({ settle }) => {
+  const { page } = settle;
   await openDoctor(page);
 
   const drawn = await offered(page);
@@ -249,8 +336,9 @@ test('Execute opens the confirm naming the exact command, and this spec stops th
   // the screen so it draws no settlement failed the two tests above and SKIPPED
   // these two. A skip is how a regression stays green.
   expect(drawn.size,
-    'the live corpus draws no settlement, so there is nothing to confirm — either the control '
-    + 'regressed or this corpus has no code with two open findings a person settles',
+    'this workspace draws no settlement, so there is nothing to confirm — either the control '
+    + 'regressed or the seeded workspace failed to produce a code with two open findings a '
+    + 'person settles',
   ).toBeGreaterThan(0);
 
   const cmd = page.locator(`${sharedCmd}`).filter({ hasText: 'ack --all' }).first();
@@ -276,21 +364,23 @@ test('Execute opens the confirm naming the exact command, and this spec stops th
     'the confirm did not arm — the nonce is minted by this GET and by nothing else',
   ).toBeVisible({ timeout: 20_000 });
 
-  // **AND IT IS NOT PRESSED.** A bulk acknowledgement writes to the owner's
-  // live corpus. The write path is proved in `test/cli/ack-all.test.ts` against
-  // a throwaway workspace; here the drive stops one button short, deliberately,
-  // and cancels so nothing is left armed.
+  // **AND IT IS NOT PRESSED.** The write path is proved end to end in
+  // `test/cli/ack-all.test.ts`, against its own throwaway workspace; here the
+  // drive stops one button short, deliberately — this test is titled "and this
+  // spec stops there" and stays true to it even though the corpus behind it is
+  // now this file's own throwaway workspace rather than the owner's — and
+  // cancels so nothing is left armed.
   await actions.getByRole('button', { name: 'Cancel' }).click();
   await expect(actions.getByRole('button', { name: 'Run it' })).toHaveCount(0);
   await expect(actions.getByRole('button', { name: 'Execute' })).toBeVisible();
 });
 
-test('the settlement speaks Hebrew too, and its command does not change', async ({ live }) => {
-  const { page } = live;
+test('the settlement speaks Hebrew too, and its command does not change', async ({ settle }) => {
+  const { page } = settle;
   await openDoctor(page);
   const before = await offered(page);
   expect(before.size,
-    'the live corpus draws no settlement in English, so nothing here measures the Hebrew one',
+    'this workspace draws no settlement in English, so nothing here measures the Hebrew one',
   ).toBeGreaterThan(0);
 
   await page.click('#lang');

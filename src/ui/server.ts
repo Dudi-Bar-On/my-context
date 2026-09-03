@@ -135,6 +135,30 @@ export const PRINTED_NONCE_TTL_MS = 600_000;
  * accepted: a terminal window left visible on a shared screen, a scrollback
  * buffer, a copied line sitting in clipboard history, are all a live
  * credential for thirty seconds and inert paper after it.
+ *
+ * ── UPDATE 2026-09-03: THIS IS NOW THE DEFAULT, NOT THE ONLY, ANSWER ───────
+ *
+ * `mycontext ui --nonce` used to print this nonce unconditionally — which
+ * means the paragraph above, "typed by someone already AT the terminal … the
+ * printed line is read and pasted in the same sitting", was a claim about a
+ * HUMAN consuming it. Measured that day: the owner hit a dead page repeatedly
+ * because a human does not reliably clear thirty seconds between reading a
+ * line and a tab finishing its handoff. The ruling did not change; the
+ * consumer did. `cli/commands/ui.ts`'s `deliverNonce` now hands this nonce to
+ * a BROWSER it spawns itself (`openBrowser`, `ui/open.ts`) unless `--no-open`
+ * says otherwise — a spawn measured in milliseconds, so thirty seconds is
+ * still ample and this constant is untouched. What moved is who is asked to
+ * be fast.
+ *
+ * A caller that still needs a human to carry the link — `--nonce --no-open`,
+ * or this route's own no-browser fallback — asks instead for
+ * `PRINTED_NONCE_TTL_MS` by sending `?ttl=printed` (see the route below).
+ * That does not widen WHO may call this route or what the resulting TOKEN is
+ * good for once redeemed — both are already the residual `recordNonceMint`
+ * documents, unmoved by which of two fixed windows the intermediate nonce
+ * gets — it only lets an explicitly-human path have the window
+ * `PRINTED_NONCE_TTL_MS` already argues for, instead of reusing a window sized
+ * for a process.
  */
 export const MINT_NONCE_TTL_MS = 30_000;
 
@@ -918,7 +942,9 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     // is a route BEHIND the gate, and this one's whole job — owner ruling
     // 2026-08-28, KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-
     // that-locks-out-the-next-one — is to serve a caller the full gate would
-    // refuse outright on `token-missing`.
+    // refuse outright on `token-missing`. Since 2026-09-03 it mints at one of
+    // TWO fixed TTLs, chosen by an optional `?ttl=printed` — see `MINT_NONCE_
+    // TTL_MS`'s docblock and the choice inside the branch below.
     if (url.pathname === '/api/nonce' && req.method === 'POST') {
       // The SAME exemption as handoff, checked against the SAME `gate` value —
       // not a second computation that could drift from the first. Host and
@@ -928,16 +954,33 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
         refuse(req, url, gate, res);
         return;
       }
+      // **Which of the two TTLs to mint at** — owner ruling 2026-09-03, see
+      // `MINT_NONCE_TTL_MS`'s own docblock ("UPDATE 2026-09-03") for the whole
+      // argument. `?ttl=printed` is the one caller-supplied bit this route
+      // reads at all, and it selects between exactly two fixed constants —
+      // never an arbitrary duration a caller names — so a caller can only ever
+      // ask for one of the two windows this codebase already argues for
+      // elsewhere (`OPENER_NONCE_TTL_MS`'s sibling reasoning, `PRINTED_NONCE_
+      // TTL_MS` itself), never a third one invented at the wire. Anything
+      // other than exactly `'printed'` — absent, misspelt, anything else —
+      // falls to the short default, which is the safer failure direction.
+      const ttlMs = url.searchParams.get('ttl') === 'printed'
+        ? PRINTED_NONCE_TTL_MS
+        : MINT_NONCE_TTL_MS;
       // The mint itself: the same store `urlWithNonce` mints from at startup
       // and `/api/handoff` redeems from, so a nonce printed here is honoured
       // exactly like one printed at startup — one shared store, one contract.
-      const nonce = nonces.mint(MINT_NONCE_TTL_MS);
+      const nonce = nonces.mint(ttlMs);
       // Audited BEFORE the response goes out, for the same reason `refuse`
       // records before answering: a credential handed out and then lost from
       // the log is the one order that leaves no trail at all. See
       // `recordNonceMint` (security.ts) for the full argument — this route is
       // strictly MORE powerful than handoff, and this write is what makes that
       // discoverable afterwards rather than merely true.
+      //
+      // Exactly ONE record per mint, whichever `ttlMs` was chosen: the choice
+      // above happens before this call and does not branch it, so neither
+      // variant of this route can be made to write twice.
       recordNonceMint(corpusRoot, {
         // Not re-read from the header: the gate already proved the submitted
         // Host is exactly this, and `wantHost` inside `validateApiRequest` is
@@ -957,7 +1000,18 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
       // just by polling it — turning the idle exit's whole purpose inside out
       // for the one route that was built to work even when nobody is looking
       // at a tab any more.
-      sendJson(res, { status: 200, body: { nonce } });
+      //
+      // `ttlMs` rides along in the body, alongside the nonce it describes.
+      // Not consulted by anything this server does with it — the caller
+      // already knows which one it asked for — and not a new fact reaching a
+      // caller that did not already have it: `ttlMs` is one of two constants
+      // exported from this module, and this is an echo of a choice the caller
+      // made in the request, not a disclosure. What it buys is a caller that
+      // can assert what it minted rather than trust the choice silently:
+      // `test/ui/nonce-route.test.ts` reads it back to prove the two TTLs this
+      // route offers are actually different values, from the wire, without
+      // waiting out either window in real time.
+      sendJson(res, { status: 200, body: { nonce, ttlMs } });
       return;
     }
 

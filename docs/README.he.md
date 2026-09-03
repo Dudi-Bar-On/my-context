@@ -933,16 +933,14 @@ built, it is meant as a boundary.
     },
     {
       "name": "task",
-      "description": "A unit of planned work, tracked to completion. Its plan, sequence, state and progress live in extra fields; the body is what the task actually requires.",
+      "description": "A unit of planned work, tracked to completion. Its plan, sequence and state live in extra fields; the body is what the task actually requires.",
       "extraFields": [
         "plan",
         "seq",
         "state",
-        "progress",
-        "source",
-        "last_change",
         "priority",
-        "needs"
+        "needs",
+        "verified_on"
       ]
     },
     {
@@ -4395,7 +4393,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
   How much it would harm. The shipped example uses `high`; nothing constrains
   the value today.
 
-**`task`** — the `rationale` rules above, and 8 of its own:
+**`task`** — the `rationale` rules above, and 6 of its own:
 
 - **`state`** — a field, projected to `state:` tags; `todo`, `doing`, `blocked`, `done`; `mycontext edit <id> --extra state=<value>`
   Where this task is.
@@ -4405,18 +4403,16 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
   Position within the plan.
 - **`priority`** — a field; `1`, `2`, `3`, `4`; `mycontext edit <id> --extra priority=<value>`
   1 is highest.
-- **`progress`** — a field; free text; `mycontext edit <id> --extra progress=<value>`
-  Percent complete. Only 0 and 100 are used today; state is the real signal.
-- **`source`** — a field; free text; `mycontext edit <id> --extra source=<value>`
-  The document this task came from.
-- **`last_change`** — a field; free text; `mycontext edit <id> --extra last_change=<value>`
-  Hand-typed and unreliable - all 133 disagree with the audit log, which is the
-  store that knows.
 - **`needs`** — a field; free text; `mycontext edit <id> --extra needs=<value>`
   The plan/seq references this task waits on, comma-separated - e.g. "walk/7,
   port/6". Shape is checked, existence is not: a reference to a task that does
   not exist yet is legitimate, because plans are written before their tasks
   are.
+- **`verified_on`** — a field; free text; `mycontext edit <id> --extra verified_on=<value>`
+  The date a person checked this task's work and confirmed it actually does
+  what `state: done` claims. Not stamped by finishing the work - by someone
+  looking at it afterwards. `checkTaskUnverified` reports a done task that
+  lacks it.
 
 The other 19 — `constraint`, `environment`, `glossary`, `instruction`,
 `invariant`, `known_issue`, `non_goal`, `pattern`, `procedure`, `runbook`,

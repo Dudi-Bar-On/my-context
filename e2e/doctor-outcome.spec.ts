@@ -273,13 +273,17 @@ test('the acknowledged mark and the ruling count are drawn in Hebrew too', async
     + 'happens').not.toMatch(/[{}]/);
   // Read positionally rather than by its Hebrew label: copying the label into
   // this file would be a second spelling of a string the table already owns,
-  // and it would go stale the day the wording is improved. `doc.tally` is four
-  // `·`-separated figures in both languages — `strings-parity` holds the slot
-  // NAMES equal across the pair, and this holds the SHAPE equal on screen.
+  // and it would go stale the day the wording is improved. `doc.tally` is five
+  // `·`-separated figures in both languages since `a3555c4` added the fifth
+  // ("notes about the checks", for `about`-flagged rows like
+  // `citation_form_excused`) — `strings-parity` holds the slot NAMES equal
+  // across the pair, and this holds the SHAPE equal on screen.
   const figures = tally.split('·').map((part) => part.trim()).filter((part) => part !== '');
-  expect(figures.length, `the Hebrew tally rendered as ${figures.length} figure(s), not four — `
-    + `"${tally}"`).toBe(4);
-  expect(figures[3], 'the last figure is the ruling count, and it must carry the 1 this served '
+  expect(figures.length, `the Hebrew tally rendered as ${figures.length} figure(s), not five — `
+    + `"${tally}"`).toBe(5);
+  // The ruling count is still the FOURTH figure (index 3) — `acked` sits ahead
+  // of the fifth, `notes`, in `doc.tally`'s own slot order.
+  expect(figures[3], 'the fourth figure is the ruling count, and it must carry the 1 this served '
     + 'body produces').toMatch(/\b1\b/);
 });
 

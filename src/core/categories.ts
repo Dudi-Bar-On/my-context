@@ -445,9 +445,23 @@ export const CATEGORIES: Record<string, CategoryDef> = {
         note: 'Where the plan as a whole has got to. It is NOT `task.state`, and it carries no closed vocabulary: a plan is not a unit of work, it never appears in `mycontext ready`, and nothing computes this from the tasks inside it.',
       },
     }),
+  // `progress` and `last_change` are RETIRED (owner ruling, 2026-09-03):
+  // removed from `extraFields` and from `updates` below, so neither is a
+  // legal target for a new `--extra` write from this build on. Retirement
+  // here does not mean erasure — `unknownExtraFieldError` (core/trust.ts)
+  // refuses only the KEYS A CALLER PASSES, never the item's stored result, so
+  // the 518 items already carrying these two keys keep them on disk and keep
+  // rendering unchanged; only a fresh assertion of either is now refused. That
+  // asymmetry is deliberate and matches `scripts/check-retired.ts`'s own
+  // meaning of the word for markdown prose: a correction stops NEW instances,
+  // it does not rewrite history. `last_change` earned this the way its own
+  // note said it would - "hand-typed and unreliable, all 133 disagree with
+  // the audit log" - and `progress` was never more than state's shadow ("only
+  // 0 and 100 are used today; state is the real signal"). Neither had a
+  // doctor check reading it; `verified_on`, below, does not repeat that.
   task:          def('task', 'TASK', 'rationale', true,
-    'A unit of planned work, tracked to completion. Its plan, sequence, state and progress live in extra fields; the body is what the task actually requires.',
-    ['plan', 'seq', 'state', 'progress', 'source', 'last_change', 'priority', 'needs'], {
+    'A unit of planned work, tracked to completion. Its plan, sequence and state live in extra fields; the body is what the task actually requires.',
+    ['plan', 'seq', 'state', 'priority', 'needs', 'verified_on'], {
       state: {
         store: 'field', values: ['todo', 'doing', 'blocked', 'done'], projectsTo: 'state',
         note: 'Where this task is.',
@@ -464,21 +478,19 @@ export const CATEGORIES: Record<string, CategoryDef> = {
         store: 'field', values: ['1', '2', '3', '4'],
         note: '1 is highest.',
       },
-      progress: {
-        store: 'field',
-        note: 'Percent complete. Only 0 and 100 are used today; state is the real signal.',
-      },
-      source: {
-        store: 'field',
-        note: 'The document this task came from.',
-      },
-      last_change: {
-        store: 'field',
-        note: 'Hand-typed and unreliable - all 133 disagree with the audit log, which is the store that knows.',
-      },
       needs: {
         store: 'field',
         note: 'The plan/seq references this task waits on, comma-separated - e.g. "walk/7, port/6". Shape is checked, existence is not: a reference to a task that does not exist yet is legitimate, because plans are written before their tasks are.',
+      },
+      // The owner ruling this whole entry exists to satisfy: "verified_on
+      // WITH its doctor check ... a field without a consumer repeats that."
+      // `checkTaskUnverified` (doctor/checks.ts) is the consumer -- a `done`
+      // task with no `verified_on` is reported, once the task was created
+      // after the field existed to be filled in (`VERIFIED_ON_INTRODUCED_AT`
+      // is the cutoff; `checkStateUnaudited`'s birth cutoff is the model).
+      verified_on: {
+        store: 'field',
+        note: 'The date a person checked this task\'s work and confirmed it actually does what `state: done` claims. Not stamped by finishing the work - by someone looking at it afterwards. `checkTaskUnverified` reports a done task that lacks it.',
       },
     }),
   // The inbox, and the tier is the feature rather than a taxonomy judgement.

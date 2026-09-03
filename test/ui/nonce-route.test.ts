@@ -25,7 +25,9 @@ import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit } from '../../src/core/audit.ts';
-import { startUiServer, type RunningUiServer } from '../../src/ui/server.ts';
+import {
+  MINT_NONCE_TTL_MS, PRINTED_NONCE_TTL_MS, startUiServer, type RunningUiServer,
+} from '../../src/ui/server.ts';
 // Spawns a real UI server, which mints a session token; pins the store out of
 // the developer's real `~/.my-context`. See the module.
 import '../helpers/pin-sessions-dir.ts';
@@ -60,11 +62,13 @@ async function withServer(body: (h: Harness) => Promise<void>): Promise<void> {
 const base = (h: Harness): string => `http://127.0.0.1:${h.server.port}`;
 const hostOf = (h: Harness): string => `127.0.0.1:${h.server.port}`;
 
-interface MintBody { nonce: string }
+interface MintBody { nonce: string; ttlMs: number }
 interface TokenBody { token: string }
 
-const mint = async (h: Harness, headers: Record<string, string> = {}): Promise<Response> =>
-  fetch(`${base(h)}/api/nonce`, { method: 'POST', headers });
+/** `query` is appended to the path verbatim (e.g. `'?ttl=printed'`), default none. */
+const mint = async (
+  h: Harness, headers: Record<string, string> = {}, query = '',
+): Promise<Response> => fetch(`${base(h)}/api/nonce${query}`, { method: 'POST', headers });
 
 const handoff = async (h: Harness, nonce: string): Promise<Response> =>
   fetch(`${base(h)}/api/handoff`, {
@@ -200,5 +204,58 @@ test('security headers are sent on the mint response, same as every other respon
     assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
     assert.equal(res.headers.get('x-frame-options'), 'DENY');
     assert.equal(res.headers.get('access-control-allow-origin'), null, 'no CORS headers, same as everywhere');
+  });
+});
+
+/**
+ * Owner ruling 2026-09-03: this route now mints at one of TWO fixed TTLs, not
+ * always `MINT_NONCE_TTL_MS`. `mycontext ui --nonce` (no `--no-open`) is about
+ * to hand the nonce to a browser it spawns itself, in milliseconds, so it asks
+ * for the short default; `--nonce --no-open` is about to print it for a human
+ * to carry, so it asks for the longer one with `?ttl=printed`. Read back from
+ * the wire rather than waited out in real time — see the `ttlMs` field's own
+ * docblock in `server.ts` for why the route echoes it at all.
+ */
+test('the default mint carries the short TTL, ?ttl=printed carries the longer one, and the two are different values', async () => {
+  await withServer(async (h) => {
+    const short = (await (await mint(h)).json()) as MintBody;
+    const long = (await (await mint(h, {}, '?ttl=printed')).json()) as MintBody;
+    assert.equal(short.ttlMs, MINT_NONCE_TTL_MS,
+      'a request with no ?ttl must mint at MINT_NONCE_TTL_MS — the machine-consumed default');
+    assert.equal(long.ttlMs, PRINTED_NONCE_TTL_MS,
+      '?ttl=printed must mint at PRINTED_NONCE_TTL_MS — the window a human carrying the link needs');
+    assert.notEqual(short.ttlMs, long.ttlMs,
+      'the two TTLs this route can mint at must actually be different values, not the same constant twice');
+  });
+});
+
+/**
+ * The query value is matched EXACTLY, never loosely — the safer failure
+ * direction is the short TTL, so anything that is not precisely `printed`
+ * (wrong case, wrong key, empty, trailing junk) must fall there rather than
+ * silently granting the longer window.
+ */
+test('anything other than exactly ?ttl=printed falls to the short default', async () => {
+  await withServer(async (h) => {
+    for (const query of ['?ttl=Printed', '?ttl=PRINTED', '?ttl=long', '?ttl=', '?TTL=printed', '?ttl=printed2']) {
+      const body = (await (await mint(h, {}, query)).json()) as MintBody;
+      assert.equal(body.ttlMs, MINT_NONCE_TTL_MS, `${query} must not be read as the printed variant`);
+    }
+  });
+});
+
+/**
+ * The core regression this task exists to prevent: a caller asking for the
+ * longer, human-carried TTL must not cost a second `nonce-minted` row.
+ * `test/core/ui-server-upkeep.ts`'s own freshness clock is floored at five
+ * minutes on the strength of exactly this invariant — one credential exchange,
+ * one audit row, per mint, whichever TTL was requested.
+ */
+test('the ?ttl=printed variant is audited exactly once, same as the default', async () => {
+  await withServer(async (h) => {
+    await mint(h, {}, '?ttl=printed');
+    const records = accessRecords(h.cwd);
+    assert.equal(records.length, 1, 'one mint, one record, whichever ttl was requested');
+    assert.equal(records[0]?.op, 'nonce-minted');
   });
 });

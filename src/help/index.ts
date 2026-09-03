@@ -10,6 +10,10 @@ import { computeItemChecksum, renderItem } from '../core/item.ts';
 import { snapshotBody, snapshotChecksum, snapshotText } from '../core/reference.ts';
 import { makeId } from '../core/slug.ts';
 import { COMMANDS, type CommandDef } from '../cli/commands/registry.ts';
+import {
+  COMMAND_FLAGS, FLAG_DECLARATIONS,
+  type FlagDeclaration, type FlagDeclarations, type FlagSpec,
+} from '../core/command-flags.ts';
 import { RELATION_MEANINGS, RELATION_TYPES } from '../core/vocabulary.ts';
 import { HELP_TOPICS, enumError, type HelpTopic } from '../core/teach.ts';
 import type { Item } from '../core/types.ts';
@@ -386,6 +390,138 @@ export function commandList(commands: Map<string, CommandDef> = COMMANDS): strin
     .join('\n');
 }
 
+/** One flag's value shape, as the "takes" column of `flagReference` prints it.
+ * `values`, `format`+`example` and bare are mutually exclusive and one of the
+ * three always holds — `test/cli/command-flags.test.ts`'s "a flag that takes
+ * a value declares its legal values OR its format and an example" is what
+ * guarantees that for every declaration this ever reads. */
+function flagShape(decl: FlagDeclaration, code: Code): string {
+  if (decl.values !== undefined) return decl.values.map(code).join(', ');
+  if (decl.format !== undefined) return `${decl.format} — e.g. ${code(decl.example ?? '')}`;
+  return '*(bare — no value)*';
+}
+
+/**
+ * `{{FLAG_REFERENCE}}` — every declared flag of every command, generated from
+ * `COMMAND_FLAGS` and `FLAG_DECLARATIONS` (core/command-flags.ts) together.
+ *
+ * **Until this existed, `cli.md` said in its own words that it never would.**
+ * "The usage above carries the flags that *distinguish* each command. It is
+ * not the complete list for any of them, and this page does not print one: a
+ * second copy of a per-command flag list is stale the day a flag is added,
+ * and nothing would tell you." That was true of a HAND-KEPT list, and it
+ * stopped being the only option the day `FLAG_DECLARATIONS` arrived
+ * (`plan:builder seq:2`): `test/cli/command-flags.test.ts` already holds it to
+ * `COMMAND_FLAGS` — the table `refuseUnknownFlag` and `positionals` actually
+ * walk — flag for flag, in both directions. This function is that same
+ * guarantee re-stated as a RENDERING refusal, on `relationTable`'s terms: a
+ * name the parser accepts with no declaration would otherwise render as a
+ * flag missing from the page a reader was sent to instead of guessing, and a
+ * declaration for a flag the command refuses would print syntax that comes
+ * back `unknown option`.
+ *
+ * **What is NOT a column here, and why.** A flag's `source` (`core/command-flags.ts`)
+ * says which per-workspace vocabulary a UI control must ASK for — it drives a
+ * picker, not a fact a static page can state, and every declaration that
+ * carries one already says the same thing in its `note` (`ITEM_ID`: "Ids are
+ * printed by `mycontext list`…"). The approval boundary — whether a command
+ * needs `--yes` — is not a column either: `FLAG_DECLARATIONS` does not
+ * declare it, and `--yes`'s own `allowed`-list membership is not the same
+ * fact — `focus` accepts `--yes` while only two of its five forms answer to
+ * it (`src/core/command-flags.ts`, `focus`'s entry). The boundary is DERIVED,
+ * by probing the real parser (`test/helpers/approval-boundary.ts` ·
+ * `gatedCommands()`), not read off a declaration, and that probe spins up a
+ * throwaway workspace and runs the CLI some seventy times — sound for a test,
+ * wrong to pay on every `mycontext help cli`. `cli.md`'s own "Who runs these"
+ * section already points a reader at `help("workflow")` for that list, and
+ * this table does not repeat it by another name.
+ *
+ * A TABLE rather than the list `toolReference` and `commandList` use, on
+ * `relationTable`'s terms rather than theirs: a flag name is `[a-z][\w-]*`
+ * and its value shape and note are this project's own prose, so the pipe
+ * hazard those two lists exist to dodge is avoidable here rather than
+ * inherent — and it is REFUSED below rather than assumed away, exactly as
+ * `relationTable` refuses one.
+ *
+ * Both arguments are injectable for the reason every other generator in this
+ * file is: a test has to render this from maps it controls, and no test may
+ * write to `src/`.
+ */
+export function flagReference(
+  commandFlags: Record<string, FlagSpec> = COMMAND_FLAGS,
+  declarations: Record<string, FlagDeclarations> = FLAG_DECLARATIONS,
+): string {
+  const missingCommands = Object.keys(commandFlags)
+    .filter((name) => !Object.hasOwn(declarations, name));
+  const extraCommands = Object.keys(declarations)
+    .filter((name) => !Object.hasOwn(commandFlags, name));
+
+  const missingFlags: string[] = [];
+  const extraFlags: string[] = [];
+  for (const [name, spec] of Object.entries(commandFlags)) {
+    const declared = declarations[name];
+    if (declared === undefined) continue; // named in missingCommands already
+    for (const flag of spec.allowed) {
+      if (!Object.hasOwn(declared, flag)) missingFlags.push(`${name} --${flag}`);
+    }
+    for (const flag of Object.keys(declared)) {
+      if (!spec.allowed.includes(flag)) extraFlags.push(`${name} --${flag}`);
+    }
+  }
+
+  if (missingCommands.length + extraCommands.length + missingFlags.length + extraFlags.length > 0) {
+    throw new Error(
+      'my_context: the "cli" topic\'s flag reference is generated from COMMAND_FLAGS and ' +
+      'FLAG_DECLARATIONS (core/command-flags.ts) together, and they disagree' +
+      (missingCommands.length > 0
+        ? `. Has a flag spec and no declarations: ${missingCommands.join(', ')} — add an entry ` +
+          'to FLAG_DECLARATIONS'
+        : '') +
+      (extraCommands.length > 0
+        ? `. Has declarations and no flag spec: ${extraCommands.join(', ')} — add an entry to ` +
+          'COMMAND_FLAGS, or the command is not really registered'
+        : '') +
+      (missingFlags.length > 0
+        ? `. Accepted and undeclared: ${missingFlags.join(', ')} — the command takes this flag ` +
+          'and FLAG_DECLARATIONS has no note for it, so a reader sent to this page instead of ' +
+          'guessing would not find it either'
+        : '') +
+      (extraFlags.length > 0
+        ? `. Declared and refused: ${extraFlags.join(', ')} — documenting this flag would print ` +
+          'syntax the command answers with "unknown option"'
+        : '') +
+      '.',
+    );
+  }
+
+  const piped: string[] = [];
+  for (const [name, flags] of Object.entries(declarations)) {
+    for (const [flag, decl] of Object.entries(flags)) {
+      if (flagShape(decl, PLAIN).includes('|') || decl.note.includes('|')) {
+        piped.push(`${name} --${flag}`);
+      }
+    }
+  }
+  if (piped.length > 0) {
+    throw new Error(
+      `my_context: the flag reference for ${piped.join(', ')} contains a "|", which ends a ` +
+      'cell in the GFM table this renders into — the row would break in `mycontext help cli`. ' +
+      'Reword it without the pipe.',
+    );
+  }
+
+  const rows = Object.entries(declarations)
+    .flatMap(([name, flags]) => Object.entries(flags).map(([flag, decl]) => ({ name, flag, decl })))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.flag.localeCompare(b.flag));
+
+  return [
+    '| command | flag | takes | what it does |',
+    '|---|---|---|---|',
+    ...rows.map(({ name, flag, decl }) =>
+      `| \`${name}\` | \`--${flag}\` | ${flagShape(decl, SPAN)} | ${decl.note} |`),
+  ].join('\n');
+}
+
 /* -------------------------------------------------------------------------- *
  * The `workflow` topic's one generated section.
  * -------------------------------------------------------------------------- */
@@ -745,6 +881,7 @@ function expand(text: string, token: string, value: string): string {
  */
 const GENERATED: Record<string, () => string> = {
   '{{COMMAND_LIST}}': () => commandList(),
+  '{{FLAG_REFERENCE}}': () => flagReference(),
   '{{RELATION_TABLE}}': () => relationTable(),
   '{{TIER_UPDATES}}': () => tierUpdateList(),
   '{{TOOL_REFERENCE}}': () => toolReference(),

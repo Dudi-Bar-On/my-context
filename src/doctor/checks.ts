@@ -1681,6 +1681,179 @@ export function checkStateUnaudited(root: string, items: Item[], config: Config)
   return findings;
 }
 
+/** `task.verified_on`. Its whole existence is `checkTaskUnverified` below. */
+const VERIFIED_ON_FIELD = 'verified_on';
+
+/**
+ * **The instant `task.verified_on` became a legal field.**
+ *
+ * Owner ruling, 2026-09-03: *"`task.verified_on` WITH its doctor check ...
+ * Shipping a field without its consumer repeats that."* This constant is the
+ * half of the check that makes the consumer honest about a field that
+ * shipped onto a corpus already holding 406 tasks at `state: done` — every
+ * one of them incapable of ever having carried `verified_on`, because the
+ * write that could have set it had nothing to write it INTO until this
+ * moment.
+ *
+ * **`checkStateUnaudited` faced the identical shape of problem and is the
+ * model this check follows**: a fact unknowable for items that predate the
+ * mechanism, solved with a birth cutoff plus one coverage disclosure rather
+ * than 406 rows nobody can clear (`RULE` at the top of this file — a row only
+ * an accident can clear is noise wearing work's clothes, and doctor was just
+ * taken from 95 findings to zero). **Where the cutoff itself differs, and
+ * why**: `checkStateUnaudited` keys its cutoff on `AuditRecord.checksumAfter`
+ * — a STRUCTURAL flag already sitting on every `create` record, present the
+ * moment `persist`'s write-time witness shipped and absent before it, so no
+ * date has to be named at all. Nothing analogous exists for `verified_on`:
+ * there is no flag on a record that means "this item's category legally
+ * declared `verified_on` at the moment of this write," because that fact is
+ * not about the WRITE, it is about the CATALOGUE — a fact this module has no
+ * other way to read out of the log than the date it changed. So the cutoff
+ * here is a literal instant instead of a derived flag, which is not a
+ * different idea, only a different data source for the same one: `bornAt` is
+ * to a date what `bornWitnessed` is to a boolean the log already carried.
+ *
+ * **What is measured against it, and why creation rather than completion.**
+ * A task is exempt when its `create` record's `at` is before this instant —
+ * not when the write that moved it to `state: done` is. An item created
+ * before this date was captured into a category that did not yet declare
+ * `verified_on`: `unknownExtraFieldError` (core/trust.ts) would have refused
+ * `--extra verified_on=…` on it at the moment it was captured, exactly as it
+ * refuses any key a category does not declare. Keying on the DONE transition
+ * instead would exempt nothing on this corpus today — most of the 112 tasks
+ * still open right now were also created before this date, and under a
+ * done-transition cutoff every one of them would still be judged the moment
+ * it closes, whenever that is, using a birth date that predates the field
+ * that judges it. Keying on creation draws the line where the field's own
+ * legality was actually decided, and grandfathers a task exactly once, at the
+ * moment it is truly impossible to fault.
+ *
+ * Set with a five-hour margin ahead of every `TASK-*` `create` record
+ * measured in this repository's own audit log on 2026-09-03 (the latest at
+ * `10:43:33.824Z`) and behind the moment this check was written, so the
+ * corpus this ships onto grandfathers cleanly and nothing written after this
+ * change is exempt by accident.
+ */
+export const VERIFIED_ON_INTRODUCED_AT = '2026-09-03T12:00:00.000Z';
+
+/** `mycontext edit <id> --extra verified_on=<date>`, after checking the work. */
+const VERIFIED_ON_EDIT_COMMAND = `mycontext edit <id> --extra ${VERIFIED_ON_FIELD}=<date>`;
+
+/** `''` and whitespace-only both read as absent — `taskState`'s own convention. */
+function taskVerifiedOn(item: Item): string {
+  return (item.extra[VERIFIED_ON_FIELD] ?? '').trim();
+}
+
+/**
+ * **`task.verified_on`'s only consumer.** A `done` task with nothing in
+ * `verified_on` is reported — unless it was created before the field could
+ * legally have carried one, in which case it is counted into a single
+ * coverage disclosure and never named. See `VERIFIED_ON_INTRODUCED_AT` for
+ * the cutoff and the argument for keying it on creation.
+ *
+ * Structured identically to `checkStateUnaudited` immediately above:
+ * read-failure falls back to one `PERSON`-remedy disclosure; a `create`
+ * record the log never saw at all is a SEPARATE unmeasured population from a
+ * pre-cutoff birth, because "was this item created before or after the
+ * cutoff" has no answer when there is no `create` record to read it from —
+ * conflating the two would silently promote "unknown" to "grandfathered",
+ * which is a claim about the item's age nobody measured.
+ */
+export function checkTaskUnverified(root: string, items: Item[], config: Config): Finding[] {
+  const closed = workItems(items, config).filter((i) => taskState(i) === DONE_STATE);
+  if (closed.length === 0) return [];
+
+  let records: AuditRecord[];
+  try {
+    records = readAudit(root);
+  } catch (err) {
+    return [{
+      level: 'info', code: 'task_verification_coverage',
+      about: 'task_unverified',
+      remedy: PERSON,
+      message:
+        `${closed.length} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and none of them has ` +
+        `been checked for \`${VERIFIED_ON_FIELD}\` coverage, because the audit log could not be ` +
+        `read: ${err instanceof Error ? err.message : String(err)} That is an UNMEASURED set ` +
+        `and not a clean one. The file named in that refusal is what a person has to look at ` +
+        `first.`,
+    }];
+  }
+
+  // Oldest first across every segment (`readAudit`'s own contract), so the
+  // FIRST `create` record seen for an id is its birth — later writes never
+  // overwrite it, the same immunity-to-erosion property `checkStateUnaudited`
+  // relies on for its own `created` set.
+  const bornAt = new Map<string, string>();
+  for (const record of records) {
+    if (record.kind !== 'mutation' || record.op !== 'create') continue;
+    const id = record.itemId;
+    if (typeof id !== 'string' || id === '') continue;
+    if (!bornAt.has(id)) bornAt.set(id, record.at);
+  }
+
+  const findings: Finding[] = [];
+  let unseen = 0;
+  let grandfathered = 0;
+  for (const item of closed) {
+    if (taskVerifiedOn(item) !== '') continue;
+
+    const born = bornAt.get(item.id);
+    if (born === undefined) { unseen++; continue; }
+    if (born < VERIFIED_ON_INTRODUCED_AT) { grandfathered++; continue; }
+
+    findings.push({
+      level: 'warn', code: 'task_unverified', item: item.id,
+      remedy: ACK,
+      message:
+        `\`${STATE_FIELD}: ${DONE_STATE}\` closes this task, and it carries no ` +
+        `\`${VERIFIED_ON_FIELD}\`. The log's \`create\` record for this item is dated ${born}, ` +
+        `after \`${VERIFIED_ON_FIELD}\` became a field \`task\` declares — so this task could ` +
+        `always have carried one and does not. Check the work \`${STATE_FIELD}: ${DONE_STATE}\` ` +
+        `claims and, if it holds up, \`${VERIFIED_ON_EDIT_COMMAND}\` records that; ` +
+        `\`mycontext ack ${item.id} task_unverified\` records a ruling that this task does not ` +
+        `need one.`,
+    });
+  }
+
+  if (unseen > 0) {
+    findings.push({
+      level: 'info', code: 'task_verification_coverage',
+      about: 'task_unverified',
+      remedy: AUDIT_FILES,
+      message:
+        `${unseen} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and have no \`create\` ` +
+        `record anywhere in the audit log, so \`task_unverified\` has NOT looked at them — an ` +
+        `unmeasured set, not a clean one. An item restored from a pack, copied in without ` +
+        `\`.audit/\`, or older than the oldest segment still present leaves no trace of when it ` +
+        `was created, and a task whose birth this log cannot place must not be judged against a ` +
+        `date it might predate. \`mycontext audit --files\` names the segments that do survive.`,
+    });
+  }
+
+  if (grandfathered > 0) {
+    findings.push({
+      level: 'info', code: 'task_verification_coverage',
+      about: 'task_unverified',
+      // NOTHING: there is no command, and no ruling to ask for either — an
+      // item captured before its category declared `verified_on` could not
+      // have carried one, so `ack` on it would certify an omission that was
+      // never a choice. The set can only shrink, by turnover, as the corpus's
+      // pre-cutoff tasks are gradually superseded or replaced by ones created
+      // under the field.
+      remedy: NOTHING,
+      message:
+        `${grandfathered} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and were CREATED ` +
+        `before \`${VERIFIED_ON_FIELD}\` existed for \`task\` to declare, so \`task_unverified\` ` +
+        `does not report them one by one. That is not a clean set — nothing is asserted about ` +
+        `these items in either direction — it is a set this check cannot fault: the field these ` +
+        `items lack did not exist to be filled in at the moment each was captured. Nothing is ` +
+        `owed on this line.`,
+    });
+  }
+  return findings;
+}
+
 /**
  * The low edge of the fallback mitigation band (~5–10k, never-miss design
  * §6 risk 3). 5,000 is the largest size the warm-cache fallback was priced
@@ -3188,6 +3361,7 @@ export function runChecks(opts: {
     () => checkSessionIdMismatch(opts.root),
     () => checkAuditSize(opts.root),
     () => checkStateUnaudited(opts.root, opts.items, opts.config),
+    () => checkTaskUnverified(opts.root, opts.items, opts.config),
     () => checkCorpusSize(opts.items),
     () => checkTagProjection(opts.items, opts.config),
     () => checkTaskNeeds(opts.items, opts.config),

@@ -4,7 +4,7 @@ argument-hint: "[the task in one sentence]"
 disable-model-invocation: true
 ---
 
-Capture a **task** — A unit of planned work, tracked to completion. Its plan, sequence, state and progress live in extra fields; the body is what the task actually requires. — in this project's my_context
+Capture a **task** — A unit of planned work, tracked to completion. Its plan, sequence and state live in extra fields; the body is what the task actually requires. — in this project's my_context
 knowledge base.
 
 What the user typed: $ARGUMENTS
