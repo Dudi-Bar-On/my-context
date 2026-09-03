@@ -50,9 +50,9 @@
  *
  * ── RUNNING IT ──────────────────────────────────────────────────────────────
  *
- *     node my-context/scripts/check-needs-cycles.ts            # from the repo root
- *     node my-context/scripts/check-needs-cycles.ts --json
- *     node my-context/scripts/check-needs-cycles.ts --quiet    # print only on failure
+ *     npm run check:needs-cycles                          # the gate
+ *     node scripts/check-needs-cycles.ts --json
+ *     node scripts/check-needs-cycles.ts --quiet          # print only on failure
  *
  * The workspace is resolved from the CURRENT DIRECTORY, the same walk every
  * `mycontext` command does, so it reads whichever corpus the CLI would read.
@@ -218,17 +218,22 @@ function main(): number {
   const open = work.filter((i) => taskState(i) !== DONE_STATE).length;
 
   // **A CYCLE CHECK OVER NOTHING IS NOT A CLEAN BILL OF HEALTH**, and this
-  // check can be pointed at nothing by accident. `my-context/.my_context` is a
-  // real workspace holding zero tasks (doctor calls it out as `nested_corpus`),
-  // so running from the CODE directory rather than the repo root resolves
-  // there, walks an empty graph and prints "no cycle: every needs chain in this
-  // corpus terminates" — true, and worthless.
+  // check can be pointed at nothing by accident. A nested `.my_context` holding
+  // zero tasks is still a real workspace (doctor calls it out as
+  // `nested_corpus`), so resolving to one walks an empty graph and prints
+  // "no cycle: every needs chain in this corpus terminates" — true, and
+  // worthless. That is the vacuous pass this project has now caught five times
+  // in other shapes, so it exits 1 and names the directory it read: the mistake
+  // announces itself instead of reading as success.
   //
-  // That is the vacuous pass this project has now caught five times in other
-  // shapes, and it is why this is NOT wired as an `npm run check:*`: npm sets
-  // the cwd to the package directory, which is exactly the wrong corpus. Run it
-  // from the repo root. A zero-item corpus exits 1 and says which directory it
-  // read, so the mistake announces itself instead of reading as success.
+  // THAT GUARD IS WHY `npm run check:needs-cycles` IS SAFE. npm sets the cwd to
+  // the package directory, and until the 2026-09-03 relocation that was the
+  // CODE directory — a different path from the corpus root, and the wrong
+  // corpus — which is why this was deliberately left unwired. The package
+  // directory and the corpus root are now the same path: `package.json` and
+  // `.my_context` are siblings at the repository root, so npm's cwd resolves
+  // the corpus with the tasks in it. The guard below is what keeps that a
+  // measurement rather than an assumption.
   if (work.length === 0) {
     out(`my_context: no work items under ${ws.projectRoot} — nothing was checked, `
       + 'which is not the same as nothing being wrong. Run this from the repository '

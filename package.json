@@ -29,7 +29,8 @@
     "verify:citations": "node scripts/verify-citations.ts",
     "check:test-glob": "node scripts/check-test-glob.ts",
     "check:retired": "node scripts/check-retired.ts",
-    "check:text-files": "node scripts/check-text-files.ts"
+    "check:text-files": "node scripts/check-text-files.ts",
+    "check:needs-cycles": "node scripts/check-needs-cycles.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
