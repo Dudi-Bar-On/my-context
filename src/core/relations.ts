@@ -27,7 +27,7 @@ import type { MutationContext, MutationResult } from './mutate.ts';
  * it by that name.
  */
 export { RELATION_TYPES } from './vocabulary.ts';
-import { RELATION_TYPES } from './vocabulary.ts';
+import { inverseOf, RELATION_TYPES } from './vocabulary.ts';
 
 /**
  * The back-reference `supersedeItem` writes onto the item it RETIRES, the
@@ -125,6 +125,60 @@ export function linkItems(ctx: MutationContext, input: LinkInput): MutationResul
       status: from.status,
       filePath: from.filePath,
       message: `my_context: ${from.id} already ${input.relation} ${input.to}.`,
+    };
+  }
+
+  // ── THE SAME EDGE, ALREADY RECORDED FROM THE OTHER END ──────────────────
+  //
+  // The check immediately above catches the identical row. This one catches
+  // the row that says the SAME THING in the opposite direction, and it is
+  // what keeps two rulings from cancelling each other out.
+  //
+  // This project ruled that inverses are DERIVED, not stored: two independent
+  // rows for one fact disagree the moment one is edited alone, and nothing can
+  // then say which is current. On 2026-09-03 the owner ruled that a reader may
+  // ask from either end — *"we could look at the active one or the passive
+  // side of a relation"* — and `enforces`/`enforced_by` and
+  // `produced`/`discovered_by` joined `RELATION_TYPES` as a result.
+  //
+  // Those two rulings collide precisely here. A passive NAME is harmless; a
+  // passive ROW beside an active one is the duplicate the first ruling
+  // refused, and adding the name without this check would have handed every
+  // caller a spelling for it. `DEC-all-nineteen-relation-types-ship-and-an-
+  // inverse-pair-is-two` says so in its own words: "offering a name for the
+  // passive side is a different act from storing an unmanaged second row".
+  //
+  // So: ONE edge, ONE row, EITHER name. Whichever end was written first stands,
+  // and the second call is a no-op that says which row already carries the
+  // fact and which name it is under. Not a throw — nothing is being forged and
+  // nothing is wrong with the request; the fact it asks for is already true,
+  // exactly like the duplicate above. Not silent either: the message names the
+  // stored row, so `INV-nothing-is-dropped-silently` is satisfied by a caller
+  // who reads what came back rather than by an exception.
+  //
+  // `conflicts_with` is deliberately NOT affected — it is its own inverse and
+  // has no entry in `INVERSE_RELATIONS`, so two items may still record it in
+  // both directions if someone means to. See that map for why.
+  // `target` is NULLABLE and an unresolved link is permitted by design (spec
+  // §3.2): there is no item to inspect, so there is no mirror to find and this
+  // gate must stand aside rather than throw on the missing side.
+  const inverse = inverseOf(input.relation);
+  const mirrored = inverse !== null && target !== null
+    && target.relations.some((r) => r.type === inverse && r.target === from.id);
+  if (inverse !== null && mirrored && target !== null) {
+    return {
+      id: from.id,
+      created: false,
+      status: from.status,
+      filePath: from.filePath,
+      message:
+        `my_context: nothing written — ${target.id} already ${inverse} ${from.id}, which is ` +
+        `this same edge recorded from the other end. "${input.relation}" and "${inverse}" are ` +
+        `one relation with two names, an active side and a passive one, and storing both would ` +
+        `leave two rows for one fact that disagree as soon as either is edited alone. Read it ` +
+        `from ${from.id}'s end instead: every traversal in this system walks relations in both ` +
+        `directions. If the direction stored is the wrong one, remove it with ` +
+        `\`mycontext edit ${target.id} --unlink ${inverse} ${from.id}\` and add this one.`,
     };
   }
 

@@ -215,14 +215,21 @@ test('every relation the enum allows is classified, and the table is a strict su
   const beyond = Object.keys(RELATION_CLASSIFICATION).filter((t) => !RELATION_TYPES.includes(t));
   assert.deepEqual(
     beyond.toSorted(),
-    // SEVEN, not eight. `depends_on` was one of them until 2026-09-02, when
-    // the owner adopted it into `RELATION_TYPES` along with `caused_by`,
-    // `conflicts_with` and `amends` — so the enum caught up with one edge the
-    // corpus already carried and the other seven orphans were deliberately
-    // LEFT, as a separate job. They are still classifiable and still
-    // unwritable through `link_items`.
-    ['answers', 'discovered_by', 'enforced_by', 'enforces', 'produced',
-      'superseded_by', 'unblocks'],
+    // ONE, and it is the one that must stay. It was eight before 2026-09-02,
+    // when `depends_on` was adopted into `RELATION_TYPES` alongside
+    // `caused_by`, `conflicts_with` and `amends`; the other seven orphans were
+    // LEFT as a separate job. That job was done on 2026-09-03
+    // (`DEC-all-nineteen-relation-types-ship-and-an-inverse-pair-is-two`): six
+    // of the seven — `answers`, `discovered_by`, `enforced_by`, `enforces`,
+    // `produced`, `unblocks` — joined the enum, so the classification and the
+    // vocabulary now differ by exactly `superseded_by`.
+    //
+    // `superseded_by` must NEVER join them, and that is why this assertion is
+    // worth keeping rather than deleting now that it names one thing. Its
+    // absence from `RELATION_TYPES` IS the write gate that stops `link_items`
+    // forging a retirement, and it is classified here anyway because focus has
+    // to classify what is ON DISK — nine items in this corpus carry one.
+    ['superseded_by'],
     'the classification covers relation types this corpus carries that `link_items` would ' +
     'refuse. If that list changed, the enum and the corpus moved — say which, and update ' +
     'both READMEs, rather than editing this assertion to match.',

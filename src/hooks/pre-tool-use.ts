@@ -118,6 +118,80 @@ export function denyReason(absNative: string): string | null {
     'changes to `.my_context/config.json` are the user\'s to make — ask, do not edit.';
 }
 
+// ---------------------------------------------------------------------------
+// WHY THERE IS NO BASH ARM HERE, AND WHAT WAS LEARNED BUILDING THE ONE THAT
+// WAS REMOVED.
+//
+// On 2026-09-03 this file grew a fifth arm: `Bash` was added to the
+// `PreToolUse` matcher in `hooks.json` and the hook analyzed the command TEXT,
+// refusing redirections, file-writing commands, in-place edits and scripted
+// writes whose target spelled out a managed path. It was removed the same day.
+// The owner ruled against the instrument, not against the goal, in his words:
+//
+//   "bash in general should allow writes, you should look for a way to make
+//    the agent not to abuse it and bypass the app mechanisms that are always
+//    the first preferred way of doing things relating the app itself"
+//
+// So the shell is NOT fenced off. The product's own commands remain the way
+// the corpus changes, and going around them is to be made VISIBLE — by
+// `mycontext doctor`, by the checksum, by the audit log — rather than
+// refused at the shell. `KNOWN-the-config-deny-hook-covers-edit-and-write-not-
+// bash` is therefore true again and stays true by design, not by oversight.
+//
+// **THE MEASUREMENT THAT MOTIVATED THE ATTEMPT IS STILL VALID.** 27 task items
+// in this corpus carry `state: done` with a `create` audit record and no
+// `state` mutation ever recorded. They were written straight into the Markdown
+// through the shell. The gap is real; only the remedy was wrong.
+//
+// **WHAT A SHELL-LEVEL DETECTOR CANNOT SEE.** This is the evidence for why
+// blocking was the wrong instrument, and it should not have to be
+// rediscovered. A `Bash` payload carries a STRING, not a path. There is no
+// shell here to ask, and a shell command is not a decidable object. Every item
+// below was established by construction or by execution while the arm existed:
+//
+//  - **A path from a variable or a substitution.** `D=.my_context; echo x >
+//    $D/items/y.md` performs no expansion in a hook, so the managed segment
+//    never appears in the text that is scanned. Same for `$(…)` and backticks.
+//  - **A spelling that shares no characters with the directory name.** The
+//    file-edit arms canonicalize (`canonicalizeNearestExisting`) and so they
+//    see through 8.3 short names, junctions and symlinks. A command-text
+//    pre-filter is a literal string test: `MY_CON~1/items/task/TASK-x.md` was
+//    verified ALLOWED by the arm that existed, and no amount of tightening
+//    fixes that without resolving every path-ish run in every command, which
+//    is a filesystem syscall per token on the hot path of every Bash call.
+//  - **A write performed by a program whose source is not in the command.**
+//    `./tool.sh`, `make`, `npm run x`, `python script.py` — the command names
+//    the program, and the write lives in a file the hook never opens.
+//  - **Subcommand-shaped writes.** `git checkout -- .my_context/items/x.md`,
+//    `git restore`, `git apply`, `git stash pop`, `tar -x`, `unzip -d` all
+//    write managed paths without any of the write constructs a text scan
+//    recognizes. Judging them by subcommand is guesswork, and the arm
+//    deliberately left them out rather than present guesswork as knowledge.
+//  - **Reconstruction and deliberate evasion.** base64, `printf`, character
+//    arithmetic. An agent that can run a shell can write any file the user
+//    can. That is not a bug in the detector; it is the boundary of the class.
+//
+// The consequence, stated plainly because a future reader will be tempted
+// again: a Bash text check can catch the honest and the careless case, and can
+// never catch the determined one. A guard that cannot be complete but reads as
+// complete is worse than no guard — it turns "refused" into false proof that
+// the directory is sealed, and it costs legitimate shell work in exchange.
+// Visibility after the fact (an audit record, a failing checksum, a doctor
+// finding) has neither property: it is complete over outcomes rather than over
+// syntax, and it never blocks anything.
+//
+// Two ancillary findings from the removed arm are worth keeping, since both
+// were bugs found by measurement rather than by reading:
+//  - A POSIX tokenizer drops `\` before an ordinary character, which turns
+//    `C:\repo\.my_context\items\x.md` into `C:repo.my_contextitemsx.md` and
+//    names no managed segment at all. Any future Windows-path text analysis in
+//    this codebase must keep that backslash.
+//  - A combined in-place-flag pattern `/^--?(?:in-?place|[a-hj-z]*i)/` matches
+//    `--silent`, because the short-flag branch finds an `i` inside a long
+//    flag's name. `sed --silent -e p <item>` is a READ. Long flags must be
+//    matched whole; only a short bundle may be scanned for a letter.
+// ---------------------------------------------------------------------------
+
 /**
  * Single indexed SQLite read, no rebuild, no LLM, no network (spec §6.5).
  * Returns '' — never throws — so a corrupt index means "no items today"
@@ -338,6 +412,38 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
   }
 }
 
+/**
+ * The audit record for a refusal.
+ *
+ * The one hook action that CHANGES what a tool call does, so it is the one
+ * that most needs to be in the log: an agent blocked from writing into
+ * `.my_context/` that then tells the user something else happened is exactly
+ * what an audit trail is for.
+ *
+ * Recorded against the workspace resolved from `cwd`, NOT against the
+ * `.my_context` directory the path names. Those are usually the same and when
+ * they differ the difference matters: the denied path is attacker-controlled,
+ * and `recordAudit` creates the directory it writes to, so keying off the path
+ * would let a `Write` to `/anywhere/.my_context/x` create a `.audit/` tree at
+ * an arbitrary location. `denied.rel` still records WHICH managed path was
+ * refused, so nothing about the event is lost. No workspace at `cwd` means
+ * there is nowhere legitimate to record, and the deny still stands.
+ */
+function recordDeny(input: HookInput, cwd: string, abs: string): void {
+  const home = resolveWorkspace(cwd).projectRoot;
+  if (!home) return;
+  const denied = managedSplit(toPosix(abs)) ?? managedSplit(toPosix(canonicalize(abs)));
+  // `recordAudit` never throws; a failure here cannot cost the deny.
+  recordAudit(home, {
+    kind: 'hook',
+    op: 'deny',
+    hook: 'PreToolUse',
+    ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
+    ...(denied === null ? {} : { path: denied.rel }),
+    note: `${input.tool_name ?? 'unknown tool'} refused`,
+  });
+}
+
 /** Returns the JSON to print on stdout, or '' for "no opinion". */
 export function runPreToolUse(raw: string, fallbackCwd: string): string {
   try {
@@ -354,6 +460,7 @@ export function runPreToolUse(raw: string, fallbackCwd: string): string {
     const { input, parseError } = parseHookInput(raw);
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
     const cwd = input.cwd ?? fallbackCwd;
+
     const filePath = extractFilePath(input);
     if (!filePath) return '';
 
@@ -361,33 +468,7 @@ export function runPreToolUse(raw: string, fallbackCwd: string): string {
       const abs = path.resolve(cwd, filePath);
       const reason = denyReason(abs);
       if (reason) {
-        // The one hook action that CHANGES what a tool call does, so it is the
-        // one that most needs to be in the log: an agent blocked from writing
-        // into `.my_context/` that then tells the user something else happened
-        // is exactly what an audit trail is for.
-        //
-        // Recorded against the workspace resolved from `cwd`, NOT against the
-        // `.my_context` directory the path names. Those are usually the same
-        // and when they differ the difference matters: the denied path is
-        // attacker-controlled, and `recordAudit` creates the directory it
-        // writes to, so keying off the path would let a `Write` to
-        // `/anywhere/.my_context/x` create a `.audit/` tree at an arbitrary
-        // location. `denied.rel` still records WHICH managed path was refused,
-        // so nothing about the event is lost. No workspace at `cwd` means
-        // there is nowhere legitimate to record, and the deny still stands.
-        const denied = managedSplit(toPosix(abs)) ?? managedSplit(toPosix(canonicalize(abs)));
-        const home = resolveWorkspace(cwd).projectRoot;
-        if (home) {
-          // `recordAudit` never throws; a failure here cannot cost the deny.
-          recordAudit(home, {
-            kind: 'hook',
-            op: 'deny',
-            hook: 'PreToolUse',
-            ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
-            ...(denied === null ? {} : { path: denied.rel }),
-            note: `${input.tool_name ?? 'unknown tool'} refused`,
-          });
-        }
+        recordDeny(input, cwd, abs);
         return preToolUseDeny(reason);
       }
     }

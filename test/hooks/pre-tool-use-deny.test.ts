@@ -342,12 +342,17 @@ test('canonicalization does not fold case on a case-sensitive filesystem', (t) =
  * to `active`, say.
  *
  * Why this is not a new hole: creating the link needs `mklink /H`, `ln`, or
- * an equivalent, i.e. a shell. `Bash` is not in the PreToolUse matcher and
- * the hook only inspects a `file_path` argument, so an agent that can create
- * the link can already redirect straight into `.my_context/` and run
- * `mycontext rebuild`. This is a corollary of that documented route, not a
- * separate one — but it is the specific thing canonicalization looks like it
- * should have covered and does not, so it is written down here.
+ * an equivalent, i.e. a shell — and `Bash` is not in the PreToolUse matcher
+ * (`hooks/hooks.json`: `Read|Edit|MultiEdit|Write|NotebookEdit`), so the shell
+ * is not fenced off at all and the hard link is only one of many shapes that
+ * reach the corpus through it. A Bash arm existed briefly on 2026-09-03 and
+ * was withdrawn by the owner's ruling; see the comment at the top of
+ * `src/hooks/pre-tool-use.ts`'s deny section for why a command-text check
+ * could never close this class. Even had it stayed, the link can be made
+ * under any name, and a `Write` through it afterwards names no managed path
+ * at all — so the residual stands exactly as written either way. It is the
+ * specific thing canonicalization looks like it should have covered and does
+ * not, so it is written down here.
  *
  * Everything else probed on this machine IS denied: 8.3 short names, junctions
  * and symlinks, `\\?\` prefixes, `\\localhost\C$` UNC admin shares, `subst`

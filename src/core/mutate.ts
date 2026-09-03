@@ -1213,7 +1213,12 @@ export function updateItem(
   else if (input.summaryUnchanged === true && item.summary !== null) reaffirmSummary(item);
 
   const moved = movedFields(before, item);
-  persist(ctx, item);
+  // `bodyWritten` is what lets `persist` decide whether this item is still a
+  // snapshot of the file it names (`reconcileSnapshot`, core/persist.ts). It
+  // says the call CARRIED a body, not that the body moved — an item whose
+  // `source_checksum` was already re-stamped from an authored body is repaired
+  // by re-writing its own text, which moves nothing.
+  persist(ctx, item, body === undefined ? undefined : { bodyWritten: true });
   const audited = auditMutation(ctx, auditOp, origin, item.id, {
     fields: moved,
     // **The escape hatch's record.** The point of the flag is that a summary

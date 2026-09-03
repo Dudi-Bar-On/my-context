@@ -551,6 +551,69 @@ export interface NonceMintDetail {
   origin: string | null;
 }
 
+/**
+ * **The file on disk had moved since my_context last wrote it.**
+ *
+ * Measured by `detectDivergence` (core/persist.ts) at the instant a write is
+ * about to overwrite an item's Markdown, over the bytes that are still there:
+ * `recorded` is the checksum the file carries in its own frontmatter — what
+ * the product stamped the last time it wrote this item — and `actual` is what
+ * that file's content hashes to now. They agree on every file my_context
+ * itself last wrote. They disagree only when something else wrote it.
+ *
+ * **This is a WITNESS and never a gate.** The write it is attached to went
+ * ahead; the owner ruled against blocking, and a guard at the shell was tried
+ * and reverted because it can never be complete. What is being closed here is
+ * the erasure instead: `writeItem` recomputes the checksum unconditionally on
+ * every write path, so the very next ordinary `mycontext edit` on a
+ * hand-edited item — for any reason at all, on any field — silently re-hashes
+ * the hand-edited value and the only evidence that it happened is gone. This
+ * field is that evidence, moved somewhere a later write cannot reach.
+ *
+ * **What a reader may conclude, exactly.** That the file's bytes were changed
+ * by something other than my_context between the last product write and this
+ * one. NOT which fields moved — the prior values are nowhere on disk to
+ * compare against, and this log deliberately stores no copy of item content
+ * (see this module's header). NOT who did it, and NOT that anything was lost.
+ *
+ * **Absent means the measurement found nothing, but only on a record that
+ * also carries `checksumAfter`.** On a record without `checksumAfter` — every
+ * record written before this shipped — absence is UNMEASURED and must never
+ * be read as "no divergence" (`STD-a-measured-zero-is-drawn-and-named`).
+ */
+export interface DivergenceRef {
+  /** The checksum the file carried in its own frontmatter, before this write. */
+  recorded: string;
+  /** What that file's content actually hashed to. */
+  actual: string;
+}
+
+/**
+ * **A write ended, or could not confirm, an item's snapshot provenance.**
+ *
+ * Recorded by `reconcileSnapshot` (core/persist.ts) — read that for the rule
+ * and the argument. In short: a snapshot item survives a write that carries a
+ * body only if the body written is the source file's current text. When it is
+ * not, the item has stopped being a copy of anything and `source_checksum` is
+ * cleared; when the file cannot be read, nothing is changed and the fact that
+ * nothing could be decided is recorded rather than passed over.
+ *
+ * `source_file` is deliberately NOT cleared, so a reader of this record still
+ * has the item's provenance pointer and this record still names it.
+ *
+ * The `resnapshotted` outcome — `mycontext refresh` and a promoted staged
+ * refresh — is NOT recorded here: the item is still a snapshot of the same
+ * file, nothing about its provenance ended, and the `refresh` op on the record
+ * already says which act it was.
+ */
+export interface SnapshotEndedRef {
+  kind: 'ended' | 'unconfirmed';
+  /** The `source_file` the item names. Kept on the item, and named here. */
+  sourceFile: string;
+  /** `ended` only: the `source_checksum` that was cleared. */
+  wasChecksum?: string;
+}
+
 export interface AuditRecord {
   protocol: string;
   /** UTC ISO-8601, always. Items and logs travel between machines. */
@@ -561,8 +624,60 @@ export interface AuditRecord {
   origin?: Origin;
   /** Mutations: the item acted on. */
   itemId?: string;
-  /** Mutations: which fields the write actually changed, sorted. */
+  /**
+   * Mutations: which fields the write actually changed, sorted.
+   *
+   * **A member spelled `extra.<key>` names ONE key of the `extra` bag, and
+   * that is the resolution this field carries from now on.** It used to carry
+   * a single `extra` for the whole bag, which is why an unrelated `priority`
+   * edit was indistinguishable from a `state` edit in this log and why
+   * `state_unaudited` (doctor/checks.ts) could only ever be a floor on the
+   * bypass rather than a count of it. A record that says `extra` and nothing
+   * finer was written by a build that predates the widening; a reader must
+   * treat it as "some key of the bag moved, unknown which" and never as
+   * evidence about any particular key. See `movedFields` (core/persist.ts).
+   */
   fields?: string[];
+  /**
+   * Mutations: the checksum this write STAMPED on the item — what
+   * `computeItemChecksum` returned for the content that then landed on disk,
+   * recorded by `persist` (core/persist.ts) at the moment it landed.
+   *
+   * **This is what makes `diverged` sound rather than merely useful.** Without
+   * it, "has this file changed since my_context last wrote it" is answered by
+   * comparing the file against a number stored INSIDE that same file, and
+   * anything that can edit the one can edit the other — `mycontext repair`
+   * does exactly that, legitimately, and so would a hand editor who knew to.
+   * With it, the last product write's result lives in an append-only log the
+   * file cannot reach, so a file can no longer lie about its own history: a
+   * reader compares the item's current checksum against the `checksumAfter` of
+   * the newest mutation record naming it, and a disagreement is a write this
+   * log never saw, however the file's own frontmatter reads.
+   *
+   * **ABSENT means "not recorded", never "unchanged"** — every record written
+   * before this field existed is silent here, and so is any mutation that
+   * writes no item file at all (`stage`, `discard`). A reader that treats
+   * absence as agreement would be asserting a measurement nobody took
+   * (`STD-a-measured-zero-is-drawn-and-named`).
+   */
+  checksumAfter?: string;
+  /**
+   * Mutations: the file this write overwrote had been changed outside
+   * my_context since the last product write. See `DivergenceRef`, which
+   * states exactly what a reader may and may not conclude from it.
+   *
+   * Present ONLY when divergence was measured AND found. On a record carrying
+   * `checksumAfter`, absence means the measurement was taken and found
+   * nothing; on a record without it, absence means nothing was measured.
+   */
+  diverged?: DivergenceRef;
+  /**
+   * Mutations: this write ended, or could not confirm, the item's snapshot
+   * provenance. See `SnapshotEndedRef`. Absent on every write that left an
+   * item's provenance exactly as it found it — which is every write that
+   * carries no body, and every `refresh` that re-snapshotted successfully.
+   */
+  snapshotEnded?: SnapshotEndedRef;
   /**
    * Injections and hook actions: the session, when one is known. The `manual`
    * op never has one — the MCP server has no trustworthy session id, which is

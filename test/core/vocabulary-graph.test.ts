@@ -122,6 +122,17 @@ test('the closed vocabulary is unchanged by the move', async () => {
     // reviewed in the same ruling and RETAINED, so the vocabulary went 8 → 12
     // rather than 8 → 11.
     'depends_on', 'caused_by', 'conflicts_with', 'amends',
+    // Owner ruling 2026-09-03,
+    // `DEC-all-nineteen-relation-types-ship-and-an-inverse-pair-is-two`. All
+    // six were already on disk in this corpus and already classified in
+    // `RELATION_CLASSIFICATION` — the enum catching up with edges the parser
+    // never gated, exactly as `depends_on` was the day before. Two are the
+    // PASSIVE side of a pair (`discovered_by`, `enforced_by`); that is a name
+    // for reading from the other end and not permission to store a second row,
+    // which is what `INVERSE_RELATIONS` and `linkItems`' mirror check enforce.
+    // 12 → 18. `superseded_by` is the nineteenth name the owner counted and is
+    // deliberately still absent — see the assertion below.
+    'produced', 'discovered_by', 'unblocks', 'enforces', 'enforced_by', 'answers',
   ]);
   assert.equal(
     RELATION_TYPES.includes('superseded_by'), false,

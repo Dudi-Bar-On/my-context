@@ -41,7 +41,7 @@ function jit(cwd: string, file: string): string {
 test('a session start under a focus injects the narrowed set and discloses the rest', () => {
   const p = project();
   try {
-    runCli(['focus', 'billing'], p.cwd, () => {});
+    runCli(['focus', 'billing', '--yes'], p.cwd, () => {});
     const text = buildInjection(p.cwd, { event: 'session-start', sessionId: 'sess-a' });
     assert.match(text, /RULE-charge-in-integer-cents/);
     assert.doesNotMatch(text, /RULE-rotate-the-session-token-hourly/);
@@ -55,7 +55,7 @@ test('a session start under a focus injects the narrowed set and discloses the r
 test('the session-start audit record says the focus hid something, by count', () => {
   const p = project();
   try {
-    runCli(['focus', 'billing'], p.cwd, () => {});
+    runCli(['focus', 'billing', '--yes'], p.cwd, () => {});
     buildInjection(p.cwd, { event: 'session-start', source: 'startup', sessionId: 'sess-a' });
     const record = readAudit(p.root).find((r) => r.op === 'session-start');
     assert.equal(
@@ -70,7 +70,7 @@ test('the session-start audit record says the focus hid something, by count', ()
 test('a just-in-time injection under a focus counts only the items that apply to the file', () => {
   const p = project();
   try {
-    runCli(['focus', 'billing'], p.cwd, () => {});
+    runCli(['focus', 'billing', '--yes'], p.cwd, () => {});
     const out = jit(p.cwd, path.join(p.cwd, 'src', 'api', 'orders.ts'));
     assert.match(out, /RULE-charge-in-integer-cents/);
     assert.doesNotMatch(out, /RULE-rotate-the-session-token-hourly/);
@@ -91,7 +91,7 @@ test('a just-in-time injection under a focus counts only the items that apply to
 test('a tool call whose every matching item is hidden still says so', () => {
   const p = project();
   try {
-    runCli(['focus', 'nothing-matches-this'], p.cwd, () => {});
+    runCli(['focus', 'nothing-matches-this', '--yes'], p.cwd, () => {});
     const out = jit(p.cwd, path.join(p.cwd, 'src', 'api', 'orders.ts'));
     assert.notEqual(out, '', 'silence here reads as "no rules apply to this file"');
     assert.match(out, /2 item\(s\) that apply to this file hidden by focus/);
