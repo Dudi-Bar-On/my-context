@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 9c0ed7d049228334
+checksum: 8e12597a7cc298ac
 plan: walk
 seq: "16"
 state: todo
@@ -50,3 +50,6 @@ VERDICT: STANDS, and it GAINED two things.
 plan:screens seq:1s-f is SUPERSEDED INTO IT and holds the reasoning this task lacks: preview.whyn cannot be reworded in the app because strings-parity holds the key set equal to the mockup s data-t set in BOTH directions, so an app-side edit fails in the INVENTED direction. The mockup has to change first. That is why this is a mockup task and not a string task.
 
 plan:rulings seq:49 carries the work.diffn half and states the stakes better: work.diffn is USER-FACING TEXT, not a comment. It tells the reader the diff is WORD-LEVEL; lineDiff is line-level. The screen describes itself wrongly to the person looking at it. seq:49 s other half -- watch-model.ts ~553 still saying "the 15-minute idle exit" when IDLE_MS became eight hours -- is a one-line fix that belongs elsewhere, and is the SAME wrong number the README carries (plan:rulings seq:48). One ruling, three unswept statements.
+
+## Relations
+- supersedes [[TASK-preview-whyn-still-says-the-gate-ladder-needs-a-stable-code]]

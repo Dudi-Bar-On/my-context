@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One small label is written differently from the design because the wording cannot be translated, and someone must decide which spelling wins.
-summary_of: b2265ed7b0ec21a0
+summary_of: 172076160f75b687
 scope: []
 tags:
   - v2
@@ -17,17 +17,17 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:104"
-  - "state:todo"
+  - "state:done"
 origin: agent
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: e018cbe3201d279c
+checksum: 60a84e8da9dbd905
 plan: walk
 seq: "104"
-state: todo
+state: done
 priority: "3"
 progress: "0"
 needs: walk/92

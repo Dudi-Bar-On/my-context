@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen that shows what already applies to a part of the codebase before you write another rule for it, then drafts that rule.
-summary_of: 19a52e030cfdbc67
+summary_of: baa23688ea94714e
 scope: []
 tags:
   - v2
@@ -14,17 +14,17 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:128"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: e3b5b2c52486c763
+checksum: 35e80143716ba45e
 plan: walk
 seq: "128"
-state: todo
+state: done
 priority: "2"
 source: "plan:walk seq:27, from the module header of screens/capture.js on 2026-09-02"
 ---

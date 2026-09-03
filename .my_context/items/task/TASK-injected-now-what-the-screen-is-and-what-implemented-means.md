@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen that lists what the current working session has actually been handed, read from the delivery log rather than from a rebuilt copy of it.
-summary_of: f90529d6adcf03e8
+summary_of: 4c9710748054562e
 scope: []
 tags:
   - v2
@@ -14,17 +14,17 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:125"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 291d1f226cd8d133
+checksum: 61ac4a7fa530f5fb
 plan: walk
 seq: "125"
-state: todo
+state: done
 priority: "2"
 source: "plan:walk seq:27, from the module header of screens/injected.js on 2026-09-02"
 ---

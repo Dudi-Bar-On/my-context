@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen that shows what the project recorded as it happened, as a live feed with an activity chart, filters and a table.
-summary_of: 491feccc67b57afc
+summary_of: 87dbb9d900f05228
 scope: []
 tags:
   - v2
@@ -14,17 +14,17 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:126"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: a1d6b9e15985a0f2
+checksum: 17c5da1ab19c8858
 plan: walk
 seq: "126"
-state: todo
+state: done
 priority: "2"
 source: "plan:walk seq:27, from the module header of screens/watch.js on 2026-09-02"
 ---

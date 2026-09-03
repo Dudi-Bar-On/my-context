@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Instead of saying raise the limit, show what it costs today, what it is set to, and a few worked-out values with their consequences.
-summary_of: 372d8afbb55e86cb
+summary_of: 0c7761525ed482a4
 scope: []
 tags:
   - v2
@@ -14,17 +14,17 @@ tags:
   - budgets
   - "plan:budget"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: df9b7a7fc1cb6cfb
+checksum: 81fd43da2c439578
 plan: budget
 seq: "2"
-state: todo
+state: done
 priority: "1"
 source: owner, 2026-08-27
 ---

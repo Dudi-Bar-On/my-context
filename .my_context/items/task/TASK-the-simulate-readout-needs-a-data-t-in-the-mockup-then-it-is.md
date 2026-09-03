@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A summary line on the budget screen cannot be shown until the design declares it, after which it is a few lines of work.
-summary_of: f277dd4f7d97e39c
+summary_of: 9a3afaf440626013
 scope: []
 tags:
   - v2
@@ -17,17 +17,17 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:6"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 2363f4253230ea12
+checksum: 9f7005b1f2f97ec4
 plan: walk
 seq: "6"
-state: todo
+state: done
 priority: "2"
 source: "plan:port seq:98, simulate"
 ---

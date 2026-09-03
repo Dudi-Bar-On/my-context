@@ -2,7 +2,7 @@
 id: TASK-preview-whyn-still-says-the-gate-ladder-needs-a-stable-code
 type: task
 title: preview.whyn still says the gate ladder needs a stable code that now exists
-status: active
+status: superseded
 severity: soft
 always: false
 summary: A note under a diagram says the diagram cannot be drawn yet, sitting directly beneath the finished diagram.
@@ -20,8 +20,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
-valid_until: null
-checksum: a15462551167c443
+valid_until: 2026-09-03
+checksum: 879500a0c5d91e79
 plan: screens
 seq: 1s-f
 state: todo
@@ -38,3 +38,6 @@ VERDICT: SUPERSEDED BY plan:walk seq:16, "the mockup catches up with preview.why
 Same defect, same sentence, same file. walk seq:16 is later, is wider -- it carries work.diffn beside it -- and it is the one that reached the owner. This task holds the better forensic account of WHY the app cannot fix it alone (strings-parity holds the key set equal to the mockup s data-t set in BOTH directions, so rewording in the app fails in the invented direction), and that account is why walk seq:16 is written as a mockup edit rather than a string edit.
 
 NOT DELETED. Dispatch walk seq:16; read this for the reasoning.
+
+## Relations
+- superseded_by [[TASK-the-mockup-catches-up-with-preview-whyn-and-work-diffn-needs]]

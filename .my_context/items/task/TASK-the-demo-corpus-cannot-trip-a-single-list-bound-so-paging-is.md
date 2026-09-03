@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The sample data is too small to ever fill a list, so the paging controls are never exercised against anything the app really serves.
-summary_of: a6a85cbd5f29f0a3
+summary_of: 900b14b7f77b83be
 scope: []
 tags:
   - v2
@@ -16,17 +16,17 @@ tags:
   - lists
   - "plan:port"
   - "seq:94b"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 50d42a8defbc394e
+checksum: 416819de36dfd5ff
 plan: port
 seq: 94b
-state: todo
+state: done
 priority: "2"
 source: "found building plan:walk seq:54, 2026-08-27"
 ---

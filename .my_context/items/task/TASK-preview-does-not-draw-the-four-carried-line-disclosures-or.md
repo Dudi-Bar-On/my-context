@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: What a session inherited from an earlier one is already shown; it looks missing only because a sample session has nothing to inherit.
-summary_of: b6af101a98f3ebe7
+summary_of: 470688d727ef13d7
 scope: []
 tags:
   - v2
@@ -15,17 +15,17 @@ tags:
   - tree-parity
   - "plan:walk"
   - "seq:26"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 2b03fb08e8a8e1a0
+checksum: 708d8b676daf6bdd
 plan: walk
 seq: "26"
-state: todo
+state: done
 priority: "2"
 source: "plan:port seq:98, preview"
 ---

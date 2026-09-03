@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The page frame every screen is drawn inside, which owns the navigation, the one connection to the server, and the two dense information bars.
-summary_of: 76ec71ab1552ac54
+summary_of: 5705f30aef9577e7
 scope: []
 tags:
   - v2
@@ -14,17 +14,17 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:132"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 0aece1c324b71fcf
+checksum: c7cb0e9fede3e50c
 plan: walk
 seq: "132"
-state: todo
+state: done
 priority: "2"
 source: "plan:walk seq:27, from the header docblocks of src/ui/public/app.js on 2026-09-02"
 ---

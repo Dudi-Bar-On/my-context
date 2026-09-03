@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two of the three severity headings stay in English, and here the heading is the only thing telling a reader how serious a problem is.
-summary_of: ae354f4e6fb63dee
+summary_of: 2075aed40ec6cade
 scope: []
 tags:
   - v2
@@ -16,17 +16,17 @@ tags:
   - "screen:doctor"
   - "plan:walk"
   - "seq:98"
-  - "state:todo"
+  - "state:done"
 origin: agent
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 532f3f2884deb3ad
+checksum: 1cf8ca5ca9a08967
 plan: walk
 seq: "98"
-state: todo
+state: done
 priority: "2"
 progress: "0"
 needs: walk/92

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Whether the handover notes were written when they were asked for is already recorded, and shown nowhere.
-summary_of: cbc659fe3295c578
+summary_of: 83a4c6dbc02cf5d8
 scope: []
 tags:
   - v2
@@ -16,17 +16,17 @@ tags:
   - walk
   - "plan:walk"
   - "seq:118"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/hoNotice.md"
 source_anchor: null
 source_checksum: d0c160bf0a1ac589
 valid_from: 2026-08-31
 valid_until: null
-checksum: 069e7e97bf9e0036
+checksum: 3a3f5e3d54660039
 plan: walk
 seq: "118"
-state: todo
+state: done
 priority: "1"
 needs: walk/117
 source: owner ruling, 2026-08-31

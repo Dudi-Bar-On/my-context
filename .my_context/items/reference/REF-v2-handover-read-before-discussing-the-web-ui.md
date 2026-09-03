@@ -8,6 +8,8 @@ always: false
 continuity: true
 summary: What the last session learned, so this one does not start over.
 summary_of: 0f14bbf4a04f7f9c
+acknowledged:
+  - dead_scope@542e1344c9e2fce6
 scope:
   - reports/**
   - my-context/docs/superpowers/specs/**
@@ -18,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-18
 valid_until: null
-checksum: 578d44519e395b0a
+checksum: 74d12481039a867c
 ---
 
 # v2.0 handover — we are mid-decision, keep deciding

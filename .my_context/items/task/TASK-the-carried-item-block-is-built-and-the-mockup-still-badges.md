@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: A finished feature still wears a label saying it does not exist yet; either the label goes or it needs a new meaning here.
-summary_of: 60c1ba9cea7982ad
+summary_of: 3f56563baec56186
 scope: []
 tags:
   - "plan:screens"
   - "seq:1s-d"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -20,10 +20,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: f91d1d959885b5cc
+checksum: c1deae5ee1c0baed
 plan: screens
 seq: 1s-d
-state: todo
+state: done
 ---
 
 # the carried item block is built and the mockup still badges it PROPOSED

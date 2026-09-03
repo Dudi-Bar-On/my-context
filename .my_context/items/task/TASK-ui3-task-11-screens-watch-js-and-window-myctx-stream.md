@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: The activity screen, and the live feed of events that fills it.
-summary_of: 9aaaaca1e920e636
+summary_of: 6020d8ecc3e885e2
 scope: []
 tags:
   - "plan:ui3"
   - "seq:11"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
   - "reconcile:rewritten"
@@ -21,10 +21,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 3e6548375b630045
+checksum: 8fb17894e8d349a5
 plan: ui3
 seq: "11"
-state: todo
+state: done
 progress: "0"
 source: "my-context/docs/superpowers/plans/2026-08-16-web-ui-3-watch-and-ask.md#task-11"
 last_change: "2026-08-20T00:00:00Z"

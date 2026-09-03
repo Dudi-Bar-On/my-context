@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: Two figures the design puts in the bottom strip are missing, left out along with their separators so the strip is short but true.
-summary_of: 0a9e784311688fcb
+summary_of: fe9ef26b1a44ac23
 scope: []
 tags:
   - "plan:port"
   - "seq:6"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -20,10 +20,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 02ce22a0d110f7bc
+checksum: 500d5c3ef5801976
 plan: port
 seq: "6"
-state: todo
+state: done
 ---
 
 # the strip cannot say injections-today or audit append p95 yet

@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: One label is drawn near-black on near-black and cannot be seen at all; the fault is in the design file, not in the app.
-summary_of: deabcf2e5251c94d
+summary_of: d91701b89c9d66fe
 scope: []
 tags:
   - "plan:screens"
   - "seq:1s-c"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -20,10 +20,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 200358b028c7d3b2
+checksum: 13f0234ed7001c24
 plan: screens
 seq: 1s-c
-state: todo
+state: done
 ---
 
 # the index tier's chip is invisible, in the mockup and in the app alike

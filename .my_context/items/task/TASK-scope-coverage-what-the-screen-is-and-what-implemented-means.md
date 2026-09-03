@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen that shows every walked folder coloured by what governs it, plus a bar saying how much of each folder is covered.
-summary_of: 7827820173ba1a99
+summary_of: aca8ab3936ad8b89
 scope: []
 tags:
   - v2
@@ -14,17 +14,17 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:124"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 1b5d5ba272b30292
+checksum: 71e864fb5097837c
 plan: walk
 seq: "124"
-state: todo
+state: done
 priority: "2"
 source: "plan:walk seq:27, from the module header of screens/coverage.js on 2026-09-02"
 ---

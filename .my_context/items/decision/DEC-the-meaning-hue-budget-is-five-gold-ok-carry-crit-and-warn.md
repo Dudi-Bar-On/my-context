@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: "There are five colours that carry meaning, not four: a middle caution step is genuinely needed and already in use, so the approved list is corrected."
 summary_of: 8e5a098871fdcc2d
+acknowledged:
+  - body_disagrees_with_meta@90c5045483a83ea0
 scope: []
 tags:
   - v2
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 710f37c172a0f8aa
+checksum: 80c53360a5927465
 ---
 
 # the meaning-hue budget is FIVE: gold, ok, carry, crit and warn
