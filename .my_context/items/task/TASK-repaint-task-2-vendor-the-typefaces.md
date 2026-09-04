@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Ship the three chosen typefaces with the app itself instead of fetching them from somewhere else.
-summary_of: 33a607945b648248
+summary_of: 86b64c668dbd2f3c
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: e80aebefcee08cf2
+checksum: 5a854218d7dffd35
 plan: repaint
 seq: "2"
 state: done

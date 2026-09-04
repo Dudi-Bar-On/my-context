@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Under load, tests grab network ports that cannot be connected to, so a few fail at random and teach people to re-run instead of read.
-summary_of: 24a008fe8e268d57
+summary_of: 83d03e8d469d2089
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 3be76e0af5860872
 valid_from: 2026-08-29
 valid_until: null
-checksum: 68e34eb02c93b2f9
+checksum: 493d3ad8e65194f1
 plan: walk
 seq: "82"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The panel explaining what was left out shows a stand-in example instead of your own items, and lists none of them at all.
-summary_of: ef8db7e44fce81a1
+summary_of: 83497e1d8d5544f5
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: c115da2ed647af45
+checksum: 1827df42b3d70766
 plan: walk
 seq: "56"
 state: done

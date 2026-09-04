@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A second set of derived records is never updated as work happens, so it stays out of date until somebody runs one of three commands.
-summary_of: 61f09cdf7b23375f
+summary_of: cc3de9947af8968e
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 317f365ca41bff1b
+checksum: 331e70e1781322c1
 plan: walk
 seq: "66"
 state: todo

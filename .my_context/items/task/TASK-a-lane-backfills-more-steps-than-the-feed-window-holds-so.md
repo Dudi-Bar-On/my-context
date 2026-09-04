@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Every step a lane records pushes the row that names it further back, until the row that would group them is no longer in view.
-summary_of: f56a89e84f5ac3f1
+summary_of: 5c9fc0aa44bde677
 scope:
   - src/ui/public/screens/watch.js
   - e2e/watch-feed.spec.ts
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 2a916e759e28ebcb
+checksum: c7d7d75b4c764bd0
 plan: live
 seq: "15"
 state: done

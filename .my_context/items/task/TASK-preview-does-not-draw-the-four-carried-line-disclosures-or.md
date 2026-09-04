@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: What a session inherited from an earlier one is already shown; it looks missing only because a sample session has nothing to inherit.
-summary_of: 13e018279ad76d4f
+summary_of: 8917551cef7e490b
 acknowledged:
   - citation_form@91adea82dad3dd08
 scope: []
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: a785a04466b434fd
+checksum: 3b5df42159f76dde
 plan: walk
 seq: "26"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Make the look hold up for people whose system strips transparency or forces its own colours, instead of falling apart for them.
-summary_of: 6a9c759f62fa25ba
+summary_of: edb6af196a6dc6b2
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 34423983d6b4ec1f
+checksum: 6bfbed2784a1be15
 plan: repaint
 seq: "11"
 state: done

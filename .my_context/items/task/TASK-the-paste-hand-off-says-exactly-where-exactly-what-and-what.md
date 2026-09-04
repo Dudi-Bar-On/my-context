@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Tell the reader step by step where a change goes in a file that already has entries, and how to check afterwards that it took effect.
-summary_of: e1d26358e0e9d6cc
+summary_of: 0f10596624d2b16b
 summary_was:
   - 2026-09-01 Tell the reader step by step where to paste a change, exactly where in the file it goes, and how to confirm it took effect.
 scope: []
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: afce13147f041c11
+checksum: cdfb9f23a502a44e
 plan: config
 seq: "4"
 state: done

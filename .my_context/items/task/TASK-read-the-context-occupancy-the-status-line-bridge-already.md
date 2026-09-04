@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Reuse the figure already collected for how full a session is, and name the reason plainly whenever it cannot be known.
-summary_of: bba247b524402362
+summary_of: 35d185a173c7572d
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 785b24ded1ca61f2
+checksum: ca41668863c5beb9
 plan: handover
 seq: "5"
 state: done

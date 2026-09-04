@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Document the four things about the longer-lived web server in both guides, and get every check green.
-summary_of: 539f2066ced07807
+summary_of: a47c12fdabe84829
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 19a237306940f239
+checksum: 652fe55a7ae7592b
 plan: upkeep
 seq: "6"
 state: done

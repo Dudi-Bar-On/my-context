@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The results list stops at a hundred rows with no way to see the rest and no way to ask for more.
-summary_of: 295eed2dc3270aab
+summary_of: 917e044075a1ec44
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: c4675baa2fc81cc0
+checksum: f88f89af65ac11e0
 plan: walk
 seq: "75"
 state: done

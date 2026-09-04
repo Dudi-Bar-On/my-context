@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The Hebrew wording carries no emphasis and only the owner can say where it belongs, since guessing would be inventing rather than translating.
-summary_of: 5d396b8927c79bb3
+summary_of: 6ebf8f3fc78282fa
 acknowledged:
   - state_unaudited@4ea302f2eaf3ae0a
 scope: []
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: d1a9f943fd39d72e
+checksum: fdd28b6f8530ef0d
 plan: walk
 seq: 1h
 state: done

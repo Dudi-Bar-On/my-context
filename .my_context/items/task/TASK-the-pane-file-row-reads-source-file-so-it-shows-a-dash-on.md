@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The detail panel showed a dash where a file path belonged, because it read a field the data never carried under that name.
-summary_of: c4e5434908806db4
+summary_of: bd4672d20f99cec3
 summary_was:
   - 2026-09-03 The detail panel shows a dash where a file path should be, because it reads the wrong field for nearly every item.
 acknowledged:
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 13fb240a3d085d7c
+checksum: 4e74f2e605eb43f7
 plan: walk
 seq: "42"
 state: done

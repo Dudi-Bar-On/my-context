@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A second look at the visual direction, building four working prototypes so the choice can be made by looking rather than by reading.
-summary_of: 72764dd7a024f99b
+summary_of: 1acd8455173d823c
 scope: []
 tags:
   - "plan:review"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 87e1f55db34778f8
+checksum: e59abbeec11814db
 plan: review
 seq: 1b
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The one deliberate animation never actually plays, because what it should animate is rebuilt from scratch every time.
-summary_of: b810e0abf43543bf
+summary_of: 16028de40dd8ef35
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: a0200688dd1c408a
+checksum: ca38db958a349906
 plan: repaint
 seq: 8r
 state: done

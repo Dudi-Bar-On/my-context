@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A bulk approval option is deliberately left out, because approving is a person's act and one click puts it too close to hand.
-summary_of: 4c0608da9bada33d
+summary_of: 590e504627889807
 scope: []
 tags:
   - "plan:ui2"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: a0de81b15d718b91
+checksum: ec219dcc86273d4f
 plan: ui2
 seq: 10p
 state: todo

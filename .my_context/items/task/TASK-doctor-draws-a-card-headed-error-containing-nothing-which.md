@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: An empty box titled error reads as an error, so good news looks like bad news on the very screen people open to check.
-summary_of: 8114cf4ef50b597d
+summary_of: c31ee9b93eb97ede
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 82debc3f0714021e
+checksum: 1824205e7927d5c3
 plan: walk
 seq: "34"
 state: todo

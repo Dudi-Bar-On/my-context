@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A lane is invisible between starting and stopping, and it has never been tested whether the platform can report its work while it runs.
-summary_of: 56a880bed8129817
+summary_of: 91bfb1eec7059802
 scope:
   - hooks/hooks.json
   - src/hooks/io.ts
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 9867015003ddd77e
+checksum: aac715814392fd94
 plan: hooks
 seq: "30"
 state: done

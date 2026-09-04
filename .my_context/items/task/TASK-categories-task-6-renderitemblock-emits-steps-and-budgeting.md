@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Show an item's steps wherever items are printed, so their cost is counted the same way as the rest of the item.
-summary_of: f67eace13a464e84
+summary_of: 9b8fb527b67ed41c
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: bb5e1f65b3175383
+checksum: e1059acf900de637
 plan: categories
 seq: "6"
 state: done

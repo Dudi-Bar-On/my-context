@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The code guesses the word the editor uses when a conversation is cleared; the guess is reasonable, but nobody has yet watched it happen.
-summary_of: 1fa813d12c0d4c19
+summary_of: 7418d9b2cc17f710
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: bd968c0655375336
+checksum: e2fd2012cfcd01da
 plan: hooks
 seq: 8p
 state: done

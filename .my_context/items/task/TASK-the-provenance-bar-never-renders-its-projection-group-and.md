@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: That same strip is missing the part saying whether the numbers are current, and one of its three planned messages can never happen.
-summary_of: edc9987b4b91c967
+summary_of: fbd27f8fb36cdabe
 scope: []
 tags:
   - "plan:ui3"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: 35bb0ff7a3ee2a12
 valid_from: 2026-08-22
 valid_until: null
-checksum: b3bb155d273a3b56
+checksum: e3b06841c7858c91
 plan: ui3
 seq: 11x
 state: todo

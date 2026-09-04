@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One shared styling rule overrides every colour the charts choose, so meaning encoded as colour comes out flat grey.
-summary_of: 9024f43cca79a0dd
+summary_of: fb99a0f77e40ba78
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 4627686257064cf7
 valid_from: 2026-08-29
 valid_until: null
-checksum: d1875265cf3e8b1e
+checksum: ab8e60a03005922c
 plan: walk
 seq: "78"
 state: done

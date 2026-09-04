@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "The premise was wrong: the pinned tier is not half empty, so there is no spare capacity for governing items to use."
-summary_of: a67ef7008c659cd7
+summary_of: 554376a9325d66b8
 summary_was:
   - 2026-09-04 Normative items cannot use spare pinned budget because only always-true items are admitted to that tier.
 scope:
@@ -18,17 +18,17 @@ tags:
   - enforcement
   - "plan:budget"
   - "seq:16"
-  - "state:blocked"
+  - "state:todo"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 758d0ae6ec09b951
+checksum: 2bc26f37c13aacf5
 plan: budget
 seq: "16"
-state: blocked
+state: todo
 priority: "1"
 verified_on: 2026-09-04
 ---

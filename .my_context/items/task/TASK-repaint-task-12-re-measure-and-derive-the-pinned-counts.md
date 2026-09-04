@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Re-check the visual results from what is actually drawn on screen, and work the expected numbers out rather than writing them down.
-summary_of: ac899f6cd6281b91
+summary_of: 71085c6b9b57caf2
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 6ffb5f503234bc9c
+checksum: d76b637167f9df7e
 plan: repaint
 seq: "12"
 state: todo

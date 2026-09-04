@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: An unrecognised setting should be reported and skipped rather than rejecting the whole file, which today can switch the tool off entirely.
-summary_of: 28fc55d728e0d6fc
+summary_of: 0ee6325f7441a982
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 4925a96de8b35b70
+checksum: 9a8f819f5ba716ef
 plan: rulings
 seq: "19"
 state: done

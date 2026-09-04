@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Build the eight basic pieces every screen is made from, once, so the same thing is never drawn by hand twice.
-summary_of: 571bba0d19d97097
+summary_of: 086180fb1cdb2920
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 9b116a8bb42f913c
+checksum: a7ebd1b4da7c70df
 plan: repaint
 seq: "3"
 state: done

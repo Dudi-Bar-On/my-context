@@ -34,6 +34,19 @@ import { removeTree } from '../helpers/tmp.ts';
  * override is set for the duration and restored afterwards, so an ambient
  * value cannot point this at a corpus somebody is using and this one cannot
  * leak into the tests that run after it.
+ *
+ * **None of the edits below carry `--summary-unchanged`, on purpose.** They
+ * used to, defensively, before `WORKFLOW_EXTRA_KEYS` (`content-hash.ts`,
+ * `TASK-closing-any-task-trips-the-summary-gate-even-though-only-the`, owner
+ * ruling 2026-09-04) excluded `state`, `priority` and the other workflow keys
+ * from the summary basis: "a summary describes what an item MEANS. Moving a
+ * workflow field does not change what it means." Every `--extra` edit in this
+ * file moves only `priority` and/or `state`, so `basisMoves` is now false for
+ * all of them and `summaryRequired` never fires — the flag would be
+ * certifying an edit that never asked for a summary answer, which is exactly
+ * what `summaryUnchangedRefusal` exists to refuse. Passing it made every one
+ * of these edits fail with that refusal instead of landing, which is a stale
+ * expectation from before the ruling, not a defect in the gate.
  */
 
 interface Workspace {
@@ -114,8 +127,7 @@ test('a write over a hand-edited file records the divergence it is about to eras
     // THE ERASER. An ordinary edit, about something else entirely. Before
     // this, it re-stamped the checksum over the hand-edited value and left
     // nothing behind.
-    const edited = ws.run(['edit', id, '--extra', 'priority=2',
-      '--summary-unchanged', '--yes']);
+    const edited = ws.run(['edit', id, '--extra', 'priority=2', '--yes']);
     assert.equal(edited.code, 0, edited.out);
 
     const record = ws.last(id);
@@ -145,8 +157,7 @@ test('an ordinary edit over an untouched file records the stamp and NO divergenc
   // every write says nothing about any of them.
   withWorkspace((ws) => {
     const id = addTask(ws, 'edited only through the product', '2');
-    assert.equal(ws.run(['edit', id, '--extra', 'priority=2',
-      '--summary-unchanged', '--yes']).code, 0);
+    assert.equal(ws.run(['edit', id, '--extra', 'priority=2', '--yes']).code, 0);
 
     const record = ws.last(id);
     assert.equal(record.diverged, undefined);
@@ -203,8 +214,7 @@ test('a hand edit is measurable against the LOG even after the file has been re-
 test('an extra edit names the KEY it moved, never the whole bag', () => {
   withWorkspace((ws) => {
     const id = addTask(ws, 'closed through the product', '5');
-    assert.equal(ws.run(['edit', id, '--extra', 'state=done',
-      '--summary-unchanged', '--yes']).code, 0);
+    assert.equal(ws.run(['edit', id, '--extra', 'state=done', '--yes']).code, 0);
 
     const fields = ws.last(id).fields ?? [];
     // `extra.state` and not `extra`: this resolution is the whole reason
@@ -221,8 +231,7 @@ test('an extra edit names the KEY it moved, never the whole bag', () => {
 test('an unrelated extra edit does not name the key it left alone', () => {
   withWorkspace((ws) => {
     const id = addTask(ws, 'priority moved and nothing else', '6');
-    assert.equal(ws.run(['edit', id, '--extra', 'priority=2',
-      '--summary-unchanged', '--yes']).code, 0);
+    assert.equal(ws.run(['edit', id, '--extra', 'priority=2', '--yes']).code, 0);
 
     const fields = ws.last(id).fields ?? [];
     assert.equal(fields.includes('extra.priority'), true, fields.join(', '));
@@ -237,8 +246,7 @@ test('re-sending an extra key with the value it already holds moves nothing', ()
     const id = addTask(ws, 'a no-op edit', '7');
     // `--extra state=todo` re-asserts what the item already says. A record
     // naming it would make the log disagree with the item's own history.
-    ws.run(['edit', id, '--extra', 'state=todo', '--extra', 'priority=2',
-      '--summary-unchanged', '--yes']);
+    ws.run(['edit', id, '--extra', 'state=todo', '--extra', 'priority=2', '--yes']);
     const fields = ws.last(id).fields ?? [];
     assert.equal(fields.includes('extra.state'), false, fields.join(', '));
     assert.equal(fields.includes('extra.priority'), true, fields.join(', '));

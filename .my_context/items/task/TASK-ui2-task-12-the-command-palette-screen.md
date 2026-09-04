@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen for building a command from menus instead of typing it out.
-summary_of: 9df4ca1df92e4483
+summary_of: 81fcb8aab6f03bd1
 scope: []
 tags:
   - "plan:ui2"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: e3e6d28d38e7f896
+checksum: f59565ea1784e201
 plan: ui2
 seq: "12"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen listing six guides named for the job they help you do, which currently reads nothing and asserts its contents from fixed text.
-summary_of: 1d9e13ccd1f72d97
+summary_of: c117f87af5e76af1
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: e16b653e67dcb455
+checksum: c7a74fead33e45f6
 plan: walk
 seq: "131"
 state: todo

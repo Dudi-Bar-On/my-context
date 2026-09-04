@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two styling rules skipped because nothing used them, and what a deliberate omission costs once its reason quietly expires.
-summary_of: e73d64d965c3ec14
+summary_of: 7d494f2f5407da69
 summary_was:
   - 2026-09-03 Two styling rules were skipped because nothing used them; something does now, so a quoted body reads as ordinary page text.
 acknowledged:
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 3fc3b5bdfe989859
+checksum: b35767748a34331d
 plan: walk
 seq: "41"
 state: done

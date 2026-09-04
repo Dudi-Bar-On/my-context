@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A before-and-after preview two finished jobs assumed existed and did not, since lifted out of one screen so every caller shares it.
-summary_of: 567f9db78b7469b0
+summary_of: e78f819313f19aac
 summary_was:
   - 2026-09-03 A shared before-and-after preview was never actually built, and two jobs marked finished were planned on top of it.
 acknowledged:
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-26
 valid_until: null
-checksum: f02395e79ec5436b
+checksum: edcbd9212ff90415
 plan: walk
 seq: "46"
 state: done

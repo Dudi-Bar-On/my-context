@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Several diagrams look out of proportion beside every other screen, and the status line does not stay visible.
-summary_of: 532b2cb59a3df1a9
+summary_of: 5486690950c8562a
 acknowledged:
   - state_unaudited@98ac96e0be206acf
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: c07b21b8b9fc7599
+checksum: d57f0b0c636e091d
 plan: walk
 seq: "62"
 state: done

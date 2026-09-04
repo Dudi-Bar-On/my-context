@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Recording a lesson from the command line forces it to be labelled as written by a person, and the documentation wrongly says a tool cannot record one.
-summary_of: cd04558733a97d82
+summary_of: 8c7a367f22481f9f
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: ab8cf92a18474ee5
+checksum: 5708b238bd1d1997
 plan: rulings
 seq: "28"
 state: done

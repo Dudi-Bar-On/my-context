@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The activity screen, and the live feed of events that fills it.
-summary_of: 2d6a0ba16f8d441c
+summary_of: 1bf247bdf2c15828
 acknowledged:
   - citation_form@df61d9829fb618fe
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: fbd23762b3a4699f
+checksum: b1f50da05ca6fc43
 plan: ui3
 seq: "11"
 state: done

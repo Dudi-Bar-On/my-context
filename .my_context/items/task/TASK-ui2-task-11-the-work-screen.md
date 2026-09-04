@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen showing proposed changes that are waiting on a person, field by field.
-summary_of: 8b8c2880e66f9d2f
+summary_of: f409a602124b9db7
 scope: []
 tags:
   - "plan:ui2"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: dcf495f4bb91351e
+checksum: 1cc937317bccdfec
 plan: ui2
 seq: "11"
 state: todo

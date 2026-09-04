@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The list telling the assistant what it must never do on your behalf is kept by hand, is out of date, and a test pins the stale version in place.
-summary_of: 9f064d7c603477d0
+summary_of: 5e9e54198015238c
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 4398537e681ba04a
+checksum: 2dfa1c4a0bf0a823
 plan: rulings
 seq: "34"
 state: done

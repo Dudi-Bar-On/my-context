@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A command that gives a working session a name a person can remember.
-summary_of: 288ee54c13712178
+summary_of: d5e7d290e6600252
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: a89774e49b5dd9e6
+checksum: 5d020091bc93a25b
 plan: hooks
 seq: "15"
 state: done

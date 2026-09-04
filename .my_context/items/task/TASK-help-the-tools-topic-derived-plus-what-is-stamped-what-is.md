@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "A help page for the tool interface: what it records automatically, what it refuses and why, and how it lines up with the command line."
-summary_of: f4c0224dcc19a29e
+summary_of: 24607aa8436d6818
 scope: []
 tags:
   - "plan:rulings"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 743304cff6407275
+checksum: 77335dc5e99e75cb
 plan: rulings
 seq: "30"
 state: done

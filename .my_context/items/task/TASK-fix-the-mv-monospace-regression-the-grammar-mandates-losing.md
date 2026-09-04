@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The design marks paths and ids for special treatment and then discards it when copied across, so they display wrongly inside right-to-left text.
-summary_of: ce1441435786e3d4
+summary_of: d378a9a490eb7a09
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: b0082a4fc5e0c37f
+checksum: acad3dcb2a87640f
 plan: rulings
 seq: "12"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One screen is offered in the menu but nobody has ever been asked to build it; decide whether it belongs in this release.
-summary_of: 2c25c84ef3a56eab
+summary_of: 51edb573bdc56ebf
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 85f9c19c753d1bdf
+checksum: 4018f7d74c038024
 plan: port
 seq: "4"
 state: done

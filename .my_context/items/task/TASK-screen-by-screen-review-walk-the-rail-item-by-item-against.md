@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Walk every screen against the design side by side and fix what differs, once they all exist and while the sample data still shows everything.
-summary_of: fab3b87ea6c1e5f7
+summary_of: 324deb6feee0f77f
 acknowledged:
   - body_disagrees_with_meta@1ba412572c27844b
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 3d3b05374ac8b43f
+checksum: a48bb210b91683a8
 state: todo
 plan: port
 seq: "98"

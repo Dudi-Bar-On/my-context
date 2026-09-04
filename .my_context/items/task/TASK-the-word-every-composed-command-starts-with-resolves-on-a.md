@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Every command the product tells you to run starts with a word the shell does not know; install it so that copying actually works.
-summary_of: ffa7cafed2ad70e1
+summary_of: 4cf861eab9424bdf
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: a5de394de909c1c7
 valid_from: 2026-08-27
 valid_until: null
-checksum: e2b4e39ed7abf44f
+checksum: e45eac0340c60e1a
 state: done
 priority: "1"
 source: owner, 2026-08-27 ruling

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Work out, from this project's real history, how much would actually be carried from one session to the next.
-summary_of: c107a0695b8a6411
+summary_of: f1e84c933107b35c
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 12a3c6f57f5e33cc
+checksum: 48de39e8ce9c9289
 plan: hooks
 seq: "3"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Reading the current branch and commit straight from the repository's own files.
-summary_of: 7cbfcb20381a7347
+summary_of: 57c7015b6bc6170f
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: c9495ad39cf2e7e7
+checksum: 50caf2d13d8fc79e
 plan: ui1
 seq: "4"
 state: done

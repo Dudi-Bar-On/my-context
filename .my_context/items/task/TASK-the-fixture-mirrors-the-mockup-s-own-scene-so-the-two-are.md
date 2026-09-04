@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Give the sample project the data each screen's design assumes, so any difference means wrong code rather than different data.
-summary_of: e9a24799f92b014e
+summary_of: 48759c6bc23af9a3
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: b6abf7d960ee2206
+checksum: b2662f083ddcf583
 priority: "1"
 needs: port/95
 plan: port

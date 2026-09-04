@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A way to approve everything that arrived in one bundle at once, so reviewing imported material is not a one-by-one chore.
-summary_of: 2d34249243e27901
+summary_of: 5653a8438f964e77
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: afc290432bd074e3
+checksum: 5989897579411d8c
 plan: export
 seq: "16"
 state: done

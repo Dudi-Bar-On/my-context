@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Exporting a project drops part of each custom item type's definition, so the copy describes fields it no longer carries.
-summary_of: ed9c8533d4f3ee72
+summary_of: b335ca78c86b4105
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 3fc5899a1697f568
+checksum: fa6273a20386cab1
 plan: export
 seq: "18"
 state: done

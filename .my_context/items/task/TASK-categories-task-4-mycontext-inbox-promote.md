@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A way to turn a jotted note into a real item of a chosen kind, keeping a link back to where it came from.
-summary_of: 7dadac21be9548a0
+summary_of: 76adf24416d90abe
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: e71b3888fb2ab818
+checksum: 9bdaba12b7812bbe
 plan: categories
 seq: "4"
 state: done

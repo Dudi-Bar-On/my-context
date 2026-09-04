@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Go through every screen job planned under the old look and say whether the new one leaves it alone, disturbs it, or replaces it.
-summary_of: d4f6a9c5ce8dbef9
+summary_of: af9d1ff24e620cd1
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 8080433fc64c91af
+checksum: fdb563be7cfa3ed9
 plan: repaint
 seq: "13"
 state: done

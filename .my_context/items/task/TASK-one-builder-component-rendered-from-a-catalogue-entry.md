@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Build one reusable set of command inputs so every screen that offers a command draws it the same way instead of inventing its own.
-summary_of: 04c72873147c9fec
+summary_of: 86cc94f3979ae22f
 scope: []
 tags:
   - "plan:builder"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: f2d83014bf0942f7
+checksum: cfcc85d294ea8d6e
 plan: builder
 seq: "5"
 state: todo

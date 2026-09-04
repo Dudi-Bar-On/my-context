@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Roll the shared run-a-command button out to the six remaining screens, one at a time rather than all at once.
-summary_of: c63f82eeb6387772
+summary_of: 6fb56fc4cff89e64
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: a2cacf35bcffa86c
+checksum: a81ad01fd864ea68
 plan: execute
 seq: 6b
 state: done

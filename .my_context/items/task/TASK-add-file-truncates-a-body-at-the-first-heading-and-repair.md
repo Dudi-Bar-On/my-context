@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Repairing an item could silently delete the part of its text that came after a heading, so written knowledge was lost with no warning at all.
-summary_of: 45616448d4d8aec5
+summary_of: 3dac2ce332187400
 acknowledged:
   - state_unaudited@c1d2f681da89c764
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 62f2689efd85cf07
+checksum: 75b697bdd6ae6081
 plan: upkeep
 seq: "8"
 state: done

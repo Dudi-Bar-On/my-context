@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The detail panel should close when you leave the screen you opened it from, instead of following you around and squeezing every page.
-summary_of: f117a30c7a221cc4
+summary_of: 7162756ccceca303
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 999c1078dafe1fcd
+checksum: b4c7e5ba7f3ee2f4
 plan: pane
 seq: "4"
 state: done

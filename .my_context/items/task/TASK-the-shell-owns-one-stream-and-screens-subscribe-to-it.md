@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Open one live connection for the whole page and let each screen listen in, rather than each screen opening its own.
-summary_of: 30f39f2867d8abc6
+summary_of: dd18ecb43e03768d
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 5e3c266967ae0aa0
+checksum: a955d6229c8b0e0c
 plan: live
 seq: "1"
 state: done

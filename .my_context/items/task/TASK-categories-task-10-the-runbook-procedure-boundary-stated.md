@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Explain the difference between the two kinds of step-by-step guide at the moment an author is actually choosing between them.
-summary_of: 93d9a7b89efd9692
+summary_of: c48aebdc4408526b
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 07ff19d7846a3dda
+checksum: a16ee5cbbaa894a9
 plan: categories
 seq: "10"
 state: done

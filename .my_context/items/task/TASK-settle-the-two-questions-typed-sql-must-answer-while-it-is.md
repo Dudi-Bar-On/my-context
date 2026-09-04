@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Two decisions to make while the typed-query screen is being built: what it is allowed to read, and what it shows when a query is refused."
-summary_of: 25102a8763d68fa6
+summary_of: 33220988fa64a3af
 scope: []
 tags:
   - "plan:api"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 93f4d3fa030b4149
+checksum: b00371cfb608eafd
 plan: api
 seq: "6"
 state: done

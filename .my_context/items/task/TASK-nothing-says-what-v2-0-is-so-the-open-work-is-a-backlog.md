@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: No item defines what shipping v2.0 means, so the remaining work cannot be measured against anything.
-summary_of: bf2bae5368922d70
+summary_of: 9d610447d980e6ac
 scope:
   - reports/**
 tags:
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: d10966ebfc441cac
+checksum: f13a31908672345b
 plan: handover
 seq: "12"
 state: done

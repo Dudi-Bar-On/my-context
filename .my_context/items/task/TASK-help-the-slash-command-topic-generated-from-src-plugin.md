@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A help page for the shortcut commands, generated from the same source they come from, saying plainly which ones only a person may run.
-summary_of: a1b11573a034bc3f
+summary_of: af56eb9833bbaba1
 scope: []
 tags:
   - "plan:rulings"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 0ee5e2f0125b482c
+checksum: 9f5e8ba4e8aca371
 plan: rulings
 seq: "31"
 state: done

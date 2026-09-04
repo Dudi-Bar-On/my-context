@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Twelve sentences are recorded as untranslated and as already reported, and nothing was ever reported; most of them sit on the main screen.
-summary_of: 178e5e217cbed37f
+summary_of: d966db5a50bde68b
 scope: []
 tags:
   - v2
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 6903e6699fee7834
+checksum: 80f20ab937d0bd48
 plan: walk
 seq: "102"
 state: todo

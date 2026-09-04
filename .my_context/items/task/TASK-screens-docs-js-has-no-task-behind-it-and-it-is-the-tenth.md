@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The documentation screen is offered in the menu and everything it needs already exists, but nobody was ever asked to build it.
-summary_of: 244efc9e9ab66ea3
+summary_of: 4c19ad96d5fc7371
 scope: []
 tags:
   - "plan:port"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: cbdb016da91efc90
 valid_from: 2026-08-23
 valid_until: null
-checksum: 48dc4b6a236a5215
+checksum: ad0b9f4060699ea5
 plan: port
 seq: 5b
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The inline formatting was repaired, and quoted passages still show their punctuation as stray characters because that part is a design decision, not a bug.
-summary_of: af99d0bf9586a4e8
+summary_of: 6ba9409d0b74ffde
 summary_was:
   - 2026-09-03 Quoted passages in an item show their punctuation as stray characters mid-sentence, and fixing it is a decision about the design, not a bug.
 acknowledged:
@@ -28,7 +28,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: a5ebed2cd769842b
+checksum: 3b62178f52a51b57
 plan: walk
 seq: "37"
 state: done

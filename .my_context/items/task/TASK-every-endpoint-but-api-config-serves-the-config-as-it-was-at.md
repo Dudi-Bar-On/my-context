@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A setting changed while the app ran used to be ignored by almost everything, because the value was read once at start-up.
-summary_of: 6f1887d55e17e03b
+summary_of: a90a655318ab2caa
 summary_was:
   - 2026-09-03 Change a setting while the app is running and almost everything keeps using the old value, because it was read once when the server started.
 acknowledged:
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 5f66933a4ba50000
+checksum: 44fc8529615b1d6f
 plan: live
 seq: "8"
 state: done

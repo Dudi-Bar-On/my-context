@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screens showing which parts of the project are covered, which are not, and how things relate to one another.
-summary_of: fc0acfb57df736ac
+summary_of: 595fc2f0f6d3f02d
 scope: []
 tags:
   - "plan:ui1"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 9c5ca83b63bd9835
+checksum: db1acf1badd83104
 plan: ui1
 seq: "18"
 state: todo

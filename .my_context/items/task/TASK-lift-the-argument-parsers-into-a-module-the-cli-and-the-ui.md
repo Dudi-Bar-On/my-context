@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Move the code that understands command arguments somewhere the read-only viewer can use it, without dragging in anything that can change data.
-summary_of: 3521f657364cf7f6
+summary_of: f7c449878be98d5d
 scope: []
 tags:
   - "plan:builder"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: acd04706d035e7dd
+checksum: 9d6c2ca9299f4613
 state: done
 plan: builder
 seq: "1"

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The comparison keeps reporting the design's own note to itself as a missing feature; teach it to skip that, and only that.
-summary_of: 47bf9d255c4cbe0e
+summary_of: f760e50a39a91e5a
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 2d5e41e1a91ea927
+checksum: 5aa77695a360a1fb
 plan: walk
 seq: "4"
 state: todo

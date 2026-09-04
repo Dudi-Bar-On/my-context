@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Stop records are written for events that are not subagents, and each draws as an empty lane the reader cannot open.
-summary_of: 45d4d084a1633127
+summary_of: bba9b47e3de02022
 scope:
   - src/hooks/**
   - src/core/audit.ts
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: a9db804bd3aeb39f
+checksum: dce98ba9b256bffa
 plan: hooks
 seq: "34"
 state: done

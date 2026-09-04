@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Add short hover and click help to buttons and other controls across the app screens, following the pattern the status strip already uses.
-summary_of: 5f80be3f3884a90a
+summary_of: 7dc613e2247fc4fe
 scope: []
 tags:
   - "plan:walk"
@@ -17,7 +17,7 @@ source_anchor: null
 source_checksum: d305818acc0665ed
 valid_from: 2026-09-02
 valid_until: null
-checksum: 31ccd18c167f249e
+checksum: 0ddfd614809b70ce
 plan: walk
 state: todo
 ---

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Serving the app's own files to the browser, without letting anyone ask for a file outside it.
-summary_of: 8c1af20197fb2432
+summary_of: 59d98021152a2af3
 scope: []
 tags:
   - "plan:ui1"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 0b940ec3e6ea216e
+checksum: b7953c4d8fd5d1ba
 plan: ui1
 seq: "12"
 state: done

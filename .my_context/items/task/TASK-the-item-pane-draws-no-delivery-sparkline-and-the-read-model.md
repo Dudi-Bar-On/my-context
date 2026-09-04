@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The detail panel is missing its twelve-week history bar, and the data behind it cannot tell a quiet week from a rejected one.
-summary_of: 04608c0e5a3dc768
+summary_of: c247a30b525f5556
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 1669746bb471b225
+checksum: a663f096b752bb0e
 plan: walk
 seq: "40"
 state: done

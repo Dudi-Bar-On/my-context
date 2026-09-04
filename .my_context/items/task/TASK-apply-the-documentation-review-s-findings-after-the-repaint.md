@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: Act on an earlier documentation review once the redesign settles, and review again while doing it, since these documents keep going stale unnoticed.
-summary_of: bbe7c9d609733801
+summary_of: 9e02f482475b57dc
 scope: []
 tags:
   - "plan:review"
   - "seq:6b"
-  - "state:blocked"
+  - "state:done"
   - v2
 origin: human
 source_file: null
@@ -19,12 +19,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: b2fda79e85269271
+checksum: eacbbec1d8cff3a7
 plan: review
 seq: 6b
-state: blocked
+state: done
 priority: "1"
 needs: repaint/10, repaint/11, repaint/12
+verified_on: 2026-09-04
 ---
 
 # apply the documentation review's findings after the repaint, and re-review at the same time

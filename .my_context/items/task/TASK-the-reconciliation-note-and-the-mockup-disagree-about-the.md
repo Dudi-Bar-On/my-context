@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A note and the design name different colours for the same line; the design wins unless somebody rules otherwise.
-summary_of: 23dc3d390f9bf526
+summary_of: 812bf47573f2ab25
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: eea238c7252ab083
+checksum: 23e94a62c904fe89
 plan: ui1
 seq: 18e
 state: done

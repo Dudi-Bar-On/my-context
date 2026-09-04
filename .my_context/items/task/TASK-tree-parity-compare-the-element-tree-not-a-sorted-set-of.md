@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The comparison only checks which kinds of thing appear, ignoring order, nesting and quantity; compare the actual structure instead.
-summary_of: 8876b0786435356d
+summary_of: 191053d648d8ae32
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 5925b128a712408d
+checksum: 2c65fa98bd092b0f
 state: done
 plan: port
 seq: "95"

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The corpus search matches a query only where it appears as one unbroken phrase, so the same words in another order find nothing.
-summary_of: 407d9122523895d6
+summary_of: daddb29634583ba1
 scope:
   - src/cli/commands/search.ts
   - src/core/search.ts
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: bf08bd506bb65814
+checksum: a660f6126ad56b24
 plan: walk
 seq: "134"
 state: todo

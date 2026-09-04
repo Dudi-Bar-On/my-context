@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A test failed once and passed twice, and nobody caught which one; find it rather than trusting the green run.
-summary_of: 195b4ed7796e5ba2
+summary_of: f46568695264f595
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 85ddfaef8cc07eb2
+checksum: 430245d593cb9e00
 plan: port
 seq: "10"
 state: done

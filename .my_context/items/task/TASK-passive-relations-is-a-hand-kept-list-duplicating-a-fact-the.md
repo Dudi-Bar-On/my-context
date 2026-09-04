@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A two-member set in the search module repeats, as a second hand-typed list, exactly what the relation vocabulary's own descriptions already say in words.
-summary_of: c7ea2609f9e4d68b
+summary_of: d3191ab802a27ae3
 scope:
   - src/core/search.ts
   - src/core/vocabulary.ts
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: a8e1a1407934411b
+checksum: 7751f4213041b97e
 plan: rulings
 seq: "55"
 state: todo

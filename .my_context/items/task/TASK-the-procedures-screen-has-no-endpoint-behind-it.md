@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The procedures screen has nothing serving it yet, so it cannot be built until that exists.
-summary_of: 58037e902139fc3b
+summary_of: 1a815cf35f7f81b9
 scope: []
 tags:
   - "plan:api"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: d9c96db29bbc01ea
+checksum: d93cd99b41757b4c
 plan: api
 seq: "2"
 state: done

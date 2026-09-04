@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two sentences on screen were never set up for translation and stay English, and nothing counts how many more are like them.
-summary_of: 8f2736a4ae351d7b
+summary_of: 8655cb67293f493f
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: d5f1498d00e30367
+checksum: 34d0eba1ada00ea6
 plan: walk
 seq: "60"
 state: done

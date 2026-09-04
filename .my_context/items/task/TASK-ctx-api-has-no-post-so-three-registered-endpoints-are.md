@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Screens can only ask the server simple questions, so three finished features sit unreachable and two screens are missing half of what they do.
-summary_of: 32ab0661d4a8b9a2
+summary_of: 587c53c372ab4380
 scope: []
 tags:
   - "plan:ui2"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: 5bf0490a5b644dce
 valid_from: 2026-08-23
 valid_until: null
-checksum: 2d7720aa38761079
+checksum: 56d94c239d26a052
 plan: ui2
 seq: 15p
 state: done

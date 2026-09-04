@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "The three screens about what a session is given: what fits, what would fit under other limits, and what was actually delivered."
-summary_of: 07e604941e269304
+summary_of: b86326e3904c0894
 scope: []
 tags:
   - "plan:ui1"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 4ed118114c11a9cd
+checksum: 489d46ae5cbb45bb
 plan: ui1
 seq: "17"
 state: done

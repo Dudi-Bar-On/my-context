@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen showing the current settings and what changing one of them would do.
-summary_of: 69e12084e10cd13b
+summary_of: 4fb293b2b878dfd3
 acknowledged:
   - citation_form@8f37929a778203a0
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: f5d870ef14e58dd8
+checksum: 9043a031f3987c6e
 plan: ui2
 seq: "13"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Hook up the helper-session start event and set an honest limit on how long it may take, claiming no more precision than can be measured.
-summary_of: 96d0ef8042108a32
+summary_of: 44f53ecba898e14f
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: a06b9c32bee4374f
+checksum: ccd641be79856014
 plan: hooks
 seq: "11"
 state: done

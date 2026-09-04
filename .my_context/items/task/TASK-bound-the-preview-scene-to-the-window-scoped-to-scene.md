@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: With real data a preview grew far taller than the window; it is now kept inside it, a deliberate difference from a design drawn with tiny samples.
-summary_of: b190729bdcf74af3
+summary_of: d19e4bc8b03ef7aa
 scope: []
 tags:
   - "plan:fixes"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 25c7a24160c5857c
+checksum: da9c43e03f7f0ba1
 plan: fixes
 seq: "5"
 state: done

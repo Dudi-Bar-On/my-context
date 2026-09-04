@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The main screen is missing its bar of proportions, its admission diagram and its faded rows for what did not make it.
-summary_of: c758ab91a3bd5595
+summary_of: 584393b6edff3f43
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: d8742583a048eb99
+checksum: 34121b8c481692f5
 plan: screens
 seq: 1s
 state: done

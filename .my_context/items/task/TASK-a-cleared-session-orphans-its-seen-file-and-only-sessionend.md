@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Clearing a conversation abandons the old one's bookkeeping file instead of cleaning it up, and nobody has decided whether that should be fixed.
-summary_of: cd9f29b3ee058f4e
+summary_of: c082e0773cfaedc7
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: a71996e6988ed7d4
+checksum: 719073f44de22275
 plan: hooks
 seq: 8q
 state: done

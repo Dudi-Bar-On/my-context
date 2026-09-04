@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One table of figures sits on the translucent background where every other set of numbers sits on a solid one; settle whether that is right.
-summary_of: 533729e286f718c5
+summary_of: 5b71baddf216b831
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 9d38b5471516f735
+checksum: ee32e28c4513fe4c
 plan: repaint
 seq: 7b
 state: todo

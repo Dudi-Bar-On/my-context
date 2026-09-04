@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Read the older plans against the newer one before starting anything, so nobody builds the same thing twice from two descriptions.
-summary_of: 3347a633b8f277e9
+summary_of: 80de7b544745bd64
 acknowledged:
   - body_disagrees_with_meta@d99ba4a84d121194
 scope: []
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: ca36b5b88c11e7a5
+checksum: b213f56208718786
 plan: walk
 seq: "23"
 state: done

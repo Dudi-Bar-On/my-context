@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Ten labels stayed in English on the Hebrew page for months; the fix is in, but nothing yet stops it happening again.
-summary_of: cb8840e18ef1b703
+summary_of: e1441ec870530d81
 acknowledged:
   - body_disagrees_with_meta@ac65ef6e0e6f5d91
 scope: []
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 014589d1b67d0229
+checksum: 29bcb41ac07bbfc4
 plan: walk
 seq: "43"
 state: todo

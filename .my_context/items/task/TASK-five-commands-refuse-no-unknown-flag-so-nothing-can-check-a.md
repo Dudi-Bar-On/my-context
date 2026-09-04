@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Five commands accept any option without complaint, so nothing can verify a command built for them; either fix them or state the exception.
-summary_of: 0e65eaac584d84a2
+summary_of: 2f7e33fe7990fafa
 scope: []
 tags:
   - "plan:builder"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: ad2955d841e70484
+checksum: 9442981ec650e6a8
 state: done
 plan: builder
 seq: 1c

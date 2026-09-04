@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One row of a four-row screen cannot show the link that justifies the screen existing, because nothing in the answer names an example to point at.
-summary_of: c2e0dd4b3ad4c25a
+summary_of: 5178edfff97a1fec
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: e92e4d052eb7cb09
+checksum: 3f7bb99e8e1479f1
 plan: walk
 seq: "88"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A dispatched subagent is recorded by id alone, so the log cannot say what any lane was for, only that one ran and later stopped.
-summary_of: 697cd285e4f278bf
+summary_of: d364d4fb38df9d52
 scope:
   - hooks/hooks.json
   - src/hooks/post-tool-use.ts
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 42076922b97b9182
+checksum: 2905adc56933a540
 plan: hooks
 seq: "24"
 state: done

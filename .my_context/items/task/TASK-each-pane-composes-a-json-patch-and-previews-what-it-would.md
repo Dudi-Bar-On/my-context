@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Each settings section shows the exact text to paste and what would actually change as a result, since the file stays the user's own to edit.
-summary_of: 735f4af796d4d352
+summary_of: c1197552929dee95
 acknowledged:
   - body_disagrees_with_meta@6dfcb120e7fd82d1
   - citation_form@6dfcb120e7fd82d1
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 5ee3e0324860fac4
+checksum: 890e9bea35c16b47
 plan: config
 seq: "2"
 state: done

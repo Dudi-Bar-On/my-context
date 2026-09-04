@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Simply viewing the history page can delete and rebuild its database; looking at something must never rewrite it, and staleness should be reported.
-summary_of: 49b63487aa1a7951
+summary_of: 85de0a0acba37b81
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 35bc8a8f8485e63a
+checksum: f66753e70936e637
 plan: rulings
 seq: "22"
 state: done

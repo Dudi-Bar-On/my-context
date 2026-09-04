@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One health finding is drawn as an error but reported as a warning; move it, and move its suggested fix along with it.
-summary_of: d45427cff4b08a02
+summary_of: 05dfd93bd6e92620
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: eb4dc2a6ed744ee7
+checksum: dbdf1d7bfd6e6be0
 plan: walk
 seq: "17"
 state: done

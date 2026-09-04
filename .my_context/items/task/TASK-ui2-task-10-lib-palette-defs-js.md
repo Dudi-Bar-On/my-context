@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The shared list describing every command, its options, and what each one expects.
-summary_of: 3e946cdc84db888c
+summary_of: 55962b03b5f107bc
 scope: []
 tags:
   - "plan:ui2"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: b8763d7d4d7f54e8
+checksum: 13eb460355a9fcff
 plan: ui2
 seq: "10"
 state: done

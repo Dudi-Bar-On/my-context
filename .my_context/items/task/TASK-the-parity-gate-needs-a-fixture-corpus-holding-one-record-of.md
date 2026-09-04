@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Give the comparison test a fixed set of sample records, so it measures the code rather than whatever happened to occur that day.
-summary_of: c3cc698087ae4202
+summary_of: 834d137a69ec0e5a
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 4be0e1b5bd0d14e6
+checksum: 9600883a2e260f48
 plan: port
 seq: "9"
 state: done

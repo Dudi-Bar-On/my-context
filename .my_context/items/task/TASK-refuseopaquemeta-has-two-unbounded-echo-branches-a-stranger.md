@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two error paths print text from a stranger's file at unlimited length, so it can flood the terminal; cap them as a third path already does.
-summary_of: b2bf32ce6667ccbd
+summary_of: a17d671010e51937
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 1b1155c709e4e171
+checksum: 969e1b2271fe42c7
 state: done
 plan: export
 seq: "20"

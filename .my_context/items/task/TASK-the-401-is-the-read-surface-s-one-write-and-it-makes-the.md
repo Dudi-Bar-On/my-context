@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Turning a request away is the only thing the read-only screens ever write, and it makes the very next read refuse; tests must expect that.
-summary_of: 73fb5888f1326743
+summary_of: 8fda61294f12f8a8
 scope: []
 tags:
   - "plan:ui3"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: d17e8c47b6e9c322
+checksum: cd57444c6df1fbbc
 plan: ui3
 seq: 8p
 state: done

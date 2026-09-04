@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The data behind which sessions exist and what each of them was given.
-summary_of: fab52b1e127285c1
+summary_of: 021b60a6f48a3e37
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 2f6773e01e51a213
+checksum: 02cf6599d70798a9
 plan: ui1
 seq: "9"
 state: done

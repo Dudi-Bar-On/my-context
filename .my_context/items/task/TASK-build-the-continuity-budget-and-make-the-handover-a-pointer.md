@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Give handover notes their own allowance and shrink the note to a pointer, because today it is far too large ever to reach a session.
-summary_of: c4e209157a2ccd30
+summary_of: c196d10561fe3271
 acknowledged:
   - state_unaudited@817c0d35fcd56c16
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: d1e19ff3829c8900
+checksum: 5c8a30e4acb91944
 plan: live
 seq: "9"
 state: done

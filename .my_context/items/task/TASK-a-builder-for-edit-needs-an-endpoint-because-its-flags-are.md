@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The edit command allows different options in every project, so a form for it must ask the server what is legal rather than use a fixed list.
-summary_of: 16577a4302e19eb5
+summary_of: 417ea9a4064a1f9f
 scope: []
 tags:
   - "plan:builder"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: b62e0a0dbf6c974f
+checksum: a0e19a41b734a4d3
 state: done
 plan: builder
 seq: 2b

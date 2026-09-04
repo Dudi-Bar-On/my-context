@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Let people type their own queries on the question screen, reversing an earlier decision, because the ready-made filters cannot ask what they need.
-summary_of: 2d6d79d22c6e2f1a
+summary_of: 7e7f111985c7a461
 scope: []
 tags:
   - "plan:ui3"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 478807c1f92c143d
+checksum: 1c44248b72514380
 plan: ui3
 seq: "15"
 state: todo

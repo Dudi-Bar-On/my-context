@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The data behind the health, status and gone-unused screens.
-summary_of: 77ce5efac493e390
+summary_of: 410a66694aef4072
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 44441b081fbe8df1
+checksum: fc9e961897cc5946
 plan: ui1
 seq: "10"
 state: done

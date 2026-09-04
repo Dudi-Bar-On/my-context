@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Send a fixed code saying which check something first failed, so the screen does not have to read meaning out of a sentence.
-summary_of: 47c5b36706c77a55
+summary_of: e4d1c8c3b16f4995
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 187d9e91ad195308
+checksum: f8e400ebfb87b1ec
 plan: ui1
 seq: 17a
 state: done

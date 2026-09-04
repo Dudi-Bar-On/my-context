@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The main guide went on saying a shipped feature did not exist, in both languages, weeks after it shipped.
-summary_of: 9f3df6484923b908
+summary_of: 96b3dd5c2ed91146
 summary_was:
   - 2026-09-03 The main guide still says a feature does not exist, weeks after it shipped, and the same false claim survives in a second place.
 acknowledged:
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 1bd34ee42b0f1306
+checksum: 0bf1ff177a61a023
 plan: export
 seq: 13r
 state: done

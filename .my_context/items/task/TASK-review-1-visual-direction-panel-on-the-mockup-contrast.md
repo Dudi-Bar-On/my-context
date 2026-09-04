@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "A commissioned review of the look: fix the readability failures, and bring back ranked options on colour, type and depth to choose from."
-summary_of: 2318f4a20a2bcc41
+summary_of: 4e637e0e1e51a2b6
 scope: []
 tags:
   - "plan:review"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 7f179653ad8884bd
+checksum: 70a4905235c91196
 plan: review
 seq: "1"
 state: done

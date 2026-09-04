@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A ready-made report on how far every task has got, joining two separate stores that the question-asking screen cannot join for itself.
-summary_of: f2355fdeaefd1ccf
+summary_of: 9467f9bf9defaefe
 scope: []
 tags:
   - "plan:ui3"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: d489447d5303a9b7
+checksum: 40e068820e038127
 plan: ui3
 seq: "14"
 state: done

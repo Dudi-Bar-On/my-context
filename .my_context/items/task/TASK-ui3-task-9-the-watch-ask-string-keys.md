@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Adding the sentences for the activity and question screens to both language tables in a single go.
-summary_of: 78fb569f23ed0765
+summary_of: 1a76aee3d63d9ede
 scope: []
 tags:
   - "plan:ui3"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 37da8c7cce43d459
+checksum: 172f17688a02070e
 plan: ui3
 seq: "9"
 state: done

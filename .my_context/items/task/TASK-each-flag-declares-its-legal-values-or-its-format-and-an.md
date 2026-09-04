@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Each option states its allowed values, or its format and an example, drawn from the source the checker uses so help and refusal cannot disagree.
-summary_of: 174ea760b9e9ef0b
+summary_of: 13cd891fd4e9e4e1
 scope: []
 tags:
   - "plan:builder"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 29274e3da4c56bf4
+checksum: 1f84a028228c9c14
 plan: builder
 seq: "2"
 state: done

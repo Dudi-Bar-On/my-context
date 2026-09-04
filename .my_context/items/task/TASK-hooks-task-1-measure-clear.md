@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Measure what actually happens when a conversation is cleared, which needs someone sitting at a live session to observe it.
-summary_of: 6ea691ad47cb44dc
+summary_of: b45c4dd1367dc900
 acknowledged:
   - body_disagrees_with_meta@ac4ca4157c9584da
 scope: []
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 63aa2d6fccaf3736
+checksum: 4e9c9649a44d95f5
 plan: hooks
 seq: "1"
 state: done

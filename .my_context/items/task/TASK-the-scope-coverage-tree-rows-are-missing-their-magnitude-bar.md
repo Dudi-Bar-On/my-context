@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The coverage rows say which areas are covered but not how much, because the small bar that would show it is never drawn.
-summary_of: fe71c9b200c65315
+summary_of: cf1902562737bd77
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: a9ebd1e3f0915958
+checksum: 0e96bad07c1e7aa9
 plan: screens
 seq: 5s
 state: done

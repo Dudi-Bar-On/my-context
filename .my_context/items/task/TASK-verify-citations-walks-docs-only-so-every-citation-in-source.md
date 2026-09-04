@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The reference checker never looks at the code itself, which is where these references are written most densely of all.
-summary_of: 379fc9366b428440
+summary_of: f1b1fb9da5b5d395
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: 2bd8edb43ff8724e
 valid_from: 2026-08-23
 valid_until: null
-checksum: 7291dbe81b2750b0
+checksum: ab93e3ab161561db
 plan: rulings
 seq: "44"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Every way of creating an item can also record its steps, so the new format is reachable however the item is written.
-summary_of: 4b74af193c60b9ea
+summary_of: 1d95fe0cc224e868
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 925d40d26ea3f3cb
+checksum: 116beac7cf8ff632
 plan: categories
 seq: "7"
 state: done

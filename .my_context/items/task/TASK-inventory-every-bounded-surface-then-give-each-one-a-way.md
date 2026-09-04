@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Lists that show only the first part already hold the rest, so they need a way to page through it, and one live feed genuinely does not.
-summary_of: 114a703390bed6be
+summary_of: 85dfef2ab4a08ba6
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 52109898b27b8a05
+checksum: b92920b10bba3c2c
 plan: walk
 seq: "54"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A name typed while importing skips the safety check, so text that can forge or reverse a line of output is stored and printed as-is.
-summary_of: 688987cf14c8b63d
+summary_of: 4479225c55576eb0
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: 0601a3669ec44e83
 valid_from: 2026-08-23
 valid_until: null
-checksum: 0c98d41313e61a47
+checksum: 275c5edd1708a4e0
 plan: export
 seq: 15s
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A shared bundle can be given a name full of deceptive invisible characters, because the check that catches them runs only when reading, not writing.
-summary_of: c543e110fdc16e61
+summary_of: 9268d6d65f18528d
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: b8b609d649add9a0
+checksum: 37d75a5892e41983
 state: done
 plan: export
 seq: "19"

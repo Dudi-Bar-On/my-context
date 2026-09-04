@@ -6,7 +6,7 @@ status: superseded
 severity: soft
 always: false
 summary: A chart showing what fits within a budget needs the whole curve fetched in one go, instead of hundreds of separate requests.
-summary_of: 323bb4640e9ada11
+summary_of: 728daabc72ee4d2e
 acknowledged:
   - body_disagrees_with_meta@b7cbf8947064700d
 scope: []
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: 2026-09-03
-checksum: bf613b561de25b4d
+checksum: 0b50ab1add1f90ea
 plan: ui1
 seq: 17c
 state: done

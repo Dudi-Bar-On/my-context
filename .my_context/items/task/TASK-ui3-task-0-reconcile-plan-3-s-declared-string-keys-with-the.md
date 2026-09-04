@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Compare the sentences one plan invented against the ones the design declares, and decide for each: adopt, drop, or match to an existing one."
-summary_of: 0fdc38527c61885e
+summary_of: 2c50ac4a1ad74f01
 scope: []
 tags:
   - "plan:ui3"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: f2a4c8addd8ea41e
+checksum: 8d1329db997ae55e
 plan: ui3
 seq: "0"
 state: done

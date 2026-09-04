@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A button lets the reading panel expand out over the page when you need more width, and Escape brings it back.
-summary_of: b73aa622249f7393
+summary_of: 40d9d451aa512209
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 671fbc4bb5835089
+checksum: dddb67b9ed9c29a0
 plan: pane
 seq: "3"
 state: done

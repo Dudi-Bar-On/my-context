@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The rules deciding where files go inside an exported bundle and in what order, so two exports of the same thing come out identical.
-summary_of: 8c92595f9c0e0db0
+summary_of: 9416ab5029c0bc11
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: f8b74fad97664614
+checksum: 6925c78e57710900
 plan: export
 seq: "1"
 state: done

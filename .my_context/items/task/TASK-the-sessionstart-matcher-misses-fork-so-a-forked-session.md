@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A session started by branching off another is given nothing at all, and nothing anywhere says so.
-summary_of: eff77b40fc4aad7d
+summary_of: 17de561def5aef44
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 80e91c768fb08f2b
+checksum: f16c6cab610c9d64
 plan: hooks
 seq: 0f
 state: done

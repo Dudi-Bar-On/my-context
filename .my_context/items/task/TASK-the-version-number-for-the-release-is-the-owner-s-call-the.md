@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The case for calling the next release a major one, argued from what actually changed rather than from what was written down.
-summary_of: 619c1c84332de857
+summary_of: 4d87eb274f8d3e96
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: fe6e658b6fc6ec22
+checksum: d6cd18337545d9e1
 plan: rulings
 seq: "41"
 state: done

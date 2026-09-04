@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A nearly empty chart is right, because this session already received almost everything, but it looks broken because nothing on it says so.
-summary_of: 09a2e903ff411d6e
+summary_of: 6a610a2532e04886
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 006acb470cbed5be
+checksum: 5c75b8e53a520fd6
 plan: walk
 seq: "65"
 state: done

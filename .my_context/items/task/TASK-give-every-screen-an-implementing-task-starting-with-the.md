@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Every screen should have a written statement of what it is and what it refuses, so someone can build it without opening the design file.
-summary_of: 50d214e71a0ceea5
+summary_of: b4ddcda8e2112906
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: c60475dfd7d078e1
+checksum: d21df52191c9f5fe
 plan: walk
 seq: "27"
 state: done

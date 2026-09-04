@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The reference checker has three known blind spots; settle by rule what it covers, and stop pointing at line numbers that rot.
-summary_of: a7660311110c1ab2
+summary_of: b66a400190cff392
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: a44ce095a2eaea09
+checksum: 14b5291d132f7fda
 plan: walk
 seq: "30"
 state: todo

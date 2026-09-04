@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Clicking an item does nothing anywhere in the app, because the panel meant to show its details was never built.
-summary_of: d1d79d718bd87f81
+summary_of: 1f1dd49385c960cc
 scope: []
 tags:
   - "plan:port"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: b9bc08cf433f0f3b
 valid_from: 2026-08-23
 valid_until: null
-checksum: a950737a1d379b5e
+checksum: 1d8fc0eb791326c5
 plan: port
 seq: "12"
 state: done

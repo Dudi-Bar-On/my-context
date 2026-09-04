@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The detail panel can be resized by mouse or keyboard and remembers its width, without breaking if the browser refuses to store it.
-summary_of: 2201dbf947ff2855
+summary_of: 53a670833aecad9e
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 6846ef4b1a0cae34
+checksum: 85e76ba670dbd414
 plan: pane
 seq: "2"
 state: done

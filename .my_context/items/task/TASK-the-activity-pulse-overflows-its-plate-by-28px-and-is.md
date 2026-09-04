@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The activity chart is drawn larger than the box holding it, so its tallest bars are cut off and it looks plausible while being wrong.
-summary_of: 3121a594bccc3e71
+summary_of: cb4265a8c18c01c5
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 2c3eb31f36771f3b
+checksum: 1984f738aa332e4f
 plan: walk
 seq: "9"
 state: done

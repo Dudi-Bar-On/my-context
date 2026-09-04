@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A review of how the long user guides are structured and navigated, held back until the product stops changing underneath them.
-summary_of: 5150df7b50d6b055
+summary_of: e0623c683c210200
 scope: []
 tags:
   - "plan:review"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 5df8f2cc349edd7a
+checksum: 1c16e7ecf26a3957
 plan: review
 seq: "6"
 state: done

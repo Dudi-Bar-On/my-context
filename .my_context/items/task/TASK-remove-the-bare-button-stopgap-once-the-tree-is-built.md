@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A blanket styling patch for unstyled buttons should be reconsidered once the screen that needed it is built properly.
-summary_of: 69f8aa7b44a7fb71
+summary_of: cbf34ae4d7673f77
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 83c5921ae1ff2f65
+checksum: 19f655a8e32f5b7a
 plan: port
 seq: "3"
 state: done

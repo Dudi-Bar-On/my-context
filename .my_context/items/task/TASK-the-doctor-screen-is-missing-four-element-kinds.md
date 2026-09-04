@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A few small pieces of the health screen are still not drawn.
-summary_of: 624b2638ad20a68b
+summary_of: 727c297baa37fdca
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 238ddaf8f5726b27
+checksum: 8b8a17bb422a4ca3
 plan: screens
 seq: 6s
 state: done

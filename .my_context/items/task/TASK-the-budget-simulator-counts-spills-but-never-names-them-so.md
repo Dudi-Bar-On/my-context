@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A tier reports how many items it dropped and never which, so a reader cannot see what was lost or whether it mattered.
-summary_of: ec584fc152667c83
+summary_of: a0d10988c6fef09a
 scope:
   - src/ui/public/screens/simulate.js
   - src/ui/read-model.ts
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 32115947426228d5
+checksum: bb589fe261fa7bf5
 plan: budget
 seq: "9"
 state: done

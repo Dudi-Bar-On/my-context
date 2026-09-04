@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Make the cost of a single item available to the rest of the code rather than hidden inside one place.
-summary_of: eb043c7e0f777d19
+summary_of: b17273e3fd82bc0f
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: c6ff819eec442d53
+checksum: b46d9cc4a1f89258
 plan: ui1
 seq: "5"
 state: done

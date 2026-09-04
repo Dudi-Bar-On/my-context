@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A command a person types to switch the web view on, and the first thing in the product allowed to edit the settings file.
-summary_of: f622e490cfb6bb7a
+summary_of: 1b978fadcaa68f40
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: bd443d7ab51236ab
+checksum: 6919516c6f63a6ed
 plan: rulings
 seq: "20"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Keep both of the project's main documents current as the set of item kinds changes, so neither drifts from what the tool actually does.
-summary_of: 9ab3e5ae7b786a81
+summary_of: 0ba1c3007d7b55ff
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 980b5111d3ce986c
+checksum: dbbbdaf33c79c194
 plan: categories
 seq: "12"
 state: done

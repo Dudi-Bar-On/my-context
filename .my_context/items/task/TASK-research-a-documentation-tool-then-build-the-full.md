@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Pick a documentation tool first, then build the complete user documentation in both languages out of sources that already exist.
-summary_of: b66588c94d90e8be
+summary_of: 8f12ffeaa49364d5
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 0834c6ff86ac4d39
+checksum: 7ff67bac0ba75355
 plan: walk
 seq: "24"
 state: todo

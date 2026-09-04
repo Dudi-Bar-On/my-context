@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Let the app browse and read the project's own documents, from a list the server builds itself so nobody can ask it for an arbitrary file.
-summary_of: 95dd23171800c56e
+summary_of: c595a3e883fd379c
 acknowledged:
   - body_disagrees_with_meta@4e877acc112308aa
 scope: []
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 3362b314a80926eb
+checksum: fb277c752b2302a7
 plan: walk
 seq: "25"
 state: todo

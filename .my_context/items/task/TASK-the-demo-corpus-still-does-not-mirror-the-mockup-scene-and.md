@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Keep filling out the sample data until every screen can draw what the design shows, so a missing element means missing code.
-summary_of: 479000c5de635aef
+summary_of: 2f3db9fbe129203d
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 5ec7d989250b8e28
+checksum: 8c1182bb8fea60e8
 plan: walk
 seq: "44"
 state: done

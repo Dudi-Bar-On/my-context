@@ -61,6 +61,22 @@ function rule(box: Sandbox, extra: Record<string, unknown> = {}): string {
   }).id;
 }
 
+/** A `task`, whose extra bag is entirely the workflow fields RULING 1
+ * (2026-09-04) is about: `plan`, `seq`, `state`, `priority` — "its plan,
+ * sequence and state live in extra fields; the body is what the task
+ * actually requires" (categories.ts, `task`'s own description). */
+function task(box: Sandbox, extra: Record<string, unknown> = {}): string {
+  return createItem(box.ctx, {
+    type: 'task',
+    title: 'Fix the retry loop',
+    body: 'The retry loop never applies backoff, so a flaky call hammers the endpoint.',
+    status: 'active',
+    origin: 'human',
+    extra: { plan: 'walk', seq: '9', state: 'todo', priority: '2' },
+    ...extra,
+  }).id;
+}
+
 /** `mycontext <args>`, returning the exit code and everything it printed.
  * The store is closed first: `runCli` opens its own, and a sandbox holding a
  * write lock would make these tests about SQLite rather than about the gate. */
@@ -102,6 +118,41 @@ test('the gate fires on exactly the fields the basis calls summarised', () => {
     assert.equal(asks({ continuity: true }), false);
     assert.equal(asks({ severity: 'hard' }), false);
     assert.equal(asks({ status: 'deprecated' }), false);
+  } finally { box.dispose(); }
+});
+
+/**
+ * **RULING 1, 2026-09-04.** Owner's reasoning: a summary describes what an
+ * item MEANS; moving a task to `done` changes its status, not its meaning.
+ * `plan`, `seq`, `state` and `priority` are the whole of what a `task`'s
+ * extra bag holds today (`categories.ts`'s own description of the category),
+ * and none of them is the task's requirement — the body is. `directive`
+ * (on `rule`) stays in the basis: it is content, the plainest case of a key
+ * inside `extra` that genuinely changes what the item says, and this test
+ * would fail if a workflow exclusion ever widened to swallow it.
+ */
+test('the gate does not fire on workflow keys inside extra: plan, seq, state, priority', () => {
+  const box = sandbox();
+  try {
+    const item = itemOf(box, task(box, { summary: PLAIN }));
+    const asks = (patch: Record<string, unknown>): boolean =>
+      summaryRequired(item, { id: item.id, ...patch });
+
+    assert.equal(asks({ extra: { state: 'done' } }), false,
+      'closing a task changes its status, not its meaning — owner ruling 2026-09-04');
+    assert.equal(asks({ extra: { plan: 'port' } }), false,
+      'which lane tracks the work, not what the work is');
+    assert.equal(asks({ extra: { seq: '12' } }), false,
+      'position within the plan, not the task\'s requirement');
+    assert.equal(asks({ extra: { priority: '1' } }), false,
+      'a ready-queue ordering number, the same role `severity` already plays outside extra');
+
+    // A content-bearing key in the SAME bag, on a different category, is
+    // untouched by the exclusion — `extra` as a whole is not unsummarised.
+    const ruleItem = itemOf(box, rule(box, { summary: PLAIN }));
+    assert.equal(summaryRequired(ruleItem, { id: ruleItem.id, extra: { directive: 'do' } }), true,
+      '`directive` decides whether a rule prohibits or prescribes; it is the reason `extra` ' +
+      'stays in the basis at all, and it must still gate on its own');
   } finally { box.dispose(); }
 });
 
@@ -231,6 +282,35 @@ test('edit gates an --extra that moves a declared field, because extra is conten
     const r = cli(box, ['edit', id, '--extra', 'directive=do', '--yes']);
     assert.equal(r.code, 1, r.out);
     assert.match(r.flat, /Nothing was changed/);
+  } finally { box.dispose(); }
+});
+
+/**
+ * RULING 1, demonstrated end to end through the CLI. Before this ruling,
+ * `mycontext edit <id> --extra state=done` refused every time — the defect
+ * `TASK-closing-any-task-trips-the-summary-gate-even-though-only-the`
+ * reports, with three lanes reaching for `--summary-unchanged` in one night
+ * because the escape hatch had become the reflex. Both halves matter: the
+ * gate must fall silent on the workflow move AND stay exactly as strict on a
+ * real one, or the fix would be the permissive kind that quietly weakens a
+ * real guard.
+ */
+test('closing a task with --extra state=done no longer trips the gate, and a real content edit still does', () => {
+  const box = sandbox();
+  try {
+    const id = task(box, { summary: PLAIN });
+    box.ctx.store.close();
+
+    const closed = cli(box, ['edit', id, '--extra', 'state=done', '--yes']);
+    assert.equal(closed.code, 0, closed.out);
+    assert.doesNotMatch(cli(box, ['show', id]).out, /STALE/,
+      'the summary is still current — moving state changed nothing it describes');
+
+    const refused = cli(box, ['edit', id, '--body',
+      'The retry loop applies backoff but never resets it, so it never recovers.', '--yes']);
+    assert.equal(refused.code, 1, refused.out);
+    assert.match(refused.flat, /Nothing was changed/,
+      'a real rewrite of what the task requires still asks for the sentence to move with it');
   } finally { box.dispose(); }
 });
 

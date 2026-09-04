@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A planned route would create and change files just by being read; the fix already exists next door and must be copied over.
-summary_of: 5b0d569488a11f0d
+summary_of: 0c9314bb68cac8e7
 scope: []
 tags:
   - "plan:ui3"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 3d3ef570175e2906
+checksum: 36231ce023318088
 plan: ui3
 seq: 7d
 state: done

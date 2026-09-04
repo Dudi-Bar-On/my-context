@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Wiring the web server together, and testing it as a genuinely separate running process.
-summary_of: e1b5cd50deed79ab
+summary_of: 4bad8186858734e4
 scope: []
 tags:
   - "plan:ui1"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: b173955e994da0d5
+checksum: d320821aeb696673
 plan: ui1
 seq: "13"
 state: done

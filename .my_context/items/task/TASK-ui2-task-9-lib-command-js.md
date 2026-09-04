@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Composing a command's text in one place, so every screen spells the same command the same way.
-summary_of: 016e5850eff8f626
+summary_of: 00ebf5002be2f1d4
 scope: []
 tags:
   - "plan:ui2"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 853b7214103cc19b
+checksum: ac5f2ee8f9b05451
 plan: ui2
 seq: "9"
 state: done

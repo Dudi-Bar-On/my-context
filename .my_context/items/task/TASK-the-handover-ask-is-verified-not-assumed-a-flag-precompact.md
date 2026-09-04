@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Check whether the handover notes were really written after being asked for, and say so plainly when they were not.
-summary_of: d9d3da80a137dc13
+summary_of: 3ccf3f616f4b1b34
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 30c022e1be8e79fd
+checksum: 4c953c26091174f9
 plan: handover
 seq: "9"
 state: done

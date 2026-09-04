@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A command that lists the quick notes someone jotted down but has not yet turned into a proper item.
-summary_of: 2f837c463207e41e
+summary_of: 0bc62efb814b46d1
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 6a093be27a00eeff
+checksum: f580b39ff07765f5
 plan: categories
 seq: "3"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The written design says the palest ink carries text and the shipped rules give it none; decide which is right rather than shipping both.
-summary_of: 1e71236841431903
+summary_of: 1ed9014368d5cbd9
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: c8984a959f2718f7
+checksum: 35e6f7fa8edfef41
 plan: repaint
 seq: 4r
 state: done

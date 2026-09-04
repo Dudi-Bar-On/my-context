@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The sample data is too small to ever fill a list, so the paging controls are never exercised against anything the app really serves.
-summary_of: 900b14b7f77b83be
+summary_of: 435ccb9b8d793177
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 416819de36dfd5ff
+checksum: 439393b161759614
 plan: port
 seq: 94b
 state: done

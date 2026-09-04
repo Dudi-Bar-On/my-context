@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A one-command way to rebuild the list of watched documents when it no longer matches the project, offered from the health screen and confirmed first.
-summary_of: c8c536063994cd6b
+summary_of: e653c293d457434b
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 209b035b5f5c3b11
+checksum: 9df33cf6cd874473
 plan: walk
 seq: "18"
 state: todo

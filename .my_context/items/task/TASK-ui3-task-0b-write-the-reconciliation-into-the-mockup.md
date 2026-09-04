@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Apply the agreed wording decisions to the design file, and work the filter buttons out from the code rather than listing them by hand.
-summary_of: 7deaf0b772012fc1
+summary_of: 9b6c4302a35f1fdd
 scope: []
 tags:
   - "plan:ui3"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 4dd86358ce50386b
+checksum: 9fac40f0e0d3e646
 plan: ui3
 seq: 0b
 state: done

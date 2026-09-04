@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: Fourteen sentences on the main screen can never be translated, because the design writes them in code instead of declaring them.
-summary_of: 2f7eaad3e3a8f979
+summary_of: 4e05c1545673d59f
 scope: []
 tags:
   - "plan:screens"
   - "seq:1s-b"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
   - i18n
@@ -21,10 +21,11 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: efa86ad1af1920d0
+checksum: 0880cd96f2db2e2d
 plan: screens
 seq: 1s-b
-state: todo
+state: done
+verified_on: 2026-09-04
 ---
 
 # the mockup builds fourteen preview sentences in script, so no string table can carry them

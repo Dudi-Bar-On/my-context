@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A reader who decides a dropped item is needed has no way to send it, because the only tools are permanent or reshape everything else.
-summary_of: 86011cf24a8ad33a
+summary_of: e3830a87073a000d
 scope:
   - src/cli/commands/**
   - src/core/ledger.ts
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: ce27e50f5a7f47c9
+checksum: 530add2c6286ae92
 plan: budget
 seq: "10"
 state: done

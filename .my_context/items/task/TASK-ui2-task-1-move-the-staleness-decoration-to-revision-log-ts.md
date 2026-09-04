@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Move the marking of out-of-date entries next to the code that reads them.
-summary_of: 5f3c6bddeb65cce2
+summary_of: 8f0d90440bde9456
 scope: []
 tags:
   - "plan:ui2"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 21b79f12470525da
+checksum: f7b62ded6601e88c
 plan: ui2
 seq: "1"
 state: done

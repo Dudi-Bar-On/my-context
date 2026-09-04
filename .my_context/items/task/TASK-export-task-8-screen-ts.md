@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A check that refuses text containing deceptive or invisible characters before it is accepted or written out.
-summary_of: 0e1619809f989a7b
+summary_of: 16414ebf64073e88
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: f82155b083a06ca0
+checksum: d268476b6a425c3e
 plan: export
 seq: "8"
 state: done

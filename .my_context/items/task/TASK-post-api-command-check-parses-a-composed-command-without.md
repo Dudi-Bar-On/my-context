@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A way for the page to ask whether a command it has composed would be accepted, using the real checker, without ever running it.
-summary_of: 17603657ea3d3c4c
+summary_of: 3222900708f457df
 scope: []
 tags:
   - "plan:builder"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 77763d916c7cbf2b
+checksum: b593711e168e0955
 plan: builder
 seq: "4"
 state: todo

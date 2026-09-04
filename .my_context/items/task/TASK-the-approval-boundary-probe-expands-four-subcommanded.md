@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The check listing which commands can act without a person misses one command entirely, so two of its options are watched by nothing.
-summary_of: 1612fadef2a15b61
+summary_of: 552adc1e38c9a6e7
 acknowledged:
   - citation_form@f8e3f9ba74a6f9a0
 scope: []
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 0f4ee8154b91ea0e
+checksum: c877187be23dc584
 plan: walk
 seq: "107"
 state: done

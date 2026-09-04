@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One step of the diagram explaining why something was left out can never light up, because the fact behind it never reaches the page.
-summary_of: b48be67fd82e015d
+summary_of: a38edf345fdd80aa
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 2b20ff0de6860aef
+checksum: 9792b2e9abaa767b
 plan: screens
 seq: 1s-a
 state: done

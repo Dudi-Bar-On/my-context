@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: The activity filter learns its options by accident, so when data is stale it quietly offers fewer choices than the page is showing.
-summary_of: a275123a04b7606d
+summary_of: 494442e3a1cd3643
 scope: []
 tags:
   - "plan:ui3"
   - "seq:11x"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -20,10 +20,11 @@ source_anchor: null
 source_checksum: e853de2e87cc61c9
 valid_from: 2026-08-22
 valid_until: null
-checksum: f33738c113eabc4b
+checksum: ccb74418044049b7
 plan: ui3
 seq: 11x
-state: todo
+state: done
+verified_on: 2026-09-04
 ---
 
 # no browser-reachable endpoint serves AUDIT_KINDS, so the watch filter row collapses to All on a stale projection

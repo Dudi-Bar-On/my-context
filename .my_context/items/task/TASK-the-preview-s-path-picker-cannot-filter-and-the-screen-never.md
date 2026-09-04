@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Choosing a file changes nothing, because almost nothing in this project is tied to a particular file in the first place.
-summary_of: be6176570a4cc7cf
+summary_of: d11f95129ecc8ab2
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 073d3fcc2b7a7486
+checksum: 602daf6c748fa907
 plan: walk
 seq: "58"
 state: done

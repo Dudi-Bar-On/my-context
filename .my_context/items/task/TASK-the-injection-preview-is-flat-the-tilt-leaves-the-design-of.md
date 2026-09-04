@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A slight tilt on the main screen sheared dense text, so it was removed from the design and the app together.
-summary_of: 36de02d9689dae6c
+summary_of: 2f52728cda6ced1f
 scope: []
 tags:
   - "plan:fixes"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: ebf414f6e35b30a2
+checksum: 0a217e9e3efcdd2f
 plan: fixes
 seq: "4"
 state: done

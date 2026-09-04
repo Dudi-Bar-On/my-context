@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen that shows every walked folder coloured by what governs it, plus a bar saying how much of each folder is covered.
-summary_of: aca8ab3936ad8b89
+summary_of: 0c09130c0c9c0a15
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 71e864fb5097837c
+checksum: de7b62f0ee9dce2a
 plan: walk
 seq: "124"
 state: done

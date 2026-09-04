@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Add the two new kinds of recorded event, so the activity log can describe them properly.
-summary_of: 80cf76af51b0b2b6
+summary_of: 0ab8fc429cd83b69
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: b9235792562c3488
+checksum: 0cf7c096160dd3ce
 plan: hooks
 seq: "4"
 state: done

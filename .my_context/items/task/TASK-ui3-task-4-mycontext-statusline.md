@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The command that prints the status line and keeps a copy of what it said.
-summary_of: 36aa702c7db1a57b
+summary_of: da334eb6824c5c85
 scope: []
 tags:
   - "plan:ui3"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 8ce6dd3c3d9524bb
+checksum: b578b8fd65e23834
 plan: ui3
 seq: "4"
 state: done

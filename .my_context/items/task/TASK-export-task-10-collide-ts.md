@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Deciding what happens when an arriving item clashes with one already here, and how each kind of clash is presented to the reader.
-summary_of: 3a03543f3c0a8f85
+summary_of: 0562412e4f0449a9
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: cfea814a174c90b1
+checksum: 08232ee70dc907e7
 plan: export
 seq: "10"
 state: done

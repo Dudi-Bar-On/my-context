@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When new data arrives, a page either keeps the reader exactly where they were or offers a button, rather than reshuffling itself under them.
-summary_of: f9b56c4643c860f0
+summary_of: 8919d57b5e9bb07a
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 2371f68f79333bc1
+checksum: de6f3aed423d589a
 plan: live
 seq: "3"
 state: done

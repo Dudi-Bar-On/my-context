@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Where the history arriving with someone else's bundle is kept, and what of it is counted, so it never mixes with your own record.
-summary_of: 3bc650786e319ae3
+summary_of: 4ff54d8aad2bf3d3
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 96c61a3f9f2c05f5
+checksum: 6a20242b6d4bb43d
 plan: export
 seq: "11"
 state: done

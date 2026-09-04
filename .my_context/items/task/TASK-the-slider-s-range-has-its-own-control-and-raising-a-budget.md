@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Choosing which limit to try and choosing how far the scale reaches are different decisions and should not share one slider.
-summary_of: 6faf531be004e96e
+summary_of: 5a1e30ea1c2f72db
 acknowledged:
   - state_unaudited@da17f595997e8b92
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: cf3f0beb6b499c5e
 valid_from: 2026-08-28
 valid_until: null
-checksum: a3ff719b8c7227b7
+checksum: 8451114a5ee46dc3
 plan: walk
 seq: 7b
 state: done

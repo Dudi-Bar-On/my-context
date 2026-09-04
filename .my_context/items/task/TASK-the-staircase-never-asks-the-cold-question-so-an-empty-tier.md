@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The budget diagram cannot say whether a section is empty because nothing qualified or because it had all been delivered already.
-summary_of: 1078f2cdd2237032
+summary_of: 15e796de2ac9aa4e
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: ac38d738eb0ecac1
 valid_from: 2026-08-29
 valid_until: null
-checksum: 095f996d8b9bef4b
+checksum: 666bd304ff82ed68
 plan: walk
 seq: "86"
 state: done

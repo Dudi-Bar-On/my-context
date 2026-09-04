@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When a command is not yet valid to copy, show the reason in plain words instead of just hiding the button and leaving the reader to guess.
-summary_of: de1fbc6d29730fdf
+summary_of: 5fb9f4161226c6dd
 scope: []
 tags:
   - "plan:builder"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: b9a593c4db4e8c2a
+checksum: a13e117c4d8d93e0
 plan: builder
 seq: "6"
 state: todo

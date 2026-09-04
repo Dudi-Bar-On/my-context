@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Teach the comparison checks that a screen may reuse a shared control, so borrowed pieces stop being reported as invented.
-summary_of: 2fb6d1f0ef29d136
+summary_of: 2618191f4699760b
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 07c1fcee19a4d43e
+checksum: 04514ecea2c783e6
 plan: walk
 seq: "21"
 state: blocked

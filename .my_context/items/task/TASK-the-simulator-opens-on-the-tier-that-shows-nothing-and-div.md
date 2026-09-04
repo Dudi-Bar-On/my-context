@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The budget screen opens on the one setting that can show nothing, so both of its main features start blank with no explanation.
-summary_of: 091eecd351adaac9
+summary_of: b4a45fe4ec20bf8f
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 1be13af997f9c627
+checksum: 0115c25f980c0e15
 plan: walk
 seq: "59"
 state: todo

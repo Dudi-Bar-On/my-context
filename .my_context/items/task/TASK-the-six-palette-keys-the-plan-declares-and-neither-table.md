@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: The command screen borrows wording meant for a different screen, because six sentences of its own were never declared anywhere.
-summary_of: 464fd10db1a1b040
+summary_of: 73e2f0de5fd14bcf
 scope: []
 tags:
   - "plan:ui2"
   - "seq:12k"
-  - "state:todo"
+  - "state:done"
   - v2
 origin: human
 source_file: null
@@ -19,10 +19,11 @@ source_anchor: null
 source_checksum: cc1e80bd45b416e4
 valid_from: 2026-08-23
 valid_until: null
-checksum: 302cb9d4ef1264ca
+checksum: b63553d9828d04c5
 plan: ui2
 seq: 12k
-state: todo
+state: done
+verified_on: 2026-09-04
 ---
 
 # the six palette.* keys the plan declares and neither table carries

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A finished feature still wears a label saying it does not exist yet; either the label goes or it needs a new meaning here.
-summary_of: 3f56563baec56186
+summary_of: 6fa09a879eefdc7c
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: c1deae5ee1c0baed
+checksum: 3ffed495c88cadf8
 plan: screens
 seq: 1s-d
 state: done

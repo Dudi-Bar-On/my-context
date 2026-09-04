@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Put numbers and data on a solid backing rather than a translucent one, so a colour that carries meaning can be trusted.
-summary_of: ef4b8a25fb90b96e
+summary_of: 90d0f601a1d3a3e8
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 0faad144242b25e2
+checksum: cf2ca1d82795701c
 plan: repaint
 seq: "7"
 state: done

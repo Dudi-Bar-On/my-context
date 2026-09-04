@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Shutting the web server down again after it has sat unused for long enough.
-summary_of: 6b0e8cccf0fd0733
+summary_of: 4d123745aeec0eda
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 767ff8cf28957888
+checksum: 5a6ad19b6a25bfc4
 plan: ui1
 seq: "3"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A check that every kind of item is fully described, so no part of the catalogue can be left blank without anything noticing.
-summary_of: 1ee52c28a7e07a1d
+summary_of: 4a8b310483917d1b
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 787d24db2dbddaeb
+checksum: df03e07aec2819f8
 plan: categories
 seq: "1"
 state: done

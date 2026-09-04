@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Prove the read-only screens cannot change anything, both by what they are allowed to use and by checking nothing on disk moved after a run.
-summary_of: 5f3d93281dbcf82b
+summary_of: 2674c832fe79d6e7
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: d12bfa2ca76fe170
+checksum: cc5a010ab1fd629a
 plan: rulings
 seq: "11"
 state: done

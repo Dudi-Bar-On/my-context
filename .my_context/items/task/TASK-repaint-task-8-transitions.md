@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Screens fade into each other in place, so nothing slides sideways and a right-to-left layout costs nothing extra.
-summary_of: fc4488c9f7e935c6
+summary_of: 351d9d57860d3450
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 765a25bde5b717c7
+checksum: 23a23e91740a5158
 plan: repaint
 seq: "8"
 state: done

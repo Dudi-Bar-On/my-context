@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A safety check watching a shared folder blames tests for files that a developer's own running app wrote.
-summary_of: 9502cfd99c9adcdd
+summary_of: fc07dffb337761e8
 scope: []
 tags:
   - "plan:port"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 67b41945232e9e89
+checksum: 2ba79b13294aa7c5
 state: done
 plan: port
 seq: 13b

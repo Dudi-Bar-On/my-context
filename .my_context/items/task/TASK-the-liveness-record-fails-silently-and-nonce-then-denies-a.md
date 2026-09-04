@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The file that lets a locked-out tab recover was never written and nothing said so, so the recovery route quietly does not work.
-summary_of: 9cea54c478194bf9
+summary_of: 6802f1affe6c56c0
 acknowledged:
   - state_unaudited@eb9c4e2a81df4600
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 5200b4e67bce0aa8
+checksum: ae493a13f603fcdc
 plan: upkeep
 seq: "7"
 state: done

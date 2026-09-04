@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Redo the main screen first, since it is what the new look is judged on and the pattern every other screen will copy.
-summary_of: 6b255b00a878c932
+summary_of: 71962b6cd30338c9
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 5c4a8293b5a40553
+checksum: 01ffb16c0a31878e
 plan: repaint
 seq: "6"
 state: done

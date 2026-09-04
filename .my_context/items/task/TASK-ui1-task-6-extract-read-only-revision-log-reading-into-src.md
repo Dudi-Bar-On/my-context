@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Pull the reading of the change history out into its own place, apart from anything that writes.
-summary_of: f64ecd23be632723
+summary_of: eeacbc610a62ad9c
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 9af8757c55863abb
+checksum: ddc1679714f997c0
 plan: ui1
 seq: "6"
 state: done

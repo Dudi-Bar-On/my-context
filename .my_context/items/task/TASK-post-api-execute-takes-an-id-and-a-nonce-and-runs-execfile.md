@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Let the page actually run a command it composed, safely: no shell involved, and nothing runs unless it was recorded first."
-summary_of: 18ab2860739f5507
+summary_of: 8f89400a64683466
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: df9ea19cab0fe267
+checksum: d0215261b10d068d
 plan: execute
 seq: "5"
 state: done

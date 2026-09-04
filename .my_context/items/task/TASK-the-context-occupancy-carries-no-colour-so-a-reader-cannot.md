@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Show in colour how much room a session has left, with the warning starting early enough that there is still time to act on it.
-summary_of: c397f0fcbc750c03
+summary_of: f423255e22a9a565
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 2a946913b0347867
 valid_from: 2026-08-31
 valid_until: null
-checksum: 61571f9356666fa1
+checksum: 51dd52d97115caff
 plan: walk
 seq: "117"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: React when a tool call fails, which is a moment this tool has never been told about.
-summary_of: 093c861429804f44
+summary_of: 05c04c90b6d67ce1
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: fd4b6e4cf8f3b784
+checksum: 49fa18ba70853c4a
 plan: hooks
 seq: "7"
 state: done

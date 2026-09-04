@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A refusal names the command that would fix it and makes you retype it, though the app has a copy button for exactly this.
-summary_of: 7c6b8f1558ec3ab8
+summary_of: 878e5d47e9d0e551
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 27b4e036f7b33849
+checksum: 3ec1d5f4a5706534
 plan: walk
 seq: "32"
 state: todo

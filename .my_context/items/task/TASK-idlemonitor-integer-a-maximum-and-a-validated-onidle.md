@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Tighten the timer that shuts an idle server down: reject fractions, absurdly long waits and a missing callback, at the moment it is set up."
-summary_of: 5f5984f1a9cfebfb
+summary_of: 13307ae80e2fb189
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: e0a3e8c89282ac90
+checksum: a0ef6b77f77f4bd6
 plan: rulings
 seq: "23"
 state: done

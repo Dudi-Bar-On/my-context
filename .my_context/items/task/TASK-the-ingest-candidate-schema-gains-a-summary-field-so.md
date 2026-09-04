@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Document ingestion creates items with no summary; the candidate schema needs a summary field so one is written while the source is still in view.
-summary_of: 26f59ceef5d42ebc
+summary_of: c2180569b6db25ad
 scope: []
 tags:
   - ingest
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: f731c696f93fdc2a
 valid_from: 2026-09-02
 valid_until: null
-checksum: 66c6d634067b0161
+checksum: 494a33df1fb1b6af
 plan: categories
 seq: "24"
 state: todo

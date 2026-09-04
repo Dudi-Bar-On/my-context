@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Four commands describe their options inside a file the viewer is forbidden to touch, so nothing can offer a form for them until they move.
-summary_of: b0c86815fd85ae00
+summary_of: 349cf586b191ba03
 scope: []
 tags:
   - "plan:builder"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: f988e71b4f2d42f3
+checksum: 34f0014fde4a99c1
 state: done
 plan: builder
 seq: 1b

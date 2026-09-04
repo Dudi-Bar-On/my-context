@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two tests could be fooled into thinking a page has finished loading while it is still showing a placeholder.
-summary_of: de54e2d98337f427
+summary_of: 552df298f62384fd
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 2358c2300248ebaa
 valid_from: 2026-08-29
 valid_until: null
-checksum: 28b909c8d43d8cac
+checksum: e6e05d4cb9b4843d
 plan: walk
 seq: "83"
 state: done

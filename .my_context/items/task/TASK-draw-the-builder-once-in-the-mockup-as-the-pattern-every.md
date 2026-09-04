@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Draw the command-building form once in the design, so every screen offering a command copies one agreed pattern instead of inventing its own.
-summary_of: fbc8c8220ca64ba8
+summary_of: b2e0fc765cea173f
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: ef17330cdb45a1a5
+checksum: 43890997ab707ba4
 plan: walk
 seq: "20"
 state: todo

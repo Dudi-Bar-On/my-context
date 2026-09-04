@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen displayed seven rows while ninety-two step records from the last hour sat in the log unshown.
-summary_of: c7f3729ed16769de
+summary_of: adce8acebb0f11c5
 scope:
   - src/ui/public/screens/watch.js
   - src/ui/server.ts
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 9691a5b2a8639e53
+checksum: fc900a6696a77d1b
 plan: live
 seq: "16"
 state: done

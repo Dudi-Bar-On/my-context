@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three lists kept by hand where the code already knew the answer, one of them pinned stale by its own test, all since derived.
-summary_of: b3835dee11e3eb38
+summary_of: 95c1440666447f33
 summary_was:
   - 2026-09-03 Three more hand-kept lists that the code could produce on its own, one of them held stale in place by the test that was meant to protect it.
 acknowledged:
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: b873505ef1399f34
+checksum: 1a1a7b6f6e7be936
 plan: rulings
 seq: "35"
 state: done

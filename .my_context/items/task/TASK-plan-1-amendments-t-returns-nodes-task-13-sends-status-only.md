@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Three corrections to an existing plan: how translated text is built, what a refused request tells the browser, and recording refusals."
-summary_of: 56c923430af9ac68
+summary_of: bca16721cb4b4ef8
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: ed6dfdcf38c61450
+checksum: e7b0c7bf8bd635f4
 plan: rulings
 seq: "16"
 state: done

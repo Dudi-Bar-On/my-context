@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Choosing exactly which files go into a bundle from a list of what is permitted, so nothing unexpected is ever included.
-summary_of: b1eae4f11f3b9458
+summary_of: fca9c1b5ed7eb388
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 25f3144cedd44ec9
+checksum: 9891ee962dc31a8e
 plan: export
 seq: "5"
 state: done

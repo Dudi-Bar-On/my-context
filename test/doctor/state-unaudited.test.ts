@@ -472,8 +472,10 @@ test('RED and GREEN, built by the product: the hand edit is found and the honest
     assert.equal(honest.code, 0, honest.out);
     const honestId = /created (\S+)/.exec(honest.out)?.[1];
     assert.ok(honestId);
-    assert.equal(run(['edit', honestId, '--extra', 'state=done',
-      '--summary-unchanged', '--yes']).code, 0);
+    // `state` is a workflow key (`WORKFLOW_EXTRA_KEYS`, content-hash.ts —
+    // owner ruling 2026-09-04), so this closes the task with no gate to
+    // answer: `--summary-unchanged` would now be refused as unnecessary.
+    assert.equal(run(['edit', honestId, '--extra', 'state=done', '--yes']).code, 0);
 
     const bypass = run(['add', 'task', 'closed by hand',
       '--body', 'A unit of work with a body long enough to be an item.',
@@ -546,7 +548,8 @@ test('the silent eraser is driven, and the divergence it erased is in the log af
     assert.match(red.out, /an edit outside my_context is one cause/);
 
     // THE ERASER: an ordinary edit, about `priority`, which re-stamps.
-    assert.equal(run(['edit', id, '--extra', 'priority=2', '--summary-unchanged', '--yes']).code, 0);
+    // `priority` is also a workflow key, so this too raises no gate.
+    assert.equal(run(['edit', id, '--extra', 'priority=2', '--yes']).code, 0);
 
     // The file is clean again — the checksum load error is gone, and doctor's
     // exit code is back to 0.

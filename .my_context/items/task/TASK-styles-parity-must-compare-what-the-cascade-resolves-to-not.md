@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The styling check compares rules but not their order, so two identical files can still draw differently; make it check what actually wins.
-summary_of: fb496ac8298a685b
+summary_of: 6d810a2103d8168b
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 49f9efa28651acb3
+checksum: b1f56e3d2b5ee2c5
 plan: walk
 seq: "15"
 state: todo

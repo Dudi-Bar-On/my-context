@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A command tells you to run something the very same version would refuse, and prints it broken across two lines.
-summary_of: 9c6a4f82ed66832e
+summary_of: 4c813538d312dd22
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 8162a22d13d52914
+checksum: 0e3a3bf9065e6036
 plan: export
 seq: 14o
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The fonts, colours and icons all exist and none of them reach a browser, because the server will not hand out font files.
-summary_of: 1b40ac64a367c113
+summary_of: 10c897375c011ce2
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 3f52bfd7ad8fd244
+checksum: 4c940f5e603d1f12
 plan: repaint
 seq: 2w
 state: done

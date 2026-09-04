@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: An agent can be sent to do work the corpus has no record of, and only good intentions prevent it.
-summary_of: 90a3ac9bec9db5bd
+summary_of: f9c3fb496f269dc0
 scope:
   - hooks/hooks.json
   - src/hooks/pre-tool-use.ts
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 78e44571690d9138
+checksum: 02364258ee152141
 plan: hooks
 seq: "28"
 state: done

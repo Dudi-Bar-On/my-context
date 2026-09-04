@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Apply the new look to the other twenty screens, in four batches so one group can be rejected without rejecting them all.
-summary_of: 4da28e2eb41af3c4
+summary_of: 8659840afbd79077
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 081781882e3fe7f1
+checksum: 37c9608f292607db
 plan: repaint
 seq: "9"
 state: done

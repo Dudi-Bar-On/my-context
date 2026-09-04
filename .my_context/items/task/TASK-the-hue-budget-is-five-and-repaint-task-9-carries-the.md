@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The decision to allow only five colours creates four pieces of follow-up work that the big repaint will inherit.
-summary_of: 3031d79f3ba7beae
+summary_of: 2f39c147929a46c7
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: f9537785cb94bec4
+checksum: c1a6d51e056f5e4f
 plan: repaint
 seq: 9r
 state: done

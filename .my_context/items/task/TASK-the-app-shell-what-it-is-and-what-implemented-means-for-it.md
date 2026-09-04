@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The page frame every screen is drawn inside, which owns the navigation, the one connection to the server, and the two dense information bars.
-summary_of: 5705f30aef9577e7
+summary_of: 6c021987fd9557b4
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: c7cb0e9fede3e50c
+checksum: 0939bd0c6d9890de
 plan: walk
 seq: "132"
 state: done

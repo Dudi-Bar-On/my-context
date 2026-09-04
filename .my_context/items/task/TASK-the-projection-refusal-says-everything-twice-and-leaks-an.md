@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A refusal says the same thing twice, once plainly and once in developer language, and prints out a private file path.
-summary_of: 5f02900d99c6a033
+summary_of: 97f67ca406d44e82
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 64dc562724c9c0bf
+checksum: 8bb6d7f692dc47cf
 plan: walk
 seq: "33"
 state: todo

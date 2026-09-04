@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: On the query screen a how-many control quietly stops applying to the ready-made reports, and nothing on the page tells the reader that.
-summary_of: 83c2f22c53ea89a4
+summary_of: b5f82142f5d1271e
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: c0e584e0164d0eeb
+checksum: 84e644d3d017ac70
 plan: walk
 seq: "100"
 state: todo

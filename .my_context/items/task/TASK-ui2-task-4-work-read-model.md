@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The data behind searching the project and testing which files a pattern would match.
-summary_of: 19e52b74eb36077a
+summary_of: 7a6ac7c9ab0fbf23
 scope: []
 tags:
   - "plan:ui2"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: ce668e1abd66cd4b
+checksum: a5cd5a178767dcc9
 plan: ui2
 seq: "4"
 state: done

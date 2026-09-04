@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A safeguard meant to stop two writers losing each other's work may not hold under heavy load; understand it before excusing the failure.
-summary_of: 0a55473c7b12e95d
+summary_of: 9983165a06f60edc
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: aba3af7c1a4767cf
+checksum: 9658c42ed2650b4f
 plan: hooks
 seq: 13c
 state: done

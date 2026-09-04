@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Pick out the part of a handover note written for whoever comes next, and say plainly what was left out when it would not all fit.
-summary_of: be3cb6b583e5a68b
+summary_of: 27af647c429fd1dd
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 47023f6e660b1fcf
+checksum: b76510c5cc2dc583
 plan: handover
 seq: "2"
 state: done

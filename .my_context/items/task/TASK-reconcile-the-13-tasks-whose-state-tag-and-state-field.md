@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two places record how far a job has got and they disagree on a growing number of jobs; settle them onto one and keep them settled.
-summary_of: 51c7115e24aa3ae1
+summary_of: 10385d0fcc9c2839
 acknowledged:
   - body_disagrees_with_meta@089511eb2e7246e3
 scope: []
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 43aa09426f5b6e46
+checksum: f0245a958721dd35
 plan: categories
 seq: "19"
 state: done

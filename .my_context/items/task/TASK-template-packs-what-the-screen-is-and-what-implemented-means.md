@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen for starter collections someone else published, showing what each one brings, what it may never bring, and which are installed here.
-summary_of: 9d263056b5ca9c51
+summary_of: dd4843a184592e03
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: b40ea116b24ee2ec
+checksum: 04aae3b6bd50f596
 plan: walk
 seq: "130"
 state: todo

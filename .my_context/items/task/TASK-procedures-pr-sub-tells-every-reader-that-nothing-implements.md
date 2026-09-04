@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A screen that works perfectly tells everyone who opens it that it has not been built yet, in both languages.
-summary_of: d4edd5e86a79a72b
+summary_of: 27ed1d041091c880
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 3d6e4f7c5c3600a9
+checksum: 7ad2d9c1531615e6
 plan: walk
 seq: "109"
 state: done

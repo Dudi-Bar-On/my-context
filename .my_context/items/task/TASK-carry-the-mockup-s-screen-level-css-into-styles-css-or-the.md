@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Most of the design's styling was never copied into the app, so screens render as raw unstyled elements even though nothing is actually broken.
-summary_of: 240080b6d0206568
+summary_of: 8d179c57d615d0de
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 65ea4644e259db73
+checksum: 97b6b5e020b6c9f6
 plan: ui1
 seq: 16b
 state: done

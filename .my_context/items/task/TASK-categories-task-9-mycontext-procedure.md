@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "A command for running a written procedure: see what is available, start one, walk through its steps and mark it finished."
-summary_of: 61d29c0276efc04e
+summary_of: 420f24bd87470e53
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 8c0350c9f549ec6d
+checksum: 29b0e7bb6d894598
 plan: categories
 seq: "9"
 state: done

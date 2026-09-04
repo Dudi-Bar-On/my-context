@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A test proving simultaneous writes lose nothing keeps failing now and then; it points at a real race and must not be dismissed.
-summary_of: 47f948525434f938
+summary_of: 650ba7b5fe6918ed
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: b7993b52384bce0c
+checksum: 7d36ca34e8ff0fd3
 plan: hooks
 seq: 13c2
 state: done

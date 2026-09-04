@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A safety check was thought to be unused and is not; the real gap turned out to be at a different door, so re-measure before changing anything.
-summary_of: bc128a5a7220e8f1
+summary_of: 6602324a5553d613
 acknowledged:
   - body_disagrees_with_meta@316c83a0174520ce
   - citation_form@316c83a0174520ce
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 8e2bad17263c49a8
+checksum: f2b47050f6cef64f
 plan: export
 seq: 8w
 state: done

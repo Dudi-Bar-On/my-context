@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Narrowing a session can quietly drop items marked always-show; it must at least name them, and someone must decide whether it may drop them at all.
-summary_of: a46a96a3b3836084
+summary_of: 3330cc0a83f28541
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 4616f0381812ba90
+checksum: 460e89901fb0eb62
 plan: budget
 seq: 1b
 state: done

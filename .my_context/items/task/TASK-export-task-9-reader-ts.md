@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Reading a bundle: work out its form, confirm nothing was altered, and refuse anything that does not check out."
-summary_of: 4c84bad612621c66
+summary_of: 14c747841b19ad4e
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 68c738f58101e4dd
+checksum: 55f2ada81931b4a9
 plan: export
 seq: "9"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The health report repeats the same long explanation with every finding, so the page is almost all one paragraph and tells you nothing.
-summary_of: 22b9f11b068d27ec
+summary_of: 6259b0d69f81e4c7
 acknowledged:
   - body_disagrees_with_meta@9acbb023e1537a53
   - citation_form@9acbb023e1537a53
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: 3fe7afce6b64e25e
+checksum: b8681ce4ebdadbd0
 plan: walk
 seq: "122"
 state: todo

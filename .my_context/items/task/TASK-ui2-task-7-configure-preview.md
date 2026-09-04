@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Showing what a proposed settings change would actually do, before anybody applies it.
-summary_of: 624e58f7e92b98d3
+summary_of: fbe9b563ccd2984c
 scope: []
 tags:
   - "plan:ui2"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 6f657453889accba
+checksum: ce2e561017982709
 plan: ui2
 seq: "7"
 state: done

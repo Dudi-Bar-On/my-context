@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Wiring the new routes into the server, and proving it still shuts down when idle even with a live feed open.
-summary_of: 40edde82fefe8ea5
+summary_of: 9320c5980f375d73
 scope: []
 tags:
   - "plan:ui3"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 00a485466ad83a3e
+checksum: a23ee906d42d95e0
 plan: ui3
 seq: "8"
 state: done

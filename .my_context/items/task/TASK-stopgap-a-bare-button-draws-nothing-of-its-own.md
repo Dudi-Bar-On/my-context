@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A blanket rule stopping unstyled buttons from painting themselves grey across a wall of nearly a thousand; a symptom fix, since replaced.
-summary_of: b7b78efd39da7e28
+summary_of: 19be4ed5e2c719c1
 scope: []
 tags:
   - "plan:fixes"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 490f1cb4995fe596
+checksum: b81dda93707cd363
 plan: fixes
 seq: "6"
 state: done

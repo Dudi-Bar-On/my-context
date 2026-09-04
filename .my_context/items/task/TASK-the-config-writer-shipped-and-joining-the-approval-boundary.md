@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A category writer with delete, disable, backup and a count warning, plus the documentation its arrival made stale.
-summary_of: 95814e0d60006feb
+summary_of: 3b9b9c747cfa5e17
 acknowledged:
   - state_unaudited@c171f34ecdec6e68
 scope: []
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: d2ce5f7522af5712
+checksum: badaa0264d7b4053
 plan: rulings
 seq: "20"
 state: done

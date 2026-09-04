@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Build the one-off procedures screen from the design, taking its look and never its behaviour, with fixed content where nothing live answers.
-summary_of: a6c268b3845a07b6
+summary_of: 1776bcc7918a7faf
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 9ab5d776ee0d78eb
+checksum: 8abb99c569069864
 plan: port
 seq: "7"
 state: done

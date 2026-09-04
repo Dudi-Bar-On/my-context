@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Two things for the designer to settle: tables ignore the alignment their author wrote, and the design promises to refuse images while quietly showing them."
-summary_of: c695aede03585365
+summary_of: eb7996270c5a8c24
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 3a8ecc4757443237
+checksum: 437ad42066ca2fe4
 plan: walk
 seq: "95"
 state: todo

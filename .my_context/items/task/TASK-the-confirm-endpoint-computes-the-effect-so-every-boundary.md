@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Most commands that change things still cannot be run from the app, because only the server can work out what they would do.
-summary_of: 3f5b3803edef92c8
+summary_of: dc30728110caeb24
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: acd91a3824295f6b
+checksum: 5659e5d114c07086
 plan: execute
 seq: 5b
 state: done

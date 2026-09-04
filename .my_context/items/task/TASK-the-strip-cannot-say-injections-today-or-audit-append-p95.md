@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two figures the design puts in the bottom strip are missing, left out along with their separators so the strip is short but true.
-summary_of: bfabffdfc9cf50f6
+summary_of: d9148df6ef98393d
 acknowledged:
   - citation_form@56bb933ad3374588
 scope: []
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 92374da6ee3120c3
+checksum: 787d79f6d7c099b0
 plan: port
 seq: "6"
 state: done

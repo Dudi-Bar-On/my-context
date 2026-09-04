@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three places where the old look used more colours than the new limit allows; how to map them down is the owner's call.
-summary_of: b03859596e26c749
+summary_of: fab41a021952fdd9
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: cfe7dd40017f2a40
+checksum: 4b5cf16947e92598
 plan: repaint
 seq: 13a
 state: done

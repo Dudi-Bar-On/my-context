@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: After trying out a setting and liking the result, carry it straight to the settings screen as a proposed change instead of retyping it.
-summary_of: 0c7f8c085bca9823
+summary_of: ccc7df48f3090d58
 scope: []
 tags:
   - v2
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 1567710a16b1fe69
+checksum: cf0553b86b7393aa
 plan: walk
 seq: "14"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Listen for the eight remaining events the tool can be told about, then look again at what is left once those are in place.
-summary_of: 2d04253a79519c28
+summary_of: 94665464bc201bfe
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 09e0591c5625f078
+checksum: a62db4943062eaf6
 plan: hooks
 seq: "21"
 state: done

@@ -195,10 +195,14 @@ export function itemContentHash(item: Item): string {
  *    steps changed describes a procedure that no longer exists.
  *  - **observations** · summarised. They are the item's own limits, evidence
  *    and history; a summary that counts three of them is wrong at four.
- *  - **extra** · summarised. It holds `rule.directive`, which decides whether
- *    a rule prohibits or prescribes — the plainest possible case of changing
- *    what the item says, and the reason `UPDATE_FIELD_POLICY` classifies it as
- *    content rather than bookkeeping.
+ *  - **extra** · summarised, AS A FIELD — it holds `rule.directive`, which
+ *    decides whether a rule prohibits or prescribes — the plainest possible
+ *    case of changing what the item says, and the reason `UPDATE_FIELD_POLICY`
+ *    classifies it as content rather than bookkeeping. But the bag is not
+ *    uniform: `WORKFLOW_EXTRA_KEYS`, below, excludes specific KEYS inside it
+ *    (`state`, `plan`, `seq`, `priority`, `source`, `progress`, `last_change`)
+ *    by OWNER RULING 2026-09-04, the same test applied one field further in —
+ *    see that table for the per-key reasoning.
  *  - **title** · NOT summarised, by OWNER RULING 2026-08-27, and it is the one
  *    entry in this table that was decided the other way first. The owner's
  *    reasoning, in their words: *a summary is a plain sentence about what the
@@ -287,6 +291,91 @@ const SUMMARISED_FIELDS = (Object.keys(SUMMARY_BASIS) as (keyof ContentShape)[])
   .filter((field) => SUMMARY_BASIS[field] === 'summarised');
 
 /**
+ * **Workflow keys inside `extra` — the same exclusion `SUMMARY_BASIS.tags`
+ * already makes, one field further in.**
+ *
+ * OWNER RULING 2026-09-04, on `TASK-closing-any-task-trips-the-summary-gate-
+ * even-though-only-the`: *"a summary describes what an item MEANS. Moving a
+ * task to `done` changes its status, not its meaning."* `extra` as a whole
+ * stays `summarised` — it holds `rule.directive`, which decides whether a
+ * rule prohibits or prescribes, and that must keep gating on its own. The
+ * ruling is about specific KEYS inside the bag, not the bag itself, so the
+ * exclusion lives here rather than by widening `SUMMARY_BASIS.extra` — the
+ * same reasoning `SUMMARY_BASIS`'s own docblock gives for a table over a
+ * hand-kept list: a coarser cut would let `directive` escape the basis by
+ * accident the day it travels inside a patch alongside a workflow key.
+ *
+ * Each key decided on its own, against the one test the ruling gives —
+ * does moving it change what the item SAYS, or only where it stands:
+ *
+ *  - **`state`** · workflow. Named explicitly in the ruling. `todo` /
+ *    `doing` / `blocked` / `done` is the task's position in its own
+ *    lifecycle, not a claim about what it requires — `categories.ts`'s own
+ *    words for the category: *"its plan, sequence and state live in extra
+ *    fields; the body is what the task actually requires."*
+ *  - **`progress`** · workflow. Named explicitly in the ruling. A percent-
+ *    complete figure, and RETIRED from new writes as of the 2026-09-03
+ *    ruling recorded in `categories.ts` for being "never more than state's
+ *    shadow" — a field that was already agreed to carry no information
+ *    `state` did not.
+ *  - **`last_change`** · workflow. Named explicitly in the ruling. A
+ *    bookkeeping timestamp, RETIRED alongside `progress` for the same
+ *    reason `validFrom` is outside `ContentShape` entirely: a record of
+ *    WHEN, never a claim about WHAT.
+ *  - **`plan`** · workflow, by the same test extended to the rest of the
+ *    bag. Names which body of work tracks the task — routing, the same
+ *    role `scope` plays outside `extra` (`SUMMARY_BASIS.scope`: "injection
+ *    controls... not what it says"). Reassigning a task from one plan to
+ *    another is a filing decision, not a rewrite of what the task requires.
+ *  - **`seq`** · workflow, same test. Position within the plan's order —
+ *    scheduling, renumbered routinely when a plan is reshuffled, and never
+ *    itself part of the task's requirement.
+ *  - **`priority`** · workflow, same test. A ready-queue ordering number,
+ *    1 highest — the identical role `severity` already plays as a top-level
+ *    `SUMMARY_BASIS` entry (*"injection controls... not what it says"*).
+ *  - **`source`** · workflow, same test. Free prose recording HOW or WHEN
+ *    a task was found (e.g. "found sweeping neighbours during walk/72") —
+ *    provenance, the exact role the top-level `sourceFile`/`sourceAnchor`/
+ *    `sourceChecksum` fields play, and those are outside `ContentShape`
+ *    entirely for the same reason.
+ *  - **`directive`** (on `rule`) · stays CONTENT, deliberately not added
+ *    here. It "decides whether a rule prohibits or prescribes" — the
+ *    plainest case there is of a key that changes what the item SAYS, and
+ *    the reason `extra` was ever classified `summarised` at all.
+ *  - **Everything else** · stays CONTENT by omission, the conservative
+ *    default. A key not named here — including `needs` (the task's own
+ *    dependency, which the ruling did not touch, and which is closer to a
+ *    claim than to bookkeeping) and any future custom `--extra` field —
+ *    keeps counting toward the basis until a ruling excludes it by name.
+ *    Getting this table wrong in the permissive direction is the failure
+ *    mode `SUMMARY_BASIS`'s own docblock warns against: a field that quietly
+ *    stops being able to invalidate a summary is a hole nothing reports.
+ *
+ * Applied only inside `itemSummaryBasis`, below — `canonicalContent` and
+ * `contentHash`/`itemContentHash` (content IDENTITY, used by `createItem`'s
+ * dedupe) still see the whole `extra` bag unfiltered. Two capture attempts
+ * that differ only in `state` are still different content for dedupe
+ * purposes; they are the same thing for what a SUMMARY has to describe. The
+ * two questions are related and not identical, the way `tags` is unordered
+ * for hashing but still full content for dedupe.
+ */
+const WORKFLOW_EXTRA_KEYS: ReadonlySet<string> = new Set([
+  'state', 'progress', 'last_change', 'plan', 'seq', 'priority', 'source',
+]);
+
+/** `extra`, with `WORKFLOW_EXTRA_KEYS` removed — what the summary basis sees
+ * of the bag. Iterates `canonicalExtra`'s already-sorted keys, so the result
+ * stays in the same fixed order the rest of this module relies on. */
+function summarisedExtra(extra: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of Object.keys(extra)) {
+    if (WORKFLOW_EXTRA_KEYS.has(key)) continue;
+    out[key] = extra[key];
+  }
+  return out;
+}
+
+/**
  * The hash `Item.summaryOf` records: the summarised fields of this item's
  * content, canonicalised by `canonicalContent` so that the projection here and
  * the identity used everywhere else cannot disagree about what a field's value
@@ -304,7 +393,13 @@ const SUMMARISED_FIELDS = (Object.keys(SUMMARY_BASIS) as (keyof ContentShape)[])
 export function itemSummaryBasis(v: ContentShape): string {
   const canonical = canonicalContent(v) as unknown as Record<string, unknown>;
   const shape: Record<string, unknown> = {};
-  for (const field of SUMMARISED_FIELDS) shape[field] = canonical[field];
+  for (const field of SUMMARISED_FIELDS) {
+    // `extra` alone gets the narrower cut: see `WORKFLOW_EXTRA_KEYS` above
+    // for which keys inside the bag are tracking rather than content.
+    shape[field] = field === 'extra'
+      ? summarisedExtra(canonical.extra as Record<string, string>)
+      : canonical[field];
+  }
   return checksum(JSON.stringify(shape));
 }
 

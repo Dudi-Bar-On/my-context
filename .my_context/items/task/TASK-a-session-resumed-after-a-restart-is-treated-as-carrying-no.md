@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The context-window epoch assumes a resumed session keeps counting from where it left off, which is false when the resume rebuilds the window.
-summary_of: a4d597031705b01c
+summary_of: d19e5e010c26cdb6
 scope:
   - src/core/context-share.ts
 tags:
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 60c179f150686ea2
+checksum: 25bf6cca6e7a9bd1
 plan: rulings
 seq: "56"
 state: todo

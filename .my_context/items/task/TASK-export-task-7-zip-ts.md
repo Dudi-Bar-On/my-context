@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Writing a bundle as a single archive file, built so that the same contents always produce byte-identical output.
-summary_of: a6a4f4f255d22b6f
+summary_of: 9e6b93517828e4dd
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 98f8bfc3147a8005
+checksum: 8dfa407190100cd8
 plan: export
 seq: "7"
 state: done

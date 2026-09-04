@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Installing and removing the status line for you, showing what will change first and keeping whatever it replaced.
-summary_of: c9f2a5937282aa16
+summary_of: 211fe32b986eb1eb
 scope: []
 tags:
   - "plan:ui3"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: b4107ef90882394b
+checksum: 868e6b0fc0848efd
 plan: ui3
 seq: "5"
 state: done

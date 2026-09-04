@@ -6,22 +6,23 @@ status: active
 severity: soft
 always: false
 summary: Some README example commands now fail as written, and the check meant to catch bad examples cannot see them because it never scans that kind of code block.
-summary_of: 6a03a9df7895081f
+summary_of: 258099755705675a
 scope: []
 tags:
   - docs
   - readme
   - examples
   - summary-gate
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 4f311d2bad4ae074
-state: todo
+checksum: 5dbf29381e70f201
+state: done
+verified_on: 2026-09-04
 ---
 
 # README examples for mycontext add predate the --summary requirement and now fail when copied

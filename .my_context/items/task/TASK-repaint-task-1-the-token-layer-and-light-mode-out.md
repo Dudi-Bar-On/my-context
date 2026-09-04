@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Replace the whole colour vocabulary and drop light mode in one go, since everything later depends on it and a half-removed theme is worse.
-summary_of: 374fe689a0839dc0
+summary_of: 6d99b48f77cc2d12
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 54cdb96c14cce54a
+checksum: 00e77a8e96540246
 plan: repaint
 seq: "1"
 state: done

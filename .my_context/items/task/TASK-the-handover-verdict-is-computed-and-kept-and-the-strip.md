@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Whether the handover notes were written when they were asked for is already recorded, and shown nowhere.
-summary_of: 83a4c6dbc02cf5d8
+summary_of: 580588284f8346f9
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: d0c160bf0a1ac589
 valid_from: 2026-08-31
 valid_until: null
-checksum: 3a3f5e3d54660039
+checksum: 48d20ea424a3c13e
 plan: walk
 seq: "118"
 state: done

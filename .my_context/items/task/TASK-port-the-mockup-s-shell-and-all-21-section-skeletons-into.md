@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Bring the design's full page frame and all of its screens into the app, including the ones not built yet, shown as planned.
-summary_of: 2fed9e33ccbfc2c1
+summary_of: 9b61f15b3ee9ad9d
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 6954817a5e44f58c
+checksum: 1a30b7017416aece
 plan: port
 seq: "1"
 state: done

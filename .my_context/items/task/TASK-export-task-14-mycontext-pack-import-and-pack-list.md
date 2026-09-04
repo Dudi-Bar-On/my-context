@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Commands to bring in a bundle of knowledge someone else wrote, and to list the ones already brought in.
-summary_of: 4c8332d68b54e155
+summary_of: 284e9b454530272c
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 0b3507b1b5e8ba3a
+checksum: 2ecccd592f867b7b
 plan: export
 seq: "14"
 state: done

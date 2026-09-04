@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The server explains clearly why a screen has no data and the screen shows nothing; draw the explanation, and the one command that fixes it.
-summary_of: f1782da6d0fd018c
+summary_of: aec601e0f665529c
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 49a686e4832791d6
+checksum: bebffeed67a1a869
 plan: walk
 seq: "53"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Find out what information a shortcut command actually carries, which needs someone to run one in a live session.
-summary_of: 0d7b5ff34fb417dd
+summary_of: 6e076be8944fee2a
 acknowledged:
   - body_disagrees_with_meta@a9ecccb5aa0d6060
 scope: []
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 0ed1e9715977b6a9
+checksum: 60904d862f0dea53
 plan: hooks
 seq: "2"
 state: done

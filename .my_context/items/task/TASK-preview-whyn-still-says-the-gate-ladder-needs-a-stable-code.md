@@ -6,12 +6,12 @@ status: superseded
 severity: soft
 always: false
 summary: A note under a diagram says the diagram cannot be drawn yet, sitting directly beneath the finished diagram.
-summary_of: eee3eb5c5d0f3a6c
+summary_of: c6ec3d892fdcc354
 scope: []
 tags:
   - "plan:screens"
   - "seq:1s-f"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
   - docs
@@ -21,10 +21,11 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: 2026-09-03
-checksum: 879500a0c5d91e79
+checksum: 9b505b73f94563d5
 plan: screens
 seq: 1s-f
-state: todo
+state: done
+verified_on: 2026-09-04
 ---
 
 # preview.whyn still says the gate ladder needs a stable code that now exists

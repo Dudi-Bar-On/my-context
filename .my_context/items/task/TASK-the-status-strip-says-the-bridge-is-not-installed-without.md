@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The strip told everyone a component was not installed without ever checking, including the people who had installed it; it asks now.
-summary_of: 1ec003d247b9ff27
+summary_of: b096393d6872f274
 summary_was:
   - 2026-09-03 The strip tells everyone that a component is not installed without ever checking, including the people who installed it.
 acknowledged:
@@ -28,7 +28,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 56697d4ac1045e06
+checksum: 7d8a3c3f8fa3457e
 plan: walk
 seq: "29"
 state: done

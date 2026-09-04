@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The coverage table itself is finished, but no corpus has ever had the kind of gap that makes its last row appear, so parts of it stay unseen.
-summary_of: f8bf8ccde2bea0b2
+summary_of: f090affd558acd0b
 summary_was:
   - 2026-09-03 A few cell-level pieces of the coverage table are still missing, though the table itself has since been built.
 acknowledged:
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: f2c7195d86162ef3
+checksum: 959dbe29f8ea9385
 plan: screens
 seq: 4s
 state: todo

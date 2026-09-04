@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Let people who define their own categories in the settings file also say which parts of one may be changed.
-summary_of: 89a07b3111f1ddfe
+summary_of: 3aae1eb01e6a3bee
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 3f9d50abb87a7cf4
+checksum: 2cc319d337012d83
 plan: categories
 seq: "14"
 state: done

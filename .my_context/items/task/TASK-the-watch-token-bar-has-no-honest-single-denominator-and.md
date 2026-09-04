@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A cost bar has nothing honest to measure each row against, so every bar is drawn against a total no row could ever reach.
-summary_of: 1145fc6d714441fb
+summary_of: 6bc32f73d5fd9562
 scope: []
 tags:
   - "plan:ui3"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: 17901470e17ecd5d
 valid_from: 2026-08-22
 valid_until: null
-checksum: f1f83e8711fdbba0
+checksum: ea1f35a7c63edd3a
 plan: ui3
 seq: 11x
 state: todo

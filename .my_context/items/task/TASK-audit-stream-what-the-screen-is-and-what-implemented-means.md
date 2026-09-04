@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen that shows what the project recorded as it happened, as a live feed with an activity chart, filters and a table.
-summary_of: 87dbb9d900f05228
+summary_of: 9e2687e5e63c54b9
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 17c5da1ab19c8858
+checksum: bb197f5bf22862f8
 plan: walk
 seq: "126"
 state: done

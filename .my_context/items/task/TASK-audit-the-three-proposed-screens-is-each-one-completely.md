@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Check whether three planned screens are actually fully described, because half-designed work handed to a builder gets finished by guesswork.
-summary_of: 79100efc31318acd
+summary_of: f615637af6e0ed2f
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 6deff03f82750fd4
+checksum: 1b8ec34fe8778dbf
 plan: walk
 seq: "5"
 state: done

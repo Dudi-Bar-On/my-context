@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Each procedure should carry its own command, since one shared command names a single item that most of them are not.
-summary_of: 0bdcdbdc7f39f531
+summary_of: 33f75f4519ecd259
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: e732b8b60d710a42
+checksum: c69484e81501e31d
 plan: walk
 seq: "3"
 state: todo

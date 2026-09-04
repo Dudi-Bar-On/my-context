@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Tell apart a request with no address at all from one with the wrong address, and keep a record of every request that was turned away.
-summary_of: adc3ac82e0b6cd46
+summary_of: 6ad2e71ce7d4c614
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: ff0d7483508dbd10
+checksum: 491764c66637050d
 plan: rulings
 seq: "25"
 state: done

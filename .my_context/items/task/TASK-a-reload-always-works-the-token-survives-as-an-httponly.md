@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Reloading the local page no longer falsely claims the server has quit, because the sign-in now survives in a cookie that scripts cannot read.
-summary_of: 199bd7a2882bd154
+summary_of: 674b1530848cddbb
 scope: []
 tags:
   - "plan:fixes"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: bc50ea6426c388d7
+checksum: 531e710d594e0648
 plan: fixes
 seq: "2"
 state: done

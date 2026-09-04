@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One small piece of formatting was missing from the status screen, and the check that watches for it now passes.
-summary_of: 2c01803b83e54807
+summary_of: 854edb5a4035c696
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 799dc9779d145cdb
+checksum: d1b979fbd720ff82
 state: done
 plan: screens
 seq: 9s

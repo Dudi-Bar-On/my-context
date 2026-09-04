@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Rebuild both language tables from the updated design by machine rather than by hand, then re-run the check that they still match.
-summary_of: 5247f81d175a0083
+summary_of: 03a31bbb27c044bd
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 3f0150d86123b4a6
+checksum: 2f2d0e5bb55793d1
 plan: rulings
 seq: "8"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Colour is the only thing separating these small markers; the promised shapes were never named, so name them or drop the idea.
-summary_of: a04dd8e103cabc61
+summary_of: f709a3704409baf2
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: d5688ef42314ae86
+checksum: 4bed3217cff4df91
 plan: repaint
 seq: 3c
 state: done

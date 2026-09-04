@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Record progress through a procedure's steps in the activity log rather than in the item itself, so the item is not rewritten each time.
-summary_of: c25a24bfa9bfb27d
+summary_of: 701c4e958ecb7dab
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: f77fd9513ac028c2
+checksum: d97cca350d2d1050
 plan: categories
 seq: "8"
 state: done

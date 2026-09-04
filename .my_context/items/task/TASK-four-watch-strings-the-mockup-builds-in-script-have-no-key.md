@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: Four labels on the activity screen stay in English for a Hebrew reader, and an empty chart still never says it is empty rather than broken.
-summary_of: 17f99c9035fb64c1
+summary_of: 8dd8e7115295b7a4
 scope: []
 tags:
   - "plan:ui3"
   - "seq:11x"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -20,10 +20,11 @@ source_anchor: null
 source_checksum: 93db174d82666660
 valid_from: 2026-08-22
 valid_until: null
-checksum: d10a383066c7b893
+checksum: 9a71ff975af165d8
 plan: ui3
 seq: 11x
-state: todo
+state: done
+verified_on: 2026-09-04
 ---
 
 # four watch strings the mockup builds in script have no key, so they render English inside the Hebrew UI

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Working out whether something newly written overlaps with what is already recorded.
-summary_of: 1705f792a74325aa
+summary_of: 8abe7c5207256001
 scope: []
 tags:
   - "plan:ui2"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 79c1bbc7aa212565
+checksum: ee01996691a24747
 plan: ui2
 seq: "5"
 state: done

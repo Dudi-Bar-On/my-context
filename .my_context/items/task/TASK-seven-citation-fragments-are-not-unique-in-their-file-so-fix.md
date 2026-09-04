@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Seven references quote text that appears more than once in its file, so an automatic repair would quietly point at the wrong place.
-summary_of: acb32be3b48b5323
+summary_of: 1c2c6118354e5c99
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 6305908f1badfbe9
+checksum: 514d13a5060083c0
 plan: rulings
 seq: 37b
 state: done

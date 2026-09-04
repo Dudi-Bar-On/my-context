@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A test compares against a hardcoded snapshot of a config entry this workspace no longer has, so no config change can close it.
-summary_of: 7e98b2ba86e0e133
+summary_of: 39ff2f5a14bdd895
 scope:
   - test/core/config-task-override.test.ts
   - src/core/config.ts
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: c5b4c9e6513cee53
+checksum: 1f2594a1b43401c2
 plan: rulings
 seq: "59"
 state: done

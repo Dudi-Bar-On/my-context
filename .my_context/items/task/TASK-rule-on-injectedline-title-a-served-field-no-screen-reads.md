@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A piece of data is looked up on every request and then thrown away; decide whether to drop it or give it somewhere to appear.
-summary_of: eba89dff782bbdee
+summary_of: efc3be0d3b19a04d
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 3de1b0b3a40d54d8
+checksum: 9507df0cc9c506d2
 plan: ui1
 seq: 17f
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The export screen has nothing serving it yet, so it cannot be built until that exists.
-summary_of: e196019c8d0d55ed
+summary_of: ae3439d874be8469
 scope: []
 tags:
   - "plan:api"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: a52aebd30614d980
+checksum: 861f7ac252921ff8
 plan: api
 seq: "3"
 state: done

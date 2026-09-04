@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Confirms that the list of events offered on screen is complete, and names two things the app never tells the reader.
-summary_of: 23a4d7d45cefa1ef
+summary_of: c7803b8742d1f502
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: f2c36ca6e59ddaac
+checksum: 257622de37a39afb
 plan: walk
 seq: "57"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A setting saying whether the web view is allowed is checked carefully and then ignored, so turning it off does nothing at all.
-summary_of: 8added75d32f36b3
+summary_of: bfcadaba728c77bd
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 1bc1a85c08fa622c
+checksum: 609cd1cd5a76721e
 plan: rulings
 seq: "42"
 state: done

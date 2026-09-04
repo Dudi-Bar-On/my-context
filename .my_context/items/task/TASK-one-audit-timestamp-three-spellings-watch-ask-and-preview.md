@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three places format the same timestamp their own way, so two tables showing the same records can disagree about what time it was.
-summary_of: 6865b9b56e614ace
+summary_of: 6450364260282ca8
 scope: []
 tags:
   - v2
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 316a4d1da8aaf2b2
+checksum: c40743ba63b453d8
 plan: walk
 seq: "101"
 state: done

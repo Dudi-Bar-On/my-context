@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Two sentences in the plans are wrong: one about what can be recovered afterwards, and one about what a file actually uses."
-summary_of: c7532ffcaee3f2d7
+summary_of: a62c297b99c764b2
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: e520e6c9a3ddbb2e
+checksum: d0957faf910f3cf7
 plan: rulings
 seq: 33d
 state: todo

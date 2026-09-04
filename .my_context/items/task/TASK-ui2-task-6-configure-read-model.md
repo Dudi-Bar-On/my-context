@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Serving the current settings, and answering whether a proposed change to them would be accepted.
-summary_of: 39d2d5796b13d05e
+summary_of: a451635dd9fb689b
 scope: []
 tags:
   - "plan:ui2"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 6e969b6cb2756d12
+checksum: c82dea85b801cf47
 plan: ui2
 seq: "6"
 state: done

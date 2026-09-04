@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One editing pass over the design file covering several wording decisions at once, because separate editors of the same table would collide.
-summary_of: 54375f2e82169d75
+summary_of: 4ca15a1a0be05338
 acknowledged:
   - body_disagrees_with_meta@d5d2beacba252118
 scope: []
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 5836e9932057aea5
+checksum: 9dede47cd93d34d3
 plan: rulings
 seq: "14"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen that builds a command for you from real choices out of your own project, and hands it over to paste rather than running it.
-summary_of: f3c0ccd48073efec
+summary_of: 57e0e888a5d18ad4
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 044652dc48525197
+checksum: 1d97b19b63e33b8d
 plan: walk
 seq: "129"
 state: todo

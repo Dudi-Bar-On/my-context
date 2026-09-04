@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The two language tables holding every sentence in the app, and the check that keeps them the same set.
-summary_of: be8cce6fe70226bc
+summary_of: 98314b3c2a151bfa
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 9917c827d6b20ae3
+checksum: 2070600398f00878
 plan: ui1
 seq: "1"
 state: done

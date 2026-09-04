@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Two corrections to a translation plan: drop a marker that duplicated another, and build inserted values so they read correctly in Hebrew."
-summary_of: 56b5344de7827f0c
+summary_of: f42a6506f8b3ef50
 scope: []
 tags:
   - "plan:rulings"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 3e719f875d2aafb4
+checksum: 4ed78bbd4cdc22b7
 plan: rulings
 seq: "29"
 state: done

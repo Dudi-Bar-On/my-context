@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A nonsensical timeout should make the server refuse to start and say why, instead of running forever while polling constantly.
-summary_of: b8de6c4f6942e0bb
+summary_of: c21a45a04d7fcf50
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 9561b903a93cd2b4
+checksum: b849a75743580215
 plan: rulings
 seq: "2"
 state: done

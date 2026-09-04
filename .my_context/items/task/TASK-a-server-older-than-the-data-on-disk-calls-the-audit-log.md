@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A running server refuses the audit log as damaged when the only problem is that its own frozen code predates a record type just added.
-summary_of: 03495194baf8278b
+summary_of: dc04f381931f4fb9
 scope:
   - src/core/audit.ts
   - src/core/audit-tail.ts
@@ -18,18 +18,19 @@ tags:
   - audit
   - "plan:live"
   - "seq:14"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 1b0ab227ffa3cc2f
+checksum: 8a9f50c9f2055e01
 plan: live
 seq: "14"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-04
 ---
 
 # a server older than the data on disk calls the audit log untrustworthy rather than calling itself stale

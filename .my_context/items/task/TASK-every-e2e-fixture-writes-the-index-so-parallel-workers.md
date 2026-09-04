@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Tests write to a shared database while running side by side, so they fail at random, and a list of known flaky ones now hides real failures.
-summary_of: 05a002b3a8fa51eb
+summary_of: 28cf7cdd25296c8c
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 7ffe1fb88474feeb
 valid_from: 2026-08-29
 valid_until: null
-checksum: d50d2d7a0e5de541
+checksum: b6ce79fb3e3e391f
 plan: walk
 seq: "79"
 state: done

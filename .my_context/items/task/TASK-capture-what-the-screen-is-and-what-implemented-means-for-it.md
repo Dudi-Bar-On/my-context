@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen that shows what already applies to a part of the codebase before you write another rule for it, then drafts that rule.
-summary_of: baa23688ea94714e
+summary_of: 603d9c57d7524267
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 35e80143716ba45e
+checksum: ecbf4dedb2b5bf84
 plan: walk
 seq: "128"
 state: done

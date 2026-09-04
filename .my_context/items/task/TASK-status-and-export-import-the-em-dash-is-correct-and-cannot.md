@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two screens draw a dash where a number would go and cannot say why it is missing, though the reasons behind them are entirely different.
-summary_of: 2d10a17146f7ada0
+summary_of: 603e890093647a61
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: bad699241318edda
+checksum: 71c74f3be05a956c
 plan: walk
 seq: "89"
 state: todo

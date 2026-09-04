@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The tutorials page shows tick marks that nobody ever checked, and one of them is not true of anything.
-summary_of: df95bf15de378271
+summary_of: 0124ad3b6d9291bf
 scope: []
 tags:
   - "plan:port"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: 63a1e1461c3c349f
 valid_from: 2026-08-23
 valid_until: null
-checksum: 92c076e1ea0b895b
+checksum: e2a2f09bca95930d
 plan: port
 seq: 5d
 state: todo

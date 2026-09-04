@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Both the command line and the web view explain where delivered material came from, in the same words.
-summary_of: be861667861e68c7
+summary_of: 5f8a5c3c8ca18cb6
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 56613da768cdeb7d
+checksum: 8afea9809875d138
 plan: hooks
 seq: "19"
 state: done

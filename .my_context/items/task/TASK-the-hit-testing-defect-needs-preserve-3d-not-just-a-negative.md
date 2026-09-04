@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A narrower account of the bug that made clicks land on the wrong thing, so nobody chases a version of it that cannot happen.
-summary_of: 745e40b4ca8bd454
+summary_of: 28064a30c90db085
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 9a4e543b14dac8ce
+checksum: ce5701c914f91852
 plan: repaint
 seq: 3h
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Every item can be opened to a short plain-language explanation, written ahead of time and stored with it, which says so when it is missing or out of date.
-summary_of: c2eea899e4aa1189
+summary_of: 9f7033162d0dce3b
 summary_was:
   - 2026-09-01 Every item gets a short plain-language explanation, written in advance and stored with it, so anyone can tell what it is at a glance.
 scope: []
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: 04ec375a500dd750
 valid_from: 2026-08-31
 valid_until: null
-checksum: b755ef3ac9fe85d3
+checksum: 425a8cecd1085c93
 plan: walk
 seq: "119"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The budget screen is missing its main diagram and its readout rows, so the thing it exists to show is not actually on it.
-summary_of: 2158a216164ea52f
+summary_of: 7fb70b199912d86f
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: d935f97f76516dcb
+checksum: a5a7953185ca9d95
 plan: screens
 seq: 3s
 state: done

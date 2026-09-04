@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A typed shortcut command announces itself in a way ordinary text does not, so telling them apart is far cheaper than expected.
-summary_of: 6ac4a552951fa5e9
+summary_of: 30d437ef9b65748d
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 76fffdc723ebf13d
+checksum: b304f281d81abb37
 plan: hooks
 seq: 2b
 state: done

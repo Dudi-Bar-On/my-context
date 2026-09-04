@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Automatically enforce that the faintest text colour is used only at sizes where it stays readable, rather than trusting people to remember.
-summary_of: 8d7742b73cf908b6
+summary_of: fb1f535235b66d93
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: ac991fcf37f278cf
+checksum: 735d643e9c1e685b
 plan: repaint
 seq: "4"
 state: done

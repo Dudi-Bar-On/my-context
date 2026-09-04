@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One setting can be changed and then never seen, because nothing in the tool will print it back to confirm the change took.
-summary_of: 34164574edea56fd
+summary_of: 379ece2e8bc0e5b5
 scope: []
 tags:
   - v2
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: c47cd5fbd9f8c92d
+checksum: 614421f8a8b4b510
 plan: walk
 seq: "106"
 state: todo

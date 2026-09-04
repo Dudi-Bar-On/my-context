@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The routes and the data behind what a session gets, how it reads, and what other limits would have given.
-summary_of: ffce6ae91f268fd5
+summary_of: 5fec94fdfdde1327
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: d392c59e462c66b0
+checksum: f3cfd6d7f78fb9a3
 plan: ui1
 seq: "8"
 state: done

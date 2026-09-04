@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A helper session skips the very conversation it was launched from when picking up earlier context, and nobody has decided whether that is right.
-summary_of: d6d0878dcf97fba3
+summary_of: 8b729e96506ba871
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 20b47c7f7ff56c48
+checksum: e02af4ab78b64fce
 plan: hooks
 seq: 18s
 state: done

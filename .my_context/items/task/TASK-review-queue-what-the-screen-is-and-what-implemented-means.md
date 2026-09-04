@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen where a person accepts or rejects proposed changes, seeing the difference side by side before approving anything.
-summary_of: a8d6ed0f74847008
+summary_of: 5f3c85e6e9dab7b2
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: dce22a3f5d81a8f8
+checksum: d09c15b6ded69760
 plan: walk
 seq: "127"
 state: todo

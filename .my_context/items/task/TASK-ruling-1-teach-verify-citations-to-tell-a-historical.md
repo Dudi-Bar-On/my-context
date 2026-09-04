@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Teach the reference checker to tell a deliberate quotation of old text from a pointer that has gone stale, and fix the stale ones.
-summary_of: 873e8c980907a833
+summary_of: 85c5a4f916170da7
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 100adf1c39688920
+checksum: abd9853c972c7a0d
 plan: rulings
 seq: "1"
 state: done

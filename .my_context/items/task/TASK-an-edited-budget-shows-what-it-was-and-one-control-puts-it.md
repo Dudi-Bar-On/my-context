@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: While changing a setting, show what it currently is and offer one control to put it back, so a change can be abandoned without guessing.
-summary_of: 0a916eed1320043f
+summary_of: cad61d0ee05e2099
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: 9e3f8b6e3433c875
 valid_from: 2026-08-28
 valid_until: null
-checksum: 1ea5a7d8098bc835
+checksum: 4f00d097c8190338
 plan: budget
 seq: "6"
 state: todo

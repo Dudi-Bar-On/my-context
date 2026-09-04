@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Writing a bundle out as a plain folder, which is the form every other way of writing one is defined against.
-summary_of: 29e773278edebce2
+summary_of: 5f612ec46745d60d
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 0e608a684463b896
+checksum: 3cb38e0c4db28f01
 plan: export
 seq: "6"
 state: done

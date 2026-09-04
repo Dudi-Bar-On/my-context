@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Notice when another tool on the same machine also collects durable notes, so people do not write knowledge somewhere this one will never read.
-summary_of: 22fe6869c8909b8d
+summary_of: 05df35a060cf21ca
 acknowledged:
   - body_disagrees_with_meta@7ea5c8b3ca54f8b7
 scope: []
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 4f666dfbca465724
+checksum: 50227542f105ee7f
 plan: walk
 seq: "19"
 state: done

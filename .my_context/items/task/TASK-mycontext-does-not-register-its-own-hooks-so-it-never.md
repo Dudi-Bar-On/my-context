@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The tool is not installed in its own project, so it never runs on itself and the screens meant to prove it works have nothing to show.
-summary_of: ceb51972f442cb5a
+summary_of: d355dc03bb8fc4c7
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 99768acccecab271
+checksum: b05e96042ac45c48
 plan: hooks
 seq: "23"
 state: done

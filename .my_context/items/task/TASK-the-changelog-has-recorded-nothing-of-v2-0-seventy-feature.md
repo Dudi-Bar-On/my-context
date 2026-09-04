@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The list of what changed in this release is empty after seventy pieces of work, so nobody can judge how big the release is.
-summary_of: a2fd9d47d83d0139
+summary_of: 0e6ca0ea94ee0e75
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 863cd06b3ec48b11
+checksum: 7d9a6518a37d9e4d
 plan: rulings
 seq: "40"
 state: done

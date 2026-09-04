@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A check that every kind of item, including ones people define themselves, says what can be changed on it and names only parts that really exist.
-summary_of: 93e349110095860f
+summary_of: e9addb2e847867bf
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 8957b54207c88a56
+checksum: 670a11f9a9dc87dd
 plan: categories
 seq: "17"
 state: done

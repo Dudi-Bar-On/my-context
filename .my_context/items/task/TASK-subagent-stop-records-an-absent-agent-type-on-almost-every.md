@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Nearly every stop row says the agent type is absent, though a real payload carries the type under a different field name.
-summary_of: a8c9f0e347a48a57
+summary_of: e55fef35034dfa5b
 scope:
   - src/hooks/subagent-stop.ts
   - src/hooks/io.ts
@@ -16,18 +16,19 @@ tags:
   - audit
   - "plan:hooks"
   - "seq:27"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 150359732b84ad52
+checksum: bc4021503105ea6c
 plan: hooks
 seq: "27"
-state: todo
+state: done
 priority: "3"
+verified_on: 2026-09-04
 ---
 
 # subagent-stop records an absent agent type on almost every row while the payload carries one

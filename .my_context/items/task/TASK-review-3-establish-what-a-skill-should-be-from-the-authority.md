@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Establish from the official documentation what a skill is for and what earns being one, before judging the ones already written.
-summary_of: d08b70e96559f878
+summary_of: 8f58b2d08e6d1fdf
 scope: []
 tags:
   - "plan:review"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 9304afe643104144
+checksum: 967ecd7bf1606888
 plan: review
 seq: "3"
 state: todo

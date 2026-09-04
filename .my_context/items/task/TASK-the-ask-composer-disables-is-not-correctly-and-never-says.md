@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One filter option is correctly greyed out and nothing tells the reader why; either say so, or make it work.
-summary_of: b5b6d5d28b3c8f12
+summary_of: 8da6da459747509b
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: a12e4075e87e8b91
+checksum: 385c05c39f5e136c
 plan: walk
 seq: "36"
 state: done

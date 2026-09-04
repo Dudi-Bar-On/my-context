@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Almost every stopped lane records no steps at all, which is why the audit stream shows empty lanes however the screen is fixed.
-summary_of: 1b6f1dcec7b1c8bb
+summary_of: 9ad83ff3fac160c5
 scope:
   - src/hooks/**
   - hooks/hooks.json
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: b07af4e2cb52b7b5
+checksum: 795b8a80251dcd2a
 plan: hooks
 seq: "32"
 state: done

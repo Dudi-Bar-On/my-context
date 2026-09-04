@@ -6,23 +6,24 @@ status: active
 severity: soft
 always: false
 summary: "Two descriptions no longer match reality: a stale note about a timeout, and on-screen text describing a comparison that works differently."
-summary_of: 456177f89f4b4c65
+summary_of: a0f20ea25a736745
 scope: []
 tags:
   - "plan:rulings"
   - "seq:49"
   - v2
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 6551b985e9490883
-state: todo
+checksum: ba8d9a4c4716045b
+state: doing
 plan: rulings
 seq: "49"
+verified_on: 2026-09-04
 ---
 
 # two source comments are wrong: work.diffn and the 15-minute idle exit

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Record how full a session was and what caused it to be compressed, so the right cut-off is measured instead of argued about.
-summary_of: 57daf4ed36171df5
+summary_of: 9a6919fb363c7dfe
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 49d42c2332e7a479
+checksum: 2291eb42e225f139
 plan: handover
 seq: "7"
 state: done

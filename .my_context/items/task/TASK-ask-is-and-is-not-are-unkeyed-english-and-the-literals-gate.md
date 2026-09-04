@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two words on the query screen stay in English while everything around them is translated, and the check built to catch that cannot see them.
-summary_of: f6ed689dbe87717e
+summary_of: 02096867d56155c8
 scope: []
 tags:
   - v2
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 3253c9c3f55e52ae
+checksum: c2ba21a85f0d6da2
 plan: walk
 seq: "99"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Give the web view a fixed address to live at, and finally make its on-or-off setting actually stop it from running.
-summary_of: f27dc0322f7ed471
+summary_of: efdaee8196643757
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 79091b8a3271f0e2
+checksum: 90c5aa281647281f
 plan: upkeep
 seq: "4"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A strip built to explain what qualifies the numbers you are looking at is blank on every screen, because nothing ever fills it.
-summary_of: 6ee9c67bb34b32d1
+summary_of: 18f81c2cf3a3e739
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: ac19e10661279895
+checksum: f5230f476ea57821
 plan: walk
 seq: "39"
 state: todo

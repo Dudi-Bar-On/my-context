@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The data behind the proposed changes and the queue of things waiting for a person.
-summary_of: 5b2c5f6b62b887ea
+summary_of: 1644923f21136393
 scope: []
 tags:
   - "plan:ui2"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 3c449f2ba18cd836
+checksum: 282d066a322a550b
 plan: ui2
 seq: "3"
 state: done

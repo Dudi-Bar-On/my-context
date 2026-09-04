@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A health problem with no automatic fix shows no button and no explanation, so a healthy project looks like a broken screen.
-summary_of: d541c7648350d006
+summary_of: 2e1ae5c7a601d166
 acknowledged:
   - state_unaudited@862f7cb2d538d277
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 98f1596f714a02b9
+checksum: e12bf5c217a443d7
 plan: walk
 seq: "61"
 state: done

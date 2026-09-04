@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The spilled-item split is unreachable in both views a reader actually opens, and it describes a simulated run rather than a real injection.
-summary_of: 78227892dae5bddf
+summary_of: 8e4b03f6e37164e6
 scope:
   - src/ui/public/screens/**
   - src/ui/read-model.ts
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: afca218669be2fb7
+checksum: 74812327740f2eff
 plan: budget
 seq: "13"
 state: done

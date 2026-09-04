@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A styling detail and the two comments describing it disagree; settle which is right, and what a plain one should look like.
-summary_of: 8fe52a31a6f7f01e
+summary_of: e1a3bc81cfce9629
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: a2649d0ccd78a8a4
+checksum: 3c6fb92a5d335a14
 plan: repaint
 seq: 3e
 state: done

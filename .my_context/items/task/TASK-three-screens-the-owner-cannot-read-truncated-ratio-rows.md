@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three complaints about screens being hard to read, each needing measuring first to know whether the app or the design is at fault.
-summary_of: a43dea8b5c6359da
+summary_of: 964566ecf1307869
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: fa9bd72f3fb84ccb
 valid_from: 2026-08-28
 valid_until: null
-checksum: 769f55ddc10bc268
+checksum: 45c9306607b9335c
 plan: walk
 seq: "47"
 state: done

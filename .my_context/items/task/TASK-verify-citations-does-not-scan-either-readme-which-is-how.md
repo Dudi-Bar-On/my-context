@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The reference checker never looks at the two guides people read first, which is how six false claims sat there unnoticed.
-summary_of: c6dda75853218d61
+summary_of: 2b1fcb15c7b224f2
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 93f6bdcb2b0445c8
+checksum: 152bde004677282f
 state: done
 plan: rulings
 seq: "48"

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Keep proving that the reading side writes nothing, and state plainly in the guides what that proof does not cover.
-summary_of: 6b13ff8213318014
+summary_of: bc1e0fbed67a268e
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: afbb820f984fae91
+checksum: 0c85e81869faeb15
 plan: execute
 seq: "8"
 state: done

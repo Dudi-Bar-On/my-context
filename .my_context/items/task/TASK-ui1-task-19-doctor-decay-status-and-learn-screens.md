@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Four screens: what is wrong, what has gone unused, where things stand overall, and how to learn the tool."
-summary_of: 31e00fe6344e0bd0
+summary_of: 7e15571c7e9e91d9
 scope: []
 tags:
   - "plan:ui1"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: a5fecd3001827563
+checksum: dcd425383f09810c
 plan: ui1
 seq: "19"
 state: todo

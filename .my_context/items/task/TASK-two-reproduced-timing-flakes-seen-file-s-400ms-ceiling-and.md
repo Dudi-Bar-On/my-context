@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two tests that failed now and again purely because the machine was slow, told apart from real drift by measurement.
-summary_of: d85081d204571e46
+summary_of: 7de9fb135739e925
 summary_was:
   - 2026-09-03 Two tests fail now and again purely because the machine was slow; widen their margins rather than delete them.
 acknowledged:
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: dafb2f9ff08487ae
 valid_from: 2026-08-23
 valid_until: null
-checksum: 5cc53fd5214bab63
+checksum: 0f84ad7cad94b457
 plan: port
 seq: 10b
 state: done

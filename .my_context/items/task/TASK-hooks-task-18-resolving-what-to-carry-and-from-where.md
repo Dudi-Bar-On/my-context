@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Deciding which earlier session a new one should pick up from, and what of it is worth bringing along.
-summary_of: 978e9132d797784b
+summary_of: 5a1dc4c9f31dbdc3
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 756a63fee7eabf37
+checksum: 91f12ce355d5412c
 plan: hooks
 seq: "18"
 state: done

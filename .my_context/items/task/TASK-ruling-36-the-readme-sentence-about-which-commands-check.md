@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The guide names a command as careless about bad options when it is not, and describes a prohibition list at a third of its real length.
-summary_of: 36714c9b80c9f8d9
+summary_of: 501a24e0afb8d317
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 36ad59de3935e4eb
+checksum: 8d2f9ed670764b19
 plan: rulings
 seq: "36"
 state: done

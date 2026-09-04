@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen for writing something new has nothing serving it yet, so it cannot be built until that exists.
-summary_of: af2749083a30996a
+summary_of: d21bb5a20577abc8
 scope: []
 tags:
   - "plan:api"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: ed64a78141d03486
+checksum: 18feabd43af99f56
 plan: api
 seq: "1"
 state: done

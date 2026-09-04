@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Write up how sessions and carry-over work, in both of the project's languages.
-summary_of: df8279cee6418e93
+summary_of: a09ad970af285e9d
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 48f83fc707f49924
+checksum: 12d03afcc059a6f8
 plan: hooks
 seq: "20"
 state: done

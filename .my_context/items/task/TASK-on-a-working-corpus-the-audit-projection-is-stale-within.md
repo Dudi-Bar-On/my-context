@@ -6,7 +6,7 @@ status: superseded
 severity: soft
 always: false
 summary: Ordinary work makes the activity data out of date within minutes, so the history screen refuses to show anything most of the time.
-summary_of: c8243e8d95d0f509
+summary_of: 37763840646308b1
 acknowledged:
   - body_disagrees_with_meta@89b0776d7edf3e35
 scope: []
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 216656fd867ed34f
 valid_from: 2026-08-22
 valid_until: 2026-09-03
-checksum: 6df2b686ce6baf51
+checksum: 1ec99ba384567ec0
 state: done
 plan: ui3
 seq: 11x

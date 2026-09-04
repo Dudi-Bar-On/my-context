@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A screen promising what this session really received opens empty, because the sample data deliberately deletes the record for the newest session.
-summary_of: 5473a6f12771f455
+summary_of: 3abb253eac49d430
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 834d69cda959d8d1
+checksum: 6a450d465b445eda
 plan: walk
 seq: "35"
 state: done

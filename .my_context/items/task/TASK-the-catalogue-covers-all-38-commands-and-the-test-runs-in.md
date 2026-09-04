@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Describe every command the tool has, not just the ones the screens use, and check that description against reality in both directions.
-summary_of: 997619fd01d20bcb
+summary_of: 8d6f1b902eda9c2a
 scope: []
 tags:
   - "plan:builder"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 005f314642646629
+checksum: a5b0d0997e7658a0
 plan: builder
 seq: "3"
 state: doing

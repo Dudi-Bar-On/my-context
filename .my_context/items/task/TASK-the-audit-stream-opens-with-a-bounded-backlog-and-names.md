@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The activity feed shows nothing until something new happens, so a busy project looks empty and nothing explains why.
-summary_of: 42977e07b211aae8
+summary_of: a844ffd68ba795e9
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: c787734839628bb4
+checksum: ff1a48d432b8ecdb
 plan: walk
 seq: "52"
 state: done

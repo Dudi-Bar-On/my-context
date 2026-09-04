@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Accepting the offer to refresh throws away the choice the reader had made, which is the very thing asking first exists to protect.
-summary_of: 04965251e400e9ea
+summary_of: be04da9ef62b5898
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: f205cc824c39ca95
+checksum: 74bfc7f31f2d5a8a
 plan: walk
 seq: "64"
 state: done

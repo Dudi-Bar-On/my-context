@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Document the new setting in both language guides, and run the checks the way the project runs them.
-summary_of: ef741b90870a2ff7
+summary_of: 04d57bcfe3716a04
 scope: []
 tags:
   - v2
@@ -16,19 +16,20 @@ tags:
   - docs
   - "plan:handover"
   - "seq:8"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 4a7ed8445dc152dd
+checksum: 68adea5d5b1276e9
 plan: handover
 seq: "8"
-state: todo
+state: done
 priority: "3"
 source: owner, 2026-08-27
+verified_on: 2026-09-04
 ---
 
 # the handover key in both READMEs, and every gate green

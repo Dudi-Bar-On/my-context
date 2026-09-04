@@ -6,7 +6,7 @@ status: deprecated
 severity: soft
 always: false
 summary: A throwaway test probe with no real content, created only to check that extra fields could be set when an item is made.
-summary_of: c38ea9169ed0906b
+summary_of: 67c1385a52562c23
 scope: []
 tags:
   - "plan:probe"
@@ -18,7 +18,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: 2026-08-20
-checksum: 50417fa4a342b8d8
+checksum: b141f73f02327f6e
 seq: "0"
 state: done
 progress: "0"

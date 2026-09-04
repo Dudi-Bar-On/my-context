@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Hand the next session the notes left for it whenever it starts fresh, and say out loud when the notes were expected and are missing.
-summary_of: aab550e70fddcc73
+summary_of: c8309ca9df7a8b3d
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: a5f75c69d3e9315e
+checksum: 01f5ed99acc5a548
 plan: handover
 seq: "3"
 state: done

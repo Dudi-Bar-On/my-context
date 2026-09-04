@@ -6,24 +6,25 @@ status: active
 severity: soft
 always: false
 summary: The main guide never says that starting a session does not name it for you, and that naming it is a manual step.
-summary_of: 9a60a2483ba26d52
+summary_of: 59ce172266ca2ecd
 scope: []
 tags:
   - "plan:hooks"
   - "seq:16b"
   - v2
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: c877d2fb1b84af5c
-state: todo
+checksum: f222890ffda051ae
+state: done
 plan: hooks
 seq: 16b
 needs: rulings/48
+verified_on: 2026-09-04
 ---
 
 # README section 8 still owes the sentence that the id is not supplied automatically

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Run the end-to-end tests against the real running product rather than the static design file, checking relationships instead of fixed values.
-summary_of: dcdafe0d6f5813a8
+summary_of: 8c24f3a8c03b66c0
 acknowledged:
   - citation_form@7acc38e838784c89
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 72b071dd6dd9092b
+checksum: cc65185e47bb621c
 plan: ui1
 seq: 20e
 state: done

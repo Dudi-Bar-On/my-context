@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Run the browser tests in the real browser people actually use, and on screen, so somebody can watch them happen.
-summary_of: beb37507ce270559
+summary_of: aef5c1fa22e4b8cd
 scope: []
 tags:
   - "plan:fixes"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: f5d2f4f65963e117
+checksum: 932bca7fe16b3487
 plan: fixes
 seq: "3"
 state: done

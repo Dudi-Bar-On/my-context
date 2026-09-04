@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: Nine things the app already works out but has no words for, so the screens stay silent about them.
-summary_of: 624e36d649bd9bbc
+summary_of: 70ed858201d8f3f2
 scope: []
 tags:
   - "plan:screens"
   - "seq:10s"
-  - "state:todo"
+  - "state:done"
   - v2
 origin: human
 source_file: null
@@ -19,10 +19,11 @@ source_anchor: null
 source_checksum: d764f3027585502c
 valid_from: 2026-08-23
 valid_until: null
-checksum: 514257abbc453075
+checksum: 66ad9a1ee3a47902
 plan: screens
 seq: 10s
-state: todo
+state: done
+verified_on: 2026-09-04
 ---
 
 # nine facts the new read models serve that no string key can label

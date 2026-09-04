@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two buttons in the title bar do nothing when pressed, because the panels they were meant to open were never built.
-summary_of: c818978b716b6dac
+summary_of: b128ff91c02624e1
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 898294416f23f2c2
 valid_from: 2026-08-31
 valid_until: null
-checksum: 6984fb63cfe8e4c7
+checksum: e00456184dabce96
 plan: walk
 seq: "115"
 state: done

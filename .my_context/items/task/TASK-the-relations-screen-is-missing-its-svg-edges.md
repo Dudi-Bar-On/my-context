@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The relationships diagram draws its items and none of the lines between them.
-summary_of: 7f9c86264b7a5250
+summary_of: a158700e7706187b
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 16bea00bbf6f6f20
+checksum: fa3b7902f182bc5a
 plan: screens
 seq: 7s
 state: done

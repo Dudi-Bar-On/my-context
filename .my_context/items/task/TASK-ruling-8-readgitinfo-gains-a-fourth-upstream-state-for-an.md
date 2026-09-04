@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When the local version cannot be read at all, stop claiming it differs from the shared one and say it is unknown.
-summary_of: eeb68d832e7a30f8
+summary_of: 690b1bce5f9b2443
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 331286ec82a30665
+checksum: 4fb3429ca61eaf95
 plan: rulings
 seq: "9"
 state: done

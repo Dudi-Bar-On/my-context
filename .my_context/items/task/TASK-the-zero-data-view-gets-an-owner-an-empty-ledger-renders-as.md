@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When the history has never been summarised, say so and name the command that builds it, instead of showing what looks like nothing.
-summary_of: c94197e875227052
+summary_of: f2d2ce9bcafdd473
 scope: []
 tags:
   - "plan:rulings"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 42d47d5138902476
+checksum: 05d33167a92bd748
 plan: rulings
 seq: "26"
 state: todo

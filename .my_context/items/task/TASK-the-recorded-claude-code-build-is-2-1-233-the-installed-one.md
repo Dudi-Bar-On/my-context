@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A recorded fact about outside software still holds, but the version noted beside it is a few builds behind.
-summary_of: 1bc02e3ad9615e77
+summary_of: dea43aac1e3da225
 scope: []
 tags:
   - "plan:ui3"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: df3e907941f6a7de
+checksum: fb3d47fd5db62205
 plan: ui3
 seq: 3v
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The file picker offers every file in the project with no search and no limit; it needs one, and it must say when it has left files out.
-summary_of: 7f1d059d14423d85
+summary_of: 51c8919d152aa495
 scope: []
 tags:
   - "plan:ui1"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 8a4d2b5b33a51eb4
+checksum: 4eda189d453ade40
 plan: ui1
 seq: 17e
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The simulator shows a measured-empty message instead of its graph, because the seen gate removes every candidate before a tier can admit any.
-summary_of: c81f55c31e2effe8
+summary_of: a791331c4557f39b
 scope:
   - src/ui/public/screens/simulate.js
   - src/ui/read-model.ts
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: c2aa49780835f2f5
+checksum: ed134b473f308eca
 plan: budget
 seq: "12"
 state: done

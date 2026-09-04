@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Running a command is recorded as its own kind of event, because a run is not a change to one item and may not concern any item at all.
-summary_of: c93c29316118d23e
+summary_of: 6481178e9be6283a
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: dbf83c31a07acf76
+checksum: 13b9fa661d4463a7
 plan: execute
 seq: "4"
 state: done

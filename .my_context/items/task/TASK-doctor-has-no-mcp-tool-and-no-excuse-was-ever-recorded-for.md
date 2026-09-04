@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The self-check that reports index drift, orphans and dead globs has no tool counterpart, so an agent cannot run it without shelling out.
-summary_of: fe383bf3f8c2c894
+summary_of: 3bc53d273dd87705
 scope:
   - src/mcp/tools.ts
   - src/plugin/parity.ts
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 90161f4efbf006db
+checksum: 4fe4a03deb3d18ce
 plan: mcp
 seq: "2"
 state: done

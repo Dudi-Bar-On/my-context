@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A way to spot near-duplicates exists, and whether to show it while someone is writing something new is undecided.
-summary_of: 10c57d2fdb5d7578
+summary_of: 289ba706de515a18
 scope: []
 tags:
   - "plan:ui2"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 5f5cf55ea7136e7c
+checksum: c06c9563db44d22c
 plan: ui2
 seq: 5q
 state: done

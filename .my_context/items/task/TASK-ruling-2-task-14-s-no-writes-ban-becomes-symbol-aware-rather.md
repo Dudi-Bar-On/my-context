@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The rule that the screens cannot change anything should check which functions they use, not which files they sit near, and be proven able to fail.
-summary_of: 634f5abc4ffa6f54
+summary_of: efad66572f2c2d84
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: dda432abd590580a
+checksum: bbc0a0cb2d12dbff
 plan: rulings
 seq: "5"
 state: done

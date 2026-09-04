@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One of the four required charts has nothing serving it, so what gets pushed out has no data to draw from.
-summary_of: cfaac06baf5c1d9d
+summary_of: c286390a39d72ed7
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 549f2367c0a20d67
+checksum: c256afc72bc8e69e
 plan: ui1
 seq: 17d
 state: done

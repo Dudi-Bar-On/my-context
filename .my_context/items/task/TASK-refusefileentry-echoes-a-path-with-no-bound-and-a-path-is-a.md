@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Error messages quote file paths from a stranger's file at unlimited length; shortening them needs a decision, since a cut path is useless.
-summary_of: 61d346b6b84589a2
+summary_of: 254e3120f1bfc185
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: ba6153307bd0c0e9
+checksum: 659a68edf8b5b65e
 state: todo
 plan: export
 seq: "21"

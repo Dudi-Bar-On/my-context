@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Teach the delivery step about helper sessions, and make it state plainly what counts as already sent rather than assuming it.
-summary_of: 2be666b5b8419176
+summary_of: 71faaf90d3f7d8e2
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 38a9303a0909fcb6
+checksum: 4c6e3b9494a902b0
 plan: hooks
 seq: "9"
 state: done

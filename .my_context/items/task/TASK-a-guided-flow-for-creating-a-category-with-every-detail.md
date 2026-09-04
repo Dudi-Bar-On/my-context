@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A step-by-step way to set up a new kind of item that offers the allowed choices at each step, taken from the same rules that would reject a wrong one.
-summary_of: a059cd7284b77878
+summary_of: 450a3d35639569ec
 summary_was:
   - 2026-09-01 A step-by-step flow for defining a new kind of item that offers the legal choices at each step instead of expecting the user to know them.
 scope: []
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 6654fd2e3affb764
+checksum: 97ec90973fbc96a2
 plan: config
 seq: "3"
 state: done

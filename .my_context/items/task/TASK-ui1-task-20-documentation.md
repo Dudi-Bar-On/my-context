@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Write up how the web view behaves, in both of the language guides.
-summary_of: be519455cc79cc0c
+summary_of: a5d39d2a97eaa5e0
 scope: []
 tags:
   - "plan:ui1"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 085603b859812b27
+checksum: f28c3ed4ab0a94fc
 plan: ui1
 seq: "20"
 state: done

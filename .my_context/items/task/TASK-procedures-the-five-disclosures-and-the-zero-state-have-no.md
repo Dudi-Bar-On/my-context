@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen's most useful footnotes exist only in English, and having nothing to list shows a blank space with no explanation.
-summary_of: 42baa5f37f159fdb
+summary_of: 232c98d2fadd4d0b
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 7b211037fce35f6f
+checksum: 1298ac2cb5021b90
 plan: walk
 seq: "97"
 state: done

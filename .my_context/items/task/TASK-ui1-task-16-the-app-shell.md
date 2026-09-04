@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "The frame around every screen: starting up, language, moving between screens, and noticing when the server has gone away."
-summary_of: 7ac0de5323bff890
+summary_of: 4f0e7ae2bbb02cf7
 scope: []
 tags:
   - "plan:ui1"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 20d94f58e150b9b9
+checksum: f2c63a39dff27342
 plan: ui1
 seq: "16"
 state: done

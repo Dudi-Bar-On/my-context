@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A test never types anything, so it judges a blank screen and records four differences that do not exist; make it reach the real state first.
-summary_of: ddc9a6efae665f7d
+summary_of: 43ca389d193d9cd0
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: a640fb22c570b4ce
+checksum: d108292cde6aa5ba
 plan: walk
 seq: "55"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen about what a session receives is never told when a session is compressed, so it has to be reloaded by hand.
-summary_of: e3e40b72e837ab03
+summary_of: 08b0c921a1dc9439
 acknowledged:
   - state_unaudited@e7a7784db8366c33
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: a402665efa66df66
+checksum: bd0cceabedfc0fc0
 plan: live
 seq: "7"
 state: done

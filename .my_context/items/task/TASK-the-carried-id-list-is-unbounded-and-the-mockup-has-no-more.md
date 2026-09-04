@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A list of what a session inherited used to grow without limit and push everything else off screen; it is capped now.
-summary_of: cdb1675b8de11278
+summary_of: 5b9870c62804a3fb
 summary_was:
   - 2026-09-03 A list of what a session inherited grows without limit and pushes everything else off screen; someone must decide whether to cap it.
 acknowledged:
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 797abde85d80b16f
+checksum: cd2229b0fc2dfe8e
 state: done
 plan: screens
 seq: 1s-e

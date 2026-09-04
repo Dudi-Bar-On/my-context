@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A command that lists the working sessions this project has had.
-summary_of: d403083dbaff9f6f
+summary_of: 2ec7bfb6b799f8e1
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: e088b441d3fa5886
+checksum: 9da8aa9f2036f343
 plan: hooks
 seq: "14"
 state: done

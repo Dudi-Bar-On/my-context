@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A refusal says what you may not write and never mentions the small change that would let the same query through.
-summary_of: fec110c91fe3cbce
+summary_of: 79bdff86a2f2434f
 scope: []
 tags:
   - v2
@@ -15,19 +15,20 @@ tags:
   - rulings
   - "plan:rulings"
   - "seq:52"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/refuse.md"
 source_anchor: null
 source_checksum: 701a75d20453c4e9
 valid_from: 2026-08-31
 valid_until: null
-checksum: 4d574da6dd8e8650
+checksum: a7911c340627d7c5
 plan: rulings
 seq: "52"
-state: todo
+state: done
 priority: "2"
 source: "named by plan:rulings seq:46, 2026-08-31"
+verified_on: 2026-09-04
 ---
 
 # the read-only refusal names what is forbidden and not the double-quote that unblocks it

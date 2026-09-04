@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Forty-four references to code are written in a form the checker ignores; convert them, and repair the ones that turn out to be wrong.
-summary_of: 82f3ef11cf1ab09d
+summary_of: 2614fa01cb8645cc
 acknowledged:
   - citation_form@27140dd5951189b9
 scope: []
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: bd060bc9eac2f4bf
+checksum: ce15471fcd2a38af
 plan: rulings
 seq: "33"
 state: done

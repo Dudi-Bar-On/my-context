@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Ten browser tests fail together and pass alone, and eight of the ten are on one browser; nobody has chased why.
-summary_of: e28a0b37f4f0c97b
+summary_of: c24648589ac071f3
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 170f73dbaea506b2
 valid_from: 2026-08-29
 valid_until: null
-checksum: f5e43ec51354969b
+checksum: 033e10ff3b1dc4e0
 plan: walk
 seq: "84"
 state: done

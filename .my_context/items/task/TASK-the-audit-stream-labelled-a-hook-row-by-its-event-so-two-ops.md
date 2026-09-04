@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three ops shared one event name on screen, so a step and a stop read identically and neither named itself.
-summary_of: caad97d9edbff075
+summary_of: 11b388b999cd5375
 acknowledged:
   - state_unaudited@4977dd6839c766d4
 scope: []
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 21fdc5fb727c3893
+checksum: 58227c3c53d8f887
 plan: walk
 seq: "135"
 state: done

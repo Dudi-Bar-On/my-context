@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The small program that runs when a helper session starts, and the wording that tells the reader where what it delivers came from.
-summary_of: a502bb0282ae78d1
+summary_of: a1c9ae1a1218e104
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 6486ccae3198fc1e
+checksum: 4cbc1829766ff668
 plan: hooks
 seq: "10"
 state: done

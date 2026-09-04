@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two small pieces of the Learn screen are still not drawn.
-summary_of: 25a665caf0aeeec2
+summary_of: abc0fc87a57e401e
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 2d34c44c0aa0eca2
+checksum: 9415aff4a0836ee2
 plan: screens
 seq: 8s
 state: done

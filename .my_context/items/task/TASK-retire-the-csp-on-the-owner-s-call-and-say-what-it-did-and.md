@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Drop a browser security policy that was blocking live debugging, and record honestly what it protected and what it never did.
-summary_of: c3e78d2d90b9b805
+summary_of: 46d1563352f61c4d
 scope: []
 tags:
   - "plan:fixes"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: b3c5d2d85d4731f3
+checksum: 0e07231a7d084b5f
 plan: fixes
 seq: "1"
 state: done

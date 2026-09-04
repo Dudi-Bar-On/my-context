@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Five lists used to print everything the server sent; each carries a limit, a stated order and a sentence about what is not shown.
-summary_of: 718a447edbe1ea69
+summary_of: f3c51a2c60fff60f
 summary_was:
   - 2026-09-03 Five lists print everything the server sends with no limit; each needs a limit, a stated order, and an honest sentence about what is not shown.
 acknowledged:
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-26
 valid_until: null
-checksum: 5ad26f219bed431b
+checksum: d68584cd1bfbdc3b
 plan: walk
 seq: "45"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When something is deliberately not done yet, the condition that would change that should be checkable, so nobody has to notice by hand.
-summary_of: 2d6ab60c34a38488
+summary_of: 537b1f0900e7abe7
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: d145a58afb87278b
+checksum: 4e86cf86665d22c2
 plan: walk
 seq: "11"
 state: todo

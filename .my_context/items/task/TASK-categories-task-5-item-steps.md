@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Let an item carry an ordered list of steps as part of its stored format, so a procedure can be written down properly.
-summary_of: 8b5e8387a3e80b08
+summary_of: a2427b9d8f5bc039
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 80d726288e23d961
+checksum: 53db2dfae875de07
 plan: categories
 seq: "5"
 state: done

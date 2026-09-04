@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The server should write down the address it actually answered on, and clear that note again when it stops.
-summary_of: 18e0a534b478c73e
+summary_of: 60d42c414c4f2598
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 7bfed51c9b2494a0
+checksum: 07d8fa5ef9ab39a9
 plan: upkeep
 seq: "2"
 state: done

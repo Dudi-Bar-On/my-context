@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Steps are written live from the tool-use hook instead of only being backfilled when a lane stops.
-summary_of: 88948f14d6cee65b
+summary_of: c8a65758b4b24df3
 scope:
   - hooks/hooks.json
   - src/hooks/**
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: c3bc9d81c88aeb46
+checksum: f12dcc716d91d7ae
 plan: hooks
 seq: "33"
 state: done

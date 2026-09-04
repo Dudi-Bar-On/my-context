@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Add the newest requirement to the specification that lists them all, along with the four decisions taken about it.
-summary_of: a415e374e9f550bd
+summary_of: 3c4be34b9e20c8ac
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 8deb5835b88595bf
+checksum: 0de5a09c8f1c4b07
 plan: rulings
 seq: "18"
 state: done

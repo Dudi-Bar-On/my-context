@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A blocked-on pointer, an assumption's checkup date and a reference's source file can all be set on an item, and no check reads any of them back.
-summary_of: eeaf2827427f1566
+summary_of: 8b382b1e9b5065a0
 scope:
   - src/doctor/checks.ts
 tags:
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 98f8ce33be2e2c26
+checksum: 1a762841c6f6d5be
 plan: categories
 seq: "25"
 state: todo

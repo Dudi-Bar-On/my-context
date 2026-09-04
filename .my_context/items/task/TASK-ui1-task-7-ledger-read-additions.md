@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two new ways to read the record of what has been delivered, and to summarise sessions that have gone.
-summary_of: 71a3890b3c01b919
+summary_of: 328271150881187e
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: ade480953c2684f7
+checksum: 6255424eab339c8f
 plan: ui1
 seq: "7"
 state: done

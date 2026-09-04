@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Four statements in the plans are no longer true, and sampling suggests a couple of dozen more that no automatic check could ever find.
-summary_of: 9fa0bd459e280444
+summary_of: a1e088af56e5bbb8
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 8dd3ed617d06278f
+checksum: 760d82acce8a53b4
 plan: rulings
 seq: 33b
 state: done

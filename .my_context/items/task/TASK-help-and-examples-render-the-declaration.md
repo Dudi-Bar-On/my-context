@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The built-in help should show what can be changed on each kind of item, since that is already written down and nothing currently displays it.
-summary_of: da450f4111346808
+summary_of: 14d359589a3b8a98
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 37e899e59049036a
+checksum: 50873028d85d1197
 plan: categories
 seq: "16"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The data behind the coverage, relationships, item list and help screens.
-summary_of: 6f3821525558c133
+summary_of: 210720931d5e460f
 scope: []
 tags:
   - "plan:ui1"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 06813665a9092c70
+checksum: f2f8587ac27f38b5
 plan: ui1
 seq: "11"
 state: done

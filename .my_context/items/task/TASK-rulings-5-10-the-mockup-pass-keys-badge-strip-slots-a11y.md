@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One deliberate pass over the design file carrying six agreed changes at once, because they all edit the same place and would collide.
-summary_of: 6fd4836c4eca275d
+summary_of: bfe055796d4b5299
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 85829413bc422a8b
+checksum: cd6dbeac70c317ed
 plan: rulings
 seq: "7"
 state: done

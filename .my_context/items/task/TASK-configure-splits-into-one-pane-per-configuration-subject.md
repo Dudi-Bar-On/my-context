@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Break the settings page into one clear section per subject, each showing its current value, instead of one flat page covering only part of them.
-summary_of: 635cfd3470ee5ee9
+summary_of: 8d3e327d4269d3b4
 scope: []
 tags:
   - "plan:config"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: f5121b3de9eba869
+checksum: e19c5ee6ebc42225
 plan: config
 seq: "1"
 state: done

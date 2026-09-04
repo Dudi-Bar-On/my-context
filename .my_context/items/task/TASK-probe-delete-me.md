@@ -6,7 +6,7 @@ status: deprecated
 severity: soft
 always: false
 summary: A throwaway test probe with no real content, created only to check that a custom category could be used.
-summary_of: 65cbafe962d62659
+summary_of: 090e2384fe39b310
 scope: []
 tags:
   - "plan:probe"
@@ -18,7 +18,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: 2026-08-20
-checksum: d47f545a62df9a2c
+checksum: aa4d918959fef66d
 progress: "0"
 state: done
 plan: probe

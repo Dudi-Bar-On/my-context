@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Nothing on the staleness chart says that it counts sessions rather than days, so the whole picture can be misread as a calendar.
-summary_of: 42dd4820c5fceb2e
+summary_of: f9c266d4bb3ab5cc
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 4e79d5e90dafb5a1
+checksum: a5eb87f973464745
 plan: walk
 seq: "91"
 state: todo

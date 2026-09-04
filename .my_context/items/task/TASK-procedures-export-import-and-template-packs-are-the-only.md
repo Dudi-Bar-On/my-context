@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three screens say nothing about what they are good for, because retiring an old design label left that slot empty rather than filled.
-summary_of: 1c8230543b90b949
+summary_of: 8f3131cf623632d4
 scope: []
 tags:
   - v2
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: d1da13705cc2259e
+checksum: 72a0f71fbadbde1a
 plan: walk
 seq: "108"
 state: todo

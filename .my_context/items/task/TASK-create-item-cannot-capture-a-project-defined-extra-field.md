@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Capturing an item through a tool cannot set a project's own custom field, because the tool offers only the fields the shipped categories declare.
-summary_of: 87537aab81a469e4
+summary_of: 178d137e6af7a921
 scope:
   - src/mcp/tools.ts
 tags:
@@ -15,18 +15,19 @@ tags:
   - tools
   - "plan:mcp"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 788b0c363ac54d0a
+checksum: a6c8cb7399f02969
 plan: mcp
 seq: "3"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-04
 ---
 
 # create_item cannot capture a project-defined extra field, only a built-in one

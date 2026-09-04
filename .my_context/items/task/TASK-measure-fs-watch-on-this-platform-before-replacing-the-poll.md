@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Before switching from checking a file every second to being notified of changes, measure whether those notifications are actually reliable here.
-summary_of: 7bf0e8dc3c9cfadf
+summary_of: 1561ec064d6e987b
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 4a5648a125814048
+checksum: 6bc04013b5eb0381
 plan: live
 seq: "5"
 state: done

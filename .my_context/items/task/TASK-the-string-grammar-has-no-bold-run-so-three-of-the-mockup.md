@@ -6,7 +6,7 @@ status: superseded
 severity: soft
 always: false
 summary: Three emphasised phrases on the activity screen come out flat, because translated text cannot carry bold at all.
-summary_of: c677fe860db81968
+summary_of: b7dea54ca169e91f
 acknowledged:
   - body_disagrees_with_meta@19d91c84a2ef5193
 scope: []
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: b6762f4cdaf3db39
 valid_from: 2026-08-22
 valid_until: 2026-09-03
-checksum: 666eb1ecba9cc6af
+checksum: e1f4cd9418db908a
 state: done
 plan: ui3
 seq: 11x

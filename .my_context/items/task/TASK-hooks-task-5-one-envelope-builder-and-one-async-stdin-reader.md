@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One shared way to read what the editor sends in and to build what goes back, so that every event handler does not write its own.
-summary_of: b5605e6ef2c1b46b
+summary_of: 72156fa46fd9fc82
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: df13191dbb874ef2
+checksum: 24b04c8619172e44
 plan: hooks
 seq: "5"
 state: done

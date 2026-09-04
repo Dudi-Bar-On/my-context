@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen meant to show what has gone unused has no heat map at all, which is the whole picture it exists to give.
-summary_of: 942ac0a63430c49f
+summary_of: 2a8abf1136ddf8a2
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 81ee22b8e880d7ad
+checksum: 13c278208cea7a3f
 plan: screens
 seq: 2s
 state: done

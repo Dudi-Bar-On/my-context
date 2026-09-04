@@ -6,7 +6,7 @@ status: superseded
 severity: soft
 always: false
 summary: The documentation screen promises to show a document that nothing serves; it will instead say plainly which help topics it really does show.
-summary_of: c588b0e344972626
+summary_of: 18bb518983d71cad
 acknowledged:
   - body_disagrees_with_meta@db3c6552a1212c03
 scope: []
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: c8cda95525910d8b
 valid_from: 2026-08-23
 valid_until: 2026-09-03
-checksum: 2b59b72af2e7f1e8
+checksum: d3c10531120e5f8c
 state: done
 plan: port
 seq: 5c

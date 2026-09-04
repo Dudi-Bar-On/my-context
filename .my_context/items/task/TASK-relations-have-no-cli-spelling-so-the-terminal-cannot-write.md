@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The command line cannot record a relation between two items at all; only the MCP server can, which split the merge in half.
-summary_of: f775aa9da9f45ff5
+summary_of: ca9ee77401510eed
 scope: []
 tags:
   - v2
@@ -14,18 +14,19 @@ tags:
   - relations
   - "plan:rulings"
   - "seq:54"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-03
 valid_until: null
-checksum: 269c4aa1fd416a90
+checksum: 9a985eb9abab368d
 plan: rulings
 seq: "54"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-04
 ---
 
 # Relations have no CLI spelling, so the terminal cannot write one at all

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three comments that had gone false are fixed; what is left is that a broken settings file is disclosed on one screen only.
-summary_of: 0fbc4ceefec2740f
+summary_of: 2c565d8d5fb63af8
 summary_was:
   - 2026-09-03 Three explanatory comments give reasons that have since stopped being true, which is worse than never having written them.
 acknowledged:
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 4d7178e3fd8c98ee
+checksum: f8ca32bcfe508b4e
 plan: live
 seq: "13"
 state: todo

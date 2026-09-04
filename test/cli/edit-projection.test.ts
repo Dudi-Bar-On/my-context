@@ -135,9 +135,11 @@ function phrase(text: string): RegExp {
 test('--state writes the field and rewrites the projected tag in one write', () => {
   withProject((cwd) => {
     const id = chore(cwd);
-    // `--state` writes `extra`, which IS part of what a summary summarises, so
-    // the gate asks for one. This fixture item has none and keeps none.
-    const { code, out } = run(['edit', id, '--state', 'done', '--summary-unchanged'], cwd);
+    // `--state` writes `extra`, but `state` is a WORKFLOW key inside it
+    // (`WORKFLOW_EXTRA_KEYS`, content-hash.ts) — owner ruling 2026-09-04 — so
+    // the summary gate does not ask for one here, and `--summary-unchanged`
+    // would now be refused as answering a gate this edit never raises.
+    const { code, out } = run(['edit', id, '--state', 'done'], cwd);
 
     assert.equal(code, 0, out);
     const file = itemFile(cwd, 'chore', id);
@@ -152,7 +154,7 @@ test('--state writes the field and rewrites the projected tag in one write', () 
 test('--extra is the same door and projects identically', () => {
   withProject((cwd) => {
     const id = chore(cwd);
-    const { code, out } = run(['edit', '--summary-unchanged', id, '--extra', 'state=blocked'], cwd);
+    const { code, out } = run(['edit', id, '--extra', 'state=blocked'], cwd);
 
     assert.equal(code, 0, out);
     const file = itemFile(cwd, 'chore', id);
@@ -177,8 +179,7 @@ test('--state at the value the item already holds changes nothing and says so', 
 test('--tags and --state compose: the projection lands on the replacement list', () => {
   withProject((cwd) => {
     const id = chore(cwd);
-    const { code, out } = run(['edit', id, '--tags', 'v2,ui', '--state', 'done',
-      '--summary-unchanged'], cwd);
+    const { code, out } = run(['edit', id, '--tags', 'v2,ui', '--state', 'done'], cwd);
 
     assert.equal(code, 0, out);
     const file = itemFile(cwd, 'chore', id);
@@ -342,7 +343,7 @@ test('a declaration whose command is the generic --extra spelling grows no flag'
     assert.equal(code, 1, out);
     assert.match(out, phrase('unknown option "--state"'));
     // The projection still holds through the spelling the declaration DOES name.
-    assert.equal(run(['edit', '--summary-unchanged', id, '--extra', 'state=done'], cwd).code, 0);
+    assert.equal(run(['edit', id, '--extra', 'state=done'], cwd).code, 0);
     assert.ok(tagsOf(itemFile(cwd, 'chore', id)).includes('state:done'));
   }, taskConfig({
     state: { store: 'field', values: ['todo', 'done'], projectsTo: 'state', note: 'Where it is.' },

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A warning meant for real rewrites now fires on every finished task, so people wave it away by habit, and it stops protecting the cases it was built for.
-summary_of: 5d163348367b9b3f
+summary_of: c5fdfca0b72b5a05
 scope: []
 tags:
   - summary
@@ -14,15 +14,16 @@ tags:
   - edit
   - workflow
   - owner-ruling-needed
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 34df905b5f87cb02
-state: todo
+checksum: 96b5b04e2803dcc4
+state: done
+verified_on: 2026-09-04
 ---
 
 # Closing any task trips the summary gate even though only the workflow field state changed, training reflexive use of --summary-unchanged

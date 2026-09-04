@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The relationships diagram always draws whichever item happens to come first, because there is no way to choose which one to look at.
-summary_of: f4c837162511573c
+summary_of: 0842d5439c5b8329
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: bd7fa12f4a9f139d
+checksum: bf8b5c2c98099e53
 plan: walk
 seq: "87"
 state: done

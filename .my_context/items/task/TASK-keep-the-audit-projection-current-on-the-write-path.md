@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Keep the searchable copy of the activity log up to date as it is written, instead of letting it fall behind until someone runs a command.
-summary_of: 09a6fa023b77b6dc
+summary_of: b61f96e2bb87b56b
 acknowledged:
   - state_unaudited@62708b3b72a4a5c0
 scope: []
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 12a9c834f14ad822
+checksum: c33043ead5a4f9d2
 plan: walk
 seq: "28"
 state: done

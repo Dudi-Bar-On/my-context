@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Add three new kinds of item and update every place in the code that lists the kinds, all in one change so that none is left behind.
-summary_of: 8832c3347db020c5
+summary_of: cd58f50f5f222d69
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 358040d4179a0354
+checksum: 4aaac8fd081f8a62
 plan: categories
 seq: "2"
 state: done

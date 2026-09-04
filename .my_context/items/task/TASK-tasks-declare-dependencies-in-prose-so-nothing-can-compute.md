@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Nothing can work out which jobs are ready, because what blocks what is written only in sentences and never in a form a machine can read.
-summary_of: fff596752e95198a
+summary_of: 7f6fa9caaf52c706
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: acd2c00ca5f22d2f
+checksum: ea18ed8639cd5c31
 plan: categories
 seq: "21"
 state: done

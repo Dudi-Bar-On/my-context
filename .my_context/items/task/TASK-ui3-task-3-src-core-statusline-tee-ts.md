@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Keeping a copy of the figure the status line reports, so the rest of the product can read it too.
-summary_of: 035ff5506a1cce58
+summary_of: e998655ce127e714
 scope: []
 tags:
   - "plan:ui3"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 333830c300ad83a1
+checksum: 2c184f7abf90eb50
 plan: ui3
 seq: "3"
 state: done

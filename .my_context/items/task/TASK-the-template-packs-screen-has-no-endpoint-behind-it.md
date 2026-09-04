@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The shared-collections screen has nothing serving it yet, so it cannot be built until that exists.
-summary_of: 3099ee349d86f675
+summary_of: 570097894f787db8
 scope: []
 tags:
   - "plan:api"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 48f33b6a04db0749
+checksum: e3e0659bef790436
 plan: api
 seq: "4"
 state: done

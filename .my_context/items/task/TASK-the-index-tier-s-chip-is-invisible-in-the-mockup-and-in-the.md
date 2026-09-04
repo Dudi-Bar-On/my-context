@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One label is drawn near-black on near-black and cannot be seen at all; the fault is in the design file, not in the app.
-summary_of: d91701b89c9d66fe
+summary_of: bdf87dce7fb38549
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 13f0234ed7001c24
+checksum: b19b1421be31aabc
 plan: screens
 seq: 1s-c
 state: done

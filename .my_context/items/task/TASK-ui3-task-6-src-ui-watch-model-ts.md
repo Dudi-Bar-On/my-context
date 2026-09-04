@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The data behind the activity screen, including what was pushed out, how much happened, and the live feed of events.
-summary_of: 289d9db84b084612
+summary_of: 27de8451fe7bc4d7
 scope: []
 tags:
   - "plan:ui3"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 5c0daef24e552e4a
+checksum: caa42b758800514b
 plan: ui3
 seq: "6"
 state: done

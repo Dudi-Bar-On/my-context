@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The menu is meant to carry small counts of what needs attention; the styling exists and nothing ever draws them.
-summary_of: f0be9e576d662684
+summary_of: f99ad8c9baf9f02c
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: eba499d7ece3fb89
+checksum: 7b47e5b28194e2ea
 plan: walk
 seq: "38"
 state: done

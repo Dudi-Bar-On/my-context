@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The activity table shows a time and two dashes for most rows, because it never shows the one thing that says what the record was.
-summary_of: 64089b55f9f0a10c
+summary_of: e6d613c412a44d3c
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 87865b4c0ce20cb0
+checksum: f772fea6af4b15ac
 plan: walk
 seq: "73"
 state: done

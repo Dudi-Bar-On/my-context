@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Adopt one icon set for the six symbols the app needs, using files that ship ready to use rather than ones that must be extracted.
-summary_of: 3f318327877a27c9
+summary_of: 290715dd724b4afb
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: a260ff36af4a613f
+checksum: 311dbea6fd858504
 plan: repaint
 seq: "5"
 state: done

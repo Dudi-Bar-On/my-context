@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The coverage tree builds nearly a thousand plain buttons the design never called for, and needs rebuilding the way the design describes.
-summary_of: 2effb3e89308a399
+summary_of: 3aad44b1ce8773d6
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: a682213b4ee8b989
+checksum: cfba2c888b67e035
 plan: port
 seq: "2"
 state: done

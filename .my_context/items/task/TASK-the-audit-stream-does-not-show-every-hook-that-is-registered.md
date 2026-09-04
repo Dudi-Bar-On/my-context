@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Registered hooks are absent from the stream on screen and there is no way to tell a hook that never fired from one the screen drops.
-summary_of: 09d170ceea698468
+summary_of: 1b5edb16aafadce5
 scope:
   - hooks/hooks.json
   - src/hooks/**
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 6a8ad983c6ca0c70
+checksum: 434634422dbf911c
 plan: hooks
 seq: "31"
 state: done

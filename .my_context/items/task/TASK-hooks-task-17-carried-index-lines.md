@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Carry a short summary of earlier work into the next session, ranked and marked so a reader can tell it apart from the rest.
-summary_of: 7e247ec476488c06
+summary_of: 854a23ce0a6ce133
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: c6c3e969bea8fd4c
+checksum: 9189c5d8e05b2e55
 plan: hooks
 seq: "17"
 state: done

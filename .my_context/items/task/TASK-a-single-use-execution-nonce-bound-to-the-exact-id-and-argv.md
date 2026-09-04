@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A one-time permit tying a run to the exact command the user was shown, so a local page cannot quietly run something else instead.
-summary_of: db1e4cf53d8e2c19
+summary_of: 524b06c6d393935a
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: f866fb03263e5460
+checksum: a67ae58b4235610f
 plan: execute
 seq: "3"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: After approving something from the queue it stays on screen and the count beside it never moves, so the action looks as though it failed.
-summary_of: 01084eeac1f47046
+summary_of: 012c3e38ad7974f3
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: 53735a21f1fda04f
 valid_from: 2026-08-31
 valid_until: null
-checksum: ca1c6fbd652a1712
+checksum: 3d313e574b82a920
 plan: walk
 seq: "120"
 state: done

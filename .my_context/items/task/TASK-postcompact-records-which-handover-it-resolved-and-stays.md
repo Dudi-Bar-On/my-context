@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Record which handover note was picked up when a session's history is compressed, while printing nothing to the person using it.
-summary_of: a0f60b73872d42f2
+summary_of: bee4a51d7f45bbea
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: fe5cabdbdab213c4
+checksum: 7a8f297a9481dcf3
 plan: handover
 seq: "4"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Each screen states what kind of change makes its data stale, and a check ensures none was simply forgotten, including those that never go stale.
-summary_of: 798e34764bed8a7e
+summary_of: 9de53bd5eb4bb543
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 52efc7cb89cf8dff
+checksum: cddd9ffdbfc91cf6
 plan: live
 seq: "2"
 state: done

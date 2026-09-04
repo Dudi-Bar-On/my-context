@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The activity results give no sign of whether more rows matched, so a cut-off answer looks exactly like the complete one.
-summary_of: fdd9929a726580bd
+summary_of: 2ef4360046c807b7
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 3e91000887bac632
 valid_from: 2026-08-29
 valid_until: null
-checksum: 0637439270a02e0b
+checksum: 547fbb0e4eecbf68
 plan: walk
 seq: "76"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When a session gets close to full, ask once for handover notes to be written, and never ask a second time.
-summary_of: 5431de43068b0e02
+summary_of: 985525c38a8cdd7f
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 2239a17bfc22c60f
+checksum: a52aaa0b2de01492
 plan: handover
 seq: "6"
 state: done

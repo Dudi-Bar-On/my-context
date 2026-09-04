@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen for things awaiting a person shows only one of the two queues, and offers no way to accept or reject anything.
-summary_of: 3de06f971b26c779
+summary_of: 879ecfb5eeec01e2
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: d34c764dcb2a63c2
 valid_from: 2026-08-29
 valid_until: null
-checksum: 5b7b8f1f11615847
+checksum: 0e84cefe03c1a99e
 plan: walk
 seq: "81"
 state: done

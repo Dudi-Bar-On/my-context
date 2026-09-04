@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The browser tests stopped passing reliably once the sample data grew, and there is no earlier measurement to compare against.
-summary_of: ed6d3c353561b7af
+summary_of: a9a5719da58b95a0
 acknowledged:
   - body_disagrees_with_meta@3f63f1005dbcb37d
 scope: []
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-30
 valid_until: null
-checksum: 6e8f9edf78f996e4
+checksum: 8bb083af9c71792a
 plan: port
 seq: "96"
 state: done

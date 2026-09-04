@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A test proving the live feed opens only once fails every time, and nothing in the feed's own code has changed.
-summary_of: b5cebedb8b691557
+summary_of: a6c73c9c64802d8b
 acknowledged:
   - state_unaudited@c836fd9adae9f48a
 scope: []
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: d670507616344884
+checksum: 6fdd0976e5a84595
 plan: live
 seq: "11"
 state: done

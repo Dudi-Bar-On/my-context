@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Explain how people find bundles others have shared, and describe in both main documents what history travels with one.
-summary_of: fac9e1a9158e4682
+summary_of: f8d1fddb465685fe
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 58ca536216017c8a
+checksum: b3d8f28d31a34555
 plan: export
 seq: "17"
 state: done

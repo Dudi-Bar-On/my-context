@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Each reason for leaving something out shows one example and never says how many, so hundreds of omissions read as a handful.
-summary_of: e36c906f874a8681
+summary_of: d80a7c4673201ffb
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: a287fcd1a97ffc25
 valid_from: 2026-08-29
 valid_until: null
-checksum: f268b2ca15455ad3
+checksum: 15ec580f18986812
 plan: walk
 seq: "80"
 state: done

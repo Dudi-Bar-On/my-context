@@ -6,23 +6,24 @@ status: active
 severity: soft
 always: false
 summary: An owner needs to decide whether the browser test suite should pass on a second automatic rerun of only its failures before being called broken.
-summary_of: 58699a406c383030
+summary_of: e03e878e09e3455b
 scope: []
 tags:
   - e2e
   - gates
   - port
   - "plan:port"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-test-mycontext-plugin/9e5b6b17-c186-4c93-a0a5-775b4eccd9e7/scratchpad/task-two-phase-gate.md"
 source_anchor: null
 source_checksum: d1e293bb45423427
 valid_from: 2026-09-02
 valid_until: null
-checksum: 7d631b4307ab4607
-state: todo
+checksum: 6cd28ee4bd674026
+state: done
 plan: port
+verified_on: 2026-09-04
 ---
 
 # decide whether e2e goes green on a two-phase default-workers-then-last-failed gate

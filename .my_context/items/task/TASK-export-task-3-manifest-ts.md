@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The list of a bundle's contents with a fingerprint for each, so a receiver can tell whether anything was altered on the way.
-summary_of: 7be5d3fc00ab7385
+summary_of: cf414a97f85b16bf
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 98eeedd3abe977a4
+checksum: 61de3636e046e1ca
 plan: export
 seq: "3"
 state: done

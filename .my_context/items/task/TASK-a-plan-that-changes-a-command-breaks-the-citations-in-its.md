@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Changing something a plan quotes breaks the plan's own quotations, and people keep discovering that as a failed check instead of being warned.
-summary_of: 2db787bc071c3d7c
+summary_of: db924d311e5d8474
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: d726a401f0706990
+checksum: 76e1d388f695d7fe
 plan: rulings
 seq: "38"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One of the required charts cannot be drawn, because two facts it needs are never sent to the page and cannot be worked out there.
-summary_of: c4fe97a014b99be0
+summary_of: 6c8c39568f4f893a
 scope: []
 tags:
   - "plan:ui1"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 7557b380fbf0338f
+checksum: 9fd838337867ddf4
 plan: ui1
 seq: 17b
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Code inside bold text loses its protection, so a path or a flag can display with its parts reordered inside right-to-left prose.
-summary_of: 39224164ad7e9da6
+summary_of: 8c2b4d86a5ac89de
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 82b742e85df50ae0
+checksum: 84389af884e03dfd
 plan: walk
 seq: "94"
 state: done

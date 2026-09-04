@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two of the three ways to write an item skip the rules the third enforces, so a bad value is accepted and only noticed later.
-summary_of: fb954b42bd670501
+summary_of: 8c56b0db70453c21
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 3b3a69682ce88da0
+checksum: 98ae18660b439c55
 state: done
 plan: categories
 seq: "20"

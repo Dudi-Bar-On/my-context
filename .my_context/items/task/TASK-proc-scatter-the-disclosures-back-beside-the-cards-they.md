@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Move each footnote back beside the card it is about, instead of piling them all together at the bottom of the screen.
-summary_of: bd61e5389bf87c88
+summary_of: 2c0d91ee31dfc069
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 6321cb96bec384e1
+checksum: b00a3bdd4f47c68c
 plan: walk
 seq: "2"
 state: todo

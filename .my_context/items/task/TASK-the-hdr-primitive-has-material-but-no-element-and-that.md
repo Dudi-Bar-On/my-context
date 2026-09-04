@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A style for the top bar exists but nothing wears it, and whether the top bar should look that way was never actually decided.
-summary_of: a84110b86d1e4d01
+summary_of: 2962a683fcfb1ca5
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 782417242796ed14
+checksum: 99d90af96064874e
 plan: repaint
 seq: 3d
 state: done

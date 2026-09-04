@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Which past changes travel with a bundle, in a fixed order and with private details removed.
-summary_of: 3a650c787e8aee1f
+summary_of: 644b294919e75ee8
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 2ec2603f554997a0
+checksum: 4bead61bc3edfad3
 plan: export
 seq: "4"
 state: done

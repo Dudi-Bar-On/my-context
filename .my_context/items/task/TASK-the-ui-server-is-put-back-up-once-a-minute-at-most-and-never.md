@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Bring the web view's server back after it dies, slowly and only a few times, then give up out loud rather than retrying forever.
-summary_of: 3eec7a2183bd6caa
+summary_of: 24a78b33e2159748
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: db3a9608776de121
+checksum: 38f3b28cf139305e
 plan: upkeep
 seq: "5"
 state: done

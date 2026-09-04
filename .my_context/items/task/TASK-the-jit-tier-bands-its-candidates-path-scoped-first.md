@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When choosing what to offer for the file you are working in, prefer things written about that file over general ones.
-summary_of: 839763335e197058
+summary_of: 103b6ab8c94acc41
 acknowledged:
   - state_unaudited@3d7ab1b6b59af2f2
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 0038cdc5c70abfc5
+checksum: 625704461a2d549c
 plan: budget
 seq: "7"
 state: done

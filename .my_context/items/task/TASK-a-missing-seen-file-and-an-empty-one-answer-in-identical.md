@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A session that was never recorded looks exactly like one that received nothing, so the screen confidently tells the reader something untrue.
-summary_of: 0902c62f55d9b1fe
+summary_of: 1202daefd1d96c18
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: c7de387c5b4a3601
 valid_from: 2026-08-29
 valid_until: null
-checksum: 61c0ac6c9f1cfeab
+checksum: 3e9750c511b14dbb
 plan: walk
 seq: "111"
 state: done

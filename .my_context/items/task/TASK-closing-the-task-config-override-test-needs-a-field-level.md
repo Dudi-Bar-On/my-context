@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Removing a retired field from a project's category override needs a capability nobody has built, so the test proving the override stays in step cannot pass.
-summary_of: 2c5e297e3181158f
+summary_of: f5e6a67891f966e7
 scope:
   - src/core/config.ts
   - test/core/config-task-override.test.ts
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: dd1da5cca70cd0a8
+checksum: 8c2e7e543a105705
 plan: rulings
 seq: "57"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A typo in a settings file is ignored without warning, so someone working at a terminal believes a setting applied when it never did.
-summary_of: 7e8da2e402cc8fdc
+summary_of: 8018dc48d85df0ea
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 7337657f8ea9b7f3
 valid_from: 2026-08-29
 valid_until: null
-checksum: 3a3d17d3d06eb5b4
+checksum: acc8598569b23d39
 plan: walk
 seq: "110"
 state: done

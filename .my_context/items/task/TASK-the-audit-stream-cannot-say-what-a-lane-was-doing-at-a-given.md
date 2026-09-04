@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A lane records only its purpose and its outcome, so the step-by-step work it did is visible in the terminal and nowhere afterwards.
-summary_of: 8268286d90c34823
+summary_of: 0dea612debf61297
 scope:
   - src/hooks/subagent-stop.ts
   - src/core/audit.ts
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 303a3e47f0442845
+checksum: 08ff3a1a050a583b
 plan: hooks
 seq: "25"
 state: done

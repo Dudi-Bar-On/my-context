@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The corpus listing command has no tool, and nobody has decided whether it should get one or simply point callers at the query tool instead.
-summary_of: 8aafc90e37dce90c
+summary_of: 6806b94d7f35d1d3
 scope:
   - src/mcp/tools.ts
   - src/plugin/parity.ts
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 95e315f40f05cc57
+checksum: ba52a4cfce6fa675
 plan: mcp
 seq: "5"
 state: todo

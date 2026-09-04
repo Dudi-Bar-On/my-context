@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The notices saying an image or a link was refused are stuck in English, and they now appear inside ordinary item text everywhere.
-summary_of: 2340dae3af6714cb
+summary_of: 2e4237b9c8429e71
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: a2f5e8a1fe13213b
+checksum: 98a9ef9f155cdfef
 plan: walk
 seq: "93"
 state: done

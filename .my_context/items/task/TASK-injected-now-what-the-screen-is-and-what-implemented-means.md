@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen that lists what the current working session has actually been handed, read from the delivery log rather than from a rebuilt copy of it.
-summary_of: 4c9710748054562e
+summary_of: ddfd7ff47dcb56d3
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 61ac4a7fa530f5fb
+checksum: 0a1e756dbb5d159b
 plan: walk
 seq: "125"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Show the room actually left in the conversation on the what-fits chart, so the setting stops being an abstract number, and say when it is unknown.
-summary_of: de390a41f4f6c25e
+summary_of: 32e3b037b0bb372f
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 0629244ab3e3219e
+checksum: 13a462a552f86aea
 plan: walk
 seq: "8"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One screen re-applies its own styling over the shared stylesheet, so it silently ignores fixes made everywhere else, and has done so twice.
-summary_of: fa7a17f5b7f14727
+summary_of: e36fa95e97250248
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: ee1b0b70dd3dfe9c
+checksum: 77843b97588f29d4
 plan: walk
 seq: "68"
 state: done

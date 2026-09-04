@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Give the read-only viewer a genuinely read-only way into the second database, so that simply looking at data cannot alter or create it.
-summary_of: c51f14228f1e9ec5
+summary_of: cf4488416504ea4a
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 882aa11243e19815
+checksum: bb0d24534787578a
 plan: rulings
 seq: "13"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Add a check in a real browser that no button renders unstyled, because an unstyled one turns invisible and nobody reports what they cannot see.
-summary_of: cd1c1c97f5a1f5a2
+summary_of: 1800be8180619ee3
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 43de262ad021a52d
+checksum: 3dcf7e46eae30b75
 plan: rulings
 seq: "51"
 state: done

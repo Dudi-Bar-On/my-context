@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Judge every skill already written against that standard, and decide whether the set is the right shape or several things wearing one name.
-summary_of: 49550d7a7fb9d363
+summary_of: 0aab64a13d11f931
 scope: []
 tags:
   - "plan:review"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 58b24c7aa0c5f2b8
+checksum: b88a644d25ed4016
 plan: review
 seq: "4"
 state: todo

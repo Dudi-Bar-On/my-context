@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Do the right thing when a session begins because the conversation was cleared, rather than treating it like any other start.
-summary_of: d8eee4fdd585a6f7
+summary_of: 18be2b2793aabff8
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 9115df5231fe0669
+checksum: d9e12ebd9b31bba9
 plan: hooks
 seq: "8"
 state: done

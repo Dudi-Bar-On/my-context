@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Decide which commands need the stronger confirmation from what they really do, and keep a check that speaks up when the list drifts.
-summary_of: 6eae24302eb6699a
+summary_of: bdc6ff7156c409a7
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: df30aa42c03f8584
+checksum: 0496d5d6f88fdace
 plan: execute
 seq: "2"
 state: done

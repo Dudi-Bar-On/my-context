@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Refusal messages should name the check that refused instead of repeating back whatever the caller sent.
-summary_of: 1b271b838e14198e
+summary_of: 44fdc3e952476f0b
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: dd8e9ccddb7117e4
+checksum: 97eefc413480b7fa
 plan: rulings
 seq: "4"
 state: done

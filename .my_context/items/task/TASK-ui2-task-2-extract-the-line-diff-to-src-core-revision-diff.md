@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Pull the line-by-line comparison into its own place so more than one screen can use it.
-summary_of: e5b9fe1c804d3af3
+summary_of: 4969fa25d67661e1
 scope: []
 tags:
   - "plan:ui2"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: ce4fb74542675a4b
+checksum: 471b60dccb664ab8
 plan: ui2
 seq: "2"
 state: done

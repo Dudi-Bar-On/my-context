@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The panel listing what did not fit can never show anything, because the screen only asks the question where nothing is left out.
-summary_of: c5a0f4224534e5a2
+summary_of: d6125407c7fe1e64
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 36cf4587ef78cc55
 valid_from: 2026-08-29
 valid_until: null
-checksum: 9b360b2f383d4c85
+checksum: 3be217a3abf8bb39
 plan: walk
 seq: "77"
 state: done

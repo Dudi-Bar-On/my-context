@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Item fetches leave no record, so whether a reader ever acted on an index line is unmeasurable rather than merely unknown.
-summary_of: a40aa203aa8c6071
+summary_of: dc4b26f0f2e15827
 scope:
   - src/core/audit.ts
   - src/cli/commands/context.ts
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: aaf8dc334f065a3d
+checksum: 43a200efbea1231f
 plan: budget
 seq: "15"
 state: todo

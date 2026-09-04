@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two more commands have no tool, and each carries a nuance about attribution or about which half is safe to expose that a bare wrapper would get wrong.
-summary_of: 6295c77938c8ec90
+summary_of: ffbf96f858adbcf1
 scope:
   - src/mcp/tools.ts
   - src/plugin/parity.ts
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: af81a9acf9395801
+checksum: 0392f9ddf244335a
 plan: mcp
 seq: "6"
 state: todo

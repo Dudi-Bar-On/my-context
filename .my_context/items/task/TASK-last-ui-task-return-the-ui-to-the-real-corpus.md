@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Once the screens are finished on sample data, point them back at real data and look at every one, because a fixture hides what real volume reveals.
-summary_of: 2633605f08881890
+summary_of: baddb5141a7a51f9
 scope: []
 tags:
   - "plan:port"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 1cfefd36e4f76fb7
+checksum: ba80bc5dd57f9461
 plan: port
 seq: "99"
 state: todo

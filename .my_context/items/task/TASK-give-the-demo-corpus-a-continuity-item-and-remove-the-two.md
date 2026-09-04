@@ -6,7 +6,7 @@ status: superseded
 severity: soft
 always: false
 summary: The sample data set is missing one kind of item, so two tests quietly skip a check; add it and remove the workarounds at the same time.
-summary_of: 58868e64a7d61109
+summary_of: 49be4b75b40bb289
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: 2026-09-03
-checksum: ce28bd8ed8a12c74
+checksum: 9c95b49e34631667
 plan: live
 seq: "10"
 state: done

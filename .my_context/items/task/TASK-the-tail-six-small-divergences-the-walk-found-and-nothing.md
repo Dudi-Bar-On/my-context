@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Six small leftover differences between the app and its design, each too minor to have a cause of its own.
-summary_of: f9b3f64506f631f6
+summary_of: 517643e7977ea8e4
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 77acc8b0b7680044
+checksum: 3ed64d38e5d97451
 plan: walk
 seq: "22"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Move the panel's width into one place with the limit built in, so no future change can squeeze the page down to nothing.
-summary_of: 5fe2133041712b85
+summary_of: 7ac637e5c9edc092
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 454947a261e4a7a6
+checksum: 419a87f0109b59b7
 plan: pane
 seq: "1"
 state: done

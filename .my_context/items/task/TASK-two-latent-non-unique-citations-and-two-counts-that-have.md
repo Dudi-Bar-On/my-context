@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two references will point at the wrong line the moment the code moves, and two counts written into the plans have gone out of date.
-summary_of: b33d1a3e1e743a76
+summary_of: c7b4a4c3116e5c30
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 95fe74dabbe2bfc8
+checksum: 13ea5efc194409e6
 plan: rulings
 seq: 37c
 state: done

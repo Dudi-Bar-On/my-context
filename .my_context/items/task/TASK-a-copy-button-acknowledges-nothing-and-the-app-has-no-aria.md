@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The copy button works but gives no sign that it did, and the app has no way at all to announce anything to a screen reader.
-summary_of: 91c4e016fedacae4
+summary_of: 02a1c5fde58d8efd
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 6ed6f4609a73f4c3
+checksum: 1862640dfa727a16
 plan: walk
 seq: "31"
 state: done

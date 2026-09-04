@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Five speed measurements report a slightly worse figure than the one they name, and the recorded baselines were all worked out the same wrong way.
-summary_of: a56b6df0ab33b830
+summary_of: f90d1819cfd6f741
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 94bd631c803c7562
 valid_from: 2026-08-30
 valid_until: null
-checksum: 29e54fe5e2799caf
+checksum: 8c21fa72e5ee8bbe
 plan: hooks
 seq: 12q
 state: todo

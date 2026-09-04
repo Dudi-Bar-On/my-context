@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When a new setting cannot take effect until the conversation is reset, save it anyway and tell the user the one action that will apply it.
-summary_of: 0742112711eb0957
+summary_of: 6168f2b6ffc5fb36
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 0b2faf2044859cd1
+checksum: 692ed06b7686e2d2
 plan: budget
 seq: "4"
 state: done

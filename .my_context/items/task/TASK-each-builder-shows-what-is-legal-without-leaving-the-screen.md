@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Show what a command does and which values it will accept, with a worked example, right where someone is filling it in.
-summary_of: 0319f6e7d9b4e37f
+summary_of: 8b77400753ab9c4f
 scope: []
 tags:
   - "plan:builder"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 3d8c4f35e4bb86dc
+checksum: 83f0920aec3b61e0
 plan: builder
 seq: "8"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The server half of the question builder, and a safe way to pass values into a query.
-summary_of: 67be0ed8925c7c22
+summary_of: baeef851a6df3d03
 scope: []
 tags:
   - "plan:ui3"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: ff4e803dff2147b2
+checksum: 9fd3640266125404
 plan: ui3
 seq: "7"
 state: done

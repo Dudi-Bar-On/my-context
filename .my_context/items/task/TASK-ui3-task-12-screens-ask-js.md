@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen for building a question about the project, which also shows the query it ran.
-summary_of: c69b30af327c9077
+summary_of: d3e2d3932955d68e
 scope: []
 tags:
   - "plan:ui3"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: b84f42c8690cd116
+checksum: 6db2d296ddca3111
 plan: ui3
 seq: "12"
 state: done

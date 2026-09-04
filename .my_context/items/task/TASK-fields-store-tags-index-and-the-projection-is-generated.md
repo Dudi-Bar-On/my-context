@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Values that change should be stored properly and their labels generated from them, so a typo cannot quietly drop something out of every list.
-summary_of: bf8c973d940be7b7
+summary_of: d2147bb5f71e4119
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: f7bd06bd95dbd393
+checksum: 40ccf37ed44d271e
 plan: categories
 seq: "18"
 state: done

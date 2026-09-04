@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A design note gives a correct decision a reason that is no longer true, and the honest reason would be the stronger one.
-summary_of: d9367a93849bcfa0
+summary_of: 7b98b17267d69940
 scope: []
 tags:
   - "plan:ui2"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: e483ad0be82e6f8f
+checksum: 2005648ee1935a59
 state: todo
 plan: ui2
 seq: 5r

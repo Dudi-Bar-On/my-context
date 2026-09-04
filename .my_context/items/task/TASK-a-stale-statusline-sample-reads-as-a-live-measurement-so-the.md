@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: An old reading is treated as current, so nothing notices the context is nearly full and the handover is never written.
-summary_of: e8de3e40b02225c9
+summary_of: ce027f8f5443d6c5
 acknowledged:
   - citation_form@b97a439e9a2e4fc0
 scope: []
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: 5bad92406f714367
+checksum: dc463f673e27fa80
 plan: walk
 seq: "123"
 state: done

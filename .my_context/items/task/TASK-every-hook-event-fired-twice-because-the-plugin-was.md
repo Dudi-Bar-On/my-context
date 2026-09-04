@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A self-registered settings file duplicated the plugin manifest, so every event was recorded twice and every injection billed twice.
-summary_of: 3f35b9405fa3040d
+summary_of: dc447f33ef1d4bf2
 acknowledged:
   - state_unaudited@d32b725b54d536da
 scope: []
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 0de3f7c574ed09c2
+checksum: 1cc511e1ba37ebc8
 plan: hooks
 seq: "29"
 state: done

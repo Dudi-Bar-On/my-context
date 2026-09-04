@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Each kind of item should state, as data, which of its parts can be changed and how, so anyone can answer that without reading the code.
-summary_of: 84901b40c5c9e781
+summary_of: 47ccd20dc5af3155
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 06c7619741609291
+checksum: 84ad2cee5a16a622
 plan: categories
 seq: "13"
 state: done

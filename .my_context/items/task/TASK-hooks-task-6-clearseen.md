@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A way to erase the record of what a session has already been given, which until now could only ever be added to.
-summary_of: f9fc10b12383ee55
+summary_of: aec0cb31731e6f53
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: dc2e172da979a559
+checksum: fcf3e37b7a182351
 plan: hooks
 seq: "6"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Make two pieces of the activity store usable from outside it.
-summary_of: 612102bd77d45a57
+summary_of: acc780495b021ba6
 scope: []
 tags:
   - "plan:ui3"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 885f535a290eaa6c
+checksum: 5c43a95727d7281b
 plan: ui3
 seq: "1"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Speed limits labelled as a typical case were really a worst case, so one hiccup failed the run; every one of them takes enough samples now.
-summary_of: b7411af12aa069bd
+summary_of: c5d5ce8bc95384c2
 summary_was:
   - 2026-09-03 Speed limits labelled as a typical case are really a worst case, so one hiccup fails the run; three test files still do this.
 acknowledged:
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 3a9f22e1ca412af2
+checksum: 1918e6ac37d4ba29
 plan: hooks
 seq: 12p
 state: done

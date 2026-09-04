@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The main screen can draw itself twice at once, and its listeners pile up with every visit, so everything appears in duplicate.
-summary_of: ab15a33fac68663f
+summary_of: a13c9e9c4716ce01
 acknowledged:
   - state_unaudited@8459d0d3359f0a53
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 5e0c7f894c97dd29
+checksum: a504591f3e2a0b73
 plan: walk
 seq: "72"
 state: done

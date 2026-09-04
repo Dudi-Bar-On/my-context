@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: List every place the app quietly declined to build something, then for each one either build it, file it, or decide out loud not to.
-summary_of: b6d845026ffad63b
+summary_of: 6e94a3887aef1f62
 acknowledged:
   - citation_form@d57d17e7adaeb294
 scope: []
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: ac3e97abddf9e6a0
+checksum: eb0d6b95281c0a9a
 plan: walk
 seq: "12"
 state: todo

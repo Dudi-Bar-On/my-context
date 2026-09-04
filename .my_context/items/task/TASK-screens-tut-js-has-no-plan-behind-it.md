@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The tutorials screen is offered in the menu but nobody has been asked to build it; decide whether it is in scope or an oversight.
-summary_of: e4687b03bbeaab67
+summary_of: 62503e0590b5d130
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 478590903f6dbc27
+checksum: 1218ade5f223613a
 plan: port
 seq: "5"
 state: done

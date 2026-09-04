@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Refresh the sample project's records before the tests run, so that merely reading it once does not make almost every screen refuse.
-summary_of: d628e2071d85f50c
+summary_of: 1906ba1e70db8516
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 5217951804a8863f
+checksum: 02122e263a309605
 plan: walk
 seq: "0"
 state: done

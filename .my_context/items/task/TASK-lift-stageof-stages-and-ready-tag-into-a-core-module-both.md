@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A small shared vocabulary is written out twice, once for the command line and once for the screen, and the two copies will eventually disagree.
-summary_of: 62b65130f69d211e
+summary_of: c1b1df69d4a51569
 scope: []
 tags:
   - "plan:api"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: 8ad00ea9a8b679ab
 valid_from: 2026-08-23
 valid_until: null
-checksum: 19103ac2013ba620
+checksum: d07210a9aa02af07
 state: done
 plan: api
 seq: "5"

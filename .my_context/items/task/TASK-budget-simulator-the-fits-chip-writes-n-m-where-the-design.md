@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One small label is written differently from the design because the wording cannot be translated, and someone must decide which spelling wins.
-summary_of: 172076160f75b687
+summary_of: 008e1210a9a53268
 scope: []
 tags:
   - v2
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 60a84e8da9dbd905
+checksum: e5f41203c887dba2
 plan: walk
 seq: "104"
 state: done

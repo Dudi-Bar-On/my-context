@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A planned test asserts a shape that no longer exists, and half the work it describes is already done.
-summary_of: 9573dcbd3ec0b00c
+summary_of: 6fdba9ce6152f469
 scope: []
 tags:
   - "plan:ui3"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 6c9354df9ca4f03f
+checksum: 3fc10a072490b1b6
 plan: ui3
 seq: 8d
 state: done

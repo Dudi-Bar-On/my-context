@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Build the shared-collections screen from the design, showing its fixed content wherever no live data answers yet.
-summary_of: 96ea75dc3ed436cf
+summary_of: cbba322de3eefd38
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 0a8c4025f69c0eff
+checksum: 9653457d30f6795b
 plan: port
 seq: "8"
 state: done

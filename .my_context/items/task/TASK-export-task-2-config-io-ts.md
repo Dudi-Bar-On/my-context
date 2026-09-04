@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: How a project's settings are written into a bundle, what is refused, and how they combine with the settings already here.
-summary_of: 813fff8811c366b7
+summary_of: 9a31d1eed2a4e068
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: ba756d3e67dd3346
+checksum: 7e2fe37c5f0625be
 plan: export
 seq: "2"
 state: done

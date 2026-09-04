@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The check that the screens change nothing only notices the ways of writing someone listed by hand, so a new one slips past unnoticed.
-summary_of: d2c7fcd3adbd3a10
+summary_of: fd8ea303dfdb5f29
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: d9175a4e4b6b3205
+checksum: 278f41ecd9ab5151
 plan: rulings
 seq: "50"
 state: done

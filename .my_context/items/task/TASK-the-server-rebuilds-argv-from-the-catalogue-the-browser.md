@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The page sends only which command and which values; the server builds the real command itself, from the same shared list.
-summary_of: a3bac1625d838202
+summary_of: 388562838abc2678
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 481393b4521d3647
+checksum: f0e91e36fda48e26
 plan: execute
 seq: "1"
 state: done

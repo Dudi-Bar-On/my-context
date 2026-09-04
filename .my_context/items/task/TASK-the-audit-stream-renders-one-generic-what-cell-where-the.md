@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The activity feed prints raw fields the same way for every kind of event, where each kind should read as its own plain sentence.
-summary_of: 957d27a55fc539bf
+summary_of: b3a4304a03573407
 scope: []
 tags:
   - "plan:screens"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: ecafd49b5c86e46d
+checksum: 0ee02dfc0ada2fd6
 plan: screens
 seq: 1w
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Give the settings screen controls that build the change for you to apply yourself; the design has to draw them first.
-summary_of: b9f842157d6045c5
+summary_of: b482fa35ff1ef690
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: c0780eeae9e2a8a3
+checksum: d4b37b91a1b75178
 plan: walk
 seq: "13"
 state: done

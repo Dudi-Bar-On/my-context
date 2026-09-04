@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Decide whether the local server is really running by trying to connect to it, never by trusting a file that merely says so.
-summary_of: afaf23ded10f076d
+summary_of: e663caf971cef485
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 78d6cd8ea9f2c537
+checksum: 52f23368d7cdf045
 plan: upkeep
 seq: "3"
 state: done

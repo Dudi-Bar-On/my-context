@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When notes promised to every session do not all fit, say exactly which ones were left out rather than only how many.
-summary_of: 0a9de385b59446da
+summary_of: fe79ab2645d7d451
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: ff1d33b612eab236
+checksum: 5fcb7ee4c6727569
 plan: budget
 seq: "1"
 state: done

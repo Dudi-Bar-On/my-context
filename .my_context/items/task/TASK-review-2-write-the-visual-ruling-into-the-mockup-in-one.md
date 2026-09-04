@@ -6,7 +6,7 @@ status: superseded
 severity: soft
 always: false
 summary: A piece of work to write an agreed visual direction into the design mockup, and the record of where each of its constraints ended up.
-summary_of: c1c2cc62a1c16c85
+summary_of: 8802a8cccc6c0dbe
 scope: []
 tags:
   - "plan:review"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: 2026-08-21
-checksum: 0ff9d9234539f429
+checksum: 313955c78eae3559
 plan: review
 seq: "2"
 state: done

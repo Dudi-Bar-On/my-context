@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two tests fail because the new config command joined the set of commands requiring approval, and the places that record that set by hand were never told.
-summary_of: 1a207d5fd58bf579
+summary_of: 6f7268128f376edc
 scope:
   - test/docs/counts.test.ts
   - test/ui/palette-lib.test.ts
@@ -21,18 +21,19 @@ tags:
   - docs
   - "plan:rulings"
   - "seq:58"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 903891a2d176c42c
+checksum: eaa773e3b236a26d
 plan: rulings
 seq: "58"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-04
 ---
 
 # the config writer joining the approval boundary left two tests outside its own change failing

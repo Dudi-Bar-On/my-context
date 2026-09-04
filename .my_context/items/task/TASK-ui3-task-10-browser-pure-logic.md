@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The parts of the activity and question screens that are pure logic and can be tested without a browser.
-summary_of: b597024a75f01679
+summary_of: 1d691e8327024b1c
 scope: []
 tags:
   - "plan:ui3"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 6130be7c47b769b4
+checksum: 5c189f6e0af6ed49
 plan: ui3
 seq: "10"
 state: done

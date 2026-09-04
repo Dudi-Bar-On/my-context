@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One general command for adding an item of any kind people define themselves, instead of needing a purpose-built command for each.
-summary_of: 363586005bee5d7d
+summary_of: 65a98a3aeeeabc62
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: fafa537fbf0ff284
+checksum: 3385e8d69ab7e943
 plan: categories
 seq: "11"
 state: done

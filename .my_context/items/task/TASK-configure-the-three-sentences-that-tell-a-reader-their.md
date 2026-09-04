@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The messages telling someone their settings file is broken appear only in English, on a screen that is otherwise blank and otherwise translated.
-summary_of: addd2591af6b0c88
+summary_of: d4a6b6afb6ac3d78
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 22e1478128f6cd97
+checksum: f7a4aaecbf123e57
 plan: walk
 seq: "105"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The safety check on typed queries rejects twelve ordinary words used as names, refusing queries that read nothing and write nothing.
-summary_of: 795d61e015ad387f
+summary_of: a2cefa4a46aff523
 scope: []
 tags:
   - "plan:rulings"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 39b5736c65c66da4
+checksum: 702fe35ab4acf227
 plan: rulings
 seq: "46"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Rebuild both language tables after the next design pass, and widen the matching check to cover a kind of label it currently ignores.
-summary_of: 7825f56c312260e9
+summary_of: 9b88177dc5dca02e
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 2d82c189250c17e4
+checksum: c33d2c79665cb298
 plan: rulings
 seq: "15"
 state: done

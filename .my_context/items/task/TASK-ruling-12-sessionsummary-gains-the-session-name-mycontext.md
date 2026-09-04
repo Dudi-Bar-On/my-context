@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The session picker should show the name a session was given, which the data behind it does not yet carry.
-summary_of: bef8a11d10065879
+summary_of: 33963f6870fbdfba
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 99d682c6bc7504ff
+checksum: 89149f6f9e0d485d
 plan: rulings
 seq: "10"
 state: done

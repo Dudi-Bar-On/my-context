@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One step of the why-was-this-left-out explanation can never show its workings, because nothing tells the page what a chosen file path excluded.
-summary_of: 84ccb4d61a93bb23
+summary_of: 230c1808cbcf0d93
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: d01f08284ad96616
+checksum: 2bdf32a919b2e10a
 plan: walk
 seq: "103"
 state: todo

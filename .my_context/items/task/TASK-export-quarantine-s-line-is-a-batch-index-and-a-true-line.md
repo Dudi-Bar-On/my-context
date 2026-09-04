@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A number presented as a line in a file is really a position within a batch, so anyone who counts to it lands somewhere else entirely.
-summary_of: 862771b652fbe354
+summary_of: e556c2a62128f3ac
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 8cd5e3f66f3183c6
+checksum: 3ef4e5c75b483e4b
 plan: export
 seq: 11l
 state: done

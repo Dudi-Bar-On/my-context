@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The safety check on typed queries mistakes a harmless text function for a command that writes, and refuses a perfectly valid query.
-summary_of: bae2094c4d6b16d5
+summary_of: fb8a77e216c09eb6
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 3b055c563a3aaae7
+checksum: ff69723e152d61d7
 plan: rulings
 seq: "45"
 state: done

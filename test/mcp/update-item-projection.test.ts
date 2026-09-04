@@ -168,7 +168,7 @@ test('update_item refuses a value outside the declared vocabulary', async () => 
     const id = chore(cwd);
     const before = itemFile(cwd, id);
     const [res] = await session(cwd, [
-      { name: 'update_item', arguments: { summary_unchanged: true, id, extra: { state: 'donee' } } },
+      { name: 'update_item', arguments: { id, extra: { state: 'donee' } } },
     ]);
 
     assert.equal(res.isError, true, res.text);
@@ -192,7 +192,7 @@ test('update_item moves the projected tag with the field, and doctor stays clean
   try {
     const id = chore(cwd);
     const [res] = await session(cwd, [
-      { name: 'update_item', arguments: { summary_unchanged: true, id, extra: { state: 'done' } } },
+      { name: 'update_item', arguments: { id, extra: { state: 'done' } } },
     ]);
 
     assert.equal(res.isError, false, res.text);
@@ -219,7 +219,7 @@ test('update_item projects onto the tag list the caller passed, not the one it r
   try {
     const id = chore(cwd);
     const [res] = await session(cwd, [
-      { name: 'update_item', arguments: { summary_unchanged: true, id, tags: ['v2', 'ui'], extra: { state: 'done' } } },
+      { name: 'update_item', arguments: { id, tags: ['v2', 'ui'], extra: { state: 'done' } } },
     ]);
 
     assert.equal(res.isError, false, res.text);

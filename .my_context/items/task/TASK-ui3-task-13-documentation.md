@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Write up the activity and question screens, in both of the language guides.
-summary_of: c5e8a88a5110404f
+summary_of: 4cfeb4830eec7fa6
 scope: []
 tags:
   - "plan:ui3"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 714f2377dbe81976
+checksum: 9a342d6811bfd8cd
 plan: ui3
 seq: "13"
 state: done

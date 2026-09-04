@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Text held for translation can mark code and nothing else, so bold and italic the design relies on are lost on every screen.
-summary_of: fc115868b1070329
+summary_of: 9f3c077f9de59031
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: f7e0f48d4231cdca
+checksum: 00597baa51334483
 plan: walk
 seq: "1"
 state: done

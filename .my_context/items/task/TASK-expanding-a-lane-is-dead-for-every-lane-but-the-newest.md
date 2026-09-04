@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The expand toggle is disabled on almost every lane, because a lane keeps only the steps that survived the shared feed window.
-summary_of: aa881a3585d40667
+summary_of: 279345f277b27117
 scope:
   - src/ui/public/screens/watch.js
   - src/ui/server.ts
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 51deab8d8c9d06cc
+checksum: 146133f1a07ce322
 plan: live
 seq: "17"
 state: done

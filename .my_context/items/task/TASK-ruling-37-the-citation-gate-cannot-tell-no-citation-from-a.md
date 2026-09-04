@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The reference checker silently skips any reference that wraps onto a second line, so it looks checked and is not.
-summary_of: c731d434e04259d7
+summary_of: d1afc102c8fdd96c
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 7b4183460511c558
+checksum: e8beacf1797b69bd
 plan: rulings
 seq: "37"
 state: done

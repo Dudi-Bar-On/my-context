@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A file edited in another program never reaches the open page, so either watch for such changes or tell the reader the page cannot see them.
-summary_of: 7706f6a5b4b4c5bb
+summary_of: 712d36464b00111c
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: c09e8f16c842fc18
+checksum: a2d986a0fbe92bde
 plan: live
 seq: "4"
 state: done

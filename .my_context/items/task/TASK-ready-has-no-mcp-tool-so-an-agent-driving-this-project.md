@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The read-only command that lists work ready to start has no tool counterpart, so an agent using only tools cannot see what is unblocked.
-summary_of: f95edcda29b7340b
+summary_of: 380ebb9ddd836789
 scope:
   - src/mcp/tools.ts
   - src/plugin/parity.ts
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: ed0a52b8949a5a17
+checksum: 3b038b81b1f3c608
 plan: mcp
 seq: "1"
 state: done

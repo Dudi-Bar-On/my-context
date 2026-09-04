@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Plans carry file references inside code samples that people paste into real code, and most had gone stale because no check ever read them.
-summary_of: 3eea6156ebf29329
+summary_of: 65b85cbe1f15ef88
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: ca95017f14fe547f
+checksum: 1137f6a74b0d2d34
 plan: rulings
 seq: 33c
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A leftover temporary file is dropped whenever a save loses a race, and they build up slowly over time.
-summary_of: 11e2be4853771000
+summary_of: d748a5db22928e82
 scope: []
 tags:
   - "plan:ui3"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 5906f155a78fecd0
+checksum: a74ca33503ff22cc
 plan: ui3
 seq: 3f
 state: done

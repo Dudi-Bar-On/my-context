@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Start testing in a real browser, beginning with the design file, so what is now hand-checked once becomes something that re-runs itself.
-summary_of: 20b797de5ff5abef
+summary_of: 8fdd5d98cd857272
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: b6409269a5e51af8
+checksum: 57acc50c5d0da789
 plan: rulings
 seq: "27"
 state: done

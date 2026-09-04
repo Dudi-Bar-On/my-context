@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Let a person change the size limits from the settings screen, behind a confirmation showing exactly which values change.
-summary_of: 2bbf480981b84276
+summary_of: 43c8fcd3b3436714
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 4a42796cdaf1e7a3
+checksum: d5814992e218d92d
 plan: budget
 seq: "5"
 state: done

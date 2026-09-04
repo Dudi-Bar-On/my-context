@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A prefix rule makes one command look covered by a tool built for a different command that merely shares its first word.
-summary_of: 1657dd11bd204bb3
+summary_of: dbeb9610159ff006
 scope:
   - src/plugin/parity.ts
   - test/plugin/parity.test.ts
@@ -16,18 +16,19 @@ tags:
   - mcp
   - "plan:mcp"
   - "seq:7"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: db9051471be6ee30
+checksum: 594dd6d1b0c83f49
 plan: mcp
 seq: "7"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-04
 ---
 
 # the parity check cannot tell a sub-command from a sibling, so one command reads as covered by a tool that does not wrap it

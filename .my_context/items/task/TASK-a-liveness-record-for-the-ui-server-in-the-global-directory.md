@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A small file kept outside the project recording whether the local web server is running, so a later session can find it instead of starting another.
-summary_of: 149aaf5909407587
+summary_of: e9b1ff5753170ab5
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 2853890f5d4a1181
+checksum: 38fb7a9dd2323815
 plan: upkeep
 seq: "1"
 state: done

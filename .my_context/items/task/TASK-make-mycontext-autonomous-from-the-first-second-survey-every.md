@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Survey every way this tool can plug into the editor and ship sensible defaults, so it helps from the moment it is installed with nothing configured.
-summary_of: 85a1a028c16733b8
+summary_of: ec4f5dcf48e7ee06
 scope: []
 tags:
   - "plan:hooks"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: b275a312060b0ca8
+checksum: 060bdc42a8881155
 plan: hooks
 seq: "22"
 state: blocked

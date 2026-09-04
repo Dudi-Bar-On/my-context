@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen that names what is missing can only ever mention one empty group, because its wording has nowhere to put a name.
-summary_of: c70b2d2925956712
+summary_of: 17dee1e9ef62db4f
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 00726fb1ab91241c
+checksum: 132dfdcb93d0f00e
 plan: walk
 seq: "90"
 state: done

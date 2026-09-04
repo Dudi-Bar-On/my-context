@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: References into the design file are not checked at all, and six references into code are known broken; fix them and turn the check on.
-summary_of: 71a4a4f055521a19
+summary_of: aa1013a10a5c32a8
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 8002d0e0474f467e
+checksum: b7fa8c18e91a79b5
 plan: rulings
 seq: "47"
 state: todo

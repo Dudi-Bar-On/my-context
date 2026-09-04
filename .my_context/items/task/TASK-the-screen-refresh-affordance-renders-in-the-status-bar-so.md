@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The refresh button sits in the status bar but acts on the page, so people read it as refreshing the wrong thing; move it.
-summary_of: cbd806ddd54d5fe2
+summary_of: 8f04b24e9f2e6b24
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: bee0dd0e9d7337b1
 valid_from: 2026-08-31
 valid_until: null
-checksum: 94a597ce5a94b671
+checksum: a22cd2e8f4ba6c41
 plan: walk
 seq: "116"
 state: done

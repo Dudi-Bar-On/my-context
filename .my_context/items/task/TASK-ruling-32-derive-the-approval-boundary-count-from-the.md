@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two guides state by hand how many commands can change things with nobody approving; work that number out from the code instead.
-summary_of: 08e91c816202063c
+summary_of: a90a8d2b70da1bde
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: d0b95160e9486c01
+checksum: 2918c8cabb35d0f0
 plan: rulings
 seq: "32"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A test still states a hand-counted number for a set that is now worked out automatically, so it will quietly disagree the moment the set grows.
-summary_of: 136b91c5dc1b51e0
+summary_of: ba79157f79843f7a
 acknowledged:
   - citation_form@152ffae06a866632
 scope: []
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: c97e32cbf552732b
+checksum: fb5db23c85964b25
 plan: rulings
 seq: "53"
 state: todo

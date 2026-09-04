@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A plan tells people to write cleanup code the project forbids, so four separate people hit the same failure; fix the examples in the plan.
-summary_of: 9475fe3d4bef8ce9
+summary_of: cb6908aafd66b628
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: dc0874e809a70b4c
+checksum: 3c89bb8901634cde
 plan: rulings
 seq: "6"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The app makes nine requests before it is allowed to, so every page load is refused nine times and the activity log fills with its own failures.
-summary_of: ca33665e200c3bf1
+summary_of: 8544fb5b31e9c261
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: f65a9536ad1558b0
 valid_from: 2026-08-29
 valid_until: null
-checksum: d2cff6539753cb30
+checksum: b461c55294a1aba1
 plan: walk
 seq: "85"
 state: done

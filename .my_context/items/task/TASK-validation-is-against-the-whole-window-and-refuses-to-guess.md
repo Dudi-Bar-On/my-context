@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Check that the limits add up against the real total, and refuse to check at all rather than guess when that total is unknown.
-summary_of: efac662cd038dd19
+summary_of: 43523c4da603a6f5
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 38d2b9bac60e35fd
+checksum: 75d4c460b3a0080a
 plan: budget
 seq: "3"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Prove that having the web view switched on changes nothing about what the tool does, by running the same work both ways.
-summary_of: 3a067a4307f50b9d
+summary_of: 7401afdf9b0ce385
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: b7e0a6d9181ea8b0
+checksum: ec5c6e578f2ec8bc
 plan: rulings
 seq: "21"
 state: todo

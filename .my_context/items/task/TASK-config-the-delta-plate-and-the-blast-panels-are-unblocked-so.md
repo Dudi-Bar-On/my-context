@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The settings screen still cannot show what a change would do, because two halves each waited on the other; the thing they waited for now exists.
-summary_of: 3e6201eaaab71ba8
+summary_of: ac3aa89f8ab962c5
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: f745839e5c7a5f1e
+checksum: e32ae1b629a41f58
 plan: walk
 seq: "10"
 state: done

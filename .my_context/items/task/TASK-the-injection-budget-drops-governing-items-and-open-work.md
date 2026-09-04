@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: What governs the project and what work is still open lose their budget contest to notes and finished tasks, hundreds of times over.
-summary_of: e1505288ad9edb29
+summary_of: 7b6a8474aa6e80c6
 scope:
   - src/core/select.ts
   - src/doctor/checks.ts
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 2177139c998a2590
+checksum: a07723f55bf3667f
 plan: budget
 seq: "11"
 state: done

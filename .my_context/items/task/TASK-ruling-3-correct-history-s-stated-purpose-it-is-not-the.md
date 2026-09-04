@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One piece of code is documented as feeding a chart it does not feed; keep it, point it at what it really serves, and fix the description.
-summary_of: 13b93b639999bab2
+summary_of: a82aeac0d25c65ed
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 77faa8a695669e9d
+checksum: caa118c63f05d484
 plan: rulings
 seq: "3"
 state: done

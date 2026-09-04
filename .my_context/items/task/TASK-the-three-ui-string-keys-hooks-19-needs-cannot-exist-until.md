@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three sentences cannot be added until the design declares them first, and one of them already exists under a different name.
-summary_of: 7aee2044752da3d2
+summary_of: ec68c3574bdd82c8
 scope: []
 tags:
   - "plan:hooks"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: ce3604263d2cbaa5
+checksum: b47ba41372bf20e1
 plan: hooks
 seq: 19b
 state: done

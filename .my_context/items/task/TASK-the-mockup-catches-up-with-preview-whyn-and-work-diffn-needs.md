@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One sentence in the design has fallen behind the app, and another needs a decision about how it shows the formatting it describes.
-summary_of: 3f148089f58937a0
+summary_of: 3ccb9332dae257a8
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 8e12597a7cc298ac
+checksum: 443c039b2d1c05bb
 plan: walk
 seq: "16"
 state: todo

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A new setting that turns handover notes on, off unless you set it, and rejecting a wrong value by name rather than guessing.
-summary_of: a54a840500c5ebfa
+summary_of: 9a9e0df3695856ec
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 2cb8f2ad64c62491
+checksum: ed52e9db6eca31da
 plan: handover
 seq: "1"
 state: done

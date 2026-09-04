@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A list of tests excused as unreliable is hiding one that genuinely fails; re-check every entry on its own.
-summary_of: 9102aad7c6f1d1c6
+summary_of: 158e23c906154a03
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: f30898d6287a9a77
+checksum: 5165a03fba8ad4b6
 plan: walk
 seq: "74"
 state: done

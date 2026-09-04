@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One shared implementation of bringing a bundle in, so the two ways of doing it cannot drift apart from each other.
-summary_of: a628d8b3b6b23ae4
+summary_of: a309a32a4ddeb07d
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 258b6d594738ce2d
+checksum: d6114b2f491f14e3
 plan: export
 seq: "12"
 state: done

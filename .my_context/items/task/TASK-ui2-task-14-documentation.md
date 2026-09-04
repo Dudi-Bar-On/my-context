@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Write up the command and change screens, in both of the language guides.
-summary_of: 527201b265fbe21e
+summary_of: fa4a193f0add7028
 scope: []
 tags:
   - "plan:ui2"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 0cc30a8ad1a2aa6b
+checksum: 510ea8edc1c58f62
 plan: ui2
 seq: "14"
 state: done

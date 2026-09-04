@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Somewhere to keep the names people give their working sessions, so a session can be referred to by name rather than by a long identifier.
-summary_of: 622fcfe5d2b87ede
+summary_of: a959d9bd3672e118
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 2b02a5a848f6c397
+checksum: 02aef89196a0639f
 plan: hooks
 seq: "13"
 state: done

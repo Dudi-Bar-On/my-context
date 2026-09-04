@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Tests sometimes pick a network port the browser refuses to use, producing a random failure that looks exactly like a real bug.
-summary_of: 1b472e9e56b221b2
+summary_of: a4b536b31d475eca
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 510dfc209e5b309a
+checksum: a789e78e004d4398
 plan: port
 seq: "11"
 state: done

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The warning shown before running a command stays in English for Hebrew readers, and it is the one sentence they most need to read.
-summary_of: d6bc9f65a6b4ccae
+summary_of: 2fd7259f65b20016
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: dc6a60ae756e5c76
+checksum: 1047dac73b9ce618
 plan: execute
 seq: 8b
 state: done

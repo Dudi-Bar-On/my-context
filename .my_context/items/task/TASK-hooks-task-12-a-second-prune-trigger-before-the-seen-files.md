@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Clean up the per-session bookkeeping files at a second moment as well, so they cannot pile up faster than they are removed.
-summary_of: fbbe23c535da08d4
+summary_of: ef4cc7618a99c7ec
 scope: []
 tags:
   - "plan:hooks"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: e51d9b4621527567
+checksum: 764efdee11f09dc1
 plan: hooks
 seq: "12"
 state: done

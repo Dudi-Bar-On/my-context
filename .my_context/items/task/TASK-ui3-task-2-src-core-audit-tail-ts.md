@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Following the activity log as it grows, without reading the whole thing again each time.
-summary_of: 7371862fba7f7dab
+summary_of: ede7430597904714
 scope: []
 tags:
   - "plan:ui3"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: c364c03ce0b9645d
+checksum: 93ce79b270c7dfd7
 plan: ui3
 seq: "2"
 state: done

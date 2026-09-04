@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A summary line on the budget screen cannot be shown until the design declares it, after which it is a few lines of work.
-summary_of: 9a3afaf440626013
+summary_of: 7f11ff29b034af42
 scope: []
 tags:
   - v2
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 9f7005b1f2f97ec4
+checksum: 4d3fb5f5bcfc4b9e
 plan: walk
 seq: "6"
 state: done

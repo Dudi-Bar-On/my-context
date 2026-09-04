@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The command that writes this project's knowledge out to a folder or an archive, documented at the same time it ships.
-summary_of: 6868faf51b1b020d
+summary_of: de18eb23ce8bba28
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: d372c824defb6a95
+checksum: 0296964bed7b15e4
 plan: export
 seq: "13"
 state: done

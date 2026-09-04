@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two of the three severity headings stay in English, and here the heading is the only thing telling a reader how serious a problem is.
-summary_of: 2075aed40ec6cade
+summary_of: 8714142787f61b17
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 1cf8ca5ca9a08967
+checksum: ac1bdbfd8b9d60aa
 plan: walk
 seq: "98"
 state: done

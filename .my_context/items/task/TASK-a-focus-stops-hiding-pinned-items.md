@@ -6,7 +6,7 @@ status: superseded
 severity: soft
 always: false
 summary: A piece of work to make narrowing the delivered knowledge stop hiding items that were pinned to appear every time.
-summary_of: 4408e0ae8920f8d9
+summary_of: f9ac5c51d4c33330
 scope: []
 tags:
   - v2
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: a103723ac97da9f6
 valid_from: 2026-08-27
 valid_until: 2026-08-28
-checksum: 544a909cabfdde67
+checksum: b5710c3559ef6337
 state: done
 priority: "1"
 source: owner, 2026-08-27 ruling

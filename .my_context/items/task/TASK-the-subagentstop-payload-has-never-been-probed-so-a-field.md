@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A hook field was declared and then read by a new feature without anyone ever checking a real payload carries it.
-summary_of: 36907f3362eb6d22
+summary_of: cffd0a02e89830ed
 scope:
   - src/hooks/io.ts
   - src/hooks/subagent-stop.ts
@@ -17,18 +17,19 @@ tags:
   - audit
   - "plan:hooks"
   - "seq:26"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 6fe6d8b4a131442a
+checksum: e6cad135ce021b83
 plan: hooks
 seq: "26"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-04
 ---
 
 # the SubagentStop payload has never been probed, so a field shipped on a declaration nobody measured

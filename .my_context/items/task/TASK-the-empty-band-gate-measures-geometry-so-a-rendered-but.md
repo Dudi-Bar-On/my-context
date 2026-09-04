@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The check meant to catch an empty strip across the window only measures its size, so a strip that is present but wordless passes.
-summary_of: fa7ffb09ff3559d3
+summary_of: 39d0727fcf82022f
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: ce3c1df06e4eb193
+checksum: 031326525c2070cc
 plan: walk
 seq: "67"
 state: done

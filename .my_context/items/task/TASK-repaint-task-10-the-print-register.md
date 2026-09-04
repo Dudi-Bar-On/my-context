@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Give printing its own set of colours, because putting the dark screen straight onto paper comes out nearly unreadable.
-summary_of: 3b63705af278e1f2
+summary_of: 647a309d0a9aa94f
 scope: []
 tags:
   - "plan:repaint"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 634709c42fe5b1b7
+checksum: 8de28dd8a5bd632d
 plan: repaint
 seq: "10"
 state: todo

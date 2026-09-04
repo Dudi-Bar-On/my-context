@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The export screen was the last one nobody had been asked to build, though everything it needs is ready and waiting.
-summary_of: b26c168360db6b2e
+summary_of: 6dbebc2ee35f3bbc
 scope: []
 tags:
   - "plan:port"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: 081be42b6054086c
 valid_from: 2026-08-23
 valid_until: null
-checksum: 8dc9f599c554ef9c
+checksum: d5ae53543faa0b8b
 plan: port
 seq: 8b
 state: done

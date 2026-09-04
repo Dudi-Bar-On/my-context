@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Thirteen parts of the app still refuse to translate their sentences, because of a rule that was dropped days ago.
-summary_of: 69598681869563ed
+summary_of: a060286b6433b27a
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 5a2214bd96d54b3c
+checksum: bc32fbdbb3b7dc20
 plan: walk
 seq: "92"
 state: done

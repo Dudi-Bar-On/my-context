@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A chart showing how many notes actually reach a session at each allowance, including the surprise that raising it can deliver fewer.
-summary_of: 6ef19617574df6ac
+summary_of: 3516dd5bca09d07e
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 120f2c3ba22cb093
+checksum: 8db5be2937c9abfa
 plan: walk
 seq: "7"
 state: done

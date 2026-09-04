@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A reference table on the screen makes two claims the product does not honour, and is missing a row for one of the stages.
-summary_of: c7c18602bf9244a5
+summary_of: e15f5381bbce1baa
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 1444bce98e3e1c3c
+checksum: 39d9509735543158
 plan: walk
 seq: "96"
 state: done

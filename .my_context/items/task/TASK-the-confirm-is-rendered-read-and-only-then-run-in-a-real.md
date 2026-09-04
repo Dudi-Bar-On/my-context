@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Test every screen that can run a command the way a person uses it, since only a browser can prove that what you read is what runs.
-summary_of: 9e725e001784b7d4
+summary_of: ada1a119263f84b0
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: f6cae6844969746c
+checksum: 5443501d1293f363
 plan: execute
 seq: "7"
 state: done

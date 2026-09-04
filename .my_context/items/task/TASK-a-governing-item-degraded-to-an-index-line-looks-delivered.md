@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A normative or pinned item must arrive with its body or be named as undelivered, never reduced to a title that cannot be obeyed.
-summary_of: 2c40f5c5578b34aa
+summary_of: 83f035ca713c013f
 scope:
   - src/core/render.ts
   - src/core/select.ts
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 66864a9843175ede
+checksum: 0bf1087d4c4462aa
 plan: budget
 seq: "14"
 state: done

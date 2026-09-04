@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The health screen cannot tell a problem a command could fix from one that needs judgement, so each finding should say which it is.
-summary_of: 4f75eb14117c1b6e
+summary_of: 862a69fc74215f3d
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: 6bc63bb46fb300ba
 valid_from: 2026-08-31
 valid_until: null
-checksum: 5fa7e7971bd3eb1d
+checksum: b2855af5fa11513b
 plan: walk
 seq: "121"
 state: todo

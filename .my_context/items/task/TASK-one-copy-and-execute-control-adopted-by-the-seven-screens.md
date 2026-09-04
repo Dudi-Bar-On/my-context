@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One shared button for copying and running a command, so nine hand-written versions do not each get the confirmation wrong.
-summary_of: 6447ed9a667abf96
+summary_of: 97b3394251ff360c
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: ecc6e05fbe685ffb
+checksum: ac1c917e4eccc417
 plan: execute
 seq: "6"
 state: done

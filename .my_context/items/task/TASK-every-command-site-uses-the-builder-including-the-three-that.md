@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Make every place that offers a command use the one shared builder, starting with three that were hand-built and have drifted from it.
-summary_of: 5c53035ff04b2acb
+summary_of: f8337fb5e2abbba4
 scope: []
 tags:
   - "plan:builder"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 2ac2e11264625bf3
+checksum: 82f887a78bc72084
 plan: builder
 seq: "7"
 state: todo

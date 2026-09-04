@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Proving that every one of the new routes sits behind the same access check as the rest.
-summary_of: ae3866d59789fc3a
+summary_of: f3174b77af71a9af
 scope: []
 tags:
   - "plan:ui2"
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 36b6b24d4b6d5530
+checksum: e17445a49e04b161
 plan: ui2
 seq: "8"
 state: done

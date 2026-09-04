@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The settings screen draws panels with no styling at all, so a warning that sixty-six things stop reads like an ordinary paragraph.
-summary_of: 1a4607d67700762f
+summary_of: 4eeb02ab64884472
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: f00a2b8830cb212e
 valid_from: 2026-08-30
 valid_until: null
-checksum: dc33ad934428ce44
+checksum: 96c2cb050198f453
 plan: walk
 seq: "112"
 state: done

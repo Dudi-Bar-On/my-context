@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Write down which remote the branch comparison assumes, and stop reporting a repository state that nothing has actually observed.
-summary_of: 6f4158b90f46f1fb
+summary_of: 1c26482bebdb904a
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 2e8a1327adbdd14d
+checksum: ed42aa5cfe264685
 plan: rulings
 seq: "24"
 state: done

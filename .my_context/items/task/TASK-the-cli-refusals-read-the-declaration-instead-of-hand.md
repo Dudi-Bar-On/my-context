@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Build refusal messages from the same rules they enforce, so what the tool says and what it does cannot drift apart.
-summary_of: 9fb51188a66f6103
+summary_of: d90d152142fd609b
 scope: []
 tags:
   - "plan:categories"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 0b646b7248124752
+checksum: d74377956efdc0e4
 plan: categories
 seq: "15"
 state: done

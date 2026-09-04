@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Judge whether the built application actually lets someone get things done, rather than whether it matches the design.
-summary_of: a80d861b8cb25e8e
+summary_of: a1fa74a997807df5
 scope: []
 tags:
   - "plan:review"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: d634281e502acfc1
+checksum: e8d01899a3453a53
 plan: review
 seq: "5"
 state: done

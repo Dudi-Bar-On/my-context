@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Three corrections to a plan: where the activity chart gets its numbers, fifty places that misuse translated text, and a stale quoted signature."
-summary_of: 55fd132c28c9dc1f
+summary_of: 779973a34c0cde17
 scope: []
 tags:
   - "plan:rulings"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 5c6bc289c1b110b0
+checksum: ab31e1afc18cd415
 plan: rulings
 seq: "17"
 state: done

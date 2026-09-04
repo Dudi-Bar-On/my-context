@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Three decisions waiting on the owner: an option that does not exist, two small drawing differences, and where two routes belong."
-summary_of: 82fea3a5aa2bcbf6
+summary_of: 7d0e1facd1d1fc84
 scope: []
 tags:
   - "plan:port"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: ca42e547c1aa6c9d
 valid_from: 2026-08-23
 valid_until: null
-checksum: e0f6633622565e1f
+checksum: f53ad5ed77fb50b1
 plan: port
 seq: "14"
 state: todo

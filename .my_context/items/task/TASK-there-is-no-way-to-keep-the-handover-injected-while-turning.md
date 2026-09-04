@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The only way to stop being asked for handover notes is to switch off the whole feature, including the delivery people want to keep.
-summary_of: dce312cb7fda1590
+summary_of: 5a548f58d87dc6e3
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: 1d833eab11587893
 valid_from: 2026-08-31
 valid_until: null
-checksum: 2891fa24f30c5c3b
+checksum: 88ceea72d3e17ec3
 plan: handover
 seq: "11"
 state: todo

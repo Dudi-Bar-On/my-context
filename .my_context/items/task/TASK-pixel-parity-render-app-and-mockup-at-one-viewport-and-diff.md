@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Compare pictures of the real app against the design to catch spacing, colour and size differences that structural checks cannot see.
-summary_of: 19f8a182266dbbdd
+summary_of: 8988d0b585b84b20
 scope: []
 tags:
   - "plan:port"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: f292e7864be9b2c7
+checksum: 33175206ab1dd27c
 plan: port
 seq: "93"
 state: todo

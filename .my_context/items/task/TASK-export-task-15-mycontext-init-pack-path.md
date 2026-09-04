@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Starting a new project from a bundle someone else shared, so it begins with their knowledge already in place.
-summary_of: f7ba95ec7efa8539
+summary_of: 59f1749ed65e3000
 scope: []
 tags:
   - "plan:export"
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 3925f019ac990594
+checksum: c9b36b15a09a2606
 plan: export
 seq: "15"
 state: done

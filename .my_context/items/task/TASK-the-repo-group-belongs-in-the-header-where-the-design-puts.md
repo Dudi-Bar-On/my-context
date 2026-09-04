@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Move the repository details up into the mostly empty header, so the crowded bottom strip gives room back to the numbers people read.
-summary_of: f24340c8b38dd78b
+summary_of: e167dcb6aa30f862
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: ab7d994eaa27d293
 valid_from: 2026-08-31
 valid_until: null
-checksum: 6107711f84cda417
+checksum: 9c084de3e9cabe86
 plan: walk
 seq: "114"
 state: done
