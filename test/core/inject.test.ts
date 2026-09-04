@@ -95,6 +95,41 @@ test('a session-start injection with a session id records in the seen file, neve
 });
 
 /**
+ * `INSTR-an-item-arrives-one-of-two-ways-and-only-one-of-them-comes` — CASE
+ * ONE. A pinned/normative item is CHECKED and re-delivered at the next
+ * window-opening event rather than assumed present because a prior window
+ * once held it. `buildInjection`'s session-start/compact/manual/subagent
+ * branch never passes `seen` to `select` (see that call site's own comment),
+ * so a same-session-id seen file that already marks this item delivered has
+ * no effect on the NEXT session-start call: the item competes for the pinned
+ * tier fresh, exactly as if nothing had ever been recorded.
+ *
+ * This is what makes case one different from a normative item's seen-gate
+ * treatment WITHIN one continuous window (the JIT tier,
+ * `hooks/pre-tool-use.ts`, verified by `select.test.ts`'s `SeenEntry` tests):
+ * there, presence really is guaranteed by construction (nothing evicts an
+ * item mid-window), so a verified, current, whole delivery is trusted. Here,
+ * a NEW window is opening and presence cannot be assumed at all, so nothing
+ * is trusted — the item is simply asked for again.
+ */
+test('a pinned item already in the seen file is still delivered on the next session-start (case one, checked not assumed)', () => {
+  const cwd = sandbox();
+  pin(cwd, 'CONST-pool', 'Pool capped at 20');
+  const root = resolveWorkspace(cwd).projectRoot!;
+
+  buildSessionStartOutput(cwd, { source: 'startup', sessionId: 'sess-1' });
+  assert.deepEqual(seenIds(readSeen(root, 'sess-1')), ['CONST-pool']);
+
+  // Same session id, a SECOND session-start (e.g. a fresh window after a
+  // restart) — the seen file from the first still has CONST-pool on it.
+  const second = buildSessionStartOutput(cwd, { source: 'startup', sessionId: 'sess-1' });
+  assert.match(second, /Body text\./,
+    'a pinned item is re-delivered at the next window-opening event, ' +
+    'never suppressed by an earlier window\'s seen record');
+  removeTree(cwd);
+});
+
+/**
  * The guard that makes the "no fabricated session key" decision structural
  * rather than merely conventional: even if a caller hands the manual path a
  * session id, it is dropped. The ledger's keys come from hook payloads only,

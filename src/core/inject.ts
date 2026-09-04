@@ -1010,6 +1010,12 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
       appendSeen(stateRoot, seenKey, selection.full.map((e) => ({
         id: e.item.id,
         tier: e.tier,
+        // The item's checksum AT THIS DELIVERY — `select.ts`'s seen gate
+        // (`TASK-seen-is-treated-as-delivered-current-and-whole-and-an-item`)
+        // compares this against the item's checksum the next time it is a
+        // candidate, so an item edited or superseded after this line is
+        // written is offered again rather than silently treated as covered.
+        checksum: e.item.checksum,
         // Two tiers stamp an IDENTITY MARKER rather than a clock reading, and
         // for the same reason: what they record is not "when" but "into which
         // context window". `restored` carries the snapshot's `capturedAt`;

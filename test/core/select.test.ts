@@ -144,6 +144,66 @@ test('a seen item does not consume budget and spill a fresh one', () => {
   assert.deepEqual(sel.spilled, []);
 });
 
+// --- TASK-seen-is-treated-as-delivered-current-and-whole-and-an-item -------
+//
+// A bare id in `seen` (above) keeps its pre-hardening, unverified meaning —
+// every existing test above this line still passes unchanged. A `SeenEntry`
+// is the verified form: `select` excuses an id from re-offering only when the
+// entry says the delivery was WHOLE (a full-text tier, never a title-only
+// index line) and CURRENT (its checksum still matches the item as `select`
+// was handed it). Presence — whether the item is still in the live context
+// window — is deliberately not modelled here: nothing observes an eviction,
+// so this project does not pretend to verify what it cannot.
+
+test('a title-only (non-whole) delivery does not excuse re-offering the item', () => {
+  // Same checksum as the item itself (item()'s default is 'x') — wholeness
+  // alone must be the reason this is re-offered, not a checksum mismatch.
+  const sel = select([item({ id: 'CONST-a', always: true, checksum: 'x' })], {
+    event: 'session-start',
+    seen: [{ id: 'CONST-a', checksum: 'x', whole: false }],
+  }, CONFIG);
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-a']);
+});
+
+test('a superseded (stale-checksum) delivery does not excuse re-offering the item', () => {
+  // whole: true — the delivery WAS a full-text one — but the item has since
+  // been edited: its current checksum ('y') no longer matches what was
+  // delivered ('x'). Currency alone must be the reason this is re-offered.
+  const sel = select([item({ id: 'CONST-a', always: true, checksum: 'y' })], {
+    event: 'session-start',
+    seen: [{ id: 'CONST-a', checksum: 'x', whole: true }],
+  }, CONFIG);
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-a']);
+});
+
+test('a current, whole delivery still excuses re-offering the item', () => {
+  const sel = select([item({ id: 'CONST-a', always: true, checksum: 'x' })], {
+    event: 'session-start',
+    seen: [{ id: 'CONST-a', checksum: 'x', whole: true }],
+  }, CONFIG);
+  assert.deepEqual(sel.full, []);
+});
+
+test('a seen SeenEntry does not consume budget and spill a fresh one, exactly as a bare id does', () => {
+  const big = 'x'.repeat(4000);
+  const cfg = resolveConfig({ budgets: { pinned: 1200 } });
+  const sel = select([
+    item({
+      id: 'CONST-seen', always: true, continuity: false, summary: null, summaryOf: null,
+      severity: 'hard', body: big, checksum: 'x',
+    }),
+    item({
+      id: 'CONST-fresh', always: true, continuity: false, summary: null, summaryOf: null,
+      severity: 'soft', body: big,
+    }),
+  ], {
+    event: 'session-start',
+    seen: [{ id: 'CONST-seen', checksum: 'x', whole: true }],
+  }, cfg);
+  assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-fresh']);
+  assert.deepEqual(sel.spilled, []);
+});
+
 test('fitToBudget is first-fit, not a strict priority prefix', () => {
   // B and A are both hard severity; B is 'project' layer (sorts first), A is
   // 'global' (sorts second). C is soft, so it sorts last regardless. Body

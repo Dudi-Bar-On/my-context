@@ -5,6 +5,7 @@ import {
   appendJsonlLine, readJsonlFileState, type JsonlFileState, type JsonlLogSpec,
 } from './jsonl-log.ts';
 import { sanitizeSessionId, type LedgerTier } from './ledger.ts';
+import type { SeenEntry } from './select.ts';
 
 // --- The per-session seen file ----------------------------------------------
 //
@@ -44,6 +45,19 @@ export interface SeenLine {
   id: string;
   tier: SeenTier;
   at: string;
+  /**
+   * The item's checksum at the moment this delivery was recorded — absent on
+   * every line written before `TASK-seen-is-treated-as-delivered-current-
+   * and-whole-and-an-item` (owner ruling 2026-09-04), and absence is read
+   * that way rather than as "unchanged": `seenEntries` drops a line with no
+   * checksum instead of guessing one, so an old line re-offers its item
+   * rather than wrongly excusing it. Only every TIER this file will EVER TAKE
+   * (`TIERS`, above) is a full-text delivery, so a checksum recorded here is
+   * always `SeenEntry.whole: true` by construction — `select.ts`'s seen gate
+   * verifies currency from this field and wholeness from that construction,
+   * never from a second field this file would have to keep in sync.
+   */
+  checksum?: string;
 }
 
 /**
@@ -112,6 +126,15 @@ function specFor(file: string): JsonlLogSpec {
       if (typeof row.id !== 'string' || row.id === '') return 'has no usable "id"';
       if (typeof row.tier !== 'string' || !TIERS.has(row.tier)) return 'has no usable "tier"';
       if (typeof row.at !== 'string' || row.at === '') return 'has no usable "at"';
+      // Optional, not required: a line written before this field existed has
+      // none, and that is a valid, readable line — see `SeenLine.checksum`.
+      // An empty string is ALSO valid — an item never stamped with a real
+      // checksum records that honestly rather than being refused for it; see
+      // `appendSeen`'s own comment on the same field. Only a PRESENT value of
+      // the wrong TYPE refuses the line.
+      if (row.checksum !== undefined && typeof row.checksum !== 'string') {
+        return 'has an unusable "checksum"';
+      }
       return null;
     },
     refuse: (line, reason) => new Error(
@@ -156,6 +179,17 @@ export function appendSeen(
       // a lost dedupe record (design §6 risk 4).
       retryOnTransientFsError(() => appendJsonlLine(dir, file, {
         protocol: SEEN_PROTOCOL, id: line.id, tier: line.tier, at: line.at,
+        // Omitted rather than written as `undefined`: a caller that has not
+        // been updated to pass a checksum yet must produce the exact line it
+        // always did, not a new key with no value. `''` — an item whose
+        // checksum has never been stamped (`item.ts` ·
+        // `optString(fm, rawBlock, 'checksum') ?? ''`) — IS written: it is a
+        // real, if degenerate, currency claim (`select.ts` compares it
+        // against the item's checksum exactly as any other value, so two
+        // unstamped reads of the same never-edited item still match and stay
+        // deduped; the day the item is stamped for real, the mismatch is
+        // exactly the "superseded" case this task exists to catch).
+        ...(line.checksum === undefined ? {} : { checksum: line.checksum }),
       }), SEEN_APPEND_ATTEMPTS);
     }
     return { written: true, error: null };
@@ -181,6 +215,7 @@ export function readSeen(root: string, key: string): SeenState {
     return {
       lines: read.rows.map((r) => ({
         id: r.id as string, tier: r.tier as SeenTier, at: r.at as string,
+        ...(typeof r.checksum === 'string' ? { checksum: r.checksum } : {}),
       })),
       error: null,
       file: read.state,
@@ -195,6 +230,41 @@ export function readSeen(root: string, key: string): SeenState {
 /** Unique ids across all tiers, sorted — the `Ledger.seen` shape. */
 export function seenIds(state: SeenState): string[] {
   return [...new Set(state.lines.map((l) => l.id))].sort();
+}
+
+/**
+ * `state`'s lines, reduced to what `select.ts`'s seen gate can actually
+ * VERIFY — `SeenEntry.checksum` to compare against the item's current one,
+ * and `whole: true` on every entry, because every TIER this file will EVER
+ * TAKE (`TIERS`, above) is a full-text delivery: an index/title-only
+ * delivery is never appended here (`core/inject.ts`, `hooks/pre-tool-use.ts`
+ * both call `appendSeen` with `selection.full` only), so one can never reach
+ * this function to be marked otherwise. `select`'s `SeenEntry.whole` field
+ * exists for the caller-side guard that fact depends on staying true, not
+ * because this file has ever produced `false`.
+ *
+ * **A line with no checksum is left OUT, not assumed current.** Every line
+ * written before `SeenLine.checksum` existed has none, and there is nothing
+ * to verify a currency claim against — `select`'s bare-id fallback would
+ * treat a plain id as "seen, unverified" and skip it outright, which is
+ * exactly the assumption this task removes. Missing here means the id is not
+ * in the returned list at all, so `select` sees it as never delivered and
+ * re-offers it — the same safe-by-omission direction this module takes
+ * everywhere else (see the file header).
+ *
+ * **Last-line-wins per id**, the same rule `deliveredFor` applies for a
+ * window marker: an item delivered twice at two different checksums (edited
+ * in between) is checked against the MOST RECENT delivery, which is the one
+ * a currency check must compare against.
+ */
+export function seenEntries(state: SeenState): SeenEntry[] {
+  const last = new Map<string, string | undefined>();
+  for (const line of state.lines) last.set(line.id, line.checksum);
+  const out: SeenEntry[] = [];
+  for (const [id, checksum] of last) {
+    if (checksum !== undefined) out.push({ id, checksum, whole: true });
+  }
+  return out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /**

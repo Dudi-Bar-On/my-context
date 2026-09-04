@@ -17,12 +17,90 @@ export type { FocusReport } from './focus.ts';
 
 export type SelectEvent = 'session-start' | 'compact' | 'tool' | 'manual';
 
+/**
+ * What `select`'s seen gate can actually VERIFY about one prior delivery —
+ * owner ruling 2026-09-04,
+ * `TASK-seen-is-treated-as-delivered-current-and-whole-and-an-item`.
+ *
+ * The gate used to read one fact — an id is in `seen` — as three: the item is
+ * still in the window, it is the same item, and the whole of it arrived. Only
+ * two of those three are knowable from a delivery record, and this type is
+ * exactly those two:
+ *
+ *  - **`checksum` is CURRENCY.** The item's own checksum at the moment this
+ *    line was recorded, compared against `Item.checksum` as `select` was
+ *    handed it. An item edited or superseded since delivery no longer
+ *    matches, and `select` must not let a stale delivery excuse a session
+ *    from ever seeing the new text.
+ *  - **`whole` is COMPLETENESS.** True only for a delivery that carried the
+ *    item's full body — never for a title-only index line. This reuses
+ *    `governingSpill`'s own distinction (`titled`/`untitled` vs `chosenIds`)
+ *    rather than inventing a second notion of "whole": a delivery this field
+ *    marks `false` is, by definition, exactly what `GoverningSpill` would
+ *    have named had it run over that call.
+ *
+ * **PRESENCE — whether the item is still in the live context window — has no
+ * field here, deliberately.** A compaction rebuilds the window and an
+ * eviction records nothing, so nothing observes it; a type that offered a
+ * `present` flag would invite a caller to guess at it. `select` bounds this
+ * gap instead of pretending to close it: it verifies the two facts a
+ * delivery record actually carries, and offers the item again whenever
+ * either one fails — the safe direction this whole seen-file subsystem
+ * already takes everywhere else (`core/seen-file.ts`'s header).
+ *
+ * **Why unbounded presence is survivable: `SeenEntry` only ever reaches
+ * `select` for the population `INSTR-an-item-arrives-one-of-two-ways-and-
+ * only-one-of-them-comes` calls CASE ONE.** `fresh` (below) is filtered from
+ * `injectable`, which is already narrowed to `isNormative` — pinned and
+ * normative items, the ones a real caller ever builds a `SeenEntry` for
+ * (`core/inject.ts`, `hooks/pre-tool-use.ts`). That instruction's CASE ONE
+ * rule is stronger than "bound the gap": at every window-opening event
+ * (session-start, compact, manual, subagent) `core/inject.ts` does not pass
+ * `seen` to `select` AT ALL, so a case-one item already delivered into a
+ * PRIOR window is asked for again with no seen-based suppression whatsoever
+ * — checked, not assumed, exactly as that instruction requires. `SeenEntry`
+ * is consulted only WITHIN one continuous window, on a tool event
+ * (`hooks/pre-tool-use.ts`'s JIT tier), where presence is not merely bounded
+ * but actually guaranteed: nothing evicts a single item from a window
+ * mid-session, only a compaction rebuilds the whole thing, and a compaction
+ * is a window-opening event that never reaches this code path with `seen`
+ * populated either. CASE TWO items (rationale tier — `lesson`, `decision`,
+ * `note`, and the rest) never reach `injectable` in the first place
+ * (`isNormative` excludes them before `fresh` is computed), so this gate
+ * cannot re-inject a body nobody asked for on their behalf; an id returning
+ * with no body is that case's whole, correct promise.
+ */
+export interface SeenEntry {
+  id: string;
+  /** The item's checksum at the moment this delivery was recorded. */
+  checksum: string;
+  /** Whether this delivery carried the item's full body — see above. */
+  whole: boolean;
+}
+
 export interface SelectContext {
   event: SelectEvent;
   /** POSIX, layer-root-relative. Used by the JIT tier (Plan 2). */
   path?: string | null;
-  /** Item ids already injected this session. */
-  seen?: string[];
+  /**
+   * Item ids already injected this session — or, once a caller can verify a
+   * delivery, WHAT was delivered (`SeenEntry`).
+   *
+   * A bare id string is the PRE-hardening rule, kept unchanged rather than
+   * removed: it exists for a caller that answers a different question than
+   * "would select skip this" (the web preview's `/api/simulate`, which
+   * classifies past spills as already-in-context rather than deciding what
+   * to inject next) and was never handed a delivery record to verify against.
+   * `select` cannot check what it was not given, so a bare id keeps the old
+   * id-only exclusion exactly as before.
+   *
+   * A real injection caller (`core/inject.ts`, `hooks/pre-tool-use.ts`) sends
+   * `SeenEntry` instead, and `select` excuses that id from re-offering only
+   * when it verifies BOTH `checksum` (current) and `whole` (true) — see
+   * `SeenEntry`. Presence is not attempted either way; see that type's own
+   * comment for why.
+   */
+  seen?: (string | SeenEntry)[];
   /** Item ids captured by the PreCompact snapshot (Plan 2). */
   restore?: string[];
   /**
@@ -1302,8 +1380,27 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   // Seen items are removed before budgeting, not after — this is Plan 1's
   // hardening and must not be reverted: an already-injected item must not
   // consume budget and spill a fresh one in its place.
-  const seen = new Set(ctx.seen ?? []);
-  const fresh = injectable.filter((i) => !seen.has(i.id));
+  //
+  // `ctx.seen` splits into the two forms `SeenEntry` documents: a bare
+  // string keeps the pre-hardening id-only rule (`seenBareIds`), and a
+  // `SeenEntry` is checked against what it actually claims — current
+  // (`checksum` still matches this item) AND whole (a full-text delivery,
+  // never a title-only index line) — rather than trusted on id alone. An id
+  // present only as a NON-whole or STALE `SeenEntry` is not excused by it:
+  // that is the whole of `TASK-seen-is-treated-as-delivered-current-and-
+  // whole-and-an-item`'s fix, expressed as what `fresh` keeps rather than
+  // what it drops.
+  const seenBareIds = new Set<string>();
+  const seenVerified = new Map<string, SeenEntry>();
+  for (const s of ctx.seen ?? []) {
+    if (typeof s === 'string') seenBareIds.add(s);
+    else seenVerified.set(s.id, s);
+  }
+  const fresh = injectable.filter((i) => {
+    const entry = seenVerified.get(i.id);
+    if (entry !== undefined) return !(entry.whole && entry.checksum === i.checksum);
+    return !seenBareIds.has(i.id);
+  });
 
   const entries: SelectionEntry[] = [];
   const spilled: Spill[] = [];

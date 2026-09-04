@@ -9,7 +9,7 @@ import {
 } from '../core/markdown-fallback.ts';
 import { loadErrorNote, type LoadError } from '../core/rebuild.ts';
 import { renderSelection } from '../core/render.ts';
-import { appendSeen, readSeen, seenIds } from '../core/seen-file.ts';
+import { appendSeen, readSeen, seenEntries } from '../core/seen-file.ts';
 import { injectableTypes, select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import type { Item } from '../core/types.ts';
@@ -304,7 +304,13 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     const selection = select(
       candidates,
       { event: 'tool', path: target,
-        seen: seenState.error === null ? seenIds(seenState) : [],
+        // `SeenEntry[]`, not bare ids — `select`'s seen gate
+        // (`TASK-seen-is-treated-as-delivered-current-and-whole-and-an-item`)
+        // excuses an id from re-offering only when it verifies the delivery
+        // was CURRENT (checksum) and WHOLE (never a title-only index line,
+        // which this hook's own `appendSeen` call below never records
+        // anyway — see `seenEntries`).
+        seen: seenState.error === null ? seenEntries(seenState) : [],
         focus: focusState.focus },
       ws.config,
     );
@@ -405,6 +411,9 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     // already holds the delivery durably.
     appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({
       id: e.item.id, tier: 'jit' as const, at: new Date().toISOString(),
+      // The item's checksum AT THIS DELIVERY — see the matching comment on
+      // `core/inject.ts`'s `appendSeen` call for why.
+      checksum: e.item.checksum,
     })));
     return text;
   } catch {
