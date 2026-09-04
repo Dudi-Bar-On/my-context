@@ -1172,10 +1172,28 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  * comment reached at every raise from 4000 onwards.
  *
  * Headroom is ~50 characters, as at every previous raise.
+ *
+ * **6666 -> 6975, and this is a new PARAGRAPH, not a name.** Owner ruling
+ * `INSTR-an-item-arrives-one-of-two-ways-and-only-one-of-them-comes`
+ * (2026-09-04) distinguishes two cases an agent must be able to tell apart:
+ * a pinned or normative item is the product's job — checked and redelivered
+ * whenever missing, no action needed — but every other item's BODY does not
+ * survive a compaction, only its id does, and nothing reloads the text on
+ * anyone's behalf. The failure this prevents has already happened here: an
+ * agent that sees a familiar id after a compaction and acts on it as though
+ * the body were present. The existing "Query before assuming" section
+ * already covered querying and re-injecting the pinned set; it did not yet
+ * say plainly that an id is not a body, or name the load command
+ * (`mycontext show <id>` / `get_item`) for the case where it is not. 355
+ * characters, all of them the two cases and the command — nothing already
+ * here was trimmed to buy the space back, the same conclusion this comment
+ * reached at every raise from 4000 onwards.
+ *
+ * Headroom is ~50 characters, as at every previous raise.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 6666, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 6975, `SKILL.md is ${text.length} chars`);
 });
 
 /**

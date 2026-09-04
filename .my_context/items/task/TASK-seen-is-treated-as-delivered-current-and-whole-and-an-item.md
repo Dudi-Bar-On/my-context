@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Skipping an item because it was seen assumes three things the record never checked, so a stale or title-only item is never sent again.
-summary_of: 750952413c32a59a
+summary_of: 24a45a1dfca9007e
 scope:
   - src/core/select.ts
   - src/core/inject.ts
@@ -18,18 +18,19 @@ tags:
   - enforcement
   - "plan:budget"
   - "seq:17"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: cbfdab6aa9d12ea0
+checksum: aea55c27ffd4ae4f
 plan: budget
 seq: "17"
-state: doing
+state: done
 priority: "1"
+verified_on: 2026-09-04
 ---
 
 # seen is treated as delivered, current and whole, and an item can be none of those
