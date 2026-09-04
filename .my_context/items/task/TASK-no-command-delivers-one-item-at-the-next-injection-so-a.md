@@ -8,7 +8,7 @@ always: false
 summary: A reader who decides a dropped item is needed has no way to send it, because the only tools are permanent or reshape everything else.
 summary_of: d05c75bff085f34b
 scope:
-  - src/cli/commands
+  - src/cli/commands/**
   - src/core/ledger.ts
   - src/core/select.ts
 tags:
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 03a4ec3f459202a5
+checksum: 47b168e010dbc5fe
 plan: budget
 seq: "10"
 state: todo
