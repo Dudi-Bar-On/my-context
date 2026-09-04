@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The gaps screen is retired and its empty-categories list becomes a card on scope coverage.
-summary_of: 42d05947c5dd75a4
+summary_of: 844155f37188b782
 scope:
   - src/ui/public/screens/**
   - src/ui/public/strings/**
@@ -17,18 +17,19 @@ tags:
   - readability
   - "plan:screens"
   - "seq:22"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 0cb352f419d2f59f
+checksum: 70dc6d8570f9b9ae
 plan: screens
 seq: "22"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-04
 ---
 
 # coverage gaps folds into scope coverage, keeping the one fact it alone reported

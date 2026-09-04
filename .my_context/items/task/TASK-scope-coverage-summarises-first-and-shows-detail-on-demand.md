@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Every long list on the screen gets a counted summary that is always visible, with the full list one click away.
-summary_of: 7e0de5f7cee45087
+summary_of: 9be28cd0f6d8cd68
 scope:
   - src/ui/public/screens/coverage.js
   - src/ui/public/screens/**
@@ -17,18 +17,19 @@ tags:
   - readability
   - "plan:screens"
   - "seq:21"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 98cf93a2dc868d75
+checksum: 6637405e04fbfcaf
 plan: screens
 seq: "21"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-04
 ---
 
 # scope coverage summarises first and shows detail on demand, because it draws six thousand rows at once
