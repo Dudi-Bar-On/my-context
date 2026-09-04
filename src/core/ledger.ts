@@ -395,6 +395,18 @@ export class Ledger {
     return rows.map((r) => r.item_id);
   }
 
+  /**
+   * Every row this session has, one per `(item, tier)` first delivered —
+   * `record`'s `ON CONFLICT DO NOTHING` is what makes this table already the
+   * distinct-delivery view `core/context-share.ts` needs for the myctx share
+   * (`TASK-myctx-sums-every-injection-ever-made-instead-of-what-is`,
+   * 2026-09-04). That module does not call this method: it has no `tokens`
+   * column to size what it names, so `shareOf`/`shareSql` re-derive the same
+   * first-appearance rule directly over the audit log's own `injected`
+   * field, which carries both the ids and the estimate this table does not.
+   * This IS the proof the rule is sound, read here rather than re-argued
+   * there.
+   */
   entries(sessionId: string): LedgerEntry[] {
     const rows = this.#db.prepare(
       'SELECT item_id, tier, injected_at FROM ledger WHERE session_id = ? ORDER BY injected_at, item_id',

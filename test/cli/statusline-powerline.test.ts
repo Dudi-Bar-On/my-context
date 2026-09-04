@@ -747,7 +747,7 @@ test('the bar is three lines: identity, this window, then the account', () => {
   assert.deepEqual(account.map((seg) => `${seg.label} ${seg.text}`), [
     '7D ▰▰▰▰▰▱▱▱▱▱ 49%',
     '5H ▰▱▱▱▱▱▱▱▱▱ 12%',
-    'MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)',
+    'MYCTX ≈ ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)',
     'COST $0.42',
     // Last of all, and on the row that moves, because it IS a clock — the same
     // placement the audit clock has and for the same reason.
@@ -1027,11 +1027,13 @@ test('the blocks that have nothing to say are absent, and the ones that do are p
   assert.match(line({ myctxNote: 'projection sync failed' }), /MYCTX unavailable/);
   // **THE FIFTH USED-OF-MAX FIELD since 2026-09-01.** The share is banded
   // against the window it went into, so it draws a bar and a proportion beside
-  // its counts. The `≥` still rides the label, because it qualifies the
-  // NUMERATOR — some injection records carry no frozen estimate, so the true
-  // share is at least this — and that is a fact about the count, not the bar.
+  // its counts. The qualifier rides the label, never the bar, because it
+  // qualifies the NUMERATOR: `≈` — never absent, since 2026-09-04 — says the
+  // figure counts each item once and is a bound on residency rather than a
+  // measurement of it, and `≥` on top of that says some records also carry
+  // no frozen estimate, so the true share is at least this.
   assert.match(line({ myctx: { tokens: 6200, injections: 3, unrecorded: 0 } }),
-    /MYCTX [▱▰]{10} 0\.6% \(6\.2k \/ 1\.0M\)/);
+    /MYCTX ≈ [▱▰]{10} 0\.6% \(6\.2k \/ 1\.0M\)/);
   assert.match(line({ myctx: { tokens: 6200, injections: 3, unrecorded: 2 } }),
     /MYCTX ≥ [▱▰]{10} 0\.6% \(6\.2k \/ 1\.0M\)/);
   // **SUPERSEDED CLAIM, restated to the ruling that replaced it.** This used
@@ -1327,7 +1329,7 @@ test('the whole bar, from a real payload shape, with every group present', () =>
     'WINDOW ▰▰▰▰▱▱▱▱▱▱ 42.0% (420.0k / 1.0M)',
     '7D ▰▰▰▰▰▱▱▱▱▱ 49% ·1d4h',
     '5H ▰▱▱▱▱▱▱▱▱▱ 12% ·3h12m',
-    'MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)',
+    'MYCTX ≈ ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)',
     'COST $0.42 · warm 99.1%',
     // The elapsed clock the owner's reference closes on. `total_duration_ms`
     // is 1000 in this payload, which is under a minute and therefore `now`.
@@ -1416,7 +1418,7 @@ test('the line gives itself up in the order the owner ranked, not by width', () 
   // gives itself up in, never the widths at which it does.
   const D7 = '7D ▰▰▰▰▰▱▱▱▱▱ 49% ·1d4h';
   const H5 = '5H ▰▱▱▱▱▱▱▱▱▱ 12% ·3h12m';
-  const MY = 'MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)';
+  const MY = 'MYCTX ≈ ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)';
   assert.ok(!at(195).includes('COST $0.42 · warm 99.1%'), 'cost and cache go first');
   assert.ok(at(195).includes(D7));
   assert.ok(!at(170).includes(MY), 'the share goes before the windows');

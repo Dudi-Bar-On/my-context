@@ -388,7 +388,7 @@ test('MYCONTEXT_STATUSLINE_ONE_LINE folds the bar back to a single line, losing 
   // the single line — which is the whole claim the fallback makes.
   for (const block of ['MODEL Opus 4.5', 'REPO test_mycontext_plugin', 'BRANCH campaign/my-context-test',
     'ASK ▰▰▰▰▱▱▱▱▱▱ 43% (42.0 / 98) ·+56.0', 'WINDOW ▰▰▰▰▱▱▱▱▱▱ 42.0% (420.0k / 1.0M)',
-    'MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)']) {
+    'MYCTX ≈ ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)']) {
     assert.ok(two.includes(block), `two-line form is missing ${block}`);
     assert.ok(one.includes(block), `one-line fallback is missing ${block}`);
   }
@@ -426,7 +426,7 @@ test('a tee that did not land is disclosed beside a myctx share that did', () =>
     ['ASK ▰▰▱▱▱▱▱▱▱▱ 24% (23.5 / 98) ·+74.5', 'WINDOW ▰▰▱▱▱▱▱▱▱▱ 23.5% (235.0k / 1.0M)'],
     // The account row: the banded share, and the disclosure that rides the
     // context field in its absent state.
-    ['MYCTX ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)', 'WINDOW tee not written (disk full)', CLOCK],
+    ['MYCTX ≈ ▱▱▱▱▱▱▱▱▱▱ 0.6% (6.2k / 1.0M)', 'WINDOW tee not written (disk full)', CLOCK],
   ));
 
   // `≥` and not a rounded-up guess: some records carry no estimate, so the
@@ -544,6 +544,13 @@ test('myctxShare sums recorded tokens and COUNTS absences — never defaults the
  * count, a record with no `tokens` key at all, an explicit JSON `null`, a
  * string where a number belongs, a zero (which `IS NOT NULL` and a falsy check
  * disagree about), another session's record, and a non-injection record.
+ *
+ * **All five `s1` records also name the same item, `RULE-a:jit` — on
+ * purpose, since 2026-09-04.** That is what makes only the FIRST of them
+ * count towards `tokens`/`unrecorded` at all: records 2 through 5 introduce
+ * nothing this session has not already been charged for, so they contribute
+ * neither a token nor an absence, whatever their own `tokens` field says.
+ * `injections` stays 5 — it is the raw event count, untouched by the dedupe.
  */
 test('the SQL share and the record-by-record share give the same answer', () => {
   const dir = project();
@@ -577,7 +584,7 @@ test('the SQL share and the record-by-record share give the same answer', () => 
     } finally {
       db.close();
     }
-    assert.deepEqual(byRow, { tokens: 4000, injections: 5, unrecorded: 3 });
+    assert.deepEqual(byRow, { tokens: 4000, injections: 5, unrecorded: 0 });
     assert.deepEqual(myctxShare(root, 's1'), byRow);
   } finally {
     removeTree(dir);
@@ -720,30 +727,36 @@ test('the myctx share counts only THIS window: since the last compaction, and ne
   const dir = project();
   const root = path.join(dir, '.my_context');
   try {
-    const inject = (op: string, sessionId: string, tokens: number): void => {
+    // Each call names a DIFFERENT item, deliberately — this test is about the
+    // time and subagent bounds alone, and a repeated id would also exercise
+    // the "each item charged once" rule `test/cli/statusline.test.ts`'s
+    // "the SQL share and the record-by-record share give the same answer"
+    // already owns below. Conflating the two would leave neither concern
+    // isolated.
+    const inject = (op: string, sessionId: string, itemId: string, tokens: number): void => {
       recordAudit(root, {
         kind: 'injection', op, sessionId, hook: 'SessionStart',
-        injected: [{ id: 'RULE-a', tier: 'pinned' }], tokens,
+        injected: [{ id: itemId, tier: 'pinned' }], tokens,
       } as Parameters<typeof recordAudit>[1]);
     };
 
     // ── the epoch that was compacted away ──
-    inject('session-start', 's1', 4000);
-    inject('jit', 's1', 8000);
-    inject('subagent-start', 's1', 500000);
+    inject('session-start', 's1', 'RULE-a', 4000);
+    inject('jit', 's1', 'RULE-b', 8000);
+    inject('subagent-start', 's1', 'RULE-c', 500000);
     // Everything above this line is gone from the window.
     recordAudit(root, { kind: 'hook', op: 'pre-compact', sessionId: 's1', hook: 'PreCompact' });
     recordAudit(root, { kind: 'hook', op: 'post-compact', sessionId: 's1', hook: 'PostCompact' });
 
     // ── the epoch the session is actually holding ──
-    inject('compact-restore', 's1', 1500);
-    inject('jit', 's1', 700);
+    inject('compact-restore', 's1', 'RULE-d', 1500);
+    inject('jit', 's1', 'RULE-e', 700);
     // A subagent this session dispatched. The record carries THIS session's id
     // — `INJECTION_OPS` files it that way on purpose, so that
     // `audit --kind injection` does not under-report what models were shown —
     // but the text went into a different model's window and never into this
     // one.
-    inject('subagent-start', 's1', 900000);
+    inject('subagent-start', 's1', 'RULE-f', 900000);
 
     assert.deepEqual(
       myctxShare(root, 's1'),
@@ -754,9 +767,56 @@ test('the myctx share counts only THIS window: since the last compaction, and ne
     // A session that has never been compacted keeps the unbounded sum, which
     // is the right answer for it: it is still holding everything it was given.
     // The subagent bound still applies — that one is not about time.
-    inject('session-start', 's2', 3300);
-    inject('subagent-start', 's2', 777000);
+    inject('session-start', 's2', 'RULE-g', 3300);
+    inject('subagent-start', 's2', 'RULE-h', 777000);
     assert.deepEqual(myctxShare(root, 's2'), { tokens: 3300, injections: 1, unrecorded: 0 });
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * **DEFECT 3: the same items, redelivered, counted again every time.**
+ *
+ * Reported by the owner 2026-09-04 on his own live session: 260 injection
+ * records summing to 3,200,920 tokens against a 1,000,000-token window —
+ * ~320%, with `jit` alone responsible for 3,100,234 of it. `jit` reselects a
+ * working set from scratch on every tool call, so a session sitting still on
+ * one file re-delivers the SAME items over and over, and the epoch/subagent
+ * bounds above do nothing about that — both are about WHICH RECORDS to look
+ * at, and every one of these records legitimately belongs to this window.
+ *
+ * The fix is `core/context-share.ts`'s finding: charge a record's `tokens`
+ * only when it is the FIRST record (in this epoch) to deliver at least one of
+ * its items. Three `jit` firings that reselect the identical three-item set
+ * therefore cost what that set cost ONCE, not three times — which is the
+ * shape of the owner's own report (138 records, 367 distinct items, on
+ * 2026-09-04).
+ */
+test('the myctx share charges a repeated jit selection once, not once per firing', () => {
+  const dir = project();
+  const root = path.join(dir, '.my_context');
+  try {
+    const jit = (tokens: number): void => {
+      recordAudit(root, {
+        kind: 'injection', op: 'jit', sessionId: 's1', hook: 'PreToolUse', path: 'src/a.ts',
+        injected: [
+          { id: 'RULE-a', tier: 'jit' }, { id: 'RULE-b', tier: 'jit' }, { id: 'RULE-c', tier: 'jit' },
+        ],
+        tokens,
+      } as Parameters<typeof recordAudit>[1]);
+    };
+    // Three firings, same three items every time — the shape `jit` actually
+    // takes on a session that keeps touching files inside one small area.
+    jit(1000);
+    jit(1000);
+    jit(1000);
+    assert.deepEqual(
+      myctxShare(root, 's1'),
+      { tokens: 1000, injections: 3, unrecorded: 0 },
+      'three firings of the identical set cost it once — summing every firing gave 3000, ' +
+      '300% of what the set actually costs',
+    );
   } finally {
     removeTree(dir);
   }

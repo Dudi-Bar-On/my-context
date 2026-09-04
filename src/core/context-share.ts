@@ -37,6 +37,43 @@ import { INJECTION_OPS, type InjectionOp } from './audit.ts';
 // else's context window presented as a claim about yours.
 //
 // So the bound is TWO bounds, and neither alone is sufficient.
+//
+// **A third bound, found 2026-09-04 on this repository's own live session**
+// (`595db3b1…`, a 1,000,000-token window): even with both bounds above
+// applied, the figure was 1,699,381 tokens over 138 records — 170% of the
+// window. Both prior bounds are about WHICH RECORDS to look at; this one is
+// about what a record MEANS. `jit` fires on every file touch and reselects a
+// working set from scratch each time, so the SAME items recur across many
+// records in one epoch — the sample above held 138 records naming only 367
+// distinct (item, tier) pairs between them. Summing every record's `tokens`
+// charges that recurring set once per record, when the true cost of holding
+// it in the window is paid once.
+//
+// **What is KNOWABLE from the log alone: distinct items.** `Ledger.entries`
+// (`core/ledger.ts`) already answers "what has this session been shown" with
+// one row per `(session, item, tier)` — first-seen only, because `record()`
+// is `INSERT ... ON CONFLICT DO NOTHING`. That is the proof this dedupe is
+// sound, not the mechanism: the ledger carries no `tokens` column, so it
+// cannot SIZE what it names. Sizing has to come from the audit log's own
+// `injected` field, which every record in `MAIN_WINDOW_INJECTION_OPS` already
+// carries beside its `tokens` total — so `shareOf`/`shareSql` below re-derive
+// the ledger's own rule (first appearance wins, in session order) directly
+// over the records they already hold, and charge each record's `tokens` only
+// on the record that is the FIRST to deliver at least one of its items. A
+// record that redelivers only items already charged contributes nothing —
+// which is the exact shape of the 138-vs-367 finding above, and why a session
+// that reselects the same pinned set every tool call now costs what that set
+// costs once, not once per tool call.
+//
+// **What is NOT knowable from the log alone, even now: eviction.** Nothing
+// here observes what leaves the window between compactions — an old tool
+// result trimmed by the platform's own context management, say. An item
+// charged at its first delivery keeps counting for the rest of the epoch even
+// if it was quietly dropped an hour later. So this is a much closer estimate
+// than "everything ever emitted", but it is still an UPPER bound on what is
+// actually resident, never a measured one — and the two callers say so on the
+// name rather than the value: see the `≈`/`≥` qualifier logic in
+// `cli/commands/statusline-powerline.ts`, ~line 1956.
 
 /**
  * The injection ops whose text lands in the session's OWN context window.
@@ -91,57 +128,156 @@ export function contextEpochStart(db: DatabaseSync, sessionId: string): string |
  * `MAIN_WINDOW_INJECTION_OPS` and never typed out a second time.
  *
  * The list is interpolated rather than parameterised because it is this
- * module's own constant and not user input, and because the fragment is nested
- * inside `filterSelect`'s parameterised SQL, whose placeholders are positional
- * — a second set of `?` here would have to be threaded through every caller in
- * the right order to buy nothing.
+ * module's own constant and not user input, and because the fragment is
+ * nested inside `shareSql`'s own parameterised query below, whose
+ * placeholders are positional — a second set of `?` here would have to be
+ * threaded through in the right order to buy nothing.
  */
 function opClause(column: string): string {
   return `${column} IN (${MAIN_WINDOW_INJECTION_OPS.map((op) => `'${op}'`).join(', ')})`;
 }
 
 /**
- * The share as ONE aggregate row over `filterSelect`'s own SELECT.
+ * The share as ONE aggregate query — over `audit` joined to `audit_item`,
+ * not over `filterSelect`'s SELECT, and that departure is deliberate enough
+ * to earn its own paragraph below.
  *
- * The record-by-record version measured p95 71.8 ms over 5,000 injection
- * records on Claude Code's per-message path (`test/perf/statusline-latency.perf.ts`);
- * this returns one row and stops being proportional to the session's history
- * in JavaScript. `shareOf` below is the same rules in a loop, and
- * `test/cli/statusline.test.ts` runs both over one corpus and requires the
- * same answer — because "an absent `tokens` is counted, never summed as zero"
- * and "a `subagent-start` is somebody else's window" now each exist in two
- * languages.
+ * **`injections` and `unrecorded`/`tokens` answer different questions now,
+ * and that is deliberate.** `injections` stays a plain count of every
+ * matching record — the raw event count `/api/watch/context` already shows
+ * as "N injections", unaffected by this file — while `tokens` and
+ * `unrecorded` are charged only on the record that FIRST delivers each
+ * `(item, tier)` pair, per the module header's finding. A record that
+ * redelivers a set already charged still counts as an injection; it
+ * contributes nothing to either sum.
  *
- * `json_type`, not `IS NOT NULL`: a JSON `null`, a missing key and a string
- * are all "no number here", which is what makes this agree with the loop's
- * `typeof record.tokens === 'number'` rather than merely resemble it.
+ * **Why this is NOT `filterSelect`'s SELECT wrapped, unlike every other
+ * reader of this log.** "First" needs an ORDER — some way to tell which of
+ * two records naming the same item came earlier — and the table already has
+ * one: `seq`, its `INTEGER PRIMARY KEY`, assigned in insertion order.
+ * `filterSelect`'s unbounded branch never selects it (only `json(rec)`), so
+ * the first version of this query manufactured an order instead, with
+ * `ROW_NUMBER() OVER (ORDER BY rec ->> '$.at')` and `json_each` unpacking
+ * every record's own `injected` array. It gave the right answer — measured
+ * against this repository's own live session (138 records, 367 distinct
+ * items), p50 27 ms / p95 37 ms — but `test/perf/statusline-latency.perf.ts`'s
+ * far-tail case (5,000 injections, one session, all sharing one small item
+ * set) measured p95 130 ms against a 120 ms ceiling: `json_each` tokenising
+ * every record's array, for every record, is quadratic in spirit even
+ * though the SET it resolves to is small. `audit_item` already holds one
+ * row per `(seq, item_id, role)` — `hooks/*.ts` writes it beside every
+ * injection record for exactly this shape of question — so joining it costs
+ * an indexed lookup instead of a JSON parse, and `seq` is the real order
+ * rather than a manufactured one. Re-measured on the SAME perf fixture:
+ * p95 5.0 ms at 10 records, 12.9 ms at 1,000, 42.3–49.8 ms at 5,000 —
+ * against ceilings of 50 ms and (for the 5,000 tail) 120 ms. The three plain
+ * conditions this duplicates from `filterSelect` (`kind = 'injection'`,
+ * `session_id = ?`, `at >= ?`) are narrow and stable enough that the risk of
+ * the two drifting is worth the 2–3× this buys back; nothing else about the
+ * filter is respelled.
+ *
+ * **`role = 'injected'`**, never `'spilled'` or `'subject'` — the same three
+ * roles `filterSelect`'s `itemId` filter already reads off this table.
+ * A record with nothing in `injected` (an empty selection) contributes no
+ * `audit_item` row and is correctly never a `first_positions` entry.
+ *
+ * `shareOf` below is the same rule as a loop over records already in hand,
+ * and `test/cli/statusline.test.ts` runs both over one corpus and requires
+ * the same answer — the same reason the two existed before this rule
+ * existed: "an absent `tokens` is counted, never summed as zero" and "a
+ * `subagent-start` is somebody else's window" each already had to exist in
+ * two languages, and "each item is charged once" is now the third rule that
+ * does.
  */
-export function shareSql(inner: string): string {
-  return `SELECT
-      count(*) AS injections,
-      coalesce(sum(CASE WHEN ty IN ('integer', 'real') THEN t ELSE 0 END), 0) AS tokens,
-      coalesce(sum(CASE WHEN ty IN ('integer', 'real') THEN 0 ELSE 1 END), 0) AS unrecorded
-    FROM (SELECT json_type(rec, '$.tokens') AS ty, rec ->> '$.tokens' AS t FROM (${inner})
-            WHERE ${opClause(`rec ->> '$.op'`)})`;
+export function shareSql(
+  sessionId: string, since: string | null,
+): { sql: string; params: (string | number)[] } {
+  const params: (string | number)[] = since === null ? [sessionId] : [sessionId, since];
+  const sinceClause = since === null ? '' : 'AND at >= ?';
+  const sql = `
+    WITH filtered AS (
+      SELECT seq FROM audit
+      WHERE kind = 'injection' AND session_id = ? ${sinceClause} AND ${opClause('op')}
+    ),
+    item_positions AS (
+      SELECT ai.seq AS seq, ai.item_id AS item_id, ai.tier AS tier
+      FROM audit_item ai JOIN filtered f ON f.seq = ai.seq
+      WHERE ai.role = 'injected'
+    ),
+    first_positions AS (
+      SELECT item_id, tier, MIN(seq) AS first_seq
+      FROM item_positions
+      GROUP BY item_id, tier
+    ),
+    introducing AS (
+      SELECT DISTINCT first_seq AS seq FROM first_positions
+    )
+    SELECT
+      (SELECT count(*) FROM filtered) AS injections,
+      coalesce((SELECT sum(CASE WHEN json_type(a.rec, '$.tokens') IN ('integer', 'real')
+                                 THEN a.rec ->> '$.tokens' ELSE 0 END)
+                  FROM filtered f JOIN introducing i ON i.seq = f.seq
+                  JOIN audit a ON a.seq = f.seq), 0) AS tokens,
+      coalesce((SELECT sum(CASE WHEN json_type(a.rec, '$.tokens') IN ('integer', 'real')
+                                 THEN 0 ELSE 1 END)
+                  FROM filtered f JOIN introducing i ON i.seq = f.seq
+                  JOIN audit a ON a.seq = f.seq), 0) AS unrecorded
+  `;
+  return { sql, params };
 }
 
 /**
- * The same three figures over records already in hand — the loop the aggregate
- * replaced, kept executable so the two can be held to one answer over a real
- * corpus rather than by reading the SQL.
- *
- * Also the form the UI server uses: `/api/watch/context` already has the
- * records, and the row count it reports is small by construction because the
- * epoch bound is applied in the query.
+ * One item's dedupe key — `(tier, id)`, because a pinned-then-restored item
+ * is two real deliveries in `Ledger.record`'s own accounting and stays two
+ * here for the same reason. `null` for anything that is not a real
+ * `{ id: string, tier: string }` entry, so a malformed one is dropped rather
+ * than coerced into a key that collides with a real item's.
  */
-export function shareOf(records: { op?: unknown; tokens?: unknown }[]): ContextShare {
+function itemKey(entry: unknown): string | null {
+  if (entry === null || typeof entry !== 'object') return null;
+  const id = (entry as { id?: unknown }).id;
+  const tier = (entry as { tier?: unknown }).tier;
+  return typeof id === 'string' && typeof tier === 'string' ? `${tier}:${id}` : null;
+}
+
+/**
+ * The same rule as `shareSql`, as a loop over records already in hand — kept
+ * executable so the two can be held to one answer over a real corpus rather
+ * than by reading the SQL, and because it is also the form the UI server
+ * uses: `/api/watch/context` already has the records, and the row count it
+ * reports is small by construction because the epoch bound is applied in
+ * the query.
+ *
+ * `seen` is every `(tier, id)` this pass has already charged, in the order
+ * the caller's own records arrive — `queryProjection` orders by `seq`, which
+ * IS delivery order, so this needs no `at`-sort of its own the way `shareSql`
+ * does. A record is charged in full — its whole `tokens`, never a per-item
+ * share of it — the first time ANY of its items is new, and every one of its
+ * items (new or not) is marked seen before moving on, so a later record
+ * redelivering the same set finds nothing left to introduce.
+ */
+export function shareOf(
+  records: { op?: unknown; tokens?: unknown; injected?: unknown }[],
+): ContextShare {
   const wanted = new Set<unknown>(MAIN_WINDOW_INJECTION_OPS);
+  const seen = new Set<string>();
   let tokens = 0;
   let unrecorded = 0;
   let injections = 0;
   for (const record of records) {
     if (!wanted.has(record.op)) continue;
     injections++;
+    const delivered = Array.isArray(record.injected) ? record.injected : [];
+    let introducesNew = false;
+    for (const entry of delivered) {
+      const key = itemKey(entry);
+      if (key !== null && !seen.has(key)) introducesNew = true;
+    }
+    for (const entry of delivered) {
+      const key = itemKey(entry);
+      if (key !== null) seen.add(key);
+    }
+    if (!introducesNew) continue;
     if (typeof record.tokens === 'number') tokens += record.tokens;
     else unrecorded++;
   }

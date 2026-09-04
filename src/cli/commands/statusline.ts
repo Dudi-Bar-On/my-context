@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { filterSelect, openProjection, syncProjection } from '../../core/audit-db.ts';
+import { openProjection, syncProjection } from '../../core/audit-db.ts';
 import { handoverThresholdPercent } from '../../core/config.ts';
 import { readOccupancy } from '../../core/context-occupancy.ts';
 import { describeFocus, isFocusActive, readFocus } from '../../core/focus.ts';
@@ -113,10 +113,8 @@ export function myctxShare(projectRoot: string, sessionId: string): MyctxShare {
     // is correctly answered by an unbounded sum, and inventing an epoch start
     // for it would be a bound nobody measured.
     const epoch = contextEpochStart(db, sessionId);
-    const { sql, params } = filterSelect({
-      sessionId, kind: 'injection', ...(epoch === null ? {} : { since: epoch }),
-    });
-    const row = db.prepare(shareSql(sql)).get(...params) as {
+    const { sql, params } = shareSql(sessionId, epoch);
+    const row = db.prepare(sql).get(...params) as {
       injections: number; tokens: number; unrecorded: number;
     };
     return {

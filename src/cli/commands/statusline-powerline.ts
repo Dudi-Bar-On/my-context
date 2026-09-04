@@ -950,9 +950,14 @@ export interface UsedOfMax {
   /** The parity id — see `Segment.field`. Never a new one for this ruling. */
   field: string;
   /**
-   * A qualifier that rides the NAME rather than the value — `≥` on the myctx
-   * share, where it says the numerator is a floor. Empty for every other
-   * field, which take their name from `FIELD_NAME` alone.
+   * A qualifier that rides the NAME rather than the value — the myctx share
+   * carries one always, because `core/context-share.ts` charges each item
+   * once rather than once per delivery and can only BOUND what stays resident,
+   * never measure it (eviction between compactions is invisible to the log).
+   * `≥` when some deliveries also carry no frozen `tokens` estimate — the
+   * true share is then at least this, on top of already being an upper bound
+   * — and `≈` otherwise. Empty for every other field, which take their name
+   * from `FIELD_NAME` alone.
    */
   qualifier?: string;
   /** Used, as a percentage of the maximum. MAY exceed 100 — see `usageBar`. */
@@ -1953,7 +1958,16 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   }
 
   if (input.myctx !== null && input.myctx.injections > 0) {
-    const approx = input.myctx.unrecorded > 0 ? '≥' : '';
+    // `≥` when some deliveries carry no frozen `tokens` estimate — the true
+    // share is at least this, on top of already being an upper bound — and
+    // `≈` otherwise. Never blank: `context-share.ts` charges each item once
+    // rather than once per delivery, which fixed the figure sailing past the
+    // window, but it can only BOUND what is resident, never measure it —
+    // eviction between compactions is invisible to this log. A figure that
+    // cannot be exact must not be drawn as though it were, so this always
+    // carries a qualifier now, same as the count it replaced always carried
+    // one when some records predated the estimate.
+    const approx = input.myctx.unrecorded > 0 ? '≥' : '≈';
     // ── THE FIFTH USED-OF-MAXIMUM FIELD — owner ruling, 2026-09-01 ──────────
     //
     // This block was a bare count and it is genuinely used-of-max by the same
@@ -1972,14 +1986,14 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
     if (win !== null && win > 0) {
       state.push(usedOfMaxSegment({
         field: 'myctx',
-        // The `≥` rides the NAME, because it qualifies the NUMERATOR: some
-        // injection records carry no frozen estimate, so the true share is at
-        // least this. A fact about the count, never about the bar.
-        qualifier: approx === '' ? undefined : ` ${approx}`,
+        // The qualifier rides the NAME, never the bar or the counts, because
+        // it qualifies the NUMERATOR: `≈` says the figure is a bound rather
+        // than a measurement (each item counted once, eviction invisible);
+        // `≥` says it is ALSO missing some recorded tokens on top of that.
+        qualifier: ` ${approx}`,
         percent: (input.myctx.tokens / win) * 100,
-        // `≥` rides the LABEL and not the counts, because it qualifies the
-        // numerator: some injection records carry no frozen estimate, so the
-        // true share is at least this. The counts stay a plain pair.
+        // The counts stay a plain pair — the qualifier on the name already
+        // says what they cannot be taken to mean exactly.
         counts: `(${fmtCount(input.myctx.tokens)} / ${fmtCount(win)})`,
         decimals: 1,
         suffix: '',

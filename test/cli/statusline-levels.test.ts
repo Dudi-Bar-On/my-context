@@ -304,17 +304,22 @@ test('the context and ask fields DO carry counts, because they have a real maxim
 test('myctx is banded against the window, and says nothing when there is no window', () => {
   const banded = usedOfMaxBlocks(INPUT).find((b) => b.field === 'myctx');
   // The NAME is a label now, so the field is `MYCTX` + its value rather than
-  // a value that spells its own name.
-  assert.equal(banded?.label, 'MYCTX');
+  // a value that spells its own name. Since 2026-09-04 the label also always
+  // carries the `≈`/`≥` qualifier — `context-share.ts` charges each item
+  // once rather than once per delivery, and can only BOUND what is resident,
+  // never measure it, so a figure that cannot be exact is never drawn bare.
+  assert.equal(banded?.label, 'MYCTX ≈');
   assert.match(banded?.text ?? '', /26\.5% \(264\.5k \/ 1\.0M\)/);
   // No measurable window means no maximum, so it falls back to the bare count
-  // it always drew rather than switching denominators in silence.
+  // it always drew rather than switching denominators in silence — the
+  // qualifier rides the TEXT there instead of the label, because that
+  // fallback draws no label of its own to ride.
   const blind = buildLines(
     { ...INPUT, occupancy: { state: 'unmeasurable', why: 'no-sample' } }, Date.now(),
   );
   const bare = [...blind.account].find((s) => s.field === 'myctx');
   assert.equal(bare?.label, 'MYCTX');
-  assert.equal(bare?.text, '264.5k', 'no window, no percentage — and no invented one');
+  assert.equal(bare?.text, '≈264.5k', 'no window, no percentage — and no invented one');
 });
 
 test('past the ask the words take over, and the figure never runs to 104%', () => {
