@@ -79,8 +79,9 @@ export function declaredMonospace(): number {
  * Read — and a screen that disappears fails at the count.
  */
 export const SCREENS = [
-  // Injection — what arrives
-  'preview', 'coverage', 'gaps', 'simulate', 'injected',
+  // Injection — what arrives. `gaps` retired 2026-09-04 (seq:22), folded
+  // into `coverage`.
+  'preview', 'coverage', 'simulate', 'injected',
   // Evidence — why it did or didn't
   'watch', 'ask', 'doctor', 'decay', 'graph', 'status',
   // Change — composed, never run

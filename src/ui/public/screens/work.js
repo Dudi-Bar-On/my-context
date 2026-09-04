@@ -100,14 +100,19 @@
  * draws no key for it and forcing a rewrite over text a human has since changed
  * is not a decision a review screen should be able to take by accident.
  *
- * ── THE DIFF IS LINE-LEVEL AND `work.diffn` SAYS WORD-LEVEL ───────────────
+ * ── THE DIFF IS LINE-LEVEL, AND `work.diffn` NOW SAYS SO ──────────────────
  *
- * **Recorded, not resolved here.** `work.diffn` promises *"a word-level diff"*;
+ * **Resolved by owner ruling, 2026-09-04** (`plan:rulings seq:49`,
+ * `TASK-two-source-comments-are-wrong-work-diffn-and-the-15-minute`). This used
+ * to record the gap as open — `work.diffn` promised *"a word-level diff"* while
  * `lineDiff` is a line-level LCS and there is no word-level diff anywhere in
- * `src/`. Writing a second diff in the browser is the one repair that would be
- * worse than the gap: the line diff was moved out of the CLI view precisely so
- * that one implementation serves both surfaces
+ * `src/`. The ruling was to reword the sentence rather than build a second
+ * diff: writing one in the browser would be the one repair worse than the gap,
+ * since the line diff was moved out of the CLI view precisely so that one
+ * implementation serves both surfaces
  * (`src/core/revision-diff.ts` · `a second one written in the browser would be this project's` · ~12).
+ * `work.diffn` now says *"line-level"* in both tables, and nothing here composes
+ * a second comparison.
  *
  * `<ins>` and `<del>` are the mockup's own elements and are used verbatim,
  * because the reason they are there is not decoration: *"both are real

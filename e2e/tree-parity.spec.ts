@@ -444,7 +444,7 @@ test('inventory: the element TREE of every screen against its mockup section',
     expect(unmeasurable,
       'a screen could not be measured, so its line in the inventory would be a fabrication')
       .toEqual([]);
-    expect(results.length, 'all 21 screens must appear in the inventory').toBe(SCREENS.length);
+    expect(results.length, 'every screen must appear in the inventory').toBe(SCREENS.length);
   });
 
 /** The report, written for a person deciding what to fix and in what order. */

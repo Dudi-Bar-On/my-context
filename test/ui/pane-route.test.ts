@@ -871,13 +871,17 @@ test('navigating away CLOSES the pane, and the grid goes back to two columns', a
 });
 
 /**
- * The twelve that can only INHERIT a pane.
+ * The eleven that can only INHERIT a pane (`gaps` retired 2026-09-04, seq:22,
+ * dropping this from twelve).
  *
  * Named rather than counted, deliberately: a screen that gains a `[data-id]`
- * later should make somebody read this list, not slip past a number that still
- * happens to be twelve.
+ * later should make somebody read this list, not slip past a number that
+ * would otherwise drift silently.
  */
-const NO_LINKID = ['simulate', 'config', 'tut', 'gaps', 'graph', 'status',
+// `gaps` retired 2026-09-04 (seq:22) — folded into `coverage`, which was
+// already outside this list (it draws its own `linkId`s in the "what
+// governs" disclosure).
+const NO_LINKID = ['simulate', 'config', 'tut', 'graph', 'status',
   'port', 'packs', 'capture', 'palette', 'docs', 'decay'];
 
 test('a screen that emits no [data-id] cannot end up showing a pane at all', async () => {

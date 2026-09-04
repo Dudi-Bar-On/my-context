@@ -3,98 +3,54 @@
  * record. Every walked path, coloured by what governs it, with the detail pane
  * beside the tree.
  *
- * **Built from the mockup's markup and its own `renderTree`/`renderDet`, not
- * from the plan's Step 3 sketch.** That sketch names six string keys —
- * `coverage.truncated`, `coverage.print`, `coverage.governs`,
- * `coverage.wouldInject`, `coverage.gapDirs`, `coverage.emptyCategories` — and
- * **no string table declares one of them**, because both tables are transcribed
- * key-for-key from the design of record and it declares none either. `t()`
- * throws on a key it cannot find, so that sketch cannot render a line. It also
- * folds the gaps into this screen as two trailing paragraphs; the mockup gives
- * them their own `<section data-p="gaps">`, their own rail entry and their own
- * three-column table, and `screens/gaps.js` is that screen.
+ * **Redesigned 2026-09-04**, `TASK-scope-coverage-summarises-first-and-shows-
+ * detail-on-demand` (seq:21) and `TASK-coverage-gaps-folds-into-scope-coverage-
+ * keeping-the-one-fact` (seq:22), against the owner-approved mockup
+ * `reports/2026-09-04-scope-coverage-redesign-mockup.html` — approved in his own
+ * words: *"looked at the mockup and it's fine exact what required including the
+ * help and the screen refactor, approve it"*.
  *
- * **The tree and the detail are DATA, so each sits on `.plate` inside the
- * `.pane` its card already is** (repaint Task 7, spec §4: *"Text may float on
- * glass. Data may not."*). The mockup already marks both that way —
- * `<div class="tree plate" id="tree">` and `<div class="plate" id="det">` — and
- * `test/ui/plate-usage.test.ts` names `#tree` and `#det` among the eighteen, so
- * this file copies the marking rather than deciding it.
+ * **The problem, measured on this project's own corpus (2026-09-04, this
+ * lane's own re-measurement — the task bodies' "6,236 rows / 184,246px" is a
+ * STALE, roughly fourfold-overstated figure from an earlier pass and is not
+ * repeated here): the tree drew every row expanded with no collapse, the
+ * pinned card was 36 ids in one unbroken paragraph mixing seven kinds, and
+ * opening any folder listed dozens of near-identical governing ids because
+ * almost every governing item in this corpus is unscoped and matches every
+ * folder alike.**
  *
- * **THE PER-DIRECTORY MAGNITUDE BAR** — `.mini` and its three `<i>` segments,
- * with `cov.magn`, the paragraph that explains them. The first pass of this
- * file REFUSED both; both are drawn now, and the part of that refusal that was
- * right is still standing. What the bar exists for is `cov.magn`'s own
- * sentence: *"Four categorical dots said which rows were dark; they could not
- * say how dark."*
+ * **One principle, applied three times** (the tree, the pinned card, the
+ * "what governs" card): anything past ~8 rows gets a short counted summary
+ * that is always visible, grouped by KIND — `groupByKind()`
+ * (`lib/viewmodel.js`), the id's own prefix up to its first `-` — with the
+ * full list behind the ONE shared disclosure this product now has,
+ * `lib/disclosure.js`'s `helpDisclosure()`. This file is that component's
+ * first caller.
  *
- * The mockup's `renderTree` sizes the three segments off a row of
- * `[path, depth, label, dot, governed, files, examined]`, and its `isz` writes
- * each share as a percentage of ONE denominator — which is the whole of why
- * they fill the track exactly:
+ * **`TASK-coverage-gaps-folds-into-scope-coverage-keeping-the-one-fact`
+ * (seq:22) retires `screens/gaps.js`.** Of its three row-kinds, only the
+ * empty-CATEGORY list was ever real on a corpus this project ships with — the
+ * ungoverned-directory row is arithmetically unreachable under this project's
+ * `global` scope policy (85+ unscoped normative items govern every path), and
+ * the "not examined" notice duplicates, byte for byte, the sentence this
+ * screen's own truncation line already carries. Both are DROPPED, not moved.
+ * The one live fact — N of the shipped categories hold nothing — becomes the
+ * "Categories with nothing in them" card at the foot of this screen, fed by
+ * `/api/help/categories`' `corpus.empty`, the same endpoint `gaps.js` read.
  *
- *     g = governed / files    u = max(0, examined − governed) / files
- *     x = (files − examined) / files
- *
- * `magnitude()` below is that arithmetic and nothing else. A bar whose
- * segments do not sum to the track is worse than no bar: it reads as a
- * measurement and is not one.
- *
- * **`examined` equals `files` on every row this screen can build, and that is
- * a fact about the endpoint rather than a shortcut.** `/api/coverage` answers
- * the paths the walk REACHED
- * (`ui/read-model.ts` · `export function coverageFiles(` · ~1087), so every
- * path `buildTree` is ever handed was examined and `x` comes out zero. On a
- * COMPLETE walk that zero is true — the walk reached everything — and it is
- * what the mockup itself draws on six of its own seven rows.
- *
- * **On a TRUNCATED walk that zero would be a lie, and there the refusal
- * survives.** The endpoint carries one global `truncated` boolean and no path
- * list, and the read model records the ask in its own words
- * (`ui/read-model.ts` · `needs the paths `listRepoFiles` did not reach` · ~1074),
- * so no row can say how many of its files the walk missed. Painting `x` at
- * zero anyway would assert the opposite of the one thing `gaps.note` says must
- * never be folded into another. So `magnitude()` carries `unknownRemainder`,
- * and a row whose remainder is unknown does not CLAIM the zero: the segment is
- * still drawn at zero width — there is no width to draw — and the row's
- * tooltip drops the count in favour of the screen's two keyed words for the
- * state, `cov.k4` — `gaps.r2`, *"not examined — past the file limit"*. That is
- * the same pair the truncation line under the legend uses and the same pair
- * the mockup's own gaps table joins. Nothing is dropped
- * (INV-nothing-is-dropped-silently) and no number is invented.
- *
- * **The paths themselves are still missing, and this does not close that.**
- * `plan:ui1 seq:17e` — *"page or filter /api/coverage, and disclose any
- * truncation"* — stays OPEN. Disclosing that a walk stopped is not knowing
- * where it stopped.
- *
- * **WHAT THIS SCREEN STILL DOES NOT DRAW, AND WHY IT DRAWS NOTHING WEAKER IN
- * ITS PLACE** — *"Where a view cannot be drawn, stop and ask; do not draw a
- * weaker one"*:
- *
- *   - **A print button.** The plan's sketch adds one on `coverage.print`; the
- *     mockup's coverage section has no such button and no table declares the
- *     key. Print is a STYLESHEET register here (`@media print`, repaint Task
- *     10), not a control this screen owns, and the browser's own print command
- *     reaches it without a button this screen would have to invent a word for.
- *
- * The four-dot legend keeps all four of its entries, `cov.k4` included: the dot
- * IS drawn, and the legend is the mockup's own static markup. `coverageDot`
- * (`lib/viewmodel.js`) simply never returns `n` — recorded there, not hidden.
+ * `gaps.r2` stays declared and used HERE unchanged (the truncation line below,
+ * paired with `cov.k4`) — that is `coverage.js`'s own copy, not the duplicate
+ * that was dropped from `gaps.js`.
  */
 import {
-  buildTree, coverageDot, coverageIsEmpty, treeRows,
+  buildTree, coverageDot, coverageGaps, coverageIsEmpty, groupByKind, treeRows,
 } from '/lib/viewmodel.js';
 import { composeCommand } from '/lib/command.js';
-// The ONE Copy control, adopted here on 2026-08-31. This screen was the ninth
-// hand-rolled clipboard site — it swapped the button's own label to `Copied` or
-// `Copy failed` for 1.5s, two English literals the string tables could not carry
-// and the only half of a pair `test/ui/screen-literals.test.ts` could see. A label
-// swap is also a message a reader has to be LOOKING at the button to receive,
-// which is the defect `plan:walk seq:31` is about; the shared control announces
-// the outcome in the shell's live region instead.
 import { commandActions } from '/lib/command-actions.js';
-import { el, errorNote, linkId, mono, screenHead, spaced } from '/screens/parts.js';
+import { helpDisclosure } from '/lib/disclosure.js';
+import {
+  el, errorNote, linkId, mono, num, screenHead, spaced,
+} from '/screens/parts.js';
 
 /**
  * The mockup's own empty-state command, composed through the ONE module that
@@ -120,45 +76,17 @@ const INDENT_STEP = 14;
 
 /**
  * One row's magnitude: the three shares `.mini` paints, and whether the third
- * of them is a measurement or an absence.
+ * of them is a measurement or an absence. Unchanged by the 2026-09-04
+ * redesign — the bar is not one of the three things that redesign touches.
  *
- * **The counts and the shares are returned together on purpose.** The shares
- * are what the bar is sized with and the counts are what the tooltip says, and
- * a screen that derived one from the other twice is a screen where the picture
- * and the words can disagree. `governedCount` and `fileCount` come off
- * `buildTree`'s roll-up, so the bar and the `.covn` count beside it are the
- * same fact drawn two ways rather than two answers to one question.
- *
- * **`unexamined` is zero, and `unknownRemainder` is what stops that being a
- * claim.** Every path in the tree came out of the walk (see this file's
- * header); on a complete walk zero is the true count, and on a truncated one
- * the true count is unavailable — not zero. The caller must not paint the
- * difference away, and `renderMini` below is where it does not.
- *
- * **A zero-file row divides by nothing and draws nothing.** `buildTree` cannot
- * produce one — a directory node exists only because a file needed it — but
- * `0/0` is `NaN`, `inline-size:NaN%` is an unparsable declaration, and the
- * segment would keep whatever width it last had. The empty track is the
- * correct picture for "no files rolled up here" and it is drawn deliberately.
- *
- * **`governed` is clamped to `total` for the same reason `budgetBar` clamps at
- * 100** (`lib/viewmodel.js`): a segment wider than its track is hidden by
- * `.mini`'s `overflow:hidden`, so an over-count would draw a full gold bar and
- * look like a fully-governed directory. The roll-up cannot produce one; if it
- * ever does, the shares still sum to the track and the counts still say what
- * happened.
- *
- * **This belongs in `lib/viewmodel.js`**, beside `buildTree` and
- * `coverageDot`, by that file's own rule that nothing decidable is decided in
- * the glue. It is exported from the screen because this task owns
- * `screens/coverage.js` and not that file. Raised in this task's report.
+ * See the pre-redesign history of this function (git blame) for the fuller
+ * account of `unknownRemainder`, the clamp at `total`, and the zero-file row;
+ * nothing about the arithmetic changed.
  */
 export function magnitude(node, truncated) {
   const total = node.fileCount;
   const governed = Math.min(node.governedCount, total);
   const ungoverned = total - governed;
-  // The walk reached every path it reported, so the third count is zero. What
-  // that zero MEANS is the caller's problem, and `unknownRemainder` is it.
   const unexamined = 0;
   const share = (n) => (total === 0 ? 0 : (n / total) * 100);
   return {
@@ -184,24 +112,7 @@ function sized(segment, pct) {
   return segment;
 }
 
-/**
- * `<div class="mini"><i class="g"><i class="u"><i class="x"></div>` — the
- * mockup's own three segments, in its own order, sized off ONE `magnitude()`.
- *
- * **The tooltip is the mockup's `mini.title` and it is where the truncated
- * walk gets said out loud.** The mockup writes it as an unkeyed English
- * ternary in its own script — `gov+' governed · '+…+' with no rule · '+…+'
- * not examined'` — so no table declares a key for those two words, and they
- * are transcribed as its literals here the same way `preview.js` transcribes
- * its own segment tooltips. Keys first in the mockup, then in both tables:
- * raised in this task's report rather than invented at this call site.
- *
- * The THIRD clause is not transcribed when the walk stopped short. A row whose
- * unreached count is unknown gets the two keyed strings this screen already
- * pairs for exactly that state — `cov.k4` — `gaps.r2` — instead of a `0` it
- * cannot stand behind. `tFlat` because a `title` is an attribute sink; `t()`
- * returns nodes and an attribute cannot hold one.
- */
+/** `<div class="mini"><i class="g"><i class="u"><i class="x"></div>` — unchanged. */
 function renderMini(ctx, mag) {
   const mini = el('div', 'mini');
   mini.append(
@@ -214,6 +125,54 @@ function renderMini(ctx, mag) {
     ? `${counted} · ${ctx.tFlat('cov.k4')} — ${ctx.tFlat('gaps.r2')}`
     : `${counted} · ${mag.unexamined} not examined`;
   return mini;
+}
+
+/**
+ * `<span class="catchip">KIND · N</span>` for each kind `groupByKind` found —
+ * the counted summary that is ALWAYS visible, in the mockup's own class and
+ * separator. No string key: a kind is the id's own literal prefix (`RULE`,
+ * `CONST`, …), the same unkeyed vocabulary this product already gives ids,
+ * tier names and category names, and the digit is a digit.
+ */
+function kindChips(groups) {
+  const line = el('p');
+  for (const { kind, count } of groups) line.append(el('span', 'catchip', `${kind} · ${count}`));
+  return line;
+}
+
+/** `id -> its kind`, the grouping key `groupByKind` itself uses, exposed for the id lists below. */
+function kindOf(id) {
+  const cut = id.indexOf('-');
+  return cut === -1 ? id : id.slice(0, cut);
+}
+
+/**
+ * The full member list `groupByKind`'s chips summarise — headed by kind, one
+ * `renderId` call per id — for the ONE disclosure (`help.showIds`) each card
+ * uses to hold it. `renderId` differs between the two callers: the pinned
+ * card draws each id as a plain mono run (this screen's own long-standing
+ * choice — pinned ids were never links here), the "what governs" card draws
+ * each id as the same `linkId` button its old per-row table always did, so a
+ * reader can still open an item's own pane from here.
+ */
+function groupedIdsBody(ids, groups, renderId) {
+  const byKind = new Map();
+  for (const id of ids) {
+    const kind = kindOf(id);
+    if (!byKind.has(kind)) byKind.set(kind, []);
+    byKind.get(kind).push(id);
+  }
+  const body = [];
+  groups.forEach(({ kind, count }) => {
+    const p = el('p', 'small');
+    p.append(el('b', null, `${kind} (${count})`), ' ');
+    byKind.get(kind).forEach((id, index) => {
+      if (index > 0) p.append(' · ');
+      p.append(renderId(id));
+    });
+    body.push(p);
+  });
+  return body;
 }
 
 export async function render(root, ctx) {
@@ -230,35 +189,6 @@ export async function render(root, ctx) {
     return;
   }
 
-  // --- Pinned — hoisted, never coloured per path --------------------------
-  // `cov.pinhelp` is the reason this card exists: an `always:true` item governs
-  // every path, and colouring it per path "is why a directory that is governed
-  // used to render as a gap". `/api/coverage` hoists them server-side, so this
-  // draws the hoist rather than performing it.
-  const pinCard = el('div', 'card pane');
-  const pinH = el('h3');
-  pinH.append(...ctx.t('cov.pin'));
-  const pinLine = el('p', 'small');
-  // The chip's text is a count plus the tier's own name, which is a literal
-  // everywhere in this product — `parts.js`' TIERCHIP records why: "the tier
-  // NAME is not a translated string anywhere in the mockup".
-  const pinChip = el('span', 'chip gov', `${data.pinned.length} pinned`);
-  pinChip.dataset.g = '◆';
-  pinLine.append(pinChip);
-  data.pinned.forEach((id, index) => {
-    pinLine.append(index === 0 ? ' ' : ' · ', mono(id));
-  });
-  const pinHelp = el('details', 'help');
-  const pinSummary = el('summary');
-  pinSummary.append(...ctx.t('help.whyTree'));
-  const pinBox = el('div', 'helpbox');
-  const pinText = el('span');
-  pinText.append(...ctx.t('cov.pinhelp'));
-  pinBox.append(pinText);
-  pinHelp.append(pinSummary, pinBox);
-  pinCard.append(pinH, pinLine, pinHelp);
-  root.append(pinCard);
-
   // --- The zero-data view, which is drawn rather than omitted -------------
   if (coverageIsEmpty(data)) {
     root.append(emptyView(ctx));
@@ -266,40 +196,85 @@ export async function render(root, ctx) {
   }
 
   const tree = buildTree(data.files);
-  const itemsById = new Map(data.items.map((item) => [item.id, item]));
   const rows = treeRows(tree);
+  const gapCount = coverageGaps(tree).length;
 
-  // `<div id="covfull">` — the mockup's own wrapper around the populated view,
-  // the sibling of `#covempty`. The mockup swaps the two with its `∅` toggle;
-  // this screen decides between them from the data instead (`coverageIsEmpty`,
-  // above), which is why only one of the two is ever built. The wrapper is
-  // still the mockup's, and `e2e/states.spec.ts` reads both ids there.
+  // The empty CATEGORIES, from the same endpoint `gaps.js` read
+  // (`/api/help/categories`), fetched in its OWN try so a refusal here costs
+  // only the category card and not the tree above it.
+  let catEmpty = [];
+  let catTotal = null;
+  let catRefusal = null;
+  try {
+    const help = await ctx.api('/api/help/categories');
+    const served = help === null || typeof help !== 'object' ? null : help.corpus;
+    if (served === null || typeof served !== 'object' || !Array.isArray(served.empty)
+      || served.counts === null || typeof served.counts !== 'object') {
+      catRefusal = new Error('coverage: /api/help/categories answered 200 without corpus.empty/'
+        + 'counts — the empty-category card below would be an absence drawn as a full corpus');
+    } else {
+      catEmpty = served.empty;
+      catTotal = catEmpty.length + Object.keys(served.counts).length;
+    }
+  } catch (error) {
+    catRefusal = error;
+  }
+
+  // --- The status line — files covered / gaps / empty categories, always ---
+  // visible, one sentence, ahead of everything below it.
+  const status = el('div', 'status');
+  status.append(...ctx.t('cov.status', {
+    covered: num(tree.governedCount),
+    total: num(tree.fileCount),
+    gaps: num(gapCount),
+    catEmpty: catTotal === null ? '?' : num(catEmpty.length),
+    catTotal: catTotal === null ? '?' : num(catTotal),
+  }));
+  root.append(status);
+
+  // --- Pinned — hoisted, never coloured per path, grouped by kind ---------
+  const pinCard = el('div', 'card pane');
+  const pinH = el('h3');
+  pinH.append(...ctx.t('cov.pin', { n: num(data.pinned.length) }));
+  const pinNote = el('p', 'small');
+  pinNote.append(...ctx.t('cov.pinNote'));
+  pinCard.append(pinH, pinNote);
+  if (data.pinned.length > 0) {
+    const pinGroups = groupByKind(data.pinned);
+    pinCard.append(
+      kindChips(pinGroups),
+      helpDisclosure(ctx, 'help.showIds', groupedIdsBody(data.pinned, pinGroups, mono)),
+    );
+  }
+  const pinHelpBody = el('span');
+  pinHelpBody.append(...ctx.t('cov.pinhelp'));
+  pinCard.append(helpDisclosure(ctx, 'help.whyTree', [pinHelpBody]));
+  root.append(pinCard);
+
   const full = el('div');
   full.id = 'covfull';
   root.append(full);
   const two = el('div', 'two');
   full.append(two);
 
-  // --- The repository tree ------------------------------------------------
+  // --- The repository tree — collapsed to top-level folders, plus a filter -
   const treeCard = el('div', 'card pane');
   const treeH = el('h3');
   treeH.append(...ctx.t('cov.tree'));
+  const filterLine = el('p', 'small');
+  const filterInput = el('input', 'filter');
+  filterInput.type = 'text';
+  filterInput.placeholder = ctx.tFlat('cov.tree.filter');
+  filterInput.setAttribute('aria-label', ctx.tFlat('cov.tree.filter'));
+  filterLine.append(filterInput);
   const treeBox = el('div', 'tree plate');
   treeBox.id = 'tree';
   treeBox.setAttribute('role', 'tree');
-  // `cov.magn` — the design of record's own account of the bar, in the slot the
-  // mockup gives it: between the tree and the four-dot legend. It was withheld
-  // while the bar was withheld, on the grounds that a paragraph describing a
-  // bar that is not there is worse than the missing bar. The bar is there.
-  const magn = el('p', 'small');
-  magn.append(...ctx.t('cov.magn'));
-  treeCard.append(treeH, treeBox, spaced(magn), spaced(legend(ctx)));
-  // The walk stopped short, and that is disclosed rather than left to be
-  // inferred from a short tree. The two keys are the mockup's own pairing for
-  // this fact, joined the way its gaps table joins them:
-  // `<b data-t="cov.k4">not examined</b> — <span data-t="gaps.r2">past the
-  // file limit</span>`. No third key is invented, and no path is named,
-  // because no path is served.
+  const magnBody = el('span');
+  magnBody.append(...ctx.t('cov.magn'));
+  treeCard.append(treeH, filterLine, treeBox,
+    spaced(helpDisclosure(ctx, 'help.whyMagnitude', [magnBody])),
+    spaced(legend(ctx)));
   if (data.truncated) {
     const stopped = el('p', 'small');
     const what = el('b');
@@ -310,7 +285,7 @@ export async function render(root, ctx) {
     treeCard.append(spaced(stopped));
   }
 
-  // --- What governs the selected path -------------------------------------
+  // --- What governs the selected path, grouped by kind --------------------
   const detCard = el('div', 'card pane');
   const detH = el('h3');
   const detTitle = el('span');
@@ -324,66 +299,63 @@ export async function render(root, ctx) {
 
   two.append(treeCard, detCard);
 
-  /**
-   * The detail table — the mockup's `renderDet`, one row per governing item.
-   *
-   * **The second column is the item's DECLARED SCOPE, not the glob that
-   * matched.** `matchesScope` ran on the server and `/api/coverage` reports the
-   * ids it admitted, never which of an item's globs did the admitting; asking
-   * that question in the browser would be a second matcher, which this screen's
-   * own subtitle forbids — *"through `matchesScope` and `injection()`, never a
-   * bare glob match"*. An item with an empty scope governs by category policy
-   * rather than by a glob, so it shows `injection()`'s own phrase, which is the
-   * sentence `mycontext edit` prints for the same item.
-   *
-   * **A path nothing governs renders the table with no rows**, which is the
-   * ruled treatment of empty: the real markup, zero rows. The mockup's script
-   * writes two unkeyed sentences for that state and neither table declares
-   * them; a sentence invented here would be an untranslated one.
-   */
   function renderDet(node) {
-    // The same spelling the tree row uses, trailing slash and all: the heading
-    // names the row that is selected, and two spellings of one path on one
-    // screen is how a reader comes to wonder whether they are two paths.
     detFile.textContent = node.children.length > 0 ? `${node.path}/` : node.path;
     detBox.replaceChildren();
-    const table = el('table');
-    const thead = el('thead');
-    const headRow = el('tr');
-    const itemTh = el('th');
-    itemTh.append(...ctx.t('th.item'));
-    const whyTh = el('th');
-    // The mockup's second header is written inside its own script as an
-    // unkeyed `HEB ? … : 'why it applies'` ternary, so the design of record
-    // declares no key for it. `th.what` is the nearest word the shared table-
-    // header vocabulary does declare, and it is translated; the exact wording
-    // is an open question for the owner, raised in this task's report rather
-    // than settled here with an invented key.
-    whyTh.append(...ctx.t('th.what'));
-    headRow.append(itemTh, whyTh);
-    thead.append(headRow);
-    const tbody = el('tbody');
-    for (const id of node.governs) {
-      const item = itemsById.get(id);
-      const row = el('tr');
-      const idCell = el('td');
-      // The full id as text, the way the mockup's own `renderDet` draws it
-      // (`btn.textContent = id`) — the split `.idkind`/`.idslug` treatment
-      // belongs to the preview's rows.
-      idCell.append(linkId(id, false));
-      const whyCell = el('td');
-      if (item === undefined) whyCell.append(mono(id));
-      else if (item.scope.length > 0) whyCell.append(mono(item.scope.join(' ')));
-      else whyCell.append(el('span', 'small', item.phrase));
-      row.append(idCell, whyCell);
-      tbody.append(row);
+    const groups = groupByKind(node.governs);
+    const summary = el('p', 'small');
+    summary.append(...ctx.t('cov.gov.summary', {
+      n: num(node.governs.length), c: num(groups.length),
+    }));
+    detBox.append(summary);
+    if (node.governs.length > 0) {
+      detBox.append(
+        kindChips(groups),
+        helpDisclosure(ctx, 'help.showIds',
+          groupedIdsBody(node.governs, groups, (id) => linkId(id, false))),
+      );
     }
-    table.append(thead, tbody);
-    detBox.append(table);
   }
 
-  const buttons = [];
-  for (const { node, depth } of rows) {
+  // --- Rows: built once, visibility driven by collapse state + filter -----
+  //
+  // **The toggle is its own `<button>`, a SIBLING of the treeitem button
+  // inside a non-interactive `<span class="row">` wrapper — never a `<span>`
+  // with a click handler living INSIDE the treeitem button.** A `<button>`
+  // nested inside another `<button>` is invalid HTML and, in every browser
+  // that renders it anyway, the inner one is not independently reachable by
+  // Tab — a pointer-only control, which `STD-a-screen-explains-itself-in-
+  // plain-words-and-depth-hides`'s own keyboard requirement and this task's
+  // "keyboard reachable, not pointer-only" both forbid. Two real buttons,
+  // siblings, are each in the normal tab order on their own.
+  //
+  // `openDirs` starts EMPTY, which is why the tree opens collapsed to
+  // top-level folders and not the reverse: `applyVisibility()`'s no-filter
+  // branch hides a depth>0 row unless every one of its ancestor directories
+  // is IN this set, and an empty set satisfies that for no ancestor at all.
+  const openDirs = new Set();
+  let filterValue = '';
+  const entries = rows.map(({ node, depth }) => {
+    const row = el('span', 'row');
+    const isDir = node.children.length > 0;
+    let toggle = null;
+    if (isDir) {
+      toggle = el('button', 'toggle', '▸');
+      toggle.type = 'button';
+      // Not a `title`/label restating the glyph: `aria-expanded` is the
+      // property assistive tech reads for a disclosure control, and the
+      // glyph is the sighted copy of the same fact, updated in the same
+      // handler so the two can never disagree.
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.addEventListener('click', () => {
+        const open = !openDirs.has(node.path);
+        if (open) openDirs.add(node.path); else openDirs.delete(node.path);
+        toggle.textContent = open ? '▾' : '▸';
+        toggle.setAttribute('aria-expanded', String(open));
+        applyVisibility();
+      });
+      row.append(toggle);
+    }
     const button = el('button');
     button.type = 'button';
     button.setAttribute('role', 'treeitem');
@@ -395,36 +367,85 @@ export async function render(root, ctx) {
         'padding-inline-start', `${INDENT_BASE + INDENT_STEP * depth}px`,
       );
     }
-    // A directory keeps its trailing slash, exactly as the mockup's own rows
-    // do (`src/`, `src/billing/`) — the one glance that tells a directory from
-    // a file before the dot or the count is read.
-    const isDir = node.children.length > 0;
-    // The mockup's own order — dot, name, bar, count — and its own division of
-    // labour: the dot is the CATEGORY (its shape survives monochrome), the bar
-    // is the magnitude, the count is the same magnitude in figures for anyone
-    // the bar is too small for.
     button.append(
       el('span', `dot ${coverageDot(node)}`),
       el('span', 'nm', isDir ? `${node.name}/` : node.name),
       renderMini(ctx, magnitude(node, data.truncated)),
       el('span', 'covn', `${node.governedCount}/${node.fileCount}`),
     );
+    // Selecting a row (to see what governs it) and expanding it are two
+    // different acts — a reader opening the detail pane for a folder should
+    // not also be forced to expand it, and vice versa. The toggle above
+    // handles the second; this handles only the first.
     button.addEventListener('click', () => {
-      for (const other of buttons) other.setAttribute('aria-selected', 'false');
+      for (const other of entries) other.button.setAttribute('aria-selected', 'false');
       button.setAttribute('aria-selected', 'true');
       renderDet(node);
     });
-    buttons.push(button);
-    treeBox.append(button);
+    row.append(button);
+    // Every proper ancestor directory path, root excluded — what must be OPEN
+    // for this row to show when no filter is active.
+    const ancestors = [];
+    const segments = node.path.split('/');
+    for (let i = 1; i < segments.length; i++) ancestors.push(segments.slice(0, i).join('/'));
+    treeBox.append(row);
+    return {
+      row, button, node, depth, ancestors,
+    };
+  });
+
+  // **The filter and the collapse state are independent, and clearing the
+  // filter returns the reader to whatever THEY had expanded** — `openDirs`
+  // is never touched by typing or clearing the filter input, only by the
+  // toggle buttons. A reader who opens two folders, filters to check a
+  // third, then clears the filter, gets their two folders back open rather
+  // than a tree that silently forgot what they had done.
+  function applyVisibility() {
+    const needle = filterValue.trim().toLowerCase();
+    for (const entry of entries) {
+      entry.row.hidden = needle !== ''
+        ? !entry.node.path.toLowerCase().includes(needle)
+        : entry.depth > 0 && !entry.ancestors.every((a) => openDirs.has(a));
+    }
   }
+  filterInput.addEventListener('input', () => {
+    filterValue = filterInput.value;
+    applyVisibility();
+  });
+  applyVisibility();
 
   // The mockup opens with a row already selected and its detail drawn. The
   // first row is that row here: deterministic, and the top of the tree is the
   // widest answer the screen has.
-  if (rows.length > 0) {
-    buttons[0].setAttribute('aria-selected', 'true');
-    renderDet(rows[0].node);
+  if (entries.length > 0) {
+    entries[0].button.setAttribute('aria-selected', 'true');
+    renderDet(entries[0].node);
   }
+
+  // --- Categories with nothing in them — the one fact `gaps.js` was for ---
+  const catCard = el('div', 'card pane');
+  const catH = el('h3');
+  catH.append(...ctx.t('cov.emptycat.h'));
+  catCard.append(catH);
+  if (catRefusal !== null) {
+    catCard.append(errorNote(catRefusal.message));
+  } else if (catEmpty.length === 0) {
+    // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` — reusing
+    // the ONE `◌` primitive this product already draws for exactly this state
+    // (`screens/doctor.js` · `el('span', 'chip unmeas')` · ~775), never a
+    // second glyph invented here.
+    const zero = el('span', 'chip unmeas');
+    zero.dataset.g = '◌';
+    zero.append(...ctx.t('cov.emptycat.none'));
+    const p = el('p', 'small');
+    p.append(zero);
+    catCard.append(p);
+  } else {
+    const line = el('p');
+    for (const category of catEmpty) line.append(el('span', 'catchip', category));
+    catCard.append(line);
+  }
+  root.append(catCard);
 }
 
 /** The four dots, in the mockup's own order and with its own separators. */
@@ -433,13 +454,7 @@ function legend(ctx) {
   const keys = [['g', 'cov.k1'], ['o', 'cov.k2'], ['w', 'cov.k3'], ['n', 'cov.k4']];
   keys.forEach(([dot, key], index) => {
     const swatch = el('span', `dot ${dot}`);
-    // The mockup writes `style="display:inline-block"` on each swatch; CSP
-    // forbids the attribute in the shipped app, so the same declaration goes
-    // through CSSOM. `.dot` is a flex child in a tree row and an inline run
-    // here, which is why the mockup overrides it in exactly this one place.
     swatch.style.setProperty('display', 'inline-block');
-    // The last entry is bold in the mockup — "not examined" is the state the
-    // screen most often has to say is NOT what a reader is looking at.
     const label = el(index === keys.length - 1 ? 'b' : 'span');
     label.append(...ctx.t(key));
     if (index > 0) line.append(' · ');
@@ -450,10 +465,7 @@ function legend(ctx) {
 
 /**
  * `#covempty` — *"Nothing governs this project yet"*, said ONCE.
- *
- * Drawn, never omitted: `cov.e2` is the whole argument for it — *"That is the
- * normal state of a new workspace, not a wall of warnings. One sentence, said
- * once — not repeated per row."*
+ * Unchanged by the 2026-09-04 redesign.
  */
 function emptyView(ctx) {
   const box = el('div', 'empty');
@@ -465,17 +477,6 @@ function emptyView(ctx) {
   const cmd = el('div', 'cmd');
   cmd.append(el('code', null, EMPTY_COMMAND));
 
-  // **`id: null`, so this gets Copy and no Execute, and that is the honest
-  // answer rather than a caution.** The design of record's empty-state line is
-  // `mycontext add constraint “…” --scope “src/**”` — a TEMPLATE with an ellipsis
-  // where the text goes. There is no catalogue entry the server could rebuild
-  // it from and nothing here a reader could sensibly run unedited, and the
-  // control's own rule is that nothing outside the catalogue may run.
-  //
-  // The button moves OUT of `div.cmd` and into the control's `div.cmdactions`
-  // beside it, which is where every other screen's is; the mockup draws it
-  // inside, and `.cmdactions button` carries its own background so the pair
-  // reads the same either way.
   box.append(headline, note, cmd, commandActions({ argv: EMPTY_ARGV, id: null, ctx }));
   const wrap = el('div');
   wrap.id = 'covempty';

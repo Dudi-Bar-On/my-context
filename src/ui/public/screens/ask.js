@@ -857,13 +857,15 @@ export async function render(root, ctx) {
   //   - the rows a corpus query returns — `layer`, plus categories and
   //     statuses again.
   //
-  // **What no browser-reachable endpoint serves at all:** `AUDIT_OPS` (19
-  // members), `ORIGINS`, `STATUSES`, `LAYERS` and the 29 categories of
-  // `core/categories.ts`. `AUDIT_KINDS` is served only through a projection
-  // read, which refuses when the projection is stale. So on a corpus whose
-  // audit history is empty or whose projection is behind, the audit tab can
-  // offer no values to filter by — which is true, and is why the vocabulary
-  // is derived rather than typed. In this task's report.
+  // **`AUDIT_OPS` (19 members) and `AUDIT_KINDS` are served unconditionally
+  // now**, on `/api/meta` — `TASK-no-browser-reachable-endpoint-serves-audit-kinds-so-the`.
+  // Before that, `AUDIT_OPS` reached no browser-reachable endpoint at all and
+  // `AUDIT_KINDS` was served only through a projection read that refuses when
+  // the projection is stale, so on a corpus whose audit history was empty or
+  // whose projection was behind, this tab could offer no values to filter by
+  // for either field. `ORIGINS`, `STATUSES`, `LAYERS` and the 29 categories of
+  // `core/categories.ts` still reach no endpoint and are still derived —
+  // outside what that task named, and not closed here.
   const vocabulary = {
     kind: [], op: [], origin: [], item: [],
     type: [], status: [], title: [],
@@ -1207,11 +1209,26 @@ export async function render(root, ctx) {
   // cap is part of the question.
   limitSelect.onchange = () => { void runFilter(); };
 
-  // The two vocabulary reads that are not the answer. Their refusals are NOT
+  // The vocabulary reads that are not the answer. Their refusals are NOT
   // drawn: this screen reports the refusal of the query it ran, and a second
   // error line for a list of options would say the same 503 twice. What their
   // failure costs is fewer values to choose from, which the empty select shows
   // for itself.
+  //
+  // **`/api/meta` first, unconditionally** —
+  // `TASK-no-browser-reachable-endpoint-serves-audit-kinds-so-the`. This
+  // file's header named `AUDIT_OPS` as served nowhere a browser could reach,
+  // the one vocabulary this screen alone needs and `watch.js` does not; the
+  // route now carries `auditKinds` and `auditOps` both, taken from
+  // `core/audit.ts`'s own declarations. It answers 200 whether or not any
+  // audit projection has ever been built, which is exactly the workspace on
+  // which the `/api/watch/volume` read below is weakest — so this runs first,
+  // and the weaker reads that follow only ever ADD to what it already named.
+  try {
+    const meta = await ctx.api('/api/meta');
+    if (Array.isArray(meta.auditKinds)) learn('kind', meta.auditKinds);
+    if (Array.isArray(meta.auditOps)) learn('op', meta.auditOps);
+  } catch { /* the weaker sources below still run */ }
   try {
     const items = await ctx.api('/api/items');
     learn('item', items.items.map((item) => item.id));

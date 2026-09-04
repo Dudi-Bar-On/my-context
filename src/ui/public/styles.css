@@ -1843,6 +1843,13 @@ details.help[open]>summary{margin-block-end:6px}
 .helpbox{border-inline-start:2px solid var(--gold);padding-inline-start:10px;
   font-size:var(--fs-0);color:var(--dim);display:grid;gap:5px}
 .helpbox b{color:var(--ink)}
+/* `lib/disclosure.js`'s optional example block — the approved redesign
+   mockup's `.ex` (reports/2026-09-04-scope-coverage-redesign-mockup.html),
+   rebuilt with a keyed `<b class="exlabel">` rather than the mockup's
+   unkeyed `::before{content:"Example — "}`, which carries no Hebrew rule and
+   would ship English on the Hebrew page. */
+.helpbox .ex{color:var(--ink);font-style:normal}
+.helpbox .ex .exlabel{color:var(--gold)}
 
 /* ─── simulate.js's own controls (mockup ~852-861): `.segbar` is the tier
    picker's button row, `.simctl` wraps the budget slider. */
@@ -2065,6 +2072,35 @@ table.diff{margin-block:var(--sp-2)}
 .tree button[data-depth="1"]{padding-inline-start:19px}
 .tree button[data-depth="2"]{padding-inline-start:33px}
 .tree .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Scope coverage redesign, 2026-09-04 — TASK-scope-coverage-summarises-
+   first-and-shows-detail-on-demand (seq:21), TASK-coverage-gaps-folds-into-
+   scope-coverage-keeping-the-one-fact (seq:22). Three new class families, all
+   invented past the frozen mockup (`test/helpers/shipped-classes.ts`'s
+   "does anything style it?" rule): the status line, the counted-chip-by-kind
+   summary the tree/pinned-card/what-governs-card all now share, the tree's
+   own expand toggle and its path filter. */
+.status{font-size:var(--fs-1);color:var(--dim);margin-block-end:var(--sp-3)}
+.status b{color:var(--ink);font-variant-numeric:tabular-nums}
+.catchip{display:inline-block;font-family:var(--mono);font-size:var(--fs-00);
+  padding-inline:5px;border-radius:var(--r-sm);border:1px solid var(--edge-3);
+  color:var(--dim);margin-inline-end:5px;margin-block-end:4px}
+.tree .row{display:flex;align-items:center}
+/* Collapsed rows are hidden by JS (`entry.row.hidden = true`), and this beats
+   the UA's own `[hidden]{display:none}`: ANY author `display` declaration
+   outranks it at equal specificity, and `.tree .row{display:flex}` above is
+   exactly such a declaration. Without this line a collapsed row would still
+   lay out as a flex row and the tree would look permanently expanded no
+   matter what `hidden` said — the same trap `.cmd[hidden]`, `#pane[hidden]`
+   and `.itemprops[hidden]` already dodge elsewhere in this file. */
+.tree .row[hidden]{display:none}
+.tree .row .toggle{display:inline-block;inline-size:14px;flex:none;padding:0;border:0;
+  background:none;color:var(--dim);cursor:pointer;font-size:var(--fs-00);text-align:center}
+.tree .row button[role="treeitem"]{flex:1;min-inline-size:0}
+.toggle{display:inline-block;inline-size:12px;flex:none;color:var(--dim);text-align:center}
+.filter{font:inherit;font-size:var(--fs-0);padding:4px 7px;border-radius:var(--r-sm);
+  border:1px solid var(--edge-3);background:var(--panel);color:var(--ink);
+  inline-size:100%;max-inline-size:260px}
 
 /* ── CARRIED: the audit stream — the pulse, the per-record token bar, the
    not-recorded void and the regime rule ──────────────────────────

@@ -48,6 +48,12 @@ must be fetched.
 on demand. A compaction usually restores them by itself — the snapshot scans
 the transcript for ids — but never rationale items, which a re-load misses too — use `get_item`.
 
+An id in context is not proof its body is. Pinned and normative items are
+the product's job — checked and redelivered after a new session or
+compaction. Every other item's body is gone once a compaction snapshots it,
+leaving only the id: reload it with `mycontext show <id>` or `get_item`
+before acting on it — a familiar id is a reminder, not the text.
+
 ## Never guess an id
 
 Ids look guessable (`CONST-pool-capped-at-20`) and are not. Get them from

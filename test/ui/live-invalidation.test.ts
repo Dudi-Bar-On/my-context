@@ -139,11 +139,13 @@ function missingDeclarations(
   return screens.filter((name) => !Object.hasOwn(map, name));
 }
 
-test('app.js routes 21 screens (sanity — the extraction found something)', () => {
+// 21 until `gaps` retired 2026-09-04 (`TASK-coverage-gaps-folds-into-scope-
+// coverage-keeping-the-one-fact`, seq:22), folded into `coverage`.
+test('app.js routes 20 screens (sanity — the extraction found something)', () => {
   const screens = routedScreens();
   assert.ok(
-    screens.length >= 21,
-    `expected 21+ routed screens, found ${screens.length}: ${screens.join(', ')}`,
+    screens.length >= 20,
+    `expected 20+ routed screens, found ${screens.length}: ${screens.join(', ')}`,
   );
 });
 

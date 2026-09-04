@@ -243,26 +243,11 @@ const KNOWN_LITERALS: { file: string; text: string; verdict: Verdict; reason: st
       + 'writes it as one unkeyed literal and the app drew it with the event name '
       + 'substituted in. Prose around an identifier; stays English under Hebrew. Filed.',
   },
-  {
-    file: 'preview.js',
-    text: `not reached — ${HOLE}`,
-    verdict: 'unkeyed',
-    reason: 'The ladder\'s below-the-break state. The substituted half is `GATES[i].q`, '
-      + 'the design of record\'s own gate description, which is itself an unkeyed literal '
-      + '— so keying this alone would translate two words and leave the sentence. Both '
-      + 'halves belong in one fix, with the `GATES` table. Filed together.',
-  },
-  {
-    file: 'preview.js',
-    text: `${HOLE} / ${HOLE}${HOLE} · ${HOLE} in · ${HOLE} out`,
-    verdict: 'unkeyed',
-    reason: 'The ribbon tier label — used / budget, then how many went in and how many '
-      + 'fell out. `in` and `out` are prose, not vocabulary: the design of record '
-      + 'translates them itself (renderRibbons: HEB ? \' נכנסו · \' : \' in · \'), so the '
-      + 'copy exists. Found only because this check follows `+` concatenation — the '
-      + 'sentence is a template and a string added together, and reading either half '
-      + 'alone would have missed it. Filed.',
-  },
+  // `not reached — ${HOLE}` and the ribbon tier label are GONE from this
+  // ledger, not renamed into it: both are keyed now (`preview.notReached` with
+  // `preview.gEligible`…`preview.gBudget` for the ladder; `preview.rbTo` and
+  // `preview.rbInOut` for the label), off the same `GATES` table and the same
+  // mockup transcription the reasons below used to cite as owed.
   // NOT listed, and deliberately: the admitted segment's tooltip
   // (`<id> · <n> tokens`) carries one letter-word — the unit — and falls below
   // the prose line. It is an id, a middot and a number, which is what the line
@@ -276,57 +261,12 @@ const KNOWN_LITERALS: { file: string; text: string; verdict: Verdict; reason: st
       + 'which is prose. A tooltip is read by a person and is translatable — `data-t-title` '
       + 'exists in the design of record for exactly this. Filed.',
   },
-  {
-    file: 'preview.js',
-    text: `Drawn to the simulator's range, ${HOLE}`,
-    verdict: 'unkeyed',
-    reason: 'The ribbon hint said when a reader has widened the simulator\'s range. An '
-      + 'app-only sentence — the design of record has no range control and so no copy for '
-      + 'it, which is why no key was written. Prose, stays English. Filed.',
-  },
-  {
-    file: 'preview.js',
-    text: ` — the budget in force is still ${HOLE}, and the track past it is range, not headroom. `,
-    verdict: 'unkeyed',
-    reason: 'The second half of the range hint above, and the same filing. Split across a '
-      + '`<b>` and a text node in the source; one sentence to a reader.',
-  },
-  {
-    file: 'preview.js',
-    text: `Everything selected fit. Headroom ${HOLE} tokens.`,
-    verdict: 'unkeyed',
-    reason: 'The no-spill ribbon hint. The design of record DOES carry Hebrew for this one '
-      + '(`renderRibbons`: הכול נכנס. עודף … אסימונים.), so the copy exists and the fix is '
-      + 'cheap — it is out of this task\'s two-sentence bound, not out of reach. Filed.',
-  },
-  {
-    file: 'preview.js',
-    text: `Headroom ${HOLE}. ${HOLE} index lines did not fit; `
-      + 'per-line index costs are exposed by no endpoint, so the ghost lane cannot size them.',
-    verdict: 'unkeyed',
-    reason: 'The index tier\'s hint, naming the one figure no endpoint serves. App-only '
-      + 'prose with no mockup copy behind it. Filed.',
-  },
-  // The spill hint is THREE nodes and one sentence to a reader. Its head —
-  // `Headroom <n>. ` — carries one letter-word and falls below the prose line,
-  // so it is not listed; the two nodes that carry the sentence are, and they
-  // are what a fix has to move. A sentence split across nodes is caught by the
-  // nodes that hold its words, which is the property this check needs and has.
-  {
-    file: 'preview.js',
-    text: `the smallest thing that did not fit costs ${HOLE}`,
-    verdict: 'unkeyed',
-    reason: 'The emphasised middle of the spill hint. The design of record carries Hebrew '
-      + 'for it (הדבר הקטן ביותר שלא נכנס עולה …). Filed with the node beside it; its '
-      + '`Headroom <n>. ` head is below the prose line and is fixed with them.',
-  },
-  {
-    file: 'preview.js',
-    text: ' — so the headroom is not usable by anything currently selected.',
-    verdict: 'unkeyed',
-    reason: 'The tail of the spill hint. Hebrew exists in the design of record '
-      + '(— ולכן העודף אינו שמיש לאף פריט שנבחר.). Filed.',
-  },
+  // The four ribbon hints — the range hint (two nodes), the no-spill hint, the
+  // index hint and the spill hint (also two nodes) — are GONE from this ledger
+  // too: `preview.rbRange`, `preview.rbFit`, `preview.rbIndex` and
+  // `preview.rbSpill`. `rbFit` and `rbSpill` carry the mockup's own Hebrew
+  // (`renderRibbons` · ~6220-6231); `rbRange` and `rbIndex` are app-only and
+  // were translated here, same as `preview.notrunn` was before them.
   // ── coverage.js — EMPTY, and it emptied on 2026-08-31 ─────────────────
   //
   // `'Copy failed'` is the second entry this ledger has lost to something

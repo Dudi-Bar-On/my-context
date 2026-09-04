@@ -95,9 +95,9 @@
 //             `e2e/preview-compact-continuity.spec.ts` drives a real
 //             compaction against a live preview and pins that flip.
 //   coverage  `/api/coverage` — governance by path, over the current items.
-//             `mutation` only; nothing here is session-scoped.
-//   gaps      Same `/api/coverage` answer as coverage, through
-//             `coverageGapRows`. `mutation`.
+//             `mutation` only; nothing here is session-scoped. Carries the
+//             empty-category card too (`/api/help/categories`) since
+//             `gaps` retired 2026-09-04 (seq:22) and folded into this screen.
 //   simulate  `/api/coverage`, `/api/simulate` (same focus reasoning as
 //             preview) and `/api/watch/ratio`, whose two `topItems` calls
 //             read the `injected`/`spilled` `audit_item.role`s — written only
@@ -209,7 +209,7 @@
 //           state no fetch carries — `simulate`'s slider position and tier
 //           pick, `proc`'s active run; (3) rows whose ORDER OR PRESENCE a
 //           mutation can change under an open pane — `preview`, `coverage`,
-//           `gaps`, `doctor`, `decay`, `graph`, `learn`, `work`, `packs`
+//           `doctor`, `decay`, `graph`, `learn`, `work`, `packs`
 //           filter, group, sort or page their rows by a value a mutation
 //           moves, and `ask`'s own query filters plus its 200-row truncation
 //           (`ask.truncated`) are exactly the "re-page under the reader" the
@@ -250,12 +250,11 @@ export const SCREEN_INVALIDATION = {
   // AND REPLACES rows under an open pane.** This screen's lists are the
   // selector's own admission and consideration orders over a corpus a mutation
   // moves, and `boundedList` re-pages them — which is reason (3) in the
-  // derivation table above, the same one `coverage`, `gaps` and `ask` are
+  // derivation table above, the same one `coverage` and `ask` are
   // listed under. The reader gets the affordance and decides when to spend it;
   // what changed is that spending it now costs them nothing.
   preview: { kinds: ['mutation', 'focus', 'injection', 'hook'], refresh: 'ask' },
   coverage: { kinds: ['mutation'], refresh: 'ask' },
-  gaps: { kinds: ['mutation'], refresh: 'ask' },
   simulate: { kinds: ['mutation', 'injection', 'focus'], refresh: 'ask' },
   injected: { kinds: ['injection'], refresh: 'auto' },
   doctor: { kinds: ['mutation'], refresh: 'ask' },
@@ -381,11 +380,13 @@ export const SCREEN_INVALIDATION = {
 //            `mycontext.injections` all along. Both are drawn from that one
 //            body now, so this row subscribes and shares the session group's
 //            call — see `CHROME_INVALIDATION` below for why the kinds are `*`.
-//   rail     the three `.cnt` badges beside Coverage gaps, Doctor and Review
-//            queue, painted by `paintRailCounts` from `/api/status` (the health
-//            counts, and `pendingRevisions.revisions + reviewQueue.drafts`) and
-//            `/api/coverage` (the gaps walk). Added 2026-08-31 with `plan:walk
-//            seq:120`, whose owner report is one sentence about three defects:
+//   rail     the two `.cnt` badges beside Doctor and Review queue, painted by
+//            `paintRailCounts` from `/api/status` (the health counts, and
+//            `pendingRevisions.revisions + reviewQueue.drafts`). A third,
+//            Coverage gaps, was painted from `/api/coverage` until that
+//            screen and its rail entry retired 2026-09-04 (seq:22). Added
+//            2026-08-31 with `plan:walk seq:120`, whose owner report is one
+//            sentence about three defects:
 //            `paintRailCounts()` was called from `route()` and from NOWHERE
 //            ELSE, so the gold count beside Review queue was correct at the
 //            moment a screen was opened and never moved again. The strip's

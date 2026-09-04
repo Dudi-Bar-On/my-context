@@ -1213,6 +1213,38 @@ export function coverageDot(node) {
 }
 
 /**
+ * Every id grouped by its own KIND — the id's prefix up to the first `-`
+ * (`CONST-zero-runtime-dependencies` -> `CONST`) — with a count per kind.
+ *
+ * `TASK-scope-coverage-summarises-first-and-shows-detail-on-demand` (seq:21):
+ * "anything longer than about eight rows gets a short counted summary that is
+ * always visible, grouped by kind". This is that grouping, used identically
+ * for the pinned card and the per-folder "what governs" card, so a reader who
+ * learns the shape once does not learn it twice. The kind is read off the id
+ * itself — `screens/parts.js`' `idFull`/`linkId` already split ids this same
+ * way for the `.idkind`/`.idslug` pair drawn beside every id on this product —
+ * rather than off `ItemSummary.type` (the config category, e.g. `constraint`),
+ * because the task's own worked example (`RULE·19 INSTR·6 CONST·3 INV·3 STD·3
+ * NOGOAL·1 REQ·1`, thirty-six total) is the id-prefix spelling, not the
+ * category-name spelling, and this keeps ONE mechanism for both cards rather
+ * than the id prefix on one and the full category word on the other.
+ *
+ * Sorted by count descending, ties broken by kind so two runs over one corpus
+ * order the chips the same way.
+ */
+export function groupByKind(ids) {
+  const counts = new Map();
+  for (const id of ids) {
+    const cut = id.indexOf('-');
+    const kind = cut === -1 ? id : id.slice(0, cut);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([kind, count]) => ({ kind, count }))
+    .sort((a, b) => (b.count - a.count) || (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0));
+}
+
+/**
  * Whether the coverage screen draws `#covempty` — "Nothing governs this project
  * yet" (`cov.e1`).
  *

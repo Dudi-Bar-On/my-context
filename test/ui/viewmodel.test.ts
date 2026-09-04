@@ -1441,10 +1441,12 @@ test('every string key the built screens name is declared, with its slots suppli
   const used: { key: string; args: string | null; file: string }[] = [];
   for (const name of [
     'preview.js', 'simulate.js', 'injected.js', 'parts.js',
-    // Task 18's three. The scan is the only thing that ever evaluates a
-    // `ctx.t()` key in a screen file, so a screen left out of this list is a
-    // screen whose phantom key nothing catches until it blanks in a browser.
-    'coverage.js', 'gaps.js', 'graph.js',
+    // Task 18's three, now two: `gaps.js` retired 2026-09-04 (seq:22),
+    // folded into `coverage.js`. The scan is the only thing that ever
+    // evaluates a `ctx.t()` key in a screen file, so a screen left out of
+    // this list is a screen whose phantom key nothing catches until it
+    // blanks in a browser.
+    'coverage.js', 'graph.js',
   ]) {
     const source = readFileSync(path.join(SCREENS, name), 'utf8');
     for (const m of source.matchAll(/ctx\.t(?:Flat)?\('([^']+)'/g)) {

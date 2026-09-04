@@ -68,6 +68,15 @@
  * cannot trust: the empty result and the nearly-empty result look identical
  * until you can see which files"*.
  *
+ * **The truly-empty result is now named, not merely shown as a zero.**
+ * `TASK-nine-facts-the-new-read-models-serve-that-no-string-key-can` raised it:
+ * a real pattern that matches nothing is exactly what `doctor` reports as
+ * `dead_scope`, and this tester could draw the zero and never say what an item
+ * scoped there would actually get — nothing. `pal.globDead` is that sentence,
+ * appended below `pal.globn` whenever a NON-EMPTY pattern answers zero — the
+ * resting state before anyone has typed is also `total === 0` and is not this
+ * finding, which is why `paintGlob` is guarded on the pattern too.
+ *
  * **"Lit as you type" is plain English here, not the `.lit` primitive.** That
  * name is reserved for the literal field (repaint spec §3 primitive 3), a
  * different mechanism, and the two must not be confused by a shared class. The
@@ -534,7 +543,7 @@ export async function render(root, ctx) {
   let globToken = 0;
   let globTimer = null;
 
-  function paintGlob(rows, total) {
+  function paintGlob(rows, total, pattern) {
     globTree.replaceChildren(...rows.map((row) => el('div', row.hit ? 'hit' : null, row.path)));
     // Two numbers and no prose: the sentence the mockup prints here is not in
     // either string table (see this file's header), and `num` is the mockup's
@@ -542,13 +551,23 @@ export async function render(root, ctx) {
     // language would be a second thing to reconcile for no reader's benefit.
     globCount.replaceChildren(el('span', 'm', `${num(total)} / ${num(fileTotal)}`));
     globNote.replaceChildren(...ctx.t('pal.globn', { matches: num(total) }));
+    // **The empty-result sentence, keyed since this task** — a real pattern
+    // that matches no file is exactly what `doctor` reports as `dead_scope`,
+    // and until now this screen could show the zero and never say what it
+    // means: an item scoped there would govern nothing. Guarded on `pattern`
+    // rather than on `total` alone, because `total === 0` is also the resting
+    // state before anyone has typed a pattern at all, and that is not a
+    // finding — it is an empty box nobody has asked a question of yet.
+    if (pattern !== '' && total === 0) {
+      globNote.append(' ', ...ctx.t('pal.globDead'));
+    }
   }
 
   function testGlob(pattern) {
     clearTimeout(globTimer);
     const mine = ++globToken;
     if (pattern === '') {
-      paintGlob(globRows(files, []), 0);
+      paintGlob(globRows(files, []), 0, '');
       return;
     }
     // The opening pattern is the one already answered: the universe fetch above
@@ -557,7 +576,7 @@ export async function render(root, ctx) {
     // debounce unlit on every arrival at this screen for an answer that was
     // never in doubt. Painted synchronously instead, from the same bytes.
     if (pattern === EVERY_FILE) {
-      paintGlob(globRows(files, files), fileTotal);
+      paintGlob(globRows(files, files), fileTotal, pattern);
       return;
     }
     globTimer = setTimeout(async () => {
@@ -572,7 +591,7 @@ export async function render(root, ctx) {
         return;
       }
       if (mine !== globToken || !globTree.isConnected) return;
-      paintGlob(globRows(files, answer.sample ?? []), answer.total ?? 0);
+      paintGlob(globRows(files, answer.sample ?? []), answer.total ?? 0, pattern);
     }, GLOB_DEBOUNCE_MS);
   }
 
@@ -632,7 +651,17 @@ export async function render(root, ctx) {
     if (blocked) blockNote.append(...ctx.t('pal.block'));
 
     cmdBox.replaceChildren();
-    if (!complete) return;
+    if (!complete) {
+      // **The only sentence this screen owed and did not have.** Every
+      // required control already carries `aria-invalid` — correct ARIA, and
+      // silent for a sighted reader: nothing on screen said WHY the command
+      // box stayed empty. `pal.incomplete` is that sentence, drawn where the
+      // command would otherwise be.
+      const note = el('p', 'small');
+      note.append(...ctx.t('pal.incomplete'));
+      cmdBox.append(note);
+      return;
+    }
 
     const command = composeCommand(argv);
     const cmd = el('div', 'cmd');
@@ -679,7 +708,13 @@ export async function render(root, ctx) {
     const runRow = el('div', 'cmdactions');
     const run = el('button');
     run.type = 'button';
-    run.append(...ctx.t('ask.run'));
+    // **`pal.run`, not the Ask screen's `ask.run`.** Both used to read "Run",
+    // and both still do — but they were the SAME key, so an edit meant for
+    // one screen would have silently changed the other, and no test in this
+    // project would have noticed: the key sets would still match and both
+    // screens would still render a string. `TASK-the-six-palette-keys-the-plan-declares-and-neither-table`
+    // names the general risk; this is the fix, key by key.
+    run.append(...ctx.t('pal.run'));
     const results = el('div');
     run.addEventListener('click', async () => {
       if (target.kind === 'navigate') {
@@ -700,11 +735,11 @@ export async function render(root, ctx) {
       const answer = resultRows(body);
       const table = el('table');
       const caption = el('caption');
-      caption.append(...ctx.t(answer.rows.length === 0 ? 'ask.noRows' : 'ask.rows', { rows: num(answer.total) }));
+      caption.append(...ctx.t(answer.rows.length === 0 ? 'pal.noRows' : 'pal.rows', { rows: num(answer.total) }));
       const thead = el('thead');
       const headRow = el('tr');
       const th = el('th');
-      th.append(...ctx.t('th.item'));
+      th.append(...ctx.t('pal.item'));
       headRow.append(th);
       thead.append(headRow);
       const tbody = el('tbody');
@@ -717,7 +752,7 @@ export async function render(root, ctx) {
       results.append(table);
       if (answer.truncated) {
         const capped = el('p', 'small');
-        capped.append(...ctx.t('ask.truncated', { rows: num(answer.rows.length) }));
+        capped.append(...ctx.t('pal.truncated', { rows: num(answer.rows.length) }));
         results.append(capped);
       }
     });

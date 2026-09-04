@@ -199,10 +199,6 @@ import {
   // header for why the abbreviation is relative and what it buys.
   corpusDir, relDir, wallStamp,
 } from '/lib/viewmodel.js';
-// The rail's Coverage-gaps badge counts the SAME directories the gaps table
-// lists, through the same function. See `paintRailCounts` for why the count is
-// derived here rather than served as a number by `/api/status`.
-import { buildTree, coverageGaps } from '/lib/viewmodel.js';
 // The shared live stream's backlog size — see "THE SHARED LIVE STREAM" below.
 //
 // **`SHARED_STREAM_BACKLOG` below, not `BOUND_CAP_LIST` any more
@@ -236,7 +232,8 @@ import {
 const SCREENS = {
   preview: () => import('/screens/preview.js'),
   coverage: () => import('/screens/coverage.js'),
-  gaps: () => import('/screens/gaps.js'),
+  // `gaps` retired 2026-09-04 (seq:22) — folded into `coverage.js`. `route()`
+  // sends a stale `#/gaps` link here to `coverage` explicitly.
   simulate: () => import('/screens/simulate.js'),
   injected: () => import('/screens/injected.js'),
   doctor: () => import('/screens/doctor.js'),
@@ -284,7 +281,7 @@ const SCREENS = {
 // derived, a screen would silently leave the rail the moment its import broke,
 // and the rail is how a person learns what exists.
 const NAV = [
-  ['nav.inj', ['preview', 'coverage', 'gaps', 'simulate', 'injected']],
+  ['nav.inj', ['preview', 'coverage', 'simulate', 'injected']],
   ['nav.ev', ['watch', 'ask', 'doctor', 'decay', 'graph', 'status']],
   ['nav.ch', ['work', 'capture', 'palette', 'config', 'proc', 'port', 'packs']],
   ['nav.read', ['docs', 'tut', 'learn']],
@@ -6665,13 +6662,13 @@ function handoverVerdictChip(view) {
 
 // --- The rail's count badges ------------------------------------------------
 //
-// `<span class="cnt x">7</span>` beside Coverage gaps, Doctor and Review queue:
-// the count of things wanting attention, on the rail, where a person sees it
-// without opening the screen. The design of record has drawn all three since it
-// was written and `styles.css` has carried `.cnt` and `.cnt.x` just as long —
-// and nothing in this shell ever created one, so the stylesheet had rules for
-// an element that did not exist. Invisible to `styles-parity` by construction:
-// it compares CSS BLOCKS, and both files have the block.
+// `<span class="cnt x">7</span>` beside Doctor and Review queue: the count of
+// things wanting attention, on the rail, where a person sees it without
+// opening the screen. The design of record has drawn this since it was
+// written and `styles.css` has carried `.cnt` and `.cnt.x` just as long — and
+// nothing in this shell ever created one, so the stylesheet had rules for an
+// element that did not exist. Invisible to `styles-parity` by construction: it
+// compares CSS BLOCKS, and both files have the block.
 //
 // **THREE STATES, THREE SPELLINGS, because two of them are easy to confuse and
 // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` says they may
@@ -6685,28 +6682,17 @@ function handoverVerdictChip(view) {
 //                    this product's own mark for a value nothing measured
 //                    (`status.js` draws one for the same reason)
 //
-// The zero badge is the one the design of record does not draw, and it is drawn
-// anyway: the mockup's scene happens to have a finding on all three screens, so
-// the question never arose there. `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`
-// is what makes that an ordinary decision rather than a divergence to file.
-//
-// **TWO REQUESTS, NOT THE `counts` FIELD THE TASK PROPOSED**, and the reason is
-// worth stating because the task's suggestion looked better on its face. One
-// `/api/status` carrying all three numbers would be one request and would keep
-// every derivation server-side. But the Coverage-gaps number is
-// `coverageGaps()` — a walk over the coverage tree that lives in
-// `lib/viewmodel.js` and is tested there — and moving it server-side means
-// either a SECOND implementation of one rule, which this project bans outright,
-// or a refactor that makes the gaps table read a server-computed list. Neither
-// belongs in a task about drawing a badge. Two boot requests against a local
-// server is the cheaper price, and it is paid once.
-const RAIL_COUNTS = ['gaps', 'doctor', 'work'];
+// **`gaps` retired 2026-09-04** (`TASK-coverage-gaps-folds-into-scope-
+// coverage-keeping-the-one-fact`, seq:22) with the rail button it used to
+// badge — `coverageGaps()` still lives in `lib/viewmodel.js` and is still what
+// `screens/coverage.js`'s own status line counts, but there is no longer a
+// `.nav[data-s="gaps"]` to paint a badge onto, and the extra `/api/coverage`
+// boot request that only fed this badge is dropped with it.
+const RAIL_COUNTS = ['doctor', 'work'];
 
 /** `null` means NOT MEASURED, which is never the same as `0`. */
 async function railCounts() {
-  const counts = { gaps: null, doctor: null, work: null };
-  // Each source is caught separately: `/api/coverage` refusing must not cost
-  // the two numbers `/api/status` answered perfectly well.
+  const counts = { doctor: null, work: null };
   try {
     const status = await api('/api/status');
     counts.doctor = doctorNoticeCount(status);
@@ -6718,10 +6704,6 @@ async function railCounts() {
     // `reviewQueue.drafts`; nothing new is fetched.
     counts.work = reviewQueueCount(status);
   } catch { /* stays null — named as unmeasured on the rail */ }
-  try {
-    const coverage = await api('/api/coverage');
-    counts.gaps = coverageGaps(buildTree(coverage.files ?? [])).length;
-  } catch { /* stays null */ }
   return counts;
 }
 
@@ -6836,7 +6818,26 @@ async function route() {
   // event=session-start on the most recent session, rendering with no
   // input. NOT 'status' — that screen is built by Task 19 and deferred to
   // wave 3 ("Corrected 2026-08-20", plan Task 16 note).
-  const asked = (location.hash.replace(/^#\//, '') || 'preview');
+  const askedRaw = (location.hash.replace(/^#\//, '') || 'preview');
+  // `screens/gaps.js` retired 2026-09-04 (`TASK-coverage-gaps-folds-into-
+  // scope-coverage-keeping-the-one-fact`, seq:22): the rail button is gone,
+  // but a reader who still has `#/gaps` from before that — a bookmark, a
+  // stale link — is sent to Scope coverage, the screen directly above it in
+  // the same rail group, where the one fact that screen reported (empty
+  // categories) now lives as a card. Without this they would fall through to
+  // the unknown-route case below and land on the injection preview instead,
+  // which is not "one item up" and not where the fact moved to.
+  const asked = askedRaw === 'gaps' ? 'coverage' : askedRaw;
+  if (askedRaw === 'gaps') {
+    // `replaceState`, not another `location.hash =` write: the latter fires
+    // `hashchange` and re-enters this whole function a second time for a
+    // redirect that has already decided where it is going. `replaceState`
+    // corrects the address bar and, because `renderNav()` below reads
+    // `location.hash` fresh, the rail highlights Scope coverage as current
+    // — without a second route, and without a `#/gaps` entry left in
+    // history for Back to return to.
+    history.replaceState(null, '', '#/coverage');
+  }
   // Resolve BEFORE building the section. `SCREENS[name] || SCREENS.preview`
   // renders the preview for an unknown route, and naming the section after the
   // route rather than the screen would create a `[data-p="nonsense"]` holding

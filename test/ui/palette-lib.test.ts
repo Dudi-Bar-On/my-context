@@ -982,6 +982,17 @@ const UNCATALOGUED: Record<string, string> = {
   lesson: 'a write, and the entry is straightforward. Held with the rest so that closing the '
     + 'Composer\'s gap is one reviewed change rather than nine.',
   'lesson-stage': 'a write whose payload is a FILE or stdin — see `ingest-apply`.',
+  link: 'a write with two item positionals (`from`, `to`) and a closed relation vocabulary in '
+    + 'the third. The item pickers already exist (`source: "items"`), but the relation itself '
+    + 'has no picker source: `palette.js` resolves exactly five sources (items, categories, '
+    + 'drafts, revisions, topics) read from four fetch bodies, and `search --relation` is '
+    + '`input: "text"` rather than a picker for the same reason. `RELATION_TYPES` '
+    + '(`core/vocabulary.ts`) would be a sixth source, and wiring one is a change to '
+    + '`palette.js` and `sourceLists` — a screen change this lane does not make, since '
+    + '`src/ui/public/screens/**` was a live lane the day `link` shipped. Composing the third '
+    + 'argument as free text would defeat the point of a catalogue entry: the CLI already '
+    + 'refuses a relation outside the vocabulary, and every other closed set this catalogue '
+    + 'offers is a picker, not a text box a reader can mistype.',
   'pack import': 'a write on the approval boundary. `packs.js` already composes it, and its '
     + 'entry is straightforward; it is held with `init`, which the same screen composes, so that '
     + 'the two are settled together.',

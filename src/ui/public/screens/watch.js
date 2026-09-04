@@ -1617,25 +1617,32 @@ export async function render(root, ctx) {
   }
 
   /**
-   * The two places the kind vocabulary can be learned from, and what is missing.
+   * The three places the kind vocabulary can be learned from, in the order
+   * `render` applies them.
    *
-   * The FIRST is `/api/watch/volume`: every bucket carries a breakdown holding
-   * every member of `AUDIT_KINDS` at zero, built from the one declaration, so
-   * its key order IS the enum. That is a real derivation and it is the one this
-   * screen prefers.
+   * **The FIRST is `/api/meta`'s `auditKinds`** — added for this screen by
+   * `TASK-no-browser-reachable-endpoint-serves-audit-kinds-so-the`, and the one
+   * this screen now prefers, because it is the one route on this surface that
+   * answers 200 unconditionally: whether or not any audit projection has ever
+   * been built for this workspace. It is `core/audit.ts`'s own `AUDIT_KINDS`,
+   * served rather than respelled, which is the one thing the task forbade.
    *
-   * The SECOND is the records themselves, which is a derivation from DATA and
+   * The SECOND is `/api/watch/volume`: every bucket carries a breakdown
+   * holding every member of `AUDIT_KINDS` at zero, built from the same
+   * declaration, so its key order IS the enum too — a real derivation, and
+   * redundant with the first once it lands, but not wasted: it is what still
+   * fills the row on the rare load where `/api/meta` itself refused.
+   *
+   * The THIRD is the records themselves, which is a derivation from DATA and
    * strictly weaker — it can only name kinds that happen to have occurred. It
-   * exists because the first one vanishes exactly when it is least affordable:
-   * a projection that is stale, diverged or damaged makes `/api/watch/volume`
-   * a 503, and the filter row would otherwise be left offering `All` alone
-   * while the live stream filled the table with seven kinds of record.
-   *
-   * **No browser-reachable endpoint serves `AUDIT_KINDS` unconditionally**, and
-   * that is a genuine gap between the mockup's instruction and this app's
-   * architecture. Raised in this task's report rather than closed here by
-   * respelling the enum in JavaScript, which is the one thing the instruction
-   * forbids.
+   * used to be load-bearing on a workspace that had never run an audit build:
+   * `/api/watch/volume` answers a stale, diverged or damaged projection with a
+   * 503 and an absent one with NO buckets, so the filter row was left offering
+   * `All` alone while the live stream filled the table with six kinds of
+   * record — the defect this whole task exists to name. It is still the
+   * fallback of last resort, never the first source, and it is why `learnKinds`
+   * stays additive rather than authoritative: nothing here CLEARS what an
+   * earlier, better source already named.
    */
   function learnKinds(more) {
     let changed = false;
@@ -1698,16 +1705,28 @@ export async function render(root, ctx) {
       // zeroes, and the difference must survive on screen: 120 zero columns is
       // a chart asserting that nothing happened over a log nothing has read.
       // The state is the SERVER'S OWN WORD — `absent` — drawn as a literal
-      // chip, the treatment a kind and a tier already get, because no string
-      // table declares a sentence for it and the mockup declares no key to add
-      // one under. Raised in this task's report: this state owes the design of
-      // record a keyed sentence.
+      // chip, the treatment a kind and a tier already get: it is a status
+      // word, not prose, so it stays untranslated the way `kind` and `tier`
+      // do. What it lacked was the SENTENCE beside it —
+      // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`'s
+      // second clause, "an unmeasured thing is named as unmeasured" — and
+      // `watch.pulseAbsent` is that sentence now.
       const state = el('span', 'chip warn', String(volume.projectionState));
       state.dataset.g = '▲';
       pulse.append(state);
+      pulseNote.replaceChildren(...ctx.t('watch.pulseAbsent'));
     } else {
       learnKinds(Object.keys(volume.buckets[0].byKind ?? {}));
       pulse.append(drawPulse(ctx, volume.buckets));
+      // A MEASURED zero — every bucket in the window totalling nothing — reads
+      // identically to the floor line under a real spread, and the first
+      // clause of the same standard applies: "a measured zero is drawn and
+      // named". `watch.pulsen`, appended when this element was built, already
+      // names the graphic in general; this replaces it with the specific
+      // finding when the window really is empty.
+      if (volume.buckets.every((bucket) => bucket.total === 0)) {
+        pulseNote.replaceChildren(...ctx.t('watch.pulseEmpty', { minutes: String(PULSE_MINUTES) }));
+      }
     }
   }
 
@@ -1907,12 +1926,24 @@ export async function render(root, ctx) {
   // projection takes the pulse, the backlog and the summary while the config
   // still answers — and `all` would discard three good answers because the
   // fourth failed.
-  const [config, volume, backlog, regh] = await Promise.allSettled([
+  const [meta, config, volume, backlog, regh] = await Promise.allSettled([
+    ctx.api('/api/meta'),
     ctx.api('/api/config'),
     ctx.api(`/api/watch/volume?minutes=${PULSE_MINUTES}&bucket=${PULSE_BUCKET_SECONDS}`),
     ctx.api(`/api/ask/audit?limit=${BACKLOG}`),
     ctx.api('/api/ask/summary?report=ops'),
   ]);
+  // **The vocabulary, from the one route that serves it unconditionally**
+  // (`TASK-no-browser-reachable-endpoint-serves-audit-kinds-so-the`).
+  // `/api/meta` answers 200 whether or not any audit projection has ever been
+  // built, so this fills the filter row BEFORE the side-effect derivation
+  // below gets a chance to fail on exactly the workspace where it would have
+  // — a behind, diverged or never-built projection. `learnKinds` still runs
+  // after every other read; it adds nothing new when this succeeded; it is
+  // still the only source when this one could not answer either.
+  if (meta.status === 'fulfilled' && Array.isArray(meta.value.auditKinds)) {
+    learnKinds(meta.value.auditKinds);
+  }
   if (config.status === 'fulfilled') applyBudget(config.value);
   else voidNote.replaceWith(errorNote(config.reason.message));
   if (volume.status === 'fulfilled') applyVolume(volume.value);

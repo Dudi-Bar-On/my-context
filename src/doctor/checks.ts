@@ -276,6 +276,19 @@ export const REMEDY = { ACK, PERSON, NOTHING, REBUILD, DECAY, REPAIR, AUDIT_FILE
  * allowed to target generated output (`dist/`, `coverage/`, ...) or the
  * workspace itself (`.my_context/`), and skipping those directories here
  * previously made `checkDeadScopes` report a live scope as dead.
+ *
+ * **This is a POLICY on top of `.gitignore`, not a substitute for it, since
+ * 2026-09-04** (`TASK-the-screen-says-repository-and-shows-whatever-is-on-
+ * disk`, rulings/62). `.my_context/` is TRACKED — only its own database
+ * files are gitignored — so a walk that only consulted `.gitignore` would
+ * still draw the workspace's own storage as project content; this set is
+ * why it stays excluded regardless. `.demo-corpus/` is NOT listed here
+ * (unlike an earlier version of this fix) because it IS gitignored
+ * (`.gitignore:30`), and `listRepoFiles` below now asks git rather than
+ * needing every gitignored name spelled out by hand — the owner's own
+ * correction: *"do NOT just add `.demo-corpus` to `SKIP_DIRS`"*, because a
+ * name-by-name list is the same defect one entry quieter every time a new
+ * ignored directory appears.
  */
 const SKIP_DIRS = new Set([
   '.git', '.my_context', '.my-context', 'node_modules', 'dist', 'build', 'out',
@@ -321,9 +334,57 @@ function walkFiles(repoRoot: string, limit: number, skipDirs: ReadonlySet<string
   return out;
 }
 
+/**
+ * What git itself says belongs to the working tree: every TRACKED path, plus
+ * every UNTRACKED one `.gitignore` does not exclude — a brand-new file
+ * nobody has `git add`ed yet is still real project content and stays in,
+ * exactly as `git status` would show it. `null` only when there is no git
+ * repository to ask (`git` missing from `PATH`, or `repoRoot` is not inside
+ * one) — the one case `listRepoFiles` below falls back to the plain
+ * filesystem walk for, so this tool keeps working on a workspace that was
+ * never a git repository at all.
+ *
+ * **`-z`, not newline-split output.** A path holding a newline would
+ * otherwise be read as two, and git's own paths are already POSIX (`/`),
+ * matching `INV-posix-normalized-paths` for free rather than needing
+ * `relPosix` to fix them up.
+ *
+ * **The cost, said out loud rather than traded away silently**
+ * (`TASK-the-screen-says-repository-and-shows-whatever-is-on-disk`,
+ * rulings/62): one `git` subprocess per call, on the request path
+ * `/api/coverage` and doctor both run through. Measured against this
+ * project's own working tree (2,019 tracked files): low tens of
+ * milliseconds, dominated by process spawn rather than by git's own index
+ * read, which is a flat file lookup rather than a directory recursion. That
+ * is the SAME order of cost `checkCliOnPath`'s `spawnSync('which'/'where', …)`
+ * already pays elsewhere in this file on every doctor run, not a new class
+ * of expense — and it replaces a `readdirSync` recursion over the WHOLE
+ * tree (now up to ~1,483 more entries per the same measurement) rather than
+ * adding cost beside it.
+ */
+function gitFiles(repoRoot: string): string[] | null {
+  const result = spawnSync(
+    'git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+    { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (result.error || result.status !== 0 || typeof result.stdout !== 'string') return null;
+  return result.stdout.split('\0').filter((entry) => entry !== '');
+}
+
 /** Repo-relative POSIX paths of every tracked-looking file, bounded so doctor stays fast. */
 export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {
-  return walkFiles(repoRoot, limit, SKIP_DIRS);
+  const tracked = gitFiles(repoRoot);
+  if (tracked === null) return walkFiles(repoRoot, limit, SKIP_DIRS);
+  const out: string[] = [];
+  for (const rel of tracked) {
+    if (out.length >= limit) break;
+    // `SKIP_DIRS` still applies ON TOP of what git already excluded — see
+    // that set's own docblock for why `.my_context/` needs this even though
+    // git tracks it.
+    if (rel.split('/').some((segment) => SKIP_DIRS.has(segment))) continue;
+    out.push(rel);
+  }
+  return out;
 }
 
 /**

@@ -66,7 +66,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
-import type { RefusalCheck } from '../core/audit.ts';
+import { AUDIT_KINDS, AUDIT_OPS, type RefusalCheck } from '../core/audit.ts';
 import { readOccupancy, type Occupancy } from '../core/context-occupancy.ts';
 import { measureCorpusDrift } from '../core/corpus-drift.ts';
 import { isMainEntry } from '../core/paths.ts';
@@ -431,6 +431,26 @@ export function registerReadRoutes(): void {
         // an absence — the sweep ran and found nothing newer than the log. The
         // unmeasured case is `drifted: null` and is a different sentence.
         corpus: measureCorpusDrift(ctx.ws.projectRoot),
+        // **The audit vocabulary, unconditionally** (`TASK-no-browser-reachable-endpoint-serves-audit-kinds-so-the`).
+        //
+        // Before this, the only derivation the browser had was a SIDE EFFECT:
+        // `/api/watch/volume` fills every bucket's `byKind` with every
+        // `AUDIT_KINDS` member at zero, so the key order of one bucket
+        // happened to be the enum. That vanished exactly when it was least
+        // affordable — a behind or diverged projection made the endpoint a
+        // 503, and an absent one answers with NO buckets — leaving the watch
+        // screen's filter row silently offering `All` alone while the live
+        // stream filled the table with six kinds of record. `screens/ask.js`
+        // needed `AUDIT_OPS` for the identical reason.
+        //
+        // `/api/meta` is fetched on every screen, unconditionally, and answers
+        // 200 whether or not any audit projection has ever been built — so
+        // this is present in the one outcome the side-effect route could not
+        // cover. Read straight off `core/audit.ts`'s own declarations, never
+        // respelled: a second list here could drift from the first exactly
+        // the way the mockup's hand-copied one already had once.
+        auditKinds: AUDIT_KINDS,
+        auditOps: AUDIT_OPS,
       },
     }),
   });

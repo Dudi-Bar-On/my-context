@@ -88,7 +88,9 @@ const COLLECT_KINDS = (selector: string): string[] | null => {
  * screen that exists and is incomplete.
  */
 const BUILT = [
-  'preview', 'coverage', 'gaps', 'simulate', 'injected',
+  // `gaps` retired 2026-09-04 (seq:22), folded into `coverage` — TWENTY of
+  // twenty-one below, not the twenty-one the rest of this comment recalls.
+  'preview', 'coverage', 'simulate', 'injected',
   'watch', 'doctor', 'decay', 'graph', 'status', 'learn',
   // Landed 2026-08-23: the six screens whose endpoints already existed, built
   // in one parallel wave. Seventeen of twenty-one now. The four still absent —
@@ -305,12 +307,11 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // produces the mockup's form, and the mockup is history rather than
   // behaviour (`DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`).
   //
-  // The three that remain are the DIRECTORY row's: `button.icon` is its
-  // Compose control, `td.m` its `Where` cell and `span.v` the `{files}` count.
-  // Neither corpus has an ungoverned directory — see the paragraph above — so
-  // they are still data. `test/ui/gaps-screen.test.ts` builds all three from a
-  // body that HAS a gap, which is the proof this ledger cannot carry.
-  gaps: ['button.icon', 'span.m', 'span.v', 'td.m'],
+  // `gaps` retired 2026-09-04 (`TASK-coverage-gaps-folds-into-scope-coverage-
+  // keeping-the-one-fact`, seq:22) — the screen is gone, so is its `BUILT`
+  // entry, and so is this ledger row (it used to carry the DIRECTORY row's
+  // `button.icon` / `td.m` / `span.v`, which the screen it belonged to no
+  // longer exists to draw).
   // The spill-ratio card landed, closing seven. `plan:walk seq:7` then landed
   // the sweep endpoint and, with it, the staircase and the ladder — nine more
   // close below. `div.readout` and its own `div.small` are the one thing that

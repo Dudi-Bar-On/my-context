@@ -140,14 +140,16 @@ async function coverageModule(): Promise<CoverageModule> {
     rewritten += 1;
     return `${head}${pathToFileURL(path.join(PUBLIC, spec)).href}'`;
   });
-  assert.equal(rewritten, 4,
-    'expected coverage.js to import four browser modules (/lib/viewmodel.js, /lib/command.js, '
-    + '/lib/command-actions.js, /screens/parts.js); the rewrite matched '
+  assert.equal(rewritten, 5,
+    'expected coverage.js to import five browser modules (/lib/viewmodel.js, /lib/command.js, '
+    + '/lib/command-actions.js, /lib/disclosure.js, /screens/parts.js); the rewrite matched '
     + `${rewritten}. A specifier this pattern cannot see is a module Node would resolve from the `
     + 'drive root, and the import below would fail for a reason that reads like a missing file. '
     + 'The fourth arrived on 2026-08-31 with the shared Copy control: the empty view had the '
     + 'ninth hand-rolled clipboard button in screens/, and it acknowledged a copy by swapping '
-    + 'its own label for 1.5s in two unkeyed English literals.');
+    + 'its own label for 1.5s in two unkeyed English literals. The fifth, `/lib/disclosure.js`, '
+    + 'arrived 2026-09-04 with the shared `?` disclosure this screen was that component\'s first '
+    + 'caller for (`TASK-scope-coverage-summarises-first-and-shows-detail-on-demand`, seq:21).');
   assert.ok(!/\bfrom\s+'\//.test(text),
     'a root-absolute specifier survived the rewrite — the module graph imported below would not '
     + 'be the one the browser runs');
@@ -584,9 +586,14 @@ test('every cov. key the English table declares is placed by the screen', async 
   // silently did not render, which is what this assertion is for.
   assert.deepEqual(declared.filter((key) => !named.has(key)), [],
     'these cov. keys are declared and drawn nowhere');
-  assert.equal(declared.length, 14,
-    `the English table declares ${declared.length} cov. key(s); it has been 14 since this screen `
-    + 'was written. A new one is a new sentence on this screen and needs placing.');
+  // 14 since this screen was written, 20 since the 2026-09-04 redesign
+  // (`TASK-scope-coverage-summarises-first-and-shows-detail-on-demand`,
+  // seq:21, and `TASK-coverage-gaps-folds-into-scope-coverage-keeping-the-
+  // one-fact`, seq:22) added `cov.status`, `cov.tree.filter`, `cov.pinNote`,
+  // `cov.gov.summary`, `cov.emptycat.h` and `cov.emptycat.none`.
+  assert.equal(declared.length, 20,
+    `the English table declares ${declared.length} cov. key(s); it has been 20 since the `
+    + '2026-09-04 redesign. A new one is a new sentence on this screen and needs placing.');
 });
 
 test('no translated string is assigned — t() returns nodes and they are appended (ruling A1)', () => {
@@ -599,10 +606,12 @@ test('no translated string is assigned — t() returns nodes and they are append
   assert.ok(!/innerHTML/.test(coverageCode), 'innerHTML has no legitimate use in a screen module');
   assert.ok(/\.append\(\.\.\.ctx\.t\(/.test(coverageCode),
     'the screen appends no translated nodes at all — the scan above is checking nothing');
-  // `tFlat` fills attribute sinks and nothing else. The bar's tooltip is the
-  // only one on this screen.
+  // `tFlat` fills attribute sinks and nothing else. The bar's tooltip was the
+  // only one on this screen until 2026-09-04's redesign added the tree's own
+  // path filter, whose `placeholder` is the same kind of sink for the same
+  // reason — an attribute cannot hold the `Node[]` `ctx.t()` returns.
   for (const m of coverageCode.matchAll(/(\w+)\s*=\s*[^\n]*ctx\.tFlat\(/g)) {
-    assert.ok(['title'].includes(m[1]!),
+    assert.ok(['title', 'placeholder'].includes(m[1]!),
       `ctx.tFlat() fills \`${m[1]}\`, which is not an attribute sink — ctx.t() is what fills an `
       + 'element');
   }
@@ -655,7 +664,20 @@ test('the screen invents no class the design of record does not draw', () => {
   // The composites, pinned whole rather than as loose tokens: a card that took
   // `card` without `pane` would satisfy the token check above and float data on
   // glass, which repaint spec §4 forbids.
-  for (const composite of ['card pane', 'tree plate', 'chip gov']) {
+  //
+  // `'chip gov'` dropped from this list 2026-09-04
+  // (`TASK-scope-coverage-summarises-first-and-shows-detail-on-demand`,
+  // seq:21): the flat "36 pinned" single chip it pinned is retired — the
+  // pinned card now draws one `span.catchip` per KIND instead (`cov.pin`'s
+  // own count moved into its heading text). The mockup still draws
+  // `class="chip gov"` in its FROZEN, pre-redesign markup, which is why this
+  // loop no longer asserts coverage.js writes it: that direction
+  // (`written.includes(composite)`) is a per-screen re-statement of exactly
+  // what `strings-parity.test.ts`'s dropped INVENTED direction already
+  // covers at the string-key level, and pinning it here would re-open the
+  // byte-for-byte-against-the-frozen-mockup coupling
+  // `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap` removed.
+  for (const composite of ['card pane', 'tree plate']) {
     assert.ok(mockupSection().includes(`class="${composite}"`),
       `the mockup no longer draws class="${composite}" — the design of record moved`);
     assert.ok(written.includes(composite),

@@ -205,42 +205,35 @@ const TIERS = ['pinned', 'jit', 'restored', 'continuity', 'index'];
  * rung 2 — *"normative tier"* for the code `tier` — and the appearance is the
  * mockup's business.
  *
- * The descriptions are its literals; see this file's header for why they
- * cannot be string keys and what that costs under `א`.
+ * `name` stays a literal — it is `GateCode`'s own vocabulary, the word the
+ * mockup itself never translates (`GATES=[['eligible',…` in
+ * `docs/design/web-ui-mockup.html` · `function renderGates(){` · ~5816 draws
+ * the same six names bare in both languages). The one-line DESCRIPTION beside
+ * each is prose, and it is now `GATE_Q_KEY`'s key rather than a literal — see
+ * this file's header, which used to record why it could not be, before
+ * `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap` retired the
+ * direction that made it true. The English is transcribed from the mockup's
+ * own `GATES` table (same file, same line), which already carried Hebrew for
+ * all six.
  */
 const GATES = [
-  {
-    code: 'eligible',
-    name: 'eligible',
-    q: 'active, not retired, not superseded, category enabled, not past valid_until',
-  },
-  {
-    code: 'tier',
-    name: 'normative tier',
-    q: 'only a normative category is injectable in full; a rationale category reaches the '
-      + 'index line and no further',
-  },
-  {
-    code: 'focus',
-    name: 'focus',
-    q: 'a focus predicate narrows the corpus before scope is even considered',
-  },
-  {
-    code: 'scope',
-    name: 'scope',
-    q: 'matchesScope against the event path, POSIX-normalised on both sides',
-  },
-  {
-    code: 'seen',
-    name: 'seen',
-    q: 'already-delivered items are filtered out before budgeting',
-  },
-  {
-    code: 'budget',
-    name: 'budget',
-    q: 'what reaches here and does not fit spills whole, with its reason — never truncated',
-  },
+  { code: 'eligible', name: 'eligible' },
+  { code: 'tier', name: 'normative tier' },
+  { code: 'focus', name: 'focus' },
+  { code: 'scope', name: 'scope' },
+  { code: 'seen', name: 'seen' },
+  { code: 'budget', name: 'budget' },
 ];
+
+/** `GATES[].code` — the string key holding that gate's one-line description. */
+const GATE_Q_KEY = {
+  eligible: 'preview.gEligible',
+  tier: 'preview.gTier',
+  focus: 'preview.gFocus',
+  scope: 'preview.gScope',
+  seen: 'preview.gSeen',
+  budget: 'preview.gBudget',
+};
 
 /** `GATES`' index for a `GateCode`, or -1 for `passed` and anything unknown. */
 const RUNG = (code) => GATES.findIndex((gate) => gate.code === code);
@@ -1907,8 +1900,10 @@ export async function render(root, ctx) {
         tally.append(...rungSentence(i, population[i].length));
         why.append(tally, ' ');
         if (state === 'binds') why.append(...diagnosis(who.item, who.rung));
-        else if (state === 'after') why.append(`not reached — ${gate.q}`);
-        else why.append(gate.q);
+        else {
+          if (state === 'after') why.append(...ctx.t('preview.notReached'));
+          why.append(...ctx.t(GATE_Q_KEY[gate.code]));
+        }
         rung.append(name, why);
         ladderHost.append(rung);
       });
@@ -2108,10 +2103,19 @@ export async function render(root, ctx) {
       // The range is named whenever it is not the budget, because a track drawn
       // to a scale nobody is told about is the silent-ambiguity shape this
       // project keeps paying for: two ribbons of different widths would
-      // otherwise mean the same spend.
-      parts.label.append(el('span', 'n',
-        `${num(used)} / ${num(budget)}${scale === budget ? '' : ` · to ${num(scale)}`}`
-        + ` · ${inCount} in · ${outCount} out`));
+      // otherwise mean the same spend. `to {scale}` and `{n} in · {n} out` are
+      // prose — `renderRibbons` translates the latter itself
+      // (`docs/design/web-ui-mockup.html` · `HEB?' נכנסו · ':' in · '` · ~6204)
+      // — so both are keyed now rather than joined as bare English.
+      const labelSpan = el('span', 'n');
+      labelSpan.append(`${num(used)} / ${num(budget)}`);
+      if (scale !== budget) {
+        labelSpan.append(' · ', ...ctx.t('preview.rbTo', { scale: num(scale) }));
+      }
+      labelSpan.append(' · ', ...ctx.t('preview.rbInOut', {
+        inCount: String(inCount), outCount: String(outCount),
+      }));
+      parts.label.append(labelSpan);
 
       // ── THE TRACK, RECONCILED ────────────────────────────────
       //
@@ -2158,27 +2162,25 @@ export async function render(root, ctx) {
       // Said once, before the headroom sentence, so the track's empty tail is
       // never read as headroom it is not: past the budget the tail is range, and
       // range admits nothing until the budget is actually raised.
+      //
+      // Four hint sentences, all keyed now. `preview.rbFit` and `preview.rbSpill`
+      // are transcribed from the mockup's own `renderRibbons`
+      // (`docs/design/web-ui-mockup.html` · `hint.textContent=(HEB?'הכול נכנס. עודף '` · ~6222),
+      // which carries Hebrew for both; `preview.rbRange` and `preview.rbIndex`
+      // have no mockup counterpart — this screen's own range control and the
+      // no-endpoint figure are both app-only — so their Hebrew is written here.
       if (scale !== budget) {
-        parts.hint.append(
-          el('b', null, `Drawn to the simulator's range, ${num(scale)}`),
-          ` — the budget in force is still ${num(budget)}, and the track past it is `
-          + 'range, not headroom. ',
-        );
+        parts.hint.append(...ctx.t('preview.rbRange', { scale: num(scale), budget: num(budget) }), ' ');
       }
       if (outCount === 0) {
-        parts.hint.append(`Everything selected fit. Headroom ${num(headroom)} tokens.`);
+        parts.hint.append(...ctx.t('preview.rbFit', { headroom: num(headroom) }));
       } else if (isIndex) {
         // The one figure no endpoint serves, said rather than drawn at a width
         // nobody computed.
-        parts.hint.append(`Headroom ${num(headroom)}. ${outCount} index lines did not fit; `
-          + 'per-line index costs are exposed by no endpoint, so the ghost lane cannot size them.');
+        parts.hint.append(...ctx.t('preview.rbIndex', { headroom: num(headroom), outCount: String(outCount) }));
       } else {
         const smallest = Math.min(...spilled.map((spill) => spill.tokens));
-        parts.hint.append(
-          `Headroom ${num(headroom)}. `,
-          el('b', null, `the smallest thing that did not fit costs ${num(smallest)}`),
-          ' — so the headroom is not usable by anything currently selected.',
-        );
+        parts.hint.append(...ctx.t('preview.rbSpill', { headroom: num(headroom), smallest: num(smallest) }));
       }
     }
   }

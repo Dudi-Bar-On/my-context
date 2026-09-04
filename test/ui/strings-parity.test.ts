@@ -150,14 +150,42 @@ test('en and he string tables declare identical key sets — in both directions'
  * the loss of the bidirectional guarantee between the LANGUAGES, which is the
  * one that keeps Hebrew honest.
  */
+/**
+ * **The ten keys `screens/gaps.js` alone declared, retired with that screen
+ * on 2026-09-04** (`TASK-coverage-gaps-folds-into-scope-coverage-keeping-the-
+ * one-fact`, seq:22, owner-approved against
+ * `reports/2026-09-04-scope-coverage-redesign-mockup.html`). The FROZEN
+ * mockup this test reads, `docs/design/web-ui-mockup.html`, still declares
+ * `[data-p="gaps"]` and every key in it — that file is explicitly not edited
+ * by this task, per the same owner ruling this file's own header already
+ * names (`DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`: the
+ * mockup is HISTORY, not a thing kept in sync). So these ten now fail the
+ * "declared by the mockup, missing from the tables" check for a reason that
+ * is a deliberate retirement rather than a defect — the same shape
+ * `e2e/screen-parity.spec.ts`'s `KNOWN_GAPS` ledger already carries for
+ * exactly this kind of named, approved divergence. `gaps.r2` is NOT in this
+ * list: `coverage.js` still declares and uses it for its own truncation line,
+ * so it stays live in both tables.
+ *
+ * A future key added to this list without a corresponding retirement is
+ * exactly the "quietly rendering a weaker version" this test exists to catch
+ * — this is a fixed, named exception for one dated event, not a general
+ * escape hatch.
+ */
+const RETIRED_GAPS_SCREEN_KEYS = new Set([
+  's.gaps', 'gaps.h', 'gaps.v', 'gaps.sub', 'gaps.r1', 'gaps.cat', 'gaps.r3',
+  'gaps.note', 'th.where', 'th.act',
+]);
+
 test('every sentence the mockup declares exists in the string tables — the gap direction', async () => {
   const en = await table('en');
   const design = mockupKeys();
   const shipped = new Set(Object.keys(en.strings));
   // DROPPED: the mockup shows a string the product does not have. The
-  // instruction calls this "quietly rendering a weaker version".
+  // instruction calls this "quietly rendering a weaker version" — except the
+  // ten keys named above, a deliberate and dated retirement rather than one.
   assert.deepEqual(
-    [...design].filter((k) => !shipped.has(k)).sort(),
+    [...design].filter((k) => !shipped.has(k) && !RETIRED_GAPS_SCREEN_KEYS.has(k)).sort(),
     [],
     `declared by the mockup (${design.size} keys), missing from the string tables `
       + `(${shipped.size} keys)`,

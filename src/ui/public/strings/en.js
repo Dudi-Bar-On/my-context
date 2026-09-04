@@ -124,7 +124,6 @@ export const strings = {
   'nav.inj': 'Injection — what arrives',
   's.preview': 'Injection preview',
   's.coverage': 'Scope coverage',
-  's.gaps': 'Coverage gaps',
   's.simulate': 'Budget simulator',
   's.injected': 'Injected now',
   'nav.ev': "Evidence — why it did or didn't",
@@ -183,10 +182,36 @@ export const strings = {
   // usually chasing is the budget, and every item that failed THAT now has a
   // list of its own below.
   'preview.spec': 'The strip holds one {b:specimen} per gate — the first item that fails there — so it stays still as selection moves. Items that spilled are named under {b:Not delivered} below. Each specimen carries {b:how many items fail with it}, repeated per gate.',
+  // The ladder's six one-line descriptions, transcribed from the mockup's own
+  // `GATES` table (`docs/design/web-ui-mockup.html` · `const GATES=[` · ~5784),
+  // which already carries Hebrew for all six — see `preview.js`'s `GATE_Q_KEY`.
+  'preview.gEligible': 'active, not retired, not superseded, category enabled, not past valid_until',
+  'preview.gTier': 'only a normative category is injectable in full; a rationale category reaches '
+    + 'the index line and no further',
+  'preview.gFocus': 'a focus predicate narrows the corpus before scope is even considered',
+  'preview.gScope': '{m:matchesScope} against the event path, POSIX-normalised on both sides',
+  'preview.gSeen': 'already-delivered items are filtered out before budgeting',
+  'preview.gBudget': 'what reaches here and does not fit spills whole, with its reason — never truncated',
+  'preview.notReached': 'not reached — ',
   'preview.spill': 'Not delivered — every item that spilled, and what it cost',
   'preview.spilln': 'One row per item in {m:Selection.spilled}, {b:whole across every tier this event ran}, in try order. First-fit is greedy: same costs in another order spill a different item. {b:band} names the pass. An index line shows {b:—}: no endpoint serves per-line costs.',
   'preview.ribbon': 'Budget ribbon — five tiers, and what fell out of each',
   'preview.ribbonn': 'One segment per admitted item, sized by {m:itemCost}. The {b:ghost lane} shows spilled items at the width they would take. A tier never reached is drawn {b:absent}, not blank, so it cannot look like it ran.',
+  // The ribbon tier label's two prose fragments — the mockup translates the
+  // in/out clause itself (`renderRibbons` · `HEB?' נכנסו · ':' in · '` · ~6204).
+  'preview.rbTo': 'to {mv:scale}',
+  'preview.rbInOut': '{inCount} in · {outCount} out',
+  // The four ribbon hints. `rbFit` and `rbSpill` are the mockup's own two
+  // sentences for a filled and a spilling tier (`renderRibbons` · ~6220-6231);
+  // `rbRange` and `rbIndex` are app-only — the simulator's range control and
+  // the per-line index figure have no mockup counterpart to transcribe.
+  'preview.rbRange': "{b:Drawn to the simulator's range, {mv:scale}} — the budget in force is "
+    + 'still {mv:budget}, and the track past it is range, not headroom.',
+  'preview.rbFit': 'Everything selected fit. Headroom {mv:headroom} tokens.',
+  'preview.rbIndex': 'Headroom {mv:headroom}. {outCount} index lines did not fit; per-line index '
+    + 'costs are exposed by no endpoint, so the ghost lane cannot size them.',
+  'preview.rbSpill': 'Headroom {mv:headroom}. {b:the smallest thing that did not fit costs '
+    + '{mv:smallest}} — so the headroom is not usable by anything currently selected.',
   // ── The absent-tier ribbon, keyed ─────────────────────────────────────
   //
   // Added 2026-08-29. These two sentences shipped as ENGLISH LITERALS with no
@@ -265,20 +290,30 @@ export const strings = {
   'preview.neverinj': 'never delivered',
   'preview.lastspill': 'last spilled {mv:at} · {mv:tier}',
   'preview.neverspill': 'never spilled before',
-  // Scope coverage
+  // Scope coverage — redesigned 2026-09-04, TASK-scope-coverage-summarises-
+  // first-and-shows-detail-on-demand (seq:21) and TASK-coverage-gaps-folds-
+  // into-scope-coverage-keeping-the-one-fact (seq:22).
   'cov.h': 'Scope coverage',
-  'cov.v': 'the gaps are the point',
-  'cov.sub': 'Every path, coloured by what governs it, via {m:matchesScope} and {m:injection()} — never a bare glob match.',
-  'cov.pin': 'Pinned — governs every path, independent of scope',
+  'cov.v': 'what covers each folder, and what does not',
+  'cov.sub': 'Colour shows which rules apply where.',
+  'cov.status': '{covered} / {total} files covered · {gaps} gaps · {catEmpty} / {catTotal} categories empty',
+  'cov.pin': 'Pinned — {n} items, always on, everywhere',
+  'cov.pinNote': 'These apply to every file, so they are not repeated per folder below.',
   'help.whyTree': 'Why these are not in the tree',
-  'cov.pinhelp': 'An {m:always:true} item governs every path. Colouring it per-path made a directory that {i:is} governed look like a gap. Hoisted here, "gap" means something real.',
+  'cov.pinhelp': 'An {m:always:true} item governs every path. Colouring it per-path made a directory that {i:is} governed look like a gap. Hoisted here, "gap" means something real. {m:CONST-zero-runtime-dependencies} is pinned, so it already covers a file that does not exist yet.',
   'cov.tree': 'Repository',
+  'cov.tree.filter': 'Filter by path…',
+  'help.whyMagnitude': 'What the bar on each folder shows',
   'cov.magn': '{b:Magnitude}, not just a state: bar shows governed / ungoverned / not-examined, count {m:governed of total}. Dots alone could not say {i:how} dark a row was. Dot stays for monochrome; depth adds {m:data-depth}.',
   'cov.k1': 'scoped',
   'cov.k2': 'one item',
   'cov.k3': 'gap',
   'cov.k4': 'not examined',
   'cov.gov': 'What governs',
+  'cov.gov.summary': '{n} items, in {c} categories',
+  'help.showIds': 'Show ids',
+  'cov.emptycat.h': 'Categories with nothing in them',
+  'cov.emptycat.none': 'none — measured, every category holds at least one item',
   'cov.e1': 'Nothing governs this project yet.',
   'cov.e2': 'The normal state for a new workspace, not a wall of warnings — said once, not repeated per row.',
   'btn.refresh': 'Refresh',
@@ -302,19 +337,15 @@ export const strings = {
   'screen.unread': 'not read yet',
   'title.screenUnread': 'This screen has not been read yet — its module and its figures are still arriving. Nothing is drawn because nothing has been measured, not because there is nothing to show; whatever the screen has to say replaces this the moment it lands.',
   'btn.copy': 'Copy',
-  // Coverage gaps
-  'gaps.h': 'Coverage gaps',
-  'gaps.v': 'names what is missing, which no listing can',
-  'gaps.sub': 'Directories no item scopes, and categories with nothing in them.',
-  'th.where': 'Where',
+  // `screens/gaps.js` retired 2026-09-04 (`TASK-coverage-gaps-folds-into-
+  // scope-coverage-keeping-the-one-fact`, seq:22); its one live fact — empty
+  // categories — is now `cov.emptycat.*` above. `th.where` and `th.act` were
+  // exclusive to that screen's table and retire with it; `th.what`,
+  // `btn.compose` and `gaps.r2` are shared with other screens (`ask.js`,
+  // `palette.js`, `coverage.js`'s own truncation line) and stay declared.
   'th.what': 'What',
-  'th.act': 'Next',
-  'gaps.r1': '{files} files, no item scopes here',
   'btn.compose': 'Compose',
   'gaps.r2': 'past the file limit',
-  'gaps.cat': 'category {mv:name}',
-  'gaps.r3': 'empty',
-  'gaps.note': '{b:Not examined} is a third state, never folded into "gap". A file the walk did not reach is not a file nothing governs.',
   // Budget simulator
   'sim.h': 'Budget simulator',
   'sim.v': 'all five tiers',
@@ -406,6 +437,12 @@ export const strings = {
   // cannot reach.
   'watch.regime': 'regime change',
   'watch.pulsen': '{b:Activity pulse} — one column per ten seconds, newest at the reading-end edge. Height is records in that column; colour is the kind. Buckets are indexed by {m:idx_audit_at}.',
+  // The pulse's two silences, both named now rather than left as a bare floor
+  // line or a bare status chip — `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`.
+  'watch.pulseEmpty': 'Measured, and empty — no record landed in the last {minutes} minutes. A '
+    + 'measured zero, not a chart that failed to draw.',
+  'watch.pulseAbsent': 'Not measured — no audit projection has ever been built for this '
+    + 'workspace, so this window has nothing to read from.',
   'aria.wfilters': 'Filter',
   'watch.all': 'All',
   'th.at': 'At',
@@ -847,7 +884,7 @@ export const strings = {
   'work.discardRev': '{b:Reject} discards the revision: the proposal is dropped and the item keeps its current text — the outcome a stale revision can still reach.',
   'work.moved': 'changed since staging',
   'work.blocked': 'promote refuses until re-based',
-  'work.diffn': 'The proposed column is a word-level diff, not a paragraph to compare by eye: additions are tinted, removals are struck, both real {m:<ins>} and {m:<del>} elements, so a screen reader announces the change with no added ARIA.',
+  'work.diffn': 'The proposed column is a line-level diff, not a paragraph to compare by eye: additions are tinted, removals are struck, both real {m:<ins>} and {m:<del>} elements, so a screen reader announces the change with no added ARIA.',
   // The Copy control's opening state, and the two the shell's live region
   // announces. `state.uncopied` is drawn beside a composed command BEFORE
   // anything is copied; `state.armed` below is what replaces it only when the
@@ -890,6 +927,22 @@ export const strings = {
   'pal.glob': 'Glob tester',
   'pal.pattern': 'Scope pattern',
   'pal.globn': 'Every file in the repository, matches {b:lit as you type}. A bare count — "{matches} files" — cannot be inspected: an empty and a near-empty result look the same until you see which files. Uses the {m:globToRegExp} cache, over {m:listRepoFiles}.',
+  'pal.globDead': 'An item scoped to this pattern would govern nothing — it matches no file in '
+    + 'the repository. {m:doctor} reports that as {m:dead_scope}.',
+  // The Composer's own six keys — `TASK-the-six-palette-keys-the-plan-declares-and-neither-table`.
+  // `pal.run`, `pal.item`, `pal.rows`, `pal.noRows` and `pal.truncated` replace
+  // this screen's borrowing of `ask.run` / `th.item` / `ask.rows` / `ask.noRows`
+  // / `ask.truncated` — editing one of those for the Ask screen would silently
+  // have changed this one too, and no test would have noticed. `pal.incomplete`
+  // is new: the sentence "Required inputs are missing" used to be `aria-invalid`
+  // and nothing else, so a sighted reader saw an empty command box and no
+  // reason for it.
+  'pal.run': 'Run',
+  'pal.item': 'Item',
+  'pal.rows': '{rows} rows',
+  'pal.noRows': 'no rows matched',
+  'pal.truncated': 'capped at {rows} rows — more matched; raise the limit to see them',
+  'pal.incomplete': 'Required inputs are missing — fill them in to compose a command.',
   // Execute — the one Copy-and-Execute control (lib/command-actions.js).
   //
   // The RESIDUAL is deliberately not a key here. `src/ui/execute.ts` spells it
