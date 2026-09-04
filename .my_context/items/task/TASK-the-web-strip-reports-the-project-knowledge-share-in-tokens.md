@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two surfaces show the same share in different units, so a reader cannot carry a figure from one to the other.
-summary_of: 989140f8488da619
+summary_of: 08825b77f0e2b446
 scope:
   - src/ui/public/app.js
   - src/ui/public/strings/en.js
@@ -17,18 +17,19 @@ tags:
   - statusline
   - "plan:live"
   - "seq:18"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 0d3e19a4d59236bb
+checksum: 439b213b5e263ec5
 plan: live
 seq: "18"
-state: doing
+state: done
 priority: "3"
+verified_on: 2026-09-04
 ---
 
 # the web strip reports the project-knowledge share in tokens while the terminal reports a percentage
