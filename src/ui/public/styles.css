@@ -1680,6 +1680,13 @@ bdi{unicode-bidi:isolate}
    Scoped to this row rather than to `.cnt`, which is the product's shared count
    pill and also draws the rail's own badges. */
 .kindfilters{margin-block:14px 16px}
+/* Each filter button holds a word AND a `.cnt` pill. `.icon` is a fixed-height
+   square whose line box cannot hold an 18px bordered pill, so the pill escaped
+   16px BELOW its own button and sat on the table underneath — which is what the
+   owner saw as counters overlapping. Laying the button out as a centred flex row
+   makes it size to its contents instead of clipping them into the next element. */
+.kindfilters button{display:inline-flex;align-items:center;gap:4px;
+  block-size:auto;min-block-size:27px;padding-block:2px;line-height:1}
 .prop{font-size:10.5px;letter-spacing:.05em;color:var(--warn);border:1px solid var(--warn);
   border-radius:var(--r-sm);padding-inline:3px}
 
