@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A lane records only its purpose and its outcome, so the step-by-step work it did is visible in the terminal and nowhere afterwards.
-summary_of: 26f8859d1874dab0
+summary_of: 8268286d90c34823
 scope:
   - src/hooks/subagent-stop.ts
   - src/core/audit.ts
@@ -17,18 +17,19 @@ tags:
   - audit
   - "plan:hooks"
   - "seq:25"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 67d090fa2a0d355f
+checksum: 303a3e47f0442845
 plan: hooks
 seq: "25"
-state: doing
+state: done
 priority: "2"
+verified_on: 2026-09-04
 ---
 
 # the audit stream cannot say what a lane was doing at a given minute, only that it ran

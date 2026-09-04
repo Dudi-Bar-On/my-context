@@ -63,7 +63,13 @@ test('each new op is appended to its own family, moving no member before it', ()
       // moving no existing member — see `AUDIT_OPS`'s own comment on it in
       // `src/core/audit.ts` for why it is a reuse of `PostToolUse` rather than a
       // new hook, and why it is a `hook` op and not folded into `post-tool-use`.
-      'agent-dispatched'],
+      //
+      // `agent-step` (2026-09-04), appended after IT and moving nothing —
+      // one row per tool call found in a lane's own transcript, backfilled
+      // once on `SubagentStop`. See `HOOK_OPS`'s own comment for why it is a
+      // twelfth `hook` op rather than folded into `agent-dispatched` or
+      // `subagent-stop`.
+      'agent-dispatched', 'agent-step'],
   );
 });
 

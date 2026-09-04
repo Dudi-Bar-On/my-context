@@ -283,11 +283,72 @@ export type InjectionOp = (typeof INJECTION_OPS)[number];
  *
  * It is inside the break `@2` already declares, by the same argument as the
  * ten above it: no new kind, no new field, one unreleased version step.
+ *
+ * **`agent-step` is the twelfth, and it is what `agent-dispatched` and
+ * `subagent-stop` leave a gap between** (TASK-the-audit-stream-cannot-say-
+ * what-a-lane-was-doing-at-a-given, 2026-09-04). Those two rows carry a
+ * lane's PURPOSE and its OUTCOME; nothing survived the terminal narration in
+ * between — lines like `general-purpose  Reading audit-new-ops.test.ts family
+ * order`, gone the moment the pane scrolled. The owner was asked at what
+ * grain and answered explicitly: one row per TOOL CALL, not a digest and not
+ * a phase summary.
+ *
+ * **The source is a file that already exists, read once, on the event that
+ * already fires.** `SubagentStop` delivers `agent_transcript_path`
+ * (`hooks/io.ts`) — the lane's OWN JSONL transcript, distinct from the
+ * parent's and confirmed at zero `isSidechain` records in the parent, so it
+ * is the only place this narration survives. `subagent-stop.ts` reads it
+ * exactly once, after the lane has already finished, and writes one row per
+ * `tool_use` block found in `message.content`. Nothing here touches the
+ * per-tool-call hot path `agentDispatchNote` and `agent-dispatched` already
+ * own — this op is written entirely on `SubagentStop`, once per lane.
+ *
+ * **The subject is a phrase, never the input.** `tool_input` carries file
+ * contents, command output and prompt text — the class of thing this very
+ * log deleted 5,207 rows of once (`agent-dispatched`'s note above) — so
+ * `subagent-stop.ts`'s `transcriptSteps` plucks ONE short field per call
+ * (`description`, then `file_path`/`notebook_path`, then `command`,
+ * `pattern`, `query`, `url`, `path`, in that order — the first one present)
+ * and caps it at 80 characters. The whole `tool_input` object is never
+ * serialized into a row; `subagent-stop.ts` states the bound and the reason
+ * where the constant is declared.
+ *
+ * **The join key rides in `note`, exactly as `agent-dispatched`'s does, and
+ * for the same reason**: `subagent-start` and `subagent-stop` already embed
+ * `agent=<id>` in their own `note`, so a third field spelling for the same
+ * fact would be a second vocabulary for one join. Every `agent-step` row
+ * ends in `agent=<id>`, taken from the SubagentStop payload's own
+ * `agent_id` — not from the transcript's internal `agentId` field, which
+ * this code never reads, because the hook's own field is what the two rows
+ * either side of this one already use to join.
+ *
+ * **`at` is the transcript RECORD's own `timestamp`, not the moment the hook
+ * ran.** Every other hook op stamps `at` from the instant it fires, because
+ * that instant IS the event. Here the event being recorded happened earlier,
+ * mid-lane, and re-stamping every row with the SubagentStop firing time would
+ * collapse a lane's whole timeline onto one instant — the one property this
+ * op exists to restore. A row whose transcript line carried no usable
+ * `timestamp` falls back to `recordAudit`'s own default (now), same as any
+ * other caller that omits `at`.
+ *
+ * **A `hook` op, not `injection`.** Nothing here puts corpus text in front
+ * of a model — it is scope about what a model DID, the same distinction
+ * `INJECTION_OPS`' own comment draws for `subagent-start`, just answered the
+ * other way: this describes tool calls, not deliveries.
+ *
+ * **`hook: 'SubagentStop'`, on every row**, because that is the event that
+ * wrote it — the same rule `agent-dispatched` follows by stamping
+ * `hook: 'PostToolUse'` on every dispatch row even though the row describes
+ * an `Agent` tool call rather than the firing event's own subject.
+ *
+ * It is inside the break `@2` already declares, by the same argument as
+ * `agent-dispatched`: no new kind, no new field, one unreleased version step.
  */
 export const HOOK_OPS = [
   'pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure', 'session-end', 'post-compact',
   'file-changed', 'instructions-loaded', 'config-change', 'permission-denied', 'subagent-stop',
   'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion', 'agent-dispatched',
+  'agent-step',
 ] as const;
 export type HookOp = (typeof HOOK_OPS)[number];
 
@@ -459,7 +520,7 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   'file-changed': 'hook', 'instructions-loaded': 'hook', 'config-change': 'hook',
   'permission-denied': 'hook', 'subagent-stop': 'hook', stop: 'hook', setup: 'hook',
   'task-created': 'hook', 'task-completed': 'hook', 'prompt-expansion': 'hook',
-  'agent-dispatched': 'hook',
+  'agent-dispatched': 'hook', 'agent-step': 'hook',
   // Both halves of one run, and both `execution`: a reader filtering
   // `--kind execution` wants the run, not half of it.
   execute: 'execution', 'execute-done': 'execution',
