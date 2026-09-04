@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Six read-only commands have no tool counterpart, so an agent can reach those views only by shelling out to the terminal.
-summary_of: b1f13234bdf4e4ab
+summary_of: dc408a17106b1aea
 scope:
   - src/mcp/tools.ts
   - src/plugin/parity.ts
@@ -21,17 +21,17 @@ tags:
   - tools
   - "plan:mcp"
   - "seq:4"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: a45f52bb28d89dd8
+checksum: 891ebf2c68c4489c
 plan: mcp
 seq: "4"
-state: todo
+state: doing
 priority: "2"
 ---
 
