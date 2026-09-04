@@ -169,7 +169,16 @@ test('its note says delivery=complete with the agent_id', () => {
   corpus(cwd);
   subagentInjection(cwd);
   const [record] = injections(cwd);
-  assert.equal(record?.note, `delivery=complete agent=${AGENT}`);
+  // `delivery=complete agent=<id>` leads the note, as it always has. `CONST-
+  // retry` is a `constraint` — a GOVERNING category — and is not `always`, so
+  // it reaches this session as a title only: the same governing disclosure
+  // every other event carries (`TASK-a-governing-item-degraded-to-an-index-
+  // line-looks-delivered`) follows it, counted rather than repeated in full
+  // (`inject.ts`).
+  assert.equal(
+    record?.note,
+    `delivery=complete agent=${AGENT}; 1 governing item(s) not delivered in full, 1 title-only`,
+  );
   removeTree(cwd);
 });
 
@@ -334,11 +343,22 @@ test('the skipped refresh is not reported as a dropped one', () => {
  * subagent event existed — with `src/core/inject.ts` stashed back to its
  * pre-task bytes and the same fixture built — so they are a comparison against
  * the old implementation, not against the new one describing itself.
+ *
+ * `GOLDEN_SESSION_START` carries one more clause than that original capture:
+ * `CONST-retry` is a `constraint` — a GOVERNING category — delivered as a
+ * title only, so `TASK-a-governing-item-degraded-to-an-index-line-looks-
+ * delivered`'s disclosure now names it before the index it explains.
+ * `GOLDEN_COMPACT` is untouched: on that path `CONST-retry` is delivered in
+ * FULL TEXT by the `restored` tier, so nothing governing goes bodyless there.
  */
 const GOLDEN_SESSION_START =
   '## my_context — these govern this project\n\n' +
   '### CONST-pool · constraint · Pool capped at 20\n\n' +
   'Body of CONST-pool.\n\n' +
+  '_1 governing item(s) below carry a title only — the body was not delivered: CONST-retry. ' +
+  'A title names a rule; it does not tell you what it requires. Read each with ' +
+  '`mycontext show <id>` before treating it as satisfied. Delivering every one of them in ' +
+  'full this session would cost ~19 estimated tokens._\n\n' +
   '## my_context index\n' +
   '- CONST-retry · constraint · Retries capped at 3\n';
 
@@ -378,7 +398,14 @@ test('the three existing events still record their own ops, hooks and keys', () 
   assert.deepEqual(records.map((r) => r.op), ['session-start', 'manual']);
   assert.deepEqual(records.map((r) => r.hook), ['SessionStart', undefined]);
   assert.deepEqual(records.map((r) => r.sessionId), [PARENT, undefined]);
-  assert.deepEqual(records.map((r) => r.note), [undefined, undefined]);
+  // Both now carry the governing note — `CONST-retry` reaches each event as a
+  // title only, and `inject.ts` records that count regardless of which of
+  // these two events it was (`TASK-a-governing-item-degraded-to-an-index-
+  // line-looks-delivered`).
+  assert.deepEqual(records.map((r) => r.note), [
+    '1 governing item(s) not delivered in full, 1 title-only',
+    '1 governing item(s) not delivered in full, 1 title-only',
+  ]);
   removeTree(cwd);
 });
 

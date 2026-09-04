@@ -58,9 +58,15 @@ test('the session-start audit record says the focus hid something, by count', ()
     runCli(['focus', 'billing', '--yes'], p.cwd, () => {});
     buildInjection(p.cwd, { event: 'session-start', source: 'startup', sessionId: 'sess-a' });
     const record = readAudit(p.root).find((r) => r.op === 'session-start');
+    // The one item focus leaves visible — `RULE-charge-in-integer-cents` — is
+    // itself a governing category, not `always`, so it reaches this session
+    // as a title only: the governing note follows the focus note in the same
+    // string (`TASK-a-governing-item-degraded-to-an-index-line-looks-
+    // delivered`).
     assert.equal(
       record?.note,
-      'source=startup; focus hid 2, 0 load-bearing relation(s) dangling',
+      'source=startup; focus hid 2, 0 load-bearing relation(s) dangling; ' +
+      '1 governing item(s) not delivered in full, 1 title-only',
       'an injection record listing four items and nothing about the two a focus removed ' +
       'answers "what did this session see" with a true list and a false impression',
     );

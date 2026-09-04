@@ -272,6 +272,78 @@ export interface ContinuitySpill {
   budget: number;
 }
 
+/**
+ * What `governs()` still loses even after seq:11's admission-order ruling —
+ * `TASK-a-governing-item-degraded-to-an-index-line-looks-delivered`
+ * (`plan:budget seq:14`), owner ruling 2026-09-04.
+ *
+ * **`governs` and `byPriority` (seq:11) fixed WHICH governing item wins a
+ * tier's admission race. They did nothing for the one that still loses.**
+ * That item falls straight into `buildIndex`'s normative candidate list and
+ * comes out an ordinary `## my_context index` bullet — id, type, title —
+ * indistinguishable there from a `note` or an `adr`. Nothing on that line
+ * says the body never arrived, and the audit tally counts it as `injected`
+ * at `tier: 'index'` regardless. The owner's own words: *"Silent degradation
+ * is worse than a drop because it counts as delivery in every tally while
+ * governing nothing."*
+ *
+ * **No new tier and no new budget key.** `pinned`'s whole semantics is
+ * `always` (`PinnedSpill`'s own doc comment says so), and folding `governs()`
+ * into its candidate pool would be a second, silent meaning for a field this
+ * corpus already documents narrowly. Measured on this repository's own
+ * corpus before this was written: 104 eligible governing items cost 58,654
+ * estimated tokens as bodies — 2.7× the 22,000 this workspace already sets
+ * `budgets.pinned` to, and 9.8× the shipped default of 6,000. Raising a
+ * budget to cover that is a real option and this file does not foreclose it;
+ * it is a config change for a human to make with the number in hand, not a
+ * silent rewrite of what tier a governing item competes in.
+ *
+ * **What this disclosure does instead: make the degradation LOUD.** The item
+ * still costs nothing extra — it is priced and named from data `buildIndex`
+ * already computed, not re-selected — and the render step turns it into a
+ * sentence the model cannot mistake for a delivered rule. `titled` is read
+ * out `governs(item)` true, `!chosenIds.has(id)`, but got an index line
+ * anyway; `untitled` is the same test for an item that missed the index
+ * tier's own budget too — the strictly worse case `renderSpill` used to
+ * swallow into "+N more" because its only tier was `'index'`.
+ *
+ * `null` on `Selection` means *nothing governing went bodyless this call* —
+ * every governing candidate was admitted in full, nothing governs at all, or
+ * the index tier did not run this event (a tool event: `tiersRun` never adds
+ * `'index'` there, and a JIT-tier spill of a governing item is already named
+ * by the ordinary `renderSpill` note, unfiltered — this disclosure exists
+ * for the case that note does not cover).
+ */
+export interface GoverningSpill {
+  /**
+   * Governing ids that reached this session as a title only — an index line
+   * with no body. Sorted by id. Each already appears in `index.normative`
+   * with its `type`, which is how a reader tells `RULE-x` from `NOTE-y`
+   * without this list repeating every id: the six governing category names
+   * (`rule`, `constraint`, `invariant`, `instruction`, `requirement`,
+   * `standard`) are exactly `GOVERNING_TYPES`, printed on the bullet itself.
+   */
+  titled: string[];
+  /**
+   * Governing ids that reached this session in NO form — not delivered in
+   * full, and spilled the index tier's own budget too, so no title, no line,
+   * nothing. Sorted by id. On this repository's own corpus this is measured
+   * empty at every budget the index has ever been set to (Task 3's carry
+   * probe: `displaced` is `0` from 1200 down to 470); it is computed rather
+   * than assumed empty because a corpus that starts writing more governing
+   * items, or an operator who lowers `budgets.index`, can make it non-empty.
+   */
+  untitled: string[];
+  /**
+   * The estimated cost, in `estimateTokens` units, of delivering every id in
+   * `titled` and `untitled` in full — `itemCost` summed once, not per-render.
+   * The number a person deciding whether to raise a budget needs, in
+   * `PinnedSpill.cost`'s own spirit: what honouring these in full would cost,
+   * not what was affordable.
+   */
+  cost: number;
+}
+
 export interface Selection {
   full: SelectionEntry[];
   index: IndexSummary;
@@ -287,6 +359,11 @@ export interface Selection {
    * it never ran). See `ContinuitySpill`.
    */
   continuitySpill: ContinuitySpill | null;
+  /**
+   * Every governing item this call reduced to a title or worse, or `null`
+   * when none was. See `GoverningSpill`.
+   */
+  governingSpill: GoverningSpill | null;
   /** The focus disclosure, or null when no focus is active. */
   focus: FocusReport | null;
   /**
@@ -993,6 +1070,40 @@ function buildIndex(
   };
 }
 
+/**
+ * `Selection.governingSpill` — see that field's doc comment for why this
+ * exists and what it does not do.
+ *
+ * Runs AFTER `buildIndex`, over the same `eligible` set and the same
+ * `chosenIds` `buildIndex` used, plus `buildIndex`'s own admitted lines —
+ * nothing here re-selects or re-prices a tier, it only reads the two facts
+ * `buildIndex` already produced (which normative items got no line, which
+ * normative candidates got a line) and asks `governs()` of them. `eligible`
+ * is `select`'s own — already narrowed by `isEligible` and by an active
+ * focus — so an item focus hid is correctly absent here too: it is disclosed
+ * by the focus report instead, and this function must not repeat it as a
+ * second, less specific "undelivered" the way a re-derivation of `eligible`
+ * would risk.
+ */
+function buildGoverningSpill(
+  eligible: Item[], config: Config, chosenIds: Set<string>, indexLines: IndexLine[],
+): GoverningSpill | null {
+  const undelivered = eligible.filter(
+    (i) => isNormative(i, config) && governs(i) && !chosenIds.has(i.id),
+  );
+  if (undelivered.length === 0) return null;
+
+  const titledIds = new Set(indexLines.map((l) => l.id));
+  const titled = undelivered.filter((i) => titledIds.has(i.id));
+  const untitled = undelivered.filter((i) => !titledIds.has(i.id));
+
+  return {
+    titled: titled.map((i) => i.id).sort(compareStrings),
+    untitled: untitled.map((i) => i.id).sort(compareStrings),
+    cost: undelivered.reduce((sum, i) => sum + itemCost(i), 0),
+  };
+}
+
 /** Project items shadow global items with the same id. */
 export function mergeLayers(items: Item[]): Item[] {
   const byId = new Map<string, Item>();
@@ -1399,6 +1510,12 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
       full: entries, index: emptyIndex(), spilled: finalSpilled,
       pinnedSpill: pinnedSpillOf(finalSpilled),
       continuitySpill: continuitySpillOf(finalSpilled),
+      // A tool event never runs the index tier (`tiersRun`), so `buildIndex`
+      // never ran and there is no index line to check a governing item
+      // against. A JIT-tier spill of a governing item is already named by
+      // the ordinary `renderSpill` note on this event — see
+      // `GoverningSpill`'s doc comment — so `null` here is not a gap.
+      governingSpill: null,
       focus: focusReport,
       tokens,
     };
@@ -1412,6 +1529,7 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     spilled: finalSpilled,
     pinnedSpill: pinnedSpillOf(finalSpilled),
     continuitySpill: continuitySpillOf(finalSpilled),
+    governingSpill: buildGoverningSpill(eligible, config, chosenIds, index.normative),
     focus: focusReport,
     tokens: tokens + indexUsed,
   };

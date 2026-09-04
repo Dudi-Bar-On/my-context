@@ -1,8 +1,8 @@
 import { recordAudit, type InjectedRef, type SpilledRef } from './audit.ts';
-import { resolveCarry, resolveSubagentCarry } from './continuity.ts';
+import { resolveCarry, resolveSubagentCarry, type CarrySelection } from './continuity.ts';
 import { corpusRootLine, nestedCorpusNote, resolveCorpus } from './corpus-identity.ts';
 import { focusErrorNote, readFocus } from './focus.ts';
-import { readSnapshotMeta } from './ledger.ts';
+import { readSnapshotMeta, spendCarryOnce } from './ledger.ts';
 import { rebuildRoots } from './open-store.ts';
 import {
   crossLayerCollisions, loadErrorNote, loadLayer, rebuild, type LoadError,
@@ -205,6 +205,35 @@ export interface Injection {
   text: string;
   /** `Selection.pinnedSpill`, verbatim — see `core/select.ts`. */
   pinnedSpill: PinnedSpill | null;
+}
+
+/**
+ * The one-shot carry (`mycontext carry <id>`, `core/ledger.ts`) folded into the
+ * SAME `SelectContext.carried` value the cross-session carry already fills —
+ * see `core/ledger.ts`'s "The one-shot carry" section for why it is spent
+ * here, unconditionally, on every call to `buildInjectionResult` rather than
+ * only on the events the cross-session carry reaches.
+ *
+ * **A pending one-shot carry takes the slot; it does not merge into an active
+ * cross-session one.** Both would want the SAME field, and `select.ts` and
+ * `render.ts` both word it as "carried from session `<label>`" — true of a
+ * cross-session carry and NOT true of a person marking one id, so folding the
+ * two together would either mislabel the marked id as coming from a session it
+ * never touched, or mislabel a real previous session's ids under a synthetic
+ * name. A person who explicitly marks an id for the very next injection is
+ * asking for it BY NAME, which is a stronger, more deliberate signal than the
+ * ambient default cross-session carry every session-start already gets for
+ * free — so it wins the slot for the one injection it is spent on, and the
+ * ambient carry resumes on the next one, untouched. `sessionId`/`label` are
+ * synthetic and say so plainly rather than borrowing a phrase that would read
+ * as a real session.
+ */
+function foldOnceCarry(
+  stateRoot: string, sessionCarried: CarrySelection | null,
+): CarrySelection | null {
+  const { ids } = spendCarryOnce(stateRoot);
+  if (ids.length === 0) return sessionCarried;
+  return { sessionId: '(carry)', label: 'a one-shot carry', ids };
 }
 
 /**
@@ -526,11 +555,16 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // Neither entry point throws — a carry that cannot be resolved costs the
     // carry and nothing else — and neither one overrides an explicit
     // `mycontext session carry` choice or its `--none`.
-    const carried = !manual && (subagent || !compacting)
+    const sessionCarried = !manual && (subagent || !compacting)
       ? subagent
         ? resolveSubagentCarry(stateRoot, sessionId ?? null)
         : resolveCarry(stateRoot, sessionId ?? null)
       : null;
+    // Spent HERE, on every event this function handles — including 'manual',
+    // which the cross-session carry above never reaches. A one-shot mark is
+    // not "continue the session I was just in"; it is "deliver this the next
+    // time anything is injected", and a `/LoadMyContext` is exactly that.
+    const carried = foldOnceCarry(stateRoot, sessionCarried);
 
     const selection = select(
       items,
@@ -857,6 +891,24 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
         `carried from session ${label}` +
         (dropped.length === 0 ? '' : `, ${dropped.length} carried id(s) got no line`) +
         (displaced.length === 0 ? '' : `, ${displaced.length} of this session's own displaced`),
+      );
+    }
+    // **`GoverningSpill`, counted rather than repeated** — `TASK-a-governing-
+    // item-degraded-to-an-index-line-looks-delivered` (`plan:budget seq:14`).
+    // The rendered block already names every id (`render.ts` ·
+    // `renderGoverning`, capped at `NAMED_GOVERNING`); the log records scope,
+    // not content, exactly as the carry note above does, so a reader of
+    // `mycontext audit` can see AT A GLANCE that a session under-delivered
+    // its governing items without opening the transcript. No new field on
+    // `AuditRecord` — `note` is the free-form string every other selection
+    // fact in this block already rides on, and `audit.ts` is another lane's
+    // file this task does not touch.
+    if (selection.governingSpill !== null) {
+      const { titled, untitled } = selection.governingSpill;
+      noteParts.push(
+        `${titled.length + untitled.length} governing item(s) not delivered in full` +
+        (titled.length > 0 ? `, ${titled.length} title-only` : '') +
+        (untitled.length > 0 ? `, ${untitled.length} not even titled` : ''),
       );
     }
     if (collisions.length > 0) {

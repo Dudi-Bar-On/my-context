@@ -1,6 +1,6 @@
 import { describeFocus, type FocusReport } from './focus.ts';
 import { CARRIED_MARKER, renderIndexLine, renderItemBlock } from './render-item.ts';
-import type { CarriedSummary, Selection, Spill } from './select.ts';
+import type { CarriedSummary, GoverningSpill, Selection, Spill } from './select.ts';
 
 /**
  * **The cross-session carry disclosure — §6n.2, and the CLI half of "the same
@@ -188,6 +188,74 @@ function renderContinuitySpill(selection: Selection): string {
   );
 }
 
+/** At most this many ids are named inline per clause; the rest are counted. */
+const NAMED_GOVERNING = 10;
+
+/**
+ * **The governing-item disclosure — `TASK-a-governing-item-degraded-to-an-
+ * index-line-looks-delivered` (`plan:budget seq:14`), and the ONLY place in
+ * the injected block that says a `## my_context index` bullet below carries
+ * no body.**
+ *
+ * It appears here, before the index it explains, for `renderContinuitySpill`'s
+ * own reason: both notes say "something you may need is not here in full",
+ * and the reader meets the explanation before the section it explains rather
+ * than after.
+ *
+ * **Two clauses, and they are not interchangeable.** `titled` items DO have a
+ * line below — id, type, title, and the type IS the tell: `rule`,
+ * `constraint`, `invariant`, `instruction`, `requirement`, `standard` are the
+ * whole of `GOVERNING_TYPES`, so a reader who has read this sentence can find
+ * every one of them among the ordinary bullets without this clause repeating
+ * every id. `untitled` items have NO line anywhere in this text — the index
+ * tier's own budget missed them too — so they are named here in full (subject
+ * to the same cap `renderFocus`'s dangling-edges list uses) because this
+ * sentence is the only place they exist at all.
+ *
+ * **The cost is stated, not a recommendation invented.** `REQ-a-pinned-item-
+ * is-delivered-or-the-user-is-told-it-was-not`'s clause 2 — "the recommendation
+ * comes with the numbers" — is answered with the number this function can
+ * compute (`GoverningSpill.cost`, priced once in `select.ts`) and not with a
+ * budget this module has no business choosing: raising `budgets.pinned` is a
+ * config change for a human, and this text states what it would cost rather
+ * than deciding it.
+ *
+ * **Never budgeted.** Like the focus and continuity-spill notes, it is
+ * outside every tier's budget and outside `Selection.tokens` — a disclosure a
+ * budget could drop is not a disclosure, and this is the one this whole task
+ * exists to stop being droppable.
+ */
+function renderGoverning(spill: GoverningSpill | null): string {
+  if (spill === null) return '';
+
+  const named = (ids: string[]): string => {
+    const shown = ids.slice(0, NAMED_GOVERNING).join(', ');
+    const more = ids.length - NAMED_GOVERNING;
+    return more > 0 ? `${shown}, +${more} more` : shown;
+  };
+
+  const parts: string[] = [];
+  if (spill.titled.length > 0) {
+    parts.push(
+      `${spill.titled.length} governing item(s) below carry a title only — the body was not ` +
+      `delivered: ${named(spill.titled)}. A title names a rule; it does not tell you what it ` +
+      'requires. Read each with `mycontext show <id>` before treating it as satisfied.',
+    );
+  }
+  if (spill.untitled.length > 0) {
+    parts.push(
+      `**⚠ ${spill.untitled.length} governing item(s) reached this session neither in full nor ` +
+      `as a title:** ${named(spill.untitled)}. Fetch each with \`mycontext show <id>\`, or raise ` +
+      'the budget that would have carried it; treat these as unknown rather than satisfied.',
+    );
+  }
+  if (parts.length === 0) return '';
+  parts.push(
+    `Delivering every one of them in full this session would cost ~${spill.cost} estimated tokens.`,
+  );
+  return `_${parts.join(' ')}_`;
+}
+
 /** At most this many dangling edges are named inline; the rest are counted. */
 const NAMED_DANGLING = 3;
 
@@ -348,6 +416,10 @@ export function renderSelection(selection: Selection): string {
   // says the session may be missing the state it needs to continue at all.
   const continuitySpill = renderContinuitySpill(selection);
   if (continuitySpill) blocks.push(continuitySpill);
+
+  // Before the index it is explaining, deliberately — see `renderGoverning`.
+  const governing = renderGoverning(selection.governingSpill);
+  if (governing) blocks.push(governing);
 
   const index = renderIndex(selection);
   if (index) blocks.push(index);

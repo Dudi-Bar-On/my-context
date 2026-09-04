@@ -27,6 +27,7 @@ const EMPTY: Selection = {
   // disclosures that are absent by having nothing to say, not by having no key.
   pinnedSpill: null,
   continuitySpill: null,
+  governingSpill: null,
   focus: null,
   tokens: 0,
 };
@@ -236,4 +237,63 @@ test('the focus note comes before the spill note', () => {
     spilled: [{ id: 'CONST-b', tier: 'pinned', reason: 'budget exceeded (9 > 8)' }],
   });
   assert.ok(out.indexOf('_Focus is active') < out.indexOf('omitted from full text'));
+});
+
+/**
+ * `Selection.governingSpill` — `TASK-a-governing-item-degraded-to-an-index-
+ * line-looks-delivered` (`plan:budget seq:14`). A governing item reduced to a
+ * title, or to nothing at all, must be NAMED rather than left to blend into
+ * the ordinary index.
+ */
+test('no governingSpill, no note', () => {
+  const out = renderSelection(EMPTY);
+  assert.equal(out.includes('title only'), false);
+});
+
+test('a titled governing spill names the ids and states the cost, and never claims they are undelivered entirely', () => {
+  const out = renderSelection({
+    ...EMPTY,
+    index: {
+      normative: [{ id: 'RULE-a', type: 'rule', title: 'A rule' }],
+      counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {}, carried: null,
+    },
+    governingSpill: { titled: ['RULE-a'], untitled: [], cost: 42 },
+  });
+  assert.match(out, /1 governing item\(s\).*title only/);
+  assert.match(out, /RULE-a/);
+  assert.match(out, /42/);
+  assert.doesNotMatch(out, /reached this session neither in full nor as a title/);
+});
+
+test('an untitled governing spill is named as reaching the reader in no form at all', () => {
+  const out = renderSelection({
+    ...EMPTY,
+    governingSpill: { titled: [], untitled: ['RULE-big'], cost: 900 },
+  });
+  assert.match(out, /RULE-big/);
+  assert.match(out, /neither in full nor as a title/);
+  assert.doesNotMatch(out, /title only/);
+});
+
+test('a long titled list is capped and the remainder is counted, never silently repeated in full', () => {
+  const ids = Array.from({ length: 15 }, (_, n) => `RULE-${n}`);
+  const out = renderSelection({
+    ...EMPTY,
+    governingSpill: { titled: ids, untitled: [], cost: 1000 },
+  });
+  assert.match(out, /15 governing item\(s\)/);
+  assert.match(out, /\+5 more/);
+  assert.doesNotMatch(out, /RULE-14/);
+});
+
+test('the governing note comes before the index it is explaining', () => {
+  const out = renderSelection({
+    ...EMPTY,
+    index: {
+      normative: [{ id: 'RULE-a', type: 'rule', title: 'A rule' }],
+      counts: {}, drafts: 0, retired: 0, truncated: 0, ineligible: {}, carried: null,
+    },
+    governingSpill: { titled: ['RULE-a'], untitled: [], cost: 42 },
+  });
+  assert.ok(out.indexOf('title only') < out.indexOf('## my_context index'));
 });

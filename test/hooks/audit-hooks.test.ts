@@ -51,7 +51,11 @@ test('SessionStart records what it delivered, by id and tier, and no injected te
     assert.ok(record, 'SessionStart recorded no injection');
     assert.equal(record.sessionId, 'sess-1');
     assert.equal(record.hook, 'SessionStart');
-    assert.equal(record.note, 'source=startup');
+    // Both fixture items are governing categories (`constraint`, `rule`) and
+    // neither is `always`, so both reach this session as a title only —
+    // `TASK-a-governing-item-degraded-to-an-index-line-looks-delivered`'s
+    // count follows `source=` in the same note.
+    assert.equal(record.note, 'source=startup; 2 governing item(s) not delivered in full, 2 title-only');
     assert.ok((record.injected ?? []).length > 0);
     for (const entry of record.injected ?? []) {
       assert.ok(entry.id, 'an injected entry with no id');

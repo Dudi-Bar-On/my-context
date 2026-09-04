@@ -1319,8 +1319,15 @@ test('load_context leaves an unpinned item in the index, not in the governing bl
   const out = createRegistry(cwd).call('load_context', {});
   const indexAt = out.indexOf('## my_context index');
   assert.ok(indexAt > 0, 'the index section is present');
+  // Not delivered in full: no full-text heading (`### id ·`) for it anywhere.
+  assert.equal(out.includes('### CONST-token-checked ·'), false,
+    'an unpinned item must not be in the full-text governing block');
+  // It IS a `constraint` — a GOVERNING category — so it legitimately appears
+  // ahead of the index too, named as title-only rather than silently indexed
+  // (`TASK-a-governing-item-degraded-to-an-index-line-looks-delivered`). Its
+  // own index BULLET is what belongs after the index heading.
   assert.ok(
-    out.indexOf('CONST-token-checked') > indexAt,
+    out.indexOf('- CONST-token-checked ·') > indexAt,
     'an unpinned item belongs to the index, not the full-text block',
   );
   removeTree(cwd);

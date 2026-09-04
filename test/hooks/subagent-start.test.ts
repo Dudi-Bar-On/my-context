@@ -379,10 +379,21 @@ test('both records carry the parent session id, the same agent, and one op', () 
       // the pair side by side. Never the composite.
       assert.equal(row.sessionId, PARENT);
       assert.notEqual(row.sessionId, KEY);
-      assert.match(row.note ?? '', new RegExp(`agent=${AGENT}$`, 'u'));
+      assert.match(row.note ?? '', new RegExp(`agent=${AGENT}(;|$)`, 'u'));
     }
     assert.match(rows[0]!.note ?? '', /^delivery=attempted /u);
+    // The attempt record precedes the injection, so it is exactly
+    // `delivery=attempted agent=<id>` and nothing else.
+    assert.equal(rows[0]!.note, `delivery=attempted agent=${AGENT}`);
     assert.match(rows[1]!.note ?? '', /^delivery=complete /u);
+    // `CONST-retry` is a `constraint` — a GOVERNING category — and is not
+    // `always`, so it reaches this session as a title only: the completion
+    // record's note carries that count after `agent=<id>`
+    // (`TASK-a-governing-item-degraded-to-an-index-line-looks-delivered`).
+    assert.equal(
+      rows[1]!.note,
+      `delivery=complete agent=${AGENT}; 1 governing item(s) not delivered in full, 1 title-only`,
+    );
   } finally { removeTree(cwd); }
 });
 
