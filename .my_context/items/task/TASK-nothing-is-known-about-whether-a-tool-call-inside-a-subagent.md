@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A lane is invisible between starting and stopping, and it has never been tested whether the platform can report its work while it runs.
-summary_of: 9229e1ad77045fdd
+summary_of: 56a880bed8129817
 scope:
   - hooks/hooks.json
   - src/hooks/io.ts
@@ -18,18 +18,19 @@ tags:
   - probe
   - "plan:hooks"
   - "seq:30"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: ac0e7f0f50f6de96
+checksum: 9867015003ddd77e
 plan: hooks
 seq: "30"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-04
 ---
 
 # nothing is known about whether a tool call inside a subagent can be observed as it happens
