@@ -20,7 +20,8 @@
   "scripts": {
     "test": "node --import ./test/helpers/pin-rendering.ts --test \"test/**/*.test.ts\"",
     "test:perf": "node --import ./test/helpers/pin-rendering.ts --test --test-concurrency=1 \"test/perf/*.perf.ts\"",
-    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e": "node scripts/e2e-gate.ts",
+    "test:e2e:single-phase": "playwright test --config e2e/playwright.config.ts",
     "test:e2e:install": "playwright install chromium",
     "typecheck": "tsc --noEmit",
     "mutate": "node scripts/mutate.ts",
