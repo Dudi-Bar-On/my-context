@@ -206,7 +206,7 @@ test('config refuses --delete and --disable together', () => {
   try {
     const result = box.run(['config', 'rule', '--delete', '--disable', '--yes']);
     assert.equal(result.code, 1);
-    assert.match(result.text, /two different acts/);
+    assert.match(result.text, /four different acts/);
   } finally {
     box.dispose();
   }

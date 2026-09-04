@@ -72,16 +72,67 @@ import { confirmAction } from './review.ts';
  * not for the write about to happen — the two are not the same fact, and
  * conflating them would be borrowing `ack`'s ceremony for a problem `ack`
  * does not have.
+ *
+ * ── `rulings/57`: `--set`/`--unset`, FIELD-LEVEL rather than category-level ──
+ *
+ * `--delete`/`--disable` above act on a whole category, and two things this
+ * project needed could not be reached at that granularity: `dispatchGate.
+ * enabled` is not inside any category at all, and clearing one retired name
+ * (`progress`, `last_change`) out of `categories.task.extraFields` while
+ * leaving the rest of `task` exactly as it stood cannot be spelled as
+ * "delete the category" or "disable the category" — both throw away far more
+ * than the one stale name.
+ *
+ * `--set <value>` and `--unset <value>[,<value>...]` read the SAME positional
+ * this command already had, now as a dotted PATH rather than a bare category
+ * name — a bare name is a one-segment path, so `config rule --disable` and
+ * `config dispatchGate.enabled --set true` are the same grammar at two
+ * depths. `--set` writes one scalar; `--unset` removes one or more entries
+ * from a list. Both are refused BY NAME when the path names no key this
+ * build's config.json understands, or when the value is the wrong type —
+ * `core/config.ts`'s `setConfigField`/`unsetConfigListEntries` reuse
+ * `resolveConfig` itself for every type check rather than keeping a second
+ * opinion that could disagree with it; see that module's own header for the
+ * one check `resolveConfig` cannot make on its own (R14.2 skips an unknown
+ * TOP-LEVEL key rather than refusing it, which is right for loading and wrong
+ * for writing).
+ *
+ * The item-count warning above this section is CATEGORY-shaped: it counts
+ * items of one type. A field path is not always inside a category —
+ * `dispatchGate.enabled` touches no item on disk at all — so the blast-radius
+ * line for `--set`/`--unset` is the field's own before/after, plus the same
+ * item count ONLY when the path is under `categories.<name>`, where it means
+ * the same thing it already means for `--delete`/`--disable`.
  */
 const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.config;
 
 const USAGE = 'usage: mycontext config <name> --delete [--yes]\n'
-  + '       mycontext config <name> --disable [--yes]';
+  + '       mycontext config <name> --disable [--yes]\n'
+  + '       mycontext config <path> --set <value> [--yes]\n'
+  + '       mycontext config <path> --unset <value>[,<value>...] [--yes]';
 
 /** `out` for a sentence rather than a line, wrapped to the layout budget —
  * the spelling `ack`/`review`/`status` already use. */
 function say(out: Emit, text: string): void {
   for (const line of paragraph(text, '', outputWidth(), '  ')) out(line);
+}
+
+/**
+ * The one coercion `--set`'s value goes through, and the only type decision
+ * made in this file: read it as JSON when it parses as JSON — so `true`,
+ * `false` and `6000` become the boolean/number `resolveConfig` expects — and
+ * fall back to the raw string otherwise, which is what an ordinary word like
+ * `rationale` or a sentence like `A ticket, as this team says it` is (neither
+ * is valid JSON on its own). Whether the RESULT is the right type for the
+ * field it is about to be written to is answered by `resolveConfig`, inside
+ * `setConfigField` — never guessed a second time here.
+ */
+function coerceConfigValue(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
 }
 
 function cmdConfig(ws: Workspace, args: string[], out: Emit): number {
@@ -93,36 +144,46 @@ function cmdConfig(ws: Workspace, args: string[], out: Emit): number {
 
   let del: boolean;
   let disable: boolean;
+  let setSpec: string | null;
+  let unsetSpec: string | null;
   try {
     del = hasFlag(args, 'delete');
     disable = hasFlag(args, 'disable');
+    setSpec = flag(args, 'set');
+    unsetSpec = flag(args, 'unset');
   } catch (err) {
     out(toCliMessage(err));
     return 1;
   }
 
-  if (del && disable) {
+  const acts = [del, disable, setSpec !== null, unsetSpec !== null].filter(Boolean).length;
+  if (acts > 1) {
     say(out,
-      'my_context: --delete and --disable name two different acts on a category; pass one. ' +
+      'my_context: --delete, --disable, --set and --unset name four different acts; pass one. ' +
       'Nothing was written.');
     return 1;
   }
-  if (!del && !disable) {
-    out(`my_context: config needs --delete or --disable.\n\n${USAGE}`);
+  if (acts === 0) {
+    out(`my_context: config needs --delete, --disable, --set or --unset.\n\n${USAGE}`);
     return 1;
   }
 
   const rest = positionals(args, VALUE_FLAGS);
   if (rest.length === 0) {
-    out(`my_context: config needs a category name.\n\n${USAGE}`);
+    out(`my_context: config needs a category name or field path.\n\n${USAGE}`);
     return 1;
   }
   if (rest.length > 1) {
     say(out,
-      `my_context: config acts on one category at a time; got ${rest.length} names ` +
+      `my_context: config acts on one target at a time; got ${rest.length} ` +
       `(${rest.join(', ')}). Nothing was written.`);
     return 1;
   }
+
+  if (setSpec !== null || unsetSpec !== null) {
+    return cmdConfigField(ws, rest[0], setSpec, unsetSpec, args, out);
+  }
+
   const name = rest[0];
 
   if (!Object.hasOwn(ws.config.categories, name)) {
@@ -206,9 +267,132 @@ function cmdConfig(ws: Workspace, args: string[], out: Emit): number {
   }
 }
 
+/**
+ * The blast-radius line for `--set`/`--unset`, printed before the gate —
+ * `cmdConfig`'s own item-count warning, one level down. A field path under
+ * `categories.<name>` gets the SAME item count `--delete`/`--disable` already
+ * print, because it means the same thing there: how many items on disk carry
+ * that category, none of which this write touches. Every other path touches
+ * no item at all — `dispatchGate.enabled` governs a hook, not a corpus row —
+ * so the line there is the field's own before/after and nothing more.
+ */
+function describeFieldChange(path: string, preview: FieldWriteResult, itemCount: number | null): string {
+  const before = preview.before === undefined ? '(not declared)' : JSON.stringify(preview.before);
+  const base = preview.action === 'set'
+    ? `about to set "${path}" to ${JSON.stringify(preview.after)} — currently ${before}.`
+    : `about to remove ${(preview.before as string[])
+      .filter((v) => !(preview.after as string[]).includes(v))
+      .map((v) => JSON.stringify(v)).join(', ')} from "${path}", leaving ` +
+      `${(preview.after as string[]).length} entr${(preview.after as string[]).length === 1 ? 'y' : 'ies'}.`;
+  if (itemCount === null) {
+    return `${base} This does not touch any item already on disk; it changes what every future ` +
+      'read of config.json sees.';
+  }
+  return `${base} ` + (itemCount === 0
+    ? 'No item in this corpus carries this category yet.'
+    : `${itemCount} item(s) in this corpus already carry this category; none of them are ` +
+      'edited by this write.');
+}
+
+/**
+ * `mycontext config <path> --set <value>` / `--unset <value>[,...]` — see the
+ * header's `rulings/57` section. Handles both acts, because they share every
+ * step except the underlying writer and the wording of the change.
+ */
+function cmdConfigField(
+  ws: Workspace, path: string, setSpec: string | null, unsetSpec: string | null,
+  args: string[], out: Emit,
+): number {
+  const setting = setSpec !== null;
+  const corpusDir = ws.projectRoot as string;
+
+  let removeValues: string[] = [];
+  let coerced: unknown;
+  if (setting) {
+    coerced = coerceConfigValue(setSpec);
+  } else {
+    removeValues = csv(unsetSpec ?? '');
+    if (removeValues.length === 0) {
+      say(out,
+        `my_context: --unset needs at least one value to remove, e.g. --unset progress. ` +
+        'Nothing was written.');
+      return 1;
+    }
+  }
+
+  // Full validation happens here, via a dry run — the same writer the real
+  // write below calls, re-read fresh a second time so a file that changes in
+  // between is still caught. A path that cannot be written is refused here,
+  // before anything is printed that implies a decision is pending.
+  let preview: FieldWriteResult;
+  try {
+    preview = setting
+      ? setConfigField(corpusDir, path, coerced, { dryRun: true })
+      : unsetConfigListEntries(corpusDir, path, removeValues, { dryRun: true });
+  } catch (err) {
+    out(err instanceof CategoryWriteRefusal ? err.message : toCliMessage(err));
+    return 1;
+  }
+
+  if (!preview.wrote) {
+    say(out,
+      `my_context: "${path}" already ` +
+      `${setting ? `is ${JSON.stringify(coerced)}` : `does not carry any of ${removeValues.join(', ')}`}. ` +
+      'Nothing was written.');
+    return 0;
+  }
+
+  const segments = path.split('.');
+  const categoryScoped = segments[0] === 'categories' && segments.length >= 2;
+  let itemCount: number | null = null;
+  let errors: ReturnType<typeof openMutateContext>['errors'] = [];
+  if (categoryScoped) {
+    const opened = openMutateContext(ws);
+    errors = opened.errors;
+    try {
+      itemCount = opened.ctx.store.all().filter((i: Item) => i.type === segments[1]).length;
+    } catch (err) {
+      opened.ctx.store.close();
+      out(toCliMessage(err));
+      return 1;
+    }
+    opened.ctx.store.close();
+  }
+
+  say(out, describeFieldChange(path, preview, itemCount));
+  out('');
+
+  if (!confirmAction(args, out, `${setting ? 'Set' : 'Update'} "${path}"?`)) {
+    emitLoadErrors(errors, out);
+    return 1;
+  }
+
+  try {
+    const result = setting
+      ? setConfigField(corpusDir, path, coerced)
+      : unsetConfigListEntries(corpusDir, path, removeValues);
+    if (!result.wrote) {
+      say(out, `my_context: "${path}" already matched. Nothing was written.`);
+      emitLoadErrors(errors, out);
+      return 0;
+    }
+    say(out,
+      `my_context: ${setting ? 'set' : 'updated'} "${path}" in config.json. ` +
+      (result.backupPath
+        ? `The previous config.json was copied to ${result.backupPath} before writing.`
+        : 'There was no existing config.json to back up before writing.'));
+    emitLoadErrors(errors, out);
+    return 0;
+  } catch (err) {
+    out(err instanceof CategoryWriteRefusal ? err.message : toCliMessage(err));
+    emitLoadErrors(errors, out);
+    return 1;
+  }
+}
+
 registerCommand({
   name: 'config',
   usage: 'config <name> --delete|--disable [--yes]',
-  summary: 'delete a custom category, or disable a shipped one, in config.json',
+  summary: 'delete/disable a category, or set/unset one field, in config.json',
   run: cmdConfig,
 });

@@ -705,6 +705,22 @@ const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
       + 'so a def advertising it would compose `--unlink rel` and lose the target silently — '
       + 'the one failure the whole composed-and-shown design exists to prevent.',
   },
+  config: {
+    set: '--set <value> writes a FIELD-level path (`rulings/57`), and this def\'s one operand is '
+      + 'sourced `categories` for `--delete`/`--disable` — a bare category name is the shallowest '
+      + 'legal path, but `dispatchGate.enabled` and `categories.task.extraFields` are not category '
+      + 'names at all, and the value beside it changes type with the field it targets (a boolean '
+      + 'for one path, a number for another, free text for a third). Composing it here would need '
+      + 'a second operand shape this def does not have and a value control this catalogue has no '
+      + 'precedent for. When the palette does offer it, it belongs on a def whose operand is a '
+      + 'dotted path rather than a category select, and this row must move rather than stand over '
+      + 'the opposite.',
+    unset: '--unset <value>[,<value>...] is `--set`\'s sibling for removing entries from a list '
+      + 'field, and it is excused for the identical reason: the operand this def offers is a '
+      + 'CATEGORY, not a field path, and there is no control here for "which list, which entries". '
+      + 'When the palette does offer it, it belongs beside `--set` on that same future def, and '
+      + 'this row must move rather than stand over the opposite.',
+  },
 };
 
 test('every advertised flag is accepted, and every accepted flag is advertised or named', async () => {

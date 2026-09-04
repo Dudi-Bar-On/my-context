@@ -258,7 +258,16 @@ const WRITERS: Record<string, string[]> = {
   // that carry the write; `backupThenWrite`, `backupSuffix` and
   // `assertStillResolves` are the private helpers those two call and are not
   // themselves importable, so they carry nothing this ban needs to name.
-  'src/core/config.ts': ['deleteCustomCategory', 'disableCategory'],
+  //
+  // Widened the same day, `rulings/57`: `setConfigField` and
+  // `unsetConfigListEntries` are the FIELD-level writers beside the two
+  // CATEGORY-level ones above, calling the same private `backupThenWrite`
+  // through the same fresh-read-then-`assertStillResolves` shape — named here
+  // for the identical reason: a symbol this table does not name is a symbol
+  // `src/ui/` could bind with this file green.
+  'src/core/config.ts': [
+    'deleteCustomCategory', 'disableCategory', 'setConfigField', 'unsetConfigListEntries',
+  ],
 };
 
 const isWriter = (module: string, symbol: string): boolean =>
