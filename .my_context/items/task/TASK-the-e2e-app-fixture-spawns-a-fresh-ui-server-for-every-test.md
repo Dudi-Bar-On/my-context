@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The browser suite starts a whole UI server and waits for authentication on every test rather than once per worker, which is most of why it is slow.
-summary_of: 5e9ef87be0f3e3b3
+summary_of: f1f1d5347b2cf6bf
 scope:
   - e2e/app.ts
   - e2e/global-setup.ts
@@ -17,17 +17,17 @@ tags:
   - gates
   - "plan:walk"
   - "seq:133"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 2c408401e3866ff7
+checksum: eff60e41527b4b4b
 plan: walk
 seq: "133"
-state: doing
+state: done
 priority: "2"
 ---
 
