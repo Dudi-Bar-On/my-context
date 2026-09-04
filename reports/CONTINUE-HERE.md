@@ -9,6 +9,53 @@ list) and `c050dd5` (one hook registration, because two made every event fire tw
 **Section 0 below is now STALE:** it says `mycontext status` should report 763 items.
 It reports **817**. The `cli_path_mismatch` check in it is still worth running.
 
+### THE OPEN BOARD ROWS ARE NOW CORPUS ITEMS. STOP READING THEM HERE.
+
+Owner ruling, 2026-09-04: *"i want to handle and standardize the A/B/C ... we should create
+TASK items from them then we will treat them as normal standard task items."*
+
+**Twelve items were created on 2026-09-04 and they are now the authority.** The rows in
+sections 1-7 below are kept as the RECORD of how the work was found, not as the work itself.
+Where the two disagree the item wins, and this file is deliberately NOT updated to follow it
+— keeping a second copy in step is the defect this move exists to end. Run `mycontext ready`
+rather than reading a table here.
+
+| plan/seq | item |
+|---|---|
+| `mcp/1` | `TASK-ready-has-no-mcp-tool-so-an-agent-driving-this-project` |
+| `mcp/2` | `TASK-doctor-has-no-mcp-tool-and-no-excuse-was-ever-recorded-for` |
+| `mcp/3` | `TASK-create-item-cannot-capture-a-project-defined-extra-field` |
+| `mcp/4` | `TASK-six-read-only-cli-reports-have-no-mcp-tool-though-nothing` |
+| `mcp/5` | `TASK-list-has-no-mcp-tool-and-it-is-the-one-owed-read-whose` |
+| `mcp/6` | `TASK-lesson-and-procedure-have-no-mcp-tool-and-each-needs-a-shape` |
+| `categories/25` | `TASK-three-item-fields-can-be-filled-in-but-nothing-ever-reads` |
+| `rulings/55` | `TASK-passive-relations-is-a-hand-kept-list-duplicating-a-fact-the` |
+| `rulings/56` | `TASK-a-session-resumed-after-a-restart-is-treated-as-carrying-no` |
+| `rulings/57` | `TASK-closing-the-task-config-override-test-needs-a-field-level` |
+| `rulings/58` | `TASK-the-config-writer-joining-the-approval-boundary-left-two` |
+| `walk/133` | `TASK-the-e2e-app-fixture-spawns-a-fresh-ui-server-for-every-test` |
+
+**Rows that needed NO item, verified against source rather than assumed:** A1-A9 (all nine
+done, A9 closed as NO DEFECT FOUND), B10, B13 and B15 (landed in `2143868`), section 4 items
+1, 2 and 4 (`task.verified_on` with its check, `--yes` on focus, the `rulings/20` config
+writer), and section 5 relation-types (already a decision record).
+
+**Three rows were ALREADY corpus items and no duplicate was created:** the hover-help pass
+(`TASK-no-screen-has-hover-or-click-help-and-most-buttons-carry`) and both e2e contention
+rows (`TASK-every-e2e-fixture-writes-the-index-so-parallel-workers`, which is `state:done`
+and closed the write-per-fixture defect, and
+`TASK-decide-whether-e2e-goes-green-on-a-two-phase-default-workers`). `walk/133` above is a
+DIFFERENT concern from those two — the per-test server spawn is a runtime cost, not an index
+write — and says so in its own body.
+
+**A trap worth knowing before drafting items in bulk.** Nine of the twelve drafted summaries
+were refused by the 160-character summary gate on the first attempt, and the whole batch was
+proved in a throwaway before any of it reached the corpus, exactly as the 44-item merge was.
+Also measured while proving it: `mycontext add task` accepts an item with NO `plan`, `seq`
+or `state` at all and exits 0 — two items were created that way by an extraction bug and
+nothing refused them, so a bulk drafter must CHECK the frontmatter it produced rather than
+trust an exit code.
+
 ### The three things waiting on the owner
 
 1. **8 e2e specs are red, and correctly so.** `doctor-settle` (6) and `doctor-outcome`
