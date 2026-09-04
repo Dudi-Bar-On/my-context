@@ -1129,10 +1129,31 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  * the same conclusion every raise from 4000 onwards reached.
  *
  * Headroom is ~50 characters, as at every previous raise.
+ *
+ * **6250 -> 6440, and the 137 characters are one more name plus one clause.**
+ * `mycontext config <name> --delete|--disable --yes` shipped as a WRITE
+ * command (`rulings/20`) and lands on the boundary the moment the probe sees
+ * it accept `--yes`, so the derivation that holds both READMEs' §7 table now
+ * puts fifteen commands there rather than fourteen. The set equality above is
+ * what makes the name non-optional here for the reason every previous raise
+ * records: a member this file omits is a write the model believes it may make
+ * on the user's behalf, while the generated `commands/config.md` would tell
+ * that same model the command is denied.
+ *
+ * The clause is `config`'s own: "disables or deletes a category, taking every
+ * item it carries out of injection". It earns its place the way `refresh`'s
+ * and `procedure activate`'s did — the name alone does not say what changes,
+ * and the failure it prevents is specific: an agent that reads `config` as a
+ * settings tweak rather than a write that can silently stop a whole class of
+ * items from being delivered is the reader this file exists for. Nothing
+ * already here was trimmed to buy the space back, the same conclusion this
+ * comment reached at every raise from 4000 onwards.
+ *
+ * Headroom is ~50 characters, as at every previous raise.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 6250, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 6440, `SKILL.md is ${text.length} chars`);
 });
 
 /**

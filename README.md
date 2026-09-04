@@ -1904,7 +1904,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>88 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>40 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>41 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2165,7 +2165,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-40 commands. `mycontext help` prints the same list from the program itself, and
+41 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -3702,7 +3702,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `edit`, `focus`, `inbox-promote`, `procedure activate`, `procedure done`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `refresh`, `repair`, `pack import`, `statusline install`, `statusline uninstall` — and `edit`'s named forms `pin`, `unpin`, `harden` and `soften`, which are the same gate reached by a shorter name rather than four more of them. The two statusline forms are the only ones here that are not in section 7's table: they write the statusLine entry in Claude Code's own settings file and save the command they displaced, which changes nothing about what governs this project |
+| `--yes` | confirm without being asked. Each of these commands says what it is about to do and then waits for a yes; this answers in advance, which is what makes the command usable in a script. It is not a security control — see [section 7](#7-the-trust-boundary) | `add`, `config`, `edit`, `focus`, `inbox-promote`, `procedure activate`, `procedure done`, `review promote`, `review discard`, `review promote-revision`, `review discard-revision`, `supersede`, `refresh`, `repair`, `pack import`, `statusline install`, `statusline uninstall` — and `edit`'s named forms `pin`, `unpin`, `harden` and `soften`, which are the same gate reached by a shorter name rather than four more of them. The two statusline forms are the only ones here that are not in section 7's table: they write the statusLine entry in Claude Code's own settings file and save the command they displaced, which changes nothing about what governs this project |
 | `--anchor <a>` | which section of a document is meant. On `ingest` it re-requests one specific chunk instead of the next pending one; on `ingest-apply` it is **required**, and says which chunk the candidates you are handing back came from | `ingest`, `ingest-apply` |
 | `--file <path>` | two different things, on different commands, and the row says both because the flag has one name. On `add`: capture a **snapshot** of that file as the item's body, recording `source_file` and `source_checksum` so `mycontext doctor` reports drift — see [from a file to a reference](#from-a-file-to-a-reference). On `ingest-apply` and `lesson-stage`: read the JSON payload from a file rather than from standard input | `add`, `ingest-apply`, `lesson-stage` |
 | `--stdin` | read the JSON payload from standard input — the spelling for piping it in. `ingest-apply` requires one of `--file` or `--stdin` and prints usage if given neither; `lesson-stage` reads standard input whenever `--file` is absent, so on that command `--stdin` documents the intent rather than enabling it | `ingest-apply`, `lesson-stage` |
@@ -5722,7 +5722,7 @@ design.
 
 **What actually enforces it: your Bash permissions, and nothing else.**
 
-Fourteen CLI commands change what governs this project with no human in the loop. Eight put an
+Fifteen CLI commands change what governs this project with no human in the loop. Eight put an
 item past the draft gate — three of them were documented at one point, then four, then
 `repair`, shipped in the same round that wrote the list, then `edit --status active`,
 which until recently made that crossing with no preview and no confirmation at all, and now
@@ -5731,7 +5731,7 @@ which until recently made that crossing with no preview and no confirmation at a
 it sets `status: active` *and* `always: true`, so the item is not merely eligible but
 delivered in full at every session start. `supersede` and `procedure done` go the other way:
 they take a governing item *out*. So does `pack import --overwrite-changed`, and it is the
-only one of the fourteen that does it on a *stranger's* behalf: everything a pack brings in
+only one of the fifteen that does it on a *stranger's* behalf: everything a pack brings in
 lands `draft`, so the command can never make something govern — what it changes is what
 **stops**. It replaces the text of an item you wrote with the text a pack carries and drops
 that item to `draft`. `--yes` alone does not reach it, because the overwrite is a second
@@ -5749,17 +5749,32 @@ item snapshots, so what the rule says is decided by whoever can write that file.
 been on the recommended deny list below since the day it was documented, which is how the
 omission survived — the rules were right and the count was not.
 
-`focus` is the newest member and the only one that changes no item at all. Every other command
-here rewrites the corpus; `focus` rewrites what is **delivered** from it — a focus in force
-hides every eligible item that does not match, in every later session, on the whole workspace
-rather than on the session that set it. What governs and what a model is actually told are not
-the same thing, and this is the command that separates them. Two of its five forms take
-`--yes` and are what the deny rule below is written against: `--clear`, which widens, and
-setting an axis, which narrows. The other three — `--show`, `--preview` and `--relations` —
-report and change nothing, and they **refuse** `--yes` by name rather than ignoring it, because
-a confirmation accepted where nothing is confirmed teaches a reader that this command asks
-before it reports. A permission rule cannot tell the two apart — it matches the command string
-— so the rule below denies the whole command, and the reporting forms are the price.
+`focus` is one of two members that change no single item — the other is `config`, below — and
+the only one that changes what is **delivered** instead of what the corpus contains. Every
+other command here rewrites an item; `focus` rewrites what is **delivered** from the corpus —
+a focus in force hides every eligible item that does not match, in every later session, on the
+whole workspace rather than on the session that set it. What governs and what a model is
+actually told are not the same thing, and this is the command that separates them. Two of its
+five forms take `--yes` and are what the deny rule below is written against: `--clear`, which
+widens, and setting an axis, which narrows. The other three — `--show`, `--preview` and
+`--relations` — report and change nothing, and they **refuse** `--yes` by name rather than
+ignoring it, because a confirmation accepted where nothing is confirmed teaches a reader that
+this command asks before it reports. A permission rule cannot tell the two apart — it matches
+the command string — so the rule below denies the whole command, and the reporting forms are
+the price.
+
+`config` is the newest member, and the other one that changes no single item: `mycontext
+config <name> --delete|--disable --yes` acts on a whole **category** in `config.json` rather
+than on an item's own file. `--disable` — legal on a shipped or custom category alike — stops
+new captures of that type and drops every item that already carries it out of selection for
+injection, without editing or deleting a single one of them; a shipped category can never be
+un-recognised, only turned off this way, and `--delete` refuses it outright, naming
+`--disable` as the alternative. On a **custom** category, `--delete` removes the whole entry
+from `config.json`, so this workspace stops recognising what it names and every item that
+already carries it falls back to the absent-category defaults for scope and edit policy.
+Either write backs up `config.json` first, when one exists, and prints where; and either warns
+with the real number of items the category already carries before the gate — the count is the
+blast radius of the one write about to happen, not a second consent.
 
 `mycontext pin`, `unpin`, `harden` and `soften` are `edit` under a shorter name and belong
 to this list as `edit` does — they take the same `--yes`, print the same preview and reach
@@ -5781,7 +5796,8 @@ Two more rules, below, for the same reason.
 | `mycontext supersede <id> --by <id> --yes` | retires a governing item, setting it `superseded` so it stops being injected, and records the pair in both directions (`superseded_by` on the retiree, `supersedes` on the replacement). It passes `origin: 'human'`, which is precisely what the `supersede_item` MCP tool refuses to do for an `active` or `validated` normative item — so this command is the route around that refusal for anything holding a shell. It prints what is being retired, on what terms it is injected today, and what governs afterwards (including "nothing") before asking to confirm |
 | `mycontext edit <id> … --yes` | changes any field of an item that is already governing — its body, its `extra` fields, its scope, its `always` flag, its severity or its status — **and makes a draft govern**, with `--status active`. It passes `origin: 'human'`, which is precisely what `update_item` refuses to do for the reach-and-force fields on an `active` or `validated` normative item, so this command is the route around that refusal for anything holding a shell. It prints what is changing, and what governs before and afterwards, before asking to confirm |
 | `mycontext review promote-revision <id> --yes` | applies a pending revision, so a governing item's title, body, tags or `extra` become the text an **agent** proposed. It is the other half of `agentEdits: "review"`: the setting holds the agent's rewrite, and this command is what releases it. `--force` additionally overwrites a newer human edit of the same field — it prints what it destroys first, but `--yes --force` answers that prompt in advance too. With more than one revision pending on the item it refuses without `--revision REV-...`, so the approval always names the exact proposal it releases |
-| `mycontext review discard-revision <id> --yes` | rejects a pending revision — `--revision REV-...` required on the same terms when more than one is pending. It changes nothing about what governs, which is why it is not counted among the fourteen above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
+| `mycontext review discard-revision <id> --yes` | rejects a pending revision — `--revision REV-...` required on the same terms when more than one is pending. It changes nothing about what governs, which is why it is not counted among the fifteen above — but it settles, terminally, a decision the revision queue exists to reserve for a human, and the same proposal cannot be staged again against the same text. The proposal itself stays in the log |
+| `mycontext config <name> --delete|--disable --yes` | disables or deletes a whole **category** rather than any one item. `--disable` — legal on a shipped or custom category alike — stops new captures of that type and drops every item that already carries it out of selection for injection, without editing or deleting any of them on disk. `--delete` — refused by name on a shipped category, which is told to use `--disable` instead — removes a **custom** category's entry from `config.json` entirely, so this workspace no longer recognises what it names. Backs up `config.json` first, when one exists, and prints the backup path; warns with the real item count before the gate |
 | `mycontext refresh <id> --yes` | replaces a governing item's body with the current text of the file that item snapshots — the whole body, not a merge. A snapshot is not only a `reference`: `mycontext add <normative category> "…" --file <path>` captures one on a governing tier too, and says so at its own gate ("`mycontext refresh` takes a new snapshot through this same gate"). So the text of the rule is whatever that file says the next time this runs, and anything that can write the file can decide it. It passes `origin: 'human'`, so the staged-revision gate that would hold an agent's rewrite for review never applies here. Verified by execution |
 | `mycontext focus <tag>… --yes` / `mycontext focus --clear --yes` | changes what every later session **receives**, without touching a single item. Setting an axis hides every eligible item the focus does not match — a `soft` rule that still governs is simply not delivered, and a model that is never told a rule cannot follow it; `--clear` widens again. It is scoped to the **workspace**, not to the session that set it, because no surface that can set a focus has a trustworthy session id — so the sessions it silently narrows are not the one that typed the command. The cost is paid by disclosure rather than by scope: the confirmation prints the number of items the focus hides and the load-bearing relations that leaves dangling before it asks, and every injection under a focus says so and names the command that clears it. `severity: hard` items are never hidden. The three reporting forms — `--show`, `--preview`, `--relations` — change nothing and **refuse** `--yes` by name; the deny rule below cannot distinguish them, since it matches the command string |
 | `mycontext procedure activate <id> --yes` | starts a one-time `procedure`, and it is **two** writes rather than one: `status: active` makes the item eligible to be selected at all, and `always: true` is what delivers it in full at every session start. Both are guarded fields — `update_item` refuses either on a governing normative item for a non-human caller — so this command is the route around that refusal for anything holding a shell. It passes `origin: 'human'`. It prints what each of the two writes does before asking to confirm |
@@ -5847,6 +5863,7 @@ your behalf. If you want the boundary enforced, put it in your own
       "Bash(mycontext procedure activate *)",
       "Bash(mycontext procedure done *)",
       "Bash(mycontext add *)",
+      "Bash(mycontext config *)",
       "Bash(mycontext supersede *)",
       "Bash(mycontext inbox-promote *)",
       "Bash(mycontext refresh *)",
@@ -6099,7 +6116,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 14 of the 40 CLI commands have none, each for a reason
+is **listed rather than discovered**. 15 of the 41 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `ack` records that a **person** read a `doctor` finding and ruled on it, so a slash command
@@ -6110,6 +6127,10 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
 - `repair` is on the recommended deny list, and its preview is a page of consequences a
   person has to read. A slash command for it would be a prompt whose only honest content is
   "do not let me do this".
+- `config` is on the recommended deny list for the same reason: `--delete` and `--disable`
+  each carry a preview naming the real number of items the category already carries, and a
+  slash command for either would be that same prompt whose only honest content is "do not
+  let me do this".
 - `help` and `examples` are answered for you by `mycontext help <topic>` and
   `mycontext examples <category>`, and by this document, which is longer and better
   organised than a command file could be. Those are also the two MCP tools —
@@ -6346,7 +6367,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "14 of the 40 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "15 of the 41 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

@@ -45,11 +45,12 @@
  *
  * ── WHAT IS HERE, AND WHAT IS DELIBERATELY NOT ─────────────────────────────
  *
- * MEASURED 2026-08-24 and corrected 2026-08-30, over the **40** commands the
- * CLI dispatches: 33 registered by `cli/commands/index.ts`'s column of
- * side-effect imports, and 7 more registered in `cli/index.ts` itself.
+ * MEASURED 2026-08-24, corrected 2026-08-30 and again 2026-09-04 (`mycontext config`,
+ * `rulings/20` widened, shipped its own separable spec), over the **41** commands the CLI
+ * dispatches: 34 registered by `cli/commands/index.ts`'s column of side-effect
+ * imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 36 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   | 37 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
  *   |  0 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
  *   |  3 | take no flags at all — `show`, `rebuild`, `help`                   |
@@ -59,7 +60,7 @@
  * because they refused no unknown flag: a command with nothing to disagree
  * with cannot be checked, so nothing could tell a builder that the command it
  * had composed was wrong. They were given parsers rather than an exception,
- * and the row stays so that the partition still covers all 40 — and so that a
+ * and the row stays so that the partition still covers all 41 — and so that a
  * sixth command written the same way lands in a row that has a name.
  *
  * **This paragraph said 38, and 38 was neither number.** `COMMANDS` holds 32
@@ -75,7 +76,7 @@
  * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
  * the registered set, so a command cannot arrive and be silently uncounted.
  *
- * **31** of the 36 are here. Twenty-one arrived with the first lift, and they
+ * **32** of the 37 are here. Twenty-one arrived with the first lift, and they
  * are the ones whose spec was already a declarative constant over a FLAT
  * surface — one command, one flag set. The other four arrived with
  * `plan:builder seq:1b` and came out of `src/cli/index.ts` itself — the entry
@@ -90,6 +91,12 @@
  * had no spec to move and refused no unknown flag at all. That is a behaviour
  * change, it was measured against every invocation in this repository before it
  * was made, and the entries themselves carry the measurement.
+ *
+ * **`mycontext config` is the thirty-second entry, and the newest** — `rulings/20` widened,
+ * shipped 2026-09-04. It is a WRITTEN entry in the last five's sense (there
+ * was no command to lift a spec from; `mycontext config` did not exist before
+ * it), for a category-level `config.json` writer: `--delete` on a custom
+ * category, `--disable` on either kind, both behind `--yes`.
  *
  * All nine are named in the map below and deliberately not here, because the
  * inventory test reads a backticked command name in this header as the claim
@@ -211,6 +218,16 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
     ],
     values: ['since', 'until', 'item', 'session', 'kind', 'op', 'origin', 'limit', 'role'],
   },
+  /**
+   * `rulings/20` widened: `config <name> --delete|--disable [--yes]`, a
+   * category-level `config.json` writer. `--delete` and `--disable` are bare
+   * switches naming the act — mutually exclusive, one required — and `<name>`
+   * is the operand, the same shape `pin <id>`/`unpin <id>` already have for a
+   * single-target write. `--yes` is `review.ts`'s `confirmAction`: refused off
+   * a TTY without it, so this is the same real refusal `--yes` answers on
+   * `edit`/`pin`/`focus`, not a list entry — see `test/helpers/approval-boundary.ts`.
+   */
+  config: { allowed: ['delete', 'disable', 'yes'], values: [] },
   decay: { allowed: [...DETAIL_FLAGS, 'sessions', 'all'], values: ['sessions'] },
   doctor: { allowed: [...DETAIL_FLAGS, 'quiet'], values: [] },
   export: {
@@ -692,6 +709,20 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     items: { note: 'Report by ITEM rather than by record - what was touched, and how often.' },
     sessions: { note: 'Report by SESSION rather than by record.' },
     files: { note: 'Report by FILE rather than by record.' },
+  },
+  config: {
+    delete: {
+      note: 'Remove a CUSTOM category\'s declaration from config.json. Refused by name on a '
+        + 'shipped category: it is resolved from the catalogue no matter what config.json '
+        + 'says, so removing its entry would report a delete that changed nothing. --disable '
+        + 'is the one that does something there.',
+    },
+    disable: {
+      note: 'Set enabled: false on a category, shipped or custom. New captures under it are '
+        + 'refused and its items stop being selected for injection; nothing already on disk '
+        + 'is edited or deleted, and the declaration itself is kept.',
+    },
+    yes: YES,
   },
   decay: {
     ...DETAIL,

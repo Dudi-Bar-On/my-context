@@ -75,15 +75,9 @@
  */
 import { test as base, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
+import { rmSync } from 'node:fs';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
-
-/** The CLI entry the throwaway workspace is seeded through — `init`, `add`,
- *  `rebuild`, exactly as a person would type them. */
-const CLI = path.resolve(import.meta.dirname, '..', 'src', 'cli', 'index.ts');
+import { initWorkspace, runCli, seedRetractingRule } from './doctor-workspace.ts';
 
 const screen = '[data-p="doctor"]';
 /** A command block that is a direct child of a card: shared by every row of its
@@ -102,18 +96,10 @@ interface Finding {
 }
 
 /**
- * A body whose own wording retracts its premise — `checkBodyAgreement`'s own
- * trigger for `body_disagrees_with_meta`, borrowed verbatim from
- * `test/cli/ack-all.test.ts` so the two files exercise the identical finding
- * rather than two spellings of "a body that disagrees with itself".
- */
-const RETRACTING_BODY =
-  'THE PREMISE HERE IS RETRACTED. This rule no longer holds in the form its title claims.';
-
-/**
  * `mkdtemp`'d, `init`'d, seeded with exactly two rules carrying the same
- * deliberate defect, `rebuild`'t, and handed back as a bare path — the
- * fixture below is what starts a server over it and what throws it away.
+ * deliberate defect (`seedRetractingRule`, `./doctor-workspace.ts`),
+ * `rebuild`'t, and handed back as a bare path — the fixture below is what
+ * starts a server over it and what throws it away.
  *
  * **`rebuild` is not optional here.** `/api/doctor` is served through
  * `withStores`, which reads the SQLite-backed index (`ws.dbPath`) rather than
@@ -124,18 +110,11 @@ const RETRACTING_BODY =
  * whole purpose is making that guarantee true.
  */
 function makeSettleWorkspace(): string {
-  const root = mkdtempSync(path.join(tmpdir(), 'myctx-e2e-settle-'));
-  const run = (args: string[]): void => {
-    execFileSync(process.execPath, [CLI, ...args], { cwd: root, encoding: 'utf8', stdio: 'pipe' });
-  };
-  run(['init']);
+  const root = initWorkspace('myctx-e2e-settle-');
   for (const title of ['Settlement probe rule one', 'Settlement probe rule two']) {
-    run([
-      'add', 'rule', title, '--body', RETRACTING_BODY,
-      '--summary', `A rule about ${title.toLowerCase()}.`, '--yes',
-    ]);
+    seedRetractingRule(root, title);
   }
-  run(['rebuild']);
+  runCli(root, ['rebuild']);
   return root;
 }
 

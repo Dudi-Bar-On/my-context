@@ -5,6 +5,7 @@
 // on one machine, read on another, and travels inside packs — so the host's
 // answer would accept `/etc/passwd` when read on Windows and `C:\...` when
 // read on Linux. Asking both makes the refusal the same everywhere.
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   CATEGORIES, PROFILES,
@@ -1649,4 +1650,273 @@ export function skippedKeyNotice(config: Config): string {
     `you wrote is not in force; a key from a newer my_context means this build is ` +
     `older than your config.`
   );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * `rulings/20` widened — a `config.json` WRITER, behind `mycontext config`.
+ *
+ * Everything above this line reads and resolves; nothing above it writes.
+ * These two functions are the one place `.my_context/config.json` is written
+ * from a command a person runs at their own terminal — never from the web UI
+ * (`DEC-should-the-web-ui-be-allowed-to-write-config-json` keeps that surface
+ * to composing text for a human to paste, and `budgets-write.ts`'s own header
+ * names the one exception: budgets, from the browser, behind a confirm, and
+ * NEVER categories). A CLI command with a confirmation gate is the same shape
+ * every other write in this product already takes — `edit`, `pin`, `ack` — so
+ * this is that shape applied to the one file that had none.
+ *
+ * ── WHAT "SHIPPED" MEANS, TAKEN FROM `CATEGORIES` AND NOT ASSERTED HERE ────
+ *
+ * A category is SHIPPED when `Object.hasOwn(CATEGORIES, name)` — it is in the
+ * catalogue (`core/categories.ts`) and `resolveConfig` seeds a resolved entry
+ * for it whether or not `config.json` says anything about it at all. A CUSTOM
+ * category exists ONLY because a project's `config.json` declares it — no
+ * catalogue entry backs it, so its declaration IS the category.
+ *
+ * That distinction is what makes DELETE and DISABLE two different acts rather
+ * than two names for one:
+ *
+ *  - **DELETE removes a category's config.json ENTRY.** For a custom
+ *    category that is the whole of what makes it exist, so deleting the entry
+ *    deletes the category. For a shipped one it is not: `resolveConfig` would
+ *    still seed the same entry from the catalogue on the very next read, so
+ *    "deleting" it would report success while changing nothing that matters —
+ *    an accepted-and-ignored write, the one failure `INV-nothing-is-dropped-
+ *    silently` rules out everywhere else in this file. So DELETE on a shipped
+ *    category is refused BY NAME, and the refusal names DISABLE, which is the
+ *    operation that actually does something.
+ *  - **DISABLE sets `enabled: false`** on a category's entry, creating one if
+ *    none exists. It is legal on EITHER kind: a shipped category gains a
+ *    fresh override; a custom one keeps its `tier`/`description`/whatever
+ *    else it declares and gains one more key. Existing items of the category
+ *    are untouched on disk — `select.ts` and `mutate.ts` are what read
+ *    `enabled`, and they stop selecting the category for injection and stop
+ *    accepting new captures under it, respectively. Nothing here deletes an
+ *    item or edits one.
+ *
+ * ── WHY BOTH FUNCTIONS RE-READ THE FILE RATHER THAN TRUST A CALLER'S
+ *    ALREADY-RESOLVED `Config` ───────────────────────────────────────────────
+ *
+ * The same reason `writeBudgets` re-reads (`currentBudgets`, budgets-write.ts):
+ * a `Workspace`'s `config` can be a snapshot taken earlier in the process, and
+ * writing through it would overwrite whatever changed on disk since. Reading
+ * fresh is also what makes "a malformed result is refused rather than
+ * written" a real check rather than a promise: if the file stopped parsing, or
+ * stopped resolving, between whenever it was last loaded and this call, that
+ * is caught here — before either function touches disk — rather than shipping
+ * a `config.json` this build, or the next reader of it, can no longer load.
+ *
+ * ── THE BACKUP ──────────────────────────────────────────────────────────────
+ *
+ * Made from the file's own bytes, byte for byte, via `copyFileSync` — never a
+ * re-serialization of the parsed object, which would silently normalize
+ * whitespace, key order or a trailing comment a JSON5-tolerant hand-edit left
+ * behind. `null` only when there was no file to copy — a shipped category
+ * disabled in a workspace whose `config.json` does not exist at all, which
+ * `mycontext init` prevents in practice but this module does not assume.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/** Thrown by `deleteCustomCategory`/`disableCategory` for every refusal they
+ * make. A caller (the CLI command) shows `.message` verbatim — it already
+ * carries the `my_context:` prefix and the "nothing was written" close that
+ * `STD-error-message-conventions` asks for. */
+export class CategoryWriteRefusal extends Error {}
+
+/** `.my_context/config.json` under a corpus directory — `budgets-write.ts`'s
+ * own `configFile`, respelled here because that one is module-private. */
+function categoryConfigFile(corpusDir: string): string {
+  return path.join(corpusDir, 'config.json');
+}
+
+/**
+ * `config.json`'s raw JSON object, read FRESH off disk, plus the exact text
+ * (for the backup) and whether a file existed at all.
+ *
+ * Absent file resolves to `{}` — the same reading `resolveConfig` gives an
+ * absent config: pure defaults, nothing to refuse. A file that does not parse,
+ * or does not hold a JSON object, is a `CategoryWriteRefusal` naming the file
+ * and the reason, exactly as `requireCategoryKeys` and `resolveConfig` refuse
+ * the same shapes when LOADING — this is the same rule applied before a WRITE.
+ */
+function readRawCategoryConfig(
+  corpusDir: string,
+): { raw: Record<string, unknown>; file: string; existed: boolean } {
+  const file = categoryConfigFile(corpusDir);
+  if (!existsSync(file)) return { raw: {}, file, existed: false };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (err) {
+    throw new CategoryWriteRefusal(
+      `my_context: ${file} is not valid JSON, so a category cannot be written through it: ` +
+      `${err instanceof Error ? err.message : String(err)}. Fix the file first. Nothing was ` +
+      `written.`,
+    );
+  }
+  if (!isObject(parsed)) {
+    throw new CategoryWriteRefusal(
+      `my_context: ${file} is ${JSON.stringify(parsed)}, not an object, so a category cannot ` +
+      `be written through it. Fix the file first. Nothing was written.`,
+    );
+  }
+  return { raw: parsed, file, existed: true };
+}
+
+/** The raw `categories` object off a raw config, refused rather than silently
+ * replaced when the key is present and is not one (`INV-nothing-is-dropped-
+ * silently`: a caller who thinks their malformed `"categories": []` is about
+ * to be read is not served by this function quietly overwriting it). */
+function rawCategoriesOf(raw: Record<string, unknown>, file: string): Record<string, unknown> {
+  if (raw.categories === undefined) return {};
+  if (!isObject(raw.categories)) {
+    throw new CategoryWriteRefusal(
+      `my_context: ${file}'s "categories" is ${JSON.stringify(raw.categories)}, not an object, ` +
+      `so a category cannot be written through it. Fix the file first. Nothing was written.`,
+    );
+  }
+  return raw.categories;
+}
+
+/**
+ * The safety net named in the header: `next` must still be a config this
+ * build can load, or the write is refused rather than made. Every transform
+ * both functions below perform — deleting one key, or setting `enabled:
+ * false` on one — is safe by construction against a `raw` that already
+ * resolved; this is what catches the case where it did not, without either
+ * function having to re-derive `resolveConfig`'s own rules.
+ */
+function assertStillResolves(next: Record<string, unknown>, file: string, doing: string): void {
+  try {
+    resolveConfig(next);
+  } catch (err) {
+    throw new CategoryWriteRefusal(
+      `my_context: ${doing} would leave ${file} unable to load: ` +
+      `${err instanceof Error ? err.message : String(err)} Nothing was written.`,
+    );
+  }
+}
+
+/** One ISO instant, filesystem-safe — the backup suffix. Millisecond
+ * precision is enough: nothing here calls either writer twice in one tick. */
+function backupSuffix(): string {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+/**
+ * Copies `file` to a sibling `<file>.bak-<timestamp>` when it existed, then
+ * writes `next` to `file` — in that order, so the copy is always of what was
+ * there before this write and a failed copy never leaves a write behind it
+ * with nothing to restore from.
+ */
+function backupThenWrite(
+  file: string, existed: boolean, next: Record<string, unknown>,
+): string | null {
+  let backupPath: string | null = null;
+  if (existed) {
+    backupPath = `${file}.bak-${backupSuffix()}`;
+    copyFileSync(file, backupPath);
+  }
+  writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  return backupPath;
+}
+
+/** What `deleteCustomCategory`/`disableCategory` report back to their caller —
+ * the CLI command, which prints the backup path and the write's outcome. */
+export interface CategoryWriteResult {
+  action: 'delete' | 'disable';
+  category: string;
+  /** Where the pre-write copy of `config.json` was written, or `null` when
+   * there was no existing file to copy. */
+  backupPath: string | null;
+  /** `false` when the requested state already held and nothing was written —
+   * `disableCategory` on a category already carrying `enabled: false`. */
+  wrote: boolean;
+}
+
+/**
+ * Removes `category`'s entry from `config.json`'s `categories` object.
+ *
+ * Refuses BY NAME on a SHIPPED category — see the header — and refuses when
+ * the category has no entry to remove at all: an id that resolves only
+ * because it is shipped, or a name nothing declares, is not something this
+ * function can delete, and reporting success on either would be exactly the
+ * accepted-and-dropped write this module exists to rule out.
+ */
+export function deleteCustomCategory(corpusDir: string, category: string): CategoryWriteResult {
+  if (Object.hasOwn(CATEGORIES, category)) {
+    throw new CategoryWriteRefusal(
+      `my_context: "${category}" ships with my_context and can never be deleted. It is ` +
+      `resolved from the catalogue (core/categories.ts) no matter what config.json says, so ` +
+      `removing its entry would not make the category disappear — it would only discard ` +
+      `whatever this project customised about it, while reporting the delete as done. Use ` +
+      `\`mycontext config ${category} --disable\` instead: it stops new captures and ` +
+      `injection under this category while the declaration and every item already carrying ` +
+      `it are left exactly as they are. Nothing was written.`,
+    );
+  }
+  const { raw, file, existed } = readRawCategoryConfig(corpusDir);
+  const categories = rawCategoriesOf(raw, file);
+  if (!Object.hasOwn(categories, category)) {
+    throw new CategoryWriteRefusal(
+      `my_context: ${file} does not declare a category named "${category}" — there is ` +
+      `nothing to delete. \`mycontext status\` lists the categories this workspace resolves. ` +
+      `Nothing was written.`,
+    );
+  }
+
+  const nextCategories = { ...categories };
+  delete nextCategories[category];
+  const next = { ...raw, categories: nextCategories };
+  assertStillResolves(next, file, `deleting "${category}"`);
+
+  const backupPath = backupThenWrite(file, existed, next);
+  return { action: 'delete', category, backupPath, wrote: true };
+}
+
+/**
+ * Sets `category`'s entry to carry `enabled: false`, creating the entry if
+ * `config.json` declares none. Legal on a shipped category or a custom one —
+ * see the header — and refused only when `category` is neither: not in the
+ * catalogue and not declared, which is a name this workspace does not
+ * recognise at all.
+ *
+ * A no-op, reported rather than performed, when the category already carries
+ * `enabled: false`: `wrote: false` and `backupPath: null`, and the file is
+ * never touched — writing the same bytes back and calling it a backup would
+ * be a copy of a copy for no reason.
+ */
+export function disableCategory(corpusDir: string, category: string): CategoryWriteResult {
+  const shipped = Object.hasOwn(CATEGORIES, category);
+  const { raw, file, existed } = readRawCategoryConfig(corpusDir);
+  const categories = rawCategoriesOf(raw, file);
+  const declared = Object.hasOwn(categories, category);
+
+  if (!shipped && !declared) {
+    throw new CategoryWriteRefusal(
+      `my_context: "${category}" is not a category this workspace knows — it is not shipped, ` +
+      `and ${file} does not declare it. \`mycontext status\` lists the categories this ` +
+      `workspace resolves. Nothing was written.`,
+    );
+  }
+
+  const existingEntryRaw = categories[category];
+  const existingEntry = isObject(existingEntryRaw) ? existingEntryRaw : {};
+  if (existingEntryRaw !== undefined && !isObject(existingEntryRaw)) {
+    throw new CategoryWriteRefusal(
+      `my_context: ${file}'s category "${category}" is ${JSON.stringify(existingEntryRaw)}, ` +
+      `not an object, so it cannot be disabled through it. Fix the file first. Nothing was ` +
+      `written.`,
+    );
+  }
+  if (existingEntry.enabled === false) {
+    return { action: 'disable', category, backupPath: null, wrote: false };
+  }
+
+  const nextCategories = { ...categories, [category]: { ...existingEntry, enabled: false } };
+  const next = { ...raw, categories: nextCategories };
+  assertStillResolves(next, file, `disabling "${category}"`);
+
+  const backupPath = backupThenWrite(file, existed, next);
+  return { action: 'disable', category, backupPath, wrote: true };
 }

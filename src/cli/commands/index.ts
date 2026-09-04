@@ -4,6 +4,7 @@
  */
 import './ack.ts';
 import './audit.ts';
+import './config.ts';
 import './decay.ts';
 import './doctor.ts';
 import './edit.ts';

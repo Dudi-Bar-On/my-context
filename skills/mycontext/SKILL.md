@@ -78,8 +78,9 @@ Scope, `always`, `continuity`, severity and status stay refused either way; the 
 `mycontext supersede --yes`, `mycontext edit --yes`, `mycontext refresh --yes`,
 `mycontext review promote-revision --yes`, `mycontext procedure activate --yes`,
 `mycontext procedure done --yes`, `mycontext repair --yes`,
-`mycontext focus --yes` and
-`mycontext pack import --yes --overwrite-changed` all change
+`mycontext focus --yes`,
+`mycontext pack import --yes --overwrite-changed` and
+`mycontext config --delete|--disable --yes` all change
 what governs here — `supersede` retires an active governing item; `edit` changes
 any field of one, including the scope, `always` and severity `update_item`
 refuses; `refresh` replaces a governing body with whatever the file it snapshots
@@ -90,7 +91,8 @@ re-stamps a checksum, turning a hand edit of those same fields into a clean
 change with no evidence left; `pack import --overwrite-changed` replaces an
 item the user wrote with a stranger's and drops it to `draft`, and `--yes`
 alone does not reach that second gate; `focus` hides every non-matching item
-from later sessions. **Nothing in this plugin
+from later sessions; `config` disables or deletes a category, taking every item
+it carries out of injection. **Nothing in this plugin
 stops an agent with a shell from running them** — nor from writing into
 `.my_context/` by shell redirect and running `mycontext rebuild`, which the
 `PreToolUse` write-deny does not see: its matcher covers the file tools, not
@@ -104,7 +106,7 @@ confirmation prompt; it is an audit trail, not a lock.
 
 So: never run `add` on a normative category, `inbox-promote`, `supersede`,
 `edit` (`pin`/`unpin`/`harden`/`soften`), `refresh`, `repair`, `lesson-accept`,
-`procedure activate`, `procedure done`, `pack import`, `focus`,
+`procedure activate`, `procedure done`, `pack import`, `focus`, `config`,
 `review promote`, `review discard`, `review promote-revision` or
 `review discard-revision` — which governs nothing, but ends a proposal for
 good — on the user's behalf, and never route around a refusal with `--yes`.

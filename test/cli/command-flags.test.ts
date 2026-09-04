@@ -114,6 +114,9 @@ const BORN_HERE: Record<string, string> = {
   ack: 'cli/commands/ack.ts — the command itself is newer than this module (owner ruling '
     + '2026-08-27, doctor findings become acknowledgeable), so its spec was authored here '
     + 'and has never lived anywhere else.',
+  config: 'cli/commands/config.ts — the command itself is newer than this module (rulings/20 '
+    + 'widened, shipped 2026-09-04), so its spec was authored here and has never lived '
+    + 'anywhere else.',
 };
 
 /**

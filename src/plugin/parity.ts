@@ -107,6 +107,11 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
     'every origin but `human`, and a slash command is a model typing the command - which is ' +
     'the one caller this write exists to exclude. It is read out of `mycontext doctor` and ' +
     'typed by the person who read it.',
+  config: 'Edits the config that governs what every item of a category may declare, so its ' +
+    'blast radius is the corpus rather than one item — which is why it prints the number of ' +
+    'items a change would touch, and copies config.json aside before writing. Both exist to ' +
+    'be READ by the person about to consent, and a slash command is a model typing the ' +
+    'command past them. It is on the recommended deny list for the same reason `repair` is.',
   init: 'Creates the workspace. It is what you run before there is anything for a slash ' +
     'command to talk to, and the plugin\'s own SessionStart hook tells you to run it.',
   rebuild: 'Reconstructs the index from the Markdown. Every command that reads the corpus ' +
@@ -236,6 +241,16 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       '`human`, unconditionally — there is no `--agent` escape hatch here the way `mycontext ' +
       'lesson` has one. A tool call IS a non-human caller by construction, so a tool for `ack` ' +
       'would exist only to be refused on every call.',
+  },
+  config: {
+    disposition: 'intended',
+    reason:
+      'It rewrites the config that decides what every item of a category may declare, and ' +
+      'its two safeguards are both things a PERSON reads: the count of items a change would ' +
+      'touch, printed before the gate, and the backup path printed after. A tool call ' +
+      'consumes neither — it would satisfy `--yes` by passing a flag, which is consent ' +
+      'without the reading the consent is for. `CLI_WITHOUT_SLASH.config` forecloses the ' +
+      'slash command on the same ground, and the recommended deny list agrees.',
   },
   decay: {
     disposition: 'owed',

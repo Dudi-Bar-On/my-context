@@ -32,51 +32,93 @@
  * fake DOM, which can prove a node was built and can prove nothing about a
  * person being able to read it.
  *
- * ── AND WHY IT DRIVES THE LIVE CORPUS ──────────────────────────────────────
+ * ── AND WHY IT NO LONGER DRIVES THE LIVE CORPUS ────────────────────────────
  *
- * `REQ-the-web-ui-is-dogfooded-against-this-corpus-and-the-e2e`, in the owner's
- * own words: *"this repository's own corpus … is what it displays and
- * manipulates. Not a fixture, not a seeded demo workspace."* `e2e/app.ts` points
- * the rest of the suite at `.demo-corpus` for one specific reason — the parity
- * ledger measures gaps that a live corpus changes daily — and that reason does
- * not apply here. The defect the owner met was on his own corpus, on his own
- * row, and this drives that.
+ * It used to. `REQ-the-web-ui-is-dogfooded-against-this-corpus-and-the-e2e`, in
+ * the owner's own words: *"this repository's own corpus … is what it displays
+ * and manipulates. Not a fixture, not a seeded demo workspace."* That held for
+ * exactly as long as the live corpus carried a finding this spec could rule on
+ * WITHOUT writing to it — an already-acknowledged `acknowledge`-routed finding,
+ * so that the one command this file runs (`ack`, re-run against a current
+ * ruling) hits `mutate.ts`'s `before === 'current'` return and persists
+ * nothing. Doctor went from 95 findings to zero the same week, on the strength
+ * of the very settling features this suite exercises, and the corpus this spec
+ * needs is gone with them — the same fact `doctor-settle.spec.ts` records at
+ * length for its own control.
  *
- * It is safe to drive live, and the safety is a property rather than a hope:
- * **the only command this file runs is `ack` on a finding that is ALREADY
- * acknowledged**, which `mutate.ts` answers by returning before it persists
- * anything. That is checked as a PRECONDITION below rather than assumed, and it
- * is the same act the owner performed. Nothing else here is a write, and the
- * server this spec starts pins its session store out of `~/.my-context`
- * through `test/ui/helpers.ts` so no tab of the owner's is evicted.
+ * **The owner's exception, given for that file and extended here for the
+ * identical reason:** *"Each spec builds its own temp workspace with ONE
+ * deliberate finding, exercises settlement on screen, and throws it away. The
+ * live corpus is never touched."* This spec's control is the PER-ROW
+ * `mycontext ack`, which `screens/doctor.js` draws for a single finding
+ * regardless of count — unlike `doctor-settle.spec.ts`'s bulk control, which
+ * needs two findings of one code before it draws at all — so one deliberate
+ * finding is exactly what this spec's own control requires, matching the
+ * owner's words without stretching them.
+ *
+ * `./doctor-workspace.ts` holds the scaffolding this file shares with
+ * `doctor-settle.spec.ts`: spawn the CLI, `mkdtemp` and `init` a workspace, seed
+ * one rule whose body retracts its own premise. What is NOT shared is how each
+ * file finishes building its workspace, because the two need different states —
+ * `doctor-settle.spec.ts` needs two OPEN findings and never acknowledges either;
+ * this file needs one finding ALREADY ruled on, so `makeAckedWorkspace` below
+ * runs `mycontext ack` once, for real, through the CLI, before the server ever
+ * starts. That is the one write this file makes, and it lands in the throwaway
+ * workspace's own item file — never in `.my_context/`.
  *
  * ── WHAT IS ASSERTED, AND WHAT IS DELIBERATELY NOT ────────────────────────
  *
- * The corpus moves under this test, so it asserts SHAPES and one sentence the
- * CLI guarantees for the precondition it establishes. It does NOT name
- * `REF-v2-handover-…` or `dead_scope`: the owner's row is one instance of the
- * class "a finding somebody has already ruled on", and pinning the id would
- * make this spec red on the day he re-scopes that glob — for a reason that has
- * nothing to do with what it measures.
+ * The workspace is built fresh per run, so it asserts SHAPES and one sentence
+ * the CLI guarantees for the precondition it establishes, rather than an id or
+ * a code pinned to this corpus's current content.
  */
-import path from 'node:path';
+import { rmSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
-
-/** THIS repository's own corpus — the dogfooding requirement, not a fixture. */
-const LIVE = path.resolve(import.meta.dirname, '..');
+import {
+  initWorkspace, runCli, seedRetractingRule, RETRACTING_CODE,
+} from './doctor-workspace.ts';
 
 const DOCTOR = '[data-p="doctor"]';
 
+/**
+ * `mkdtemp`'d, `init`'d, seeded with ONE rule whose body retracts its own
+ * premise, `ack`'d once for real through the CLI, `rebuild`'t, and handed back
+ * as a bare path.
+ *
+ * **The `ack` here is the precondition, not the thing under test.** It puts
+ * the workspace in the exact state the owner's report started from — a
+ * finding a person has already ruled on — so that the run THIS SPEC drives
+ * through the browser is a re-acknowledgement, which `mutate.ts` answers
+ * without writing anything. That is checked below as an assertion (`exit 0`
+ * and the composed sentence), not assumed from this function having run.
+ *
+ * **`rebuild` after `ack` is not redundant belt-and-suspenders left over from
+ * copying `doctor-settle.spec.ts`.** `/api/doctor` is served through
+ * `withStores`, which opens the SQLite-backed index as it stands rather than
+ * rebuilding it — `doctor-settle.spec.ts`'s own comment carries the same
+ * argument for the same reason. `ack`'s own write path rebuilds and closes its
+ * store, which behind an ordinary filesystem is already enough; the explicit
+ * `rebuild` here removes any dependence on exactly when SQLite's WAL is
+ * checkpointed back into the database file, matching the one other file that
+ * starts a UI server over a workspace this command just wrote to.
+ */
+function makeAckedWorkspace(): string {
+  const root = initWorkspace('myctx-e2e-execute-output-');
+  const id = seedRetractingRule(root, 'Already-ruled probe rule');
+  runCli(root, ['ack', id, RETRACTING_CODE]);
+  runCli(root, ['rebuild']);
+  return root;
+}
+
 test('a run shows what the command SAID, not only that it exited', async ({ page }) => {
-  // Two full-corpus operations back to back on a 765-item corpus: the confirm
-  // GET copies the workspace and runs the command against the copy, and the
-  // POST then re-runs every doctor check. Measured 12–40s on this machine.
-  test.setTimeout(360_000);
+  test.setTimeout(120_000);
 
   let harness: UiHarness | undefined;
+  let root: string | undefined;
   try {
-    harness = await startUiChild(LIVE);
+    root = makeAckedWorkspace();
+    harness = await startUiChild(root);
     const h = harness;
     await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
     await expect(
@@ -95,23 +137,24 @@ test('a run shows what the command SAID, not only that it exited', async ({ page
     await page.reload();
     await expect(
       page.locator(`${DOCTOR} td .cmdactions`).first(),
-      'the Doctor screen drew no row-scoped control at all — this corpus may have no finding '
-      + 'whose remedy is `acknowledge`, which `mycontext doctor` would say',
-    ).toBeVisible({ timeout: 120_000 });
+      'the Doctor screen drew no row-scoped control at all — `makeAckedWorkspace` seeds exactly '
+      + 'one finding whose remedy is `acknowledge`, so this means the seeding itself failed '
+      + 'rather than that the corpus happened to have nothing to offer',
+    ).toBeVisible({ timeout: 60_000 });
 
     // ── THE TARGET: a finding SOMEBODY HAS ALREADY RULED ON, whose command
     // names exactly one row.
     //
-    // Already-acknowledged is the whole of what makes this safe to drive over
-    // the owner's live corpus: `mutate.ts` returns before it persists when the
-    // ruling is current, so this run writes no item. It is also the exact state
-    // the owner was in, which is why his press could only ever answer "nothing
-    // was written".
+    // Already-acknowledged is the whole of what makes the run below a no-op:
+    // `mutate.ts` returns before it persists when the ruling is current, so
+    // this run writes no item. It is also the exact state the owner was in,
+    // which is why his press could only ever answer "nothing was written".
     //
-    // One row per key, for `doctor-outcome.spec.ts`'s reason: `ack` answers for
-    // an item and a CODE, one item can raise one code several times, and rows
-    // that compose an identical line cannot be told apart by anything this test
-    // could ask afterwards.
+    // Read off the served screen rather than assumed from `makeAckedWorkspace`
+    // having run: the workspace is built to hold exactly one settleable row,
+    // but the assertion below is what actually proves it drew as one — the
+    // same precondition-checked-not-assumed shape `doctor-outcome.spec.ts`
+    // uses for its own three preconditions.
     const settleable = await page.locator(`${DOCTOR} tbody tr`).evaluateAll((rows) => rows
       .map((tr) => ({
         key: tr.querySelector('td .cmdactions')?.getAttribute('data-cmdkey') ?? null,
@@ -123,11 +166,10 @@ test('a run shows what the command SAID, not only that it exited', async ({ page
     const ruled = settleable.filter((r) => r.ruled && tally.get(r.key) === 1);
     expect(
       ruled.length,
-      'this corpus holds no finding that a person has already acknowledged AND whose `ack` line '
-      + 'names one row, so there is no run this spec can make WITHOUT writing to the live '
-      + 'corpus. It is refused rather than routed around: running `ack` on an unruled finding '
-      + 'would record a ruling nobody took. Acknowledge one finding by hand and this passes '
-      + `again. Measured 2026-09-03: 72 settleable rows, 2 of them already ruled on.`,
+      'this throwaway workspace holds no finding a person has already acknowledged AND whose '
+      + '`ack` line names one row — `makeAckedWorkspace` (./doctor-workspace.ts) is supposed to '
+      + 'seed exactly that, so this means the seeding failed rather than that a real corpus ran '
+      + 'dry.',
     ).toBeGreaterThan(0);
     const command = ruled[ruled.length - 1]!.key;
     expect(command, 'the chosen row does not compose an ack').toMatch(/^mycontext ack /);
@@ -181,7 +223,7 @@ test('a run shows what the command SAID, not only that it exited', async ({ page
     const actions = row.locator('td .cmdactions');
     await actions.getByRole('button', { name: 'Execute', exact: true }).click();
     const confirm = actions.locator('div.confirm');
-    await confirm.waitFor({ state: 'visible', timeout: 180_000 });
+    await confirm.waitFor({ state: 'visible', timeout: 60_000 });
     await expect(
       confirm.locator('div.cmd code'),
       'the confirm must show the exact argv this row is about to run',
@@ -192,7 +234,7 @@ test('a run shows what the command SAID, not only that it exited', async ({ page
     await expect(
       outcome,
       'the run reported no exit code at all',
-    ).toHaveCount(1, { timeout: 180_000 });
+    ).toHaveCount(1, { timeout: 60_000 });
     await expect(
       outcome,
       're-acknowledging a current ruling is a no-op the CLI returns cleanly from; a non-zero '
@@ -263,5 +305,13 @@ test('a run shows what the command SAID, not only that it exited', async ({ page
     ).toBeLessThanOrEqual(box.windowWidth);
   } finally {
     if (harness !== undefined) await harness.stop();
+    // Best-effort, and deliberately not awaited into a failure: a Windows
+    // SQLite handle can outlive the child's own `exit` event by a beat, and a
+    // failed cleanup of a disposable temp directory is not a reason to fail an
+    // assertion that already passed — `doctor-settle.spec.ts` and
+    // `doctor-outcome.spec.ts` carry the identical argument.
+    if (root !== undefined) {
+      try { rmSync(root, { recursive: true, force: true }); } catch { /* see above */ }
+    }
   }
 });

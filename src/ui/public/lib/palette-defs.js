@@ -180,6 +180,30 @@ export const PALETTE = [
     ],
   },
   {
+    // **`mycontext config <name> --delete|--disable [--yes]`** — disables or
+    // deletes a whole CATEGORY rather than any one item. `rulings/20`, owner
+    // ruling 2026-09-04, given directly: "a config writer with DELETE (custom
+    // categories only — shipped ones are never deletable), DISABLE for
+    // shipped ones, --yes for Execute, backup-before-write, and an item-count
+    // warning before a change touching many items."
+    //
+    // **`boundary: true`, derived and not chosen.** `mycontext config` takes
+    // `--yes` (`COMMAND_FLAGS.config`), and `approvalBoundary()` reads the
+    // boundary off exactly that. `--delete` and `--disable` name two
+    // different acts on the category named by the positional; the CLI
+    // refuses a line carrying both, and it is one this catalogue can compose
+    // — the sweep in `test/ui/palette-lib.test.ts` exercises one flag at a
+    // time, which is also the only combination a reader building one command
+    // would ever want.
+    name: 'config', kind: 'write', base: ['mycontext', 'config'], boundary: true,
+    args: [{ name: 'category', source: 'categories', required: true }],
+    flags: [
+      { name: 'delete', boolean: true },
+      { name: 'disable', boolean: true },
+      yes,
+    ],
+  },
+  {
     name: 'edit', kind: 'write', base: ['mycontext', 'edit'], boundary: true,
     args: [{ name: 'id', source: 'items', required: true }],
     flags: [
