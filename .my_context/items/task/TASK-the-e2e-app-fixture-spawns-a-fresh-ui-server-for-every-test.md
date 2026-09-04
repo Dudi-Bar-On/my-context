@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The browser suite starts a whole UI server and waits for authentication on every test rather than once per worker, which is most of why it is slow.
-summary_of: f1f1d5347b2cf6bf
+summary_of: 0a3ead921890399a
 scope:
   - e2e/app.ts
   - e2e/global-setup.ts
@@ -24,11 +24,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: eff60e41527b4b4b
+checksum: 2da44d6c49f7bfb7
 plan: walk
 seq: "133"
 state: done
 priority: "2"
+verified_on: 2026-09-04
 ---
 
 # the e2e app fixture spawns a fresh UI server for every test instead of once per worker

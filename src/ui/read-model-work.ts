@@ -162,7 +162,7 @@ export function apiSearch(ws: Workspace, url: URL): JsonResult {
   const relation = url.searchParams.get('relation');
   const type = url.searchParams.get('type');
   // `Object.hasOwn`, not a bare index: the categories map is null-prototype
-  // (`config.ts` · `const categories: Record<string, ResolvedCategory> = Object.create(null);` · ~1140).
+  // (`core/config.ts` · `const categories: Record<string, ResolvedCategory> = Object.create(null);` · ~1140).
   if (type !== null && !Object.hasOwn(ws.config.categories, type)) {
     return badRequest(
       `unknown category ${JSON.stringify(type)} — this config declares: ` +

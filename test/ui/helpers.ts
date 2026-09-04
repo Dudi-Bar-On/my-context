@@ -211,3 +211,27 @@ export async function redeemNonce(port: number, nonce: string): Promise<string> 
   if (response.status !== 200) throw new Error(`handoff refused: ${response.status}`);
   return ((await response.json()) as { token: string }).token;
 }
+
+/**
+ * Mint a FRESH one-shot handoff nonce from a server that is already running —
+ * `POST /api/nonce`, the same route `mycontext ui --nonce` uses to recover a
+ * tab that lost its credential, per `KNOWN-a-locked-out-tab-can-only-be-
+ * recovered-by-the-restart-that-locks-out-the-next-one`. `src/ui/server.ts`
+ * exempts this route from the token check the same way it exempts
+ * `/api/handoff`, so a fresh, unauthenticated caller may ask for one.
+ *
+ * **Why `e2e/app.ts` needs this at all.** A server started with `startUiChild`
+ * prints exactly one nonce, in its readiness line, and a nonce is redeemed
+ * exactly once. That is fine for a server one test owns start to finish. It
+ * is not fine for a server a WORKER owns across many tests: the first test to
+ * navigate spends the startup nonce, and every test after it would be
+ * carrying a spent one to a browser with no token — precisely the "locked-out
+ * tab" this route exists to recover from, except every test after the first
+ * hits it. Minting one per test through this route is the intended recovery
+ * path, not a workaround bolted beside it.
+ */
+export async function mintNonce(port: number): Promise<string> {
+  const response = await fetch(`http://127.0.0.1:${port}/api/nonce`, { method: 'POST' });
+  if (response.status !== 200) throw new Error(`nonce mint refused: ${response.status}`);
+  return ((await response.json()) as { nonce: string }).nonce;
+}

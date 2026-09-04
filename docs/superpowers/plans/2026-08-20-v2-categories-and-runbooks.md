@@ -158,9 +158,9 @@ a fragment and is re-checked by execution instead — the second table.
 | `standard` is **derived** from `defaultEnabled`, so a new entry joins it for free | `categories.ts` · `  standard: Object.values(CATEGORIES)` · ~339 |
 | `minimal` is a hand-written list of eight names; a new category joins it only by being typed in | `categories.ts` · `  minimal: [` · ~335 |
 | Nothing may ship disabled by default, and that is asserted | `core/categories.test.ts` · `test('the catalogue ships no category disabled by default', () => {` · ~37 |
-| The tier decides the edit-policy default | `config.ts` · `export function defaultAgentEdits(tier: Tier): AgentEdits {` · ~147 |
-| A user may add or retier a category through `config.json`; the accepted keys are pinned, and `extraFields` is **one of the seven** — it joined the list on 2026-08-20, and the comment above the list says why | `config.ts` · `const CATEGORY_KEYS = [` · ~399 |
-| The resolved shape the rest of the code reads | `config.ts` · `export interface ResolvedCategory {` · ~96 |
+| The tier decides the edit-policy default | `core/config.ts` · `export function defaultAgentEdits(tier: Tier): AgentEdits {` · ~147 |
+| A user may add or retier a category through `config.json`; the accepted keys are pinned, and `extraFields` is **one of the seven** — it joined the list on 2026-08-20, and the comment above the list says why | `core/config.ts` · `const CATEGORY_KEYS = [` · ~399 |
+| The resolved shape the rest of the code reads | `core/config.ts` · `export interface ResolvedCategory {` · ~96 |
 
 ### The tier, and why `todo` and `note` are nearly free
 

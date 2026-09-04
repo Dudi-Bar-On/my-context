@@ -2959,7 +2959,7 @@ git commit -m "feat(ui): status, doctor and decay read model"
 - Test: extend `test/ui/read-model.test.ts`
 
 **Interfaces:**
-- Consumes: `matchesScope` (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~266), `injection` (`cli/commands/injection.ts` · `export function injection(` · ~84), `listRepoFiles` (`doctor/checks.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~74), `helpTopic`/`HELP_TOPICS` (`help/index.ts`), `scopePolicyFor` (`config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~179), `isLoadBearing` (`core/focus.ts`), `Ledger.usage`.
+- Consumes: `matchesScope` (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~266), `injection` (`cli/commands/injection.ts` · `export function injection(` · ~84), `listRepoFiles` (`doctor/checks.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~74), `helpTopic`/`HELP_TOPICS` (`help/index.ts`), `scopePolicyFor` (`core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~179), `isLoadBearing` (`core/focus.ts`), `Ledger.usage`.
 - Produces:
   - `apiCoverage(ws, url): JsonResult` — `GET /api/coverage` →
 

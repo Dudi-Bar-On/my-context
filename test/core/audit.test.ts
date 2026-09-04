@@ -399,6 +399,10 @@ test('no pre-existing op changed kind', () => {
     ['post-compact',
       'file-changed', 'instructions-loaded', 'config-change', 'permission-denied',
       'subagent-stop', 'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion',
+      // `agent-dispatched` (2026-09-04) ends HOOK_OPS, one place before ACCESS_OPS
+      // starts in AUDIT_OPS's own spread order — see its docblock in
+      // src/core/audit.ts for why it is a `hook` op.
+      'agent-dispatched',
       'nonce-minted', 'execute', 'execute-done'],
   );
   assert.equal(kindOf('nonce-minted'), 'access', 'a mint is the access kind\'s second op, not a hook');

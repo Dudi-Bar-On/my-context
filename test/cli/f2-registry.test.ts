@@ -202,6 +202,17 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [constraintId(added.out)];
   },
 
+  // `mycontext config <name> --delete|--disable [--yes]` (`rulings/20`).
+  // `--disable` rather than `--delete` because it is legal on either a shipped
+  // or a custom category and needs no custom category set up first; `--yes`
+  // because stdin is not interactive under `node --test` and `confirmAction`
+  // refuses without it by design. Its success path opens `openMutateContext`
+  // for the item-count warning before the write, which is the F2 seam.
+  config: (cwd) => {
+    plantUnrelatedCorruptItem(cwd);
+    return ['constraint', '--disable', '--yes'];
+  },
+
   rebuild: (cwd) => {
     run(['add', '--summary-omitted', 'constraint', 'An indexed item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);

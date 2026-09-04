@@ -58,7 +58,12 @@ test('each new op is appended to its own family, moving no member before it', ()
       // reader of `mycontext audit --op` sees them as one family: everything
       // Claude Code tells my_context about that my_context does not act on.
       'file-changed', 'instructions-loaded', 'config-change', 'permission-denied',
-      'subagent-stop', 'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion'],
+      'subagent-stop', 'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion',
+      // `agent-dispatched` (2026-09-04), appended after everything above it and
+      // moving no existing member — see `AUDIT_OPS`'s own comment on it in
+      // `src/core/audit.ts` for why it is a reuse of `PostToolUse` rather than a
+      // new hook, and why it is a `hook` op and not folded into `post-tool-use`.
+      'agent-dispatched'],
   );
 });
 

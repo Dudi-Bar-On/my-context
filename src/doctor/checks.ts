@@ -1194,12 +1194,12 @@ export function checkUnknownCategory(items: Item[], config: Config): Finding[] {
  * person who wrote them.**
  *
  * `resolveConfig` accepts an unknown top-level key, leaves it out of the
- * resolved config, and carries it on `skippedKeys` (`config.ts` ·
+ * resolved config, and carries it on `skippedKeys` (`core/config.ts` ·
  * `  skippedKeys: string[];` · ~529). That field's own docblock states the
  * consequence as a duty rather than a convenience: *"a surface that shows
  * config to a human and does not print this notice has re-created the silent
  * drop this field exists to end."* Until this check existed, the only caller
- * of `skippedKeyNotice` (`config.ts` ·
+ * of `skippedKeyNotice` (`core/config.ts` ·
  * `export function skippedKeyNotice(config: Config): string {` · ~1637) was
  * the web UI's `/api/config` — so a `"uiu"` one transposed letter from
  * `"ui"` made `doctor` report `0 error(s), 0 warning(s), 0 note(s)` and the

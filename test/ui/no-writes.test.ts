@@ -252,6 +252,13 @@ const WRITERS: Record<string, string[]> = {
   // Execute preview shipped and this ban said nothing, because a binding-shaped
   // ban can only see modules its table already names. Ruled in below.
   'src/ui/execute-effect.ts': ['deriveEffect'],
+  // Landed 2026-09-04 with `mycontext config <name> --delete|--disable
+  // [--yes]` (`rulings/20`) — the first command-line write to `config.json`.
+  // `deleteCustomCategory` and `disableCategory` are the two exported symbols
+  // that carry the write; `backupThenWrite`, `backupSuffix` and
+  // `assertStillResolves` are the private helpers those two call and are not
+  // themselves importable, so they carry nothing this ban needs to name.
+  'src/core/config.ts': ['deleteCustomCategory', 'disableCategory'],
 };
 
 const isWriter = (module: string, symbol: string): boolean =>

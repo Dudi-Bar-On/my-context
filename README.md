@@ -1889,7 +1889,7 @@ my_context has two surfaces over one corpus. One is for you, one is for the mode
 split is deliberate rather than historical.
 
 **You** type slash commands inside a Claude Code session, or run the `mycontext` command in
-a terminal. **The model** calls the fourteen MCP tools. Both surfaces read and write the same
+a terminal. **The model** calls the sixteen MCP tools. Both surfaces read and write the same
 Markdown files under `.my_context/`, so an item you capture in the terminal is in the
 model's index the next time it looks, and an item the model captures shows up in
 `mycontext list` at once.
@@ -1905,7 +1905,7 @@ draft, retiring a governing item. How far that separation actually holds is
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>88 slash commands"]
   U --> CL["<b>mycontext …</b><br/>41 CLI commands"]
-  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>fourteen, served over stdio"]
+  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>sixteen, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
   TL --> CO["<b>.my_context/</b><br/>one corpus of Markdown,<br/>in your repository"]
@@ -6111,7 +6111,7 @@ the note, which is the price of one op rather than two.
 
 **The requirement, in the user's words:** anything the model can do through a tool, you
 should be able to do through a command. **This is now satisfied, and enforced by a test
-rather than by review.** Every one of the fourteen MCP tools has a CLI command, a slash
+rather than by review.** Every one of the sixteen MCP tools has a CLI command, a slash
 command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test.ts` checks
 it against the usage banner the program prints and the files in `commands/`.
 
@@ -6416,7 +6416,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
 | **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file the item applies to — one matching its scope, or any file at all if it declares none. Spelled `jit` in the budgets configuration |
 | **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id — [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects) |
-| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves fourteen of them over stdio, and they are the model's only surface short of a shell |
+| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves sixteen of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
 | **pending revision** | a change to an item's title, body, tags or `extra` that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |

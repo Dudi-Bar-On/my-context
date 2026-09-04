@@ -328,7 +328,7 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     // profile — because that is what makes this command one of the surfaces
     // `skippedKeys` names a duty for: "a surface that shows config to a human
     // and does not print this notice has re-created the silent drop this field
-    // exists to end" (`config.ts` · `  skippedKeys: string[];` · ~529).
+    // exists to end" (`core/config.ts` · `  skippedKeys: string[];` · ~529).
     // Before this, a `"uiu"` one transposed letter from `"ui"` printed
     // `profile "standard"` here and NOTHING else — the setting was not in
     // force and the user had no way to learn it at a terminal.

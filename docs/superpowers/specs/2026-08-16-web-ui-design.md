@@ -433,8 +433,8 @@ be the largest instance yet.
 | What would be injected here, and what spills | `select()` | `select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~833 |
 | Does this item govern this path | `matchesScope(item, target, config)` | `select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~266 |
 | Is this item eligible at all | `isEligible(item, config)` | `select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198 |
-| What does an empty scope mean for this category | `scopePolicyFor(config, type)` | `config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~179 |
-| Does an agent's edit apply or wait | `agentEditsFor(config, type)` | `config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~201 |
+| What does an empty scope mean for this category | `scopePolicyFor(config, type)` | `core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~179 |
+| Does an agent's edit apply or wait | `agentEditsFor(config, type)` | `core/config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~201 |
 | Is this item injected, and **on what terms** | `injection(item, config)` | `cli/commands/injection.ts` · `export function injection(` · ~84 |
 | Estimated tokens for a body | `estimateTokens()` | `select.ts` · `export function estimateTokens(text: string): number {` · ~178 |
 | **What is the active focus** | `readFocus(root)` → `FocusState` | `core/focus.ts` · `export function readFocus(root: string): FocusState {` · ~321 |

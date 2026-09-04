@@ -1024,8 +1024,8 @@ categories are **enabled**, and their `prefix` and `scopePolicy`.
 
 **Why a refusal and not a warning — this is the security half.** The original parenthetical, "the
 category configuration (which is what `profile` selects)", was wrong. `profile` selects only which
-categories are *enabled* (`config.ts` · `const enabledByProfile = new Set(PROFILES[profile]);` · ~1126, read at `config.ts` · `enabled: enabledByProfile.has(def.name),` · ~1146); the `categories` block **also** carries `tier` and
-`agentEdits`, and a `tier` override drags `agentEdits` with it (`config.ts` · `} else if (override.tier !== undefined) {` · ~1278). A pack
+categories are *enabled* (`core/config.ts` · `const enabledByProfile = new Set(PROFILES[profile]);` · ~1126, read at `core/config.ts` · `enabled: enabledByProfile.has(def.name),` · ~1146); the `categories` block **also** carries `tier` and
+`agentEdits`, and a `tier` override drags `agentEdits` with it (`core/config.ts` · `} else if (override.tier !== undefined) {` · ~1278). A pack
 shipping `"rule": {"tier": "rationale"}` would land every future agent-authored `rule` **active**
 instead of draft *and* stop every existing `rule` being injected at all — **strictly more power than
 the `--trust` flag this section refuses, delivered through the surface this section called safe.** A
@@ -1035,7 +1035,7 @@ the `--trust` flag this section refuses, delivered through the surface this sect
 merge" was written for a whole-workspace R6 export, where it is correct and **applies there still**.
 This section inherited it from a case it does not fit: a pack config with `budgets` and
 `watchedDocs` stripped — which this section *requires* — would **reset both to product defaults** on
-import (`config.ts` · `if (raw === undefined) return { ...DEFAULT_BUDGETS };` · ~1005 and `config.ts` · `if (raw === undefined) return [...DEFAULT_WATCHED_DOCS];` · ~1051), doing precisely what the next paragraph forbids, through the mechanism
+import (`core/config.ts` · `if (raw === undefined) return { ...DEFAULT_BUDGETS };` · ~1005 and `core/config.ts` · `if (raw === undefined) return [...DEFAULT_WATCHED_DOCS];` · ~1051), doing precisely what the next paragraph forbids, through the mechanism
 chosen to prevent it. A field-wise merge leaves the importer's `budgets` and `watchedDocs` untouched
 by an import.
 
@@ -1377,8 +1377,8 @@ recorded here.
 `--trust` flag because *"a boundary a flag can override is not a boundary."*
 
 **The parenthetical is wrong.** `profile` selects only which categories are *enabled*
-(`config.ts` · `const enabledByProfile = new Set(PROFILES[profile]);` · ~1126, read at `config.ts` · `enabled: enabledByProfile.has(def.name),` · ~1146). The `categories` block **also** carries `tier`, `agentEdits`, `scopePolicy`
-and `prefix` — and a `tier` override drags `agentEdits` with it (`config.ts` · `} else if (override.tier !== undefined) {` · ~1278).
+(`core/config.ts` · `const enabledByProfile = new Set(PROFILES[profile]);` · ~1126, read at `core/config.ts` · `enabled: enabledByProfile.has(def.name),` · ~1146). The `categories` block **also** carries `tier`, `agentEdits`, `scopePolicy`
+and `prefix` — and a `tier` override drags `agentEdits` with it (`core/config.ts` · `} else if (override.tier !== undefined) {` · ~1278).
 
 So a pack shipping `"rule": {"tier": "rationale"}` does two things at once, and `resolveConfig`
 accepts both without complaint because every value is valid:
@@ -1393,7 +1393,7 @@ corpus.
 
 **Second half of the same finding:** §6 says config **replaces**, it does not merge. A pack config
 with `budgets` and `watchedDocs` stripped — which §6h *requires* — resets both to product defaults
-on import (`config.ts` · `if (raw === undefined) return { ...DEFAULT_BUDGETS };` · ~1005 and `config.ts` · `if (raw === undefined) return [...DEFAULT_WATCHED_DOCS];` · ~1051). §6h's own words: *"a pack that silently changed how much context
+on import (`core/config.ts` · `if (raw === undefined) return { ...DEFAULT_BUDGETS };` · ~1005 and `core/config.ts` · `if (raw === undefined) return [...DEFAULT_WATCHED_DOCS];` · ~1051). §6h's own words: *"a pack that silently changed how much context
 mycontext spends would be doing something the user did not ask a template to do."* Exactly that,
 through the mechanism chosen to prevent it.
 
