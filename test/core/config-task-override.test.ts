@@ -41,30 +41,40 @@ import assert from 'node:assert/strict';
 import { resolveConfig } from '../../src/core/config.ts';
 import { CATEGORIES } from '../../src/core/categories.ts';
 
-/** The `task` entry as this repository's outer corpus has carried it since
- * 2026-08-23, verbatim — the definition the catalogue entry was taken from. */
+/**
+ * A project's `task` override that restates the catalogue's shape "in full" —
+ * every field the shipped entry declares, present and correct.
+ *
+ * The previous version of this fixture was a snapshot hand-typed 2026-08-23,
+ * from this repository's own outer corpus, back when `task` still declared
+ * `progress` and `last_change`. Those two were retired from the catalogue
+ * (owner ruling, 2026-09-03) and the snapshot was not: `extraFields` only
+ * EXTENDS (see the module docblock), so the retired names came back onto the
+ * resolved category and stayed there, failing the assertion below against
+ * `CATEGORIES.task.extraFields` for as long as nobody noticed the fixture,
+ * not the merge, was what had gone stale.
+ *
+ * So this is built FROM `CATEGORIES.task` instead of typed by hand, which is
+ * the only way to stop it rotting the same way again — but copying it
+ * verbatim would make the assertions below compare a value to itself, which
+ * proves nothing. `extraFields` is REVERSED and `updates` is rebuilt in
+ * reverse key order: same content as the catalogue, declared in a different
+ * shape than it ships, the way an independently-typed project config would
+ * be. The assertions still only pass if `resolveConfig` puts the CATALOGUE's
+ * order first and collapses the config's repeats — the actual behaviour
+ * under test (documented above `existing.extraFields =` in config.ts) — so a
+ * merge that let the config's order win instead, or that concatenated
+ * without deduping, would fail here even though it would pass against a
+ * verbatim copy.
+ */
 const PROJECT_TASK = {
   tier: 'rationale',
   prefix: 'TASK',
-  description:
-    'A unit of planned work, tracked to completion. Its plan, sequence, state and progress '
-    + 'live in extra fields; the body is what the task actually requires.',
-  extraFields: ['plan', 'seq', 'state', 'progress', 'source', 'last_change', 'priority', 'needs'],
-  updates: {
-    state: {
-      store: 'field',
-      values: ['todo', 'doing', 'blocked', 'done'],
-      projectsTo: 'state',
-      note: 'Where this task is.',
-    },
-    plan: { store: 'field', projectsTo: 'plan', note: 'Which body of work it belongs to.' },
-    seq: { store: 'field', projectsTo: 'seq', note: 'Position within the plan.' },
-    priority: { store: 'field', values: ['1', '2', '3', '4'], note: '1 is highest.' },
-    progress: { store: 'field', note: 'Percent complete.' },
-    source: { store: 'field', note: 'The document this task came from.' },
-    last_change: { store: 'field', note: 'Hand-typed and unreliable.' },
-    needs: { store: 'field', note: 'The plan/seq references this task waits on.' },
-  },
+  description: CATEGORIES.task.description,
+  extraFields: [...CATEGORIES.task.extraFields].reverse(),
+  updates: Object.fromEntries(
+    Object.entries(CATEGORIES.task.updates).reverse().map(([key, value]) => [key, { ...value }]),
+  ),
 };
 
 /**

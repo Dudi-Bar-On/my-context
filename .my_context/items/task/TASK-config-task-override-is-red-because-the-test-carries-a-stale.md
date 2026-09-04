@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A test compares against a hardcoded snapshot of a config entry this workspace no longer has, so no config change can close it.
-summary_of: 1a9539c61754cd01
+summary_of: 7e98b2ba86e0e133
 scope:
   - test/core/config-task-override.test.ts
   - src/core/config.ts
@@ -16,18 +16,19 @@ tags:
   - tests
   - "plan:rulings"
   - "seq:59"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: ee928a563e9d72e3
+checksum: c5b4c9e6513cee53
 plan: rulings
 seq: "59"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-04
 ---
 
 # config-task-override is red because the test carries a stale literal, not because the workspace declares retired fields
