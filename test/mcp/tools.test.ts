@@ -798,6 +798,67 @@ test('update_item can correct an extra field set at creation', () => {
   removeTree(cwd);
 });
 
+/**
+ * `create_item`'s flattened extra-field arguments come from
+ * `extraFieldSchema(DEFAULT_CONFIG)` — the STATIC default config, which knows
+ * every BUILT-IN category's extra fields and nothing a project has added of
+ * its own in `config.json`. `update_item` never had this gap: its schema
+ * already carries a genuine free-form `extra: {type: 'object', ...}`, honoured
+ * by `updateItem` regardless of which project declared the field. `create_item`
+ * now carries the same escape hatch, mirroring `update_item`'s.
+ */
+test('create_item can capture a project-defined extra field, the way update_item already can', () => {
+  const cwd = project();
+  writeFileSync(
+    path.join(cwd, '.my_context', 'config.json'),
+    `${JSON.stringify({ profile: 'standard', categories: { task: { extraFields: ['owner_team'] } } }, null, 2)}\n`,
+    'utf8',
+  );
+  const registry = createRegistry(cwd);
+  registry.call('create_item', {
+    summary_omitted: true, type: 'task', title: 'Rotate secrets', extra: { owner_team: 'platform' },
+  });
+  assert.match(registry.call('get_item', { id: 'TASK-rotate-secrets' }), /owner_team: platform/);
+  removeTree(cwd);
+});
+
+/** The free-form `extra` merges with, rather than silently overwrites, the
+ * flattened built-in fields the schema already advertises — both routes into
+ * the same item at once, on fields that do not collide. */
+test('create_item merges a project-defined extra field alongside a built-in flattened one', () => {
+  const cwd = project();
+  writeFileSync(
+    path.join(cwd, '.my_context', 'config.json'),
+    `${JSON.stringify({ profile: 'standard', categories: { risk: { extraFields: ['owner_team'] } } }, null, 2)}\n`,
+    'utf8',
+  );
+  const registry = createRegistry(cwd);
+  registry.call('create_item', {
+    summary_omitted: true, type: 'risk', title: 'Vendor outage', likelihood: 'low', extra: { owner_team: 'platform' },
+  });
+  const stored = registry.call('get_item', { id: 'RISK-vendor-outage' });
+  assert.match(stored, /likelihood: low/);
+  assert.match(stored, /owner_team: platform/);
+  removeTree(cwd);
+});
+
+/** A field named both ways is refused rather than letting one silently win —
+ * the same shape `unknownExtraFieldError` refuses an unrecognised field with
+ * elsewhere in this file. */
+test('create_item refuses a field passed both as a flattened argument and inside extra', () => {
+  const cwd = project();
+  const registry = createRegistry(cwd);
+  assert.throws(
+    () => registry.call('create_item', {
+      summary_omitted: true, type: 'risk', title: 'Vendor outage', likelihood: 'low', extra: { likelihood: 'high' },
+    }),
+    /"likelihood" was passed both as a top-level argument and inside "extra"/,
+  );
+  // Nothing was written — the refusal happens before the item is created.
+  assert.throws(() => registry.call('get_item', { id: 'RISK-vendor-outage' }), /no item with id/);
+  removeTree(cwd);
+});
+
 test('update_item refuses an always that selection would ignore, rather than storing it', () => {
   // README's pinning section used to offer `update_item` as one of two routes
   // to `always`. On a GOVERNING normative item it is refused outright; on a
@@ -1203,7 +1264,7 @@ test('the create_item schema exposes exactly the extra fields the config declare
   // field or a declared extra field.
   const core = new Set([
     'type', 'title', 'body', 'summary', 'summary_omitted', 'scope', 'tags', 'severity', 'always',
-    'observations', 'steps', 'source_file', 'source_anchor',
+    'observations', 'steps', 'source_file', 'source_anchor', 'extra',
   ]);
   for (const key of Object.keys(props)) {
     assert.ok(core.has(key) || declared.includes(key), `schema has undeclared property "${key}"`);

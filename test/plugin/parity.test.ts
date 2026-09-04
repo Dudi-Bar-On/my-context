@@ -198,6 +198,41 @@ const toolCliNames = TOOL_PARITY
   .map((row) => row.cli)
   .filter((cli): cli is string => cli !== null);
 
+/**
+ * `covered`'s hyphen half exists for a cross-surface case — a CLI verb
+ * (`add`) reached on the slash surface only under a longer, per-category name
+ * (`add-rule`), where the longer name is never itself a registered CLI
+ * command. It must not also swallow a SIBLING: two independently registered
+ * CLI commands that merely share a leading word and a hyphen, such as
+ * `lesson` and `lesson-stage` — two different commands the usage banner
+ * lists separately (`lesson` records a lesson and requests candidate rules;
+ * `lesson-stage` stages derived rule candidates for approval). Before this
+ * test, `covered('lesson', ['lesson-stage'])` read `true`, which is how the
+ * bare `lesson` command silently dropped out of `CLI_WITHOUT_TOOL`'s derived
+ * "owed" set even though no tool wraps it.
+ */
+test('`covered` tells a sub-form from a sibling', () => {
+  assert.equal(
+    covered('add', ['add-rule']),
+    true,
+    '`add-rule` is a per-category slash file, never a registered CLI command of its own — ' +
+    'the genuine sub-form case `covered`\'s hyphen rule exists for',
+  );
+  assert.ok(
+    COMMANDS.has('lesson-stage'),
+    'this assertion documents the fact the next one depends on: `lesson-stage` IS a ' +
+    'registered CLI command in its own right',
+  );
+  assert.equal(
+    covered('lesson', ['lesson-stage']),
+    false,
+    '`lesson-stage` is an independently registered CLI command (see registry.ts), not a ' +
+    'sub-form of `lesson` reached only under a longer name — the two are siblings that share ' +
+    'a leading word, and the usage banner lists them as separate commands doing different ' +
+    'things',
+  );
+});
+
 test('every CLI command has a tool, or is listed with a reason', () => {
   const without = cliNames.filter((name) => !covered(name, toolCliNames));
   assert.deepEqual(

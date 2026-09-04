@@ -412,6 +412,16 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [id, key];
   },
 
+  // Two real, ACTIVE items — no `--yes` on `link` itself, unlike every other
+  // entry here: adding a relation crosses no trust boundary and the command
+  // takes no `--yes` to find (see `cli/commands/link.ts`).
+  link: (cwd) => {
+    const from = run(['add', '--summary-omitted', 'constraint', 'A constraint to link for the F2 guard', '--yes'], cwd);
+    const to = run(['add', '--summary-omitted', 'constraint', 'Another constraint to link for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [constraintId(from.out), 'blocks', constraintId(to.out)];
+  },
+
   repair: (cwd) => {
     // A real re-stamp, not an empty run: the checksum of a genuine item is
     // corrupted so `repair --yes` exercises its WRITE path (the one that could

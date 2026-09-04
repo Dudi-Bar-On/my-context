@@ -187,11 +187,52 @@ test('the four the read-only connection does not backstop are refused wherever t
     assert.throws(() => assertSelectOnly(`SELECT 1 AS ${word}`), /not allowed/i, word);
     // Double-quoting is the way through, and it works because `strip` blanks
     // `"…"` before the scan. It is the unblocking condition a reader who hits
-    // one of these four needs, and the refusal does not yet say so — see the
-    // report for the wording that is owed.
+    // one of these four needs, and the refusal names it — see the test below.
     assertSelectOnly(`SELECT 1 AS "${word}"`);
     assertSelectOnly(`WITH "${word}" AS (SELECT 1 AS n) SELECT * FROM "${word}"`);
   }
+});
+
+/**
+ * `RULE-a-refusal-states-its-unblocking-condition` — named by `plan:rulings
+ * seq:46`, which fixed the false refusals above and stopped at the wording
+ * because it does not hold the strings. This is that wording: the refusal for
+ * one of the four absolute keywords, used as an ordinary name, must say the
+ * one thing that gets a caller through — double-quote it — not only what is
+ * forbidden.
+ */
+test('the refusal for one of the four absolute keywords names the double-quote escape', () => {
+  for (const word of ['vacuum', 'pragma', 'attach', 'detach']) {
+    assert.throws(
+      () => assertSelectOnly(`SELECT 1 AS ${word}`),
+      (err: Error) => {
+        assert.match(err.message, new RegExp(`"${word.toUpperCase()}" is not allowed`));
+        assert.match(
+          err.message,
+          new RegExp(`If you meant it as a name, double-quote it: "${word}"\\.$`),
+          `${word}'s refusal does not name the unblocking condition: ${err.message}`,
+        );
+        return true;
+      },
+      word,
+    );
+  }
+});
+
+/**
+ * The other fifteen FORBIDDEN keywords already have a positional escape
+ * (`NAME_FOLLOWS`) for the ordinary-name case, so the double-quote sentence —
+ * which is specifically about the four this scan stops unconditionally — must
+ * not be tacked onto every refusal regardless of which keyword triggered it.
+ */
+test('an ordinary write keyword\'s refusal does not carry the double-quote sentence', () => {
+  assert.throws(
+    () => assertSelectOnly('DELETE FROM items'),
+    (err: Error) => {
+      assert.doesNotMatch(err.message, /double-quote/);
+      return true;
+    },
+  );
 });
 
 test('the CTE named after a corpus tag runs end to end, and the engine agrees it is read-only', () => {

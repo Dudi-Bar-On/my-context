@@ -120,6 +120,9 @@ const BORN_HERE: Record<string, string> = {
   carry: 'cli/commands/carry.ts — the command itself is newer than this module (owner ruling '
     + '2026-09-04, a one-shot carry spent at the next injection), so its spec was authored '
     + 'here and has never lived anywhere else.',
+  link: 'cli/commands/link.ts — the command itself is newer than this module (owner '
+    + 'instruction, 2026-09-04, "support relation using the cli too"; `link_items` had no CLI '
+    + 'counterpart before it), so its spec was authored here and has never lived anywhere else.',
 };
 
 /**

@@ -281,9 +281,19 @@ export function assertSelectOnly(sql: string): void {
 
   const keyword = offendingKeyword(bare.toUpperCase());
   if (keyword !== null) {
+    // `RULE-a-refusal-states-its-unblocking-condition` — named by `plan:rulings
+    // seq:46`, which fixed the false refusals `ONLY_THE_SCAN_STOPS_THESE`'s
+    // header describes and stopped at the wording. For the other fifteen
+    // FORBIDDEN keywords, `NAME_FOLLOWS` already lets most ordinary-name uses
+    // through unquoted, so the sentence below is added ONLY for the four this
+    // scan stops unconditionally — the case where double-quoting is not one
+    // way through among several, it is the one route that exists at all.
+    const unblock = ONLY_THE_SCAN_STOPS_THESE.has(keyword)
+      ? ` If you meant it as a name, double-quote it: "${keyword.toLowerCase()}".`
+      : '';
     throw new Error(
       `my_context: query is read-only — "${keyword}" is not allowed. ` +
-      `Use the CLI commands to change items; the index is rebuilt from Markdown anyway.`,
+      `Use the CLI commands to change items; the index is rebuilt from Markdown anyway.${unblock}`,
     );
   }
 }

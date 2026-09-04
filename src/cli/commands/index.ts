@@ -14,6 +14,7 @@ import './focus.ts';
 import './inbox-promote.ts';
 import './ingest.ts';
 import './lesson.ts';
+import './link.ts';
 import './pack.ts';
 import './procedure.ts';
 import './query.ts';

@@ -46,12 +46,13 @@
  * ── WHAT IS HERE, AND WHAT IS DELIBERATELY NOT ─────────────────────────────
  *
  * MEASURED 2026-08-24, corrected 2026-08-30 and again 2026-09-04 (`mycontext config`,
- * `rulings/20` widened, shipped its own separable spec, and `mycontext carry`, the same day,
- * a one-shot delivery override with a flat spec of its own), over the **42** commands the
- * CLI dispatches: 35 registered by `cli/commands/index.ts`'s column of side-effect
+ * `rulings/20` widened, shipped its own separable spec; `mycontext carry`, the same day, a
+ * one-shot delivery override with a flat spec of its own; and `mycontext link`, the same day
+ * again, the CLI spelling `link_items` had and the terminal did not), over the **43** commands
+ * the CLI dispatches: 36 registered by `cli/commands/index.ts`'s column of side-effect
  * imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 38 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   | 39 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
  *   |  0 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
  *   |  3 | take no flags at all — `show`, `rebuild`, `help`                   |
@@ -77,7 +78,7 @@
  * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
  * the registered set, so a command cannot arrive and be silently uncounted.
  *
- * **33** of the 38 are here. Twenty-one arrived with the first lift, and they
+ * **34** of the 39 are here. Twenty-one arrived with the first lift, and they
  * are the ones whose spec was already a declarative constant over a FLAT
  * surface — one command, one flag set. The other four arrived with
  * `plan:builder seq:1b` and came out of `src/cli/index.ts` itself — the entry
@@ -99,14 +100,23 @@
  * it), for a category-level `config.json` writer: `--delete` on a custom
  * category, `--disable` on either kind, both behind `--yes`.
  *
- * **`mycontext carry` is the thirty-third entry, and the newest** — the same
- * day, owner ruling `TASK-no-command-delivers-one-item-at-the-next-injection-
- * so-a`: a one-shot override for a spilled item, spent at the next injection.
- * Born here, exactly as `mycontext config` is — the command did not exist
- * before it — and flat like the `mycontext focus` entry above: one accepted
- * set, three forms (`<id>`, `--show`, `--clear`) split in the command body.
+ * **`mycontext carry` is the thirty-third entry** — the same day, owner ruling
+ * `TASK-no-command-delivers-one-item-at-the-next-injection-so-a`: a one-shot
+ * override for a spilled item, spent at the next injection. Born here, exactly
+ * as `mycontext config` is — the command did not exist before it — and flat
+ * like the `mycontext focus` entry above: one accepted set, three forms
+ * (`<id>`, `--show`, `--clear`) split in the command body.
  *
- * All nine are named in the map below and deliberately not here, because the
+ * **`mycontext link` is the thirty-fourth entry, and the newest** — the same
+ * day again, owner instruction "support relation using the cli too":
+ * `link_items` (the MCP tool) had a CLI counterpart nowhere, so the terminal
+ * could not write a relation at all. Born here — there was no `mycontext link`
+ * to lift a spec from — and the flattest entry in the map: no flags at all,
+ * `<from> <relation> <to>` is the whole surface, because adding an edge
+ * crosses no trust boundary (see `cli/commands/link.ts`) and there is
+ * therefore no `--yes` to accept.
+ *
+ * All ten are named in the map below and deliberately not here, because the
  * inventory test reads a backticked command name in this header as the claim
  * that its spec is ABSENT. What is absent is recorded rather than left to be
  * discovered:
@@ -299,6 +309,12 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
    * NAME with a sentence of its own and is not lifted — see the header.
    */
   lesson: { allowed: ['agent'], values: [] },
+  /**
+   * No flags at all, and deliberately — see `cli/commands/link.ts`'s own
+   * header for why: adding a relation crosses no trust boundary, so there is
+   * no `--yes` to accept. `<from> <relation> <to>` is the whole of it.
+   */
+  link: { allowed: [], values: [] },
   /**
    * `query` hand-rolls its refusal rather than calling `refuseUnknownFlag`,
    * because it names the detail levels it does NOT take. The spec it refuses
@@ -883,6 +899,8 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
         + 'cannot truthfully make on its own. `lesson-accept` refuses it by name.',
     },
   },
+  // No flags — see COMMAND_FLAGS.link and cli/commands/link.ts.
+  link: {},
   query: {
     json: DETAIL.json,
     limit: { ...LIMIT, note: 'How many rows at most. The hard cap is 1000 either way.' },

@@ -658,6 +658,24 @@ const SPECS: ToolSpec[] = [
       source_file: { ...S_STRING, description: 'Document this came from' },
       source_anchor: { ...S_STRING, description: 'Heading within that document' },
       ...extraFieldSchema(DEFAULT_CONFIG),
+      // The escape hatch `update_item` already has (see its own `extra`
+      // property below), mirrored here. The flattened properties just above
+      // are generated from `extraFieldSchema(DEFAULT_CONFIG)` — the STATIC
+      // default config, byte-stable for `tools/list` — so they can only ever
+      // name a BUILT-IN category's extra fields. A project that adds its own
+      // field to `config.json` (`categories.<name>.extraFields`) has no
+      // flattened argument for it, and this is the route: a free-form object,
+      // validated the same way `update_item`'s is, against the WORKSPACE's
+      // actual config rather than the static default.
+      extra: {
+        type: 'object',
+        additionalProperties: { type: 'string' },
+        description:
+          'A project-defined extra field not listed above — one this workspace\'s own ' +
+          'config.json adds to a category. The fields named above already cover every ' +
+          'BUILT-IN category\'s extra fields; use this only for one this project added itself. ' +
+          'Refused if a field is also named above for the same call.',
+      },
     }, ['type', 'title']),
     // origin is never accepted from the schema above. Every handler that
     // writes on an agent's behalf — create_item, update_item, supersede_item
@@ -672,6 +690,23 @@ const SPECS: ToolSpec[] = [
       for (const key of extraFieldNames(ctx.config)) {
         const value = optStr(args, key);
         if (value !== undefined) extra[key] = value;
+      }
+      // The free-form escape hatch, merged in rather than letting one silently
+      // overwrite the other. A name given both ways is refused instead of
+      // picking a winner — the same shape `unknownExtraFieldError` (trust.ts)
+      // refuses an unrecognised field with, just below this call.
+      const freeform = optExtra(args);
+      if (freeform) {
+        for (const key of Object.keys(freeform)) {
+          if (Object.hasOwn(extra, key)) {
+            throw new Error(
+              `my_context: "${key}" was passed both as a top-level argument and inside "extra". ` +
+              `Pass it once: as the flattened argument if it is a built-in field, or inside ` +
+              `"extra" if this project's own config.json declared it.`,
+            );
+          }
+        }
+        Object.assign(extra, freeform);
       }
       const input: CreateInput = {
         type: str(args, 'type', 'create_item'),

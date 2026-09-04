@@ -1,3 +1,5 @@
+import { COMMANDS } from '../cli/commands/registry.ts';
+
 /**
  * **The surface map: what the model can do, and what the user can do.**
  *
@@ -52,16 +54,16 @@ export const TOOL_PARITY: ToolParity[] = [
   { tool: 'create_item', cli: 'add', slash: 'add' },
   { tool: 'get_item', cli: 'show', slash: 'show' },
   { tool: 'ingest_document', cli: 'ingest', slash: 'ingest' },
-  {
-    tool: 'link_items', cli: null, slash: 'link',
-    note:
-      'There is no `mycontext link`. Recording a relation is the one write with no trust ' +
-      'boundary on it — `LinkInput` carries no `origin`, because an added edge cannot ' +
-      'change what governs — so the tool was never the privileged route that needed a ' +
-      'human counterpart. `/mycontext:link` calls the tool, which is a user-invocable ' +
-      'command by any reading of the requirement. The REMOVAL half is the opposite case ' +
-      'and went the opposite way: `mycontext edit --unlink` exists and no tool does.',
-  },
+  // `mycontext link <from> <relation> <to>` — added 2026-09-04 (owner
+  // instruction, "support relation using the cli too"). Both counterparts
+  // exist now, so no note: recording a relation is the one write with no
+  // trust boundary on it (`LinkInput` carries no `origin`, because an added
+  // edge cannot change what governs), which is why neither surface gates it —
+  // `/mycontext:link` calls the tool directly and `mycontext link` takes no
+  // `--yes`. The REMOVAL half stays the opposite case: `mycontext edit
+  // --unlink` exists and no tool does, because removing an edge CAN weaken
+  // what a governing item asserts and therefore runs under `edit`'s own gate.
+  { tool: 'link_items', cli: 'link', slash: 'link' },
   { tool: 'audit_log', cli: 'audit', slash: 'audit' },
   { tool: 'doctor', cli: 'doctor', slash: 'doctor' },
   { tool: 'focus_context', cli: 'focus', slash: 'focus' },
@@ -100,15 +102,14 @@ export const TOOL_PARITY: ToolParity[] = [
       'already reported by `/mycontext:status` and by `/mycontext:ingest` on resume. A slash ' +
       'command for the bare listing would carry nothing beyond what those two already print.',
   },
-  // `cli: 'lesson-stage'` — an EXACT match against a real command, never the
-  // hyphen fallback — but `covered`'s hyphen rule is symmetric: it also makes
-  // `mycontext lesson` (a genuinely different command; see `lesson.ts`) read
-  // as tool-covered from here on, because `'lesson-stage'.startsWith('lesson-')`.
-  // That is a coincidence of the two commands sharing a word, not a claim that
-  // a tool wraps bare `lesson` — nothing does — but it is what
-  // `CLI_WITHOUT_TOOL`'s own derived-set test now computes, so `lesson` carries
-  // no row below. See that test's own comment on why the rule is loose on
-  // purpose.
+  // `cli: 'lesson-stage'` — an EXACT match against a real, independently
+  // registered command, never the hyphen fallback. It used to also read as
+  // covering `mycontext lesson` (a genuinely different command; see
+  // `lesson.ts`), because `covered`'s hyphen rule could not tell a sibling
+  // command from a sub-form spelled under a longer name — measured 2026-09-04
+  // and fixed in `covered` itself, which now consults the command registry
+  // rather than the strings. Bare `lesson` carries its own row in
+  // `CLI_WITHOUT_TOOL` (`'owed'`) for exactly this reason: nothing wraps it.
   { tool: 'stage_rule_candidates', cli: 'lesson-stage', slash: 'lesson-stage' },
   {
     tool: 'preview_pack_import', cli: 'pack', slash: null,
@@ -195,14 +196,33 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
 };
 
 /**
- * Whether `name` has a surface among `available`, by the rule both directions
- * use: an exact match, or a longer name extending it with a hyphen.
+ * Whether `name` has a surface among `available`: an exact match, or a
+ * longer name extending it with a hyphen — PROVIDED that longer name is not
+ * itself a registered CLI command.
  *
- * The hyphen half is not a convenience. The shipped catalogue is spelled into
- * the command NAMES (`add-rule`, `list-rule`, …), generated per category so a
- * disabled one keeps no command, and `list` therefore has a slash surface only
- * under a longer name. `test/docs/counts.test.ts` applies the same rule to the
- * same question, and the two must not disagree.
+ * The hyphen half exists for a cross-surface case, not a convenience. The
+ * shipped catalogue is spelled into command NAMES (`add-rule`, `list-rule`,
+ * …), generated per category so a disabled one keeps no command, and `list`
+ * therefore has a slash surface only under a longer name. Neither
+ * `add-rule` nor `list-rule` is ever a CLI command in its own right — the
+ * real CLI command is `add <category>` / `list <category>`, dispatched on an
+ * argument, and the hyphenated spelling exists only on the slash surface.
+ * `test/docs/counts.test.ts` applies the same rule to the same question, and
+ * the two must not disagree.
+ *
+ * What the hyphen rule must NOT do is call two independently registered CLI
+ * commands the same thing because one name happens to begin with the other
+ * plus a hyphen — a SIBLING, not a sub-form. `lesson` and `lesson-stage` are
+ * both real, separately registered commands (`registry.ts`) doing different
+ * things (the usage banner lists them apart: one records a lesson and
+ * requests candidate rules, the other stages derived rule candidates for
+ * approval), and `'lesson-stage'.startsWith('lesson-')` used to be read as
+ * "lesson-stage covers lesson", which is false — a tool that wraps
+ * `lesson-stage` covers nothing about bare `lesson`. The registry is
+ * therefore consulted: a candidate extension only counts as a sub-form when
+ * it is NOT itself a name `COMMANDS` dispatches, which is exactly the
+ * property that separates `add-rule` (never independently registered) from
+ * `lesson-stage` (independently registered, and dispatched on its own).
  *
  * `add` now answers on both halves: `commands/add.md` is the generic capture
  * whose category is an argument rather than part of the name — the only shape
@@ -212,7 +232,9 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
  * `list`, so it cannot be dropped.
  */
 export function covered(name: string, available: string[]): boolean {
-  return available.some((n) => n === name || n.startsWith(`${name}-`));
+  return available.some(
+    (n) => n === name || (n.startsWith(`${name}-`) && !COMMANDS.has(n)),
+  );
 }
 
 /**
@@ -339,6 +361,17 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       'only because a human runs `ingest` and `ingest-apply` as two turns of one conversation ' +
       '(`CLI_WITHOUT_SLASH`\'s note: "step 4" of `/mycontext:ingest`) — the tool never needs ' +
       'the second turn.',
+  },
+  lesson: {
+    disposition: 'owed',
+    reason:
+      'Records a lesson item and prints the rule-derivation request `mycontext lesson-stage` ' +
+      '(and its tool, `stage_rule_candidates`) expects back (`buildRuleRequest`/' +
+      '`renderRuleRequest`, cli/commands/lesson.ts) — a capability `create_item` alone does not ' +
+      'have, since it never builds that request. Nothing refuses a non-human caller: `--agent` ' +
+      'stamps `origin: \'agent\'` honestly on the write, the command\'s own comment says so ' +
+      '("adds the first way to be truthful"). Sits in the same unexamined space as `list`/' +
+      '`procedure`; nobody has built a tool for it yet.',
   },
   init: {
     disposition: 'intended',
