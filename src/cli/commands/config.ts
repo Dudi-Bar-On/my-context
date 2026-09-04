@@ -392,7 +392,13 @@ function cmdConfigField(
 
 registerCommand({
   name: 'config',
-  usage: 'config <name> --delete|--disable [--yes]',
+  // Both forms on one line, `ack`'s own reason: `mycontext --help` prints
+  // THIS string, and a form nobody can see is a form nobody uses. `<name>`
+  // stays the first token so `subcommandedFromUsage`
+  // (test/helpers/approval-boundary.ts) still reads this as NOT dispatched by
+  // subcommand — a bare operand, never a bracketed alternation.
+  usage: 'config <name> --delete|--disable [--yes], or '
+    + 'config <path> --set|--unset <value> [--yes]',
   summary: 'delete/disable a category, or set/unset one field, in config.json',
   run: cmdConfig,
 });
