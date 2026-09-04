@@ -111,9 +111,47 @@ const PULSE_BUCKET_SECONDS = 10;
 /** The mockup's own column gutter, so 120 columns read as 120 and not as a fill. */
 const PULSE_GUTTER = 1.4;
 
-/** How much history the screen opens with, and the most it will hold. */
-const BACKLOG = 50;
+/** The most this feed will ever hold in memory, once backlog and live records are merged. */
 const FEED_CAP = 200;
+
+/**
+ * How much history the screen OPENS WITH — `/api/ask/audit?limit=BACKLOG`, the
+ * projection-backed read.
+ *
+ * **Raised from a bare 20 to `FEED_CAP` on
+ * `TASK-the-audit-stream-shows-almost-nothing-of-what-the-log-holds`, 2026-09-04
+ * — measured, not guessed.** The owner's live screen drew 7 rows, one of them a
+ * step, over a log holding 92 `agent-step` records written the previous hour;
+ * reproduced here on this repository's own corpus, a 20/50-record window opened
+ * with every completed lane showing "0 steps" — not a partial count, NONE —
+ * while only the one agent that happened to be stepping LIVE while the tab was
+ * open ever showed a real number. A `SubagentStop` backfills a lane's steps in
+ * ONE burst (this file's own note on `LANE_OPS` above), so on a corpus this
+ * active a finished lane's dispatch, every one of its steps, AND its stop can
+ * all sit behind more than fifty other records by the time anyone opens the
+ * tab — not merely the dispatch, which is the narrower case
+ * `TASK-a-lane-backfills-more-steps-than-the-feed-window-holds-so` already
+ * fixed STRUCTURALLY (orphan grouping + a lookup for the missing dispatch,
+ * which survives any burst size because it does not depend on the window at
+ * all).
+ *
+ * **This case has no such structural fix.** There is no burst-size-independent
+ * way to guarantee a whole lane's steps are fetched without scanning the log
+ * this screen deliberately does not replay in full
+ * (`MAX_STREAM_BACKLOG`, `ui/watch-model.ts`) — some bound is unavoidable, so
+ * the fix is the one this project already uses for every other bounded read:
+ * pick a cap, and DISCLOSE what it left out (`applyBacklog`'s bound line,
+ * `applyStreamBacklog`'s `watch.backlogSome`). `FEED_CAP` and not a fresh
+ * number: it is already this exact feed's own declared ceiling on how much it
+ * will EVER hold, so opening with less than that wastes headroom the feed
+ * would keep anyway, and inventing a smaller "opens with" number beside it
+ * would be a second bound meaning the same thing `BOUND_CAP_LIST`'s own
+ * docblock (below) warns against. Still ten times the mockup's `BOUND_CAP_TABLE`
+ * paging convention (50) and forty times `BOUND_CAP_LIST` (20) — a deliberate
+ * departure, argued above, for the one screen whose central content backfills
+ * in bursts no other bounded list on this app has to survive.
+ */
+const BACKLOG = FEED_CAP;
 
 /**
  * How much history the STREAM replays on connect — `plan:walk seq:52`, the
@@ -128,20 +166,33 @@ const FEED_CAP = 200;
  * all, and a projection that is behind its log answers 503. In both the query
  * surface has nothing to give and the JSONL has 2,076 records.
  *
- * **The number is `BOUND_CAP_LIST` and is not a new one** — five other bounded
- * surfaces in this app already cap at it, and a sixth bound invented here would
- * be a sixth thing for the product to mean by "some". The whole log is NOT
- * replayed: 2,076 records into a live view is the same defect pointed the other
- * way, which is why the stream declares what it held back rather than dropping
- * it silently.
+ * **The number is `FEED_CAP`, matching `BACKLOG` above, and not
+ * `BOUND_CAP_LIST` any more.** It used to be: five other bounded surfaces in
+ * this app cap at `BOUND_CAP_LIST` (20), and a sixth bound invented here would
+ * have been a sixth thing for the product to mean by "some". That reasoning
+ * held for a stream carrying an ordinary list; it does not hold for the ONE
+ * fallback a corpus with no current projection is left with, over a log whose
+ * central content — lane steps — backfills in bursts this file's `BACKLOG`
+ * comment measures at up to ~150 rows. A 20-record fallback left every
+ * finished lane showing zero steps whenever the primary read could not answer,
+ * which on an actively dogfooded corpus is routine rather than rare (`readProjection`'s
+ * `absent`/`behind` states, `ui/watch-model.ts`). The two backlogs now agree on
+ * one number for one reason — "how much history does this screen open with" —
+ * rather than answering it twice. The whole log is still NOT replayed: 2,076
+ * records into a live view would be the same defect pointed the other way,
+ * which is why the stream still declares what it held back rather than
+ * dropping it silently.
  *
  * **This screen no longer requests it.** `plan:live seq:1` lifted the
  * connection into the shell: `app.js` opens `/api/watch/stream` at most once,
  * ever, for every screen that ever subscribes, so the backlog size is a
  * property of the ONE connection rather than of whichever screen happens to
  * be the first to ask for it. `app.js`'s own `ensureLiveStream()` requests
- * this exact same `BOUND_CAP_LIST` — the number did not change, only who
- * asks for it.
+ * `FEED_CAP` as a literal — it cannot import a screen module without inverting
+ * the shell/screen dependency `ui/watch-model.ts`'s own docblock names for the
+ * same reason (`readProjection`'s "opened READ-ONLY... exported for
+ * ask-model.ts" note) — so the number is duplicated across the two files
+ * rather than shared, and is kept equal by this comment rather than by import.
  */
 
 /**

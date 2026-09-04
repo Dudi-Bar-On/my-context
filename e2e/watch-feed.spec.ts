@@ -455,13 +455,23 @@ test('a kind filter button shows how many records of that kind are on the feed',
  * Measured live: a lane recording more steps than the backlog window holds
  * is GUARANTEED to push its own dispatch out of that window — the dispatch
  * is written once, at the lane's start; its steps arrive in one burst, at
- * the lane's end. One real lane: 95 steps, dispatch 88 rows back, window 50.
+ * the lane's end. One real lane: 95 steps, dispatch 88 rows back, window 50
+ * at the time this was measured.
  *
  * Reproduced here by seeding the corpus BEFORE the page ever opens — a live
  * append (as the other tests in this file use) does not reproduce it, because
  * this screen keeps everything it has seen live regardless of the window; the
- * window only binds the ONE-SHOT `/api/ask/audit?limit=50` read a fresh page
- * load makes, which is the read the bug report is about.
+ * window only binds the ONE-SHOT `/api/ask/audit?limit=BACKLOG` read a fresh
+ * page load makes, which is the read the bug report is about.
+ *
+ * **Padding raised from 55 to 210 on
+ * `TASK-the-audit-stream-shows-almost-nothing-of-what-the-log-holds`,
+ * 2026-09-04**, alongside `BACKLOG`'s own move from 50 to `FEED_CAP` (200):
+ * the mechanism this fixture proves — a dispatch evicted while its steps stay
+ * in view — is a property of the window being SMALLER than the gap between a
+ * lane's start and its own backfilled end, not of any particular number, so
+ * the padding tracks whatever the window currently is rather than the window
+ * that was current when this fixture was first written.
  */
 async function watchingBuriedLane(
   page: Page,
@@ -483,11 +493,13 @@ async function watchingBuriedLane(
       kind: 'hook', op: 'agent-dispatched', hook: 'PostToolUse', origin: 'agent',
       note: `dispatched type=general-purpose agent=${agentId}: Buried by its own steps`,
     });
-    // Push the dispatch out of the backlog window (50) — the exact
-    // structural failure the task item measured, reproduced with padding
-    // records rather than 95 real steps because the MECHANISM, not the
-    // count, is what a window of 50 has to fail on.
-    for (let i = 0; i < 55; i += 1) {
+    // Push the dispatch out of the backlog window (`FEED_CAP`, 200) — the
+    // exact structural failure the task item measured, reproduced with
+    // padding records rather than 95 real steps because the MECHANISM, not
+    // the count, is what any window has to fail on once enough separates a
+    // lane's start from its own backfilled end. Comfortably past 200 with
+    // the six steps below still on the near side of it.
+    for (let i = 0; i < 210; i += 1) {
       recordAudit(corpus, {
         kind: 'mutation', op: 'create', origin: 'human', itemId: `RULE-pad-${i}`, fields: ['body'],
       });
@@ -539,5 +551,110 @@ test('a dispatch out of the window is looked up, and the group ends up naming th
       + 'have looked it up and the group should now carry its real purpose, not the bare id',
     ).toContainText('Buried by its own steps', { timeout: 20_000 });
     await expect(group).toContainText(/found beyond the window/i);
+  });
+});
+
+// --- The whole log, opened cold: TASK-the-audit-stream-shows-almost-nothing --
+//
+// The report this file is named for: 7 rows on the owner's live screen, one of
+// them a step, over a log holding 92 `agent-step` records — and a page left
+// open longer had shown 50-60. Reproduced on this repository's own corpus
+// (dogfooded, per `INSTR-testing-happens-against-the-current-corpus-and-an-exception`,
+// but that instruction governs THIS repo's manual verification, not this
+// suite's own temp-corpus fixtures, which is what every other test in this
+// file already uses): a 20-record stream fallback opened with every finished
+// lane showing "0 steps" — not a partial count, none at all — because a
+// `SubagentStop` backfills a lane's steps in one burst and a corpus this
+// active writes well over fifty other records around it.
+//
+// **Not the same failure `TASK-a-lane-backfills-more-steps-than-the-feed-window-holds-so`
+// already fixed.** That task made an ORPHANED dispatch — steps present, the
+// row naming them evicted — group and resolve correctly for any burst size.
+// This is the case its own fix cannot reach: the dispatch, every step, AND
+// the stop are ALL outside the window, so there is nothing in the fetch for
+// grouping to work with. The only fix available is the one this project uses
+// for every other bounded read — widen the window to the feed's own declared
+// ceiling (`FEED_CAP`) and disclose the rest — see `screens/watch.js` ·
+// `Raised from a bare 20 to FEED_CAP` · for the argument.
+
+/**
+ * A lane whose dispatch, steps AND stop are all pushed behind a window small
+ * enough to miss them entirely, but well inside `FEED_CAP` (200).
+ *
+ * `buildProjection: false`, deliberately: `/api/ask/audit` then has nothing
+ * to give at all (the `absent` empty state, not a 503), so the STREAM's own
+ * backlog — `SHARED_STREAM_BACKLOG` in `app.js` — is the ONLY source on
+ * screen, which is exactly the state the owner's corpus was in. A test that
+ * left the projection built could pass on the query surface's window alone
+ * and never exercise the stream fallback this task is about.
+ */
+async function watchingWholeLaneBuried(
+  page: Page,
+  body: (fixture: { page: Page; agentId: string }) => Promise<void>,
+): Promise<void> {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-watch-feed-'));
+  const corpus = path.join(dir, DIR_NAME);
+  let harness: UiHarness | undefined;
+  try {
+    expect(runCli(['init'], dir, () => {}), 'fixture command failed: init').toBe(0);
+    const agentId = 'agent-whole-lane-buried';
+    recordAudit(corpus, {
+      kind: 'hook', op: 'agent-dispatched', hook: 'PostToolUse', origin: 'agent',
+      note: `dispatched type=general-purpose agent=${agentId}: Entirely buried lane`,
+    });
+    for (let i = 0; i < 3; i += 1) {
+      recordAudit(corpus, {
+        kind: 'hook', op: 'agent-step', hook: 'SubagentStop', origin: 'agent',
+        note: `Read: e2e/buried-${i}.ts agent=${agentId}`,
+      });
+    }
+    recordAudit(corpus, {
+      kind: 'hook', op: 'subagent-stop', hook: 'SubagentStop', origin: 'agent',
+      note: `delivery=finished agent=${agentId} type=general-purpose; its seen file was left in place`,
+    });
+    // Past the OLD 20-record stream fallback and comfortably inside the NEW
+    // 200-record one: this lane's five records sit roughly a hundred rows
+    // back, not merely past a small bound picked to graze the edge of one.
+    for (let i = 0; i < 100; i += 1) {
+      recordAudit(corpus, {
+        kind: 'mutation', op: 'create', origin: 'human', itemId: `RULE-buried-pad-${i}`, fields: ['body'],
+      });
+    }
+
+    harness = await startUiChild(dir);
+    const h = harness;
+    await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
+    await expect(page.locator('.nav').first()).toBeVisible({ timeout: 15_000 });
+    await page.evaluate(() => { location.hash = '#/watch'; });
+    await body({ page, agentId });
+  } finally {
+    if (harness !== undefined) await harness.stop();
+    removeTree(dir);
+  }
+}
+
+test('a lane buried whole behind a hundred other records still renders, once the stream backlog is wide enough to reach it', async ({ page }) => {
+  await watchingWholeLaneBuried(page, async ({ page: p, agentId }) => {
+    const group = p.locator(`#atbl tr[data-agent="${agentId}"]`);
+    await expect(
+      group,
+      'the dispatch, all three steps and the stop for this lane sit about a hundred records back — '
+      + 'a stream backlog that stops short of that leaves this lane with NOTHING on screen, not '
+      + 'even an orphan row, because none of its records reached the fetch at all',
+    ).toHaveCount(1, { timeout: 20_000 });
+    await expect(group).toContainText('Entirely buried lane');
+    await expect(group).toContainText('3');
+    await expect(group).toContainText('finished');
+  });
+});
+
+test('the opening bound is disclosed, and it is proportionate to what the log holds rather than a fixed small number', async ({ page }) => {
+  await watchingWholeLaneBuried(page, async ({ page: p }) => {
+    // 1 (init's own) + 1 dispatch + 3 steps + 1 stop + 100 pad, at minimum —
+    // `expectedAtLeast` allows for whatever `init` itself records.
+    await expectedAtLeast(p, 100);
+    const bound = p.locator('#wbound');
+    await expect(bound).toBeVisible();
+    await expect(bound).toContainText(/already in the log/i);
   });
 });

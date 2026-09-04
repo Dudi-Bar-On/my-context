@@ -204,10 +204,18 @@ import {
 // derived here rather than served as a number by `/api/status`.
 import { buildTree, coverageGaps } from '/lib/viewmodel.js';
 // The shared live stream's backlog size — see "THE SHARED LIVE STREAM" below.
-// Reused rather than respelled: `watch.js` requested exactly this many records
-// on connect for as long as the stream has existed, and the shell opening the
-// ONE connection now is the same request, made once instead of once per visit.
-import { BOUND_CAP_LIST } from '/screens/parts.js';
+//
+// **`SHARED_STREAM_BACKLOG` below, not `BOUND_CAP_LIST` any more
+// (`TASK-the-audit-stream-shows-almost-nothing-of-what-the-log-holds`,
+// 2026-09-04).** This shell cannot import `screens/watch.js`'s own `FEED_CAP` —
+// that would invert the shell/screen dependency every screen module already
+// relies on running one way — so the number that used to be borrowed from a
+// generic list bound is now a literal here, kept equal to `watch.js`'s
+// `FEED_CAP`/`BACKLOG` BY COMMENT rather than by import. See `screens/watch.js`
+// · `Raised from a bare 20 to FEED_CAP` · for the measurement that argues the
+// number: a 20-record fallback left every finished lane on the live screen
+// showing zero steps, over a corpus whose `agent-step` records backfill in
+// bursts of up to ~150 at once.
 // WHICH kinds make each screen stale, and whether that screen may be
 // rebuilt in place or must ask first — see "LIVE INVALIDATION" below and
 // that file's own header for why both facts live in the one table.
@@ -2204,6 +2212,17 @@ function stream(path, onEvent, onEnd) {
  * reachable from a screen at all (removed from the `window.myctx` contract):
  * a door left open is a door someone eventually opens again per-screen.
  */
+
+/**
+ * How much history the ONE connection replays on open — see the import
+ * comment above for why this is a literal and not an import of `watch.js`'s
+ * `FEED_CAP`, which it must equal. Only `watch.js` reads the `hello` frame's
+ * `backlog` field today, but the number is the connection's own property
+ * (`plan:live seq:1`), not any one screen's, so it lives here rather than
+ * being threaded through `subscribeStream()` as a per-caller argument.
+ */
+const SHARED_STREAM_BACKLOG = 200;
+
 let liveStop = null;
 /**
  * Every screen currently listening, in subscribe order. `kinds` is a `Set`
@@ -2322,7 +2341,7 @@ function ensureLiveStream() {
   // certainty in the other direction. `route()` subscribes on every screen it
   // builds, so the redemption's own `route()` is what opens it for real.
   if (!credentialHeld()) return;
-  liveStop = stream(`/api/watch/stream?backlog=${BOUND_CAP_LIST}`, dispatchLiveEvent, () => {
+  liveStop = stream(`/api/watch/stream?backlog=${SHARED_STREAM_BACKLOG}`, dispatchLiveEvent, () => {
     // An ended stream is not any one screen's to report — `dispatchLiveEvent`'s
     // `fault` branch above is where the one true, shell-owned account of it is
     // said, and it is said whether or not a screen is even listening.

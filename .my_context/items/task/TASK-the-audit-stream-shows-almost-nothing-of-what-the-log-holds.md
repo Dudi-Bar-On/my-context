@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen displayed seven rows while ninety-two step records from the last hour sat in the log unshown.
-summary_of: 673a1d1d161d6f1d
+summary_of: c7f3729ed16769de
 scope:
   - src/ui/public/screens/watch.js
   - src/ui/server.ts
@@ -18,18 +18,19 @@ tags:
   - audit
   - "plan:live"
   - "seq:16"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 444a1eb128c94826
+checksum: 9691a5b2a8639e53
 plan: live
 seq: "16"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-04
 ---
 
 # the audit stream shows almost nothing of what the log holds, so a reader watching it sees a fraction of the record

@@ -60,8 +60,12 @@ async function shelled(page: Page, body: (fixture: Fixture) => Promise<void>): P
    * subscribes on its behalf through `setupLiveScreen`, whose first
    * `subscribeStream()` call is what runs `ensureLiveStream()`. Measured
    * 2026-08-29 on both browser projects: the request for
-   * `/api/watch/stream?backlog=20` fires ~40ms after `page.goto()` resolves and
-   * ~40ms BEFORE the rail's first button becomes visible.
+   * `/api/watch/stream?backlog=N` fires ~40ms after `page.goto()` resolves and
+   * ~40ms BEFORE the rail's first button becomes visible. That measurement read
+   * `backlog=20`; the bound is now `SHARED_STREAM_BACKLOG` (200), raised
+   * 2026-09-04 because 20 records missed a whole backfilled lane. Only the
+   * number changed — the timing this docblock is about did not, and no
+   * assertion here reads the value.
    *
    * A listener attached inside the test body — i.e. after `goto` AND after the
    * `.nav` wait below — therefore races that request and usually loses. That is
