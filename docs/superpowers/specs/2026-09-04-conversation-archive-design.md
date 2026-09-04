@@ -1,7 +1,9 @@
 # Conversation archive — design
 
-**Status:** design, not yet planned. Written 2026-09-04 from the owner's requirements, with
-every claim about the harness measured rather than assumed.
+**Status:** design AGREED, not yet planned. Written 2026-09-04 from the owner's requirements, with
+every claim about the harness measured rather than assumed; the three questions it opened were
+answered the same day and are recorded under *Decisions taken* below. What remains before this can
+be built is a plan, not a decision.
 
 ## What the owner asked for
 
@@ -90,7 +92,9 @@ archive loses them too. That is the price of not copying, and it is why export e
 A `Conversations` screen in the existing read-only web UI.
 
 **The list.** Sessions newest first: date, duration, prompt and answer counts, git branch, size,
-and a title. Filterable by date and branch, searchable across content.
+and a title taken from the transcript's own `aiTitle` record — shown as the model's, and
+overridable for a session worth naming. Filterable by date and branch, searchable across content.
+Exported conversations appear here too, marked and carrying the date they were taken.
 
 **The transcript view.** The conversation in order, with:
 
@@ -171,16 +175,49 @@ This is the same shape as the owner's earlier ruling that the structured layer m
 - **A pruned transcript is a broken row in the index.** The list must show that a session's file is
   gone rather than failing to load, and that is the strongest argument for export.
 
-## Open questions for the owner
+## Decisions taken, 2026-09-04
 
-1. **Does an exported conversation get indexed too**, so it appears in the browse list beside live
-   ones (marked as exported), or is it only opened on demand by path? Indexing it makes it findable;
-   not indexing it keeps the list a faithful view of what the harness holds.
-2. **What is a conversation's title?** The transcript carries an `aiTitle` record type. Using it is
-   free and probably right, but it means the list shows a title the model chose rather than one the
-   owner did.
-3. **How far back?** Every transcript the project has ever produced, or a window. This decides
-   whether the index scan is cheap on every rebuild or needs its own budget.
+All three questions this design opened were answered the same day. They are recorded here as
+decisions rather than left as questions, because a spec that still asks what it should do cannot be
+planned from.
+
+**Exports are indexed and listed beside live sessions, marked and dated.** An export you cannot find
+again is not a copy, it is a file; and the `source` column already exists to draw the distinction
+the owner asked for. The list therefore stops being a pure mirror of what the harness holds, and
+that is the accepted cost — it becomes a list of what the OWNER holds, which is the more useful
+thing.
+
+**The list is titled from `aiTitle`, and a title may be overridden.** It is already in the
+transcript, so every session gets a readable name at no cost rather than a row of timestamps. The
+title is shown as what it is — written by the model — and a session worth naming can be named. The
+alternative considered and rejected was the first prompt, because first prompts are routinely
+"continue" or "ok go ahead", which names nothing.
+
+**Every transcript on disk is indexed, with no time window.** The index holds one row per session,
+not per message — roughly two hundred bytes against a thirteen-megabyte transcript — so it stays
+small however many sessions accumulate, and a rebuild is one stat and one tail per file. A rolling
+window was rejected for the reason that makes this feature worth building at all: retrieval matters
+most for the conversations you have forgotten, which are exactly the ones a window excludes.
+
+## Lane activity is NOT part of this, and the measurement says why
+
+The owner also asked to see what a subagent is doing moment by moment — the line a terminal shows
+while a lane runs, such as `general-purpose  Reading audit-new-ops.test.ts family order`. That
+looks like it belongs here and does not.
+
+**Measured: the parent transcript contains zero `isSidechain` records.** None of a lane's work
+appears in the conversation this archive is about. Each lane writes its own separate transcript, and
+`SubagentStop` hands over its location as `agent_transcript_path`.
+
+Those files also differ in the one property this design leans on: parent transcripts live under
+`~/.claude/projects/` and persist, while lane transcripts live in the OS temp directory — measured
+at 104 MB across three sessions — and can be swept away without warning.
+
+So it is a different feature over a different source with a different risk, and the owner ruled it
+belongs in the **audit stream** rather than in this viewer: one row per tool call, backfilled from
+the lane's transcript when it ends. That is tracked as
+`TASK-the-audit-stream-cannot-say-what-a-lane-was-doing-at-a-given`. Nothing in this design depends
+on it, and it depends on nothing here.
 
 ## Implementation order, when it is scheduled
 
