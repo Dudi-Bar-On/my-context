@@ -418,12 +418,12 @@ export async function render(root, ctx) {
   pulseNote.append(...ctx.t('watch.pulsen'));
 
   // --- The kind filters -----------------------------------------------------
-  const filters = el('div');
+  const filters = el('div', 'kindfilters');
   filters.id = 'wfilters';
   filters.setAttribute('role', 'group');
   filters.setAttribute('aria-label', ctx.tFlat('aria.wfilters'));
   for (const [property, value] of [
-    ['display', 'flex'], ['gap', '6px'], ['flex-wrap', 'wrap'], ['margin-block-end', '9px'],
+    ['display', 'flex'], ['gap', '6px'], ['flex-wrap', 'wrap'],
   ]) {
     filters.style.setProperty(property, value);
   }

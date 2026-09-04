@@ -1672,6 +1672,14 @@ bdi{unicode-bidi:isolate}
 .cnt{font-family:var(--mono);font-size:11px;padding-inline:4px;border-radius:var(--r-sm);
   border:1px solid var(--edge-3);color:var(--dim);direction:ltr;unicode-bidi:isolate}
 .cnt.x{color:var(--warn);border-color:var(--warn)}
+/* The audit stream's kind filters. Each button carries a `.cnt` pill, and a
+   bordered pill inside a 27px button reads as taller than the bare word it
+   replaced — so the 9px the row inherited stopped being enough and the row
+   crowded the note above it and the table below. Owner, 2026-09-04: "it
+   overlaps the buttons and the list title so add some spacing above and below".
+   Scoped to this row rather than to `.cnt`, which is the product's shared count
+   pill and also draws the rail's own badges. */
+.kindfilters{margin-block:14px 16px}
 .prop{font-size:10.5px;letter-spacing:.05em;color:var(--warn);border:1px solid var(--warn);
   border-radius:var(--r-sm);padding-inline:3px}
 
