@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Three lanes verified with targeted tests only, and the full suite then found nine lists that no longer agreed with the code.
 summary_of: 925924724c796998
+acknowledged:
+  - state_unaudited@975c7f7be49f4192
 scope: []
 tags:
   - v2
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 3b5cbc111f21e1b6
+checksum: 2e60dd7a5e92fd3a
 plan: walk
 seq: "136"
 state: done

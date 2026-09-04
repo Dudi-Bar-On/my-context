@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Adding a second file with an existing name left every citation naming it unable to resolve.
 summary_of: 6a81fc6fa3aab2d1
+acknowledged:
+  - state_unaudited@222335ea65a486ac
 scope: []
 tags:
   - v2
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 3c4aa701986d2fc8
+checksum: d72f4788ff7c91da
 plan: walk
 seq: "137"
 state: done

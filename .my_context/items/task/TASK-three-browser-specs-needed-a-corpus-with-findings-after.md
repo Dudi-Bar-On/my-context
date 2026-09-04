@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Specs that settle doctor findings had no subject once the corpus was clean, and failed loudly rather than passing vacuously.
 summary_of: 8de5ab7f1cfc30d6
+acknowledged:
+  - state_unaudited@d88dfb9e464dc457
 scope: []
 tags:
   - v2
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 27b01a2da6eef8c7
+checksum: f40d3ae76141297b
 plan: walk
 seq: "138"
 state: done
